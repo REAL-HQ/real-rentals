@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { railEntries, resolveAdminTab, TABS, visibleTabs } from "../src/components/admin/nav-config";
 import { RENEWALS_DUE_ENABLED } from "../src/lib/renewals-due-flag";
+import { idBatches } from "../src/lib/renewals-due.functions";
 import {
   RENEWALS_DUE_OMITTED,
   addCalendarDays,
@@ -50,6 +51,15 @@ ok(fn.includes('.gte("next_payment_due", today)') && fn.includes('.lte("next_pay
 ok(fn.includes('.gte("end_date", today)') && fn.includes('.lte("end_date", horizon)'), "end date uses its own date bounds");
 ok(fn.includes('.lt("end_date", today)'), "overdue returns are active rentals whose end date is before today");
 ok((fn.match(/\.limit\(RENEWALS_FETCH_LIMIT \+ 1\)/g) ?? []).length === 2, "due-soon end dates and overdue returns each read limit plus one");
+ok(fn.includes("const ID_BATCH = 80"), "id lookups are capped at 80 ids");
+ok(fn.includes('.in("id", batch)') && fn.includes('.in("rental_id", batch)'), "applications, vehicles, and payments are loaded in id batches");
+ok(!fn.includes("paymentRowsInBatches") && (fn.match(/idBatches\(ids\)\.map/g) ?? []).length === 1, "the batch page loop is one helper");
+{
+  const ids = Array.from({ length: 81 }, (_, i) => `id-${i}`);
+  const batches = idBatches(ids);
+  ok(idBatches([]).length === 0, "no ids means no batch");
+  ok(batches.length === 2 && batches[0].length === 80 && batches[1].length === 1, "81 ids become two batches");
+}
 ok(fn.includes("endPage.length > RENEWALS_FETCH_LIMIT") && fn.includes("overduePage.length > RENEWALS_FETCH_LIMIT"), "each cap is the page length, and a long page is not thrown");
 ok(!/\.or\(/.test(fn) && !/\.filter\(\s*["'`]/.test(fn), "the date windows are separate reads");
 ok(flag.split("RENEWALS_DUE_ENABLED =").length === 2, "the hard-false flag is declared once");
