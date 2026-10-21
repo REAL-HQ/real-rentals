@@ -28,7 +28,9 @@
 // PropertyAccessExpression assignment targets (`globalThis.X_ENABLED = …`)
 // are declarations whose initializer is the assigned expression. An identifier
 // assignment (`NEW_ENABLED = true`, or `= false`) is always a non-literal
-// declaration, so it fails.
+// declaration, so it fails. Parentheses around the target are ignored, and so
+// are `as` / angle-bracket assertions on the target
+// (`(X_ENABLED as any) = true`, `(X_ENABLED) = true`).
 // Element access (`obj["X_ENABLED"] = …`), computed property names,
 // compound assignments (`+=`), and property signatures in types
 // (`interface Flags { X_ENABLED: boolean }` and `{ X_ENABLED?: string }`)
@@ -37,18 +39,23 @@
 // LIVE_TRUE_FLAGS and LIVE_ENV_GATED_FLAGS live in scripts/live-enabled-flags.mjs,
 // shared with enabled-flags-no-env. LIVE_TRUE_FLAGS may be literal `true`.
 // On 7e3e6eb the only `*_ENABLED = true` under src/ is STRIPE_COLLECTIONS_ENABLED.
-// LIVE_ENV_GATED_FLAGS is live env-gated, owner-controlled: the two alert flags
-// plus STRIPE_RECONCILIATION_ENABLED, APPLICATION_RESUME_ATOMIC_ENABLED, and
-// RENTER_LIFECYCLE_NOTICES_ENABLED. Those exist and read process.env on 7e3e6eb.
-// DOCUMENT_EXPIRY_NOTICES_ENABLED does not exist on 7e3e6eb and is not listed.
+// LIVE_ENV_GATED_FLAGS is live env-gated, owner-controlled:
+// DRIVER_ISSUE_ALERTS_ENABLED, STRIPE_RECONCILIATION_ENABLED,
+// APPLICATION_RESUME_ATOMIC_ENABLED, and RENTER_LIFECYCLE_NOTICES_ENABLED.
+// Those exist and read process.env on 7e3e6eb.
+// DOCUMENT_EXPIRY_NOTICES_ENABLED and ROADSIDE_SMS_ALERTS_ENABLED do not exist
+// on 7e3e6eb and are not listed.
 // Any other *_ENABLED name whose initializer is not literal false still fails.
 //
 // Hidden boolean gates that are not named *_ENABLED (for example
-// `filtersOn = false as boolean`) are not declarations and are not a failure.
+// `filtersOn = false as boolean`) are not *_ENABLED declarations.
 // Search for them with rg before treating a tree as having a single flag
 // source. A top-level const in src/ whose name does not end in _ENABLED, and
 // whose initializer is `false`, `false as boolean`, or `false && ...`, is
-// printed as a warning only.
+// printed as a warning only. That name is still scanned: a second production
+// declaration of it (for example a second MANUAL_PAYMENTS_LIVE) fails the
+// same duplicate rule as an *_ENABLED name. The initializer rule stays on
+// *_ENABLED names.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -80,17 +87,25 @@ const SCRIPT_KIND = {
   ".cjs": ts.ScriptKind.JS,
 };
 
-export function collectFlagDeclarations(root) {
+export function collectFlagDeclarations(root, extraNames) {
+  const extra = extraNames instanceof Set ? extraNames : new Set(extraNames ?? []);
+  const accept = (name) => name.endsWith("_ENABLED") || extra.has(name);
   const byName = new Map();
   if (!statSync(root, { throwIfNoEntry: false })?.isDirectory()) return byName;
   for (const file of walk(root)) {
-    for (const decl of declarationsIn(file)) {
+    for (const decl of declarationsIn(file, accept)) {
       const sites = byName.get(decl.name) ?? [];
       sites.push({ file, line: decl.line, initializer: decl.initializer });
       byName.set(decl.name, sites);
     }
   }
   return byName;
+}
+
+/** *_ENABLED declarations, plus every top-level false-const name the warning scan found. */
+export function scanDeclarations(root) {
+  const extra = new Set(falseConstWarnings(root).map((item) => item.name));
+  return collectFlagDeclarations(root, extra);
 }
 
 /** scripts/, *.test.*, *.spec.*, and fixture folders do not fail the duplicate rule. */
@@ -115,6 +130,7 @@ export function productionSites(sites) {
 export function initializerFailures(byName) {
   const failures = [];
   for (const [name, sites] of byName) {
+    if (!name.endsWith("_ENABLED")) continue;
     for (const site of productionSites(sites)) {
       if (site.initializer === "false" || site.initializer === "false as boolean") continue;
       if (LIVE_TRUE_FLAGS.has(name) && site.initializer === "true") continue;
@@ -160,13 +176,13 @@ function sourceFile(file) {
   return ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, kind);
 }
 
-function declarationsIn(file) {
+function declarationsIn(file, accept = (name) => name.endsWith("_ENABLED")) {
   const source = sourceFile(file);
   const found = [];
   const scopes = [new Set()];
   const push = (nameNode, initializer = "non-literal") => {
     const text = nameNode && (ts.isIdentifier(nameNode) || ts.isStringLiteral(nameNode)) ? nameNode.text : null;
-    if (!text || !text.endsWith("_ENABLED")) return;
+    if (!text || !accept(text)) return;
     const { line } = source.getLineAndCharacterOfPosition(nameNode.getStart(source));
     found.push({ name: text, line: line + 1, initializer });
   };
@@ -281,7 +297,7 @@ function declarationsIn(file) {
     else if (ts.isShorthandPropertyAssignment(node)) {
       if (!visible(node.name.text)) push(node.name, "non-literal");
     } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
-      const left = unwrap(node.left);
+      const left = assignmentTarget(node.left);
       if (ts.isPropertyAccessExpression(left)) push(left.name, classifyInitializer(node.right));
       else if (ts.isIdentifier(left)) push(left, "non-literal");
     } else if (ts.isImportDeclaration(node)) recordImport(node, push);
@@ -343,6 +359,27 @@ function recordExport(node, push) {
 function unwrap(node) {
   let current = node;
   while (current && ts.isParenthesizedExpression(current)) current = current.expression;
+  return current;
+}
+
+/** Parentheses, `as` / angle-bracket assertions, non-null, and `satisfies` are not the target. */
+function assignmentTarget(node) {
+  let current = node;
+  while (current) {
+    if (ts.isParenthesizedExpression(current)) {
+      current = current.expression;
+      continue;
+    }
+    if (ts.isAsExpression(current) || ts.isTypeAssertionExpression(current) || ts.isNonNullExpression(current)) {
+      current = current.expression;
+      continue;
+    }
+    if (typeof ts.isSatisfiesExpression === "function" && ts.isSatisfiesExpression(current)) {
+      current = current.expression;
+      continue;
+    }
+    break;
+  }
   return current;
 }
 
@@ -702,7 +739,6 @@ function selfTest() {
         "APPLICATION_RESUME_ATOMIC_ENABLED",
         "DRIVER_ISSUE_ALERTS_ENABLED",
         "RENTER_LIFECYCLE_NOTICES_ENABLED",
-        "ROADSIDE_SMS_ALERTS_ENABLED",
         "STRIPE_RECONCILIATION_ENABLED",
       ],
       "the env allowlist is the live env-gated names on 7e3e6eb",
@@ -743,6 +779,26 @@ function selfTest() {
     assert.equal(assignHits.length, 1, "an identifier assignment is non-literal even when the right-hand side is false");
     assert.equal(assignHits[0][1].initializer, "non-literal");
     assert.equal(scannerExit(identAssign).status, 1);
+    const castAssign = join(root, "cast-assign");
+    mkdirSync(castAssign);
+    writeFileSync(join(castAssign, "cast.ts"), "export const CAST_ASSIGN_ENABLED = false;\n(CAST_ASSIGN_ENABLED as any) = true;\n");
+    const castHits = initializerFailures(collectFlagDeclarations(castAssign));
+    assert.equal(castHits.length, 1, "(X_ENABLED as any) = true is an assignment");
+    assert.equal(castHits[0][0], "CAST_ASSIGN_ENABLED");
+    assert.equal(castHits[0][1].initializer, "non-literal");
+    assert.equal(scannerExit(castAssign).status, 1, "(X_ENABLED as any) = true must fail");
+    const parenAssign = join(root, "paren-assign");
+    mkdirSync(parenAssign);
+    writeFileSync(join(parenAssign, "paren.ts"), "export const PAREN_ENABLED = false;\n(PAREN_ENABLED) = false;\n((PAREN_ENABLED)) = true;\n");
+    assert.equal(initializerFailures(collectFlagDeclarations(parenAssign)).length, 2, "parenthesized identifier targets are assignments");
+    assert.equal(scannerExit(parenAssign).status, 1, "a parenthesized assignment target must fail");
+    const parenProp = join(root, "paren-prop");
+    mkdirSync(parenProp);
+    writeFileSync(join(parenProp, "prop.ts"), "(globalThis.PAREN_PROP_ENABLED) = false;\n((globalThis.PAREN_TRUE_ENABLED as any)) = true;\n");
+    const parenPropFlags = collectFlagDeclarations(parenProp);
+    assert.equal(parenPropFlags.get("PAREN_PROP_ENABLED")[0].initializer, "false", "a parenthesized property assignment keeps the right-hand side");
+    assert.equal(parenPropFlags.get("PAREN_TRUE_ENABLED")[0].initializer, "true");
+    assert.equal(scannerExit(parenProp).status, 1, "a parenthesized property assignment of true must fail");
     const liveEnvButTrue = join(root, "live-env-true");
     mkdirSync(liveEnvButTrue);
     writeFileSync(liveEnvButTrue + "/true.ts", "export const DRIVER_ISSUE_ALERTS_ENABLED = true;\n");
@@ -859,6 +915,29 @@ function selfTest() {
     const gateRun = scannerExit(join(root, "src"));
     assert.equal(gateRun.status, 0, gateRun.stderr);
     cleanExits.push(`hidden const false exit ${gateRun.status}`);
+
+    const liveName = join(root, "live-name");
+    mkdirSync(join(liveName, "src", "a"), { recursive: true });
+    mkdirSync(join(liveName, "src", "b"));
+    mkdirSync(join(liveName, "scripts"));
+    writeFileSync(join(liveName, "src", "a", "one.ts"), "export const MANUAL_PAYMENTS_LIVE = false;\n");
+    writeFileSync(
+      join(liveName, "src", "b", "two.ts"),
+      "export const MANUAL_PAYMENTS_LIVE = false;\nfunction f(MANUAL_PAYMENTS_LIVE) { return MANUAL_PAYMENTS_LIVE; }\n",
+    );
+    writeFileSync(join(liveName, "scripts", "copy.ts"), "export const MANUAL_PAYMENTS_LIVE = false;\nexport const MANUAL_PAYMENTS_LIVE = true;\n");
+    const liveFlags = scanDeclarations(liveName);
+    const liveDupes = duplicateFailures(liveFlags).filter(([name]) => name === "MANUAL_PAYMENTS_LIVE");
+    assert.equal(liveDupes.length, 1, "MANUAL_PAYMENTS_LIVE is scanned for duplicates");
+    assert.equal(liveDupes[0][1].length, 3, "both src declarations and the parameter count; scripts/ does not");
+    assert.equal(scannerExit(liveName).status, 1, "a second MANUAL_PAYMENTS_LIVE fails the duplicate rule");
+    duplicateExits.push("scanned name MANUAL_PAYMENTS_LIVE exit 1");
+    const liveOnce = join(root, "live-once");
+    mkdirSync(join(liveOnce, "src"), { recursive: true });
+    writeFileSync(join(liveOnce, "src", "one.ts"), "export const MANUAL_PAYMENTS_LIVE = false;\n");
+    assert.equal(duplicateFailures(scanDeclarations(liveOnce)).length, 0);
+    assert.equal(scannerExit(liveOnce).status, 0, "one scanned non-_ENABLED name is only a warning");
+    cleanExits.push("one MANUAL_PAYMENTS_LIVE exit 0");
     console.log(`flag-single-source: duplicate fixtures ${duplicateExits.join("; ")}`);
     console.log(`flag-single-source: allowed copies ${cleanExits.join("; ")}`);
   } finally {
@@ -869,7 +948,7 @@ function selfTest() {
 function scanWorkspace() {
   const byName = new Map();
   for (const root of ROOTS) {
-    for (const [name, sites] of collectFlagDeclarations(root)) {
+    for (const [name, sites] of scanDeclarations(root)) {
       const list = byName.get(name) ?? [];
       list.push(...sites);
       byName.set(name, list);
@@ -894,7 +973,7 @@ function rejectScan(byName) {
   const dupes = duplicateFailures(byName);
   const bad = initializerFailures(byName);
   if (!dupes.length && !bad.length) return false;
-  const flagCount = [...byName.values()].filter((sites) => productionSites(sites).length > 0).length;
+  const flagCount = [...byName.entries()].filter(([name, sites]) => name.endsWith("_ENABLED") && productionSites(sites).length > 0).length;
   if (dupes.length) reportDuplicates(dupes, flagCount);
   if (bad.length) reportInitializers(bad);
   return true;
@@ -909,14 +988,14 @@ if (isMain) {
       console.error("flag-single-source: --scan requires a directory");
       process.exit(2);
     }
-    const byName = collectFlagDeclarations(dir);
+    const byName = scanDeclarations(dir);
     if (rejectScan(byName)) process.exit(1);
     process.exit(0);
   }
   selfTest();
   console.log("flag-single-source: self-test passed");
   const byName = scanWorkspace();
-  const flagCount = [...byName.values()].filter((sites) => productionSites(sites).length > 0).length;
+  const flagCount = [...byName.entries()].filter(([name, sites]) => name.endsWith("_ENABLED") && productionSites(sites).length > 0).length;
   const warnings = falseConstWarnings("src");
   if (warnings.length) {
     const lines = warnings.map((item) => `  ${item.file}:${item.line} ${item.name} (${item.kind})`);
