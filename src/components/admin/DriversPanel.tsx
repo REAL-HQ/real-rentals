@@ -76,6 +76,9 @@ import {
 import { removeCardOnFile } from "@/lib/payments.functions";
 import { AgreementsCard } from "./AgreementsCard";
 import { ContactStatusCell } from "./ContactStatusCell";
+import { ApprovedNotRentingList } from "./ApprovedNotRenting";
+import { listApprovedNotRenting } from "@/lib/booking-funnel.functions";
+import type { ApprovedNotRentingResult } from "@/lib/booking-funnel";
 import { listDriverRows, type DriverListResult } from "@/lib/drivers-list.functions";
 import {
   CONTACT_STATUSES,
@@ -305,7 +308,10 @@ export function DriversPanel({
   canManageWaitlist?: boolean;
   externalSearch?: string;
   initialOpenId?: string;
-  /** ?filter= from the address bar. "waitlist" and "documents-expiring" are honoured. */
+  /**
+   * ?filter= from the address bar. "waitlist" is honoured for every staff
+   * tier. "documents-expiring" and "approved-not-renting" are honoured for a manager.
+   */
   urlFilter?: string;
   /** Verification recordings are Owner-only. See VerificationRecording. */
   isOwner?: boolean;
@@ -334,13 +340,19 @@ export function DriversPanel({
   const openId = initialOpenId ?? null;
   const setOpenId = useCallback(
     (id: string | null) => {
-      const keep = urlFilter === "documents-expiring" ? { filter: "documents-expiring" as const } : {};
-      void navigate({
-        to: "/admin",
-        search: id ? { tab: "drivers", id, ...keep } : { tab: "drivers", ...keep },
-      });
+      const search: {
+        tab: "drivers";
+        id?: string;
+        filter?: "documents-expiring" | "approved-not-renting";
+      } = id ? { tab: "drivers", id } : { tab: "drivers" };
+      // Opening a driver from either manager list comes back to that list.
+      // Waitlist links stay as they were: the filter is not kept.
+      if (canManageWaitlist && (urlFilter === "documents-expiring" || urlFilter === "approved-not-renting")) {
+        search.filter = urlFilter;
+      }
+      void navigate({ to: "/admin", search });
     },
-    [navigate, urlFilter],
+    [navigate, urlFilter, canManageWaitlist],
   );
   const [localFilter, setLocalFilter] = useState<string>("all");
   /*
@@ -362,9 +374,12 @@ export function DriversPanel({
    * says so rather than showing a score built on absent data.
    */
   const [canSeeSensitive, setCanSeeSensitive] = useState(true);
-  // Waitlist and Documents Expiring live in the URL so a chip, a bookmark and the back button agree.
+  // Waitlist, Documents Expiring, and Approved, Not Yet Renting live in the URL
+  // so a chip, a bookmark, and the back button agree. The two manager lists
+  // are ignored for a coordinator.
   const urlListFilter =
-    urlFilter === "waitlist" || (urlFilter === "documents-expiring" && canManageWaitlist)
+    urlFilter === "waitlist" ||
+    ((urlFilter === "documents-expiring" || urlFilter === "approved-not-renting") && canManageWaitlist)
       ? urlFilter
       : null;
   const filter = urlListFilter ?? localFilter;
@@ -374,8 +389,12 @@ export function DriversPanel({
         void navigate({ to: "/admin", search: { tab: "drivers", filter: f } });
         return;
       }
+      if (f === "approved-not-renting" && canManageWaitlist) {
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: "approved-not-renting" } });
+        return;
+      }
       setLocalFilter(f);
-      if (urlFilter === "waitlist" || urlFilter === "documents-expiring") {
+      if (urlFilter === "waitlist" || urlFilter === "documents-expiring" || urlFilter === "approved-not-renting") {
         void navigate({ to: "/admin", search: { tab: "drivers" } });
       }
     },
@@ -429,6 +448,35 @@ export function DriversPanel({
       );
   }, []);
   useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters]);
+  const loadFunnel = useServerFn(listApprovedNotRenting);
+  const [funnel, setFunnel] = useState<ApprovedNotRentingResult | null>(null);
+  const [funnelFailed, setFunnelFailed] = useState(false);
+  const [funnelLoading, setFunnelLoading] = useState(canManageWaitlist);
+  const viewingFunnel = filter === "approved-not-renting";
+  useEffect(() => {
+    if (!canManageWaitlist) return;
+    let cancelled = false;
+    setFunnelLoading(true);
+    setFunnelFailed(false);
+    loadFunnel()
+      .then((r) => {
+        if (cancelled) return;
+        setFunnel(r);
+        setFunnelFailed(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFunnel(null);
+          setFunnelFailed(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setFunnelLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageWaitlist, loadFunnel, viewingFunnel]);
   const [holdBusy, setHoldBusy] = useState<string | null>(null);
   const refreshHolds = useCallback(
     () =>
@@ -665,6 +713,15 @@ setDocCounts(requiredDocCounts(rows));
     });
   }, [drivers, filter, contactFilter, externalSearch, held, activeRenters]);
 
+  const funnelRows = useMemo(() => {
+    const q = externalSearch.trim().toLowerCase();
+    return (funnel?.rows ?? []).filter((r) => {
+      if (contactFilter !== "all" && readContactStatus(r.contact).state.status !== contactFilter) return false;
+      if (!q) return true;
+      return r.fullName.toLowerCase().includes(q);
+    });
+  }, [funnel, contactFilter, externalSearch]);
+
   const saveLifecycle = useServerFn(updateApplicationLifecycle);
   function applySaved(id: string, patch: Partial<Application>) {
     setDrivers((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
@@ -693,6 +750,31 @@ setDocCounts(requiredDocCounts(rows));
    * which will not carry the contact_* columns until the migration is applied
    * and the types are regenerated.
    */
+  function applyFunnelContact(id: string, st: ContactStatusState) {
+    setFunnel((prev) =>
+      prev
+        ? {
+            ...prev,
+            rows: prev.rows.map((r) =>
+              r.id === id
+                ? {
+                    ...r,
+                    contact: {
+                      contact_status: st.status,
+                      contact_status_note: st.note,
+                      contact_follow_up_on: st.followUpOn,
+                      contact_status_at: st.changedAt,
+                      contact_status_by: st.changedBy,
+                    },
+                  }
+                : r,
+            ),
+          }
+        : prev,
+    );
+    applyContactStatus(id, st);
+  }
+
   function applyContactStatus(id: string, st: ContactStatusState) {
     setDrivers((arr) =>
       arr.map((x) =>
@@ -861,6 +943,17 @@ setDocCounts(requiredDocCounts(rows));
             Documents Expiring ({expiringFailed ? "—" : expiringDocs ? (expiringDocs.defaultScope === "renting" ? expiringDocs.renting.length : expiringDocs.approved.length) : "…"})
           </button>
         )}
+        {canManageWaitlist && (
+          <button
+            type="button"
+            data-approved-not-renting-filter
+            onClick={() => setFilter("approved-not-renting")}
+            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "approved-not-renting" ? "bg-black text-white" : "bg-white border border-border"}`}
+          >
+            Approved, Not Yet Renting (
+            {funnelFailed || !funnel ? (funnelLoading ? "…" : "—") : funnel.rows.length})
+          </button>
+        )}
         {/*
          * Contact Status filter. Reads "Contact: All" so it can never be
          * mistaken for the application-status chips beside it.
@@ -902,6 +995,19 @@ setDocCounts(requiredDocCounts(rows));
           scope={expiringScope}
           onScope={setExpiringScope}
           onOpen={(id) => setOpenId(id)}
+        />
+      ) : filter === "approved-not-renting" ? (
+        <ApprovedNotRentingList
+          rows={funnelRows}
+          populationEmpty={!!funnel && funnel.rows.length === 0}
+          failed={funnelFailed}
+          loading={funnelLoading && !funnel}
+          onOpen={(id) => {
+            const match = drivers.find((d) => d.id === id);
+            if (match) openDriver(match);
+            else setOpenId(id);
+          }}
+          onContactSaved={applyFunnelContact}
         />
       ) : (
       <AdminTableScroll className="rounded-lg border border-border bg-white">
