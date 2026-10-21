@@ -8,15 +8,42 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { build } from "esbuild";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import postgres from "postgres";
 
-const BIN = "/usr/lib/postgresql/16/bin";
-const DIR = "/tmp/rr-card-link-pg";
-const PORT = 55441;
+function pgBindir() {
+  if (process.env.PG_BIN) return process.env.PG_BIN;
+  const result = spawnSync("pg_config", ["--bindir"], { encoding: "utf8" });
+  const dir = result.stdout?.trim();
+  if (result.status !== 0 || !dir) {
+    throw new Error(`pg_config --bindir failed\n${result.stdout ?? ""}\n${result.stderr ?? ""}`);
+  }
+  return dir;
+}
+
+function freePort() {
+  return new Promise((resolvePort, reject) => {
+    const server = createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("No free port")));
+        return;
+      }
+      server.close((error) => (error ? reject(error) : resolvePort(address.port)));
+    });
+  });
+}
+
+const BIN = pgBindir();
+const DIR = mkdtempSync(join(tmpdir(), "rr-card-link-pg-"));
+const PORT = await freePort();
 const SOCKET = join(DIR, "socket");
 const APP = "11111111-1111-4111-8111-111111111111";
 
@@ -180,26 +207,25 @@ async function run(sql, state) {
   }
 }
 
-rmSync(DIR, { recursive: true, force: true });
-mkdirSync(SOCKET, { recursive: true });
-pg("initdb", ["-D", join(DIR, "data"), "-U", "postgres", "-A", "trust"]);
-pg("pg_ctl", [
-  "-D", join(DIR, "data"),
-  "-l", join(DIR, "log"),
-  "-w",
-  "-o", `-p ${PORT} -k ${SOCKET} -c listen_addresses=`,
-  "start",
-]);
-
-const sql = postgres({
-  host: SOCKET,
-  port: PORT,
-  database: "postgres",
-  username: "postgres",
-  max: 1,
-});
 let failed = null;
+let sql;
 try {
+  mkdirSync(SOCKET, { recursive: true });
+  pg("initdb", ["-D", join(DIR, "data"), "-U", "postgres", "-A", "trust"]);
+  pg("pg_ctl", [
+    "-D", join(DIR, "data"),
+    "-l", join(DIR, "log"),
+    "-w",
+    "-o", `-p ${PORT} -k ${SOCKET} -c listen_addresses=`,
+    "start",
+  ]);
+  sql = postgres({
+    host: SOCKET,
+    port: PORT,
+    database: "postgres",
+    username: "postgres",
+    max: 1,
+  });
   await sql.unsafe("create database cardlink");
   await sql.end({ timeout: 1 });
   const db = postgres({
@@ -255,7 +281,7 @@ try {
 
     const resumes = [];
     for (let i = 0; i < 5; i += 1) resumes.push(await tokens.issueResumeToken(client, APP));
-    const card = await tokens.issueResumeToken(client, APP, { purpose: "card", ttlMs: tokens.CARD_LINK_MS });
+    const card = await tokens.issueResumeToken(client, APP, { purpose: "card" });
     assert.equal(card.startsWith(tokens.CARD_TOKEN_PREFIX), true);
     assert.equal(resumes.some((raw) => raw.startsWith(tokens.CARD_TOKEN_PREFIX)), false);
 
@@ -308,7 +334,7 @@ try {
 } catch (error) {
   failed = error;
 } finally {
-  try { await sql.end({ timeout: 1 }); } catch { /* already closed */ }
+  try { await sql?.end({ timeout: 1 }); } catch { /* already closed */ }
   spawnSync(join(BIN, "pg_ctl"), ["-D", join(DIR, "data"), "-m", "immediate", "-w", "stop"], { encoding: "utf8" });
   rmSync(DIR, { recursive: true, force: true });
 }

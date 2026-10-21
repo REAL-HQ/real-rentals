@@ -233,11 +233,8 @@ export const issueCardOnFileLink = createServerFn({ method: 'POST' })
     const { requireManager } = await import('@/lib/roles.server');
     await requireManager(context.userId);
     const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
-    const { issueResumeToken, CARD_LINK_MS } = await import('@/lib/resume-tokens.server');
-    const token = await issueResumeToken(supabaseAdmin, data.applicationId, {
-      purpose: 'card',
-      ttlMs: CARD_LINK_MS,
-    });
+    const { issueResumeToken } = await import('@/lib/resume-tokens.server');
+    const token = await issueResumeToken(supabaseAdmin, data.applicationId, { purpose: 'card' });
     return { path: `/card/${data.applicationId}?t=${encodeURIComponent(token)}` };
   });
 
