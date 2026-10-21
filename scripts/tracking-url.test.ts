@@ -1,9 +1,13 @@
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
 import { describe, expect, it } from "vitest";
+import { captureAttribution } from "../src/lib/attribution";
 import {
   googleAdsBootstrap,
   isCredentialTrackingPath,
   sanitizeTrackingUrl,
   trackingLandingPage,
+  trackingPagePath,
 } from "../src/lib/tracking-url";
 
 const ORIGIN = "https://rent.example";
@@ -40,6 +44,17 @@ describe("sanitizeTrackingUrl", () => {
     expect(url.href).not.toContain("30-day-esign-token");
     expect(url.searchParams.get("gclid")).toBe("abc123");
     expect(url.searchParams.get("utm_source")).toBe("google");
+  });
+
+  it("treats credential paths as case-insensitive and percent-decoded", () => {
+    expect(parsed(`${ORIGIN}/Thank-You/?t=resume-token`).href).toBe(`${ORIGIN}/thank-you`);
+    expect(parsed(`${ORIGIN}/SIGN/Esign-Token?gclid=abc123`).href).toBe(`${ORIGIN}/sign/redacted?gclid=abc123`);
+    expect(parsed(`${ORIGIN}/%73ign/Esign-Token?t=resume-token&gclid=abc123`).href).toBe(
+      `${ORIGIN}/sign/redacted?gclid=abc123`,
+    );
+    expect(parsed(`${ORIGIN}/card/app-id?t=resume-token&gclid=abc123`).searchParams.has("t")).toBe(false);
+    expect(parsed(`${ORIGIN}/card/app-id?t=resume-token&gclid=abc123`).searchParams.get("gclid")).toBe("abc123");
+    expect(parsed(`${ORIGIN}/%?t=resume-token`).href).toBe(`${ORIGIN}/%`);
   });
 
   it("clears the hash", () => {
@@ -107,10 +122,16 @@ describe("isCredentialTrackingPath", () => {
     expect(isCredentialTrackingPath("/invite")).toBe(true);
     expect(isCredentialTrackingPath("/sign")).toBe(true);
     expect(isCredentialTrackingPath("/sign/raw-token")).toBe(true);
+    expect(isCredentialTrackingPath("/Thank-You")).toBe(true);
+    expect(isCredentialTrackingPath("/SIGN/raw-token")).toBe(true);
+    expect(isCredentialTrackingPath("/%73ign/raw-token")).toBe(true);
+    expect(isCredentialTrackingPath("/card/app-id")).toBe(true);
+    expect(isCredentialTrackingPath("/CARD/app-id/")).toBe(true);
     expect(isCredentialTrackingPath("/")).toBe(false);
     expect(isCredentialTrackingPath("/apply")).toBe(false);
     expect(isCredentialTrackingPath("/fleet")).toBe(false);
     expect(isCredentialTrackingPath("/signals")).toBe(false);
+    expect(isCredentialTrackingPath("/cartoon")).toBe(false);
   });
 });
 
@@ -118,7 +139,6 @@ describe("googleAdsBootstrap", () => {
   function run(href: string, referrer = "") {
     const location = new URL(href);
     const scripts: { src: string; async: boolean }[] = [];
-    const listeners: Record<string, Array<() => void>> = {};
     const history = {
       pushState(_state: unknown, _title: string, _url?: string) {},
       replaceState(_state: unknown, _title: string, _url?: string) {},
@@ -133,21 +153,24 @@ describe("googleAdsBootstrap", () => {
     const window = {
       dataLayer: [] as ArrayLike<unknown>[],
       gtag: undefined as unknown,
-      addEventListener(type: string, fn: () => void) {
-        (listeners[type] ||= []).push(fn);
-      },
+      addEventListener(_type: string, _fn: () => void) {},
     };
-    const runner = new Function(
-      "window",
-      "document",
-      "location",
-      "history",
-      "setTimeout",
+    vm.runInContext(
       googleAdsBootstrap(),
+      vm.createContext({
+        window,
+        document,
+        location,
+        history,
+        URL,
+        Date,
+        String,
+        decodeURIComponent,
+        setTimeout() {},
+      }),
     );
-    runner(window, document, location, history, () => {});
-    const queued = () => window.dataLayer.map((args) => Array.from(args));
-    return { queued, scripts, history, listeners };
+    const queued = () => window.dataLayer.map((args) => Array.from(args as ArrayLike<unknown>));
+    return { queued, scripts, history };
   }
 
   it("does not load or configure the tag on credential routes", () => {
@@ -156,6 +179,11 @@ describe("googleAdsBootstrap", () => {
       `${ORIGIN}/login?signin=login-token`,
       `${ORIGIN}/invite?token=invite-token`,
       `${ORIGIN}/sign/esign-token`,
+      `${ORIGIN}/Thank-You?t=resume-token`,
+      `${ORIGIN}/SIGN/esign-token`,
+      `${ORIGIN}/%73ign/esign-token`,
+      `${ORIGIN}/card/app-id?t=resume-token`,
+      `${ORIGIN}/CARD/app-id`,
     ]) {
       const { queued, scripts } = run(href);
       expect(queued(), href).toEqual([]);
@@ -204,5 +232,72 @@ describe("googleAdsBootstrap", () => {
     expect(replaceCall?.[1]).toEqual({
       page_location: sanitizeTrackingUrl(`${ORIGIN}/sign/esign-token#access_token=secret`),
     });
+  });
+
+  it("matches the module sanitizer, including decoded and mixed-case paths", () => {
+    const samples = [
+      `${ORIGIN}/fleet?utm_source=google&gclid=abc123&t=resume-token`,
+      `${ORIGIN}/Fleet?t=resume-token&gclid=abc123`,
+      `${ORIGIN}/apply?t=resume-token&utm_source=google&gclid=abc123`,
+    ];
+    for (const href of samples) {
+      const { queued, scripts } = run(href);
+      expect(isCredentialTrackingPath(new URL(href).pathname), href).toBe(false);
+      expect(scripts, href).toHaveLength(1);
+      const config = queued().find((call) => call[0] === "config");
+      expect((config?.[2] as { page_location: string }).page_location).toBe(sanitizeTrackingUrl(href));
+    }
+
+    const { history, queued } = run(`${ORIGIN}/?gclid=abc123`);
+    const before = queued().length;
+    history.pushState({}, "", "/SIGN/esign-token?t=resume-token&gclid=abc123");
+    history.pushState({}, "", "/%73ign/esign-token?t=resume-token");
+    history.pushState({}, "", "/Thank-You?t=resume-token&utm_source=google");
+    const sets = queued().slice(before).filter((call) => call[0] === "set");
+    expect(sets.map((call) => (call[1] as { page_location: string }).page_location)).toEqual([
+      sanitizeTrackingUrl(`${ORIGIN}/SIGN/esign-token?t=resume-token&gclid=abc123`),
+      sanitizeTrackingUrl(`${ORIGIN}/%73ign/esign-token?t=resume-token`),
+      sanitizeTrackingUrl(`${ORIGIN}/Thank-You?t=resume-token&utm_source=google`),
+    ]);
+  });
+});
+
+describe("stored referrer and click path", () => {
+  it("sanitizes a cross-origin referrer and the click-to-call path", () => {
+    const href = `${ORIGIN}/?utm_source=google&gclid=abc123`;
+    const referrer = "https://ads.example/SIGN/secret-token?t=resume-token&utm_source=newsletter";
+    const storage = new Map<string, string>();
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    Object.assign(globalThis, {
+      window: {
+        location: new URL(href),
+        sessionStorage: {
+          getItem: (key: string) => storage.get(key) ?? null,
+          setItem: (key: string, value: string) => storage.set(key, value),
+        },
+      },
+      document: { referrer },
+    });
+    try {
+      const saved = captureAttribution();
+      expect(saved.referrer).toBe(sanitizeTrackingUrl(referrer));
+      expect(saved.referrer).not.toContain("secret-token");
+      expect(saved.referrer).not.toContain("resume-token");
+      expect(saved.gclid).toBe("abc123");
+      expect(trackingPagePath(`${ORIGIN}/SIGN/esign-token?t=resume-token`)).toBe("/sign/redacted");
+      expect(trackingPagePath(`${ORIGIN}/%73ign/esign-token`)).toBe("/sign/redacted");
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+  });
+});
+
+describe("worker safety", () => {
+  it("does not compile strings in the module that runs on the worker", () => {
+    const source = readFileSync(new URL("../src/lib/tracking-url.ts", import.meta.url), "utf8");
+    expect(source.includes("new Function")).toBe(false);
+    expect(source.includes("eval(")).toBe(false);
   });
 });

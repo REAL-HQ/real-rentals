@@ -4,7 +4,7 @@
 // wizard. First-touch wins: once a field is recorded, later navigations
 // don't overwrite it.
 
-import { trackingLandingPage } from "./tracking-url";
+import { sanitizeTrackingUrl, trackingLandingPage } from "./tracking-url";
 
 const KEY = "rr_attribution_v1";
 
@@ -77,7 +77,7 @@ export function captureAttribution(): Attribution {
   if (!current.referrer) {
     const ref = document.referrer;
     if (ref && !ref.startsWith(window.location.origin)) {
-      current.referrer = ref;
+      current.referrer = sanitizeTrackingUrl(ref);
       changed = true;
     }
   }

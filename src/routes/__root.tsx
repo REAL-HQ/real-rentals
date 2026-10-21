@@ -5,6 +5,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
   type ErrorComponentProps,
@@ -16,7 +17,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { FileDropBridge } from "@/components/FileDropBridge";
 import { captureAttribution } from "@/lib/attribution";
-import { googleAdsBootstrap } from "@/lib/tracking-url";
+import { GOOGLE_ADS_BOOTSTRAP, isCredentialTrackingPath } from "@/lib/tracking-url";
 
 function NotFoundComponent() {
   return (
@@ -142,11 +143,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  // Omit the snippet entirely on credential routes so the HTML never asks for
+  // gtag.js. Other pages still load it, with a sanitized page_location.
+  const ads = isCredentialTrackingPath(pathname) ? null : (
+    <script dangerouslySetInnerHTML={{ __html: GOOGLE_ADS_BOOTSTRAP }} />
+  );
   return (
     <html lang="en">
       <head>
-        {/* Google Ads. Loaded from a snippet that strips credentials before config. */}
-        <script dangerouslySetInnerHTML={{ __html: googleAdsBootstrap() }} />
+        {ads}
         <HeadContent />
       </head>
       <body>
