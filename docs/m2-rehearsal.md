@@ -38,9 +38,9 @@ Both objects are already live through Drizzle, not through `supabase/migrations`
 
 The recorded run below uses that supplemented baseline. No packet file was changed. On a database that already has these live objects, the packet files apply as written. Adding `CREATE TABLE application_identity_reviews` to step 6 would fail on that live database.
 
-`public.application_waitlist_holds` (Drizzle `0014_waitlist_holds_and_safe_promotion.sql`) is still absent. `extend_rental_tx` mentions it inside a PL/pgSQL body, so `CREATE FUNCTION` succeeded. A call that reaches that query will fail until the table exists.
+The first recorded run left `public.application_waitlist_holds` absent. `extend_rental_tx` mentions it inside a PL/pgSQL body, so `CREATE FUNCTION` succeeded. A later production-matching baseline, below, applies Drizzle `0014_waitlist_holds_and_safe_promotion.sql` before the packet.
 
-`private.approval_validate` and `private.approval_snapshot` are not created by the 17 packet files or by `supabase/migrations`. They are defined in the excluded approval-boundary script. Steps that call them still installed, because PL/pgSQL resolves those callees at execution time.
+`private.approval_validate` and `private.approval_snapshot` are not created by the 17 packet files or by `supabase/migrations`. They are defined in the excluded approval-boundary script. Steps that call them still installed, because PL/pgSQL resolves those callees at execution time. The production-matching run below records the execution error.
 
 ## Install order and sources
 
@@ -128,3 +128,574 @@ The rollback scripts restore replaced function bodies, the original `application
 No packet SQL was changed.
 
 The install fails on a `supabase/migrations`-only database at step 6 and, after the identity-review table is added, at step 10. The minimal fix is to have those already-live Drizzle objects in place before the packet, as this rehearsal did. It is not a patch to the packet files.
+
+## Production catalog
+
+A read-only live catalog check, not repeated by this rehearsal, reported:
+
+- `private.approval_validate` and `private.approval_snapshot` are absent. No function whose name contains `approval` exists.
+- `public.application_waitlist_holds`, `public.application_identity_reviews`, and `applications.deleted_at` are present.
+- None of the packet roles or objects exist yet.
+
+This rehearsal did not contact a hosted database. The local baseline was rebuilt to match that fact: Drizzle `0014_waitlist_holds_and_safe_promotion.sql` applied in full (the holds table, `waitlist_signed_up_at`, `waitlist_source`, the staff read policy, `waitlist_holds_guard`, and `promote_waitlist_entry`), on top of the identity-review table and the deletion columns already in the first baseline. Approval functions stayed absent. `pg_dump --schema-only` of that baseline is the comparison point for the rollback below.
+
+## Packet on that baseline
+
+Steps 1 through the return checklist were applied with no step 0. Every step committed. No install step failed.
+
+| Step | Result | Runtime |
+| --- | --- | --- |
+| 1 through 11 | Pass | 0.008s to 0.031s |
+| 12 through 17 | Pass | 0.005s to 0.008s |
+| 18, 19, 19b, 20, extend, return | Pass | 0.007s to 0.019s |
+
+The first failure is execution of `public.record_existing_rental_tx`, which step 3 creates and no later step replaces. After a manager session, an approved application, and the record scope settings, the call reaches the missing function:
+
+```
+ERROR:  function private.approval_validate(uuid) does not exist
+LINE 1: identity_id:=private.approval_validate(_application_id)
+                     ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+QUERY:  identity_id:=private.approval_validate(_application_id)
+CONTEXT:  PL/pgSQL function public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text) line 31 at assignment
+```
+
+A direct call on the same database returns the same absence for both functions:
+
+```
+ERROR:  function private.approval_validate(uuid) does not exist
+ERROR:  function private.approval_snapshot(uuid) does not exist
+```
+
+The probe rows and the temporary `rr_evidence_transport` role were removed before rollback. That packet was then rolled back with the existing scripts. `pg_dump --schema-only` matched the production-matching baseline, and no `rr_%` role remained.
+
+## Approval-boundary dependency
+
+`private.approval_validate(uuid)` and `private.approval_snapshot(uuid)` are required before the installed functions are called. `CREATE FUNCTION` does not resolve them.
+
+| Caller | When it calls them |
+| --- | --- |
+| Step 3 `public.record_existing_rental_tx` | `identity_id:=private.approval_validate(_application_id)`. This body is still the one in place after the full packet. Execution fails with the error above. |
+| Step 5 `private.record_snapshot_v1` | Calls `private.approval_validate` and puts `private.approval_snapshot` in the returned jsonb. Step 7 replaces this function. The replacement calls `approval_lock` and `approval_actor` only. |
+| Step 5 `private.record_existing_rental_evidence_core_v1` | Calls `private.approval_validate`. Step 7 replaces this function. The replacement does not call `approval_validate` or `approval_snapshot`. |
+| Step 6 | The name `approval_validate` appears in a comment. The file does not call it. |
+| Step 1 | Creates `approval_provider_actor`, `approval_actor`, and `approval_lock`. It does not create `approval_validate` or `approval_snapshot`. |
+
+After step 7, the remaining packet call is `record_existing_rental_tx`. Before step 7 is applied, the two step 5 bodies fail the same way, and `record_snapshot_v1` also needs `approval_snapshot`.
+
+## Recommended install order
+
+1. Drizzle objects already live: `application_identity_reviews`, `applications.deleted_at`, `application_waitlist_holds`.
+2. Packet step 1, `010-auth-binding.sql`. It creates `rr_approval_executor` and the session-checking `approval_provider_actor`, plus `approval_actor` and `approval_lock`.
+3. Step 0, `proposed/m2-with-approval-boundary/00-approval-boundary.sql`. This creates `approval_validate`, `approval_snapshot`, and the rest of the approval boundary.
+4. Packet steps 2 through 17, then 18, 19, 19b, 20, extend rental, and the return checklist.
+
+`proposed/m2-with-approval-boundary/approval-boundary.local.sql` is a byte-for-byte copy of the excluded script (`90e1ca62274aa59df8c48de8953827e61523cf11a2c82e7be2f6e6ce780d5deb`). The original packet files were not edited. The installable step 0 is that script with the three `CREATE FUNCTION` statements step 1 owns removed, so step 1's session-checking provider is not replaced by the deny stub.
+
+The excluded file cannot be applied unchanged in either order:
+
+- Before step 1, on this baseline, it stops at its `GRANT` and the transaction rolls back. No approval function remains. Error text: `ERROR:  role "rr_approval_executor" does not exist` at `approval-boundary.local.sql:12`.
+- After step 1, its first function statement is `CREATE FUNCTION private.approval_provider_actor`, which already exists.
+
+Step 6 replaces `application_identity_reviews_resolution_check` after step 0. The check that remains is the step 6 `positive_license_v1` check. The boundary's `approval_identity` check does not survive. A verified `approval_identity` row does not satisfy the step 6 check, and a verified `positive_license_v1` row does not satisfy the boundary check. This rehearsal does not merge those checks.
+
+`approval-privileges.local.sql` stays excluded.
+
+## Step 0 install and rollback
+
+Order applied: step 1, step 0, steps 2 through the return checklist. Every step passed.
+
+| Step | Result | Runtime |
+| --- | --- | --- |
+| 1 Auth binding | Pass | 0.009s |
+| 0 Approval boundary | Pass | 0.025s |
+| 2 Safe release | Pass | 0.018s |
+| 3 Record rental | Pass | 0.030s |
+| 4 Closeout legacy guard | Pass | 0.017s |
+| 5 Evidence | Pass | 0.021s |
+| 6 Document identity | Pass | 0.016s |
+| 7 Evidence consumer | Pass | 0.010s |
+| 8 Evidence recovery | Pass | 0.006s |
+| 9 Issuer permissions | Pass | 0.014s |
+| 10 Approval permissions | Pass | 0.012s |
+| 11 Executor permissions | Pass | 0.016s |
+| 12 Deposit nullability | Pass | 0.006s |
+| 13 Closeout projection | Pass | 0.007s |
+| 14 Issuer identity permissions | Pass | 0.007s |
+| 15 Consumption scope | Pass | 0.006s |
+| 16 Closeout scope | Pass | 0.008s |
+| 17 Storage integrity | Pass | 0.006s |
+| 18 Subscription coordination | Pass | 0.015s |
+| 19 Signed archive protection | Pass | 0.008s |
+| 19b Agreement evidence | Pass | 0.015s |
+| 20 Vehicle swap | Pass | 0.017s |
+| Extend rental | Pass | 0.013s |
+| Return checklist | Pass | 0.018s |
+
+Rollback ran return, extend, 20, 19b, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, then `00-approval-boundary.sql`, then `01-auth-binding.sql`. Each script committed. `pg_dump --schema-only` matched the production-matching baseline. No `rr_%` role remained, and no function whose name contains `approval` remained.
+
+SHA-256 of the installable step 0 file: `a6b749ce3b3a711750081848d1fcdd9c0c3982d543587249ad7ea42f536a1a66`.
+
+## Preflight
+
+`proposed/m2-preflight.sql` is a single read-only `SELECT`. `ok` is true when `actual` equals `expected`.
+
+Prerequisites are expected `present`: the three Drizzle objects, `private.approval_validate(uuid)`, `private.approval_snapshot(uuid)`, `storage.objects`, `storage.objects.name`, and the existing `condition-media` bucket. Step 17 does not create a bucket. It requires `storage.objects.name` and adds `private.storage_integrity_v1` plus two triggers, which the preflight expects to be `absent` before install.
+
+Objects the packet and step 0 create are expected `absent`.
+
+### Baseline
+
+Production-matching baseline. 218 rows. 216 are `ok`. The two approval functions are the required prerequisites that are still absent.
+
+```
+                                                             check_name                                                             | expected | actual  | ok 
+------------------------------------------------------------------------------------------------------------------------------------+----------+---------+----
+ index private.rental_subscription_pending_v1                                                                                       | absent   | absent  | t
+ index public.record_one_original                                                                                                   | absent   | absent  | t
+ index public.return_checklists_rental_idx                                                                                          | absent   | absent  | t
+ policy public.agreements.issuer_scope_allow_v2                                                                                     | absent   | absent  | t
+ policy public.agreements.issuer_scope_limit_v2                                                                                     | absent   | absent  | t
+ policy public.application_identity_reviews.approval_scope_permissive_v3                                                            | absent   | absent  | t
+ policy public.application_identity_reviews.approval_scope_restrictive_v3                                                           | absent   | absent  | t
+ policy public.application_identity_reviews.issuer_identity_allow_v5                                                                | absent   | absent  | t
+ policy public.application_identity_reviews.issuer_identity_limit_v5                                                                | absent   | absent  | t
+ policy public.application_identity_reviews.positive_review_privacy_v1                                                              | absent   | absent  | t
+ policy public.application_identity_reviews.record_scope_permissive_v3                                                              | absent   | absent  | t
+ policy public.application_identity_reviews.record_scope_restrictive_v3                                                             | absent   | absent  | t
+ policy public.applications.approval_scope_permissive_v3                                                                            | absent   | absent  | t
+ policy public.applications.approval_scope_restrictive_v3                                                                           | absent   | absent  | t
+ policy public.applications.issuer_scope_allow_v2                                                                                   | absent   | absent  | t
+ policy public.applications.issuer_scope_limit_v2                                                                                   | absent   | absent  | t
+ policy public.applications.record_scope_permissive_v3                                                                              | absent   | absent  | t
+ policy public.applications.record_scope_restrictive_v3                                                                             | absent   | absent  | t
+ policy public.audit_log.approval_scope_permissive_v3                                                                               | absent   | absent  | t
+ policy public.audit_log.approval_scope_restrictive_v3                                                                              | absent   | absent  | t
+ policy public.audit_log.record_scope_permissive_v3                                                                                 | absent   | absent  | t
+ policy public.audit_log.record_scope_restrictive_v3                                                                                | absent   | absent  | t
+ policy public.documents.approval_scope_permissive_v3                                                                               | absent   | absent  | t
+ policy public.documents.approval_scope_restrictive_v3                                                                              | absent   | absent  | t
+ policy public.documents.issuer_scope_allow_v2                                                                                      | absent   | absent  | t
+ policy public.documents.issuer_scope_limit_v2                                                                                      | absent   | absent  | t
+ policy public.documents.record_scope_permissive_v3                                                                                 | absent   | absent  | t
+ policy public.documents.record_scope_restrictive_v3                                                                                | absent   | absent  | t
+ policy public.odometer_readings.record_scope_permissive_v3                                                                         | absent   | absent  | t
+ policy public.odometer_readings.record_scope_restrictive_v3                                                                        | absent   | absent  | t
+ policy public.rentals.record_read_permissive_v3                                                                                    | absent   | absent  | t
+ policy public.rentals.record_read_restrictive_v3                                                                                   | absent   | absent  | t
+ policy public.rentals.record_write_permissive_v3                                                                                   | absent   | absent  | t
+ policy public.rentals.record_write_restrictive_v3                                                                                  | absent   | absent  | t
+ policy public.return_checklist_items.Managers insert return checklist items                                                        | absent   | absent  | t
+ policy public.return_checklist_items.Managers read return checklist items                                                          | absent   | absent  | t
+ policy public.return_checklist_photos.Managers insert return checklist photos                                                      | absent   | absent  | t
+ policy public.return_checklist_photos.Managers read return checklist photos                                                        | absent   | absent  | t
+ policy public.return_checklists.Managers insert return checklists                                                                  | absent   | absent  | t
+ policy public.return_checklists.Managers read return checklists                                                                    | absent   | absent  | t
+ policy public.user_roles.approval_scope_permissive_v3                                                                              | absent   | absent  | t
+ policy public.user_roles.approval_scope_restrictive_v3                                                                             | absent   | absent  | t
+ policy public.user_roles.issuer_scope_allow_v2                                                                                     | absent   | absent  | t
+ policy public.user_roles.issuer_scope_limit_v2                                                                                     | absent   | absent  | t
+ policy public.user_roles.record_scope_permissive_v3                                                                                | absent   | absent  | t
+ policy public.user_roles.record_scope_restrictive_v3                                                                               | absent   | absent  | t
+ policy public.vehicles.record_scope_permissive_v3                                                                                  | absent   | absent  | t
+ policy public.vehicles.record_scope_restrictive_v3                                                                                 | absent   | absent  | t
+ private.agreement_evidence                                                                                                         | absent   | absent  | t
+ private.approval_actor()                                                                                                           | absent   | absent  | t
+ private.approval_after()                                                                                                           | absent   | absent  | t
+ private.approval_application_guard()                                                                                               | absent   | absent  | t
+ private.approval_audit_guard()                                                                                                     | absent   | absent  | t
+ private.approval_evidence_changed()                                                                                                | absent   | absent  | t
+ private.approval_lock()                                                                                                            | absent   | absent  | t
+ private.approval_object_version(uuid)                                                                                              | absent   | absent  | t
+ private.approval_operation_immutable()                                                                                             | absent   | absent  | t
+ private.approval_operations                                                                                                        | absent   | absent  | t
+ private.approval_provider_actor()                                                                                                  | absent   | absent  | t
+ private.approval_result(private.approval_operations, boolean)                                                                      | absent   | absent  | t
+ private.approval_review_guard()                                                                                                    | absent   | absent  | t
+ private.approval_serialize()                                                                                                       | absent   | absent  | t
+ private.approval_snapshot(uuid)                                                                                                    | present  | absent  | f
+ private.approval_validate(uuid)                                                                                                    | present  | absent  | f
+ private.approval_write_audit(uuid, text)                                                                                           | absent   | absent  | t
+ private.assignment_closures                                                                                                        | absent   | absent  | t
+ private.bind_document_integrity_v1(uuid, jsonb, text, text, uuid)                                                                  | absent   | absent  | t
+ private.completed_archive_storage_v1()                                                                                             | absent   | absent  | t
+ private.document_integrity_guard_v1()                                                                                              | absent   | absent  | t
+ private.extend_operations                                                                                                          | absent   | absent  | t
+ private.finalized_archive_document_v1()                                                                                            | absent   | absent  | t
+ private.finalized_archive_pointer_v1()                                                                                             | absent   | absent  | t
+ private.guard_safe_vehicle_release()                                                                                               | absent   | absent  | t
+ private.hold_vehicle_on_evidence()                                                                                                 | absent   | absent  | t
+ private.integrity_serialize_v1()                                                                                                   | absent   | absent  | t
+ private.issue_record_evidence_v1(jsonb, jsonb, jsonb)                                                                              | absent   | absent  | t
+ private.license_snapshot_v1(uuid)                                                                                                  | absent   | absent  | t
+ private.lock_vehicle_release()                                                                                                     | absent   | absent  | t
+ private.positive_audit_guard_v1()                                                                                                  | absent   | absent  | t
+ private.positive_review_guard_v1()                                                                                                 | absent   | absent  | t
+ private.preserve_inspection_safety()                                                                                               | absent   | absent  | t
+ private.record_agreement_evidence(uuid, uuid)                                                                                      | absent   | absent  | t
+ private.record_agreement_evidence(uuid, uuid, timestamp with time zone, numeric)                                                   | absent   | absent  | t
+ private.record_agreement_evidence_v1(uuid, uuid, timestamp with time zone, numeric)                                                | absent   | absent  | t
+ private.record_approval_scope_v3(uuid)                                                                                             | absent   | absent  | t
+ private.record_assignment_history                                                                                                  | absent   | absent  | t
+ private.record_assignment_interval_guard()                                                                                         | absent   | absent  | t
+ private.record_audit_guard()                                                                                                       | absent   | absent  | t
+ private.record_booking_number_seq                                                                                                  | absent   | absent  | t
+ private.record_close_context                                                                                                       | absent   | absent  | t
+ private.record_close_guard_v2()                                                                                                    | absent   | absent  | t
+ private.record_close_operations                                                                                                    | absent   | absent  | t
+ private.record_close_scope_v5(uuid)                                                                                                | absent   | absent  | t
+ private.record_customer_number_seq                                                                                                 | absent   | absent  | t
+ private.record_customers                                                                                                           | absent   | absent  | t
+ private.record_evidence_consumed_v1                                                                                                | absent   | absent  | t
+ private.record_evidence_context_v1                                                                                                 | absent   | absent  | t
+ private.record_evidence_v1                                                                                                         | absent   | absent  | t
+ private.record_executor_scope_v3(uuid)                                                                                             | absent   | absent  | t
+ private.record_existing_rental_evidence_core_v1(uuid, uuid, uuid, timestamp with time zone, numeric, numeric, integer, uuid, text) | absent   | absent  | t
+ private.record_identity_reader_v2(uuid)                                                                                            | absent   | absent  | t
+ private.record_immutable()                                                                                                         | absent   | absent  | t
+ private.record_issuer_scope_v2(uuid)                                                                                               | absent   | absent  | t
+ private.record_operations                                                                                                          | absent   | absent  | t
+ private.record_session_v1()                                                                                                        | absent   | absent  | t
+ private.record_snapshot_v1(uuid, uuid, uuid, uuid)                                                                                 | absent   | absent  | t
+ private.record_subscription_evidence(uuid, uuid, numeric)                                                                          | absent   | absent  | t
+ private.record_subscription_evidence_v1(uuid, uuid, numeric)                                                                       | absent   | absent  | t
+ private.record_subscription_links                                                                                                  | absent   | absent  | t
+ private.recover_record_evidence_v1(uuid)                                                                                           | absent   | absent  | t
+ private.rental_subscription_operations_v1                                                                                          | absent   | absent  | t
+ private.signed_binding_guard_v1()                                                                                                  | absent   | absent  | t
+ private.storage_integrity_v1()                                                                                                     | absent   | absent  | t
+ private.subscription_actor_v1(uuid, uuid)                                                                                          | absent   | absent  | t
+ private.subscription_guard_v1()                                                                                                    | absent   | absent  | t
+ private.swap_agreement_evidence(uuid, uuid, uuid, timestamp with time zone)                                                        | absent   | absent  | t
+ private.swap_number_seq                                                                                                            | absent   | absent  | t
+ private.swap_operations                                                                                                            | absent   | absent  | t
+ private.swap_project_vehicle_v1(uuid, uuid, uuid, uuid, timestamp with time zone, integer, integer, uuid, uuid, bigint, text)      | absent   | absent  | t
+ private.validate_license_v1(uuid)                                                                                                  | absent   | absent  | t
+ private.vehicle_release_reasons(uuid, uuid)                                                                                        | absent   | absent  | t
+ private.verify_license_v1(uuid, jsonb)                                                                                             | absent   | absent  | t
+ public.application_identity_reviews                                                                                                | present  | present | t
+ public.application_identity_reviews.approval_evidence                                                                              | absent   | absent  | t
+ public.application_identity_reviews.positive_evidence_v1                                                                           | absent   | absent  | t
+ public.applications.approval_evidence_version                                                                                      | absent   | absent  | t
+ public.applications.deleted_at                                                                                                     | present  | present | t
+ public.application_waitlist_holds                                                                                                  | present  | present | t
+ public.approval_readiness(uuid)                                                                                                    | absent   | absent  | t
+ public.approve_application_checked(uuid, bigint, uuid, text)                                                                       | absent   | absent  | t
+ public.booking_vehicle_assignments                                                                                                 | absent   | absent  | t
+ public.booking_vehicle_assignments.swap_operation_id                                                                               | absent   | absent  | t
+ public.close_recorded_rental_v2(uuid, uuid, timestamp with time zone, text, integer, text)                                         | absent   | absent  | t
+ public.documents.integrity_v1                                                                                                      | absent   | absent  | t
+ public.end_rental_safe_v1(uuid, date, text, integer, uuid, text)                                                                   | absent   | absent  | t
+ public.extend_rental_tx(uuid, uuid, date, date, text)                                                                              | absent   | absent  | t
+ public.link_replacement_agreement_v1(uuid, uuid)                                                                                   | absent   | absent  | t
+ public.list_assignment_history_v1(uuid, uuid)                                                                                      | absent   | absent  | t
+ public.preview_approval_identity(uuid)                                                                                             | absent   | absent  | t
+ public.record_existing_rental_evidence_v1(uuid, jsonb)                                                                             | absent   | absent  | t
+ public.record_existing_rental_tx(uuid, uuid, uuid, timestamp with time zone, numeric, numeric, integer, uuid, text)                | absent   | absent  | t
+ public.recover_application_approval(uuid, uuid)                                                                                    | absent   | absent  | t
+ public.rental_subscription_begin_v1(uuid, uuid, uuid, text, text, text)                                                            | absent   | absent  | t
+ public.rental_subscription_finish_v1(uuid, uuid, uuid, text, text, text)                                                           | absent   | absent  | t
+ public.return_checklist_items                                                                                                      | absent   | absent  | t
+ public.return_checklist_photos                                                                                                     | absent   | absent  | t
+ public.return_checklists                                                                                                           | absent   | absent  | t
+ public.swap_rental_vehicle_tx(uuid, uuid, uuid, uuid, timestamp with time zone, integer, integer, text, uuid)                      | absent   | absent  | t
+ public.verify_approval_identity(uuid, jsonb, text)                                                                                 | absent   | absent  | t
+ role rr_approval_executor                                                                                                          | absent   | absent  | t
+ role rr_evidence_issuer                                                                                                            | absent   | absent  | t
+ role rr_record_executor                                                                                                            | absent   | absent  | t
+ storage.buckets condition-media                                                                                                    | present  | present | t
+ storage.objects                                                                                                                    | present  | present | t
+ storage.objects.name                                                                                                               | present  | present | t
+ trigger private.agreement_evidence.agreement_evidence_immutable                                                                    | absent   | absent  | t
+ trigger private.approval_operations.immutable_operation                                                                            | absent   | absent  | t
+ trigger private.assignment_closures.assignment_close_interval                                                                      | absent   | absent  | t
+ trigger private.assignment_closures.record_immutable                                                                               | absent   | absent  | t
+ trigger private.extend_operations.extend_operations_immutable                                                                      | absent   | absent  | t
+ trigger private.record_close_operations.record_immutable                                                                           | absent   | absent  | t
+ trigger private.record_customers.record_immutable                                                                                  | absent   | absent  | t
+ trigger private.record_evidence_consumed_v1.consumption_immutable                                                                  | absent   | absent  | t
+ trigger private.record_evidence_v1.evidence_immutable                                                                              | absent   | absent  | t
+ trigger private.record_operations.record_immutable                                                                                 | absent   | absent  | t
+ trigger private.record_subscription_links.record_immutable                                                                         | absent   | absent  | t
+ trigger private.swap_operations.swap_operations_immutable                                                                          | absent   | absent  | t
+ trigger public.agreements.finalized_archive_pointer_v1                                                                             | absent   | absent  | t
+ trigger public.agreements.integrity_serialize_v1                                                                                   | absent   | absent  | t
+ trigger public.agreements.signed_binding_truncate_v1                                                                               | absent   | absent  | t
+ trigger public.agreements.signed_binding_v1                                                                                        | absent   | absent  | t
+ trigger public.application_identity_reviews.approval_evidence_changed                                                              | absent   | absent  | t
+ trigger public.application_identity_reviews.approval_review_guard                                                                  | absent   | absent  | t
+ trigger public.application_identity_reviews.approval_reviews_truncate                                                              | absent   | absent  | t
+ trigger public.application_identity_reviews.approval_serialize                                                                     | absent   | absent  | t
+ trigger public.application_identity_reviews.integrity_serialize_v1                                                                 | absent   | absent  | t
+ trigger public.application_identity_reviews.positive_review_truncate_v1                                                            | absent   | absent  | t
+ trigger public.application_identity_reviews.positive_review_v1                                                                     | absent   | absent  | t
+ trigger public.applications.approval_audit                                                                                         | absent   | absent  | t
+ trigger public.applications.approval_boundary                                                                                      | absent   | absent  | t
+ trigger public.applications.approval_serialize                                                                                     | absent   | absent  | t
+ trigger public.applications.integrity_serialize_v1                                                                                 | absent   | absent  | t
+ trigger public.audit_log.approval_audit_guard                                                                                      | absent   | absent  | t
+ trigger public.audit_log.approval_audit_truncate                                                                                   | absent   | absent  | t
+ trigger public.audit_log.positive_audit_truncate_v1                                                                                | absent   | absent  | t
+ trigger public.audit_log.positive_audit_v1                                                                                         | absent   | absent  | t
+ trigger public.audit_log.record_audit_immutable                                                                                    | absent   | absent  | t
+ trigger public.audit_log.record_audit_no_truncate                                                                                  | absent   | absent  | t
+ trigger public.booking_vehicle_assignments.assignment_interval                                                                     | absent   | absent  | t
+ trigger public.booking_vehicle_assignments.record_immutable                                                                        | absent   | absent  | t
+ trigger public.documents.approval_evidence_changed                                                                                 | absent   | absent  | t
+ trigger public.documents.approval_serialize                                                                                        | absent   | absent  | t
+ trigger public.documents.document_integrity_truncate_v1                                                                            | absent   | absent  | t
+ trigger public.documents.document_integrity_v1                                                                                     | absent   | absent  | t
+ trigger public.documents.finalized_archive_document_v1                                                                             | absent   | absent  | t
+ trigger public.documents.integrity_serialize_v1                                                                                    | absent   | absent  | t
+ trigger public.incidents.safe_release_evidence                                                                                     | absent   | absent  | t
+ trigger public.incidents.safe_release_lock                                                                                         | absent   | absent  | t
+ trigger public.inspection_items.safe_release_evidence                                                                              | absent   | absent  | t
+ trigger public.inspection_items.safe_release_history                                                                               | absent   | absent  | t
+ trigger public.inspection_items.safe_release_lock                                                                                  | absent   | absent  | t
+ trigger public.inspections.safe_release_evidence                                                                                   | absent   | absent  | t
+ trigger public.inspections.safe_release_history                                                                                    | absent   | absent  | t
+ trigger public.inspections.safe_release_lock                                                                                       | absent   | absent  | t
+ trigger public.maintenance_records.safe_release_evidence                                                                           | absent   | absent  | t
+ trigger public.maintenance_records.safe_release_lock                                                                               | absent   | absent  | t
+ trigger public.rentals.record_close_guard_v2                                                                                       | absent   | absent  | t
+ trigger public.rentals.safe_release_guard                                                                                          | absent   | absent  | t
+ trigger public.rentals.safe_release_lock                                                                                           | absent   | absent  | t
+ trigger public.rentals.subscription_guard_v1                                                                                       | absent   | absent  | t
+ trigger public.user_roles.approval_serialize                                                                                       | absent   | absent  | t
+ trigger public.user_roles.integrity_serialize_v1                                                                                   | absent   | absent  | t
+ trigger public.vehicles.safe_release_guard                                                                                         | absent   | absent  | t
+ trigger public.vehicles.safe_release_lock                                                                                          | absent   | absent  | t
+ trigger storage.objects.completed_archive_storage_truncate_v1                                                                      | absent   | absent  | t
+ trigger storage.objects.completed_archive_storage_v1                                                                               | absent   | absent  | t
+ trigger storage.objects.storage_integrity_truncate_v1                                                                              | absent   | absent  | t
+ trigger storage.objects.storage_integrity_v1                                                                                       | absent   | absent  | t
+(218 rows)
+```
+
+### After step 0 and the packet
+
+Same 218 rows. The eight prerequisites are `present` and `ok`. The 210 collision rows are `present`, so `ok` is false.
+
+```
+                                                             check_name                                                             | expected | actual  | ok 
+------------------------------------------------------------------------------------------------------------------------------------+----------+---------+----
+ index private.rental_subscription_pending_v1                                                                                       | absent   | present | f
+ index public.record_one_original                                                                                                   | absent   | present | f
+ index public.return_checklists_rental_idx                                                                                          | absent   | present | f
+ policy public.agreements.issuer_scope_allow_v2                                                                                     | absent   | present | f
+ policy public.agreements.issuer_scope_limit_v2                                                                                     | absent   | present | f
+ policy public.application_identity_reviews.approval_scope_permissive_v3                                                            | absent   | present | f
+ policy public.application_identity_reviews.approval_scope_restrictive_v3                                                           | absent   | present | f
+ policy public.application_identity_reviews.issuer_identity_allow_v5                                                                | absent   | present | f
+ policy public.application_identity_reviews.issuer_identity_limit_v5                                                                | absent   | present | f
+ policy public.application_identity_reviews.positive_review_privacy_v1                                                              | absent   | present | f
+ policy public.application_identity_reviews.record_scope_permissive_v3                                                              | absent   | present | f
+ policy public.application_identity_reviews.record_scope_restrictive_v3                                                             | absent   | present | f
+ policy public.applications.approval_scope_permissive_v3                                                                            | absent   | present | f
+ policy public.applications.approval_scope_restrictive_v3                                                                           | absent   | present | f
+ policy public.applications.issuer_scope_allow_v2                                                                                   | absent   | present | f
+ policy public.applications.issuer_scope_limit_v2                                                                                   | absent   | present | f
+ policy public.applications.record_scope_permissive_v3                                                                              | absent   | present | f
+ policy public.applications.record_scope_restrictive_v3                                                                             | absent   | present | f
+ policy public.audit_log.approval_scope_permissive_v3                                                                               | absent   | present | f
+ policy public.audit_log.approval_scope_restrictive_v3                                                                              | absent   | present | f
+ policy public.audit_log.record_scope_permissive_v3                                                                                 | absent   | present | f
+ policy public.audit_log.record_scope_restrictive_v3                                                                                | absent   | present | f
+ policy public.documents.approval_scope_permissive_v3                                                                               | absent   | present | f
+ policy public.documents.approval_scope_restrictive_v3                                                                              | absent   | present | f
+ policy public.documents.issuer_scope_allow_v2                                                                                      | absent   | present | f
+ policy public.documents.issuer_scope_limit_v2                                                                                      | absent   | present | f
+ policy public.documents.record_scope_permissive_v3                                                                                 | absent   | present | f
+ policy public.documents.record_scope_restrictive_v3                                                                                | absent   | present | f
+ policy public.odometer_readings.record_scope_permissive_v3                                                                         | absent   | present | f
+ policy public.odometer_readings.record_scope_restrictive_v3                                                                        | absent   | present | f
+ policy public.rentals.record_read_permissive_v3                                                                                    | absent   | present | f
+ policy public.rentals.record_read_restrictive_v3                                                                                   | absent   | present | f
+ policy public.rentals.record_write_permissive_v3                                                                                   | absent   | present | f
+ policy public.rentals.record_write_restrictive_v3                                                                                  | absent   | present | f
+ policy public.return_checklist_items.Managers insert return checklist items                                                        | absent   | present | f
+ policy public.return_checklist_items.Managers read return checklist items                                                          | absent   | present | f
+ policy public.return_checklist_photos.Managers insert return checklist photos                                                      | absent   | present | f
+ policy public.return_checklist_photos.Managers read return checklist photos                                                        | absent   | present | f
+ policy public.return_checklists.Managers insert return checklists                                                                  | absent   | present | f
+ policy public.return_checklists.Managers read return checklists                                                                    | absent   | present | f
+ policy public.user_roles.approval_scope_permissive_v3                                                                              | absent   | present | f
+ policy public.user_roles.approval_scope_restrictive_v3                                                                             | absent   | present | f
+ policy public.user_roles.issuer_scope_allow_v2                                                                                     | absent   | present | f
+ policy public.user_roles.issuer_scope_limit_v2                                                                                     | absent   | present | f
+ policy public.user_roles.record_scope_permissive_v3                                                                                | absent   | present | f
+ policy public.user_roles.record_scope_restrictive_v3                                                                               | absent   | present | f
+ policy public.vehicles.record_scope_permissive_v3                                                                                  | absent   | present | f
+ policy public.vehicles.record_scope_restrictive_v3                                                                                 | absent   | present | f
+ private.agreement_evidence                                                                                                         | absent   | present | f
+ private.approval_actor()                                                                                                           | absent   | present | f
+ private.approval_after()                                                                                                           | absent   | present | f
+ private.approval_application_guard()                                                                                               | absent   | present | f
+ private.approval_audit_guard()                                                                                                     | absent   | present | f
+ private.approval_evidence_changed()                                                                                                | absent   | present | f
+ private.approval_lock()                                                                                                            | absent   | present | f
+ private.approval_object_version(uuid)                                                                                              | absent   | present | f
+ private.approval_operation_immutable()                                                                                             | absent   | present | f
+ private.approval_operations                                                                                                        | absent   | present | f
+ private.approval_provider_actor()                                                                                                  | absent   | present | f
+ private.approval_result(private.approval_operations, boolean)                                                                      | absent   | present | f
+ private.approval_review_guard()                                                                                                    | absent   | present | f
+ private.approval_serialize()                                                                                                       | absent   | present | f
+ private.approval_snapshot(uuid)                                                                                                    | present  | present | t
+ private.approval_validate(uuid)                                                                                                    | present  | present | t
+ private.approval_write_audit(uuid, text)                                                                                           | absent   | present | f
+ private.assignment_closures                                                                                                        | absent   | present | f
+ private.bind_document_integrity_v1(uuid, jsonb, text, text, uuid)                                                                  | absent   | present | f
+ private.completed_archive_storage_v1()                                                                                             | absent   | present | f
+ private.document_integrity_guard_v1()                                                                                              | absent   | present | f
+ private.extend_operations                                                                                                          | absent   | present | f
+ private.finalized_archive_document_v1()                                                                                            | absent   | present | f
+ private.finalized_archive_pointer_v1()                                                                                             | absent   | present | f
+ private.guard_safe_vehicle_release()                                                                                               | absent   | present | f
+ private.hold_vehicle_on_evidence()                                                                                                 | absent   | present | f
+ private.integrity_serialize_v1()                                                                                                   | absent   | present | f
+ private.issue_record_evidence_v1(jsonb, jsonb, jsonb)                                                                              | absent   | present | f
+ private.license_snapshot_v1(uuid)                                                                                                  | absent   | present | f
+ private.lock_vehicle_release()                                                                                                     | absent   | present | f
+ private.positive_audit_guard_v1()                                                                                                  | absent   | present | f
+ private.positive_review_guard_v1()                                                                                                 | absent   | present | f
+ private.preserve_inspection_safety()                                                                                               | absent   | present | f
+ private.record_agreement_evidence(uuid, uuid)                                                                                      | absent   | present | f
+ private.record_agreement_evidence(uuid, uuid, timestamp with time zone, numeric)                                                   | absent   | present | f
+ private.record_agreement_evidence_v1(uuid, uuid, timestamp with time zone, numeric)                                                | absent   | present | f
+ private.record_approval_scope_v3(uuid)                                                                                             | absent   | present | f
+ private.record_assignment_history                                                                                                  | absent   | present | f
+ private.record_assignment_interval_guard()                                                                                         | absent   | present | f
+ private.record_audit_guard()                                                                                                       | absent   | present | f
+ private.record_booking_number_seq                                                                                                  | absent   | present | f
+ private.record_close_context                                                                                                       | absent   | present | f
+ private.record_close_guard_v2()                                                                                                    | absent   | present | f
+ private.record_close_operations                                                                                                    | absent   | present | f
+ private.record_close_scope_v5(uuid)                                                                                                | absent   | present | f
+ private.record_customer_number_seq                                                                                                 | absent   | present | f
+ private.record_customers                                                                                                           | absent   | present | f
+ private.record_evidence_consumed_v1                                                                                                | absent   | present | f
+ private.record_evidence_context_v1                                                                                                 | absent   | present | f
+ private.record_evidence_v1                                                                                                         | absent   | present | f
+ private.record_executor_scope_v3(uuid)                                                                                             | absent   | present | f
+ private.record_existing_rental_evidence_core_v1(uuid, uuid, uuid, timestamp with time zone, numeric, numeric, integer, uuid, text) | absent   | present | f
+ private.record_identity_reader_v2(uuid)                                                                                            | absent   | present | f
+ private.record_immutable()                                                                                                         | absent   | present | f
+ private.record_issuer_scope_v2(uuid)                                                                                               | absent   | present | f
+ private.record_operations                                                                                                          | absent   | present | f
+ private.record_session_v1()                                                                                                        | absent   | present | f
+ private.record_snapshot_v1(uuid, uuid, uuid, uuid)                                                                                 | absent   | present | f
+ private.record_subscription_evidence(uuid, uuid, numeric)                                                                          | absent   | present | f
+ private.record_subscription_evidence_v1(uuid, uuid, numeric)                                                                       | absent   | present | f
+ private.record_subscription_links                                                                                                  | absent   | present | f
+ private.recover_record_evidence_v1(uuid)                                                                                           | absent   | present | f
+ private.rental_subscription_operations_v1                                                                                          | absent   | present | f
+ private.signed_binding_guard_v1()                                                                                                  | absent   | present | f
+ private.storage_integrity_v1()                                                                                                     | absent   | present | f
+ private.subscription_actor_v1(uuid, uuid)                                                                                          | absent   | present | f
+ private.subscription_guard_v1()                                                                                                    | absent   | present | f
+ private.swap_agreement_evidence(uuid, uuid, uuid, timestamp with time zone)                                                        | absent   | present | f
+ private.swap_number_seq                                                                                                            | absent   | present | f
+ private.swap_operations                                                                                                            | absent   | present | f
+ private.swap_project_vehicle_v1(uuid, uuid, uuid, uuid, timestamp with time zone, integer, integer, uuid, uuid, bigint, text)      | absent   | present | f
+ private.validate_license_v1(uuid)                                                                                                  | absent   | present | f
+ private.vehicle_release_reasons(uuid, uuid)                                                                                        | absent   | present | f
+ private.verify_license_v1(uuid, jsonb)                                                                                             | absent   | present | f
+ public.application_identity_reviews                                                                                                | present  | present | t
+ public.application_identity_reviews.approval_evidence                                                                              | absent   | present | f
+ public.application_identity_reviews.positive_evidence_v1                                                                           | absent   | present | f
+ public.applications.approval_evidence_version                                                                                      | absent   | present | f
+ public.applications.deleted_at                                                                                                     | present  | present | t
+ public.application_waitlist_holds                                                                                                  | present  | present | t
+ public.approval_readiness(uuid)                                                                                                    | absent   | present | f
+ public.approve_application_checked(uuid, bigint, uuid, text)                                                                       | absent   | present | f
+ public.booking_vehicle_assignments                                                                                                 | absent   | present | f
+ public.booking_vehicle_assignments.swap_operation_id                                                                               | absent   | present | f
+ public.close_recorded_rental_v2(uuid, uuid, timestamp with time zone, text, integer, text)                                         | absent   | present | f
+ public.documents.integrity_v1                                                                                                      | absent   | present | f
+ public.end_rental_safe_v1(uuid, date, text, integer, uuid, text)                                                                   | absent   | present | f
+ public.extend_rental_tx(uuid, uuid, date, date, text)                                                                              | absent   | present | f
+ public.link_replacement_agreement_v1(uuid, uuid)                                                                                   | absent   | present | f
+ public.list_assignment_history_v1(uuid, uuid)                                                                                      | absent   | present | f
+ public.preview_approval_identity(uuid)                                                                                             | absent   | present | f
+ public.record_existing_rental_evidence_v1(uuid, jsonb)                                                                             | absent   | present | f
+ public.record_existing_rental_tx(uuid, uuid, uuid, timestamp with time zone, numeric, numeric, integer, uuid, text)                | absent   | present | f
+ public.recover_application_approval(uuid, uuid)                                                                                    | absent   | present | f
+ public.rental_subscription_begin_v1(uuid, uuid, uuid, text, text, text)                                                            | absent   | present | f
+ public.rental_subscription_finish_v1(uuid, uuid, uuid, text, text, text)                                                           | absent   | present | f
+ public.return_checklist_items                                                                                                      | absent   | present | f
+ public.return_checklist_photos                                                                                                     | absent   | present | f
+ public.return_checklists                                                                                                           | absent   | present | f
+ public.swap_rental_vehicle_tx(uuid, uuid, uuid, uuid, timestamp with time zone, integer, integer, text, uuid)                      | absent   | present | f
+ public.verify_approval_identity(uuid, jsonb, text)                                                                                 | absent   | present | f
+ role rr_approval_executor                                                                                                          | absent   | present | f
+ role rr_evidence_issuer                                                                                                            | absent   | present | f
+ role rr_record_executor                                                                                                            | absent   | present | f
+ storage.buckets condition-media                                                                                                    | present  | present | t
+ storage.objects                                                                                                                    | present  | present | t
+ storage.objects.name                                                                                                               | present  | present | t
+ trigger private.agreement_evidence.agreement_evidence_immutable                                                                    | absent   | present | f
+ trigger private.approval_operations.immutable_operation                                                                            | absent   | present | f
+ trigger private.assignment_closures.assignment_close_interval                                                                      | absent   | present | f
+ trigger private.assignment_closures.record_immutable                                                                               | absent   | present | f
+ trigger private.extend_operations.extend_operations_immutable                                                                      | absent   | present | f
+ trigger private.record_close_operations.record_immutable                                                                           | absent   | present | f
+ trigger private.record_customers.record_immutable                                                                                  | absent   | present | f
+ trigger private.record_evidence_consumed_v1.consumption_immutable                                                                  | absent   | present | f
+ trigger private.record_evidence_v1.evidence_immutable                                                                              | absent   | present | f
+ trigger private.record_operations.record_immutable                                                                                 | absent   | present | f
+ trigger private.record_subscription_links.record_immutable                                                                         | absent   | present | f
+ trigger private.swap_operations.swap_operations_immutable                                                                          | absent   | present | f
+ trigger public.agreements.finalized_archive_pointer_v1                                                                             | absent   | present | f
+ trigger public.agreements.integrity_serialize_v1                                                                                   | absent   | present | f
+ trigger public.agreements.signed_binding_truncate_v1                                                                               | absent   | present | f
+ trigger public.agreements.signed_binding_v1                                                                                        | absent   | present | f
+ trigger public.application_identity_reviews.approval_evidence_changed                                                              | absent   | present | f
+ trigger public.application_identity_reviews.approval_review_guard                                                                  | absent   | present | f
+ trigger public.application_identity_reviews.approval_reviews_truncate                                                              | absent   | present | f
+ trigger public.application_identity_reviews.approval_serialize                                                                     | absent   | present | f
+ trigger public.application_identity_reviews.integrity_serialize_v1                                                                 | absent   | present | f
+ trigger public.application_identity_reviews.positive_review_truncate_v1                                                            | absent   | present | f
+ trigger public.application_identity_reviews.positive_review_v1                                                                     | absent   | present | f
+ trigger public.applications.approval_audit                                                                                         | absent   | present | f
+ trigger public.applications.approval_boundary                                                                                      | absent   | present | f
+ trigger public.applications.approval_serialize                                                                                     | absent   | present | f
+ trigger public.applications.integrity_serialize_v1                                                                                 | absent   | present | f
+ trigger public.audit_log.approval_audit_guard                                                                                      | absent   | present | f
+ trigger public.audit_log.approval_audit_truncate                                                                                   | absent   | present | f
+ trigger public.audit_log.positive_audit_truncate_v1                                                                                | absent   | present | f
+ trigger public.audit_log.positive_audit_v1                                                                                         | absent   | present | f
+ trigger public.audit_log.record_audit_immutable                                                                                    | absent   | present | f
+ trigger public.audit_log.record_audit_no_truncate                                                                                  | absent   | present | f
+ trigger public.booking_vehicle_assignments.assignment_interval                                                                     | absent   | present | f
+ trigger public.booking_vehicle_assignments.record_immutable                                                                        | absent   | present | f
+ trigger public.documents.approval_evidence_changed                                                                                 | absent   | present | f
+ trigger public.documents.approval_serialize                                                                                        | absent   | present | f
+ trigger public.documents.document_integrity_truncate_v1                                                                            | absent   | present | f
+ trigger public.documents.document_integrity_v1                                                                                     | absent   | present | f
+ trigger public.documents.finalized_archive_document_v1                                                                             | absent   | present | f
+ trigger public.documents.integrity_serialize_v1                                                                                    | absent   | present | f
+ trigger public.incidents.safe_release_evidence                                                                                     | absent   | present | f
+ trigger public.incidents.safe_release_lock                                                                                         | absent   | present | f
+ trigger public.inspection_items.safe_release_evidence                                                                              | absent   | present | f
+ trigger public.inspection_items.safe_release_history                                                                               | absent   | present | f
+ trigger public.inspection_items.safe_release_lock                                                                                  | absent   | present | f
+ trigger public.inspections.safe_release_evidence                                                                                   | absent   | present | f
+ trigger public.inspections.safe_release_history                                                                                    | absent   | present | f
+ trigger public.inspections.safe_release_lock                                                                                       | absent   | present | f
+ trigger public.maintenance_records.safe_release_evidence                                                                           | absent   | present | f
+ trigger public.maintenance_records.safe_release_lock                                                                               | absent   | present | f
+ trigger public.rentals.record_close_guard_v2                                                                                       | absent   | present | f
+ trigger public.rentals.safe_release_guard                                                                                          | absent   | present | f
+ trigger public.rentals.safe_release_lock                                                                                           | absent   | present | f
+ trigger public.rentals.subscription_guard_v1                                                                                       | absent   | present | f
+ trigger public.user_roles.approval_serialize                                                                                       | absent   | present | f
+ trigger public.user_roles.integrity_serialize_v1                                                                                   | absent   | present | f
+ trigger public.vehicles.safe_release_guard                                                                                         | absent   | present | f
+ trigger public.vehicles.safe_release_lock                                                                                          | absent   | present | f
+ trigger storage.objects.completed_archive_storage_truncate_v1                                                                      | absent   | present | f
+ trigger storage.objects.completed_archive_storage_v1                                                                               | absent   | present | f
+ trigger storage.objects.storage_integrity_truncate_v1                                                                              | absent   | present | f
+ trigger storage.objects.storage_integrity_v1                                                                                       | absent   | present | f
+(218 rows)
+```
