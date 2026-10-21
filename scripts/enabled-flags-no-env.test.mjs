@@ -169,6 +169,7 @@ if (unexpected.length || missing.length) {
 assertConstant("src/lib/stripe-collections.ts", "STRIPE_COLLECTIONS_ENABLED", "true");
 assertConstant("src/lib/manual-payments.ts", "MANUAL_PAYMENTS_LIVE", "false");
 assertConstant("src/lib/stripe-collections.test-mode.ts", "STRIPE_COLLECTIONS_TEST_MODE", "false");
+assertConstant("src/lib/roadside-sms-flag.ts", "ROADSIDE_SMS_ALERTS_ENABLED", "false");
 
 const lines = [...ALLOWED.entries()].map(([name, reason]) => `  ${name} (${byName.get(name).length}) — ${reason}`);
 console.log(`enabled-flags-no-env: OK (${hits.length} env reads, ${ALLOWED.size} production flags left alone)\n${lines.join("\n")}`);
