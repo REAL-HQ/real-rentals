@@ -1,4 +1,4 @@
--- Apply after packet step 19b and before step 20. A hosted run follows proposed/HOSTED-INSTALL.md.
+-- Apply after HOSTED-INSTALL step 24: proposed/m2-packet/19b.sql, and before HOSTED-INSTALL step 26: proposed/m2-packet/20.sql. A hosted run follows proposed/HOSTED-INSTALL.md.
 -- This file is one transaction. Run it with ON_ERROR_STOP. Do not also pass psql -1.
 BEGIN;
 -- Step 3 and step 19b leave private.record_agreement_evidence(uuid, uuid,

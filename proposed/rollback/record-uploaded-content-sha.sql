@@ -1,4 +1,4 @@
--- Rollback for record-uploaded-content-sha.sql.
+-- Rollback for HOSTED-INSTALL step 2: proposed/m2-with-approval-boundary/record-uploaded-content-sha.sql
 -- Drops the merge function and the server binding table.
 -- Does not change storage.objects.
 -- This file is one transaction. Run it with ON_ERROR_STOP. Do not also pass psql -1.

@@ -1,4 +1,4 @@
--- Rollback for M2 rehearsal step 17: 120-storage-integrity-v1.sql
+-- Rollback for HOSTED-INSTALL step 21: proposed/m2-packet/17.sql
 -- Generated from the local catalog difference. Run as the local superuser,
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.

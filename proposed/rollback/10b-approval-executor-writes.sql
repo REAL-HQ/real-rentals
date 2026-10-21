@@ -1,4 +1,5 @@
--- Rollback for 10b-approval-executor-writes.sql. Restores the step 10 audit policies.
+-- Rollback for HOSTED-INSTALL step 14: proposed/m2-with-approval-boundary/10b-approval-executor-writes.sql
+-- Restores the audit policies from HOSTED-INSTALL step 13: proposed/m2-packet/10.sql.
 -- Run after later steps, and before proposed/rollback/10-approval-permissions.sql.
 -- Column grants are omitted from the schema dump (--no-privileges). They are
 -- revoked here so a later step-10 rollback is not the only cleanup.

@@ -1,4 +1,4 @@
--- Rollback for M2 rehearsal step 12: 100-deposit-nullability-v4.sql
+-- Rollback for HOSTED-INSTALL step 16: proposed/m2-packet/12.sql
 -- Generated from the local catalog difference. Run as the local superuser,
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.

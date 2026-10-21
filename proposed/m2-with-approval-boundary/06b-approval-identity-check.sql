@@ -1,4 +1,4 @@
--- Apply after packet step 6 and before step 7. A hosted run follows proposed/HOSTED-INSTALL.md.
+-- Apply after HOSTED-INSTALL step 8: proposed/m2-packet/06.sql, and before HOSTED-INSTALL step 10: proposed/m2-packet/07.sql. A hosted run follows proposed/HOSTED-INSTALL.md.
 -- Step 6 replaces the step 0 identity check with the positive_license_v1 check.
 -- verify_approval_identity inserts kind approval_identity, resolution verified,
 -- approval_evidence set, positive_evidence_v1 null. That row is what

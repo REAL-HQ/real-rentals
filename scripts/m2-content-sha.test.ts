@@ -325,6 +325,9 @@ if (classifyStorageFailure({ message: "Object not found" }, false) !== "error") 
 if (classifyStorageFailure({ message: "NoSuchKey", statusCode: "404" }, false) !== "missing") {
   throw new Error("HTTP 404 was not counted missing");
 }
+if (classifyStorageFailure({ message: "Object not found", status: 400, statusCode: "404" }, false) !== "missing") {
+  throw new Error("HTTP 400 with body statusCode 404 was not counted missing");
+}
 const emptyCounts = { hashed: 0, skipped: 0, missing: 0, mismatched: 0, pending: 0, storageErrors: 0 };
 if (contentShaBackfillExitCode(false, { ...emptyCounts, missing: 1 }) !== 0) {
   throw new Error("dry-run missing exited");

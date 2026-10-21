@@ -1,7 +1,7 @@
 -- Optional. Read-only. Run in psql BEFORE proposed/rollback/00-approval-boundary.sql
 -- when those rows should be kept outside the database.
 --
--- Rollback 00 drops private.approval_operations and the columns
+-- HOSTED-INSTALL step 3: proposed/m2-with-approval-boundary/00-approval-boundary.sql. Its rollback drops private.approval_operations and the columns
 -- public.application_identity_reviews.approval_evidence and
 -- public.applications.approval_evidence_version. After that file commits,
 -- those values are gone. This script does not change the database.

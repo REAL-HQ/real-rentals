@@ -1,4 +1,5 @@
--- Rollback for 06b-approval-identity-check.sql. Restores the step 6 check.
+-- Rollback for HOSTED-INSTALL step 9: proposed/m2-with-approval-boundary/06b-approval-identity-check.sql
+-- Restores the check from HOSTED-INSTALL step 8: proposed/m2-packet/06.sql.
 -- UNUSED INSTALL ONLY. A verified approval_identity row is legal under 06b
 -- and illegal under the step 6 check this file restores. After any such row
 -- exists, do not run this file and do not delete the row to make it run.

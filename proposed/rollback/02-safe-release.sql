@@ -1,4 +1,4 @@
--- Rollback for M2 rehearsal step 02: 020-safe-release-compatible-v1.sql
+-- Rollback for HOSTED-INSTALL step 4: proposed/m2-packet/02.sql
 -- Generated from the local catalog difference. Run as the local superuser,
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.

@@ -1,5 +1,5 @@
--- Rollback for 19c-agreement-contract.sql. Restores the step 19b deny-all adapter.
--- Run after step 20's rollback and before proposed/rollback/19b-agreement-evidence.sql.
+-- Rollback for HOSTED-INSTALL step 25: proposed/m2-with-approval-boundary/19c-agreement-contract.sql
+-- Restores the deny-all adapter from HOSTED-INSTALL step 24: proposed/m2-packet/19b.sql. Run after proposed/rollback/20-vehicle-swap.sql and before proposed/rollback/19b-agreement-evidence.sql.
 BEGIN;
 CREATE OR REPLACE FUNCTION private.record_agreement_evidence(uuid,uuid,timestamptz,numeric) RETURNS uuid
  LANGUAGE plpgsql SET search_path='' AS $$

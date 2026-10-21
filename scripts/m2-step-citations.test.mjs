@@ -5,7 +5,7 @@
  * "step N" without "HOSTED-INSTALL" is historical and is not rewritten.
  */
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -142,6 +142,55 @@ if (byFile.get("proposed/m2-with-approval-boundary/record-uploaded-content-sha.s
   throw new Error("content-sha is not step 2");
 }
 if (byFile.get("proposed/m2-packet/21-revoke-executor-create.sql") !== 29) throw new Error("revoke is not step 29");
+if (byFile.get("proposed/m2-packet/17.sql") !== 21) throw new Error("17.sql is not step 21");
+if (byFile.get("proposed/m2-packet/18.sql") !== 22) throw new Error("18.sql is not step 22");
+if (byFile.get("proposed/m2-packet/19.sql") !== 23) throw new Error("19.sql is not step 23");
+if (byFile.get("proposed/m2-packet/19b.sql") !== 24) throw new Error("19b.sql is not step 24");
+if (byFile.get("proposed/m2-with-approval-boundary/19c-agreement-contract.sql") !== 25) {
+  throw new Error("19c is not step 25");
+}
+if (byFile.get("proposed/m2-packet/return.sql") !== 28) throw new Error("return.sql is not step 28");
+
+function orderRows(text) {
+  const rows = [];
+  for (const line of text.split("\n")) {
+    const match = line.match(/^\| (\d+) \| `([^`]+)` \|/);
+    if (!match) continue;
+    const paths = [...line.matchAll(/`([^`]+\.sql)`/g)].map((item) => item[1]);
+    rows.push({ step: Number(match[1]), file: match[2], rollback: paths[paths.length - 1] });
+  }
+  return rows;
+}
+const order = orderRows(hosted);
+if (order.length !== 29) throw new Error(`HOSTED-INSTALL rollback column has ${order.length} rows`);
+const listed = new Set(order.map((row) => row.rollback));
+for (const row of order) {
+  if (!row.rollback.startsWith("proposed/rollback/")) {
+    throw new Error(`step ${row.step} rollback is ${row.rollback}`);
+  }
+  const header = read(row.rollback).split("\n")[0];
+  const expected = `-- Rollback for HOSTED-INSTALL step ${row.step}: ${row.file}`;
+  if (!header.startsWith(expected)) {
+    throw new Error(`${row.rollback} header is ${JSON.stringify(header)}, expected ${expected}`);
+  }
+}
+const rollbackFiles = readdirSync(resolve(root, "proposed/rollback")).filter((name) => name.endsWith(".sql")).sort();
+if (rollbackFiles.length !== 30) throw new Error(`rollback directory has ${rollbackFiles.length} sql files`);
+for (const name of rollbackFiles) {
+  const file = `proposed/rollback/${name}`;
+  const lines = read(file).split("\n");
+  const header = lines[0];
+  if (header.includes("M2 rehearsal step")) throw new Error(`${file} still uses a rehearsal step number`);
+  if (listed.has(file)) continue;
+  if (name !== "00-approval-data-export.sql") throw new Error(`${file} is not in the HOSTED-INSTALL rollback column`);
+  const exportLine = lines[3] ?? "";
+  if (!exportLine.includes("HOSTED-INSTALL step 3: proposed/m2-with-approval-boundary/00-approval-boundary.sql")) {
+    throw new Error("00-approval-data-export.sql line 4 does not cite HOSTED-INSTALL step 3");
+  }
+  if (exportLine.includes("120-storage") || /\bstep 17\b/.test(exportLine)) {
+    throw new Error("00-approval-data-export.sql still cites the storage-integrity rollback");
+  }
+}
 
 const shaHeading = rehearsal.indexOf("SHA-256 of the current files:");
 if (shaHeading < 0) throw new Error("rehearsal SHA-256 table is missing");

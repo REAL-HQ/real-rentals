@@ -1,4 +1,4 @@
--- Rollback for M2 rehearsal step 09: 070-issuer-permissions-v2.sql
+-- Rollback for HOSTED-INSTALL step 12: proposed/m2-packet/09.sql
 -- Generated from the local catalog difference. Run as the local superuser,
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.

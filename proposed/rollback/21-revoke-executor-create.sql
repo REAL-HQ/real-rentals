@@ -1,4 +1,4 @@
--- Rollback for 21-revoke-executor-create.sql.
+-- Rollback for HOSTED-INSTALL step 29: proposed/m2-packet/21-revoke-executor-create.sql
 -- Restores the CREATE grant 03.sql needed for ALTER OWNER.
 -- This file is one transaction. Run it with ON_ERROR_STOP. Do not also pass psql -1.
 BEGIN;

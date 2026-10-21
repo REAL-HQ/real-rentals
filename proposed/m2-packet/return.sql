@@ -1,5 +1,5 @@
 -- PROPOSED ONLY. Do not copy this file under supabase/migrations.
--- Apply after packet step 19.
+-- HOSTED-INSTALL step 28: proposed/m2-packet/return.sql. Apply after HOSTED-INSTALL step 27: proposed/m2-packet/extend.sql.
 --
 -- A manager's return checklist for an ended rental: time, odometer, fuel or
 -- charge, exterior and interior marks, keys, tolls or tickets, and a deposit
@@ -81,4 +81,4 @@ CREATE POLICY "Managers insert return checklist photos" ON public.return_checkli
   FOR INSERT TO authenticated WITH CHECK (private.is_manager());
 
 COMMENT ON TABLE public.return_checklists IS
-  'Manager return closeout. deposit_decision_note is a note only. Apply after packet step 19.';
+  'Manager return closeout. deposit_decision_note is a note only. HOSTED-INSTALL step 28: proposed/m2-packet/return.sql.';

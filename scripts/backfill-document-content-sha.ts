@@ -10,7 +10,10 @@
  * content_sha256 is not 64 hex is hashed through writeUploadedContentSha.
  * A stored hash is compared after lowercasing. A match is skipped, a
  * difference is counted mismatched and is not replaced. Missing is HTTP
- * 404. A download 5xx is storage_errors and does not abort the run.
+ * 404, including HTTP 400 whose body statusCode is 404. A download 5xx,
+ * including one raised by writeUploadedContentSha, is storage_errors and
+ * does not abort the run. The unhashed write path downloads once, inside
+ * writeUploadedContentSha.
  * --write exits nonzero when missing, mismatched, or storage_errors is
  * greater than 0. Clearing documents.content_sha256 does not remove
  * private.uploaded_content_sha.
@@ -69,11 +72,21 @@ export function isRecordedHash(value: string | null | undefined): boolean {
   return recordedHashHex(value) !== null;
 }
 
+function statusNumber(value: unknown): number {
+  const status = Number(value ?? 0);
+  return Number.isFinite(status) ? status : 0;
+}
+
 export function storageHttpStatus(error: unknown): number {
   if (!error || typeof error !== "object") return 0;
   const record = error as { status?: unknown; statusCode?: unknown };
-  const status = Number(record.status ?? record.statusCode ?? 0);
-  return Number.isFinite(status) ? status : 0;
+  const http = statusNumber(record.status);
+  const body = statusNumber(record.statusCode);
+  if (http === 404 || body === 404 || (http === 400 && body === 404)) return 404;
+  if (http >= 500 && http <= 599) return http;
+  if (body >= 500 && body <= 599) return body;
+  if (http > 0) return http;
+  return body;
 }
 
 export function classifyStorageFailure(error: StorageError, hasId: boolean): "ok" | "missing" | "error" {
@@ -240,25 +253,6 @@ export async function backfillLicenseContentSha(
     }
     if (!options.write) {
       counts.pending += 1;
-      continue;
-    }
-    let download: { data?: unknown; error?: StorageError };
-    try {
-      download = await admin.storage.from(bucket).download(path);
-    } catch (caught) {
-      const status = storageHttpStatus(caught);
-      if (status === 404) counts.missing += 1;
-      else if (status >= 500 && status <= 599) counts.storageErrors += 1;
-      else throw caught;
-      continue;
-    }
-    const downloadKind = classifyStorageFailure(download?.error ?? null, Boolean(download?.data));
-    if (downloadKind === "missing") {
-      counts.missing += 1;
-      continue;
-    }
-    if (downloadKind === "error") {
-      counts.storageErrors += 1;
       continue;
     }
     try {

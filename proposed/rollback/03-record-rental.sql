@@ -1,4 +1,4 @@
--- Rollback for M2 rehearsal step 03: 010-record-rental-v3.sql (installer-ownership)
+-- Rollback for HOSTED-INSTALL step 5: proposed/m2-packet/03.sql
 -- Generated from the local catalog difference. Run as the local superuser,
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.

@@ -1,4 +1,4 @@
--- Rollback for M2 rehearsal step 13: 110-closeout-projection-v4.sql
+-- Rollback for HOSTED-INSTALL step 17: proposed/m2-packet/13.sql
 -- Generated from the local catalog difference. Run as the local superuser,
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.

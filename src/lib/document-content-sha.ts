@@ -91,13 +91,26 @@ export async function applyUploadedContentSha(admin: any, bucket: string, path: 
   }
 }
 
+function throwStorageFailure(
+  error: { message?: string; status?: number | string; statusCode?: number | string } | null | undefined,
+  fallback: string,
+): never {
+  const failure = new Error(error?.message || fallback) as Error & {
+    status?: number | string;
+    statusCode?: number | string;
+  };
+  if (error?.status != null) failure.status = error.status;
+  if (error?.statusCode != null) failure.statusCode = error.statusCode;
+  throw failure;
+}
+
 /** Flag-on body. Download, hash, then one conditional merge. */
 export async function writeUploadedContentSha(admin: any, bucket: string, path: string): Promise<string> {
   const bucketApi = admin.storage.from(bucket);
   const info = await bucketApi.info(path);
-  if (info.error || !info.data?.id) throw new Error(info.error?.message || "Uploaded object missing");
+  if (info.error || !info.data?.id) throwStorageFailure(info.error, "Uploaded object missing");
   const file = await bucketApi.download(path);
-  if (file.error || !file.data) throw new Error(file.error?.message || "Uploaded bytes missing");
+  if (file.error || !file.data) throwStorageFailure(file.error, "Uploaded bytes missing");
   const bytes = new Uint8Array(await file.data.arrayBuffer());
   const sha256 = await contentSha256Hex(bytes);
   const version = typeof info.data.version === "string" && info.data.version.trim() ? info.data.version : null;

@@ -1,4 +1,4 @@
--- Rollback for M2 rehearsal step 19b: agreement-evidence-v1.sql
+-- Rollback for HOSTED-INSTALL step 24: proposed/m2-packet/19b.sql
 -- Generated from the local catalog difference. Run as the local superuser,
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.
