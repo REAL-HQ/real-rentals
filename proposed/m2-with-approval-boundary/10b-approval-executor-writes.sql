@@ -1,4 +1,4 @@
--- LOCAL REHEARSAL ONLY. Apply after packet step 10 and before step 11.
+-- Apply after packet step 10 and before step 11. A hosted run follows proposed/HOSTED-INSTALL.md.
 -- Step 10 grants the executor the positive-license columns and an audit policy
 -- that allows only identity_review.positive_license_v1. verify_approval_identity
 -- and approve_application_checked run as rr_approval_executor. They write

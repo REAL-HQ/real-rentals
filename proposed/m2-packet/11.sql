@@ -1,4 +1,4 @@
--- LOCAL PROVISIONAL, not approved for hosting. Scope acceptance pending.
+-- Scope acceptance pending. A hosted run follows proposed/HOSTED-INSTALL.md.
 GRANT USAGE ON SCHEMA private,public TO rr_record_executor;
 GRANT EXECUTE ON FUNCTION private.approval_actor(),private.approval_lock(),private.record_session_v1(),private.validate_license_v1(uuid),private.license_snapshot_v1(uuid)
  TO rr_record_executor;

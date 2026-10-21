@@ -1,4 +1,4 @@
--- LOCAL PROPOSAL. Not a migration. Do not run against a hosted database.
+-- Proposed packet step. Not a migration. A hosted run follows proposed/HOSTED-INSTALL.md.
 -- Install only after the Record Rental payloads that create
 -- booking_vehicle_assignments, assignment_closures, record_operations,
 -- private.approval_lock(), private.approval_actor(), and rr_record_executor.

@@ -2,10 +2,9 @@
 -- License and agreement hashes are extensions.digest of the byte strings below.
 -- No sha256 hex literal is written in this file.
 -- (a) and (b) insert the confirmDocumentUpload column list with no content_sha256.
--- The sha is applied afterwards the way the flag-on client records it:
--- documents.content_sha256, and storage.objects.user_metadata.sha256.
--- metadata is system data and is left without a sha. Both values are the
--- digest of those bytes.
+-- The objects are inserted without a sha. service_role then calls
+-- public.record_uploaded_content_sha, which sets documents.content_sha256
+-- and merges storage.objects.user_metadata.sha256. metadata stays system data.
 BEGIN;
 
 INSERT INTO auth.users (id, email, email_confirmed_at)
@@ -155,23 +154,127 @@ EXCEPTION WHEN OTHERS THEN
  RAISE NOTICE 'RESULT c authenticated pass %', SQLERRM;
 END $$;
 
--- Flag-on upload path: the app downloads the object, hashes the bytes, and
--- public.record_uploaded_content_sha merges user_metadata.sha256. This
--- rehearsal records that result in SQL. It does not re-upload the file.
--- metadata stays free of sha256. version is the provider token.
-UPDATE public.documents d
-SET content_sha256 = encode(extensions.digest(b.bytes, 'sha256'), 'hex')
-FROM upload_bytes b
-WHERE d.id = b.doc AND b.slot IN ('front','back');
+-- Flag-on upload path. The object exists before the hash. user_metadata has
+-- no sha256. service_role calls public.record_uploaded_content_sha, which
+-- merges the digest and sets documents.content_sha256. This does not re-upload.
 INSERT INTO storage.objects (bucket_id, name, user_metadata, metadata, version)
 SELECT 'driver-docs', b.path,
- jsonb_build_object('sha256', encode(extensions.digest(b.bytes, 'sha256'), 'hex')),
+ jsonb_build_object('source', 'upload'),
  jsonb_build_object('mimetype', 'image/jpeg', 'size', octet_length(b.bytes)),
  'v1'
 FROM upload_bytes b WHERE b.slot IN ('front','back');
+DO $$
+DECLARE
+  r record;
+  got text;
+BEGIN
+  FOR r IN
+    SELECT o.id, b.path, encode(extensions.digest(b.bytes, 'sha256'), 'hex') AS sha
+    FROM upload_bytes b
+    JOIN storage.objects o ON o.bucket_id = 'driver-docs' AND o.name = b.path
+    WHERE b.slot IN ('front','back')
+  LOOP
+    PERFORM set_config('role','service_role', true);
+    got := public.record_uploaded_content_sha('driver-docs', r.path, r.sha, r.id, 'v1', NULL);
+    PERFORM set_config('role','postgres', true);
+    IF got IS DISTINCT FROM r.sha THEN RAISE EXCEPTION 'sha function returned %', got; END IF;
+  END LOOP;
+  RAISE NOTICE 'RESULT sha function pass';
+END $$;
 UPDATE public.documents
 SET review_status='verified', reviewed_by='11111111-1111-4111-8111-111111111111', reviewed_at='2026-10-20 12:00:00+00'
 WHERE id IN ('55555555-5555-4555-8555-555555555555','66666666-6666-4666-8666-666666666666');
+
+DO $$
+DECLARE
+  front_id uuid := '55555555-5555-4555-8555-555555555555';
+  front_path text := '44444444-4444-4444-8444-444444444444/license_front-55555555-5555-4555-8555-555555555555.jpg';
+  object_id uuid;
+  front_sha text;
+  other_sha text;
+BEGIN
+  SELECT id INTO object_id FROM storage.objects WHERE bucket_id='driver-docs' AND name=front_path;
+  front_sha := encode(extensions.digest(convert_to('m2-license-front-v1','UTF8'), 'sha256'), 'hex');
+  other_sha := encode(extensions.digest(convert_to('m2-license-other-v1','UTF8'), 'sha256'), 'hex');
+  BEGIN
+    PERFORM set_config('role','anon', true);
+    PERFORM public.record_uploaded_content_sha('driver-docs', front_path, front_sha, object_id, 'v1', NULL);
+    RAISE EXCEPTION 'anon was allowed';
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('role','postgres', true);
+    IF SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+    RAISE NOTICE 'RESULT sha anon pass %', SQLERRM;
+  END;
+  BEGIN
+    PERFORM set_config('role','authenticated', true);
+    PERFORM public.record_uploaded_content_sha('driver-docs', front_path, front_sha, object_id, 'v1', NULL);
+    RAISE EXCEPTION 'authenticated was allowed';
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('role','postgres', true);
+    IF SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+    RAISE NOTICE 'RESULT sha authenticated pass %', SQLERRM;
+  END;
+  BEGIN
+    PERFORM set_config('role','service_role', true);
+    PERFORM public.record_uploaded_content_sha('driver-docs', front_path, front_sha, object_id, 'stale', NULL);
+    RAISE EXCEPTION 'stale version accepted';
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('role','postgres', true);
+    IF SQLERRM NOT LIKE '%content_sha256_object_changed%' THEN RAISE; END IF;
+    RAISE NOTICE 'RESULT sha stale pass %', SQLERRM;
+  END;
+  IF (SELECT user_metadata->>'sha256' FROM storage.objects WHERE id=object_id) IS DISTINCT FROM front_sha
+     OR (SELECT user_metadata->>'source' FROM storage.objects WHERE id=object_id) IS DISTINCT FROM 'upload' THEN
+    RAISE EXCEPTION 'stale version changed user_metadata';
+  END IF;
+  BEGIN
+    UPDATE public.documents SET content_sha256 = other_sha WHERE id = front_id;
+    PERFORM set_config('role','service_role', true);
+    PERFORM public.record_uploaded_content_sha('driver-docs', front_path, front_sha, object_id, 'v1', NULL);
+    RAISE EXCEPTION 'mismatch accepted';
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('role','postgres', true);
+    IF SQLERRM NOT LIKE '%content_sha256_mismatch%' THEN RAISE; END IF;
+    RAISE NOTICE 'RESULT sha mismatch pass %', SQLERRM;
+  END;
+  IF (SELECT content_sha256 FROM public.documents WHERE id=front_id) IS DISTINCT FROM front_sha THEN
+    RAISE EXCEPTION 'mismatch changed the stored hash';
+  END IF;
+  INSERT INTO storage.buckets (id, name) VALUES ('rental-agreements','rental-agreements') ON CONFLICT (id) DO NOTHING;
+  INSERT INTO public.documents (id, kind, category, storage_bucket, storage_path, is_current)
+  VALUES (
+    'abababab-abab-4aba-8aba-abababababab',
+    'rental_agreement','agreement','rental-agreements',
+    'immutable-v1/abababab-abab-4aba-8aba-abababababab/file.pdf',
+    true
+  );
+  INSERT INTO storage.objects (id, bucket_id, name, user_metadata, version)
+  VALUES (
+    'acacacac-acac-4aca-8aca-acacacacacac',
+    'rental-agreements',
+    'immutable-v1/abababab-abab-4aba-8aba-abababababab/file.pdf',
+    jsonb_build_object('source','archive'),
+    'v1'
+  );
+  BEGIN
+    PERFORM set_config('role','service_role', true);
+    PERFORM public.record_uploaded_content_sha(
+      'rental-agreements',
+      'immutable-v1/abababab-abab-4aba-8aba-abababababab/file.pdf',
+      front_sha,
+      'acacacac-acac-4aca-8aca-acacacacacac',
+      'v1',
+      NULL);
+    RAISE EXCEPTION 'immutable-v1 accepted';
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('role','postgres', true);
+    IF SQLERRM NOT LIKE '%content_sha256_immutable%' THEN RAISE; END IF;
+    RAISE NOTICE 'RESULT sha immutable pass %', SQLERRM;
+  END;
+  IF (SELECT user_metadata->>'sha256' FROM storage.objects WHERE id='acacacac-acac-4aca-8aca-acacacacacac') IS NOT NULL THEN
+    RAISE EXCEPTION 'immutable-v1 wrote a hash';
+  END IF;
+END $$;
 
 DO $$
 DECLARE front text; back text; obj text; sys text;

@@ -1,4 +1,4 @@
--- LOCAL ONLY: successor approval permission portion; issuer V2 installed first.
+-- Successor approval permission portion; issuer V2 installed first. A hosted run follows proposed/HOSTED-INSTALL.md.
 -- No new privileged function, memberships, bypass, table-wide grants, or lifecycle changes.
 GRANT USAGE ON SCHEMA private,public TO rr_approval_executor;
 GRANT EXECUTE ON FUNCTION private.approval_actor(),private.approval_lock(),private.record_session_v1(),private.license_snapshot_v1(uuid),private.verify_license_v1(uuid,jsonb),private.validate_license_v1(uuid) TO rr_approval_executor;

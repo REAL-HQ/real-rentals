@@ -1,4 +1,4 @@
--- Local rehearsal applies this file with psql -1. Do not run it on hosted Storage.
+-- Packet file. Local rehearsal applies it with psql -1. A hosted run follows proposed/HOSTED-INSTALL.md and runs this file as its own transaction.
 -- New namespace only; no legacy paths, policy grants or security 0031 modifications.
 CREATE FUNCTION private.storage_integrity_v1() RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$
 BEGIN

@@ -1,6 +1,6 @@
 # M2 rehearsal install
 
-Local only. Do not run these files on a hosted database or on hosted Storage.
+Local rehearsal install. The hosted procedure is [HOSTED-INSTALL.md](HOSTED-INSTALL.md). Do not paste these files into a hosted database except by that procedure.
 
 `scripts/m2-rehearsal-proof.sh` is the executable form of this runbook. It talks only to `postgresql://postgres@127.0.0.1:55442/m2`. Build that database with `scripts/m2-baseline-builder.sh` after `supabase/migrations` are loaded.
 
@@ -12,7 +12,7 @@ Every file in `proposed/m2-packet/`:
 
 `01.sql`, `02.sql`, `03.sql`, `04.sql`, `05.sql`, `06.sql`, `07.sql`, `08.sql`, `09.sql`, `10.sql`, `11.sql`, `12.sql`, `13.sql`, `14.sql`, `15.sql`, `16.sql`, `17.sql`, `18.sql`, `19.sql`, `19b.sql`, `20.sql`, `extend.sql`, `return.sql`.
 
-`17.sql` is one of those packet files. The proof applies it locally with `psql -1`. Do not run it on hosted Storage.
+`17.sql` is one of those packet files. The proof applies it locally with `psql -1`. A hosted run follows [HOSTED-INSTALL.md](HOSTED-INSTALL.md).
 
 ## Own files: `psql -v ON_ERROR_STOP=1 -f` and no `-1`
 

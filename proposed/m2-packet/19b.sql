@@ -1,4 +1,4 @@
--- LOCAL PROPOSAL. Not a migration. Do not run against a hosted database.
+-- Proposed packet step. Not a migration. A hosted run follows proposed/HOSTED-INSTALL.md.
 -- NOT EXECUTED.
 --
 -- Install after packet step 19 (corrected signed-archive-protection-v1.sql)

@@ -1,4 +1,4 @@
--- LOCAL REHEARSAL ONLY. Apply after packet step 19b and before step 20.
+-- Apply after packet step 19b and before step 20. A hosted run follows proposed/HOSTED-INSTALL.md.
 -- This file is one transaction. Run it with ON_ERROR_STOP. Do not also pass psql -1.
 BEGIN;
 -- Step 3 and step 19b leave private.record_agreement_evidence(uuid, uuid,

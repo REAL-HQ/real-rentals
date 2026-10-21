@@ -6,8 +6,10 @@
 -- Prerequisites already on a migrations baseline are expected present:
 -- the identity-review table, applications.deleted_at, waitlist holds,
 -- storage.objects, storage.objects.name, storage.objects.user_metadata jsonb,
--- storage.objects.version text, the condition-media bucket, and a postgres
--- role that is superuser or BYPASSRLS. The definer reads storage.objects.
+-- storage.objects.version text, the condition-media bucket, one storage.objects
+-- row per bucket and path, and a postgres role that is superuser or BYPASSRLS.
+-- The definer reads storage.objects. Object versioning must be off. A second
+-- row for the same path means versioning is on, or a duplicate was left behind.
 -- private.approval_validate(uuid) and private.approval_snapshot(uuid) are
 -- created by step 0. They are expected absent, with every object the packet
 -- creates. Step 17 does not create a bucket.
@@ -91,6 +93,8 @@ UNION ALL
 SELECT 'role rr_record_executor' AS check_name, 'absent' AS expected, CASE WHEN (EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'rr_record_executor')) THEN 'present' ELSE 'absent' END AS actual, ((EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'rr_record_executor')) = ('absent' = 'present')) AS ok
 UNION ALL
 SELECT 'role rr_evidence_issuer' AS check_name, 'absent' AS expected, CASE WHEN (EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'rr_evidence_issuer')) THEN 'present' ELSE 'absent' END AS actual, ((EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'rr_evidence_issuer')) = ('absent' = 'present')) AS ok
+UNION ALL
+SELECT 'storage.objects one row per path' AS check_name, 'holds' AS expected, CASE WHEN (EXISTS (SELECT 1 FROM storage.objects GROUP BY bucket_id, name HAVING count(*) > 1)) THEN 'duplicated' ELSE 'holds' END AS actual, (NOT EXISTS (SELECT 1 FROM storage.objects GROUP BY bucket_id, name HAVING count(*) > 1)) AS ok
 UNION ALL
 SELECT 'public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)' AS check_name, 'absent' AS expected, CASE WHEN (to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)') IS NOT NULL) = ('absent' = 'present')) AS ok
 UNION ALL

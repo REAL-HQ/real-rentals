@@ -1,4 +1,4 @@
--- Proposed M2 step 0. Local rehearsal only. Not a hosted installer.
+-- Proposed M2 step 0. Local rehearsal. A hosted run follows proposed/HOSTED-INSTALL.md.
 -- The excluded approval-boundary script is copied byte for byte as
 -- approval-boundary.local.sql in this directory. Packet SQL is unchanged.
 --

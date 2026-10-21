@@ -224,6 +224,8 @@ export async function registerDocument(
     return { id: seen.id as string };
   }
 
+  // Flag on, a missing object or a user_metadata write throws. Callers catch
+  // that. Flag off, this returns null and the insert columns stay as they are.
   const contentSha = await recordUploadedContentSha(admin, args.bucket, args.path);
   const { data: row, error } = await admin
     .from("documents")
@@ -353,38 +355,48 @@ export async function syncApplicationUploads(
     // Legacy rows stored a full URL rather than a storage path; those are not
     // objects we own, so leave them alone.
     if (!path || typeof path !== "string" || path.startsWith("http")) continue;
-    const res = await registerDocument(admin, {
-      applicationId: application.id as string,
-      category: field.category,
-      bucket: field.bucket,
-      path,
-      fileName: path.split("/").pop() ?? null,
-      label: field.label,
-      expiresAt:
-        field.category === "license_front" ? (application.license_expiration ?? null) : null,
-      uploadedBy: (application.user_id as string) ?? null,
-      uploadedByRole: "driver",
-      ...(await objectMeta(admin, field.bucket, path)),
-    });
-    if (res) registered++;
+    try {
+      const res = await registerDocument(admin, {
+        applicationId: application.id as string,
+        category: field.category,
+        bucket: field.bucket,
+        path,
+        fileName: path.split("/").pop() ?? null,
+        label: field.label,
+        expiresAt:
+          field.category === "license_front" ? (application.license_expiration ?? null) : null,
+        uploadedBy: (application.user_id as string) ?? null,
+        uploadedByRole: "driver",
+        ...(await objectMeta(admin, field.bucket, path)),
+      });
+      if (res) registered++;
+    } catch (e) {
+      // Flag on, registerDocument throws when the content hash cannot be
+      // recorded. One file must not drop the rest of the wizard sync.
+      console.error("[documents] registration refused", field.category, e);
+    }
   }
 
   // Gig trip screenshots arrive as an array of paths.
   const shots = Array.isArray(application.trip_screenshots) ? application.trip_screenshots : [];
   for (const path of shots) {
     if (!path || typeof path !== "string" || path.startsWith("http")) continue;
-    const res = await registerDocument(admin, {
-      applicationId: application.id as string,
-      category: "trip_history",
-      bucket: TRIP_SCREENSHOT_BUCKET,
-      path,
-      fileName: path.split("/").pop() ?? null,
-      label: "Trip screenshot (from application)",
-      uploadedBy: (application.user_id as string) ?? null,
-      uploadedByRole: "driver",
-      ...(await objectMeta(admin, TRIP_SCREENSHOT_BUCKET, path)),
-    });
-    if (res) registered++;
+    try {
+      const res = await registerDocument(admin, {
+        applicationId: application.id as string,
+        category: "trip_history",
+        bucket: TRIP_SCREENSHOT_BUCKET,
+        path,
+        fileName: path.split("/").pop() ?? null,
+        label: "Trip screenshot (from application)",
+        uploadedBy: (application.user_id as string) ?? null,
+        uploadedByRole: "driver",
+        ...(await objectMeta(admin, TRIP_SCREENSHOT_BUCKET, path)),
+      });
+      if (res) registered++;
+    } catch (e) {
+      console.error("[documents] registration refused", "trip_history", e);
+    }
   }
 
   /*
@@ -609,8 +621,11 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
     // A recording is never shared with the applicant, whatever the caller
     // asked for.
     const visibility = restricted || (staff && data.internal) ? ["admin"] : ["driver", "admin"];
-    const contentSha = await recordUploadedContentSha(supabaseAdmin, DOC_BUCKET, data.path);
-
+    // The packet function writes the hash only after this bucket and path
+    // belong to a documents row. Insert first, with a null hash. Flag off,
+    // the hasher returns null. Flag on, before the function exists, it logs
+    // and returns null so the upload is confirmed and approval stays closed.
+    // Any other hasher failure throws. The null hash still fails approval closed.
     const { data: row, error } = await supabaseAdmin
       .from("documents")
       .insert({
@@ -628,11 +643,11 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
         is_current: true,
         uploaded_by: context.userId,
         uploaded_by_role: admin ? "team" : "driver",
-        ...(contentSha ? { content_sha256: contentSha } : {}),
       })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
+    await recordUploadedContentSha(supabaseAdmin, DOC_BUCKET, data.path);
 
     // Supersede the previous current document in the same category.
     await supabaseAdmin

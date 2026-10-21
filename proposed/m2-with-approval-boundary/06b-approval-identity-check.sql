@@ -1,4 +1,4 @@
--- LOCAL REHEARSAL ONLY. Apply after packet step 6 and before step 7.
+-- Apply after packet step 6 and before step 7. A hosted run follows proposed/HOSTED-INSTALL.md.
 -- Step 6 replaces the step 0 identity check with the positive_license_v1 check.
 -- verify_approval_identity inserts kind approval_identity, resolution verified,
 -- approval_evidence set, positive_evidence_v1 null. That row is what

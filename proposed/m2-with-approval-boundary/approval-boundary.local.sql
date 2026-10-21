@@ -1,4 +1,5 @@
 -- LOCAL REVIEW PROPOSAL ONLY. Not a hosted installer; not in migration discovery.
+-- proposed/HOSTED-INSTALL.md does not apply this file.
 -- Preconditions supplied by the local harness: rr_approval_executor is NOLOGIN,
 -- NOSUPERUSER NOBYPASSRLS, has no application-role members, and narrowly scoped ACLs.
 -- No historical rows are marked verified. Provider adapters below DENY by default.
