@@ -6,8 +6,9 @@
 # it requires the isolated candidate diff, which already fails on live.
 #
 # Supabase is forced to a closed local port before any step, so nothing here
-# can call a hosted project. scripts/workerd-smoke.sh runs only when that
-# file is present; on a branch that does not have it, the row is a skip.
+# can call a hosted project. The last step runs scripts/workerd-smoke.sh,
+# which exports its own dummy Supabase env for the Vite build. If that file
+# is absent, the row is a skip.
 #
 # maintenance/fleet/pickup/tolls tests run one file per process. Several of
 # them call process.exit, which would hide every later file in a shared run.
