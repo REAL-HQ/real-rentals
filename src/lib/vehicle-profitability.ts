@@ -1,436 +1,356 @@
-import { decimalSourceCents } from "./unified-finance-live-mapping";
-import { validFinanceDate } from "./unified-finance";
-import { vehicleProfitLabel, type ProfitVehicle } from "./unified-finance-vehicles";
+import { addCalendarDays, etYmd } from "./weekly-cash-flow";
+import { vehicleProfitLabel } from "./unified-finance-vehicles";
 
 /**
- * Per-vehicle profitability for a half-open Eastern Time window.
- * Stripe revenue counts only when one existing payment or rental link names
- * the vehicle. Expenses reuse the vehicle_expenses and maintenance_records
- * columns: a linked service and its expense are one cost, not two.
- * Partner share uses partners.revenue_split_pct on vehicles.partner_id.
- * A missing partner or an unusable percent is "Split not configured".
+ * Read-only vehicle profitability for an inclusive Eastern Time date range.
+ * Collected revenue is a paid or refunded payment, net of refunds, attributed
+ * through the rental's vehicle. Expenses are vehicle_expenses.amount.
+ * Maintenance is maintenance_records.company_share, or total_cost when the
+ * share is blank. A service that already has an in-range expense is one cost.
+ * This module does not call Stripe or write.
  */
 
-export type ProfitPeriodId = "this_month" | "last_month" | "last_90";
+export const PROFIT_WINDOW_DAYS = 90;
+export const DIRECTORY_INCOMPLETE = "Vehicle records were incomplete";
+export const MISSING_COST_SOURCES = [
+  "Depreciation is not a vehicle column.",
+  "Acquisition, lender, and payoff are owner finance and are not read on this report.",
+] as const;
 
-export type ProfitCharge = {
+const REVENUE_TYPES = new Set(["rent", "late_fee", "other", "toll", "damage", "fee"]);
+const PAID_STATUSES = new Set(["paid", "refunded"]);
+const CANCELLED = new Set(["cancelled", "canceled", "void", "voided"]);
+
+export type ProfitRange = { from: string; through: string };
+
+export type ProfitVehicle = {
   id: string;
-  customerId: string | null;
-  paymentIntentId: string | null;
-  invoiceId: string | null;
-  subscriptionId: string | null;
-  amountCents: number;
-  currency: string;
-  succeeded: boolean;
-  created: number;
-};
-export type ProfitPaymentLink = {
-  id: string;
-  vehicleId: string | null;
-  type: string | null;
-  paymentIntentId: string | null;
-  invoiceId: string | null;
-  subscriptionId: string | null;
-};
-export type ProfitRentalLink = {
-  id: string;
-  vehicleId: string | null;
-  customerId: string | null;
-  subscriptionId: string | null;
-  startDate: string | null;
-  endDate: string | null;
-  status: string | null;
-};
-export type ProfitExpenseRow = {
-  id: string;
-  vehicleId: string | null;
-  category: string | null;
-  amount: string | number | null;
-  incurredOn: string | null;
-  maintenanceRecordId: string | null;
-};
-export type ProfitMaintenanceRow = {
-  id: string;
-  vehicleId: string | null;
-  category: string | null;
-  companyShare: string | number | null;
-  performedOn: string | null;
-  completedAt: string | null;
-  createdAt: string | null;
-};
-export type ProfitPartner = { id: string; name: string | null; revenueSplitPct: number | string | null };
-export type ProfitVehicleRow = ProfitVehicle & {
-  partnerId: string | null;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  licensePlate: string | null;
   createdAt: string | null;
   archivedAt: string | null;
 };
 
-export type ExpenseLine = { category: string; label: string; cents: number };
+export type ProfitRental = {
+  id: string;
+  vehicleId: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  status: string | null;
+};
+
+export type ProfitPayment = {
+  id: string;
+  rentalId: string | null;
+  vehicleId: string | null;
+  status: string;
+  type: string;
+  amount: unknown;
+  netCollected: unknown;
+  refundedAmount: unknown;
+  paidDate: string | null;
+};
+
+export type ProfitExpense = {
+  id: string;
+  vehicleId: string | null;
+  amount: unknown;
+  incurredOn: string | null;
+  maintenanceRecordId: string | null;
+};
+
+export type ProfitMaintenance = {
+  id: string;
+  vehicleId: string | null;
+  companyShare: unknown;
+  totalCost: unknown;
+  performedOn: string | null;
+  completedAt: string | null;
+  createdAt: string | null;
+};
+
 export type VehicleProfitRow = {
   vehicleId: string;
   label: string;
   revenueCents: number | null;
-  expenses: ExpenseLine[];
   expenseCents: number | null;
+  maintenanceCents: number | null;
   netCents: number | null;
   daysRented: number | null;
-  daysOwned: number | null;
+  daysAvailable: number | null;
+  utilizationPercent: number | null;
   revenuePerRentedDayCents: number | null;
-  partnerShareCents: number | null;
-  partnerLabel: string | null;
-  split: "configured" | "not_configured";
 };
+
+export type UnattributedPayment = {
+  id: string;
+  paidDate: string | null;
+  status: string;
+  type: string;
+  amountCents: number | null;
+};
+
 export type VehicleProfitReport = {
-  period: ProfitPeriodId;
   from: string;
-  to: string;
   through: string;
   rows: VehicleProfitRow[];
-  unattributedStripeRevenueCents: number | null;
-  conflictingCharges: number;
-  depositsExcludedCents: number;
-  revenueComplete: boolean;
+  unattributed: UnattributedPayment[];
+  depositsExcludedCents: number | null;
+  missingCostSources: readonly string[];
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
-  registration: "Registration And Tags",
-  insurance: "Insurance Premium",
-  maintenance: "Routine Maintenance",
-  repair: "Repair",
-  tires: "Tires",
-  fuel: "Fuel",
-  cleaning: "Cleaning And Detailing",
-  towing: "Towing",
-  parking: "Parking And Storage",
-  tolls: "Tolls Absorbed",
-  finance: "Finance And Lease",
-  purchase: "Purchase",
-  gps: "GPS And Telematics",
-  other: "Other",
-};
-
-const CANCELLED = new Set(["cancelled", "canceled", "void", "voided"]);
-
-export function categoryLabel(category: string | null): string {
-  if (!category?.trim()) return "Uncategorized";
-  const known = CATEGORY_LABELS[category.trim().toLowerCase()];
-  if (known) return known;
-  return category.trim().split(/[_\s]+/).filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(" ");
+export function defaultProfitRange(now: Date): ProfitRange | null {
+  const through = etYmd(now);
+  const from = through ? addCalendarDays(through, 1 - PROFIT_WINDOW_DAYS) : null;
+  if (!from || !through || from > through) return null;
+  return { from, through };
 }
 
-export function etYmd(date: Date): string | null {
-  if (Number.isNaN(date.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
-  const year = parts.find((part) => part.type === "year")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  const day = parts.find((part) => part.type === "day")?.value;
-  return year && month && day ? `${year}-${month}-${day}` : null;
+export function profitRange(from: string, through: string): ProfitRange | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(through)) return null;
+  if (!addCalendarDays(from, 0) || !addCalendarDays(through, 0) || from > through) return null;
+  return { from, through };
 }
 
-export function addDays(ymd: string, days: number): string | null {
-  if (!validFinanceDate(ymd) || !Number.isSafeInteger(days)) return null;
-  const [year, month, day] = ymd.split("-").map(Number);
-  const next = new Date(Date.UTC(year!, month! - 1, day! + days));
-  const text = next.toISOString().slice(0, 10);
-  return validFinanceDate(text) ? text : null;
+export function formatCents(cents: number | null): string {
+  if (cents == null || !Number.isSafeInteger(cents)) return "";
+  return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
-/** Midnight at the start of an Eastern Time calendar date, as unix seconds. */
-export function etMidnightUnix(ymd: string): number | null {
-  if (!validFinanceDate(ymd)) return null;
-  const [year, month, day] = ymd.split("-").map(Number);
-  const utcMidnight = Date.UTC(year!, month! - 1, day!, 0, 0, 0);
-  const offset = (instant: number) => {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", second: "2-digit",
-    }).formatToParts(new Date(instant));
-    const read = (type: string) => Number(parts.find((part) => part.type === type)?.value);
-    const asUtc = Date.UTC(read("year"), read("month") - 1, read("day"), read("hour"), read("minute"), read("second"));
-    return asUtc - instant;
+export function formatUtilization(percent: number | null): string {
+  if (percent == null || !Number.isFinite(percent)) return "";
+  return Number.isInteger(percent) ? `${percent}%` : `${percent.toFixed(1)}%`;
+}
+
+export function buildVehicleProfit(input: {
+  range: ProfitRange;
+  vehicles: ProfitVehicle[];
+  rentals: ProfitRental[];
+  payments: ProfitPayment[];
+  expenses: ProfitExpense[];
+  maintenance: ProfitMaintenance[];
+}): VehicleProfitReport {
+  const { from, through } = input.range;
+  const end = addCalendarDays(through, 1);
+  const vehicles = input.vehicles.filter((vehicle) => vehicle.id);
+  const known = new Set(vehicles.map((vehicle) => vehicle.id));
+  const rentals = new Map(input.rentals.filter((rental) => rental.id).map((rental) => [rental.id, rental]));
+  const revenue = new Map<string, number | null>();
+  const expense = new Map<string, number | null>();
+  const maintenance = new Map<string, number | null>();
+  const touch = (bucket: Map<string, number | null>, vehicleId: string, cents: number | null) => {
+    if (bucket.get(vehicleId) === null) return;
+    if (cents === null || !Number.isSafeInteger((bucket.get(vehicleId) ?? 0) + cents)) bucket.set(vehicleId, null);
+    else bucket.set(vehicleId, (bucket.get(vehicleId) ?? 0) + cents);
   };
-  let utc = utcMidnight - offset(utcMidnight);
-  const again = offset(utc);
-  if (again !== offset(utcMidnight)) utc = utcMidnight - again;
-  const seconds = Math.floor(utc / 1000);
-  return Number.isSafeInteger(seconds) ? seconds : null;
-}
-
-export function periodWindow(period: ProfitPeriodId, now: Date): { from: string; to: string; gte: number; lt: number } | null {
-  const today = etYmd(now);
-  if (!today) return null;
-  const [year, month] = today.split("-").map(Number);
-  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
-  const nextMonth = month === 12 ? `${year! + 1}-01-01` : `${year}-${String(month! + 1).padStart(2, "0")}-01`;
-  const previousMonth = month === 1 ? `${year! - 1}-12-01` : `${year}-${String(month! - 1).padStart(2, "0")}-01`;
-  const from = period === "this_month" ? monthStart : period === "last_month" ? previousMonth : addDays(today, -89);
-  const to = period === "this_month" ? nextMonth : period === "last_month" ? monthStart : addDays(today, 1);
-  if (!from || !to) return null;
-  const gte = etMidnightUnix(from);
-  const lt = etMidnightUnix(to);
-  if (gte === null || lt === null || lt <= gte) return null;
-  return { from, to, gte, lt };
-}
-
-function calendarDay(value: string | null | undefined): { date: string | null; invalid: boolean } {
-  if (value === null || value === undefined || value === "") return { date: null, invalid: false };
-  if (validFinanceDate(value)) return { date: value, invalid: false };
-  if (/^\d{4}-\d{2}-\d{2}T/.test(value)) {
-    const parsed = new Date(value);
-    const date = Number.isNaN(parsed.getTime()) ? null : etYmd(parsed);
-    return date && validFinanceDate(date) ? { date, invalid: false } : { date: null, invalid: true };
-  }
-  return { date: null, invalid: true };
-}
-
-function placed(candidates: (string | null | undefined)[]): { date: string | null; invalid: boolean } {
-  for (const candidate of candidates) {
-    if (candidate === null || candidate === undefined || candidate === "") continue;
-    const day = calendarDay(candidate);
-    return day.invalid ? { date: null, invalid: true } : { date: day.date, invalid: false };
-  }
-  return { date: null, invalid: true };
-}
-
-function splitBps(value: number | string | null): number | null {
-  if (value === null || value === undefined) return null;
-  const text = String(value).trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(text)) return null;
-  const [whole, fraction = ""] = text.split(".");
-  const bps = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
-  return Number.isSafeInteger(bps) && bps <= 10000 ? bps : null;
-}
-
-function eachDay(from: string, to: string): string[] {
-  const days: string[] = [];
-  for (let day = from; day && day < to; day = addDays(day, 1) ?? "") days.push(day);
-  return days;
-}
-
-function overlap(from: string, to: string, start: string, end: string): string[] {
-  const lower = start > from ? start : from;
-  const upper = end < to ? end : to;
-  return lower < upper ? eachDay(lower, upper) : [];
-}
-
-type ChargeDecision = { kind: "vehicle"; vehicleId: string } | { kind: "unattributed"; conflict: boolean } | { kind: "deposit" };
-
-function decideCharge(charge: ProfitCharge, payments: ProfitPaymentLink[], rentals: ProfitRentalLink[]): ChargeDecision {
-  const paymentHits = payments.filter((payment) => payment.vehicleId && (
-    (charge.paymentIntentId && payment.paymentIntentId === charge.paymentIntentId)
-    || (charge.invoiceId && payment.invoiceId === charge.invoiceId)
-    || (charge.subscriptionId && payment.subscriptionId === charge.subscriptionId)
-  ));
-  const subscriptionHits = charge.subscriptionId
-    ? rentals.filter((rental) => rental.vehicleId && rental.subscriptionId === charge.subscriptionId)
-    : [];
-  const ids = new Set<string>([
-    ...paymentHits.map((payment) => payment.vehicleId as string),
-    ...subscriptionHits.map((rental) => rental.vehicleId as string),
-  ]);
-  if (paymentHits.length || subscriptionHits.length) {
-    if (ids.size !== 1) return { kind: "unattributed", conflict: true };
-    if (paymentHits.some((payment) => payment.type === "deposit") && paymentHits.some((payment) => payment.type !== "deposit")) return { kind: "unattributed", conflict: true };
-    if (paymentHits.length > 0 && paymentHits.every((payment) => payment.type === "deposit")) return { kind: "deposit" };
-    return { kind: "vehicle", vehicleId: [...ids][0]! };
-  }
-  const customerHits = charge.customerId ? rentals.filter((rental) => rental.vehicleId && rental.customerId === charge.customerId) : [];
-  const customers = new Set(customerHits.map((rental) => rental.vehicleId as string));
-  if (customers.size > 1) return { kind: "unattributed", conflict: true };
-  if (customers.size === 1) return { kind: "vehicle", vehicleId: [...customers][0]! };
-  return { kind: "unattributed", conflict: false };
-}
-
-type Bucket = { categories: Map<string, number>; complete: boolean };
-
-export function buildVehicleProfitReport(input: {
-  period: ProfitPeriodId;
-  now: Date;
-  charges: ProfitCharge[];
-  payments: ProfitPaymentLink[];
-  rentals: ProfitRentalLink[];
-  expenses: ProfitExpenseRow[];
-  maintenance: ProfitMaintenanceRow[];
-  vehicles: ProfitVehicleRow[];
-  partners: ProfitPartner[];
-}): VehicleProfitReport | null {
-  const window = periodWindow(input.period, input.now);
-  if (!window) return null;
-  const inWindow = (date: string) => date >= window.from && date < window.to;
-  const today = etYmd(input.now);
-  const tomorrow = today ? addDays(today, 1) : null;
-  const clipTo = tomorrow && tomorrow < window.to ? tomorrow : window.to;
-  const buckets = new Map<string, Bucket>();
-  const bucket = (id: string): Bucket => {
-    const existing = buckets.get(id);
-    if (existing) return existing;
-    const created = { categories: new Map<string, number>(), complete: true };
-    buckets.set(id, created);
-    return created;
-  };
-  const fail = (vehicleId: string | null) => {
-    if (vehicleId) bucket(vehicleId).complete = false;
-  };
-  const add = (vehicleId: string | null, category: string | null, cents: number) => {
-    if (!vehicleId) return;
-    const row = bucket(vehicleId);
-    const key = category?.trim() || "other";
-    const next = (row.categories.get(key) ?? 0) + cents;
-    if (!Number.isSafeInteger(next)) row.complete = false;
-    else row.categories.set(key, next);
-  };
-
-  const linked = new Map<string, ProfitExpenseRow[]>();
-  for (const expense of input.expenses) {
-    if (!expense.maintenanceRecordId) continue;
-    const rows = linked.get(expense.maintenanceRecordId) ?? [];
-    rows.push(expense);
-    linked.set(expense.maintenanceRecordId, rows);
-  }
-  for (const expense of input.expenses) {
-    if (expense.maintenanceRecordId) continue;
-    const place = placed([expense.incurredOn]);
-    if (place.invalid || !place.date) { fail(expense.vehicleId); continue; }
-    if (!inWindow(place.date)) continue;
-    const cents = decimalSourceCents(expense.amount);
-    if (cents === null || !expense.vehicleId) { fail(expense.vehicleId); continue; }
-    add(expense.vehicleId, expense.category, cents);
-  }
-  const seenMaintenance = new Set(input.maintenance.map((record) => record.id));
-  for (const [recordId, rows] of linked) {
-    if (seenMaintenance.has(recordId)) continue;
-    for (const expense of rows) fail(expense.vehicleId);
-  }
-  for (const record of input.maintenance) {
-    const place = placed([record.performedOn, record.completedAt, record.createdAt]);
-    const links = (linked.get(record.id) ?? []).map((expense) => ({ expense, place: placed([expense.incurredOn]) }));
-    if (links.some((link) => link.place.invalid || !link.place.date)) fail(record.vehicleId);
-    if (place.invalid || !place.date) { fail(record.vehicleId); continue; }
-    const inside = inWindow(place.date);
-    const expensesInside = links.filter((link) => link.place.date && inWindow(link.place.date));
-    if (!inside && expensesInside.length === 0) continue;
-    if (!record.vehicleId || expensesInside.some((link) => link.expense.vehicleId !== record.vehicleId)) {
-      fail(record.vehicleId);
-      continue;
-    }
-    const share = decimalSourceCents(record.companyShare);
-    const amounts = expensesInside.map((link) => decimalSourceCents(link.expense.amount));
-    if ((inside && share === null) || amounts.some((amount) => amount === null)) { fail(record.vehicleId); continue; }
-    const linkedCents = (amounts as number[]).reduce((sum, amount) => sum + amount, 0);
-    if (!Number.isSafeInteger(linkedCents)) { fail(record.vehicleId); continue; }
-    if (expensesInside.length === 0) { if (inside && share) add(record.vehicleId, record.category, share); continue; }
-    if (!inside || share === 0 || share === linkedCents) {
-      for (const link of expensesInside) add(record.vehicleId, link.expense.category, decimalSourceCents(link.expense.amount) ?? 0);
-      continue;
-    }
-    fail(record.vehicleId);
-  }
-
-  let unattributed = 0;
-  let conflicting = 0;
+  const unattributed: UnattributedPayment[] = [];
   let deposits = 0;
-  let revenueComplete = true;
-  const revenue = new Map<string, number>();
-  const takeRevenue = (vehicleId: string, cents: number) => {
-    const next = (revenue.get(vehicleId) ?? 0) + cents;
-    if (!Number.isSafeInteger(next)) revenueComplete = false;
-    else revenue.set(vehicleId, next);
-  };
-  for (const charge of input.charges) {
-    if (!charge.succeeded) continue;
-    if (charge.currency !== "usd" || !Number.isSafeInteger(charge.amountCents) || charge.amountCents < 0) { revenueComplete = false; continue; }
-    if (charge.created < window.gte || charge.created >= window.lt) continue;
-    const decision = decideCharge(charge, input.payments, input.rentals);
-    if (decision.kind === "deposit") {
-      const next = deposits + charge.amountCents;
-      if (!Number.isSafeInteger(next)) revenueComplete = false;
-      else deposits = next;
+  let depositsComplete = true;
+  const linkedInRange = new Set<string>();
+
+  for (const payment of input.payments) {
+    if (!PAID_STATUSES.has(payment.status.trim().toLowerCase())) continue;
+    const paid = paidYmd(payment.paidDate);
+    if (!paid || paid < from || paid > through) continue;
+    const cents = collectedCents(payment);
+    if (payment.type.trim().toLowerCase() === "deposit") {
+      if (cents === null || !Number.isSafeInteger(deposits + cents)) depositsComplete = false;
+      else deposits += cents;
       continue;
     }
-    if (decision.kind === "unattributed") {
-      if (decision.conflict) conflicting += 1;
-      const next = unattributed + charge.amountCents;
-      if (!Number.isSafeInteger(next)) revenueComplete = false;
-      else unattributed = next;
+    if (!REVENUE_TYPES.has(payment.type.trim().toLowerCase())) continue;
+    const vehicleId = vehicleForPayment(payment, rentals, known);
+    if (!vehicleId) {
+      unattributed.push({
+        id: payment.id,
+        paidDate: paid,
+        status: statusLabel(payment.status),
+        type: statusLabel(payment.type),
+        amountCents: cents,
+      });
       continue;
     }
-    takeRevenue(decision.vehicleId, charge.amountCents);
+    touch(revenue, vehicleId, cents);
   }
 
-  const partners = new Map(input.partners.map((partner) => [partner.id, partner]));
-  const rows: VehicleProfitRow[] = input.vehicles.map((vehicle) => {
-    const money = buckets.get(vehicle.id) ?? { categories: new Map<string, number>(), complete: true };
-    const expenseCents = money.complete ? [...money.categories.values()].reduce((sum, cents) => sum + cents, 0) : null;
-    const revenueCents = revenueComplete ? revenue.get(vehicle.id) ?? 0 : null;
-    const netCents = revenueCents !== null && expenseCents !== null && Number.isSafeInteger(revenueCents - expenseCents) ? revenueCents - expenseCents : null;
-    const owned = ownedDays(vehicle, window.from, clipTo);
-    const rented = rentedDays(vehicle.id, input.rentals, window.from, clipTo);
-    const daysOwned = owned.complete ? owned.days : null;
-    const daysRented = rented.complete && owned.complete ? rented.days : null;
-    const revenuePerRentedDayCents = revenueCents !== null && daysRented !== null && daysRented > 0 && Number.isSafeInteger(revenueCents)
+  for (const row of input.expenses) {
+    const day = paidYmd(row.incurredOn);
+    if (!day || day < from || day > through || !row.vehicleId || !known.has(row.vehicleId)) continue;
+    if (row.maintenanceRecordId) linkedInRange.add(row.maintenanceRecordId);
+    touch(expense, row.vehicleId, dollarsToCents(row.amount));
+  }
+  for (const row of input.maintenance) {
+    if (linkedInRange.has(row.id)) continue;
+    const day = firstDay(row.performedOn, row.completedAt, row.createdAt);
+    if (!day || day < from || day > through || !row.vehicleId || !known.has(row.vehicleId)) continue;
+    const share = row.companyShare == null || row.companyShare === "" ? null : dollarsToCents(row.companyShare);
+    touch(maintenance, row.vehicleId, share ?? dollarsToCents(row.totalCost));
+  }
+
+  const rows = vehicles.map((vehicle) => {
+    const revenueCents = revenue.get(vehicle.id) ?? 0;
+    const expenseCents = expense.get(vehicle.id) ?? 0;
+    const maintenanceCents = maintenance.get(vehicle.id) ?? 0;
+    const available = availableDays(vehicle, from, end);
+    const rented = available === null || !end ? null : rentedDays(vehicle.id, input.rentals, available.start, available.end);
+    const daysAvailable = available?.days ?? null;
+    const daysRented = rented;
+    const utilizationPercent = daysAvailable !== null && daysRented !== null && daysAvailable > 0
+      ? Math.round((daysRented / daysAvailable) * 1000) / 10
+      : null;
+    const cost = expenseCents !== null && maintenanceCents !== null && Number.isSafeInteger(expenseCents + maintenanceCents)
+      ? expenseCents + maintenanceCents : null;
+    const netCents = revenueCents !== null && cost !== null && Number.isSafeInteger(revenueCents - cost) ? revenueCents - cost : null;
+    const revenuePerRentedDayCents = revenueCents !== null && daysRented !== null && daysRented > 0
       ? Math.round(revenueCents / daysRented) : null;
-    const partner = vehicle.partnerId ? partners.get(vehicle.partnerId) : undefined;
-    const bps = partner ? splitBps(partner.revenueSplitPct) : null;
-    const partnerShareCents = bps !== null && revenueCents !== null ? share(revenueCents, bps) : null;
-    const expenses = money.complete
-      ? [...money.categories.entries()].map(([category, cents]) => ({ category, label: categoryLabel(category), cents })).sort((a, b) => a.label.localeCompare(b.label))
-      : [];
     return {
       vehicleId: vehicle.id,
       label: vehicleProfitLabel(vehicle),
       revenueCents,
-      expenses,
-      expenseCents: expenseCents !== null && Number.isSafeInteger(expenseCents) ? expenseCents : null,
+      expenseCents,
+      maintenanceCents,
       netCents,
       daysRented,
-      daysOwned,
+      daysAvailable,
+      utilizationPercent,
       revenuePerRentedDayCents,
-      partnerShareCents,
-      partnerLabel: bps !== null && partner ? `${partner.name?.trim() || "Partner"} ${String(partner.revenueSplitPct).trim()}%` : null,
-      split: bps !== null ? "configured" : "not_configured",
     };
   });
   rows.sort((a, b) => a.label.localeCompare(b.label) || a.vehicleId.localeCompare(b.vehicleId));
-  const through = addDays(window.to, -1);
-  if (!through) return null;
+  unattributed.sort((a, b) => (a.paidDate ?? "").localeCompare(b.paidDate ?? "") || a.id.localeCompare(b.id));
   return {
-    period: input.period, from: window.from, to: window.to, through, rows,
-    unattributedStripeRevenueCents: revenueComplete ? unattributed : null,
-    conflictingCharges: conflicting,
-    depositsExcludedCents: deposits,
-    revenueComplete,
+    from,
+    through,
+    rows,
+    unattributed,
+    depositsExcludedCents: depositsComplete ? deposits : null,
+    missingCostSources: MISSING_COST_SOURCES,
   };
 }
 
-function share(revenueCents: number, bps: number): number | null {
-  const product = revenueCents * bps;
-  if (!Number.isSafeInteger(product)) return null;
-  return Math.round(product / 10000);
+export function vehicleProfitToCsv(report: VehicleProfitReport): string {
+  const lines: string[][] = [
+    ["Vehicle Profitability"],
+    ["Eastern Time"],
+    ["From", report.from],
+    ["Through", report.through],
+    [],
+    ["Vehicle", "Revenue", "Expenses", "Maintenance", "Net", "Days Rented", "Days Available", "Utilization", "Revenue Per Rented Day"],
+    ...report.rows.map((row) => [
+      row.label,
+      formatCents(row.revenueCents),
+      formatCents(row.expenseCents),
+      formatCents(row.maintenanceCents),
+      formatCents(row.netCents),
+      row.daysRented == null ? "" : String(row.daysRented),
+      row.daysAvailable == null ? "" : String(row.daysAvailable),
+      formatUtilization(row.utilizationPercent),
+      row.daysRented === 0 ? "No Rented Days" : formatCents(row.revenuePerRentedDayCents),
+    ]),
+    [],
+    ["Unattributed Payments"],
+    ["Payment", "Paid", "Status", "Type", "Amount"],
+    ...report.unattributed.map((row) => [row.id, row.paidDate ?? "", row.status, row.type, formatCents(row.amountCents)]),
+    [],
+    ["Missing Cost Sources"],
+    ...report.missingCostSources.map((source) => [source]),
+  ];
+  return `${lines.map((line) => line.map(escapeCsvCell).join(",")).join("\r\n")}\r\n`;
 }
-function ownedDays(vehicle: ProfitVehicleRow, from: string, to: string): { days: number; complete: boolean } {
+
+export function dollarsToCents(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const amount = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  const cents = Math.round(Number(amount.toFixed(2)) * 100);
+  return Number.isSafeInteger(cents) ? cents : null;
+}
+
+function collectedCents(payment: ProfitPayment): number | null {
+  if (payment.netCollected != null && payment.netCollected !== "") return dollarsToCents(payment.netCollected);
+  const amount = dollarsToCents(payment.amount);
+  const refunded = payment.refundedAmount == null || payment.refundedAmount === "" ? 0 : dollarsToCents(payment.refundedAmount);
+  if (amount === null || refunded === null || refunded > amount) return null;
+  return amount - refunded;
+}
+
+function vehicleForPayment(payment: ProfitPayment, rentals: Map<string, ProfitRental>, known: Set<string>): string | null {
+  if (payment.rentalId) {
+    const rental = rentals.get(payment.rentalId);
+    const vehicleId = rental?.vehicleId ?? null;
+    return vehicleId && known.has(vehicleId) ? vehicleId : null;
+  }
+  return payment.vehicleId && known.has(payment.vehicleId) ? payment.vehicleId : null;
+}
+
+function availableDays(vehicle: ProfitVehicle, from: string, end: string | null): { start: string; end: string; days: number } | null {
+  if (!end) return null;
   const created = calendarDay(vehicle.createdAt);
-  if (created.invalid || !created.date) return { days: 0, complete: false };
+  if (!created.date) return null;
   const archived = calendarDay(vehicle.archivedAt);
-  if (archived.invalid) return { days: 0, complete: false };
-  const end = archived.date ? addDays(archived.date, 1) : to;
-  if (!end) return { days: 0, complete: false };
-  return { days: overlap(from, to, created.date, end).length, complete: true };
+  if (vehicle.archivedAt && !archived.date) return null;
+  const archiveEnd = archived.date ? addCalendarDays(archived.date, 1) : end;
+  if (!archiveEnd) return null;
+  const start = created.date > from ? created.date : from;
+  const stop = archiveEnd < end ? archiveEnd : end;
+  return { start, end: stop, days: start < stop ? eachDay(start, stop).length : 0 };
 }
-function rentedDays(vehicleId: string, rentals: ProfitRentalLink[], from: string, to: string): { days: number; complete: boolean } {
+
+function rentedDays(vehicleId: string, rentals: ProfitRental[], start: string, end: string): number | null {
   const days = new Set<string>();
   for (const rental of rentals) {
     if (rental.vehicleId !== vehicleId) continue;
-    if (CANCELLED.has((rental.status ?? "").toLowerCase())) continue;
-    const start = calendarDay(rental.startDate);
-    if (start.invalid || !start.date) return { days: 0, complete: false };
-    let end = rental.endDate;
-    if (!end) {
-      if ((rental.status ?? "").toLowerCase() === "active") end = to;
-      else return { days: 0, complete: false };
-    }
-    const endDay = calendarDay(end);
-    if (endDay.invalid || !endDay.date) return { days: 0, complete: false };
-    for (const day of overlap(from, to, start.date, endDay.date)) days.add(day);
+    if (CANCELLED.has((rental.status ?? "").trim().toLowerCase())) continue;
+    const rentalStart = calendarDay(rental.startDate);
+    if (!rentalStart.date) return null;
+    const open = !rental.endDate && (rental.status ?? "").trim().toLowerCase() === "active";
+    const rentalEnd = open ? { date: end } : calendarDay(rental.endDate);
+    if (!rentalEnd.date) return null;
+    const lower = rentalStart.date > start ? rentalStart.date : start;
+    const upper = rentalEnd.date < end ? rentalEnd.date : end;
+    if (lower < upper) for (const day of eachDay(lower, upper)) days.add(day);
   }
-  return { days: days.size, complete: true };
+  return days.size;
+}
+
+function eachDay(start: string, end: string): string[] {
+  const days: string[] = [];
+  for (let day = start; day && day < end; day = addCalendarDays(day, 1) ?? "") days.push(day);
+  return days;
+}
+
+function firstDay(...values: (string | null)[]): string | null {
+  for (const value of values) {
+    const day = paidYmd(value);
+    if (day) return day;
+  }
+  return null;
+}
+
+function paidYmd(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(trimmed);
+  if (!match) return null;
+  if (trimmed.length === 10) return match[1];
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? match[1] : etYmd(parsed);
+}
+
+function calendarDay(value: string | null | undefined): { date: string | null } {
+  if (value == null || value === "") return { date: null };
+  return { date: paidYmd(value) };
+}
+
+function statusLabel(status: string): string {
+  return status.split(/[_\s]+/).filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(" ");
+}
+
+function escapeCsvCell(value: string): string {
+  const formula = /^[=+\-@\t\r]/.test(value);
+  const safe = formula ? `'${value}` : value;
+  if (formula || /[",\n\r]/.test(safe)) return `"${safe.replace(/"/g, '""')}"`;
+  return safe;
 }

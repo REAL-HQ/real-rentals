@@ -46,9 +46,11 @@ import { PARTNER_STATEMENT_ENABLED } from "@/lib/partner-statement-flag";
 import { OWNER_PNL_ENABLED } from "@/lib/owner-pnl-flag";
 import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
 import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
+import { TAX_EXPORT_ENABLED } from "@/lib/tax-export-flag";
 import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { STRIPE_RISK_MONITOR_ENABLED } from "@/lib/stripe-risk-monitor-flag";
+import { STRIPE_PAYOUT_RECON_ENABLED } from "@/lib/stripe-payout-recon-flag";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 import { TODAYS_OPS_ENABLED } from "@/lib/todays-ops-flag";
 import { FLEET_CALENDAR_ENABLED } from "@/lib/fleet-calendar-flag";
@@ -287,6 +289,16 @@ const STRIPE_RISK_MONITOR_TAB: TabDef = {
   description: "Open Disputes, Failed Payments And Past Due Subscriptions",
 };
 
+/** Shown only while Stripe Payout Reconciliation is compiled on. Kept out of TABS so a dark build cannot list it. */
+const STRIPE_PAYOUT_RECON_TAB: TabDef = {
+  id: "stripe_payout_recon",
+  label: "Payout Reconciliation",
+  icon: Receipt,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Payouts For The Last 60 Days Matched To App Payments",
+};
+
 /** Shown only while Billing Health is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
 const BILLING_HEALTH_TAB: TabDef = {
   id: "billing_health",
@@ -310,11 +322,11 @@ const FUNNEL_TAB: TabDef = {
 /** Shown only while Vehicle Profitability is compiled on. Kept out of TABS so a dark build cannot list it. */
 const VEHICLE_PROFIT_TAB: TabDef = {
   id: "vehicle_profit",
-  label: "Vehicle Profit",
+  label: "Vehicle Profitability",
   icon: PieChart,
   minTier: "manager",
   group: "BUSINESS",
-  description: "Revenue, Expenses, Utilization And Partner Share By Vehicle",
+  description: "Collected Revenue, Costs And Utilization By Vehicle",
 };
 
 /** Shown only while the Incident Board flag is on. Kept out of TABS so a dark build cannot list it. */
@@ -394,6 +406,26 @@ const ACCOUNTANT_EXPORT_TAB: TabDef = {
   description: "Year To Date Revenue, Refunds, Expenses And Net",
 };
 
+/** Shown only while Tax Year Export is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
+const TAX_EXPORT_TAB: TabDef = {
+  id: "tax_export",
+  label: "Tax Year Export",
+  icon: ScrollText,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Calendar Year Income, Deposits, Refunds, Fees And Costs",
+};
+
+function withTaxExport<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!TAX_EXPORT_ENABLED || !tierAllows(tier, "owner")) return tabs;
+  const next = [...tabs];
+  const accountant = next.findIndex((tab) => tab.id === "accountant_export");
+  const at = accountant >= 0 ? accountant : next.findIndex((tab) => tab.id === "partners");
+  const entry = href ? { ...TAX_EXPORT_TAB, href } : TAX_EXPORT_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
 function withAccountantExport<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
   if (!ACCOUNTANT_EXPORT_ENABLED || !tierAllows(tier, "owner")) return tabs;
   const next = [...tabs];
@@ -451,10 +483,11 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (RENT_RECONCILIATION_ENABLED && tierAllows(tier, "manager")) extra.push(RENT_RECONCILIATION_TAB);
   if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner")) extra.push(OWNER_FINANCE_SNAPSHOT_TAB);
   if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_RISK_MONITOR_TAB);
-  if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
+  if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_PAYOUT_RECON_TAB);
+  if (!extra.length) return withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
-  return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
+  return withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier);
 }
 
 /**
@@ -523,12 +556,13 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (RENT_RECONCILIATION_ENABLED && tierAllows(tier, "manager")) extra.push({ ...RENT_RECONCILIATION_TAB, href: "rent_reconciliation" });
   if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner")) extra.push({ ...OWNER_FINANCE_SNAPSHOT_TAB, href: "owner_finance_snapshot" });
   if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_RISK_MONITOR_TAB, href: "stripe_risk_monitor" });
+  if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_PAYOUT_RECON_TAB, href: "stripe_payout_recon" });
   if (!extra.length) {
-    return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
+    return withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export");
   }
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, ...extra);
-  return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
+  return withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
@@ -635,6 +669,14 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "renewals_due") {
     if (!RENEWALS_DUE_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "renewals_due";
+  }
+  if (args.urlTab === "stripe_payout_recon") {
+    if (!STRIPE_PAYOUT_RECON_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "stripe_payout_recon";
+  }
+  if (args.urlTab === "tax_export") {
+    if (!TAX_EXPORT_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "tax_export";
   }
   if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
   if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";
