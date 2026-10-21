@@ -472,13 +472,49 @@ check(!overview.includes("Hot Prospects"), "the separate Hot Prospects section i
 check(overview.includes("Billed vs Collected"), "the billed versus collected chart stays");
 check(overview.includes("isRevenuePayment") && overview.includes('select("net_collected, paid_date, type")') && overview.includes('select("amount, due_date, type")'), "the 84-day trend uses the same deposit exclusion as the tile");
 check(!overview.includes("REVENUE_TYPES"), "the trend keeps tolls, damage, and fees that the tile counts");
+const october = { from: "2026-10-01", to: "2026-10-31" };
+const overdueBeforeRange = pay({
+  id: "early",
+  status: "overdue",
+  amount: 30,
+  balance_due: 30,
+  paid_date: null,
+  due_date: "2026-09-15",
+  payment_method: "Cash",
+});
+const overdueInRange = pay({
+  id: "inside",
+  status: "overdue",
+  amount: 10,
+  balance_due: 10,
+  paid_date: null,
+  due_date: "2026-10-12",
+  payment_method: "Cash",
+});
+check(!reporting.rowInReportRange(overdueBeforeRange, october), "the overdue row is due before the range");
 check(
-  /\{filtered\.map\(\(p\) =>/.test(payments)
-    && /const lines = filtered\.map\(\(p\) =>/.test(payments)
-    && !payments.includes("filtered.filter")
-    && payments.includes("rowInReportRange(p, range)"),
+  reporting.recordedOutstandingTotal([overdueBeforeRange, overdueInRange]) === 40,
+  "outstanding keeps an overdue balance due before the range",
+);
+check(
+  summarize({ source: "cash", range: october, payments: [overdueBeforeRange, overdueInRange] }).outstanding.amount === 40,
+  "the outstanding card keeps that same overdue balance",
+);
+const viewRows = [
+  pay({ id: "later", paid_date: "2026-10-20", due_date: "2026-10-20", status: "paid", amount: 40, balance_due: 0, payment_method: "Cash" }),
+  pay({ id: "sooner", paid_date: "2026-10-05", due_date: "2026-10-05", status: "paid", amount: 10, balance_due: 0, payment_method: "Cash" }),
+  pay({ id: "before", paid_date: "2026-09-01", due_date: "2026-09-01", status: "paid", amount: 99, balance_due: 0, payment_method: "Cash" }),
+  overdueInRange,
+  pay({ id: "nodate", paid_date: null, due_date: null, status: "pending", amount: 5, balance_due: 5, payment_method: "Cash" }),
+];
+const paymentView = { range: october, status: "all", sort: "due_asc" };
+const filteredRows = reporting.visiblePayments(viewRows, paymentView);
+const csvRows = reporting.paymentCsvRecords(viewRows, paymentView);
+check(
+  filteredRows.map((row) => row.id).join(",") === csvRows.map((row) => row.id).join(","),
   "the payments table rows and the csv rows are the same filtered list",
 );
+check(filteredRows.map((row) => row.id).join(",") === "sooner,inside,later", "the shared list drops rows outside the range and keeps due-date order");
 const download = payments.slice(payments.indexOf("function downloadPaymentsCsv"), payments.indexOf("function downloadPaymentsCsv") + 1400);
 check(
   download.includes("document.body.appendChild(link)")

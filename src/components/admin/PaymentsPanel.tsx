@@ -15,11 +15,14 @@ import {
   SOURCE_LABEL,
   SOURCE_MAPPING_GAPS,
   classifyPaymentSource,
+  paymentCsvRecords,
   paymentsCsv,
   paymentsExportFilename,
   readEveryPage,
+  recordedOutstandingTotal,
   rowInReportRange,
   summarizePayments,
+  visiblePayments,
   type DepositRentalFact,
   type Metric,
   type RefundLink,
@@ -215,31 +218,21 @@ export function PaymentsPanel({
   }, [rangeProblem, extras, readsComplete, canSeeCollections, stripeQuery.isError, stripeQuery.data, payments, refundLinks, depositRentals, source, range]);
   const stripeTagged = sourced.filter((p) => p.stripe_payment_intent_id || p.stripe_invoice_id || p.stripe_subscription_id);
 
-  const filtered = (
-    statusFilter === "all"
-      ? inRangeRows
-      : statusFilter === "overdue"
-        ? inRangeRows.filter((p) => OVERDUE_SET.has(p.status as string))
-        : inRangeRows.filter((p) => p.status === statusFilter)
-  )
-    .slice()
-    .sort((a, b) => {
-      if (sort === "amount_desc") return Number(b.amount) - Number(a.amount);
-      const ad = a.due_date || "9999";
-      const bd = b.due_date || "9999";
-      return sort === "due_asc" ? ad.localeCompare(bd) : bd.localeCompare(ad);
-    });
+  const paymentView = {
+    range,
+    status: statusFilter,
+    sort,
+    overdueStatuses: COLLECTIONS_WATCH_STATUSES,
+  };
+  const filtered = visiblePayments(sourced, paymentView);
 
-  // Owed now: due/unpaid states only. Upcoming isn't due yet; paid, refunded,
-  // waived and void owe nothing. A settled balance of 0 is 0, not the amount.
-  const OWED = new Set(["pending", "current", "late", "overdue", "past_due", "failed", "unpaid", "collections"]);
-  const totalDue = filtered
-    .filter((p) => OWED.has(p.status as string))
-    .reduce((s, p) => s + (p.balance_due == null ? Number(p.amount || 0) : Number(p.balance_due)), 0);
+  // Same balances as the Outstanding Balances card: source filter only.
+  // A balance due before this range still counts.
+  const totalDue = recordedOutstandingTotal(sourced);
 
   function downloadPaymentsCsv() {
     if (rangeMessage(range)) return;
-    const lines = filtered.map((p) => {
+    const lines = paymentCsvRecords(sourced, paymentView).map((p) => {
       const d = p.driver_id ? driverMap[p.driver_id] : null;
       const v = p.vehicle_id ? vehicleMap[p.vehicle_id] : null;
       const lateFees = Number(p.late_fees || 0);

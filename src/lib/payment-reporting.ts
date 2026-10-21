@@ -464,6 +464,49 @@ export function rowInReportRange(
   return day >= range.from && day <= range.to;
 }
 
+type OutstandingRow = { status?: string | null; balance_due?: number | null; amount?: number | null };
+
+/**
+ * Owed on the source filter only. The date range does not apply: an overdue
+ * balance due before the window stays here, matching the Outstanding Balances card.
+ */
+export function recordedOutstandingTotal(rows: readonly OutstandingRow[]): number {
+  return rows
+    .filter((row) => OUTSTANDING_STATUSES.includes(row.status as (typeof OUTSTANDING_STATUSES)[number]))
+    .reduce((sum, row) => sum + (row.balance_due == null ? Number(row.amount || 0) : Number(row.balance_due)), 0);
+}
+
+export type PaymentView = {
+  range: DayWindow | null;
+  status: string;
+  sort: "due_asc" | "due_desc" | "amount_desc";
+  overdueStatuses?: readonly string[];
+};
+
+type ViewRow = OutstandingRow & { paid_date?: string | null; due_date?: string | null };
+
+/** Rows the payments table shows for this source, range, status, and sort. */
+export function visiblePayments<T extends ViewRow>(sourced: readonly T[], view: PaymentView): T[] {
+  const overdue = new Set(view.overdueStatuses ?? []);
+  const inRange = sourced.filter((row) => rowInReportRange(row, view.range));
+  const filtered = view.status === "all"
+    ? inRange
+    : view.status === "overdue"
+      ? inRange.filter((row) => overdue.has(String(row.status ?? "")))
+      : inRange.filter((row) => row.status === view.status);
+  return filtered.slice().sort((a, b) => {
+    if (view.sort === "amount_desc") return Number(b.amount) - Number(a.amount);
+    const ad = a.due_date || "9999";
+    const bd = b.due_date || "9999";
+    return view.sort === "due_asc" ? ad.localeCompare(bd) : bd.localeCompare(ad);
+  });
+}
+
+/** CSV rows are the table rows. This does not apply the range a second time. */
+export function paymentCsvRecords<T extends ViewRow>(sourced: readonly T[], view: PaymentView): T[] {
+  return visiblePayments(sourced, view);
+}
+
 export const PAYMENT_CSV_COLUMNS = ["Driver", "Vehicle", "Type", "Amount", "Due", "Status", "Method", "Late Fees", "Balance"] as const;
 
 function csvField(value: string): string {

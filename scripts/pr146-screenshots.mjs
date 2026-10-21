@@ -380,6 +380,16 @@ async function shotOf(locator, name) {
 
 const widthName = (viewport) => (viewport.width === 1280 ? "desktop-1280" : "phone-390");
 
+/** On a phone the sticky bar is taller than the viewport. Scrolling Export CSV into view hides the source chips. */
+async function framePayments(page, viewport) {
+  if (viewport.width < 700) {
+    await page.locator(".admin-sticky-bar").evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await page.waitForTimeout(150);
+    return;
+  }
+  await page.getByRole("button", { name: "Export CSV" }).scrollIntoViewIfNeeded();
+}
+
 async function prepare(viewport) {
   const opened = await open(viewport);
   const { page } = opened;
@@ -435,7 +445,7 @@ try {
     await page.getByRole("button", { name: "Export CSV" }).waitFor({ timeout: 30000 });
     await page.getByRole("heading", { name: "Unmatched Payments" }).waitFor({ timeout: 15000 });
     await page.getByText("Partial").first().waitFor();
-    await page.getByRole("button", { name: "Export CSV" }).scrollIntoViewIfNeeded();
+    await framePayments(page, viewport);
     await shot(page, `${label}-payments-all`);
     await page.getByRole("heading", { name: "Unmatched Payments" }).evaluate((el) => el.scrollIntoView({ block: "start" }));
     await page.waitForTimeout(200);
@@ -444,13 +454,13 @@ try {
 
     await page.getByRole("button", { name: "Stripe", exact: true }).click();
     await page.getByRole("region", { name: "Stripe Collections" }).waitFor({ timeout: 15000 });
-    await page.getByRole("button", { name: "Export CSV" }).scrollIntoViewIfNeeded();
+    await framePayments(page, viewport);
     await shot(page, `${label}-payments-stripe`);
 
     await page.getByRole("button", { name: "Venmo", exact: true }).click();
     await page.getByRole("heading", { name: "Reconciliation" }).waitFor();
     await page.getByText("Priya Shah").first().waitFor();
-    await page.getByRole("button", { name: "Export CSV" }).scrollIntoViewIfNeeded();
+    await framePayments(page, viewport);
     await shot(page, `${label}-payments-venmo`);
 
     if (errors.length) {
