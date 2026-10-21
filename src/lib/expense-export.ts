@@ -103,24 +103,17 @@ function unattributedRow(report: VehiclePnlReport): MoneyRow {
     expenseCents: money.expenseCents,
     tollsTicketsCents: money.tollsTicketsCents,
     maintenanceCents: money.maintenanceCents,
-    netCents: netCents(money.revenueCents, money.expenseCents, money.tollsTicketsCents, money.maintenanceCents),
+    netCents: money.netCents,
   };
 }
 
-function netCents(
-  revenue: number | null,
-  expense: number | null,
-  tolls: number | null,
-  maintenance: number | null,
-): number | null {
-  if (revenue === null || expense === null || tolls === null || maintenance === null) return null;
-  const value = revenue - expense - tolls - maintenance;
-  return Number.isSafeInteger(value) ? value : null;
-}
+const NUMERIC_CELL = /^-?\d+\.\d{2}$/;
+const FORMULA_CELL = /^[\s\u00a0]*[=+\-@\t\r|＝]/;
 
-/** RFC 4180. A cell that could be a formula is prefixed with an apostrophe. */
+/** RFC 4180. Formula-like text is prefixed with an apostrophe. A money amount stays a number. */
 export function escapeCsvCell(value: string): string {
-  const formula = /^[=+\-@\t\r]/.test(value);
+  if (NUMERIC_CELL.test(value)) return value;
+  const formula = FORMULA_CELL.test(value);
   const safe = formula ? `'${value}` : value;
   if (formula || /[",\n\r]/.test(safe)) return `"${safe.replace(/"/g, '""')}"`;
   return safe;

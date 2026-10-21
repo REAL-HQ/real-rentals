@@ -26,7 +26,7 @@ function report(extra: Partial<VehiclePnlReport> = {}): VehiclePnlReport {
         netCents: 12550,
       },
     ],
-    unattributed: { revenueCents: 0, expenseCents: 0, tollsTicketsCents: 0, maintenanceCents: 0 },
+    unattributed: { revenueCents: 0, expenseCents: 0, tollsTicketsCents: 0, maintenanceCents: 0, netCents: 0 },
     truncated: false,
     notes: [],
     ...extra,
@@ -49,6 +49,7 @@ describe("monthly finance csv", () => {
           netCollected: "45.00",
           paidDate: "2026-10-09",
           stripePaymentIntentId: null,
+          stripeInvoiceId: null,
         },
       ],
       expenses: [],
@@ -97,7 +98,12 @@ describe("monthly finance csv", () => {
   it("escapes commas and quotes and neutralizes formula cells", () => {
     expect(escapeCsvCell(`=cmd|' /C calc'!A0`)).toBe(`"'=cmd|' /C calc'!A0"`);
     expect(escapeCsvCell("+1")).toBe(`"'+1"`);
-    expect(escapeCsvCell("-10.00")).toBe(`"'-10.00"`);
+    expect(escapeCsvCell("-10.00")).toBe("-10.00");
+    expect(escapeCsvCell("-40.00")).toBe("-40.00");
+    expect(escapeCsvCell("12.50")).toBe("12.50");
+    expect(escapeCsvCell(" =1+1")).toBe(`"' =1+1"`);
+    expect(escapeCsvCell("＝1+1")).toBe(`"'＝1+1"`);
+    expect(escapeCsvCell("|cmd")).toBe(`"'|cmd"`);
     expect(escapeCsvCell("@sum")).toBe(`"'@sum"`);
     expect(escapeCsvCell(`Honda, "Civic"`)).toBe(`"Honda, ""Civic"""`);
     const csv = expenseExportCsv(report({
@@ -113,7 +119,25 @@ describe("monthly finance csv", () => {
       }],
     }));
     expect(csv).toContain(`"'=HYPERLINK(""http://evil"")"`);
-    expect(csv).toContain(`"'-10.00",Known`);
+    expect(csv).toContain("-10.00,Known");
+    expect(csv).not.toContain(`"'-10.00"`);
+  });
+
+  it("writes the report's Unattributed net instead of subtracting the columns again", () => {
+    const csv = expenseExportCsv(report({
+      unattributed: {
+        revenueCents: 100,
+        expenseCents: 0,
+        tollsTicketsCents: 0,
+        maintenanceCents: 0,
+        netCents: 50,
+      },
+    }));
+    const line = csv.trim().split("\r\n").find((row) => row.includes("Unattributed"));
+    expect(line?.includes("1.00,Known")).toBe(true);
+    expect(line?.endsWith("0.50,Known")).toBe(true);
+    const builder = readFileSync(new URL("../src/lib/expense-export.ts", import.meta.url), "utf8");
+    expect(builder).not.toContain("revenue - expense");
   });
 });
 
