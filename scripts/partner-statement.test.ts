@@ -176,6 +176,8 @@ describe("partner statement", () => {
     expect(ownerAt).toBeGreaterThan(flagAt);
     const reader = readFileSync(new URL("../src/lib/partner-statement-read.server.ts", import.meta.url), "utf8");
     expect(reader).toContain("charges.list");
+    expect(reader).toContain('createReadOnlyStripe("live", { cache: true })');
+    expect(reader).not.toContain("createStripeClient");
     expect(reader).not.toMatch(/\.create\(|\.update\(|refunds|paymentIntents|checkout\.sessions/);
     const nav = readFileSync(new URL("../src/components/admin/nav-config.ts", import.meta.url), "utf8");
     expect(nav).toContain('if (!PARTNER_STATEMENT_ENABLED || !tierAllows(tier, "owner")) return tabs');

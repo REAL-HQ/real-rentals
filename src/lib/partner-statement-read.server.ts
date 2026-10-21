@@ -1,9 +1,10 @@
-import { createStripeClient } from "./stripe.server";
+import { createReadOnlyStripe } from "./stripe-reader.server";
 import type { PartnerCharge } from "./partner-statement";
 
 /**
- * Read-only Stripe charges for Partner Statement.
- * charges.list is the only call. No create, update, refund, capture, or config.
+ * Read-only Stripe charges for Partner Statement and Owner P&L.
+ * charges.list is the only call, through the shared reader, cache opted in.
+ * The reader refuses every other method. No create, update, refund, capture, or config.
  */
 
 type Page<T> = { data: T[]; has_more: boolean };
@@ -37,7 +38,7 @@ export async function readPartnerCharges(
 }
 
 export function readLivePartnerCharges(window: { gte: number; lt: number }, signal?: AbortSignal) {
-  return readPartnerCharges(createStripeClient("live") as unknown as ReadOnlyStripeGateway, window, { signal });
+  return readPartnerCharges(createReadOnlyStripe("live", { cache: true }) as unknown as ReadOnlyStripeGateway, window, { signal });
 }
 
 function remaining(deadline: number, now: () => number): number {
