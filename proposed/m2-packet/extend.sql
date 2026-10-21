@@ -1,13 +1,13 @@
--- Step 26 of proposed/HOSTED-INSTALL.md. Not a supabase/migrations file.
+-- Step 27 of proposed/HOSTED-INSTALL.md. Not a supabase/migrations file.
 -- A hosted run uses that procedure. Do not apply this file on its own.
 --
--- Install after the Record Rental packet (after step 19: the 17 cutover files,
--- then subscription-coordination-v1.sql, then the corrected
--- signed-archive-protection-v1.sql). Needs private.approval_lock and
--- private.approval_actor from step 1, and private.record_immutable from step 3.
--- Independent of proposed/m2-packet/20.sql. If both are approved, either
--- order after step 19 is safe. This file does not create those objects and
--- does not weaken their grants.
+-- Install after proposed/m2-packet/19.sql (HOSTED-INSTALL step 23, signed
+-- archive protection). Needs private.approval_lock and
+-- private.approval_actor from step 1, and private.record_immutable from
+-- proposed/m2-packet/03.sql (HOSTED-INSTALL step 5).
+-- Independent of proposed/m2-packet/20.sql (HOSTED-INSTALL step 26). If both
+-- are approved, either order after step 23 is safe. This file does not create
+-- those objects and does not weaken their grants.
 --
 -- Execute is service_role only. The handler calls with supabaseAdmin after
 -- requireManager and passes the actor id. This function checks that actor is
@@ -31,7 +31,8 @@
 -- Retry the whole operation with the same operation id only after rollback.
 --
 -- The function is installer-owned SECURITY DEFINER. Do not ALTER OWNER to
--- rr_record_executor: the step-9 column grants do not include rentals.end_date.
+-- rr_record_executor: HOSTED-INSTALL step 15 (proposed/m2-packet/11.sql)
+-- grants SELECT of rentals.end_date and does not grant UPDATE of it.
 -- It updates only rentals.end_date. It does not set app.rental_tx, so
 -- guard_rental_lifecycle stays in force and still refuses a status change.
 -- No payment, deposit, weekly rate, next_payment_due, autopay, or vehicle

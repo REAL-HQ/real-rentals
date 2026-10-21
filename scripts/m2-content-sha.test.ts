@@ -11,7 +11,13 @@ import {
   resetUploadedContentShaProbe,
 } from "../src/lib/document-content-sha";
 import { persistConfirmedDocument } from "../src/lib/documents.functions";
-import { backfillLicenseContentSha } from "./backfill-document-content-sha";
+import {
+  assertServiceRoleKey,
+  backfillLicenseContentSha,
+  readDotenvAssignment,
+  resolveSupabaseUrl,
+  targetHost,
+} from "./backfill-document-content-sha";
 
 const PROOF = new URL("./m2-functional-proof.sql", import.meta.url);
 const proof = readFileSync(PROOF, "utf8");
@@ -265,6 +271,120 @@ if (wrote.hashed !== 1 || wrote.mismatched !== 0) throw new Error(`write counts 
 const sent = rpcArgs[0] as { p_sha256?: string };
 if (sent.p_sha256 !== frontDigest || sent.p_sha256 === forged) {
   throw new Error("backfill sent the client metadata hash");
+}
+
+function jwt(role: string): string {
+  const payload = Buffer.from(JSON.stringify({ role })).toString("base64url");
+  return `header.${payload}.sig`;
+}
+assertServiceRoleKey(jwt("service_role"));
+let managerRefused = false;
+try {
+  assertServiceRoleKey(jwt("authenticated"));
+} catch (error) {
+  managerRefused = error instanceof Error && error.message.includes("authenticated");
+}
+if (!managerRefused) throw new Error("a manager JWT was accepted");
+
+const hosted = "https://hosted.example";
+let dotenvRefused = false;
+try {
+  resolveSupabaseUrl({ argv: ["bun", "script"], envUrl: hosted, committedUrls: [hosted] });
+} catch (error) {
+  dotenvRefused = error instanceof Error && error.message.includes("committed .env");
+}
+if (!dotenvRefused) throw new Error("the committed .env URL was accepted");
+const flagged = resolveSupabaseUrl({
+  argv: ["bun", "script", "--url", "http://127.0.0.1:9"],
+  envUrl: hosted,
+  committedUrls: [hosted],
+});
+if (flagged !== "http://127.0.0.1:9" || targetHost(flagged) !== "127.0.0.1:9") {
+  throw new Error("the --url flag was ignored");
+}
+const shellUrl = resolveSupabaseUrl({
+  argv: ["bun", "script"],
+  envUrl: "http://127.0.0.1:54321",
+  committedUrls: [hosted],
+});
+if (targetHost(shellUrl) !== "127.0.0.1:54321") throw new Error("an explicit shell URL was refused");
+if (readDotenvAssignment('SUPABASE_URL="https://hosted.example"\n', "SUPABASE_URL") !== hosted) {
+  throw new Error("dotenv quotes were not stripped");
+}
+
+const otherHash = "ab".repeat(32);
+function licenseAdmin(rows: { content_sha256: string | null; id: string }[], info: { error: { message: string; statusCode: string } | null; data: { id: string } | null }) {
+  let downloads = 0;
+  const rpcArgs: unknown[] = [];
+  const admin = {
+    from() {
+      const filters: { col: string; val: unknown }[] = [];
+      const stored = rows.map((row) => ({
+        storage_bucket: "driver-docs",
+        storage_path: `${row.id}.jpg`,
+        category: "license_front",
+        is_current: true,
+        ...row,
+      }));
+      const b: any = {
+        select() { return b; },
+        eq(col: string, val: unknown) { filters.push({ col, val }); return b; },
+        in() { return b; },
+        then(resolve: (v: unknown) => void) {
+          const data = stored.filter((row) => filters.every((f) => (row as Record<string, unknown>)[f.col] === f.val));
+          return Promise.resolve({ data, error: null }).then(resolve);
+        },
+      };
+      return b;
+    },
+    storage: {
+      from() {
+        return {
+          async info() { return info; },
+          async download() {
+            downloads += 1;
+            return { data: new Blob([frontBytes]), error: null };
+          },
+        };
+      },
+    },
+    async rpc(_name: string, args: unknown) {
+      rpcArgs.push(args);
+      return { data: frontDigest, error: null };
+    },
+  };
+  return { admin, downloads: () => downloads, rpcArgs };
+}
+
+const matched = licenseAdmin([{ id: "match", content_sha256: frontDigest }], { data: { id: "obj" }, error: null });
+const matchedDry = await backfillLicenseContentSha(matched.admin, { write: false });
+if (matchedDry.skipped !== 1 || matchedDry.mismatched !== 0 || matched.downloads() !== 0) {
+  throw new Error(`dry-run compared a stored hash: ${JSON.stringify(matchedDry)} downloads=${matched.downloads()}`);
+}
+const matchedWrite = await backfillLicenseContentSha(matched.admin, { write: true });
+if (matchedWrite.skipped !== 1 || matchedWrite.mismatched !== 0 || matched.downloads() !== 1 || matched.rpcArgs.length !== 0) {
+  throw new Error(`matching hash was rewritten: ${JSON.stringify(matchedWrite)}`);
+}
+const differs = licenseAdmin([{ id: "differs", content_sha256: otherHash }], { data: { id: "obj" }, error: null });
+const differsWrite = await backfillLicenseContentSha(differs.admin, { write: true });
+if (differsWrite.mismatched !== 1 || differsWrite.skipped !== 0 || differs.rpcArgs.length !== 0) {
+  throw new Error(`byte mismatch was not counted: ${JSON.stringify(differsWrite)}`);
+}
+const denied = licenseAdmin(
+  [{ id: "denied", content_sha256: null }],
+  { data: null, error: { message: "Unauthorized", statusCode: "403" } },
+);
+const deniedWrite = await backfillLicenseContentSha(denied.admin, { write: true });
+if (deniedWrite.storageErrors !== 1 || deniedWrite.missing !== 0) {
+  throw new Error(`storage error was counted missing: ${JSON.stringify(deniedWrite)}`);
+}
+const absent = licenseAdmin(
+  [{ id: "absent", content_sha256: null }],
+  { data: null, error: { message: "Object not found", statusCode: "404" } },
+);
+const absentWrite = await backfillLicenseContentSha(absent.admin, { write: true });
+if (absentWrite.missing !== 1 || absentWrite.storageErrors !== 0) {
+  throw new Error(`missing object was a storage error: ${JSON.stringify(absentWrite)}`);
 }
 
 if (/[0-9a-f]{64}/i.test(proof)) {

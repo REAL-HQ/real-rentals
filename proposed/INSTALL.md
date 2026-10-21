@@ -36,19 +36,42 @@ Rollback past 06b is for an unused install. `06b-approval-identity-check.sql` ra
 
 ## Preflight: no `-1`
 
-`proposed/m2-preflight.sql` is one read-only `SELECT`. Run it without `-1`, after `storage.objects.user_metadata` and `storage.objects.version` exist and before step 0. `private.approval_validate` and `private.approval_snapshot` are expected absent. Step 0 creates them.
+`proposed/m2-preflight.sql` is one read-only `SELECT`. Run it without `-1`, after `storage.objects.user_metadata` and `storage.objects.version` exist and before step 1. `private.approval_validate` and `private.approval_snapshot` are expected absent. Step 3 creates them.
 
 ## Order
 
-1. `proposed/m2-packet/01.sql` with `-1`
-2. `00-approval-boundary.sql` without `-1`
-3. Packet steps 2 through 6 with `-1`
-4. `06b-approval-identity-check.sql` without `-1`
-5. Packet steps 7 through 10 with `-1`
-6. `10b-approval-executor-writes.sql` without `-1`
-7. Packet steps 11 through 19, then 19b, with `-1`
-8. `19c-agreement-contract.sql` without `-1`
-9. Packet step 20, extend, and the return checklist with `-1`
-10. `record-uploaded-content-sha.sql` without `-1`
+The sequence is the HOSTED-INSTALL table. Content-sha is step 2, before the approval boundary. The revoke file is step 29.
 
-Roll `record-uploaded-content-sha.sql` back before the return checklist. Then roll back return, extend, 20, 19c, 19b, 19 through 2, 00, and 01. Compare each schema dump with the snapshot taken after the previous step.
+| Step | File | psql |
+| --- | --- | --- |
+| 1 | `proposed/m2-packet/01.sql` | `-1` |
+| 2 | `proposed/m2-with-approval-boundary/record-uploaded-content-sha.sql` | own `BEGIN`/`COMMIT`, no `-1` |
+| 3 | `proposed/m2-with-approval-boundary/00-approval-boundary.sql` | own `BEGIN`/`COMMIT`, no `-1` |
+| 4 | `proposed/m2-packet/02.sql` | `-1` |
+| 5 | `proposed/m2-packet/03.sql` | `-1` |
+| 6 | `proposed/m2-packet/04.sql` | `-1` |
+| 7 | `proposed/m2-packet/05.sql` | `-1` |
+| 8 | `proposed/m2-packet/06.sql` | `-1` |
+| 9 | `proposed/m2-with-approval-boundary/06b-approval-identity-check.sql` | own `BEGIN`/`COMMIT`, no `-1` |
+| 10 | `proposed/m2-packet/07.sql` | `-1` |
+| 11 | `proposed/m2-packet/08.sql` | `-1` |
+| 12 | `proposed/m2-packet/09.sql` | `-1` |
+| 13 | `proposed/m2-packet/10.sql` | `-1` |
+| 14 | `proposed/m2-with-approval-boundary/10b-approval-executor-writes.sql` | own `BEGIN`/`COMMIT`, no `-1` |
+| 15 | `proposed/m2-packet/11.sql` | `-1` |
+| 16 | `proposed/m2-packet/12.sql` | `-1` |
+| 17 | `proposed/m2-packet/13.sql` | `-1` |
+| 18 | `proposed/m2-packet/14.sql` | `-1` |
+| 19 | `proposed/m2-packet/15.sql` | `-1` |
+| 20 | `proposed/m2-packet/16.sql` | `-1` |
+| 21 | `proposed/m2-packet/17.sql` | `-1` |
+| 22 | `proposed/m2-packet/18.sql` | `-1` |
+| 23 | `proposed/m2-packet/19.sql` | `-1` |
+| 24 | `proposed/m2-packet/19b.sql` | `-1` |
+| 25 | `proposed/m2-with-approval-boundary/19c-agreement-contract.sql` | own `BEGIN`/`COMMIT`, no `-1` |
+| 26 | `proposed/m2-packet/20.sql` | `-1` |
+| 27 | `proposed/m2-packet/extend.sql` | `-1` |
+| 28 | `proposed/m2-packet/return.sql` | `-1` |
+| 29 | `proposed/m2-packet/21-revoke-executor-create.sql` | `-1` |
+
+Roll step 29 back first. Then roll back return, extend, 20, 19c, 19b, 19 through 2, 00, the content-sha file, and 01. Step 29's rollback grants `CREATE` on `public` and `private` back to `rr_record_executor`. Compare each schema dump with the snapshot taken after the previous step.

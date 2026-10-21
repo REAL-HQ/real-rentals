@@ -5,7 +5,8 @@
 -- expected/actual are present or absent. ok is true when they match.
 -- Prerequisites already on a migrations baseline are expected present:
 -- the identity-review table, applications.deleted_at, waitlist holds,
--- who holds CREATE on schema public (step 4 grants it to rr_record_executor
+-- who holds CREATE on schema public (HOSTED-INSTALL step 5,
+-- proposed/m2-packet/03.sql, grants it to rr_record_executor
 -- because ownership of public.booking_vehicle_assignments and
 -- public.record_existing_rental_tx requires it),
 -- storage.objects, storage.objects.name, storage.objects.user_metadata jsonb,
@@ -14,8 +15,10 @@
 -- The definer reads storage.objects. Object versioning must be off. A second
 -- row for the same path means versioning is on, or a duplicate was left behind.
 -- private.approval_validate(uuid) and private.approval_snapshot(uuid) are
--- created by step 0. They are expected absent, with every object the packet
--- creates. Step 17 does not create a bucket.
+-- created by HOSTED-INSTALL step 3
+-- (proposed/m2-with-approval-boundary/00-approval-boundary.sql). They are
+-- expected absent, with every object the packet creates. HOSTED-INSTALL step 21
+-- (proposed/m2-packet/17.sql) does not create a bucket.
 
 SELECT 'public.application_identity_reviews' AS check_name, 'present' AS expected, CASE WHEN (EXISTS (
       SELECT 1 FROM pg_catalog.pg_class c

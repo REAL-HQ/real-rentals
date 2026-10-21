@@ -1,5 +1,5 @@
 -- LOCAL POINTER. Not a migration. Not installed. Do not run this file.
 --
 -- The vehicle swap SQL has one source: proposed/m2-packet/20.sql
--- (HOSTED-INSTALL step 25). This file used to carry a stale copy.
+-- (HOSTED-INSTALL step 26). This file used to carry a stale copy.
 -- It is a pointer now, so the two files cannot drift.

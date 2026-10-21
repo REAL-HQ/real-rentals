@@ -11,6 +11,8 @@ LOG="${M2_PROOF_LOG:-/tmp/m2-proof-run.log}"
 mkdir -p "$DUMPS"
 : > "$LOG"
 
+node "$ROOT/scripts/m2-step-citations.test.mjs" | tee -a "$LOG"
+
 psqlq() { psql "$PGURL" -v ON_ERROR_STOP=1 -q "$@"; }
 
 cleanup_transport() {
