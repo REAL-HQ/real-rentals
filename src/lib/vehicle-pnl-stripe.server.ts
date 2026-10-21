@@ -228,7 +228,8 @@ function integer(value: unknown): number | null {
 }
 
 /** One invoice for this charge, from an invoice payment that names the charge or its payment intent. */
-export function invoiceIdForCharge(charge: { id: string; payment_intent?: IdRef }, invoicePayments: InvoicePaymentRow[]): string | null {
+export function invoiceIdForCharge(charge: { id?: string; payment_intent?: IdRef }, invoicePayments: InvoicePaymentRow[]): string | null {
+  if (!charge.id) return null;
   const intent = idOf(charge.payment_intent);
   const invoices = new Set<string>();
   for (const row of invoicePayments) {
