@@ -1,7 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { applicantPhone } from "@/lib/applicant-validation";
-import { landingPageWithoutClaim } from "@/lib/waitlist-claim";
 import { applicationResumeAtomicEnabled, deliverApplicationRecovery } from "@/lib/application-recovery.server";
 import { z } from "zod";
 
@@ -534,8 +533,6 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       // what "the same address" means.
       .insert({
         ...insertFields,
-        landing_page: landingPageWithoutClaim(insertFields.landing_page),
-        referrer: landingPageWithoutClaim(insertFields.referrer),
         email: emailLower,
         status: "partial",
         current_step: "rental",

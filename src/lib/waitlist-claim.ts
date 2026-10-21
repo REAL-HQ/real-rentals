@@ -51,36 +51,6 @@ export function claimTokenFromUrl(search: string, hash: string): string | null {
   }
 }
 
-function hashWithoutClaim(hash: string): string {
-  if (!hash || hash === "#") return "";
-  const kept = hash
-    .slice(1)
-    .split("&")
-    .filter((part) => part !== "claim" && !part.startsWith("claim="));
-  return kept.length ? `#${kept.join("&")}` : "";
-}
-
-/** Drop a claim token from a path or absolute URL. Other params and a non-claim hash stay. */
-export function landingPageWithoutClaim(value: string | null | undefined): string | null {
-  if (value == null) return null;
-  if (value === "") return "";
-  try {
-    const absolute = /^https?:\/\//i.test(value);
-    const url = new URL(value, "https://drivereal.invalid");
-    url.searchParams.delete("claim");
-    url.hash = hashWithoutClaim(url.hash);
-    if (!absolute) return `${url.pathname}${url.search}${url.hash}`;
-    return url.toString();
-  } catch {
-    return value
-      .replace(/([?&])claim=[^&#]*/g, (_, sep: string) => (sep === "?" ? "?" : ""))
-      .replace(/\?&/g, "?")
-      .replace(/[?&]$/g, "")
-      .replace(/(^|[#&])claim=[^&#]*/g, "$1")
-      .replace(/[#&]$/g, "");
-  }
-}
-
 export function shouldMarkNotified(enabled: boolean, sendOk: boolean): boolean {
   // Off: mark every attempt, including a failed send. On: only a successful send.
   return enabled ? sendOk : true;
@@ -234,18 +204,6 @@ export function comingSoonSignup(_enabled: boolean, fields: ComingSoonFields): {
       gclid: fields.gclid,
     },
   };
-}
-
-/** Path form of a landing page: claim token removed, other params kept. */
-export function claimLandingPath(href: string): string {
-  const cleaned = landingPageWithoutClaim(href);
-  if (!cleaned) return "";
-  try {
-    const url = new URL(cleaned, "https://drivereal.invalid");
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch {
-    return cleaned;
-  }
 }
 
 export type WaitlistClaimPrefill = {

@@ -7,7 +7,7 @@ import { FadeUp } from "@/components/site/FadeUp";
 import { ProgressBar } from "@/components/site/ApplicationWizard";
 import { savePartialApplication } from "@/lib/applications.functions";
 import { readWaitlistClaim } from "@/lib/waitlist.functions";
-import { WAITLIST_CLAIM_ENABLED, applySearchKeys, claimTokenFromUrl, landingPageWithoutClaim, type WaitlistClaimPrefill } from "@/lib/waitlist-claim";
+import { WAITLIST_CLAIM_ENABLED, applySearchKeys, claimTokenFromUrl, type WaitlistClaimPrefill } from "@/lib/waitlist-claim";
 
 const CLAIM_STASH = "rr_waitlist_claim";
 
@@ -127,8 +127,13 @@ function ApplyPage() {
       claimToken = fromUrl || sessionStorage.getItem(CLAIM_STASH) || "";
       sessionStorage.removeItem(CLAIM_STASH);
       if (fromUrl) {
-        const next = landingPageWithoutClaim(url.pathname + url.search + url.hash) || url.pathname;
-        window.history.replaceState(window.history.state, "", next);
+        url.searchParams.delete("claim");
+        const hashBody = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+        const kept = hashBody
+          ? hashBody.split("&").filter((part) => part !== "claim" && !part.startsWith("claim="))
+          : [];
+        url.hash = kept.length ? `#${kept.join("&")}` : "";
+        window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
       }
     } catch {
       claimToken = "";

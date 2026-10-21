@@ -7,16 +7,20 @@
 --
 -- This limit is email-only. There is no IP column on waitlist. An IP limit
 -- would store a hash and is a separate owner decision, not part of this proposal.
+-- The count includes every source. A second source cannot dodge the limit.
 --
--- The function is SECURITY DEFINER with a fixed search_path so the count is
--- not the inserting role's. An invoker function fails every anon insert with
--- "permission denied for table waitlist", and a definer that still obeyed RLS
--- would see none of the rows an authenticated user is hidden from, so the
--- limit would never trip. The advisory lock serializes one email. The index
--- matches that count.
+-- The function is SECURITY DEFINER with an empty search_path so the count is
+-- not the inserting role's and a caller cannot redirect an unqualified name.
+-- An invoker function fails every anon insert with "permission denied for
+-- table waitlist", and a definer that still obeyed RLS would see none of the
+-- rows an authenticated user is hidden from, so the limit would never trip.
+-- The advisory lock serializes one email. The index matches that count.
 --
--- Applying this trigger refuses a homepage_waitlist insert when that email
--- already has 5 rows in the last hour.
+-- created_at is not an anon insert column. The trigger stamps it so a
+-- backdated value cannot fall outside the hour. Anon is not granted the column.
+--
+-- Applying this trigger refuses an insert when that email already has 5 rows
+-- of any source in the last hour.
 --
 -- WAITLIST_CLAIM_ENABLED does not turn this on.
 
@@ -24,23 +28,20 @@ CREATE OR REPLACE FUNCTION public.waitlist_coming_soon_email_limit()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   recent integer;
 BEGIN
-  IF NEW.source IS DISTINCT FROM 'homepage_waitlist' THEN
-    RETURN NEW;
-  END IF;
-  PERFORM pg_advisory_xact_lock(
-    hashtext('waitlist_coming_soon'),
-    hashtext(lower(NEW.email))
+  NEW.created_at := pg_catalog.now();
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtext('waitlist_coming_soon'),
+    pg_catalog.hashtext(pg_catalog.lower(NEW.email))
   );
   SELECT count(*) INTO recent
   FROM public.waitlist
-  WHERE source = 'homepage_waitlist'
-    AND lower(email) = lower(NEW.email)
-    AND created_at > now() - interval '1 hour';
+  WHERE pg_catalog.lower(email) = pg_catalog.lower(NEW.email)
+    AND created_at > pg_catalog.now() - interval '1 hour';
   IF recent >= 5 THEN
     RAISE EXCEPTION 'waitlist coming soon rate limit';
   END IF;
@@ -59,4 +60,4 @@ CREATE TRIGGER waitlist_coming_soon_email_limit
   EXECUTE FUNCTION public.waitlist_coming_soon_email_limit();
 
 CREATE INDEX IF NOT EXISTS waitlist_coming_soon_email_created_idx
-  ON public.waitlist (lower(email), created_at);
+  ON public.waitlist (pg_catalog.lower(email), created_at);

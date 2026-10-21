@@ -81,11 +81,12 @@ const def = await rate.query(`
 `);
 check(def.rows[0]?.prosecdef === true, "the rate function is security definer");
 check(
-  (def.rows[0]?.proconfig ?? []).some((item) => item.replace(/"/g, "") === "search_path=public"),
-  "the rate function pins search_path to public",
+  (def.rows[0]?.proconfig ?? []).some((item) => item.replace(/"/g, "") === "search_path="),
+  "the rate function pins an empty search_path",
 );
 const fn = await rate.query(`SELECT pg_get_functiondef('public.waitlist_coming_soon_email_limit()'::regprocedure) AS def`);
-check(String(fn.rows[0]?.def).includes("pg_advisory_xact_lock"), "the rate function locks one email");
+const fnDef = String(fn.rows[0]?.def);
+check(fnDef.includes("pg_catalog.pg_advisory_xact_lock") && fnDef.includes("NEW.created_at := pg_catalog.now()") && !fnDef.includes("homepage_waitlist"), "the rate function locks one email, stamps created_at, and counts every source");
 const index = await rate.query(`
   SELECT indexdef FROM pg_indexes
   WHERE indexname = 'waitlist_coming_soon_email_created_idx'
@@ -106,8 +107,39 @@ try {
 }
 check(sixth.includes("waitlist coming soon rate limit") && !sixth.includes("permission denied"), "the sixth anon insert is the email limit, not a permission error");
 
-await asRole(rate, "anon", `INSERT INTO public.waitlist (full_name, email, source) VALUES ('Other', 'other@example.com', 'staff')`);
-check(true, "a non-homepage insert is not limited");
+let otherSource = 0;
+for (let i = 0; i < 5; i += 1) {
+  await asRole(rate, "anon", `INSERT INTO public.waitlist (full_name, email, source) VALUES ('Mix', 'mix@example.com', 'office')`);
+  otherSource += 1;
+}
+check(otherSource === 5, "other-source rows insert until the same email limit");
+let mixed = "";
+try {
+  await asRole(rate, "anon", `INSERT INTO public.waitlist (full_name, email, source) VALUES ('Mix', 'mix@example.com', 'homepage_waitlist')`);
+} catch (error) {
+  mixed = String(error?.message ?? error);
+}
+check(mixed.includes("waitlist coming soon rate limit"), "other-source rows count toward the email limit");
+
+let backdated = 0;
+for (let i = 0; i < 5; i += 1) {
+  await asRole(rate, "anon", `INSERT INTO public.waitlist (full_name, email, source, created_at) VALUES ('Back', 'back@example.com', 'homepage_waitlist', now() - interval '2 days')`);
+  backdated += 1;
+}
+check(backdated === 5, "a backdated insert is accepted until the email limit");
+const stamped = await rate.query(`
+  SELECT bool_and(created_at > now() - interval '5 minutes') AS recent
+  FROM public.waitlist
+  WHERE email = 'back@example.com'
+`);
+check(stamped.rows[0]?.recent === true, "the trigger rewrites a backdated created_at to now");
+let sixthBackdated = "";
+try {
+  await asRole(rate, "anon", `INSERT INTO public.waitlist (full_name, email, source, created_at) VALUES ('Back', 'back@example.com', 'homepage_waitlist', now() - interval '2 days')`);
+} catch (error) {
+  sixthBackdated = String(error?.message ?? error);
+}
+check(sixthBackdated.includes("waitlist coming soon rate limit"), "a backdated sixth insert is still limited");
 
 const visible = await asRole(rate, "authenticated", "SELECT count(*)::int AS n FROM public.waitlist");
 check(Number(visible[0]?.rows?.[0]?.n ?? visible?.rows?.[0]?.n ?? 0) === 0, "RLS hides waitlist rows from authenticated");
@@ -162,6 +194,49 @@ try {
 check(/permission denied/i.test(updated), "authenticated cannot update claim_token_hash");
 await asRole(grants, "authenticated", `UPDATE public.waitlist SET phone = '5550100' WHERE email = 'ada@example.com'`);
 check(true, "authenticated can still update an ordinary column");
+let promoted = "";
+try {
+  await asRole(grants, "anon", `INSERT INTO public.waitlist (full_name, email, status) VALUES ('Ada', 'ada-promoted@example.com', 'promoted')`);
+} catch (error) {
+  promoted = String(error?.message ?? error);
+}
+check(/permission denied/i.test(promoted), "anon cannot insert status promoted");
+let stampedGrant = "";
+try {
+  await asRole(grants, "anon", `INSERT INTO public.waitlist (full_name, email, created_at) VALUES ('Ada', 'ada-back@example.com', now())`);
+} catch (error) {
+  stampedGrant = String(error?.message ?? error);
+}
+check(/permission denied/i.test(stampedGrant), "anon cannot insert created_at");
+const anonInsertCols = await grants.query(`
+  SELECT column_name FROM information_schema.column_privileges
+  WHERE table_schema = 'public' AND table_name = 'waitlist'
+    AND grantee = 'anon' AND privilege_type = 'INSERT'
+  ORDER BY column_name
+`);
+check(
+  JSON.stringify(anonInsertCols.rows.map((row) => row.column_name)) === JSON.stringify([
+    "driver_status", "email", "full_name", "gclid", "market_id", "phone", "source",
+    "utm_campaign", "utm_content", "utm_medium", "utm_source", "utm_term",
+  ]),
+  "anon insert privileges are only the 12 coming soon columns",
+);
+let hashSelect = "";
+try {
+  await asRole(grants, "authenticated", "SELECT claim_token_hash FROM public.waitlist");
+} catch (error) {
+  hashSelect = String(error?.message ?? error);
+}
+check(/permission denied/i.test(hashSelect), "staff cannot select claim_token_hash");
+await asRole(grants, "authenticated", "SELECT market_id FROM public.waitlist");
+check(true, "staff can select market_id");
+const selectHash = await grants.query(`
+  SELECT column_name FROM information_schema.column_privileges
+  WHERE table_schema = 'public' AND table_name = 'waitlist'
+    AND grantee = 'authenticated' AND privilege_type = 'SELECT'
+    AND column_name = 'claim_token_hash'
+`);
+check(selectHash.rows.length === 0, "claim_token_hash has no authenticated select grant");
 await grants.close();
 
 console.log(`${passed} proposed waitlist SQL checks passed`);

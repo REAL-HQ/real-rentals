@@ -57,12 +57,7 @@ try {
     !claim.applySearchKeys(true).includes("claim") && claim.applySearchKeys(true).includes("t"),
     "the claim token is not an /apply search key, so it cannot reuse the resume token",
   );
-  check(claim.landingPageWithoutClaim("/apply?claim=abc&city=Austin#top") === "/apply?city=Austin#top", "a claim query is stripped and the other hash stays");
-  check(claim.landingPageWithoutClaim("https://drivereal.com/apply?city=Austin#claim=abc.1.ff") === "https://drivereal.com/apply?city=Austin", "a claim fragment is stripped from an absolute url");
-  check(claim.landingPageWithoutClaim("https://other.example/start?claim=abc&utm_source=ad") === "https://other.example/start?utm_source=ad", "a referrer loses its claim query");
-  check(claim.landingPageWithoutClaim("/apply?reclaim=keep&claim=drop") === "/apply?reclaim=keep", "reclaim= is not the claim key");
-  check(claim.landingPageWithoutClaim("/apply#top&claim=drop") === "/apply#top", "a claim fragment beside another hash is removed");
-  check(claim.landingPageWithoutClaim("https://drivereal.com/apply#reclaim=keep") === "https://drivereal.com/apply#reclaim=keep", "a reclaim fragment stays");
+  check(typeof claim.landingPageWithoutClaim !== "function" && typeof claim.claimLandingPath !== "function", "the claim module does not rewrite stored landing pages");
   check(claim.claimTokenFromUrl("?reclaim=1&claim=abc", "#reclaim=2") === "abc", "the claim reader ignores reclaim=");
   check(claim.claimTokenFromUrl("", "#reclaim=nope") === null, "a reclaim fragment is not a claim token");
 
@@ -122,8 +117,6 @@ try {
   );
   const stillInserted = claim.comingSoonSignup(true, { ...plain, phone: "5550100", driver_status: "active" });
   check(stillInserted.mode === "insert" && stillInserted.row.driver_status === "active" && stillInserted.row.phone === "5550100" && stillInserted.row.source === "homepage_waitlist", "Coming Soon stays a browser insert with driver status when the flag is on");
-  check(claim.claimLandingPath("https://drivereal.com/apply?claim=abc.1.ff&city=Austin&utm_source=ad") === "/apply?city=Austin&utm_source=ad", "claim is removed before landing_page keeps the other parameters");
-  check(claim.claimLandingPath("https://drivereal.com/apply?claim=only") === "/apply", "a claim-only url becomes /apply");
 
   const row = { id: "11111111-1111-4111-8111-111111111111", full_name: "Sam Rivera", email: "sam@example.com", city: "Austin" };
   const secret = "0123456789abcdef0123456789abcdef";
@@ -291,7 +284,7 @@ try {
   const apply = readFileSync("src/routes/apply.tsx", "utf8");
   check(apply.includes("applySearchKeys(WAITLIST_CLAIM_ENABLED)"), "/apply keeps claim off the search list until the flag is on");
   const claimEffect = apply.slice(apply.indexOf("useEffect(() => {"), apply.indexOf("return ("));
-  check(claimEffect.indexOf("landingPageWithoutClaim") < claimEffect.indexOf("readClaim("), "claim is stripped before the claim read");
+  check(claimEffect.indexOf('searchParams.delete("claim")') < claimEffect.indexOf("readClaim("), "a flagged visit removes claim from the address before the claim read");
   check(claimEffect.includes("removeItem(CLAIM_STASH)") && claimEffect.indexOf("removeItem(CLAIM_STASH)") < claimEffect.indexOf("readClaim("), "a disabled visit clears a leftover claim stash");
   check(claimEffect.includes("window.history.replaceState") && !claimEffect.includes("pushState"), "stripping claim replaces history");
   check(apply.includes("WAITLIST_CLAIM_ENABLED ? [{ children: STRIP_CLAIM_SCRIPT }]") && apply.includes("(?:^|[?&])claim=") && apply.includes("(?:^|[#&])claim="), "the head script is flag-gated and matches only a claim key");
@@ -310,13 +303,32 @@ try {
   check(proposed.includes("not a migration") && proposed.includes("must not be run") && proposed.includes("deleted_at IS NULL") && !/CREATE\s+OR\s+REPLACE/i.test(proposed), "option 5 is a proposed note and not a migration");
   const tokenSql = readFileSync("proposed/waitlist-claim-token-v1.sql", "utf8");
   check(tokenSql.includes("not a migration") && tokenSql.includes("must not be run") && tokenSql.includes("claim_token_hash") && tokenSql.includes("WAITLIST_CLAIM_SECRET"), "the hash column is proposed and names the dedicated secret");
-  const insertGrant = tokenSql.match(/GRANT INSERT \(([^)]+)\)/)?.[1] ?? "";
-  const updateGrant = tokenSql.match(/GRANT UPDATE \(([^)]+)\)/)?.[1] ?? "";
-  check(tokenSql.includes("REVOKE INSERT, UPDATE ON public.waitlist FROM anon, authenticated") && !tokenSql.includes("REVOKE INSERT (claim_token_hash)") && insertGrant.includes("email") && !insertGrant.split(",").map((part) => part.trim()).includes("claim_token_hash") && !updateGrant.split(",").map((part) => part.trim()).includes("claim_token_hash"), "the hash column is withheld with column grants, not a column revoke");
+  const grantCols = (sql, privilege, role) => {
+    const match = sql.match(new RegExp(`GRANT ${privilege} \\(([^)]*)\\) ON public\\.waitlist TO ${role}`));
+    return (match?.[1] ?? "").split(",").map((part) => part.trim()).filter(Boolean);
+  };
+  const anonInsert = grantCols(tokenSql, "INSERT", "anon");
+  const authInsert = grantCols(tokenSql, "INSERT", "authenticated");
+  const authUpdate = grantCols(tokenSql, "UPDATE", "authenticated");
+  const authSelect = grantCols(tokenSql, "SELECT", "authenticated");
+  const anonAllowed = ["full_name", "email", "phone", "market_id", "driver_status", "source", "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid"];
+  const staffColumns = ["id", "market_id", "full_name", "email", "phone", "driver_status", "source", "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "created_at", "city", "state", "status", "pickup_date", "notified_at", "promoted_application_id", "promoted_at", "review_reason", "review_flagged_at"];
+  check(
+    tokenSql.includes("REVOKE INSERT, UPDATE ON public.waitlist FROM anon, authenticated")
+      && tokenSql.includes("REVOKE SELECT ON public.waitlist FROM authenticated")
+      && !tokenSql.includes("REVOKE INSERT (claim_token_hash)")
+      && JSON.stringify(anonInsert) === JSON.stringify(anonAllowed)
+      && JSON.stringify(authInsert) === JSON.stringify(staffColumns)
+      && JSON.stringify(authUpdate) === JSON.stringify(staffColumns)
+      && JSON.stringify(authSelect) === JSON.stringify(staffColumns)
+      && !anonInsert.includes("status")
+      && !anonInsert.includes("created_at"),
+    "anon insert is the 12 coming soon columns and staff grants omit only the hash",
+  );
   const rateSql = readFileSync("proposed/waitlist-coming-soon-rate-v1.sql", "utf8");
-  check(rateSql.includes("Owner decision") && rateSql.includes("must not be run") && rateSql.includes("homepage_waitlist") && rateSql.includes("email-only") && rateSql.includes("SECURITY DEFINER") && rateSql.includes("SET search_path = public") && rateSql.includes("pg_advisory_xact_lock") && rateSql.includes("waitlist_coming_soon_email_created_idx"), "the Coming Soon rate limit is proposed SQL, email-only, and an owner decision");
+  check(rateSql.includes("Owner decision") && rateSql.includes("must not be run") && rateSql.includes("email-only") && rateSql.includes("every source") && rateSql.includes("SECURITY DEFINER") && rateSql.includes("SET search_path = ''") && rateSql.includes("NEW.created_at := pg_catalog.now()") && rateSql.includes("pg_advisory_xact_lock") && rateSql.includes("waitlist_coming_soon_email_created_idx") && !rateSql.includes("source = 'homepage_waitlist'"), "the Coming Soon rate limit counts every source, stamps created_at, and pins an empty search_path");
   const appSrc = readFileSync("src/lib/applications.functions.ts", "utf8");
-  check(appSrc.includes("landing_page: landingPageWithoutClaim(insertFields.landing_page)") && appSrc.includes("referrer: landingPageWithoutClaim(insertFields.referrer)"), "the server strips claim from landing_page and referrer");
+  check(!appSrc.includes("landingPageWithoutClaim") && !claimSrc.includes("landingPageWithoutClaim") && !claimSrc.includes("claimLandingPath"), "landing_page and referrer are stored as submitted");
   check(!functions.includes("waitlist_coming_soon_email_limit") && !appSrc.includes("waitlist_coming_soon_email_limit"), "the app does not call the proposed rate limit");
   check(!readdirSync("drizzle/migrations").some((name) => name.includes("waitlist-claim") || name.includes("coming-soon-rate")), "the proposals are not in drizzle migrations");
   check(!readdirSync("supabase/migrations").some((name) => name.includes("waitlist-claim") || name.includes("coming-soon-rate")), "the proposals are not in supabase migrations");

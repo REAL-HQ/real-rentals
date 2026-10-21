@@ -16,12 +16,34 @@ ALTER TABLE public.waitlist
 COMMENT ON COLUMN public.waitlist.claim_token_hash IS
   'SHA-256 of the one-time claim nonce. Null after the link is opened. Not an application resume token.';
 
--- A column-level REVOKE does nothing while anon and authenticated still hold
--- table-level INSERT, and authenticated still holds table-level UPDATE.
--- Take those table grants away, then grant every existing column except
--- claim_token_hash. service_role keeps its table-level ALL, so the server
--- can still store and clear the hash.
+-- A column-level REVOKE does nothing while the role still holds the table
+-- privilege. Take the table privileges away, then grant columns explicitly.
+-- service_role keeps its table-level ALL, so the server can still store and
+-- clear the hash.
+--
+-- anon INSERT is only the 12 columns from migration 20260721192708. Anon
+-- does not receive id, created_at, city, state, status, pickup_date,
+-- notified_at, promoted_application_id, promoted_at, review_reason, or
+-- review_flagged_at. created_at is stamped by the rate trigger.
+-- authenticated INSERT, UPDATE, and SELECT are every column except
+-- claim_token_hash. The only browser read is WebsitesPanel's market_id.
 REVOKE INSERT, UPDATE ON public.waitlist FROM anon, authenticated;
+REVOKE SELECT ON public.waitlist FROM authenticated;
+
+GRANT INSERT (
+  full_name,
+  email,
+  phone,
+  market_id,
+  driver_status,
+  source,
+  utm_source,
+  utm_medium,
+  utm_campaign,
+  utm_term,
+  utm_content,
+  gclid
+) ON public.waitlist TO anon;
 
 GRANT INSERT (
   id,
@@ -47,9 +69,35 @@ GRANT INSERT (
   promoted_at,
   review_reason,
   review_flagged_at
-) ON public.waitlist TO anon, authenticated;
+) ON public.waitlist TO authenticated;
 
 GRANT UPDATE (
+  id,
+  market_id,
+  full_name,
+  email,
+  phone,
+  driver_status,
+  source,
+  utm_source,
+  utm_medium,
+  utm_campaign,
+  utm_term,
+  utm_content,
+  gclid,
+  created_at,
+  city,
+  state,
+  status,
+  pickup_date,
+  notified_at,
+  promoted_application_id,
+  promoted_at,
+  review_reason,
+  review_flagged_at
+) ON public.waitlist TO authenticated;
+
+GRANT SELECT (
   id,
   market_id,
   full_name,
