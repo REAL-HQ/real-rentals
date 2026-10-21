@@ -14,6 +14,7 @@ import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
 import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
+import { SWAP_ENABLED } from "@/lib/record-numbers";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -121,6 +122,7 @@ export type AgreementBlocker = {
 async function buildMergeData(
   admin: any,
   applicationId: string,
+  vehicleId?: string,
 ): Promise<{
   data: MergeData;
   app: any;
@@ -128,6 +130,7 @@ async function buildMergeData(
   blockers: AgreementBlocker[];
   /** The contract start date as stored: a date-only ISO string, or null. */
   startIso: string | null;
+  namedVehicleId: string | null;
 }> {
   const { data: app, error } = await admin
     .from("applications")
@@ -230,11 +233,17 @@ async function buildMergeData(
     blockers.push({ field: "license_expiration", label: "A licence valid on the start date", why: `The licence expires ${app.license_expiration}, before the rental starts ${startDate}.`, fix: pay });
 
   let vehicle: any = null;
-  if (app.vehicle_id) {
+  // No override: the application vehicle, exactly as before. An override is
+  // accepted only when the server finds it is the active rental's current
+  // vehicle, and that is the car the agreement names.
+  const namedVehicleId = vehicleId
+    ? await rentalVehicleForAgreement(admin, applicationId, vehicleId)
+    : ((app.vehicle_id as string | null) ?? null);
+  if (namedVehicleId) {
     const { data: v } = await admin
       .from("vehicles")
       .select("id,year,make,model,trim,color,vin,unit_number,weekly_rate,deposit,license_plate,plate_state")
-      .eq("id", app.vehicle_id)
+      .eq("id", namedVehicleId)
       .maybeSingle();
     vehicle = v ?? null;
   }
@@ -318,7 +327,24 @@ async function buildMergeData(
   // The rendered start_date above is for the human. Calculations get the real
   // value: reading the formatted string back is what broke min_term_end and
   // the additional-driver licence check when the display format changed.
-  return { data, app, vehicle, blockers, startIso: startDate ?? null };
+  return { data, app, vehicle, blockers, startIso: startDate ?? null, namedVehicleId };
+}
+
+/** The only vehicle an override may name: the active rental's current car. */
+async function rentalVehicleForAgreement(admin: any, applicationId: string, vehicleId: string): Promise<string> {
+  const { data: rental, error } = await admin
+    .from("rentals")
+    .select("vehicle_id")
+    .eq("application_id", applicationId)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!rental?.vehicle_id || rental.vehicle_id !== vehicleId) {
+    throw new Error("The agreement vehicle must be the rental's current vehicle.");
+  }
+  return rental.vehicle_id as string;
 }
 
 /** Title every rental agreement row carries (agreements.title column default). */
@@ -493,8 +519,8 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
  * The ONE generation step for preview and send: readiness, template,
  * rendered text and fingerprint.
  */
-async function prepareAgreement(admin: any, applicationId: string, prep?: AgreementPrep, templateKey?: string) {
-  const built = await buildMergeData(admin, applicationId);
+async function prepareAgreement(admin: any, applicationId: string, prep?: AgreementPrep, templateKey?: string, vehicleId?: string) {
+  const built = await buildMergeData(admin, applicationId, vehicleId);
   const lib = templateKey ? libraryTemplate(templateKey) : null;
   if (templateKey && !lib) throw new Error("Unknown agreement template.");
   const tpl = lib ? await libraryWithDraft(admin, lib) : await activeTemplate(admin);
@@ -591,15 +617,8 @@ export const listAgreements = createServerFn({ method: "GET" })
     return list.map((r) => ({ ...r, timeline: byId.get(r.id) ?? [] })) as AgreementRow[];
   });
 
-export const previewAgreement = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid(), prep: PrepSchema.optional(), templateKey: z.enum(LIBRARY_KEYS).optional() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const actor = await requireTierFor(context.userId, "manager");
-    void actor;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const prep = await prepareAgreement(supabaseAdmin, data.applicationId, data.prep, data.templateKey);
-    const { data: merge, app, blockers, tpl } = prep;
+async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepareAgreement>>, namedVehicle: boolean) {
+  const { data: merge, app, blockers, tpl } = prep;
     const missing = Object.entries(merge)
       .filter(([, v]) => !v || !String(v).trim())
       .map(([k]) => k);
@@ -609,7 +628,7 @@ export const previewAgreement = createServerFn({ method: "POST" })
     // exactly what must not reach a signature.
     if (!blockers.length) {
       const { getCompanySigner } = await import("@/lib/esign.server");
-      const company = await getCompanySigner(supabaseAdmin);
+      const company = await getCompanySigner(admin);
       const { renderPreviewPdf } = await import("@/lib/esign-pdf.server");
       const bytes = await renderPreviewPdf({
         title: AGREEMENT_TITLE,
@@ -637,12 +656,30 @@ export const previewAgreement = createServerFn({ method: "POST" })
       terms: readTerms(tpl.body),
       missing,
       blockers,
-      vehicleId: (app.vehicle_id as string | null) ?? null,
+      vehicleId: namedVehicle ? prep.namedVehicleId : ((app.vehicle_id as string | null) ?? null),
       email: (app.email as string | null) ?? null,
       name: (app.full_name as string | null) ?? null,
       generatedAt: new Date().toISOString(),
     };
+}
+
+export const previewAgreement = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid(), prep: PrepSchema.optional(), templateKey: z.enum(LIBRARY_KEYS).optional() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await requireTierFor(context.userId, "manager");
+    void actor;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const prep = await prepareAgreement(supabaseAdmin, data.applicationId, data.prep, data.templateKey);
+    return finishPreview(supabaseAdmin, prep, false);
   });
+
+/** Names the rental's current vehicle. Refuses before any read while swap is off. */
+export async function previewNamedAgreement(admin: any, applicationId: string, vehicleId: string) {
+  if (!SWAP_ENABLED) throw new Error("Vehicle swap is disabled pending installation and acceptance");
+  const prep = await prepareAgreement(admin, applicationId, undefined, undefined, vehicleId);
+  return finishPreview(admin, prep, true);
+}
 
 // ---------------------------------------------------------------- admin writes
 
@@ -657,11 +694,13 @@ export const previewAgreement = createServerFn({ method: "POST" })
 export async function issueAgreement(
   admin: any,
   applicationId: string,
-  opts: { fingerprint?: string; createdBy?: string | null; companyAck?: boolean; prep?: AgreementPrep; templateKey?: string } = {},
+  opts: { fingerprint?: string; createdBy?: string | null; companyAck?: boolean; prep?: AgreementPrep; templateKey?: string; vehicleId?: string } = {},
 ): Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }> {
   // Same generation step as the preview — the stored text is re-rendered here
-  // on the server, never taken from the browser.
-  const prep = await prepareAgreement(admin, applicationId, opts.prep, opts.templateKey);
+  // on the server, never taken from the browser. A vehicle override exists
+  // only while swap is on. With the flag off this is the application vehicle.
+  const vehicleOverride = SWAP_ENABLED ? opts.vehicleId : undefined;
+  const prep = await prepareAgreement(admin, applicationId, opts.prep, opts.templateKey, vehicleOverride);
   const { data: merge, app, blockers, tpl, body } = prep;
   if (!app.email) throw new Error("This driver has no email on file");
   // A contract with a guessed start date or a blank address is not a contract
@@ -698,7 +737,7 @@ export async function issueAgreement(
       company_signer_name: company.name,
       company_signer_title: company.title,
       application_id: applicationId,
-      vehicle_id: app.vehicle_id ?? null,
+      vehicle_id: vehicleOverride ? prep.namedVehicleId : (app.vehicle_id ?? null),
       template_id: tpl.meta.id,
       body,
       merge_data: merge,
