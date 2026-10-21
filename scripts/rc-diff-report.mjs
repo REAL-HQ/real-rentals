@@ -3,9 +3,18 @@
 //
 //   node scripts/rc-diff-report.mjs --from <ref> --to <ref> [--repo dir]
 //     [--bundle-from dir] [--bundle-to dir] [--out dir]
+//     [--all-flags] [--phrases default|loose]
+//
+// --from and --to accept any revision, including a name that starts with "-".
+// --out accepts any directory path. The directory is created and does not have
+// to live inside the repository.
 //
 // Bundle dirs are built client trees (.output/public). When they are omitted,
 // a worktree checked out at that ref is used if it already has .output/public.
+//
+// Default phrase mode keeps a string only when it has a space and an uppercase
+// letter, so single-word and lowercase JSX text are omitted. --phrases loose
+// includes that text.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -80,28 +89,54 @@ export function classifyFlag(expression) {
   return compact;
 }
 
+const ENV_COMPARISON = String.raw`(?:\s*(?:===|!==|==|!=)\s*(?:"[^"]*"|'[^']*'|true|false))?`;
+
+export function hardFlagValue(expression) {
+  const classified = classifyFlag(expression);
+  if (classified === "true" || classified === "false") return classified;
+  const compact = expression.replace(/\s+/g, " ").trim().replace(/\s+as\s+const$/, "");
+  if (!compact.startsWith("{") || !compact.endsWith("}")) return null;
+  const parts = compact.slice(1, -1).split(",").map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return null;
+  const values = [];
+  for (const part of parts) {
+    const match = part.match(/^(?:[A-Za-z_][\w]*)\s*:\s*(true|false)$/);
+    if (!match) return null;
+    values.push(match[1]);
+  }
+  if (values.every((value) => value === "false")) return "false";
+  if (values.every((value) => value === "true")) return "true";
+  return compact;
+}
+
 export function parseFlags(source) {
   const code = stripComments(source);
   const found = [];
   const declared = new Set();
-  const re = /(?:export\s+)?(?:const|let|var)\s+([A-Z][A-Z0-9_]*_ENABLED)\b(?:\s*:\s*[^=;]+?)?\s*=\s*([^;]+);/g;
-  for (const match of code.matchAll(re)) {
-    const expression = match[2].trim();
-    found.push({ name: match[1], expression, value: classifyFlag(expression) });
-    declared.add(match[1]);
-  }
-  const remember = (name, expression) => {
+  const remember = (name, expression, value) => {
     if (declared.has(name)) return;
     declared.add(name);
-    found.push({ name, expression, value: "env" });
+    found.push({ name, expression, value });
   };
-  for (const match of code.matchAll(/process\.env\.([A-Z][A-Z0-9_]*_ENABLED)\b[^;\n]*/g)) {
-    remember(match[1], match[0].trim());
-  }
-  if (/=\s*process\.env\b/.test(code)) {
-    for (const match of code.matchAll(/\benv\.([A-Z][A-Z0-9_]*_ENABLED)\b[^;\n]*/g)) {
-      remember(match[1], match[0].trim());
+  const consts = /(?:export\s+)?(?:const|let|var)\s+([A-Z][A-Z0-9_]+)\b(?:\s*:\s*[^=;]+?)?\s*=\s*([^;]+);/g;
+  for (const match of code.matchAll(consts)) {
+    const name = match[1];
+    const expression = match[2].trim();
+    if (name.endsWith("_ENABLED")) {
+      found.push({ name, expression, value: classifyFlag(expression) });
+      declared.add(name);
+      continue;
     }
+    const hard = hardFlagValue(expression);
+    if (hard === null) continue;
+    found.push({ name, expression, value: hard });
+    declared.add(name);
+  }
+  const processEnv = new RegExp(String.raw`process\.env\.([A-Z][A-Z0-9_]*_ENABLED)\b` + ENV_COMPARISON, "g");
+  for (const match of code.matchAll(processEnv)) remember(match[1], match[0].trim(), "env");
+  if (/=\s*process\.env\b/.test(code)) {
+    const envParam = new RegExp(String.raw`(?<!process\.)\benv\.([A-Z][A-Z0-9_]*_ENABLED)\b` + ENV_COMPARISON, "g");
+    for (const match of code.matchAll(envParam)) remember(match[1], match[0].trim(), "env");
   }
   return found;
 }
@@ -132,10 +167,18 @@ export function extractStrings(source) {
   return found;
 }
 
-// A user-visible phrase has a space and an uppercase letter. Hashed asset
-// paths, class lists, and URLs are not copy.
-export function isUserVisible(value) {
+function isClassList(text) {
+  const tokens = text.split(" ");
+  if (tokens.length < 2) return false;
+  return tokens.every((token) => /^[a-z0-9_:[\]/.#-]+$/.test(token) && (token.includes("-") || token.length <= 3));
+}
+
+// Default mode: a phrase needs a space and an uppercase letter. That misses
+// single-word JSX text ("Apply") and lowercase text ("save draft").
+// Loose mode includes those and still drops URLs, paths, class lists, and hashes.
+export function isUserVisible(value, mode = "default") {
   const text = value.replace(/\s+/g, " ").trim();
+  if (mode === "loose") return isLooseVisible(text);
   if (text.length < 3 || text.length > 180) return false;
   if (!/[A-Za-z]/.test(text) || !/[A-Z]/.test(text)) return false;
   if (!/\s/.test(text)) return false;
@@ -147,11 +190,25 @@ export function isUserVisible(value) {
   return true;
 }
 
-export function visibleStrings(source) {
+function isLooseVisible(text) {
+  if (text.length < 2 || text.length > 180) return false;
+  if (!/[A-Za-z]/.test(text)) return false;
+  if (text.includes("://") || text.includes("`") || text.includes("${") || text.includes("/")) return false;
+  const letters = text.match(/[A-Za-z]/g)?.length ?? 0;
+  if (letters / text.length < 0.6) return false;
+  if (/[{};]/.test(text)) return false;
+  if (/\b(function|import|export|const|return)\b/.test(text)) return false;
+  if (/^[0-9a-f]{8,}$/i.test(text)) return false;
+  if (/\.(?:js|mjs|css|map|png|jpe?g|svg)$/i.test(text)) return false;
+  if (isClassList(text)) return false;
+  return true;
+}
+
+export function visibleStrings(source, mode = "default") {
   const unique = new Set();
   for (const value of extractStrings(source)) {
     const text = value.replace(/\s+/g, " ").trim();
-    if (isUserVisible(text)) unique.add(text);
+    if (isUserVisible(text, mode)) unique.add(text);
   }
   return unique;
 }
@@ -195,7 +252,7 @@ function parseNameStatus(buffer) {
 
 function revParse(repo, ref) {
   try {
-    return gitText(repo, ["rev-parse", "--verify", `${ref}^{commit}`]).trim();
+    return gitText(repo, ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`]).trim();
   } catch (error) {
     throw new Error(`Unknown ref ${ref}: ${error.message}`);
   }
@@ -203,8 +260,12 @@ function revParse(repo, ref) {
 
 function grepFiles(repo, sha, pattern) {
   let text = "";
+  const patterns = Array.isArray(pattern) ? pattern : [pattern];
+  const args = ["grep", "-l", "-I", "-E"];
+  for (const item of patterns) args.push("-e", item);
+  args.push(sha, "--", "src");
   try {
-    text = gitText(repo, ["grep", "-l", "-I", "-e", pattern, sha, "--", "src"]);
+    text = gitText(repo, args);
   } catch (error) {
     if (error.status === 1) return [];
     throw error;
@@ -224,7 +285,7 @@ function showFile(repo, sha, path) {
 
 function flagMap(repo, sha) {
   const byName = new Map();
-  for (const path of grepFiles(repo, sha, "_ENABLED")) {
+  for (const path of grepFiles(repo, sha, ["_ENABLED", "export const [A-Z][A-Z0-9_]+"])) {
     let source = "";
     try {
       source = showFile(repo, sha, path);
@@ -367,15 +428,44 @@ function walkJs(dir, root, out) {
   }
 }
 
-export function bundleStrings(dir) {
+export function bundleStrings(dir, mode = "default") {
   const files = [];
   walkJs(dir, dir, files);
   const unique = new Set();
   for (const file of files.sort()) {
     const source = readFileSync(file, "utf8");
-    for (const text of visibleStrings(source)) unique.add(text);
+    for (const text of visibleStrings(source, mode)) unique.add(text);
   }
   return unique;
+}
+
+function summarized(declarations) {
+  const values = [...new Set((declarations ?? []).map((item) => item.value))];
+  return values.length ? values.join(", ") : "absent";
+}
+
+function envReadNames(map) {
+  const names = [];
+  for (const [name, declarations] of map) {
+    if (declarations.some((item) => item.value === "env")) names.push(name);
+  }
+  return names.sort();
+}
+
+function listFlags(before, after) {
+  const order = { env: 0, other: 1, hard: 2 };
+  const names = [...new Set([...before.keys(), ...after.keys()])];
+  const rows = names.map((name) => {
+    const fromDeclarations = before.get(name) ?? [];
+    const toDeclarations = after.get(name) ?? [];
+    const from = summarized(fromDeclarations);
+    const to = summarized(toDeclarations);
+    const env = from.split(", ").includes("env") || to.split(", ").includes("env");
+    const section = env ? "env" : name.endsWith("_ENABLED") ? "other" : "hard";
+    return { name, from, to, fromDeclarations, toDeclarations, section };
+  });
+  rows.sort((a, b) => order[a.section] - order[b.section] || a.name.localeCompare(b.name));
+  return rows;
 }
 
 function diffStrings(base, head) {
@@ -385,7 +475,7 @@ function diffStrings(base, head) {
   return added;
 }
 
-export function buildReport({ repo, from, to, bundleFrom, bundleTo }) {
+export function buildReport({ repo, from, to, bundleFrom, bundleTo, allFlags = false, phrases = "default" }) {
   const fromSha = revParse(repo, from);
   const toSha = revParse(repo, to);
   const net = parseNameStatus(git(repo, ["diff", "--name-status", "-z", "-M", fromSha, toSha]));
@@ -448,7 +538,9 @@ export function buildReport({ repo, from, to, bundleFrom, bundleTo }) {
       commits: touching,
     };
   });
-  const flags = changedFlags(flagMap(repo, fromSha), flagMap(repo, toSha));
+  const beforeFlags = flagMap(repo, fromSha);
+  const afterFlags = flagMap(repo, toSha);
+  const flags = changedFlags(beforeFlags, afterFlags);
   const beforeFns = serverFnSet(repo, fromSha);
   const afterFns = serverFnSet(repo, toSha);
   const fnKey = (item) => `${item.name}\0${item.file}`;
@@ -458,16 +550,17 @@ export function buildReport({ repo, from, to, bundleFrom, bundleTo }) {
   const removedFns = beforeFns.filter((item) => !afterKeys.has(fnKey(item)));
   const fromBundle = bundleFrom || discoverBundle(repo, fromSha);
   const toBundle = bundleTo || discoverBundle(repo, toSha);
-  let clientStrings = { compared: false, bundleFrom: fromBundle, bundleTo: toBundle, added: [] };
+  let clientStrings = { compared: false, mode: phrases, bundleFrom: fromBundle, bundleTo: toBundle, added: [] };
   if (fromBundle && toBundle && existsSync(fromBundle) && existsSync(toBundle)) {
     clientStrings = {
       compared: true,
+      mode: phrases,
       bundleFrom: fromBundle,
       bundleTo: toBundle,
-      added: diffStrings(bundleStrings(fromBundle), bundleStrings(toBundle)),
+      added: diffStrings(bundleStrings(fromBundle, phrases), bundleStrings(toBundle, phrases)),
     };
   }
-  return {
+  const report = {
     from: fromSha,
     to: toSha,
     files,
@@ -475,6 +568,13 @@ export function buildReport({ repo, from, to, bundleFrom, bundleTo }) {
     serverFunctions: { added: addedFns, removed: removedFns },
     clientStrings,
   };
+  if (allFlags) {
+    report.allFlags = {
+      envReads: { from: envReadNames(beforeFlags), to: envReadNames(afterFlags) },
+      flags: listFlags(beforeFlags, afterFlags),
+    };
+  }
+  return report;
 }
 
 function mdCell(value) {
@@ -526,7 +626,40 @@ export function renderMarkdown(report) {
     ].join("<br>");
     lines.push(`| ${mdCell(flag.name)} | ${mdCell(flag.from)} | ${mdCell(flag.to)} | ${mdCell(decls)} |`);
   }
-  lines.push("");
+  if (report.allFlags) {
+    lines.push("");
+    lines.push("## All flags");
+    lines.push("");
+    lines.push("Env reads are first. A name is an env read at a ref when one of its declarations there reads `process.env`.");
+    lines.push("");
+    lines.push(`Env reads at from: ${report.allFlags.envReads.from.join(", ") || "none"}.`);
+    lines.push(`Env reads at to: ${report.allFlags.envReads.to.join(", ") || "none"}.`);
+    lines.push("");
+    for (const section of [
+      ["env", "Env reads"],
+      ["other", "Other *_ENABLED flags"],
+      ["hard", "Hard flags"],
+    ]) {
+      lines.push(`### ${section[1]}`);
+      lines.push("");
+      if (section[0] === "hard") {
+        lines.push("Names that do not end in `_ENABLED`, declared as `true`, `false`, or an object of boolean literals.");
+        lines.push("");
+      }
+      const rows = report.allFlags.flags.filter((flag) => flag.section === section[0]);
+      lines.push("| Flag | From | To | Declarations |");
+      lines.push("| --- | --- | --- | --- |");
+      if (!rows.length) lines.push("| | None. | | |");
+      for (const flag of rows) {
+        const decls = [
+          ...flag.fromDeclarations.map((item) => `${item.file}: ${item.expression}`),
+          ...flag.toDeclarations.map((item) => `${item.file}: ${item.expression}`),
+        ].join("<br>");
+        lines.push(`| ${mdCell(flag.name)} | ${mdCell(flag.from)} | ${mdCell(flag.to)} | ${mdCell(decls)} |`);
+      }
+      lines.push("");
+    }
+  }
   lines.push("## Server functions");
   lines.push("");
   lines.push("### Added");
@@ -540,6 +673,10 @@ export function renderMarkdown(report) {
   for (const fn of report.serverFunctions.removed) lines.push(`- \`${fn.name}\` in \`${fn.file}\``);
   lines.push("");
   lines.push("## New user-visible strings");
+  lines.push("");
+  lines.push("Default mode keeps a string only when it has a space and an uppercase letter. Single-word JSX text and lowercase text are omitted. `--phrases loose` includes them.");
+  lines.push("");
+  if (report.clientStrings.mode === "loose") lines.push("Loose mode is on.");
   lines.push("");
   if (!report.clientStrings.compared) {
     lines.push("Not compared. Pass `--bundle-from` and `--bundle-to`, or check out each ref in a worktree that already contains `.output/public`.");
@@ -556,10 +693,15 @@ export function renderMarkdown(report) {
 
 function parseArgs(argv) {
   const args = {};
+  const booleans = new Set(["all-flags"]);
   for (let i = 2; i < argv.length; i++) {
     const token = argv[i];
     if (!token.startsWith("--")) throw new Error(`Unexpected argument ${token}`);
     const key = token.slice(2);
+    if (booleans.has(key)) {
+      args[key] = "true";
+      continue;
+    }
     const value = argv[i + 1];
     if (!value || value.startsWith("--")) throw new Error(`Missing value for --${key}`);
     args[key] = value;
@@ -577,7 +719,13 @@ function main() {
     process.exit(2);
   }
   if (!args.from || !args.to) {
-    console.error("Usage: node scripts/rc-diff-report.mjs --from <ref> --to <ref> [--repo dir] [--bundle-from dir] [--bundle-to dir] [--out dir]");
+    console.error("Usage: node scripts/rc-diff-report.mjs --from <ref> --to <ref> [--repo dir] [--bundle-from dir] [--bundle-to dir] [--out dir] [--all-flags] [--phrases default|loose]");
+    console.error("--out accepts any directory path. --from and --to accept revisions that start with '-'.");
+    process.exit(2);
+  }
+  const phrases = args.phrases ?? "default";
+  if (phrases !== "default" && phrases !== "loose") {
+    console.error("--phrases must be default or loose");
     process.exit(2);
   }
   try {
@@ -588,6 +736,8 @@ function main() {
       to: args.to,
       bundleFrom: args["bundle-from"],
       bundleTo: args["bundle-to"],
+      allFlags: args["all-flags"] === "true",
+      phrases,
     });
     const markdown = renderMarkdown(report);
     const out = args.out ?? "rc-diff-out";
