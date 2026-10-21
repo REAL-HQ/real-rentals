@@ -76,6 +76,9 @@ import {
 import { removeCardOnFile } from "@/lib/payments.functions";
 import { AgreementsCard } from "./AgreementsCard";
 import { ContactStatusCell } from "./ContactStatusCell";
+import { ApprovedNotRentingList } from "./ApprovedNotRenting";
+import { listApprovedNotRenting } from "@/lib/booking-funnel.functions";
+import type { ApprovedNotRentingResult } from "@/lib/booking-funnel";
 import { listDriverRows, type DriverListResult } from "@/lib/drivers-list.functions";
 import {
   CONTACT_STATUSES,
@@ -302,7 +305,11 @@ export function DriversPanel({
   canManageWaitlist?: boolean;
   externalSearch?: string;
   initialOpenId?: string;
-  /** ?filter= from the address bar; only "waitlist" is honoured (old ?tab=waitlist links land here). */
+  /**
+   * ?filter= from the address bar. "waitlist" is honoured for every staff
+   * tier (old ?tab=waitlist links land here). "approved-not-renting" is
+   * honoured for a manager.
+   */
   urlFilter?: string;
   /** Verification recordings are Owner-only. See VerificationRecording. */
   isOwner?: boolean;
@@ -330,12 +337,18 @@ export function DriversPanel({
   const navigate = useNavigate();
   const openId = initialOpenId ?? null;
   const setOpenId = useCallback(
-    (id: string | null) =>
-      void navigate({
-        to: "/admin",
-        search: id ? { tab: "drivers", id } : { tab: "drivers" },
-      }),
-    [navigate],
+    (id: string | null) => {
+      const search: { tab: "drivers"; id?: string; filter?: "approved-not-renting" } = id
+        ? { tab: "drivers", id }
+        : { tab: "drivers" };
+      // Opening a driver from this funnel comes back to the funnel. Waitlist
+      // links stay as they were: the filter is not kept.
+      if (urlFilter === "approved-not-renting" && canManageWaitlist) {
+        search.filter = "approved-not-renting";
+      }
+      void navigate({ to: "/admin", search });
+    },
+    [navigate, urlFilter, canManageWaitlist],
   );
   const [localFilter, setLocalFilter] = useState<string>("all");
   /*
@@ -358,17 +371,29 @@ export function DriversPanel({
    */
   const [canSeeSensitive, setCanSeeSensitive] = useState(true);
   // Waitlist lives in the URL so old ?tab=waitlist bookmarks and the back button work.
-  const filter = urlFilter === "waitlist" ? "waitlist" : localFilter;
+  // Approved, Not Yet Renting is URL-backed the same way, for managers only.
+  const filter =
+    urlFilter === "waitlist"
+      ? "waitlist"
+      : urlFilter === "approved-not-renting" && canManageWaitlist
+        ? "approved-not-renting"
+        : localFilter;
   const setFilter = useCallback(
     (f: string) => {
       if (f === "waitlist") {
         void navigate({ to: "/admin", search: { tab: "drivers", filter: "waitlist" } });
         return;
       }
+      if (f === "approved-not-renting" && canManageWaitlist) {
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: "approved-not-renting" } });
+        return;
+      }
       setLocalFilter(f);
-      if (urlFilter === "waitlist") void navigate({ to: "/admin", search: { tab: "drivers" } });
+      if (urlFilter === "waitlist" || urlFilter === "approved-not-renting") {
+        void navigate({ to: "/admin", search: { tab: "drivers" } });
+      }
     },
-    [navigate, urlFilter],
+    [navigate, urlFilter, canManageWaitlist],
   );
   // Live waitlist size (entries not yet promoted) — never hard-coded.
   const loadWaitlist = useServerFn(listWaitlist);
@@ -395,6 +420,35 @@ export function DriversPanel({
       );
   }, []);
   useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters]);
+  const loadFunnel = useServerFn(listApprovedNotRenting);
+  const [funnel, setFunnel] = useState<ApprovedNotRentingResult | null>(null);
+  const [funnelFailed, setFunnelFailed] = useState(false);
+  const [funnelLoading, setFunnelLoading] = useState(canManageWaitlist);
+  const viewingFunnel = filter === "approved-not-renting";
+  useEffect(() => {
+    if (!canManageWaitlist) return;
+    let cancelled = false;
+    setFunnelLoading(true);
+    setFunnelFailed(false);
+    loadFunnel()
+      .then((r) => {
+        if (cancelled) return;
+        setFunnel(r);
+        setFunnelFailed(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFunnel(null);
+          setFunnelFailed(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setFunnelLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageWaitlist, loadFunnel, viewingFunnel]);
   const [holdBusy, setHoldBusy] = useState<string | null>(null);
   const refreshHolds = useCallback(
     () =>
@@ -631,6 +685,15 @@ setDocCounts(requiredDocCounts(rows));
     });
   }, [drivers, filter, contactFilter, externalSearch, held, activeRenters]);
 
+  const funnelRows = useMemo(() => {
+    const q = externalSearch.trim().toLowerCase();
+    return (funnel?.rows ?? []).filter((r) => {
+      if (contactFilter !== "all" && readContactStatus(r.contact).state.status !== contactFilter) return false;
+      if (!q) return true;
+      return r.fullName.toLowerCase().includes(q);
+    });
+  }, [funnel, contactFilter, externalSearch]);
+
   const saveLifecycle = useServerFn(updateApplicationLifecycle);
   function applySaved(id: string, patch: Partial<Application>) {
     setDrivers((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
@@ -659,6 +722,31 @@ setDocCounts(requiredDocCounts(rows));
    * which will not carry the contact_* columns until the migration is applied
    * and the types are regenerated.
    */
+  function applyFunnelContact(id: string, st: ContactStatusState) {
+    setFunnel((prev) =>
+      prev
+        ? {
+            ...prev,
+            rows: prev.rows.map((r) =>
+              r.id === id
+                ? {
+                    ...r,
+                    contact: {
+                      contact_status: st.status,
+                      contact_status_note: st.note,
+                      contact_follow_up_on: st.followUpOn,
+                      contact_status_at: st.changedAt,
+                      contact_status_by: st.changedBy,
+                    },
+                  }
+                : r,
+            ),
+          }
+        : prev,
+    );
+    applyContactStatus(id, st);
+  }
+
   function applyContactStatus(id: string, st: ContactStatusState) {
     setDrivers((arr) =>
       arr.map((x) =>
@@ -817,6 +905,16 @@ setDocCounts(requiredDocCounts(rows));
       )}
       <div className="admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
         {filterButtons}
+        {canManageWaitlist && (
+          <button
+            type="button"
+            onClick={() => setFilter("approved-not-renting")}
+            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "approved-not-renting" ? "bg-black text-white" : "bg-white border border-border"}`}
+          >
+            Approved, Not Yet Renting (
+            {funnelFailed || !funnel ? (funnelLoading ? "…" : "—") : funnel.rows.length})
+          </button>
+        )}
         {/*
          * Contact Status filter. Reads "Contact: All" so it can never be
          * mistaken for the application-status chips beside it.
@@ -851,6 +949,20 @@ setDocCounts(requiredDocCounts(rows));
           </button>
         </div>
       </div>
+      {filter === "approved-not-renting" ? (
+        <ApprovedNotRentingList
+          rows={funnelRows}
+          populationEmpty={!!funnel && funnel.rows.length === 0}
+          failed={funnelFailed}
+          loading={funnelLoading && !funnel}
+          onOpen={(id) => {
+            const match = drivers.find((d) => d.id === id);
+            if (match) openDriver(match);
+            else setOpenId(id);
+          }}
+          onContactSaved={applyFunnelContact}
+        />
+      ) : (
       <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -1136,6 +1248,7 @@ setDocCounts(requiredDocCounts(rows));
             </tbody>
           </table>
       </AdminTableScroll>
+      )}
       {filter === "waitlist" && (
         <div className="mt-6">
           <div className="mb-4">
