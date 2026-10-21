@@ -30,6 +30,7 @@ import {
   Scale,
   FileSpreadsheet,
   HeartPulse,
+  CircleDollarSign,
   BarChart3,
   type LucideIcon,
 } from "lucide-react";
@@ -46,6 +47,7 @@ import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { FINANCE_DATA_QUALITY_ENABLED } from "@/lib/finance-data-quality-flag";
 import { FINANCE_AR_AGING_ENABLED } from "@/lib/rent-aging-flag";
+import { FINANCE_DEPOSIT_LEDGER_ENABLED } from "@/lib/finance-deposit-ledger-flag";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 
 export type TabDef = {
@@ -223,6 +225,25 @@ const BILLING_HEALTH_TAB: TabDef = {
   description: "Active Rentals Compared With Stripe Subscriptions",
 };
 
+/** Shown only while Deposit Ledger is compiled on. Kept out of TABS so a dark build cannot list it. */
+const FINANCE_DEPOSIT_LEDGER_TAB: TabDef = {
+  id: "finance_deposit_ledger",
+  label: "Deposit Ledger",
+  icon: CircleDollarSign,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Deposit Collected, Held, Applied, Refunded, And Still Held",
+};
+
+function withFinanceDepositLedger<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!FINANCE_DEPOSIT_LEDGER_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "expenses");
+  const entry = href ? { ...FINANCE_DEPOSIT_LEDGER_TAB, href } : FINANCE_DEPOSIT_LEDGER_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
 /** Shown only while the applicant funnel is compiled on. Kept out of TABS so a dark build cannot list it. */
 const FUNNEL_TAB: TabDef = {
   id: "funnel",
@@ -359,10 +380,10 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push(PAYOUT_BREAKDOWN_TAB);
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push(BILLING_HEALTH_TAB);
-  if (!extra.length) return withRentAging(withFinanceDataQuality(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier);
+  if (!extra.length) return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
-  return withRentAging(withFinanceDataQuality(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier);
+  return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier);
 }
 
 /**
@@ -414,11 +435,11 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push({ ...BILLING_HEALTH_TAB, href: "billing_health" });
   if (!extra.length) {
-    return withRentAging(withFinanceDataQuality(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "finance_data_quality"), tier, "rent_aging");
+    return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger");
   }
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, ...extra);
-  return withRentAging(withFinanceDataQuality(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "finance_data_quality"), tier, "rent_aging");
+  return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
