@@ -162,7 +162,7 @@ function Total({ label, cents, detail }: { label: string; cents: number; detail?
 }
 
 function downloadCsv(report: DepositLedgerReport) {
-  const blob = new Blob([depositLedgerToCsv(report)], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob([depositLedgerToCsv(report, DEPOSIT_RETURNS_DUE_ENABLED)], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

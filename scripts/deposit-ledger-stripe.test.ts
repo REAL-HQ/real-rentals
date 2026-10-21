@@ -119,7 +119,8 @@ it("matches a captured charge and a zero refund to the payment row", async () =>
   expect(stripeMock.chargesCreate).not.toHaveBeenCalled();
   expect(stripeMock.refundsCreate).not.toHaveBeenCalled();
   expect(depositLedgerToCsv(report)).not.toContain(STRIPE_CHECK_UNAVAILABLE);
-  expect(depositLedgerToCsv(report)).toContain("Held,,100.00,0.00");
+  expect(depositLedgerToCsv(report)).toContain("Held,100.00,0.00");
+  expect(depositLedgerToCsv(report)).not.toContain("Days Since Close");
 });
 
 it("keeps the database totals when Stripe captured a different amount", async () => {

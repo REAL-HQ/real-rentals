@@ -196,8 +196,12 @@ it("counts Eastern days since close only for a closed Due Back row", () => {
   expect(row("future")?.daysSinceClose).toBeNull();
   expect(row("open")?.state).toBe("due_back");
   expect(row("open")?.daysSinceClose).toBeNull();
-  expect(depositLedgerToCsv(report!)).toContain("Days Since Close");
-  expect(depositLedgerToCsv(report!)).toContain(",10,");
+  const flaggedOff = depositLedgerToCsv(report!);
+  expect(flaggedOff).not.toContain("Days Since Close");
+  expect(flaggedOff).not.toContain(",10,");
+  const flaggedOn = depositLedgerToCsv(report!, true);
+  expect(flaggedOn).toContain("Days Since Close");
+  expect(flaggedOn).toContain(",10,");
 });
 
 it("keeps only closed Due Back rows when the closed filter is on", () => {
@@ -219,7 +223,7 @@ it("keeps only closed Due Back rows when the closed filter is on", () => {
   });
   expect(report!.rows.map((row) => row.rentalId)).toEqual(["closed"]);
   expect(report!.rows[0].state).toBe("due_back");
-  expect(report!.rows[0].rentalStatus).toBe("Finished");
+  expect(report!.rows[0].rentalStatus).toBe("finished");
   expect(report!.rows[0].daysSinceClose).toBe(10);
   expect(report!.dueBackCents).toBe(50000);
   expect(report!.heldCents).toBe(0);

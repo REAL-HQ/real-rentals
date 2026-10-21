@@ -2,6 +2,7 @@
  * Read-only security-deposit classification. Money is copied into the result.
  * Nothing here writes a rental, a payment, or a refund.
  */
+import { DEPOSIT_RETURNS_DUE_ENABLED } from "./deposit-ledger-flag";
 
 export const DEPOSIT_PAGE_CAP =
   "Deposit records passed the page cap. Totals are withheld so a partial read cannot understate deposits held or refunds due.";
@@ -132,7 +133,6 @@ const STATUS_LABEL: Record<string, string> = {
   returned: "Returned",
   cancelled: "Cancelled",
   canceled: "Cancelled",
-  finished: "Finished",
 };
 
 export function rentalStatusLabel(status: string): string {
@@ -319,7 +319,10 @@ export function applyDepositStripe(report: DepositLedgerReport, payments: Ledger
   return { ...report, stripeCheck: "ready", rows };
 }
 
-export function depositLedgerToCsv(report: DepositLedgerReport): string {
+export function depositLedgerToCsv(
+  report: DepositLedgerReport,
+  includeDaysSinceClose = DEPOSIT_RETURNS_DUE_ENABLED,
+): string {
   const lines: string[][] = [
     ["Deposit Ledger"],
     ["Eastern Time", report.today],
@@ -329,9 +332,10 @@ export function depositLedgerToCsv(report: DepositLedgerReport): string {
   ];
   for (const warning of report.warnings) lines.push([warning]);
   if (report.stripeCheck === "unavailable") lines.push([STRIPE_CHECK_UNAVAILABLE]);
+  const daysHeader = includeDaysSinceClose ? ["Days Since Close"] : [];
   lines.push(
     [],
-    ["Renter", "Vehicle", "Rental Status", "Expected", "Collected", "Deductions", "Refund Recorded", "Remaining", "State", "Days Since Close", "Stripe Captured", "Stripe Refunded", "Evidence"],
+    ["Renter", "Vehicle", "Rental Status", "Expected", "Collected", "Deductions", "Refund Recorded", "Remaining", "State", ...daysHeader, "Stripe Captured", "Stripe Refunded", "Evidence"],
     ...report.rows.map((row) => [
       row.renter,
       row.vehicle,
@@ -342,7 +346,7 @@ export function depositLedgerToCsv(report: DepositLedgerReport): string {
       moneyCell(row.refundCents),
       moneyCell(row.remainingCents),
       DEPOSIT_STATE_LABEL[row.state],
-      row.daysSinceClose == null ? "" : String(row.daysSinceClose),
+      ...(includeDaysSinceClose ? [row.daysSinceClose == null ? "" : String(row.daysSinceClose)] : []),
       moneyCell(row.stripeCapturedCents),
       moneyCell(row.stripeRefundedCents),
       row.evidence.join("; "),
