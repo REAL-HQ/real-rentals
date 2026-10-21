@@ -63,6 +63,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { ApplicantHome } from "@/components/portal/ApplicantHome";
+import { APPLICATION_TIMELINE_ENABLED } from "@/lib/application-timeline";
+import { ApplicationTimelineSection } from "@/components/portal/ApplicationTimeline";
 import { tierFromRoles, type StaffTier } from "@/lib/roles";
 import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -1500,6 +1502,7 @@ function DashboardView({
   onNavigate: (t: Tab) => void;
 }) {
   const { rental, vehicle, payments, maintenance, notifications } = data;
+  const applicationStatus = data.applicationStatus;
   const activeMaint = maintenance.filter((m) => m.status !== "completed");
   const lastPayment = payments.find((p) => p.status === "paid");
   const businessPhone = useBusinessPhone();
@@ -1551,6 +1554,9 @@ function DashboardView({
           <PreRentalPanel onNavigate={onNavigate} status={data.applicationStatus} />
           {NEXT_STEPS_CARD_ENABLED && !rental && data.applicationStatus === "approved" ? (
             <NextStepsSection />
+          ) : null}
+          {APPLICATION_TIMELINE_ENABLED && !rental && applicationStatus !== "approved" && applicationStatus !== "active" ? (
+            <ApplicationTimelineSection />
           ) : null}
         </>
       ) : (
