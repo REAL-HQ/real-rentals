@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { ChevronLeft, ChevronRight, ArrowRight, X, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { joinWaitlist } from "@/lib/waitlist.functions";
-import { WAITLIST_CLAIM_ENABLED, comingSoonSignup } from "@/lib/waitlist-claim";
+import { comingSoonSignup } from "@/lib/waitlist-claim";
 import { FadeUp } from "./FadeUp";
 
 type LocationCard = {
@@ -133,7 +131,6 @@ function CityCard({ card, onWaitlist }: { card: LocationCard; onWaitlist: () => 
 }
 
 function WaitlistModal({ card, onClose }: { card: LocationCard; onClose: () => void }) {
-  const join = useServerFn(joinWaitlist);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -144,10 +141,9 @@ function WaitlistModal({ card, onClose }: { card: LocationCard; onClose: () => v
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!fullName || !email) return toast.error("Name and email required");
-    if (WAITLIST_CLAIM_ENABLED && phone.length < 7) return toast.error("Phone is required");
     setSubmitting(true);
     const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-    const signup = comingSoonSignup(WAITLIST_CLAIM_ENABLED, {
+    const signup = comingSoonSignup(false, {
       market_id: card.market_id,
       full_name: fullName,
       email,
@@ -161,20 +157,9 @@ function WaitlistModal({ card, onClose }: { card: LocationCard; onClose: () => v
       utm_content: params.get("utm_content"),
       gclid: params.get("gclid"),
     });
-    if (signup.mode === "insert") {
-      const { error } = await supabase.from("waitlist").insert(signup.row as any);
-      setSubmitting(false);
-      if (error) return toast.error(error.message);
-    } else {
-      try {
-        const res = await join({ data: signup.input });
-        setSubmitting(false);
-        if (!res.ok) return toast.error(res.error ?? "Could not join the waitlist. Please try again.");
-      } catch {
-        setSubmitting(false);
-        return toast.error("Could not join the waitlist. Please try again.");
-      }
-    }
+    const { error } = await supabase.from("waitlist").insert(signup.row as any);
+    setSubmitting(false);
+    if (error) return toast.error(error.message);
     if (typeof window !== "undefined" && (window as any).gtag) {
       (window as any).gtag("event", "waitlist_signup", { city: card.city });
     }
@@ -204,8 +189,8 @@ function WaitlistModal({ card, onClose }: { card: LocationCard; onClose: () => v
             <form onSubmit={submit} className="mt-5 space-y-3">
               <input value={fullName} onChange={(e) => setFullName(e.target.value)} required placeholder="Full Name" className="w-full rounded-lg bg-soft border border-transparent focus:border-real-red focus:bg-white px-4 py-3 text-sm outline-none transition" />
               <input value={email} onChange={(e) => setEmail(e.target.value)} required type="email" placeholder="Email" className="w-full rounded-lg bg-soft border border-transparent focus:border-real-red focus:bg-white px-4 py-3 text-sm outline-none transition" />
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" placeholder="Phone" required={WAITLIST_CLAIM_ENABLED} className="w-full rounded-lg bg-soft border border-transparent focus:border-real-red focus:bg-white px-4 py-3 text-sm outline-none transition" />
-              {!WAITLIST_CLAIM_ENABLED && <div>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" placeholder="Phone" className="w-full rounded-lg bg-soft border border-transparent focus:border-real-red focus:bg-white px-4 py-3 text-sm outline-none transition" />
+              <div>
                 <div className="text-xs font-medium mb-2">Already Driving On A Gig App?</div>
                 <div className="grid grid-cols-3 gap-2">
                   {([
@@ -225,7 +210,7 @@ function WaitlistModal({ card, onClose }: { card: LocationCard; onClose: () => v
                     </button>
                   ))}
                 </div>
-              </div>}
+              </div>
               <button disabled={submitting} className="w-full rounded-lg bg-real-red text-white py-3 text-sm font-semibold hover:opacity-90 transition active:scale-95 disabled:opacity-50">
                 {submitting ? "Submitting…" : "Notify Me"}
               </button>

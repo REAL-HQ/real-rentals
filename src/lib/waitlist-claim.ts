@@ -2,10 +2,12 @@
  * Dark gate for a real waitlist claim link and for Coming Soon signups
  * that go through joinWaitlist.
  *
- * false: the opening email is the current /apply link, a failed send still
- * marks the row Notified, and Coming Soon still inserts from the browser.
- * true: the email carries a claim link, Notified is written only after the
- * send succeeds, and Coming Soon calls joinWaitlist.
+ * false: the opening email is the current /apply link, and a failed send still
+ * marks the row Notified.
+ * true: the email carries a claim link, and Notified is written only after
+ * the send succeeds.
+ * Coming Soon stays on the browser insert either way, including driver_status.
+ * It does not call joinWaitlist.
  *
  * No environment variable can open it. Activation is changing this constant
  * and rebuilding. Leave it false until an owner does that.
@@ -14,8 +16,8 @@
  */
 export const WAITLIST_CLAIM_ENABLED: boolean = false;
 
-/** Fourteen days. Not an application resume token. */
-export const WAITLIST_CLAIM_TTL_SECONDS = 14 * 24 * 60 * 60;
+/** 72 hours. Not an application resume token. */
+export const WAITLIST_CLAIM_TTL_SECONDS = 72 * 60 * 60;
 
 const APPLY_SEARCH_KEYS = ["t", "city", "pickup", "vehicle", "vehicle_type"] as const;
 
@@ -62,7 +64,7 @@ export function openingEmail(input: {
           <p style="margin:28px 0">
             <a href="${href}" style="background:#D03020;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block">Claim it — finish your application</a>
           </p>
-          <p style="font-size:13px;line-height:1.6;color:#666">This link is only for this email and it expires in 14 days.</p>
+          <p style="font-size:13px;line-height:1.6;color:#666">This link is only for this email and it expires in 72 hours.</p>
           <p style="color:#888;font-size:12px;margin-top:24px">REAL RENTALS · team@drivereal.com · ${phone}</p>
         </div>`
     : `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
@@ -146,52 +148,20 @@ export type ComingSoonInsert = {
   gclid: string | null;
 };
 
-export type ComingSoonJoin = {
-  full_name: string;
-  email: string;
-  phone: string;
-  market_id: string | null;
-  city: string;
-  source: "homepage_waitlist";
-  utm_source: string | null;
-  utm_medium: string | null;
-  utm_campaign: string | null;
-  utm_term: string | null;
-  utm_content: string | null;
-  gclid: string | null;
-};
-
-/** Coming Soon payload. Off matches the browser insert. On is a joinWaitlist input. */
-export function comingSoonSignup(enabled: boolean, fields: ComingSoonFields):
-  | { mode: "insert"; row: ComingSoonInsert }
-  | { mode: "join"; input: ComingSoonJoin } {
-  if (!enabled) {
-    return {
-      mode: "insert",
-      row: {
-        market_id: fields.market_id,
-        full_name: fields.full_name,
-        email: fields.email,
-        phone: fields.phone || null,
-        driver_status: fields.driver_status,
-        source: "homepage_waitlist",
-        utm_source: fields.utm_source,
-        utm_medium: fields.utm_medium,
-        utm_campaign: fields.utm_campaign,
-        utm_term: fields.utm_term,
-        utm_content: fields.utm_content,
-        gclid: fields.gclid,
-      },
-    };
-  }
+/**
+ * Coming Soon payload. The claim flag does not change this. Both values
+ * return the existing browser insert, including driver_status, so the signup
+ * does not go through joinWaitlist.
+ */
+export function comingSoonSignup(_enabled: boolean, fields: ComingSoonFields): { mode: "insert"; row: ComingSoonInsert } {
   return {
-    mode: "join",
-    input: {
+    mode: "insert",
+    row: {
+      market_id: fields.market_id,
       full_name: fields.full_name,
       email: fields.email,
-      phone: fields.phone,
-      market_id: fields.market_id,
-      city: fields.city,
+      phone: fields.phone || null,
+      driver_status: fields.driver_status,
       source: "homepage_waitlist",
       utm_source: fields.utm_source,
       utm_medium: fields.utm_medium,
@@ -201,6 +171,13 @@ export function comingSoonSignup(enabled: boolean, fields: ComingSoonFields):
       gclid: fields.gclid,
     },
   };
+}
+
+/** Path and query attribution may store. `claim` is removed first. */
+export function claimLandingPath(href: string): string {
+  const url = new URL(href);
+  url.searchParams.delete("claim");
+  return url.pathname + url.search + url.hash;
 }
 
 export type WaitlistClaimPrefill = {
@@ -215,15 +192,16 @@ export type WaitlistClaimPrefill = {
 
 type ClaimRow = WaitlistClaimPrefill & { status: string };
 
-/** What a verified claim may show. Promoted rows do not start another application. */
+/** What a verified claim may show. Only a waiting or notified row may prefill. */
 export function claimPrefillFromRow(row: ClaimRow | null):
   | { ok: true; prefill: WaitlistClaimPrefill }
   | { ok: false; error: string } {
-  if (!row || (row.status !== "waiting" && row.status !== "notified" && row.status !== "promoted")) {
-    return { ok: false, error: "This link is not valid." };
-  }
+  if (!row) return { ok: false, error: "This link is not valid." };
   if (row.status === "promoted") {
     return { ok: false, error: "This waitlist spot already has an application." };
+  }
+  if (row.status !== "waiting" && row.status !== "notified") {
+    return { ok: false, error: "This link is not valid." };
   }
   return {
     ok: true,

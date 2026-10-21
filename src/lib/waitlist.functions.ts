@@ -366,7 +366,7 @@ export const notifyWaitlistTop = createServerFn({ method: "POST" })
       companyPhone,
       claimUrl: async (row) => {
         const { waitlistClaimUrl } = await import("@/lib/waitlist-claim.server");
-        return waitlistClaimUrl(row.id, { origin: siteOrigin() });
+        return waitlistClaimUrl(row.id, row.email, { origin: siteOrigin() });
       },
       send: (message) => sendEmail(message),
       markNotified: async (id) => {
@@ -399,18 +399,22 @@ export const readWaitlistClaim = createServerFn({ method: "POST" })
     const { WAITLIST_CLAIM_ENABLED, claimPrefillFromRow } = await import("@/lib/waitlist-claim");
     if (!WAITLIST_CLAIM_ENABLED) return { ok: false as const };
 
-    const { verifyWaitlistClaim } = await import("@/lib/waitlist-claim.server");
-    const secret = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-    const parsed = await verifyWaitlistClaim(data.token, secret);
-    if (!parsed) return { ok: false as const, error: "This link is not valid." };
+    const { peekWaitlistClaim, verifyWaitlistClaim } = await import("@/lib/waitlist-claim.server");
+    const secret = process.env.WAITLIST_CLAIM_SECRET ?? "";
+    if (!secret) return { ok: false as const, error: "This link is not valid." };
+    const peeked = peekWaitlistClaim(data.token);
+    if (!peeked) return { ok: false as const, error: "This link is not valid." };
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row, error } = await supabaseAdmin
       .from("waitlist")
       .select("full_name,email,phone,city,state,pickup_date,market_id,status")
-      .eq("id", parsed.entryId)
+      .eq("id", peeked.entryId)
       .maybeSingle();
-    if (error || !row) return { ok: false as const, error: "This link is not valid." };
+    if (error || !row?.email) return { ok: false as const, error: "This link is not valid." };
+    // The signature covers the email from send time. A changed address does not match.
+    const verified = await verifyWaitlistClaim(data.token, secret, row.email);
+    if (!verified) return { ok: false as const, error: "This link is not valid." };
     return claimPrefillFromRow(row);
   });
 

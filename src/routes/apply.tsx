@@ -7,7 +7,7 @@ import { FadeUp } from "@/components/site/FadeUp";
 import { ProgressBar } from "@/components/site/ApplicationWizard";
 import { savePartialApplication } from "@/lib/applications.functions";
 import { readWaitlistClaim } from "@/lib/waitlist.functions";
-import { WAITLIST_CLAIM_ENABLED, applySearchKeys, type WaitlistClaimPrefill } from "@/lib/waitlist-claim";
+import { WAITLIST_CLAIM_ENABLED, applySearchKeys, claimLandingPath, type WaitlistClaimPrefill } from "@/lib/waitlist-claim";
 import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
@@ -86,6 +86,15 @@ function ApplyPage() {
 
   useEffect(() => {
     if (!WAITLIST_CLAIM_ENABLED || !claimToken) return;
+    // Drop claim before attribution's effect reads landing_page. replaceState
+    // keeps Back from returning to a URL that still carries the token.
+    try {
+      const next = claimLandingPath(window.location.href);
+      const current = window.location.pathname + window.location.search + window.location.hash;
+      if (next !== current) window.history.replaceState(window.history.state, "", next);
+    } catch {
+      /* the token simply stays visible */
+    }
     let live = true;
     readClaim({ data: { token: claimToken } })
       .then((res) => {
