@@ -78,6 +78,69 @@ describe("per-vehicle profitability from existing columns", () => {
     expect(invalid.complete).toBe(false);
     expect(invalid.rows).toEqual([]);
   });
+
+  it("counts a linked service once, on the expense row", () => {
+    const result = vehicleProfitability(period, {
+      payments: [],
+      expenses: [expense({ amount: 100, maintenanceRecordId: "svc-1" })],
+      maintenance: [maintenance({ id: "svc-1", companyShare: 100, totalCost: 100 })],
+      vehicles: [vehicle],
+    });
+    expect(result.complete).toBe(true);
+    expect(result.rows[0]).toMatchObject({ expenseCents: 10000, maintenanceCents: 0, netCents: -10000 });
+  });
+
+  it("still counts an unlinked service from its company share", () => {
+    const result = vehicleProfitability(period, {
+      payments: [],
+      expenses: [expense()],
+      maintenance: [maintenance({ id: "svc-2" })],
+      vehicles: [vehicle],
+    });
+    expect(result.complete).toBe(true);
+    expect(result.rows[0]).toMatchObject({ expenseCents: 1000, maintenanceCents: 400, netCents: -1400 });
+  });
+
+  it("uses total cost when an unlinked company share is blank", () => {
+    const result = vehicleProfitability(period, {
+      payments: [],
+      expenses: [],
+      maintenance: [maintenance({ id: "svc-blank", companyShare: null, totalCost: 6 })],
+      vehicles: [vehicle],
+    });
+    expect(result.complete).toBe(true);
+    expect(result.rows[0].maintenanceCents).toBe(600);
+  });
+
+  it("keeps a zero company share at zero instead of falling through to total cost", () => {
+    const result = vehicleProfitability(period, {
+      payments: [],
+      expenses: [],
+      maintenance: [maintenance({ id: "svc-zero", companyShare: 0, totalCost: 80 })],
+      vehicles: [vehicle],
+    });
+    expect(result.complete).toBe(true);
+    expect(result.rows[0].maintenanceCents).toBe(0);
+  });
+
+  it("skips a linked share when the expense is outside the window, and ignores a bad share on that row", () => {
+    const outside = vehicleProfitability(period, {
+      payments: [],
+      expenses: [expense({ amount: 100, incurredOn: "2026-09-15", maintenanceRecordId: "svc-1" })],
+      maintenance: [maintenance({ id: "svc-1", companyShare: 100, totalCost: 100 })],
+      vehicles: [vehicle],
+    });
+    expect(outside.complete).toBe(true);
+    expect(outside.rows[0]).toMatchObject({ expenseCents: 0, maintenanceCents: 0, netCents: 0 });
+    const badShare = vehicleProfitability(period, {
+      payments: [],
+      expenses: [expense({ amount: 100, maintenanceRecordId: " svc-1 " })],
+      maintenance: [maintenance({ id: "svc-1", companyShare: "nope", totalCost: "also-nope" })],
+      vehicles: [vehicle],
+    });
+    expect(badShare.complete).toBe(true);
+    expect(badShare.rows[0]).toMatchObject({ expenseCents: 10000, maintenanceCents: 0, netCents: -10000 });
+  });
 });
 
 type Row = Record<string, unknown> & { id?: string };
@@ -141,6 +204,22 @@ describe("live report behind the same flag", () => {
     expect(result.vehicles.rows[0]).toMatchObject({ label: "2020 Toyota Camry · ABC123", revenueCents: 12550, expenseCents: 1000, maintenanceCents: 400, netCents: 11150 });
   });
 
+  it("counts a linked maintenance expense once on the live read", async () => {
+    const serviceId = "00000000-0000-4000-8000-0000000000dd";
+    const supabase = client({
+      user_roles: [{ role: "team" }],
+      payments: [dbPayment],
+      vehicle_expenses: [{ id: "00000000-0000-4000-8000-0000000000cc", vehicle_id: vehicleId, amount: 100, incurred_on: "2026-10-10", maintenance_record_id: serviceId }],
+      maintenance_records: [{ id: serviceId, vehicle_id: vehicleId, company_share: 100, total_cost: 100, performed_on: "2026-10-20", completed_at: null, created_at: "2026-10-20T15:00:00Z" }],
+      vehicles: [dbVehicle],
+    });
+    const result = await loadUnifiedFinanceReport({ request, userId: "manager-1", roles: ["team"], supabase: supabase as never });
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") return;
+    expect(result.vehicles.complete).toBe(true);
+    expect(result.vehicles.rows[0]).toMatchObject({ revenueCents: 12550, expenseCents: 10000, maintenanceCents: 0, netCents: 2550 });
+  });
+
   it("drops the vehicle section when the second read disagrees", async () => {
     let reads = 0;
     const supabase = client({ user_roles: [{ role: "team" }], vehicles: [dbVehicle] });
@@ -168,6 +247,8 @@ describe("live report behind the same flag", () => {
     expect(admin).toContain("UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === \"finance\" && <UnifiedFinancePanel />");
     expect(panel).toContain("Per-Vehicle Profitability");
     expect(panel).toContain("Not Complete");
+    expect(live).toContain('.select("id,vehicle_id,amount,incurred_on,maintenance_record_id")');
+    expect(live).toContain("maintenanceRecordId: text(row.maintenance_record_id)");
     expect(live).not.toMatch(/\.(insert|update|upsert|delete|rpc)\s*\(|\bfetch\s*\(|supabaseAdmin|client\.server|from\s+["']stripe["']|process\.env/);
     expect(live).toContain('createStripeClient("live")');
     expect(live).toContain("readStripeFinanceWindow");
