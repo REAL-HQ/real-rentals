@@ -60,6 +60,11 @@ try {
   check(claim.landingPageWithoutClaim("/apply?claim=abc&city=Austin#top") === "/apply?city=Austin#top", "a claim query is stripped and the other hash stays");
   check(claim.landingPageWithoutClaim("https://drivereal.com/apply?city=Austin#claim=abc.1.ff") === "https://drivereal.com/apply?city=Austin", "a claim fragment is stripped from an absolute url");
   check(claim.landingPageWithoutClaim("https://other.example/start?claim=abc&utm_source=ad") === "https://other.example/start?utm_source=ad", "a referrer loses its claim query");
+  check(claim.landingPageWithoutClaim("/apply?reclaim=keep&claim=drop") === "/apply?reclaim=keep", "reclaim= is not the claim key");
+  check(claim.landingPageWithoutClaim("/apply#top&claim=drop") === "/apply#top", "a claim fragment beside another hash is removed");
+  check(claim.landingPageWithoutClaim("https://drivereal.com/apply#reclaim=keep") === "https://drivereal.com/apply#reclaim=keep", "a reclaim fragment stays");
+  check(claim.claimTokenFromUrl("?reclaim=1&claim=abc", "#reclaim=2") === "abc", "the claim reader ignores reclaim=");
+  check(claim.claimTokenFromUrl("", "#reclaim=nope") === null, "a reclaim fragment is not a claim token");
 
   const off = claim.openingEmail({
     enabled: false,
@@ -287,8 +292,10 @@ try {
   check(apply.includes("applySearchKeys(WAITLIST_CLAIM_ENABLED)"), "/apply keeps claim off the search list until the flag is on");
   const claimEffect = apply.slice(apply.indexOf("useEffect(() => {"), apply.indexOf("return ("));
   check(claimEffect.indexOf("landingPageWithoutClaim") < claimEffect.indexOf("readClaim("), "claim is stripped before the claim read");
+  check(claimEffect.includes("removeItem(CLAIM_STASH)") && claimEffect.indexOf("removeItem(CLAIM_STASH)") < claimEffect.indexOf("readClaim("), "a disabled visit clears a leftover claim stash");
   check(claimEffect.includes("window.history.replaceState") && !claimEffect.includes("pushState"), "stripping claim replaces history");
-  check(apply.includes("page_location") && apply.includes("#claim="), "the /apply route keeps the claim token out of gtag page_location");
+  check(apply.includes("WAITLIST_CLAIM_ENABLED ? [{ children: STRIP_CLAIM_SCRIPT }]") && apply.includes("(?:^|[?&])claim=") && apply.includes("(?:^|[#&])claim="), "the head script is flag-gated and matches only a claim key");
+  check(!apply.includes("page_location") && !apply.includes("dataLayer") && !apply.includes("gtag(") && !apply.includes('search.indexOf("claim=")') && !apply.includes('hash.indexOf("#claim=")'), "the route does not set the Google tag page location or treat reclaim as claim");
   check(!readFileSync("src/routes/__root.tsx", "utf8").includes("claim"), "the Google tag in the root shell is untouched");
   check(!readFileSync("src/lib/attribution.ts", "utf8").includes("landingPageWithoutClaim"), "attribution is left to the live hotfix");
 
@@ -303,8 +310,11 @@ try {
   check(proposed.includes("not a migration") && proposed.includes("must not be run") && proposed.includes("deleted_at IS NULL") && !/CREATE\s+OR\s+REPLACE/i.test(proposed), "option 5 is a proposed note and not a migration");
   const tokenSql = readFileSync("proposed/waitlist-claim-token-v1.sql", "utf8");
   check(tokenSql.includes("not a migration") && tokenSql.includes("must not be run") && tokenSql.includes("claim_token_hash") && tokenSql.includes("WAITLIST_CLAIM_SECRET"), "the hash column is proposed and names the dedicated secret");
+  const insertGrant = tokenSql.match(/GRANT INSERT \(([^)]+)\)/)?.[1] ?? "";
+  const updateGrant = tokenSql.match(/GRANT UPDATE \(([^)]+)\)/)?.[1] ?? "";
+  check(tokenSql.includes("REVOKE INSERT, UPDATE ON public.waitlist FROM anon, authenticated") && !tokenSql.includes("REVOKE INSERT (claim_token_hash)") && insertGrant.includes("email") && !insertGrant.split(",").map((part) => part.trim()).includes("claim_token_hash") && !updateGrant.split(",").map((part) => part.trim()).includes("claim_token_hash"), "the hash column is withheld with column grants, not a column revoke");
   const rateSql = readFileSync("proposed/waitlist-coming-soon-rate-v1.sql", "utf8");
-  check(rateSql.includes("Owner decision") && rateSql.includes("must not be run") && rateSql.includes("homepage_waitlist"), "the Coming Soon rate limit is proposed SQL and an owner decision");
+  check(rateSql.includes("Owner decision") && rateSql.includes("must not be run") && rateSql.includes("homepage_waitlist") && rateSql.includes("email-only") && rateSql.includes("SECURITY DEFINER") && rateSql.includes("SET search_path = public") && rateSql.includes("pg_advisory_xact_lock") && rateSql.includes("waitlist_coming_soon_email_created_idx"), "the Coming Soon rate limit is proposed SQL, email-only, and an owner decision");
   const appSrc = readFileSync("src/lib/applications.functions.ts", "utf8");
   check(appSrc.includes("landing_page: landingPageWithoutClaim(insertFields.landing_page)") && appSrc.includes("referrer: landingPageWithoutClaim(insertFields.referrer)"), "the server strips claim from landing_page and referrer");
   check(!functions.includes("waitlist_coming_soon_email_limit") && !appSrc.includes("waitlist_coming_soon_email_limit"), "the app does not call the proposed rate limit");

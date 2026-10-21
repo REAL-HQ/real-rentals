@@ -16,5 +16,61 @@ ALTER TABLE public.waitlist
 COMMENT ON COLUMN public.waitlist.claim_token_hash IS
   'SHA-256 of the one-time claim nonce. Null after the link is opened. Not an application resume token.';
 
-REVOKE INSERT (claim_token_hash), UPDATE (claim_token_hash)
-  ON public.waitlist FROM anon, authenticated;
+-- A column-level REVOKE does nothing while anon and authenticated still hold
+-- table-level INSERT, and authenticated still holds table-level UPDATE.
+-- Take those table grants away, then grant every existing column except
+-- claim_token_hash. service_role keeps its table-level ALL, so the server
+-- can still store and clear the hash.
+REVOKE INSERT, UPDATE ON public.waitlist FROM anon, authenticated;
+
+GRANT INSERT (
+  id,
+  market_id,
+  full_name,
+  email,
+  phone,
+  driver_status,
+  source,
+  utm_source,
+  utm_medium,
+  utm_campaign,
+  utm_term,
+  utm_content,
+  gclid,
+  created_at,
+  city,
+  state,
+  status,
+  pickup_date,
+  notified_at,
+  promoted_application_id,
+  promoted_at,
+  review_reason,
+  review_flagged_at
+) ON public.waitlist TO anon, authenticated;
+
+GRANT UPDATE (
+  id,
+  market_id,
+  full_name,
+  email,
+  phone,
+  driver_status,
+  source,
+  utm_source,
+  utm_medium,
+  utm_campaign,
+  utm_term,
+  utm_content,
+  gclid,
+  created_at,
+  city,
+  state,
+  status,
+  pickup_date,
+  notified_at,
+  promoted_application_id,
+  promoted_at,
+  review_reason,
+  review_flagged_at
+) ON public.waitlist TO authenticated;

@@ -7,38 +7,39 @@ import { FadeUp } from "@/components/site/FadeUp";
 import { ProgressBar } from "@/components/site/ApplicationWizard";
 import { savePartialApplication } from "@/lib/applications.functions";
 import { readWaitlistClaim } from "@/lib/waitlist.functions";
-import { WAITLIST_CLAIM_ENABLED, applySearchKeys, landingPageWithoutClaim, type WaitlistClaimPrefill } from "@/lib/waitlist-claim";
+import { WAITLIST_CLAIM_ENABLED, applySearchKeys, claimTokenFromUrl, landingPageWithoutClaim, type WaitlistClaimPrefill } from "@/lib/waitlist-claim";
 
 const CLAIM_STASH = "rr_waitlist_claim";
 
-/** Runs in this route's head, before gtag.js handles the queued config. */
+/**
+ * Included in this route's head only while WAITLIST_CLAIM_ENABLED is true.
+ * It stashes a real `claim` key and removes it from the address. It does not
+ * read or write the Google tag. The tag hotfix already strips `claim` from
+ * the address sent to Google, and a route script cannot run before that config.
+ * `reclaim=` is left alone.
+ */
 const STRIP_CLAIM_SCRIPT = `(function () {
   if (location.pathname !== "/apply") return;
-  var token = "";
+  var queryRe = /(?:^|[?&])claim=([^&#]*)/;
+  var hashRe = /(?:^|[#&])claim=([^&#]*)/;
+  var search = location.search || "";
   var hash = location.hash || "";
-  if (hash.indexOf("#claim=") === 0) {
-    try { token = decodeURIComponent(hash.slice(7)); } catch (e) { token = hash.slice(7); }
-  }
-  var params = new URLSearchParams(location.search);
-  if (!token && params.has("claim")) token = params.get("claim") || "";
-  if (params.has("claim")) params.delete("claim");
-  var search = params.toString();
-  var cleanPath = location.pathname + (search ? "?" + search : "");
-  if (token) {
-    try { sessionStorage.setItem(${JSON.stringify(CLAIM_STASH)}, token); } catch (e) {}
-  }
-  if (token || hash.indexOf("#claim=") === 0 || location.search.indexOf("claim=") !== -1) {
-    history.replaceState(history.state, "", cleanPath);
-    var page = location.origin + cleanPath;
-    var queue = window.dataLayer;
-    if (queue) {
-      for (var i = 0; i < queue.length; i++) {
-        var item = queue[i];
-        if (item && item[0] === "config") item[2] = Object.assign({}, item[2] || {}, { page_location: page });
-      }
-    }
-    if (typeof gtag === "function") gtag("set", { page_location: page });
-  }
+  var query = queryRe.exec(search);
+  var frag = hashRe.exec(hash);
+  var raw = (frag && frag[1]) || (query && query[1]) || "";
+  if (!raw) return;
+  var token = raw;
+  try { token = decodeURIComponent(raw); } catch (e) {}
+  try { sessionStorage.setItem(${JSON.stringify(CLAIM_STASH)}, token); } catch (e) {}
+  var params = new URLSearchParams(search);
+  params.delete("claim");
+  var nextSearch = params.toString();
+  var hashBody = hash.charAt(0) === "#" ? hash.slice(1) : hash;
+  var kept = hashBody ? hashBody.split("&").filter(function (part) {
+    return part !== "claim" && part.indexOf("claim=") !== 0;
+  }) : [];
+  var nextHash = kept.length ? "#" + kept.join("&") : "";
+  history.replaceState(history.state, "", location.pathname + (nextSearch ? "?" + nextSearch : "") + nextHash);
 })();`;
 import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAttribution } from "@/lib/attribution";
@@ -88,7 +89,7 @@ export const Route = createFileRoute("/apply")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [{ rel: "canonical", href: "https://drivereal.com/apply" }],
-    scripts: [{ children: STRIP_CLAIM_SCRIPT }],
+    scripts: WAITLIST_CLAIM_ENABLED ? [{ children: STRIP_CLAIM_SCRIPT }] : [],
   }),
   component: ApplyPage,
 });
@@ -115,21 +116,19 @@ function ApplyPage() {
   const [claimNote, setClaimNote] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!WAITLIST_CLAIM_ENABLED) return;
+    if (!WAITLIST_CLAIM_ENABLED) {
+      try { sessionStorage.removeItem(CLAIM_STASH); } catch { /* storage blocked */ }
+      return;
+    }
     let claimToken = "";
     try {
       const url = new URL(window.location.href);
-      const fromHash = url.hash.startsWith("#claim=") ? decodeURIComponent(url.hash.slice("#claim=".length)) : "";
-      const fromQuery = url.searchParams.get("claim") || "";
-      claimToken = fromHash || fromQuery;
-      if (!claimToken) claimToken = sessionStorage.getItem(CLAIM_STASH) || "";
+      const fromUrl = claimTokenFromUrl(url.search, url.hash) || "";
+      claimToken = fromUrl || sessionStorage.getItem(CLAIM_STASH) || "";
       sessionStorage.removeItem(CLAIM_STASH);
-      if (fromHash || fromQuery) {
+      if (fromUrl) {
         const next = landingPageWithoutClaim(url.pathname + url.search + url.hash) || url.pathname;
         window.history.replaceState(window.history.state, "", next);
-        const page = url.origin + next;
-        const gtag = (window as { gtag?: (command: string, fields: { page_location: string }) => void }).gtag;
-        if (typeof gtag === "function") gtag("set", { page_location: page });
       }
     } catch {
       claimToken = "";

@@ -35,6 +35,31 @@ export function applySearchKeys(_enabled: boolean): readonly string[] {
   return APPLY_SEARCH_KEYS;
 }
 
+const CLAIM_QUERY = /(?:^|[?&])claim=([^&#]*)/;
+const CLAIM_HASH = /(?:^|[#&])claim=([^&#]*)/;
+
+/** A claim value from the query or fragment. `reclaim=` is a different key. */
+export function claimTokenFromUrl(search: string, hash: string): string | null {
+  const query = CLAIM_QUERY.exec(search);
+  const frag = CLAIM_HASH.exec(hash);
+  const raw = frag?.[1] || query?.[1] || "";
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function hashWithoutClaim(hash: string): string {
+  if (!hash || hash === "#") return "";
+  const kept = hash
+    .slice(1)
+    .split("&")
+    .filter((part) => part !== "claim" && !part.startsWith("claim="));
+  return kept.length ? `#${kept.join("&")}` : "";
+}
+
 /** Drop a claim token from a path or absolute URL. Other params and a non-claim hash stay. */
 export function landingPageWithoutClaim(value: string | null | undefined): string | null {
   if (value == null) return null;
@@ -43,7 +68,7 @@ export function landingPageWithoutClaim(value: string | null | undefined): strin
     const absolute = /^https?:\/\//i.test(value);
     const url = new URL(value, "https://drivereal.invalid");
     url.searchParams.delete("claim");
-    if (url.hash === "#claim" || url.hash.startsWith("#claim=")) url.hash = "";
+    url.hash = hashWithoutClaim(url.hash);
     if (!absolute) return `${url.pathname}${url.search}${url.hash}`;
     return url.toString();
   } catch {
@@ -51,7 +76,8 @@ export function landingPageWithoutClaim(value: string | null | undefined): strin
       .replace(/([?&])claim=[^&#]*/g, (_, sep: string) => (sep === "?" ? "?" : ""))
       .replace(/\?&/g, "?")
       .replace(/[?&]$/g, "")
-      .replace(/#claim(=[^#]*)?$/g, "");
+      .replace(/(^|[#&])claim=[^&#]*/g, "$1")
+      .replace(/[#&]$/g, "");
   }
 }
 
