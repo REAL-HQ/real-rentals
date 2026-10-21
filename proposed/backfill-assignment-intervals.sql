@@ -22,8 +22,8 @@
 --      rental start.
 --   4. Do not update rentals.vehicle_id, vehicles.status, payments,
 --      deposits, agreements, or Stripe.
---   5. Do not run this until proposed/vehicle-swap-v1.sql is installed,
---      which is the step after M2's agreement contract.
+--   5. Wait for proposed/m2-packet/20.sql (HOSTED-INSTALL step 26).
+--      Do not run this until that file is installed.
 --
 -- Owner worksheet, comments only. Leave unread until the live rows are read.
 -- rental id: unread

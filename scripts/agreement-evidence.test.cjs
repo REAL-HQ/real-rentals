@@ -9,7 +9,7 @@ const { createRequire } = require("module");
 const { pgProgram, makeDataDir } = require("./pg-local.cjs");
 
 const root = path.resolve(__dirname, "..");
-const PACKET = "08e3da485482e090017026bfeee375a6df3329d5";
+const PACKET = "526b91aeb3b4d6247f6759c868db5857a57084df";
 const deps = createRequire(path.resolve(root, "package.json"));
 const ts = deps("typescript");
 const z = deps("zod");
@@ -100,7 +100,8 @@ test("backfill proposes no rows and refuses until live records are read", () => 
   assert.match(backfill, /NOT EXECUTED/);
   assert.match(backfill, /OWNER APPROVAL/);
   assert.match(backfill, /backfill_refused_live_records_unread/);
-  assert.match(backfill, /step after M2/);
+  assert.match(backfill, /Wait for proposed\/m2-packet\/20\.sql \(HOSTED-INSTALL step 26\)/);
+  assert.doesNotMatch(backfill, /vehicle-swap-v1\.sql/);
   assert.doesNotMatch(backfill, /INSERT\s+INTO/i);
   assert.doesNotMatch(backfill, /UPDATE\s+public\./i);
 });
@@ -364,8 +365,9 @@ async function checkedEvidenceDatabase() {
       CREATE ROLE service_role NOLOGIN;
       CREATE FUNCTION private.record_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$
       BEGIN RAISE EXCEPTION 'record_history_immutable' USING ERRCODE='42501'; END $$;
-      CREATE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql AS $$ SELECT '${ACTOR}'::uuid $$;
-      CREATE FUNCTION private.approval_lock() RETURNS void LANGUAGE plpgsql AS $$ BEGIN PERFORM 1; END $$;
+      CREATE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql SECURITY DEFINER AS $$ SELECT '${ACTOR}'::uuid $$;
+      CREATE FUNCTION private.approval_lock() RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN PERFORM 1; END $$;
+      REVOKE ALL ON FUNCTION private.approval_actor(),private.approval_lock() FROM PUBLIC,anon,authenticated,service_role;
       CREATE TABLE public.applications (id uuid PRIMARY KEY, user_id uuid, deleted_at timestamptz);
       CREATE TABLE public.vehicles (id uuid PRIMARY KEY);
       CREATE TABLE public.rentals (
@@ -422,14 +424,14 @@ async function checkedEvidenceDatabase() {
       `BEGIN; SET LOCAL ROLE authenticated; SELECT public.link_replacement_agreement_v1('${RENTAL}', '${AGREEMENT}'); COMMIT;`,
       /permission denied/i,
     );
-    evidencePsql(dir, port, `CREATE OR REPLACE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql AS $$ SELECT '${COORD}'::uuid $$;`);
+    evidencePsql(dir, port, `CREATE OR REPLACE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql SECURITY DEFINER AS $$ SELECT '${COORD}'::uuid $$;`);
     expectSqlError(
       dir,
       port,
       `BEGIN; SET LOCAL ROLE authenticated; SELECT public.link_replacement_agreement_checked('${RENTAL}', '${AGREEMENT}'); COMMIT;`,
       /manager_required/,
     );
-    evidencePsql(dir, port, `CREATE OR REPLACE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql AS $$ SELECT '${ACTOR}'::uuid $$;`);
+    evidencePsql(dir, port, `CREATE OR REPLACE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql SECURITY DEFINER AS $$ SELECT '${ACTOR}'::uuid $$;`);
     const linked = JSON.parse(evidencePsql(dir, port, `
       BEGIN;
       SET LOCAL ROLE authenticated;

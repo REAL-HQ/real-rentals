@@ -20,7 +20,7 @@ function test(name, fn) {
   console.log("PASS", name);
 }
 
-const PACKET = "08e3da485482e090017026bfeee375a6df3329d5";
+const PACKET = "526b91aeb3b4d6247f6759c868db5857a57084df";
 
 function packetSql(name) {
   try {
@@ -141,9 +141,13 @@ test("the local swap file is a pointer and the packet grants stay on 20.sql", ()
   assert.doesNotMatch(pointer, /CREATE\s+(OR REPLACE\s+)?FUNCTION/i);
   assert.doesNotMatch(pointer, /CREATE\s+TABLE/i);
   assert.match(pointer, /pointer, not a source/);
-  assert.match(pointer, /step after M2/);
-  assert.match(pointer, /m2-packet\/20\.sql/);
-  assert.match(pointer, /after M2 steps 19b and 19c/);
+  assert.match(pointer, /after the agreement contract/);
+  assert.match(pointer, /proposed\/m2-packet\/20\.sql/);
+  assert.match(pointer, /proposed\/m2-with-approval-boundary\/19c-agreement-contract\.sql/);
+  assert.match(pointer, /HOSTED-INSTALL step 26/);
+  assert.match(pointer, /526b91aeb3b4d6247f6759c868db5857a57084df/);
+  assert.doesNotMatch(pointer, /step 25[^\n]*20\.sql/);
+  assert.doesNotMatch(pointer, /20\.sql[^\n]*step 25/);
   assert.match(pointer, /guard_rental_lifecycle/);
   assert.match(
     sql,
@@ -291,8 +295,9 @@ $$;
 
 CREATE FUNCTION private.record_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$
 BEGIN RAISE EXCEPTION 'record_history_immutable' USING ERRCODE='42501'; END $$;
-CREATE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql AS $$ SELECT '${ACTOR}'::uuid $$;
-CREATE FUNCTION private.approval_lock() RETURNS void LANGUAGE plpgsql AS $$ BEGIN PERFORM 1; END $$;
+CREATE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql SECURITY DEFINER AS $$ SELECT '${ACTOR}'::uuid $$;
+CREATE FUNCTION private.approval_lock() RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN PERFORM 1; END $$;
+REVOKE ALL ON FUNCTION private.approval_actor(),private.approval_lock() FROM PUBLIC,anon,authenticated,service_role;
 CREATE FUNCTION public.vehicle_rental_ready_missing(uuid) RETURNS text[] LANGUAGE sql AS $$ SELECT '{}'::text[] $$;
 
 CREATE TABLE public.applications (id uuid PRIMARY KEY, user_id uuid, status text);

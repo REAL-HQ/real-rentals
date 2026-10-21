@@ -4,7 +4,11 @@ import { z } from "zod";
 import { SWAP_ENABLED } from "@/lib/record-numbers";
 
 // Replacement evidence is proposed/m2-packet/19b.sql on PR #190
-// (08e3da485482e090017026bfeee375a6df3329d5). The manager path is
+// (526b91aeb3b4d6247f6759c868db5857a57084df, HOSTED-INSTALL step 24).
+// The agreement contract is
+// proposed/m2-with-approval-boundary/19c-agreement-contract.sql
+// (HOSTED-INSTALL step 25). The swap SQL is proposed/m2-packet/20.sql
+// (HOSTED-INSTALL step 26), after the agreement contract. The manager path is
 // link_replacement_agreement_checked(uuid, uuid): authenticated only, no
 // _actor argument. The actor is private.approval_actor() on the caller JWT.
 // This server calls that function with the manager's JWT client.

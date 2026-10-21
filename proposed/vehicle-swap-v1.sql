@@ -3,18 +3,23 @@
 --
 -- This file is a pointer, not a source. The swap SQL lives only in
 -- proposed/m2-packet/20.sql on PR #190
--- (08e3da485482e090017026bfeee375a6df3329d5).
+-- (526b91aeb3b4d6247f6759c868db5857a57084df).
 -- Do not copy that file here. A second copy would be refused by
 -- guard_rental_lifecycle, because a stale body changes an active rental's
 -- vehicle_id without turning app.rental_tx on. Installing both would also
 -- create the swap objects twice.
 --
--- This is the step after M2's agreement contract. Order in
--- proposed/HOSTED-INSTALL.md, which this file does not change:
---   19b agreement evidence, 19c agreement contract, then
---   proposed/m2-packet/20.sql, then extend and return.
--- It is the same step as proposed/m2-packet/20.sql.
--- Install it once, after M2 steps 19b and 19c.
--- Do not install it before M2, and do not install this pointer.
--- The evidence table is proposed/m2-packet/19b.sql on PR #190.
+-- Install proposed/m2-packet/20.sql after the agreement contract.
+-- Order in proposed/HOSTED-INSTALL.md, which this file does not change:
+--   24 proposed/m2-packet/19b.sql
+--   25 proposed/m2-with-approval-boundary/19c-agreement-contract.sql
+--   26 proposed/m2-packet/20.sql
+--   27 extend
+--   28 return
+-- This pointer names the same install as proposed/m2-packet/20.sql
+-- (HOSTED-INSTALL step 26). Install that file once, after the agreement
+-- contract. Do not install it before step 24 and step 25, and do not
+-- install this pointer.
+-- The evidence table is proposed/m2-packet/19b.sql on PR #190
+-- (HOSTED-INSTALL step 24).
 -- The manager link is public.link_replacement_agreement_checked(uuid, uuid).
