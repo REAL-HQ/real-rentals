@@ -9,6 +9,7 @@ import {
 
 /**
  * The only Stripe client the readers use. list and retrieve only.
+ * A top-level method such as rawRequest is refused before it runs.
  * A reader opts into the 60 second query cache. Stripe Collections does not:
  * paid and unpaid status must not stay stale after a payment.
  * HTTP 429 and timeouts become "Stripe temporarily unavailable".
@@ -33,7 +34,8 @@ export function createReadOnlyStripe(env: StripeEnv, options?: ReadOnlyStripeOpt
       if (prop === "then") return undefined;
       if (typeof prop !== "string") return Reflect.get(target, prop, receiver);
       const resource = Reflect.get(target, prop, receiver);
-      if (!resource || (typeof resource !== "object" && typeof resource !== "function")) return resource;
+      if (typeof resource === "function") throw new Error(`Stripe reader refuses ${prop}`);
+      if (!resource || typeof resource !== "object") return resource;
       return new Proxy(resource as object, {
         get(raw, method, methodReceiver) {
           if (typeof method !== "string") return Reflect.get(raw, method, methodReceiver);

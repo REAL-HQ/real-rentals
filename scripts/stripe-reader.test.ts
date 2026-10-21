@@ -8,11 +8,15 @@ const stripeMock = vi.hoisted(() => {
   const list = vi.fn();
   const create = vi.fn();
   const refundCreate = vi.fn();
+  const rawRequest = vi.fn(async () => ({ id: "should-not-run" }));
+  const request = vi.fn(async () => ({ id: "should-not-run" }));
   const createStripeClient = vi.fn((_env: string, _options?: { timeout?: number }) => ({
     charges: { list, create },
     refunds: { create: refundCreate },
+    rawRequest,
+    request,
   }));
-  return { list, create, refundCreate, createStripeClient };
+  return { list, create, refundCreate, rawRequest, request, createStripeClient };
 });
 vi.mock("../src/lib/stripe.server", () => ({ createStripeClient: stripeMock.createStripeClient }));
 import { clearStripeReaderCache, createReadOnlyStripe } from "../src/lib/stripe-reader.server";
@@ -169,8 +173,12 @@ describe("shared Stripe reader", () => {
     const stripe = createReadOnlyStripe("live", { cache: true });
     expect(() => (stripe.charges as unknown as { create: (body: unknown) => void }).create({ amount: 1 })).toThrow("Stripe reader refuses charges.create");
     expect(() => (stripe.refunds as unknown as { create: (body: unknown) => void }).create({})).toThrow("Stripe reader refuses refunds.create");
+    expect(() => (stripe as unknown as { rawRequest: (method: string, path: string) => Promise<unknown> }).rawRequest("POST", "/v1/refunds")).toThrow("Stripe reader refuses rawRequest");
+    expect(() => (stripe as unknown as { request: (spec: unknown) => Promise<unknown> }).request({ method: "POST", path: "/v1/charges" })).toThrow("Stripe reader refuses request");
     expect(stripeMock.create).not.toHaveBeenCalled();
     expect(stripeMock.refundCreate).not.toHaveBeenCalled();
+    expect(stripeMock.rawRequest).not.toHaveBeenCalled();
+    expect(stripeMock.request).not.toHaveBeenCalled();
   });
 
   it("sends every named reader through the read-only client", () => {
