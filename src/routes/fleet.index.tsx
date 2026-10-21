@@ -5,6 +5,9 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { InventoryVehicleCard, VehicleCard } from "@/components/site/VehicleCard";
+import { PublicAvailabilityBadge, ShowAvailableOnly } from "@/components/site/PublicAvailability";
+import { inventoryCardModel } from "@/lib/public-vehicle-card";
+import { PUBLIC_AVAILABILITY_ENABLED, isAvailableNow, publicAvailability } from "@/lib/public-availability";
 import { FadeUp } from "@/components/site/FadeUp";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -38,6 +41,17 @@ export const Route = createFileRoute("/fleet/")({
   component: FleetPage,
 });
 
+function FleetAvailabilityCar({ vehicle }: { vehicle: Tables<"vehicles_public"> }) {
+  const model = inventoryCardModel(vehicle);
+  if (!model) return null;
+  return (
+    <div className="space-y-3">
+      <PublicAvailabilityBadge availability={publicAvailability(vehicle)} />
+      <VehicleCard model={{ ...model, availabilityNote: null }} />
+    </div>
+  );
+}
+
 function FleetPage() {
   const { type } = Route.useSearch();
   const [vehicles, setVehicles] = useState<Tables<"vehicles_public">[]>([]);
@@ -46,6 +60,7 @@ function FleetPage() {
     Object.fromEntries(MARKETING_CATEGORIES.map((c) => [c, type ? c === type : true])),
   );
   const [onlyAvail, setOnlyAvail] = useState(true);
+  const [availableOnly, setAvailableOnly] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -103,7 +118,8 @@ function FleetPage() {
     return (
       (make === "all" || v.make === make) &&
       categories[cat] &&
-      (!onlyAvail || v.status === "available")
+      (!onlyAvail || v.status === "available") &&
+      !(PUBLIC_AVAILABILITY_ENABLED && availableOnly && !isAvailableNow(v))
     );
   });
 
@@ -193,6 +209,9 @@ function FleetPage() {
                 Filters cars on the lot. Vehicle types below always show.
               </span>
             </label>
+            {PUBLIC_AVAILABILITY_ENABLED ? (
+              <ShowAvailableOnly pressed={availableOnly} onPressed={setAvailableOnly} />
+            ) : null}
           </div>
         </FadeUp>
       </section>
@@ -211,7 +230,7 @@ function FleetPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-7">
           {filtered.map((v, i) => (
             <FadeUp key={v.id} delay={i * 40}>
-              <InventoryVehicleCard vehicle={v} />
+              {PUBLIC_AVAILABILITY_ENABLED ? <FleetAvailabilityCar vehicle={v} /> : <InventoryVehicleCard vehicle={v} />}
             </FadeUp>
           ))}
         </div>
