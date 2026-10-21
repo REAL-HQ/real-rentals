@@ -2,6 +2,12 @@
 -- Generated from the local catalog difference. Run as the local superuser,
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.
+--
+-- DATA LOSS. Committing this file drops private.approval_operations (every
+-- approval operation row) and drops public.application_identity_reviews.approval_evidence
+-- and public.applications.approval_evidence_version. Identity-review rows
+-- remain, without the evidence payload. Run proposed/rollback/00-approval-data-export.sql
+-- first when those values should be kept. That export only reads.
 BEGIN;
 -- policies added by this step
 DROP POLICY IF EXISTS "approval_operations_executor_v1" ON "private"."approval_operations";
@@ -57,6 +63,8 @@ DROP TABLE IF EXISTS "private"."approval_operations" CASCADE;
 -- row level security flags
 -- owners
 -- privileges captured on the pre-step catalog
+-- Step 0 grants schema use. The table grant disappears with the table.
+REVOKE USAGE ON SCHEMA private FROM rr_approval_executor;
 -- comments
 -- role memberships added by this step
 -- roles added by this step

@@ -79,7 +79,8 @@ REVOKE ALL ON ALL TABLES IN SCHEMA "vault" FROM "rr_record_executor";
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA "vault" FROM "rr_record_executor";
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA "vault" FROM "rr_record_executor";
 -- privileges captured on the pre-step catalog
-UPDATE pg_catalog.pg_namespace SET nspacl = $acl${postgres=UC/postgres,service_role=U/postgres}$acl$::aclitem[] WHERE nspname = 'private';
+-- Step 0 grants USAGE to rr_approval_executor before step 3. Keep that grant.
+UPDATE pg_catalog.pg_namespace SET nspacl = $acl${postgres=UC/postgres,service_role=U/postgres,rr_approval_executor=U/postgres}$acl$::aclitem[] WHERE nspname = 'private';
 UPDATE pg_catalog.pg_namespace SET nspacl = $acl${pg_database_owner=UC/pg_database_owner,=U/pg_database_owner}$acl$::aclitem[] WHERE nspname = 'public';
 -- comments
 -- role memberships added by this step

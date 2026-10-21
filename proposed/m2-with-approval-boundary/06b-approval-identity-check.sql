@@ -6,6 +6,8 @@
 -- one shape beside the positive-license shape. Other kinds stay on step 6's
 -- resolution list, and neither shape may carry the other's evidence column.
 -- Packet SQL is not edited.
+-- This file is one transaction. Run it with ON_ERROR_STOP. Do not also pass psql -1.
+BEGIN;
 --
 -- integrity_serialize_v1 is an invoker trigger. It calls private.approval_lock,
 -- and step 1 revokes that function from authenticated and service_role. A normal
@@ -49,3 +51,4 @@ ALTER TABLE public.application_identity_reviews ADD CONSTRAINT application_ident
   AND approval_evidence->'back'->'object_version'->>'sha256'=approval_evidence->'back'->>'sha256'
   AND nullif(approval_evidence->'back'->'object_version'->>'version','') IS NOT NULL)
  OR (kind NOT IN ('positive_license_v1','approval_identity') AND positive_evidence_v1 IS NULL AND approval_evidence IS NULL AND (resolution IS NULL OR resolution IN ('same_person','different_person','dismissed')))));
+COMMIT;

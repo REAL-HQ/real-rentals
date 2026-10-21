@@ -1,4 +1,6 @@
 -- LOCAL REHEARSAL ONLY. Apply after packet step 19b and before step 20.
+-- This file is one transaction. Run it with ON_ERROR_STOP. Do not also pass psql -1.
+BEGIN;
 -- Step 3 and step 19b leave private.record_agreement_evidence(uuid, uuid,
 -- timestamptz, numeric) as a deny-all. record_existing_rental_tx calls that
 -- signature before it activates the rental and stores the returned uuid as the
@@ -35,13 +37,20 @@ BEGIN
  THEN RAISE EXCEPTION 'agreement_contract_unverified' USING ERRCODE='42501'; END IF;
  SELECT * INTO doc FROM public.documents WHERE id=ag.document_id FOR SHARE NOWAIT;
  IF NOT FOUND OR doc.driver_id IS DISTINCT FROM app_id OR doc.content_sha256 IS DISTINCT FROM ag.sha256
-  OR doc.storage_bucket IS NULL OR doc.storage_path IS DISTINCT FROM ('immutable-v1/'||doc.id::text||'/'||ag.sha256||'.pdf')
+  OR doc.storage_bucket IS DISTINCT FROM 'rental-agreements'
+  OR doc.storage_path IS DISTINCT FROM ('immutable-v1/'||doc.id::text||'/'||ag.sha256||'.pdf')
  THEN RAISE EXCEPTION 'agreement_contract_unverified' USING ERRCODE='42501'; END IF;
- PERFORM 1 FROM storage.objects WHERE bucket_id=doc.storage_bucket AND name=doc.storage_path;
- IF NOT FOUND THEN RAISE EXCEPTION 'agreement_contract_unverified' USING ERRCODE='42501'; END IF;
+ -- The object must be in the rental-agreements bucket, at that path, and its
+ -- metadata sha must be the agreement sha. A path with no hash, or a hash in
+ -- another bucket, is not the archived file.
+ IF (SELECT count(*) FROM storage.objects o
+     WHERE o.bucket_id='rental-agreements' AND o.name=doc.storage_path
+       AND lower(btrim(coalesce(o.metadata->>'sha256', o.metadata->>'content_sha256')))=ag.sha256)<>1
+ THEN RAISE EXCEPTION 'agreement_contract_unverified' USING ERRCODE='42501'; END IF;
  RETURN ag.id;
 EXCEPTION WHEN lock_not_available THEN
  RAISE EXCEPTION 'agreement_contract_unverified' USING ERRCODE='42501';
 END $$;
 REVOKE ALL ON FUNCTION private.record_agreement_evidence(uuid,uuid,timestamptz,numeric) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION private.record_agreement_evidence(uuid,uuid,timestamptz,numeric) TO rr_record_executor;
+COMMIT;

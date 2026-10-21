@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { recordUploadedContentSha } from "@/lib/document-content-sha";
 
 export const DOC_BUCKET = "driver-docs";
 
@@ -223,6 +224,7 @@ export async function registerDocument(
     return { id: seen.id as string };
   }
 
+  const contentSha = await recordUploadedContentSha(admin, args.bucket, args.path, args.mimeType);
   const { data: row, error } = await admin
     .from("documents")
     .insert({
@@ -240,6 +242,7 @@ export async function registerDocument(
       is_current: true,
       uploaded_by: args.uploadedBy ?? null,
       uploaded_by_role: args.uploadedByRole ?? "driver",
+      ...(contentSha ? { content_sha256: contentSha } : {}),
     })
     .select("id")
     .single();
@@ -606,6 +609,7 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
     // A recording is never shared with the applicant, whatever the caller
     // asked for.
     const visibility = restricted || (staff && data.internal) ? ["admin"] : ["driver", "admin"];
+    const contentSha = await recordUploadedContentSha(supabaseAdmin, DOC_BUCKET, data.path, data.mimeType);
 
     const { data: row, error } = await supabaseAdmin
       .from("documents")
@@ -624,6 +628,7 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
         is_current: true,
         uploaded_by: context.userId,
         uploaded_by_role: admin ? "team" : "driver",
+        ...(contentSha ? { content_sha256: contentSha } : {}),
       })
       .select("id")
       .single();

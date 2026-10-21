@@ -60,7 +60,8 @@ REVOKE ALL ON ALL FUNCTIONS IN SCHEMA "vault" FROM "rr_approval_executor";
 -- comments
 -- role memberships added by this step
 -- roles added by this step
-DELETE FROM pg_catalog.pg_shdepend WHERE refclassid = 'pg_authid'::regclass AND refobjid = (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = 'rr_approval_executor') AND deptype = 'a';
+-- DROP OWNED BY removes the remaining grants. DROP ROLE then succeeds
+-- without writing pg_shdepend.
 DROP OWNED BY "rr_approval_executor";
 DROP ROLE IF EXISTS "rr_approval_executor";
 COMMIT;

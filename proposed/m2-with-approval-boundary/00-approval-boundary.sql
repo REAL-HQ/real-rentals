@@ -13,6 +13,8 @@
 -- step 1: CREATE FUNCTION private.approval_provider_actor already exists.
 -- Apply packet step 1, then this file, then packet steps 2 through the
 -- return checklist.
+-- This file is one transaction. Run it with ON_ERROR_STOP. Do not also pass psql -1.
+BEGIN;
 
 -- LOCAL REVIEW PROPOSAL ONLY. Not a hosted installer; not in migration discovery.
 -- Preconditions supplied by the local harness: rr_approval_executor is NOLOGIN,
@@ -306,3 +308,4 @@ CREATE POLICY approval_operations_executor_v1 ON private.approval_operations
 ALTER FUNCTION public.verify_approval_identity(uuid,jsonb,text) OWNER TO rr_approval_executor;
 ALTER FUNCTION public.approve_application_checked(uuid,bigint,uuid,text) OWNER TO rr_approval_executor;
 ALTER FUNCTION private.approval_write_audit(uuid,text) OWNER TO rr_approval_executor;
+COMMIT;
