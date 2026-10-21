@@ -92,7 +92,7 @@ export async function loadAccountantSources(
     return query;
   }, signal);
   const maintenance = await readBounded(async (cursor) => {
-    let query = supabase.from("maintenance_records").select("id,vehicle_id,category,company_share,performed_on,completed_at,created_at").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
+    let query = supabase.from("maintenance_records").select("id,vehicle_id,category,company_share,total_cost,performed_on,completed_at,created_at").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
     if (cursor) query = query.gt("id", cursor);
     if (signal) query = query.abortSignal(signal);
     return query;
@@ -104,7 +104,7 @@ export async function loadAccountantSources(
     return query;
   }, signal);
   const payments = await readBounded(async (cursor) => {
-    let query = supabase.from("payments").select("id,vehicle_id,type,stripe_payment_intent_id,stripe_invoice_id,stripe_subscription_id").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
+    let query = supabase.from("payments").select("id,vehicle_id,rental_id,type,status,payment_method,amount,refunded_amount,refunded_at,paid_date,stripe_payment_intent_id,stripe_invoice_id,stripe_subscription_id").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
     if (cursor) query = query.gt("id", cursor);
     if (signal) query = query.abortSignal(signal);
     return query;
@@ -140,14 +140,19 @@ export async function loadAccountantSources(
       })),
       maintenance: maintenance.rows.map((row) => ({
         id: row.id, vehicleId: row.vehicle_id, category: row.category, companyShare: row.company_share,
-        performedOn: row.performed_on, completedAt: row.completed_at, createdAt: row.created_at,
+        totalCost: row.total_cost, performedOn: row.performed_on, completedAt: row.completed_at, createdAt: row.created_at,
       })),
       rentals: rentals.rows.map((row) => ({
         id: row.id, vehicleId: row.vehicle_id, customerId: row.stripe_customer_id, subscriptionId: row.stripe_subscription_id,
       })),
       payments: payments.rows.map((row) => ({
-        id: row.id, vehicleId: row.vehicle_id, type: row.type, paymentIntentId: row.stripe_payment_intent_id,
+        id: row.id, vehicleId: row.vehicle_id, rentalId: row.rental_id, type: row.type, status: row.status,
+        paymentMethod: row.payment_method, amount: row.amount, refundedAmount: row.refunded_amount,
+        refundedAt: row.refunded_at, paidDate: row.paid_date, paymentIntentId: row.stripe_payment_intent_id,
         invoiceId: row.stripe_invoice_id, subscriptionId: row.stripe_subscription_id,
+      })),
+      vehicles: vehicles.rows.map((row) => ({
+        id: row.id, year: row.year, make: row.make, model: row.model, licensePlate: row.license_plate,
       })),
       refunds: refunds.rows.map((row) => ({
         id: row.id, amount: row.amount, status: row.status, createdAt: row.created_at, paymentIds: row.payment_ids ?? [],
