@@ -4,6 +4,7 @@ import { StripeCollections } from "./StripeCollections";
 import { OVERVIEW_TODAY_ENABLED } from "@/lib/overview-today-flag";
 import LeadPriorities from "./LeadPriorities";
 import OverviewToday from "./OverviewToday";
+import { BookingFollowupSlot } from "./BookingFollowupSlot";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
@@ -444,6 +445,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       {OVERVIEW_TODAY_ENABLED && canSeeCollections && <OverviewToday />}
 
       <LeadPriorities isManager={canSeeCollections} />
+      <BookingFollowupSlot />
 
       {/* Priority strip — who is worth calling first, above everything else.
           Absent entirely when there is nobody, rather than an empty module.
