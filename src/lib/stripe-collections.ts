@@ -37,6 +37,29 @@ export type CollectionRefund = {
   id: string; chargeId: string; created: number; currency: string;
   amount: number; status: string | null; fee: number | null;
 };
+/** One invoice payment after its invoice and subscription customers are read. A null customer means the link did not match. */
+export type CollectionInvoicePayment = {
+  id: string;
+  invoiceId: string | null;
+  intentId: string | null;
+  chargeId: string | null;
+  externalRecord: boolean;
+};
+export type CollectionInvoiceRef = { id: string; customerId: string | null; subscriptionId: string | null };
+export type CollectionSubscriptionRef = { id: string; customerId: string | null };
+export type CollectionBalanceEvidence = { created: unknown; currency: unknown; amount: unknown; fee: unknown };
+export type UnverifiedCollectionCharge = {
+  id: string;
+  customerId: string | null;
+  paymentIntentId: string | null;
+  currency: string;
+  amountCaptured: number;
+  paid: boolean;
+  captured: boolean;
+  status: string;
+  created: number;
+  balance: CollectionBalanceEvidence | null;
+};
 export type CollectionSubscription = {
   id: string; customerId: string; name: string; status: string;
   cancelAtPeriodEnd: boolean; nextAt: number | null;
@@ -146,6 +169,109 @@ export function stripeCollectedLabel(report: CollectionsReport | null | undefine
  * Returns null whenever Stripe cannot be established (never zero). Coverage
  * is never "Complete": Zelle/Cash App/Venmo/cash/ACH are not verified yet.
  */
+/**
+ * The same charge and refund verification Overview uses before aggregateCollections.
+ * Cash is dated by balance_transaction.created. A charge counts only when one
+ * invoice customer owns it and that customer is the charge customer. A collected
+ * charge whose balance is missing, undated, or whose balance.amount differs from
+ * amount_captured is incomplete. A succeeded refund that is not tied to a verified
+ * charge of the same currency makes the whole result incomplete.
+ */
+export function verifyCollectedCharges(input: {
+  charges: UnverifiedCollectionCharge[];
+  refunds: CollectionRefund[];
+  invoicePayments: CollectionInvoicePayment[];
+  invoices: CollectionInvoiceRef[];
+  subscriptions: CollectionSubscriptionRef[];
+  window: { gte: number; lt: number };
+}): {
+  charges: CollectionCharge[];
+  refunds: CollectionRefund[];
+  collectionsComplete: boolean;
+  incompletePortions: CollectionsReport["incompletePortions"];
+  externalRecords: boolean;
+} {
+  const invoiceIndex = new Map(input.invoices.map((invoice) => [invoice.id, invoice]));
+  const subscriptionIndex = new Map(input.subscriptions.map((subscription) => [subscription.id, subscription]));
+  const linkedIntents = new Map<string, Set<string>>();
+  const linkedCharges = new Map<string, Set<string>>();
+  let externalRecords = false;
+  let collectionsComplete = true;
+  const incompletePortions: CollectionsReport["incompletePortions"] = [];
+  const incomplete = (source: "InvoicePayment" | "Charge" | "Refund", id: string, reason: string) => {
+    collectionsComplete = false;
+    incompletePortions.push({ source, id, reason });
+  };
+  const unresolvedIntents = new Set<string>();
+  const unresolvedCharges = new Set<string>();
+  const addOwner = (map: Map<string, Set<string>>, id: string | null, customer: string) => {
+    if (!id) return;
+    const owners = map.get(id) || new Set<string>();
+    owners.add(customer);
+    map.set(id, owners);
+  };
+  for (const payment of input.invoicePayments) {
+    const invoice = payment.invoiceId ? invoiceIndex.get(payment.invoiceId) : undefined;
+    const subscription = invoice?.subscriptionId ? subscriptionIndex.get(invoice.subscriptionId) : undefined;
+    const customer = subscription?.customerId || null;
+    if (!invoice || !subscription || !customer || invoice.customerId !== customer) {
+      incomplete("InvoicePayment", payment.id, "Invoice, subscription or matching customer unavailable");
+      if (payment.intentId) unresolvedIntents.add(payment.intentId);
+      if (payment.chargeId) unresolvedCharges.add(payment.chargeId);
+      continue;
+    }
+    if (payment.externalRecord) externalRecords = true;
+    addOwner(linkedIntents, payment.intentId, customer);
+    addOwner(linkedCharges, payment.chargeId, customer);
+  }
+  const verifiedCharges: CollectionCharge[] = [];
+  for (const charge of input.charges) {
+    const customerId = charge.customerId;
+    const balance = charge.balance;
+    const collected = charge.paid && charge.captured && charge.status === "succeeded" && charge.amountCaptured > 0;
+    const capturedAt = balance && typeof balance.created === "number" && Number.isFinite(balance.created) ? balance.created : null;
+    const dated = capturedAt !== null;
+    const refundInRange = input.refunds.some((refund) => refund.chargeId === charge.id && refund.status === "succeeded");
+    const inWindow = dated && capturedAt >= input.window.gte && capturedAt < input.window.lt;
+    const relevant = refundInRange
+      || (collected && (!dated || inWindow))
+      || (charge.status === "failed" && charge.created >= input.window.gte);
+    const owners = new Set<string>([
+      ...(linkedCharges.get(charge.id) || []),
+      ...(linkedIntents.get(charge.paymentIntentId || "") || []),
+    ]);
+    if (!customerId || owners.size !== 1 || !owners.has(customerId) || unresolvedCharges.has(charge.id) || unresolvedIntents.has(charge.paymentIntentId || "")) {
+      if (relevant) incomplete("Charge", charge.id, "Payment ownership or invoice relationship unverified");
+      continue;
+    }
+    if (collected && (!dated || (balance !== null && balance.currency === charge.currency && balance.amount !== charge.amountCaptured))) {
+      if (relevant) incomplete("Charge", charge.id, "Capture date or settlement amount unverified");
+      continue;
+    }
+    const fee = balance !== null && balance.currency === charge.currency && typeof balance.fee === "number" ? balance.fee : null;
+    verifiedCharges.push({
+      id: charge.id,
+      customerId,
+      created: collected && capturedAt !== null ? capturedAt : charge.created,
+      currency: charge.currency,
+      amount: charge.amountCaptured,
+      paid: charge.paid,
+      captured: charge.captured,
+      status: charge.status,
+      fee,
+    });
+  }
+  const verifiedRefunds = input.refunds.filter((refund) =>
+    verifiedCharges.some((charge) => charge.id === refund.chargeId && charge.captured && charge.paid && charge.amount > 0 && charge.status === "succeeded" && charge.currency === refund.currency)
+    && refund.status === "succeeded");
+  for (const refund of input.refunds) {
+    if (refund.status === "succeeded" && !verifiedRefunds.some((verified) => verified.id === refund.id)) {
+      incomplete("Refund", refund.id, "Captured charge relationship or currency unverified");
+    }
+  }
+  return { charges: verifiedCharges, refunds: verifiedRefunds, collectionsComplete, incompletePortions, externalRecords };
+}
+
 export function consolidatedRevenue(input: { internalNonStripe: number | null; report: CollectionsReport | null | undefined }):
   { amount: number | null; coverage: "Partial" | "Unavailable" } {
   if(input.internalNonStripe === null || !Number.isFinite(input.internalNonStripe)) return { amount: null, coverage: "Unavailable" };

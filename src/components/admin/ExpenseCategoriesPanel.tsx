@@ -8,10 +8,13 @@ import {
   type ExpenseCategorySummary,
   type ExpensePeriod,
 } from "@/lib/expense-categories";
+import { VEHICLE_PNL_ENABLED } from "@/lib/vehicle-pnl-flag";
+import { VehiclePnlSection } from "./VehiclePnlSection";
 
 /**
  * Mounted only while FINANCE_EXPENSE_CATEGORIES_ENABLED is true.
  * Download CSV is built in the browser from the rows on screen.
+ * Vehicle Profit is a section of this screen while VEHICLE_PNL_ENABLED is true.
  */
 
 type Load =
@@ -148,6 +151,7 @@ export function ExpenseCategoriesPanel() {
           </ul>
         </div>
       )}
+      {VEHICLE_PNL_ENABLED && <VehiclePnlSection />}
     </div>
   );
 }
