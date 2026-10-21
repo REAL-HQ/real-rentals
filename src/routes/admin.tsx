@@ -61,6 +61,8 @@ import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel"
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
+import { BillingHealthPanel } from "@/components/admin/BillingHealthPanel";
+import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
@@ -308,6 +310,10 @@ function Admin() {
     if (urlTab === "vehicle_profit") {
       if (!VEHICLE_PROFITABILITY_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "vehicle_profit";
+    }
+    if (urlTab === "billing_health") {
+      if (!BILLING_HEALTH_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "billing_health";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -822,6 +828,7 @@ function Admin() {
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
             {VEHICLE_PROFITABILITY_ENABLED && tab === "vehicle_profit" && <VehicleProfitPanel />}
+            {BILLING_HEALTH_ENABLED && tab === "billing_health" && <BillingHealthPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>

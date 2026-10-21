@@ -25,11 +25,13 @@ import {
   Upload,
   Landmark,
   PieChart,
+  HeartPulse,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
 import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
+import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 
 export type TabDef = {
   id: string;
@@ -141,12 +143,23 @@ const VEHICLE_PROFIT_TAB: TabDef = {
   description: "Revenue, Expenses, Utilization And Partner Share By Vehicle",
 };
 
+/** Shown only while Billing Health is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
+const BILLING_HEALTH_TAB: TabDef = {
+  id: "billing_health",
+  label: "Billing Health",
+  icon: HeartPulse,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Active Rentals Compared With Stripe Subscriptions",
+};
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
   const extra: TabDef[] = [];
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push(FINANCE_TAB);
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
+  if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push(BILLING_HEALTH_TAB);
   if (!extra.length) return tabs;
   const next = [...tabs];
   const at = next.findIndex((t) => t.id === "expenses");
@@ -188,6 +201,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
   if (!financeHidden) extra.push({ ...FINANCE_TAB, href: "finance" });
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
+  if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push({ ...BILLING_HEALTH_TAB, href: "billing_health" });
   if (!extra.length) return entries;
   const next = [...entries];
   const at = next.findIndex((t) => t.id === "expenses");
