@@ -76,6 +76,8 @@ import { OwnerExpenseEntryPanel } from "@/components/admin/OwnerExpenseEntryPane
 import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
 import { AccountantExportPanel } from "@/components/admin/AccountantExportPanel";
 import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
+import { DepositLedgerPanel } from "@/components/admin/DepositLedgerPanel";
+import { DEPOSIT_LEDGER_ENABLED } from "@/lib/deposit-ledger-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
@@ -362,6 +364,11 @@ function Admin() {
     if (urlTab === "funnel") {
       if (!APPLICANT_FUNNEL_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "funnel";
+    }
+    // Deposit Ledger is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "deposit_ledger") {
+      if (!DEPOSIT_LEDGER_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "deposit_ledger";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -887,6 +894,7 @@ function Admin() {
             {PAYOUT_BREAKDOWN_ENABLED && tab === "payout_breakdown" && <PayoutBreakdownPanel />}
             {BILLING_HEALTH_ENABLED && tab === "billing_health" && <BillingHealthPanel />}
             {APPLICANT_FUNNEL_ENABLED && tab === "funnel" && <ApplicantFunnelPanel />}
+            {DEPOSIT_LEDGER_ENABLED && tab === "deposit_ledger" && <DepositLedgerPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>

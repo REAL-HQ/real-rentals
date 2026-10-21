@@ -45,6 +45,7 @@ import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
+import { DEPOSIT_LEDGER_ENABLED } from "@/lib/deposit-ledger-flag";
 
 export type TabDef = {
   id: string;
@@ -161,6 +162,16 @@ const FINANCE_TAB: TabDef = {
   minTier: "manager",
   group: "BUSINESS",
   description: "Combined Finance Coverage And Per-Vehicle Profitability",
+};
+
+/** Shown only while Deposit Ledger is compiled on. Kept out of TABS so a dark build cannot list it. */
+const DEPOSIT_TAB: TabDef = {
+  id: "deposit_ledger",
+  label: "Deposit Ledger",
+  icon: Banknote,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Security Deposits Held, Due Back, Or Unknown",
 };
 
 /** Shown only while Payout Breakdown is compiled on. Kept out of TABS so a dark build cannot list it. */
@@ -319,6 +330,7 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push(PAYOUT_BREAKDOWN_TAB);
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push(BILLING_HEALTH_TAB);
+  if (DEPOSIT_LEDGER_ENABLED && tierAllows(tier, "manager")) extra.push(DEPOSIT_TAB);
   if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
@@ -373,6 +385,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
   if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
   if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push({ ...BILLING_HEALTH_TAB, href: "billing_health" });
+  if (DEPOSIT_LEDGER_ENABLED && tierAllows(tier, "manager")) extra.push({ ...DEPOSIT_TAB, href: "deposit_ledger" });
   if (!extra.length) {
     return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
   }
