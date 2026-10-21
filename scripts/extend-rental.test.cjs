@@ -1,4 +1,5 @@
 const fs = require("fs");
+const net = require("net");
 const os = require("os");
 const path = require("path");
 const vm = require("vm");
@@ -20,7 +21,9 @@ function test(name, fn) {
 const lib = fs.readFileSync(path.join(root, "src/lib/extend-rental.ts"), "utf8");
 const ui = fs.readFileSync(path.join(root, "src/components/admin/ExtendRental.tsx"), "utf8");
 const server = fs.readFileSync(path.join(root, "src/lib/extend-rental.functions.ts"), "utf8");
-const sql = fs.readFileSync(path.join(root, "proposed/extend-rental-v1.sql"), "utf8");
+const extendSqlPath = path.join(root, "proposed/m2-packet/extend.sql");
+const sql = fs.readFileSync(extendSqlPath, "utf8");
+const pointer = fs.readFileSync(path.join(root, "proposed/extend-rental-v1.sql"), "utf8");
 const booking = fs.readFileSync(path.join(root, "src/components/admin/BookingDetails.tsx"), "utf8");
 const actions = fs.readFileSync(path.join(root, "src/components/admin/BookingActions.tsx"), "utf8");
 const rentalsFn = fs.readFileSync(path.join(root, "src/lib/rentals.functions.ts"), "utf8");
@@ -115,6 +118,16 @@ test("proposed sql locks in order and does not call stripe", () => {
   assert.match(body, /'linked',r\.stripe_subscription_id IS NOT NULL/);
   assert.match(sql, /REVOKE ALL ON FUNCTION public\.extend_rental_tx\(uuid,uuid,date,date,text,uuid\) FROM PUBLIC, anon, authenticated/);
   assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.extend_rental_tx\(uuid,uuid,date,date,text,uuid\) TO service_role/);
+  assert.equal(/CREATE\s+FUNCTION/i.test(pointer), false);
+  assert.match(pointer, /proposed\/m2-packet\/extend\.sql/);
+  const fnAt = sql.indexOf("CREATE FUNCTION public.extend_rental_tx");
+  const signature = sql.slice(fnAt, sql.indexOf(")", fnAt) + 1);
+  for (const name of ["_operation_id", "_rental_id", "_expected_end", "_new_end", "_reason", "_actor_id"]) {
+    assert.ok(signature.includes(name), name);
+    assert.match(server, new RegExp(name + ":"));
+  }
+  assert.match(server, /supabaseAdmin/);
+  assert.equal(server.includes("context.supabase.rpc"), false);
   assert.equal(server.includes("subscriptionId"), false);
   assert.equal(fs.existsSync(path.join(root, "supabase/migrations/extend-rental-v1.sql")), false);
   assert.equal(sql.slice(sql.indexOf("CREATE TABLE")).includes("ALTER OWNER"), false);
@@ -285,22 +298,37 @@ function plan(overrides = {}) {
   };
 }
 
-const PORT = "55443";
+let PORT = "";
 const DB = "extendrental";
+
+function pgBindir() {
+  if (process.env.PG_BIN) return process.env.PG_BIN;
+  const bin = execFileSync("pg_config", ["--bindir"], { encoding: "utf8" }).trim();
+  if (!bin) throw new Error("pg_config --bindir was empty; set PG_BIN");
+  return bin;
+}
+
+function pgTool(name) {
+  return path.join(pgBindir(), name);
+}
 
 function psql(dir, sqlText) {
   return execFileSync(
-    "psql",
+    pgTool("psql"),
     ["-h", dir, "-p", PORT, "-d", DB, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-tA"],
     { input: sqlText, encoding: "utf8" },
   );
 }
 
-function pgTool(name) {
-  if (process.env.PG_BIN) return path.join(process.env.PG_BIN, name);
-  const initdb = execFileSync("bash", ["-lc", "command -v initdb"], { encoding: "utf8" }).trim();
-  if (!initdb) throw new Error("initdb not on PATH; set PG_BIN");
-  return path.join(path.dirname(initdb), name);
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close((err) => (err ? reject(err) : resolve(String(port))));
+    });
+  });
 }
 
 function startDatabase() {
@@ -525,7 +553,7 @@ function unchanged(dir) {
 
 function transactionTests(dir) {
   psql(dir, fixture);
-  psql(dir, fs.readFileSync(path.join(root, "proposed/extend-rental-v1.sql"), "utf8"));
+  psql(dir, fs.readFileSync(extendSqlPath, "utf8"));
   psql(dir, `
     DO $$ BEGIN
       IF round(100::numeric * 1 / 7, 2) <> 14.29 THEN RAISE EXCEPTION 'cost formula drifted'; END IF;
@@ -639,7 +667,7 @@ function transactionTests(dir) {
   });
 
   test("a held rental lock fails nowait and rolls back", () => {
-    const child = spawn("psql", ["-h", dir, "-p", PORT, "-d", DB, "-v", "ON_ERROR_STOP=1", "-X"], {
+    const child = spawn(pgTool("psql"), ["-h", dir, "-p", PORT, "-d", DB, "-v", "ON_ERROR_STOP=1", "-X"], {
       stdio: ["pipe", "ignore", "pipe"],
     });
     child.stdin.write(`BEGIN; SELECT id FROM public.rentals WHERE id='${RENTAL}' FOR UPDATE; SELECT pg_sleep(30); COMMIT;\n`);
@@ -860,6 +888,7 @@ let dataDir;
   results.push("context read is the rentals row");
   console.log("PASS context read is the rentals row");
 
+  PORT = await freePort();
   dataDir = startDatabase();
   try {
     transactionTests(dataDir);
