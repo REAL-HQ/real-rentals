@@ -39,11 +39,11 @@ export function asEasternCalendarDate(value: string | null | undefined): string 
 
 const CLOSED_CHARGE_STATUSES = ["paid", "refunded", "void", "waived"] as const;
 
-/** Sources a collected payment may name. Card covers a Stripe card or ACH charge. */
+/** Sources a collected payment may name. ACH stays its own label. */
 const VERIFIED_SOURCE_LABEL: Record<string, string> = {
   stripe: "Card",
   card: "Card",
-  ach: "Card",
+  ach: "ACH",
   cash: "Cash",
   cash_app: "Cash App",
   cashapp: "Cash App",
@@ -174,7 +174,7 @@ export function verifiedSourceLabel(method: string | null | undefined): string |
 
 /**
  * Card, Stripe, and ACH count only when the row names a Stripe payment intent
- * or invoice. Cash and the other non-card sources do not need one.
+ * or invoice. ACH is labeled ACH. Cash and the other non-card sources do not need one.
  */
 export function verifiedPaymentSource(row: Pick<HistoryRow, "payment_method" | "stripe_payment_intent_id" | "stripe_invoice_id">): string | null {
   const label = verifiedSourceLabel(row.payment_method);
@@ -286,6 +286,7 @@ export async function readOwnPaymentHistory(client: PaymentHistoryClient, userId
     .from("applications")
     .select("id")
     .eq("user_id", userId)
+    .is("deleted_at", null)
     .order("id", { ascending: true })
     .limit(HISTORY_READ_CAP + 1);
   if (applications.error) throw new Error("Payment history could not be loaded.");

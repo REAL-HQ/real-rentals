@@ -99,7 +99,7 @@ describe("portal payment history", () => {
     assert.deepEqual(history.payments.map((payment) => payment.id), ["card", "cash", "deposit", "zelle"]);
     assert.deepEqual(history.payments.map((payment) => payment.sourceLabel), ["Card", "Cash", "Cash", "Zelle"]);
     assert.equal(verifiedPaymentSource(row({ id: "bare-card", payment_method: "card" })), null);
-    assert.equal(verifiedPaymentSource(row({ id: "invoiced", payment_method: "ach", stripe_invoice_id: "in_1" })), "Card");
+    assert.equal(verifiedPaymentSource(row({ id: "invoiced", payment_method: "ach", stripe_invoice_id: "in_1" })), "ACH");
     assert.equal(history.balanceDueCents, 8000);
     assert.equal(history.balanceState, "known");
     assert.equal(history.truncated, false);
@@ -169,6 +169,7 @@ describe("portal payment history", () => {
         const query = {
           select() { return query; },
           eq(column: string, value: string) { filters.push(["eq", column, value]); return query; },
+          is(column: string, value: unknown) { filters.push(["is", column, value]); return query; },
           in(column: string, values: readonly string[]) { filters.push(["in", column, values]); return query; },
           order() { return query; },
           limit() {
@@ -195,7 +196,8 @@ describe("portal payment history", () => {
     assert.equal(history.balanceDueCents, 8000);
     assert.equal(asked.some((call) => call.startsWith("rentals")), false);
     assert.equal(asked.some((call) => call.includes("rental_id")), false);
-    assert.match(asked.join("\n"), /applications:\[\[\"eq\",\"user_id\",\"user-1\"\]\]/);
+    assert.match(asked.join("\n"), /applications:\[\[\"eq\",\"user_id\",\"user-1\"\],\[\"is\",\"deleted_at\",null\]\]/);
+    assert.match(rules, /\.is\("deleted_at", null\)/);
     assert.match(asked.join("\n"), /payments:\[\[\"in\",\"driver_id\",\[\"app-own\"\]\]\]/);
   });
 });

@@ -141,5 +141,5 @@ function downloadReceipt(payment: HistoryPayment) {
   link.href = url;
   link.download = `receipt-${payment.id}.txt`;
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
