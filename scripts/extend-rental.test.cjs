@@ -80,6 +80,19 @@ test("server throws on the flag before any read or rpc", () => {
   assert.match(server, /requireManager/);
   assert.equal(server.includes("stripe.subscriptions.update("), false);
   assert.doesNotMatch(server, /from ["']stripe["']/);
+  assert.equal(server.includes("data.actorId"), false);
+  assert.equal(server.includes("data.actor_id"), false);
+  assert.equal(server.includes("data._actor_id"), false);
+  assert.match(server, /_actor_id: context\.userId/);
+  for (const source of [server, lib, ui, sql]) {
+    assert.equal(source.includes("stripe.subscriptions.create"), false);
+    assert.equal(source.includes("stripe.subscriptions.cancel"), false);
+    assert.equal(source.includes("paymentIntents"), false);
+    assert.equal(source.includes("charges.create"), false);
+    assert.doesNotMatch(source, /from ["']@\/lib\/stripe/);
+  }
+  assert.equal(sql.includes("INSERT INTO public.payments"), false);
+  assert.equal(/stripe_subscription_id\s*=/.test(sql), false);
   assert.equal(server.includes("logAudit"), false);
   assert.equal(server.includes("app.rental_tx"), false);
 });
@@ -213,7 +226,14 @@ function loadServer(extendEnabled) {
       }
       if (name === "@/integrations/supabase/auth-middleware") return { requireSupabaseAuth: {} };
       if (name === "zod") return z;
-      if (name === "@/lib/roles.server") return { requireManager: async () => ({ tier: "manager" }) };
+      if (name === "@/lib/roles.server") {
+        return {
+          requireManager: async (userId) => {
+            calls.push(["requireManager", userId]);
+            return { tier: "manager", role: "admin" };
+          },
+        };
+      }
       if (name === "@/lib/extend-rental") {
         return { EXTEND_RENTAL_ENABLED: extendEnabled, BILLING_EFFECTS: preview.BILLING_EFFECTS };
       }
@@ -845,12 +865,25 @@ let dataDir;
   assert.equal(saved.billingPlan.stripe.performed, false);
   assert.equal(saved.billingPlan.stripe.linked, true);
   assert.equal(JSON.stringify(saved).includes("sub_"), false);
-  assert.equal(boxOn.calls.length, 1);
-  assert.equal(boxOn.calls[0][0], "rpc");
-  assert.equal(boxOn.calls[0][1], "extend_rental_tx");
-  assert.equal(boxOn.calls[0][2]._reason, "Driver asked to keep the car");
-  assert.equal(boxOn.calls[0][2]._actor_id, boxOn.context.userId);
+  assert.equal(boxOn.calls.length, 2);
+  assert.equal(boxOn.calls[0][0], "requireManager");
+  assert.equal(boxOn.calls[0][1], boxOn.context.userId);
+  assert.equal(boxOn.calls[1][0], "rpc");
+  assert.equal(boxOn.calls[1][1], "extend_rental_tx");
+  assert.equal(boxOn.calls[1][2]._reason, "Driver asked to keep the car");
+  assert.equal(boxOn.calls[1][2]._actor_id, boxOn.context.userId);
   assert.equal(boxOn.calls.some((call) => call[0] === "from"), false);
+  const foreign = "99999999-9999-4999-8999-999999999999";
+  boxOn.setResponse({ data: plan(), error: null });
+  await boxOn.api.extendRental({
+    data: { ...extendData, actorId: foreign, actor_id: foreign, _actor_id: foreign },
+    context: boxOn.context,
+  });
+  const sent = boxOn.calls.filter((call) => call[0] === "rpc").at(-1);
+  assert.equal(sent[2]._actor_id, boxOn.context.userId);
+  assert.equal(JSON.stringify(sent).includes(foreign), false);
+  results.push("client actor id is ignored");
+  console.log("PASS client actor id is ignored");
   boxOn.setResponse({ data: plan({ billingPlan: { ...plan().billingPlan, stripe: { ...plan().billingPlan.stripe, performed: true } } }), error: null });
   await assert.rejects(boxOn.api.extendRental({ data: extendData, context: boxOn.context }));
   boxOn.setResponse({
@@ -883,8 +916,10 @@ let dataDir;
   const loaded = await boxOn.api.loadExtendContext({ data: { rentalId: id(2) }, context: boxOn.context });
   assert.equal(loaded.endDate, "2026-10-25");
   assert.equal(loaded.hasSubscription, true);
-  assert.equal(boxOn.calls[before][0], "from");
-  assert.equal(boxOn.calls[before][1], "rentals");
+  assert.equal(boxOn.calls[before][0], "requireManager");
+  assert.equal(boxOn.calls[before][1], boxOn.context.userId);
+  assert.equal(boxOn.calls[before + 1][0], "from");
+  assert.equal(boxOn.calls[before + 1][1], "rentals");
   results.push("context read is the rentals row");
   console.log("PASS context read is the rentals row");
 

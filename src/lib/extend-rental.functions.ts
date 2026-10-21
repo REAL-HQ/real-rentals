@@ -115,6 +115,15 @@ export const loadExtendContext = createServerFn({ method: "POST" })
     };
   });
 
+function withoutClientActor(input: unknown): unknown {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) return input;
+  const record = { ...(input as Record<string, unknown>) };
+  delete record.actorId;
+  delete record.actor_id;
+  delete record._actor_id;
+  return record;
+}
+
 export const extendRental = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
@@ -127,7 +136,7 @@ export const extendRental = createServerFn({ method: "POST" })
         reason: z.string().trim().min(5).max(500),
       })
       .strict()
-      .parse(input),
+      .parse(withoutClientActor(input)),
   )
   .handler(async ({ data, context }): Promise<ExtendRentalResult> => {
     if (!EXTEND_RENTAL_ENABLED) throw new Error(DISABLED);
@@ -153,6 +162,7 @@ export const extendRental = createServerFn({ method: "POST" })
       _expected_end: data.expectedEnd,
       _new_end: data.newEnd,
       _reason: data.reason,
+      // The verified JWT user. A client actor id is removed before this runs.
       _actor_id: context.userId,
     });
     if (error) throw extendError(error.message);
