@@ -13,12 +13,25 @@ import type { OwnerPnlResponse } from "@/lib/owner-pnl.server";
 
 /**
  * Owner screen for one Eastern Time month. Mounted only while
- * OWNER_PNL_ENABLED is true. CSV is built in the browser.
+ * OWNER_PNL_ENABLED is true. CSV and Print are built in the browser.
  */
 
 function money(cents: number | null): string {
   if (cents === null) return "—";
   return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function feeCell(month: OwnerPnlReport["current"]): string {
+  return month.feesComplete ? money(month.feesCents) : "Unavailable";
+}
+
+function netIsPartial(month: OwnerPnlReport["current"]): boolean {
+  return !month.feesComplete && month.revenueComplete && month.expensesComplete && month.refundsComplete;
+}
+
+function netCell(month: OwnerPnlReport["current"]): string {
+  if (netIsPartial(month)) return "Partial";
+  return money(month.netCents);
 }
 
 function monthTitle(month: string): string {
@@ -75,22 +88,24 @@ export function OwnerPnlPanel() {
 
   const report = response?.status === "ready" ? response.report : null;
   const lines = report ? [
-    ["Revenue", report.current.revenueCents, report.previous.revenueCents, report.change.revenueCents],
-    ["Refunds", report.current.refundsCents, report.previous.refundsCents, report.change.refundsCents],
-    ["Expenses", report.current.expenseCents, report.previous.expenseCents, report.change.expenseCents],
-    ["Net", report.current.netCents, report.previous.netCents, report.change.netCents],
+    ["Revenue", money(report.current.revenueCents), money(report.previous.revenueCents), money(report.change.revenueCents)],
+    ["Refunds", money(report.current.refundsCents), money(report.previous.refundsCents), money(report.change.refundsCents)],
+    ["Expenses", money(report.current.expenseCents), money(report.previous.expenseCents), money(report.change.expenseCents)],
+    ["Fees", feeCell(report.current), feeCell(report.previous), money(report.change.feesCents)],
+    ["Net", netCell(report.current), netCell(report.previous), money(report.change.netCents)],
   ] as const : [];
 
   return (
-    <div className="space-y-5">
+    <div className="owner-pnl space-y-5">
+      <style>{PRINT_CSS}</style>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-lg font-semibold">Monthly Owner P&L</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Attributed revenue, refunds, and expenses for one Eastern Time month, next to the month before. Deposits stay off the net.
+            Stripe charges plus recorded Cash App, Zelle, Venmo, wire, and cash for one Eastern Time month, next to the month before. Deposits stay off the net. Stripe fees stay on the company net.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 print:hidden">
           <input
             type="month"
             aria-label="Month"
@@ -99,6 +114,13 @@ export function OwnerPnlPanel() {
             onChange={(event) => setMonth(event.target.value)}
             className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
           />
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-sm"
+          >
+            Print
+          </button>
           <button
             type="button"
             disabled={!report}
@@ -133,6 +155,12 @@ export function OwnerPnlPanel() {
           {(report.current.conflictingCharges > 0 || report.previous.conflictingCharges > 0) && (
             <p className="text-sm text-[#D03020]">Some charges named more than one vehicle and stayed unattributed.</p>
           )}
+          {(report.current.unmatched.length > 0 || report.previous.unmatched.length > 0) && (
+            <p className="text-sm text-[#D03020]">Partial Coverage. A recorded Stripe payment has no Payment Intent, charge, invoice, or payment reference, so it is excluded.</p>
+          )}
+          {(netIsPartial(report.current) || netIsPartial(report.previous)) && (
+            <p className="text-sm text-[#D03020]">Stripe fees are Unavailable, so the net is Partial.</p>
+          )}
           <AdminTableScroll className="rounded-xl border border-border">
             <table className="w-full text-sm">
               <thead className="bg-[#FAFAFB] text-left">
@@ -147,9 +175,9 @@ export function OwnerPnlPanel() {
                 {lines.map(([label, current, previous, change]) => (
                   <tr key={label} className="border-t border-border">
                     <td className="px-4 py-3 font-medium">{label}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{money(current)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{money(previous)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{money(change)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{current}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{previous}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{change}</td>
                   </tr>
                 ))}
               </tbody>
@@ -158,6 +186,85 @@ export function OwnerPnlPanel() {
           <p className="text-sm text-muted-foreground">
             Unattributed Revenue {money(report.current.unattributedRevenueCents)} · Deposits Excluded {money(report.current.depositsExcludedCents)} · Deposit Refunds Excluded {money(report.current.depositRefundsExcludedCents)}
           </p>
+          <div>
+            <h3 className="text-base font-semibold">Income By Source</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">Stripe is the verified charge. Cash App, Zelle, Venmo, wire, and cash are recorded payments. A shared reference is counted once.</p>
+          </div>
+          {report.current.sources.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Source totals are blank until income is complete.</p>
+          ) : (
+          <AdminTableScroll className="rounded-xl border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-[#FAFAFB] text-left">
+                <tr>
+                  <th className="px-4 py-2.5 font-medium">Source</th>
+                  <th className="px-4 py-2.5 font-medium text-right">This Month</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Previous Month</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.current.sources.map((row) => (
+                  <tr key={row.source} className="border-t border-border">
+                    <td className="px-4 py-3 font-medium">{row.label}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{money(row.cents)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{money(report.previous.sources.find((source) => source.source === row.source)?.cents ?? null)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </AdminTableScroll>
+          )}
+          <div>
+            <h3 className="text-base font-semibold">By Vehicle</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">Income, refunds, and expenses for this month. A vehicle net is income minus refunds minus expenses. Stripe fees stay on the company net.</p>
+          </div>
+          {report.current.vehicles.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No vehicle totals in this month.</p>
+          ) : (
+            <AdminTableScroll className="rounded-xl border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-[#FAFAFB] text-left">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">Vehicle</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Income</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Refunds</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Expenses</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Net</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.current.vehicles.map((row) => (
+                    <tr key={row.id} className="border-t border-border">
+                      <td className="px-4 py-3 font-medium">{row.label}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{money(row.incomeCents)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{money(row.refundsCents)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{money(row.expenseCents)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{money(row.netCents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </AdminTableScroll>
+          )}
+          {(report.current.notes.length > 0 || report.previous.notes.length > 0) && (
+            <div>
+              <h3 className="text-base font-semibold">Notes</h3>
+              <ul className="mt-1 space-y-1 text-sm text-muted-foreground">
+                {[...report.current.notes, ...report.previous.notes].map((note) => <li key={note}>{note}</li>)}
+              </ul>
+            </div>
+          )}
+          {(report.current.unmatched.length > 0 || report.previous.unmatched.length > 0) && (
+            <div>
+              <h3 className="text-base font-semibold">Unmatched Stripe Payments</h3>
+              <p className="text-sm text-muted-foreground mt-0.5">These rows are excluded. They are not matched on amount.</p>
+              <ul className="mt-1 space-y-1 text-sm">
+                {[...report.current.unmatched, ...report.previous.unmatched].map((row) => (
+                  <li key={row.id}>{row.method || "Stripe"} · {row.reason}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div>
             <h3 className="text-base font-semibold">Expenses By Category</h3>
             <p className="text-sm text-muted-foreground mt-0.5">Grouped by the category on each vehicle expense. A linked service and its expense count once.</p>
@@ -191,3 +298,10 @@ export function OwnerPnlPanel() {
     </div>
   );
 }
+
+const PRINT_CSS = `@media print {
+  .owner-pnl, .owner-pnl * { color: #000 !important; background: #fff !important; }
+  .owner-pnl table { width: 100%; border-collapse: collapse; }
+  .owner-pnl th, .owner-pnl td { border-bottom: 1px solid #000; padding: 4px 8px 4px 0; }
+  .owner-pnl section, .owner-pnl table { break-inside: avoid; }
+}`;

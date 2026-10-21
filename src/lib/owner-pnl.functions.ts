@@ -7,7 +7,8 @@ import type { OwnerPnlResponse } from "./owner-pnl.server";
 /**
  * Owner-only monthly P&L. While OWNER_PNL_ENABLED is false this returns
  * before the owner check and before any table or Stripe read.
- * Charges are listed by readLivePartnerCharges. No writes, no new SQL, no email.
+ * Charges are listed by readLivePartnerCharges. Fees are listed by
+ * readLiveOwnerPnlFees after the owner check. No writes, no new SQL, no email.
  */
 
 const DISABLED: OwnerPnlResponse = { status: "disabled", report: null };
@@ -24,6 +25,7 @@ export const getOwnerPnl = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { loadOwnerPnlDirectory, runOwnerPnl } = await import("./owner-pnl.server");
     const { readLivePartnerCharges } = await import("./partner-statement-read.server");
+    const { readLiveOwnerPnlFees } = await import("./owner-pnl-fees-read.server");
     return runOwnerPnl({
       enabled: true,
       userId: context.userId,
@@ -31,5 +33,6 @@ export const getOwnerPnl = createServerFn({ method: "POST" })
       month: data.month,
       load: () => loadOwnerPnlDirectory(supabaseAdmin),
       readCharges: (window) => readLivePartnerCharges(window),
+      readFees: (window) => readLiveOwnerPnlFees(window),
     });
   });
