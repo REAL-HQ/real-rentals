@@ -2,13 +2,17 @@
 # Standing Cloudflare Workers smoke for PRs that touch the root shell or SSR.
 #
 # Builds the production worker and boots .output/server/wrangler.json under
-# `wrangler dev --local`. Fails on any HTTP 5xx, or on `EvalError` /
+# `wrangler dev --local`. The build exports dummy Supabase settings first
+# (process env beats .env in Vite) and fails if supabase.co shows up outside
+# the supabase-js library chunks. Listed routes must return HTTP 200. The
+# unknown path must return HTTP 404. Also fails on `EvalError` /
 # `Code generation from strings` in the workerd log (what `new Function` and
 # `eval` at module scope produce). Prints whether each route's body contains
 # googletagmanager. Always kills the wrangler/workerd process tree and removes
 # temp dirs, including on failure.
 #
-# Pin: wrangler@4.151.3 (newest published on 2026-10-21, engines node >= 22).
+# Reuses an existing wrangler when `wrangler --version` is 4.x. Otherwise
+# installs wrangler@4.151.3 (newest published on 2026-10-21, engines node >= 22).
 # Its newest *feature* compatibility date is 2026-10-19. Nitro writes
 # compatibility_date "latest", the build day's UTC date. `--no-latest` keeps
 # the date from wrangler.json. workerd accepts that date when it is not after
@@ -125,13 +129,47 @@ node_major() {
   node -p 'process.versions.node.split(".")[0]'
 }
 
-note "building with NODE_OPTIONS=--max-old-space-size=4096"
+# Process env beats .env. These dummies are what Vite inlines into the SSR bundle.
+export VITE_SUPABASE_URL="${DUMMY_SUPABASE_URL}"
+export VITE_SUPABASE_PUBLISHABLE_KEY=x
+export VITE_SUPABASE_PROJECT_ID=x
+export SUPABASE_URL="${DUMMY_SUPABASE_URL}"
+export SUPABASE_PUBLISHABLE_KEY=x
+note "building with dummy Supabase env and NODE_OPTIONS=--max-old-space-size=4096"
 if ! NODE_OPTIONS=--max-old-space-size=4096 node node_modules/vite/bin/vite.js build >"$SMOKE_TMP/build.log" 2>&1; then
   echo "workerd-smoke: build failed" >&2
   tail -n 80 "$SMOKE_TMP/build.log" >&2 || true
   exit 1
 fi
 note "build finished"
+
+# supabase-js ships example hosts (xyzcompany.supabase.co, example.supabase.co)
+# inside .output/server/_libs/supabase__*.mjs. Those are not this app's project.
+# Vite inlines VITE_SUPABASE_URL into the SSR chunks, which are still scanned.
+hosted=$(rg -n supabase.co .output/server || true)
+if [[ -n "$hosted" ]]; then
+  app_hosted=$(printf '%s\n' "$hosted" | grep -v '/_libs/supabase__' || true)
+  if [[ -n "$app_hosted" ]]; then
+    echo "workerd-smoke: supabase.co baked into .output/server outside the supabase-js library chunks" >&2
+    printf '%s\n' "$app_hosted" | head -40 >&2
+    exit 1
+  fi
+fi
+if [[ -f .env ]]; then
+  env_host=$(sed -n 's/^SUPABASE_URL=//p' .env | head -1 | tr -d "\"'" )
+  env_host=${env_host#https://}
+  env_host=${env_host#http://}
+  env_host=${env_host%%/*}
+  if [[ -n "$env_host" && "$env_host" == *.supabase.co ]]; then
+    env_files=$(rg -l -F "$env_host" .output/server || true)
+    if [[ -n "$env_files" ]]; then
+      echo "workerd-smoke: .env SUPABASE_URL host is still in the server bundle" >&2
+      printf '%s\n' "$env_files" >&2
+      exit 1
+    fi
+  fi
+fi
+note "server bundle has no hosted Supabase URL"
 
 if [[ ! -f .output/server/wrangler.json ]]; then
   echo "workerd-smoke: build did not write .output/server/wrangler.json" >&2
@@ -169,15 +207,51 @@ else
   note "using box Node $(node -v)"
 fi
 
+wrangler_is_4() {
+  local text
+  text=$("$1" --version 2>/dev/null || true)
+  [[ "$text" =~ ([0-9]+)\.[0-9]+\.[0-9]+ && "${BASH_REMATCH[1]}" == "4" ]]
+}
+
+find_wrangler_4() {
+  local candidate seen="|" global_bin
+  local candidates=()
+  if [[ -x node_modules/.bin/wrangler ]]; then
+    candidates+=(node_modules/.bin/wrangler)
+  fi
+  if command -v wrangler >/dev/null 2>&1; then
+    candidates+=("$(command -v wrangler)")
+  fi
+  global_bin=$(npm prefix -g 2>/dev/null || true)
+  if [[ -n "$global_bin" && -x "$global_bin/bin/wrangler" ]]; then
+    candidates+=("$global_bin/bin/wrangler")
+  fi
+  for candidate in "${candidates[@]}"; do
+    [[ "$seen" == *"|$candidate|"* ]] && continue
+    seen+="$candidate|"
+    if wrangler_is_4 "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+WRANGLER=""
 if [[ "$USE_FALLBACK" == 1 ]]; then
   WRANGLER_VERSION=$FALLBACK_WRANGLER
 else
   WRANGLER_VERSION=$PINNED_WRANGLER
+  if WRANGLER=$(find_wrangler_4); then
+    note "reusing wrangler $($WRANGLER --version 2>/dev/null || true) at $WRANGLER"
+  fi
 fi
 
-note "installing wrangler@${WRANGLER_VERSION}"
-npm install --prefix "$SMOKE_TMP/pkg" --no-fund --no-audit --loglevel=error "wrangler@${WRANGLER_VERSION}"
-WRANGLER="$SMOKE_TMP/pkg/node_modules/.bin/wrangler"
+if [[ -z "$WRANGLER" ]]; then
+  note "installing wrangler@${WRANGLER_VERSION}"
+  npm install --prefix "$SMOKE_TMP/pkg" --no-fund --no-audit --loglevel=error "wrangler@${WRANGLER_VERSION}"
+  WRANGLER="$SMOKE_TMP/pkg/node_modules/.bin/wrangler"
+fi
 if [[ ! -x "$WRANGLER" ]]; then
   echo "workerd-smoke: wrangler binary missing at $WRANGLER" >&2
   exit 1
@@ -263,6 +337,7 @@ if [[ "$ready" != 1 ]]; then
 fi
 note "ready on http://127.0.0.1:${PORT}"
 
+UNKNOWN="/workerd-smoke-no-such-route"
 ROUTES=(
   "/"
   "/apply"
@@ -270,14 +345,19 @@ ROUTES=(
   "/thank-you?t=x"
   "/sign/abc"
   "/card/abc?t=x"
+  "/card/00000000-0000-4000-8000-000000000000?t=x"
   "/login"
   "/invite"
   "/admin"
-  "/workerd-smoke-no-such-route"
+  "/fleet"
+  "/portal"
+  "/faq"
+  "/sitemap.xml"
+  "$UNKNOWN"
 )
 
 mkdir -p "$SMOKE_TMP/bodies"
-printf '%-32s %-6s %s\n' "route" "status" "googletagmanager"
+printf '%-56s %-6s %s\n' "route" "status" "googletagmanager"
 for route in "${ROUTES[@]}"; do
   body="$SMOKE_TMP/bodies/body"
   code="000"
@@ -292,9 +372,14 @@ for route in "${ROUTES[@]}"; do
   if [[ -f "$body" ]] && grep -a -i -q 'googletagmanager' "$body"; then
     gtm=yes
   fi
-  printf '%-32s %-6s %s\n' "$route" "$code" "$gtm"
-  if [[ "$code" =~ ^5 || "$code" == "000" ]]; then
-    printf '%s %s\n' "$route" "$code" >>"$FAILS"
+  printf '%-56s %-6s %s\n' "$route" "$code" "$gtm"
+  if [[ "$route" == "$UNKNOWN" ]]; then
+    expect=404
+  else
+    expect=200
+  fi
+  if [[ "$code" != "$expect" ]]; then
+    printf '%s %s expected %s\n' "$route" "$code" "$expect" >>"$FAILS"
   fi
 done
 
