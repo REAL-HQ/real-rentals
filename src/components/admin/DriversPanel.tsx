@@ -17,6 +17,7 @@ import {
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { DepositDialog } from "./DepositDialog";
+import { DriverStatement } from "./DriverStatement";
 import { NO_PAY_CELLS, type PayCells } from "@/lib/driver-payment-status";
 import { getDriverPayStatuses } from "@/lib/driver-payment-status.functions";
 import { endRental } from "@/lib/rentals.functions";
@@ -301,6 +302,7 @@ export function DriversPanel({
   externalSearch = "",
   initialOpenId,
   isOwner = false,
+  isManager = false,
   canManageWaitlist = false,
   urlFilter,
 }: {
@@ -315,6 +317,8 @@ export function DriversPanel({
   urlFilter?: string;
   /** Verification recordings are Owner-only. See VerificationRecording. */
   isOwner?: boolean;
+  /** Owner and Manager. The statement server checks the same tier. */
+  isManager?: boolean;
 } = {}) {
   const [drivers, setDrivers] = useState<Application[]>([]);
   // Whether the applications fetch has come back, as distinct from having
@@ -891,6 +895,7 @@ setDocCounts(requiredDocCounts(rows));
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
+        isManager={isManager}
       />
       {deleteDialog}
       </>
@@ -1322,6 +1327,7 @@ function DriverDetail({
   onScreeningChange,
   onVaultChange,
   isOwner,
+  isManager,
   hasActiveRental,
   onRentalStarted,
 }: {
@@ -1334,6 +1340,7 @@ function DriverDetail({
   onScreeningChange?: (s: DriverScreeningRow) => void;
   onVaultChange?: (requiredCount: number) => void;
   isOwner: boolean;
+  isManager: boolean;
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
@@ -2227,6 +2234,7 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="payments" className="mt-0 space-y-4">
+                {isManager && <DriverStatement driverId={driver.id} />}
                 <Card title="Payment Terms" icon={<CreditCard className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <NumField
