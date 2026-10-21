@@ -67,6 +67,8 @@ import { ApplicantFunnelPanel } from "@/components/admin/ApplicantFunnelPanel";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 import { TodaysOps } from "@/components/admin/TodaysOps";
 import { TODAYS_OPS_ENABLED } from "@/lib/todays-ops-flag";
+import { FleetCalendar } from "@/components/admin/FleetCalendar";
+import { FLEET_CALENDAR_ENABLED } from "@/lib/fleet-calendar-flag";
 import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
 import { FleetAvailability } from "@/components/admin/FleetAvailability";
 import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
@@ -368,6 +370,10 @@ function Admin() {
     if (urlTab === "todays_ops") {
       if (!TODAYS_OPS_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "todays_ops";
+    }
+    if (urlTab === "fleet_calendar") {
+      if (!FLEET_CALENDAR_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "fleet_calendar";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -848,6 +854,7 @@ function Admin() {
           <main data-admin-main className="flex-1 min-w-0 px-4 pb-4 md:px-8 md:pb-8 pt-2">
             {tab === "overview" && <OverviewPanel canSeeCollections={tierAllows(tier, "manager")} />}
             {TODAYS_OPS_ENABLED && tab === "todays_ops" && <TodaysOps />}
+            {FLEET_CALENDAR_ENABLED && tab === "fleet_calendar" && <FleetCalendar />}
             {tab === "drivers" && (
               <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}

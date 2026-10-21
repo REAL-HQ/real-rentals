@@ -32,6 +32,7 @@ import {
   HeartPulse,
   BarChart3,
   CalendarClock,
+  CalendarRange,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
@@ -47,6 +48,7 @@ import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 import { TODAYS_OPS_ENABLED } from "@/lib/todays-ops-flag";
+import { FLEET_CALENDAR_ENABLED } from "@/lib/fleet-calendar-flag";
 
 export type TabDef = {
   id: string;
@@ -163,6 +165,16 @@ const TODAYS_OPS_TAB: TabDef = {
   minTier: "manager",
   group: "HOME",
   description: "Pickups, Returns, Payments And Open Issues For Today",
+};
+
+/** Shown only while Fleet Calendar is compiled on. Kept out of TABS so a dark build cannot list it. */
+const FLEET_CALENDAR_TAB: TabDef = {
+  id: "fleet_calendar",
+  label: "Fleet Calendar",
+  icon: CalendarRange,
+  minTier: "manager",
+  group: "FLEET",
+  description: "The Week Ahead For Every Vehicle",
 };
 
 /** Shown only while Unified Finance is compiled on. Kept out of TABS so a dark build cannot list it. */
@@ -320,6 +332,9 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (TODAYS_OPS_ENABLED && tierAllows(tier, "manager")) {
     next = spliceAfter(next, "overview", TODAYS_OPS_TAB);
   }
+  if (FLEET_CALENDAR_ENABLED && tierAllows(tier, "manager")) {
+    next = spliceAfter(next, "vehicles", FLEET_CALENDAR_TAB);
+  }
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
     next = spliceAfter(next, "vehicles", FLEET_AVAILABILITY_TAB);
   }
@@ -372,6 +387,9 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
     .filter((t) => t.href);
   if (TODAYS_OPS_ENABLED && tierAllows(tier, "manager")) {
     entries = spliceAfter(entries, "overview", { ...TODAYS_OPS_TAB, href: "todays_ops" });
+  }
+  if (FLEET_CALENDAR_ENABLED && tierAllows(tier, "manager")) {
+    entries = spliceAfter(entries, "vehicles", { ...FLEET_CALENDAR_TAB, href: "fleet_calendar" });
   }
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
     entries = spliceAfter(entries, "vehicles", { ...FLEET_AVAILABILITY_TAB, href: "fleet_availability" });
@@ -467,6 +485,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "todays_ops") {
     if (!TODAYS_OPS_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "todays_ops";
+  }
+  if (args.urlTab === "fleet_calendar") {
+    if (!FLEET_CALENDAR_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "fleet_calendar";
   }
   if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
   if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";
