@@ -126,7 +126,11 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
       {view === "pl" ? (
         <ProfitAndLoss from={range.from} to={range.to} />
       ) : (
-        <Ledger vehicles={vehicles} period={period} from={range.from} to={range.to} autoOpenAdd={autoOpenAdd} />
+        EXPENSE_RECEIPT_GAPS_ENABLED ? (
+          <MissingReceiptLedger vehicles={vehicles} period={period} from={range.from} to={range.to} autoOpenAdd={autoOpenAdd} />
+        ) : (
+          <Ledger vehicles={vehicles} from={range.from} to={range.to} autoOpenAdd={autoOpenAdd} />
+        )
       )}
     </div>
   );
@@ -265,6 +269,177 @@ function Stat({
 
 // ---------------------------------------------------------------- ledger
 
+function Ledger({
+  vehicles,
+  from,
+  to,
+  autoOpenAdd,
+}: {
+  vehicles: VehicleOption[];
+  from: string | null;
+  to: string | null;
+  autoOpenAdd?: boolean;
+}) {
+  const load = useServerFn(listExpenses);
+  const del = useServerFn(deleteExpense);
+  const [rows, setRows] = useState<Expense[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(!!autoOpenAdd);
+  const [vehicleFilter, setVehicleFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await load({
+        data: {
+          vehicleId: vehicleFilter === "all" ? undefined : vehicleFilter,
+          category: categoryFilter,
+          from: from ?? undefined,
+          to: to ?? undefined,
+        },
+      });
+      setRows(res);
+    } catch {
+      toast.error("Could not load expenses.");
+    } finally {
+      setLoading(false);
+    }
+  }, [load, vehicleFilter, categoryFilter, from, to]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const total = rows.reduce((s, r) => s + r.amount, 0);
+
+  async function onDelete(r: Expense) {
+    if (!confirm(`Delete this ${r.category} expense of ${money2(r.amount)}?\n\n${r.description}`)) return;
+    await del({ data: { id: r.id } });
+    toast.success("Deleted");
+    void refresh();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        <select
+          value={vehicleFilter}
+          onChange={(e) => setVehicleFilter(e.target.value)}
+          className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
+        >
+          <option value="all">All Vehicles</option>
+          {vehicles.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
+        >
+          <option value="all">All Categories</option>
+          {EXPENSE_CATEGORIES.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+        <span className="text-sm text-muted-foreground">
+          {rows.length} item(s) · {money2(total)}
+        </span>
+        <button
+          onClick={() => setShowForm(true)}
+          disabled={vehicles.length === 0}
+          title={vehicles.length === 0 ? "Add a vehicle first" : undefined}
+          className="ml-auto inline-flex items-center gap-2 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+        >
+          <Plus className="w-4 h-4" /> Record Expense
+        </button>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : rows.length === 0 ? (
+        <EmptyState
+          icon={<Receipt className="w-6 h-6" strokeWidth={1.75} />}
+          title="No Expenses Recorded"
+          hint="Log registration, insurance, repairs, cleaning and anything else a car costs — attach the receipt while you have it."
+        />
+      ) : (
+        <AdminTableScroll className="rounded-xl border border-border">
+          <table className="w-full text-sm">
+            <thead className="bg-[#FAFAFB] text-left">
+              <tr>
+                <th className="px-4 py-2.5 font-medium">Date</th>
+                <th className="px-4 py-2.5 font-medium">Vehicle</th>
+                <th className="px-4 py-2.5 font-medium">Category</th>
+                <th className="px-4 py-2.5 font-medium">Description</th>
+                <th className="px-4 py-2.5 font-medium text-right">Amount</th>
+                <th className="px-4 py-2.5 font-medium">Receipt</th>
+                <th className="px-4 py-2.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-t border-border">
+                  <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                    {fmtDate(r.incurred_on + "T00:00:00")}
+                  </td>
+                  <td className="px-4 py-3">{r.vehicle_label}</td>
+                  <td className="px-4 py-3 capitalize">
+                    {EXPENSE_CATEGORIES.find((c) => c.value === r.category)?.label ?? r.category}
+                  </td>
+                  <td className="px-4 py-3">
+                    {r.description}
+                    {r.vendor_name && (
+                      <span className="block text-xs text-muted-foreground">{r.vendor_name}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums font-medium">{money2(r.amount)}</td>
+                  <td className="px-4 py-3">
+                    {r.receipt_url ? (
+                      <a
+                        href={r.receipt_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-[#D03020] underline"
+                      >
+                        <Paperclip className="w-3.5 h-3.5" /> View
+                      </a>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => onDelete(r)} className="text-muted-foreground hover:text-[#D03020]">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </AdminTableScroll>
+      )}
+
+      {showForm && (
+        <ExpenseForm
+          vehicles={vehicles}
+          onClose={() => setShowForm(false)}
+          onSaved={() => {
+            setShowForm(false);
+            void refresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+
 function gapPeriod(id: string): "this_month" | "last_3" | "last_12" | "all" {
   if (id === "1") return "this_month";
   if (id === "12") return "last_12";
@@ -276,7 +451,7 @@ function categoryLabel(value: string): string {
   return EXPENSE_CATEGORIES.find((item) => item.value === value)?.label ?? (value === "unknown" ? "Unknown" : value);
 }
 
-function Ledger({
+function MissingReceiptLedger({
   vehicles,
   period,
   from,
