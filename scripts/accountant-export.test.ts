@@ -112,6 +112,7 @@ describe("accountant year export", () => {
       now: NOW,
       load: async () => { loadedCount += 1; return loaded(); },
       readCharges: async () => { reads += 1; return { ok: true, charges: [] }; },
+      readFees: async () => { reads += 1; return { ok: true, feesCents: 0 }; },
     });
     expect(result).toEqual({ status: "disabled", report: null });
     expect(loadedCount).toBe(0);
@@ -124,11 +125,12 @@ describe("accountant year export", () => {
     let reads = 0;
     const load = async () => { loadedCount += 1; return loaded(); };
     const readCharges = async () => { reads += 1; return { ok: true as const, charges: [] }; };
+    const readFees = async () => { reads += 1; return { ok: true as const, feesCents: 0 }; };
     await expect(runAccountantExport({
-      enabled: true, userId: "manager-1", tier: "manager", year: "2026", now: NOW, load, readCharges,
+      enabled: true, userId: "manager-1", tier: "manager", year: "2026", now: NOW, load, readCharges, readFees,
     })).rejects.toThrow("Forbidden");
     const future = await runAccountantExport({
-      enabled: true, userId: "owner-1", tier: "owner", year: "2027", now: NOW, load, readCharges,
+      enabled: true, userId: "owner-1", tier: "owner", year: "2027", now: NOW, load, readCharges, readFees,
     });
     expect(future).toEqual({ status: "unavailable", reason: "Choose a year through the current year", report: null });
     expect(loadedCount).toBe(0);
@@ -151,7 +153,7 @@ describe("accountant year export", () => {
     expect(report!.ytd.depositsRefundedCents).toBe(sum("depositsRefundedCents"));
     expect(report!.ytd.expenseCents).toBe(sum("expenseCents"));
     expect(report!.ytd.netCents).toBe(sum("netCents"));
-    expect(report!.ytd.netCents).toBe(report!.ytd.revenueCents! - report!.ytd.refundsCents! - report!.ytd.expenseCents!);
+    expect(report!.ytd.netCents).toBe(report!.ytd.revenueCents! - report!.ytd.refundsCents! - report!.ytd.expenseCents! - report!.ytd.feesCents!);
     expect(report!.ytd).toMatchObject({
       revenueCents: 53000,
       unattributedCents: 8000,
@@ -159,14 +161,40 @@ describe("accountant year export", () => {
       depositsCollectedCents: 20000,
       depositsRefundedCents: 500,
       expenseCents: 12150,
+      feesCents: 0,
+      feesComplete: true,
       netCents: 38350,
     });
-    expect(months.find((month) => month.month === "2026-02")).toMatchObject({ revenueCents: 0, expenseCents: 0, netCents: 0, depositsCollectedCents: 0 });
+    expect(months.find((month) => month.month === "2026-02")).toMatchObject({ revenueCents: 0, expenseCents: 0, feesCents: 0, netCents: 0, depositsCollectedCents: 0 });
     expect(months.find((month) => month.month === "2026-10")).toMatchObject({
-      revenueCents: 43000, refundsCents: 2500, depositsCollectedCents: 20000, depositsRefundedCents: 500, expenseCents: 11050, netCents: 29450,
+      revenueCents: 43000, refundsCents: 2500, depositsCollectedCents: 20000, depositsRefundedCents: 500, expenseCents: 11050, feesCents: 0, netCents: 29450,
     });
     expect(report!.details.map((row) => row.date)).toEqual(["2026-01-02", "2026-09-15", "2026-10-02", "2026-10-15"]);
     expect(report!.details.reduce((acc, row) => acc + row.amountCents, 0)).toBe(report!.ytd.expenseCents);
+  });
+
+  it("subtracts Stripe fees once and marks a failed fee read Partial", () => {
+    const feesByMonth: Record<string, { ok: true; feesCents: number } | { ok: false }> = {};
+    for (let month = 1; month <= 10; month += 1) feesByMonth[`2026-${String(month).padStart(2, "0")}`] = { ok: true, feesCents: 0 };
+    feesByMonth["2026-10"] = { ok: true, feesCents: 320 };
+    const withFee = buildAccountantYear({ ...yearInput(), feesByMonth });
+    expect(withFee!.months.find((month) => month.month === "2026-10")).toMatchObject({
+      revenueCents: 43000, feesCents: 320, feesComplete: true, netCents: 29130,
+    });
+    expect(withFee!.ytd.feesCents).toBe(320);
+    expect(withFee!.ytd.netCents).toBe(38030);
+    expect(withFee!.ytd.netCents).toBe(withFee!.ytd.revenueCents! - withFee!.ytd.refundsCents! - withFee!.ytd.expenseCents! - withFee!.ytd.feesCents!);
+    feesByMonth["2026-10"] = { ok: false };
+    const failed = buildAccountantYear({ ...yearInput(), feesByMonth });
+    expect(failed!.months.find((month) => month.month === "2026-10")).toMatchObject({
+      revenueCents: 43000, feesCents: null, feesComplete: false, netCents: null,
+    });
+    expect(failed!.ytd.netCents).toBeNull();
+    expect(failed!.ytd.feesComplete).toBe(false);
+    expect(failed!.warnings).toContain("Stripe fees are Unavailable, so the net is Partial.");
+    const csv = accountantMonthlyCsv(failed!);
+    expect(csv).toContain("Unavailable");
+    expect(csv).toContain("Partial");
   });
 
   it("quotes commas and quotes in both CSVs and never writes a receipt url", () => {
@@ -195,6 +223,7 @@ describe("accountant year export", () => {
       now: NOW,
       load: async () => loaded(),
       readCharges: async (window) => { windows.push(window); return { ok: true, charges: charges() }; },
+      readFees: async () => ({ ok: true, feesCents: 0 }),
     });
     expect(ready.status).toBe("ready");
     expect(windows).toEqual([{ gte: monthWindow("2026-01")!.gte, lt: monthWindow("2026-10")!.lt }]);
@@ -206,6 +235,7 @@ describe("accountant year export", () => {
       now: NOW,
       load: async () => loaded(),
       readCharges: async () => ({ ok: false, reason: STRIPE_CHARGE_PAGE_CAP, capped: true }),
+      readFees: async () => ({ ok: true, feesCents: 0 }),
     });
     expect(capped.status).toBe("ready");
     if (capped.status !== "ready") return;
@@ -214,6 +244,37 @@ describe("accountant year export", () => {
     expect(capped.report.ytd.revenueCents).toBeNull();
     expect(capped.report.ytd.netCents).toBeNull();
     expect(capped.report.ytd.expenseCents).toBe(12150);
+    const feeWindows: { gte: number; lt: number }[] = [];
+    const withFees = await runAccountantExport({
+      enabled: true,
+      userId: "owner-1",
+      tier: "owner",
+      year: "2026",
+      now: NOW,
+      load: async () => loaded(),
+      readCharges: async () => ({ ok: true, charges: charges() }),
+      readFees: async (window) => {
+        feeWindows.push(window);
+        return window.gte === monthWindow("2026-10")!.gte ? { ok: true, feesCents: 320 } : { ok: true, feesCents: 0 };
+      },
+    });
+    expect(withFees.status).toBe("ready");
+    if (withFees.status !== "ready") return;
+    expect(feeWindows).toEqual(["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10"].map((month) => ({ gte: monthWindow(month)!.gte, lt: monthWindow(month)!.lt })));
+    expect(withFees.report.months.find((month) => month.month === "2026-10")?.netCents).toBe(29130);
+    let feeReads = 0;
+    const chargesFailed = await runAccountantExport({
+      enabled: true,
+      userId: "owner-1",
+      tier: "owner",
+      year: "2026",
+      now: NOW,
+      load: async () => loaded(),
+      readCharges: async () => ({ ok: false, reason: "Stripe evidence was incomplete or timed out" }),
+      readFees: async () => { feeReads += 1; return { ok: true, feesCents: 0 }; },
+    });
+    expect(chargesFailed).toMatchObject({ status: "unavailable", report: null });
+    expect(feeReads).toBe(0);
     let calls = 0;
     const gateway: ReadOnlyStripeGateway = {
       charges: {
@@ -242,9 +303,11 @@ describe("accountant year export", () => {
     const flagAt = handler.indexOf("if (!ACCOUNTANT_EXPORT_ENABLED) return DISABLED");
     const ownerAt = handler.indexOf("await requireOwner(context.userId)");
     const stripeAt = handler.indexOf("readLivePartnerCharges(window)");
+    const feesAt = handler.indexOf("readLiveOwnerPnlFees(window)");
     expect(flagAt).toBeGreaterThan(-1);
     expect(ownerAt).toBeGreaterThan(flagAt);
     expect(stripeAt).toBeGreaterThan(ownerAt);
+    expect(feesAt).toBeGreaterThan(ownerAt);
     expect(handler.match(/readLivePartnerCharges\(/g)).toHaveLength(1);
     for (const name of ["accountant-export.ts", "accountant-export.server.ts", "accountant-export.functions.ts", "accountant-export-flag.ts"]) {
       const source = readFileSync(new URL(`../src/lib/${name}`, import.meta.url), "utf8");
