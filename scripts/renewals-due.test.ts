@@ -40,6 +40,17 @@ const role = handler.indexOf("requireManager");
 const read = handler.indexOf("supabaseAdmin");
 ok(thrown >= 0 && thrown < role && role < read, "the handler throws before requireManager and before supabaseAdmin");
 ok(thrown < handler.indexOf("import("), "the throw happens before any dynamic import");
+ok(fn.includes(".middleware([renewalsDueGate, requireSupabaseAuth])"), "the flag gate runs before auth");
+{
+  const gateAt = fn.indexOf("const renewalsDueGate");
+  const middlewareAt = fn.indexOf(".middleware([renewalsDueGate, requireSupabaseAuth])");
+  ok(gateAt >= 0 && middlewareAt > gateAt, "the gate is declared before the middleware list");
+  const gateBody = fn.slice(gateAt, middlewareAt);
+  ok(gateBody.includes('if (!RENEWALS_DUE_ENABLED) throw new Error("Rental Renewal Due is off")'), "the gate refuses while the flag is off");
+  ok(!gateBody.includes("requireSupabaseAuth") && !gateBody.includes("supabaseAdmin"), "the gate does not authenticate or read");
+}
+ok(fn.includes('.select("id,full_name,deleted_at"'), "application reads include deleted_at");
+ok(fn.includes("deletedApplicationIds") && fn.includes("liveRentals") && fn.includes("liveOverdue"), "soft-deleted applications are left off the board");
 ok(!fn.slice(0, fn.indexOf("export const getRenewalsDue")).includes("roles.server"), "the role module is not a static import");
 ok(!fn.slice(0, fn.indexOf("export const getRenewalsDue")).includes("client.server"), "the admin client is not a static import");
 ok(!/stripe/i.test(fn) && !/stripe/i.test(panel), "the server function and the panel do not mention Stripe");
