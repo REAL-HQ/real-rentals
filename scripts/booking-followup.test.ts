@@ -131,7 +131,7 @@ describe("booking follow-up flag", () => {
     assert.ok(panelFlag !== -1 && panelLoad !== -1 && panelFlag < panelLoad);
     assert.match(panel, /Copy Reminder/);
     assert.match(panel, /LAST_CONTACT_NOT_CHECKED/);
-    assert.match(panel, /Some Last Contact Times Were Not Checked/);
+    assert.match(panel, /Some Last Contact Times Or Approval Dates Were Not Checked/);
     assert.doesNotMatch(panel, /sendEmail|sendSms|uppercase|text-transform/);
   });
 });
