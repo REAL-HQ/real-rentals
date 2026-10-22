@@ -65,6 +65,7 @@ import { VEHICLE_TURNAROUND_ENABLED } from "@/lib/vehicle-turnaround-flag";
 import { RENT_RECONCILIATION_ENABLED } from "@/lib/rent-reconciliation-flag";
 import { OWNER_FINANCE_SNAPSHOT_ENABLED } from "@/lib/owner-finance-snapshot-flag";
 import { RENEWALS_DUE_ENABLED } from "@/lib/renewals-due-flag";
+import { FINANCE_JV_STATEMENT_ENABLED } from "@/lib/jv-statement-flag";
 
 export type TabDef = {
   id: string;
@@ -262,6 +263,25 @@ const FINANCE_DATA_QUALITY_TAB: TabDef = {
   group: "BUSINESS",
   description: "Gaps That Leave Finance Totals Partial Or Unavailable",
 };
+
+/** Shown only while the JV partner statement is compiled on. Kept out of TABS so a dark build cannot list it. */
+const JV_TAB: TabDef = {
+  id: "jv",
+  label: "JV Partner Statement",
+  icon: Scale,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Partner Income, Expenses And The Split For One Vehicle",
+};
+
+function withJv<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!FINANCE_JV_STATEMENT_ENABLED || !tierAllows(tier, "owner")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "partners");
+  const entry = href ? { ...JV_TAB, href } : JV_TAB;
+  next.splice(at < 0 ? next.length : at + 1, 0, entry as T);
+  return next;
+}
 
 function withFinanceDataQuality<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
   if (!FINANCE_DATA_QUALITY_ENABLED || !tierAllows(tier, "manager")) return tabs;
@@ -545,10 +565,10 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner")) extra.push(OWNER_FINANCE_SNAPSHOT_TAB);
   if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_RISK_MONITOR_TAB);
   if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_PAYOUT_RECON_TAB);
-  if (!extra.length) return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier);
+  if (!extra.length) return withJv(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
-  return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier);
+  return withJv(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier), tier);
 }
 
 /**
@@ -619,11 +639,11 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_RISK_MONITOR_TAB, href: "stripe_risk_monitor" });
   if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_PAYOUT_RECON_TAB, href: "stripe_payout_recon" });
   if (!extra.length) {
-    return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger");
+    return withJv(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger"), tier, "jv");
   }
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, ...extra);
-  return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger");
+  return withJv(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger"), tier, "jv");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
@@ -742,6 +762,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "finance_data_quality") {
     if (!FINANCE_DATA_QUALITY_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "finance_data_quality";
+  }
+  if (args.urlTab === "jv") {
+    if (!FINANCE_JV_STATEMENT_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "jv";
   }
   if (args.urlTab === "rent_aging") {
     if (!FINANCE_AR_AGING_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";

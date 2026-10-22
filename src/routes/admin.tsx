@@ -64,7 +64,9 @@ import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BillingHealthPanel } from "@/components/admin/BillingHealthPanel";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { FinanceDataQualityPanel } from "@/components/admin/FinanceDataQualityPanel";
+import { JvStatementPanel } from "@/components/admin/JvStatementPanel";
 import { FINANCE_DATA_QUALITY_ENABLED } from "@/lib/finance-data-quality-flag";
+import { FINANCE_JV_STATEMENT_ENABLED } from "@/lib/jv-statement-flag";
 import { RentAgingPanel } from "@/components/admin/RentAgingPanel";
 import { FINANCE_AR_AGING_ENABLED } from "@/lib/rent-aging-flag";
 import { FinanceDepositLedgerPanel } from "@/components/admin/FinanceDepositLedgerPanel";
@@ -396,6 +398,10 @@ function Admin() {
     if (urlTab === "finance_data_quality") {
       if (!FINANCE_DATA_QUALITY_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "finance_data_quality";
+    }
+    if (urlTab === "jv") {
+      if (!FINANCE_JV_STATEMENT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "jv";
     }
     if (urlTab === "rent_aging") {
       if (!FINANCE_AR_AGING_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
@@ -992,6 +998,7 @@ function Admin() {
             {PAYOUT_BREAKDOWN_ENABLED && tab === "payout_breakdown" && <PayoutBreakdownPanel />}
             {BILLING_HEALTH_ENABLED && tab === "billing_health" && <BillingHealthPanel />}
             {FINANCE_DATA_QUALITY_ENABLED && tab === "finance_data_quality" && <FinanceDataQualityPanel />}
+            {FINANCE_JV_STATEMENT_ENABLED && tab === "jv" && <JvStatementPanel />}
             {FINANCE_AR_AGING_ENABLED && tab === "rent_aging" && <RentAgingPanel />}
             {FINANCE_DEPOSIT_LEDGER_ENABLED && tab === "finance_deposit_ledger" && <FinanceDepositLedgerPanel />}
             {STRIPE_RISK_MONITOR_ENABLED && tab === "stripe_risk_monitor" && <StripeRiskMonitorPanel />}
