@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { SigningPanel } from "@/components/esign/SigningPanel";
 import { layoutToText } from "@/lib/agreement-layout";
-import { createContext, useContext, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,8 +40,6 @@ import { PaymentHistoryCard } from "@/components/portal/PaymentHistoryCard";
 import { PORTAL_PAYMENT_HISTORY_ENABLED } from "@/lib/portal-payment-history";
 import { DRIVER_DOC_EXPIRY_CARD_ENABLED } from "@/lib/driver-doc-expiry";
 import { DRIVER_AGREEMENT_VIEW_ENABLED } from "@/lib/driver-agreement-view";
-import { DRIVER_PAYMENT_HISTORY_ENABLED } from "@/lib/driver-payment-history";
-import { getPortalPaymentHistory } from "@/lib/portal-payment-history.functions";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import {
   listConditionMedia,
@@ -1652,19 +1650,6 @@ function PortalMyRental() {
   return <MyRentalCard rental={data} />;
 }
 
-function PortalPaymentHistory() {
-  const previewId = usePreviewDriver();
-  const fetchHistory = usePortalRead(getPortalPaymentHistory);
-  const { data, isError, isLoading } = useQuery({
-    queryKey: ["portal-payment-history", previewId ?? "self"],
-    queryFn: () => fetchHistory(),
-    enabled: PORTAL_PAYMENT_HISTORY_ENABLED === true,
-  });
-  if (PORTAL_PAYMENT_HISTORY_ENABLED !== true) return null;
-  if (isLoading || isError || !data) return null;
-  return <PaymentHistoryCard items={data} />;
-}
-
 function PortalPickupChecklist() {
   const previewId = usePreviewDriver();
   const fetchChecklist = usePortalRead(getPortalPickupChecklist);
@@ -1674,23 +1659,6 @@ function PortalPickupChecklist() {
   });
   if (!data?.show) return null;
   return <PickupChecklistCard items={data.items} />;
-}
-
-/** Card stays unloaded unless DRIVER_PAYMENT_HISTORY_ENABLED is exactly true. */
-function PaymentHistoryGate() {
-  const [View, setView] = useState<ComponentType | null>(null);
-  useEffect(() => {
-    if (DRIVER_PAYMENT_HISTORY_ENABLED !== true) return;
-    let live = true;
-    void import("@/components/portal/DriverPaymentHistoryCard").then((mod) => {
-      if (live) setView(() => mod.DriverPaymentHistoryCard);
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-  if (DRIVER_PAYMENT_HISTORY_ENABLED !== true || View == null) return null;
-  return <View />;
 }
 
 function PickupChecklistSlot({ onNavigate }: { onNavigate: (tab: "documents" | "payments") => void }) {
@@ -1729,7 +1697,6 @@ function DashboardView({
 
   return (
     <div className="space-y-6">
-      <PaymentHistoryGate />
       {MY_CAR_CARD_ENABLED ? <MyCarGate onNavigate={onNavigate} /> : null}
       <div className="rounded-2xl border border-[#D03020] bg-[#D03020]/5 p-5" data-testid="roadside-dashboard">
         <h3 className="font-semibold text-[#D03020]">Need Roadside Help</h3>
@@ -1755,7 +1722,6 @@ function DashboardView({
       </div>
       <PortalDocumentUpdate />
       <PortalMyRental />
-      <PortalPaymentHistory />
       {PORTAL_PICKUP_CHECKLIST_ENABLED ? <PortalPickupChecklist /> : null}
       {DRIVER_DOC_EXPIRY_CARD_ENABLED ? (
         <DocExpiryGate onOpenDocuments={() => onNavigate("documents")} />
@@ -2238,6 +2204,9 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
         </div>
       )}
 
+      {PORTAL_PAYMENT_HISTORY_ENABLED === true && previewId == null ? (
+        <PaymentHistoryCard />
+      ) : (
       <div className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">All Payments</h3>
         {data.payments.length === 0 ? (
@@ -2281,6 +2250,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
           </table>
         )}
       </div>
+      )}
     </div>
   );
 }
