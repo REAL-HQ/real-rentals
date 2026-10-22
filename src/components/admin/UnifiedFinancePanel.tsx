@@ -74,6 +74,15 @@ function UnmatchedCounts({ unmatched }: { unmatched: NonNullable<UnifiedFinanceR
     [unmatched.payouts, "Unmatched Payouts"],
     [unmatched.payments, "Unmatched Payments"],
     [unmatched.balanceTransactions, "Unmatched Balance Transactions"],
+    [unmatched.undatedExpenses ?? 0, "Undated Expenses"],
+    [unmatched.unallocatedExpenses ?? 0, "Unallocated Expenses"],
+    [unmatched.inexactExpenses ?? 0, "Inexact Expenses"],
+    [unmatched.undatedMaintenance ?? 0, "Undated Maintenance"],
+    [unmatched.unallocatedMaintenance ?? 0, "Unallocated Maintenance"],
+    [unmatched.inexactMaintenance ?? 0, "Inexact Maintenance"],
+    [unmatched.conflictingMaintenance ?? 0, "Conflicting Maintenance"],
+    [unmatched.undatedWaivedFees ?? 0, "Undated Waived Fees"],
+    [unmatched.inexactWaivedFees ?? 0, "Inexact Waived Fees"],
   ].filter(([count]) => Number(count) > 0);
   if (!items.length) return null;
   return <p className="text-sm text-[#D03020]">{items.map(([count, label]) => `${count} ${label}`).join(" · ")}</p>;
@@ -207,6 +216,9 @@ export function UnifiedFinancePanel() {
                   <div key={item.key} className="rounded-xl border border-border p-4">
                     <p className="text-xs text-muted-foreground">{item.label}</p>
                     <p className="mt-1 text-2xl font-semibold tabular-nums">{measureText(section, item.key)}</p>
+                    {title === "Verified Collections" && item.key === "customerCompensation" && report.gaps?.length ? (
+                      <p className="mt-1 text-xs text-[#D03020]">{report.gaps.join(" · ")}</p>
+                    ) : null}
                   </div>
                 ))}
               </div>
