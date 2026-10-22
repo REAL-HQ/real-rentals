@@ -1,28 +1,30 @@
 # Owner database queue
 
-Nothing here has been run on production. Checked against the open pull-request heads on 22 Oct 2026. RC15 is `c46354b0`. M2 #190 is `3be1805f`. M3 #232 is `4650e460`. Production row counts, live grants, and lock times were not measured.
+Nothing here has been run on production. Checked against the open pull-request heads on 22 Oct 2026. RC15 is `c46354b0`. M2 #190 is `9bc97053`. M3 #232 is `cb9fbbf9`. Production row counts, live grants, and lock times were not measured. The scratch rehearsals below used a local clone named `rb_queue` and then dropped it.
 
 ## #173 Waitlist claim (`35dc3e9e`)
-Adds `claim_token_hash` and rewrites waitlist grants. The rate file then refuses a sixth signup from the same email in one hour, and that limit is live as soon as the file is saved. The claim link stays off (`WAITLIST_CLAIM_ENABLED` is false). Coming Soon still sends the same 12 columns. #232's rate file is different and does not grant execute. Promote-skip is notes only. Landing-length is a separate applications check.
-Order: set `WAITLIST_CLAIM_SECRET` before the link. Install one rate file only. The new index is not concurrent, so it locks waitlist writes. Duration not measured. Live grants were not read.
-Rollback: `proposed/waitlist-claim-rollback.sql`. Landing-length undo is the ROLLBACK section of `proposed/application-landing-length-v1.sql`.
+Adds `claim_token_hash` and rewrites waitlist grants. The rate file then refuses a sixth signup from the same email in one hour, and that limit is live as soon as the file is saved. The claim link stays off (`WAITLIST_CLAIM_ENABLED` is false). Coming Soon still sends the same 12 columns. Promote-skip is notes only. Landing-length is a separate applications check.
+The rate function body matches #232 step 2. This item installs `proposed/waitlist-coming-soon-rate-v1.sql`, which grants execute to anon and authenticated. #232 step 2 is a separate M3 file and revokes that execute. Approving #173 installs this file and leaves #232 step 2 uninstalled.
+Order: set `WAITLIST_CLAIM_SECRET` before the link. The new index is not concurrent, so it locks waitlist writes. Duration not measured. Live grants were not read.
+Rollback: `proposed/waitlist-claim-rollback.sql` drops the rate trigger, function, and index, restores the waitlist grants, and drops `claim_token_hash`. Scratch `rb_queue`: after the rate file, the rollback left the function, trigger, and index absent, and the waitlist grants matched the clone. The claim column was already absent. An M3 step 2 install is undone with #232 `proposed/m3-rollback/02-waitlist-coming-soon-rate.sql`. Landing-length undo is the ROLLBACK section of `proposed/application-landing-length-v1.sql`.
 Approve with its feature. Save the rate trigger only when you want that live limit.
 
 ## #231 Mileage allowance (`fdce2b15`)
 Adds read-only `agreement_mileage_allowance(agreements)` for service_role. It reads the mileage phrase and writes nothing. The Active column stays off (`ACTIVE_MILEAGE_OVERAGE_ENABLED` is false). Unblocks that column.
 No other dependency. This file is under `supabase/migrations`, so a deploy of this branch would run it. It does not rewrite agreements.
-Lock: one function create. Each later call reads one agreement body. Not measured. Rollback file: missing.
+Lock: one function create. Each later call reads one agreement body. Not measured.
+Rollback: `proposed/rollback/agreement-mileage-allowance.sql` drops the function. It is not a migration. Scratch `rb_queue`: the function was absent, the migration created it with execute for service_role only, and the rollback left it absent.
 Approve with its feature.
 
 ## #178 Linked maintenance in vehicle P&L (`b97faf7a`)
 Replaces live `vehicle_pl`. Expenses already include a linked service, and maintenance adds `company_share` again. On this branch `company_share` is numeric, not null, default 0. The proposal skips a service when a `vehicle_expenses` row names it. Managers see the new net the next time P&L opens. There is no flag.
 No dependency. Install replaces the function and does not rewrite a table. A cost can drop out of both columns when the expense date and the service date fall on opposite sides of the window. Hosted rows were not counted.
-Rollback file: missing. Do not re-run `supabase/migrations/20261006020456_cf3a2cce-fa6e-4f72-85b9-c95c5d634bb4.sql`. That file also drops a storage policy.
+Rollback: `proposed/rollback/vehicle-pl-linked-maintenance-v1.sql` restores the function copied from `supabase/migrations/20261006020456_cf3a2cce-fa6e-4f72-85b9-c95c5d634bb4.sql`. The function only. Leave that migration unchanged. That migration also drops a storage policy. Scratch `rb_queue`: the proposal changed the body, the rollback matched `pg_get_functiondef` to the clone, and the rollback file has no storage statement. The named photo policy was already absent on the clone.
 Approve now.
 
 ## #226 Driver doc TNC (`fe58e9d6`)
 Adds two empty dates on applications: when the Uber approval expires, and when the Lyft approval expires. Existing rows are not rewritten. The Documents column stays off (`DRIVER_DOC_EXPIRY_ENABLED` and `DRIVER_DOC_EXPIRY_SEPARATE_TNC` are false).
-Same columns are M3 step 1 on #232 (`4650e460`), in a different file that sets a 2 second lock timeout. Install one copy.
+Same columns are M3 step 1 on #232 (`cb9fbbf9`), in a different file that sets a 2 second lock timeout. Install one copy.
 Lock: an applications alter. This file sets no lock timeout. Duration not measured. Rollback is commented in `proposed/driver-doc-expiry-tnc.sql`, not a separate file. #232 has `proposed/m3-rollback/01-tnc-approval-expiry.sql`.
 Approve with its feature, using one copy.
 
