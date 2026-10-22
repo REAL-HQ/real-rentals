@@ -22,6 +22,8 @@ import {
 import { MoreVertical, ChevronDown, Check } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
 import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
+import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
+import { UnmatchedStripePayments } from "./UnmatchedStripePayments";
 
 const STATUSES = [
   "upcoming",
@@ -137,6 +139,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
 
   return (
     <div>
+      {STRIPE_UNMATCHED_PAYMENTS_ENABLED ? <UnmatchedStripePayments /> : null}
       <div className="admin-sticky-bar flex flex-wrap items-center gap-2 mb-4 pb-2">
         <div className="flex flex-wrap gap-2 text-xs">
           {(["all", "overdue", ...STATUSES.filter((x) => x !== "overdue")] as const).map((s) => (
