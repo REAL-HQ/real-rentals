@@ -1,12 +1,14 @@
 import { STRIPE_READER_MAX_PAGES, STRIPE_READER_PAGE_SIZE, paginateStripeList } from "./stripe-reader";
 import { createReadOnlyStripe } from "./stripe-reader.server";
+import { customerIdOf, stripeId, subscriptionIdOf } from "./stripe-unmatched";
 import type { PayoutWindow, ReconPayoutInput, ReconTxn } from "./stripe-payout-recon";
 
 /**
  * Payouts and their balance transactions only.
  * createReadOnlyStripe("live", { cache: true }) with list.
  * The balance transaction list is filtered by payout and expands the charge so its payment_intent can be matched.
- * A page cap or any Stripe error returns no partial payouts.
+ * Paid invoices in the same window map that payment intent to stripe_invoice_id.
+ * A page cap or any Stripe error, including the invoice list, returns no partial payouts.
  */
 
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -24,6 +26,12 @@ export type PayoutReconGateway = {
   balanceTransactions: {
     list: (
       params: { payout: string; limit: number; expand: ["data.source"]; starting_after?: string },
+      options?: CallOptions,
+    ) => Promise<Page<Raw>>;
+  };
+  invoices: {
+    list: (
+      params: { status: "paid"; created: { gte: number; lt: number }; limit: number; expand: ["data.payments"]; starting_after?: string },
       options?: CallOptions,
     ) => Promise<Page<Raw>>;
   };
@@ -69,10 +77,69 @@ export async function readPayoutRecon(
       }
       payouts.push({ ...payout, transactions });
     }
+    const indexed = await indexPaidInvoices(gateway, window, { timeoutMs: options.timeoutMs, now, signal: options.signal, deadline });
+    if (!indexed.ok) return { ok: false, capped: indexed.capped };
+    for (const payout of payouts) {
+      for (const txn of payout.transactions) {
+        const hit = txn.paymentIntentId ? indexed.byIntent.get(txn.paymentIntentId) : undefined;
+        if (!hit) continue;
+        txn.invoiceId = hit.invoiceId;
+        txn.subscriptionId = hit.subscriptionId;
+        txn.customerId = hit.customerId;
+      }
+    }
     return { ok: true, payouts };
   } catch {
     return { ok: false, capped: false };
   }
+}
+
+async function indexPaidInvoices(
+  gateway: PayoutReconGateway,
+  window: PayoutWindow,
+  options: { timeoutMs?: number; now: () => number; signal?: AbortSignal; deadline: number },
+): Promise<{ ok: true; byIntent: Map<string, { invoiceId: string; subscriptionId: string | null; customerId: string | null }> } | { ok: false; capped: boolean }> {
+  const listed = await paginateStripeList(
+    (cursor) => gateway.invoices.list(
+      {
+        status: "paid",
+        created: { gte: window.gte, lt: window.lt },
+        limit: STRIPE_READER_PAGE_SIZE,
+        expand: ["data.payments"],
+        ...(cursor ? { starting_after: cursor } : {}),
+      },
+      { timeout: remaining(options.deadline, options.now) },
+    ),
+    { label: "payout reconciliation invoices", maxPages: STRIPE_READER_MAX_PAGES, signal: options.signal, deadline: options.deadline, now: options.now, strict: true },
+  );
+  if (!listed.ok) return { ok: false, capped: listed.reason === "capped" };
+  const byIntent = new Map<string, { invoiceId: string; subscriptionId: string | null; customerId: string | null }>();
+  for (const row of listed.rows) {
+    if (row.livemode === false) continue;
+    const indexed = indexInvoice(row);
+    if (indexed === "bad") return { ok: false, capped: false };
+    for (const intent of indexed.intents) byIntent.set(intent, indexed);
+  }
+  return { ok: true, byIntent };
+}
+
+function indexInvoice(row: Raw): { invoiceId: string; subscriptionId: string | null; customerId: string | null; intents: string[] } | "bad" {
+  const invoiceId = text(row.id);
+  if (!invoiceId) return "bad";
+  const page = record(row.payments);
+  if (!page || !Array.isArray(page.data) || page.has_more !== false) return "bad";
+  const intents: string[] = [];
+  for (const item of page.data) {
+    const payment = record(record(item)?.payment);
+    const intent = stripeId(payment?.payment_intent);
+    if (intent) intents.push(intent);
+  }
+  return {
+    invoiceId,
+    subscriptionId: subscriptionIdOf(row as { subscription?: unknown; parent?: { subscription_details?: { subscription?: unknown } } | null }),
+    customerId: customerIdOf(row as { customer?: unknown }),
+    intents,
+  };
 }
 
 export function readLivePayoutRecon(window: PayoutWindow): Promise<PayoutReconStripeRead> {
@@ -100,6 +167,9 @@ function mapTxn(row: Raw): ReconTxn | "skip" | "bad" {
     currency: row.currency.toLowerCase(),
     chargeId: chargeId(source),
     paymentIntentId: paymentIntentId(source),
+    invoiceId: null,
+    subscriptionId: null,
+    customerId: null,
   };
 }
 

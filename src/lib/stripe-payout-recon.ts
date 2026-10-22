@@ -1,10 +1,11 @@
+import { invoiceIsLinked, type LocalLink } from "./stripe-unmatched";
 import { addCalendarDays, etMidnightUnix, etYmd } from "./weekly-cash-flow";
 
 /**
  * Read-only payout reconciliation for the last 60 Eastern Time days.
  * Gross, fees, refunds, and net come from each payout's balance transactions.
- * An app payment matches when payments.stripe_payment_intent_id is the charge's payment_intent.
- * This module does not call Stripe or write.
+ * An app payment matches when its payment intent or its Stripe invoice id is on the charge.
+ * Fleet Link is invoiceIsLinked. This module does not call Stripe or write.
  */
 
 export const STRIPE_CHECK_UNAVAILABLE = "Stripe check unavailable";
@@ -27,6 +28,7 @@ export type ReconPayment = {
   netCollected: unknown;
   paidDate: string | null;
   stripePaymentIntentId: string | null;
+  stripeInvoiceId: string | null;
 };
 
 export type ReconTxn = {
@@ -38,6 +40,9 @@ export type ReconTxn = {
   currency: string;
   chargeId: string | null;
   paymentIntentId: string | null;
+  invoiceId: string | null;
+  subscriptionId: string | null;
+  customerId: string | null;
 };
 
 export type ReconPayoutInput = {
@@ -56,6 +61,7 @@ export type MoneyRow = {
   paymentIntentId: string | null;
   amountCents: number | null;
   status: string | null;
+  fleetLink: "Linked" | "Not Linked";
 };
 
 export type PayoutReconPayout = {
@@ -116,15 +122,27 @@ export function buildPayoutRecon(input: {
   payouts: ReconPayoutInput[];
   payments: ReconPayment[];
   applications: ReconApplication[];
+  rentals?: readonly LocalLink[];
+  applicationLinks?: readonly LocalLink[];
 }): PayoutReconReport {
   const apps = new Map(input.applications.filter((app) => app.id && !app.deleted).map((app) => [app.id, app]));
+  const rentals = input.rentals ?? [];
+  const applicationLinks = input.applicationLinks ?? [];
   const byIntent = new Map<string, ReconPayment[]>();
+  const byInvoice = new Map<string, ReconPayment[]>();
   for (const payment of input.payments) {
     const intent = payment.stripePaymentIntentId?.trim();
-    if (!intent) continue;
-    const list = byIntent.get(intent) ?? [];
-    list.push(payment);
-    byIntent.set(intent, list);
+    if (intent) {
+      const list = byIntent.get(intent) ?? [];
+      list.push(payment);
+      byIntent.set(intent, list);
+    }
+    const invoiceId = payment.stripeInvoiceId?.trim();
+    if (invoiceId) {
+      const list = byInvoice.get(invoiceId) ?? [];
+      list.push(payment);
+      byInvoice.set(invoiceId, list);
+    }
   }
   const seen = new Set<string>();
   const payouts = input.payouts.map((payout) => {
@@ -134,10 +152,19 @@ export function buildPayoutRecon(input: {
     for (const txn of payout.transactions) {
       if (!CHARGE_TYPES.has(txn.type)) continue;
       const intent = txn.paymentIntentId;
-      const hits = intent ? byIntent.get(intent) ?? [] : [];
-      if (intent && hits.length) {
-        seen.add(intent);
-        for (const payment of hits) matched.push(paymentRow(payment, apps));
+      const invoiceId = txn.invoiceId?.trim() || null;
+      const hits = uniquePayments([
+        ...(intent ? byIntent.get(intent) ?? [] : []),
+        ...(invoiceId ? byInvoice.get(invoiceId) ?? [] : []),
+      ]);
+      const link = fleetLinkLabel(txn, rentals, applicationLinks);
+      if (hits.length) {
+        for (const payment of hits) {
+          const paymentIntent = payment.stripePaymentIntentId?.trim();
+          if (paymentIntent) seen.add(paymentIntent);
+          if (intent) seen.add(intent);
+          matched.push({ ...paymentRow(payment, apps), fleetLink: link });
+        }
       } else {
         unmatchedCharges.push({
           id: txn.chargeId ?? txn.id,
@@ -146,6 +173,7 @@ export function buildPayoutRecon(input: {
           paymentIntentId: intent,
           amountCents: Number.isSafeInteger(txn.amount) ? txn.amount : null,
           status: null,
+          fleetLink: link,
         });
       }
     }
@@ -201,17 +229,17 @@ export function payoutReconToCsv(report: PayoutReconReport): string {
     ]),
     [],
     ["Matched Payments"],
-    ["Payout", "Payment", "Driver", "Payment Intent", "Amount", "Status"],
+    ["Payout", "Payment", "Driver", "Payment Intent", "Amount", "Status", "Fleet Link"],
   ];
   for (const payout of report.payouts) {
-    for (const row of payout.matched) lines.push([payout.id, row.id, row.driverName ?? "", row.paymentIntentId ?? "", formatCents(row.amountCents), row.status ?? ""]);
+    for (const row of payout.matched) lines.push([payout.id, row.id, row.driverName ?? "", row.paymentIntentId ?? "", formatCents(row.amountCents), row.status ?? "", row.fleetLink]);
   }
-  lines.push([], ["Unmatched Charges"], ["Payout", "Charge", "Payment Intent", "Amount"]);
+  lines.push([], ["Unmatched Charges"], ["Payout", "Charge", "Payment Intent", "Amount", "Fleet Link"]);
   for (const payout of report.payouts) {
-    for (const row of payout.unmatchedCharges) lines.push([payout.id, row.id, row.paymentIntentId ?? "", formatCents(row.amountCents)]);
+    for (const row of payout.unmatchedCharges) lines.push([payout.id, row.id, row.paymentIntentId ?? "", formatCents(row.amountCents), row.fleetLink]);
   }
-  lines.push([], ["Paid In Stripe Not In A Payout"], ["Payment", "Driver", "Payment Intent", "Amount", "Status"]);
-  for (const row of report.paidNotInPayout) lines.push([row.id, row.driverName ?? "", row.paymentIntentId ?? "", formatCents(row.amountCents), row.status ?? ""]);
+  lines.push([], ["Paid In Stripe Not In A Payout"], ["Payment", "Driver", "Payment Intent", "Amount", "Status", "Fleet Link"]);
+  for (const row of report.paidNotInPayout) lines.push([row.id, row.driverName ?? "", row.paymentIntentId ?? "", formatCents(row.amountCents), row.status ?? "", row.fleetLink]);
   return `${lines.map((line) => line.map(escapeCsvCell).join(",")).join("\r\n")}\r\n`;
 }
 
@@ -236,6 +264,25 @@ function summarize(payout: ReconPayoutInput): { grossCents: number; feesCents: n
   return { grossCents, feesCents, refundsCents, netCents };
 }
 
+function uniquePayments(rows: ReconPayment[]): ReconPayment[] {
+  const seen = new Set<string>();
+  const unique: ReconPayment[] = [];
+  for (const row of rows) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    unique.push(row);
+  }
+  return unique;
+}
+
+function fleetLinkLabel(txn: ReconTxn, rentals: readonly LocalLink[], applications: readonly LocalLink[]): "Linked" | "Not Linked" {
+  return invoiceIsLinked(
+    { subscriptionId: txn.subscriptionId, customerId: txn.customerId },
+    rentals,
+    applications,
+  ) ? "Linked" : "Not Linked";
+}
+
 function paymentRow(payment: ReconPayment, apps: Map<string, ReconApplication>): MoneyRow {
   const app = payment.driverId ? apps.get(payment.driverId) : undefined;
   const net = payment.netCollected == null || payment.netCollected === "" ? null : dollarsToCents(payment.netCollected);
@@ -246,6 +293,7 @@ function paymentRow(payment: ReconPayment, apps: Map<string, ReconApplication>):
     paymentIntentId: payment.stripePaymentIntentId,
     amountCents: net ?? dollarsToCents(payment.amount),
     status: statusLabel(payment.status),
+    fleetLink: "Not Linked",
   };
 }
 
