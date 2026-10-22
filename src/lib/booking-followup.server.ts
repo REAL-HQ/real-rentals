@@ -238,11 +238,7 @@ async function latestContacts(
       .order("id", { ascending: false })
       .limit(READ_CAP + 1);
     if (outbound.error) {
-      for (const applicationId of chunk) {
-        const messageSeen = messageAt.get(applicationId);
-        if (messageSeen) stamps.push({ applicationId, at: messageSeen, source: "message" });
-        else unchecked.push(applicationId);
-      }
+      unchecked.push(...chunk);
       continue;
     }
     const outbounds = keptNewest(outbound.data ?? []);
