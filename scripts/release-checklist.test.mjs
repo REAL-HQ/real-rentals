@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { classifySupabaseHits, DUMMY_ENV, runChecklist } from "./release-checklist.mjs";
+import { CHECKLIST_ROOT, RC_DIFF_SCRIPT, classifySupabaseHits, DUMMY_ENV, runChecklist } from "./release-checklist.mjs";
 
 const script = fileURLToPath(new URL("./release-checklist.mjs", import.meta.url));
 let fail = 0;
@@ -27,7 +27,7 @@ writeFileSync(join(repo, ".output", "server", "index.mjs"), "http://127.0.0.1:9"
 
 const calls = [];
 const passing = (cmd, options) => {
-  calls.push({ cmd, env: options.env });
+  calls.push({ cmd, env: options.env, cwd: options.cwd });
   return { status: 0 };
 };
 const good = runChecklist({ repo, from: "-live", to: "rc", diffOut: join(root, "diff"), spawn: passing });
@@ -39,6 +39,8 @@ ok(build?.env?.VITE_SUPABASE_URL === DUMMY_ENV.VITE_SUPABASE_URL, "the build rec
 ok(build?.env?.NODE_OPTIONS === "--max-old-space-size=4096", "the build raises the Node heap");
 const diff = calls.find((call) => call.cmd.includes("--all-flags"));
 ok(diff?.cmd.includes("--from") && diff.cmd.includes("-live") && diff.cmd.includes("--to") && diff.cmd.includes("rc"), "rc-diff keeps a ref that starts with -");
+ok(diff?.cmd[1] === RC_DIFF_SCRIPT && diff.cmd[1].endsWith(`${join("scripts", "rc-diff-report.mjs")}`), "rc-diff is the script beside the checklist");
+ok(diff?.cwd === CHECKLIST_ROOT && diff.cwd !== repo, "rc-diff runs in the checklist checkout");
 
 const stopped = runChecklist({
   repo,

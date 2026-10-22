@@ -7,11 +7,16 @@
 // a supabase.co scan of .output/server, and rc-diff --all-flags.
 // A supabase.co string under .output/server/_libs is a vendored library example
 // and does not stop the checklist. A hit in any other server file does.
+// rc-diff is the copy beside this checklist. A candidate that does not carry
+// scripts/rc-diff-report.mjs still gets that step.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, sep } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join, relative, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+export const CHECKLIST_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+export const RC_DIFF_SCRIPT = join(CHECKLIST_ROOT, "scripts", "rc-diff-report.mjs");
 
 export const DUMMY_ENV = {
   NODE_OPTIONS: "--max-old-space-size=4096",
@@ -101,11 +106,15 @@ export function runChecklist({ repo, from, to, diffOut, spawn }) {
       : `vendor ${classified.vendor.length}`;
     steps.push({ name: "supabase.co", exit: classified.exit, detail });
   }
-  const diff = exec(
-    ["node", "scripts/rc-diff-report.mjs", "--from", from, "--to", to, "--all-flags", "--repo", repo, "--out", diffOut],
-    { cwd: repo },
-  );
-  steps.push({ name: "rc-diff", exit: statusOf(diff) });
+  if (!existsSync(RC_DIFF_SCRIPT)) {
+    steps.push({ name: "rc-diff", exit: 1, detail: "missing checklist script" });
+  } else {
+    const diff = exec(
+      ["node", RC_DIFF_SCRIPT, "--from", from, "--to", to, "--all-flags", "--repo", repo, "--out", diffOut],
+      { cwd: CHECKLIST_ROOT },
+    );
+    steps.push({ name: "rc-diff", exit: statusOf(diff) });
+  }
   return formatSummary(steps);
 }
 
