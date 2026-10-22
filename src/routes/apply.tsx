@@ -1,6 +1,6 @@
 import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { FadeUp } from "@/components/site/FadeUp";
@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useResumeToken } from "@/lib/resume-token";
 import { SmsConsentField } from "@/components/site/SmsConsentField";
 import { PhoneLink } from "@/components/site/PhoneLink";
+import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
 
 export const Route = createFileRoute("/apply")({
   validateSearch: (
@@ -71,8 +72,10 @@ const VEHICLE_TYPE_TO_SIZE: Record<string, "Sedan" | "SUV" | "XL"> = {
 
 function ApplyPage() {
   const { t, city: preCity, pickup: prePickup, vehicle_type: preType } = Route.useSearch();
-  // allowStashed: false — /apply starts a new application. A token stashed by
-  // the previous person on a shared or kiosk device must not open their form.
+  // /apply starts a new application. A token left in this tab by the previous
+  // person on a shared device must not open their form. The flag does not
+  // change that. A token in the URL is an explicit resume link and still
+  // redirects to /thank-you.
   const token = useResumeToken(t, { allowStashed: false });
 
   return (
@@ -82,18 +85,74 @@ function ApplyPage() {
     // the site one click away.
     <div className="min-h-screen bg-background">
       {token === undefined ? null : token ? (
-        <Navigate to="/thank-you" search={{ t: token }} replace />
+        <Navigate
+          to="/thank-you"
+          search={{ t: token }}
+          replace
+        />
       ) : (
         <main className="mx-auto px-6 pt-12 md:pt-20 pb-24 w-full max-w-[1600px]">
-          <ContactStep
-            preCity={preCity ?? ""}
-            prePickup={prePickup ?? ""}
-            preVehicleSize={VEHICLE_TYPE_TO_SIZE[(preType ?? "").toLowerCase()] ?? null}
-          />
+          {APPLICATION_RESUME_ENABLED === true ? (
+            <ApplyResumeGate
+              preCity={preCity ?? ""}
+              prePickup={prePickup ?? ""}
+              preVehicleSize={VEHICLE_TYPE_TO_SIZE[(preType ?? "").toLowerCase()] ?? null}
+            />
+          ) : (
+            <ContactStep
+              preCity={preCity ?? ""}
+              prePickup={prePickup ?? ""}
+              preVehicleSize={VEHICLE_TYPE_TO_SIZE[(preType ?? "").toLowerCase()] ?? null}
+            />
+          )}
         </main>
       )}
     </div>
   );
+}
+
+function ApplyResumeGate({
+  preCity,
+  prePickup,
+  preVehicleSize,
+}: {
+  preCity: string;
+  prePickup: string;
+  preVehicleSize: "Sedan" | "SUV" | "XL" | null;
+}) {
+  const [draft, setDraft] = useState<unknown>(null);
+  useEffect(() => {
+    if (APPLICATION_RESUME_ENABLED !== true) return;
+    let live = true;
+    void import("@/lib/application-resume-client").then(async (mod) => {
+      const found = await mod.loadContinueDraft();
+      if (!live) return;
+      setDraft(found);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (APPLICATION_RESUME_ENABLED !== true || !draft) {
+    return <ContactStep preCity={preCity} prePickup={prePickup} preVehicleSize={preVehicleSize} />;
+  }
+  return <SavedApplicationSlot draft={draft} />;
+}
+
+function SavedApplicationSlot({ draft }: { draft: unknown }) {
+  const [banner, setBanner] = useState<ReactNode>(null);
+  useEffect(() => {
+    if (APPLICATION_RESUME_ENABLED !== true) return;
+    let live = true;
+    void import("@/components/site/SignedInContinueBanner").then((ui) => {
+      if (!live) return;
+      setBanner(<ui.SignedInContinueBanner draft={draft as never} />);
+    });
+    return () => {
+      live = false;
+    };
+  }, [draft]);
+  return banner;
 }
 
 function ContactStep({
