@@ -17,9 +17,12 @@
  * pg_catalog.has_column_privilege. Comments and newlines between a name
  * and '(' still count as a call, including a quoted or parenthesized name.
  * current_setting may read only server_version, transaction_read_only,
- * default_transaction_read_only, and standard_conforming_strings. Any
- * other call is refused before connect. A U& identifier or string is
- * refused. The URL is refused when it sets standard_conforming_strings,
+ * default_transaction_read_only, and standard_conforming_strings,
+ * including E'server_version' with no backslash. Tables are an allowlist
+ * of the relations this checklist reads. pg_roles cannot be read with a
+ * star or rolpassword. Any other call or table is refused before connect.
+ * A U& identifier or string is refused. The URL is refused when it sets
+ * standard_conforming_strings,
  * including through options. After connect the script stops when that
  * setting is not on, and when dblink or postgres_fdw is installed,
  * because those extensions can write from a read-only transaction.

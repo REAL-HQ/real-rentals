@@ -7,8 +7,14 @@
  * name and a parenthesized name are calls too.
  *
  * The caller passes the checklist policy. current_setting may read only
- * the setting names in that policy. to_jsonb may read only the
- * public.documents alias named there.
+ * the setting names in that policy, including an E'' literal with no
+ * backslash. to_jsonb may read only the public.documents alias named
+ * there. A plain quoted alias stays in the shape, so it cannot hide a
+ * second binding. Tables are an allowlist. pg_roles and pg_authid may
+ * not be read with a star or rolpassword.
+ *
+ * Postgres keeps $ inside an identifier, so a$$ is not a dollar quote.
+ * A dollar quote never starts right after an identifier character.
  */
 
 const WRITE_KEYWORD = /\b(insert|update|delete|drop|alter|create|grant|revoke|truncate|copy|merge|call|do|comment|vacuum|analyze|refresh|reindex|cluster|lock|set|begin|commit|rollback|execute|prepare|listen|notify|into)\b/i;
@@ -46,14 +52,25 @@ export function assertReadQuery(sql) {
 }
 
 export function assertSelectOnly(sql, policy) {
-  if (!policy || !policy.allowedCalls) throw new Error("Refusing to run: select guard has no call policy.");
+  if (!policy || !policy.allowedCalls || !policy.allowedRelations) {
+    throw new Error("Refusing to run: select guard has no call policy.");
+  }
   const scanned = assertReadQuery(sql);
+  for (const name of scanned.names) {
+    const bare = name.slice(name.lastIndexOf(".") + 1);
+    if (bare === "rolpassword") throw new Error("Refusing to run: SELECT reads a role secret.");
+  }
+  for (const relation of relationsOf(scanned.shape)) {
+    if (!policy.allowedRelations.has(relation)) throw new Error(`Refusing to run: SELECT reads ${relation}`);
+  }
+  assertRoleProjection(scanned.shape);
   for (const call of scanned.calls) {
     if (!policy.allowedCalls.has(call.name)) throw new Error(`Refusing to run: SELECT calls ${call.name}`);
     if (call.name === "current_setting" || call.name === "pg_catalog.current_setting") {
       assertSetting(sql, call.open, policy.allowedSettings);
     }
     if (call.name === "to_jsonb" || call.name === "pg_catalog.to_jsonb") {
+      if (scanned.opaqueQuoted) throw new Error("Refusing to run: to_jsonb is not limited to public.documents.");
       assertDocumentsRow(sql, call.open, scanned.shape, policy.documentsAlias);
     }
   }
@@ -67,6 +84,7 @@ export function scanSql(sql) {
   let qualifier = "";
   const names = [];
   const calls = [];
+  let opaqueQuoted = false;
   let i = 0;
   const len = sql.length;
 
@@ -86,7 +104,9 @@ export function scanSql(sql) {
   };
   const ident = (text, quoted) => {
     mark();
-    emit(text, !quoted);
+    const plain = plainIdent(text);
+    if (quoted && !plain) opaqueQuoted = true;
+    emit(text, !quoted || plain);
     const lower = text.toLowerCase();
     names.push(lower);
     const after = skipGap(sql, i);
@@ -103,7 +123,7 @@ export function scanSql(sql) {
     const quote = sql[at + 2];
     if (quote !== "'" && quote !== "\"") return;
     const prev = at > 0 ? sql[at - 1] : "";
-    if (/[A-Za-z0-9_]/.test(prev)) return;
+    if (isIdentPart(prev)) return;
     throw new Error("Refusing to run: SQL uses a Unicode escape.");
   };
 
@@ -121,7 +141,7 @@ export function scanSql(sql) {
       continue;
     }
     if (ch === "'") {
-      const escape = i > 0 && (sql[i - 1] === "E" || sql[i - 1] === "e") && (i < 2 || !/[A-Za-z0-9_]/.test(sql[i - 2]));
+      const escape = i > 0 && (sql[i - 1] === "E" || sql[i - 1] === "e") && (i < 2 || !isIdentPart(sql[i - 2]));
       i = escape ? skipEscapeString(sql, i) : skipStandardString(sql, i);
       emit(" ");
       mark();
@@ -154,11 +174,11 @@ export function scanSql(sql) {
       const invoked = parenInvoke(sql, i);
       if (invoked) noteCall(invoked.name, invoked.open);
     }
-    if (/[A-Za-z_]/.test(ch)) {
+    if (isIdentStart(ch)) {
       refuseUnicode(i);
       const start = i;
       i += 1;
-      while (i < len && /[A-Za-z0-9_]/.test(sql[i])) i += 1;
+      while (i < len && isIdentPart(sql[i])) i += 1;
       ident(sql.slice(start, i), false);
       continue;
     }
@@ -168,7 +188,7 @@ export function scanSql(sql) {
     i += 1;
   }
   finish();
-  return { statements, code, shape, names, calls };
+  return { statements, code, shape, names, calls, opaqueQuoted };
 }
 
 function parenInvoke(sql, i) {
@@ -181,10 +201,10 @@ function parenInvoke(sql, i) {
       const end = skipQuotedIdent(sql, j);
       part = unquoteIdent(sql.slice(j, end));
       j = end;
-    } else if (/[A-Za-z_]/.test(sql[j])) {
+    } else if (isIdentStart(sql[j])) {
       const start = j;
       j += 1;
-      while (j < sql.length && /[A-Za-z0-9_]/.test(sql[j])) j += 1;
+      while (j < sql.length && isIdentPart(sql[j])) j += 1;
       part = sql.slice(start, j);
     } else {
       return null;
@@ -205,7 +225,7 @@ function parenInvoke(sql, i) {
 
 function assertSetting(sql, open, allowed) {
   const args = splitArgs(sql, open);
-  const value = args.length === 1 ? onlyStandardLiteral(args[0]) : null;
+  const value = args.length === 1 ? onlySettingLiteral(args[0]) : null;
   if (value == null || !allowed || !allowed.has(value.toLowerCase())) {
     throw new Error("Refusing to run: current_setting is not an allowed setting.");
   }
@@ -242,9 +262,9 @@ function onlyStandardLiteral(raw) {
 
 function onlyIdent(raw) {
   const start = skipGap(raw, 0);
-  if (!/[A-Za-z_]/.test(raw[start] || "")) return null;
+  if (!isIdentStart(raw[start] || "")) return null;
   let j = start + 1;
-  while (j < raw.length && /[A-Za-z0-9_]/.test(raw[j])) j += 1;
+  while (j < raw.length && isIdentPart(raw[j])) j += 1;
   if (skipGap(raw, j) !== raw.length) return null;
   return raw.slice(start, j).toLowerCase();
 }
@@ -285,7 +305,7 @@ function splitArgs(sql, open) {
       continue;
     }
     if (ch === "'") {
-      const escape = j > 0 && (sql[j - 1] === "E" || sql[j - 1] === "e") && (j < 2 || !/[A-Za-z0-9_]/.test(sql[j - 2]));
+      const escape = j > 0 && (sql[j - 1] === "E" || sql[j - 1] === "e") && (j < 2 || !isIdentPart(sql[j - 2]));
       j = escape ? skipEscapeString(sql, j) : skipStandardString(sql, j);
       continue;
     }
@@ -334,10 +354,10 @@ function tokenize(shape) {
       i += 1;
       continue;
     }
-    if (/[A-Za-z_]/.test(ch)) {
+    if (isIdentStart(ch)) {
       const start = i;
       i += 1;
-      while (i < shape.length && /[A-Za-z0-9_]/.test(shape[i])) i += 1;
+      while (i < shape.length && isIdentPart(shape[i])) i += 1;
       out.push({ k: "id", v: shape.slice(start, i).toLowerCase() });
       continue;
     }
@@ -464,6 +484,9 @@ function skipGap(sql, at) {
 
 function dollarTag(sql, i) {
   if (sql[i] !== "$") return null;
+  if (i > 0 && isIdentPart(sql[i - 1])) {
+    throw new Error("Refusing to run: SQL uses $ in an identifier.");
+  }
   if (sql.startsWith("$$", i)) return "$$";
   const match = /^\$([A-Za-z_][A-Za-z0-9_]*)\$/.exec(sql.slice(i));
   return match ? match[0] : null;
@@ -543,11 +566,88 @@ function unquoteIdent(token) {
   return token.slice(1, -1).replace(/""/g, "\"");
 }
 
+function isIdentStart(ch) {
+  return typeof ch === "string" && ch.length === 1 && /[\p{L}_]/u.test(ch);
+}
+
+function isIdentPart(ch) {
+  return typeof ch === "string" && ch.length === 1 && /[\p{L}0-9_$]/u.test(ch);
+}
+
+function plainIdent(text) {
+  return /^[\p{L}_][\p{L}0-9_$]*$/u.test(text);
+}
+
+function onlySettingLiteral(raw) {
+  const standard = onlyStandardLiteral(raw);
+  if (standard != null) return standard;
+  const start = skipGap(raw, 0);
+  if ((raw[start] !== "E" && raw[start] !== "e") || raw[start + 1] !== "'") return null;
+  if (start > 0 && isIdentPart(raw[start - 1])) return null;
+  let value = "";
+  let j = start + 2;
+  while (j < raw.length) {
+    if (raw[j] === "\\") return null;
+    if (raw[j] === "'") {
+      if (raw[j + 1] === "'") {
+        value += "'";
+        j += 2;
+        continue;
+      }
+      if (skipGap(raw, j + 1) !== raw.length) return null;
+      return value;
+    }
+    value += raw[j];
+    j += 1;
+  }
+  return null;
+}
+
+function relationsOf(shape) {
+  const bindings = [];
+  const toks = tokenize(shape);
+  walk(toks, 0, toks.length, bindings);
+  const out = [];
+  for (const binding of bindings) {
+    if (binding.relation === "subquery" || binding.relation === "call") continue;
+    out.push(binding.relation);
+  }
+  return out;
+}
+
+function assertRoleProjection(shape) {
+  const toks = tokenize(shape);
+  const bindings = [];
+  walk(toks, 0, toks.length, bindings);
+  const sensitive = bindings.some((binding) =>
+    binding.relation === "pg_catalog.pg_roles"
+    || binding.relation === "pg_catalog.pg_authid"
+    || binding.relation === "pg_roles"
+    || binding.relation === "pg_authid");
+  if (!sensitive) return;
+  for (let i = 0; i < toks.length; i += 1) {
+    if (toks[i].v !== "*") continue;
+    const countStar = i >= 2 && toks[i - 1].v === "(" && toks[i - 2].v === "count";
+    if (!countStar) throw new Error("Refusing to run: SELECT reads a role secret.");
+  }
+}
+
 const ALLOWED_SETTINGS = new Set([
   "server_version",
   "transaction_read_only",
   "default_transaction_read_only",
   "standard_conforming_strings",
+]);
+
+const ALLOWED_RELATIONS = new Set([
+  "information_schema.columns",
+  "pg_catalog.pg_attribute",
+  "pg_catalog.pg_class",
+  "pg_catalog.pg_extension",
+  "pg_catalog.pg_roles",
+  "pg_catalog.pg_trigger",
+  "public.applications",
+  "public.waitlist",
 ]);
 
 /** Checklist calls for proposed/m3/preflight.sql and its session probe. */
@@ -564,7 +664,7 @@ export const PREFLIGHT_POLICY = {
     "pg_catalog.has_column_privilege",
   ]),
   allowedSettings: ALLOWED_SETTINGS,
-  documentsAlias: "d",
+  allowedRelations: ALLOWED_RELATIONS,
 };
 
 export const ALLOWED_CALLS = PREFLIGHT_POLICY.allowedCalls;
