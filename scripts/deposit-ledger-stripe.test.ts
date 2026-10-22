@@ -120,6 +120,7 @@ it("matches a captured charge and a zero refund to the payment row", async () =>
   expect(stripeMock.refundsCreate).not.toHaveBeenCalled();
   expect(depositLedgerToCsv(report)).not.toContain(STRIPE_CHECK_UNAVAILABLE);
   expect(depositLedgerToCsv(report)).toContain("Held,100.00,0.00");
+  expect(depositLedgerToCsv(report)).not.toContain("Days Since Close");
 });
 
 it("keeps the database totals when Stripe captured a different amount", async () => {
@@ -212,11 +213,25 @@ it("shows Stripe check unavailable and keeps the database view when Stripe error
   expect(thrownResult.rows[0].collectedCents).toBe(10000);
 
   clearStripeReaderCache();
+  stripeMock.paymentIntentsRetrieve.mockResolvedValue({ id: "pi_1", livemode: false, latest_charge: "ch_1" });
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  expect(await readLiveDepositStripe([payment()])).toEqual({ ok: false });
+  expect(stripeMock.refundsList).not.toHaveBeenCalled();
+  expect(warn).not.toHaveBeenCalled();
+  const testMode = ready((await crossCheck([payment()])).result);
+  expect(testMode.stripeCheck).toBe("unavailable");
+  expect(testMode.rows[0].state).toBe("held");
+  expect(testMode.rows[0].collectedCents).toBe(10000);
+  expect(testMode.heldCents).toBe(10000);
+  expect(testMode.rows[0].stripeCapturedCents).toBeNull();
+  expect(testMode.warnings).toEqual([]);
+  expect(depositLedgerToCsv(testMode)).toContain(STRIPE_CHECK_UNAVAILABLE);
+
+  clearStripeReaderCache();
   stripeMock.paymentIntentsRetrieve.mockResolvedValue({ id: "pi_1", latest_charge: "ch_1" });
   stripeMock.chargesRetrieve.mockResolvedValue({ id: "ch_1", amount: 10000, amount_captured: 10000, amount_refunded: 0 });
   let page = 0;
   stripeMock.refundsList.mockImplementation(async () => ({ data: [{ id: `re_${++page}` }], has_more: true }));
-  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   expect(await readLiveDepositStripe([payment()])).toEqual({ ok: false });
   const capped = ready((await crossCheck([payment()])).result);
   expect(capped.stripeCheck).toBe("unavailable");

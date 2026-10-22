@@ -1,5 +1,5 @@
 import { tierAllows, type StaffTier } from "./roles";
-import { DEPOSIT_LEDGER_OFF } from "./deposit-ledger-flag";
+import { DEPOSIT_LEDGER_OFF, DEPOSIT_RETURNS_DUE_OFF } from "./deposit-ledger-flag";
 import {
   applyDepositStripe,
   buildDepositLedger,
@@ -38,6 +38,9 @@ export type DepositLoad =
 
 export async function runDepositLedger(input: {
   enabled: boolean;
+  returnsEnabled?: boolean;
+  includeDaysSinceClose?: boolean;
+  closedOnly?: boolean;
   userId: string | null;
   tier: StaffTier | null;
   today: string;
@@ -45,6 +48,7 @@ export async function runDepositLedger(input: {
   stripe?: (payments: LedgerPayment[]) => Promise<DepositStripeRead>;
 }): Promise<DepositLedgerResponse> {
   if (!input.enabled) throw new Error(DEPOSIT_LEDGER_OFF);
+  if (input.closedOnly && !input.returnsEnabled) throw new Error(DEPOSIT_RETURNS_DUE_OFF);
   if (!input.userId || !tierAllows(input.tier, "manager")) throw new Error("Forbidden");
   const loaded = await input.load();
   if (!loaded.ok) {
@@ -53,13 +57,24 @@ export async function runDepositLedger(input: {
     if (!report) return { status: "unavailable", reason: "The deposit date could not be read" };
     return { status: "ready", report };
   }
-  const report = buildDepositLedger({ ...loaded, today: input.today });
+  const returnsOn = input.returnsEnabled === true;
+  const report = buildDepositLedger({
+    ...loaded,
+    today: input.today,
+    includeDaysSinceClose: input.includeDaysSinceClose === true,
+    closedOnly: input.closedOnly === true,
+    resolveRefundConflict: returnsOn,
+  });
   if (!report) return { status: "unavailable", reason: "The deposit date could not be read" };
   if (!input.stripe) return { status: "ready", report };
+  const listed = new Set(report.rows.flatMap((row) => row.paymentIds));
+  const stripePayments = returnsOn
+    ? loaded.payments.filter((payment) => listed.has(payment.id))
+    : loaded.payments;
   try {
-    const checked = await input.stripe(loaded.payments);
+    const checked = await input.stripe(stripePayments);
     if (!checked.ok) return { status: "ready", report: markStripeUnavailable(report) };
-    return { status: "ready", report: applyDepositStripe(report, loaded.payments, checked.checks) };
+    return { status: "ready", report: applyDepositStripe(report, stripePayments, checked.checks) };
   } catch {
     return { status: "ready", report: markStripeUnavailable(report) };
   }
