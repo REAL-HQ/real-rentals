@@ -23,6 +23,9 @@ import {
 } from "@/components/ui/dialog";
 import { fmtDate } from "@/lib/date-format";
 import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
+import { WAITLIST_AGING_ENABLED, failedWaitlistAging, type WaitlistAgingResult } from "@/lib/waitlist-aging";
+import { getWaitlistAging } from "@/lib/waitlist-aging.functions";
+import { WaitlistAging } from "./WaitlistAging";
 
 // Waitlist back office.
 //
@@ -44,6 +47,8 @@ export function WaitlistPanel({
   const saveAvailability = useServerFn(setCarsAvailable);
   const notifyTop = useServerFn(notifyWaitlistTop);
   const promote = useServerFn(promoteToApplicant);
+  const loadAging = useServerFn(getWaitlistAging);
+  const [aging, setAging] = useState<WaitlistAgingResult | null>(null);
 
   const [entries, setEntries] = useState<WaitlistEntry[] | null>(null);
   const [carsAvailable, setCarsAvailableState] = useState<number | null>(null);
@@ -72,6 +77,21 @@ export function WaitlistPanel({
   useEffect(() => {
     refresh().catch((e) => toast.error(e?.message ?? "Could not load the waitlist."));
   }, [refresh]);
+
+  useEffect(() => {
+    if (WAITLIST_AGING_ENABLED !== true) return;
+    let cancelled = false;
+    loadAging()
+      .then((result) => {
+        if (!cancelled) setAging(result);
+      })
+      .catch(() => {
+        if (!cancelled) setAging(failedWaitlistAging());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAging]);
 
   const waitingCount = entries?.filter((e) => e.status === "waiting").length ?? 0;
 
@@ -276,6 +296,8 @@ export function WaitlistPanel({
           applications, and drivers are never told their position.
         </p>
       </SectionCard>
+
+      {WAITLIST_AGING_ENABLED === true ? <WaitlistAging result={aging} /> : null}
 
       <SectionCard
         title="Waitlist"
