@@ -1,0 +1,10 @@
+=== combined checklist 2026-10-21T23:59:52+00:00 node v22.23.3 ===
+STOP guard --rc exit 1
+PASS tsc exit 0
+PASS readiness exit 0
+PASS npm test exit 0
+PASS build exit 0
+PASS supabase.co exit 0 vendor 6
+STOP rc-diff exit 1
+STOP
+COMBINED_CHECKLIST_EXIT:1
