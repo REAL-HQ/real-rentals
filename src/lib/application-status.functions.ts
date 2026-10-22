@@ -2,9 +2,10 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireStaff } from "@/lib/roles.server";
+import { RECORD_RENTAL_CONTRACT_ENABLED } from "@/lib/record-rental-contract";
 import {
+  activeFilterApplicationIds,
   applicationStatusEventFromAudit,
-  authoritativeActiveApplicationIds,
   openRentalApplicationIds,
   type ActivePaymentRow,
   type ActiveRentalRow,
@@ -39,9 +40,9 @@ export const getApplicationStatusHistory = createServerFn({ method: "POST" })
   });
 
 export type DriverActiveSets = {
-  /** Meets the full Active definition. The Active filter uses this set. */
+  /** Active filter ids. Ongoing rentals while Record Rental is uninstalled; full evidence after. */
   authoritativeIds: string[];
-  /** A rentals row is still status active. Used only to tell a stored Active from a missing rental. */
+  /** A rentals row is still status active. Used to tell a stored Active from a missing rental. */
   openRentalIds: string[];
 };
 
@@ -60,6 +61,17 @@ export const listDriverActiveSets = createServerFn({ method: "GET" })
       .eq("status", "active");
     if (error) throw new Error(error.message);
     const rentals = (rentalRows ?? []) as ActiveRentalRow[];
+    const openRentalIds = openRentalApplicationIds(rentals);
+    // Pickup mileage and a collected payment are optional on the installed
+    // activate_rental_tx. Existing renters stay in the filter, and a payments
+    // read cannot hide them, until Record Rental contracts exist.
+    const recordRentalEnabled = RECORD_RENTAL_CONTRACT_ENABLED as boolean;
+    if (recordRentalEnabled !== true) {
+      return {
+        authoritativeIds: activeFilterApplicationIds({ rentals, recordRentalEnabled: false }),
+        openRentalIds,
+      };
+    }
     const vehicleIds = [...new Set(rentals.map((rental) => rental.vehicle_id).filter((id): id is string => !!id))];
     const rentalIds = rentals.map((rental) => rental.id);
     const [vehicleResult, paymentResult] = await Promise.all([
@@ -78,7 +90,12 @@ export const listDriverActiveSets = createServerFn({ method: "GET" })
     const vehicles = (vehicleResult.data ?? []) as ActiveVehicleRow[];
     const payments = (paymentResult.data ?? []) as ActivePaymentRow[];
     return {
-      authoritativeIds: authoritativeActiveApplicationIds({ rentals, vehicles, payments }),
-      openRentalIds: openRentalApplicationIds(rentals),
+      authoritativeIds: activeFilterApplicationIds({
+        rentals,
+        vehicles,
+        payments,
+        recordRentalEnabled: true,
+      }),
+      openRentalIds,
     };
   });

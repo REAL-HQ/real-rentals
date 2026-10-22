@@ -156,6 +156,82 @@ try {
     assert.equal(status.applicationFilterCount("waitlist", drivers, held, active, 2), 3);
   });
 
+  await test("Active filter keeps an ongoing rental without handover or payment", async () => {
+    const second = "44444444-4444-4444-8444-444444444444";
+    const ids = status.activeFilterApplicationIds({
+      rentals: [
+        { ...rental, pickup_reading_id: null, vehicle_id: null },
+        { id: second, application_id: "c", status: "active", vehicle_id: null, pickup_reading_id: null },
+        { ...rental, id: "55555555-5555-4555-8555-555555555555", application_id: "ended", status: "closed" },
+      ],
+      recordRentalEnabled: false,
+    });
+    assert.deepEqual(ids, [id, "c"]);
+    const rows = [
+      { id, status: "approved" },
+      { id: "c", status: "active" },
+      { id: "missing", status: "active" },
+      { id: "ended", status: "closed" },
+    ];
+    const active = new Set(ids);
+    assert.equal(status.applicationFilterCount("active", rows, new Set(), active, 0), 2);
+    assert.equal(status.applicationFilterCount("approved", rows, new Set(), active, 0), 1);
+    assert.equal(status.applicationFilterCount("closed", rows, new Set(), active, 0), 1);
+    assert.deepEqual(
+      status.activeFilterApplicationIds({
+        rentals: [{ ...rental, pickup_reading_id: null }],
+        vehicles: [vehicle],
+        payments: [],
+        recordRentalEnabled: true,
+      }),
+      [],
+    );
+  });
+
+  await test("Coordinator cannot leave Closed and Approved is not a reopen", async () => {
+    const coordinator = status.applicationStatusMenu("closed", "coordinator");
+    assert.equal(coordinator.find((item) => item.value === "closed").disabled, false);
+    assert.equal(coordinator.find((item) => item.value === "reviewing").disabled, true);
+    assert.equal(coordinator.find((item) => item.value === "approved").disabled, true);
+    const manager = status.applicationStatusMenu("closed", "manager");
+    assert.equal(manager.find((item) => item.value === "reviewing").disabled, false);
+    assert.equal(manager.find((item) => item.value === "new").disabled, false);
+    assert.equal(manager.find((item) => item.value === "approved").disabled, true);
+    const owner = status.applicationStatusMenu("closed", "owner");
+    assert.equal(owner.find((item) => item.value === "declined").disabled, false);
+    assert.equal(status.applicationStatusChoiceDisabled("reviewing", "closed", "coordinator"), false);
+    assert.equal(status.applicationStatusChoiceDisabled("closed", "approved", "owner"), true);
+  });
+
+  await test("closure history stays visible past the activity cap", async () => {
+    const docs = Array.from({ length: 20 }, (_, index) => ({
+      at: new Date(Date.UTC(2026, 9, 20, 0, 0, index)).toISOString(),
+      label: "Document Received",
+      detail: `doc ${index}`,
+    }));
+    const events = [
+      {
+        at: "2026-10-01T00:00:00.000Z",
+        label: "Application Closed",
+        detail: "Pricing / Affordability · Called twice · owner@example.invalid",
+      },
+      ...docs,
+      {
+        at: "2026-10-21T00:00:00.000Z",
+        label: "Application Reopened",
+        detail: "Reviewing · manager@example.invalid",
+      },
+    ];
+    const visible = status.visibleDriverActivity(events, 12);
+    const closed = visible.find((event) => event.label === "Application Closed");
+    const reopened = visible.find((event) => event.label === "Application Reopened");
+    assert.equal(closed.detail.includes("Pricing / Affordability"), true);
+    assert.equal(closed.detail.includes("Called twice"), true);
+    assert.equal(reopened.detail.includes("Reviewing"), true);
+    assert.equal(visible.filter((event) => event.label === "Document Received").length, 12);
+    assert.equal(visible[0].label, "Application Reopened");
+  });
+
   await test("closure history keeps reason, notes and actor", async () => {
     const event = status.applicationStatusEventFromAudit({
       created_at: "2026-10-22T12:00:00.000Z",
@@ -360,6 +436,15 @@ try {
     assert.doesNotMatch(ui, /update\(a\.id, \{ status: "active" \}\)/);
     assert.match(ui, /aria-label="Application Status"/);
     assert.match(ui, /aria-label="Contact Status"/);
+    assert.match(ui, /visibleDriverActivity\(ev\)/);
+    assert.doesNotMatch(ui, /slice\(0, 12\)/);
+    assert.match(ui, /recordRentalEnabled === true \? sets\.authoritativeIds : sets\.openRentalIds/);
+    assert.match(ui, /applicationStatusChoiceDisabled\(a\.status, status, tier\)/);
+    assert.match(ui, /applicationStatusChoiceDisabled\(driver\.status, v, panelTier\(isOwner, isManager\)\)/);
+    const reader = readFileSync("src/lib/application-status.functions.ts", "utf8");
+    const early = reader.indexOf("recordRentalEnabled !== true");
+    const payments = reader.indexOf('.from("payments")');
+    assert.ok(early > 0 && payments > early);
   });
 
   await test("ending a rental does not gain a new application write while the proposal is off", async () => {

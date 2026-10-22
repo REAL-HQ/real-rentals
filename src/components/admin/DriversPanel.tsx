@@ -33,11 +33,14 @@ import { END_RENTAL_PRESERVES_APPLICATION_ENABLED } from "@/lib/end-rental-prese
 import { updateApplicationLifecycle, type LifecyclePatch } from "@/lib/application-lifecycle.functions";
 import {
   applicationFilterCount,
+  applicationStatusChoiceDisabled,
   applicationStatusLabel,
   applicationStatusMenu,
+  visibleDriverActivity,
   type ApplicationStatusEvent,
   type ClosureReason,
 } from "@/lib/application-status";
+import type { StaffTier } from "@/lib/roles";
 import { getApplicationStatusHistory, listDriverActiveSets } from "@/lib/application-status.functions";
 import { CloseApplicationDialog } from "./CloseApplicationDialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -345,6 +348,12 @@ function useNow(intervalMs = 30000) {
 type PayIndex = Record<string, PayCells>;
 function payCells(e: PayCells | undefined): PayCells { return e ?? NO_PAY_CELLS; }
 
+function panelTier(isOwner: boolean, isManager: boolean): StaffTier {
+  if (isOwner) return "owner";
+  if (isManager) return "manager";
+  return "coordinator";
+}
+
 export function DriversPanel({
   externalSearch = "",
   initialOpenId,
@@ -541,19 +550,28 @@ export function DriversPanel({
   const loadHolds = useServerFn(listWaitlistHolds);
   const holdFn = useServerFn(setWaitlistHold);
   const [held, setHeld] = useState<Set<string>>(new Set());
-  // Active filter: full rental, vehicle, payment and handover evidence.
-  // openRentals is only the installed rentals.status = 'active' set, so a
-  // stored Active with no rental still reads as Marked Active, No Rental.
+  // Active filter and its count use one set. While Record Rental is
+  // uninstalled that set is every rentals.status = 'active' row, so an
+  // existing renter is not dropped for a missing pickup reading or payment.
+  // A failed read stays "…" instead of looking like zero renters.
+  // openRentals is that installed set, so a stored Active with no rental
+  // still reads as Marked Active, No Rental.
   const [activeRenters, setActiveRenters] = useState<Set<string>>(new Set());
   const [openRentals, setOpenRentals] = useState<Set<string>>(new Set());
+  const [activeReadFailed, setActiveReadFailed] = useState(false);
   const loadActiveSets = useServerFn(listDriverActiveSets);
   const refreshActiveRenters = useCallback(() => {
     loadActiveSets()
       .then((sets) => {
-        setActiveRenters(new Set(sets.authoritativeIds));
+        const recordRentalEnabled = RECORD_RENTAL_CONTRACT_ENABLED as boolean;
+        const filterIds = recordRentalEnabled === true ? sets.authoritativeIds : sets.openRentalIds;
+        setActiveRenters(new Set(filterIds));
         setOpenRentals(new Set(sets.openRentalIds));
+        setActiveReadFailed(false);
       })
-      .catch(() => {});
+      .catch(() => {
+        setActiveReadFailed(true);
+      });
   }, [loadActiveSets]);
   useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters]);
   const loadFunnel = useServerFn(listApprovedNotRenting);
@@ -1129,6 +1147,7 @@ setDocCounts(requiredDocCounts(rows));
   };
   const FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active", "suspended", "declined", "closed"];
   const filterCount = (s: string) => {
+    if (s === "active" && activeReadFailed && activeRenters.size === 0) return "…";
     const count = applicationFilterCount(s, drivers, held, activeRenters, waitlistCount);
     return count == null ? "…" : count;
   };
@@ -1384,7 +1403,8 @@ setDocCounts(requiredDocCounts(rows));
                       <Select
                         value={a.status || ""}
                         onValueChange={(status) => {
-                          if (status === "active") return;
+                          const tier = panelTier(isOwner, isManager);
+                          if (applicationStatusChoiceDisabled(a.status, status, tier)) return;
                           if (status === "approved") {
                             void approveFromList({ data: { id: a.id } })
                               .then((res) => {
@@ -1434,7 +1454,7 @@ setDocCounts(requiredDocCounts(rows));
                           )}
                         </SelectTrigger>
                         <SelectContent align="start" className="min-w-[10rem]">
-                          {applicationStatusMenu(a.status).map((s) => (
+                          {applicationStatusMenu(a.status, panelTier(isOwner, isManager)).map((s) => (
                             <SelectItem key={s.value} value={s.value} disabled={s.disabled} className="text-[13px]">
                               {s.label}
                             </SelectItem>
@@ -2069,7 +2089,7 @@ function DriverDetail({
         detail: detail || undefined,
       });
     }
-    return ev.sort((a, b) => +new Date(b.at) - +new Date(a.at)).slice(0, 12);
+    return visibleDriverActivity(ev);
   }, [driver, screening, vaultDocs, statusEvents]);
 
   const sharedDriver =
@@ -2579,11 +2599,11 @@ function DriverDetail({
                     <SelField
                       label="Application Status"
                       value={driver.status}
-                      options={applicationStatusMenu(driver.status).map((s) => s.value)}
-                      labels={Object.fromEntries(applicationStatusMenu(driver.status).map((s) => [s.value, s.label]))}
-                      disabledValues={applicationStatusMenu(driver.status).filter((s) => s.disabled).map((s) => s.value)}
+                      options={applicationStatusMenu(driver.status, panelTier(isOwner, isManager)).map((s) => s.value)}
+                      labels={Object.fromEntries(applicationStatusMenu(driver.status, panelTier(isOwner, isManager)).map((s) => [s.value, s.label]))}
+                      disabledValues={applicationStatusMenu(driver.status, panelTier(isOwner, isManager)).filter((s) => s.disabled).map((s) => s.value)}
                       onChange={(v) => {
-                        if (v === "active") return;
+                        if (applicationStatusChoiceDisabled(driver.status, v, panelTier(isOwner, isManager))) return;
                         if (v === "approved") {
                           void approveAndSend();
                           return;
