@@ -1,67 +1,60 @@
-# Owner approval: M2 and M3 database changes
+# Owner approval: M2 and M3
 
-Nothing on this page has been run on the production database. Pull requests 190 and 232 stay drafts. The switches that turn new screens on stay off.
+Nothing on this page has been run on production. Pull request 190 is `18fa41f1`, with the license backfill at `ec550d09`. Pull request 232 is `4650e460`. Both stay drafts. The switches that turn new screens on stay off.
 
-## What each change does
+## What each migration installs
 
-M2 (pull request 190, `2889d76d`) is 29 database steps. It records who may approve a renter, record a rental, swap a car, extend a rental, and keep a signed agreement. It stores a fingerprint of each license photo from the file the server downloaded, so a browser cannot supply that fingerprint. It adds the return-checklist tables. It does not switch those product features on.
+M2 is 29 database steps. It records who may approve a renter, record a rental, swap a car, extend a rental, and keep a signed agreement. It stores a fingerprint of each current license photo from the file the server downloaded. It adds the return-checklist tables. It does not turn those features on.
 
-M3 (pull request 232, `ea6c1978`) is two steps. The first adds two empty dates on an application: when the Uber approval expires, and when the Lyft approval expires. Existing applications are not rewritten. The second stops the Coming Soon waitlist at five signups for the same email in one hour. That limit starts as soon as the second step is saved. It does not store a claim token.
+M3 is two steps. The first adds two empty dates: when the Uber approval expires, and when the Lyft approval expires. Existing applications are not rewritten. The second stops the Coming Soon waitlist at five signups for the same email in one hour. That limit starts when the step is saved. It does not store a claim token.
 
-## What each one allows
+## What changes for users
 
-After the M2 application is already live, Approve uses the checked path. Approving someone who is already approved does not write a second audit note. Staff identity check, fingerprints on new uploads, vehicle swap, and rental extend stay off until you approve each switch on its own. The database has to be ready before those switches can be turned on.
+Nothing visible. Approve, signing, and the rest of the live app stay as they are while every switch stays off. Staff identity check, fingerprints on new uploads, vehicle swap, and rental extend wait for a later approval. The waitlist limit starts only when M3 step 2 is saved: a sixth signup from the same email in one hour is refused.
 
-M3 lets a later application change save the Uber and Lyft dates. The waitlist limit needs no switch.
+## Who runs what
 
-## Order
+You run each database file in Lovable, one file at a time, after a backup. A person with the service_role key runs the license backfill. You do not. The preflight reader does not.
 
 1. Confirm a backup, or point-in-time recovery, covers the start.
 2. Ship the application from pull request 190. Leave every switch off.
-3. Run the M2 read-only preflight. Every line must say PASS.
-4. Run M2 steps 1 and 2. Each check must say true before the next step.
-5. Stop before M2 step 3 until the builds with the two approval switches are deployed (a separate approval; both stay off here), the license-byte backfill has run, and its report shows zero missing and zero mismatched.
-6. Run M2 steps 3 through 29, one file at a time. Do not run the agreement-evidence step again after the agreement-contract step.
-7. Run the M3 preflight, then M3 step 1, then M3 step 2.
+3. You run the M2 read-only preflight as a least-privilege login. Every line must say PASS.
+4. You run M2 steps 1 and 2. Each check must say true.
+5. Stop. The service_role holder runs a dry-run, which does not download, then `--write`. You run `proposed/backfill-document-content-sha.sql` in Lovable. Before step 3, `--write` must show `missing_file=0` and `mismatched=0`, and the report must show `missing=0` and `mismatched=0`. A dry-run `mismatched=0` is not that gate.
+6. You run M2 steps 3 through 29. Do not run the agreement-evidence file again after the agreement-contract file.
+7. You run the M3 preflight, then M3 step 1, then M3 step 2.
 
-Finish one packet before you start the other. M3 was rehearsed on a database that did not have M2. Do M2 first unless you want the waitlist limit first. The file lists are `proposed/HOSTED-INSTALL.md` and, on pull request 232, `proposed/m3/HOSTED-INSTALL.md`.
+Do M2 first unless you want the waitlist limit first. File lists: `proposed/HOSTED-INSTALL.md` and, on pull request 232, `proposed/m3/HOSTED-INSTALL.md`.
 
-## The preflight login
+## How long
 
-Run the preflight as a least-privilege read-only role. That login is not a superuser, and it cannot create databases or roles. On the rehearsal it could read tables and nothing else (`pg_read_all_data`). The script stops a superuser with: run as least-privilege read-only role. It does not create the login. The database must not have the dblink or postgres_fdw add-ons, because those can write during a read-only session. `standard_conforming_strings` must be on. Do not set it in the connection address. A production address also needs the hosted switch named in the procedure. This rehearsal did not use it.
+On an empty local database the M2 rehearsal, including every check and a full undo, finished in about 12 seconds on `ec550d09`. The M3 rehearsal exited 0 on `4650e460` and finished in about 2 seconds locally. Each install file is one short transaction. The backfill downloads one file per current license photo. A local scratch run of about 1,000 files finished in 0.7 seconds. That is not a production window. If a file errors, stop.
 
-## How long, and how to tell it worked
+M2 succeeded when all 29 checks said true and the preflight printed `checklist stops=0` (246 checks locally). M3 succeeded when both checks said true and the preflight printed `checklist stops=0 checks=18`.
 
-On an empty local database the M2 rehearsal, including every check and a full undo, finished in about 15 seconds. The M3 rehearsal finished in about 2 seconds. On production each file is one short transaction. The long wait is the pause before M2 step 3. If a file errors, stop. Do not start the next file.
+## Undo
 
-M2 succeeded when all 29 checks say true and the preflight, before any write, prints `checklist stops=0`. Locally that was 246 checks. M3 succeeded when both checks say true and the preflight prints `checklist stops=0 checks=18`.
+Use an undo only when that step saved and then failed its check. A file that errors before it saves has already undone itself. If an undo cannot be applied, restore the backup. M2 undos, in order:
 
-## Undo, and the rehearsal
+1 `proposed/rollback/01-auth-binding.sql`. 2 `proposed/rollback/record-uploaded-content-sha.sql`. 3 `proposed/rollback/00-approval-boundary.sql`.
+4 `proposed/rollback/02-safe-release.sql`. 5 `proposed/rollback/03-record-rental.sql`. 6 `proposed/rollback/04-closeout-legacy-guard.sql`.
+7 `proposed/rollback/05-evidence.sql`. 8 `proposed/rollback/06-document-identity.sql`. 9 `proposed/rollback/06b-approval-identity-check.sql`.
+10 `proposed/rollback/07-evidence-consumer.sql`. 11 `proposed/rollback/08-evidence-recovery.sql`. 12 `proposed/rollback/09-issuer-permissions.sql`.
+13 `proposed/rollback/10-approval-permissions.sql`. 14 `proposed/rollback/10b-approval-executor-writes.sql`. 15 `proposed/rollback/11-executor-permissions.sql`.
+16 `proposed/rollback/12-deposit-nullability.sql`. 17 `proposed/rollback/13-closeout-projection.sql`. 18 `proposed/rollback/14-issuer-identity-permissions.sql`.
+19 `proposed/rollback/15-consumption-scope.sql`. 20 `proposed/rollback/16-closeout-scope.sql`. 21 `proposed/rollback/17-storage-integrity.sql`.
+22 `proposed/rollback/18-subscription-coordination.sql`. 23 `proposed/rollback/19-signed-archive-protection.sql`. 24 `proposed/rollback/19b-agreement-evidence.sql`.
+25 `proposed/rollback/19c-agreement-contract.sql`. 26 `proposed/rollback/20-vehicle-swap.sql`. 27 `proposed/rollback/extend-rental.sql`.
+28 `proposed/rollback/return-checklist.sql`. 29 `proposed/rollback/21-revoke-executor-create.sql`.
 
-Each step has a matching undo. Use it only when that step saved and then failed its check. A file that errors before it saves has already undone itself. If an undo cannot be applied, restore the backup.
+The backfill undo is not an install step. The table owner runs `proposed/rollback/backfill-content-sha.sql`. Clearing only the document fingerprint leaves the binding. `service_role` cannot delete it.
 
-The M2 rehearsal (`scripts/m2-rehearsal-proof.sh`) exited 0 on `2889d76d`. All 29 checks returned true. Every undo matched the snapshot from before that step. After the full undo the private installer roles, applications, and approval functions were all 0.
-
-The M3 rehearsal (`scripts/m3-rehearsal-proof.sh`) exited 0 on `ea6c1978`. Both checks returned true, both undos matched the earlier snapshot, and the scratch database and the read-only login were removed. The shared local database still had no Uber or Lyft dates and no waitlist limit.
+M3: `proposed/m3-rollback/01-tnc-approval-expiry.sql`, then `proposed/m3-rollback/02-waitlist-coming-soon-rate.sql`.
 
 ## Risks
 
-Installing M2 step 3 before the new application is live, or before the license fingerprints are backfilled, closes Approve for everyone. Ship the application first, and keep the pause before step 3.
+Installing M2 step 3 before the application is live, or before the license fingerprints are backfilled, closes Approve for everyone.
 
-A superuser can ignore the read-only setting, and dblink or postgres_fdw can write during it. Use the least-privilege login, and remove those add-ons before the preflight.
+Run the preflight as a least-privilege login. A superuser can ignore the read-only setting, and dblink or postgres_fdw can write during it. Remove those add-ons first. The script stops a superuser.
 
-A half-finished M2 leaves Approve and signing on a partial database. Stop at the first failed check.
-
-Installing these files does not turn on identity check, new-upload fingerprints, swap, or extend. Each of those is a later decision.
-
-The waitlist limit counts the email only. A limit by network address would be a separate decision.
-
-## Backfill
-
-A person with the service_role key runs the license-byte backfill. The preflight reader does not. Dry-run is the default and does not download a file. Before M2 step 3, the script `--write` line must show `missing_file=0` and `mismatched=0`, and `proposed/backfill-document-content-sha.sql` must show `missing=0` and `mismatched=0`. A dry-run `mismatched=0` is not that gate.
-
-The script reads the license file bytes and the document id it updates. It also reads the application id, and only so it can skip a deleted application. It does not read a name, an email, a phone number, or a license number. It asks for 1000 rows at a time, then the next 1000, until a short page. A document is left out when `is_current` is false, and when its `driver_id` is an application whose `deleted_at` is set. Those rows are not in `total`. `fingerprinted` counts a row that already has a fingerprint and a row this run hashes.
-
-On the local scratch rehearsal this run finished in 0.7 seconds. It counted 1001 fingerprints already stored, hashed one new file, skipped that file on the second run, and the report showed zero missing and zero mismatched. Each file is one download. That time is not a production window.
-
-The table owner runs `proposed/rollback/backfill-content-sha.sql`. That file is not an install step. It clears the current license fingerprints and the matching server bindings. Clearing only the document fingerprint leaves the binding. `service_role` cannot delete the binding table.
+A half-finished M2 leaves Approve and signing on a partial database. Stop at the first failed check. These files do not turn on identity check, new-upload fingerprints, swap, or extend. The waitlist limit counts the email only.
