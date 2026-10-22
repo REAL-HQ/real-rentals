@@ -6,6 +6,19 @@
 // vehicle's valid pickup stays Unknown. Nothing here is invented.
 import { parseMileage, type MileagePeriod } from "@/lib/service-area";
 
+const EASTERN = "America/New_York";
+
+/** America/New_York calendar date. A UTC timestamp before Eastern midnight stays on the previous day. */
+export function easternCalendarDate(now: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: EASTERN,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  return ["year", "month", "day"].map((key) => parts.find((part) => part.type === key)!.value).join("-");
+}
+
 export type OverageState = "over" | "within" | "unlimited" | "unknown";
 
 export type MileageOverage = {

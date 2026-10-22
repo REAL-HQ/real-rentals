@@ -1,15 +1,21 @@
 // Read-only mileage overage for the Active bookings list.
-// The flag is checked before the role lookup and before any read.
+// The flag is refused before authentication and before any read.
 // No insert, update, delete, or new table.
-import { createServerFn } from "@tanstack/react-start";
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { ACTIVE_MILEAGE_OVERAGE_ENABLED } from "@/lib/active-mileage-overage-flag";
 import {
+  easternCalendarDate,
   estimateMileageOverage,
   statedAllowance,
   type MileageOverage,
 } from "@/lib/active-mileage-overage";
+
+const refuseMileageOverage = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  if (!ACTIVE_MILEAGE_OVERAGE_ENABLED) throw new Error("Mileage Overage is off");
+  return next();
+});
 
 const LIMIT = 200;
 const ID_BATCH = 80;
@@ -53,15 +59,14 @@ async function readBatches<T>(
   return { rows, truncated };
 }
 
-/** Manager-only. Throws before the role check and before any read while the flag is off. */
+/** Manager-only. The flag throws before auth and before any read. */
 export const listActiveMileageOverage = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([refuseMileageOverage, requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ rentalIds: z.array(z.string().uuid()).max(100) }).strict().parse(input ?? {}))
   .handler(async ({ data, context }): Promise<ActiveMileageOverageResult> => {
-    if (!ACTIVE_MILEAGE_OVERAGE_ENABLED) throw new Error("Mileage Overage is off");
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = easternCalendarDate(new Date());
     if (data.rentalIds.length === 0) return { today, rows: [], truncated: false };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 

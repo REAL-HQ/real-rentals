@@ -2,7 +2,7 @@
 // (run: bun scripts/active-mileage-overage.test.ts).
 import { readFileSync } from "node:fs";
 import { ACTIVE_MILEAGE_OVERAGE_ENABLED } from "../src/lib/active-mileage-overage-flag";
-import { allowanceTextFromAgreement, estimateMileageOverage, statedAllowance } from "../src/lib/active-mileage-overage";
+import { allowanceTextFromAgreement, easternCalendarDate, estimateMileageOverage, statedAllowance } from "../src/lib/active-mileage-overage";
 
 let fails = 0;
 const ok = (c: boolean, m: string) => {
@@ -22,12 +22,14 @@ ok(flag.split("ACTIVE_MILEAGE_OVERAGE_ENABLED =").length === 2, "the hard-false 
 ok(!rules.includes("ACTIVE_MILEAGE_OVERAGE_ENABLED ="), "the estimate does not declare a second flag");
 ok(!/process\.env/.test(flag + rules + server), "no environment variable can open the flag");
 
+const thrown = server.indexOf('if (!ACTIVE_MILEAGE_OVERAGE_ENABLED) throw new Error("Mileage Overage is off")');
+const middleware = server.indexOf("[refuseMileageOverage, requireSupabaseAuth]");
+ok(thrown >= 0 && thrown < middleware, "the flag throws before the auth middleware runs");
 const handler = server.slice(server.indexOf(".handler"));
-const thrown = handler.indexOf('if (!ACTIVE_MILEAGE_OVERAGE_ENABLED) throw new Error("Mileage Overage is off")');
 const role = handler.indexOf("requireManager");
 const read = handler.indexOf('.from("rentals")');
-ok(thrown >= 0 && thrown < role && role < read, "the estimate throws before requireManager and before any read");
-ok(thrown < handler.indexOf("import("), "the throw happens before any dynamic import");
+ok(role >= 0 && role < read, "the role check happens before any read");
+ok(server.includes("easternCalendarDate(new Date())") && !handler.includes("toISOString()"), "today is the Eastern calendar day");
 ok(!server.slice(0, server.indexOf("export const listActiveMileageOverage")).includes("roles.server"), "the role module is not a static import");
 ok(!server.slice(0, server.indexOf("export const listActiveMileageOverage")).includes("client.server"), "the admin client is not a static import");
 ok((server.match(/\.limit\(LIMIT \+ 1\)/g) ?? []).length === 4, "rentals, start readings, last odometer, and agreements each use limit plus one");
@@ -55,8 +57,11 @@ ok(line.indexOf("ACTIVE_MILEAGE_OVERAGE_ENABLED &&") < line.indexOf("Mileage Ove
 const sql = readFileSync("supabase/migrations/20261021120000_agreement_mileage_allowance.sql", "utf8");
 ok(sql.includes("agreement_mileage_allowance(agreement public.agreements)") && sql.includes("SET search_path = ''"), "the allowance field is one read-only function");
 ok(/REVOKE ALL ON FUNCTION public\.agreement_mileage_allowance\(public\.agreements\) FROM PUBLIC/.test(sql), "the allowance field is not granted to every role");
+ok(/REVOKE EXECUTE ON FUNCTION public\.agreement_mileage_allowance\(public\.agreements\) FROM PUBLIC, anon, authenticated/.test(sql), "anonymous and signed-in callers cannot execute the allowance field");
 ok(sql.includes("GRANT EXECUTE ON FUNCTION public.agreement_mileage_allowance(public.agreements) TO service_role"), "only the server role can read the allowance field");
 ok(!nav.includes("mileage_overage"), "there is no new screen");
+ok(easternCalendarDate(new Date("2026-10-21T03:30:00Z")) === "2026-10-20", "03:30 UTC is still the previous Eastern day");
+ok(easternCalendarDate(new Date("2026-10-21T04:00:00Z")) === "2026-10-21", "04:00 UTC is Eastern midnight");
 
 const rentalId = "10000000-0000-4000-8000-000000000001";
 const vehicleId = "20000000-0000-4000-8000-000000000002";

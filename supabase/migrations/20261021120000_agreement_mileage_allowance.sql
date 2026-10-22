@@ -24,4 +24,5 @@ AS $$
 $$;
 
 REVOKE ALL ON FUNCTION public.agreement_mileage_allowance(public.agreements) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.agreement_mileage_allowance(public.agreements) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.agreement_mileage_allowance(public.agreements) TO service_role;
