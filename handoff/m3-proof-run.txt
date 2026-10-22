@@ -1,0 +1,131 @@
+ pg_terminate_backend 
+----------------------
+(0 rows)
+
+NOTICE:  database "m3_rehearsal" does not exist, skipping
+DROP DATABASE
+CREATE DATABASE
+NOTICE:  role "m3_preflight_reader" does not exist, skipping
+DROP ROLE
+CREATE ROLE
+GRANT ROLE
+scratch database m3_rehearsal cloned from local m2
+CITATIONS
+m3 step citations match HOSTED-INSTALL
+CATALOG WRITE GUARD
+catalog write guard: clean
+PREFLIGHT
+target host=127.0.0.1:55442
+PASS step 0 anon waitlist insert columns expected=driver_status,email,full_name,gclid,market_id,phone,source,utm_campaign,utm_content,utm_medium,utm_source,utm_term actual=driver_status,email,full_name,gclid,market_id,phone,source,utm_campaign,utm_content,utm_medium,utm_source,utm_term
+PASS step 0 applications rows expected=report actual=0
+PASS step 0 installer owns public.applications expected=owner bypass actual=postgres super=true bypass=true
+PASS step 0 installer owns public.waitlist expected=owner bypass actual=postgres super=true bypass=true
+PASS step 0 public.applications.insurance_expires_on expected=date nullable actual=date nullable=YES
+PASS step 0 public.applications.license_expiration expected=date nullable actual=date nullable=YES
+PASS step 0 public.applications.tnc_lyft_approval_expires_on expected=report actual=absent
+PASS step 0 public.applications.tnc_uber_approval_expires_on expected=report actual=absent
+PASS step 0 public.waitlist.claim_token_hash expected=report actual=absent
+PASS step 0 role anon expected=present actual=present
+PASS step 0 role authenticated expected=present actual=present
+PASS step 0 role service_role expected=present actual=present
+PASS step 0 server_version expected=report actual=16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+PASS step 0 transaction_read_only expected=on actual=on
+PASS step 0 waitlist rows expected=report actual=0
+PASS step 1 no separate object expected=covered by an earlier object actual=covered
+PASS step 2 index waitlist_coming_soon_email_created_idx expected=absent actual=absent
+PASS step 2 public.waitlist_coming_soon_email_limit() expected=absent actual=absent
+PASS step 2 trigger waitlist_coming_soon_email_limit expected=absent actual=absent
+checklist stops=0 checks=19
+DUMP baseline
+counts before applications=0 waitlist=0
+TNC FILE REFUSES
+BEGIN
+psql:/tmp/m3-packet/proposed/m3-packet/01-tnc-approval-expiry.sql:13: ERROR:  tnc_install_is_pull_request_226
+CONTEXT:  PL/pgSQL function inline_code_block line 3 at RAISE
+TNC file refused
+INSTALL step 2
+BEGIN
+SET
+psql:/tmp/m3-packet/proposed/m3-packet/02-waitlist-coming-soon-rate.sql:104: NOTICE:  m3 step 2 preflight waitlist=0
+DO
+CREATE FUNCTION
+COMMENT
+REVOKE
+psql:/tmp/m3-packet/proposed/m3-packet/02-waitlist-coming-soon-rate.sql:136: NOTICE:  trigger "waitlist_coming_soon_email_limit" for relation "public.waitlist" does not exist, skipping
+DROP TRIGGER
+CREATE TRIGGER
+CREATE INDEX
+COMMIT
+VERIFY proposed/m3-verify/02-waitlist-coming-soon-rate.sql t
+INSTALL step 2 again
+BEGIN
+SET
+psql:/tmp/m3-packet/proposed/m3-packet/02-waitlist-coming-soon-rate.sql:104: NOTICE:  m3 step 2 preflight waitlist=0
+DO
+CREATE FUNCTION
+COMMENT
+REVOKE
+DROP TRIGGER
+CREATE TRIGGER
+psql:/tmp/m3-packet/proposed/m3-packet/02-waitlist-coming-soon-rate.sql:143: NOTICE:  relation "waitlist_coming_soon_email_created_idx" already exists, skipping
+CREATE INDEX
+COMMIT
+VERIFY proposed/m3-verify/02-waitlist-coming-soon-rate.sql t
+ACL unchanged
+RATE PROOF
+BEGIN
+DO
+ROLLBACK
+rate proof rows=0
+ROLLBACK step 2
+BEGIN
+SET
+DROP TRIGGER
+DROP FUNCTION
+DROP INDEX
+COMMIT
+MATCH step 2 rollback
+BEGIN
+psql:/tmp/m3-packet/proposed/m3-rollback/01-tnc-approval-expiry.sql:12: ERROR:  tnc_rollback_is_pull_request_226
+CONTEXT:  PL/pgSQL function inline_code_block line 3 at RAISE
+TNC rollback refused
+PREFLIGHT after rollback
+target host=127.0.0.1:55442
+PASS step 0 anon waitlist insert columns expected=driver_status,email,full_name,gclid,market_id,phone,source,utm_campaign,utm_content,utm_medium,utm_source,utm_term actual=driver_status,email,full_name,gclid,market_id,phone,source,utm_campaign,utm_content,utm_medium,utm_source,utm_term
+PASS step 0 applications rows expected=report actual=0
+PASS step 0 installer owns public.applications expected=owner bypass actual=postgres super=true bypass=true
+PASS step 0 installer owns public.waitlist expected=owner bypass actual=postgres super=true bypass=true
+PASS step 0 public.applications.insurance_expires_on expected=date nullable actual=date nullable=YES
+PASS step 0 public.applications.license_expiration expected=date nullable actual=date nullable=YES
+PASS step 0 public.applications.tnc_lyft_approval_expires_on expected=report actual=absent
+PASS step 0 public.applications.tnc_uber_approval_expires_on expected=report actual=absent
+PASS step 0 public.waitlist.claim_token_hash expected=report actual=absent
+PASS step 0 role anon expected=present actual=present
+PASS step 0 role authenticated expected=present actual=present
+PASS step 0 role service_role expected=present actual=present
+PASS step 0 server_version expected=report actual=16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+PASS step 0 transaction_read_only expected=on actual=on
+PASS step 0 waitlist rows expected=report actual=0
+PASS step 1 no separate object expected=covered by an earlier object actual=covered
+PASS step 2 index waitlist_coming_soon_email_created_idx expected=absent actual=absent
+PASS step 2 public.waitlist_coming_soon_email_limit() expected=absent actual=absent
+PASS step 2 trigger waitlist_coming_soon_email_limit expected=absent actual=absent
+checklist stops=0 checks=19
+PROOF_EXIT:0
+DELETE 0
+BEGIN
+SET
+psql:/tmp/m3-packet/proposed/m3-rollback/02-waitlist-coming-soon-rate.sql:8: NOTICE:  trigger "waitlist_coming_soon_email_limit" for relation "public.waitlist" does not exist, skipping
+DROP TRIGGER
+psql:/tmp/m3-packet/proposed/m3-rollback/02-waitlist-coming-soon-rate.sql:9: NOTICE:  function public.waitlist_coming_soon_email_limit() does not exist, skipping
+DROP FUNCTION
+psql:/tmp/m3-packet/proposed/m3-rollback/02-waitlist-coming-soon-rate.sql:10: NOTICE:  index "waitlist_coming_soon_email_created_idx" does not exist, skipping
+DROP INDEX
+COMMIT
+ pg_terminate_backend 
+----------------------
+(0 rows)
+
+DROP DATABASE
+DROP ROLE
+dropped scratch database m3_rehearsal
