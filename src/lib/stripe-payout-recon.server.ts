@@ -9,6 +9,7 @@ import {
   type ReconApplication,
   type ReconPayment,
 } from "./stripe-payout-recon";
+import type { LocalLink } from "./stripe-unmatched";
 import type { PayoutReconStripeRead } from "./stripe-payout-recon-read.server";
 
 /**
@@ -17,8 +18,13 @@ import type { PayoutReconStripeRead } from "./stripe-payout-recon-read.server";
  * Stripe is the caller's list. A Stripe failure is returned before the database is read.
  */
 
-export type PayoutReconResponse = { status: "ready"; report: PayoutReconReport };
-export type PayoutReconDirectory = { applications: ReconApplication[]; payments: ReconPayment[] };
+export type PayoutReconResponse = { status: "disabled" } | { status: "ready"; report: PayoutReconReport };
+export type PayoutReconDirectory = {
+  applications: ReconApplication[];
+  payments: ReconPayment[];
+  rentals?: LocalLink[];
+  applicationLinks?: LocalLink[];
+};
 export type PayoutReconLoad = { ok: true; directory: PayoutReconDirectory } | { ok: false; capped: boolean };
 
 export async function runPayoutRecon(input: {
@@ -34,7 +40,7 @@ export async function runPayoutRecon(input: {
   const window = payoutReconWindow(input.now);
   if (!window) return { status: "ready", report: unavailablePayoutRecon(null) };
   const stripe = await input.readStripe(window);
-  if (!stripe.ok) return { status: "ready", report: unavailablePayoutRecon(window) };
+  if (!stripe.ok) return { status: "ready", report: unavailablePayoutRecon(window, stripe.capped ? "capped" : "unavailable") };
   const loaded = await input.load();
   if (!loaded.ok) {
     return {
@@ -42,7 +48,7 @@ export async function runPayoutRecon(input: {
       report: { from: window.from, through: window.through, stripeCheck: "ready", directory: "unavailable", payouts: [], paidNotInPayout: [] },
     };
   }
-  return { status: "ready", report: buildPayoutRecon({ window, payouts: stripe.payouts, ...loaded.directory }) };
+  return { status: "ready", report: buildPayoutRecon({ window, payouts: stripe.payouts, invoiceLinks: stripe.invoiceLinks, ...loaded.directory }) };
 }
 
 type QueryResult = { data: Array<Record<string, unknown>> | null; error: { message: string } | null };
@@ -55,15 +61,19 @@ export type PayoutReconClient = {
   from: (table: string) => { select: (columns: string) => Query };
 };
 
-const APPLICATION_COLUMNS = "id,full_name,deleted_at";
-const PAYMENT_COLUMNS = "id,driver_id,status,amount,net_collected,paid_date,stripe_payment_intent_id";
+const APPLICATION_COLUMNS = "id,full_name,deleted_at,stripe_customer_id";
+const PAYMENT_COLUMNS = "id,driver_id,status,amount,net_collected,paid_date,stripe_payment_intent_id,stripe_invoice_id";
+const RENTAL_COLUMNS = "id,stripe_subscription_id,stripe_customer_id";
 
 export async function loadPayoutReconDirectory(supabase: PayoutReconClient): Promise<PayoutReconLoad> {
   const applications = await readPages(supabase, "applications", APPLICATION_COLUMNS);
   if (!applications.ok) return applications;
   const payments = await readPages(supabase, "payments", PAYMENT_COLUMNS);
   if (!payments.ok) return payments;
+  const rentals = await readPages(supabase, "rentals", RENTAL_COLUMNS);
+  if (!rentals.ok) return rentals;
   const mappedApplications: ReconApplication[] = [];
+  const applicationLinks: LocalLink[] = [];
   for (const row of applications.rows) {
     if (typeof row.id !== "string") return { ok: false, capped: false };
     mappedApplications.push({
@@ -71,6 +81,8 @@ export async function loadPayoutReconDirectory(supabase: PayoutReconClient): Pro
       name: text(row.full_name) ?? "Driver",
       deleted: row.deleted_at != null && row.deleted_at !== "",
     });
+    const customerId = text(row.stripe_customer_id);
+    if (customerId) applicationLinks.push({ customerId });
   }
   const mappedPayments: ReconPayment[] = [];
   for (const row of payments.rows) {
@@ -83,9 +95,18 @@ export async function loadPayoutReconDirectory(supabase: PayoutReconClient): Pro
       netCollected: row.net_collected,
       paidDate: text(row.paid_date),
       stripePaymentIntentId: text(row.stripe_payment_intent_id),
+      stripeInvoiceId: text(row.stripe_invoice_id),
     });
   }
-  return { ok: true, directory: { applications: mappedApplications, payments: mappedPayments } };
+  const rentalLinks: LocalLink[] = [];
+  for (const row of rentals.rows) {
+    if (typeof row.id !== "string") return { ok: false, capped: false };
+    rentalLinks.push({
+      subscriptionId: text(row.stripe_subscription_id),
+      customerId: text(row.stripe_customer_id),
+    });
+  }
+  return { ok: true, directory: { applications: mappedApplications, payments: mappedPayments, rentals: rentalLinks, applicationLinks } };
 }
 
 async function readPages(supabase: PayoutReconClient, table: string, columns: string): Promise<{ ok: true; rows: Array<Record<string, unknown>> } | { ok: false; capped: boolean }> {

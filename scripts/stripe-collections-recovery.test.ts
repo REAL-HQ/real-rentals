@@ -45,7 +45,7 @@ describe('Revenue error recovery',()=>{
   const settle=invoiceFn.slice(invoiceFn.indexOf('if (!(r.data?.length))'), invoiceFn.indexOf("must(await admin.from('rentals')"));
   expect(settle).toContain('failure_reason: null');
   expect(settle).toContain('stripe_invoice_id: invoice.id');
-  expect(settle).toContain('stripe_subscription_id: subId');
+  expect(settle).toContain('stripe_subscription_id: subscriptionId');
   expect(settle).toContain("eq('status', 'paid')");
   expect(settle).not.toContain('stripe_payment_intent_id');
   expect(settle).not.toContain('notified_status');
