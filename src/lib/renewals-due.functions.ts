@@ -1,4 +1,4 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { RENEWALS_DUE_ENABLED } from "./renewals-due-flag";
 import { RENEWAL_CANDIDATES_ENABLED } from "./renewal-candidates-flag";
@@ -56,8 +56,14 @@ async function rowsInBatches<T>(
   return { rows: rows.slice(0, RENEWALS_FETCH_LIMIT), truncated: count > RENEWALS_FETCH_LIMIT };
 }
 
+/** Refuses before auth. Renewal Due stays dark until the constant is changed. */
+const renewalsDueGate = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  if (!RENEWALS_DUE_ENABLED) throw new Error("Rental Renewal Due is off");
+  return next();
+});
+
 export const getRenewalsDue = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([renewalsDueGate, requireSupabaseAuth])
   .inputValidator(renewalRequest)
   .handler(async ({ data, context }): Promise<RenewalsDueBoard> => {
     if (!RENEWALS_DUE_ENABLED) throw new Error("Rental Renewal Due is off");
@@ -133,11 +139,20 @@ export const getRenewalsDue = createServerFn({ method: "POST" })
 
     const applicationIds = [...new Set(listed.map((row) => row.application_id).filter((id): id is string => !!id))];
     const vehicleIds = [...new Set(listed.map((row) => row.vehicle_id).filter((id): id is string => !!id))];
-    const rentalIds = rentals.map((row) => row.id);
-
-    const applicationsQ = await rowsInBatches(applicationIds, (batch) =>
-      supabaseAdmin.from("applications").select("id,full_name", { count: "exact" }).in("id", batch).limit(RENEWALS_FETCH_LIMIT),
+    const applicationsQ = await rowsInBatches<{ id: string; full_name: string | null; deleted_at: string | null }>(applicationIds, (batch) =>
+      supabaseAdmin.from("applications").select("id,full_name,deleted_at", { count: "exact" }).in("id", batch).limit(RENEWALS_FETCH_LIMIT),
     );
+    const deletedApplicationIds = new Set(
+      applicationsQ.rows
+        .filter((row) => typeof row.deleted_at === "string" && row.deleted_at.trim() !== "")
+        .map((row) => row.id),
+    );
+    const applications: RenewalApplication[] = applicationsQ.rows
+      .filter((row) => !deletedApplicationIds.has(row.id))
+      .map((row) => ({ id: row.id, full_name: row.full_name }));
+    const liveRentals = rentals.filter((row) => !row.application_id || !deletedApplicationIds.has(row.application_id));
+    const liveOverdue = overdueRentals.filter((row) => !row.application_id || !deletedApplicationIds.has(row.application_id));
+    const rentalIds = liveRentals.map((row) => row.id);
     const vehiclesQ = await rowsInBatches(vehicleIds, (batch) =>
       supabaseAdmin
         .from("vehicles")
@@ -171,14 +186,13 @@ export const getRenewalsDue = createServerFn({ method: "POST" })
           paymentSort,
         );
 
-    const applications: RenewalApplication[] = applicationsQ.rows;
     const vehicles: RenewalVehicle[] = vehiclesQ.rows;
     const payments: RenewalPayment[] = paymentsQ.rows;
 
     return buildRenewalsDue({
       today,
-      rentals,
-      overdueRentals,
+      rentals: liveRentals,
+      overdueRentals: liveOverdue,
       applications,
       vehicles,
       payments,

@@ -1,4 +1,5 @@
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const vm = require("vm");
 const assert = require("assert/strict");
@@ -163,28 +164,60 @@ const swapData = {
   agreementEvidenceId: id(5),
 };
 
+let dataDir = null;
+
+function postgresBin() {
+  const fromEnv = process.env.PG_BIN && process.env.PG_BIN.trim();
+  if (fromEnv) return fromEnv;
+  return execFileSync("pg_config", ["--bindir"], { encoding: "utf8" }).trim();
+}
+
+function pgTool(name) {
+  return path.join(postgresBin(), name);
+}
+
 function psql(dir, sqlText) {
   return execFileSync(
-    "psql",
+    pgTool("psql"),
     ["-h", dir, "-p", "55441", "-d", "swap", "-v", "ON_ERROR_STOP=1", "-X", "-q", "-tA"],
     { input: sqlText, encoding: "utf8" },
   );
 }
 
 function startDatabase() {
-  const dir = "/tmp/vehicle-swap-pg";
-  fs.rmSync(dir, { recursive: true, force: true });
-  execFileSync("/usr/lib/postgresql/16/bin/initdb", ["-D", dir, "--username", process.env.USER || "ubuntu", "--auth=trust", "--no-sync"], { stdio: "ignore" });
-  execFileSync("/usr/lib/postgresql/16/bin/pg_ctl", ["-D", dir, "-l", path.join(dir, "log"), "-o", `-p 55441 -k ${dir} -c listen_addresses=`, "start"], { stdio: "ignore" });
-  execFileSync("/usr/lib/postgresql/16/bin/createdb", ["-h", dir, "-p", "55441", "swap"], { stdio: "ignore" });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vehicle-swap-pg-"));
+  dataDir = dir;
+  execFileSync(pgTool("initdb"), ["-D", dir, "--username", process.env.USER || "ubuntu", "--auth=trust", "--no-sync"], { stdio: "ignore" });
+  execFileSync(pgTool("pg_ctl"), ["-D", dir, "-l", path.join(dir, "log"), "-o", `-p 55441 -k ${dir} -c listen_addresses=`, "start"], { stdio: "ignore" });
+  execFileSync(pgTool("createdb"), ["-h", dir, "-p", "55441", "swap"], { stdio: "ignore" });
   return dir;
 }
 
 function stopDatabase(dir) {
+  if (!dir) return;
   try {
-    execFileSync("/usr/lib/postgresql/16/bin/pg_ctl", ["-D", dir, "-m", "immediate", "stop"], { stdio: "ignore" });
+    execFileSync(pgTool("pg_ctl"), ["-D", dir, "-m", "immediate", "stop"], { stdio: "ignore" });
   } catch { /* already stopped */ }
+  fs.rmSync(dir, { recursive: true, force: true });
 }
+
+test("local postgres binaries follow PG_BIN", () => {
+  const previous = process.env.PG_BIN;
+  process.env.PG_BIN = "  /tmp/pg-bin  ";
+  assert.equal(postgresBin(), "/tmp/pg-bin");
+  assert.equal(pgTool("psql"), path.join("/tmp/pg-bin", "psql"));
+  if (previous === undefined) delete process.env.PG_BIN;
+  else process.env.PG_BIN = previous;
+});
+
+test("each local postgres data directory is new", () => {
+  const first = fs.mkdtempSync(path.join(os.tmpdir(), "vehicle-swap-pg-"));
+  const second = fs.mkdtempSync(path.join(os.tmpdir(), "vehicle-swap-pg-"));
+  assert.notEqual(first, second);
+  assert.equal(path.basename(first).startsWith("vehicle-swap-pg-"), true);
+  fs.rmSync(first, { recursive: true, force: true });
+  fs.rmSync(second, { recursive: true, force: true });
+});
 
 const ACTOR = "11111111-1111-4111-8111-111111111111";
 const APP = "22222222-2222-4222-8222-222222222222";
@@ -359,9 +392,8 @@ function transactionTests(dir) {
     `);
   });
   test("a held rental lock fails nowait and rolls back", () => {
-    const holder = `${"/usr/lib/postgresql/16/bin/psql"}`;
     const { spawn } = require("child_process");
-    const child = spawn("psql", ["-h", dir, "-p", "55441", "-d", "swap", "-v", "ON_ERROR_STOP=1", "-X"], {
+    const child = spawn(pgTool("psql"), ["-h", dir, "-p", "55441", "-d", "swap", "-v", "ON_ERROR_STOP=1", "-X"], {
       stdio: ["pipe", "ignore", "pipe"],
     });
     child.stdin.write(`BEGIN; SELECT id FROM public.rentals WHERE id='${RENTAL}' FOR UPDATE; SELECT pg_sleep(20); COMMIT;\n`);
@@ -532,6 +564,6 @@ function transactionTests(dir) {
   console.log(JSON.stringify({ pass: results.length, fail: 0 }));
 })().catch((error) => {
   console.error(error);
-  try { stopDatabase("/tmp/vehicle-swap-pg"); } catch { /* already stopped */ }
+  try { stopDatabase(dataDir); } catch { /* already stopped */ }
   process.exit(1);
 });

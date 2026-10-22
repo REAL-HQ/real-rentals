@@ -32,6 +32,8 @@ export type PartnerCharge = {
   currency: string;
   succeeded: boolean;
   created: number;
+  /** Payment row ids from charge metadata. Empty when the charge did not name them. */
+  paymentIds?: string[];
 };
 export type PartnerPaymentLink = {
   id: string;

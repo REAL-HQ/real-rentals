@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { collectionsWatchEnabled } from "./collections-watch-flag";
+import { COLLECTIONS_WATCH_ENABLED } from "./collections-watch-flag";
 import { readLiveCollectionsWatch } from "./collections-watch-read.server";
 import { loadCollectionsDirectory, runCollectionsWatch, type CollectionsWatchResponse } from "./collections-watch.server";
 
@@ -8,12 +8,12 @@ import { loadCollectionsDirectory, runCollectionsWatch, type CollectionsWatchRes
 export const getCollectionsWatch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<CollectionsWatchResponse> => {
-    if (!collectionsWatchEnabled()) return { status: "disabled", report: null };
+    if (!COLLECTIONS_WATCH_ENABLED) return { status: "disabled", report: null };
     if (!context.userId) throw new Error("Forbidden");
     const { data: roles, error } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
     if (error || !roles) throw new Error("Forbidden");
     return runCollectionsWatch({
-      enabled: collectionsWatchEnabled(),
+      enabled: COLLECTIONS_WATCH_ENABLED,
       userId: context.userId,
       roles: roles.map((row) => row.role),
       load: () => loadCollectionsDirectory(context.supabase),

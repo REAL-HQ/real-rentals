@@ -24,6 +24,7 @@ import {
   Inbox,
   Upload,
   Landmark,
+  Ticket,
   PieChart,
   LayoutGrid,
   ScrollText,
@@ -40,6 +41,7 @@ import {
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { TOLLS_TICKETS_LEDGER_ENABLED } from "@/lib/tolls-tickets-flag";
 import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
 import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
 import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
@@ -65,6 +67,8 @@ import { VEHICLE_TURNAROUND_ENABLED } from "@/lib/vehicle-turnaround-flag";
 import { RENT_RECONCILIATION_ENABLED } from "@/lib/rent-reconciliation-flag";
 import { OWNER_FINANCE_SNAPSHOT_ENABLED } from "@/lib/owner-finance-snapshot-flag";
 import { RENEWALS_DUE_ENABLED } from "@/lib/renewals-due-flag";
+import { FINANCE_EXPENSE_CATEGORIES_ENABLED } from "@/lib/expense-categories-flag";
+
 export type TabDef = {
   id: string;
   label: string;
@@ -262,6 +266,25 @@ const FINANCE_DATA_QUALITY_TAB: TabDef = {
   description: "Gaps That Leave Finance Totals Partial Or Unavailable",
 };
 
+/** Shown only while Expense Categories is compiled on. Kept out of TABS so a dark build cannot list it. */
+const EXPENSE_CATEGORIES_TAB: TabDef = {
+  id: "expense_categories",
+  label: "Expense Categories",
+  icon: PieChart,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Vehicle Expenses Grouped By Category",
+};
+
+function withExpenseCategories<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!FINANCE_EXPENSE_CATEGORIES_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "expenses");
+  const entry = href ? { ...EXPENSE_CATEGORIES_TAB, href } : EXPENSE_CATEGORIES_TAB;
+  next.splice(at < 0 ? next.length : at + 1, 0, entry as T);
+  return next;
+}
+
 function withFinanceDataQuality<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
   if (!FINANCE_DATA_QUALITY_ENABLED || !tierAllows(tier, "manager")) return tabs;
   const next = [...tabs];
@@ -318,6 +341,34 @@ const REVENUE_FORECAST_TAB: TabDef = {
   group: "BUSINESS",
   description: "Projected Rental Income For The Next 4 Weeks",
 };
+
+/** Shown only while Tolls And Tickets is compiled on. Kept out of TABS so a dark build cannot list it. */
+const TOLLS_TAB: TabDef = {
+  id: "tolls_tickets",
+  label: "Tolls And Tickets",
+  icon: Ticket,
+  minTier: "manager",
+  group: "RENTALS",
+  description: "Tolls, Tickets, And Violations For Each Rental And Vehicle",
+};
+
+function withTolls(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
+  if (!TOLLS_TICKETS_LEDGER_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "payments");
+  next.splice(at + 1, 0, TOLLS_TAB);
+  return next;
+}
+
+/**
+ * Direct ?tab=tolls_tickets. Null means this URL is some other tab.
+ * While the flag is off, Overview is chosen before the role lookup returns.
+ */
+export function resolveTollsTicketsTab(urlTab: string | null | undefined, tier: StaffTier | null): "tolls_tickets" | "overview" | null {
+  if (urlTab !== "tolls_tickets") return null;
+  if (!TOLLS_TICKETS_LEDGER_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+  return "tolls_tickets";
+}
 
 /** Shown only while Unified Finance is compiled on. Kept out of TABS so a dark build cannot list it. */
 const FINANCE_TAB: TabDef = {
@@ -510,7 +561,7 @@ function insertFunnel(tabs: TabDef[]): TabDef[] {
 }
 
 function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
-  let next = tabs;
+  let next = withTolls(tabs, tier);
   if (TODAYS_OPS_ENABLED && tierAllows(tier, "manager")) {
     next = spliceAfter(next, "overview", TODAYS_OPS_TAB);
   }
@@ -544,10 +595,10 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (OWNER_FINANCE_SNAPSHOT_ENABLED && tierAllows(tier, "owner")) extra.push(OWNER_FINANCE_SNAPSHOT_TAB);
   if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_RISK_MONITOR_TAB);
   if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push(STRIPE_PAYOUT_RECON_TAB);
-  if (!extra.length) return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier);
+  if (!extra.length) return withExpenseCategories(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier), tier);
   const at = next.findIndex((t) => t.id === "expenses");
   next.splice(at + 1, 0, ...extra);
-  return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier);
+  return withExpenseCategories(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier), tier), tier), tier), tier), tier);
 }
 
 /**
@@ -580,6 +631,10 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   let entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
+  if (TOLLS_TICKETS_LEDGER_ENABLED && tierAllows(tier, "manager")) {
+    const at = entries.findIndex((t) => t.id === "payments");
+    entries.splice(at + 1, 0, { ...TOLLS_TAB, href: "tolls_tickets" });
+  }
   if (TODAYS_OPS_ENABLED && tierAllows(tier, "manager")) {
     entries = spliceAfter(entries, "overview", { ...TODAYS_OPS_TAB, href: "todays_ops" });
   }
@@ -618,11 +673,11 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   if (STRIPE_RISK_MONITOR_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_RISK_MONITOR_TAB, href: "stripe_risk_monitor" });
   if (STRIPE_PAYOUT_RECON_ENABLED && tierAllows(tier, "manager")) extra.push({ ...STRIPE_PAYOUT_RECON_TAB, href: "stripe_payout_recon" });
   if (!extra.length) {
-    return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger");
+    return withExpenseCategories(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger"), tier, "expense_categories");
   }
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, ...extra);
-  return withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger");
+  return withExpenseCategories(withFinanceDepositLedger(withRentAging(withFinanceDataQuality(withTaxExport(withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export"), tier, "tax_export"), tier, "finance_data_quality"), tier, "rent_aging"), tier, "finance_deposit_ledger"), tier, "expense_categories");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
@@ -741,6 +796,10 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "finance_data_quality") {
     if (!FINANCE_DATA_QUALITY_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "finance_data_quality";
+  }
+  if (args.urlTab === "expense_categories") {
+    if (!FINANCE_EXPENSE_CATEGORIES_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "expense_categories";
   }
   if (args.urlTab === "rent_aging") {
     if (!FINANCE_AR_AGING_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
