@@ -1,6 +1,6 @@
 // Next Service stays on the existing Maintenance Due list (run: bun scripts/maintenance-due-schedule.test.ts).
 import { readFileSync } from "node:fs";
-import { MAINTENANCE_DUE_ENABLED } from "../src/lib/maintenance-due";
+import { MAINTENANCE_DUE_ENABLED, businessToday } from "../src/lib/maintenance-due";
 import { mergeSchedules, scheduleDue, withHistory, type CompanyDefault, type VehicleSchedule } from "../src/lib/maintenance-schedule";
 
 let fails = 0;
@@ -26,12 +26,14 @@ ok(!rules.includes("MAINTENANCE_DUE_ENABLED ="), "the schedule does not declare 
 ok(!/process\.env/.test(flag + rules + server), "no environment variable can open the flag");
 ok(server.startsWith("// Maintenance due for one vehicle, using the vehicle-service schedule"), "the header names the vehicle-service computation");
 
+const thrown = server.indexOf("if (!MAINTENANCE_DUE_ENABLED) throw new Error(DISABLED)");
+const middleware = server.indexOf("[refuseMaintenanceDueSchedule, requireSupabaseAuth]");
+ok(thrown >= 0 && thrown < middleware, "the flag throws before the auth middleware runs");
 const handler = server.slice(server.indexOf(".handler"));
-const thrown = handler.indexOf("if (!MAINTENANCE_DUE_ENABLED) throw new Error(DISABLED)");
 const role = handler.indexOf("requireManager");
 const read = handler.indexOf('.from("maintenance_defaults")');
-ok(thrown >= 0 && thrown < role && role < read, "the schedule throws before requireManager and before any read");
-ok(thrown < handler.indexOf("import("), "the throw happens before any dynamic import");
+ok(role >= 0 && role < read, "the role check happens before any read");
+ok(server.includes("businessToday()") && !server.includes("toISOString()"), "today is the Eastern business day");
 ok(!server.slice(0, server.indexOf("export const listMaintenanceDueSchedule")).includes("roles.server"), "the role module is not a static import");
 ok((server.match(/\.limit\(LIMIT \+ 1\)/g) ?? []).length === 3, "defaults, schedules, and records use limit plus one");
 ok(server.includes('.eq("id", data.vehicleId).maybeSingle()'), "one vehicle is read by its id");
@@ -73,6 +75,8 @@ ok(!profile.includes("MaintenanceDueSchedule"), "vehicle detail does not mount a
 ok(profile.includes("{MAINTENANCE_LOG_ENABLED ? <MaintenanceLogHistory vehicleId={vehicleId} /> : null}"), "the log history stays behind its own flag");
 ok(profile.includes("<VehicleService vehicleId={vehicleId} />"), "vehicle detail keeps the existing service list");
 ok(!nav.includes("maintenance_due_schedule"), "there is no new screen");
+ok(businessToday(new Date("2026-10-21T03:30:00Z")) === "2026-10-20", "03:30 UTC is still the previous Eastern day");
+ok(businessToday(new Date("2026-10-21T04:00:00Z")) === "2026-10-21", "04:00 UTC is Eastern midnight");
 
 type RecordRow = {
   id: string;
