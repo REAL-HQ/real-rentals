@@ -31,6 +31,7 @@ import {
   visibleCreateActions,
   navOwner,
   railEntries,
+  resolveTollsTicketsTab,
   WORKSPACE_TABS,
   visibleWorkspaceTabs,
   LEGACY_TABS,
@@ -47,13 +48,70 @@ import { OverviewPanel } from "@/components/admin/OverviewPanel";
 import { VendorsPanel } from "@/components/admin/VendorsPanel";
 import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
+import { DepositsLedgerPanel } from "@/components/admin/DepositsLedgerPanel";
+import { WeeklyCashFlowPanel } from "@/components/admin/WeeklyCashFlowPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
+import { IncidentBoard } from "@/components/admin/IncidentBoard";
+import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
 import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { TOLLS_TICKETS_LEDGER_ENABLED } from "@/lib/tolls-tickets-flag";
+import { TollsTickets } from "@/components/admin/TollsTickets";
+import { StripeMatchPanel } from "@/components/admin/StripeMatchPanel";
+import { VehicleProfitPanel } from "@/components/admin/VehicleProfitPanel";
+import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
+import { PayoutBreakdownPanel } from "@/components/admin/PayoutBreakdownPanel";
+import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
+import { BillingHealthPanel } from "@/components/admin/BillingHealthPanel";
+import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
+import { FinanceDataQualityPanel } from "@/components/admin/FinanceDataQualityPanel";
+import { FINANCE_DATA_QUALITY_ENABLED } from "@/lib/finance-data-quality-flag";
+import { RentAgingPanel } from "@/components/admin/RentAgingPanel";
+import { FINANCE_AR_AGING_ENABLED } from "@/lib/rent-aging-flag";
+import { FinanceDepositLedgerPanel } from "@/components/admin/FinanceDepositLedgerPanel";
+import { FINANCE_DEPOSIT_LEDGER_ENABLED } from "@/lib/finance-deposit-ledger-flag";
+import { StripeRiskMonitorPanel } from "@/components/admin/StripeRiskMonitorPanel";
+import { STRIPE_RISK_MONITOR_ENABLED } from "@/lib/stripe-risk-monitor-flag";
+import { StripePayoutReconPanel } from "@/components/admin/StripePayoutReconPanel";
+import { STRIPE_PAYOUT_RECON_ENABLED } from "@/lib/stripe-payout-recon-flag";
+import { ApplicantFunnelPanel } from "@/components/admin/ApplicantFunnelPanel";
+import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
+import { TodaysOps } from "@/components/admin/TodaysOps";
+import { TODAYS_OPS_ENABLED } from "@/lib/todays-ops-flag";
+import { FleetCalendar } from "@/components/admin/FleetCalendar";
+import { FLEET_CALENDAR_ENABLED } from "@/lib/fleet-calendar-flag";
+import { RevenueForecastPanel } from "@/components/admin/RevenueForecastPanel";
+import { REVENUE_FORECAST_ENABLED } from "@/lib/revenue-forecast-flag";
+import { ReceivablesAgingPanel } from "@/components/admin/ReceivablesAgingPanel";
+import { RECEIVABLES_AGING_ENABLED } from "@/lib/receivables-aging-flag";
+import { DepositLedgerPanel } from "@/components/admin/DepositLedgerPanel";
+import { DEPOSIT_LEDGER_ENABLED } from "@/lib/deposit-ledger-flag";
+import { VehicleTurnaround } from "@/components/admin/VehicleTurnaround";
+import { VEHICLE_TURNAROUND_ENABLED } from "@/lib/vehicle-turnaround-flag";
+import { RentReconciliationPanel } from "@/components/admin/RentReconciliationPanel";
+import { RENT_RECONCILIATION_ENABLED } from "@/lib/rent-reconciliation-flag";
+import { OwnerFinanceSnapshotPanel } from "@/components/admin/OwnerFinanceSnapshotPanel";
+import { OWNER_FINANCE_SNAPSHOT_ENABLED } from "@/lib/owner-finance-snapshot-flag";
+import { RenewalsDue } from "@/components/admin/RenewalsDue";
+import { RENEWALS_DUE_ENABLED } from "@/lib/renewals-due-flag";
+import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
+import { FleetAvailability } from "@/components/admin/FleetAvailability";
+import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
+import { PartnerStatementPanel } from "@/components/admin/PartnerStatementPanel";
+import { PARTNER_STATEMENT_ENABLED } from "@/lib/partner-statement-flag";
+import { OwnerPnlPanel } from "@/components/admin/OwnerPnlPanel";
+import { OWNER_PNL_ENABLED } from "@/lib/owner-pnl-flag";
+import { OwnerExpenseEntryPanel } from "@/components/admin/OwnerExpenseEntryPanel";
+import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
+import { AccountantExportPanel } from "@/components/admin/AccountantExportPanel";
+import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
+import { TaxExportPanel } from "@/components/admin/TaxExportPanel";
+import { TAX_EXPORT_ENABLED } from "@/lib/tax-export-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
+import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
@@ -293,10 +351,119 @@ function Admin() {
   const tab: Tab = useMemo(() => {
     // Settings is off the rail (profile dropdown) but must stay reachable; its sections filter by tier.
     if (urlTab === "settings") return "settings";
+    const tollsTab = resolveTollsTicketsTab(urlTab, tier);
+    if (tollsTab) return tollsTab;
     // Reviewed Unified Finance is not an Overview block. This tab is the screen.
     if (urlTab === "finance") {
       if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "finance";
+    }
+    if (urlTab === "vehicle_profit") {
+      if (!VEHICLE_PROFITABILITY_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "vehicle_profit";
+    }
+    if (urlTab === "incident_board") {
+      if (!INCIDENT_BOARD_ENABLED || (tier && !tierAllows(tier, "coordinator"))) return "overview";
+      return "incident_board";
+    }
+    if (urlTab === "fleet_availability") {
+      if (!FLEET_AVAILABILITY_ENABLED || (tier && !tierAllows(tier, "coordinator"))) return "overview";
+      return "fleet_availability";
+    }
+    if (urlTab === "partner_statement") {
+      if (!PARTNER_STATEMENT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "partner_statement";
+    }
+    if (urlTab === "owner_pnl") {
+      if (!OWNER_PNL_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "owner_pnl";
+    }
+    if (urlTab === "expense_entry") {
+      if (!OWNER_EXPENSE_ENTRY_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "expense_entry";
+    }
+    if (urlTab === "accountant_export") {
+      if (!ACCOUNTANT_EXPORT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "accountant_export";
+    }
+    if (urlTab === "tax_export") {
+      if (!TAX_EXPORT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "tax_export";
+    }
+    if (urlTab === "payout_breakdown") {
+      if (!PAYOUT_BREAKDOWN_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "payout_breakdown";
+    }
+    if (urlTab === "billing_health") {
+      if (!BILLING_HEALTH_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "billing_health";
+    }
+    if (urlTab === "finance_data_quality") {
+      if (!FINANCE_DATA_QUALITY_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "finance_data_quality";
+    }
+    if (urlTab === "rent_aging") {
+      if (!FINANCE_AR_AGING_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "rent_aging";
+    }
+    if (urlTab === "finance_deposit_ledger") {
+      if (!FINANCE_DEPOSIT_LEDGER_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "finance_deposit_ledger";
+    }
+    // Stripe Disputes & Failed-Payment Monitor is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "stripe_risk_monitor") {
+      if (!STRIPE_RISK_MONITOR_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "stripe_risk_monitor";
+    }
+    if (urlTab === "stripe_payout_recon") {
+      if (!STRIPE_PAYOUT_RECON_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "stripe_payout_recon";
+    }
+    if (urlTab === "funnel") {
+      if (!APPLICANT_FUNNEL_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "funnel";
+    }
+    if (urlTab === "todays_ops") {
+      if (!TODAYS_OPS_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "todays_ops";
+    }
+    if (urlTab === "fleet_calendar") {
+      if (!FLEET_CALENDAR_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "fleet_calendar";
+    }
+    if (urlTab === "revenue_forecast") {
+      if (!REVENUE_FORECAST_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "revenue_forecast";
+    }
+    // Receivables Aging is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "receivables_aging") {
+      if (!RECEIVABLES_AGING_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "receivables_aging";
+    }
+    // Deposit Ledger is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "deposit_ledger") {
+      if (!DEPOSIT_LEDGER_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "deposit_ledger";
+    }
+    // Vehicle Turnaround is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "vehicle_turnaround") {
+      if (!VEHICLE_TURNAROUND_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "vehicle_turnaround";
+    }
+    // Rent Payment Reconciliation is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "rent_reconciliation") {
+      if (!RENT_RECONCILIATION_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "rent_reconciliation";
+    }
+    // Owner Weekly Finance Snapshot is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "owner_finance_snapshot") {
+      if (!OWNER_FINANCE_SNAPSHOT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
+      return "owner_finance_snapshot";
+    }
+    // Rental Renewal Due is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "renewals_due") {
+      if (!RENEWALS_DUE_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "renewals_due";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -776,10 +943,18 @@ function Admin() {
 
           <main data-admin-main className="flex-1 min-w-0 px-4 pb-4 md:px-8 md:pb-8 pt-2">
             {tab === "overview" && <OverviewPanel canSeeCollections={tierAllows(tier, "manager")} />}
+            {TODAYS_OPS_ENABLED && tab === "todays_ops" && <TodaysOps />}
+            {FLEET_CALENDAR_ENABLED && tab === "fleet_calendar" && <FleetCalendar />}
+            {VEHICLE_TURNAROUND_ENABLED && tab === "vehicle_turnaround" && <VehicleTurnaround />}
+            {RENT_RECONCILIATION_ENABLED && tab === "rent_reconciliation" && <RentReconciliationPanel />}
+            {OWNER_FINANCE_SNAPSHOT_ENABLED && tab === "owner_finance_snapshot" && <OwnerFinanceSnapshotPanel />}
+            {RENEWALS_DUE_ENABLED && tab === "renewals_due" && <RenewalsDue />}
+            {REVENUE_FORECAST_ENABLED && tab === "revenue_forecast" && <RevenueForecastPanel />}
             {tab === "drivers" && (
-              <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
+              <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
-            {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} openId={urlRecordId} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
+            {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} openId={urlRecordId} canSeeMaintenanceDue={tierAllows(tier, "manager")} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
+            {tab === "active_rentals" && <ActiveRentalsPanel />}
             {tab === "bookings" && (
               <BookingsPanel
                 externalSearch={globalSearch}
@@ -801,10 +976,35 @@ function Admin() {
             {tab === "vendors" && <VendorsPanel />}
             {tab === "inspections" && <InspectionsPanel />}
             {tab === "charges" && <ChargesPanel />}
+            {tab === "stripe_match" && <StripeMatchPanel />}
+            {tab === "collections_watch" && <CollectionsWatchPanel />}
+            {tab === "deposits_ledger" && <DepositsLedgerPanel />}
+            {tab === "weekly_cash_flow" && <WeeklyCashFlowPanel />}
             {tab === "incidents" && <IncidentsPanel seedIssueId={search.issue ?? null} />}
+            {INCIDENT_BOARD_ENABLED && tab === "incident_board" && <IncidentBoard />}
             {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
+            {TOLLS_TICKETS_LEDGER_ENABLED && tab === "tolls_tickets" && <TollsTickets />}
+            {VEHICLE_PROFITABILITY_ENABLED && tab === "vehicle_profit" && <VehicleProfitPanel />}
+            {FLEET_AVAILABILITY_ENABLED && tab === "fleet_availability" && (
+              <FleetAvailability canOpenWaitingList={tierAllows(tier, "manager")} />
+            )}
+            {PARTNER_STATEMENT_ENABLED && tab === "partner_statement" && <PartnerStatementPanel />}
+            {OWNER_PNL_ENABLED && tab === "owner_pnl" && <OwnerPnlPanel />}
+            {OWNER_EXPENSE_ENTRY_ENABLED && tab === "expense_entry" && <OwnerExpenseEntryPanel />}
+            {ACCOUNTANT_EXPORT_ENABLED && tab === "accountant_export" && <AccountantExportPanel />}
+            {TAX_EXPORT_ENABLED && tab === "tax_export" && <TaxExportPanel />}
+            {PAYOUT_BREAKDOWN_ENABLED && tab === "payout_breakdown" && <PayoutBreakdownPanel />}
+            {BILLING_HEALTH_ENABLED && tab === "billing_health" && <BillingHealthPanel />}
+            {FINANCE_DATA_QUALITY_ENABLED && tab === "finance_data_quality" && <FinanceDataQualityPanel />}
+            {FINANCE_AR_AGING_ENABLED && tab === "rent_aging" && <RentAgingPanel />}
+            {FINANCE_DEPOSIT_LEDGER_ENABLED && tab === "finance_deposit_ledger" && <FinanceDepositLedgerPanel />}
+            {STRIPE_RISK_MONITOR_ENABLED && tab === "stripe_risk_monitor" && <StripeRiskMonitorPanel />}
+            {STRIPE_PAYOUT_RECON_ENABLED && tab === "stripe_payout_recon" && <StripePayoutReconPanel />}
+            {APPLICANT_FUNNEL_ENABLED && tab === "funnel" && <ApplicantFunnelPanel />}
+            {RECEIVABLES_AGING_ENABLED && tab === "receivables_aging" && <ReceivablesAgingPanel />}
+            {DEPOSIT_LEDGER_ENABLED && tab === "deposit_ledger" && <DepositLedgerPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>

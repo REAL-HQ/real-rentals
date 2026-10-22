@@ -29,6 +29,8 @@ import { BOOKING_PHASE_LABEL, bookingDates } from "@/lib/bookings-list";
 import { persistedNumber } from "@/lib/record-numbers";
 import { RecordNumber } from "@/components/admin/RecordNumber";
 import { BookingVehicleHistory } from "@/components/admin/BookingVehicleHistory";
+import { CloseoutSummary } from "@/components/admin/CloseoutSummary";
+import { CLOSEOUT_SUMMARY_ENABLED, closeoutApplies } from "@/lib/closeout-summary";
 
 // A booking, read.
 //
@@ -252,6 +254,9 @@ function Overview({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 space-y-5">
+        {CLOSEOUT_SUMMARY_ENABLED && d.canSeeMoney && closeoutApplies(b.status) && (
+          <CloseoutSummary rentalId={b.id} />
+        )}
         <SectionCard
           title="Actions"
           icon={<ClipboardCheck className="w-4 h-4" strokeWidth={1.75} />}

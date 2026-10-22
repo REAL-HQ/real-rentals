@@ -34,6 +34,8 @@ import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill, ReadinessMetri
 import { isHotProspect, compareReadiness, type ReadinessResult } from "@/lib/readiness";
 import { summarizeFleet, type FleetSummary } from "@/lib/fleet-summary";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
+import { MaintenanceDueTile } from "./MaintenanceLog";
+import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
 import {
   APPLICANT_WINDOW,
   type OverviewApplicantRow,
@@ -68,7 +70,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getStripeCollections } from "@/lib/stripe-collections.functions";
 import { consolidatedRevenue } from "@/lib/stripe-collections";
 import { useNavigate } from "@tanstack/react-router";
+import { DocumentsExpiringChip } from "./DocumentsExpiring";
 import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
+import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
 
@@ -90,8 +94,6 @@ const REVENUE_TYPES = ["rent", "late_fee", "other"] as const;
  * figure summed every row whose status was not 'paid', which swept in
  * invoices that are simply not due yet and showed them as outstanding debt.
  */
-const OVERDUE_STATUSES = ["late", "past_due", "collections", "overdue", "failed", "unpaid"] as const;
-
 function usd(n: number | undefined | null) {
   if (n == null) return "—";
   return n.toLocaleString(undefined, {
@@ -236,7 +238,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         supabase
           .from("payments")
           .select("amount, driver_id")
-          .in("status", OVERDUE_STATUSES as unknown as string[]),
+          .in("status", [...COLLECTIONS_WATCH_STATUSES]),
         supabase
           .from("payments")
           .select("net_collected, paid_date")
@@ -572,7 +574,9 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           tint={svc.overdue > 0 ? "red" : svc.due + svc.open + svc.conflict > 0 ? "amber" : undefined}
           badge={serviceAttention > 0 ? serviceAttention : undefined}
         />
+        {MAINTENANCE_LOG_ENABLED ? <MaintenanceDueTile /> : null}
       </div>
+      {canSeeCollections ? <DocumentsExpiringChip /> : null}
 
       {/* Fleet snapshot + Applications queue */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
