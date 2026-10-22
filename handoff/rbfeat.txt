@@ -1,0 +1,207 @@
+DROP DATABASE
+DROP ROLE
+CREATE DATABASE
+STORAGE
+NOTICE:  column "user_metadata" of relation "objects" already exists, skipping
+NOTICE:  column "version" of relation "objects" already exists, skipping
+INSTALL packet 01.sql
+INSTALL own record-uploaded-content-sha.sql
+INSTALL own 00-approval-boundary.sql
+INSTALL packet 02.sql
+INSTALL packet 03.sql
+INSTALL packet 04.sql
+INSTALL packet 05.sql
+INSTALL packet 06.sql
+INSTALL own 06b-approval-identity-check.sql
+INSTALL packet 07.sql
+INSTALL packet 08.sql
+INSTALL packet 09.sql
+INSTALL packet 10.sql
+INSTALL own 10b-approval-executor-writes.sql
+INSTALL packet 11.sql
+INSTALL packet 12.sql
+INSTALL packet 13.sql
+INSTALL packet 14.sql
+INSTALL packet 15.sql
+INSTALL packet 16.sql
+INSTALL packet 17.sql
+INSTALL packet 18.sql
+INSTALL packet 19.sql
+INSTALL packet 19b.sql
+INSTALL own 19c-agreement-contract.sql
+PRE STATE
+SWAP FORWARD
+BEGIN
+SET
+CREATE SEQUENCE
+CREATE TABLE
+ALTER TABLE
+ALTER SEQUENCE
+ALTER TABLE
+REVOKE
+REVOKE
+psql:/workspace/proposed/m2-packet/20.sql:85: NOTICE:  trigger "swap_operations_immutable" for relation "private.swap_operations" does not exist, skipping
+DROP TRIGGER
+CREATE TRIGGER
+ALTER TABLE
+CREATE FUNCTION
+REVOKE
+GRANT
+CREATE FUNCTION
+REVOKE
+GRANT
+CREATE FUNCTION
+ALTER FUNCTION
+REVOKE
+GRANT
+GRANT
+GRANT
+CREATE FUNCTION
+REVOKE
+GRANT
+COMMIT
+ lock_timeout 
+--------------
+ 5s
+(1 row)
+
+SWAP REAPPLY
+BEGIN
+SET
+psql:/workspace/proposed/m2-packet/20.sql:71: NOTICE:  relation "swap_number_seq" already exists, skipping
+CREATE SEQUENCE
+psql:/workspace/proposed/m2-packet/20.sql:79: NOTICE:  relation "swap_operations" already exists, skipping
+CREATE TABLE
+ALTER TABLE
+ALTER SEQUENCE
+ALTER TABLE
+REVOKE
+REVOKE
+DROP TRIGGER
+CREATE TRIGGER
+psql:/workspace/proposed/m2-packet/20.sql:90: NOTICE:  column "swap_operation_id" of relation "booking_vehicle_assignments" already exists, skipping
+ALTER TABLE
+CREATE FUNCTION
+REVOKE
+GRANT
+CREATE FUNCTION
+REVOKE
+GRANT
+CREATE FUNCTION
+ALTER FUNCTION
+REVOKE
+GRANT
+GRANT
+GRANT
+CREATE FUNCTION
+REVOKE
+GRANT
+COMMIT
+ lock_timeout 
+--------------
+ 5s
+(1 row)
+
+SWAP REAPPLY MATCH
+                fn                 | anon | auth | service | executor 
+-----------------------------------+------+------+---------+----------
+ private.swap_agreement_evidence   | f    | f    | f       | t
+ private.swap_project_vehicle_v1   | f    | f    | f       | t
+ public.list_assignment_history_v1 | f    | t    | f       | f
+ public.swap_rental_vehicle_tx     | f    | t    | f       | t
+(4 rows)
+
+CALL anon-history
+EXIT anon-history 1
+BEGIN
+SET
+ERROR:  permission denied for function list_assignment_history_v1
+CALL auth-history
+EXIT auth-history 1
+BEGIN
+SET
+ERROR:  history_scope_required
+CONTEXT:  PL/pgSQL function public.list_assignment_history_v1(uuid,uuid) line 4 at RAISE
+CALL auth-history-id
+EXIT auth-history-id 1
+BEGIN
+SET
+ERROR:  staff_required
+CONTEXT:  PL/pgSQL function public.list_assignment_history_v1(uuid,uuid) line 7 at RAISE
+CALL anon-swap
+EXIT anon-swap 1
+BEGIN
+SET
+ERROR:  permission denied for function swap_rental_vehicle_tx
+CALL auth-swap
+EXIT auth-swap 1
+BEGIN
+SET
+ERROR:  trusted_authentication_context_required
+CONTEXT:  PL/pgSQL function private.approval_provider_actor() line 6 at RAISE
+PL/pgSQL function private.approval_actor() line 4 at assignment
+PL/pgSQL function public.swap_rental_vehicle_tx(uuid,uuid,uuid,uuid,timestamp with time zone,integer,integer,text,uuid) line 7 at assignment
+SWAP ROLLBACK
+SWAP ROLLBACK MATCH
+EXTEND FORWARD
+BEGIN
+SET
+CREATE TABLE
+ALTER TABLE
+REVOKE
+psql:/workspace/proposed/m2-packet/extend.sql:73: NOTICE:  trigger "extend_operations_immutable" for relation "private.extend_operations" does not exist, skipping
+DROP TRIGGER
+CREATE TRIGGER
+CREATE FUNCTION
+REVOKE
+GRANT
+COMMIT
+ lock_timeout 
+--------------
+ 5s
+(1 row)
+
+EXTEND REAPPLY
+BEGIN
+SET
+psql:/workspace/proposed/m2-packet/extend.sql:70: NOTICE:  relation "extend_operations" already exists, skipping
+CREATE TABLE
+ALTER TABLE
+REVOKE
+DROP TRIGGER
+CREATE TRIGGER
+CREATE FUNCTION
+REVOKE
+GRANT
+COMMIT
+ lock_timeout 
+--------------
+ 5s
+(1 row)
+
+EXTEND REAPPLY MATCH
+           fn            | anon | auth | service 
+-------------------------+------+------+---------
+ public.extend_rental_tx | f    | f    | t
+(1 row)
+
+CALL anon-extend
+EXIT anon-extend 1
+BEGIN
+SET
+ERROR:  permission denied for function extend_rental_tx
+CALL auth-extend
+EXIT auth-extend 1
+BEGIN
+SET
+ERROR:  permission denied for function extend_rental_tx
+CALL service-extend
+EXIT service-extend 1
+BEGIN
+SET
+ERROR:  manager_required
+CONTEXT:  PL/pgSQL function public.extend_rental_tx(uuid,uuid,date,date,text,uuid) line 13 at RAISE
+EXTEND ROLLBACK
+EXTEND ROLLBACK MATCH
+DROP DATABASE
+DROP ROLE
