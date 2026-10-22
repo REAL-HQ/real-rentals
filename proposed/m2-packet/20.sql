@@ -61,9 +61,15 @@
 -- document pointer and signed_at must still match the recorded evidence.
 -- signed_at may not be after effective_at. This does not update the
 -- agreement or its document.
+--
+-- Adding swap_operation_id locks public.booking_vehicle_assignments. Fail
+-- that lock after 5 seconds instead of waiting. Re-running this file keeps
+-- one sequence, one table, one column, and the same functions.
 
-CREATE SEQUENCE private.swap_number_seq AS bigint MINVALUE 1 NO CYCLE;
-CREATE TABLE private.swap_operations (
+SET lock_timeout = '5s';
+
+CREATE SEQUENCE IF NOT EXISTS private.swap_number_seq AS bigint MINVALUE 1 NO CYCLE;
+CREATE TABLE IF NOT EXISTS private.swap_operations (
  operation_id uuid PRIMARY KEY,
  actor_id uuid NOT NULL,
  rental_id uuid NOT NULL REFERENCES public.rentals(id) ON DELETE RESTRICT,
@@ -76,15 +82,16 @@ ALTER SEQUENCE private.swap_number_seq OWNER TO rr_record_executor;
 ALTER TABLE private.swap_operations ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON private.swap_operations FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON SEQUENCE private.swap_number_seq FROM PUBLIC, anon, authenticated, service_role;
+DROP TRIGGER IF EXISTS swap_operations_immutable ON private.swap_operations;
 CREATE TRIGGER swap_operations_immutable BEFORE UPDATE OR DELETE OR TRUNCATE ON private.swap_operations
  FOR EACH STATEMENT EXECUTE FUNCTION private.record_immutable();
 
 ALTER TABLE public.booking_vehicle_assignments
- ADD COLUMN swap_operation_id uuid REFERENCES private.swap_operations(operation_id);
+ ADD COLUMN IF NOT EXISTS swap_operation_id uuid REFERENCES private.swap_operations(operation_id);
 
 -- Accepts a step 19b evidence row (by agreement id or evidence id). Does not
 -- link the agreement, render a PDF, or accept a browser hash.
-CREATE FUNCTION private.swap_agreement_evidence(_agreement uuid, _application uuid, _vehicle uuid, _effective timestamptz)
+CREATE OR REPLACE FUNCTION private.swap_agreement_evidence(_agreement uuid, _application uuid, _vehicle uuid, _effective timestamptz)
  RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
 DECLARE ev private.agreement_evidence%ROWTYPE; ag record; doc_id uuid;
 BEGIN
@@ -114,7 +121,7 @@ GRANT EXECUTE ON FUNCTION private.swap_agreement_evidence(uuid,uuid,uuid,timesta
 -- The only writer of the rental's current vehicle and the outgoing car's status.
 -- Callable only from swap_rental_vehicle_tx in the same transaction. Hardcodes
 -- maintenance. Refuses an available destination. Writes no billing columns.
-CREATE FUNCTION private.swap_project_vehicle_v1(
+CREATE OR REPLACE FUNCTION private.swap_project_vehicle_v1(
  _operation uuid, _rental uuid, _old_vehicle uuid, _new_vehicle uuid, _effective timestamptz,
  _return_miles integer, _pickup_miles integer, _actor uuid, _driver uuid, _swap_number bigint, _reason text)
  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
@@ -159,7 +166,7 @@ REVOKE ALL ON FUNCTION private.swap_project_vehicle_v1(uuid,uuid,uuid,uuid,times
 GRANT EXECUTE ON FUNCTION private.swap_project_vehicle_v1(uuid,uuid,uuid,uuid,timestamptz,integer,integer,uuid,uuid,bigint,text)
  TO rr_record_executor;
 
-CREATE FUNCTION public.swap_rental_vehicle_tx(
+CREATE OR REPLACE FUNCTION public.swap_rental_vehicle_tx(
  _operation_id uuid, _rental_id uuid, _expected_assignment_id uuid, _replacement_vehicle_id uuid,
  _effective_at timestamptz, _return_mileage integer, _pickup_mileage integer, _reason text, _agreement_evidence_id uuid)
  RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
@@ -298,7 +305,7 @@ GRANT UPDATE (id) ON TABLE public.application_identity_reviews TO rr_record_exec
 -- Staff read of append-only assignment rows. Missing on today's database; the
 -- caller treats "function does not exist" as an empty history. Direct table
 -- access stays revoked.
-CREATE FUNCTION public.list_assignment_history_v1(_rental uuid, _vehicle uuid)
+CREATE OR REPLACE FUNCTION public.list_assignment_history_v1(_rental uuid, _vehicle uuid)
  RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
 DECLARE rows jsonb;
 BEGIN

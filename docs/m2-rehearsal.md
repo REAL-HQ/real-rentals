@@ -328,8 +328,8 @@ SHA-256 of the current files:
 | `proposed/m2-packet/11.sql` | `b8fde7718e9893c3ed97dd0066808c6d02a921de15fccc7ff5514976753472a2` |
 | `proposed/m2-packet/17.sql` | `36b3d8e9525bbe6f688b3fd865f005cb09bcccccdb3ed21767a6cee71e831b25` |
 | `proposed/m2-packet/19b.sql` | `af1f5b28d91b774a1bd0e39fe26668fc487b15c3f4a6ed3662b1c911b0d12384` |
-| `proposed/m2-packet/20.sql` | `c23e187d4aada1280616197e876151a1668810c235e5c1504901ee15349ee70a` |
-| `proposed/m2-packet/extend.sql` | `3492408c17413619e75fffd19dcefc422ec7107b735197e957000e043c00f883` |
+| `proposed/m2-packet/20.sql` | `57260b67d037f8173a972054ff278b4c75abe49a3ebd606e1b139520a03e71ea` |
+| `proposed/m2-packet/extend.sql` | `c849bb754d4d4f854eb873783eb348ddf99789c7cebd3c00463a5080fb0478a8` |
 | `proposed/m2-packet/21-revoke-executor-create.sql` | `2eea1a9184bc545d668e7821a3782156ee80492d31543dd11b5dac8b3744c70a` |
 | `proposed/m2-with-approval-boundary/00-approval-boundary.sql` | `925fc6ef7b39100004b00f5f1fbf4b3ba8197389cf26e743760a8fb17bffd204` |
 | `proposed/m2-with-approval-boundary/06b-approval-identity-check.sql` | `69fd2705cf22bf32fad1de71a40bc18d78810c37017e27acd2a680923bc759cb` |

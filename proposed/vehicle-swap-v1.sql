@@ -3,3 +3,5 @@
 -- The vehicle swap SQL has one source: proposed/m2-packet/20.sql
 -- (HOSTED-INSTALL step 26). This file used to carry a stale copy.
 -- It is a pointer now, so the two files cannot drift.
+-- That file sets lock_timeout to 5 seconds and can be run again.
+-- Undo: proposed/rollback/20-vehicle-swap.sql.

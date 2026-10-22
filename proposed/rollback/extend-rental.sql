@@ -7,6 +7,7 @@
 -- authenticated, anon, and PUBLIC are not granted. The signature includes
 -- the actor id argument from proposed/extend-rental-v1.sql.
 BEGIN;
+SET LOCAL lock_timeout = '5s';
 -- policies added by this step
 -- policies removed or replaced by this step
 -- triggers added by this step

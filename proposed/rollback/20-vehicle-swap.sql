@@ -3,6 +3,7 @@
 -- after every later step has already been rolled back.
 -- This file does not change the install SQL.
 BEGIN;
+SET LOCAL lock_timeout = '5s';
 -- policies added by this step
 -- policies removed or replaced by this step
 -- triggers added by this step
