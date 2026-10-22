@@ -12,8 +12,11 @@ import { validFinanceDate } from "./unified-finance";
  * refunds. Overview's non-Stripe sum leaves out a Stripe-settled invoice
  * (invoice id, no payment intent, blank failure_reason). A failed invoice
  * later marked paid still counts there when failure_reason is set and there
- * is no payment intent. A later Stripe success clears that failure reason,
- * and the row leaves the non-Stripe sum.
+ * is no payment intent. A later Stripe success clears only failure_reason
+ * on that already-paid row. It does not change status or paid_date, and
+ * the row leaves the non-Stripe sum, so Overview counts the money once,
+ * as Stripe. When staff took cash and Stripe also collected, the duplicate
+ * needs a refund.
  * Stripe net is after refunds and fees. Recorded payments with no Stripe
  * payment intent or invoice id are added for rent, late fee, and other.
  * Deposit payments and deposit charges are excluded. A payment with a
@@ -29,7 +32,7 @@ export const VEHICLE_PNL_PAGE = 100;
 export const VEHICLE_PNL_MAX_PAGES = 20;
 
 export const VEHICLE_PNL_REVENUE_NOTE =
-  "Verified revenue is Stripe net after refunds and fees, plus recorded payments with no Stripe payment intent or invoice, for rent, late fee, and other. Deposit payments and deposit charges are excluded. This is not the Overview total: Overview includes Stripe deposits. A Stripe-settled invoice (invoice id, no payment intent, blank failure_reason) is not in Overview's non-Stripe sum. A failed invoice later marked paid still is, when failure_reason is set and there is no payment intent. A later Stripe success clears that failure reason, and the row leaves the non-Stripe sum. A missing amount stays Unknown.";
+  "Verified revenue is Stripe net after refunds and fees, plus recorded payments with no Stripe payment intent or invoice, for rent, late fee, and other. Deposit payments and deposit charges are excluded. This is not the Overview total: Overview includes Stripe deposits. A Stripe-settled invoice (invoice id, no payment intent, blank failure_reason) is not in Overview's non-Stripe sum. A failed invoice later marked paid still is, when failure_reason is set and there is no payment intent. A later Stripe success clears only failure_reason on that already-paid row. It does not change status or paid_date, and the row leaves the non-Stripe sum, so Overview counts the money once, as Stripe. When staff took cash and Stripe also collected, the duplicate needs a refund. A missing amount stays Unknown.";
 export const VEHICLE_PNL_ONCE_NOTE =
   "A maintenance row linked to an expense in this month is counted once, on the expense.";
 export const VEHICLE_PNL_TOLLS_NOTE =
