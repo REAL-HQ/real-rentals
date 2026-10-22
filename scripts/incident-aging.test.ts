@@ -5,6 +5,7 @@ import { INCIDENT_AGING_ENABLED } from "../src/lib/incident-aging-flag";
 import {
   easternCalendarDate,
   incidentAging,
+  incidentAgingReadError,
   incidentDaysOpen,
   incidentLastUpdate,
 } from "../src/lib/incident-aging";
@@ -38,7 +39,8 @@ ok(handler.indexOf("incidentIds.length === 0") < read, "an empty id list returns
 ok(!server.slice(0, server.indexOf("export const listIncidentAging")).includes("roles.server"), "the role module is not a static import");
 ok(!server.slice(0, server.indexOf("export const listIncidentAging")).includes("client.server"), "the admin client is not a static import");
 ok(server.includes("readInBatches") && server.includes('.range(from, to)') && server.includes('{ count: "exact" }'), "reads are paged the way the waitlist reads are");
-ok((server.match(/readInBatches\(/g) ?? []).length === 2, "incidents and deductions are paged separately");
+ok((server.match(/await readIncidentRows</g) ?? []).length === 2, "incidents and deductions are paged separately");
+ok(server.includes("incidentAgingReadError") && !server.includes("Waitlist"), "a failed read says Incident Aging, not Waitlist");
 ok(!/\.(insert|update|delete|upsert|rpc)\(/.test(server + rules), "aging does not write");
 ok(!/notes|stripe|token_hash/i.test(server), "aging does not read notes, Stripe, or tokens");
 ok(server.includes('select("id,status,occurred_at,updated_at,driver_responsible_amount"'), "the incident read names its columns");
@@ -50,10 +52,16 @@ ok(
   "the follow-up returns before its server call",
 );
 ok(ui.includes('INCIDENT_AGING_ENABLED && aging.status === "error"') && ui.includes("Could Not Load Incident Aging"), "the load error is behind the flag");
-ok(ui.includes("INCIDENT_AGING_ENABLED && <> · Last Update"), "Last Update is behind the flag");
+ok(ui.includes('INCIDENT_AGING_ENABLED && updated === "Unknown" ? " · Last Update Unknown"'), "a missing last update is labeled");
+ok(ui.includes("INCIDENT_AGING_ENABLED ? <> · Last Update"), "a dated last update stays behind the flag");
 ok(ui.includes('INCIDENT_AGING_ENABLED && row?.unresolvedDeduction === "unresolved"') && ui.includes("Unresolved Deduction"), "the deduction flag is behind the flag");
+ok(ui.includes('INCIDENT_AGING_ENABLED && row?.unresolvedDeduction === "unknown"') && ui.includes("Deduction Unknown"), "an unreadable deduction is labeled");
+ok(!ui.includes("· Unknown\""), "aging does not show a bare Unknown label");
 ok(!nav.includes("incident_aging"), "there is no new screen");
 
+ok(incidentAgingReadError("Waitlist data unavailable. Please retry.") === "Incident Aging data unavailable. Please retry.", "an unreadable page is an incident error");
+ok(incidentAgingReadError("Waitlist data changed. Please retry.") === "Incident Aging data changed. Please retry.", "a changed page is an incident error");
+ok(incidentAgingReadError("Waitlist data incomplete. Please retry.") === "Incident Aging data incomplete. Please retry.", "an incomplete page is an incident error");
 ok(easternCalendarDate(new Date("2026-10-21T03:30:00Z")) === "2026-10-20", "03:30 UTC is still the previous Eastern day");
 ok(easternCalendarDate(new Date("2026-10-21T04:00:00Z")) === "2026-10-21", "04:00 UTC is Eastern midnight");
 
