@@ -1,4 +1,4 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireManager } from "@/lib/roles.server";
 import {
@@ -199,8 +199,13 @@ async function loadRelated(ids: string[]) {
   return { docsByDriver, docActivity, agreements, agreementActivity, openIdentity, identityActivity, truncated };
 }
 
+const stalledApplicationsGate = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  assertStalledApplicationsEnabled();
+  return next();
+});
+
 export const listStalledApplications = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([stalledApplicationsGate, requireSupabaseAuth])
   .handler(async ({ context }): Promise<{ rows: StalledApplicationRow[]; truncated: boolean; relatedTruncated: boolean }> => {
     assertStalledApplicationsEnabled();
     await requireManager(context.userId);

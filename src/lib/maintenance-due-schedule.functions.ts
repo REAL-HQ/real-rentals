@@ -3,10 +3,10 @@
 // Last service is a completed record with performed_on. A schedule with no
 // history stays on the list as Unknown. The flag is checked before the role
 // lookup and before any read. No insert, update, delete, or new table.
-import { createServerFn } from "@tanstack/react-start";
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { MAINTENANCE_DUE_ENABLED } from "@/lib/maintenance-due";
+import { MAINTENANCE_DUE_ENABLED, businessToday } from "@/lib/maintenance-due";
 import { mergeSchedules, scheduleDue, withHistory, type ScheduleFact } from "@/lib/maintenance-schedule";
 import type { DueResult } from "@/lib/maintenance-rules";
 
@@ -26,8 +26,13 @@ function capped<T>(rows: T[] | null): { rows: T[]; truncated: boolean } {
   return { rows: page.slice(0, LIMIT), truncated: page.length > LIMIT };
 }
 
+const maintenanceDueScheduleGate = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  if (!MAINTENANCE_DUE_ENABLED) throw new Error(DISABLED);
+  return next();
+});
+
 export const listMaintenanceDueSchedule = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([maintenanceDueScheduleGate, requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ vehicleId: z.string().uuid() }).strict().parse(input))
   .handler(async ({ data, context }): Promise<MaintenanceDueScheduleResult> => {
     if (!MAINTENANCE_DUE_ENABLED) throw new Error(DISABLED);
@@ -68,7 +73,7 @@ export const listMaintenanceDueSchedule = createServerFn({ method: "POST" })
     const defaults = capped(defaultsQ.data);
     const schedules = capped(schedulesQ.data);
     const records = capped(recordsQ.data);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessToday();
     const currentMiles = vehicleQ.data?.current_odometer ?? null;
     const history = records.rows.map((row) => ({
       id: row.id,

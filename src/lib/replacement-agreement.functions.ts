@@ -1,4 +1,4 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { SWAP_ENABLED } from "@/lib/record-numbers";
@@ -15,6 +15,11 @@ import { SWAP_ENABLED } from "@/lib/record-numbers";
 // link_replacement_agreement_v1 stays executor-only. Do not copy 19b here.
 
 const DISABLED = "Replacement agreement is disabled pending installation and acceptance";
+
+const replacementAgreementGate = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  if (!SWAP_ENABLED) throw new Error(DISABLED);
+  return next();
+});
 
 // issueAgreement names applications.vehicle_id unless a vehicle override is
 // passed. After a swap that column is still the previous car. This send
@@ -95,7 +100,7 @@ const previewInput = z.object({ rentalId: z.string().uuid() }).strict();
 
 /** Manager check, then a preview that names the rental's current vehicle. */
 export const previewReplacementAgreement = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([replacementAgreementGate, requireSupabaseAuth])
   .inputValidator((input: unknown) => previewInput.parse(input))
   .handler(async ({ data, context }) => {
     if (!SWAP_ENABLED) throw new Error(DISABLED);
@@ -109,7 +114,7 @@ export const previewReplacementAgreement = createServerFn({ method: "POST" })
 
 /** Manager-only. Reads nothing and calls nothing while SWAP_ENABLED is false. */
 export const loadReplacementAgreement = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([replacementAgreementGate, requireSupabaseAuth])
   .inputValidator((input: unknown) => loadInput.parse(input))
   .handler(async ({ data, context }): Promise<ReplacementAgreementReadiness> => {
     if (!SWAP_ENABLED) throw new Error(DISABLED);
@@ -125,7 +130,7 @@ export const loadReplacementAgreement = createServerFn({ method: "POST" })
 
 /** Manager-only. Uses the existing issueAgreement send, naming the rental's current vehicle. */
 export const sendReplacementAgreement = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([replacementAgreementGate, requireSupabaseAuth])
   .inputValidator((input: unknown) => sendInput.parse(input))
   .handler(async ({ data, context }) => {
     if (!SWAP_ENABLED) throw new Error(DISABLED);
@@ -152,7 +157,7 @@ export const sendReplacementAgreement = createServerFn({ method: "POST" })
 
 /** Manager check, then the checked RPC on this manager's JWT client. The client supplies no hash and no actor. */
 export const linkReplacementAgreement = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([replacementAgreementGate, requireSupabaseAuth])
   .inputValidator((input: unknown) => linkInput.parse(input))
   .handler(async ({ data, context }): Promise<ReplacementAgreementEvidence> => {
     if (!SWAP_ENABLED) throw new Error(DISABLED);

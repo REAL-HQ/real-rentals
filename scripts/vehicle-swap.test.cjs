@@ -179,6 +179,9 @@ function loadServer(swapEnabled) {
     require(name) {
       if (name === "@tanstack/react-start") {
         return {
+          createMiddleware() {
+            return { server() { return {}; } };
+          },
           createServerFn() {
             let parse = (d) => d;
             return {

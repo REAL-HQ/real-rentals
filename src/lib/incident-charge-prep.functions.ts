@@ -1,4 +1,4 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { INCIDENT_CHARGE_PREP_ENABLED } from "@/lib/incident-charge-prep-flag";
@@ -28,9 +28,14 @@ function vehicleName(row: { year?: number | null; make?: string | null; model?: 
   return [row.year, row.make, row.model].filter((part) => part != null && String(part).trim() !== "").join(" ");
 }
 
+const incidentChargePrepGate = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  if (!INCIDENT_CHARGE_PREP_ENABLED) throw new Error("Incident Charge Prep is off");
+  return next();
+});
+
 /** Manager-only. Throws before the role check and before any read while the flag is off. */
 export const listIncidentChargePrep = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([incidentChargePrepGate, requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({}).strict().parse(input ?? {}))
   .handler(async ({ context }): Promise<IncidentChargePrepResult> => {
     if (!INCIDENT_CHARGE_PREP_ENABLED) throw new Error("Incident Charge Prep is off");
