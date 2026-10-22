@@ -36,18 +36,20 @@ import { useEffect, useState } from "react";
  * the effect runs.
  */
 const KEY = "rr.resume-token";
+/** Card-on-file links stay out of the resume stash, so opening one cannot resume /thank-you. */
+export const CARD_TOKEN_KEY = "rr.card-on-file-token";
 
-function read(): string | null {
+function read(key = KEY): string | null {
   try {
-    return window.sessionStorage.getItem(KEY);
+    return window.sessionStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function write(token: string) {
+function write(token: string, key = KEY) {
   try {
-    window.sessionStorage.setItem(KEY, token);
+    window.sessionStorage.setItem(key, token);
   } catch {
     // Private mode, blocked storage. The token stays in the URL, which still
     // works — this is a hardening measure, not a dependency.
@@ -90,9 +92,10 @@ export function clearResumeToken() {
  */
 export function useResumeToken(
   fromUrl: string | undefined,
-  opts: { allowStashed?: boolean } = {},
+  opts: { allowStashed?: boolean; storageKey?: string } = {},
 ): string | null | undefined {
   const allowStashed = opts.allowStashed !== false;
+  const storageKey = opts.storageKey ?? KEY;
   // Always undefined on the first render, server and client alike.
   //
   // Seeding this from `fromUrl` on the client only looks like a harmless
@@ -104,7 +107,7 @@ export function useResumeToken(
 
   useEffect(() => {
     if (fromUrl) {
-      write(fromUrl);
+      write(fromUrl, storageKey);
       setToken(fromUrl);
       // replaceState, not pushState: Back should leave the flow, not walk
       // through a URL that still carries the credential.
@@ -127,8 +130,8 @@ export function useResumeToken(
     // tab by whoever used the device last must not silently reopen their
     // wizard — their name, city, address and insurer with it. Only pages that
     // exist to resume read the stash.
-    setToken(allowStashed ? read() : null);
-  }, [fromUrl, allowStashed]);
+    setToken(allowStashed ? read(storageKey) : null);
+  }, [fromUrl, allowStashed, storageKey]);
 
   return token;
 }
