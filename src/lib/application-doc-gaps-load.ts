@@ -1,3 +1,4 @@
+import { readCounted, readInIdBatches } from "./count-paged-read";
 import {
   APPLICATION_DOC_GAPS_ROW_CAP,
   OPEN_APPLICATION_STATUSES,
@@ -5,14 +6,8 @@ import {
 } from "./application-doc-gaps";
 import { buildApplicationDocGaps, type GapApplication, type GapDocument } from "./application-doc-gaps-build";
 
-const PAGE = 200;
-const MAX_ROWS = 100_000;
-const ID_BATCH = 100;
-
 const APPLICATION_COLUMNS = "id,full_name,status,deleted_at,created_at";
 const DOCUMENT_COLUMNS = "id,driver_id,category,is_current,review_status,created_at";
-
-type Page = { data: unknown[] | null; error: unknown; count: number | null };
 
 const failed = (): ApplicationDocGapsResult => ({
   failed: true,
@@ -20,66 +15,6 @@ const failed = (): ApplicationDocGapsResult => ({
   cap: APPLICATION_DOC_GAPS_ROW_CAP,
   applications: [],
 });
-
-function badCount(count: number | null | undefined): boolean {
-  return !Number.isSafeInteger(count) || (count as number) < 0 || (count as number) > MAX_ROWS;
-}
-
-/**
- * Count-checked pages. A bare limit is not an overflow signal: hosted
- * PostgREST can clamp a response and a short page then looks complete.
- */
-async function readCounted(
-  query: (from: number, to: number) => PromiseLike<Page>,
-  cap = MAX_ROWS,
-): Promise<{ ok: true; rows: Record<string, unknown>[]; total: number; truncated: boolean } | { ok: false }> {
-  const rows: Record<string, unknown>[] = [];
-  const seen = new Set<string>();
-  let total: number | undefined;
-  const stop = Math.min(cap, MAX_ROWS);
-  do {
-    const room = stop - rows.length;
-    if (room <= 0) break;
-    const size = Math.min(PAGE, room);
-    const from = rows.length;
-    const to = from + size - 1;
-    let page: Page;
-    try {
-      page = await query(from, to);
-    } catch {
-      return { ok: false };
-    }
-    if (page.error || !Array.isArray(page.data) || badCount(page.count)) return { ok: false };
-    if (total !== undefined && total !== page.count) return { ok: false };
-    total = page.count as number;
-    const expect = Math.min(total, stop);
-    if (page.data.length === 0 && rows.length < expect) return { ok: false };
-    for (const row of page.data) {
-      const id = (row as { id?: unknown }).id;
-      if (typeof id !== "string" || seen.has(id)) return { ok: false };
-      seen.add(id);
-      rows.push(row as Record<string, unknown>);
-    }
-    if (rows.length > total) return { ok: false };
-  } while (total !== undefined && rows.length < total && rows.length < stop);
-  if (total === undefined) return { ok: false };
-  return { ok: true, rows, total, truncated: total > stop };
-}
-
-async function readInIdBatches(
-  ids: readonly string[],
-  query: (ids: string[], from: number, to: number) => PromiseLike<Page>,
-): Promise<{ ok: true; rows: Record<string, unknown>[] } | { ok: false }> {
-  const rows: Record<string, unknown>[] = [];
-  for (let index = 0; index < ids.length; index += ID_BATCH) {
-    const chunk = ids.slice(index, index + ID_BATCH);
-    if (chunk.length === 0) continue;
-    const read = await readCounted((from, to) => query(chunk, from, to));
-    if (!read.ok || read.truncated) return { ok: false };
-    rows.push(...read.rows);
-  }
-  return { ok: true, rows };
-}
 
 /**
  * Open applications and the vault rows that the shared required-document
@@ -113,7 +48,7 @@ export async function loadApplicationDocGaps(admin: {
             // No category list here. An exact category match cannot see a
             // value that canonicalRequiredDoc only accepts after trim, so the
             // builder is the only gate. Each driver_id list stays at or under
-            // ID_BATCH.
+            // COUNTED_ID_BATCH.
             .select(DOCUMENT_COLUMNS, { count: "exact" })
             .in("driver_id", chunk)
             .order("id", { ascending: true })
