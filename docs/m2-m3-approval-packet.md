@@ -1,6 +1,6 @@
 # Owner approval: M2 and M3
 
-Nothing on this page has been run on production. Pull request 190 is `3f5b798a`. Pull request 232 is `cb9fbbf9`. Both stay drafts. The switches that turn new screens on stay off.
+Nothing on this page has been run on production. Pull request 190 is `fd402d5c`. Pull request 232 is `69a2001d`. Both stay drafts. The switches that turn new screens on stay off. The preflight-guard re-review passed. About 65 attack cases found no working bypass.
 
 ## What each migration installs
 
@@ -28,7 +28,7 @@ Do M2 first unless you want the waitlist limit first. File lists: `proposed/HOST
 
 ## How long
 
-On an empty local database the M2 rehearsal, including every check and a full undo, finished in about 11 seconds on `3f5b798a`. The M3 rehearsal exited 0 on `cb9fbbf9` and finished in about 2 seconds locally. Each install file is one short transaction. The backfill downloads one file per current license photo. A local scratch run of about 1,000 files finished in 0.7 seconds. That is not a production window. If a file errors, stop.
+On an empty local database the M2 rehearsal, including every check and a full undo, finished in about 11 seconds on `3f5b798a`. The M3 rehearsal exited 0 on `cb9fbbf9` and finished in about 2 seconds locally. `fd402d5c` and `69a2001d` add the refused star reads and do not change those install files. Each install file is one short transaction. The backfill downloads one file per current license photo. A local scratch run of about 1,000 files finished in 0.7 seconds. That is not a production window. If a file errors, stop.
 
 M2 succeeded when all 29 checks said true and the preflight printed `checklist stops=0` (246 checks locally). M3 succeeded when both checks said true and the preflight printed `checklist stops=0 checks=18`.
 
