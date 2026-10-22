@@ -6,6 +6,7 @@ import { getStripePayoutRecon } from "@/lib/stripe-payout-recon.functions";
 import { STRIPE_PAYOUT_RECON_OFF } from "@/lib/stripe-payout-recon-flag";
 import {
   DIRECTORY_INCOMPLETE,
+  STRIPE_CHECK_CAPPED,
   STRIPE_CHECK_UNAVAILABLE,
   formatCents,
   payoutReconToCsv,
@@ -28,7 +29,10 @@ export function StripePayoutReconPanel() {
     let cancelled = false;
     void read({ data: undefined })
       .then((result) => {
-        if (!cancelled) setLoad({ kind: "ready", report: result.report });
+        if (!cancelled) {
+          if (result.status === "disabled") setLoad({ kind: "unavailable", reason: STRIPE_PAYOUT_RECON_OFF });
+          else setLoad({ kind: "ready", report: result.report });
+        }
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -47,7 +51,7 @@ export function StripePayoutReconPanel() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Stripe Payout Reconciliation</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Payouts that arrive in the last 60 days, Eastern Time. Gross, fees, refunds, and net come from each payout&apos;s balance transactions. An app payment matches when its Stripe payment intent is on the charge. This screen does not move a payout or a refund.
+            Payouts that arrive in the last 60 days, Eastern Time. Gross, fees, refunds, and net come from each payout&apos;s balance transactions. An app payment matches when its Stripe payment intent or its Stripe invoice id is on the charge. Fleet Link uses the same rental and application match as unmatched invoices. This screen does not move a payout or a refund.
           </p>
         </div>
         {downloadable && (
@@ -64,6 +68,7 @@ export function StripePayoutReconPanel() {
 }
 
 function Report({ report }: { report: PayoutReconReport }) {
+  if (report.stripeCheck === "capped") return <p className="text-sm text-[#D03020]">{STRIPE_CHECK_CAPPED}</p>;
   if (report.stripeCheck === "unavailable") return <p className="text-sm text-[#D03020]">{STRIPE_CHECK_UNAVAILABLE}</p>;
   if (report.directory === "unavailable") return <p className="text-sm text-[#D03020]">{DIRECTORY_INCOMPLETE}</p>;
   return (
@@ -117,7 +122,7 @@ function MoneyTable({ rows, charge }: { rows: MoneyRow[]; charge: boolean }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-left text-muted-foreground">
-            {(charge ? ["Charge", "Payment Intent", "Amount"] : ["Driver", "Payment Intent", "Amount", "Status", "Payments"]).map((head) => (
+            {(charge ? ["Charge", "Payment Intent", "Amount", "Fleet Link"] : ["Driver", "Payment Intent", "Amount", "Status", "Payments", "Fleet Link"]).map((head) => (
               <th key={head} className="py-2 pr-3 font-medium">{head}</th>
             ))}
           </tr>
@@ -134,6 +139,7 @@ function MoneyTable({ rows, charge }: { rows: MoneyRow[]; charge: boolean }) {
               {charge ? null : (
                 <td className="py-2 pr-3"><Link to="/admin" search={{ tab: "payments" }} className="underline">Payments</Link></td>
               )}
+              <td className="py-2 pr-3">{row.fleetLink}</td>
             </tr>
           ))}
         </tbody>
