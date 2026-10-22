@@ -379,6 +379,8 @@ const landingCounts = landingApplySql.filter((statement) => statement.startsWith
 const landingAbort = landingApplySql.filter((statement) => statement.startsWith("DO"));
 check(
   landingApplySql[0] === "BEGIN"
+    && landingApplySql[1] === "SET LOCAL lock_timeout = '2s'"
+    && landingApplySql.indexOf(landingApplySql[1]) < landingApplySql.indexOf(landingCounts[0])
     && landingApplySql.at(-1) === "COMMIT"
     && landingCounts.length === 2
     && landingAbort.length === 1
@@ -386,8 +388,9 @@ check(
     && /landing_over <> 0 OR referrer_over <> 0/.test(landingAbort[0])
     && /RAISE EXCEPTION/.test(landingAbort[0])
     && landingAlters.length === 4
-    && landingRollbackSql.length === 2,
-  "the landing length file counts over-long rows and aborts the transaction when either count is not zero",
+    && landingRollbackSql.length === 2
+    && !landingSql.includes("without scanning"),
+  "the landing length file counts over-long rows, sets a lock timeout, and aborts the transaction when either count is not zero",
 );
 check(
   landingSql.includes("CHECK (landing_page IS NULL OR length(landing_page) <= 500) NOT VALID")

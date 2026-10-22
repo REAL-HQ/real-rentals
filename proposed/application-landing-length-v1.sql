@@ -2,9 +2,11 @@
 -- Do not copy it into drizzle/migrations or supabase/migrations.
 --
 -- landing_page and referrer are stored as submitted. This only refuses a
--- value longer than 500 characters. NOT VALID adds the constraint without
--- scanning existing rows. VALIDATE scans them. The ROLLBACK section drops
--- both constraints. Run APPLY or ROLLBACK, not the whole file.
+-- value longer than 500 characters. APPLY counts the stored values and
+-- stops when one is still too long. NOT VALID then records the check for
+-- later writes. It does not prove the rows already stored are short.
+-- VALIDATE does that check. The ROLLBACK section drops both constraints.
+-- Run APPLY or ROLLBACK, not the whole file.
 --
 -- APPLY is one transaction. A failed VALIDATE rolls the NOT VALID constraint
 -- back with it. Left committed, that check blocks updates of existing
@@ -22,6 +24,10 @@
 --   WHERE referrer IS NOT NULL AND length(referrer) > 500;
 
 BEGIN;
+
+-- Fail this transaction if another session holds the applications lock,
+-- instead of waiting behind it.
+SET LOCAL lock_timeout = '2s';
 
 SELECT count(*) AS landing_page_over_500
 FROM public.applications
