@@ -54,8 +54,14 @@
 -- application on this vehicle (applications.vehicle_id; public.waitlist has
 -- no vehicle). A hold or waitlist_signed_up_at with no dates fails closed.
 -- A bare approved application with no date, hold, or signup is not a conflict.
+--
+-- Creating the private table takes a lock. Fail that lock after 5 seconds
+-- instead of waiting. Re-running this file keeps one table and replaces the
+-- same function. Execute stays service_role only.
 
-CREATE TABLE private.extend_operations (
+SET lock_timeout = '5s';
+
+CREATE TABLE IF NOT EXISTS private.extend_operations (
  operation_id uuid PRIMARY KEY,
  actor_id uuid NOT NULL,
  rental_id uuid NOT NULL REFERENCES public.rentals(id) ON DELETE RESTRICT,
@@ -64,10 +70,11 @@ CREATE TABLE private.extend_operations (
  committed_at timestamptz NOT NULL DEFAULT clock_timestamp());
 ALTER TABLE private.extend_operations ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE private.extend_operations FROM PUBLIC, anon, authenticated, service_role;
+DROP TRIGGER IF EXISTS extend_operations_immutable ON private.extend_operations;
 CREATE TRIGGER extend_operations_immutable BEFORE UPDATE OR DELETE OR TRUNCATE ON private.extend_operations
  FOR EACH STATEMENT EXECUTE FUNCTION private.record_immutable();
 
-CREATE FUNCTION public.extend_rental_tx(
+CREATE OR REPLACE FUNCTION public.extend_rental_tx(
  _operation_id uuid, _rental_id uuid, _expected_end date, _new_end date, _reason text, _actor_id uuid)
  RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
 DECLARE
