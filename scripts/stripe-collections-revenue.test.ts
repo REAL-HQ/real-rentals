@@ -50,7 +50,8 @@ describe("Revenue card Stripe Collected", () => {
   });
   it("Stripe request mounts only for Owner/Manager; no second money line; card opens Payments", () => {
     const src = readFileSync(new URL("../src/components/admin/OverviewPanel.tsx", import.meta.url), "utf8");
-    expect(src).toContain("consolidated={canSeeCollections ? { internalNonStripe } : null}");
+    expect(src).toContain("consolidated={canSeeCollections ? { internalNonStripe, doubleCollection } : null}");
+    expect(src).toContain("Possible Double Collection");
     expect(src).not.toContain("Stripe Collected");
     expect(src).toContain('search: { tab: "payments" }');
     expect(readFileSync(new URL("../src/lib/revenue-state.ts", import.meta.url), "utf8")).toContain("(!row.stripe_payment_intent_id && !row.stripe_invoice_id) || settledOutsideStripe(row)");

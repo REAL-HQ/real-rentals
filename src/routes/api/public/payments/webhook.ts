@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { createClient } from '@supabase/supabase-js';
 import { type StripeEnv, verifyWebhook, createStripeClient } from '@/lib/stripe.server';
 import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail } from '@/lib/email.server';
+import { recordPossibleDoubleCollection } from '@/lib/double-collection.server';
 
 let _supabase: ReturnType<typeof createClient> | null = null;
 let webhookAdmin: any = null;
@@ -125,15 +126,20 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
   if (ids.length) {
     // Charges created by our own collection flow. The rows already exist.
     if (status === 'paid') {
-      const prior = must(await admin.from('payments').select('id, status, failure_reason').in('id', ids));
+      const prior = must(await admin.from('payments').select('id, status, failure_reason, rental_id, stripe_invoice_id').in('id', ids));
       const alreadyPaid = (prior.data ?? []).filter((row: any) => row.status === 'paid');
       const alreadyPaidIds = alreadyPaid.map((row: any) => row.id as string);
-      // Staff marked these paid while the failure reason was still set.
-      // Clear that reason only. Status and paid_date stay, and these ids
-      // are left out of the receipt claim below.
-      const quietIds = new Set(alreadyPaid.filter((row: any) => failureReasonStillSet(row.failure_reason)).map((row: any) => row.id as string));
-      if (alreadyPaidIds.length) {
-        must(await admin.from('payments').update({ failure_reason: null }).in('id', alreadyPaidIds).eq('status', 'paid'));
+      // Staff may have marked a failed row paid. Keep every id in the receipt
+      // claim below so the driver still gets one Payment Received. Record the
+      // double collection once, and leave status and paid_date alone.
+      const manual = alreadyPaid.filter((row: any) => failureReasonStillSet(row.failure_reason));
+      if (manual.length) {
+        const created = Number(pi.created);
+        await recordPossibleDoubleCollection(admin, manual, {
+          amountCents: Number(pi.amount ?? 0),
+          unixSeconds: Number.isFinite(created) && created > 0 ? created : Math.floor(Date.now() / 1000),
+          rentalId: typeof pi.metadata?.rentalId === 'string' ? pi.metadata.rentalId : null,
+        });
       }
       const openIds = ids.filter((id) => !alreadyPaidIds.includes(id));
       if (openIds.length) {
@@ -142,7 +148,7 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
           .in('id', openIds).neq('status', 'paid').neq('status', 'refunded').select('id'));
         changed = r.data?.length ?? 0;
       }
-      noticeIds = ids.filter((id) => !quietIds.has(id));
+      noticeIds = ids;
     } else {
       // Stale guard: a single charge that has since been retried points at a
       // newer intent; a late failure for the old one must not touch it.
@@ -272,18 +278,23 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     .select('id'));
   if (!(r.data?.length)) {
     // The row was already paid, usually because staff marked a failed invoice
-    // paid in cash. A later Stripe success (retry or hosted invoice) clears
-    // the failure reason only, so Overview counts it once, as Stripe. Do not
-    // change status or paid_date, do not store the payment intent (a replayed
-    // payment_intent.succeeded would find that id and send Payment Received),
-    // and do not notify. When staff took cash and Stripe also collected, the
-    // duplicate needs a refund.
+    // paid in cash. Keep status and paid_date. Do not store a payment intent
+    // (a replayed payment_intent.succeeded with no paymentIds would find that
+    // id). Record the double collection once and alert staff. This return
+    // does not send Payment Received; that notice stays on the payment-intent
+    // claim.
     if (status === 'paid') {
-      must(await admin.from('payments').update({
-        failure_reason: null,
-        stripe_invoice_id: invoice.id,
-        stripe_subscription_id: subId,
-      }).eq('stripe_invoice_id', invoice.id).eq('status', 'paid'));
+      const existing = must(await admin.from('payments')
+        .select('id, status, failure_reason, rental_id, stripe_invoice_id')
+        .eq('stripe_invoice_id', invoice.id)
+        .eq('status', 'paid'));
+      const paidAt = Number(invoice.status_transitions?.paid_at ?? invoice.created);
+      await recordPossibleDoubleCollection(admin, existing.data ?? [], {
+        amountCents: Number(invoice.amount_paid ?? invoice.amount_due ?? 0),
+        unixSeconds: Number.isFinite(paidAt) && paidAt > 0 ? paidAt : Math.floor(Date.now() / 1000),
+        rentalId: rental.id,
+        invoiceId: invoice.id,
+      });
     }
     return;
   }

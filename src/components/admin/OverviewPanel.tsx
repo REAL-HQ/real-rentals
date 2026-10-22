@@ -102,6 +102,14 @@ function usd(n: number | undefined | null) {
     maximumFractionDigits: 0,
   });
 }
+function usdCents(n: number) {
+  return n.toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 function timeAgo(iso?: string | null) {
   if (!iso) return "—";
   const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
@@ -196,6 +204,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const [priorRevenue, setPriorRevenue] = useState<number | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(true);
   const [internalNonStripe, setInternalNonStripe] = useState<number | null>(null);
+  const [doubleCollection, setDoubleCollection] = useState<number | null>(null);
   const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
   const [nextReturn, setNextReturn] = useState<string | null>(null);
   const [recentApps, setRecentApps] = useState<ApplicantRow[]>([]);
@@ -342,7 +351,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const compare = useMemo(() => priorRange(range), [range]);
 
   useEffect(() => {
-    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setRevenueLoading(false);return;}
+    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setDoubleCollection(null);setRevenueLoading(false);return;}
     let live = true;
     setRevenueLoading(true);
     (async () => {
@@ -359,11 +368,12 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       const current=paymentRevenue(cur), previous=paymentRevenue(prev);
       setRevenue(current?.total ?? null);
       setInternalNonStripe(current?.nonStripe ?? null);
+      setDoubleCollection(current?.doubleCollection ?? null);
       setPriorRevenue(previous?.total ?? null);
       setRevenueLoading(false);
     })().catch(()=>{
       if(!live)return;
-      setRevenue(null);setInternalNonStripe(null);setPriorRevenue(null);setRevenueLoading(false);
+      setRevenue(null);setInternalNonStripe(null);setDoubleCollection(null);setPriorRevenue(null);setRevenueLoading(false);
     });
     return () => {
       live = false;
@@ -531,7 +541,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           onRangeKey={setRangeKey}
           custom={customRange}
           onCustom={setCustomRange}
-          consolidated={canSeeCollections ? { internalNonStripe } : null}
+          consolidated={canSeeCollections ? { internalNonStripe, doubleCollection } : null}
         />
 
         <ActionCard
@@ -982,7 +992,7 @@ function RevenueCard({
   onRangeKey: (k: RangeKey) => void;
   custom: Partial<DayRange>;
   onCustom: (c: Partial<DayRange>) => void;
-  consolidated?: { internalNonStripe: number | null } | null;
+  consolidated?: { internalNonStripe: number | null; doubleCollection: number | null } | null;
 }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -1041,6 +1051,14 @@ function RevenueCard({
       <div className="mt-1 text-[22px] font-semibold tracking-tight tabular-nums leading-none">
         {shownLoading || shownAmount == null ? <span className="text-[#C7C7CC]">—</span> : usd(shownAmount)}
       </div>
+      {consolidated?.doubleCollection != null && consolidated.doubleCollection > 0 && (
+        <div className="mt-2 text-[11px] leading-snug text-[#55555E]">
+          <span className="font-semibold text-[#111114]">Possible Double Collection</span>
+          <span className="mx-1 text-[#C7C7CC]">·</span>
+          <span className="tabular-nums">{usdCents(consolidated.doubleCollection)}</span>
+          <span className="text-[#9A9AA3]"> · A refund may be owed. Included in the total.</span>
+        </div>
+      )}
       <div className="mt-1 text-[11px] text-[#55555E] truncate">
         {describeRange(range)}
         {c ? null : delta != null ? (
