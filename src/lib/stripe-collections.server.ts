@@ -1,19 +1,23 @@
-import { createStripeClient, type StripeEnv } from "./stripe.server";
+import { type StripeEnv } from "./stripe.server";
+import { createReadOnlyStripe } from "./stripe-reader.server";
+import { STRIPE_READER_PAGE_SIZE } from "./stripe-reader";
 import { aggregateCollections, collectionsWindow, readAllPages, type CollectionCharge, type CollectionSubscription, type CollectionsRange, type CollectionsReport } from "./stripe-collections";
+import { chargeLinksFromMetadata } from "./payment-reporting";
 
 const idOf = (v: string | { id: string } | null | undefined) => typeof v === "string" ? v : v?.id;
 
 /** GET/list/retrieve only. Invoices prove linkage, but never contribute money. */
 export async function loadStripeCollections(environment: StripeEnv, range: CollectionsRange): Promise<CollectionsReport> {
   const window = collectionsWindow(range);
-  const stripe = createStripeClient(environment);
+  // Live collections stay uncached. A payment must show on the next refresh.
+  const stripe = createReadOnlyStripe(environment);
   const [subscriptions, invoices, invoicePayments, charges, refunds] = await Promise.all([
-    readAllPages(cursor => stripe.subscriptions.list({ status: "all", limit: 100, starting_after: cursor, expand: ["data.customer"] })),
-    readAllPages(cursor => stripe.invoices.list({ limit: 100, starting_after: cursor })),
-    readAllPages(cursor => stripe.invoicePayments.list({ limit: 100, starting_after: cursor })),
+    readAllPages(cursor => stripe.subscriptions.list({ status: "all", limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor, expand: ["data.customer"] })),
+    readAllPages(cursor => stripe.invoices.list({ limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor })),
+    readAllPages(cursor => stripe.invoicePayments.list({ limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor })),
     // Capture may occur after authorization; date cash by settlement below.
-    readAllPages(cursor => stripe.charges.list({ created: { lt: window.lt }, limit: 100, starting_after: cursor, expand: ["data.balance_transaction"] })),
-    readAllPages(cursor => stripe.refunds.list({ created: window, limit: 100, starting_after: cursor, expand: ["data.balance_transaction"] })),
+    readAllPages(cursor => stripe.charges.list({ created: { lt: window.lt }, limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor, expand: ["data.balance_transaction"] })),
+    readAllPages(cursor => stripe.refunds.list({ created: window, limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor, expand: ["data.balance_transaction"] })),
   ]);
   const subscriptionIndex = new Map(subscriptions.map(s => [s.id, s]));
   const invoiceIndex = new Map(invoices.map(i => [i.id, i]));
@@ -27,6 +31,14 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
     incompletePortions.push({ source, id, reason });
   };
   const unresolvedIntents = new Set<string>(), unresolvedCharges = new Set<string>();
+  const intentInvoices = new Map<string, Set<string>>();
+  const chargeInvoices = new Map<string, Set<string>>();
+  const addInvoice = (map: Map<string, Set<string>>, id: string | undefined, invoiceId: string) => {
+    if (!id) return;
+    const ids = map.get(id) ?? new Set<string>();
+    ids.add(invoiceId);
+    map.set(id, ids);
+  };
   for (const payment of invoicePayments) {
     const invoice = invoiceIndex.get(idOf(payment.invoice) || "");
     const subId = idOf(invoice?.parent?.subscription_details?.subscription);
@@ -46,6 +58,8 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
       const owners = map.get(id) || new Set<string>(); owners.add(customer); map.set(id, owners);
     };
     add(linkedIntents, intent); add(linkedCharges, charge);
+    addInvoice(intentInvoices, intent, invoice.id);
+    addInvoice(chargeInvoices, charge, invoice.id);
   }
   // Refunds in this range can relate to collections from an earlier range.
   const chargeIndex = new Map(charges.map(c => [c.id, c]));
@@ -73,7 +87,20 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
       continue;
     }
     const fee = balance && typeof balance !== "string" && balance.currency === charge.currency ? balance.fee : null;
-    verifiedCharges.push({ id: charge.id, customerId, created: collected && dated ? capturedAt : charge.created, currency: charge.currency, amount: charge.amount_captured, paid: charge.paid, captured: charge.captured, status: charge.status, fee });
+    const paymentIntentId = idOf(charge.payment_intent) || null;
+    const invoiceIds = new Set<string>([
+      ...(chargeInvoices.get(charge.id) ?? []),
+      ...(paymentIntentId ? intentInvoices.get(paymentIntentId) ?? [] : []),
+    ]);
+    // Two invoices for one charge is not a match. Leaving it blank refuses the dedupe rather than picking one.
+    const invoiceId = invoiceIds.size === 1 ? [...invoiceIds][0]! : null;
+    const links = chargeLinksFromMetadata(charge.metadata);
+    verifiedCharges.push({
+      id: charge.id, customerId, created: collected && dated ? capturedAt : charge.created, currency: charge.currency,
+      amount: charge.amount_captured, paid: charge.paid, captured: charge.captured, status: charge.status, fee,
+      paymentIntentId, invoiceId,
+      paymentIds: links.paymentIds, rentalId: links.rentalId, sessionId: links.sessionId, reason: links.reason,
+    });
   }
   const normalizedSubs: CollectionSubscription[] = subscriptions.map(s => {
     const customer = s.customer;
@@ -105,7 +132,7 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
   if (report.totals.some(t => t.fees === null)) warnings.push("Some Stripe fees are unavailable; net collections remain unknown.");
   let payouts: CollectionsReport["payouts"] = null;
   try {
-    const rows = await readAllPages(cursor => stripe.payouts.list({ arrival_date: window, status: "paid", limit: 100, starting_after: cursor }));
+    const rows = await readAllPages(cursor => stripe.payouts.list({ arrival_date: window, status: "paid", limit: STRIPE_READER_PAGE_SIZE, starting_after: cursor }));
     const sums = new Map<string, { currency: string; amount: number; count: number }>();
     for (const p of rows) {
       const b = sums.get(p.currency) || { currency: p.currency, amount: 0, count: 0 }; b.amount += p.amount; b.count++; sums.set(p.currency, b);

@@ -14,6 +14,7 @@
 // number), and no update ever moves a row out of 'paid' except a refund.
 
 import { getStripeErrorMessage, type createStripeClient } from "@/lib/stripe.server";
+import { easternToday } from "@/lib/eastern-day";
 
 type Stripe = ReturnType<typeof createStripeClient>;
 
@@ -36,7 +37,7 @@ export const REASON_TO_TYPE: Record<string, string> = {
   other: "other",
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => easternToday();
 
 export type CollectResult =
   | { ok: true; paymentIntentId: string; status: "paid" | "pending"; paymentIds: string[] }

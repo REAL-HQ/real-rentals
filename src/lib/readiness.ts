@@ -809,11 +809,14 @@ export function compareReadiness(a: ReadinessResult, b: ReadinessResult): number
 }
 
 /**
- * The provisional Hot Prospect rule. PROPOSED — not wired to anything.
+ * The Hot Prospect rule. The Overview Hot Leads count and the list in its
+ * modal both come from `selectHotProspects`, so they cannot disagree.
  *
  * Hot Prospect means "worth prioritising for follow-up". It does not mean
  * approved, safe, verified or rental-ready, and nothing here should ever be
- * rendered as if it did.
+ * rendered as if it did. It is also not the contact-status "interested"
+ * bucket: that bucket is a follow-up reason, and an overdue interested
+ * applicant is counted as overdue instead.
  *
  * Verified coverage is deliberately absent from the rule. Seventeen of the
  * nineteen applicants on file have 0% verified coverage, so any threshold on
@@ -836,6 +839,33 @@ export function isHotProspect(r: ReadinessResult): boolean {
   return (
     r.qualification >= HOT_PROSPECT.MIN_QUALIFICATION && r.coverage >= HOT_PROSPECT.MIN_COVERAGE
   );
+}
+
+export type HotProspect<T> = { app: T; readiness: ReadinessResult };
+
+/**
+ * Every hot prospect in `apps`, in readiness order.
+ *
+ * The caller renders this array and shows its length. There is no separate
+ * counter and no display cap: a cap is how the old strip could read 5 while
+ * more people qualified.
+ */
+export function selectHotProspects<T extends { id: string }>(
+  apps: readonly T[],
+  readiness: ReadonlyMap<string, ReadinessResult> | Readonly<Record<string, ReadinessResult>>,
+): HotProspect<T>[] {
+  const lookup = (id: string): ReadinessResult | undefined => {
+    if (typeof (readiness as { get?: unknown }).get === "function") {
+      return (readiness as ReadonlyMap<string, ReadinessResult>).get(id);
+    }
+    return (readiness as Readonly<Record<string, ReadinessResult>>)[id];
+  };
+  return apps
+    .flatMap((app) => {
+      const result = lookup(app.id);
+      return result && isHotProspect(result) ? [{ app, readiness: result }] : [];
+    })
+    .sort((a, b) => compareReadiness(a.readiness, b.readiness) || a.app.id.localeCompare(b.app.id));
 }
 
 /**

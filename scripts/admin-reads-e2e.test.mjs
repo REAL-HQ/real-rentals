@@ -146,8 +146,7 @@ console.log("\n================= a Manager, with applications refused in the bro
   ok(!/Counts Unavailable/.test(body), "  and are not reported unavailable");
   ok(!/Could Not Load Applications/.test(body), "the list does not claim it failed");
   ok(await page.locator('option[value="readiness"]').count() > 0, "the Readiness sort is offered");
-  ok(/Hot Prospects/.test(body), "the Hot Prospect strip renders from the server's verdict");
-  ok(/Worth Following Up First/.test(body), "  with its heading intact");
+  ok(/Hot Leads/.test(body), "Hot Leads renders from the same readiness verdict");
   ok(restReads.filter((t) => t === "applications").length === 0,
     "the browser made NO direct applications request at all");
   ok(errors.length === 0, `no page errors${errors.length ? ": " + errors[0] : ""}`);

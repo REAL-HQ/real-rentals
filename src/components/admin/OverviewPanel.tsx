@@ -1,22 +1,19 @@
-import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/lib/revenue-state";
+import { createRevenueBoundary, type RevenueSession } from "@/lib/revenue-state";
 import { tierFromRoles, tierAllows } from "@/lib/roles";
-import { StripeCollections } from "./StripeCollections";
 import LeadPriorities from "./LeadPriorities";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
+import { displayPersonName } from "@/lib/display-normalize";
 import {
   Car,
   CreditCard,
   Wrench,
   ArrowUpRight,
   Plus,
-  Flame,
   CheckCircle2,
   ChevronDown,
   TrendingUp,
   Receipt,
-  CalendarDays,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -30,14 +27,14 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill, ReadinessMetrics } from "./ui";
-import { isHotProspect, compareReadiness, type ReadinessResult } from "@/lib/readiness";
+import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill } from "./ui";
+import { compareReadiness, selectHotProspects, type ReadinessResult } from "@/lib/readiness";
+import { isRevenuePayment, readEveryPage, revenuePaymentsSearch, summarizePayments, type RefundLink, type ReportingPayment } from "@/lib/payment-reporting";
+import { loadReportingPayments } from "@/lib/reporting-payments";
 import { summarizeFleet, type FleetSummary } from "@/lib/fleet-summary";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
 import {
-  APPLICANT_WINDOW,
   type OverviewApplicantRow,
-  type ReadinessByApplicant,
 } from "@/lib/admin-overview";
 import { useServerFn } from "@tanstack/react-start";
 import { getFleetMaintenance } from "@/lib/maintenance.functions";
@@ -66,22 +63,12 @@ import { fmtDate } from "@/lib/date-format";
 import type React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getStripeCollections } from "@/lib/stripe-collections.functions";
-import { consolidatedRevenue } from "@/lib/stripe-collections";
 import { useNavigate } from "@tanstack/react-router";
+import { DocumentsExpiringChip } from "./DocumentsExpiring";
 import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
+import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
-
-/**
- * What counts as revenue.
- *
- * The same rule vehicle_pl() uses: money actually received, excluding
- * deposits. A deposit is the renter's money held against damage — it is on the
- * balance sheet, not the income statement, and counting it made a good week
- * look better than it was. The old Weekly Revenue figure summed every paid
- * row regardless of type, deposits included.
- */
-const REVENUE_TYPES = ["rent", "late_fee", "other"] as const;
 
 /**
  * What counts as collections.
@@ -90,8 +77,6 @@ const REVENUE_TYPES = ["rent", "late_fee", "other"] as const;
  * figure summed every row whose status was not 'paid', which swept in
  * invoices that are simply not due yet and showed them as outstanding debt.
  */
-const OVERDUE_STATUSES = ["late", "past_due", "collections", "overdue", "failed", "unpaid"] as const;
-
 function usd(n: number | undefined | null) {
   if (n == null) return "—";
   return n.toLocaleString(undefined, {
@@ -124,32 +109,6 @@ function shortDate(iso?: string | null) {
  * application filed at 11pm still reads "Today" a few minutes later and
  * "Yesterday" the next morning.
  */
-function appliedAgo(iso?: string | null) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const now = new Date();
-  const days = Math.floor(
-    (new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() -
-      new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) /
-      86_400_000,
-  );
-  if (days <= 0) return "Today";
-  if (days === 1) return "Yesterday";
-  return `${days} Days Ago`;
-}
-/**
- * The "Applied Oct 1, 2026 · 6 days ago" line on a Hot Prospect card. Built
- * from the application's own created_at — never reviewed_at or last contact —
- * and says so plainly when that date is missing instead of guessing.
- */
-function appliedLine(iso?: string | null) {
-  const rel = appliedAgo(iso);
-  if (!rel) return "Date Unknown";
-  const d = new Date(iso as string);
-  return `Applied ${fmtDate(d)} · ${rel}`;
-}
-
 export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
   const client=useQueryClient();
   const [boundary,setBoundary]=useState<RevenueSession>({epoch:0,ready:false,collections:false});
@@ -178,30 +137,31 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
 
 function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
   const [fleet, setFleet] = useState<FleetSummary>(() => summarizeFleet([]));
-  // Null, not 0, until the read lands. A rendered 0 reads as "nobody
-  // applied"; the truth before the answer arrives is "we do not know yet",
-  // and after a failure it is "we could not find out".
-  const [newApps, setNewApps] = useState<number | null>(null);
-  const [pendingApps, setPendingApps] = useState<number | null>(null);
-  const [appsFailed, setAppsFailed] = useState(false);
   const [overdueCount, setOverdueCount] = useState(0);
   const [overdueRenters, setOverdueRenters] = useState(0);
   const [overdueAmt, setOverdueAmt] = useState(0);
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
   const [rangeKey, setRangeKey] = useState<RangeKey>("last_7");
   const [customRange, setCustomRange] = useState<Partial<DayRange>>({});
-  const [revenue, setRevenue] = useState<number | null>(null);
-  const [priorRevenue, setPriorRevenue] = useState<number | null>(null);
+  const [ledger, setLedger] = useState<{ payments: ReportingPayment[]; refundLinks: RefundLink[] | null; complete: boolean } | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(true);
-  const [internalNonStripe, setInternalNonStripe] = useState<number | null>(null);
   const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
   const [nextReturn, setNextReturn] = useState<string | null>(null);
-  const [recentApps, setRecentApps] = useState<ApplicantRow[]>([]);
-  // Readiness arrives already computed. The licence, insurance, screening
-  // and document evidence it is derived from stays on the server.
-  const [readiness, setReadiness] = useState<ReadinessByApplicant>({});
-  const [canSeeReadiness, setCanSeeReadiness] = useState(true);
   const loadApplicants = useServerFn(getOverviewApplicants);
+  // Null counts until this resolves. A failure stays null rather than 0.
+  // Window focus and lead-priority saves invalidate the same key.
+  const applicantsQuery = useQuery({
+    queryKey: ["overview-applicants"],
+    queryFn: () => loadApplicants({ data: undefined }),
+    refetchOnWindowFocus: true,
+  });
+  const newApps = applicantsQuery.data?.newApps ?? null;
+  const pendingApps = applicantsQuery.data?.pendingApps ?? null;
+  const recentApps = applicantsQuery.data?.applicants ?? [];
+  const readiness = applicantsQuery.data?.readiness ?? {};
+  const canSeeReadiness = !!applicantsQuery.data?.canSeeReadiness;
+  const appsLoading = applicantsQuery.isLoading && !applicantsQuery.data;
+  const appsFailed = applicantsQuery.isError;
   const fleetMaint = useServerFn(getFleetMaintenance);
   const [svc, setSvc] = useState({ overdue: 0, due: 0, dueSoon: 0, open: 0, conflict: 0 });
   useEffect(() => {
@@ -215,15 +175,8 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       const now = new Date();
       const d84 = new Date(now.getTime() - 84 * 864e5).toISOString();
 
-      // The applicant reads happen on the server now. Migration 0030
-      // revokes the blanket SELECT on applications and its column
-      // allow-list carries no deleted_at, which all three of these
-      // filtered on — so in the browser they would fail for every tier.
-      // The server also decides whether readiness comes back at all.
-      const applicantsP = loadApplicants({ data: undefined })
-        .then((r) => ({ ok: true as const, r }))
-        .catch(() => ({ ok: false as const, r: null }));
-
+      // Applicants, including Hot Leads, load through overview-applicants
+      // above. Migration 0030 keeps that read on the server.
       const [
         overdueQ,
         pay12wQ,
@@ -236,14 +189,13 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         supabase
           .from("payments")
           .select("amount, driver_id")
-          .in("status", OVERDUE_STATUSES as unknown as string[]),
+          .in("status", [...COLLECTIONS_WATCH_STATUSES]),
         supabase
           .from("payments")
-          .select("net_collected, paid_date")
+          .select("net_collected, paid_date, type")
           .in("status", ["paid", "refunded"])
-          .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", d84),
-        supabase.from("payments").select("amount, due_date").gte("due_date", d84),
+        supabase.from("payments").select("amount, due_date, type").gte("due_date", d84),
         supabase
           .from("rentals")
           .select("end_date")
@@ -261,25 +213,6 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
 
       setFleet(summarizeFleet((allVehiclesQ.data ?? []) as { status: string | null; archived_at: string | null }[]));
 
-      // Hot Prospect is not a column you can filter on — it is derived from
-      // the application, the screening and the documents. That derivation
-      // now happens on the server, which returns the verdict and keeps the
-      // evidence. The window is bounded (APPLICANT_WINDOW) because readiness
-      // is computed on read, so the rows have to come back.
-      const applicants = await applicantsP;
-      if (applicants.ok && applicants.r) {
-        setNewApps(applicants.r.newApps);
-        setPendingApps(applicants.r.pendingApps);
-        setRecentApps(applicants.r.applicants);
-        setReadiness(applicants.r.readiness ?? {});
-        setCanSeeReadiness(!!applicants.r.canSeeReadiness);
-        setAppsFailed(false);
-      } else {
-        // Leave the counts null. A dashboard that renders 0 because the read
-        // failed is a confident lie about the pipeline, and somebody acts on
-        // it.
-        setAppsFailed(true);
-      }
       const sumAmt = (rows?: any[] | null) =>
         (rows ?? []).reduce((a, r) => a + Number(r.net_collected ?? 0), 0);
       const overdueRows = (overdueQ.data ?? []) as any[];
@@ -307,13 +240,13 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         });
       }
       for (const p of (pay12wQ.data ?? []) as any[]) {
-        if (!p.paid_date) continue;
+        if (!isRevenuePayment(p) || !p.paid_date) continue;
         const w = bucketStart(new Date(p.paid_date));
         const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
         if (idx >= 0 && idx < 12) series[idx].collected += Number(p.net_collected ?? 0);
       }
       for (const p of (billed12wQ.data ?? []) as any[]) {
-        if (!p.due_date) continue;
+        if (!isRevenuePayment(p) || !p.due_date) continue;
         const w = bucketStart(new Date(p.due_date));
         const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
         if (idx >= 0 && idx < 12) series[idx].billed += Number(p.amount ?? 0);
@@ -340,40 +273,34 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const compare = useMemo(() => priorRange(range), [range]);
 
   useEffect(() => {
-    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setRevenueLoading(false);return;}
+    if(!canSeeCollections) { setLedger(null); setRevenueLoading(false); return; }
     let live = true;
     setRevenueLoading(true);
     (async () => {
-      const q = (r: DayRange) =>
+      const payments = await loadReportingPayments();
+      const links = await readEveryPage<RefundLink>((from, to) =>
         supabase
-          .from("payments")
-          .select("net_collected, stripe_payment_intent_id", { count: "exact" })
-          .in("status", ["paid", "refunded"])
-          .in("type", REVENUE_TYPES as unknown as string[])
-          .gte("paid_date", r.from)
-          .lte("paid_date", r.to);
-      const [cur, prev] = await Promise.all([q(range), q(compare)]);
+          .from("payment_refunds")
+          .select("stripe_charge_id,stripe_payment_intent_id,payment_ids", { count: "exact" })
+          .order("id", { ascending: true })
+          .range(from, to),
+      );
       if (!live) return;
-      const current=paymentRevenue(cur), previous=paymentRevenue(prev);
-      setRevenue(current?.total ?? null);
-      setInternalNonStripe(current?.nonStripe ?? null);
-      setPriorRevenue(previous?.total ?? null);
+      setLedger({
+        payments: payments.rows as ReportingPayment[],
+        refundLinks: links.complete ? links.rows : null,
+        complete: payments.complete && links.complete,
+      });
       setRevenueLoading(false);
-    })().catch(()=>{
-      if(!live)return;
-      setRevenue(null);setInternalNonStripe(null);setPriorRevenue(null);setRevenueLoading(false);
+    })().catch(() => {
+      if (!live) return;
+      setLedger(null);
+      setRevenueLoading(false);
     });
     return () => {
       live = false;
     };
-  }, [range, compare, canSeeCollections]);
-
-  const revenueDelta = useMemo(() => {
-    // No prior revenue is not a 100% rise; it is a comparison that cannot be
-    // made, and saying so is more honest than printing a number.
-    if (priorRevenue === null || revenue === null || priorRevenue === 0) return null;
-    return Math.round(((revenue - priorRevenue) / priorRevenue) * 100);
-  }, [revenue, priorRevenue]);
+  }, [canSeeCollections]);
 
   const serviceAttention = svc.overdue + svc.due + svc.open + svc.conflict;
 
@@ -387,21 +314,20 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   );
 
   /**
-   * Hot Prospect: worth prioritising for follow-up. Not approved, not decision
-   * ready, not verified, not rental ready. The rule lives in the readiness
-   * module — qualification, coverage and no critical concern — and this strip
-   * only renders what it returns.
+   * Hot Leads and the modal list are this one array. Qualification, coverage,
+   * and no critical concern — not the interested contact-status bucket.
    */
-  const hot = useMemo(() => {
-    if (!canSeeReadiness) return [];
-    return recentApps
-      .flatMap((a) => {
-        const r = readinessIndex.get(a.id);
-        return r && isHotProspect(r) ? [{ app: a, readiness: r }] : [];
-      })
-      .sort((x, y) => compareReadiness(x.readiness, y.readiness))
-      .slice(0, 5);
-  }, [recentApps, readinessIndex, canSeeReadiness]);
+  const hotProspects = useMemo(
+    () => (canSeeReadiness ? selectHotProspects(recentApps, readinessIndex) : []),
+    [recentApps, readinessIndex, canSeeReadiness],
+  );
+  const hot = appsFailed
+    ? { state: "unavailable" as const, prospects: [] }
+    : appsLoading
+      ? { state: "loading" as const, prospects: [] }
+      : canSeeReadiness
+        ? { state: "ready" as const, prospects: hotProspects }
+        : { state: "withheld" as const, prospects: [] };
 
   const sortedApps = useMemo(() => {
     const rows = [...recentApps];
@@ -437,74 +363,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         <p className="text-[13px] text-[#55555E] mt-1">Pipeline, Fleet And Revenue At A Glance</p>
       </div>
 
-      <LeadPriorities />
-
-      {/* Priority strip — who is worth calling first, above everything else.
-          Absent entirely when there is nobody, rather than an empty module.
-
-          Hot Prospect means "worth prioritising for follow-up" and nothing
-          more. It is not approval, not Decision Ready, not verification. So
-          the strip carries the readiness state alongside the name: a hot
-          prospect who is still 55% known says so on its face. */}
-      {hot.length > 0 && (
-        <div className="rounded-2xl border border-[#D03020]/25 bg-[rgba(208,48,32,0.03)] px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Flame className="w-4 h-4 text-[#D03020]" strokeWidth={2} />
-            <span className="text-[12px] font-semibold text-[#111114]">Hot Prospects</span>
-            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#D03020] text-white text-[10px] font-semibold">
-              {hot.length}
-            </span>
-            <span className="text-[11px] text-[#9A9AA3]">Worth Following Up First</span>
-            <Link
-              to="/admin"
-              search={{ tab: "drivers" }}
-              className="ml-auto shrink-0 inline-flex items-center gap-1 text-[12px] font-medium text-[#D03020] hover:opacity-80"
-            >
-              {hot.length === 1 ? "View" : "View All"} <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-          {/* One card per person, and the whole card is the link. The previous
-              version was a wrapped row of text links, so the click target was
-              the name itself — a few pixels tall, on the busiest strip on the
-              page. */}
-          <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
-            {hot.map(({ app, readiness }) => (
-              <li key={app.id} className="min-w-0">
-                <Link
-                  to="/admin"
-                  search={{ tab: "drivers", id: app.id }}
-                  className="group flex h-full flex-col gap-2 rounded-xl border border-[#EDEDF0] bg-white p-3 hover:border-[#D03020]/40 hover:shadow-sm transition"
-                >
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="flex items-center justify-between gap-2 min-w-0">
-                      <span className="text-[14px] font-semibold text-[#111114] truncate group-hover:text-[#D03020] transition-colors">
-                        {app.full_name ? displayPersonName(app.full_name) : "Unnamed"}
-                      </span>
-                      <ReadinessStatePill state={readiness.state} short />
-                    </span>
-                    {/* Full width of the card: at phone width the badge and the
-                        name share the row above, so this line gets the room it
-                        needs instead of ending in an ellipsis. */}
-                    <span className="flex min-w-0 items-center gap-1 text-[11px] text-[#9A9AA3]">
-                      <CalendarDays className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{appliedLine(app.created_at)}</span>
-                    </span>
-                  </span>
-                  <ReadinessMetrics result={readiness} />
-                  {readiness.positives.length > 0 && (
-                    <span className="text-[11px] text-[#9A9AA3] line-clamp-2">
-                      {readiness.positives
-                        .slice(0, 2)
-                        .map((f) => displayTitleCase(f.detail))
-                        .join(" · ")}
-                    </span>
-                  )}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <LeadPriorities hot={hot} />
 
       {/* Four cards. Each control matches what the card is for — a plus only
           where something gets created. */}
@@ -520,16 +379,15 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         />
 
         <RevenueCard
-          amount={revenue}
-          delta={revenueDelta}
           loading={revenueLoading}
+          ledger={canSeeCollections ? ledger : null}
+          enabled={canSeeCollections}
           range={range}
           compare={compare}
           rangeKey={rangeKey}
           onRangeKey={setRangeKey}
           custom={customRange}
           onCustom={setCustomRange}
-          consolidated={canSeeCollections ? { internalNonStripe } : null}
         />
 
         <ActionCard
@@ -573,6 +431,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           badge={serviceAttention > 0 ? serviceAttention : undefined}
         />
       </div>
+      {canSeeCollections ? <DocumentsExpiringChip /> : null}
 
       {/* Fleet snapshot + Applications queue */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
@@ -697,12 +556,12 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
             </div>
           }
         >
-          {recentApps.length === 0 ? (
+          {appsLoading || recentApps.length === 0 ? (
             <div
               className="px-5 py-10 text-center text-[13px] text-[#9A9AA3]"
-              data-applicants-state={appsFailed ? "failed" : "empty"}
+              data-applicants-state={appsFailed ? "failed" : appsLoading ? "loading" : "empty"}
             >
-              {appsFailed ? "Could Not Load Applications." : "No Applications Yet."}
+              {appsFailed ? "Could Not Load Applications." : appsLoading ? "Loading Applications…" : "No Applications Yet."}
             </div>
           ) : (
             <ul>
@@ -755,7 +614,12 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         </SectionCard>
       </div>
 
-      {/* Billed vs Collected — full width */}
+      {/* Billed vs Collected stays on Overview. Payments lists charges and one
+          outstanding total; it does not show this 12-week billed-versus-collected
+          trend, the collection rate, or the worst week. Weekly Cash Flow is
+          Stripe cash against expenses, not invoices against collections.
+          Both series skip deposit rows, the same isRevenuePayment exclusion
+          as the Revenue tile. */}
       {(() => {
         const totBilled = weekly.reduce((a, w) => a + w.billed, 0);
         const totCollected = weekly.reduce((a, w) => a + w.collected, 0);
@@ -871,7 +735,6 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           </SectionCard>
         );
       })()}
-      {canSeeCollections && <StripeCollections />}
     </div>
   );
 }
@@ -953,52 +816,69 @@ function ActionCard({
 /**
  * Revenue, for a range you choose.
  *
- * Not a link: the control here is the range, so the card is a panel rather
- * than a destination. The figure is money received in the range, excluding
- * deposits, against the equally long stretch immediately before it.
+ * The figure is Payments → All net collected for this range: the same
+ * summarizePayments dedupe, so an invoice-only subscription row is not added
+ * on top of the Stripe charge that already includes it.
  */
 function RevenueCard({
-  amount,
-  delta,
   loading,
+  ledger,
+  enabled,
   range,
   compare,
   rangeKey,
   onRangeKey,
   custom,
   onCustom,
-  consolidated,
 }: {
-  amount: number | null;
-  delta: number | null;
   loading: boolean;
+  ledger: { payments: ReportingPayment[]; refundLinks: RefundLink[] | null; complete: boolean } | null;
+  enabled: boolean;
   range: DayRange;
   compare: DayRange;
   rangeKey: RangeKey;
   onRangeKey: (k: RangeKey) => void;
   custom: Partial<DayRange>;
   onCustom: (c: Partial<DayRange>) => void;
-  consolidated?: { internalNonStripe: number | null } | null;
 }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   // Owner/Manager only (Coordinators never mount the request; server re-checks).
-  // Shares the Collections section's cache entry — no duplicate provider request.
+  // Shares the Payments Stripe cache entry — no duplicate provider request.
   const loadCollections = useServerFn(getStripeCollections);
-  const sq = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, Boolean(consolidated)));
-  const c = consolidated
-    ? sq.isError ? { amount: null, coverage: "Unavailable" as const }
-      : consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, report: sq.data })
-    : null;
-  const shownLoading = consolidated ? loading || (sq.isFetching && !sq.data) : loading;
-  const shownAmount = c ? c.amount : amount;
-  const coverage = c ? c.coverage : amount === null ? "Unavailable" : "Partial";
-  const coverageHint = coverage === "Unavailable"
-    ? "A required revenue source could not be verified for this period, so no consolidated total is shown. Verified Stripe collections remain available in Collections."
-    : c
-      ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
-      : "Recorded payments only. Stripe, Zelle, Cash App, Venmo, cash and bank transfers are not all verified yet.";
-  const goPayments = () => !open && navigate({ to: "/admin", search: { tab: "payments" } });
+  const sq = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, enabled));
+  const summary = useMemo(() => {
+    if (!enabled || !ledger) return null;
+    const stripe = sq.isError
+      ? { status: "error" as const, collectionsComplete: false, totals: null, charges: [] }
+      : sq.data
+        ? {
+            status: "ready" as const,
+            collectionsComplete: sq.data.collectionsComplete,
+            totals: sq.data.totals,
+            charges: sq.data.verifiedCollections.charges,
+            refunds: sq.data.verifiedCollections.refunds,
+          }
+        : { status: "loading" as const, collectionsComplete: false, totals: null, charges: [] };
+    return summarizePayments({
+      payments: ledger.payments,
+      refundLinks: ledger.refundLinks,
+      stripe,
+      deposits: { rentals: [], payments: [] },
+      source: "all",
+      range,
+      truncated: !ledger.complete,
+    });
+  }, [enabled, ledger, sq.isError, sq.data, range]);
+  const shownLoading = enabled && (loading || !ledger || (sq.isFetching && !sq.data));
+  const shownAmount = summary?.netCollected.amount ?? null;
+  const coverage = summary?.coverage ?? "Unavailable";
+  const coverageHint = summary?.coverageReason
+    ?? "A required revenue source could not be verified for this period, so no consolidated total is shown. Open Payments and choose Stripe for the verified collections detail.";
+  const goPayments = () => {
+    if (open) return;
+    navigate({ to: "/admin", search: revenuePaymentsSearch(range) });
+  };
   const label = RANGE_LABELS.find((r) => r.key === rangeKey)?.label ?? "Range";
 
   return (
@@ -1039,27 +919,14 @@ function RevenueCard({
       </div>
       <div className="mt-1 text-[11px] text-[#55555E] truncate">
         {describeRange(range)}
-        {c ? null : delta != null ? (
-          <>
-            <span className="mx-1 text-[#C7C7CC]">·</span>
-            <span className={`font-medium ${delta >= 0 ? "text-[#0F8A4B]" : "text-[#CC0000]"}`}>
-              {delta >= 0 ? "+" : ""}
-              {delta}%
-            </span>
-            <span className="text-[#9A9AA3]"> vs prior</span>
-          </>
-        ) : (
-          <>
-            <span className="mx-1 text-[#C7C7CC]">·</span>
-            <span className="text-[#9A9AA3]">no prior revenue to compare</span>
-          </>
-        )}
+        <span className="mx-1 text-[#C7C7CC]">·</span>
+        <span className="text-[#9A9AA3]">same total as Payments, All</span>
       </div>
 
       {open && (
         <>
-          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute z-30 right-4 top-14 w-52 rounded-lg border border-[#EDEDF0] bg-white shadow-lg py-1">
+          <div className="fixed inset-0 z-20" onClick={(e) => { e.stopPropagation(); setOpen(false); }} />
+          <div className="absolute z-30 right-4 top-14 w-52 rounded-lg border border-[#EDEDF0] bg-white shadow-lg py-1" onClick={(e) => e.stopPropagation()}>
             {RANGE_LABELS.map((r) => (
               <button
                 key={r.key}

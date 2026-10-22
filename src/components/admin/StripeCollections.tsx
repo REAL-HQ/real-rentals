@@ -10,12 +10,15 @@ import { STRIPE_COLLECTIONS_TEST_MODE } from "@/lib/stripe-collections.test-mode
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { resolveRange } from "@/lib/date-range";
 
-export function StripeCollections() {
+export function StripeCollections({ from: fromProp, to: toProp, hideRange = false }: { from?: string; to?: string; hideRange?: boolean } = {}) {
   // Test-only synthetic mode is dev-server-only; production builds keep the feature hidden.
   const featureVisible = STRIPE_COLLECTIONS_ENABLED || (import.meta.env.DEV && STRIPE_COLLECTIONS_TEST_MODE);
   const [initial] = useState(() => resolveRange("last_30"));
-  const [from, setFrom] = useState(initial.from);
-  const [to, setTo] = useState(initial.to);
+  const [fromState, setFrom] = useState(initial.from);
+  const [toState, setTo] = useState(initial.to);
+  const controlled = Boolean(fromProp && toProp);
+  const from = controlled ? fromProp! : fromState;
+  const to = controlled ? toProp! : toState;
   const [environment, setEnvironment] = useState<"live" | "sandbox">("live");
   const load = useServerFn(getStripeCollections);
   const valid = collectionsRequestRange(from, to) !== null;
@@ -36,8 +39,10 @@ export function StripeCollections() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex gap-1" aria-label="Collections Mode">{(["live", "sandbox"] as const).map(mode => <Button key={mode} size="sm" variant={environment === mode ? "secondary" : "ghost"} aria-pressed={environment === mode} onClick={() => setEnvironment(mode)}>{mode === "live" ? "Live" : "Test"}</Button>)}</div>
-          <label className="text-xs text-muted-foreground">From <input aria-label="Collections From" type="date" value={from} onChange={e => setFrom(e.target.value)} className="h-8 w-36 rounded-md border border-input bg-background px-2 text-foreground" /></label>
-          <label className="text-xs text-muted-foreground">To <input aria-label="Collections To" type="date" value={to} onChange={e => setTo(e.target.value)} className="h-8 w-36 rounded-md border border-input bg-background px-2 text-foreground" /></label>
+          {!hideRange && <>
+            <label className="text-xs text-muted-foreground">From <input aria-label="Collections From" type="date" value={from} onChange={e => setFrom(e.target.value)} className="h-8 w-36 rounded-md border border-input bg-background px-2 text-foreground" /></label>
+            <label className="text-xs text-muted-foreground">To <input aria-label="Collections To" type="date" value={to} onChange={e => setTo(e.target.value)} className="h-8 w-36 rounded-md border border-input bg-background px-2 text-foreground" /></label>
+          </>}
           <Button aria-label="Refresh Collections" title="Refresh Collections" variant="outline" size="icon" disabled={!valid || query.isFetching} onClick={() => void query.refetch()}><RefreshCw className={query.isFetching ? "animate-spin motion-reduce:animate-none" : ""} /></Button>
         </div>
       </div>

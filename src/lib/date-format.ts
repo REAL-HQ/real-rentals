@@ -1,6 +1,6 @@
 // One date format for the whole site (display only):
 //   fmtDate         Oct 11, 2026
-//   fmtDateTime     Oct 11, 2026, 7:30 AM
+//   fmtDateTime     Oct 11, 2026, 7:30 AM ET   (America/New_York)
 //   fmtDateNumeric  10/11/2026   (tight spaces, exports a person reads)
 // Date-only strings ("2026-10-11") are read as calendar dates, never shifted
 // by timezone. Stored values, sorting, filtering and API formats stay ISO.
@@ -34,12 +34,29 @@ export function fmtDate(v: DateInput, ..._ignored: unknown[]): string {
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
-/** Oct 11, 2026, 7:30 AM */
+const EASTERN_TIME_ZONE = "America/New_York";
+
+/**
+ * Oct 11, 2026, 7:30 AM ET.
+ * Instants render in America/New_York. A date-only string stays that
+ * calendar day at 12:00 AM ET, so the device zone cannot move it.
+ */
 export function fmtDateTime(v: DateInput, ..._ignored: unknown[]): string {
+  if (typeof v === "string" && DATE_ONLY.test(v.trim())) return `${fmtDate(v)}, 12:00 AM ET`;
   const d = toDate(v);
   if (!d) return "";
-  const t = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  return `${fmtDate(d)}, ${t}`;
+  const date = new Intl.DateTimeFormat("en-US", {
+    timeZone: EASTERN_TIME_ZONE,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(d);
+  const time = new Intl.DateTimeFormat("en-US", {
+    timeZone: EASTERN_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(d).replace(/[\u202f\u00a0]/g, " ");
+  return `${date}, ${time} ET`;
 }
 
 /** 10/11/2026 */

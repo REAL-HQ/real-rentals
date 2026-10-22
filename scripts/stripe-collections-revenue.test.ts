@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { collectionsRequestRange, stripeCollectedLabel, consolidatedRevenue, type CollectionsReport } from "../src/lib/stripe-collections";
+import { collectionsRequestRange, stripeCollectedLabel, type CollectionsReport } from "../src/lib/stripe-collections";
 
 
 const { stripeCollectionsQuery } = await import("../src/lib/stripe-collections-query");
@@ -19,10 +19,11 @@ describe("Revenue card Stripe Collected", () => {
     expect(stripeCollectedLabel(report({ totals: null }))).toBe("—");
     expect(stripeCollectedLabel(report({ totals: [{ currency: "usd", gross: 1, refunds: 0, fees: null, net: null, successful: 1, failed: 0 }] }))).toBe("—");
   });
-  it("covers the selected local days: midnight of From to midnight after To", () => {
+  it("covers the selected Eastern days: midnight of From to midnight after To", () => {
     const r = collectionsRequestRange("2026-10-12", "2026-10-18")!;
-    expect(new Date(r.from).getTime()).toBe(new Date("2026-10-12T00:00:00").getTime());
-    expect(new Date(r.to).getTime()).toBe(new Date("2026-10-19T00:00:00").getTime());
+    expect(r.from).toBe("2026-10-12T04:00:00.000Z");
+    expect(r.to).toBe("2026-10-19T04:00:00.000Z");
+    expect(collectionsRequestRange("2026-13-45", "2026-10-18")).toBeNull();
     expect(collectionsRequestRange("2026-10-18", "2026-10-12")).toBeNull();
     expect(collectionsRequestRange("2025-01-01", "2026-10-18")).toBeNull();
   });
@@ -40,20 +41,13 @@ describe("Revenue card Stripe Collected", () => {
     expect(a.queryKey).toEqual(b.queryKey);
     expect(stripeCollectionsQuery(vi.fn() as never, "live", "2026-10-18", "2026-10-12", true).enabled).toBe(false);
   });
-  it("one figure: Stripe net + non-Stripe internal; never zero when unknown; never Complete", () => {
-    expect(consolidatedRevenue({ internalNonStripe: 0, report: report() })).toEqual({ amount: 1018.65, coverage: "Partial" });
-    expect(consolidatedRevenue({ internalNonStripe: 50, report: report() }).amount).toBe(1068.65);
-    expect(consolidatedRevenue({ internalNonStripe: 0, report: report({ totals: [{ currency: "usd", gross: 105000, refunds: 5000, fees: 3135, net: 96865, successful: 3, failed: 0 }] }) }).amount).toBe(968.65);
-    expect(consolidatedRevenue({ internalNonStripe: 50, report: undefined })).toEqual({ amount: null, coverage: "Unavailable" });
-    expect(consolidatedRevenue({ internalNonStripe: 0, report: report({ collectionsComplete: false }) }).amount).toBeNull();
-    expect(consolidatedRevenue({ internalNonStripe: 0, report: report({ totals: [{ currency: "usd", gross: 1, refunds: 0, fees: null, net: null, successful: 1, failed: 0 }] }) }).amount).toBeNull();
-  });
   it("Stripe request mounts only for Owner/Manager; no second money line; card opens Payments", () => {
     const src = readFileSync(new URL("../src/components/admin/OverviewPanel.tsx", import.meta.url), "utf8");
-    expect(src).toContain("consolidated={canSeeCollections ? { internalNonStripe } : null}");
+    expect(src).toContain("ledger={canSeeCollections ? ledger : null}");
+    expect(src).toContain("summarizePayments");
     expect(src).not.toContain("Stripe Collected");
-    expect(src).toContain('search: { tab: "payments" }');
-    expect(readFileSync(new URL("../src/lib/revenue-state.ts", import.meta.url), "utf8")).toContain("!row.stripe_payment_intent_id");
-    expect(src).toMatch(/\.from\("payments"\)\s*\.select\("net_collected, stripe_payment_intent_id", \{ count: "exact" \}\)/);
+    expect(src).not.toContain("paymentRevenue");
+    expect(src).toContain("revenuePaymentsSearch(range)");
+    expect(readFileSync(new URL("../src/lib/payment-reporting.ts", import.meta.url), "utf8")).toContain('tab: "payments"');
   });
 });
