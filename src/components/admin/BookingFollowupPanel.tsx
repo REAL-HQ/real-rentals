@@ -58,7 +58,7 @@ export function BookingFollowupPanel() {
       </p>
       {truncated ? (
         <p className="mt-2 text-sm text-[#55555E]">
-          Some Last Contact Times Were Not Checked.
+          Some Last Contact Times Or Approval Dates Were Not Checked.
         </p>
       ) : null}
       {error ? (

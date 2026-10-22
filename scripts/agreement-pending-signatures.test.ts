@@ -27,6 +27,7 @@ function agreement(over: Partial<PendingAgreementRow> & { id: string }): Pending
     signed_at: null,
     signer_name: "Ada Lopez",
     token_expires_at: null,
+    token_revoked_at: null,
     ...over,
   };
 }
@@ -57,6 +58,10 @@ describe("pending signatures", () => {
     assert.equal(PENDING_SIGNATURE_READ_CAP, 999);
     assert.match(fn, /\.in\("status", \["sent", "viewed", "signing"\]\)/);
     assert.match(fn, /token_expires_at/);
+    assert.match(fn, /from\("esign_recipients"\)/);
+    assert.match(fn, /\.select\("document_id,token_revoked_at"\)/);
+    assert.doesNotMatch(fn, /signer_name,token_expires_at,token_revoked_at/);
+    assert.match(fn, /\.select\("id,full_name,deleted_at"\)/);
     assert.match(fn, /namesFailed/);
     assert.match(fn, /truncated: truncatedRead,/);
     assert.doesNotMatch(fn, /namesTruncated|truncatedRead \|\| /);
@@ -113,6 +118,31 @@ describe("pending signatures", () => {
     assert.equal(lastSentLabel("not-a-date"), "Unknown");
     assert.equal(daysWaiting("2026-10-21T03:30:00.000Z", now), 1);
     assert.equal(daysWaiting("2026-03-08T06:30:00.000Z", new Date("2026-03-09T16:00:00.000Z")), 1);
+  });
+
+  it("labels a revoked token Revoked and leaves a soft-deleted application off the list", () => {
+    const now = new Date("2026-10-21T15:00:00.000Z");
+    const list = buildPendingSignatures({
+      now,
+      agreements: [
+        agreement({
+          id: "revoked",
+          status: "signing",
+          token_revoked_at: "2026-10-20T12:00:00.000Z",
+          token_expires_at: "2026-10-20T15:00:00.000Z",
+        }),
+        agreement({ id: "deleted-app", application_id: "app-deleted", sent_at: "2026-10-18T15:00:00.000Z" }),
+        agreement({ id: "live", sent_at: "2026-10-21T15:00:00.000Z" }),
+      ],
+      drivers: [
+        { id: "app-1", full_name: "Ada Lopez", deleted_at: null },
+        { id: "app-deleted", full_name: "Gone Driver", deleted_at: "2026-10-01T00:00:00.000Z" },
+      ],
+    });
+    assert.deepEqual(
+      list.rows.map((row) => `${row.agreementId}:${row.statusLabel}:${row.driverName}`),
+      ["revoked:Revoked:Ada Lopez", "live:Sent:Ada Lopez"],
+    );
   });
 
   it("does not treat a missing driver row as a capped read", () => {
