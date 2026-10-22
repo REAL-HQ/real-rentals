@@ -31,6 +31,7 @@ import {
   visibleCreateActions,
   navOwner,
   railEntries,
+  resolveTollsTicketsTab,
   WORKSPACE_TABS,
   visibleWorkspaceTabs,
   LEGACY_TABS,
@@ -56,6 +57,8 @@ import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { TOLLS_TICKETS_LEDGER_ENABLED } from "@/lib/tolls-tickets-flag";
+import { TollsTickets } from "@/components/admin/TollsTickets";
 import { StripeMatchPanel } from "@/components/admin/StripeMatchPanel";
 import { VehicleProfitPanel } from "@/components/admin/VehicleProfitPanel";
 import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
@@ -64,7 +67,9 @@ import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
 import { BillingHealthPanel } from "@/components/admin/BillingHealthPanel";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { FinanceDataQualityPanel } from "@/components/admin/FinanceDataQualityPanel";
+import { ExpenseCategoriesPanel } from "@/components/admin/ExpenseCategoriesPanel";
 import { FINANCE_DATA_QUALITY_ENABLED } from "@/lib/finance-data-quality-flag";
+import { FINANCE_EXPENSE_CATEGORIES_ENABLED } from "@/lib/expense-categories-flag";
 import { RentAgingPanel } from "@/components/admin/RentAgingPanel";
 import { FINANCE_AR_AGING_ENABLED } from "@/lib/rent-aging-flag";
 import { FinanceDepositLedgerPanel } from "@/components/admin/FinanceDepositLedgerPanel";
@@ -348,6 +353,8 @@ function Admin() {
   const tab: Tab = useMemo(() => {
     // Settings is off the rail (profile dropdown) but must stay reachable; its sections filter by tier.
     if (urlTab === "settings") return "settings";
+    const tollsTab = resolveTollsTicketsTab(urlTab, tier);
+    if (tollsTab) return tollsTab;
     // Reviewed Unified Finance is not an Overview block. This tab is the screen.
     if (urlTab === "finance") {
       if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
@@ -396,6 +403,10 @@ function Admin() {
     if (urlTab === "finance_data_quality") {
       if (!FINANCE_DATA_QUALITY_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "finance_data_quality";
+    }
+    if (urlTab === "expense_categories") {
+      if (!FINANCE_EXPENSE_CATEGORIES_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "expense_categories";
     }
     if (urlTab === "rent_aging") {
       if (!FINANCE_AR_AGING_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
@@ -980,6 +991,7 @@ function Admin() {
             {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
+            {TOLLS_TICKETS_LEDGER_ENABLED && tab === "tolls_tickets" && <TollsTickets />}
             {VEHICLE_PROFITABILITY_ENABLED && tab === "vehicle_profit" && <VehicleProfitPanel />}
             {FLEET_AVAILABILITY_ENABLED && tab === "fleet_availability" && (
               <FleetAvailability canOpenWaitingList={tierAllows(tier, "manager")} />
@@ -992,6 +1004,7 @@ function Admin() {
             {PAYOUT_BREAKDOWN_ENABLED && tab === "payout_breakdown" && <PayoutBreakdownPanel />}
             {BILLING_HEALTH_ENABLED && tab === "billing_health" && <BillingHealthPanel />}
             {FINANCE_DATA_QUALITY_ENABLED && tab === "finance_data_quality" && <FinanceDataQualityPanel />}
+            {FINANCE_EXPENSE_CATEGORIES_ENABLED && tab === "expense_categories" && <ExpenseCategoriesPanel />}
             {FINANCE_AR_AGING_ENABLED && tab === "rent_aging" && <RentAgingPanel />}
             {FINANCE_DEPOSIT_LEDGER_ENABLED && tab === "finance_deposit_ledger" && <FinanceDepositLedgerPanel />}
             {STRIPE_RISK_MONITOR_ENABLED && tab === "stripe_risk_monitor" && <StripeRiskMonitorPanel />}

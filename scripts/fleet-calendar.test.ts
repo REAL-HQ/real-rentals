@@ -110,4 +110,4 @@ ok(shop.blocks.some((block) => block.id === "svc" && block.search.tab === "maint
 ok(built.omitted === FLEET_CALENDAR_OMITTED && built.omitted.some((line) => line.includes("out-of-service")), "the omitted list names the missing periods");
 
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall fleet calendar checks pass");
-process.exit(fails ? 1 : 0);
+if (fails) process.exit(1);
