@@ -1,6 +1,6 @@
 /**
  * Stripe Payout Reconciliation is off until this constant is turned on in source.
- * false throws before the manager check and before any payment or Stripe read,
+ * false returns before auth and before any payment or Stripe read,
  * omits the tab, and sends a direct link to Overview.
  * There is no environment variable for this flag.
  */
