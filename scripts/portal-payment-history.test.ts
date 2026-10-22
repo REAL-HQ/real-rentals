@@ -66,7 +66,12 @@ describe("portal payment history", () => {
     assert.match(rules, /HISTORY_CHUNK/);
     assert.match(rules, /HISTORY_READ_CAP \+ 1/);
     assert.doesNotMatch(fn, /sendEmail|sendSms|\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
-    assert.match(portal, /PORTAL_PAYMENT_HISTORY_ENABLED === true && previewId == null \? <PaymentHistoryCard \/>/);
+    assert.match(portal, /PORTAL_PAYMENT_HISTORY_ENABLED === true && previewId == null \? \(\s*<PaymentHistoryCard \/>/);
+    const historyBranch = portal.indexOf("PORTAL_PAYMENT_HISTORY_ENABLED === true && previewId == null");
+    const allPayments = portal.indexOf(">All Payments<");
+    assert.ok(historyBranch !== -1 && allPayments > historyBranch);
+    assert.equal((portal.match(/>All Payments</g) ?? []).length, 1);
+    assert.doesNotMatch(portal, /<PaymentHistoryCard \/>\s*:\s*null/);
     assert.match(panel, /if \(PORTAL_PAYMENT_HISTORY_ENABLED !== true\) return null/);
     assert.match(panel, /Download Receipt/);
     assert.match(panel, /Unknown/);
