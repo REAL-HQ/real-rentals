@@ -58,7 +58,9 @@ describe("pending signatures", () => {
     assert.equal(PENDING_SIGNATURE_READ_CAP, 999);
     assert.match(fn, /\.in\("status", \["sent", "viewed", "signing"\]\)/);
     assert.match(fn, /token_expires_at/);
-    assert.match(fn, /token_revoked_at/);
+    assert.match(fn, /from\("esign_recipients"\)/);
+    assert.match(fn, /\.select\("document_id,token_revoked_at"\)/);
+    assert.doesNotMatch(fn, /signer_name,token_expires_at,token_revoked_at/);
     assert.match(fn, /\.select\("id,full_name,deleted_at"\)/);
     assert.match(fn, /namesFailed/);
     assert.match(fn, /truncated: truncatedRead,/);
