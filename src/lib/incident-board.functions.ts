@@ -19,6 +19,8 @@ import {
   INCIDENT_CLAIM_MAX_PAGES,
   INCIDENT_CLAIM_PAGE,
   INCIDENT_CLAIM_READ_REASON,
+  INCIDENT_ISSUE_LABEL_REASON,
+  INCIDENT_RENTAL_LABEL_REASON,
   OPEN_INCIDENT_LIST_LIMIT,
   chooseIncidentTotals,
   incidentClaimScanPastCap,
@@ -63,7 +65,8 @@ export const listIncidentBoard = createServerFn({ method: "POST" })
     const actor = await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const loaded = await loadOpen(supabaseAdmin);
-    const issueTitles = await titlesFor(supabaseAdmin, loaded.rows, loaded.linkColumn);
+    const issueRead = await titlesFor(supabaseAdmin, loaded.rows, loaded.linkColumn);
+    const issueTitles = issueRead.titles;
     const vehicles =
       (await labelsFor(supabaseAdmin, "vehicles", loaded.rows.map((row) => row.vehicle_id).filter(Boolean), vehicleLabel)) ??
       new Map<string, string>();
@@ -83,6 +86,11 @@ export const listIncidentBoard = createServerFn({ method: "POST" })
       uniqueIds(loaded.rows.map((row) => (row.rental_id as string | null) ?? null)),
     );
     const rentalRows = rentalRead.ok ? rentalRead.rows : [];
+    const labelReasons = [
+      rentalRead.ok ? null : INCIDENT_RENTAL_LABEL_REASON,
+      issueRead.ok ? null : INCIDENT_ISSUE_LABEL_REASON,
+    ].filter((reason): reason is string => reason !== null);
+    const labelsReason = labelReasons.length ? labelReasons.join(" ") : null;
     const rentalById = new Map(rentalRows.map((row) => [String(row.id), row]));
     const rows = loaded.rows.map((row) =>
       toIncidentBoardRow({
@@ -140,6 +148,7 @@ export const listIncidentBoard = createServerFn({ method: "POST" })
       totalsLabel: claimsVisible ? (totalFacts?.totalsLabel ?? null) : null,
       totalsReason: claimsVisible ? (totalFacts?.totalsReason ?? null) : null,
       claimsReason,
+      labelsReason,
       openTruncated: loaded.truncated,
     };
   });
@@ -294,15 +303,24 @@ async function readProposed(
     if (proposedTableMissing(probe.error)) return { installed: false, rows: [], failed: false };
     return { installed: false, rows: [], failed: true };
   }
+  const orderId = columns.split(",").map((column) => column.trim()).includes("id");
   const loaded: any[] = [];
   for (let index = 0; index < ids.length; index += 100) {
     const slice = ids.slice(index, index + 100);
-    const { data, error } = await sb.from(table).select(columns).in("incident_id", slice);
-    if (error) {
-      if (proposedTableMissing(error)) return { installed: false, rows: [], failed: false };
-      return { installed: false, rows: [], failed: true };
+    for (let page = 0; page < INCIDENT_CLAIM_MAX_PAGES; page += 1) {
+      const from = page * INCIDENT_CLAIM_PAGE;
+      let query = sb.from(table).select(columns).in("incident_id", slice).order("incident_id", { ascending: true });
+      if (orderId) query = query.order("id", { ascending: true });
+      const { data, error } = await query.range(from, from + INCIDENT_CLAIM_PAGE - 1);
+      if (error) {
+        if (proposedTableMissing(error)) return { installed: false, rows: [], failed: false };
+        return { installed: false, rows: [], failed: true };
+      }
+      const batch = data ?? [];
+      loaded.push(...batch);
+      if (batch.length < INCIDENT_CLAIM_PAGE) break;
+      if (page + 1 === INCIDENT_CLAIM_MAX_PAGES) return { installed: true, rows: [], failed: true };
     }
-    loaded.push(...(data ?? []));
   }
   return { installed: true, rows: loaded, failed: false };
 }
@@ -442,12 +460,16 @@ async function loadOpen(sb: any): Promise<{ rows: any[]; linkColumn: boolean; tr
   return opened(plain.data, false);
 }
 
-async function titlesFor(sb: any, rows: any[], linkColumn: boolean): Promise<Map<string, string>> {
+async function titlesFor(
+  sb: any,
+  rows: any[],
+  linkColumn: boolean,
+): Promise<{ ok: boolean; titles: Map<string, string> }> {
   const ids = linkColumn ? uniqueIds(rows.map((row) => (row.issue_id ? String(row.issue_id) : null))) : [];
-  if (!ids.length) return new Map();
+  if (!ids.length) return { ok: true, titles: new Map() };
   const loaded = await rowsById(sb, "issues", "id,title", ids);
-  if (!loaded.ok) return new Map();
-  return new Map(loaded.rows.map((row: any) => [String(row.id), String(row.title ?? "")]));
+  if (!loaded.ok) return { ok: false, titles: new Map() };
+  return { ok: true, titles: new Map(loaded.rows.map((row: any) => [String(row.id), String(row.title ?? "")])) };
 }
 
 async function labelsFor(

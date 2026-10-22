@@ -22,6 +22,8 @@ import {
   linkedRoadsideLabel,
   incidentClaimScanPastCap,
   INCIDENT_CLAIM_READ_REASON,
+  INCIDENT_ISSUE_LABEL_REASON,
+  INCIDENT_RENTAL_LABEL_REASON,
   proposedTableMissing,
   toIncidentBoardRow,
 } from "../src/lib/incident-board";
@@ -251,6 +253,7 @@ const overflow = chooseIncidentTotals({ capped: false, allRows: overflowRows, op
 ok(overflow.totalsCapped && overflow.totalsReason === "overflow" && overflow.totalsLabel === OPEN_INCIDENT_TOTALS_LABEL && overflow.vehicleTotals[0]?.estimatedCostCents === 40000, "a cent overflow falls back to the open incidents");
 ok(!incidentClaimScanPastCap(100000) && incidentClaimScanPastCap(100001), "exactly 100000 incidents is a finished scan");
 ok(INCIDENT_CLAIM_READ_REASON.includes("hidden"), "a failed claim read names why the columns are hidden");
+ok(INCIDENT_RENTAL_LABEL_REASON === "Rental labels could not be read." && INCIDENT_ISSUE_LABEL_REASON === "Issue titles could not be read.", "a failed rental or issue label read names that read");
 
 const columns = fn.slice(fn.indexOf("const COLUMNS ="), fn.indexOf("function missingIssueColumn"));
 ok(!columns.includes("estimated_cost") && !columns.includes("actual_cost") && !columns.includes("claim_number"), "the operational select does not name claim columns");
@@ -270,11 +273,14 @@ ok(totalsSrc.includes("estimated_cost") && totalsSrc.includes("actual_cost") && 
 ok(pageSrc.includes("INCIDENT_CLAIM_MAX_PAGES") && pageSrc.includes("proposedTableMissing(") && !pageSrc.includes('.in("status"'), "the totals scan stops at the page cap and does not filter status");
 ok(pageSrc.includes("incidentClaimScanPastCap(") && pageSrc.includes("range(scanned, scanned)"), "exactly 100000 rows is probed before the scan is called capped");
 ok(!claimSrc.includes("throw new Error"), "claim and totals reads degrade instead of throwing");
+const proposedSrc = fn.slice(fn.indexOf("async function readProposed"), fn.indexOf("type TotalsLoad"));
+ok(proposedSrc.includes('.in("incident_id", slice)') && proposedSrc.includes(".range(") && proposedSrc.includes('order("incident_id"') && proposedSrc.includes('order("id"') && proposedSrc.includes("INCIDENT_CLAIM_PAGE") && proposedSrc.includes("INCIDENT_CLAIM_MAX_PAGES") && proposedSrc.includes("rows: [], failed: true"), "each proposed id slice is range-paged and a full page cap fails the read");
+ok(listBody.includes("INCIDENT_RENTAL_LABEL_REASON") && listBody.includes("INCIDENT_ISSUE_LABEL_REASON") && listBody.includes("labelsReason"), "a rental or issue label failure is returned with a reason");
 const uniqueSrc = fn.slice(fn.indexOf("function uniqueIds"), fn.indexOf("async function loadOpen"));
 ok(uniqueSrc.includes("new Set"), "unique ids use a set");
 ok(loadOpenSrc.includes("OPEN_INCIDENT_LIST_LIMIT + 1"), "the open list reads one past the cap");
 const titlesSrc = fn.slice(fn.indexOf("async function titlesFor"), fn.indexOf("async function labelsFor"));
-ok(titlesSrc.includes("rowsById(") && !titlesSrc.includes('.in("id"'), "issue titles use the 100-id batch");
+ok(titlesSrc.includes("rowsById(") && titlesSrc.includes("ok: false") && !titlesSrc.includes('.in("id"'), "issue titles use the 100-id batch and a failed read is not silent");
 ok(!fn.includes("deposit_deductions") && !fn.includes("driver_responsible_amount"), "the board does not read deductions or the responsibility amount");
 ok(!fn.includes("company_share") && !fn.includes("createStripeClient") && !fn.includes("IncidentsLog"), "the board does not touch maintenance shares, Stripe, or a second screen");
 
@@ -283,7 +289,7 @@ const admin = readFileSync("src/routes/admin.tsx", "utf8");
 ok(ui.includes("Estimated Cost") && ui.includes("Actual Cost") && ui.includes("Claim Number") && ui.includes("Amount Recovered") && ui.includes("Photo Links Not Installed"), "the board shows the claim columns");
 ok(ui.includes("claimsVisible") && ui.includes("open.claims") && ui.includes("open.rentalHref") && ui.includes("incidentMoneyText") && ui.includes("totalsLabel") && ui.includes("All Incidents"), "claim columns, rental links, unknown counts, and the totals heading render from the server");
 ok(ui.includes("The full incident list is past the page cap.") && ui.includes("A cent total could not be added."), "the page cap and a cent overflow use different sentences");
-ok(ui.includes("claimsReason") && ui.includes("Showing the latest 200 open incidents."), "a failed claim read and a truncated open list are shown");
+ok(ui.includes("claimsReason") && ui.includes("labelsReason") && ui.includes("Showing the latest 200 open incidents."), "a failed claim read, a failed label read, and a truncated open list are shown");
 const labelsSrc = fn.slice(fn.indexOf("async function labelsFor"), fn.indexOf("function vehicleLabel"));
 ok(labelsSrc.includes("rowsById(") && !labelsSrc.includes('.in("id"'), "vehicle and applicant labels use the 100-id batch");
 ok(ui.includes("href={photo.href}"), "photo rows are links");

@@ -33,6 +33,7 @@ export function IncidentBoard() {
   const [totalsLabel, setTotalsLabel] = useState<string | null>(null);
   const [totalsReason, setTotalsReason] = useState<"page_cap" | "overflow" | null>(null);
   const [claimsReason, setClaimsReason] = useState<string | null>(null);
+  const [labelsReason, setLabelsReason] = useState<string | null>(null);
   const [openTruncated, setOpenTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -57,6 +58,7 @@ export function IncidentBoard() {
       setTotalsLabel(res.totalsLabel);
       setTotalsReason(res.totalsReason);
       setClaimsReason(res.claimsReason);
+      setLabelsReason(res.labelsReason);
       setOpenTruncated(res.openTruncated);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load the Incident Board");
@@ -191,6 +193,7 @@ export function IncidentBoard() {
       )}
 
       {claimsReason ? <p className="text-sm text-muted-foreground">{claimsReason}</p> : null}
+      {labelsReason ? <p className="text-sm text-muted-foreground">{labelsReason}</p> : null}
       {openTruncated ? <p className="text-sm text-muted-foreground">Showing the latest 200 open incidents.</p> : null}
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>

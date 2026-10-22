@@ -348,6 +348,8 @@ export const INCIDENT_CLAIM_PAGE = 1000;
 export const INCIDENT_CLAIM_MAX_PAGES = 100;
 export const INCIDENT_CLAIM_READ_REASON =
   "Claim columns and totals are hidden because that read failed.";
+export const INCIDENT_RENTAL_LABEL_REASON = "Rental labels could not be read.";
+export const INCIDENT_ISSUE_LABEL_REASON = "Issue titles could not be read.";
 
 /** True only when the scan has a row past 100 pages of 1000. Exactly 100000 is complete. */
 export function incidentClaimScanPastCap(rowCount: number): boolean {
@@ -365,6 +367,7 @@ export type IncidentBoardList = {
   totalsLabel: string | null;
   totalsReason: "page_cap" | "overflow" | null;
   claimsReason: string | null;
+  labelsReason: string | null;
   openTruncated: boolean;
 };
 
