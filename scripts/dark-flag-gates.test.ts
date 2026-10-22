@@ -18,6 +18,15 @@ import {
 } from "../src/lib/replacement-agreement.functions.ts";
 import { swapRentalVehicle } from "../src/lib/vehicle-swap.functions.ts";
 import { listStalledApplications } from "../src/lib/stalled-applications.functions.ts";
+import {
+  applyBillingDay,
+  createBillingPaymentMethodLink,
+  grantBillingExtension,
+  previewBillingDay,
+  sendBillingPaymentMethodLink,
+  setBillingSubscriptionDefault,
+  verifyBillingPaymentMethod,
+} from "../src/lib/billing-controls.functions.ts";
 
 process.env.SUPABASE_URL ??= "http://127.0.0.1:9";
 process.env.SUPABASE_PUBLISHABLE_KEY ??= "dummy";
@@ -87,6 +96,41 @@ const cases: Array<{ name: string; fn: ServerFn; message: string }> = [
     name: "stalled applications",
     fn: listStalledApplications as unknown as ServerFn,
     message: "Stalled applications are not enabled.",
+  },
+  {
+    name: "payment method link",
+    fn: createBillingPaymentMethodLink as unknown as ServerFn,
+    message: "Payment method update links are off.",
+  },
+  {
+    name: "payment method send",
+    fn: sendBillingPaymentMethodLink as unknown as ServerFn,
+    message: "Payment method update links are off.",
+  },
+  {
+    name: "payment method verify",
+    fn: verifyBillingPaymentMethod as unknown as ServerFn,
+    message: "Payment method update links are off.",
+  },
+  {
+    name: "subscription default",
+    fn: setBillingSubscriptionDefault as unknown as ServerFn,
+    message: "Payment method update links are off.",
+  },
+  {
+    name: "billing day preview",
+    fn: previewBillingDay as unknown as ServerFn,
+    message: "Billing day changes are off.",
+  },
+  {
+    name: "billing day apply",
+    fn: applyBillingDay as unknown as ServerFn,
+    message: "Billing day changes are off.",
+  },
+  {
+    name: "payment extension",
+    fn: grantBillingExtension as unknown as ServerFn,
+    message: "Payment extensions are off.",
   },
 ];
 
