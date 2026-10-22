@@ -44,6 +44,7 @@ const READERS = [
   "src/lib/rent-reconciliation-stripe.server.ts",
   "src/lib/stripe-risk-monitor-read.server.ts",
   "src/lib/stripe-payout-recon-read.server.ts",
+  "src/lib/owner-pnl-fees-read.server.ts",
 ];
 
 function filesUnder(dir: string): string[] {
@@ -155,11 +156,11 @@ describe("shared Stripe reader", () => {
       charges: [
         {
           id: "ch_1", customerId: "cus_1", paymentIntentId: "pi_1", invoiceId: "in_1", subscriptionId: "sub_1",
-          amountCents: 5000, currency: "usd", succeeded: true, created: 1_700_000_000,
+          amountCents: 5000, currency: "usd", succeeded: true, created: 1_700_000_000, paymentIds: [],
         },
         {
           id: "ch_2", customerId: "cus_2", paymentIntentId: null, invoiceId: "in_2", subscriptionId: null,
-          amountCents: 0, currency: "usd", succeeded: false, created: 1_700_000_100,
+          amountCents: 0, currency: "usd", succeeded: false, created: 1_700_000_100, paymentIds: [],
         },
       ],
     });
@@ -186,20 +187,29 @@ describe("shared Stripe reader", () => {
   });
 
   it("keeps flag defaults off and returns before Stripe while a flag is off", () => {
-    expect(readFileSync("src/lib/collections-watch-flag.ts", "utf8")).toContain('return env.COLLECTIONS_WATCH_ENABLED === "true"');
-    expect(readFileSync("src/lib/deposits-ledger-flag.ts", "utf8")).toContain('return env.DEPOSITS_LEDGER_ENABLED === "true"');
-    expect(readFileSync("src/lib/driver-statement-flag.ts", "utf8")).toContain('return env.DRIVER_STATEMENT_ENABLED === "true"');
-    expect(readFileSync("src/lib/weekly-cash-flow-flag.ts", "utf8")).toContain('return env.WEEKLY_CASH_FLOW_ENABLED === "true"');
-    expect(readFileSync("src/lib/stripe-match-flag.ts", "utf8")).toContain('return env.STRIPE_MATCH_REPORT_ENABLED === "true"');
+    expect(readFileSync("src/lib/collections-watch-flag.ts", "utf8")).toContain("export const COLLECTIONS_WATCH_ENABLED = false");
+    expect(readFileSync("src/lib/deposits-ledger-flag.ts", "utf8")).toContain("export const DEPOSITS_LEDGER_ENABLED = false");
+    expect(readFileSync("src/lib/driver-statement-flag.ts", "utf8")).toContain("export const DRIVER_STATEMENT_ENABLED = false");
+    expect(readFileSync("src/lib/weekly-cash-flow-flag.ts", "utf8")).toContain("export const WEEKLY_CASH_FLOW_ENABLED = false");
+    expect(readFileSync("src/lib/stripe-match-flag.ts", "utf8")).toContain("export const STRIPE_MATCH_REPORT_ENABLED = false");
+    for (const file of [
+      "src/lib/collections-watch-flag.ts",
+      "src/lib/deposits-ledger-flag.ts",
+      "src/lib/driver-statement-flag.ts",
+      "src/lib/weekly-cash-flow-flag.ts",
+      "src/lib/stripe-match-flag.ts",
+    ]) {
+      expect(readFileSync(file, "utf8"), file).not.toMatch(/process\.env|import\.meta\.env/);
+    }
     expect(readFileSync("src/lib/vehicle-profitability-flag.ts", "utf8")).toContain("export const VEHICLE_PROFITABILITY_ENABLED = false");
     expect(readFileSync("src/lib/unified-finance-flag.ts", "utf8")).toContain("export const UNIFIED_FINANCE_ENDPOINT_ENABLED = false");
     expect(readFileSync("src/lib/stripe-collections.ts", "utf8")).toContain("export const STRIPE_COLLECTIONS_ENABLED = true");
     const handlers: Array<[string, string, string]> = [
-      ["src/lib/collections-watch.functions.ts", "collectionsWatchEnabled()", "readLiveCollectionsWatch("],
-      ["src/lib/deposits-ledger.functions.ts", "depositsLedgerEnabled()", "readLiveDepositsLedger("],
-      ["src/lib/driver-statement.functions.ts", "driverStatementEnabled()", "readLiveDriverStatement("],
-      ["src/lib/weekly-cash-flow.functions.ts", "weeklyCashFlowEnabled()", "readLiveWeeklyCashFlow("],
-      ["src/lib/stripe-match.server.ts", "stripeMatchReportEnabled(input.env)", "readStripe("],
+      ["src/lib/collections-watch.functions.ts", "if (!COLLECTIONS_WATCH_ENABLED)", "readLiveCollectionsWatch("],
+      ["src/lib/deposits-ledger.functions.ts", "if (!DEPOSITS_LEDGER_ENABLED)", "readLiveDepositsLedger("],
+      ["src/lib/driver-statement.functions.ts", "if (!DRIVER_STATEMENT_ENABLED)", "readLiveDriverStatement("],
+      ["src/lib/weekly-cash-flow.functions.ts", "if (!WEEKLY_CASH_FLOW_ENABLED)", "readLiveWeeklyCashFlow("],
+      ["src/lib/stripe-match.functions.ts", "if (!STRIPE_MATCH_REPORT_ENABLED)", "readLiveStripeMatch("],
     ];
     for (const [file, flag, stripe] of handlers) {
       const body = readFileSync(file, "utf8");

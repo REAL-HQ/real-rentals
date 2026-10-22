@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { railEntries, visibleWorkspaceTabs } from "../src/components/admin/nav-config";
 import { buildDepositsLedger, heldDeposits, ledgerTotals, periodWindow, type DepositPerson, type LedgerCharge, type LedgerRefund } from "../src/lib/deposits-ledger";
-import { depositsLedgerEnabled } from "../src/lib/deposits-ledger-flag";
+import { DEPOSITS_LEDGER_ENABLED } from "../src/lib/deposits-ledger-flag";
 import { readDepositsLedger, type ListOnlyStripeGateway } from "../src/lib/deposits-ledger-read.server";
 import { runDepositsLedger } from "../src/lib/deposits-ledger.server";
 
@@ -27,7 +27,7 @@ describe("list-only guard", () => {
   it("checks the flag before any role or table read", () => {
     const source = read("lib/deposits-ledger.functions.ts");
     const handler = source.slice(source.indexOf(".handler"));
-    const flag = handler.indexOf("depositsLedgerEnabled()");
+    const flag = handler.indexOf("if (!DEPOSITS_LEDGER_ENABLED)");
     expect(flag).toBeGreaterThan(-1);
     expect(flag).toBeLessThan(handler.indexOf('from("user_roles")'));
     expect(flag).toBeLessThan(handler.indexOf("loadDepositsDirectory"));
@@ -130,9 +130,11 @@ describe("held deposits", () => {
 });
 
 describe("flag off", () => {
-  it("is on only for the exact string true", () => {
-    expect(depositsLedgerEnabled({ DEPOSITS_LEDGER_ENABLED: "true" })).toBe(true);
-    for (const value of [undefined, "TRUE", "1", "yes", " true", "true "]) expect(depositsLedgerEnabled({ DEPOSITS_LEDGER_ENABLED: value })).toBe(false);
+  it("is a hard-false constant with no environment read", () => {
+    expect(DEPOSITS_LEDGER_ENABLED).toBe(false);
+    const flag = read("lib/deposits-ledger-flag.ts");
+    expect(flag).toContain("export const DEPOSITS_LEDGER_ENABLED = false");
+    expect(flag).not.toMatch(/process\.env|import\.meta\.env/);
   });
 
   it("returns before deposits and Stripe, and refuses a coordinator", async () => {

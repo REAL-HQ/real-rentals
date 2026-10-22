@@ -23,6 +23,13 @@ function money(cents: number | null): string {
   return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+function moneyCell(row: AccountantMoney, key: (typeof LINES)[number]["key"]): string {
+  if (key === "feesCents") return row.feesComplete ? money(row.feesCents) : "Unavailable";
+  if (key === "netCents" && !row.feesComplete && row.revenueCents !== null && row.refundsCents !== null && row.expenseCents !== null) return "Partial";
+  const value = row[key];
+  return typeof value === "number" || value === null ? money(value) : "—";
+}
+
 function monthTitle(month: string): string {
   const [year, mon] = month.split("-").map(Number);
   if (!year || !mon) return month;
@@ -46,6 +53,7 @@ const LINES: { key: keyof AccountantMoney; label: string }[] = [
   { key: "depositsCollectedCents", label: "Deposits Collected" },
   { key: "depositsRefundedCents", label: "Deposits Refunded" },
   { key: "expenseCents", label: "Expenses" },
+  { key: "feesCents", label: "Fees" },
   { key: "netCents", label: "Net" },
 ];
 
@@ -80,7 +88,7 @@ export function AccountantExportPanel() {
         <div>
           <h2 className="text-lg font-semibold">Accountant Export</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            One calendar year in Eastern Time. Deposits are collected and refunded on their own lines, and they stay out of net.
+            One calendar year in Eastern Time. Deposits are collected and refunded on their own lines, and they stay out of net. Stripe fees are a cost on the net.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -135,12 +143,12 @@ export function AccountantExportPanel() {
                 {report.months.map((month) => (
                   <tr key={month.month} className="border-t border-border">
                     <td className="px-4 py-3 font-medium whitespace-nowrap">{monthTitle(month.month)}</td>
-                    {LINES.map((line) => <td key={line.key} className="px-4 py-3 text-right tabular-nums">{money(month[line.key] as number | null)}</td>)}
+                    {LINES.map((line) => <td key={line.key} className="px-4 py-3 text-right tabular-nums">{moneyCell(month, line.key)}</td>)}
                   </tr>
                 ))}
                 <tr className="border-t border-border bg-[#FAFAFB]">
                   <td className="px-4 py-3 font-medium">Year To Date</td>
-                  {LINES.map((line) => <td key={line.key} className="px-4 py-3 text-right tabular-nums font-medium">{money(report.ytd[line.key] as number | null)}</td>)}
+                  {LINES.map((line) => <td key={line.key} className="px-4 py-3 text-right tabular-nums font-medium">{moneyCell(report.ytd, line.key)}</td>)}
                 </tr>
               </tbody>
             </table>

@@ -1,3 +1,4 @@
+import type { OwnerFeeRead } from "./owner-pnl-fees";
 import {
   buildOwnerPnlMonth,
   categoryLabel,
@@ -11,7 +12,8 @@ import { decimalSourceCents } from "./unified-finance-live-mapping";
 /**
  * Year-to-date owner export. Each month is buildOwnerPnlMonth, so attributed
  * revenue, unattributed charges, deposit handling, refunds, category expenses,
- * and net match Monthly Owner P&L. This module does not call Stripe or the database.
+ * fees, and net match Monthly Owner P&L. Fee totals come from the caller.
+ * This module does not call Stripe or the database.
  * A receipt is a yes or no. The path is never copied onto the report.
  */
 
@@ -32,6 +34,8 @@ export type AccountantMoney = {
   depositsCollectedCents: number | null;
   depositsRefundedCents: number | null;
   expenseCents: number | null;
+  feesCents: number | null;
+  feesComplete: boolean;
   expenses: { category: string; label: string; cents: number }[];
   netCents: number | null;
 };
@@ -65,6 +69,7 @@ const MONEY_KEYS = [
   "depositsCollectedCents",
   "depositsRefundedCents",
   "expenseCents",
+  "feesCents",
   "netCents",
 ] as const;
 
@@ -91,9 +96,9 @@ function sumKey(months: AccountantMonthRow[], key: (typeof MONEY_KEYS)[number]):
   return Number.isSafeInteger(total) ? total : null;
 }
 
-function netOf(revenue: number | null, refunds: number | null, expenses: number | null): number | null {
-  if (revenue === null || refunds === null || expenses === null) return null;
-  const net = revenue - refunds - expenses;
+function netOf(revenue: number | null, refunds: number | null, expenses: number | null, fees: number | null): number | null {
+  if (revenue === null || refunds === null || expenses === null || fees === null) return null;
+  const net = revenue - refunds - expenses - fees;
   return Number.isSafeInteger(net) ? net : null;
 }
 
@@ -123,6 +128,8 @@ export function buildAccountantYear(input: {
   blankRefunds?: boolean;
   omitDetails?: boolean;
   warnings?: string[];
+  /** Omitted means each month has a complete fee cost of zero. */
+  feesByMonth?: Record<string, OwnerFeeRead>;
 }): AccountantYearReport | null {
   const months = monthsInYear(input.year, input.now);
   if (!months?.length) return null;
@@ -135,7 +142,8 @@ export function buildAccountantYear(input: {
   let refundsIncomplete = false;
   const rows: AccountantMonthRow[] = [];
   for (const month of months) {
-    const built = buildOwnerPnlMonth({ ...input.directory, month, charges: input.charges });
+    const feeRead = input.feesByMonth ? input.feesByMonth[month] ?? { ok: false as const } : undefined;
+    const built = buildOwnerPnlMonth({ ...input.directory, month, charges: input.charges, fees: feeRead });
     if (!built) return null;
     if (!built.revenueComplete) revenueIncomplete = true;
     if (!built.expensesComplete) expensesIncomplete = true;
@@ -147,6 +155,7 @@ export function buildAccountantYear(input: {
     const depositsRefundedCents = input.blankRefunds || !built.refundsComplete ? null : built.depositRefundsExcludedCents;
     const expenseCents = input.blankExpenses || !built.expensesComplete ? null : built.expenseCents;
     const expenses = input.blankExpenses || !built.expensesComplete ? [] : built.expenses;
+    const feesCents = built.feesComplete ? built.feesCents : null;
     rows.push({
       month,
       revenueCents,
@@ -155,14 +164,20 @@ export function buildAccountantYear(input: {
       depositsCollectedCents,
       depositsRefundedCents,
       expenseCents,
+      feesCents,
+      feesComplete: built.feesComplete,
       expenses,
-      netCents: netOf(revenueCents, refundsCents, expenseCents),
+      netCents: netOf(revenueCents, refundsCents, expenseCents, feesCents),
     });
   }
   if (!input.blankRevenue && revenueIncomplete) warnings.push("Revenue Is Incomplete. Amounts that depend on it are blank.");
   if (!input.blankExpenses && expensesIncomplete) warnings.push("Expenses Are Incomplete. Amounts that depend on them are blank.");
   if (!input.blankRefunds && refundsIncomplete) warnings.push("Refunds Are Incomplete. Amounts that depend on them are blank.");
+  if (rows.some((month) => !month.feesComplete && month.revenueCents !== null && month.refundsCents !== null && month.expenseCents !== null)) {
+    warnings.push("Stripe fees are Unavailable, so the net is Partial.");
+  }
   const expenseCents = sumKey(rows, "expenseCents");
+  const feesCents = sumKey(rows, "feesCents");
   const ytd: AccountantMoney = {
     revenueCents: sumKey(rows, "revenueCents"),
     unattributedCents: sumKey(rows, "unattributedCents"),
@@ -170,6 +185,8 @@ export function buildAccountantYear(input: {
     depositsCollectedCents: sumKey(rows, "depositsCollectedCents"),
     depositsRefundedCents: sumKey(rows, "depositsRefundedCents"),
     expenseCents,
+    feesCents,
+    feesComplete: rows.every((month) => month.feesComplete),
     expenses: expenseCents === null ? [] : yearCategories(rows),
     netCents: sumKey(rows, "netCents"),
   };
@@ -213,6 +230,15 @@ function detailLines(
   return lines.sort((a, b) => a.date.localeCompare(b.date) || a.vehicle.localeCompare(b.vehicle) || a.category.localeCompare(b.category) || a.description.localeCompare(b.description));
 }
 
+function feeCsv(row: AccountantMoney): string {
+  return row.feesComplete ? centsText(row.feesCents) : "Unavailable";
+}
+
+function netCsv(row: AccountantMoney): string {
+  if (!row.feesComplete && row.revenueCents !== null && row.refundsCents !== null && row.expenseCents !== null) return "Partial";
+  return centsText(row.netCents);
+}
+
 function centsText(cents: number | null): string {
   if (cents === null || !Number.isSafeInteger(cents)) return "";
   const sign = cents < 0 ? "-" : "";
@@ -241,7 +267,7 @@ export function accountantMonthlyCsv(report: AccountantYearReport): string {
     })();
   const header = [
     "Month", "Attributed Revenue", "Unattributed Charges", "Refunds", "Deposits Collected", "Deposits Refunded",
-    ...categories.map((row) => row.label), "Expenses", "Net",
+    ...categories.map((row) => row.label), "Expenses", "Fees", "Net",
   ];
   const line = (label: string, row: AccountantMoney) => [
     label,
@@ -252,7 +278,8 @@ export function accountantMonthlyCsv(report: AccountantYearReport): string {
     centsText(row.depositsRefundedCents),
     ...categories.map((category) => centsText(row.expenseCents === null ? null : row.expenses.find((item) => item.category === category.category)?.cents ?? 0)),
     centsText(row.expenseCents),
-    centsText(row.netCents),
+    feeCsv(row),
+    netCsv(row),
   ];
   const lines = [
     ["Year", report.year],

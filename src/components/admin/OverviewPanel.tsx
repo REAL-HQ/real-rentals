@@ -34,6 +34,8 @@ import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill, ReadinessMetri
 import { isHotProspect, compareReadiness, type ReadinessResult } from "@/lib/readiness";
 import { summarizeFleet, type FleetSummary } from "@/lib/fleet-summary";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
+import { MaintenanceDueTile } from "./MaintenanceLog";
+import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
 import {
   APPLICANT_WINDOW,
   type OverviewApplicantRow,
@@ -572,6 +574,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           tint={svc.overdue > 0 ? "red" : svc.due + svc.open + svc.conflict > 0 ? "amber" : undefined}
           badge={serviceAttention > 0 ? serviceAttention : undefined}
         />
+        {MAINTENANCE_LOG_ENABLED ? <MaintenanceDueTile /> : null}
       </div>
       {canSeeCollections ? <DocumentsExpiringChip /> : null}
 

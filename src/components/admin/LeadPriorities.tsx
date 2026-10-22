@@ -6,6 +6,7 @@ import { getLeadPriorities } from "@/lib/lead-priorities.functions";
 import { overdueAge, type LeadPrioritiesResult } from "@/lib/lead-priorities";
 import { fmtDate } from "@/lib/date-format";
 import { ContactStatusCell } from "./ContactStatusCell";
+import { LeadFollowUpDraft } from "./LeadFollowUpDraft";
 
 export default function LeadPriorities() {
   const load = useServerFn(getLeadPriorities);
@@ -133,6 +134,7 @@ export default function LeadPriorities() {
                     </div>
                     <p className="mt-2 text-sm font-medium">{lead.reason}</p>
                     <p className="mt-1 text-sm text-muted-foreground">{lead.action}</p>
+                    <LeadFollowUpDraft applicationId={lead.id} bucket={lead.bucket} />
                     {lead.contact_status_note && (
                       <p className="mt-2 break-words text-xs text-muted-foreground">
                         Latest contact note: “{lead.contact_status_note.slice(0, 240)}
