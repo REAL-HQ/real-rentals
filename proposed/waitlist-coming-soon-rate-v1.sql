@@ -29,6 +29,13 @@
 -- of any source in the last hour.
 --
 -- WAITLIST_CLAIM_ENABLED does not turn this on.
+--
+-- The index below is not concurrent, so building it locks writes on
+-- public.waitlist. Fail that lock after 5 seconds instead of waiting.
+-- Re-running this file replaces the same function, recreates the same
+-- trigger, and leaves an index that already exists.
+
+SET lock_timeout = '5s';
 
 CREATE OR REPLACE FUNCTION public.waitlist_coming_soon_email_limit()
 RETURNS trigger
