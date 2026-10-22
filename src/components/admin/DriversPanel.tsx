@@ -29,7 +29,17 @@ import {
 import { RecordedRentalCloseout } from "./RecordedRentalCloseout";
 import { RecordRentalDialog } from "./RecordRentalDialog";
 import { RECORD_RENTAL_CONTRACT_ENABLED } from "@/lib/record-rental-contract";
+import { END_RENTAL_PRESERVES_APPLICATION_ENABLED } from "@/lib/end-rental-preserves-application";
 import { updateApplicationLifecycle, type LifecyclePatch } from "@/lib/application-lifecycle.functions";
+import {
+  applicationFilterCount,
+  applicationStatusLabel,
+  applicationStatusMenu,
+  type ApplicationStatusEvent,
+  type ClosureReason,
+} from "@/lib/application-status";
+import { getApplicationStatusHistory, listDriverActiveSets } from "@/lib/application-status.functions";
+import { CloseApplicationDialog } from "./CloseApplicationDialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
@@ -276,18 +286,6 @@ function DocumentsStrip({
   );
 }
 
-const DRIVER_STATUSES = [
-  "new",
-  "reviewing",
-  "approved",
-  "active",
-  "suspended",
-  "declined",
-  "closed",
-] as const;
-// "active" is set only by activate_rental_tx when a rental really starts;
-// approval goes through approveApplication; neither is a generic status edit.
-const SELECTABLE_STATUSES = DRIVER_STATUSES.filter((s) => s !== "active" && s !== "approved");
 const DEPOSIT_STATUSES = ["not_paid", "partially_paid", "paid", "refunded"] as const;
 const PAYMENT_STATUSES = ["current", "late", "past_due", "collections"] as const;
 const CHECK_STATUSES = ["pending", "passed", "failed"] as const;
@@ -543,17 +541,20 @@ export function DriversPanel({
   const loadHolds = useServerFn(listWaitlistHolds);
   const holdFn = useServerFn(setWaitlistHold);
   const [held, setHeld] = useState<Set<string>>(new Set());
-  // Active Renter source of truth: drivers with a rentals row in status 'active'.
+  // Active filter: full rental, vehicle, payment and handover evidence.
+  // openRentals is only the installed rentals.status = 'active' set, so a
+  // stored Active with no rental still reads as Marked Active, No Rental.
   const [activeRenters, setActiveRenters] = useState<Set<string>>(new Set());
+  const [openRentals, setOpenRentals] = useState<Set<string>>(new Set());
+  const loadActiveSets = useServerFn(listDriverActiveSets);
   const refreshActiveRenters = useCallback(() => {
-    supabase
-      .from("rentals")
-      .select("application_id")
-      .eq("status", "active")
-      .then(({ data }) =>
-        setActiveRenters(new Set((data ?? []).map((r: any) => r.application_id).filter(Boolean))),
-      );
-  }, []);
+    loadActiveSets()
+      .then((sets) => {
+        setActiveRenters(new Set(sets.authoritativeIds));
+        setOpenRentals(new Set(sets.openRentalIds));
+      })
+      .catch(() => {});
+  }, [loadActiveSets]);
   useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters]);
   const loadFunnel = useServerFn(listApprovedNotRenting);
   const [funnel, setFunnel] = useState<ApprovedNotRentingResult | null>(null);
@@ -913,11 +914,17 @@ setDocCounts(requiredDocCounts(rows));
   }, [funnel, contactFilter, externalSearch]);
 
   const saveLifecycle = useServerFn(updateApplicationLifecycle);
+  const approveFromList = useServerFn(approveApplication);
+  const [closingId, setClosingId] = useState<string | null>(null);
+  const [closingBusy, setClosingBusy] = useState(false);
   function applySaved(id: string, patch: Partial<Application>) {
     setDrivers((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
     refreshActiveRenters();
   }
-  async function update(id: string, patch: Partial<Application>): Promise<boolean> {
+  async function update(
+    id: string,
+    patch: Partial<Application> & { closure_reason?: ClosureReason; closure_notes?: string | null },
+  ): Promise<boolean> {
     try {
       const saved = await saveLifecycle({ data: { id, patch: patch as LifecyclePatch } });
       applySaved(id, saved as Partial<Application>);
@@ -1094,7 +1101,8 @@ setDocCounts(requiredDocCounts(rows));
         onBack={() => setOpenId(null)}
         onUpdate={(p) => update(open.id, p)}
         onSaved={(p) => applySaved(open.id, p)}
-        hasActiveRental={activeRenters.has(open.id)}
+        hasActiveRental={openRentals.has(open.id)}
+        onCloseApplication={async (reason, notes) => update(open.id, { status: "closed", closure_reason: reason, closure_notes: notes })}
         onRentalStarted={() => {
           setDrivers((a) => a.map((x) => (x.id === open.id ? { ...x, status: "active" } : x)));
           refreshActiveRenters();
@@ -1120,16 +1128,10 @@ setDocCounts(requiredDocCounts(rows));
     active: "Active", suspended: "Suspended", declined: "Declined", closed: "Closed",
   };
   const FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active", "suspended", "declined", "closed"];
-  const filterCount = (s: string) =>
-    s === "waitlist"
-      ? waitlistCount == null
-        ? "…"
-        : waitlistCount + drivers.filter((a) => held.has(a.id)).length
-      : s === "all"
-        ? drivers.length
-        : s === "active"
-          ? drivers.filter((a) => activeRenters.has(a.id)).length
-          : drivers.filter((a) => a.status === s && !held.has(a.id)).length;
+  const filterCount = (s: string) => {
+    const count = applicationFilterCount(s, drivers, held, activeRenters, waitlistCount);
+    return count == null ? "…" : count;
+  };
   const expiryCounts = { expired: 0, expiring: 0, ok: 0, unknown: 0 };
   for (const row of docExpiry?.drivers ?? []) {
     if (row.status === "expired" || row.status === "expiring" || row.status === "ok" || row.status === "unknown") {
@@ -1161,6 +1163,19 @@ setDocCounts(requiredDocCounts(rows));
   return (
     <div className="max-lg:min-w-0">
       {deleteDialog}
+      {closingId ? (
+        <CloseApplicationDialog
+          busy={closingBusy}
+          onCancel={() => { if (!closingBusy) setClosingId(null); }}
+          onConfirm={(reason, notes) => {
+            const id = closingId;
+            setClosingBusy(true);
+            void update(id, { status: "closed", closure_reason: reason, closure_notes: notes })
+              .then((ok) => { if (ok) setClosingId(null); })
+              .finally(() => setClosingBusy(false));
+          }}
+        />
+      ) : null}
       {APPLICATION_DOC_GAPS_ENABLED === true && driversLoaded && canSeeSensitive ? (
         <ApplicationDocGaps canView={canSeeSensitive} result={docGaps} />
       ) : null}
@@ -1368,9 +1383,28 @@ setDocCounts(requiredDocCounts(rows));
                     >
                       <Select
                         value={a.status || ""}
-                        onValueChange={(status) => update(a.id, { status })}
+                        onValueChange={(status) => {
+                          if (status === "active") return;
+                          if (status === "approved") {
+                            void approveFromList({ data: { id: a.id } })
+                              .then((res) => {
+                                if (!res.ok) throw new Error(res.error ?? "Could not approve");
+                                applySaved(a.id, { status: "approved" });
+                                toast.success("Approved");
+                              })
+                              .catch((error) => {
+                                toast.error(error instanceof Error ? error.message : "Could not approve");
+                              });
+                            return;
+                          }
+                          if (status === "closed" && a.status !== "closed") {
+                            setClosingId(a.id);
+                            return;
+                          }
+                          void update(a.id, { status });
+                        }}
                       >
-                        <SelectTrigger className="h-7 w-auto min-w-[6rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden [&>span]:!inline-flex">
+                        <SelectTrigger aria-label="Application Status" className="h-7 w-auto min-w-[6rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden [&>span]:!inline-flex">
                           {held.has(a.id) ? (
                             <span
                               title={`Underlying stage: ${a.status ?? "—"}`}
@@ -1382,7 +1416,7 @@ setDocCounts(requiredDocCounts(rows));
                           ) : a.status ? (
                             activeRenters.has(a.id) ? (
                               <StatusPill status="active" caret />
-                            ) : a.status === "active" ? (
+                            ) : a.status === "active" && !openRentals.has(a.id) ? (
                               <span
                                 title="Marked Active, but no active rental exists. Status unchanged pending review."
                                 className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
@@ -1400,9 +1434,9 @@ setDocCounts(requiredDocCounts(rows));
                           )}
                         </SelectTrigger>
                         <SelectContent align="start" className="min-w-[10rem]">
-                          {SELECTABLE_STATUSES.map((s) => (
-                            <SelectItem key={s} value={s} className="capitalize text-[13px]">
-                              {s}
+                          {applicationStatusMenu(a.status).map((s) => (
+                            <SelectItem key={s.value} value={s.value} disabled={s.disabled} className="text-[13px]">
+                              {s.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1616,6 +1650,7 @@ function DriverDetail({
   canIssueCardLink,
   hasActiveRental,
   onRentalStarted,
+  onCloseApplication,
   canViewOnboarding = false,
   onboardingResult = null,
   onboardingFailed = false,
@@ -1637,6 +1672,7 @@ function DriverDetail({
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
+  onCloseApplication?: (reason: ClosureReason, notes: string | null) => Promise<boolean>;
   canViewOnboarding?: boolean;
   onboardingResult?: OnboardingChecklistResult | null;
   onboardingFailed?: boolean;
@@ -1680,6 +1716,23 @@ function DriverDetail({
   }
 
   const [interviewOpen, setInterviewOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [closeBusy, setCloseBusy] = useState(false);
+  const loadStatusHistory = useServerFn(getApplicationStatusHistory);
+  const [statusEvents, setStatusEvents] = useState<ApplicationStatusEvent[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    loadStatusHistory({ data: { applicationId: driver.id } })
+      .then((rows) => {
+        if (!cancelled) setStatusEvents(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setStatusEvents([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [driver.id, driver.status, loadStatusHistory]);
   // Controlled so the Documents strip and the readiness remedies can send the
   // operator straight to the tab that answers them.
   const [tab, setTab] = useState("overview");
@@ -1845,7 +1898,12 @@ function DriverDetail({
       if (res && res.ok === false) { toast.error(res.error ?? "Could not end the rental"); return; }
       toast.success("Rental ended — settle the deposit next");
       setDepositRentalId(activeRentalId);
-      onSaved({ status: "closed" });
+      // The installed end_rental_tx also closes the application. The proposed
+      // SQL leaves the application status alone; until it is installed the
+      // flag stays false and this screen matches the database.
+      if (END_RENTAL_PRESERVES_APPLICATION_ENABLED !== true) {
+        onSaved({ status: "closed" });
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not end the rental");
     }
@@ -1996,8 +2054,23 @@ function DriverDetail({
     push((driver as any).agreement_signed_at, "Agreement Signed");
     push((driver as any).pickup_at, "Vehicle Picked Up");
     push((driver as any).return_at, "Vehicle Returned");
+    for (const event of statusEvents) {
+      if (!event.at) continue;
+      const detail = [
+        event.action === "closed" ? event.reasonLabel : applicationStatusLabel(event.status),
+        event.notes,
+        event.actor,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      ev.push({
+        at: event.at,
+        label: event.action === "closed" ? "Application Closed" : "Application Reopened",
+        detail: detail || undefined,
+      });
+    }
     return ev.sort((a, b) => +new Date(b.at) - +new Date(a.at)).slice(0, 12);
-  }, [driver, screening, vaultDocs]);
+  }, [driver, screening, vaultDocs, statusEvents]);
 
   const sharedDriver =
     ONBOARDING_CHECKLIST_ENABLED === true &&
@@ -2504,10 +2577,23 @@ function DriverDetail({
                 <Card title="Status & Compliance" icon={<ShieldCheck className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     <SelField
-                      label="Driver Status"
+                      label="Application Status"
                       value={driver.status}
-                      options={[...new Set([driver.status, ...SELECTABLE_STATUSES])]}
-                      onChange={(v) => { if (v !== "active" && v !== "approved") onUpdate({ status: v }); }}
+                      options={applicationStatusMenu(driver.status).map((s) => s.value)}
+                      labels={Object.fromEntries(applicationStatusMenu(driver.status).map((s) => [s.value, s.label]))}
+                      disabledValues={applicationStatusMenu(driver.status).filter((s) => s.disabled).map((s) => s.value)}
+                      onChange={(v) => {
+                        if (v === "active") return;
+                        if (v === "approved") {
+                          void approveAndSend();
+                          return;
+                        }
+                        if (v === "closed" && driver.status !== "closed") {
+                          setCloseOpen(true);
+                          return;
+                        }
+                        onUpdate({ status: v });
+                      }}
                     />
                     <DerivedPayFields driverId={driver.id} />
                     <SelField
@@ -2727,6 +2813,20 @@ function DriverDetail({
 
       {recordCloseOpen && activeRentalId && RECORD_RENTAL_CONTRACT_ENABLED ? <RecordedRentalCloseout key={activeRentalId} rentalId={activeRentalId} onClose={()=>setRecordCloseOpen(false)} onSaved={()=>{setRecordCloseOpen(false);onRentalStarted?.();}}/> : null}
       {recordOpen && RECORD_RENTAL_CONTRACT_ENABLED ? <RecordRentalDialog key={driver.id} driver={driver} vehicles={vehicles} onClose={()=>setRecordOpen(false)} onRecorded={()=>{setRecordOpen(false);onRentalStarted?.();}}/> : null}
+      {closeOpen ? (
+        <CloseApplicationDialog
+          busy={closeBusy}
+          onCancel={() => { if (!closeBusy) setCloseOpen(false); }}
+          onConfirm={(reason, notes) => {
+            if (!onCloseApplication) return;
+            setCloseBusy(true);
+            void onCloseApplication(reason, notes)
+              .then((ok) => { if (ok) setCloseOpen(false); })
+              .finally(() => setCloseBusy(false));
+          }}
+        />
+      ) : null}
+
       {activateOpen ? (
         <ActivateRentalDialog
           driver={driver}
@@ -3028,24 +3128,28 @@ function SelField({
   label,
   value,
   options,
+  labels,
+  disabledValues,
   onChange,
 }: {
   label: string;
   value: string;
   options: string[];
+  labels?: Record<string, string>;
+  disabledValues?: string[];
   onChange: (v: string) => void;
 }) {
   return (
     <div className="bg-soft rounded-md px-3 py-2">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="h-8 bg-white text-foreground">
+        <SelectTrigger className="h-8 bg-white text-foreground" aria-label={label}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {options.map((o) => (
-            <SelectItem key={o} value={o}>
-              {o.replace(/_/g, " ")}
+            <SelectItem key={o} value={o} disabled={disabledValues?.includes(o)}>
+              {labels?.[o] ?? o.replace(/_/g, " ")}
             </SelectItem>
           ))}
         </SelectContent>
