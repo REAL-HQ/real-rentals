@@ -128,13 +128,13 @@ describe("trackingLandingPage", () => {
 
 describe("isCredentialTrackingPath", () => {
   it("matches the routes that carry reusable credentials", () => {
-    expect(isCredentialTrackingPath("/thank-you")).toBe(true);
-    expect(isCredentialTrackingPath("/thank-you/")).toBe(true);
+    expect(isCredentialTrackingPath("/thank-you")).toBe(false);
+    expect(isCredentialTrackingPath("/thank-you/")).toBe(false);
+    expect(isCredentialTrackingPath("/Thank-You")).toBe(false);
     expect(isCredentialTrackingPath("/login")).toBe(true);
     expect(isCredentialTrackingPath("/invite")).toBe(true);
     expect(isCredentialTrackingPath("/sign")).toBe(true);
     expect(isCredentialTrackingPath("/sign/raw-token")).toBe(true);
-    expect(isCredentialTrackingPath("/Thank-You")).toBe(true);
     expect(isCredentialTrackingPath("/SIGN/raw-token")).toBe(true);
     expect(isCredentialTrackingPath("/%73ign/raw-token")).toBe(true);
     expect(isCredentialTrackingPath("/card/app-id")).toBe(true);
@@ -185,13 +185,28 @@ describe("googleAdsBootstrap", () => {
     return { queued, scripts, history };
   }
 
+  it("loads the live Google tag on /thank-you without sending the token", () => {
+    const href = `${ORIGIN}/thank-you?t=resume-token&utm_source=google&gclid=abc123`;
+    const { queued, scripts } = run(href);
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0]?.async).toBe(true);
+    expect(scripts[0]?.src).toBe("https://www.googletagmanager.com/gtag/js?id=AW-18340435293");
+    const config = queued().find((call) => call[0] === "config");
+    expect(config?.[1]).toBe("AW-18340435293");
+    const page = new URL((config?.[2] as { page_location: string }).page_location);
+    expect(page.pathname).toBe("/thank-you");
+    expect(page.searchParams.get("gclid")).toBe("abc123");
+    expect(page.searchParams.get("utm_source")).toBe("google");
+    expect(page.searchParams.has("t")).toBe(false);
+    expect(page.href).not.toContain("resume-token");
+    expect(queued().some((call) => call[0] === "js")).toBe(true);
+  });
+
   it("does not load or configure the tag on credential routes", () => {
     for (const href of [
-      `${ORIGIN}/thank-you?t=resume-token`,
       `${ORIGIN}/login?signin=login-token`,
       `${ORIGIN}/invite?token=invite-token`,
       `${ORIGIN}/sign/esign-token`,
-      `${ORIGIN}/Thank-You?t=resume-token`,
       `${ORIGIN}/SIGN/esign-token`,
       `${ORIGIN}/%73ign/esign-token`,
       `${ORIGIN}/card/app-id?t=resume-token`,

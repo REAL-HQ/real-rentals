@@ -32,7 +32,6 @@ function normalizedPathname(pathname: string): string {
 export function isCredentialTrackingPath(pathname: string): boolean {
   const path = normalizedPathname(pathname);
   return (
-    path === "/thank-you" ||
     path === "/login" ||
     path === "/invite" ||
     path === "/sign" ||
@@ -75,8 +74,9 @@ export function trackingPagePath(href: string): string {
 }
 
 /**
- * Inline head snippet. Credential routes never load or configure the tag.
- * Every other route passes a sanitized page_location and page_referrer into
+ * Inline head snippet. /login, /invite, /sign, and /card never load the tag.
+ * /thank-you loads it, matching live, and every loaded route passes a
+ * sanitized page_location and page_referrer into
  * gtag('config'), including a cross-origin referrer. History changes
  * re-apply page_location with gtag('set') so a tag already loaded on a
  * marketing page cannot send a later client-side credential URL.
@@ -93,7 +93,7 @@ export const GOOGLE_ADS_BOOTSTRAP = `(function(){
     }
     function isCredentialTrackingPath(pathname) {
       var path = normalizedPathname(pathname);
-      return path === "/thank-you" || path === "/login" || path === "/invite" || path === "/sign" || path.indexOf("/sign/") === 0 || path === "/card" || path.indexOf("/card/") === 0;
+      return path === "/login" || path === "/invite" || path === "/sign" || path.indexOf("/sign/") === 0 || path === "/card" || path.indexOf("/card/") === 0;
     }
     function sanitizeTrackingUrl(raw) {
       var sensitive = ["t", "signin", "token", "code", "access_token", "refresh_token", "token_hash", "session_id", "claim"];

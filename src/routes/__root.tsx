@@ -144,8 +144,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  // Omit the snippet entirely on credential routes so the HTML never asks for
-  // gtag.js. Other pages still load it, with a sanitized page_location.
+  // /thank-you loads the same Google tag live uses. Credential routes
+  // (/login, /sign, /card, /invite) omit it so the HTML never asks for
+  // gtag.js. Every loaded page passes a sanitized page_location.
   const ads = isCredentialTrackingPath(pathname) ? null : (
     <script dangerouslySetInnerHTML={{ __html: GOOGLE_ADS_BOOTSTRAP }} />
   );
