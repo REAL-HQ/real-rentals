@@ -215,6 +215,10 @@ describe("shared Stripe reader", () => {
     expect(Object.isFrozen(charges)).toBe(true);
     expect(stripeMock.rawRequest).not.toHaveBeenCalled();
     expect(stripeMock.request).not.toHaveBeenCalled();
+    const reader = readFileSync("src/lib/stripe-reader.server.ts", "utf8");
+    expect(reader).toContain("export type ReadOnlyStripe");
+    expect(reader).toContain("): ReadOnlyStripe");
+    expect(reader).not.toContain("as unknown as Stripe");
   });
 
   it("sends every named reader through the read-only client", () => {
