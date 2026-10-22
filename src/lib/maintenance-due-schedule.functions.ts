@@ -1,17 +1,22 @@
 // Maintenance due for one vehicle, using the vehicle-service schedule
 // computation: company defaults, vehicle overrides, and last_done_on.
 // Last service is a completed record with performed_on. A schedule with no
-// history stays on the list as Unknown. The flag is checked before the role
-// lookup and before any read. No insert, update, delete, or new table.
-import { createServerFn } from "@tanstack/react-start";
+// history stays on the list as Unknown. The flag is refused before
+// authentication and before any read. No insert, update, delete, or new table.
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { MAINTENANCE_DUE_ENABLED } from "@/lib/maintenance-due";
+import { MAINTENANCE_DUE_ENABLED, businessToday } from "@/lib/maintenance-due";
 import { mergeSchedules, scheduleDue, withHistory, type ScheduleFact } from "@/lib/maintenance-schedule";
 import type { DueResult } from "@/lib/maintenance-rules";
 
 const DISABLED = "Maintenance Due is off";
 const LIMIT = 200;
+
+const refuseMaintenanceDueSchedule = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  if (!MAINTENANCE_DUE_ENABLED) throw new Error(DISABLED);
+  return next();
+});
 
 export type MaintenanceDueSchedule = ScheduleFact & { due: DueResult };
 
@@ -27,10 +32,9 @@ function capped<T>(rows: T[] | null): { rows: T[]; truncated: boolean } {
 }
 
 export const listMaintenanceDueSchedule = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([refuseMaintenanceDueSchedule, requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ vehicleId: z.string().uuid() }).strict().parse(input))
   .handler(async ({ data, context }): Promise<MaintenanceDueScheduleResult> => {
-    if (!MAINTENANCE_DUE_ENABLED) throw new Error(DISABLED);
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -68,7 +72,7 @@ export const listMaintenanceDueSchedule = createServerFn({ method: "POST" })
     const defaults = capped(defaultsQ.data);
     const schedules = capped(schedulesQ.data);
     const records = capped(recordsQ.data);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessToday();
     const currentMiles = vehicleQ.data?.current_odometer ?? null;
     const history = records.rows.map((row) => ({
       id: row.id,

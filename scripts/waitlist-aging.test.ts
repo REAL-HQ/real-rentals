@@ -64,9 +64,9 @@ test("the flag is one hard false and the read stays behind it", () => {
 
   assert.match(load, /count:\s*"exact"/);
   assert.match(load, /\.range\(/);
-  assert.match(load, /PAGE = 200/);
+  assert.match(load, /from "\.\/count-paged-read"/);
   assert.match(load, /ID_BATCH = 50/);
-  assert.match(load, /i \+= ID_BATCH/);
+  assert.match(read("src/lib/count-paged-read.ts"), /COUNTED_PAGE = 200/);
   assert.match(load, /\.eq\("status", "waiting"\)/);
   assert.match(load, /\.eq\("status", "notified"\)/);
   assert.match(load, /\.lte\("notified_at", notifiedThroughIso\(today\)\)/);

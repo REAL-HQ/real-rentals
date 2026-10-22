@@ -64,7 +64,8 @@ describe("application document gaps", () => {
     assert.match(load, /count: "exact"/);
     assert.match(load, /\.range\(from, to\)/);
     assert.match(load, /canonicalRequiredDoc/);
-    assert.match(load, /const ID_BATCH = 100/);
+    assert.match(load, /from "\.\/count-paged-read"/);
+    assert.match(read("src/lib/count-paged-read.ts"), /COUNTED_ID_BATCH = 100/);
     assert.doesNotMatch(load, /\.in\("category"/);
     assert.doesNotMatch(load, /\.limit\(/);
     assert.doesNotMatch(load, /proof_of_address|license_photo_url|insurance_doc_url|address/);

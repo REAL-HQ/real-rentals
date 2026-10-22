@@ -66,7 +66,8 @@ describe("document review aging", () => {
     assert.match(load, /count: "exact"/);
     assert.match(load, /\.range\(from, to\)/);
     assert.match(load, /canonicalRequiredDoc/);
-    assert.match(load, /const ID_BATCH = 100/);
+    assert.match(load, /from "\.\/count-paged-read"/);
+    assert.match(read("src/lib/count-paged-read.ts"), /COUNTED_ID_BATCH = 100/);
     assert.match(load, /\.is\("deleted_at", null\)/);
     assert.doesNotMatch(load, /\.in\("category"/);
     assert.doesNotMatch(load, /\.limit\(/);
@@ -398,6 +399,40 @@ describe("document review aging pages", () => {
     assert.equal(rows[0]?.name, "Ada Lovelace");
     assert.equal(rows.some((row) => row.id === "doc-1000"), false);
     assert.equal(rows[rows.length - 1]?.id, "doc-0999");
+  });
+
+  it("drops a soft-deleted applicant before the thousand-row cap", async () => {
+    const documents = Array.from({ length: 1000 }, (_, index) => ({
+      id: `gone-${String(index).padStart(4, "0")}`,
+      driver_id: "gone",
+      category: "license_front",
+      is_current: true,
+      review_status: "uploaded",
+      created_at: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+    }));
+    documents.push({
+      id: "live-doc",
+      driver_id: "ada",
+      category: "license_front",
+      is_current: true,
+      review_status: "uploaded",
+      created_at: "2026-02-01T00:00:00.000Z",
+    });
+    const result = await loadDocumentReviewAging(
+      tableAdmin({
+        documents,
+        applications: [
+          { id: "ada", full_name: "Ada Lovelace", deleted_at: null },
+          { id: "gone", full_name: "Gone Driver", deleted_at: "2026-03-02T00:00:00.000Z" },
+        ],
+      }),
+      "2026-06-01",
+    );
+    assert.equal(result.failed, false);
+    assert.equal(result.truncated, false);
+    assert.equal(result.categories[0]?.count, 1);
+    assert.equal(result.categories[0]?.rows[0]?.id, "live-doc");
+    assert.equal(result.categories[0]?.rows[0]?.name, "Ada Lovelace");
   });
 
   it("keeps every application id list at or under 100 and counts a trimmed category", async () => {

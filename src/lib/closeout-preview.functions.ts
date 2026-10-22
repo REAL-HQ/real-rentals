@@ -1,7 +1,7 @@
 // Read-only rental closeout preview. Owners and managers only.
 // The flag is checked before the role lookup and before any read.
 // No insert, update, delete, deposit settlement, or Stripe call.
-import { createServerFn } from "@tanstack/react-start";
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { CLOSEOUT_PREVIEW_ENABLED, showsCloseoutPreview } from "@/lib/closeout-preview-flag";
@@ -25,8 +25,13 @@ async function rowsOf<T>(
   }
 }
 
+const closeoutPreviewGate = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  if (!CLOSEOUT_PREVIEW_ENABLED) throw new Error("Closeout Preview is off");
+  return next();
+});
+
 export const getRentalCloseoutPreview = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([closeoutPreviewGate, requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ rentalId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     if (!CLOSEOUT_PREVIEW_ENABLED) throw new Error("Closeout Preview is off");
