@@ -4,6 +4,8 @@ import { StripeCollections } from "./StripeCollections";
 import { OVERVIEW_TODAY_ENABLED } from "@/lib/overview-today-flag";
 import LeadPriorities from "./LeadPriorities";
 import OverviewToday from "./OverviewToday";
+import { BookingFollowupSlot } from "./BookingFollowupSlot";
+import { BookingConversion } from "./BookingConversion";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
@@ -351,7 +353,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       const q = (r: DayRange) =>
         supabase
           .from("payments")
-          .select("net_collected, stripe_payment_intent_id", { count: "exact" })
+          .select("net_collected, stripe_payment_intent_id, stripe_invoice_id, failure_reason", { count: "exact" })
           .in("status", ["paid", "refunded"])
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", r.from)
@@ -444,6 +446,8 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       {OVERVIEW_TODAY_ENABLED && canSeeCollections && <OverviewToday />}
 
       <LeadPriorities isManager={canSeeCollections} />
+      <BookingFollowupSlot />
+      <BookingConversion canView={canSeeCollections} />
 
       {/* Priority strip — who is worth calling first, above everything else.
           Absent entirely when there is nobody, rather than an empty module.

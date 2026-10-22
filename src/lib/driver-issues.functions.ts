@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import {
@@ -10,6 +11,7 @@ import {
   pinIssues,
   type IssueIncidentSeed,
 } from "@/lib/driver-issues";
+import { DRIVER_NOTIFICATIONS_ENABLED } from "@/lib/driver-notifications";
 
 // Manager inbox for public.issues.
 //
@@ -21,6 +23,34 @@ import {
 async function gate(userId: string) {
   const { requireManager } = await import("@/lib/roles.server");
   return requireManager(userId);
+}
+
+/** Workers keep the notice alive via waitUntil. Other runtimes wait at most 3s. */
+function noticeWaitUntil(context: unknown): ((promise: Promise<unknown>) => void) | undefined {
+  const fromContext = (context as { waitUntil?: (promise: Promise<unknown>) => void }).waitUntil;
+  if (typeof fromContext === "function") return fromContext;
+  try {
+    const request = getRequest() as { waitUntil?: (promise: Promise<unknown>) => void };
+    return typeof request?.waitUntil === "function" ? request.waitUntil.bind(request) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Clears the 3s timer, and aborts the notice so a 5s email plus a 5s SMS cannot continue. */
+async function boundedNotice(notice: Promise<unknown>, controller: AbortController): Promise<void> {
+  const timer = setTimeout(() => controller.abort(), 3000);
+  try {
+    await Promise.race([
+      notice,
+      new Promise<void>((resolve) => {
+        if (controller.signal.aborted) resolve();
+        else controller.signal.addEventListener("abort", () => resolve(), { once: true });
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const CLOSED = ["resolved", "closed"] as const;
@@ -164,6 +194,22 @@ export const updateDriverIssueStatus = createServerFn({ method: "POST" })
       entityId: data.id,
       metadata: { from: existing.status, to: data.status },
     });
+    if (DRIVER_NOTIFICATIONS_ENABLED === true) {
+      const waitUntil = noticeWaitUntil(context);
+      // No waitUntil: abort at 3s so email (5s) plus SMS (5s) cannot outlive the handler.
+      const controller = waitUntil ? undefined : new AbortController();
+      const notice = (async () => {
+        try {
+          const { notifyIssueStatusChanged } = await import("@/lib/driver-notifications.server");
+          await notifyIssueStatusChanged(data.id, controller?.signal);
+        } catch (err) {
+          if (controller?.signal.aborted) return;
+          console.error("[driver-notifications] issue_status", err);
+        }
+      })();
+      if (waitUntil) waitUntil(notice);
+      else await boundedNotice(notice, controller!);
+    }
     return { ok: true, status: data.status };
   });
 
