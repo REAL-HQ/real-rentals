@@ -19,8 +19,8 @@
 --
 -- The alter locks public.applications. Fail that lock after 5 seconds
 -- instead of waiting. Re-running this file keeps the same two columns.
--- Undo is proposed/rollback/driver-doc-expiry-tnc.sql. #232 step 1 is a
--- different file with a 2 second lock timeout. Install one copy.
+-- Undo is proposed/rollback/driver-doc-expiry-tnc.sql.
+-- This is the only install for these dates. Pull request 232 does not add them.
 
 -- Session setting, so the same connection can show it after this file.
 -- The following transaction keeps the check and the alter together.
