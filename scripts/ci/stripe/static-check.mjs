@@ -72,6 +72,10 @@ function main() {
   const release = assertStripeRelease(read);
   for (const message of release.messages) check(true, message);
   const assets = new URL('.output/public/assets/', repoRoot);
+  if (!fs.existsSync(assets)) {
+    console.error('run the build first');
+    process.exit(1);
+  }
   const files = fs.readdirSync(assets).filter(f => f.endsWith('.js'));
   check(files.length > 0, 'actual client bundles exist');
   const bundles = files.map(f => fs.readFileSync(new URL(f, assets), 'utf8')).join('\n');
