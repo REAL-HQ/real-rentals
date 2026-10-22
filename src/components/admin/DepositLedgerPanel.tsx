@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { getDepositLedger } from "@/lib/deposit-ledger.functions";
-import { DEPOSIT_LEDGER_OFF } from "@/lib/deposit-ledger-flag";
+import { DEPOSIT_LEDGER_OFF, DEPOSIT_RETURNS_DUE_ENABLED, DEPOSIT_RETURNS_DUE_OFF } from "@/lib/deposit-ledger-flag";
 import { DEPOSIT_STATE_LABEL, STRIPE_CHECK_UNAVAILABLE, depositLedgerToCsv, type DepositLedgerReport } from "@/lib/deposit-ledger";
 
 /**
@@ -17,10 +17,12 @@ const money = (cents: number | null) => (cents == null ? "—" : (cents / 100).t
 
 export function DepositLedgerPanel() {
   const read = useServerFn(getDepositLedger);
+  const [closedOnly, setClosedOnly] = useState(false);
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   useEffect(() => {
     let cancelled = false;
-    void read({ data: undefined })
+    const data = DEPOSIT_RETURNS_DUE_ENABLED && closedOnly ? { closedOnly: true } : undefined;
+    void read({ data })
       .then((result) => {
         if (cancelled) return;
         if (result.status === "unavailable") setLoad({ kind: "unavailable", reason: result.reason });
@@ -29,12 +31,13 @@ export function DepositLedgerPanel() {
       .catch((error: unknown) => {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : "";
-        setLoad({ kind: "unavailable", reason: message === DEPOSIT_LEDGER_OFF ? DEPOSIT_LEDGER_OFF : "Deposit Ledger could not be loaded" });
+        const reason = message === DEPOSIT_LEDGER_OFF || message === DEPOSIT_RETURNS_DUE_OFF ? message : "Deposit Ledger could not be loaded";
+        setLoad({ kind: "unavailable", reason });
       });
     return () => {
       cancelled = true;
     };
-  }, [read]);
+  }, [read, closedOnly]);
 
   return (
     <div className="space-y-6">
@@ -45,11 +48,26 @@ export function DepositLedgerPanel() {
             Security deposits by renter. Deposits held and refunds due in the next 7 days are Eastern Time totals of what remains. Stripe captured and Stripe refunded are a read-only cross-check. A difference is evidence only. This screen does not refund a deposit.
           </p>
         </div>
-        {load.kind === "ready" && load.report.warnings.length === 0 && load.report.heldCents != null && (
-          <button type="button" onClick={() => downloadCsv(load.report)} className="rounded-md border px-3 py-1.5 text-[12px] font-medium">
-            Download CSV
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {DEPOSIT_RETURNS_DUE_ENABLED && (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={closedOnly}
+                onChange={(event) => {
+                  setLoad({ kind: "loading" });
+                  setClosedOnly(event.target.checked);
+                }}
+              />
+              Closed Rentals Only
+            </label>
+          )}
+          {load.kind === "ready" && load.report.warnings.length === 0 && load.report.heldCents != null && (
+            <button type="button" onClick={() => downloadCsv(load.report)} className="rounded-md border px-3 py-1.5 text-[12px] font-medium">
+              Download CSV
+            </button>
+          )}
+        </div>
       </div>
       {load.kind === "loading" && <p className="text-sm text-muted-foreground">Loading Deposit Ledger…</p>}
       {load.kind === "unavailable" && <p className="text-sm text-muted-foreground">{load.reason}</p>}
@@ -84,7 +102,7 @@ function Report({ report }: { report: DepositLedgerReport }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-muted-foreground">
-                {["Renter", "Vehicle", "Rental Status", "Expected", "Collected", "State", "Stripe Captured", "Stripe Refunded", "Evidence"].map((head) => (
+                {heads().map((head) => (
                   <th key={head} className="py-2 pr-3 font-medium">{head}</th>
                 ))}
               </tr>
@@ -98,6 +116,7 @@ function Report({ report }: { report: DepositLedgerReport }) {
                   <td className="py-2 pr-3">{money(row.expectedCents)}</td>
                   <td className="py-2 pr-3">{money(row.collectedCents)}</td>
                   <td className="py-2 pr-3">{DEPOSIT_STATE_LABEL[row.state]}</td>
+                  {DEPOSIT_RETURNS_DUE_ENABLED && <td className="py-2 pr-3">{row.daysSinceClose == null ? "—" : String(row.daysSinceClose)}</td>}
                   <td className="py-2 pr-3">{money(row.stripeCapturedCents)}</td>
                   <td className="py-2 pr-3">{money(row.stripeRefundedCents)}</td>
                   <td className="py-2 pr-3">{row.evidence.length ? row.evidence.join(" ") : "—"}</td>
@@ -117,6 +136,21 @@ function Report({ report }: { report: DepositLedgerReport }) {
   );
 }
 
+function heads(): string[] {
+  return [
+    "Renter",
+    "Vehicle",
+    "Rental Status",
+    "Expected",
+    "Collected",
+    "State",
+    ...(DEPOSIT_RETURNS_DUE_ENABLED ? ["Days Since Close"] : []),
+    "Stripe Captured",
+    "Stripe Refunded",
+    "Evidence",
+  ];
+}
+
 function Total({ label, cents, detail }: { label: string; cents: number; detail?: string }) {
   return (
     <section className="rounded-md border px-4 py-3">
@@ -128,7 +162,7 @@ function Total({ label, cents, detail }: { label: string; cents: number; detail?
 }
 
 function downloadCsv(report: DepositLedgerReport) {
-  const blob = new Blob([depositLedgerToCsv(report)], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob([depositLedgerToCsv(report, DEPOSIT_RETURNS_DUE_ENABLED)], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
