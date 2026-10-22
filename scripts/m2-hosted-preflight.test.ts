@@ -115,9 +115,11 @@ const bypasses = [
   "SELECT to_jsonb(d) FROM public.app_secrets \"d\" WHERE EXISTS (SELECT 1 FROM public.documents d)",
   "SELECT to_jsonb(d) FROM public.app_secrets AS \"d\" WHERE EXISTS (SELECT 1 FROM public.documents d)",
   "SELECT setconfig FROM pg_catalog.pg_db_role_setting",
+  "SELECT * FROM pg_catalog.pg_db_role_setting",
   "SELECT * FROM pg_catalog.pg_settings",
   "SELECT query FROM pg_catalog.pg_stat_activity",
   "SELECT rolpassword FROM pg_catalog.pg_authid",
+  "SELECT * FROM pg_catalog.pg_authid",
   "SELECT rolpassword FROM pg_catalog.pg_roles",
   "SELECT * FROM pg_catalog.pg_roles",
 ];
