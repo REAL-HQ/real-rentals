@@ -1,16 +1,16 @@
 # Owner approval: M2 and M3
 
-Nothing on this page has been run on production. Pull request 190 is `fd402d5c`. Pull request 232 is `69a2001d`. Both stay drafts. The switches that turn new screens on stay off. The preflight-guard re-review passed. About 65 attack cases found no working bypass.
+Nothing on this page has been run on production. Pull request 190 is `fd402d5c`. Pull request 232 is `a1f3e346`. Both stay drafts. The switches that turn new screens on stay off. The preflight-guard re-review passed. About 65 attack cases found no working bypass.
 
 ## What each migration installs
 
 M2 is 29 database steps. It records who may approve a renter, record a rental, swap a car, extend a rental, and keep a signed agreement. It stores a fingerprint of each current license photo from the file the server downloaded. It adds the return-checklist tables. It does not turn those features on.
 
-M3 is two steps. The first adds two empty dates: when the Uber approval expires, and when the Lyft approval expires. Existing applications are not rewritten. The second stops the Coming Soon waitlist at five signups for the same email in one hour. That limit starts when the step is saved. It does not store a claim token.
+M3 is one file. It stops the Coming Soon waitlist at five signups for the same email in one hour. That limit starts when the file is saved. It does not store a claim token. The Uber and Lyft dates are not in that file. They are pull request 226 (`30703b01`), one file and one undo.
 
 ## What changes for users
 
-Nothing visible. Approve, signing, and the rest of the live app stay as they are while every switch stays off. Staff identity check, fingerprints on new uploads, vehicle swap, and rental extend wait for a later approval. The waitlist limit starts only when M3 step 2 is saved: a sixth signup from the same email in one hour is refused.
+Nothing visible. Approve, signing, and the rest of the live app stay as they are while every switch stays off. Staff identity check, fingerprints on new uploads, vehicle swap, and rental extend wait for a later approval. The waitlist limit starts only when the M3 file is saved: a sixth signup from the same email in one hour is refused.
 
 ## Who runs what
 
@@ -22,15 +22,15 @@ You run each database file in Lovable, one file at a time, after a backup. A per
 4. You run M2 steps 1 and 2. Each check must say true.
 5. Stop. The service_role holder runs a dry-run, which does not download, then `--write`. You run `proposed/backfill-document-content-sha.sql` in Lovable. Before step 3, `--write` must show `missing_file=0` and `mismatched=0`, and the report must show `missing=0` and `mismatched=0`. A dry-run `mismatched=0` is not that gate.
 6. You run M2 steps 3 through 29. Do not run the agreement-evidence file again after the agreement-contract file.
-7. You run the M3 preflight, then M3 step 1, then M3 step 2.
+7. You run the M3 preflight, then the one M3 file, the waitlist limit. The Uber and Lyft dates are `proposed/driver-doc-expiry-tnc.sql` on pull request 226. Do not run a date file from pull request 232.
 
 Do M2 first unless you want the waitlist limit first. File lists: `proposed/HOSTED-INSTALL.md` and, on pull request 232, `proposed/m3/HOSTED-INSTALL.md`.
 
 ## How long
 
-On an empty local database the M2 rehearsal, including every check and a full undo, finished in about 11 seconds on `3f5b798a`. The M3 rehearsal exited 0 on `cb9fbbf9` and finished in about 2 seconds locally. `fd402d5c` and `69a2001d` add the refused star reads and do not change those install files. Each install file is one short transaction. The backfill downloads one file per current license photo. A local scratch run of about 1,000 files finished in 0.7 seconds. That is not a production window. If a file errors, stop.
+On an empty local database the M2 rehearsal, including every check and a full undo, finished in about 11 seconds on `3f5b798a`. The M3 rehearsal exited 0 on `a1f3e346` and finished in about 1 second locally. `fd402d5c` adds the refused star reads and does not change the M2 install files. Each install file is one short transaction. The backfill downloads one file per current license photo. A local scratch run of about 1,000 files finished in 0.7 seconds. That is not a production window. If a file errors, stop.
 
-M2 succeeded when all 29 checks said true and the preflight printed `checklist stops=0` (246 checks locally). M3 succeeded when both checks said true and the preflight printed `checklist stops=0 checks=18`.
+M2 succeeded when all 29 checks said true and the preflight printed `checklist stops=0` (246 checks locally). M3 succeeded when its check said true and the preflight printed `checklist stops=0 checks=19`.
 
 ## Undo
 
@@ -49,7 +49,7 @@ Use an undo only when that step saved and then failed its check. A file that err
 
 The backfill undo is not an install step. The table owner runs `proposed/rollback/backfill-content-sha.sql`. It clears the document fingerprint, deletes the binding, and removes `user_metadata.sha256`. It does not put back a client `content_sha256` key. `service_role` cannot delete the binding.
 
-M3: `proposed/m3-rollback/01-tnc-approval-expiry.sql`, then `proposed/m3-rollback/02-waitlist-coming-soon-rate.sql`.
+M3 undo: `proposed/m3-rollback/02-waitlist-coming-soon-rate.sql` on pull request 232. Uber and Lyft dates undo: `proposed/rollback/driver-doc-expiry-tnc.sql` on pull request 226.
 
 ## Risks
 
