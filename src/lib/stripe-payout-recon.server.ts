@@ -18,7 +18,7 @@ import type { PayoutReconStripeRead } from "./stripe-payout-recon-read.server";
  * Stripe is the caller's list. A Stripe failure is returned before the database is read.
  */
 
-export type PayoutReconResponse = { status: "ready"; report: PayoutReconReport };
+export type PayoutReconResponse = { status: "disabled" } | { status: "ready"; report: PayoutReconReport };
 export type PayoutReconDirectory = {
   applications: ReconApplication[];
   payments: ReconPayment[];
@@ -40,7 +40,7 @@ export async function runPayoutRecon(input: {
   const window = payoutReconWindow(input.now);
   if (!window) return { status: "ready", report: unavailablePayoutRecon(null) };
   const stripe = await input.readStripe(window);
-  if (!stripe.ok) return { status: "ready", report: unavailablePayoutRecon(window) };
+  if (!stripe.ok) return { status: "ready", report: unavailablePayoutRecon(window, stripe.capped ? "capped" : "unavailable") };
   const loaded = await input.load();
   if (!loaded.ok) {
     return {
@@ -48,7 +48,7 @@ export async function runPayoutRecon(input: {
       report: { from: window.from, through: window.through, stripeCheck: "ready", directory: "unavailable", payouts: [], paidNotInPayout: [] },
     };
   }
-  return { status: "ready", report: buildPayoutRecon({ window, payouts: stripe.payouts, ...loaded.directory }) };
+  return { status: "ready", report: buildPayoutRecon({ window, payouts: stripe.payouts, invoiceLinks: stripe.invoiceLinks, ...loaded.directory }) };
 }
 
 type QueryResult = { data: Array<Record<string, unknown>> | null; error: { message: string } | null };
