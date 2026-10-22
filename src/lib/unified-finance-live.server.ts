@@ -196,7 +196,7 @@ async function readVehicleSection(
         return query;
       }, signal),
       readStable(async (cursor) => {
-        let query = supabase.from("vehicle_expenses").select("id,vehicle_id,amount,incurred_on").order("id", { ascending: true }).limit(PAGE);
+        let query = supabase.from("vehicle_expenses").select("id,vehicle_id,amount,incurred_on,maintenance_record_id").order("id", { ascending: true }).limit(PAGE);
         if (cursor) query = query.gt("id", cursor);
         if (signal) query = query.abortSignal(signal);
         return query;
@@ -261,11 +261,12 @@ function money(value: unknown): string | number | null {
 function mapPayment(row: { id: string; vehicle_id: string | null; status: string; type: string; net_collected: number | null; paid_date: string | null; due_date: string | null }): ProfitPayment {
   return { vehicleId: text(row.vehicle_id), status: text(row.status), type: text(row.type), netCollected: money(row.net_collected), paidDate: text(row.paid_date), dueDate: text(row.due_date) };
 }
-function mapExpense(row: { id: string; vehicle_id: string; amount: number; incurred_on: string }): ProfitExpense {
-  return { vehicleId: text(row.vehicle_id), amount: money(row.amount), incurredOn: text(row.incurred_on) };
+function mapExpense(row: { id: string; vehicle_id: string; amount: number; incurred_on: string; maintenance_record_id: string | null }): ProfitExpense {
+  return { vehicleId: text(row.vehicle_id), amount: money(row.amount), incurredOn: text(row.incurred_on), maintenanceRecordId: text(row.maintenance_record_id) };
 }
 function mapMaintenance(row: { id: string; vehicle_id: string; company_share: number; total_cost: number; performed_on: string | null; completed_at: string | null; created_at: string }): ProfitMaintenance {
   return {
+    id: row.id,
     vehicleId: text(row.vehicle_id),
     companyShare: money(row.company_share),
     totalCost: money(row.total_cost),

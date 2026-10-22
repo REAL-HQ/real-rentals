@@ -282,9 +282,9 @@ it("reads a dispute, a decline, and a past_due subscription without calling a wr
   ]);
   expect(seen).toEqual(["disputes", "charges"]);
   const stripe = createReadOnlyStripe("live", { cache: true });
-  expect(() => stripe.disputes.update("dp_1", {})).toThrow("Stripe reader refuses disputes.update");
-  expect(() => stripe.charges.create({ amount: 1 })).toThrow("Stripe reader refuses charges.create");
-  expect(() => stripe.paymentIntents.confirm("pi_1")).toThrow("Stripe reader refuses paymentIntents.confirm");
+  expect((stripe.disputes as unknown as { update?: unknown }).update).toBeUndefined();
+  expect((stripe.charges as unknown as { create?: unknown }).create).toBeUndefined();
+  expect((stripe.paymentIntents as unknown as { confirm?: unknown }).confirm).toBeUndefined();
   expect(stripeMock.update).not.toHaveBeenCalled();
   expect(stripeMock.create).not.toHaveBeenCalled();
   expect(stripeMock.confirm).not.toHaveBeenCalled();
