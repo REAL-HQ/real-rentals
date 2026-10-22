@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { createClient } from '@supabase/supabase-js';
 import { type StripeEnv, verifyWebhook, createStripeClient } from '@/lib/stripe.server';
 import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail } from '@/lib/email.server';
+import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatched';
 
 let _supabase: ReturnType<typeof createClient> | null = null;
 let webhookAdmin: any = null;
@@ -110,6 +111,57 @@ function must<T extends { error: any }>(res: T): T {
 
 function failureReasonStillSet(value: unknown): boolean {
   return typeof value === 'string' && value.trim() !== '';
+}
+
+async function customerLinked(admin: any, customerId: string | null): Promise<boolean> {
+  if (!customerId) return false;
+  const rental = await admin.from('rentals').select('id').eq('stripe_customer_id', customerId).limit(1);
+  if (rental.error) throw new Error(rental.error.message);
+  if (rental.data?.length) return true;
+  const application = await admin.from('applications').select('id').eq('stripe_customer_id', customerId).limit(1);
+  if (application.error) throw new Error(application.error.message);
+  return !!application.data?.length;
+}
+
+/** A log line must not turn a delivered event into a retry. */
+async function warnUnmatchedInvoice(admin: any, invoice: any, status: 'paid' | 'failed', subscriptionId: string | null) {
+  try {
+    const customerId = customerIdOf(invoice);
+    if (await customerLinked(admin, customerId)) return;
+    const raw = status === 'paid'
+      ? Number(invoice?.amount_paid ?? invoice?.amount_due ?? 0)
+      : Number(invoice?.amount_due ?? invoice?.amount_paid ?? 0);
+    console.warn(formatUnmatchedWarn({
+      invoiceId: stripeId(invoice?.id),
+      subscriptionId,
+      customerId,
+      amountCents: Number.isFinite(raw) ? Math.round(raw) : null,
+      status,
+    }));
+  } catch {
+    // Logging reads the directory. A down database, or a console that throws,
+    // still leaves the event delivered.
+  }
+}
+
+/**
+ * Kept so a payment-intent log cannot fail the request. The payment-intent
+ * handler does not call it: that extra warning is not part of the base flow.
+ */
+export async function warnUnmatchedPayment(admin: any, pi: any, status: 'paid' | 'failed') {
+  try {
+    const customerId = customerIdOf(pi);
+    if (await customerLinked(admin, customerId)) return;
+    const raw = Number(pi?.amount ?? 0);
+    console.warn(formatUnmatchedWarn({
+      paymentIntentId: stripeId(pi?.id),
+      customerId,
+      amountCents: Number.isFinite(raw) ? Math.round(raw) : null,
+      status,
+    }));
+  } catch {
+    // Same rule as the invoice log.
+  }
 }
 
 async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed') {
@@ -233,15 +285,23 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
 
 async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed') {
   const admin: any = getSupabase();
-  const subId = typeof invoice.subscription === 'string' ? invoice.subscription
+  const rawSub = typeof invoice.subscription === 'string' ? invoice.subscription
     : invoice.subscription?.id ?? invoice.parent?.subscription_details?.subscription;
-  if (!subId) return;
-  const { data: rental } = await admin
+  const subscriptionId = typeof rawSub === 'string' ? rawSub : null;
+  if (!subscriptionId) {
+    await warnUnmatchedInvoice(admin, invoice, status, null);
+    return;
+  }
+  const rentalResult = await admin
     .from('rentals')
     .select('id, application_id, vehicle_id')
-    .eq('stripe_subscription_id', subId)
+    .eq('stripe_subscription_id', subscriptionId)
     .maybeSingle();
-  if (!rental) return;
+  if (rentalResult.error || !rentalResult.data) {
+    if (!rentalResult.error) await warnUnmatchedInvoice(admin, invoice, status, subscriptionId);
+    return;
+  }
+  const rental = rentalResult.data;
 
   // The week's rent is owed whether or not the card worked.
   const owed = Number(invoice.amount_due ?? invoice.amount_paid ?? 0) / 100;
@@ -260,7 +320,7 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     status: 'pending',
     due_date: invoice.period_start ? new Date(invoice.period_start * 1000).toISOString().slice(0, 10) : today(),
     stripe_invoice_id: invoice.id,
-    stripe_subscription_id: subId,
+    stripe_subscription_id: subscriptionId,
   }));
 
   const patch = status === 'paid'
@@ -282,7 +342,7 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
       must(await admin.from('payments').update({
         failure_reason: null,
         stripe_invoice_id: invoice.id,
-        stripe_subscription_id: subId,
+        stripe_subscription_id: subscriptionId,
       }).eq('stripe_invoice_id', invoice.id).eq('status', 'paid'));
     }
     return;
@@ -391,7 +451,11 @@ async function handleVerifiedPaymentEvent(event: { type: string; data: { object:
   }
 }
 
-/** Dispatch a verified event. Tests pass a mocked database; the route passes null. */
+/**
+ * One dispatch for a verified event. Tests pass a mocked database; the route
+ * passes null and uses the service client. Throws become 400, matching the
+ * route. A caught unmatched log stays 200.
+ */
 export async function postVerifiedPaymentWebhook(
   event: { type: string; data: { object: any } },
   admin: any,
