@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Car, Repeat } from "lucide-react";
 import { RecordNumber } from "./RecordNumber";
+import { ReplacementAgreement } from "./ReplacementAgreement";
 import { SWAP_ENABLED, SWAP_REASONS } from "@/lib/record-numbers";
 import { fmtDate } from "@/lib/date-format";
 import {
@@ -36,6 +37,8 @@ export function BookingVehicleHistory({
 }) {
   const load = useServerFn(listAssignmentHistory);
   const [entries, setEntries] = useState<AssignmentHistoryEntry[]>([]);
+  const [ready, setReady] = useState<boolean | null>(null);
+  const [failed, setFailed] = useState(false);
   const [swapOpen, setSwapOpen] = useState(false);
   const open = entries.find((e) => e.status === "open" || e.end == null);
 
@@ -44,10 +47,16 @@ export function BookingVehicleHistory({
     let cancelled = false;
     void load({ data: { rentalId: rentalId ?? null, vehicleId: vehicleId ?? null } })
       .then((result) => {
-        if (!cancelled) setEntries(result.ready ? result.entries : []);
+        if (cancelled) return;
+        setFailed(false);
+        setReady(result.ready);
+        setEntries(result.ready ? result.entries : []);
       })
       .catch(() => {
-        if (!cancelled) setEntries([]);
+        if (cancelled) return;
+        setFailed(true);
+        setReady(null);
+        setEntries([]);
       });
     return () => {
       cancelled = true;
@@ -57,7 +66,17 @@ export function BookingVehicleHistory({
   return (
     <div data-testid="vehicle-timeline">
       <div className="flex items-center justify-between gap-2">
-        {entries.length === 0 ? (
+        {!SWAP_ENABLED ? (
+          entries.length === 0 ? (
+            <p className="text-[13px] text-[#55555E]">No vehicle changes recorded.</p>
+          ) : (
+            <span />
+          )
+        ) : failed ? (
+          <p className="text-[13px] text-[#55555E]">Assignment history could not be loaded.</p>
+        ) : ready === false ? (
+          <p className="text-[13px] text-[#55555E]">Assignment History is not installed yet.</p>
+        ) : ready === true && entries.length === 0 ? (
           <p className="text-[13px] text-[#55555E]">No vehicle changes recorded.</p>
         ) : (
           <span />
@@ -109,6 +128,9 @@ export function BookingVehicleHistory({
           onClose={() => setSwapOpen(false)}
           onSaved={() => setSwapOpen(false)}
         />
+      )}
+      {SWAP_ENABLED && rentalId && entries.some((e) => e.swapNumber != null) && (
+        <ReplacementAgreement rentalId={rentalId} />
       )}
     </div>
   );

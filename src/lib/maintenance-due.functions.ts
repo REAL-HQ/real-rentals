@@ -1,7 +1,7 @@
 // Read-only Maintenance Due list. Owners and managers only.
 // No insert, update, or delete. The proposed table is optional: a missing
 // relation leaves those facts Unknown and the vehicle dates still show.
-import { createServerFn } from "@tanstack/react-start";
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   MAINTENANCE_DUE_ENABLED,
@@ -27,12 +27,17 @@ async function eachPage(load: (from: number, to: number) => PromiseLike<{ data: 
   return rows;
 }
 
+const maintenanceDueGate = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  if (!MAINTENANCE_DUE_ENABLED) throw new Error(DISABLED);
+  return next();
+});
+
 export const listMaintenanceDue = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([maintenanceDueGate, requireSupabaseAuth])
   .handler(async ({ context }): Promise<{ today: string; rows: VehicleDueRow[] }> => {
+    if (!MAINTENANCE_DUE_ENABLED) throw new Error(DISABLED);
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
-    if (!MAINTENANCE_DUE_ENABLED) throw new Error(DISABLED);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const sb = supabaseAdmin;
     const [vehicles, expenses] = await Promise.all([

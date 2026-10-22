@@ -3,24 +3,40 @@ const os = require("os");
 const path = require("path");
 const vm = require("vm");
 const assert = require("assert/strict");
-const { execFileSync } = require("child_process");
+const { execFileSync, spawn } = require("child_process");
+const net = require("net");
 const { createRequire } = require("module");
+const { pgBin, pgProgram, makeDataDir } = require("./pg-local.cjs");
 
 const root = path.resolve(__dirname, "..");
 const deps = createRequire(path.resolve(root, "package.json"));
 const ts = deps("typescript");
 const z = deps("zod");
 const results = [];
+let activeDir = null;
+let pgPort = 0;
 function test(name, fn) {
   fn();
   results.push(name);
   console.log("PASS", name);
 }
 
+const PACKET = "04a761ef0395a87ef8e9da45f2300d3479829ca0";
+
+function packetSql(name) {
+  try {
+    execFileSync("git", ["cat-file", "-e", `${PACKET}^{commit}`], { cwd: root, stdio: "ignore" });
+  } catch {
+    execFileSync("git", ["fetch", "origin", "cursor/m2-packet-grants-ba3d"], { cwd: root, stdio: "inherit" });
+  }
+  return execFileSync("git", ["show", `${PACKET}:proposed/m2-packet/${name}`], { cwd: root, encoding: "utf8" });
+}
+
 const numbers = fs.readFileSync(path.join(root, "src/lib/record-numbers.ts"), "utf8");
 const ui = fs.readFileSync(path.join(root, "src/components/admin/BookingVehicleHistory.tsx"), "utf8");
 const server = fs.readFileSync(path.join(root, "src/lib/vehicle-swap.functions.ts"), "utf8");
-const sql = fs.readFileSync(path.join(root, "proposed/vehicle-swap-v1.sql"), "utf8");
+const pointer = fs.readFileSync(path.join(root, "proposed/vehicle-swap-v1.sql"), "utf8");
+const sql = packetSql("20.sql");
 const booking = fs.readFileSync(path.join(root, "src/components/admin/BookingDetails.tsx"), "utf8");
 const profile = fs.readFileSync(path.join(root, "src/components/admin/VehicleProfile.tsx"), "utf8");
 const timeline = fs.readFileSync(path.join(root, "src/components/admin/VehicleTimeline.tsx"), "utf8");
@@ -44,6 +60,12 @@ test("swap form is mounted only while the flag is on", () => {
 test("history is read-only and booking and vehicle pages pass ids", () => {
   assert.match(ui, /listAssignmentHistory/);
   assert.match(ui, /No vehicle changes recorded\./);
+  assert.match(ui, /Assignment History is not installed yet\./);
+  const flagOff = ui.indexOf("{!SWAP_ENABLED ? (");
+  const baseCopy = ui.indexOf("No vehicle changes recorded.");
+  const notInstalled = ui.indexOf("Assignment History is not installed yet.");
+  assert.ok(flagOff !== -1 && baseCopy > flagOff && notInstalled > baseCopy);
+  assert.match(ui, /setReady\(result\.ready\)/);
   assert.match(booking, /rentalId=\{b\.id\}/);
   assert.match(booking, /showSwap=\{b\.phase === "active"\}/);
   assert.match(profile, /vehicleId=\{v\.id\}/);
@@ -63,9 +85,13 @@ test("history is read-only and booking and vehicle pages pass ids", () => {
 });
 
 test("server checks the flag before the swap rpc", () => {
-  const flag = server.indexOf("if (!SWAP_ENABLED)");
-  const rpc = server.indexOf('.rpc("swap_rental_vehicle_tx"');
-  assert.ok(flag !== -1 && rpc !== -1 && flag < rpc);
+  const swapStart = server.indexOf("export const swapRentalVehicle");
+  const historyStart = server.indexOf("export const listAssignmentHistory");
+  const swapBody = server.slice(swapStart, historyStart);
+  const flag = swapBody.indexOf("if (!SWAP_ENABLED)");
+  const role = swapBody.indexOf("requireManager");
+  const rpc = swapBody.indexOf('.rpc("swap_rental_vehicle_tx"');
+  assert.ok(flag !== -1 && role !== -1 && rpc !== -1 && flag < role && role < rpc);
   assert.match(server, /requireManager/);
   assert.match(server, /list_assignment_history_v1/);
   assert.match(server, /PGRST202\|PGRST205/);
@@ -100,7 +126,43 @@ test("proposed sql documents the lock order and does not bill", () => {
   assert.match(sql, /status='maintenance'/);
   assert.match(sql, /outgoing_available_refused/);
   assert.equal(body.includes("record_agreement_evidence"), false);
+  const gateStart = sql.indexOf("CREATE FUNCTION private.swap_agreement_evidence");
+  const gateEnd = sql.indexOf("REVOKE ALL ON FUNCTION private.swap_agreement_evidence");
+  const gate = sql.slice(gateStart, gateEnd);
+  assert.match(gate, /FROM private\.agreement_evidence WHERE agreement_id=_agreement FOR SHARE NOWAIT/);
+  assert.match(gate, /ag\.sha256 IS DISTINCT FROM ev\.sha256/);
+  assert.doesNotMatch(gate, /UPDATE\s+public\.agreements/i);
+  assert.doesNotMatch(gate, /UPDATE\s+public\.documents/i);
   assert.equal(fs.existsSync(path.join(root, "supabase/migrations/vehicle-swap-v1.sql")), false);
+  assert.match(sql, /guard_rental_lifecycle/);
+  assert.match(sql, /app\.rental_tx/);
+});
+
+test("the local swap file is a pointer and the packet grants stay on 20.sql", () => {
+  const canonical = execFileSync("git", ["show", `${PACKET}:proposed/vehicle-swap-v1.sql`], { cwd: root, encoding: "utf8" });
+  assert.equal(pointer, canonical);
+  const agreement = fs.readFileSync(path.join(root, "src/lib/replacement-agreement.functions.ts"), "utf8");
+  assert.match(agreement, new RegExp(PACKET));
+  assert.match(agreement, /after the agreement contract/);
+  assert.match(agreement, /proposed\/m2-with-approval-boundary\/19c-agreement-contract\.sql/);
+  assert.match(agreement, /HOSTED-INSTALL step 26/);
+  assert.doesNotMatch(pointer, /CREATE\s+(OR REPLACE\s+)?FUNCTION/i);
+  assert.doesNotMatch(pointer, /CREATE\s+TABLE/i);
+  assert.match(pointer, /proposed\/m2-packet\/20\.sql/);
+  assert.match(pointer, /HOSTED-INSTALL step 26/);
+  assert.doesNotMatch(pointer, /step 25[^\n]*20\.sql/);
+  assert.doesNotMatch(pointer, /20\.sql[^\n]*step 25/);
+  assert.match(sql, /guard_rental_lifecycle/);
+  assert.match(
+    sql,
+    /REVOKE ALL ON FUNCTION public\.swap_rental_vehicle_tx\(uuid,uuid,uuid,uuid,timestamptz,integer,integer,text,uuid\)\s+FROM PUBLIC, anon, service_role;/,
+  );
+  assert.match(
+    sql,
+    /GRANT EXECUTE ON FUNCTION public\.swap_rental_vehicle_tx\(uuid,uuid,uuid,uuid,timestamptz,integer,integer,text,uuid\)\s+TO authenticated;/,
+  );
+  assert.match(sql, /REVOKE ALL ON FUNCTION public\.list_assignment_history_v1\(uuid,uuid\) FROM PUBLIC, anon, service_role;/);
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.list_assignment_history_v1\(uuid,uuid\) TO authenticated;/);
 });
 
 function loadServer(swapEnabled) {
@@ -117,6 +179,9 @@ function loadServer(swapEnabled) {
     require(name) {
       if (name === "@tanstack/react-start") {
         return {
+          createMiddleware() {
+            return { server() { return {}; } };
+          },
           createServerFn() {
             let parse = (d) => d;
             return {
@@ -164,39 +229,45 @@ const swapData = {
   agreementEvidenceId: id(5),
 };
 
-let dataDir = null;
-
-function postgresBin() {
-  const fromEnv = process.env.PG_BIN && process.env.PG_BIN.trim();
-  if (fromEnv) return fromEnv;
-  return execFileSync("pg_config", ["--bindir"], { encoding: "utf8" }).trim();
-}
-
-function pgTool(name) {
-  return path.join(postgresBin(), name);
+function reservePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
 }
 
 function psql(dir, sqlText) {
   return execFileSync(
-    pgTool("psql"),
-    ["-h", dir, "-p", "55441", "-d", "swap", "-v", "ON_ERROR_STOP=1", "-X", "-q", "-tA"],
+    pgProgram("psql"),
+    ["-h", dir, "-p", String(pgPort), "-d", "swap", "-v", "ON_ERROR_STOP=1", "-X", "-q", "-tA"],
     { input: sqlText, encoding: "utf8" },
   );
 }
 
-function startDatabase() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vehicle-swap-pg-"));
-  dataDir = dir;
-  execFileSync(pgTool("initdb"), ["-D", dir, "--username", process.env.USER || "ubuntu", "--auth=trust", "--no-sync"], { stdio: "ignore" });
-  execFileSync(pgTool("pg_ctl"), ["-D", dir, "-l", path.join(dir, "log"), "-o", `-p 55441 -k ${dir} -c listen_addresses=`, "start"], { stdio: "ignore" });
-  execFileSync(pgTool("createdb"), ["-h", dir, "-p", "55441", "swap"], { stdio: "ignore" });
-  return dir;
+function startDatabase(port) {
+  const dir = makeDataDir("vehicle-swap-pg-");
+  try {
+    execFileSync(pgProgram("initdb"), ["-D", dir, "--username", process.env.USER || "ubuntu", "--auth=trust", "--no-sync"], { stdio: "ignore" });
+    execFileSync(pgProgram("pg_ctl"), ["-D", dir, "-l", path.join(dir, "log"), "-o", `-p ${port} -k ${dir} -c listen_addresses=`, "start"], { stdio: "ignore" });
+    execFileSync(pgProgram("createdb"), ["-h", dir, "-p", String(port), "swap"], { stdio: "ignore" });
+    return dir;
+  } catch (error) {
+    try {
+      execFileSync(pgProgram("pg_ctl"), ["-D", dir, "-m", "immediate", "stop"], { stdio: "ignore" });
+    } catch { /* not started */ }
+    fs.rmSync(dir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 function stopDatabase(dir) {
   if (!dir) return;
   try {
-    execFileSync(pgTool("pg_ctl"), ["-D", dir, "-m", "immediate", "stop"], { stdio: "ignore" });
+    execFileSync(pgProgram("pg_ctl"), ["-D", dir, "-m", "immediate", "stop"], { stdio: "ignore" });
   } catch { /* already stopped */ }
   fs.rmSync(dir, { recursive: true, force: true });
 }
@@ -204,8 +275,8 @@ function stopDatabase(dir) {
 test("local postgres binaries follow PG_BIN", () => {
   const previous = process.env.PG_BIN;
   process.env.PG_BIN = "  /tmp/pg-bin  ";
-  assert.equal(postgresBin(), "/tmp/pg-bin");
-  assert.equal(pgTool("psql"), path.join("/tmp/pg-bin", "psql"));
+  assert.equal(pgBin(), "/tmp/pg-bin");
+  assert.equal(pgProgram("psql"), path.join("/tmp/pg-bin", "psql"));
   if (previous === undefined) delete process.env.PG_BIN;
   else process.env.PG_BIN = previous;
 });
@@ -229,6 +300,7 @@ const ASSIGNMENT = "77777777-7777-4777-8777-777777777777";
 const RECORD = "88888888-8888-4888-8888-888888888888";
 const AGREEMENT = "99999999-9999-4999-8999-999999999999";
 const DOC = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const BARE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const OP = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const STALE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
@@ -248,8 +320,9 @@ $$;
 
 CREATE FUNCTION private.record_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$
 BEGIN RAISE EXCEPTION 'record_history_immutable' USING ERRCODE='42501'; END $$;
-CREATE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql AS $$ SELECT '${ACTOR}'::uuid $$;
-CREATE FUNCTION private.approval_lock() RETURNS void LANGUAGE plpgsql AS $$ BEGIN PERFORM 1; END $$;
+CREATE FUNCTION private.approval_actor() RETURNS uuid LANGUAGE sql SECURITY DEFINER SET search_path='' AS $$ SELECT '${ACTOR}'::uuid $$;
+CREATE FUNCTION private.approval_lock() RETURNS void LANGUAGE plpgsql SET search_path='' AS $$ BEGIN PERFORM 1; END $$;
+REVOKE ALL ON FUNCTION private.approval_actor(),private.approval_lock() FROM PUBLIC,anon,authenticated,service_role;
 CREATE FUNCTION public.vehicle_rental_ready_missing(uuid) RETURNS text[] LANGUAGE sql AS $$ SELECT '{}'::text[] $$;
 
 CREATE TABLE public.applications (id uuid PRIMARY KEY, user_id uuid, status text);
@@ -342,7 +415,23 @@ INSERT INTO public.rentals VALUES
 INSERT INTO public.user_roles VALUES ('${ACTOR}', 'admin');
 INSERT INTO public.documents VALUES ('${DOC}');
 INSERT INTO public.agreements VALUES
- ('${AGREEMENT}', '${APP}', '${NEW}', 'signed', repeat('ab', 32), '${DOC}', '${DOC}', '2026-10-19 12:00:00+00');
+ ('${AGREEMENT}', '${APP}', '${NEW}', 'signed', repeat('ab', 32), '${DOC}', '${DOC}', '2026-10-19 12:00:00+00'),
+ ('${BARE}', '${APP}', '${NEW}', 'signed', repeat('ab', 32), '${DOC}', '${DOC}', '2026-10-19 12:00:00+00');
+CREATE TABLE private.agreement_evidence (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ agreement_id uuid NOT NULL UNIQUE,
+ rental_id uuid NOT NULL,
+ application_id uuid NOT NULL,
+ vehicle_id uuid NOT NULL,
+ document_id uuid NOT NULL,
+ sha256 text NOT NULL,
+ signed_at timestamptz NOT NULL,
+ signer_user_id uuid NOT NULL,
+ actor_id uuid NOT NULL,
+ recorded_at timestamptz NOT NULL DEFAULT clock_timestamp());
+INSERT INTO private.agreement_evidence
+ (agreement_id, rental_id, application_id, vehicle_id, document_id, sha256, signed_at, signer_user_id, actor_id)
+ VALUES ('${AGREEMENT}', '${RENTAL}', '${APP}', '${NEW}', '${DOC}', repeat('ab', 32), '2026-10-19 12:00:00+00', '${DRIVER}', '${ACTOR}');
 INSERT INTO public.payments (rental_id, amount, status) VALUES ('${RENTAL}', 100, 'paid');
 INSERT INTO private.record_operations VALUES
  ('${RECORD}', '${ACTOR}', '${APP}', '{}'::jsonb, '${RENTAL}', 1, 1);
@@ -351,13 +440,25 @@ INSERT INTO public.booking_vehicle_assignments
  VALUES ('${ASSIGNMENT}', '${RENTAL}', '${OLD}', '2026-10-01 12:00:00+00', 10000, 'original', '${ACTOR}', '${RECORD}');
 `;
 
-const call = (op, expected) => `public.swap_rental_vehicle_tx(
+const call = (op, expected, agreement = AGREEMENT) => `public.swap_rental_vehicle_tx(
  '${op}', '${RENTAL}', '${expected}', '${NEW}',
- '2026-10-20 15:00:00+00', 12000, 8000, 'Damage from the road', '${AGREEMENT}')`;
+ '2026-10-20 15:00:00+00', 12000, 8000, 'Damage from the road', '${agreement}')`;
 
 function transactionTests(dir) {
   psql(dir, fixture);
-  psql(dir, fs.readFileSync(path.join(root, "proposed/vehicle-swap-v1.sql"), "utf8"));
+  psql(dir, sql);
+  test("applied packet grants swap and history to authenticated only", () => {
+    const out = psql(dir, `
+      SELECT has_function_privilege('authenticated', 'public.swap_rental_vehicle_tx(uuid,uuid,uuid,uuid,timestamptz,integer,integer,text,uuid)', 'EXECUTE')
+        || ' ' || has_function_privilege('anon', 'public.swap_rental_vehicle_tx(uuid,uuid,uuid,uuid,timestamptz,integer,integer,text,uuid)', 'EXECUTE')
+        || ' ' || has_function_privilege('service_role', 'public.swap_rental_vehicle_tx(uuid,uuid,uuid,uuid,timestamptz,integer,integer,text,uuid)', 'EXECUTE')
+        || ' ' || has_function_privilege('public', 'public.swap_rental_vehicle_tx(uuid,uuid,uuid,uuid,timestamptz,integer,integer,text,uuid)', 'EXECUTE')
+        || ' ' || has_function_privilege('authenticated', 'public.list_assignment_history_v1(uuid,uuid)', 'EXECUTE')
+        || ' ' || has_function_privilege('anon', 'public.list_assignment_history_v1(uuid,uuid)', 'EXECUTE')
+        || ' ' || has_function_privilege('service_role', 'public.list_assignment_history_v1(uuid,uuid)', 'EXECUTE')
+    `).trim();
+    assert.equal(out, "true false false false true false false");
+  });
   test("direct projection without the swap context is refused", () => {
     psql(dir, `
       DO $$ BEGIN
@@ -392,8 +493,7 @@ function transactionTests(dir) {
     `);
   });
   test("a held rental lock fails nowait and rolls back", () => {
-    const { spawn } = require("child_process");
-    const child = spawn(pgTool("psql"), ["-h", dir, "-p", "55441", "-d", "swap", "-v", "ON_ERROR_STOP=1", "-X"], {
+    const child = spawn(pgProgram("psql"), ["-h", dir, "-p", String(pgPort), "-d", "swap", "-v", "ON_ERROR_STOP=1", "-X"], {
       stdio: ["pipe", "ignore", "pipe"],
     });
     child.stdin.write(`BEGIN; SELECT id FROM public.rentals WHERE id='${RENTAL}' FOR UPDATE; SELECT pg_sleep(20); COMMIT;\n`);
@@ -422,6 +522,22 @@ function transactionTests(dir) {
       DO $$ BEGIN
         IF EXISTS (SELECT 1 FROM private.swap_operations) THEN RAISE EXCEPTION 'contention wrote an operation'; END IF;
         IF (SELECT status FROM public.vehicles WHERE id='${OLD}') <> 'rented' THEN RAISE EXCEPTION 'contention changed status'; END IF;
+      END $$;
+    `);
+  });
+  test("an agreement without recorded evidence is refused", () => {
+    psql(dir, `
+      DO $$ BEGIN
+        PERFORM ${call(OP, ASSIGNMENT, BARE)};
+        RAISE EXCEPTION 'bare agreement was accepted';
+      EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM NOT LIKE '%agreement_evidence_required%' THEN RAISE; END IF;
+      END $$;
+      DO $$ BEGIN
+        IF (SELECT vehicle_id FROM public.rentals WHERE id='${RENTAL}') <> '${OLD}' THEN
+          RAISE EXCEPTION 'rental pointer moved';
+        END IF;
+        IF EXISTS (SELECT 1 FROM private.swap_operations) THEN RAISE EXCEPTION 'bare agreement wrote an operation'; END IF;
       END $$;
     `);
   });
@@ -555,7 +671,9 @@ function transactionTests(dir) {
   results.push("flag on names the swap rpc");
   console.log("PASS flag on names the swap rpc");
 
-  const dir = startDatabase();
+  pgPort = await reservePort();
+  const dir = startDatabase(pgPort);
+  activeDir = dir;
   try {
     transactionTests(dir);
   } finally {
@@ -564,6 +682,6 @@ function transactionTests(dir) {
   console.log(JSON.stringify({ pass: results.length, fail: 0 }));
 })().catch((error) => {
   console.error(error);
-  try { stopDatabase(dataDir); } catch { /* already stopped */ }
+  try { stopDatabase(activeDir); } catch { /* already stopped */ }
   process.exit(1);
 });

@@ -1,10 +1,13 @@
 /**
- * Stalled applications — who started and then stopped.
+ * Stalled applications — the Applications "Stalled" filter.
  *
- * A person is stalled when they are still in the application (not approved,
- * declined, or renting), something they need is still missing, and nothing
- * on the file has moved in three or more Eastern calendar days. The list is
- * oldest first. This module only classifies. It does not write.
+ * A person is stalled when their application is still New or Reviewing and
+ * nothing on the file has moved in three or more Eastern calendar days.
+ * The row says which of documents, identity, agreement, and card on file
+ * are still missing, and the Eastern date of the last contact. Oldest first.
+ *
+ * This module only classifies. It does not write, email, or text.
+ * STALLED_APPLICATIONS_ENABLED is the only declaration of that flag.
  */
 
 export const STALLED_APPLICATIONS_ENABLED: boolean = false;
@@ -12,21 +15,27 @@ export const STALLED_APPLICATIONS_ENABLED: boolean = false;
 /** Whole Eastern days with no update before an application counts as stalled. */
 export const STALLED_AFTER_DAYS = 3;
 
-/** Still in the application. Decided and operating rows are someone else's list. */
-export const STALLED_STATUSES = ["partial", "new", "complete", "reviewing"] as const;
+/** Still awaiting a decision. Approved, partial, and closed rows are other lists. */
+export const STALLED_STATUSES = ["new", "reviewing"] as const;
 
 export type StalledStatus = (typeof STALLED_STATUSES)[number];
 
-export type StalledGap = "finish_application" | "driver_license" | "insurance" | "identity_review";
+export type StalledGap = "documents" | "identity" | "agreement" | "card_on_file";
 
 export const STALLED_GAP_LABEL: Record<StalledGap, string> = {
-  finish_application: "Finish Application",
-  driver_license: "Driver License",
-  insurance: "Insurance",
-  identity_review: "Identity Review",
+  documents: "Documents",
+  identity: "Identity",
+  agreement: "Agreement",
+  card_on_file: "Card On File",
 };
 
-const GAP_ORDER: StalledGap[] = ["finish_application", "driver_license", "insurance", "identity_review"];
+const GAP_ORDER: StalledGap[] = ["documents", "identity", "agreement", "card_on_file"];
+
+export type StalledAgreement = {
+  status?: string | null;
+  signedAt?: string | null;
+  voidedAt?: string | null;
+};
 
 export type StalledInput = {
   id: string;
@@ -35,12 +44,14 @@ export type StalledInput = {
   lastName?: string | null;
   phone?: string | null;
   status?: string | null;
-  licenseOnFile: boolean;
-  insuranceOnFile: boolean;
-  backgroundCheckStatus?: string | null;
-  mvrStatus?: string | null;
+  documentsOnFile: boolean;
+  identityClear: boolean;
+  agreementSigned: boolean;
+  cardOnFile: boolean;
   /** Every timestamp that counts as the file moving. The latest one wins. */
   activityAt: Array<string | null | undefined>;
+  /** Staff contact timestamps only. Not application edits. */
+  contactAt?: Array<string | null | undefined>;
 };
 
 export type StalledApplication = {
@@ -50,6 +61,8 @@ export type StalledApplication = {
   gaps: StalledGap[];
   daysStalled: number;
   lastActivityAt: string;
+  /** Eastern calendar day of the latest contact, or null when nobody has been contacted. */
+  lastContactOn: string | null;
 };
 
 export function assertStalledApplicationsEnabled(): void {
@@ -94,7 +107,11 @@ function norm(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
-/** Identity review is still open until both checks have passed. */
+function filled(value: string | null | undefined): boolean {
+  return String(value ?? "").trim().length > 0;
+}
+
+/** Identity is still open until both checks have passed and no review is open. */
 export function identityReviewPending(
   backgroundCheckStatus: string | null | undefined,
   mvrStatus: string | null | undefined,
@@ -102,18 +119,40 @@ export function identityReviewPending(
   return norm(backgroundCheckStatus) !== "passed" || norm(mvrStatus) !== "passed";
 }
 
+export function identityIsClear(
+  backgroundCheckStatus: string | null | undefined,
+  mvrStatus: string | null | undefined,
+  openIdentityReview: boolean,
+): boolean {
+  return !openIdentityReview && !identityReviewPending(backgroundCheckStatus, mvrStatus);
+}
+
+/** A signed agreement that has not been voided. A Stripe customer id is not an agreement. */
+export function signedAgreement(rows: StalledAgreement[]): boolean {
+  return rows.some((row) => {
+    if (filled(row.voidedAt)) return false;
+    const status = norm(row.status);
+    if (status === "voided" || status === "void") return false;
+    return status === "signed" || filled(row.signedAt);
+  });
+}
+
+/** Card evidence stored on the application. A Stripe customer id is not a card. */
+export function cardOnFile(values: Array<string | null | undefined>): boolean {
+  return values.some((value) => filled(value));
+}
+
 export function stalledGaps(input: {
-  status?: string | null;
-  licenseOnFile: boolean;
-  insuranceOnFile: boolean;
-  backgroundCheckStatus?: string | null;
-  mvrStatus?: string | null;
+  documentsOnFile: boolean;
+  identityClear: boolean;
+  agreementSigned: boolean;
+  cardOnFile: boolean;
 }): StalledGap[] {
   const gaps: StalledGap[] = [];
-  if (norm(input.status) === "partial") gaps.push("finish_application");
-  if (!input.licenseOnFile) gaps.push("driver_license");
-  if (!input.insuranceOnFile) gaps.push("insurance");
-  if (identityReviewPending(input.backgroundCheckStatus, input.mvrStatus)) gaps.push("identity_review");
+  if (!input.documentsOnFile) gaps.push("documents");
+  if (!input.identityClear) gaps.push("identity");
+  if (!input.agreementSigned) gaps.push("agreement");
+  if (!input.cardOnFile) gaps.push("card_on_file");
   return GAP_ORDER.filter((gap) => gaps.includes(gap));
 }
 
@@ -133,25 +172,26 @@ export function stalledDriverName(input: {
 
 /**
  * One applicant, or null when they are not stalled.
- * Missing work and three quiet Eastern days are both required.
+ * New or Reviewing, and three quiet Eastern days, are both required.
+ * A quiet file with nothing missing is still stalled.
  */
 export function classifyStalled(input: StalledInput, today: Date): StalledApplication | null {
   const status = norm(input.status);
   if (!(STALLED_STATUSES as readonly string[]).includes(status)) return null;
-  const gaps = stalledGaps(input);
-  if (gaps.length === 0) return null;
   const lastActivityAt = latestActivity(input.activityAt);
   if (!lastActivityAt) return null;
   const daysStalled = daysSinceEastern(lastActivityAt, today);
   if (daysStalled == null || daysStalled < STALLED_AFTER_DAYS) return null;
+  const contactAt = latestActivity(input.contactAt ?? []);
   const phone = String(input.phone ?? "").trim();
   return {
     id: input.id,
     name: stalledDriverName(input),
     phone: phone || null,
-    gaps,
+    gaps: stalledGaps(input),
     daysStalled,
     lastActivityAt,
+    lastContactOn: contactAt ? easternDay(new Date(contactAt)) : null,
   };
 }
 
@@ -166,7 +206,7 @@ export function licenseOnFile(
   licensePhotoUrl: string | null | undefined,
   categories: Array<string | null | undefined>,
 ): boolean {
-  if (String(licensePhotoUrl ?? "").trim()) return true;
+  if (filled(licensePhotoUrl)) return true;
   return categories.some((category) => /license/i.test(String(category ?? "")));
 }
 
@@ -174,6 +214,18 @@ export function insuranceOnFile(
   insuranceDocUrl: string | null | undefined,
   categories: Array<string | null | undefined>,
 ): boolean {
-  if (String(insuranceDocUrl ?? "").trim()) return true;
+  if (filled(insuranceDocUrl)) return true;
   return categories.some((category) => /insurance/i.test(String(category ?? "")));
+}
+
+/** Documents are on file when both the license and the insurance file are present. */
+export function documentsOnFile(input: {
+  licensePhotoUrl?: string | null;
+  insuranceDocUrl?: string | null;
+  categories: Array<string | null | undefined>;
+}): boolean {
+  return (
+    licenseOnFile(input.licensePhotoUrl, input.categories) &&
+    insuranceOnFile(input.insuranceDocUrl, input.categories)
+  );
 }

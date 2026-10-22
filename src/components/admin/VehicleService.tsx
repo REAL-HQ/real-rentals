@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Loader2, Plus, Gauge, Wrench, FileText, AlertTriangle, Lock, Clock } from "lucide-react";
@@ -8,6 +9,8 @@ import { getFleetDocumentFile } from "@/lib/fleet-inbox.functions";
 import {
   getVehicleService, addServiceEvent, addManualReading, setVehicleInterval, resolveOdometerConflict,
 } from "@/lib/maintenance.functions";
+import { MAINTENANCE_DUE_ENABLED } from "@/lib/maintenance-due";
+import { listMaintenanceDueSchedule } from "@/lib/maintenance-due-schedule.functions";
 import { SOURCE_LABELS, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, SERVICE_CATEGORIES, categoryLabel, dueLabel } from "@/lib/maintenance-rules";
 import { SectionCard, EmptyState } from "./ui";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalSection, ModalButton, Field, FormGrid, inputCls, UploadDropzone } from "./modal";
@@ -22,6 +25,36 @@ const TONE: Record<string, string> = {
   overdue: "bg-brand/10 text-brand", due: "bg-brand/10 text-brand", due_soon: "bg-warning/15 text-warning-foreground",
   ok: "bg-success/10 text-success", unknown: "bg-muted text-muted-foreground",
 };
+
+function ServiceDueSource({
+  vehicleId,
+  liveSchedules,
+  children,
+}: {
+  vehicleId: string;
+  liveSchedules: any[];
+  children: (schedules: any[], truncated: boolean, status: "ready" | "loading" | "error") => ReactNode;
+}) {
+  if (!MAINTENANCE_DUE_ENABLED) return children(liveSchedules, false, "ready");
+  return <ServiceDueLive vehicleId={vehicleId}>{children}</ServiceDueLive>;
+}
+
+function ServiceDueLive({
+  vehicleId,
+  children,
+}: {
+  vehicleId: string;
+  children: (schedules: any[], truncated: boolean, status: "ready" | "loading" | "error") => ReactNode;
+}) {
+  const load = useServerFn(listMaintenanceDueSchedule);
+  const result = useQuery({
+    queryKey: ["maintenance-due-schedule", vehicleId],
+    queryFn: () => load({ data: { vehicleId } }),
+  });
+  if (result.isError) return children([], false, "error");
+  if (result.isLoading || !result.data) return children([], false, "loading");
+  return children(result.data.schedules, result.data.truncated, "ready");
+}
 
 export function useOpenEvidence() {
   const fileFn = useServerFn(getFleetDocumentFile);
@@ -53,49 +86,64 @@ export function VehicleService({ vehicleId, openAdd = false }: { vehicleId: stri
   const completed = data.records.filter((r: any) => r.status === "completed");
   const open = data.records.filter((r: any) => r.status !== "completed");
   const latest = completed[0];
-  const nextDue = [...data.schedules].filter((s: any) => s.due.state !== "unknown").sort((a: any, b: any) => {
-    const r: Record<string, number> = { overdue: 0, due: 1, due_soon: 2, ok: 3 }; return (r[a.due.state] ?? 9) - (r[b.due.state] ?? 9);
-  })[0];
   const chart = [...data.readings].filter((r: any) => r.status !== "superseded").reverse().map((r: any) => ({ date: r.observed_on, miles: r.mileage }));
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Mileage" value={mi(data.currentMileage)} sub={data.mileageAsOf ? `As Of ${d(data.mileageAsOf)}` : "No Readings Yet"} />
-        <Stat label="Latest Service" value={latest ? latest.item : "None On Record"} sub={latest ? `${d(latest.performed_on)}${latest.odometer ? ` · ${mi(latest.odometer)}` : ""}` : undefined} />
-        <Stat label="Next Service" value={nextDue ? nextDue.item : data.schedules.length ? "Unknown" : "No Intervals Set"} sub={nextDue?.due.reason} tone={nextDue?.due.state} />
-        {data.canCost
-          ? <Stat label="Maintenance Spend" value={usd(data.spend)} sub={`${data.downtimeDays} Days Downtime`} />
-          : <Stat label="Downtime" value={`${data.downtimeDays} Days`} sub="In Maintenance" />}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <ModalButton variant="primary" onClick={() => setAdding(true)}><Plus className="h-4 w-4" /> Add Service</ModalButton>
-        <ModalButton onClick={() => setReading({})}><Gauge className="h-4 w-4" /> Add Reading</ModalButton>
-      </div>
-
-      {open.length > 0 && (
-        <SectionCard title="Open Maintenance" icon={<Wrench className="h-4 w-4" />}>
-          <div className="divide-y divide-border">{open.map((r: any) => <ServiceRow key={r.id} r={r} canCost={data.canCost} onOpen={() => setDetail(r)} onEvidence={openEvidence} />)}</div>
-        </SectionCard>
-      )}
-
-      <SectionCard title="Maintenance Due" icon={<Clock className="h-4 w-4" />} subtitle="Company intervals from Settings, with any overrides for this vehicle">
-        {data.schedules.length === 0
-          ? <div className="text-[13px] text-muted-foreground">No maintenance intervals are set. An Owner can add them in Settings → Maintenance.</div>
-          : <div className="divide-y divide-border">{data.schedules.map((s: any) => (
-              <div key={s.key} className="flex flex-wrap items-center gap-3 py-2.5 text-[13px]">
-                <div className="min-w-[140px] flex-1 font-medium">{s.item}</div>
-                <div className="text-muted-foreground">
-                  {[s.interval_miles ? `Every ${s.interval_miles.toLocaleString("en-US")} mi` : null, s.interval_days ? `${Math.round(s.interval_days / 30)} Months` : null].filter(Boolean).join(" Or ")}
-                  {s.is_override && <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[11px]">Vehicle Override</span>}
-                </div>
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${TONE[s.due.state] ?? TONE.unknown}`}>{dueLabel(s.due.state)}</span>
-                <span className="text-muted-foreground">{s.due.reason}</span>
-                {data.canManage && s.default_id && <button className="text-[12px] text-muted-foreground underline-offset-2 hover:underline" onClick={() => setOverride(s)}>Change Interval</button>}
+      <ServiceDueSource vehicleId={vehicleId} liveSchedules={data.schedules}>
+        {(schedules, truncated, status) => {
+          const next = status === "ready"
+            ? [...schedules].filter((s: any) => s.due.state !== "unknown").sort((a: any, b: any) => {
+                const r: Record<string, number> = { overdue: 0, due: 1, due_soon: 2, ok: 3 }; return (r[a.due.state] ?? 9) - (r[b.due.state] ?? 9);
+              })[0]
+            : undefined;
+          return (
+            <>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <Stat label="Mileage" value={mi(data.currentMileage)} sub={data.mileageAsOf ? `As Of ${d(data.mileageAsOf)}` : "No Readings Yet"} />
+                <Stat label="Latest Service" value={latest ? latest.item : "None On Record"} sub={latest ? `${d(latest.performed_on)}${latest.odometer ? ` · ${mi(latest.odometer)}` : ""}` : undefined} />
+                <Stat label="Next Service" value={status !== "ready" ? "Unknown" : next ? next.item : schedules.length ? "Unknown" : "No Intervals Set"} sub={next?.due.reason} tone={next?.due.state} />
+                {data.canCost
+                  ? <Stat label="Maintenance Spend" value={usd(data.spend)} sub={`${data.downtimeDays} Days Downtime`} />
+                  : <Stat label="Downtime" value={`${data.downtimeDays} Days`} sub="In Maintenance" />}
               </div>
-            ))}</div>}
-      </SectionCard>
+
+              <div className="flex flex-wrap gap-2">
+                <ModalButton variant="primary" onClick={() => setAdding(true)}><Plus className="h-4 w-4" /> Add Service</ModalButton>
+                <ModalButton onClick={() => setReading({})}><Gauge className="h-4 w-4" /> Add Reading</ModalButton>
+              </div>
+
+              {open.length > 0 && (
+                <SectionCard title="Open Maintenance" icon={<Wrench className="h-4 w-4" />}>
+                  <div className="divide-y divide-border">{open.map((r: any) => <ServiceRow key={r.id} r={r} canCost={data.canCost} onOpen={() => setDetail(r)} onEvidence={openEvidence} />)}</div>
+                </SectionCard>
+              )}
+
+              <SectionCard title="Maintenance Due" icon={<Clock className="h-4 w-4" />} subtitle="Company intervals from Settings, with any overrides for this vehicle">
+                {MAINTENANCE_DUE_ENABLED && status === "error"
+                  ? <div className="text-[13px] text-muted-foreground">Could Not Load Maintenance Due</div>
+                  : MAINTENANCE_DUE_ENABLED && status === "loading"
+                    ? <div className="text-[13px] text-muted-foreground">Loading Maintenance Due</div>
+                    : schedules.length === 0
+                      ? <div className="text-[13px] text-muted-foreground">No maintenance intervals are set. An Owner can add them in Settings → Maintenance.</div>
+                      : <div className="divide-y divide-border">{schedules.map((s: any) => (
+                          <div key={s.key} className="flex flex-wrap items-center gap-3 py-2.5 text-[13px]">
+                            <div className="min-w-[140px] flex-1 font-medium">{s.item}</div>
+                            <div className="text-muted-foreground">
+                              {[s.interval_miles ? `Every ${s.interval_miles.toLocaleString("en-US")} mi` : null, s.interval_days ? `${Math.round(s.interval_days / 30)} Months` : null].filter(Boolean).join(" Or ")}
+                              {s.is_override && <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[11px]">Vehicle Override</span>}
+                            </div>
+                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${TONE[s.due.state] ?? TONE.unknown}`}>{dueLabel(s.due.state)}</span>
+                            <span className="text-muted-foreground">{s.due.reason}</span>
+                            {data.canManage && s.default_id && <button className="text-[12px] text-muted-foreground underline-offset-2 hover:underline" onClick={() => setOverride(s)}>Change Interval</button>}
+                          </div>
+                        ))}</div>}
+                {MAINTENANCE_DUE_ENABLED && truncated ? <p className="mt-2 text-[12px] text-muted-foreground">Maintenance Due Is Capped</p> : null}
+              </SectionCard>
+            </>
+          );
+        }}
+      </ServiceDueSource>
 
       <SectionCard title="Service History" icon={<Wrench className="h-4 w-4" />}>
         {completed.length === 0
