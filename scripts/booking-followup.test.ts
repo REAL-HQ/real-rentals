@@ -97,6 +97,8 @@ describe("booking follow-up flag", () => {
     assert.match(server, /if \(one\.error\) \{\s*truncated = true;/);
     assert.match(server, /if \(approvalsQuery\.error\) \{\s*truncated = true;/);
     assert.match(server, /if \(message\.error\) \{\s*unchecked\.push\(\.\.\.chunk\);/);
+    assert.match(server, /if \(outbound\.error\) \{\s*unchecked\.push\(\.\.\.chunk\);/);
+    assert.match(server, /if \(outbound\.error\) return "unchecked"/);
     assert.doesNotMatch(server, /throw new Error\((approvalsQuery|message|outbound)\.error\.message\)/);
     assert.doesNotMatch(server, /one\.error \|\| !one\.data/);
     assert.match(server, /source: "outbound"/);
@@ -129,7 +131,7 @@ describe("booking follow-up flag", () => {
     assert.ok(panelFlag !== -1 && panelLoad !== -1 && panelFlag < panelLoad);
     assert.match(panel, /Copy Reminder/);
     assert.match(panel, /LAST_CONTACT_NOT_CHECKED/);
-    assert.match(panel, /Some Last Contact Times Were Not Checked/);
+    assert.match(panel, /Some Last Contact Times Or Approval Dates Were Not Checked/);
     assert.doesNotMatch(panel, /sendEmail|sendSms|uppercase|text-transform/);
   });
 });
