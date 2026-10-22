@@ -332,11 +332,11 @@ function ContactStep({
   const contact = (
     <>
         <ProgressBar current="your_info" source="homepage" />
-        {claimNote && (
+        {WAITLIST_CLAIM_ENABLED && claimNote ? (
           <p role="alert" className="mb-4 text-sm text-real-red">
             {claimNote}
           </p>
-        )}
+        ) : null}
         {APPLY_PROGRESS_ENABLED ? null : (
           <div className="mt-8 text-xs tracking-[0.18em] font-semibold text-real-red uppercase mb-3">Step 1 Of 3</div>
         )}
