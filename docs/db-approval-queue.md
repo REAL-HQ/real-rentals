@@ -20,7 +20,7 @@ Do not run these. Assignment history fill-in on pull request 191 refuses to writ
 
 ## Notes
 
-Nothing here has been run on production. Checked against the open pull-request heads on 22 Oct 2026. RC15 is `c46354b0`. M2 #190 is `29d47ee3` (guard `fd402d5c`). M3 #232 is `a1f3e346`. #226 is `30703b01`. The preflight-guard re-review passed. Production row counts, live grants, and lock times were not measured. The scratch rehearsals below used local clones and then dropped them.
+Nothing here has been run on production. Checked against the open pull-request heads on 22 Oct 2026. RC15 is `c46354b0`. M2 #190 is `2e23914a` (guard `fd402d5c`). M3 #232 is `a1f3e346`. #226 is `30703b01`. The preflight-guard re-review passed. Production row counts, live grants, and lock times were not measured. The scratch rehearsals below used local clones and then dropped them.
 
 ## #173 Waitlist claim (`08dc1778`)
 Adds `claim_token_hash` and rewrites waitlist grants. The rate file then refuses a sixth signup from the same email in one hour, and that limit is live as soon as the file is saved. The claim link stays off (`WAITLIST_CLAIM_ENABLED` is false). Coming Soon still sends the same 12 columns. Promote-skip is notes only. Landing-length is a separate applications check.
@@ -49,7 +49,7 @@ Lock: an applications alter. A live lock duration was not measured. Rollback: `p
 Approve with its feature. Run this file, not the old M3 date file.
 
 ## #191 Vehicle swap (`a8828886`)
-`proposed/vehicle-swap-v1.sql` is a pointer. Do not run it. The SQL is #190 (`29d47ee3`) `proposed/m2-packet/20.sql`, step 26. It adds swap tables and a column on `booking_vehicle_assignments`. The file sets `lock_timeout` to 5 seconds and can be run again. The screen stays off (`SWAP_ENABLED` is false). Unblocks vehicle swap.
+`proposed/vehicle-swap-v1.sql` is a pointer. Do not run it. The SQL is #190 (`2e23914a`) `proposed/m2-packet/20.sql`, step 26. It adds swap tables and a column on `booking_vehicle_assignments`. The file sets `lock_timeout` to 5 seconds and can be run again. The screen stays off (`SWAP_ENABLED` is false). Unblocks vehicle swap.
 Order: after the M2 objects named in that file. Those tables are not in the RC15 migrations. After step 23, swap and extend can go in either order.
 Install locks `booking_vehicle_assignments` for the new column. A swap uses no-wait locks. A live lock duration was not measured. Rollback: `proposed/rollback/20-vehicle-swap.sql` on #190 and on #191. Same file.
 Grants. The two private functions execute for `rr_record_executor` only. `swap_rental_vehicle_tx` executes for authenticated and that executor. anon and service_role do not. That authenticated grant is the staff path: a direct anon call was permission denied, and an authenticated call outside the gateway raised `trusted_authentication_context_required` and returned no row. A real session still has to be admin or team before the function will swap a car. `list_assignment_history_v1` executes for authenticated only. anon was permission denied. An authenticated call with a rental id raised `staff_required` and returned no row. The read runs only for admin, team, or coordinator. Neither grant is anon, and neither returned a row to a non-staff caller.
@@ -63,7 +63,7 @@ No lock. It stops before any insert. Rollback file: missing. None applies until 
 Defer.
 
 ## #181 Extend rental (`68c59c1b`)
-`proposed/extend-rental-v1.sql` is a pointer. Do not run it. `proposed/m2-packet/extend.sql` matches #190 (`29d47ee3`) step 27. It adds a private operations table and `extend_rental_tx`, which updates `rentals.end_date` and does not call Stripe. The file sets `lock_timeout` to 5 seconds and can be run again. The button stays off (`EXTEND_RENTAL_ENABLED` is false). The handler refuses a Stripe write.
+`proposed/extend-rental-v1.sql` is a pointer. Do not run it. `proposed/m2-packet/extend.sql` matches #190 (`2e23914a`) step 27. It adds a private operations table and `extend_rental_tx`, which updates `rentals.end_date` and does not call Stripe. The file sets `lock_timeout` to 5 seconds and can be run again. The button stays off (`EXTEND_RENTAL_ENABLED` is false). The handler refuses a Stripe write.
 Order: after M2 steps 1, 5, and 23. Not from RC15 alone. Either order with swap after step 23.
 Install creates a new private table. An extend uses no-wait locks. A live lock duration was not measured. Execute is service_role only. anon and authenticated are not granted. A direct anon call and a direct authenticated call were permission denied. A service_role call with no actor raised `manager_required` and returned no row. Rollback: `proposed/rollback/extend-rental.sql` on #190 and on #181. Same file.
 Scratch `rbfeat`: after the swap undo, this file set `lock_timeout` to 5s, a second apply matched the first schema dump, and the rollback matched the pre-step dump. The clone was dropped.
