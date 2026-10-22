@@ -54,8 +54,6 @@ export type ChecklistRow = {
 
 /** Absent objects this packet creates. Any other absent check is unmapped. */
 export const ABSENT_STEP = new Map<string, number>([
-  ["public.applications.tnc_uber_approval_expires_on", 1],
-  ["public.applications.tnc_lyft_approval_expires_on", 1],
   ["public.waitlist_coming_soon_email_limit()", 2],
   ["trigger waitlist_coming_soon_email_limit", 2],
   ["index waitlist_coming_soon_email_created_idx", 2],

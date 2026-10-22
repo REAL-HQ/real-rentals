@@ -1,13 +1,13 @@
--- Rollback for HOSTED-INSTALL step 1: proposed/m3-packet/01-tnc-approval-expiry.sql
--- Drops only the two TNC approval dates. license_expiration and
--- insurance_expires_on stay. Run this only after that step committed
--- and its verify failed, or to leave the rehearsal where it started.
+-- Not an undo. Do not run this file.
+--
+-- The only undo for the Uber and Lyft dates is
+-- proposed/rollback/driver-doc-expiry-tnc.sql on pull request 226.
+-- This file used to drop those dates. It does not.
 
 BEGIN;
-SET LOCAL lock_timeout = '2s';
-
-ALTER TABLE public.applications
-  DROP COLUMN IF EXISTS tnc_uber_approval_expires_on,
-  DROP COLUMN IF EXISTS tnc_lyft_approval_expires_on;
-
+DO $$
+BEGIN
+  RAISE EXCEPTION 'tnc_rollback_is_pull_request_226';
+END
+$$;
 COMMIT;

@@ -173,12 +173,12 @@ assertPreflightTarget("postgresql://postgres@127.0.0.1:55442/m3_rehearsal?sslmod
 
 const text = formatChecklist([
   { step: 0, check_name: "server_version", expected: "report", actual: "16", ok: true },
-  { step: 1, check_name: "public.applications.tnc_uber_approval_expires_on", expected: "absent", actual: "date", ok: false },
+  { step: 2, check_name: "public.waitlist_coming_soon_email_limit()", expected: "absent", actual: "present", ok: false },
 ]);
-if (checklistStops(text) !== 1 || !text.includes("STOP step 1 public.applications.tnc_uber_approval_expires_on")) {
+if (checklistStops(text) !== 1 || !text.includes("STOP step 2 public.waitlist_coming_soon_email_limit()")) {
   throw new Error(`checklist did not stop: ${text}`);
 }
-if (!text.includes("PASS step 2 no separate object")) throw new Error("an empty step was omitted");
+if (!text.includes("PASS step 1 no separate object")) throw new Error("an empty step was omitted");
 
 if (!isLoopbackHost("postgresql://postgres@[::1]:55442/m3_rehearsal?sslmode=disable")) {
   throw new Error("[::1] was not treated as loopback");

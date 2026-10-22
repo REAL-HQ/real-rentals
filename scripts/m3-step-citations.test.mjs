@@ -65,18 +65,20 @@ function scanCitations(name, text, byFile) {
 
 const hosted = read("proposed/m3/HOSTED-INSTALL.md");
 const rows = table(hosted);
-if (rows.length !== 2) throw new Error(`HOSTED-INSTALL table has ${rows.length} rows`);
-rows.forEach((row, index) => {
-  if (row.step !== index + 1) throw new Error(`step ${row.step} is out of order`);
-  if (row.file !== `proposed/m3-packet/0${row.step}-${row.step === 1 ? "tnc-approval-expiry" : "waitlist-coming-soon-rate"}.sql`) {
-    throw new Error(`step ${row.step} file is ${row.file}`);
-  }
-  if (!row.verify.startsWith("proposed/m3-verify/")) throw new Error(`step ${row.step} verify is ${row.verify}`);
-  if (!row.rollback.startsWith("proposed/m3-rollback/")) throw new Error(`step ${row.step} rollback is ${row.rollback}`);
-});
+if (rows.length !== 1) throw new Error(`HOSTED-INSTALL table has ${rows.length} rows`);
+const rateRow = rows[0];
+if (rateRow.step !== 2 || rateRow.file !== "proposed/m3-packet/02-waitlist-coming-soon-rate.sql") {
+  throw new Error(`the only install is ${rateRow.step} ${rateRow.file}`);
+}
+if (!rateRow.verify.startsWith("proposed/m3-verify/")) throw new Error(`step ${rateRow.step} verify is ${rateRow.verify}`);
+if (!rateRow.rollback.startsWith("proposed/m3-rollback/")) throw new Error(`step ${rateRow.step} rollback is ${rateRow.rollback}`);
+const order = hosted.split("## Order")[1]?.split("## ")[0] ?? "";
+if (order.includes("01-tnc-approval-expiry.sql")) {
+  throw new Error("the install table still runs the TNC file");
+}
 
 const byFile = new Map(rows.map((row) => [row.file, row.step]));
-if (byFile.get("proposed/m3-packet/01-tnc-approval-expiry.sql") !== 1) throw new Error("TNC file is not step 1");
+if (byFile.has("proposed/m3-packet/01-tnc-approval-expiry.sql")) throw new Error("TNC file is still an install step");
 if (byFile.get("proposed/m3-packet/02-waitlist-coming-soon-rate.sql") !== 2) throw new Error("rate file is not step 2");
 
 const names = {
@@ -125,7 +127,10 @@ assertSelectOnly("proposed/m3/preflight.sql", preflight);
 const preflightChecks = (preflight.match(/SELECT \d+ AS ord|SELECT \d+,/g) ?? []).length;
 if (preflightChecks !== 17) throw new Error(`preflight has ${preflightChecks} checks`);
 
-const tnc = strip(read("proposed/m3-packet/01-tnc-approval-expiry.sql"));
+const tncRaw = read("proposed/m3-packet/01-tnc-approval-expiry.sql");
+const tnc = strip(tncRaw);
+if (!tncRaw.includes("tnc_install_is_pull_request_226")) throw new Error("the TNC file does not refuse");
+if (/alter\s+table/i.test(tnc) || /add\s+column/i.test(tnc)) throw new Error("the TNC file still changes a table");
 if (/security\s+definer/i.test(tnc)) throw new Error("the TNC file defines a security definer function");
 if (/create\s+(or\s+replace\s+)?function/i.test(tnc)) throw new Error("the TNC file creates a function");
 
@@ -145,7 +150,10 @@ const rollbackRate = strip(read("proposed/m3-rollback/02-waitlist-coming-soon-ra
 if (/claim_token_hash|license_expiration|REVOKE\b/i.test(rollbackRate)) {
   throw new Error("the rate rollback touches grants or another feature's column");
 }
-const rollbackTnc = strip(read("proposed/m3-rollback/01-tnc-approval-expiry.sql"));
+const rollbackTncRaw = read("proposed/m3-rollback/01-tnc-approval-expiry.sql");
+const rollbackTnc = strip(rollbackTncRaw);
+if (!rollbackTncRaw.includes("tnc_rollback_is_pull_request_226")) throw new Error("the TNC rollback does not refuse");
+if (/drop\s+column/i.test(rollbackTnc)) throw new Error("the TNC rollback still drops a column");
 if (/license_expiration|insurance_expires_on/.test(rollbackTnc)) {
   throw new Error("the TNC rollback names an existing expiry column");
 }

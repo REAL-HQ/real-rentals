@@ -38,27 +38,21 @@ FROM (
            WHERE c.table_schema = 'public' AND c.table_name = 'applications' AND c.column_name = 'insurance_expires_on'
          ), false)
   UNION ALL
-  SELECT 60, 'public.applications.tnc_uber_approval_expires_on', 'absent',
+  SELECT 60, 'public.applications.tnc_uber_approval_expires_on', 'report',
          COALESCE((
            SELECT c.data_type
            FROM information_schema.columns c
            WHERE c.table_schema = 'public' AND c.table_name = 'applications' AND c.column_name = 'tnc_uber_approval_expires_on'
          ), 'absent'),
-         NOT EXISTS (
-           SELECT 1 FROM information_schema.columns c
-           WHERE c.table_schema = 'public' AND c.table_name = 'applications' AND c.column_name = 'tnc_uber_approval_expires_on'
-         )
+         true
   UNION ALL
-  SELECT 70, 'public.applications.tnc_lyft_approval_expires_on', 'absent',
+  SELECT 70, 'public.applications.tnc_lyft_approval_expires_on', 'report',
          COALESCE((
            SELECT c.data_type
            FROM information_schema.columns c
            WHERE c.table_schema = 'public' AND c.table_name = 'applications' AND c.column_name = 'tnc_lyft_approval_expires_on'
          ), 'absent'),
-         NOT EXISTS (
-           SELECT 1 FROM information_schema.columns c
-           WHERE c.table_schema = 'public' AND c.table_name = 'applications' AND c.column_name = 'tnc_lyft_approval_expires_on'
-         )
+         true
   UNION ALL
   SELECT 80, 'role anon', 'present',
          CASE WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_roles r WHERE r.rolname = 'anon') THEN 'present' ELSE 'absent' END,

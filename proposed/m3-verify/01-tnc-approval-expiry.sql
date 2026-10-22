@@ -1,5 +1,6 @@
--- Verify for HOSTED-INSTALL step 1: proposed/m3-packet/01-tnc-approval-expiry.sql
--- Read-only. One row, ok true, after that step commits.
+-- Read-only check for the Uber and Lyft dates after pull request 226.
+-- Not an install step. The install is proposed/driver-doc-expiry-tnc.sql
+-- on that pull request. One row, ok true, after that file commits.
 
 SELECT (
   (
@@ -20,7 +21,7 @@ SELECT (
      AND a.attnum = d.objsubid
     WHERE d.objoid = 'public.applications'::regclass
       AND a.attname = 'tnc_uber_approval_expires_on'
-      AND d.description = 'Calendar day the driver Uber (TNC) approval expires.'
+      AND d.description = 'Calendar day the driver Uber (TNC) approval expires. Proposal only; not installed.'
   ) = 1
   AND (
     SELECT count(*)
@@ -30,7 +31,7 @@ SELECT (
      AND a.attnum = d.objsubid
     WHERE d.objoid = 'public.applications'::regclass
       AND a.attname = 'tnc_lyft_approval_expires_on'
-      AND d.description = 'Calendar day the driver Lyft (TNC) approval expires.'
+      AND d.description = 'Calendar day the driver Lyft (TNC) approval expires. Proposal only; not installed.'
   ) = 1
   AND (
     SELECT count(*)

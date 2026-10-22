@@ -57,7 +57,6 @@ psqlq() { psql "$PGURL" -v ON_ERROR_STOP=1 "$@"; }
 cleanup() {
   psql "$PGURL" -v ON_ERROR_STOP=1 -c "DELETE FROM public.waitlist WHERE email ILIKE 'm3-proof-%@example.test';" >>"$LOG" 2>&1 || true
   psql "$PGURL" -v ON_ERROR_STOP=1 -f "$ROOT/proposed/m3-rollback/02-waitlist-coming-soon-rate.sql" >>"$LOG" 2>&1 || true
-  psql "$PGURL" -v ON_ERROR_STOP=1 -f "$ROOT/proposed/m3-rollback/01-tnc-approval-expiry.sql" >>"$LOG" 2>&1 || true
   if [[ "$OWN_SCRATCH" == 1 ]]; then
     psql "$ADMIN" -v ON_ERROR_STOP=1 -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'm3_rehearsal' AND pid <> pg_backend_pid();" >>"$LOG" 2>&1 || true
     psql "$ADMIN" -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS m3_rehearsal;" >>"$LOG" 2>&1 || true
@@ -105,7 +104,7 @@ require_preflight() {
     echo "preflight failed" | tee -a "$LOG"
     exit 1
   fi
-  if ! printf '%s\n' "$text" | grep -q 'checklist stops=0 checks=18'; then
+  if ! printf '%s\n' "$text" | grep -q 'checklist stops=0 checks=19'; then
     echo "preflight failed" | tee -a "$LOG"
     exit 1
   fi
@@ -153,18 +152,20 @@ apps_before="$(psqlq -At -c "SELECT count(*) FROM public.applications")"
 wait_before="$(psqlq -At -c "SELECT count(*) FROM public.waitlist")"
 echo "counts before applications=$apps_before waitlist=$wait_before" | tee -a "$LOG"
 
-echo "INSTALL step 1" | tee -a "$LOG"
+echo "TNC FILE REFUSES" | tee -a "$LOG"
+set +e
 psqlq -f "$ROOT/proposed/m3-packet/01-tnc-approval-expiry.sql" >>"$LOG" 2>&1
-verify_file "proposed/m3-verify/01-tnc-approval-expiry.sql"
-echo "INSTALL step 1 again" | tee -a "$LOG"
-psqlq -f "$ROOT/proposed/m3-packet/01-tnc-approval-expiry.sql" >>"$LOG" 2>&1
-verify_file "proposed/m3-verify/01-tnc-approval-expiry.sql"
-apps_after="$(psqlq -At -c "SELECT count(*) FROM public.applications")"
-if [[ "$apps_after" != "$apps_before" ]]; then
-  echo "applications count changed from $apps_before to $apps_after" | tee -a "$LOG"
+tnc_status=$?
+set -e
+if [[ "$tnc_status" -eq 0 ]]; then
+  echo "TNC file committed" | tee -a "$LOG"
   exit 1
 fi
-dump_schema "$DUMPS/step1.sql"
+if ! grep -q 'tnc_install_is_pull_request_226' "$LOG"; then
+  echo "TNC file failed for a different reason" | tee -a "$LOG"
+  exit 1
+fi
+echo "TNC file refused" | tee -a "$LOG"
 
 echo "INSTALL step 2" | tee -a "$LOG"
 psqlq -f "$ROOT/proposed/m3-packet/02-waitlist-coming-soon-rate.sql" >>"$LOG" 2>&1
@@ -197,22 +198,25 @@ fi
 echo "ROLLBACK step 2" | tee -a "$LOG"
 psqlq -f "$ROOT/proposed/m3-rollback/02-waitlist-coming-soon-rate.sql" >>"$LOG" 2>&1
 dump_schema "$DUMPS/after-step2.sql"
-if ! cmp -s "$DUMPS/step1.sql" "$DUMPS/after-step2.sql"; then
+if ! cmp -s "$DUMPS/baseline.sql" "$DUMPS/after-step2.sql"; then
   echo "MISMATCH step 2 rollback" | tee -a "$LOG"
-  diff -u "$DUMPS/step1.sql" "$DUMPS/after-step2.sql" | head -120 | tee -a "$LOG"
+  diff -u "$DUMPS/baseline.sql" "$DUMPS/after-step2.sql" | head -120 | tee -a "$LOG"
   exit 1
 fi
 echo "MATCH step 2 rollback" | tee -a "$LOG"
-
-echo "ROLLBACK step 1" | tee -a "$LOG"
+set +e
 psqlq -f "$ROOT/proposed/m3-rollback/01-tnc-approval-expiry.sql" >>"$LOG" 2>&1
-dump_schema "$DUMPS/after-step1.sql"
-if ! cmp -s "$DUMPS/baseline.sql" "$DUMPS/after-step1.sql"; then
-  echo "MISMATCH step 1 rollback" | tee -a "$LOG"
-  diff -u "$DUMPS/baseline.sql" "$DUMPS/after-step1.sql" | head -120 | tee -a "$LOG"
+tnc_undo=$?
+set -e
+if [[ "$tnc_undo" -eq 0 ]]; then
+  echo "TNC rollback committed" | tee -a "$LOG"
   exit 1
 fi
-echo "MATCH step 1 rollback" | tee -a "$LOG"
+if ! grep -q 'tnc_rollback_is_pull_request_226' "$LOG"; then
+  echo "TNC rollback failed for a different reason" | tee -a "$LOG"
+  exit 1
+fi
+echo "TNC rollback refused" | tee -a "$LOG"
 acl_snapshot > "$DUMPS/acl-after.txt"
 if ! cmp -s "$DUMPS/acl-baseline.txt" "$DUMPS/acl-after.txt"; then
   echo "ACL mismatch after rollback" | tee -a "$LOG"
