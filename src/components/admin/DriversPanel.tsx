@@ -77,7 +77,16 @@ import {
   Link2 as LinkIcon,
   Loader2,
 } from "lucide-react";
-import { removeCardOnFile } from "@/lib/payments.functions";
+import { issueCardOnFileLink, removeCardOnFile } from "@/lib/payments.functions";
+import {
+  cardEmailHref,
+  cardLinkFresh,
+  cardTextHref,
+  forgetCachedCardLink,
+  readCachedCardLink,
+  rememberCachedCardLink,
+  type CachedCardLink,
+} from "@/lib/card-link-cache";
 import { AgreementsCard } from "./AgreementsCard";
 import { ContactStatusCell } from "./ContactStatusCell";
 import { ApprovedNotRentingList } from "./ApprovedNotRenting";
@@ -309,12 +318,15 @@ export function DriversPanel({
   isOwner = false,
   isManager = false,
   canManageWaitlist = false,
+  canIssueCardLink = false,
   urlFilter,
 }: {
   /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
   canManageWaitlist?: boolean;
   /** Manager and above. Quick review and the driver statement are not mounted otherwise. */
   isManager?: boolean;
+  /** Owner + Manager. The card-link server function requires a manager. */
+  canIssueCardLink?: boolean;
   externalSearch?: string;
   initialOpenId?: string;
   /**
@@ -929,6 +941,7 @@ setDocCounts(requiredDocCounts(rows));
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
         isManager={isManager}
+        canIssueCardLink={canIssueCardLink}
       />
       {deleteDialog}
       </>
@@ -1395,6 +1408,7 @@ function DriverDetail({
   onVaultChange,
   isOwner,
   isManager = false,
+  canIssueCardLink,
   hasActiveRental,
   onRentalStarted,
 }: {
@@ -1409,6 +1423,7 @@ function DriverDetail({
   isOwner: boolean;
   /** Manager and above. The quick review panel is not mounted otherwise. */
   isManager?: boolean;
+  canIssueCardLink: boolean;
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
@@ -2084,7 +2099,7 @@ function DriverDetail({
                   </DropdownMenuItem>
                   <RequestDocumentsAction driver={driver} onUpdate={onSaved} />
                   <ReissueLinkAction applicationId={driver.id} />
-                  <CardOnFileActions driver={driver} onUpdate={onSaved} />
+                  <CardOnFileActions driver={driver} onUpdate={onSaved} canIssue={canIssueCardLink} />
 {isOwner && (<DropdownMenuItem
                     className="text-[#D03020] focus:text-[#D03020]"
                     onClick={onDelete}
@@ -2417,7 +2432,7 @@ function DriverDetail({
                     Must match the address on their licence. Never fill this in from a guess.
                   </p>
                 </Card>
-                <CardOnFileCard driver={driver} onUpdate={onSaved} />
+                <CardOnFileCard driver={driver} onUpdate={onSaved} canIssue={canIssueCardLink} />
               </TabsContent>
 
               <TabsContent value="notes" className="mt-0">
@@ -3031,6 +3046,7 @@ function ReissueLinkAction({ applicationId }: { applicationId: string }) {
         setBusy(true);
         try {
           const res = await reissue({ data: { id: applicationId } });
+          forgetCardOnFileLink(applicationId);
           await navigator.clipboard.writeText(res.url).catch(() => {});
           toast.success(
             res.revoked
@@ -3049,23 +3065,129 @@ function ReissueLinkAction({ applicationId }: { applicationId: string }) {
   );
 }
 
-function cardLinkFor(applicationId: string) {
-  if (typeof window === "undefined") return "";
-  return `${window.location.origin}/card/${applicationId}`;
+const cardLinkCache = new Map<string, CachedCardLink>();
+const cardLinkPending = new Map<string, Promise<CachedCardLink>>();
+const cardLinkListeners = new Set<() => void>();
+
+function notifyCardLinks() {
+  for (const listener of cardLinkListeners) listener();
 }
 
-function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: any) => void }) {
-  const link = cardLinkFor(driver.id);
+function forgetCardOnFileLink(applicationId: string) {
+  forgetCachedCardLink(cardLinkCache, applicationId);
+  cardLinkPending.delete(applicationId);
+  notifyCardLinks();
+}
+
+function useCardOnFileLink(applicationId: string) {
+  const issue = useServerFn(issueCardOnFileLink);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const listener = () => setTick((tick) => tick + 1);
+    cardLinkListeners.add(listener);
+    return () => {
+      cardLinkListeners.delete(listener);
+    };
+  }, []);
+  const ensure = useCallback(() => {
+    const cached = readCachedCardLink(cardLinkCache, applicationId);
+    if (cached) return Promise.resolve(cached);
+    const pending = cardLinkPending.get(applicationId);
+    if (pending) return pending;
+    const next = issue({ data: { applicationId } })
+      .then((res) => {
+        if (typeof res.expiresAt !== "number" || !cardLinkFresh(res.expiresAt)) {
+          forgetCardOnFileLink(applicationId);
+          throw new Error("Could not prepare the card link.");
+        }
+        const entry = {
+          link: `${window.location.origin}${res.path}`,
+          expiresAt: res.expiresAt,
+        };
+        rememberCachedCardLink(cardLinkCache, applicationId, entry);
+        cardLinkPending.delete(applicationId);
+        notifyCardLinks();
+        return entry;
+      })
+      .catch((error: unknown) => {
+        forgetCardOnFileLink(applicationId);
+        throw error;
+      });
+    cardLinkPending.set(applicationId, next);
+    return next;
+  }, [applicationId, issue]);
+  return { ensure, cached: readCachedCardLink(cardLinkCache, applicationId) };
+}
+
+function cardLinkText(ensure: () => Promise<CachedCardLink>) {
+  return () => ensure().then((entry) => entry.link);
+}
+
+/**
+ * Copy starts in the click turn. The link is minted inside the clipboard item,
+ * so Safari still treats the write as part of the gesture.
+ */
+function copyCardLink(ensureLink: () => Promise<string>, success: string) {
+  const clipboard = navigator.clipboard;
+  const writeText = () =>
+    ensureLink()
+      .then((link) => clipboard.writeText(link))
+      .then(() => toast.success(success))
+      .catch(() => toast.error("Failed to copy link"));
+  if (!clipboard?.write || typeof ClipboardItem === "undefined") {
+    writeText();
+    return;
+  }
+  void clipboard
+    .write([
+      new ClipboardItem({
+        "text/plain": ensureLink().then((link) => new Blob([link], { type: "text/plain" })),
+      }),
+    ])
+    .then(() => toast.success(success))
+    .catch(() => writeText());
+}
+
+/** Open the window in the click turn, then navigate once the link exists. */
+function previewCardLink(ensureLink: () => Promise<string>) {
+  const opened = window.open("", "_blank");
+  if (!opened) {
+    toast.error("Failed to prepare the link");
+    return;
+  }
+  opened.opener = null;
+  void ensureLink()
+    .then((link) => {
+      opened.location.href = link;
+    })
+    .catch(() => {
+      opened.close();
+      toast.error("Failed to prepare the link");
+    });
+}
+
+const handoffItemClass =
+  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none bg-white text-foreground hover:bg-muted [&>svg]:size-4 [&>svg]:shrink-0";
+
+function CardOnFileActions({ driver, onUpdate, canIssue }: { driver: any; onUpdate: (p: any) => void; canIssue: boolean }) {
+  const { ensure: ensureLink, cached } = useCardOnFileLink(driver.id);
   const hasCard = !!driver.card_last4;
   const [chargeOpen, setChargeOpen] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const ready = cached && cardLinkFresh(cached.expiresAt) ? cached : null;
+  const canHandoff = !!(driver.phone || driver.email);
 
-  async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(link);
-      toast.success("Card-on-file link copied");
-    } catch {
-      toast.error("Failed to copy link");
-    }
+  function copyLink() {
+    copyCardLink(cardLinkText(ensureLink), "Card-on-file link copied");
+  }
+
+  function prepare(event: Event) {
+    event.preventDefault();
+    if (preparing || ready) return;
+    setPreparing(true);
+    void ensureLink()
+      .catch(() => toast.error("Failed to prepare the link"))
+      .finally(() => setPreparing(false));
   }
 
   async function remove() {
@@ -3102,26 +3224,29 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
               <CreditCard className="w-4 h-4 mr-2" /> Charge Card…
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem onClick={copyLink}>
-            <Copy className="w-4 h-4 mr-2" /> Copy Card-On-File Link
-          </DropdownMenuItem>
-          {driver.phone && (
-            <DropdownMenuItem asChild>
-              <a
-                href={`sms:${driver.phone}?&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}
-              >
-                <MessageSquare className="w-4 h-4 mr-2" /> Text Link to Driver
-              </a>
-            </DropdownMenuItem>
-          )}
-          {driver.email && (
-            <DropdownMenuItem asChild>
-              <a
-                href={`mailto:${driver.email}?subject=${encodeURIComponent("Save your card on file")}&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}
-              >
-                <Mail className="w-4 h-4 mr-2" /> Email Link to Driver
-              </a>
-            </DropdownMenuItem>
+          {canIssue ? (
+            <>
+              <DropdownMenuItem onClick={copyLink}>
+                <Copy className="w-4 h-4 mr-2" /> Copy Card-On-File Link
+              </DropdownMenuItem>
+              {canHandoff && !ready && (
+                <DropdownMenuItem onSelect={prepare} disabled={preparing}>
+                  <LinkIcon className="w-4 h-4 mr-2" /> {preparing ? "Preparing Link…" : "Prepare Link"}
+                </DropdownMenuItem>
+              )}
+              {ready && driver.phone && (
+                <a href={cardTextHref(driver.phone, ready.link)} className={handoffItemClass}>
+                  <MessageSquare className="w-4 h-4 mr-2" /> Text Link to Driver
+                </a>
+              )}
+              {ready && driver.email && (
+                <a href={cardEmailHref(driver.email, ready.link)} className={handoffItemClass}>
+                  <Mail className="w-4 h-4 mr-2" /> Email Link to Driver
+                </a>
+              )}
+            </>
+          ) : (
+            <DropdownMenuItem disabled>Manager Required</DropdownMenuItem>
           )}
           {hasCard && (
             <DropdownMenuItem className="text-real-red focus:text-real-red" onClick={remove}>
@@ -3308,11 +3433,13 @@ function AutopayActions({ driver }: { driver: any }) {
 function CardOnFileCard({
   driver,
   onUpdate: _onUpdate,
+  canIssue,
 }: {
   driver: any;
   onUpdate: (p: any) => void;
+  canIssue: boolean;
 }) {
-  const link = cardLinkFor(driver.id);
+  const { ensure: ensureLink } = useCardOnFileLink(driver.id);
   const hasCard = !!driver.card_last4;
   return (
     <div className="rounded-xl border border-border bg-white p-5">
@@ -3358,29 +3485,25 @@ function CardOnFileCard({
           <p className="text-xs text-muted-foreground">
             Send this driver a secure link to save a card. No charge is made.
           </p>
-          <div className="flex gap-1.5">
-            <button
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(link);
-                  toast.success("Link copied");
-                } catch {
-                  toast.error("Failed to copy");
-                }
-              }}
-              className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft"
-            >
-              Copy Link
-            </button>
-            <a
-              href={link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft inline-flex items-center justify-center"
-            >
-              Preview
-            </a>
-          </div>
+          {canIssue ? (
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => copyCardLink(cardLinkText(ensureLink), "Link copied")}
+                className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft"
+              >
+                Copy Link
+              </button>
+              <button
+                type="button"
+                onClick={() => previewCardLink(cardLinkText(ensureLink))}
+                className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft inline-flex items-center justify-center"
+              >
+                Preview
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Manager Required</p>
+          )}
         </div>
       )}
     </div>

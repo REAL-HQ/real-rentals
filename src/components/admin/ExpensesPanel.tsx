@@ -86,19 +86,19 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
   }, []);
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
+    <div className="space-y-5 max-lg:min-w-0">
+      <div className="flex items-start justify-between gap-3 flex-wrap max-lg:flex-col">
+        <div className="max-lg:min-w-0">
           <h2 className="text-lg font-semibold">Expenses & Profitability</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
             Every cost against every car, and what each one actually earns.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 max-lg:w-full max-lg:flex-wrap">
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
-            className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
+            className="rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:w-full max-lg:min-w-0"
           >
             {PERIODS.map((p) => (
               <option key={p.id} value={p.id}>
@@ -106,7 +106,7 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
               </option>
             ))}
           </select>
-          <div className="inline-flex rounded-lg border border-border overflow-hidden">
+          <div className="inline-flex rounded-lg border border-border overflow-hidden max-lg:shrink-0">
             {(["pl", "ledger"] as const).map((v) => (
               <button
                 key={v}
@@ -168,8 +168,8 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
   const totalCost = totals.expenses + totals.maintenance;
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+    <div className="space-y-4 max-lg:min-w-0">
+      <div className="grid gap-3 grid-cols-1 lg:grid-cols-3">
         <Stat label="Revenue Collected" value={money(totals.revenue)} tone="good" />
         <Stat label="Costs" value={money(totalCost)} tone="bad" />
         <Stat
@@ -180,8 +180,8 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
         />
       </div>
 
-      <AdminTableScroll className="rounded-xl border border-border">
-        <table className="w-full text-sm">
+      <AdminTableScroll className="max-lg:min-w-0 rounded-xl border border-border">
+        <table className="w-full text-sm max-lg:min-w-[48rem]">
           <thead className="bg-[#FAFAFB] text-left">
             <tr>
               <th className="px-4 py-2.5 font-medium">Vehicle</th>
@@ -195,7 +195,7 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
           <tbody>
             {rows.map((r) => (
               <tr key={r.vehicle_id} className="border-t border-border">
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 max-lg:whitespace-nowrap">
                   <span className="font-medium">{r.label}</span>
                   {r.status && (
                     <span className="block text-xs text-muted-foreground capitalize">{r.status}</span>
@@ -247,10 +247,10 @@ function Stat({
   emphasis?: boolean;
 }) {
   return (
-    <div className={`rounded-xl border p-4 ${emphasis ? "border-[#D03020]" : "border-border"}`}>
+    <div className={`rounded-xl border p-4 max-lg:min-w-0 ${emphasis ? "border-[#D03020]" : "border-border"}`}>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p
-        className={`mt-1 text-2xl font-semibold tabular-nums ${
+        className={`mt-1 text-2xl font-semibold tabular-nums max-lg:break-words ${
           tone === "good" ? "text-[#16A34A]" : "text-[#D03020]"
         }`}
       >
@@ -314,12 +314,12 @@ function Ledger({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 flex-wrap">
+    <div className="space-y-4 max-lg:min-w-0">
+      <div className="flex items-center gap-2 flex-wrap max-lg:flex-col max-lg:items-stretch">
         <select
           value={vehicleFilter}
           onChange={(e) => setVehicleFilter(e.target.value)}
-          className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
+          className="rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:w-full max-lg:min-w-0"
         >
           <option value="all">All Vehicles</option>
           {vehicles.map((v) => (
@@ -331,7 +331,7 @@ function Ledger({
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
+          className="rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:w-full max-lg:min-w-0"
         >
           <option value="all">All Categories</option>
           {EXPENSE_CATEGORIES.map((c) => (
@@ -347,7 +347,7 @@ function Ledger({
           onClick={() => setShowForm(true)}
           disabled={vehicles.length === 0}
           title={vehicles.length === 0 ? "Add a vehicle first" : undefined}
-          className="ml-auto inline-flex items-center gap-2 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+          className="ml-auto inline-flex items-center gap-2 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium disabled:opacity-50 max-lg:ml-0 max-lg:w-full max-lg:justify-center"
         >
           <Plus className="w-4 h-4" /> Record Expense
         </button>
@@ -362,8 +362,8 @@ function Ledger({
           hint="Log registration, insurance, repairs, cleaning and anything else a car costs — attach the receipt while you have it."
         />
       ) : (
-        <AdminTableScroll className="rounded-xl border border-border">
-          <table className="w-full text-sm">
+        <AdminTableScroll className="max-lg:min-w-0 rounded-xl border border-border">
+          <table className="w-full text-sm max-lg:min-w-[56rem]">
             <thead className="bg-[#FAFAFB] text-left">
               <tr>
                 <th className="px-4 py-2.5 font-medium">Date</th>
@@ -381,8 +381,8 @@ function Ledger({
                   <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
                     {fmtDate(r.incurred_on + "T00:00:00")}
                   </td>
-                  <td className="px-4 py-3">{r.vehicle_label}</td>
-                  <td className="px-4 py-3 capitalize">
+                  <td className="px-4 py-3 max-lg:whitespace-nowrap">{r.vehicle_label}</td>
+                  <td className="px-4 py-3 capitalize max-lg:whitespace-nowrap">
                     {EXPENSE_CATEGORIES.find((c) => c.value === r.category)?.label ?? r.category}
                   </td>
                   <td className="px-4 py-3">
@@ -519,7 +519,7 @@ function ExpenseForm({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <form onSubmit={submit} className="bg-white rounded-xl p-6 max-w-lg w-full space-y-3 my-8">
+      <form onSubmit={submit} className="bg-white rounded-xl p-6 max-w-lg w-full space-y-3 my-8 max-lg:min-w-0">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">Record an Expense</h3>
           <button type="button" onClick={onClose} aria-label="Close">
@@ -527,12 +527,12 @@ function ExpenseForm({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 max-lg:min-w-0">
           <Field label="Vehicle" full>
             <select
               value={vehicleId}
               onChange={(e) => setVehicleId(e.target.value)}
-              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:min-w-0"
             >
               {vehicles.map((v) => (
                 <option key={v.id} value={v.id}>
@@ -546,7 +546,7 @@ function ExpenseForm({
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:min-w-0"
             >
               {EXPENSE_CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -564,7 +564,7 @@ function ExpenseForm({
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm max-lg:min-w-0"
             />
           </Field>
 
@@ -573,7 +573,7 @@ function ExpenseForm({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g. Annual tag renewal"
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm max-lg:min-w-0"
             />
           </Field>
 
@@ -582,7 +582,7 @@ function ExpenseForm({
               type="date"
               value={incurredOn}
               onChange={(e) => setIncurredOn(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm max-lg:min-w-0"
             />
           </Field>
 
@@ -590,7 +590,7 @@ function ExpenseForm({
             <input
               value={reference}
               onChange={(e) => setReference(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm max-lg:min-w-0"
             />
           </Field>
 
@@ -599,7 +599,7 @@ function ExpenseForm({
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}
               placeholder="Card, ACH, cash…"
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm max-lg:min-w-0"
             />
           </Field>
 
@@ -608,7 +608,7 @@ function ExpenseForm({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm max-lg:min-w-0"
             />
           </Field>
         </div>
@@ -648,7 +648,7 @@ function ExpenseForm({
 
 function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
   return (
-    <div className={full ? "col-span-2" : ""}>
+    <div className={full ? "lg:col-span-2 max-lg:min-w-0" : "max-lg:min-w-0"}>
       <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
       {children}
     </div>
