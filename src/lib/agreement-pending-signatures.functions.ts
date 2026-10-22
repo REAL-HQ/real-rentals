@@ -33,8 +33,28 @@ export const getPendingSignatures = createServerFn({ method: "GET" })
     if (page.error) throw new Error("Pending signatures could not be loaded.");
 
     const raw = (page.data ?? []) as PendingAgreementRow[];
-    const truncatedRead = raw.length > PENDING_SIGNATURE_READ_CAP;
+    let truncatedRead = raw.length > PENDING_SIGNATURE_READ_CAP;
     const agreements = raw.slice(0, PENDING_SIGNATURE_READ_CAP);
+    const revokedAt = new Map<string, string>();
+    for (let index = 0; index < agreements.length; index += PENDING_SIGNATURE_NAME_CHUNK) {
+      const group = agreements.slice(index, index + PENDING_SIGNATURE_NAME_CHUNK).map((row) => row.id);
+      const recipients = await context.supabase
+        .from("esign_recipients")
+        .select("document_id,token_revoked_at")
+        .in("document_id", group)
+        .not("token_revoked_at", "is", null)
+        .limit(PENDING_SIGNATURE_READ_CAP + 1);
+      if (recipients.error) throw new Error("Pending signatures could not be loaded.");
+      const recipientRows = recipients.data ?? [];
+      if (recipientRows.length > PENDING_SIGNATURE_READ_CAP) truncatedRead = true;
+      for (const recipient of recipientRows) {
+        if (recipient.document_id && recipient.token_revoked_at) revokedAt.set(recipient.document_id, recipient.token_revoked_at);
+      }
+    }
+    for (const agreement of agreements) {
+      agreement.token_revoked_at = revokedAt.get(agreement.id) ?? null;
+    }
+
     const applicationIds = [...new Set(agreements.map((row) => row.application_id).filter((id): id is string => !!id))];
     const drivers: PendingDriver[] = [];
     const namesUnchecked: string[] = [];
@@ -43,7 +63,7 @@ export const getPendingSignatures = createServerFn({ method: "GET" })
       const group = applicationIds.slice(index, index + PENDING_SIGNATURE_NAME_CHUNK);
       const names = await context.supabase
         .from("applications")
-        .select("id,full_name")
+        .select("id,full_name,deleted_at")
         .in("id", group)
         .limit(PENDING_SIGNATURE_NAME_CHUNK + 1);
       if (names.error || (names.data?.length ?? 0) > PENDING_SIGNATURE_NAME_CHUNK) {
@@ -52,7 +72,7 @@ export const getPendingSignatures = createServerFn({ method: "GET" })
         continue;
       }
       for (const driver of names.data ?? []) {
-        drivers.push({ id: driver.id, full_name: driver.full_name });
+        drivers.push({ id: driver.id, full_name: driver.full_name, deleted_at: driver.deleted_at });
       }
     }
 

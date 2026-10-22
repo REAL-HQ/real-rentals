@@ -23,11 +23,13 @@ export type PendingAgreementRow = {
   signed_at: string | null;
   signer_name: string | null;
   token_expires_at?: string | null;
+  token_revoked_at?: string | null;
 };
 
 export type PendingDriver = {
   id: string;
   full_name: string | null;
+  deleted_at?: string | null;
 };
 
 export type PendingSignatureRow = {
@@ -99,6 +101,8 @@ export function lastSentLabel(sentAt: string | null): string {
 }
 
 function statusLabel(row: PendingAgreementRow, now: Date): string {
+  const revokedAt = row.token_revoked_at;
+  if (typeof revokedAt === "string" && revokedAt.trim() !== "") return "Revoked";
   const expiresAt = row.token_expires_at;
   if (typeof expiresAt === "string" && expiresAt.trim() !== "") {
     const expires = new Date(expiresAt);
@@ -126,11 +130,17 @@ export function buildPendingSignatures(input: {
   namesUnchecked?: readonly string[];
 }): PendingSignatureList {
   const drivers = new Map(input.drivers.map((driver) => [driver.id, driver]));
+  const deleted = new Set(
+    input.drivers
+      .filter((driver) => typeof driver.deleted_at === "string" && driver.deleted_at.trim() !== "")
+      .map((driver) => driver.id),
+  );
   const unchecked = new Set(input.namesUnchecked ?? []);
   const rows: PendingSignatureRow[] = [];
   for (const agreement of input.agreements) {
     if (!isOpenUnsigned(agreement)) continue;
     const applicationId = agreement.application_id;
+    if (applicationId && deleted.has(applicationId)) continue;
     const driver = applicationId ? drivers.get(applicationId) : undefined;
     const name = driver?.full_name?.trim() ?? "";
     const signer = agreement.signer_name?.trim() ?? "";
