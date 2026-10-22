@@ -1,6 +1,7 @@
 import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { RENEWALS_DUE_ENABLED } from "./renewals-due-flag";
+import { RENEWAL_CANDIDATES_ENABLED } from "./renewal-candidates-flag";
 import {
   RENEWALS_FETCH_LIMIT,
   buildRenewalsDue,
@@ -12,6 +13,18 @@ import {
   type RenewalVehicle,
   type RenewalsDueBoard,
 } from "./renewals-due";
+
+const PAYMENT_COLUMNS = "id,rental_id,status,created_at";
+const PAYMENT_HISTORY_COLUMNS =
+  "id,rental_id,status,created_at,type,late_fees,paid_date,due_date,attempt_count,failure_reason";
+
+function renewalRequest(input: unknown): { windowDays: 7 | 14; goodHistoryOnly: boolean } {
+  const raw = input && typeof input === "object" ? (input as { windowDays?: unknown; goodHistoryOnly?: unknown }) : {};
+  return {
+    windowDays: raw.windowDays === 14 ? 14 : 7,
+    goodHistoryOnly: raw.goodHistoryOnly === true,
+  };
+}
 
 const RENTAL_COLUMNS = "id,status,driver_id,application_id,vehicle_id,weekly_rate,end_date,next_payment_due";
 const ID_BATCH = 80;
@@ -51,14 +64,20 @@ const renewalsDueGate = createMiddleware({ type: "function" }).server(async ({ n
 
 export const getRenewalsDue = createServerFn({ method: "POST" })
   .middleware([renewalsDueGate, requireSupabaseAuth])
-  .handler(async ({ context }): Promise<RenewalsDueBoard> => {
+  .inputValidator(renewalRequest)
+  .handler(async ({ data, context }): Promise<RenewalsDueBoard> => {
     if (!RENEWALS_DUE_ENABLED) throw new Error("Rental Renewal Due is off");
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
+    const historyEnabled = RENEWAL_CANDIDATES_ENABLED === true;
+    const windowDays = historyEnabled && data.windowDays === 14 ? 14 : 7;
+    const goodHistoryOnly = historyEnabled && data.goodHistoryOnly === true;
     const today = easternCalendarDate();
-    const horizon = renewalHorizon(today);
+    const horizon = renewalHorizon(today, windowDays);
+    // The 7/14 window and the Good Payment History filter apply to Renewal Due rows only.
+    // Overdue Return stays every active rental whose end_date is before today.
     const [billingQ, endQ, overdueQ] = await Promise.all([
       supabaseAdmin
         .from("rentals")
@@ -112,6 +131,9 @@ export const getRenewalsDue = createServerFn({ method: "POST" })
         billingTruncated: over(billingQ.count, billingQ.data?.length ?? 0),
         endTruncated,
         overdueTruncated,
+        historyEnabled,
+        windowDays,
+        goodHistoryOnly,
       });
     }
 
@@ -138,17 +160,31 @@ export const getRenewalsDue = createServerFn({ method: "POST" })
         .in("id", batch)
         .limit(RENEWALS_FETCH_LIMIT),
     );
-    const paymentsQ = await rowsInBatches(
-      rentalIds,
-      (batch) =>
-        supabaseAdmin
-          .from("payments")
-          .select("id,rental_id,status,created_at", { count: "exact" })
-          .in("rental_id", batch)
-          .order("created_at", { ascending: false })
-          .limit(RENEWALS_FETCH_LIMIT),
-      (a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
-    );
+    const paymentSort = (a: RenewalPayment, b: RenewalPayment) =>
+      a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+    const paymentsQ = historyEnabled
+      ? await rowsInBatches(
+          rentalIds,
+          (batch) =>
+            supabaseAdmin
+              .from("payments")
+              .select(PAYMENT_HISTORY_COLUMNS, { count: "exact" })
+              .in("rental_id", batch)
+              .order("created_at", { ascending: false })
+              .limit(RENEWALS_FETCH_LIMIT),
+          paymentSort,
+        )
+      : await rowsInBatches(
+          rentalIds,
+          (batch) =>
+            supabaseAdmin
+              .from("payments")
+              .select(PAYMENT_COLUMNS, { count: "exact" })
+              .in("rental_id", batch)
+              .order("created_at", { ascending: false })
+              .limit(RENEWALS_FETCH_LIMIT),
+          paymentSort,
+        );
 
     const vehicles: RenewalVehicle[] = vehiclesQ.rows;
     const payments: RenewalPayment[] = paymentsQ.rows;
@@ -166,5 +202,8 @@ export const getRenewalsDue = createServerFn({ method: "POST" })
       applicationsTruncated: applicationsQ.truncated,
       vehiclesTruncated: vehiclesQ.truncated,
       paymentsTruncated: paymentsQ.truncated,
+      historyEnabled,
+      windowDays,
+      goodHistoryOnly,
     });
   });
