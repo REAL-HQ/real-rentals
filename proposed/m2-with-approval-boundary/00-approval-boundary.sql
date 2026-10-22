@@ -16,6 +16,22 @@
 -- This file is one transaction. Run it with ON_ERROR_STOP. Do not also pass psql -1.
 BEGIN;
 
+-- A generic plan of the migration guard reads public.rentals on every status
+-- change. The approval executor cannot. Read rentals only when status is
+-- becoming active, which is the check the guard exists to make.
+CREATE OR REPLACE FUNCTION private.application_active_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path TO 'public' AS $$
+BEGIN
+  IF NEW.status = 'active' AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'active') THEN
+    IF NOT EXISTS (SELECT 1 FROM public.rentals r
+                   WHERE (r.application_id = NEW.id) AND r.status = 'active') THEN
+      RAISE EXCEPTION 'active_requires_running_rental'
+        USING HINT = 'A driver becomes Active only when a rental is started (activate_rental_tx).';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+
 -- LOCAL REVIEW PROPOSAL ONLY. Not a hosted installer; not in migration discovery.
 -- Preconditions supplied by the local harness: rr_approval_executor is NOLOGIN,
 -- NOSUPERUSER NOBYPASSRLS, has no application-role members, and narrowly scoped ACLs.

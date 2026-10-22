@@ -41,7 +41,7 @@ Stop if any of these fail. Nothing has been written yet, so there is nothing to 
 2. `storage.objects.version` is `text`, and `storage.objects.user_metadata` is `jsonb`. Both are rows in the preflight.
 3. The `postgres` role is superuser or `BYPASSRLS`. That is the preflight row `postgres bypassrls or superuser`.
 4. Object versioning is off on `driver-docs`, `license-uploads`, `profile-screenshots`, `rental-agreements`, and `condition-media`. The preflight row `storage.objects one row per path` must be `holds`. A second row for the same bucket and name means versioning is on, or a duplicate was left behind. If the Storage dashboard shows versioning on, stop even when that row says `holds`.
-5. `proposed/m2-preflight.sql`, without `-1`. Every `ok` value is true. `private.approval_validate(uuid)` and `private.approval_snapshot(uuid)` are `absent`. `public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)` is `absent`.
+5. `proposed/m2-preflight.sql`, without `-1`. Every `ok` value is true. `private.approval_validate(uuid)` and `private.approval_snapshot(uuid)` are `absent`. `public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz,uuid)` is `absent`.
 6. The preflight row `public CREATE holders` lists who holds `CREATE` on `public`. Step 5 grants `CREATE` on `public` and `private` to `rr_record_executor` because PostgreSQL requires the new owner to hold `CREATE` on the schema. That step moves `public.booking_vehicle_assignments` and `public.record_existing_rental_tx` to that role. Later steps move more objects to the same role. Step 29 revokes `CREATE` on both schemas after those transfers. Read the `actual` column before installing. Stop if `anon` or `authenticated` is in the list.
 7. `scripts/m2-hosted-preflight.ts` against this database. Every printed line is `PASS`. A `STOP` means do not install.
 
@@ -122,7 +122,7 @@ After each file, run the verification query in a new execution. The query must r
 | 28 | `proposed/m2-packet/return.sql` | `-1` | Step 28 query below | `proposed/rollback/return-checklist.sql` |
 | 29 | `proposed/m2-packet/21-revoke-executor-create.sql` | `-1` | Step 29 query below | `proposed/rollback/21-revoke-executor-create.sql` |
 
-Each query returns one boolean. It keeps the step check and adds these privilege assertions: `anon` and `authenticated` have no `USAGE` on `private`; `anon` is not a member of `authenticated`; neither `anon` nor `authenticated` is a member of `service_role`, `postgres`, `authenticator`, `rr_record_executor`, `rr_approval_executor`, or `rr_evidence_issuer` (a role that does not exist yet is skipped); and every packet function that exists after that step has the `proacl` text, `prosecdef` value, and `search_path` proconfig entry recorded from the local install. `proacl::text IS NOT DISTINCT FROM` is the comparison. A null `proacl` (the default `PUBLIC EXECUTE` grant) does not match. `GRANT authenticated TO anon` does not change `proacl` and still makes the query false. `authenticated` EXECUTE is present only on `preview_approval_identity`, `verify_approval_identity`, `recover_application_approval`, `approve_application_checked`, `approval_readiness`, `record_existing_rental_evidence_v1`, `close_recorded_rental_v2`, `swap_rental_vehicle_tx`, `list_assignment_history_v1`, and `link_replacement_agreement_checked`. `record_existing_rental_tx` and `link_replacement_agreement_v1` are `rr_record_executor` only. `extend_rental_tx(uuid,uuid,date,date,text,uuid)` is `service_role` only. `record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)` is `service_role` only. Step 24 refuses with `agreement_evidence_already_installed` when `private.agreement_evidence` already exists. Do not re-run `19b.sql` after step 25. Step 26 grants `rr_record_executor` `EXECUTE` on `vehicle_rental_ready_missing(uuid)` and `UPDATE` (`id`) on `application_identity_reviews`. It does not grant rental billing columns. The swap sets `record.application_id`, `record.vehicle_id`, and `app.rental_tx` itself.
+Each query returns one boolean. It keeps the step check and adds these privilege assertions: `anon` and `authenticated` have no `USAGE` on `private`; `anon` is not a member of `authenticated`; neither `anon` nor `authenticated` is a member of `service_role`, `postgres`, `authenticator`, `rr_record_executor`, `rr_approval_executor`, or `rr_evidence_issuer` (a role that does not exist yet is skipped); and every packet function that exists after that step has the `proacl` text, `prosecdef` value, and `search_path` proconfig entry recorded from the local install. `proacl::text IS NOT DISTINCT FROM` is the comparison. A null `proacl` (the default `PUBLIC EXECUTE` grant) does not match. `GRANT authenticated TO anon` does not change `proacl` and still makes the query false. `authenticated` EXECUTE is present only on `preview_approval_identity`, `verify_approval_identity`, `recover_application_approval`, `approve_application_checked`, `approval_readiness`, `record_existing_rental_evidence_v1`, `close_recorded_rental_v2`, `swap_rental_vehicle_tx`, `list_assignment_history_v1`, and `link_replacement_agreement_checked`. `record_existing_rental_tx` and `link_replacement_agreement_v1` are `rr_record_executor` only. `extend_rental_tx(uuid,uuid,date,date,text,uuid)` is `service_role` only. `record_uploaded_content_sha(text,text,text,uuid,text,timestamptz,uuid)` is `service_role` only. Step 24 refuses with `agreement_evidence_already_installed` when `private.agreement_evidence` already exists. Do not re-run `19b.sql` after step 25. Step 26 grants `rr_record_executor` `EXECUTE` on `vehicle_rental_ready_missing(uuid)` and `UPDATE` (`id`) on `application_identity_reviews`. It does not grant rental billing columns. The swap sets `record.application_id`, `record.vehicle_id`, and `app.rental_tx` itself.
 
 ### Step 1
 
@@ -165,7 +165,7 @@ SELECT to_regprocedure('private.approval_provider_actor()') IS NOT NULL
 ### Step 2
 
 ```sql
-SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)') IS NOT NULL
+SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz,uuid)') IS NOT NULL
  AND to_regclass('private.uploaded_content_sha') IS NOT NULL
  AND to_regprocedure('private.approval_provider_actor()') IS NOT NULL
  AND NOT has_schema_privilege('anon','private','USAGE')
@@ -195,7 +195,7 @@ SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,t
  FROM (VALUES
  ('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=public'),
  ('public.end_rental_tx(uuid,date,text,integer,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=public'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('private.approval_actor()','{postgres=X/postgres}',true,'search_path=""'),
  ('private.approval_lock()','{postgres=X/postgres}',false,'search_path=""'),
  ('private.approval_provider_actor()','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""')
@@ -253,7 +253,7 @@ SELECT to_regprocedure('private.approval_validate(uuid)') IS NOT NULL AND to_reg
  ('private.approval_source_statuses()','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('private.approval_validate(uuid)','{postgres=X/postgres,rr_approval_executor=X/postgres}',true,'search_path=""'),
  ('private.approval_write_audit(uuid,text)','{rr_approval_executor=X/rr_approval_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -316,7 +316,7 @@ SELECT to_regprocedure('private.lock_vehicle_release()') IS NOT NULL
  ('private.lock_vehicle_release()','{postgres=X/postgres}',true,'search_path=""'),
  ('private.preserve_inspection_safety()','{postgres=X/postgres}',true,'search_path=""'),
  ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -385,7 +385,7 @@ SELECT to_regclass('public.booking_vehicle_assignments') IS NOT NULL
  ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
  ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -456,7 +456,7 @@ SELECT to_regclass('private.record_close_operations') IS NOT NULL
  ('private.record_subscription_evidence(uuid,uuid,numeric)','{postgres=X/postgres,rr_record_executor=X/postgres}',false,'search_path=""'),
  ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -534,7 +534,7 @@ SELECT to_regclass('private.record_evidence_v1') IS NOT NULL
  ('private.vehicle_release_reasons(uuid,uuid)','{postgres=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -621,7 +621,7 @@ SELECT to_regprocedure('private.document_integrity_guard_v1()') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -708,7 +708,7 @@ SELECT (SELECT pg_get_functiondef('private.integrity_serialize_v1()'::regprocedu
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -796,7 +796,7 @@ SELECT to_regprocedure('private.record_identity_reader_v2(uuid)') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -885,7 +885,7 @@ SELECT to_regprocedure('private.recover_record_evidence_v1(uuid)') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -975,7 +975,7 @@ SELECT to_regprocedure('private.record_issuer_scope_v2(uuid)') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -1066,7 +1066,7 @@ SELECT to_regprocedure('private.record_approval_scope_v3(uuid)') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -1157,7 +1157,7 @@ SELECT has_column_privilege('rr_approval_executor','public.applications','approv
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -1249,7 +1249,7 @@ SELECT to_regprocedure('private.record_executor_scope_v3(uuid)') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -1341,7 +1341,7 @@ SELECT (SELECT is_nullable = 'YES' FROM information_schema.columns WHERE table_s
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -1433,7 +1433,7 @@ SELECT (SELECT pg_get_functiondef('public.close_recorded_rental_v2(uuid,uuid,tim
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -1525,7 +1525,7 @@ SELECT (SELECT count(*) = 1 FROM pg_policy WHERE polname='issuer_identity_allow_
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -1617,7 +1617,7 @@ SELECT (SELECT pg_get_functiondef('public.record_existing_rental_evidence_v1(uui
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -1710,7 +1710,7 @@ SELECT to_regprocedure('private.record_close_scope_v5(uuid)') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -1804,7 +1804,7 @@ SELECT to_regprocedure('private.storage_integrity_v1()') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.verify_approval_identity(uuid,jsonb,text)','{rr_approval_executor=X/rr_approval_executor,authenticated=X/rr_approval_executor}',true,'search_path=""')
  ) AS e(sig, acl, definer, spath)
@@ -1900,7 +1900,7 @@ SELECT to_regclass('private.rental_subscription_operations_v1') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
@@ -2001,7 +2001,7 @@ SELECT to_regprocedure('private.finalized_archive_pointer_v1()') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
@@ -2105,7 +2105,7 @@ SELECT to_regclass('private.agreement_evidence') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
@@ -2209,7 +2209,7 @@ SELECT (SELECT pg_get_functiondef('private.record_agreement_evidence(uuid,uuid,t
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
@@ -2316,7 +2316,7 @@ SELECT to_regclass('private.swap_operations') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
@@ -2425,7 +2425,7 @@ SELECT to_regprocedure('public.extend_rental_tx(uuid,uuid,date,date,text,uuid)')
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
@@ -2534,7 +2534,7 @@ SELECT to_regclass('public.return_checklists') IS NOT NULL
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
@@ -2547,7 +2547,7 @@ SELECT to_regclass('public.return_checklists') IS NOT NULL
 ### Step 29
 
 ```sql
-SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)') IS NOT NULL
+SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz,uuid)') IS NOT NULL
  AND NOT has_schema_privilege('rr_record_executor','public','CREATE')
  AND NOT has_schema_privilege('rr_record_executor','private','CREATE')
  AND NOT has_schema_privilege('anon','private','USAGE')
@@ -2645,7 +2645,7 @@ SELECT to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,t
  ('private.verify_license_v1(uuid,jsonb)','{postgres=X/postgres,rr_approval_executor=X/postgres}',false,'search_path=""'),
  ('public.record_existing_rental_evidence_v1(uuid,jsonb)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.record_existing_rental_tx(uuid,uuid,uuid,timestamp with time zone,numeric,numeric,integer,uuid,text)','{rr_record_executor=X/rr_record_executor}',true,'search_path=""'),
- ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
+ ('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamp with time zone,uuid)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.recover_application_approval(uuid,uuid)','{postgres=X/postgres,authenticated=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_begin_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),
  ('public.rental_subscription_finish_v1(uuid,uuid,uuid,text,text,text)','{postgres=X/postgres,service_role=X/postgres}',true,'search_path=""'),

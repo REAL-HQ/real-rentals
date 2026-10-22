@@ -46,14 +46,14 @@ for (const sql of [
 }
 
 const loaded = loadChecklistInputs(read);
-if (!loaded.mapped.get("public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)")) {
+if (!loaded.mapped.get("public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz,uuid)")) {
   throw new Error("content-sha function was not mapped");
 }
 const expectStep = (name: string, step: number) => {
   const actual = loaded.mapped.get(name);
   if (actual !== step) throw new Error(`${name} mapped to ${actual}, expected step ${step}`);
 };
-expectStep("public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)", 2);
+expectStep("public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz,uuid)", 2);
 expectStep("private.approval_validate(uuid)", 3);
 expectStep("role rr_record_executor", 5);
 expectStep("private.record_customer_number_seq", 5);
@@ -107,6 +107,20 @@ if (checklistStops(text) !== 1 || !text.includes("STOP step 0 supabase/migration
 }
 if (!text.includes("PASS step 9 no separate object")) throw new Error("a replace-only step was omitted");
 
+const bypasses = [
+  "SELECT 1 AS a$$, pg_sleep(2) AS b$$",
+  "SELECT 1 AS a$$, current_setting('app.jwt_secret') AS b$$",
+  "SELECT 1 AS a$t$, pg_sleep(2) AS b$t$",
+  "SELECT 1 AS a$t$, current_setting('app.jwt_secret') AS b$t$",
+  "SELECT to_jsonb(d) FROM public.app_secrets \"d\" WHERE EXISTS (SELECT 1 FROM public.documents d)",
+  "SELECT to_jsonb(d) FROM public.app_secrets AS \"d\" WHERE EXISTS (SELECT 1 FROM public.documents d)",
+  "SELECT setconfig FROM pg_catalog.pg_db_role_setting",
+  "SELECT * FROM pg_catalog.pg_settings",
+  "SELECT query FROM pg_catalog.pg_stat_activity",
+  "SELECT rolpassword FROM pg_catalog.pg_authid",
+  "SELECT rolpassword FROM pg_catalog.pg_roles",
+  "SELECT * FROM pg_catalog.pg_roles",
+];
 const attacks = [
   "SELECT '--'; COMMIT; DELETE FROM public.victim; SELECT 1",
   "SELECT $a$'$a$; COMMIT; DELETE FROM public.victim; SELECT 'x'",
@@ -155,13 +169,13 @@ const attacks = [
   "SELECT pg_catalog/**/.pg_sleep/**/(1)",
   "SELECT current_setting/**/('data_directory')",
   "SELECT current_setting('server_version'/**/'x')",
-  "SELECT current_setting(E'server_version')",
   "SELECT current_setting($$server_version$$)",
   "SELECT to_jsonb(d) FROM public.applications AS d",
   "SELECT to_jsonb(d) FROM (SELECT 1) AS d",
   "SELECT to_jsonb(a) FROM public.applications AS a",
   "SELECT to_jsonb(d.*) FROM public.documents AS d",
   "SELECT to_jsonb(d) FROM public.applications AS d WHERE \"from public.documents as d\" IS NOT NULL",
+  ...bypasses,
 ];
 for (const sql of attacks) {
   let refused = false;
@@ -184,7 +198,9 @@ assertSelectOnly("SELECT 'public CREATE holders'");
 assertSelectOnly("SELECT count(*)");
 assertSelectOnly("SELECT count/**/(*)");
 assertSelectOnly("SELECT current_setting/**/('server_version')");
+assertSelectOnly("SELECT current_setting(E'server_version')");
 assertSelectOnly("SELECT current_setting(\n-- name\n 'standard_conforming_strings' )");
+assertSelectOnly("SELECT rolname FROM pg_catalog.pg_roles WHERE rolname = 'anon'");
 assertSelectOnly("SELECT to_jsonb/**/(d) FROM public.documents AS d");
 assertSelectOnly("SELECT to_jsonb( /* row */ d ) FROM public/**/.documents AS d");
 assertSelectOnly("SELECT pg_catalog.aclexplode/**/(NULL)");
@@ -286,7 +302,7 @@ try {
   const blocked = await runChecklist({
     url: scratchUrl,
     hosted: false,
-    statements: ["SELECT count(*) FROM public.missing_table"],
+    statements: ["SELECT count(*)"],
     mapped: new Map(),
   });
   if (!blocked.includes("run as least-privilege read-only role")) {
@@ -315,11 +331,24 @@ try {
     }
     if (!refused) throw new Error(`comment call reached the reader: ${sql}`);
   }
+  for (const sql of bypasses) {
+    let refused = false;
+    try {
+      await defaultConnect(readerUrl, [sql]);
+    } catch (error) {
+      refused = error instanceof Error && error.message.startsWith("Refusing to run:");
+    }
+    if (!refused) throw new Error(`bypass reached the reader: ${sql}`);
+  }
   const allowedRead = await defaultConnect(readerUrl, [
     "SELECT current_setting('server_version') AS version, to_jsonb(d) AS row FROM public.documents AS d",
   ]);
   if (!allowedRead.some((row) => String(row.version || "").length > 0)) {
     throw new Error("allowed current_setting and to_jsonb(d) did not run");
+  }
+  const escapeRead = await defaultConnect(readerUrl, ["SELECT current_setting(E'server_version') AS version"]);
+  if (!escapeRead.some((row) => String(row.version || "").length > 0)) {
+    throw new Error("E'' current_setting did not run");
   }
   const check = postgres(scratchUrl, { max: 1 });
   try {
@@ -343,13 +372,13 @@ try {
     const stringsOff = await runChecklist({
       url: readerUrl,
       hosted: false,
-      statements: ["SELECT count(*) FROM public.missing_table"],
+      statements: ["SELECT count(*)"],
       mapped: new Map(),
     });
     if (!stringsOff.includes("STOP step 0 standard_conforming_strings expected=on")) {
       throw new Error(`standard_conforming_strings=off was accepted: ${stringsOff}`);
     }
-    if (stringsOff.includes("missing_table")) throw new Error("string-setting stop still ran the checklist SQL");
+    if (stringsOff.includes("checklist sql ran")) throw new Error("string-setting stop still ran the checklist SQL");
     await check.unsafe(`ALTER DATABASE ${scratchName} RESET standard_conforming_strings`);
 
     for (const extension of ["dblink", "postgres_fdw"]) {

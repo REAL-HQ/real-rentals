@@ -174,13 +174,14 @@ DECLARE
   got text;
 BEGIN
   FOR r IN
-    SELECT o.id, b.path, encode(extensions.digest(b.bytes, 'sha256'), 'hex') AS sha
+    SELECT o.id, b.path, d.id AS document_id, encode(extensions.digest(b.bytes, 'sha256'), 'hex') AS sha
     FROM upload_bytes b
     JOIN storage.objects o ON o.bucket_id = 'driver-docs' AND o.name = b.path
+    JOIN public.documents d ON d.storage_bucket = 'driver-docs' AND d.storage_path = b.path AND d.is_current
     WHERE b.slot IN ('front','back')
   LOOP
     PERFORM set_config('role','service_role', true);
-    got := public.record_uploaded_content_sha('driver-docs', r.path, r.sha, r.id, 'v1', NULL);
+    got := public.record_uploaded_content_sha('driver-docs', r.path, r.sha, r.id, 'v1', NULL, r.document_id);
     PERFORM set_config('role','postgres', true);
     IF got IS DISTINCT FROM r.sha THEN RAISE EXCEPTION 'sha function returned %', got; END IF;
   END LOOP;

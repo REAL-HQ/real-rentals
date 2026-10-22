@@ -47,7 +47,7 @@ Use an undo only when that step saved and then failed its check. A file that err
 25 `proposed/rollback/19c-agreement-contract.sql`. 26 `proposed/rollback/20-vehicle-swap.sql`. 27 `proposed/rollback/extend-rental.sql`.
 28 `proposed/rollback/return-checklist.sql`. 29 `proposed/rollback/21-revoke-executor-create.sql`.
 
-The backfill undo is not an install step. The table owner runs `proposed/rollback/backfill-content-sha.sql`. Clearing only the document fingerprint leaves the binding. `service_role` cannot delete it.
+The backfill undo is not an install step. The table owner runs `proposed/rollback/backfill-content-sha.sql`. It clears the document fingerprint, deletes the binding, and removes `user_metadata.sha256`. It does not put back a client `content_sha256` key. `service_role` cannot delete the binding.
 
 M3: `proposed/m3-rollback/01-tnc-approval-expiry.sql`, then `proposed/m3-rollback/02-waitlist-coming-soon-rate.sql`.
 

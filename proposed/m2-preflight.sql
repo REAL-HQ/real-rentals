@@ -116,7 +116,7 @@ SELECT 'role rr_evidence_issuer' AS check_name, 'absent' AS expected, CASE WHEN 
 UNION ALL
 SELECT 'storage.objects one row per path' AS check_name, 'holds' AS expected, CASE WHEN (EXISTS (SELECT 1 FROM storage.objects GROUP BY bucket_id, name HAVING count(*) > 1)) THEN 'duplicated' ELSE 'holds' END AS actual, (NOT EXISTS (SELECT 1 FROM storage.objects GROUP BY bucket_id, name HAVING count(*) > 1)) AS ok
 UNION ALL
-SELECT 'public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)' AS check_name, 'absent' AS expected, CASE WHEN (to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz)') IS NOT NULL) = ('absent' = 'present')) AS ok
+SELECT 'public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz,uuid)' AS check_name, 'absent' AS expected, CASE WHEN (to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz,uuid)') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regprocedure('public.record_uploaded_content_sha(text,text,text,uuid,text,timestamptz,uuid)') IS NOT NULL) = ('absent' = 'present')) AS ok
 UNION ALL
 SELECT 'private.uploaded_content_sha' AS check_name, 'absent' AS expected, CASE WHEN (to_regclass('private.uploaded_content_sha') IS NOT NULL) THEN 'present' ELSE 'absent' END AS actual, ((to_regclass('private.uploaded_content_sha') IS NOT NULL) = ('absent' = 'present')) AS ok
 UNION ALL

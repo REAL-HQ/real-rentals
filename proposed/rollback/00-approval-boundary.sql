@@ -92,6 +92,20 @@ DROP TABLE IF EXISTS "private"."approval_operations" CASCADE;
 -- privileges captured on the pre-step catalog
 -- Step 0 grants schema use. The table grant disappears with the table.
 REVOKE USAGE ON SCHEMA private FROM rr_approval_executor;
+-- Restore the migration guard. Its rentals read is in the same boolean
+-- expression as the status check.
+CREATE OR REPLACE FUNCTION private.application_active_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path TO 'public' AS $$
+BEGIN
+  IF NEW.status = 'active'
+     AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'active')
+     AND NOT EXISTS (SELECT 1 FROM public.rentals r
+                     WHERE (r.application_id = NEW.id) AND r.status = 'active') THEN
+    RAISE EXCEPTION 'active_requires_running_rental'
+      USING HINT = 'A driver becomes Active only when a rental is started (activate_rental_tx).';
+  END IF;
+  RETURN NEW;
+END $$;
 -- comments
 -- role memberships added by this step
 -- roles added by this step

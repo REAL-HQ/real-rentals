@@ -11,8 +11,9 @@
 -- profile-screenshots profile or trip path). immutable-v1 paths are refused.
 -- It overwrites user_metadata.sha256 with the digest of bytes the caller
 -- downloaded. A client-set sha256 or content_sha256 key is not kept. It sets
--- documents.content_sha256 when that row's hash is still null, and it refuses
--- when a stored hash differs. The object update matches id and version, or
+-- documents.content_sha256 only on p_document_id when that row's hash is still
+-- null and the bucket and path match. A null document id updates no document.
+-- It refuses when a stored hash differs. The object update matches id and version, or
 -- updated_at when version is absent. Zero rows means the object changed after
 -- it was hashed, and the transaction raises.
 --
@@ -44,7 +45,8 @@ CREATE FUNCTION public.record_uploaded_content_sha(
   p_sha256 text,
   p_object_id uuid,
   p_version text,
-  p_updated_at timestamptz
+  p_updated_at timestamptz,
+  p_document_id uuid DEFAULT NULL
 ) RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -127,7 +129,8 @@ BEGIN
   END IF;
   UPDATE public.documents
   SET content_sha256 = p_sha256
-  WHERE storage_bucket = p_bucket AND storage_path = p_path
+  WHERE id = p_document_id
+    AND storage_bucket = p_bucket AND storage_path = p_path
     AND content_sha256 IS NULL;
 
   IF has_version THEN
@@ -159,7 +162,7 @@ BEGIN
   RETURN p_sha256;
 END $$;
 
-REVOKE ALL ON FUNCTION public.record_uploaded_content_sha(text, text, text, uuid, text, timestamptz) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.record_uploaded_content_sha(text, text, text, uuid, text, timestamptz) TO service_role;
+REVOKE ALL ON FUNCTION public.record_uploaded_content_sha(text, text, text, uuid, text, timestamptz, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.record_uploaded_content_sha(text, text, text, uuid, text, timestamptz, uuid) TO service_role;
 
 COMMIT;

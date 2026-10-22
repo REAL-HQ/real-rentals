@@ -25,19 +25,21 @@
  * fingerprinted counts a row that already has a 64-hex hash, including a
  * mismatch, and a row this run hashes.
  *
- * Rows are read 1000 at a time, ordered by id, until a short page. The
- * select list is id, driver_id, storage_bucket, storage_path, and
- * content_sha256. A document is omitted when is_current is false, and when
- * driver_id is an application whose deleted_at is set. Omitted rows are not
- * in total. Deleted application ids are paged the same way, selecting id only.
+ * Rows are read 1000 at a time, ordered by id, until an empty page or the
+ * exact count. A short page is not the end. The select list is id,
+ * driver_id, storage_bucket, storage_path, and content_sha256. A document
+ * is omitted when is_current is false, and when driver_id is an application
+ * whose deleted_at is set. Omitted rows are not in total. Deleted
+ * application ids are paged the same way, selecting id only.
  *
  * Clearing documents.content_sha256 does not remove
- * private.uploaded_content_sha.
+ * private.uploaded_content_sha or user_metadata.sha256.
  * That table is revoked from service_role and has no policy, so only the
  * table owner can delete the binding row. The owner undo for every current
  * license fingerprint is proposed/rollback/backfill-content-sha.sql. It is
- * not an install step. After that delete, set the document hash back to
- * null and run --write again.
+ * not an install step. It also removes user_metadata.sha256 on those
+ * objects. It does not put back a client content_sha256 key. After that
+ * undo, run --write again.
  *
  * Bun loads the committed .env, which points at hosted. This script refuses
  * to run unless SUPABASE_URL is passed with --url or is a shell value
@@ -252,24 +254,36 @@ async function objectSha(admin: any, bucket: string, path: string): Promise<
   return { kind: "ok", sha: await contentSha256Hex(bytes) };
 }
 
-async function deletedApplicationIds(admin: any): Promise<Set<string>> {
-  const ids = new Set<string>();
+async function eachPage<T>(
+  load: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message?: string } | null; count?: number | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
   let from = 0;
+  let expected: number | null = null;
   for (;;) {
     const to = from + BACKFILL_PAGE_SIZE - 1;
-    const { data, error } = await admin
-      .from("applications")
-      .select("id")
-      .not("deleted_at", "is", null)
-      .order("id", { ascending: true })
-      .range(from, to);
-    if (error) throw new Error(error.message || "Could not list deleted applications");
-    const rows = (data ?? []) as { id?: string | null }[];
-    for (const row of rows) {
-      if (typeof row.id === "string" && row.id) ids.add(row.id);
-    }
-    if (rows.length < BACKFILL_PAGE_SIZE) break;
-    from += BACKFILL_PAGE_SIZE;
+    const { data, error, count } = await load(from, to);
+    if (error) throw new Error(error.message || "Could not read a page");
+    if (typeof count === "number") expected = count;
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length === 0) break;
+    from += page.length;
+    if (expected != null && from >= expected) break;
+  }
+  return rows;
+}
+
+async function deletedApplicationIds(admin: any): Promise<Set<string>> {
+  const rows = await eachPage<{ id?: string | null }>((from, to) => admin
+    .from("applications")
+    .select("id", { count: "exact" })
+    .not("deleted_at", "is", null)
+    .order("id", { ascending: true })
+    .range(from, to));
+  const ids = new Set<string>();
+  for (const row of rows) {
+    if (typeof row.id === "string" && row.id) ids.add(row.id);
   }
   return ids;
 }
@@ -289,19 +303,14 @@ export async function backfillLicenseContentSha(
     storageErrors: 0,
   };
   const deleted = await deletedApplicationIds(admin);
-  let from = 0;
-  for (;;) {
-    const to = from + BACKFILL_PAGE_SIZE - 1;
-    const { data, error } = await admin
-      .from("documents")
-      .select(LICENSE_BACKFILL_SELECT)
-      .eq("is_current", true)
-      .in("category", ["license_front", "license_back"])
-      .order("id", { ascending: true })
-      .range(from, to);
-    if (error) throw new Error(error.message || "Could not list license documents");
-    const page = (data ?? []) as LicenseRow[];
-    for (const row of page) {
+  const pages = await eachPage<LicenseRow>((from, to) => admin
+    .from("documents")
+    .select(LICENSE_BACKFILL_SELECT, { count: "exact" })
+    .eq("is_current", true)
+    .in("category", ["license_front", "license_back"])
+    .order("id", { ascending: true })
+    .range(from, to));
+  for (const row of pages) {
       if (typeof row.driver_id === "string" && deleted.has(row.driver_id)) continue;
       counts.total += 1;
       const bucket = row.storage_bucket?.trim() ?? "";
@@ -339,7 +348,7 @@ export async function backfillLicenseContentSha(
         continue;
       }
       try {
-        await writeUploadedContentSha(admin, bucket, path);
+        await writeUploadedContentSha(admin, bucket, path, row.id);
         counts.hashed += 1;
         counts.fingerprinted += 1;
       } catch (caught) {
@@ -350,9 +359,6 @@ export async function backfillLicenseContentSha(
         else throw caught;
       }
     }
-    if (page.length < BACKFILL_PAGE_SIZE) break;
-    from += BACKFILL_PAGE_SIZE;
-  }
   return counts;
 }
 

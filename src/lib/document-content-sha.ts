@@ -6,8 +6,8 @@
  * storage, so this path does not select or update storage.objects. Storage
  * API info() and download() read the object. The conditional merge is
  * public.record_uploaded_content_sha, a SECURITY DEFINER function proposed
- * as a packet step. It sets documents.content_sha256 when that row already
- * exists and merges user_metadata.sha256 with jsonb ||, and only when the
+ * as a packet step. It sets documents.content_sha256 only on the document id
+ * it is given, and merges user_metadata.sha256 with jsonb ||, and only when the
  * object's id and version (or updated_at) still match the row that was hashed.
  *
  * false: confirmDocumentUpload and registerDocument keep today's insert and
@@ -67,9 +67,10 @@ export async function recordUploadedContentSha(
   admin: any,
   bucket: string,
   path: string,
+  documentId?: string | null,
 ): Promise<string | null> {
   if (!DOCUMENT_CONTENT_SHA256_ENABLED) return null;
-  return applyUploadedContentSha(admin, bucket, path);
+  return applyUploadedContentSha(admin, bucket, path, documentId);
 }
 
 /**
@@ -77,10 +78,15 @@ export async function recordUploadedContentSha(
  * function yet. A missing function confirms the upload with a null hash.
  * Any other failure still throws.
  */
-export async function applyUploadedContentSha(admin: any, bucket: string, path: string): Promise<string | null> {
+export async function applyUploadedContentSha(
+  admin: any,
+  bucket: string,
+  path: string,
+  documentId?: string | null,
+): Promise<string | null> {
   if (uploadedContentShaMissing) return null;
   try {
-    return await writeUploadedContentSha(admin, bucket, path);
+    return await writeUploadedContentSha(admin, bucket, path, documentId);
   } catch (error) {
     if (error instanceof Error && error.message === "content_sha256_function_missing") {
       uploadedContentShaMissing = true;
@@ -105,7 +111,12 @@ function throwStorageFailure(
 }
 
 /** Flag-on body. Download, hash, then one conditional merge. */
-export async function writeUploadedContentSha(admin: any, bucket: string, path: string): Promise<string> {
+export async function writeUploadedContentSha(
+  admin: any,
+  bucket: string,
+  path: string,
+  documentId?: string | null,
+): Promise<string> {
   const bucketApi = admin.storage.from(bucket);
   const info = await bucketApi.info(path);
   if (info.error || !info.data?.id) throwStorageFailure(info.error, "Uploaded object missing");
@@ -122,6 +133,7 @@ export async function writeUploadedContentSha(admin: any, bucket: string, path: 
     p_object_id: info.data.id,
     p_version: version,
     p_updated_at: updatedAt,
+    p_document_id: documentId ?? null,
   });
   if (saved.error && isMissingContentShaFunction(saved.error)) throw new Error("content_sha256_function_missing");
   if (saved.error || saved.data !== sha256) throw new Error(saved.error?.message || "Uploaded object changed");

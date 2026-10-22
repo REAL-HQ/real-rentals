@@ -173,15 +173,16 @@ DO $$
 DECLARE r record; got text;
 BEGIN
  FOR r IN
-  SELECT o.id, o.name,
+  SELECT o.id, o.name, d.id AS document_id,
     encode(extensions.digest(convert_to(
       CASE WHEN o.name LIKE '%license_front%' THEN 'm2-realistic-front' ELSE 'm2-realistic-back' END,
       'UTF8'), 'sha256'), 'hex') AS sha
-  FROM storage.objects o
+   FROM storage.objects o
+   JOIN public.documents d ON d.storage_bucket = o.bucket_id AND d.storage_path = o.name AND d.is_current
   WHERE o.bucket_id='driver-docs' AND o.name LIKE '24444444-2444-4444-8444-244444444444/license_%'
  LOOP
   PERFORM set_config('role','service_role', true);
-  got := public.record_uploaded_content_sha('driver-docs', r.name, r.sha, r.id, 'v1', NULL);
+  got := public.record_uploaded_content_sha('driver-docs', r.name, r.sha, r.id, 'v1', NULL, r.document_id);
   PERFORM set_config('role','postgres', true);
   IF got IS DISTINCT FROM r.sha THEN RAISE EXCEPTION 'byte hash returned %', got; END IF;
   IF (SELECT user_metadata->>'sha256' FROM storage.objects WHERE id=r.id) IS DISTINCT FROM r.sha THEN

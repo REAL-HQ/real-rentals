@@ -206,7 +206,7 @@ const missingAdmin = {
     },
   },
   async rpc() {
-    return { data: null, error: { code: "42883", message: "function public.record_uploaded_content_sha(text, text, text, uuid, text, timestamptz) does not exist" } };
+    return { data: null, error: { code: "42883", message: "function public.record_uploaded_content_sha(text, text, text, uuid, text, timestamptz, uuid) does not exist" } };
   },
 };
 let undefinedFunctionThrew = false;
@@ -235,6 +235,7 @@ type PageState = {
   ranged: boolean;
   from: number;
   to: number;
+  total: number;
 };
 
 function assertBackfillSelect(table: string, cols: string): void {
@@ -246,7 +247,7 @@ function assertBackfillSelect(table: string, cols: string): void {
 }
 
 function pageBuilder(load: (state: PageState) => unknown[]): any {
-  const state: PageState = { select: "", eqs: [], ins: [], nots: [], ordered: false, ranged: false, from: 0, to: 0 };
+  const state: PageState = { select: "", eqs: [], ins: [], nots: [], ordered: false, ranged: false, from: 0, to: 0, total: 0 };
   const b: any = {
     select(cols: string) { state.select = cols; return b; },
     eq(col: string, val: unknown) { state.eqs.push({ col, val }); return b; },
@@ -258,7 +259,7 @@ function pageBuilder(load: (state: PageState) => unknown[]): any {
       if (!state.ordered) throw new Error("page was not ordered by id");
       return Promise.resolve()
         .then(() => load(state))
-        .then((data) => ({ data, error: null }))
+        .then((data) => ({ data, error: null, count: state.total }))
         .then(resolve, reject);
     },
   };
@@ -267,6 +268,7 @@ function pageBuilder(load: (state: PageState) => unknown[]): any {
 
 function slicePage<T>(rows: T[], state: PageState, capWhenUnpaged: boolean): T[] {
   const sorted = rows;
+  state.total = sorted.length;
   if (!state.ranged) return capWhenUnpaged ? sorted.slice(0, BACKFILL_PAGE_SIZE) : sorted;
   return sorted.filter((_, index) => index >= state.from && index <= state.to);
 }
@@ -690,6 +692,40 @@ if (
   throw new Error(`page cap undercounted: ${JSON.stringify(paged)} storage=${pageStorageCalls}`);
 }
 
+const shortRows = Array.from({ length: 5 }, (_, index) => ({
+  id: `short-${index}`,
+  driver_id: null as string | null,
+  storage_bucket: "driver-docs",
+  storage_path: `short/${index}.jpg`,
+  content_sha256: "ab".repeat(32),
+  category: "license_front",
+  is_current: true,
+}));
+const shortAdmin = {
+  from(table: string) {
+    const { builder } = pageBuilder((state) => {
+      assertBackfillSelect(table, state.select);
+      if (table === "applications") return [];
+      if (table !== "documents") throw new Error(`unexpected table ${table}`);
+      return slicePage(shortRows, state, false).slice(0, 2);
+    });
+    return builder;
+  },
+  storage: {
+    from() {
+      return {
+        info() { throw new Error("dry-run read storage"); },
+        download() { throw new Error("dry-run downloaded"); },
+      };
+    },
+  },
+  async rpc() { throw new Error("dry-run called record_uploaded_content_sha"); },
+};
+const shortPage = await backfillLicenseContentSha(shortAdmin, { write: false });
+if (shortPage.total !== 5 || shortPage.fingerprinted !== 5 || shortPage.skipped !== 5) {
+  throw new Error(`short page stopped early: ${JSON.stringify(shortPage)}`);
+}
+
 if (/[0-9a-f]{64}/i.test(proof)) {
   throw new Error("functional proof contains a 64-hex literal");
 }
@@ -872,6 +908,12 @@ if (!rehearsalUp) {
         '02000000-0000-4000-8000-000000000001',
         'license_front', true, 'driver-docs', 'new.jpg'
       );
+      INSERT INTO public.documents (id, driver_id, category, is_current, storage_bucket, storage_path)
+      VALUES (
+        '20000000-0000-4000-8000-000000000003',
+        '02000000-0000-4000-8000-000000000001',
+        'license_front', false, 'driver-docs', 'new.jpg'
+      );
       INSERT INTO storage.objects (id, bucket_id, name, user_metadata, version, updated_at)
       VALUES (
         '20000000-0000-4000-8000-000000000002',
@@ -957,13 +999,15 @@ if (!rehearsalUp) {
         p_object_id: string;
         p_version: string | null;
         p_updated_at: string | null;
+        p_document_id?: string | null;
       }) {
         rehearsalRpc += 1;
         try {
           const [row] = await rehearsalDb<{ sha: string }[]>`
             select public.record_uploaded_content_sha(
               ${args.p_bucket}, ${args.p_path}, ${args.p_sha256},
-              ${args.p_object_id}::uuid, ${args.p_version}, ${args.p_updated_at}::timestamptz
+              ${args.p_object_id}::uuid, ${args.p_version}, ${args.p_updated_at}::timestamptz,
+              ${args.p_document_id ?? null}::uuid
             ) as sha
           `;
           return { data: row?.sha ?? null, error: null };
@@ -999,9 +1043,13 @@ if (!rehearsalUp) {
       throw new Error(`scratch write ${JSON.stringify(scratchWrite)} downloads=${rehearsalDownloads} rpc=${rehearsalRpc}`);
     }
     const [storedNew] = await rehearsalDb<{ content_sha256: string | null }[]>`
-      select content_sha256 from public.documents where storage_path = 'new.jpg'
+      select content_sha256 from public.documents where id = '20000000-0000-4000-8000-000000000001'
     `;
     if (storedNew?.content_sha256 !== newDigest) throw new Error("stored hash is not the downloaded bytes");
+    const [sibling] = await rehearsalDb<{ content_sha256: string | null }[]>`
+      select content_sha256 from public.documents where id = '20000000-0000-4000-8000-000000000003'
+    `;
+    if (sibling?.content_sha256 != null) throw new Error("the shared path stamped a non-current document");
     const scratchAgain = await backfillLicenseContentSha(scratchAdmin, { write: true });
     if (
       scratchAgain.hashed !== 0
@@ -1053,8 +1101,11 @@ if (!rehearsalUp) {
     const [deletedLeft] = await rehearsalDb<{ content_sha256: string | null }[]>`
       select content_sha256 from public.documents where storage_path = 'deleted.jpg'
     `;
-    if (Number(currentLeft?.n) !== 0 || Number(retiredLeft?.n) !== 1 || Number(bindings?.n) !== 0 || deletedLeft?.content_sha256 != null) {
-      throw new Error(`undo left current=${currentLeft?.n} retired=${retiredLeft?.n} bindings=${bindings?.n} deleted=${deletedLeft?.content_sha256}`);
+    const [metaLeft] = await rehearsalDb<{ sha: string | null }[]>`
+      select user_metadata->>'sha256' as sha from storage.objects where name = 'new.jpg'
+    `;
+    if (Number(currentLeft?.n) !== 0 || Number(retiredLeft?.n) !== 1 || Number(bindings?.n) !== 0 || deletedLeft?.content_sha256 != null || metaLeft?.sha != null) {
+      throw new Error(`undo left current=${currentLeft?.n} retired=${retiredLeft?.n} bindings=${bindings?.n} deleted=${deletedLeft?.content_sha256} metadata=${metaLeft?.sha}`);
     }
     const seconds = ((Date.now() - rehearsalStarted) / 1000).toFixed(1);
     console.log(formatContentShaBackfill("dry-run", scratchDry));
