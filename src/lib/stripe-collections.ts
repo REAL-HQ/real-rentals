@@ -164,8 +164,14 @@ export function stripeCollectedLabel(report: CollectionsReport | null | undefine
 /**
  * The Revenue card's single figure: verified Stripe net (after refunds and
  * fees) plus internal net_collected from rows with neither a Stripe payment
- * intent nor a Stripe invoice id (those charges are already inside the Stripe
- * figure — never counted twice). Deposit rows are not removed here.
+ * intent nor a Stripe invoice id, and from a failed invoice row staff marked
+ * paid (failure_reason still set). A later Stripe success rewrites that
+ * failure_reason to a possible double collection note. It does not change
+ * status or paid date. Overview keeps that cash in the non-Stripe sum,
+ * labels it Possible Double Collection, and still counts the Stripe
+ * collection, so the total includes both and a refund may be owed. A
+ * Stripe-settled invoice with a blank failure_reason is already inside the
+ * Stripe figure and is not added again. Deposit rows are not removed here.
  * Returns null whenever Stripe cannot be established (never zero). Coverage
  * is never "Complete": Zelle/Cash App/Venmo/cash/ACH are not verified yet.
  */

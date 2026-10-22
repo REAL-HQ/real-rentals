@@ -8,9 +8,15 @@ import { decimalSourceCents } from "./unified-finance-live-mapping";
  * revenue is net_collected on paid or refunded rent, late_fee, and other;
  * deposits are excluded; expenses are vehicle_expenses.amount;
  * maintenance is company_share, otherwise total_cost.
+ * A service named by vehicle_expenses.maintenance_record_id is skipped:
+ * the linked expense is the one count, including when that expense date
+ * falls outside this window. A present share of 0 stays 0. A blank share
+ * on an unlinked service uses total_cost.
  * The report window is half-open [from, to). A qualifying row that cannot
  * be placed, or whose in-window amount is not exact cents, fails the section
  * and returns no dollar rows. Missing money is never stored as zero.
+ * A linked service is not a qualifying maintenance row, so a bad share on
+ * that row does not blank the section.
  */
 
 const PLACE = "A payment, expense, or maintenance row could not be placed in the period";
@@ -26,8 +32,14 @@ export type ProfitPayment = {
   paidDate: string | null;
   dueDate: string | null;
 };
-export type ProfitExpense = { vehicleId: string | null; amount: string | number | null; incurredOn: string | null };
+export type ProfitExpense = {
+  vehicleId: string | null;
+  amount: string | number | null;
+  incurredOn: string | null;
+  maintenanceRecordId?: string | null;
+};
 export type ProfitMaintenance = {
+  id?: string | null;
   vehicleId: string | null;
   companyShare: string | number | null;
   totalCost: string | number | null;
@@ -56,6 +68,12 @@ export function vehicleProfitLabel(vehicle: ProfitVehicle): string {
   const name = [vehicle.year, vehicle.make, vehicle.model].filter((part) => part !== null && String(part).trim() !== "").join(" ");
   const plate = vehicle.licensePlate?.trim();
   return [name, plate].filter(Boolean).join(" · ") || "Unnamed Vehicle";
+}
+
+function serviceId(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const id = value.trim();
+  return id ? id : null;
 }
 
 /** First non-null candidate. A present value that is not a calendar date does not fall through. */
@@ -110,10 +128,17 @@ export function vehicleProfitability(
     if (!REVENUE_STATUSES.has(payment.status ?? "") || !REVENUE_TYPES.has(payment.type ?? "")) continue;
     take(payment.vehicleId, placed([payment.paidDate, payment.dueDate]), payment.netCollected, "revenueCents");
   }
+  const linkedServices = new Set<string>();
+  for (const expense of input.expenses) {
+    const link = serviceId(expense.maintenanceRecordId);
+    if (link) linkedServices.add(link);
+  }
   for (const expense of input.expenses) {
     take(expense.vehicleId, placed([expense.incurredOn]), expense.amount, "expenseCents");
   }
   for (const record of input.maintenance) {
+    const id = serviceId(record.id);
+    if (id && linkedServices.has(id)) continue;
     const amount = record.companyShare !== null && record.companyShare !== undefined ? record.companyShare : record.totalCost;
     take(record.vehicleId, placed([record.performedOn, record.completedAt, record.createdAt]), amount, "maintenanceCents");
   }
