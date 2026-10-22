@@ -9,6 +9,7 @@ import { addCalendarDays, etMidnightUnix, etYmd } from "./weekly-cash-flow";
  */
 
 export const STRIPE_CHECK_UNAVAILABLE = "Stripe check unavailable";
+export const STRIPE_CHECK_CAPPED = "Stripe check hit the page cap";
 export const DIRECTORY_INCOMPLETE = "Driver records were incomplete";
 export const PAYOUT_WINDOW_DAYS = 60;
 
@@ -77,10 +78,17 @@ export type PayoutReconPayout = {
   unmatchedCharges: MoneyRow[];
 };
 
+export type PayoutInvoiceLink = {
+  invoiceId: string;
+  subscriptionId: string | null;
+  customerId: string | null;
+  paymentIntentIds: string[];
+};
+
 export type PayoutReconReport = {
   from: string | null;
   through: string | null;
-  stripeCheck: "ready" | "unavailable";
+  stripeCheck: "ready" | "unavailable" | "capped";
   directory: "ready" | "unavailable" | "skipped";
   payouts: PayoutReconPayout[];
   paidNotInPayout: MoneyRow[];
@@ -106,11 +114,11 @@ export function formatCents(cents: number | null): string {
   return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
-export function unavailablePayoutRecon(window: PayoutWindow | null): PayoutReconReport {
+export function unavailablePayoutRecon(window: PayoutWindow | null, stripeCheck: "unavailable" | "capped" = "unavailable"): PayoutReconReport {
   return {
     from: window?.from ?? null,
     through: window?.through ?? null,
-    stripeCheck: "unavailable",
+    stripeCheck,
     directory: "skipped",
     payouts: [],
     paidNotInPayout: [],
@@ -124,10 +132,12 @@ export function buildPayoutRecon(input: {
   applications: ReconApplication[];
   rentals?: readonly LocalLink[];
   applicationLinks?: readonly LocalLink[];
+  invoiceLinks?: readonly PayoutInvoiceLink[];
 }): PayoutReconReport {
   const apps = new Map(input.applications.filter((app) => app.id && !app.deleted).map((app) => [app.id, app]));
   const rentals = input.rentals ?? [];
   const applicationLinks = input.applicationLinks ?? [];
+  const invoiceLinks = input.invoiceLinks ?? [];
   const byIntent = new Map<string, ReconPayment[]>();
   const byInvoice = new Map<string, ReconPayment[]>();
   for (const payment of input.payments) {
@@ -197,7 +207,7 @@ export function buildPayoutRecon(input: {
     if (!intent || !paid || paid < input.window.from || paid > input.window.through) return [];
     if (!PAID_STATUSES.has(payment.status.trim().toLowerCase())) return [];
     if (seen.has(intent)) return [];
-    return [paymentRow(payment, apps)];
+    return [{ ...paymentRow(payment, apps), fleetLink: fleetLinkForPayment(payment, invoiceLinks, rentals, applicationLinks) }];
   });
   return {
     from: input.window.from,
@@ -276,8 +286,31 @@ function uniquePayments(rows: ReconPayment[]): ReconPayment[] {
 }
 
 function fleetLinkLabel(txn: ReconTxn, rentals: readonly LocalLink[], applications: readonly LocalLink[]): "Linked" | "Not Linked" {
+  return linkLabel({ subscriptionId: txn.subscriptionId, customerId: txn.customerId }, rentals, applications);
+}
+
+function fleetLinkForPayment(
+  payment: ReconPayment,
+  links: readonly PayoutInvoiceLink[],
+  rentals: readonly LocalLink[],
+  applications: readonly LocalLink[],
+): "Linked" | "Not Linked" {
+  const invoiceId = payment.stripeInvoiceId?.trim() || "";
+  const intent = payment.stripePaymentIntentId?.trim() || "";
+  const byInvoice = invoiceId ? links.find((link) => link.invoiceId === invoiceId) : undefined;
+  const byIntent = byInvoice || !intent ? undefined : links.find((link) => link.paymentIntentIds.includes(intent));
+  const hit = byInvoice ?? byIntent;
+  if (!hit) return "Not Linked";
+  return linkLabel(hit, rentals, applications);
+}
+
+function linkLabel(
+  link: { subscriptionId: string | null; customerId: string | null },
+  rentals: readonly LocalLink[],
+  applications: readonly LocalLink[],
+): "Linked" | "Not Linked" {
   return invoiceIsLinked(
-    { subscriptionId: txn.subscriptionId, customerId: txn.customerId },
+    { subscriptionId: link.subscriptionId, customerId: link.customerId },
     rentals,
     applications,
   ) ? "Linked" : "Not Linked";
