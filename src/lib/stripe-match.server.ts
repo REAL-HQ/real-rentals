@@ -1,9 +1,8 @@
-import { stripeMatchReportEnabled } from "./stripe-match-flag";
 import { matchStripeCustomers, type MatchApplication, type MatchRental, type MatchVehicle, type StripeMatchCustomer, type StripeMatchReport } from "./stripe-match";
 
 /**
- * Owners and managers only. The flag is checked before any application read
- * or Stripe call. A coordinator is refused even when the flag is on.
+ * Owners and managers only. The flag returns disabled before the role check,
+ * any application read, or Stripe call. A coordinator is refused when the flag is on.
  */
 
 type Result = { data: Array<Record<string, unknown>> | null; error: { message: string } | null };
@@ -21,14 +20,14 @@ export type StripeMatchResponse =
 export async function runStripeMatch(input: {
   userId: string | null;
   roles: string[];
-  env: { STRIPE_MATCH_REPORT_ENABLED?: string };
+  enabled: boolean;
   loadDirectory: () => Promise<MatchDirectory | null>;
   readStripe: () => Promise<{ ok: true; customers: StripeMatchCustomer[] } | { ok: false; reason: string }>;
 }): Promise<StripeMatchResponse> {
+  if (!input.enabled) return { status: "disabled", report: null };
   if (!input.userId) throw new Error("Forbidden");
   const { tierFromRoles, tierAllows } = await import("./roles");
   if (!tierAllows(tierFromRoles(input.roles), "manager")) throw new Error("Forbidden");
-  if (!stripeMatchReportEnabled(input.env)) return { status: "disabled", report: null };
   const directory = await input.loadDirectory();
   if (!directory) return { status: "unavailable", reason: "Driver records were incomplete", report: null };
   const stripe = await input.readStripe();

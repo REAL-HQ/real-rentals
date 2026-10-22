@@ -1,13 +1,15 @@
 // Staff notice after a driver files an issue.
 //
-// Both paths are off unless the env var is the string "true".
-// Email reuses the applicant-alert inbox. SMS, only for a roadside kind,
-// reuses sendSms and the company phone already in Settings. No new provider.
+// Email stays off unless DRIVER_ISSUE_ALERTS_ENABLED is the string "true".
+// Roadside SMS is a hard-false constant. Setting ROADSIDE_SMS_ALERTS_ENABLED
+// in the environment does not turn it on. Email reuses the applicant-alert
+// inbox. SMS, only for a roadside kind, reuses sendSms and the company phone
+// already in Settings. No new provider.
 
 import { driverIssueAlertPlan } from "@/lib/driver-issues";
+import { ROADSIDE_SMS_ALERTS_ENABLED } from "@/lib/roadside-sms-flag";
 
 export const DRIVER_ISSUE_ALERTS_ENABLED = process.env.DRIVER_ISSUE_ALERTS_ENABLED === "true";
-export const ROADSIDE_SMS_ALERTS_ENABLED = process.env.ROADSIDE_SMS_ALERTS_ENABLED === "true";
 
 export type DriverIssueAlert = {
   issueId: string | null;
@@ -24,6 +26,22 @@ function escapeHtml(v: unknown): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+export async function deliverRoadsideStaffSms(
+  args: DriverIssueAlert,
+  io: {
+    readPhone: () => Promise<string>;
+    send: (message: { to: string; body: string }) => Promise<void>;
+  },
+): Promise<{ sent: number; skipped: "flag" | null }> {
+  if (!ROADSIDE_SMS_ALERTS_ENABLED) return { sent: 0, skipped: "flag" };
+  const to = await io.readPhone();
+  await io.send({
+    to,
+    body: `REAL RENTALS roadside: ${args.title}. Open Driver Issues in admin.`,
+  });
+  return { sent: 1, skipped: null };
 }
 
 export async function notifyManagersOfDriverIssue(args: DriverIssueAlert): Promise<void> {
@@ -56,17 +74,21 @@ export async function notifyManagersOfDriverIssue(args: DriverIssueAlert): Promi
     }
   }
 
-  if (plan.sms) {
+  if (ROADSIDE_SMS_ALERTS_ENABLED && plan.sms) {
     const { sendSms } = await import("@/lib/sms.server");
     const { getBusinessPhone } = await import("@/lib/company.server");
-    const phone = await getBusinessPhone();
-    await sendSms({
-      to: phone.e164,
-      body: `REAL RENTALS roadside: ${args.title}. Open Driver Issues in admin.`,
-      kind: "roadside_staff",
-      requireConsent: false,
-      rentalId: args.rentalId,
-      vehicleId: args.vehicleId,
+    await deliverRoadsideStaffSms(args, {
+      readPhone: async () => (await getBusinessPhone()).e164,
+      send: async (message) => {
+        await sendSms({
+          to: message.to,
+          body: message.body,
+          kind: "roadside_staff",
+          requireConsent: false,
+          rentalId: args.rentalId,
+          vehicleId: args.vehicleId,
+        });
+      },
     });
   }
 }

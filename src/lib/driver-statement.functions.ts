@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { driverStatementEnabled } from "./driver-statement-flag";
+import { DRIVER_STATEMENT_ENABLED } from "./driver-statement-flag";
 import { readLiveDriverStatement } from "./driver-statement-read.server";
 import { loadStatementDirectory, runDriverStatement, type DriverStatementResponse } from "./driver-statement.server";
 
@@ -12,12 +12,12 @@ export const getDriverStatement = createServerFn({ method: "POST" })
     return { driverId: typeof driverId === "string" ? driverId : "" };
   })
   .handler(async ({ data, context }): Promise<DriverStatementResponse> => {
-    if (!driverStatementEnabled()) return { status: "disabled", report: null };
+    if (!DRIVER_STATEMENT_ENABLED) return { status: "disabled", report: null };
     if (!context.userId) throw new Error("Forbidden");
     const { data: roles, error } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
     if (error || !roles) throw new Error("Forbidden");
     return runDriverStatement({
-      enabled: driverStatementEnabled(),
+      enabled: DRIVER_STATEMENT_ENABLED,
       userId: context.userId,
       roles: roles.map((row) => row.role),
       driverId: data.driverId,

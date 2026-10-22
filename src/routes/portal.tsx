@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { SigningPanel } from "@/components/esign/SigningPanel";
 import { layoutToText } from "@/lib/agreement-layout";
-import { createContext, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -82,6 +82,7 @@ import { APPLICATION_TIMELINE_ENABLED } from "@/lib/application-timeline";
 import { ApplicationTimelineSection } from "@/components/portal/ApplicationTimeline";
 import { PickupChecklistCard } from "@/components/portal/PickupChecklistCard";
 import { PORTAL_PICKUP_CHECKLIST_ENABLED } from "@/lib/portal-pickup-checklist";
+import { PICKUP_CHECKLIST_ENABLED } from "@/lib/pickup-checklist";
 import { getPortalPickupChecklist } from "@/lib/portal-pickup-checklist.functions";
 import { PortalNotices } from "@/components/portal/PortalNotices";
 import { PORTAL_NOTICES_ENABLED } from "@/lib/portal-notices";
@@ -1692,6 +1693,27 @@ function PaymentHistoryGate() {
   return <View />;
 }
 
+function PickupChecklistSlot({ onNavigate }: { onNavigate: (tab: "documents" | "payments") => void }) {
+  const previewId = usePreviewDriver();
+  const [card, setCard] = useState<ReactNode>(null);
+  useEffect(() => {
+    if (PICKUP_CHECKLIST_ENABLED !== true) return;
+    if (previewId) return;
+    let live = true;
+    void import("@/lib/pickup-checklist-client").then(async (mod) => {
+      const checklist = await mod.loadPickupChecklist();
+      if (!live || !checklist) return;
+      const ui = await import("@/components/portal/PickupReadinessCard");
+      if (!live) return;
+      setCard(<ui.PickupReadinessCard checklist={checklist} onNavigate={onNavigate} />);
+    });
+    return () => {
+      live = false;
+    };
+  }, [onNavigate, previewId]);
+  return card;
+}
+
 function DashboardView({
   data,
   onNavigate,
@@ -1739,6 +1761,7 @@ function DashboardView({
         <DocExpiryGate onOpenDocuments={() => onNavigate("documents")} />
       ) : null}
       {DRIVER_AGREEMENT_VIEW_ENABLED ? <DriverAgreementGate /> : null}
+      {PICKUP_CHECKLIST_ENABLED === true ? <PickupChecklistSlot onNavigate={onNavigate} /> : null}
       {activeMaint.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 text-sm flex items-start gap-3">
           <Wrench className="w-4 h-4 mt-0.5 shrink-0" />

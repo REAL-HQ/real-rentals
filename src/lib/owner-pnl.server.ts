@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { tierAllows, type StaffTier } from "./roles";
+import type { OwnerFeeRead } from "./owner-pnl-fees";
 import {
   buildOwnerPnl,
   currentEtMonth,
@@ -13,8 +14,9 @@ import {
 
 /**
  * Owners only. The flag is checked before the role and before any table or
- * Stripe read. Charges come from the caller (readLivePartnerCharges). This
- * file does not import Stripe.
+ * Stripe read. Charges come from the caller (readLivePartnerCharges). Fees
+ * come from the caller (readLiveOwnerPnlFees) after both charge reads
+ * succeed. A failed fee read stays on the report. This file does not import Stripe.
  */
 
 /** Same bounds the accountant export uses. A full page on the last pass is a cap, not a complete read. */
@@ -35,6 +37,7 @@ export async function runOwnerPnl(input: {
   now?: Date;
   load: () => Promise<OwnerPnlDirectory | null>;
   readCharges: (window: { gte: number; lt: number }) => Promise<{ ok: true; charges: OwnerCharge[] } | { ok: false; reason: string }>;
+  readFees: (window: { gte: number; lt: number }) => Promise<OwnerFeeRead>;
 }): Promise<OwnerPnlResponse> {
   if (!input.enabled) return { status: "disabled", report: null };
   if (!input.userId || !tierAllows(input.tier, "owner")) throw new Error("Forbidden");
@@ -51,11 +54,15 @@ export async function runOwnerPnl(input: {
   if (!currentCharges.ok) return { status: "unavailable", reason: currentCharges.reason, report: null };
   const previousCharges = await input.readCharges({ gte: previous.gte, lt: previous.lt });
   if (!previousCharges.ok) return { status: "unavailable", reason: previousCharges.reason, report: null };
+  const currentFees = await settleFees(input.readFees, { gte: current.gte, lt: current.lt });
+  const previousFees = await settleFees(input.readFees, { gte: previous.gte, lt: previous.lt });
   const report = buildOwnerPnl({
     ...directory,
     month: input.month,
     currentCharges: currentCharges.charges,
     previousCharges: previousCharges.charges,
+    currentFees,
+    previousFees,
   });
   return report ? { status: "ready", report } : { status: "unavailable", reason: "The month could not be dated", report: null };
 }
@@ -71,7 +78,7 @@ export async function loadOwnerPnlDirectory(
     return query;
   }, signal);
   const maintenance = await readStable(async (cursor) => {
-    let query = supabase.from("maintenance_records").select("id,vehicle_id,category,company_share,performed_on,completed_at,created_at").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
+    let query = supabase.from("maintenance_records").select("id,vehicle_id,category,company_share,total_cost,performed_on,completed_at,created_at").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
     if (cursor) query = query.gt("id", cursor);
     if (signal) query = query.abortSignal(signal);
     return query;
@@ -83,7 +90,13 @@ export async function loadOwnerPnlDirectory(
     return query;
   }, signal);
   const payments = await readStable(async (cursor) => {
-    let query = supabase.from("payments").select("id,vehicle_id,type,stripe_payment_intent_id,stripe_invoice_id,stripe_subscription_id").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
+    let query = supabase.from("payments").select("id,vehicle_id,rental_id,type,status,payment_method,amount,refunded_amount,refunded_at,paid_date,stripe_payment_intent_id,stripe_invoice_id,stripe_subscription_id").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
+    if (cursor) query = query.gt("id", cursor);
+    if (signal) query = query.abortSignal(signal);
+    return query;
+  }, signal);
+  const vehicles = await readStable(async (cursor) => {
+    let query = supabase.from("vehicles").select("id,year,make,model,license_plate").order("id", { ascending: true }).limit(OWNER_DIRECTORY_PAGE);
     if (cursor) query = query.gt("id", cursor);
     if (signal) query = query.abortSignal(signal);
     return query;
@@ -94,7 +107,7 @@ export async function loadOwnerPnlDirectory(
     if (signal) query = query.abortSignal(signal);
     return query;
   }, signal);
-  if (!expenses || !maintenance || !rentals || !payments || !refunds) return null;
+  if (!expenses || !maintenance || !rentals || !payments || !refunds || !vehicles) return null;
   return {
     expenses: expenses.map((row) => ({
       id: row.id, vehicleId: row.vehicle_id, category: row.category, amount: row.amount,
@@ -102,19 +115,37 @@ export async function loadOwnerPnlDirectory(
     })),
     maintenance: maintenance.map((row) => ({
       id: row.id, vehicleId: row.vehicle_id, category: row.category, companyShare: row.company_share,
-      performedOn: row.performed_on, completedAt: row.completed_at, createdAt: row.created_at,
+      totalCost: row.total_cost, performedOn: row.performed_on, completedAt: row.completed_at, createdAt: row.created_at,
     })),
     rentals: rentals.map((row) => ({
       id: row.id, vehicleId: row.vehicle_id, customerId: row.stripe_customer_id, subscriptionId: row.stripe_subscription_id,
     })),
     payments: payments.map((row) => ({
-      id: row.id, vehicleId: row.vehicle_id, type: row.type, paymentIntentId: row.stripe_payment_intent_id,
+      id: row.id, vehicleId: row.vehicle_id, rentalId: row.rental_id, type: row.type, status: row.status,
+      paymentMethod: row.payment_method, amount: row.amount, refundedAmount: row.refunded_amount,
+      refundedAt: row.refunded_at, paidDate: row.paid_date, paymentIntentId: row.stripe_payment_intent_id,
       invoiceId: row.stripe_invoice_id, subscriptionId: row.stripe_subscription_id,
+    })),
+    vehicles: vehicles.map((row) => ({
+      id: row.id, year: row.year, make: row.make, model: row.model, licensePlate: row.license_plate,
     })),
     refunds: refunds.map((row) => ({
       id: row.id, amount: row.amount, status: row.status, createdAt: row.created_at, paymentIds: row.payment_ids ?? [],
     })),
   };
+}
+
+async function settleFees(
+  read: (window: { gte: number; lt: number }) => Promise<OwnerFeeRead>,
+  window: { gte: number; lt: number },
+): Promise<OwnerFeeRead> {
+  try {
+    const result = await read(window);
+    if (result?.ok === true && Number.isSafeInteger(result.feesCents)) return { ok: true, feesCents: result.feesCents };
+    return { ok: false };
+  } catch {
+    return { ok: false };
+  }
 }
 
 async function readStable<T extends { id: string }>(
