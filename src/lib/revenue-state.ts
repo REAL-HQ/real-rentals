@@ -1,13 +1,12 @@
 /** Pure reader validation and session lifecycle; no provider or mutation capabilities. */
 function settledOutsideStripe(row: { stripe_payment_intent_id?: string | null; stripe_invoice_id?: string | null; failure_reason?: string | null }) {
  // Mark as Paid writes only status and paid_date. A failed autopay invoice
- // keeps stripe_invoice_id and failure_reason. A later Stripe success clears
- // only failure_reason on that already-paid row. It does not change status
- // or paid_date, and it does not store a payment intent, so the row leaves
- // the non-Stripe sum and Overview counts it once, as Stripe. When staff
- // took cash and Stripe also collected, the duplicate needs a refund.
- // Only a paid invoice that still has a failure reason was settled outside
- // Stripe.
+ // keeps stripe_invoice_id and failure_reason. A later Stripe success leaves
+ // that manual record in place: status, paid_date, and failure_reason stay.
+ // The row remains in the non-Stripe sum, so the cash is not dropped, and
+ // the same row is still one amount in the total. Overview shows the overlap
+ // separately. Only a paid invoice that still has a failure reason was
+ // settled outside Stripe.
  const reason = row.failure_reason;
  return !row.stripe_payment_intent_id && !!row.stripe_invoice_id && typeof reason === "string" && reason.trim() !== "";
 }

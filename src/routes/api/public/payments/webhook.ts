@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { createClient } from '@supabase/supabase-js';
 import { type StripeEnv, verifyWebhook, createStripeClient } from '@/lib/stripe.server';
 import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail } from '@/lib/email.server';
+import { doubleCollectionMessage } from '@/lib/payment-overlap';
 
 let _supabase: ReturnType<typeof createClient> | null = null;
 let webhookAdmin: any = null;
@@ -122,6 +123,7 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
 
   let changed = 0;
   let noticeIds = ids;
+  let manualIds: string[] = [];
   if (ids.length) {
     // Charges created by our own collection flow. The rows already exist.
     if (status === 'paid') {
@@ -129,12 +131,9 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
       const alreadyPaid = (prior.data ?? []).filter((row: any) => row.status === 'paid');
       const alreadyPaidIds = alreadyPaid.map((row: any) => row.id as string);
       // Staff marked these paid while the failure reason was still set.
-      // Clear that reason only. Status and paid_date stay, and these ids
-      // are left out of the receipt claim below.
-      const quietIds = new Set(alreadyPaid.filter((row: any) => failureReasonStillSet(row.failure_reason)).map((row: any) => row.id as string));
-      if (alreadyPaidIds.length) {
-        must(await admin.from('payments').update({ failure_reason: null }).in('id', alreadyPaidIds).eq('status', 'paid'));
-      }
+      // Keep that manual record. Status, paid_date, and failure_reason stay.
+      // The receipt claim below still includes them, once.
+      manualIds = alreadyPaid.filter((row: any) => failureReasonStillSet(row.failure_reason)).map((row: any) => row.id as string);
       const openIds = ids.filter((id) => !alreadyPaidIds.includes(id));
       if (openIds.length) {
         const r = must(await admin.from('payments')
@@ -142,7 +141,7 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
           .in('id', openIds).neq('status', 'paid').neq('status', 'refunded').select('id'));
         changed = r.data?.length ?? 0;
       }
-      noticeIds = ids.filter((id) => !quietIds.has(id));
+      noticeIds = ids;
     } else {
       // Stale guard: a single charge that has since been retried points at a
       // newer intent; a late failure for the old one must not touch it.
@@ -195,6 +194,8 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
   if (status === 'failed' && ids.length === 1) claim = claim.eq('stripe_payment_intent_id', pi.id);
   const claimed = must(await claim.select('id'));
   if (!claimed.data?.length) return; // already notified / stale — no second email
+  const claimedIds = new Set((claimed.data ?? []).map((row: any) => row.id as string));
+  const overlapHit = manualIds.some((id) => claimedIds.has(id));
   void changed;
 
   if (status === 'failed' && rentalId) {
@@ -211,10 +212,18 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
   const driver = await driverForRental(rentalId);
   if (driver) {
     if (status === 'paid') {
-      await sendPaymentReceiptEmail({
+      const sendReceipt = () => sendPaymentReceiptEmail({
         to: driver.email, firstName: driver.name, amount, reason,
         brand: driver.brand, last4: driver.last4,
       });
+      // A manual row that Stripe also collected used to return 200 with no
+      // mail. Keep that status if the receipt send fails. A replay claims
+      // nothing, so it cannot send a second notice.
+      if (overlapHit && changed === 0) {
+        try { await sendReceipt(); } catch (err) { console.error('[payments] overlap receipt failed', err); }
+      } else {
+        await sendReceipt();
+      }
       if (cardExpiresSoon(driver.expMonth, driver.expYear)) {
         await sendCardExpiringEmail({
           to: driver.email, firstName: driver.name,
@@ -228,6 +237,24 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
         brand: driver.brand, last4: driver.last4,
       });
     }
+  }
+  if (overlapHit) await alertPossibleDoubleCollection(amount);
+}
+
+async function alertPossibleDoubleCollection(amount: number): Promise<void> {
+  const message = doubleCollectionMessage(amount);
+  try {
+    const { getLeadAlertPrefs, sendEmail } = await import('@/lib/email.server');
+    const prefs = await getLeadAlertPrefs();
+    if (!prefs.recipients.length) return;
+    await sendEmail({
+      to: prefs.recipients,
+      subject: message,
+      html: `<p>${message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`,
+      track: { workflow: 'payment_overlap' },
+    });
+  } catch (err) {
+    console.error('[payments] double-collection alert failed', err);
   }
 }
 
@@ -272,18 +299,39 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     .select('id'));
   if (!(r.data?.length)) {
     // The row was already paid, usually because staff marked a failed invoice
-    // paid in cash. A later Stripe success (retry or hosted invoice) clears
-    // the failure reason only, so Overview counts it once, as Stripe. Do not
-    // change status or paid_date, do not store the payment intent (a replayed
-    // payment_intent.succeeded would find that id and send Payment Received),
-    // and do not notify. When staff took cash and Stripe also collected, the
-    // duplicate needs a refund.
+    // paid in cash. Keep that manual record: do not clear failure_reason, do
+    // not change status or paid_date, and do not store a payment intent.
+    // Claim the notice once, then send one Payment Received email and one
+    // staff alert. A replay claims nothing.
     if (status === 'paid') {
-      must(await admin.from('payments').update({
-        failure_reason: null,
-        stripe_invoice_id: invoice.id,
-        stripe_subscription_id: subId,
-      }).eq('stripe_invoice_id', invoice.id).eq('status', 'paid'));
+      const prior = must(await admin.from('payments').select('id, failure_reason').eq('stripe_invoice_id', invoice.id).eq('status', 'paid'));
+      const manualIds = (prior.data ?? []).filter((row: any) => failureReasonStillSet(row.failure_reason)).map((row: any) => row.id as string);
+      if (manualIds.length) {
+        const claimed = must(await admin.from('payments').update({ notified_status: 'paid' })
+          .in('id', manualIds).eq('status', 'paid')
+          .or('notified_status.is.null,notified_status.neq.paid')
+          .select('id'));
+        if (claimed.data?.length) {
+          try {
+            await admin.from('notifications').insert({
+              title: 'Payment Received',
+              body: `$${amount.toFixed(2)} — rent`,
+              kind: 'payment',
+              read: false,
+            });
+            const driver = await driverForRental(rental.id);
+            if (driver) {
+              await sendPaymentReceiptEmail({
+                to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
+                brand: driver.brand, last4: driver.last4,
+              });
+            }
+            await alertPossibleDoubleCollection(amount);
+          } catch (err) {
+            console.error('[payments] overlap notice failed', err);
+          }
+        }
+      }
     }
     return;
   }

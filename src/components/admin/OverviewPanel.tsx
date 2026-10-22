@@ -1,3 +1,4 @@
+import { paymentOverlap } from "@/lib/payment-overlap";
 import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/lib/revenue-state";
 import { tierFromRoles, tierAllows } from "@/lib/roles";
 import { StripeCollections } from "./StripeCollections";
@@ -200,6 +201,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const [priorRevenue, setPriorRevenue] = useState<number | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(true);
   const [internalNonStripe, setInternalNonStripe] = useState<number | null>(null);
+  const [overlapOwed, setOverlapOwed] = useState<number | null>(null);
   const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
   const [nextReturn, setNextReturn] = useState<string | null>(null);
   const [recentApps, setRecentApps] = useState<ApplicantRow[]>([]);
@@ -346,14 +348,14 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const compare = useMemo(() => priorRange(range), [range]);
 
   useEffect(() => {
-    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setRevenueLoading(false);return;}
+    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setOverlapOwed(null);setRevenueLoading(false);return;}
     let live = true;
     setRevenueLoading(true);
     (async () => {
       const q = (r: DayRange) =>
         supabase
           .from("payments")
-          .select("net_collected, stripe_payment_intent_id, stripe_invoice_id, failure_reason", { count: "exact" })
+          .select("net_collected, stripe_payment_intent_id, stripe_invoice_id, failure_reason, notified_status", { count: "exact" })
           .in("status", ["paid", "refunded"])
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", r.from)
@@ -363,11 +365,12 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       const current=paymentRevenue(cur), previous=paymentRevenue(prev);
       setRevenue(current?.total ?? null);
       setInternalNonStripe(current?.nonStripe ?? null);
+      setOverlapOwed(paymentOverlap(cur));
       setPriorRevenue(previous?.total ?? null);
       setRevenueLoading(false);
     })().catch(()=>{
       if(!live)return;
-      setRevenue(null);setInternalNonStripe(null);setPriorRevenue(null);setRevenueLoading(false);
+      setRevenue(null);setInternalNonStripe(null);setOverlapOwed(null);setPriorRevenue(null);setRevenueLoading(false);
     });
     return () => {
       live = false;
@@ -540,6 +543,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           custom={customRange}
           onCustom={setCustomRange}
           consolidated={canSeeCollections ? { internalNonStripe } : null}
+          overlapOwed={overlapOwed}
         />
 
         <ActionCard
@@ -984,6 +988,7 @@ function RevenueCard({
   custom,
   onCustom,
   consolidated,
+  overlapOwed,
 }: {
   amount: number | null;
   delta: number | null;
@@ -995,6 +1000,7 @@ function RevenueCard({
   custom: Partial<DayRange>;
   onCustom: (c: Partial<DayRange>) => void;
   consolidated?: { internalNonStripe: number | null } | null;
+  overlapOwed?: number | null;
 }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -1053,6 +1059,11 @@ function RevenueCard({
       <div className="mt-1 text-[22px] font-semibold tracking-tight tabular-nums leading-none">
         {shownLoading || shownAmount == null ? <span className="text-[#C7C7CC]">—</span> : usd(shownAmount)}
       </div>
+      {overlapOwed != null && overlapOwed > 0 && (
+        <div className="mt-1 text-[11px] text-[#8A5A00]">
+          Possible Double Collection / Refund Owed · {usd(overlapOwed)}
+        </div>
+      )}
       <div className="mt-1 text-[11px] text-[#55555E] truncate">
         {describeRange(range)}
         {c ? null : delta != null ? (

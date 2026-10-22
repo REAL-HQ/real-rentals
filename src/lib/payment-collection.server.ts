@@ -83,17 +83,10 @@ export async function collectRows(
       { idempotencyKey: `payments:${ids.join(",")}:attempt:${attempt}` },
     );
     const paid = pi.status === "succeeded";
-    if (paid) {
-      // A row staff marked paid during this attempt is skipped by the update
-      // below. Clear its failure reason so the cash payment is not also
-      // counted outside Stripe, and mark it notified so the webhook does not
-      // send Payment Received. Status and paid_date stay as staff left them.
-      await admin
-        .from("payments")
-        .update({ failure_reason: null, notified_status: "paid" })
-        .in("id", ids)
-        .eq("status", "paid");
-    }
+    // A row staff already marked paid is skipped by the update below. Leave
+    // its failure reason, status, and paid_date alone so the manual receipt
+    // stays visible. The webhook sends one Payment Received notice and one
+    // staff alert when Stripe collects.
     await admin
       .from("payments")
       .update({

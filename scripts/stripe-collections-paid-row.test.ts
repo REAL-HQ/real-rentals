@@ -1,4 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../src/lib/email.server", () => ({
+  sendPaymentReceiptEmail: vi.fn(async () => {}),
+  sendPaymentFailedEmail: vi.fn(async () => {}),
+  sendCardExpiringEmail: vi.fn(async () => {}),
+  getLeadAlertPrefs: vi.fn(async () => ({ recipients: ["ops@example.com"], onNew: true, onComplete: true })),
+  sendEmail: vi.fn(async () => ({ ok: true })),
+}));
+
+import { sendEmail, sendPaymentReceiptEmail } from "../src/lib/email.server";
+import { doubleCollectionMessage, paymentOverlap } from "../src/lib/payment-overlap";
+import { paymentRevenue } from "../src/lib/revenue-state";
 import { collectRows } from "../src/lib/payment-collection.server";
 import { postVerifiedPaymentWebhook } from "../src/routes/api/public/payments/webhook";
 
@@ -7,9 +19,11 @@ const OPEN = "22222222-2222-4222-8222-222222222222";
 const REASON = "Weekly rent charge failed";
 
 describe("paid-row stripe success", () => {
-  it("clears only the failure reason on an invoice retry and does not notify", async () => {
+  it("keeps the manual invoice record, receipts once, and alerts staff", async () => {
+    vi.mocked(sendPaymentReceiptEmail).mockClear();
+    vi.mocked(sendEmail).mockClear();
     const db = memoryAdmin({
-      rentals: [{ id: "r1", stripe_subscription_id: "sub_1", application_id: "a1", vehicle_id: "v1" }],
+      rentals: [rentalRow()],
       payments: [paidInvoice("in_retry")],
     });
     const response = await postVerifiedPaymentWebhook({
@@ -20,23 +34,42 @@ describe("paid-row stripe success", () => {
     expect(db.tables.payments[0]).toMatchObject({
       status: "paid",
       paid_date: "2026-10-01",
-      failure_reason: null,
+      failure_reason: REASON,
       stripe_invoice_id: "in_retry",
       stripe_subscription_id: "sub_1",
       stripe_payment_intent_id: null,
+      notified_status: "paid",
     });
-    expect(db.notifications).toEqual([]);
-    const clear = db.updates.find((update) => update.payload.failure_reason === null && update.payload.status == null);
-    expect(clear?.payload).toEqual({
-      failure_reason: null,
-      stripe_invoice_id: "in_retry",
-      stripe_subscription_id: "sub_1",
+    expect(db.notifications.map((row) => row.title)).toEqual(["Payment Received"]);
+    expect(sendPaymentReceiptEmail).toHaveBeenCalledTimes(1);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const message = doubleCollectionMessage(75);
+    expect(vi.mocked(sendEmail).mock.calls[0][0]).toMatchObject({ to: ["ops@example.com"], subject: message });
+    const read = { data: [{ net_collected: 75, stripe_payment_intent_id: null, stripe_invoice_id: "in_retry", failure_reason: REASON, notified_status: "paid" }], count: 1, error: null };
+    expect(paymentRevenue(read)).toEqual({ total: 75, nonStripe: 75 });
+    expect(paymentOverlap(read)).toBe(75);
+  });
+
+  it("sends nothing when the same invoice success is replayed", async () => {
+    vi.mocked(sendPaymentReceiptEmail).mockClear();
+    vi.mocked(sendEmail).mockClear();
+    const db = memoryAdmin({
+      rentals: [rentalRow()],
+      payments: [paidInvoice("in_retry")],
     });
+    const event = { type: "invoice.paid", data: { object: { id: "in_retry", subscription: "sub_1", amount_paid: 7500, payment_intent: null } } };
+    expect((await postVerifiedPaymentWebhook(event, db)).status).toBe(200);
+    expect((await postVerifiedPaymentWebhook(event, db)).status).toBe(200);
+    expect(sendPaymentReceiptEmail).toHaveBeenCalledTimes(1);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(db.notifications).toHaveLength(1);
+    expect(db.tables.payments[0].failure_reason).toBe(REASON);
   });
 
   it("does not store a hosted-invoice payment intent on the already-paid row", async () => {
+    vi.mocked(sendPaymentReceiptEmail).mockClear();
     const db = memoryAdmin({
-      rentals: [{ id: "r1", stripe_subscription_id: "sub_1", application_id: "a1", vehicle_id: "v1" }],
+      rentals: [rentalRow()],
       payments: [paidInvoice("in_hosted")],
     });
     const response = await postVerifiedPaymentWebhook({
@@ -45,32 +78,35 @@ describe("paid-row stripe success", () => {
     }, db);
     expect(response.status).toBe(200);
     expect(db.tables.payments[0].stripe_payment_intent_id).toBeNull();
-    expect(db.tables.payments[0].failure_reason).toBeNull();
+    expect(db.tables.payments[0].failure_reason).toBe(REASON);
     expect(db.tables.payments[0].status).toBe("paid");
     expect(db.tables.payments[0].paid_date).toBe("2026-10-01");
     expect(JSON.stringify(db.updates)).not.toContain("pi_hosted");
-    expect(db.notifications).toEqual([]);
+    expect(sendPaymentReceiptEmail).toHaveBeenCalledTimes(1);
   });
 
-  it("clears a combined charge that was already marked paid and sends no notice", async () => {
+  it("keeps combined manual rows and sends one receipt plus one staff alert", async () => {
+    vi.mocked(sendPaymentReceiptEmail).mockClear();
+    vi.mocked(sendEmail).mockClear();
     const db = memoryAdmin({
+      rentals: [rentalRow()],
       payments: [
-        { id: PAID, status: "paid", paid_date: "2026-10-02", failure_reason: REASON, stripe_invoice_id: "in_combined", stripe_payment_intent_id: null, notified_status: null },
-        { id: OPEN, status: "paid", paid_date: "2026-10-02", failure_reason: REASON, stripe_invoice_id: "in_combined_2", stripe_payment_intent_id: null, notified_status: null },
+        { id: PAID, status: "paid", paid_date: "2026-10-02", failure_reason: REASON, stripe_invoice_id: "in_combined", stripe_payment_intent_id: null, notified_status: null, rental_id: "r1" },
+        { id: OPEN, status: "paid", paid_date: "2026-10-02", failure_reason: REASON, stripe_invoice_id: "in_combined_2", stripe_payment_intent_id: null, notified_status: null, rental_id: "r1" },
       ],
     });
     const response = await postVerifiedPaymentWebhook({
       type: "payment_intent.succeeded",
-      data: { object: { id: "pi_combined", amount: 6000, metadata: { paymentIds: `${PAID},${OPEN}` } } },
+      data: { object: { id: "pi_combined", amount: 6000, metadata: { paymentIds: `${PAID},${OPEN}`, rentalId: "r1" } } },
     }, db);
     expect(response.status).toBe(200);
     for (const row of db.tables.payments) {
-      expect(row).toMatchObject({ status: "paid", paid_date: "2026-10-02", failure_reason: null, stripe_payment_intent_id: null });
+      expect(row).toMatchObject({ status: "paid", paid_date: "2026-10-02", failure_reason: REASON, stripe_payment_intent_id: null, notified_status: "paid" });
     }
-    const clear = db.updates.find((update) => update.payload.failure_reason === null);
-    expect(clear?.payload).toEqual({ failure_reason: null });
-    expect(db.updates.some((update) => update.payload.status === "paid" || update.payload.paid_date)).toBe(false);
-    expect(db.notifications).toEqual([]);
+    expect(db.updates.some((update) => update.payload.failure_reason === null || update.payload.status === "paid" || update.payload.paid_date)).toBe(false);
+    expect(sendPaymentReceiptEmail).toHaveBeenCalledTimes(1);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(db.notifications).toHaveLength(1);
   });
 
   it("still receipts an unpaid combined id and leaves the already-paid id quiet", async () => {
@@ -85,13 +121,13 @@ describe("paid-row stripe success", () => {
       data: { object: { id: "pi_mixed", amount: 6000, metadata: { paymentIds: `${PAID},${OPEN}` } } },
     }, db);
     expect(response.status).toBe(200);
-    expect(db.tables.payments.find((row) => row.id === PAID)).toMatchObject({ status: "paid", paid_date: "2026-10-02", failure_reason: null });
+    expect(db.tables.payments.find((row) => row.id === PAID)).toMatchObject({ status: "paid", paid_date: "2026-10-02", failure_reason: REASON });
     expect(db.tables.payments.find((row) => row.id === OPEN)).toMatchObject({ status: "paid", failure_reason: null });
     expect(db.notifications).toHaveLength(1);
     expect(db.notifications[0].title).toBe("Payment Received");
     const claim = db.updates.find((update) => update.payload.notified_status === "paid");
     const claimedIds = claim?.filters.find((filter) => filter.op === "in")?.vals as string[];
-    expect(claimedIds).toEqual([OPEN]);
+    expect(claimedIds).toEqual([PAID, OPEN]);
   });
 
   it("clears an already-paid row on immediate combined success without rewriting it", async () => {
@@ -113,8 +149,8 @@ describe("paid-row stripe success", () => {
     expect(db.tables.payments.find((row) => row.id === PAID)).toMatchObject({
       status: "paid",
       paid_date: "2026-10-02",
-      failure_reason: null,
-      notified_status: "paid",
+      failure_reason: REASON,
+      notified_status: null,
       stripe_payment_intent_id: null,
       balance_due: 40,
     });
@@ -148,6 +184,16 @@ describe("paid-row stripe success", () => {
     warn.mockRestore();
   });
 });
+
+function rentalRow() {
+  return {
+    id: "r1",
+    stripe_subscription_id: "sub_1",
+    application_id: "a1",
+    vehicle_id: "v1",
+    applications: { email: "d@example.com", full_name: "Dee Driver", card_brand: "visa", card_last4: "4242", card_exp_month: 12, card_exp_year: 2030 },
+  };
+}
 
 function paidInvoice(invoiceId: string) {
   return {

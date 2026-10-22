@@ -165,12 +165,11 @@ export function stripeCollectedLabel(report: CollectionsReport | null | undefine
  * The Revenue card's single figure: verified Stripe net (after refunds and
  * fees) plus internal net_collected from rows with neither a Stripe payment
  * intent nor a Stripe invoice id, and from a failed invoice row staff marked
- * paid (failure_reason still set). A later Stripe success clears only
- * failure_reason on that already-paid row. It does not change status or
- * paid date, so Overview counts the money once, as Stripe. When staff took
- * cash and Stripe also collected, the duplicate needs a refund. Those
- * Stripe-settled charges are already inside the Stripe figure — never counted
- * twice. Deposit rows are not removed here.
+ * paid (failure_reason still set). A later Stripe success leaves that
+ * manual record in place, so the cash stays in the non-Stripe sum and the
+ * row is still one amount. Overview shows the overlap separately. The Stripe
+ * charge is not added a second time inside that row. Deposit rows are not
+ * removed here.
  * Returns null whenever Stripe cannot be established (never zero). Coverage
  * is never "Complete": Zelle/Cash App/Venmo/cash/ACH are not verified yet.
  */

@@ -43,14 +43,13 @@ describe('Revenue error recovery',()=>{
   const webhook=readFileSync(new URL('../src/routes/api/public/payments/webhook.ts',import.meta.url),'utf8');
   const invoiceFn=webhook.slice(webhook.indexOf('async function upsertPaymentFromInvoice'), webhook.indexOf('async function handleChargeRefunded'));
   const settle=invoiceFn.slice(invoiceFn.indexOf('if (!(r.data?.length))'), invoiceFn.indexOf("must(await admin.from('rentals')"));
-  expect(settle).toContain('failure_reason: null');
-  expect(settle).toContain('stripe_invoice_id: invoice.id');
-  expect(settle).toContain('stripe_subscription_id: subId');
-  expect(settle).toContain("eq('status', 'paid')");
+  expect(settle).not.toContain('failure_reason: null');
   expect(settle).not.toContain('stripe_payment_intent_id');
-  expect(settle).not.toContain('notified_status');
+  expect(settle).toContain('notified_status');
+  expect(settle).toContain("eq('status', 'paid')");
   expect(settle).not.toMatch(/paid_date:/);
-  expect(settle).not.toMatch(/status:\s*['"]paid['"]/);
+  expect(settle).toContain("update({ notified_status: 'paid' })");
+  expect(settle).not.toContain("status: 'paid',");
   expect(invoiceFn.indexOf('if (!(r.data?.length))')).toBeLessThan(invoiceFn.indexOf("from('notifications')"));
  });
  it('an unresolved combined charge keeps the failure reason, so Mark as Paid still counts',()=>{
@@ -60,9 +59,9 @@ describe('Revenue error recovery',()=>{
   expect(pending).not.toContain('failure_reason:');
   const outcome=fn.slice(fn.indexOf('const paid = pi.status'), fn.indexOf('} catch'));
   expect(outcome).toContain('failure_reason: null');
-  expect(outcome).toContain('.eq("status", "paid")');
+  expect(outcome).not.toContain('.eq("status", "paid")');
   expect(outcome).toContain('single ? { stripe_payment_intent_id: pi.id }');
-  expect(outcome.indexOf('.eq("status", "paid")')).toBeLessThan(outcome.indexOf('.neq("status", "paid")'));
+  expect(outcome).toContain('.neq("status", "paid")');
   const rows=paymentRevenue({data:[
    {net_collected:40,stripe_payment_intent_id:null,stripe_invoice_id:'in_combined',failure_reason:'Weekly rent charge failed'},
   ],count:1,error:null});
