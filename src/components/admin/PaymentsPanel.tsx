@@ -138,15 +138,15 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
     .reduce((s, p) => s + (p.balance_due == null ? Number(p.amount || 0) : Number(p.balance_due)), 0);
 
   return (
-    <div>
+    <div className="max-lg:min-w-0">
       {STRIPE_UNMATCHED_PAYMENTS_ENABLED ? <UnmatchedStripePayments /> : null}
-      <div className="admin-sticky-bar flex flex-wrap items-center gap-2 mb-4 pb-2">
-        <div className="flex flex-wrap gap-2 text-xs">
+      <div className="admin-sticky-bar mb-4 flex flex-col gap-2 pb-2 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2">
+        <div className="flex gap-2 text-xs max-lg:min-w-0 max-lg:overflow-x-auto max-lg:pb-1 lg:flex-wrap">
           {(["all", "overdue", ...STATUSES.filter((x) => x !== "overdue")] as const).map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1.5 rounded-md capitalize ${statusFilter === s ? "bg-black text-white" : "bg-white border border-border"}`}
+              className={`px-3 py-1.5 rounded-md capitalize max-lg:shrink-0 max-lg:whitespace-nowrap ${statusFilter === s ? "bg-black text-white" : "bg-white border border-border"}`}
             >
               {s.replace(/_/g, " ")}{" "}
               {s !== "all" &&
@@ -159,7 +159,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
           ))}
         </div>
         <Select value={sort} onValueChange={(v) => setSort(v as any)}>
-          <SelectTrigger className="h-8 w-40 bg-white text-foreground">
+          <SelectTrigger className="h-8 w-40 bg-white text-foreground max-lg:w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -172,23 +172,25 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
           Outstanding:{" "}
           <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
         </div>
+        <div className="flex gap-2 max-lg:w-full lg:contents">
         <button
           onClick={() => setShowManual(true)}
-          className="ml-auto rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium"
+          className="ml-auto rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium max-lg:ml-0 max-lg:flex-1"
         >
           Manual Payments
         </button>
         <button
           onClick={() => setShowAdd(true)}
-          className=" rounded-md bg-[#D03020] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150"
+          className="rounded-md bg-[#D03020] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150 max-lg:flex-1"
         >
           + Add Payment
         </button>
+        </div>
       </div>
 
       {showManual && <ManualPaymentsWorkspace payments={payments} driverMap={driverMap} onClose={() => setShowManual(false)} />}
-      <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
-        <table className="w-full text-sm">
+      <AdminTableScroll className="max-lg:min-w-0 rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
+        <table className="w-full text-sm max-lg:min-w-[52rem]">
           <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
             <tr>
               <th className="text-left px-3 py-2.5">Driver</th>
@@ -214,8 +216,8 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
                   key={p.id}
                   className="border-t border-[#EDEDF0] h-11 hover:bg-[#FAFAFB] transition-colors duration-150"
                 >
-                  <td className="px-3 text-[13px] font-medium text-[#111114]">{driverName}</td>
-                  <td className="px-3 text-xs text-[#55555E]">
+                  <td className="px-3 text-[13px] font-medium text-[#111114] max-lg:whitespace-nowrap">{driverName}</td>
+                  <td className="px-3 text-xs text-[#55555E] max-lg:whitespace-nowrap">
                     {v ? `${v.year} ${v.make} ${v.model}` : "—"}
                   </td>
                   <td className="px-3 capitalize text-[13px]">{p.type.replace(/_/g, " ")}</td>
@@ -380,7 +382,7 @@ function AddPayment({
               ))}
             </SelectContent>
           </Select>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
               <SelectTrigger className="bg-white text-foreground">
                 <SelectValue />
@@ -406,7 +408,7 @@ function AddPayment({
               </SelectContent>
             </Select>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             <label className="text-xs">
               Amount
               <input
