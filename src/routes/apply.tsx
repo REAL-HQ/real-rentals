@@ -117,24 +117,6 @@ const VEHICLE_TYPE_TO_SIZE: Record<string, "Sedan" | "SUV" | "XL"> = {
   xl: "XL",
 };
 
-/** Panel loads only when APPLY_VEHICLE_PREFILL_ENABLED is exactly true. */
-function ApplyVehiclePrefillSlot({ vehicleId }: { vehicleId?: string }) {
-  const [Panel, setPanel] = useState<ComponentType<{ vehicleId?: string; source: "search" }> | null>(null);
-  useEffect(() => {
-    if (APPLY_VEHICLE_PREFILL_ENABLED !== true) return;
-    if (!vehicleId) return;
-    let cancelled = false;
-    import("@/components/site/ApplyVehiclePrefill").then((mod) => {
-      if (!cancelled) setPanel(() => mod.ApplyVehiclePrefill);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [vehicleId]);
-  if (APPLY_VEHICLE_PREFILL_ENABLED !== true || !vehicleId || !Panel) return null;
-  return <Panel vehicleId={vehicleId} source="search" />;
-}
-
 function ApplyPage() {
   const { t, city: preCity, pickup: prePickup, vehicle_type: preType, vehicle: preVehicle } = Route.useSearch();
   // allowStashed: false — /apply starts a new application. A token stashed by
@@ -213,6 +195,24 @@ function ApplyPage() {
       )}
     </div>
   );
+}
+
+/** Panel loads only when APPLY_VEHICLE_PREFILL_ENABLED is exactly true. */
+function ApplyVehiclePrefillSlot({ vehicleId }: { vehicleId?: string }) {
+  const [Panel, setPanel] = useState<ComponentType<{ vehicleId?: string; source: "search" }> | null>(null);
+  useEffect(() => {
+    if (APPLY_VEHICLE_PREFILL_ENABLED !== true) return;
+    if (!vehicleId) return;
+    let cancelled = false;
+    import("@/components/site/ApplyVehiclePrefill").then((mod) => {
+      if (!cancelled) setPanel(() => mod.ApplyVehiclePrefill);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [vehicleId]);
+  if (APPLY_VEHICLE_PREFILL_ENABLED !== true || !vehicleId || !Panel) return null;
+  return <Panel vehicleId={vehicleId} source="search" />;
 }
 
 function ContactStep({
