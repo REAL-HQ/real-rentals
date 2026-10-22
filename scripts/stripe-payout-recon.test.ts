@@ -42,6 +42,9 @@ function txn(over: Partial<ReconTxn> = {}): ReconTxn {
     currency: "usd",
     chargeId: "ch_match",
     paymentIntentId: "pi_match",
+    invoiceId: null,
+    subscriptionId: null,
+    customerId: null,
     ...over,
   };
 }
@@ -55,6 +58,7 @@ function payment(over: Partial<ReconPayment> = {}): ReconPayment {
     netCollected: 100.5,
     paidDate: "2026-01-01",
     stripePaymentIntentId: "pi_match",
+    stripeInvoiceId: null,
     ...over,
   };
 }
@@ -181,6 +185,90 @@ describe("Stripe Payout Reconciliation", () => {
     expect(STRIPE_CHECK_UNAVAILABLE).toBe("Stripe check unavailable");
   });
 
+  it("matches an invoice-recorded payment and does not list it as unmatched", () => {
+    const report = buildPayoutRecon({
+      window: payoutReconWindow(NOW)!,
+      payouts: [{
+        id: "po_auto",
+        amount: 9000,
+        currency: "usd",
+        status: "paid",
+        arrival: Math.floor(Date.parse("2026-10-15T16:00:00Z") / 1000),
+        transactions: [txn({
+          id: "txn_auto",
+          chargeId: "ch_auto",
+          paymentIntentId: "pi_autopay",
+          invoiceId: "in_auto",
+          subscriptionId: "sub_1",
+          customerId: "cus_ABCDEFGH",
+          amount: 9000,
+          fee: 0,
+          net: 9000,
+        })],
+      }],
+      payments: [payment({
+        id: "pay_auto",
+        stripePaymentIntentId: null,
+        stripeInvoiceId: "in_auto",
+        paidDate: "2026-10-15",
+        amount: 90,
+        netCollected: 90,
+      })],
+      applications: [{ id: "app_ada", name: "Ada", deleted: false }],
+      rentals: [{ subscriptionId: "sub_1" }],
+    });
+    expect(report.payouts[0]?.matched.map((row) => row.id)).toEqual(["pay_auto"]);
+    expect(report.payouts[0]?.matched[0]?.fleetLink).toBe("Linked");
+    expect(report.payouts[0]?.unmatchedCharges).toEqual([]);
+    expect(report.paidNotInPayout).toEqual([]);
+  });
+
+  it("keeps a charge unmatched when neither the payment intent nor the invoice id is recorded", () => {
+    const report = buildPayoutRecon({
+      window: payoutReconWindow(NOW)!,
+      payouts: [{
+        id: "po_open",
+        amount: 500,
+        currency: "usd",
+        status: "paid",
+        arrival: Math.floor(Date.parse("2026-10-15T16:00:00Z") / 1000),
+        transactions: [txn({
+          id: "txn_open_invoice",
+          chargeId: "ch_open_invoice",
+          paymentIntentId: "pi_missing",
+          invoiceId: "in_missing",
+          subscriptionId: "sub_missing",
+          customerId: "cus_MISSING",
+          amount: 500,
+          fee: 0,
+          net: 500,
+        })],
+      }],
+      payments: [payment({ id: "pay_other", stripePaymentIntentId: "pi_other", stripeInvoiceId: "in_other" })],
+      applications: [],
+      applicationLinks: [{ customerId: "cus_OTHER" }],
+    });
+    expect(report.payouts[0]?.matched).toEqual([]);
+    expect(report.payouts[0]?.unmatchedCharges.map((row) => [row.id, row.fleetLink])).toEqual([["ch_open_invoice", "Not Linked"]]);
+  });
+
+  it("withholds the payouts when the paid invoice list is capped", async () => {
+    const window = payoutReconWindow(NOW)!;
+    let pages = 0;
+    const read = await readPayoutRecon({
+      payouts: { list: async () => ({ data: [{ id: "po_live", amount: 100, currency: "usd", status: "paid", arrival_date: window.gte, livemode: true }], has_more: false }) },
+      balanceTransactions: { list: async () => ({ data: [{ id: "txn_1", type: "charge", amount: 100, fee: 0, net: 100, currency: "usd", livemode: true, source: { id: "ch_1", payment_intent: "pi_abc" } }], has_more: false }) },
+      invoices: {
+        list: async () => {
+          pages += 1;
+          return { data: [{ id: `in_${pages}`, payments: { data: [], has_more: false } }], has_more: true };
+        },
+      },
+    }, window);
+    expect(pages).toBe(STRIPE_READER_MAX_PAGES);
+    expect(read).toEqual({ ok: false, capped: true });
+  });
+
   it("withholds every row when Stripe errors or hits the page cap", async () => {
     const window = payoutReconWindow(NOW)!;
     const balances = vi.fn();
@@ -244,6 +332,7 @@ describe("Stripe Payout Reconciliation", () => {
         cancel: payoutCancel,
       },
       balanceTransactions: { list: async () => ({ data: [], has_more: false }) },
+      invoices: { list: async () => ({ data: [], has_more: false }) },
       refunds: { create: refundCreate },
     };
     await readPayoutRecon(gateway as PayoutReconGateway, window);
@@ -283,7 +372,18 @@ describe("Stripe Payout Reconciliation", () => {
         has_more: false,
       };
     });
-    const read = await readPayoutRecon({ payouts: { list: payouts }, balanceTransactions: { list: balances } }, window);
+    const invoices = vi.fn(async () => ({
+      data: [{
+        id: "in_abc",
+        status: "paid",
+        livemode: true,
+        customer: "cus_abc",
+        subscription: "sub_abc",
+        payments: { data: [{ payment: { payment_intent: "pi_abc" } }], has_more: false },
+      }],
+      has_more: false,
+    }));
+    const read = await readPayoutRecon({ payouts: { list: payouts }, balanceTransactions: { list: balances }, invoices: { list: invoices } }, window);
     expect(read).toEqual({
       ok: true,
       payouts: [{
@@ -301,6 +401,9 @@ describe("Stripe Payout Reconciliation", () => {
           currency: "usd",
           chargeId: "ch_1",
           paymentIntentId: "pi_abc",
+          invoiceId: "in_abc",
+          subscriptionId: "sub_abc",
+          customerId: "cus_abc",
         }],
       }],
     });
