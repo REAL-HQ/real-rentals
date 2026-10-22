@@ -66,6 +66,13 @@ export function incidentLastUpdate(updatedAt: string | null | undefined): string
   return easternDateOf(updatedAt) ?? "Unknown";
 }
 
+/** The shared page reader speaks about the waitlist. Aging tells the caller this is an incident read. */
+export function incidentAgingReadError(message: string): string {
+  if (message.includes("changed")) return "Incident Aging data changed. Please retry.";
+  if (message.includes("incomplete")) return "Incident Aging data incomplete. Please retry.";
+  return "Incident Aging data unavailable. Please retry.";
+}
+
 function cents(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     const amount = Math.round(value * 100);

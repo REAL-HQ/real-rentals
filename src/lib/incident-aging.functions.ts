@@ -7,7 +7,7 @@ import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { INCIDENT_AGING_ENABLED } from "@/lib/incident-aging-flag";
-import { easternCalendarDate, incidentAging, type IncidentAging } from "@/lib/incident-aging";
+import { easternCalendarDate, incidentAging, incidentAgingReadError, type IncidentAging } from "@/lib/incident-aging";
 import { readInBatches } from "@/lib/waitlist-reads.server";
 
 const refuseIncidentAging = createMiddleware({ type: "function" }).server(async ({ next }) => {
@@ -34,6 +34,17 @@ type DeductionRow = {
   amount: number | string | null;
 };
 
+async function readIncidentRows<T>(
+  ids: string[],
+  query: Parameters<typeof readInBatches>[1],
+): Promise<T[]> {
+  try {
+    return (await readInBatches(ids, query)) as T[];
+  } catch (error) {
+    throw new Error(incidentAgingReadError(error instanceof Error ? error.message : ""));
+  }
+}
+
 /** Manager-only. The flag throws before auth and before any read. */
 export const listIncidentAging = createServerFn({ method: "POST" })
   .middleware([refuseIncidentAging, requireSupabaseAuth])
@@ -47,22 +58,22 @@ export const listIncidentAging = createServerFn({ method: "POST" })
     if (data.incidentIds.length === 0) return { today, rows: [] };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const incidents = (await readInBatches(data.incidentIds, (ids, from, to) =>
+    const incidents = await readIncidentRows<IncidentRow>(data.incidentIds, (ids, from, to) =>
       supabaseAdmin
         .from("incidents")
         .select("id,status,occurred_at,updated_at,driver_responsible_amount", { count: "exact" })
         .in("id", ids)
         .order("id", { ascending: true })
         .range(from, to),
-    )) as IncidentRow[];
-    const deductions = (await readInBatches(data.incidentIds, (ids, from, to) =>
+    );
+    const deductions = await readIncidentRows<DeductionRow>(data.incidentIds, (ids, from, to) =>
       supabaseAdmin
         .from("deposit_deductions")
         .select("id,incident_id,amount", { count: "exact" })
         .in("incident_id", ids)
         .order("id", { ascending: true })
         .range(from, to),
-    )) as DeductionRow[];
+    );
 
     const amounts = new Map<string, unknown[]>();
     for (const row of deductions) {

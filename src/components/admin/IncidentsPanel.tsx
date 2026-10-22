@@ -294,9 +294,9 @@ function IncidentAgingLine({ incidentId }: { incidentId: string }) {
   return (
     <p className="mt-1 text-xs text-muted-foreground">
       {INCIDENT_AGING_ENABLED ? days : null}
-      {INCIDENT_AGING_ENABLED && <> · Last Update {updated}</>}
+      {INCIDENT_AGING_ENABLED && updated === "Unknown" ? " · Last Update Unknown" : INCIDENT_AGING_ENABLED ? <> · Last Update {updated}</> : null}
       {INCIDENT_AGING_ENABLED && row?.unresolvedDeduction === "unresolved" ? " · Unresolved Deduction" : null}
-      {INCIDENT_AGING_ENABLED && row?.unresolvedDeduction === "unknown" ? " · Unknown" : null}
+      {INCIDENT_AGING_ENABLED && row?.unresolvedDeduction === "unknown" ? " · Deduction Unknown" : null}
     </p>
   );
 }
