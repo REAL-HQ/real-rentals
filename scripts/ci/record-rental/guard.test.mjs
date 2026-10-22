@@ -72,7 +72,7 @@ assert.equal(m.suites.find(x=>x.kind==='scenario groups').checks,2);
 assert.equal(m.suites.find(x=>x.kind==='evidence assertions').checks,31);
 const driversPanel=m.application['src/components/admin/DriversPanel.tsx'];
 test('DriversPanel pin records the RC3–RC7 justification',()=>{
- assert.equal(driversPanel.sha256,'8398c7106b21430d8dfb8a1ed656aa7f906fd3510235a207b3bc4c961e1d765e');
+ assert.equal(driversPanel.sha256,'9de411a0688ed07506027c812fa5725cdafe7c99305fb28430b62a555f5287d2');
  assert.match(driversPanel.justification,/Previous pin ac07e5d3bca423e1777512d9bbc0571512621730a795318a3125aed58347b5f7/);
  assert.match(driversPanel.justification,/9c6cc91670d353b955c4337e8db9eed5a76c355c2036aaad04c9b6c09b13e07f/);
  assert.match(driversPanel.justification,/0ebddd0f/);

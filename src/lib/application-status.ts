@@ -12,16 +12,19 @@
  * Choosing Approved still goes through approveApplication. This module never
  * writes status 'approved' or 'active'.
  *
- * Active is not an application status anyone can pick. A driver is Active
- * only when existing rows already show an ongoing rental, a real assigned
- * vehicle in their possession, a collected initial payment, and a recorded
- * handover. Approval and Stripe subscription status are ignored. Nothing
- * here inserts a driver, rental, payment, or vehicle.
+ * Active is not an application status anyone can pick. The strict definition
+ * is an ongoing rental, a real assigned vehicle in their possession, a
+ * collected initial payment, and a recorded handover. The Active filter uses
+ * that definition only after Record Rental contracts are installed. Until
+ * then, the installed activate_rental_tx can leave pickup mileage and the
+ * payment row empty, so the filter and its count include every
+ * rentals.status = 'active' row. Approval and Stripe subscription status
+ * are ignored. Nothing here inserts a driver, rental, payment, or vehicle.
  *
  * Record Rental stays disabled. RECORD_RENTAL_CONTRACT_ENABLED is false
  * because the Record Rental database contracts (#190 / #191 / #181) are not
  * installed. This read does not call those RPCs and does not manufacture
- * the rows the definition requires.
+ * the rows the strict definition requires.
  *
  * Ending a rental still closes the application inside the installed
  * end_rental_tx. That write is proposed, not applied: see
@@ -73,7 +76,10 @@ export function applicationStatusLabel(value: string | null | undefined): string
  * Menu for one row. Active is included only when the stored status is already
  * Active, and then it is disabled so it cannot be selected.
  */
-export function applicationStatusMenu(current: string | null | undefined): {
+export function applicationStatusMenu(
+  current: string | null | undefined,
+  tier?: StaffTier | null,
+): {
   value: string;
   label: string;
   disabled: boolean;
@@ -93,7 +99,10 @@ export function applicationStatusMenu(current: string | null | undefined): {
       disabled: stored === "active",
     });
   }
-  return menu;
+  return menu.map((choice) => ({
+    ...choice,
+    disabled: choice.disabled || applicationStatusChoiceDisabled(stored, choice.value, tier),
+  }));
 }
 
 export const CLOSURE_REASONS = [
@@ -129,6 +138,23 @@ export function closureReasonLabel(value: unknown): string {
 /** Owner and Manager. A Coordinator can close; reopening a Closed row is not theirs. */
 export function canReopenClosedApplication(tier: StaffTier): boolean {
   return tier === "owner" || tier === "manager";
+}
+
+/**
+ * Active cannot be selected. Leaving Closed through Approved is not a reopen:
+ * Approved still goes through approveApplication, after an Owner or Manager
+ * has reopened the row. A Coordinator cannot leave Closed at all.
+ */
+export function applicationStatusChoiceDisabled(
+  current: string | null | undefined,
+  next: string,
+  tier?: StaffTier | null,
+): boolean {
+  if (next === "active") return true;
+  const stored = String(current ?? "").trim();
+  if (stored === "closed" && next === "approved") return true;
+  if (stored === "closed" && next !== "closed" && tier != null && !canReopenClosedApplication(tier)) return true;
+  return false;
 }
 
 export type ApplicationStatusEvent = {
@@ -168,6 +194,22 @@ export function applicationStatusEventFromAudit(row: {
     previousStatus: typeof metadata.previous_status === "string" ? metadata.previous_status : null,
     status: typeof metadata.status === "string" ? metadata.status : null,
   };
+}
+
+const STATUS_HISTORY_LABELS = new Set(["Application Closed", "Application Reopened"]);
+
+/**
+ * Closure and reopen stay on the activity list. Other events keep the cap,
+ * so a long document history cannot push the reason and notes off screen.
+ */
+export function visibleDriverActivity<T extends { at: string; label: string }>(
+  events: readonly T[],
+  limit = 12,
+): T[] {
+  const byTime = (left: T, right: T) => +new Date(right.at) - +new Date(left.at);
+  const pinned = events.filter((event) => STATUS_HISTORY_LABELS.has(event.label));
+  const rest = events.filter((event) => !STATUS_HISTORY_LABELS.has(event.label)).sort(byTime).slice(0, limit);
+  return [...pinned, ...rest].sort(byTime);
 }
 
 const TERMINAL_RENTAL = new Set([
@@ -262,6 +304,25 @@ export function openRentalApplicationIds(rentals: readonly ActiveRentalRow[]): s
     ids.push(rental.application_id);
   }
   return ids;
+}
+
+/**
+ * Ids for the Active filter and its count. They are the same set.
+ * While Record Rental is uninstalled, an ongoing rental is enough: the
+ * installed activation does not require a pickup reading or a payments row.
+ */
+export function activeFilterApplicationIds(input: {
+  rentals: readonly ActiveRentalRow[];
+  vehicles?: readonly ActiveVehicleRow[];
+  payments?: readonly ActivePaymentRow[];
+  recordRentalEnabled: boolean;
+}): string[] {
+  if (input.recordRentalEnabled !== true) return openRentalApplicationIds(input.rentals);
+  return authoritativeActiveApplicationIds({
+    rentals: input.rentals,
+    vehicles: input.vehicles ?? [],
+    payments: input.payments ?? [],
+  });
 }
 
 export function applicationFilterCount(
