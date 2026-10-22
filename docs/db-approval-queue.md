@@ -1,10 +1,30 @@
 # Owner database queue
 
-Nothing here has been run on production. Checked against the open pull-request heads on 22 Oct 2026. RC15 is `c46354b0`. M2 #190 is `29d47ee3` (guard `fd402d5c`). M3 #232 is `69a2001d`. The preflight-guard re-review passed. Production row counts, live grants, and lock times were not measured. The scratch rehearsals below used local clones and then dropped them.
+## What to run
+
+Nothing below has been run on the live database. Take a backup first. Run a file only when you want that item. Drafts stay drafts.
+
+1. **Vehicle profit.** Approve now. Shows each service cost once on the profit screen. A cost can drop out of both columns when the bill date and the service date fall in different months. Undo: `proposed/rollback/vehicle-pl-linked-maintenance-v1.sql` on pull request 178. Run: `proposed/vehicle-pl-linked-maintenance-v1.sql` on pull request 178.
+
+2. **Uber and Lyft dates.** Approve with the Documents screen. Stores when each approval expires. The screen stays off. Existing applications are not rewritten. If the table is busy, the file stops after 5 seconds instead of waiting. This is the only date file. Do not run a date file from pull request 232. Undo: `proposed/rollback/driver-doc-expiry-tnc.sql` on pull request 226. Run: `proposed/driver-doc-expiry-tnc.sql` on pull request 226.
+
+3. **Waitlist signup limit.** Approve with the claim link. A sixth Coming Soon signup from the same email in one hour is refused. The link itself stays off. The limit starts the moment this file is saved. Do not also run the copy on pull request 232. Undo: `proposed/waitlist-claim-rollback.sql` on pull request 173. Run: `proposed/waitlist-coming-soon-rate-v1.sql` on pull request 173.
+
+4. **Mileage sentence.** Approve with the mileage column. Reads the mileage line in the agreement. The column stays off. Publishing this branch would run the file, because it sits with the other database changes that publish together. Undo: `proposed/rollback/agreement-mileage-allowance.sql` on pull request 231. Run: `supabase/migrations/20261021120000_agreement_mileage_allowance.sql` on pull request 231.
+
+5. **Change the car.** Approve with the swap screen. Lets staff move a renter to another car. The screen stays off. Run it only as step 26 of the M2 list, after the earlier M2 files. If the assignment table is busy, the file stops after 5 seconds instead of waiting. Undo: `proposed/rollback/20-vehicle-swap.sql` on pull request 190. Run: `proposed/m2-packet/20.sql` on pull request 190. Do not run `proposed/vehicle-swap-v1.sql`.
+
+6. **Move the end date.** Approve with the extend button. Lets staff change the end date. It does not charge a card. The button stays off. Run it only as step 27 of the M2 list. It can go before or after the car change, once step 23 is in. Undo: `proposed/rollback/extend-rental.sql` on pull request 190. Run: `proposed/m2-packet/extend.sql` on pull request 190. Do not run `proposed/extend-rental-v1.sql`.
+
+Do not run these. Assignment history fill-in on pull request 191 refuses to write. Partner statement on pull request 183 has no database file. Incident board on pull request 203 has no undo. Vehicle dates on pull request 218 are already stored.
+
+## Notes
+
+Nothing here has been run on production. Checked against the open pull-request heads on 22 Oct 2026. RC15 is `c46354b0`. M2 #190 is `29d47ee3` (guard `fd402d5c`). M3 #232 is `a1f3e346`. #226 is `30703b01`. The preflight-guard re-review passed. Production row counts, live grants, and lock times were not measured. The scratch rehearsals below used local clones and then dropped them.
 
 ## #173 Waitlist claim (`08dc1778`)
 Adds `claim_token_hash` and rewrites waitlist grants. The rate file then refuses a sixth signup from the same email in one hour, and that limit is live as soon as the file is saved. The claim link stays off (`WAITLIST_CLAIM_ENABLED` is false). Coming Soon still sends the same 12 columns. Promote-skip is notes only. Landing-length is a separate applications check.
-`proposed/waitlist-coming-soon-rate-v1.sql` grants execute to anon and authenticated so the trigger can fire. That grant is benign: the function is trigger-only, a direct call is refused, and the call returns no waitlist row. #232 step 2 (`69a2001d`) revokes that execute as housekeeping. The limit is the same. Approving #173 installs this file and leaves #232 step 2 uninstalled.
+`proposed/waitlist-coming-soon-rate-v1.sql` grants execute to anon and authenticated so the trigger can fire. That grant is benign: the function is trigger-only, a direct call is refused, and the call returns no waitlist row. #232 step 2 (`a1f3e346`) revokes that execute as housekeeping. The limit is the same. Approving #173 installs this file and leaves #232 step 2 uninstalled.
 The index is not concurrent, so it locks waitlist writes. The file sets `lock_timeout` to 5 seconds. Re-running it keeps one index. A live lock duration was not measured. Live grants were not read. Order: set `WAITLIST_CLAIM_SECRET` before the link.
 Rollback: `proposed/waitlist-claim-rollback.sql` drops the rate trigger, function, and index, restores the waitlist grants, and drops `claim_token_hash`. Scratch `rb173`: `lock_timeout` was 5s, a second apply left one index, the anon direct call was refused as a trigger function, and the rollback left the function, trigger, and index absent with the waitlist grants matching the clone. An M3 step 2 install is undone with #232 `proposed/m3-rollback/02-waitlist-coming-soon-rate.sql`. Landing-length undo is the ROLLBACK section of `proposed/application-landing-length-v1.sql`.
 Approve with its feature. Save the rate trigger only when you want that live limit.
@@ -22,11 +42,11 @@ No dependency. Install replaces the function and does not rewrite a table. A cos
 Rollback: `proposed/rollback/vehicle-pl-linked-maintenance-v1.sql` restores the function copied from `supabase/migrations/20261006020456_cf3a2cce-fa6e-4f72-85b9-c95c5d634bb4.sql`. The function only. Leave that migration unchanged. That migration also drops a storage policy. Scratch `rb_queue`: the proposal changed the body, the rollback matched `pg_get_functiondef` to the clone, and the rollback file has no storage statement. The named photo policy was already absent on the clone.
 Approve now.
 
-## #226 Driver doc TNC (`e01ef62f`)
+## #226 Driver doc TNC (`30703b01`)
 Adds two empty dates on applications: when the Uber approval expires, and when the Lyft approval expires. Existing rows are not rewritten. The Documents column stays off (`DRIVER_DOC_EXPIRY_ENABLED` and `DRIVER_DOC_EXPIRY_SEPARATE_TNC` are false).
-`proposed/driver-doc-expiry-tnc.sql` sets `lock_timeout` to 5 seconds and can be run again. A second apply keeps the same two columns. There is no function, so there is no execute grant. anon cannot select the new dates. authenticated can select them only because that role can already select applications, and the existing row policies still apply. Same columns are M3 step 1 on #232 (`69a2001d`), in a different file that sets a 2 second lock timeout. Install one copy.
-Lock: an applications alter. A live lock duration was not measured. Rollback: `proposed/rollback/driver-doc-expiry-tnc.sql` drops only those two dates. `license_expiration` and `insurance_expires_on` stay. Scratch `rb226`: `lock_timeout` was 5s, a second apply left both columns, anon was refused with permission denied, and the rollback matched the clone. #232 has `proposed/m3-rollback/01-tnc-approval-expiry.sql`.
-Approve with its feature, using one copy.
+`proposed/driver-doc-expiry-tnc.sql` is the only install. It sets `lock_timeout` to 5 seconds and can be run again. A second apply keeps the same two columns. There is no function, so there is no execute grant. anon cannot select the new dates. authenticated can select them only because that role can already select applications, and the existing row policies still apply. #232 (`a1f3e346`) does not add these columns. Its old date file and old undo both refuse.
+Lock: an applications alter. A live lock duration was not measured. Rollback: `proposed/rollback/driver-doc-expiry-tnc.sql` drops only those two dates. `license_expiration` and `insurance_expires_on` stay. Scratch `rb226`: `lock_timeout` was 5s, a second apply left both columns, anon was refused with permission denied, and the rollback matched the clone.
+Approve with its feature. Run this file, not the old M3 date file.
 
 ## #191 Vehicle swap (`a8828886`)
 `proposed/vehicle-swap-v1.sql` is a pointer. Do not run it. The SQL is #190 (`29d47ee3`) `proposed/m2-packet/20.sql`, step 26. It adds swap tables and a column on `booking_vehicle_assignments`. The file sets `lock_timeout` to 5 seconds and can be run again. The screen stays off (`SWAP_ENABLED` is false). Unblocks vehicle swap.
