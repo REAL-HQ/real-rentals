@@ -46,6 +46,9 @@ check(
   "overdue statuses and owedOn are imported from the payments reader",
 );
 check(!/OVERVIEW_TODAY_OVERDUE_STATUSES/.test(lib + fn), "the overview overdue list is not copied");
+const thrown = fn.indexOf('if (!OVERVIEW_TODAY_ENABLED) throw new Error("Overview Today is off")');
+const middleware = fn.indexOf("[refuseOverviewToday, requireSupabaseAuth]");
+check(thrown >= 0 && thrown < middleware, "the flag throws before the auth middleware runs");
 const handler = fn.slice(fn.indexOf("export const getOverviewToday"));
 const flagAt = handler.indexOf("if (!OVERVIEW_TODAY_ENABLED) return");
 const roleAt = handler.indexOf("requireManager");
