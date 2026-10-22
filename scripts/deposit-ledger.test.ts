@@ -415,7 +415,8 @@ it("keeps Deposit Ledger out of the dark nav and behind the throw", () => {
   expect(flag).toContain("export const DEPOSIT_RETURNS_DUE_ENABLED = false");
   expect(disabled).toBeGreaterThan(-1);
   expect(fn.indexOf("const data = ledgerInput(")).toBeGreaterThan(disabled);
-  expect(fn).not.toContain(".inputValidator");
+  expect(fn.indexOf(".inputValidator(acceptLedgerInput)")).toBeGreaterThan(-1);
+  expect(fn.indexOf(".inputValidator(acceptLedgerInput)")).toBeLessThan(disabled);
   expect(returnsOff).toBeGreaterThan(disabled);
   expect(manager).toBeGreaterThan(returnsOff);
   expect(table).toBeGreaterThan(manager);

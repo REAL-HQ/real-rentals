@@ -13,9 +13,16 @@ function ledgerInput(data: unknown): { closedOnly: boolean } {
   return { closedOnly };
 }
 
+/** Accepts the body without throwing. The handler checks the ledger flag before ledgerInput. */
+function acceptLedgerInput(input: unknown): { closedOnly?: boolean } | null | undefined {
+  if (input == null) return input as null | undefined;
+  return input as { closedOnly?: boolean };
+}
+
 /** Read-only. While the flag is off this throws before the manager check and before any deposit or Stripe read. */
 export const getDepositLedger = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
+  .inputValidator(acceptLedgerInput)
   .handler(async ({ data: raw, context }): Promise<DepositLedgerResponse> => {
     if (!DEPOSIT_LEDGER_ENABLED) throw new Error(DEPOSIT_LEDGER_OFF);
     const data = ledgerInput(raw);
