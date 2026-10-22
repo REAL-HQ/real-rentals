@@ -2,9 +2,12 @@ import { createFileRoute } from '@tanstack/react-router';
 import { createClient } from '@supabase/supabase-js';
 import { type StripeEnv, verifyWebhook, createStripeClient } from '@/lib/stripe.server';
 import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail } from '@/lib/email.server';
+import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatched';
 
 let _supabase: ReturnType<typeof createClient> | null = null;
+let webhookAdmin: any = null;
 function getSupabase() {
+  if (webhookAdmin) return webhookAdmin;
   if (!_supabase) {
     _supabase = createClient(
       process.env.SUPABASE_URL!,
@@ -104,6 +107,57 @@ const today = () => new Date().toISOString().slice(0, 10);
 function must<T extends { error: any }>(res: T): T {
   if (res.error && res.error.code !== '23505') throw new Error(res.error.message);
   return res;
+}
+
+async function customerLinked(admin: any, customerId: string | null): Promise<boolean> {
+  if (!customerId) return false;
+  const rental = await admin.from('rentals').select('id').eq('stripe_customer_id', customerId).limit(1);
+  if (rental.error) throw new Error(rental.error.message);
+  if (rental.data?.length) return true;
+  const application = await admin.from('applications').select('id').eq('stripe_customer_id', customerId).limit(1);
+  if (application.error) throw new Error(application.error.message);
+  return !!application.data?.length;
+}
+
+/** A log line must not turn a delivered event into a retry. */
+async function warnUnmatchedInvoice(admin: any, invoice: any, status: 'paid' | 'failed', subscriptionId: string | null) {
+  try {
+    const customerId = customerIdOf(invoice);
+    if (await customerLinked(admin, customerId)) return;
+    const raw = status === 'paid'
+      ? Number(invoice?.amount_paid ?? invoice?.amount_due ?? 0)
+      : Number(invoice?.amount_due ?? invoice?.amount_paid ?? 0);
+    console.warn(formatUnmatchedWarn({
+      invoiceId: stripeId(invoice?.id),
+      subscriptionId,
+      customerId,
+      amountCents: Number.isFinite(raw) ? Math.round(raw) : null,
+      status,
+    }));
+  } catch {
+    // Logging reads the directory. A down database, or a console that throws,
+    // still leaves the event delivered.
+  }
+}
+
+/**
+ * Kept so a payment-intent log cannot fail the request. The payment-intent
+ * handler does not call it: that extra warning is not part of the base flow.
+ */
+export async function warnUnmatchedPayment(admin: any, pi: any, status: 'paid' | 'failed') {
+  try {
+    const customerId = customerIdOf(pi);
+    if (await customerLinked(admin, customerId)) return;
+    const raw = Number(pi?.amount ?? 0);
+    console.warn(formatUnmatchedWarn({
+      paymentIntentId: stripeId(pi?.id),
+      customerId,
+      amountCents: Number.isFinite(raw) ? Math.round(raw) : null,
+      status,
+    }));
+  } catch {
+    // Same rule as the invoice log.
+  }
 }
 
 async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed') {
@@ -212,15 +266,23 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
 
 async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed') {
   const admin: any = getSupabase();
-  const subId = typeof invoice.subscription === 'string' ? invoice.subscription
+  const rawSub = typeof invoice.subscription === 'string' ? invoice.subscription
     : invoice.subscription?.id ?? invoice.parent?.subscription_details?.subscription;
-  if (!subId) return;
-  const { data: rental } = await admin
+  const subscriptionId = typeof rawSub === 'string' ? rawSub : null;
+  if (!subscriptionId) {
+    await warnUnmatchedInvoice(admin, invoice, status, null);
+    return;
+  }
+  const rentalResult = await admin
     .from('rentals')
     .select('id, application_id, vehicle_id')
-    .eq('stripe_subscription_id', subId)
+    .eq('stripe_subscription_id', subscriptionId)
     .maybeSingle();
-  if (!rental) return;
+  if (rentalResult.error || !rentalResult.data) {
+    if (!rentalResult.error) await warnUnmatchedInvoice(admin, invoice, status, subscriptionId);
+    return;
+  }
+  const rental = rentalResult.data;
 
   // The week's rent is owed whether or not the card worked.
   const owed = Number(invoice.amount_due ?? invoice.amount_paid ?? 0) / 100;
@@ -239,7 +301,7 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     status: 'pending',
     due_date: invoice.period_start ? new Date(invoice.period_start * 1000).toISOString().slice(0, 10) : today(),
     stripe_invoice_id: invoice.id,
-    stripe_subscription_id: subId,
+    stripe_subscription_id: subscriptionId,
   }));
 
   const patch = status === 'paid'
@@ -324,6 +386,59 @@ async function handleSubscriptionUpdated(sub: any) {
   }).eq('stripe_subscription_id', sub.id);
 }
 
+async function handleVerifiedPaymentEvent(event: { type: string; data: { object: any } }, env: StripeEnv) {
+  switch (event.type) {
+    case 'checkout.session.completed':
+      await handleCheckoutCompleted(event.data.object, env);
+      break;
+    case 'payment_intent.succeeded':
+      await upsertPaymentFromPaymentIntent(event.data.object, 'paid');
+      break;
+    case 'payment_intent.payment_failed':
+      await upsertPaymentFromPaymentIntent(event.data.object, 'failed');
+      break;
+    case 'invoice.paid':
+    case 'invoice.payment_succeeded':
+      await upsertPaymentFromInvoice(event.data.object, 'paid');
+      break;
+    case 'invoice.payment_failed':
+      await upsertPaymentFromInvoice(event.data.object, 'failed');
+      break;
+    case 'charge.refunded':
+      await handleChargeRefunded(event.data.object);
+      break;
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted':
+      await handleSubscriptionUpdated(event.data.object);
+      break;
+    default:
+      break;
+  }
+}
+
+/**
+ * Same dispatch the webhook runs after the signature checks. Tests pass a
+ * mocked database; the request path passes null and uses the service client.
+ * Throws become 400, matching the route. A caught log stays 200.
+ */
+export async function postVerifiedPaymentWebhook(
+  event: { type: string; data: { object: any } },
+  admin: any,
+  env: StripeEnv = 'live',
+): Promise<Response> {
+  const previous = webhookAdmin;
+  webhookAdmin = admin;
+  try {
+    await handleVerifiedPaymentEvent(event, env);
+    return Response.json({ received: true });
+  } catch (e) {
+    console.error('Webhook error:', e);
+    return new Response('Webhook error', { status: 400 });
+  } finally {
+    webhookAdmin = previous;
+  }
+}
+
 export const Route = createFileRoute('/api/public/payments/webhook')({
   server: {
     handlers: {
@@ -335,35 +450,7 @@ export const Route = createFileRoute('/api/public/payments/webhook')({
         const env: StripeEnv = rawEnv;
         try {
           const event = await verifyWebhook(request, env);
-          switch (event.type) {
-            case 'checkout.session.completed':
-              await handleCheckoutCompleted(event.data.object, env);
-              break;
-            case 'payment_intent.succeeded':
-              await upsertPaymentFromPaymentIntent(event.data.object, 'paid');
-              break;
-            case 'payment_intent.payment_failed':
-              await upsertPaymentFromPaymentIntent(event.data.object, 'failed');
-              break;
-            case 'invoice.paid':
-            case 'invoice.payment_succeeded':
-              await upsertPaymentFromInvoice(event.data.object, 'paid');
-              break;
-            case 'invoice.payment_failed':
-              await upsertPaymentFromInvoice(event.data.object, 'failed');
-              break;
-            case 'charge.refunded':
-              await handleChargeRefunded(event.data.object);
-              break;
-            case 'customer.subscription.updated':
-            case 'customer.subscription.deleted':
-              await handleSubscriptionUpdated(event.data.object);
-              break;
-            default:
-              // ignored
-              break;
-          }
-          return Response.json({ received: true });
+          return await postVerifiedPaymentWebhook(event, null, env);
         } catch (e) {
           console.error('Webhook error:', e);
           return new Response('Webhook error', { status: 400 });
