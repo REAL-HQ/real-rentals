@@ -1,4 +1,4 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { OVERVIEW_TODAY_ENABLED, disabledOverviewToday, overviewToday, recordedAmount } from "@/lib/overview-today-flag";
 import type {
@@ -184,8 +184,14 @@ async function loadNewLeads(
   return { rows, total };
 }
 
+const refuseOverviewToday = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  if (!OVERVIEW_TODAY_ENABLED) throw new Error("Overview Today is off");
+  return next();
+});
+
+/** The flag is refused before authentication and before any read. */
 export const getOverviewToday = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([refuseOverviewToday, requireSupabaseAuth])
   .handler(async ({ context }): Promise<OverviewTodayResult> => {
     if (!OVERVIEW_TODAY_ENABLED) return disabledOverviewToday(overviewToday());
     const { requireManager } = await import("@/lib/roles.server");
