@@ -127,11 +127,18 @@ describe("driver document expiry", () => {
 
   it("keeps the missing TNC columns as proposed SQL and uses the shared dates", () => {
     const sql = read("proposed/driver-doc-expiry-tnc.sql");
+    const undo = read("proposed/rollback/driver-doc-expiry-tnc.sql");
     assert.match(sql, /NOT INSTALLED/);
-    assert.match(sql, /ROLLBACK/);
-    assert.match(sql, /DROP COLUMN IF EXISTS tnc_uber_approval_expires_on/);
-    assert.match(sql, /DROP COLUMN IF EXISTS tnc_lyft_approval_expires_on/);
+    assert.match(sql, /lock_timeout = '5s'/);
+    assert.match(sql, /ADD COLUMN IF NOT EXISTS tnc_uber_approval_expires_on date/);
+    assert.match(sql, /ADD COLUMN IF NOT EXISTS tnc_lyft_approval_expires_on date/);
     assert.equal(sql.includes("GRANT "), false);
+    assert.equal(sql.includes("DROP COLUMN"), false);
+    assert.match(undo, /lock_timeout = '5s'/);
+    assert.match(undo, /DROP COLUMN IF EXISTS tnc_uber_approval_expires_on/);
+    assert.match(undo, /DROP COLUMN IF EXISTS tnc_lyft_approval_expires_on/);
+    assert.match(undo, /license_expiration/);
+    assert.equal(undo.includes("GRANT "), false);
     assert.match(read("src/lib/driver-readiness-facts.ts"), /export function documentExpiryStatus/);
     const today = "2026-10-21";
     assert.equal(
