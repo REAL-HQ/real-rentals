@@ -65,6 +65,42 @@ export function assertStripeRelease(read) {
   return { messages, stripeCalls: calls };
 }
 
+const REQUIRED_STRIPE_SUITES = [
+  ['stripe-collections.test.ts', 29],
+  ['stripe-collections-server.test.ts', 30],
+  ['stripe-collections-auth.test.ts', 8],
+];
+
+/** The original 67 tests are a required subset. Extra suites may run; any failure fails the check. */
+export function assertStripeCiResults(results) {
+  const messages = [];
+  const check = (v, m) => { assert.ok(v, m); messages.push(m); };
+  let seen = 0;
+  for (const [name, count] of REQUIRED_STRIPE_SUITES) {
+    const suites = (results.testResults ?? []).filter(t => t.name.endsWith('/' + name));
+    const assertions = suites[0]?.assertionResults ?? [];
+    const ok = suites.length === 1 && assertions.length >= count && assertions.every(t => t.status === 'passed');
+    check(ok, name + ' required test coverage');
+    if (ok) seen += count;
+  }
+  check(seen === 67, 'all 67 required tests executed without skip/todo');
+  for (const suite of results.testResults ?? []) {
+    const assertions = suite.assertionResults ?? [];
+    const name = String(suite.name ?? '').split('/').pop();
+    check(suite.status !== 'failed' && assertions.every(t => t.status === 'passed'), 'no failed, skipped, or todo Stripe test in ' + name);
+  }
+  check(
+    results.success === true &&
+      results.numFailedTests === 0 &&
+      results.numPendingTests === 0 &&
+      (results.numTodoTests ?? 0) === 0 &&
+      results.numPassedTests === results.numTotalTests &&
+      results.numTotalTests >= 67,
+    'executed Stripe tests passed without skip/todo',
+  );
+  return messages;
+}
+
 function main() {
   const read = p => fs.readFileSync(new URL(p, repoRoot), 'utf8');
   let checks = 0;
@@ -85,11 +121,7 @@ function main() {
   check(!/\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{12,}/.test(bundles), 'no Stripe secret-key-shaped literal in browser');
   console.log(JSON.stringify({ passed: checks, failed: 0, stripeCalls: release.stripeCalls }));
   const results = JSON.parse(read('.stripe-ci-results.json'));
-  check(results.success === true && results.numTotalTests === 67 && results.numPassedTests === 67 && results.numFailedTests === 0 && results.numPendingTests === 0 && (results.numTodoTests ?? 0) === 0, 'all 67 required tests executed without skip/todo');
-  for (const [name, count] of [['stripe-collections.test.ts', 29], ['stripe-collections-server.test.ts', 30], ['stripe-collections-auth.test.ts', 8]]) {
-    const suites = results.testResults.filter(t => t.name.endsWith('/' + name));
-    check(suites.length === 1 && suites[0].assertionResults.length === count && suites[0].assertionResults.every(t => t.status === 'passed'), name + ' exact test coverage');
-  }
+  for (const message of assertStripeCiResults(results)) check(true, message);
 }
 
 const invoked = process.argv[1] ? pathToFileURL(process.argv[1]).href : '';
