@@ -60,7 +60,14 @@ export function assertStripeRelease(read) {
     const flagAt = handler.indexOf(refusal);
     const authAt = handler.indexOf(auth);
     const stripeAt = handler.indexOf(stripe);
-    check(body.includes('.middleware([requireSupabaseAuth])') && flagAt > -1 && authAt > flagAt && stripeAt > flagAt, name + ' refused before auth');
+    const inHandler = body.includes('.middleware([requireSupabaseAuth])') && flagAt > -1 && authAt > flagAt && stripeAt > flagAt;
+    // #260 registers the refusal as middleware ahead of requireSupabaseAuth.
+    // That returns before the session read, so it is still refused before auth.
+    const gate = body.match(/\.middleware\(\[\s*([A-Za-z0-9_]+)\s*,\s*requireSupabaseAuth\s*\]\)/);
+    const gateStart = gate ? body.indexOf(`export const ${gate[1]}`) : -1;
+    const gateBody = gateStart > -1 ? body.slice(gateStart, body.indexOf('.middleware([')) : '';
+    const beforeSession = gateBody.includes(refusal) && body.includes(auth) && body.includes(stripe);
+    check(inHandler || beforeSession, name + ' refused before auth');
   }
   return { messages, stripeCalls: calls };
 }

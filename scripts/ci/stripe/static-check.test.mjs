@@ -34,6 +34,15 @@ test('a read-only collections loader swapped for createStripeClient still fails'
   assert.throws(() => assertStripeRelease(read), /stripe-collections\.server\.ts uses the read-only Stripe client/);
 });
 
+test('a payout gate that no longer refuses before auth still fails', () => {
+  const read = p => {
+    const text = realRead(p);
+    if (p !== 'src/lib/stripe-payout-recon.functions.ts') return text;
+    return text.replace('if (!STRIPE_PAYOUT_RECON_ENABLED)', 'if (false)');
+  };
+  assert.throws(() => assertStripeRelease(read), /STRIPE_PAYOUT_RECON_ENABLED refused before auth/);
+});
+
 test('a dark Stripe flag set true still fails', () => {
   const read = p => {
     const text = realRead(p);
