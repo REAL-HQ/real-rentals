@@ -58,9 +58,13 @@ export async function collectRows(
   const attempt = Math.max(0, ...rows.map((r) => r.attempt_count ?? 0)) + 1;
   const single = ids.length === 1;
 
+  // Leave failure_reason in place until the charge succeeds. An unresolved
+  // combined charge does not store a payment intent, and Mark as Paid does
+  // not write one, so clearing the reason here would drop that cash payment
+  // from the non-Stripe total.
   await admin
     .from("payments")
-    .update({ attempt_count: attempt, last_attempt_at: new Date().toISOString(), status: "pending", failure_reason: null })
+    .update({ attempt_count: attempt, last_attempt_at: new Date().toISOString(), status: "pending" })
     .in("id", ids)
     .neq("status", "paid");
 
@@ -79,11 +83,22 @@ export async function collectRows(
       { idempotencyKey: `payments:${ids.join(",")}:attempt:${attempt}` },
     );
     const paid = pi.status === "succeeded";
+    if (paid) {
+      // A row staff marked paid during this attempt is skipped by the update
+      // below. Clear its failure reason so the cash payment is not also
+      // counted outside Stripe, and mark it notified so the webhook does not
+      // send Payment Received. Status and paid_date stay as staff left them.
+      await admin
+        .from("payments")
+        .update({ failure_reason: null, notified_status: "paid" })
+        .in("id", ids)
+        .eq("status", "paid");
+    }
     await admin
       .from("payments")
       .update({
         status: paid ? "paid" : "pending",
-        ...(paid ? { paid_date: today(), balance_due: 0 } : {}),
+        ...(paid ? { paid_date: today(), balance_due: 0, failure_reason: null } : {}),
         // A single charge keeps a pointer to its latest attempt; a combined
         // balance payment is matched by metadata.paymentIds instead.
         ...(single ? { stripe_payment_intent_id: pi.id } : {}),
