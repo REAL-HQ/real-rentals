@@ -42,6 +42,7 @@ function RenewalsDueLive() {
         </p>
       </div>
       <Truncation board={board} />
+      <OverdueReturn rows={board.overdue} />
       {board.rows.length === 0 ? (
         <p className="text-[13px] text-[#9A9AA3]">No Rentals Due For Renewal</p>
       ) : (
@@ -98,6 +99,48 @@ function RenewalsDueLive() {
   );
 }
 
+function OverdueReturn({ rows }: { rows: RenewalsDueBoard["overdue"] }) {
+  return (
+    <section className="space-y-2" data-testid="overdue-return">
+      <h2 className="text-[15px] font-semibold text-[#111114]">Overdue Return</h2>
+      {rows.length === 0 ? (
+        <p className="text-[13px] text-[#9A9AA3]">No Overdue Returns</p>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-[#EDEDF0] bg-white">
+          <table className="w-full min-w-[640px] text-left text-[13px]">
+            <thead className="border-b border-[#EDEDF0] text-[12px] text-[#55555E]">
+              <tr>
+                <th className="px-3 py-2 font-medium">Driver</th>
+                <th className="px-3 py-2 font-medium">Vehicle</th>
+                <th className="px-3 py-2 font-medium">End Date</th>
+                <th className="px-3 py-2 font-medium">Overdue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.rentalId} className="border-b border-[#EDEDF0] last:border-b-0 align-top">
+                  <td className="px-3 py-2">
+                    {row.driverSearch ? (
+                      <Link to="/admin" search={row.driverSearch} className="font-medium text-[#111114] underline">
+                        {row.driverName}
+                      </Link>
+                    ) : (
+                      <span className="text-[#55555E]">{row.driverName}</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-[#111114]">{row.vehicleLabel}</td>
+                  <td className="px-3 py-2 text-[#55555E]">{formatRenewalDate(row.endDate)}</td>
+                  <td className="px-3 py-2 text-[#111114]">{row.label}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function formatWeeklyRate(rate: number | null): string {
   if (rate == null || Number.isNaN(rate)) return "Unknown";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(rate);
@@ -107,6 +150,7 @@ function Truncation({ board }: { board: RenewalsDueBoard }) {
   const notes: string[] = [];
   if (board.billingTruncated) notes.push("Next Billing Dates Are Capped At 1000");
   if (board.endTruncated) notes.push("End Dates Are Capped At 1000");
+  if (board.overdueTruncated) notes.push("Overdue Returns Are Capped At 1000");
   if (board.applicationsTruncated) notes.push("Drivers Are Capped At 1000");
   if (board.vehiclesTruncated) notes.push("Vehicles Are Capped At 1000");
   if (board.paymentsTruncated) notes.push("Payments Are Capped At 1000, Newest First");

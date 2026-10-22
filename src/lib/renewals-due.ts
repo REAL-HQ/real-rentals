@@ -29,6 +29,7 @@ export const RENEWALS_DUE_OMITTED = [
   "There is no paid-through or coverage-through column on rentals or payments. payments.late_fee_applied_through is a late-fee watermark and is not used as paid-through.",
   "Next billing is rentals.next_payment_due. End is rentals.end_date. A rental is listed when status is active and at least one of those dates is on the Eastern today through seven days later, inclusive.",
   "Dates before the Eastern today are not in the next 7 days. A date eight or more days out is not in the next 7 days.",
+  "Overdue Return is a separate list of active rentals whose end_date is before the Eastern today. It is not the next 7 days. That read and the due-soon end-date read are capped on their own, so an overdue row cannot push a due-soon row past the cap.",
   "Active means rentals.status is active, the spelling activate_rental_tx writes. Other statuses are omitted.",
   "Last payment status is payments.status on the newest payments row for that rental by created_at, then id. There is no last-payment pointer. rentals.payment_status is a rental-level field and is not shown as the last charge. A rental with no payment row reads No Payment.",
   "Driver name and the Drivers link use rentals.application_id and applications.full_name. rentals.driver_id is the auth user and is not the Drivers screen id. A rental with no application_id has no driver link.",
@@ -96,6 +97,18 @@ export function inRenewalWindow(value: string | null | undefined, today: string)
   return date >= today && date <= renewalHorizon(today);
 }
 
+/** Whole Eastern calendar days from end date to today. Uses the same UTC date arithmetic as addCalendarDays. */
+export function daysOverdue(endDate: string, today: string): number {
+  const end = utcDate(dateOnly(endDate) ?? "");
+  const now = utcDate(today);
+  if (Number.isNaN(end.getTime()) || Number.isNaN(now.getTime())) return 0;
+  return Math.round((now.getTime() - end.getTime()) / 86400000);
+}
+
+export function overdueReturnLabel(days: number): string {
+  return days === 1 ? "1 Day Overdue" : `${days} Days Overdue`;
+}
+
 export function lastPaymentStatusLabel(status: string | null | undefined): string {
   if (!status) return "No Payment";
   return PAYMENT_STATUS_LABEL[status] ?? status;
@@ -161,14 +174,26 @@ export type RenewalDueRow = {
   paymentsSearch: { tab: "payments" };
 };
 
+export type OverdueReturnRow = {
+  rentalId: string;
+  driverName: string;
+  driverSearch: { tab: "drivers"; id: string } | null;
+  vehicleLabel: string;
+  endDate: string;
+  daysOverdue: number;
+  label: string;
+};
+
 export type RenewalsDueInput = {
   today: string;
   rentals: RenewalRental[];
   applications: RenewalApplication[];
   vehicles: RenewalVehicle[];
   payments: RenewalPayment[];
+  overdueRentals?: RenewalRental[];
   billingTruncated?: boolean;
   endTruncated?: boolean;
+  overdueTruncated?: boolean;
   applicationsTruncated?: boolean;
   vehiclesTruncated?: boolean;
   paymentsTruncated?: boolean;
@@ -179,8 +204,10 @@ export type RenewalsDueBoard = {
   through: string;
   heading: string;
   rows: RenewalDueRow[];
+  overdue: OverdueReturnRow[];
   billingTruncated: boolean;
   endTruncated: boolean;
+  overdueTruncated: boolean;
   applicationsTruncated: boolean;
   vehiclesTruncated: boolean;
   paymentsTruncated: boolean;
@@ -246,13 +273,39 @@ export function buildRenewalsDue(input: RenewalsDueInput): RenewalsDueBoard {
 
   rows.sort((a, b) => a.triggerDate.localeCompare(b.triggerDate) || a.rentalId.localeCompare(b.rentalId));
 
+  const overdueSeen = new Set<string>();
+  const overdue: OverdueReturnRow[] = [];
+  for (const rental of input.overdueRentals ?? []) {
+    if (overdueSeen.has(rental.id)) continue;
+    overdueSeen.add(rental.id);
+    if (rental.status !== "active") continue;
+    const endDate = dateOnly(rental.end_date);
+    if (!endDate || endDate >= today) continue;
+    const late = daysOverdue(endDate, today);
+    if (late < 1) continue;
+    const application = rental.application_id ? applications.get(rental.application_id) : undefined;
+    const name = application?.full_name?.trim() ?? "";
+    overdue.push({
+      rentalId: rental.id,
+      driverName: rental.application_id ? name || "Unnamed Driver" : "No Driver",
+      driverSearch: rental.application_id ? { tab: "drivers", id: rental.application_id } : null,
+      vehicleLabel: renewalVehicleLabel(rental.vehicle_id ? vehicles.get(rental.vehicle_id) ?? null : null),
+      endDate,
+      daysOverdue: late,
+      label: overdueReturnLabel(late),
+    });
+  }
+  overdue.sort((a, b) => a.endDate.localeCompare(b.endDate) || a.rentalId.localeCompare(b.rentalId));
+
   return {
     today,
     through: renewalHorizon(today),
     heading: formatRenewalHeading(today),
     rows,
+    overdue,
     billingTruncated: input.billingTruncated === true,
     endTruncated: input.endTruncated === true,
+    overdueTruncated: input.overdueTruncated === true,
     applicationsTruncated: input.applicationsTruncated === true,
     vehiclesTruncated: input.vehiclesTruncated === true,
     paymentsTruncated: input.paymentsTruncated === true,
