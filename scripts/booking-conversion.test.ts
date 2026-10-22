@@ -219,7 +219,10 @@ describe("screens", () => {
     const nav = readFileSync(new URL("../src/components/admin/nav-config.ts", import.meta.url), "utf8");
     const view = readFileSync(new URL("../src/components/admin/BookingConversion.tsx", import.meta.url), "utf8");
     assert.match(bookings, /<BookingConversion canView=\{canViewConversion\} \/>/);
-    assert.match(overview, /<LeadPriorities \/>\s*<BookingConversion canView=\{canSeeCollections\} \/>/);
+    // Overview stays the RC15 panel. Overview Today and the growth layout live on
+    // #243, and mounting Booking Conversion here conflicts with that panel.
+    assert.equal(overview.includes("BookingConversion"), false);
+    assert.equal(overview.includes("OverviewToday"), false);
     assert.match(admin, /canViewConversion=\{tierAllows\(tier, "manager"\)\}/);
     assert.equal(nav.includes("booking_conversion"), false);
     const gate = view.indexOf("if (BOOKING_CONVERSION_ENABLED !== true || canView !== true) return null;");
