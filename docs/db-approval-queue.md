@@ -1,6 +1,6 @@
 # Owner database queue
 
-Nothing here has been run on production. Checked against the open pull-request heads on 22 Oct 2026. RC15 is `c46354b0`. M2 #190 is `2b80be3f` (guard `fd402d5c`). M3 #232 is `69a2001d`. The preflight-guard re-review passed. Production row counts, live grants, and lock times were not measured. The scratch rehearsals below used local clones and then dropped them.
+Nothing here has been run on production. Checked against the open pull-request heads on 22 Oct 2026. RC15 is `c46354b0`. M2 #190 is `29d47ee3` (guard `fd402d5c`). M3 #232 is `69a2001d`. The preflight-guard re-review passed. Production row counts, live grants, and lock times were not measured. The scratch rehearsals below used local clones and then dropped them.
 
 ## #173 Waitlist claim (`08dc1778`)
 Adds `claim_token_hash` and rewrites waitlist grants. The rate file then refuses a sixth signup from the same email in one hour, and that limit is live as soon as the file is saved. The claim link stays off (`WAITLIST_CLAIM_ENABLED` is false). Coming Soon still sends the same 12 columns. Promote-skip is notes only. Landing-length is a separate applications check.
@@ -22,28 +22,31 @@ No dependency. Install replaces the function and does not rewrite a table. A cos
 Rollback: `proposed/rollback/vehicle-pl-linked-maintenance-v1.sql` restores the function copied from `supabase/migrations/20261006020456_cf3a2cce-fa6e-4f72-85b9-c95c5d634bb4.sql`. The function only. Leave that migration unchanged. That migration also drops a storage policy. Scratch `rb_queue`: the proposal changed the body, the rollback matched `pg_get_functiondef` to the clone, and the rollback file has no storage statement. The named photo policy was already absent on the clone.
 Approve now.
 
-## #226 Driver doc TNC (`fe58e9d6`)
+## #226 Driver doc TNC (`e01ef62f`)
 Adds two empty dates on applications: when the Uber approval expires, and when the Lyft approval expires. Existing rows are not rewritten. The Documents column stays off (`DRIVER_DOC_EXPIRY_ENABLED` and `DRIVER_DOC_EXPIRY_SEPARATE_TNC` are false).
-Same columns are M3 step 1 on #232 (`69a2001d`), in a different file that sets a 2 second lock timeout. Install one copy.
-Lock: an applications alter. This file sets no lock timeout. Duration not measured. Rollback is commented in `proposed/driver-doc-expiry-tnc.sql`, not a separate file. #232 has `proposed/m3-rollback/01-tnc-approval-expiry.sql`.
+`proposed/driver-doc-expiry-tnc.sql` sets `lock_timeout` to 5 seconds and can be run again. A second apply keeps the same two columns. There is no function, so there is no execute grant. anon cannot select the new dates. authenticated can select them only because that role can already select applications, and the existing row policies still apply. Same columns are M3 step 1 on #232 (`69a2001d`), in a different file that sets a 2 second lock timeout. Install one copy.
+Lock: an applications alter. A live lock duration was not measured. Rollback: `proposed/rollback/driver-doc-expiry-tnc.sql` drops only those two dates. `license_expiration` and `insurance_expires_on` stay. Scratch `rb226`: `lock_timeout` was 5s, a second apply left both columns, anon was refused with permission denied, and the rollback matched the clone. #232 has `proposed/m3-rollback/01-tnc-approval-expiry.sql`.
 Approve with its feature, using one copy.
 
-## #191 Vehicle swap (`d3f4cb17`)
-`proposed/vehicle-swap-v1.sql` is a pointer. Do not run it. The SQL is #190 (`2b80be3f`) `proposed/m2-packet/20.sql`, step 26. It adds swap tables and a column on `booking_vehicle_assignments`. The screen stays off (`SWAP_ENABLED` is false). History calls check for staff. Unblocks vehicle swap.
+## #191 Vehicle swap (`a8828886`)
+`proposed/vehicle-swap-v1.sql` is a pointer. Do not run it. The SQL is #190 (`29d47ee3`) `proposed/m2-packet/20.sql`, step 26. It adds swap tables and a column on `booking_vehicle_assignments`. The file sets `lock_timeout` to 5 seconds and can be run again. The screen stays off (`SWAP_ENABLED` is false). Unblocks vehicle swap.
 Order: after the M2 objects named in that file. Those tables are not in the RC15 migrations. After step 23, swap and extend can go in either order.
-Install locks `booking_vehicle_assignments` for the new column. A swap uses no-wait locks. Duration not measured. Rollback: `proposed/rollback/20-vehicle-swap.sql` on #190. Missing on #191.
+Install locks `booking_vehicle_assignments` for the new column. A swap uses no-wait locks. A live lock duration was not measured. Rollback: `proposed/rollback/20-vehicle-swap.sql` on #190 and on #191. Same file.
+Grants. The two private functions execute for `rr_record_executor` only. `swap_rental_vehicle_tx` executes for authenticated and that executor. anon and service_role do not. That authenticated grant is the staff path: a direct anon call was permission denied, and an authenticated call outside the gateway raised `trusted_authentication_context_required` and returned no row. A real session still has to be admin or team before the function will swap a car. `list_assignment_history_v1` executes for authenticated only. anon was permission denied. An authenticated call with a rental id raised `staff_required` and returned no row. The read runs only for admin, team, or coordinator. Neither grant is anon, and neither returned a row to a non-staff caller.
+Scratch `rbfeat`: local steps 1 through 25, then this file. `lock_timeout` was 5s, a second apply matched the first schema dump, and the rollback matched the pre-step dump. The clone was dropped.
 Approve with its feature, only as M2 step 26.
 
-## Backfill assignment intervals (`d3f4cb17`, on #191)
+## Backfill assignment intervals (`a8828886`, on #191)
 `proposed/backfill-assignment-intervals.sql` inserts nothing. It raises `backfill_refused_live_records_unread`. It does not change rentals, vehicles, payments, or agreements. Nothing visible. It would unblock history for cars changed before assignments existed.
 Order: after M2 step 26, and only from rows an owner has read. The ids in the file are still marked unread.
 No lock. It stops before any insert. Rollback file: missing. None applies until a later revision writes rows.
 Defer.
 
-## #181 Extend rental (`088032ff`)
-`proposed/extend-rental-v1.sql` is a pointer. Do not run it. `proposed/m2-packet/extend.sql` matches #190 (`2b80be3f`) step 27. It adds a private operations table and `extend_rental_tx`, which updates `rentals.end_date` and does not call Stripe. The button stays off (`EXTEND_RENTAL_ENABLED` is false). The handler refuses a Stripe write.
+## #181 Extend rental (`68c59c1b`)
+`proposed/extend-rental-v1.sql` is a pointer. Do not run it. `proposed/m2-packet/extend.sql` matches #190 (`29d47ee3`) step 27. It adds a private operations table and `extend_rental_tx`, which updates `rentals.end_date` and does not call Stripe. The file sets `lock_timeout` to 5 seconds and can be run again. The button stays off (`EXTEND_RENTAL_ENABLED` is false). The handler refuses a Stripe write.
 Order: after M2 steps 1, 5, and 23. Not from RC15 alone. Either order with swap after step 23.
-Install creates a new private table. An extend uses no-wait locks. Duration not measured. Rollback: `proposed/rollback/extend-rental.sql` on #190. Missing on #181.
+Install creates a new private table. An extend uses no-wait locks. A live lock duration was not measured. Execute is service_role only. anon and authenticated are not granted. A direct anon call and a direct authenticated call were permission denied. A service_role call with no actor raised `manager_required` and returned no row. Rollback: `proposed/rollback/extend-rental.sql` on #190 and on #181. Same file.
+Scratch `rbfeat`: after the swap undo, this file set `lock_timeout` to 5s, a second apply matched the first schema dump, and the rollback matched the pre-step dump. The clone was dropped.
 Approve with its feature, only as M2 step 27.
 
 ## #183 JV partner statement (`a02628f3`)
