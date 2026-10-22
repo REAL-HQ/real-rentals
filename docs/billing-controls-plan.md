@@ -1,8 +1,24 @@
 # Billing controls plan
 
-Stopped before implementation. The three staff actions need a new subscription-operation kind and a provider cutover. The subscription writer on this branch cannot do them, and `logAudit` cannot be the record collections reads.
+Built on `cursor/billing-controls-dark` after merging `integration/grok-baseline-2026-10-22`. The three product flags and the two install gates are hard-false constants. No live Stripe call. No hosted SQL. Apply and extension recording throw before auth until `proposed/billing-controls-v1.sql` is installed.
 
-Branch: `cursor/billing-controls-dark`, cut from `origin/integration/grok-baseline-2026-10-22` at `0cc92fab5fc6cfe75119d7cea1acac1cab45a5cb`. No feature code. No live Stripe call. No hosted SQL.
+## What this pass added
+
+- `src/lib/billing-controls-flag.ts` declares `BILLING_PM_UPDATE_LINK_ENABLED`, `BILLING_DAY_CHANGE_ENABLED`, `BILLING_ONE_TIME_EXTENSION_ENABLED`, `BILLING_DAY_APPLY_ENABLED`, and `BILLING_EXTENSION_RECORD_ENABLED`. Each is literal `false`. Handlers throw that flag before `requireSupabaseAuth` and before `requireManager` or `requireOwner`.
+- Payment method update creates a Billing Portal session with `flow_data.type = payment_method_update` for the rental's existing customer. Copy Link returns the URL and does not email. Send Link is a separate staff action. A missing portal configuration returns `Portal not configured.` The server does not create a portal configuration. Verify reads the subscription default, the customer invoice default, and the attached methods. An Owner can set an attached method that is not the subscription default, with idempotency key `rr:pm-default:{subscription}:{payment method}`.
+- Billing day preview calls `invoices.createPreview` with `subscription_details.trial_end` at the next target weekday and the same Eastern Time clock, and `proration_behavior = none`. The local schedule shows the anchor as a $0 trial invoice, then the weekly amount on the new weekday and one week later. Stripe credits and proration lines are shown when the preview returns them. Apply calls `subscriptions.update` with the same trial end, `proration_behavior = none`, and idempotency key `rr:{operation}:billing-day`. It refuses when an invoice for that renewal instant already exists, and it refuses when Stripe returns a different subscription id. The apply handler throws `BILLING_DAY_APPLY_OFF` before auth because the journal is not installed.
+- A payment extension sets `auto_advance = false` on that one invoice. It does not change `trial_end` or `billing_cycle_anchor`, and it does not call `invoice.pay` or `paid_out_of_band`. The durable row is `private.billing_exceptions_v1` through `billing_operation_finish_v1`. `logAudit` is not used. The grant handler throws before auth because `BILLING_EXTENSION_RECORD_ENABLED` is false. Flag-off Stripe Collections returns the same report object and does not query the table. The flag-on shape labels an unpaid extension Outstanding / Extended.
+- Staff UI is `BillingControls` on the Payments panel. It renders only when one of the three product flags is true. Apply renders only when `BILLING_DAY_APPLY_ENABLED` is true. Grant renders only when `BILLING_EXTENSION_RECORD_ENABLED` is true.
+- Tests use mocked Stripe. `scripts/billing-controls.test.ts` covers the Saturday 11:41 ET to Monday schedule, role gates, flag order, portal configuration, verify, idempotency, the existing-renewal refusal, and the outstanding extension. `scripts/dark-flag-gates.test.ts` calls each handler with no auth header.
+
+## Still required before any flag is turned on
+
+- An owner creates the Customer Portal configuration in the Stripe Dashboard for the sandbox mode. This code will not create it.
+- An owner reviews and installs `proposed/billing-controls-v1.sql`. The rollback in that file drops only the new objects. It does not drop `rental_subscription_begin_v1`.
+- Apply and extension recording stay disabled until that SQL is installed and the two install gates are changed in source. Preview can run once `BILLING_DAY_CHANGE_ENABLED` is on, because it does not write the journal.
+- No live key. The handlers accept only `sandbox`.
+
+The notes below are the original stop record. The owner later asked for this bounded build with apply and the exception write kept off.
 
 ## What already exists
 

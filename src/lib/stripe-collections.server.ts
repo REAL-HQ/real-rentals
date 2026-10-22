@@ -1,4 +1,5 @@
 import { type StripeEnv } from "./stripe.server";
+import { BILLING_ONE_TIME_EXTENSION_ENABLED } from "./billing-controls-flag";
 import { createReadOnlyStripe } from "./stripe-reader.server";
 import { STRIPE_READER_PAGE_SIZE } from "./stripe-reader";
 import { aggregateCollections, collectionsWindow, readAllPages, verifyCollectedCharges, type CollectionBalanceEvidence, type CollectionSubscription, type CollectionsRange, type CollectionsReport } from "./stripe-collections";
@@ -100,7 +101,12 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
     }
     payouts = [...sums.values()];
   } catch { warnings.push("Account payouts are unavailable."); }
-  return { ...report, totals: collectionsComplete ? report.totals : null, customers: collectionsComplete ? report.customers : [], successful: collectionsComplete ? report.successful : null, failed: collectionsComplete ? report.failed : null,
+  const collectionsReport: CollectionsReport = { ...report, totals: collectionsComplete ? report.totals : null, customers: collectionsComplete ? report.customers : [], successful: collectionsComplete ? report.successful : null, failed: collectionsComplete ? report.failed : null,
     verifiedCollections: { scope: "Verified Only", totals: report.totals, customers: report.customers, successful: report.successful, failed: report.failed, charges: verifiedCharges, refunds: verifiedRefunds },
     incompletePortions, collectionsComplete, payouts, warnings, refreshedAt: new Date().toISOString() };
+  if (!BILLING_ONE_TIME_EXTENSION_ENABLED) return collectionsReport;
+  const { readBillingExtensionReport } = await import("./billing-controls.server");
+  const extra = await readBillingExtensionReport();
+  const extensionWarnings = extra.warning ? [...collectionsReport.warnings, extra.warning] : collectionsReport.warnings;
+  return Object.assign({}, collectionsReport, { warnings: extensionWarnings, extensions: extra.rows });
 }
