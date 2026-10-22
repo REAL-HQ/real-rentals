@@ -358,6 +358,14 @@ export function splitBps(value: number | string | null | undefined): number | nu
   return Number.isSafeInteger(bps) && bps <= 10000 ? bps : null;
 }
 
+/** More than two decimal places cannot be basis points. 33.335% is one of those. */
+export function splitUnrepresentable(value: number | string | null | undefined): boolean {
+  if (splitBps(value) !== null) return false;
+  if (value === null || value === undefined || (typeof value === "number" && !Number.isFinite(value)))
+    return false;
+  return /^\d+\.\d{3,}$/.test(String(value).trim());
+}
+
 function shareOf(cents: number, bps: number): number | null {
   if (cents < 0) return null;
   const product = cents * bps;
@@ -386,6 +394,17 @@ function paymentSource(payment: JvPayment): JvIncomeSource {
   if (!method && (referenceText(payment.paymentIntentId) || referenceText(payment.invoiceId)))
     return "stripe";
   return "other";
+}
+
+function coveredCents(rows: JvPayment[]): number | null {
+  let total = 0;
+  for (const payment of rows) {
+    const amount = readCents(payment.amount);
+    if (amount.blank || amount.invalid || amount.cents === null) return null;
+    total += amount.cents;
+    if (!Number.isSafeInteger(total)) return null;
+  }
+  return total;
 }
 
 function readCents(value: string | number | null | undefined): {
@@ -622,6 +641,11 @@ export function buildJvStatement(
   const bps = partner ? splitBps(partner.revenueSplitPct) : null;
   const inWindow = (date: string) => date >= window.from && date < window.to;
   const notes: string[] = [VEHICLE_PL_DOUBLE_COUNT_NOTE];
+  if (partner && splitUnrepresentable(partner.revenueSplitPct)) {
+    notes.push(
+      `The partner split ${String(partner.revenueSplitPct).trim()}% cannot be represented in cents, so the partner share and the company share are withheld.`,
+    );
+  }
   const serviceName = (record: JvMaintenance) =>
     `${categoryLabel(record.category)} for ${vehicleProfitLabel(vehicle)}`;
 
@@ -995,6 +1019,11 @@ export function buildJvStatement(
 
   const paymentsById = new Map(input.payments.map((payment) => [payment.id, payment]));
   const countedRefundPayments = new Set<string>();
+  const pendingRefundPayments = new Set<string>();
+  const overRefundNote =
+    "A refund is larger than its payment, so the partner share and the company share are withheld.";
+  const undatedRefundNote =
+    "A refund amount is recorded without the date it was refunded, so the partner share and the company share are withheld.";
   let refunds = 0;
   let depositRefunds = 0;
   let refundsComplete = true;
@@ -1020,6 +1049,7 @@ export function buildJvStatement(
       vehicles.has(input.vehicleId);
     if (place.date && !inWindow(place.date)) {
       if (onlyThisVehicle && status === "pending") {
+        for (const id of refund.paymentIds) pendingRefundPayments.add(id);
         notes.push(
           `A refund dated ${monthName(place.date)} is still pending. It is not counted as money returned.`,
         );
@@ -1049,6 +1079,7 @@ export function buildJvStatement(
       continue;
     }
     if (status === "pending") {
+      for (const id of refund.paymentIds) pendingRefundPayments.add(id);
       notes.push("A refund is still pending. It is not counted as money returned.");
       continue;
     }
@@ -1059,6 +1090,12 @@ export function buildJvStatement(
     }
     const cents = decimalSourceCents(refund.amount);
     if (cents === null) {
+      refundsComplete = false;
+      continue;
+    }
+    const covered = coveredCents(rows);
+    if (covered === null || cents > covered) {
+      if (covered !== null && cents > covered) notes.push(overRefundNote);
       refundsComplete = false;
       continue;
     }
@@ -1073,21 +1110,39 @@ export function buildJvStatement(
       types.every((type) => type === "deposit"),
     );
   }
-  for (const payment of recordedIncome) {
-    if (countedRefundPayments.has(payment.id)) continue;
+  for (const payment of input.payments) {
+    if (paymentVehicleId(payment, input.rentals) !== input.vehicleId) continue;
+    const type = (payment.type ?? "").trim().toLowerCase();
+    if (type === "deposit") continue;
+    if (!COLLECTED.has((payment.status ?? "").trim().toLowerCase())) continue;
+    if (countedRefundPayments.has(payment.id) || pendingRefundPayments.has(payment.id)) continue;
     const refunded = readCents(payment.refundedAmount);
     if (refunded.blank || refunded.cents === 0) continue;
     if (refunded.invalid || refunded.cents === null) {
       refundsComplete = false;
       continue;
     }
-    const place = placed([payment.refundedAt, payment.paidDate]);
-    if (place.invalid || !place.date || !inWindow(place.date)) {
-      if (place.invalid || !place.date) refundsComplete = false;
-      else
-        notes.push(
-          `A refund is dated ${monthName(place.date)}. It is counted in that period, not this one.`,
-        );
+    const amount = readCents(payment.amount);
+    if (
+      amount.blank ||
+      amount.invalid ||
+      amount.cents === null ||
+      refunded.cents > amount.cents
+    ) {
+      if (amount.cents !== null && refunded.cents > amount.cents) notes.push(overRefundNote);
+      refundsComplete = false;
+      continue;
+    }
+    const place = placed([payment.refundedAt]);
+    if (place.invalid || !place.date) {
+      notes.push(undatedRefundNote);
+      refundsComplete = false;
+      continue;
+    }
+    if (!inWindow(place.date)) {
+      notes.push(
+        `A refund is dated ${monthName(place.date)}. It is counted in that period, not this one.`,
+      );
       continue;
     }
     addRefund(refunded.cents, false);
