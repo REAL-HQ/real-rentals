@@ -18,6 +18,8 @@ import { endRental } from "@/lib/rentals.functions";
 import { startInspection } from "@/lib/inspections.functions";
 import { InspectionRunner } from "@/components/admin/InspectionsPanel";
 import { DepositDialog } from "@/components/admin/DepositDialog";
+import { CloseoutReadiness } from "./CloseoutReadiness";
+import { RECORD_RENTAL_CONTRACT_ENABLED } from "@/lib/record-rental-contract";
 import { MicroLabel } from "./ui";
 import type { BookingDetail } from "@/lib/bookings.functions";
 
@@ -280,18 +282,35 @@ function EndRentalDialog({
           vehicleStatus: destination,
           returnMileage: digits ? Number(digits) : null,
         },
-      })) as { ok: boolean; error?: string; alreadyClosed?: boolean };
+      })) as {
+        ok: boolean;
+        error?: string;
+        alreadyClosed?: boolean;
+        lifecycle?: {
+          vehicleStatus?: "available" | "maintenance";
+          releaseReasons?: string[];
+          billing?: string;
+        } | null;
+      };
       if (res && res.ok === false) {
         setError(res.error ?? "Could not end the rental.");
         return;
       }
+      // Safe release is installed only with the database contract. Until that
+      // flag is on, end_rental_tx still honors the destination chosen here.
+      const release = RECORD_RENTAL_CONTRACT_ENABLED ? res?.lifecycle : null;
       toast.success(
         res?.alreadyClosed
           ? "This rental was already closed."
-          : destination === "maintenance"
-            ? "Rental ended — the vehicle went to maintenance."
-            : "Rental ended — the vehicle is available again.",
+          : release
+            ? release.vehicleStatus === "maintenance"
+              ? `Rental closed — vehicle held in Maintenance: ${(release.releaseReasons ?? []).join("; ")}.`
+              : "Rental closed — vehicle released to Available."
+            : destination === "maintenance"
+              ? "Rental ended — the vehicle went to maintenance."
+              : "Rental ended — the vehicle is available again.",
       );
+      if (release?.billing) toast.info("Closure does not confirm Stripe cancellation.");
       onEnded();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not end the rental.");
@@ -302,13 +321,26 @@ function EndRentalDialog({
 
   return (
     <Modal title="End Rental" onClose={onClose} testId="end-rental-dialog">
+      <CloseoutReadiness rentalId={d.booking.id} />
       <div className="space-y-4">
         <p className="text-[13px] text-[#55555E]">
-          Closing this rental releases{" "}
-          <span className="font-medium text-[#111114]">
-            {d.vehicle?.label ?? d.vehicle?.unitNumber ?? "the vehicle"}
-          </span>{" "}
-          and stops any running automations. The paperwork, photos and charges stay on the booking.
+          {RECORD_RENTAL_CONTRACT_ENABLED ? (
+            <>
+              Closing this rental does not automatically release{" "}
+              <span className="font-medium text-[#111114]">
+                {d.vehicle?.label ?? d.vehicle?.unitNumber ?? "the vehicle"}
+              </span>{" "}
+              to Available. The server must verify release safety; if the required database upgrade is unavailable, closure is unavailable. Missing return evidence or unresolved safety issues require Maintenance. Billing cancellation is separate. Closing stops running automations. The paperwork, photos and charges stay on the booking.
+            </>
+          ) : (
+            <>
+              Closing this rental releases{" "}
+              <span className="font-medium text-[#111114]">
+                {d.vehicle?.label ?? d.vehicle?.unitNumber ?? "the vehicle"}
+              </span>{" "}
+              and stops any running automations. The paperwork, photos and charges stay on the booking.
+            </>
+          )}
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -356,15 +388,20 @@ function EndRentalDialog({
                     : "border-[#EDEDF0] bg-white text-[#55555E]"
                 }`}
               >
-                {v === "available" ? "Back To Available" : "Into Maintenance"}
+                {v === "available"
+                  ? RECORD_RENTAL_CONTRACT_ENABLED
+                    ? "Available If Safe"
+                    : "Back To Available"
+                  : "Into Maintenance"}
               </button>
             ))}
           </div>
           {failedCheckIn && destination === "available" && (
             <p className="mt-1.5 flex items-start gap-1.5 text-[12px] text-[#C68A12]">
               <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
-              The check-in inspection failed. A car cannot be taken off the road while its rental is
-              open, so send it to maintenance here.
+              {RECORD_RENTAL_CONTRACT_ENABLED
+                ? "The return inspection failed. The rental can close, but the vehicle will remain in Maintenance until safety evidence is cleared."
+                : "The check-in inspection failed. A car cannot be taken off the road while its rental is open, so send it to maintenance here."}
             </p>
           )}
         </div>
