@@ -1,0 +1,22 @@
+===== BUILD 243 01:33:25 =====
+BUILD_EXIT 243 0
+===== RESULTS 243 01:33:58 =====
+RESULTS_EXIT 243 0
+===== CHECK 243 01:33:59 =====
+AssertionError [ERR_ASSERTION]: all 67 required tests executed without skip/todo
+CHECK_EXIT 243 1
+===== BUILD 250 01:33:59 =====
+BUILD_EXIT 250 0
+===== RESULTS 250 01:34:32 =====
+RESULTS_EXIT 250 0
+===== CHECK 250 01:34:33 =====
+AssertionError [ERR_ASSERTION]: all 67 required tests executed without skip/todo
+CHECK_EXIT 250 1
+===== BUILD rc16 01:34:33 =====
+BUILD_EXIT rc16 0
+===== RESULTS rc16 01:35:06 =====
+RESULTS_EXIT rc16 0
+===== CHECK rc16 01:35:08 =====
+AssertionError [ERR_ASSERTION]: all 67 required tests executed without skip/todo
+CHECK_EXIT rc16 1
+===== ALL DONE 01:35:08 =====
