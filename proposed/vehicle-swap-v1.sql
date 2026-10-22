@@ -1,5 +1,9 @@
 -- LOCAL POINTER. Not a migration. Not installed. Do not run this file.
 --
 -- The vehicle swap SQL has one source: proposed/m2-packet/20.sql
--- (HOSTED-INSTALL step 26). This file used to carry a stale copy.
--- It is a pointer now, so the two files cannot drift.
+-- (HOSTED-INSTALL step 26) on pull request 190. This file used to carry a
+-- stale copy. It is a pointer now, so the two files cannot drift.
+-- That file sets lock_timeout to 5 seconds and can be run again.
+-- Undo: proposed/rollback/20-vehicle-swap.sql. It returns the schema to
+-- the pre-install state. anon is not granted execute. authenticated
+-- execute is the staff path and refuses a non-staff caller.
