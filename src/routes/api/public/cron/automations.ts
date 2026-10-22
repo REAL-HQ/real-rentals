@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { runDueAutomations } from "@/lib/automations.server";
+import { DOCUMENT_EXPIRY_NOTICES_ENABLED } from "@/lib/document-expiry-flag";
 
 // Sweeps every automation enrollment that has come due and sends its next
 // step. Scheduled every 5 minutes by pg_cron (see the fleet-ops migration) so
@@ -25,8 +26,9 @@ async function handle(request: Request): Promise<Response> {
   if (!provided || provided !== expectedToken) return new Response("unauthorized", { status: 401 });
 
   // Enrollment only. The sweep below still sends whatever step is due.
-  // Flag off does not import the helper and cannot fail this cron.
-  if (process.env.DOCUMENT_EXPIRY_NOTICES_ENABLED === "true") {
+  // The constant is checked before the helper import, so a dark flag does
+  // not read rentals or documents and cannot fail this cron.
+  if (DOCUMENT_EXPIRY_NOTICES_ENABLED) {
     try {
       const { enrollDocumentExpiringNotices } = await import("@/lib/document-expiry.server");
       await enrollDocumentExpiringNotices();

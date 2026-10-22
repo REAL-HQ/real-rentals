@@ -7,7 +7,8 @@ import type { AccountantExportResponse } from "./accountant-export.server";
 /**
  * Owner-only year export. While ACCOUNTANT_EXPORT_ENABLED is false this
  * returns before the owner check and before any table or Stripe read.
- * Charges are listed once, by readLivePartnerCharges. No writes, no new SQL, no email.
+ * Charges are listed once, by readLivePartnerCharges. Fees are listed by
+ * readLiveOwnerPnlFees, one Eastern Time month at a time. No writes, no new SQL, no email.
  */
 
 const DISABLED: AccountantExportResponse = { status: "disabled", report: null };
@@ -23,6 +24,7 @@ export const getAccountantExport = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { loadAccountantSources, runAccountantExport } = await import("./accountant-export.server");
     const { readLivePartnerCharges } = await import("./partner-statement-read.server");
+    const { readLiveOwnerPnlFees } = await import("./owner-pnl-fees-read.server");
     return runAccountantExport({
       enabled: true,
       userId: context.userId,
@@ -30,5 +32,6 @@ export const getAccountantExport = createServerFn({ method: "POST" })
       year,
       load: () => loadAccountantSources(supabaseAdmin),
       readCharges: (window) => readLivePartnerCharges(window),
+      readFees: (window) => readLiveOwnerPnlFees(window),
     });
   });

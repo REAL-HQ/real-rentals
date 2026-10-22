@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { Wrench, BadgeCheck, Check, Infinity as InfinityIcon, Zap, Wallet, Headphones } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
@@ -8,6 +8,7 @@ import { InventoryVehicleCard, VehicleCard } from "@/components/site/VehicleCard
 import { PublicAvailabilityBadge, ShowAvailableOnly } from "@/components/site/PublicAvailability";
 import { inventoryCardModel } from "@/lib/public-vehicle-card";
 import { PUBLIC_AVAILABILITY_ENABLED, isAvailableNow, publicAvailability } from "@/lib/public-availability";
+import { FLEET_FILTERS_ENABLED } from "@/lib/fleet-filters";
 import { FadeUp } from "@/components/site/FadeUp";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -19,14 +20,128 @@ import {
   type MarketingCategory,
 } from "@/lib/marketing-fleet";
 
+// fleet-search-start
+const FLEET_SORTS = ["price_asc", "price_desc", "newest"] as const;
+
+type FleetSort = (typeof FLEET_SORTS)[number];
+
+type FleetFilterState = {
+  make: string;
+  minRate: number | null;
+  maxRate: number | null;
+  uberOnly: boolean;
+  availableOnly: boolean;
+  sort: FleetSort;
+};
+
+function cleanRate(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  }
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function readFleetSearch(search: Record<string, unknown>): FleetFilterState {
+  const make =
+    typeof search.make === "string" && search.make.trim() !== "" && search.make !== "all"
+      ? search.make.trim().slice(0, 40)
+      : "all";
+  const sort = FLEET_SORTS.find((item) => item === search.sort) ?? "price_asc";
+  return {
+    make,
+    minRate: cleanRate(search.min),
+    maxRate: cleanRate(search.max),
+    uberOnly: search.uber === "1" || search.uber === 1 || search.uber === true,
+    availableOnly: !(search.available === "0" || search.available === 0 || search.available === false),
+    sort,
+  };
+}
+
+function fleetSearchParams(state: FleetFilterState): {
+  make?: string;
+  min?: number;
+  max?: number;
+  uber?: boolean;
+  available?: boolean;
+  sort?: string;
+} {
+  return {
+    ...(state.make !== "all" ? { make: state.make } : {}),
+    ...(state.minRate !== null ? { min: state.minRate } : {}),
+    ...(state.maxRate !== null ? { max: state.maxRate } : {}),
+    ...(state.uberOnly ? { uber: true } : {}),
+    ...(!state.availableOnly ? { available: false } : {}),
+    ...(state.sort !== "price_asc" ? { sort: state.sort } : {}),
+  };
+}
+// fleet-search-end
+
+type ApplyFleetFilters = <T extends {
+  id?: string | null;
+  make?: string | null;
+  body_type?: string | null;
+  weekly_rate?: number | null;
+  year?: number | null;
+  status?: string | null;
+  uber_eligibility?: string[] | null;
+}>(rows: T[], state: FleetFilterState) => T[];
+
+function FleetFiltersGate(props: {
+  makes: string[];
+  value: FleetFilterState;
+  onChange: (next: FleetFilterState) => void;
+}) {
+  const [Bar, setBar] = useState<ComponentType<typeof props> | null>(null);
+  useEffect(() => {
+    if (FLEET_FILTERS_ENABLED !== true) return;
+    let cancelled = false;
+    import("@/components/site/FleetFiltersBar").then((mod) => {
+      if (!cancelled) setBar(() => mod.FleetFiltersBar);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (FLEET_FILTERS_ENABLED !== true || !Bar) return null;
+  return <Bar {...props} />;
+}
+
 export const Route = createFileRoute("/fleet/")({
   // `type` is an entry point, not a view state. A marketing catalog card
   // links here with the category it merchandises so the link lands on
   // something relevant instead of the unfiltered list. It seeds the filter on
   // arrival and the chips take over from there — deliberately not two owners
   // of one piece of state.
-  validateSearch: (s: Record<string, unknown>): { type?: MarketingCategory } =>
-    isMarketingCategory(s.type) ? { type: s.type } : {},
+  validateSearch: (s: Record<string, unknown>): {
+    type?: MarketingCategory;
+    make?: string;
+    min?: number;
+    max?: number;
+    uber?: boolean;
+    available?: boolean;
+    sort?: string;
+  } => {
+    const base = isMarketingCategory(s.type) ? { type: s.type } : {};
+    // Same constant as the rest of this page. While it is off, only `type` is parsed.
+    if (FLEET_FILTERS_ENABLED !== true) return base;
+    const extra: { make?: string; min?: number; max?: number; uber?: boolean; available?: boolean; sort?: string } = {};
+    if (typeof s.make === "string" && s.make.trim() !== "" && s.make !== "all") extra.make = s.make.trim().slice(0, 40);
+    const rate = (value: unknown) => {
+      if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
+      if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value)) && Number(value) >= 0) return Number(value);
+      return undefined;
+    };
+    const min = rate(s.min);
+    const max = rate(s.max);
+    if (min !== undefined) extra.min = min;
+    if (max !== undefined) extra.max = max;
+    if (s.uber === "1" || s.uber === 1 || s.uber === true) extra.uber = true;
+    if (s.available === "0" || s.available === 0 || s.available === false) extra.available = false;
+    if (s.sort === "price_desc" || s.sort === "newest") extra.sort = s.sort;
+    return { ...base, ...extra };
+  },
   head: () => ({
     meta: [
       { title: "The Fleet — REAL RENTALS" },
@@ -53,8 +168,12 @@ function FleetAvailabilityCar({ vehicle }: { vehicle: Tables<"vehicles_public"> 
 }
 
 function FleetPage() {
-  const { type } = Route.useSearch();
+  const search = Route.useSearch();
+  const { type } = search;
+  const navigate = useNavigate();
+  const fleetFilters = readFleetSearch(search);
   const [vehicles, setVehicles] = useState<Tables<"vehicles_public">[]>([]);
+  const [filterRows, setFilterRows] = useState<ApplyFleetFilters | null>(null);
   const [make, setMake] = useState("all");
   const [categories, setCategories] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(MARKETING_CATEGORIES.map((c) => [c, type ? c === type : true])),
@@ -64,6 +183,7 @@ function FleetPage() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    if (FLEET_FILTERS_ENABLED === true) return;
     let cancelled = false;
     // A hard cap on how long this page is allowed to show nothing.
     //
@@ -100,6 +220,34 @@ function FleetPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (FLEET_FILTERS_ENABLED !== true) return;
+    let cancelled = false;
+    const grace = setTimeout(() => {
+      if (!cancelled) setLoaded(true);
+    }, 2500);
+    (async () => {
+      try {
+        const mod = await import("@/lib/fleet-filters");
+        if (!cancelled) setFilterRows(() => mod.applyFleetFilters);
+        const { data } = await supabase
+          .from("vehicles_public")
+          .select(mod.FLEET_LISTING_COLUMNS)
+          .neq("status", "retired")
+          .order("weekly_rate", { ascending: true });
+        if (!cancelled) setVehicles((data || []) as Tables<"vehicles_public">[]);
+      } catch {
+        // Same fallback as the flag-off fetch: the catalog still has something to show.
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      clearTimeout(grace);
+    };
+  }, []);
+
   // A later /fleet?type=... navigation must move the chips even if the route
   // component is still mounted from a previous visit — otherwise the link
   // changes the URL and nothing on screen.
@@ -113,15 +261,17 @@ function FleetPage() {
     [vehicles]
   );
 
-  const filtered = vehicles.filter((v) => {
-    const cat = v.body_type ?? "sedan";
-    return (
-      (make === "all" || v.make === make) &&
-      categories[cat] &&
-      (!onlyAvail || v.status === "available") &&
-      !(PUBLIC_AVAILABILITY_ENABLED && availableOnly && !isAvailableNow(v))
-    );
-  });
+  const rows = FLEET_FILTERS_ENABLED === true
+    ? (filterRows ? filterRows(vehicles, fleetFilters) : []).filter((v) => categories[v.body_type ?? "sedan"])
+    : vehicles.filter((v) => {
+        const cat = v.body_type ?? "sedan";
+        return (
+          (make === "all" || v.make === make) &&
+          categories[cat] &&
+          (!onlyAvail || v.status === "available")
+        );
+      });
+  const filtered = rows.filter((v) => !(PUBLIC_AVAILABILITY_ENABLED && availableOnly && !isAvailableNow(v)));
 
   const toggleCat = (k: string) =>
     setCategories((c) => ({ ...c, [k]: !c[k] }));
@@ -159,6 +309,48 @@ function FleetPage() {
 
       <section className="container-real">
         <FadeUp>
+          {FLEET_FILTERS_ENABLED === true ? (
+            <div className="flex flex-col gap-4">
+              <FleetFiltersGate
+                makes={makes}
+                value={fleetFilters}
+                onChange={(next) => {
+                  if (FLEET_FILTERS_ENABLED !== true) return;
+                  navigate({
+                    to: "/fleet",
+                    search: (prev) => ({
+                      ...(prev.type ? { type: prev.type } : {}),
+                      ...fleetSearchParams(next),
+                    }),
+                  });
+                }}
+              />
+              <div className="rounded-2xl bg-soft p-5">
+                <div className="text-sm mb-2">Category</div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { k: "sedan", label: CATEGORY_LABEL.sedan, tagline: "Great MPG · Uber & Lyft" },
+                    { k: "suv", label: CATEGORY_LABEL.suv, tagline: "More Room · Comfort Rides" },
+                    { k: "xl", label: CATEGORY_LABEL.xl, tagline: "6+ Seats · UberXL & Lyft XL" },
+                  ].map((c) => (
+                    <button
+                      key={c.k}
+                      type="button"
+                      onClick={() => toggleCat(c.k)}
+                      className={`min-h-11 text-left px-4 py-2 rounded-lg text-sm border transition ${
+                        categories[c.k]
+                          ? "bg-real-red text-white border-real-red"
+                          : "bg-white text-foreground border-border hover:border-foreground/40"
+                      }`}
+                    >
+                      <span className="block font-medium">{c.label}</span>
+                      <span className="block text-[10px] opacity-90 leading-tight">{c.tagline}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className="rounded-2xl bg-soft p-5 flex flex-wrap items-center gap-5">
             <div className="flex flex-col">
               <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Make</label>
@@ -213,6 +405,7 @@ function FleetPage() {
               <ShowAvailableOnly pressed={availableOnly} onPressed={setAvailableOnly} />
             ) : null}
           </div>
+          )}
         </FadeUp>
       </section>
 
@@ -223,7 +416,7 @@ function FleetPage() {
                 units. With the box unchecked this list includes rented and
                 down vehicles, and calling them available was a false claim. */}
             Showing <span className="font-semibold">{filtered.length}</span>
-            {onlyAvail ? " Available " : " "}
+            {FLEET_FILTERS_ENABLED === true ? (fleetFilters.availableOnly ? " Available " : " ") : (onlyAvail ? " Available " : " ")}
             {filtered.length === 1 ? "Vehicle" : "Vehicles"}
           </div>
         </FadeUp>
@@ -234,10 +427,10 @@ function FleetPage() {
             </FadeUp>
           ))}
         </div>
-        {!loaded && filtered.length === 0 && (
+        {(!loaded || (FLEET_FILTERS_ENABLED === true && !filterRows)) && filtered.length === 0 && (
           <div className="text-center py-20 text-muted-foreground">Loading the fleet…</div>
         )}
-        {loaded && filtered.length === 0 && (
+        {loaded && filtered.length === 0 && (FLEET_FILTERS_ENABLED !== true || !!filterRows) && (
           <div className="mt-2">
             <FadeUp className="text-center max-w-2xl mx-auto">
               <h2 className="text-2xl md:text-3xl">Vehicles Built For Gig Work.</h2>

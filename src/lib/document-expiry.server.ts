@@ -1,7 +1,9 @@
-// Loads Documents Expiring and, when the flag is exactly "true", enrolls the
-// existing automation engine. The cron sweep sends the steps. This file does
-// not send email or SMS and does not write document rows.
+// Loads Documents Expiring and, while DOCUMENT_EXPIRY_NOTICES_ENABLED is true,
+// enrolls the existing automation engine. The constant is false. The cron
+// sweep sends the steps. This file does not send email or SMS and does not
+// write document rows.
 
+import { DOCUMENT_EXPIRY_NOTICES_ENABLED } from "@/lib/document-expiry-flag";
 import {
   APPROVED_DRIVER_STATUSES,
   EXPIRY_DOCUMENT_CATEGORIES,
@@ -22,10 +24,6 @@ export type ExpiringPopulation = {
   approved: ExpiringRenter[];
   defaultScope: ExpiryScope;
 };
-
-export function documentExpiryNoticesEnabled(): boolean {
-  return process.env.DOCUMENT_EXPIRY_NOTICES_ENABLED === "true";
-}
 
 type Admin = {
   from: (table: string) => any;
@@ -162,13 +160,20 @@ async function defaultEnroll(args: EnrollArgs): Promise<{ enrolled: number }> {
 /**
  * Enroll approved drivers (and anyone with an active rental) who have a
  * document expired or inside 30 days.
- * Unknown dates are a manager cue, not a customer notice. Flag off returns
- * before any read. A failure here must not fail the automation sweep.
+ * Unknown dates are a manager cue, not a customer notice. The constant is
+ * checked before any read. A failure here must not fail the automation sweep.
  */
 export async function enrollDocumentExpiringNotices(
   deps?: ExpiryEnrollDeps,
 ): Promise<{ enrolled: number; considered: number; skipped: "flag" | "error" | null }> {
-  if (!documentExpiryNoticesEnabled()) return { enrolled: 0, considered: 0, skipped: "flag" };
+  if (!DOCUMENT_EXPIRY_NOTICES_ENABLED) return { enrolled: 0, considered: 0, skipped: "flag" };
+  return runDocumentExpiryEnrollment(deps);
+}
+
+/** Enrollment after the flag check. Tests call this; production does not. */
+export async function runDocumentExpiryEnrollment(
+  deps?: ExpiryEnrollDeps,
+): Promise<{ enrolled: number; considered: number; skipped: "flag" | "error" | null }> {
   try {
     const load = deps?.load ?? defaultLoad;
     const enroll = deps?.enroll ?? defaultEnroll;

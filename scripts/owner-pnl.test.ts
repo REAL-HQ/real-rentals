@@ -72,6 +72,8 @@ describe("monthly owner p&l", () => {
       refundsCents: 2500,
       expenseCents: 11050,
       netCents: 29450,
+      feesCents: 0,
+      feesComplete: true,
       revenueComplete: true,
       expensesComplete: true,
       refundsComplete: true,
@@ -81,9 +83,10 @@ describe("monthly owner p&l", () => {
       { category: "repair", label: "Repair", cents: 10050 },
     ]);
     expect(report?.previous).toMatchObject({ revenueCents: 10000, expenseCents: 100, refundsCents: 0, netCents: 9900 });
-    expect(report?.change).toMatchObject({ revenueCents: 33000, expenseCents: 10950, refundsCents: 2500, netCents: 19550 });
+    expect(report?.change).toMatchObject({ revenueCents: 33000, expenseCents: 10950, refundsCents: 2500, feesCents: 0, netCents: 19550 });
     const csv = ownerPnlCsv(report!);
     expect(csv).toContain("Revenue,430.00,100.00,330.00");
+    expect(csv).toContain("Fees,0.00,0.00,0.00");
     expect(csv).toContain("Net,294.50,99.00,195.50");
     expect(csv).toContain("Deposits Excluded,200.00");
     expect(csv).toContain("'=cmd");
@@ -107,6 +110,7 @@ describe("monthly owner p&l", () => {
   it("returns disabled before any load when the flag is off", async () => {
     let loaded = 0;
     let reads = 0;
+    let feeReads = 0;
     const result = await runOwnerPnl({
       enabled: false,
       userId: "owner-1",
@@ -115,33 +119,42 @@ describe("monthly owner p&l", () => {
       now: NOW,
       load: async () => { loaded += 1; return directory(); },
       readCharges: async () => { reads += 1; return { ok: true, charges: [] }; },
+      readFees: async () => { feeReads += 1; return { ok: true, feesCents: 0 }; },
     });
     expect(result).toEqual({ status: "disabled", report: null });
     expect(loaded).toBe(0);
     expect(reads).toBe(0);
+    expect(feeReads).toBe(0);
     expect(OWNER_PNL_ENABLED).toBe(false);
   });
 
   it("refuses a manager before reading, and asks the existing charge reader for both months", async () => {
     let loaded = 0;
     const windows: { gte: number; lt: number }[] = [];
+    const feeWindows: { gte: number; lt: number }[] = [];
     const load = async () => { loaded += 1; return directory(); };
     const readCharges = async (window: { gte: number; lt: number }) => {
       windows.push(window);
       return { ok: true as const, charges: [] };
     };
+    const readFees = async (window: { gte: number; lt: number }) => {
+      feeWindows.push(window);
+      return { ok: true as const, feesCents: 0 };
+    };
     await expect(runOwnerPnl({
-      enabled: true, userId: "manager-1", tier: "manager", month: "2026-10", now: NOW, load, readCharges,
+      enabled: true, userId: "manager-1", tier: "manager", month: "2026-10", now: NOW, load, readCharges, readFees,
     })).rejects.toThrow("Forbidden");
     expect(loaded).toBe(0);
     expect(windows).toEqual([]);
+    expect(feeWindows).toEqual([]);
     const future = await runOwnerPnl({
-      enabled: true, userId: "owner-1", tier: "owner", month: "2026-11", now: NOW, load, readCharges,
+      enabled: true, userId: "owner-1", tier: "owner", month: "2026-11", now: NOW, load, readCharges, readFees,
     });
     expect(future).toMatchObject({ status: "unavailable" });
     expect(loaded).toBe(0);
+    expect(feeWindows).toEqual([]);
     const ready = await runOwnerPnl({
-      enabled: true, userId: "owner-1", tier: "owner", month: "2026-10", now: NOW, load, readCharges,
+      enabled: true, userId: "owner-1", tier: "owner", month: "2026-10", now: NOW, load, readCharges, readFees,
     });
     expect(ready.status).toBe("ready");
     expect(loaded).toBe(1);
@@ -149,6 +162,7 @@ describe("monthly owner p&l", () => {
       { gte: monthWindow("2026-10")!.gte, lt: monthWindow("2026-10")!.lt },
       { gte: monthWindow("2026-09")!.gte, lt: monthWindow("2026-09")!.lt },
     ]);
+    expect(feeWindows).toEqual(windows);
   });
 
   it("keeps the screen, the owner check, and Stripe behind the constant", () => {
@@ -159,14 +173,25 @@ describe("monthly owner p&l", () => {
     const flagAt = handler.indexOf("if (!OWNER_PNL_ENABLED) return DISABLED");
     const ownerAt = handler.indexOf("requireOwner");
     const stripeAt = handler.indexOf("readLivePartnerCharges(window)");
+    const feesAt = handler.indexOf("readLiveOwnerPnlFees(window)");
     expect(flagAt).toBeGreaterThan(-1);
     expect(ownerAt).toBeGreaterThan(flagAt);
     expect(stripeAt).toBeGreaterThan(ownerAt);
+    expect(feesAt).toBeGreaterThan(ownerAt);
     for (const name of ["owner-pnl.ts", "owner-pnl.server.ts", "owner-pnl.functions.ts", "owner-pnl-flag.ts"]) {
       const source = readFileSync(new URL(`../src/lib/${name}`, import.meta.url), "utf8");
       expect(source).not.toContain("charges.list");
       expect(source).not.toContain("refunds.list");
+      expect(source).not.toContain("balanceTransactions");
     }
+    const reader = readFileSync(new URL("../src/lib/owner-pnl-fees-read.server.ts", import.meta.url), "utf8");
+    expect(reader).toContain('createReadOnlyStripe("live", { cache: true })');
+    expect(reader).toContain("balanceTransactions.list");
+    expect(reader).not.toContain("createStripeClient");
+    const panel = readFileSync(new URL("../src/components/admin/OwnerPnlPanel.tsx", import.meta.url), "utf8");
+    expect(panel).toContain("Unavailable");
+    expect(panel).toContain("Stripe fees are Unavailable, so the net is Partial.");
+    expect(panel).not.toMatch(/text-transform/i);
     const nav = readFileSync(new URL("../src/components/admin/nav-config.ts", import.meta.url), "utf8");
     expect(nav).toContain('if (!OWNER_PNL_ENABLED || !tierAllows(tier, "owner")) return tabs');
     const tabsBlock = nav.slice(nav.indexOf("export const TABS"), nav.indexOf("export const LEGACY_TABS"));
