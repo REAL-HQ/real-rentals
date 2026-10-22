@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireStaff, requireManager } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
 import { completeRead, readInBatches } from "@/lib/waitlist-reads.server";
+import { WAITLIST_CLAIM_ENABLED, deliverOpeningEmails } from "@/lib/waitlist-claim";
 import type { ReadinessResult } from "@/lib/readiness";
 
 // Cars Available + waitlist.
@@ -356,7 +357,6 @@ export const notifyWaitlistTop = createServerFn({ method: "POST" })
 
     const { sendEmail } = await import("@/lib/email.server");
     const companyPhone = (await (await import("@/lib/company.server")).getBusinessPhone(supabaseAdmin)).display;
-    const { WAITLIST_CLAIM_ENABLED, deliverOpeningEmails } = await import("@/lib/waitlist-claim");
     // Flag off: the email is still the bare /apply link, and a failed send
     // still marks Notified. claimUrl is not called on that path.
     const { sent } = await deliverOpeningEmails({
@@ -428,7 +428,6 @@ export const notifyWaitlistTop = createServerFn({ method: "POST" })
 export const readWaitlistClaim = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ token: z.string().min(1).max(500) }).parse(d))
   .handler(async ({ data }) => {
-    const { WAITLIST_CLAIM_ENABLED } = await import("@/lib/waitlist-claim");
     if (!WAITLIST_CLAIM_ENABLED) return { ok: false as const };
 
     const { readClaimSecret, openWaitlistClaim, claimStoreFromSupabase } = await import(
