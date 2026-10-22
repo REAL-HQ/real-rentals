@@ -183,6 +183,88 @@ describe("paid-row stripe success", () => {
     expect(db.updates).toEqual([]);
     warn.mockRestore();
   });
+
+  it("counts one success after a failed attempt and does not keep the failure in non-Stripe", async () => {
+    vi.mocked(sendPaymentReceiptEmail).mockClear();
+    vi.mocked(sendEmail).mockClear();
+    const db = memoryAdmin({
+      rentals: [rentalRow()],
+      payments: [{
+        id: PAID,
+        status: "failed",
+        paid_date: null,
+        failure_reason: REASON,
+        stripe_invoice_id: "in_retry_ok",
+        stripe_subscription_id: "sub_1",
+        stripe_payment_intent_id: null,
+        notified_status: null,
+        rental_id: "r1",
+        net_collected: 75,
+      }],
+    });
+    const response = await postVerifiedPaymentWebhook({
+      type: "invoice.paid",
+      data: { object: { id: "in_retry_ok", subscription: "sub_1", amount_paid: 7500, payment_intent: "pi_retry_ok" } },
+    }, db);
+    expect(response.status).toBe(200);
+    expect(db.tables.payments).toHaveLength(1);
+    expect(db.tables.payments[0]).toMatchObject({
+      status: "paid",
+      failure_reason: null,
+      stripe_payment_intent_id: null,
+    });
+    expect(db.notifications.map((row) => row.title)).toEqual(["Weekly Rent Paid"]);
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(sendPaymentReceiptEmail).toHaveBeenCalledTimes(1);
+    const read = {
+      data: [{ net_collected: 75, stripe_payment_intent_id: null, stripe_invoice_id: "in_retry_ok", failure_reason: null, notified_status: "paid" }],
+      count: 1,
+      error: null,
+    };
+    expect(paymentRevenue(read)).toEqual({ total: 75, nonStripe: 0 });
+    expect(paymentOverlap(read)).toBe(0);
+  });
+
+  it("treats invoice.paid and invoice.payment_succeeded as one collection", async () => {
+    vi.mocked(sendPaymentReceiptEmail).mockClear();
+    vi.mocked(sendEmail).mockClear();
+    const db = memoryAdmin({
+      rentals: [rentalRow()],
+      payments: [paidInvoice("in_once")],
+    });
+    const object = { id: "in_once", subscription: "sub_1", amount_paid: 7500, payment_intent: "pi_once" };
+    expect((await postVerifiedPaymentWebhook({ type: "invoice.paid", data: { object } }, db)).status).toBe(200);
+    expect((await postVerifiedPaymentWebhook({ type: "invoice.payment_succeeded", data: { object } }, db)).status).toBe(200);
+    expect(db.tables.payments).toHaveLength(1);
+    expect(db.tables.payments[0]).toMatchObject({ status: "paid", failure_reason: REASON, paid_date: "2026-10-01", stripe_payment_intent_id: null });
+    expect(db.notifications).toHaveLength(1);
+    expect(sendPaymentReceiptEmail).toHaveBeenCalledTimes(1);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the manual receipt in place when the Stripe charge is refunded", async () => {
+    const db = memoryAdmin({
+      payments: [paidInvoice("in_refund")],
+    });
+    db.rpc = (name: string) => {
+      db.rpcCalls.push(name);
+      return Promise.resolve({ data: null, error: null });
+    };
+    const response = await postVerifiedPaymentWebhook({
+      type: "charge.refunded",
+      data: { object: { id: "ch_dup", payment_intent: "pi_dup", amount_refunded: 7500, refunds: { data: [{ id: "re_1", amount: 7500, status: "succeeded" }] } } },
+    }, db);
+    expect(response.status).toBe(200);
+    expect(db.rpcCalls).toEqual([]);
+    expect(db.tables.payments[0]).toMatchObject({
+      status: "paid",
+      paid_date: "2026-10-01",
+      failure_reason: REASON,
+      stripe_invoice_id: "in_refund",
+      stripe_payment_intent_id: null,
+    });
+    expect(db.updates).toEqual([]);
+  });
 });
 
 function rentalRow() {
@@ -231,6 +313,10 @@ function memoryAdmin(tables: Record<string, Array<Record<string, any>>>) {
   return {
     notifications,
     updates,
+    rpcCalls: [] as string[],
+    rpc(_name: string, _args?: unknown) {
+      return Promise.resolve({ data: null, error: null });
+    },
     tables,
     from(table: string) {
       const filters: Filter[] = [];

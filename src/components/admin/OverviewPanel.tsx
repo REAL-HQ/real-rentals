@@ -1010,7 +1010,7 @@ function RevenueCard({
   const sq = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, Boolean(consolidated)));
   const c = consolidated
     ? sq.isError ? { amount: null, coverage: "Unavailable" as const }
-      : consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, report: sq.data })
+      : consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, overlap: overlapOwed, report: sq.data })
     : null;
   const shownLoading = consolidated ? loading || (sq.isFetching && !sq.data) : loading;
   const shownAmount = c ? c.amount : amount;
@@ -1018,7 +1018,7 @@ function RevenueCard({
   const coverageHint = coverage === "Unavailable"
     ? "A required revenue source could not be verified for this period, so no consolidated total is shown. Verified Stripe collections remain available in Collections."
     : c
-      ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
+      ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. A manual receipt Stripe later collected is not added on top of that Stripe net. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
       : "Recorded payments only. Stripe, Zelle, Cash App, Venmo, cash and bank transfers are not all verified yet.";
   const goPayments = () => !open && navigate({ to: "/admin", search: { tab: "payments" } });
   const label = RANGE_LABELS.find((r) => r.key === rangeKey)?.label ?? "Range";
