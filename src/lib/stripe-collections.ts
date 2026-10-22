@@ -167,9 +167,11 @@ export function stripeCollectedLabel(report: CollectionsReport | null | undefine
  * intent nor a Stripe invoice id, and from a failed invoice row staff marked
  * paid (failure_reason still set). A later Stripe success leaves that
  * manual record in place, so the cash stays in the non-Stripe sum and the
- * row is still one amount. Overview shows the overlap separately. The Stripe
- * charge is not added a second time inside that row. Deposit rows are not
- * removed here.
+ * row is still one amount. Overview shows the overlap separately. The
+ * headline subtracts the part of that overlap that the Stripe net still
+ * contains, so the same receipt is not revenue twice. A Stripe refund that
+ * removes the duplicate leaves the manual receipt in the headline. Deposit
+ * rows are not removed here.
  * Returns null whenever Stripe cannot be established (never zero). Coverage
  * is never "Complete": Zelle/Cash App/Venmo/cash/ACH are not verified yet.
  */
@@ -276,12 +278,22 @@ export function verifyCollectedCharges(input: {
   return { charges: verifiedCharges, refunds: verifiedRefunds, collectionsComplete, incompletePortions, externalRecords };
 }
 
-export function consolidatedRevenue(input: { internalNonStripe: number | null; report: CollectionsReport | null | undefined }):
-  { amount: number | null; coverage: "Partial" | "Unavailable" } {
+export function consolidatedRevenue(input: {
+  internalNonStripe: number | null;
+  overlap?: number | null;
+  report: CollectionsReport | null | undefined;
+}): { amount: number | null; coverage: "Partial" | "Unavailable" } {
   if(input.internalNonStripe === null || !Number.isFinite(input.internalNonStripe)) return { amount: null, coverage: "Unavailable" };
+  if (input.overlap === null || (input.overlap !== undefined && (!Number.isFinite(input.overlap) || input.overlap < 0))) {
+    return { amount: null, coverage: "Unavailable" };
+  }
   const r = input.report;
   if (!r || !r.collectionsComplete || !r.totals) return { amount: null, coverage: "Unavailable" };
   if (r.totals.some(t => t.currency.toLowerCase() !== "usd" || t.net === null || !Number.isFinite(t.net))) return { amount: null, coverage: "Unavailable" };
   const stripeNet = r.totals.reduce((s, t) => s + (t.net as number), 0) / 100;
-  return { amount: Math.round((stripeNet + input.internalNonStripe) * 100) / 100, coverage: "Partial" };
+  const overlap = input.overlap ?? 0;
+  // Never subtract more than Stripe still reports. A refund of the duplicate
+  // charge drops the Stripe net, and the manual receipt stays.
+  const deducted = Math.min(overlap, Math.max(stripeNet, 0));
+  return { amount: Math.round((stripeNet + input.internalNonStripe - deducted) * 100) / 100, coverage: "Partial" };
 }

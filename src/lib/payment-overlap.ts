@@ -14,9 +14,19 @@ type OverlapRow = {
   net_collected: unknown;
   failure_reason?: string | null;
   notified_status?: string | null;
+  stripe_invoice_id?: string | null;
+  stripe_payment_intent_id?: string | null;
 };
 
-/** Sum of manual receipts Stripe later collected. Each row is still one receipt in revenue. */
+function filled(value: unknown): boolean {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+/**
+ * Cash or Zelle kept on a Stripe invoice after Stripe also collected it.
+ * A receipt with no invoice id is not overlap. A payment intent means the
+ * row is the Stripe charge, so it is not overlap either.
+ */
 export function paymentOverlap(result: { data: OverlapRow[] | null; error: unknown; count: number | null }): number | null {
   if (result.error || !Array.isArray(result.data) || result.count !== result.data.length) return null;
   let overlap = 0;
@@ -24,8 +34,7 @@ export function paymentOverlap(result: { data: OverlapRow[] | null; error: unkno
     if (row.net_collected === null || row.net_collected === undefined || row.net_collected === "") return null;
     const amount = Number(row.net_collected);
     if (!Number.isFinite(amount)) return null;
-    const reason = row.failure_reason;
-    const manual = typeof reason === "string" && reason.trim() !== "";
+    const manual = filled(row.failure_reason) && filled(row.stripe_invoice_id) && !filled(row.stripe_payment_intent_id);
     if (manual && row.notified_status === "paid") overlap += amount;
   }
   return overlap;
