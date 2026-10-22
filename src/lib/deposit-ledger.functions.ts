@@ -16,9 +16,9 @@ function ledgerInput(data: unknown): { closedOnly: boolean } {
 /** Read-only. While the flag is off this throws before the manager check and before any deposit or Stripe read. */
 export const getDepositLedger = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(ledgerInput)
-  .handler(async ({ data, context }): Promise<DepositLedgerResponse> => {
+  .handler(async ({ data: raw, context }): Promise<DepositLedgerResponse> => {
     if (!DEPOSIT_LEDGER_ENABLED) throw new Error(DEPOSIT_LEDGER_OFF);
+    const data = ledgerInput(raw);
     if (data.closedOnly && !DEPOSIT_RETURNS_DUE_ENABLED) throw new Error(DEPOSIT_RETURNS_DUE_OFF);
     const { requireManager } = await import("@/lib/roles.server");
     const actor = await requireManager(context.userId);

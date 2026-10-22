@@ -1,17 +1,19 @@
-import { STRIPE_READER_TIMEOUT_MS } from "./stripe-reader";
+import { STRIPE_READER_MAX_PAGES, STRIPE_READER_TIMEOUT_MS, paginateStripeList } from "./stripe-reader";
 import { createReadOnlyStripe } from "./stripe-reader.server";
 import type { DepositStripeCheck, DepositStripeRead, LedgerPayment } from "./deposit-ledger";
 
 /**
- * Optional cross-check for Deposit Ledger. paymentIntents.retrieve and
- * charges.retrieve only, with the 60 second cache on. A livemode miss or
- * any Stripe error returns ok: false. The caller keeps the database rows.
- * Nothing here writes a charge or a refund.
+ * Optional cross-check for Deposit Ledger. paymentIntents.retrieve,
+ * charges.retrieve, and refunds.list only, with the 60 second cache on.
+ * A page cap or any Stripe error returns ok: false. The caller keeps the
+ * database rows. Nothing here writes a charge or a refund.
  */
 
+type Page<T> = { data: T[]; has_more: boolean };
 type CallOptions = { timeout?: number };
 type RawIntent = { id?: unknown; latest_charge?: unknown; livemode?: unknown };
 type RawCharge = { id?: unknown; amount?: unknown; amount_captured?: unknown; amount_refunded?: unknown; livemode?: unknown };
+type RawRefund = { id?: unknown; amount?: unknown };
 
 export type DepositStripeGateway = {
   paymentIntents: {
@@ -20,7 +22,15 @@ export type DepositStripeGateway = {
   charges: {
     retrieve: (id: string, params?: Record<string, never>, options?: CallOptions) => Promise<RawCharge>;
   };
+  refunds: {
+    list: (
+      params: { payment_intent: string; limit: number; starting_after?: string },
+      options?: CallOptions,
+    ) => Promise<Page<RawRefund>>;
+  };
 };
+
+const PAGE = 100;
 
 export async function readDepositStripe(gateway: DepositStripeGateway, payments: LedgerPayment[]): Promise<DepositStripeRead> {
   const started = Date.now();
@@ -42,6 +52,14 @@ export async function readDepositStripe(gateway: DepositStripeGateway, payments:
       const captured = integerCents(charge.amount_captured ?? charge.amount);
       const refunded = integerCents(charge.amount_refunded);
       if (captured == null || refunded == null) return { ok: false };
+      const listed = await paginateStripeList(
+        (cursor) => gateway.refunds.list(
+          { payment_intent: intentId, limit: PAGE, ...(cursor ? { starting_after: cursor } : {}) },
+          { timeout: timeout() },
+        ),
+        { label: "deposit refunds", maxPages: STRIPE_READER_MAX_PAGES, deadline, now, strict: true },
+      );
+      if (!listed.ok) return { ok: false };
       checks.push({ paymentId: payment.id, capturedCents: captured, refundedCents: refunded });
     }
     return { ok: true, checks };

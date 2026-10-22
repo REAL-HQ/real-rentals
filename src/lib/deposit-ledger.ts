@@ -9,15 +9,29 @@ export const DEPOSIT_PAGE_CAP =
 
 export const STRIPE_CHECK_UNAVAILABLE = "Stripe check unavailable";
 
-export const DEPOSIT_OMITTED = [
-  "Stripe is compared only for a deposit payment with stripe_payment_intent_id that is on a listed row, through retrieve of that payment intent and its charge. An invoice id or a subscription id is not used to call Stripe.",
+const DEPOSIT_OMITTED_SHARED = [
   "Collected uses payments.net_collected for a paid or refunded deposit. That column is already the amount after the payment refund, so the payment refund is not subtracted again. A blank net collected uses the payment amount minus the payment refund.",
-  "The rental deposit refund amount is subtracted from what remains. When the payment refund and the rental refund are the same amount, the row says both were recorded. When those two amounts differ, the row is Unknown and neither amount is chosen. Neither record is changed.",
   "A blank rental deposit refund amount counts as no refund recorded, unless the deposit status is refunded or partly refunded. Then the row is Unknown.",
   "Applications deposit amount and deposit status are not used.",
   "The vehicle listed deposit is not the renter's expected deposit. Expected comes from the rental.",
   "Only a payment whose type is deposit counts as collected.",
 ] as const;
+
+const DEPOSIT_OMITTED_LEDGER = [
+  "Stripe is compared only for a deposit payment with stripe_payment_intent_id, through list and retrieve of charges, payment intents, and refunds. An invoice id or a subscription id is not used to call Stripe.",
+  DEPOSIT_OMITTED_SHARED[0],
+  "The rental deposit refund amount is subtracted from what remains. When the payment and the rental both record a refund, the row says so. Neither record is changed.",
+  ...DEPOSIT_OMITTED_SHARED.slice(1),
+] as const;
+
+const DEPOSIT_OMITTED_RETURNS = [
+  "Stripe is compared only for a deposit payment with stripe_payment_intent_id that is on a listed row, through list and retrieve of charges, payment intents, and refunds. An invoice id or a subscription id is not used to call Stripe.",
+  DEPOSIT_OMITTED_SHARED[0],
+  "The rental deposit refund amount is subtracted from what remains. When the payment refund and the rental refund are the same amount, the row says both were recorded. When those two amounts differ, the row is Unknown and neither amount is chosen. Neither record is changed.",
+  ...DEPOSIT_OMITTED_SHARED.slice(1),
+] as const;
+
+export const DEPOSIT_OMITTED = DEPOSIT_RETURNS_DUE_ENABLED ? DEPOSIT_OMITTED_RETURNS : DEPOSIT_OMITTED_LEDGER;
 
 export type DepositState =
   | "held"
@@ -194,6 +208,7 @@ export function buildDepositLedger(input: {
   vehicles: LedgerVehicle[];
   includeDaysSinceClose?: boolean;
   closedOnly?: boolean;
+  resolveRefundConflict?: boolean;
 }): DepositLedgerReport | null {
   const today = dateOnly(input.today);
   const dueThrough = today ? addCalendarDays(today, 7) : null;
@@ -231,7 +246,17 @@ export function buildDepositLedger(input: {
     const payments = paymentsByRental.get(rental.id) ?? [];
     const deductions = deductionsByRental.get(rental.id) ?? [];
     if (!hasDepositFact(rental) && payments.length === 0 && deductions.length === 0) continue;
-    rows.push(rowForRental(rental, payments, deductions, people, vehicles, today, dueThrough, input.includeDaysSinceClose === true));
+    rows.push(rowForRental(
+      rental,
+      payments,
+      deductions,
+      people,
+      vehicles,
+      today,
+      dueThrough,
+      input.includeDaysSinceClose === true,
+      input.resolveRefundConflict === true,
+    ));
   }
   rows.push(...orphanPaymentRows(orphanPayments, people));
   rows.push(...orphanDeductionRows(orphanDeductions));
@@ -385,6 +410,7 @@ function rowForRental(
   today: string,
   dueThrough: string,
   includeDaysSinceClose: boolean,
+  resolveRefundConflict: boolean,
 ): DepositRow {
   const applicationIds = new Set(payments.map((payment) => payment.applicationId).filter((id): id is string => !!id));
   const applicationId = rental.applicationId ?? (applicationIds.size === 1 ? [...applicationIds][0] : null);
@@ -404,6 +430,7 @@ function rowForRental(
     evidence,
     today,
     dueThrough,
+    resolveRefundConflict,
   });
   return {
     rentalId: rental.id,
@@ -437,6 +464,7 @@ function classify(input: {
   evidence: string[];
   today: string;
   dueThrough: string;
+  resolveRefundConflict: boolean;
 }): { state: DepositState; remainingCents: number | null; evidence: string[] } {
   const evidence = [...input.evidence];
   if (input.unreadable) {
@@ -445,7 +473,7 @@ function classify(input: {
   }
   const rental = input.rental;
   if (rental.refundCents != null && rental.refundCents > 0 && input.paymentRefundCents > 0) {
-    if (rental.refundCents !== input.paymentRefundCents) {
+    if (input.resolveRefundConflict && rental.refundCents !== input.paymentRefundCents) {
       evidence.push("The payment refund and the rental refund differ. Neither amount was chosen.");
       return { state: "unknown", remainingCents: null, evidence };
     }

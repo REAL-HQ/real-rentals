@@ -57,20 +57,24 @@ export async function runDepositLedger(input: {
     if (!report) return { status: "unavailable", reason: "The deposit date could not be read" };
     return { status: "ready", report };
   }
+  const returnsOn = input.returnsEnabled === true;
   const report = buildDepositLedger({
     ...loaded,
     today: input.today,
     includeDaysSinceClose: input.includeDaysSinceClose === true,
     closedOnly: input.closedOnly === true,
+    resolveRefundConflict: returnsOn,
   });
   if (!report) return { status: "unavailable", reason: "The deposit date could not be read" };
   if (!input.stripe) return { status: "ready", report };
   const listed = new Set(report.rows.flatMap((row) => row.paymentIds));
-  const listedPayments = loaded.payments.filter((payment) => listed.has(payment.id));
+  const stripePayments = returnsOn
+    ? loaded.payments.filter((payment) => listed.has(payment.id))
+    : loaded.payments;
   try {
-    const checked = await input.stripe(listedPayments);
+    const checked = await input.stripe(stripePayments);
     if (!checked.ok) return { status: "ready", report: markStripeUnavailable(report) };
-    return { status: "ready", report: applyDepositStripe(report, listedPayments, checked.checks) };
+    return { status: "ready", report: applyDepositStripe(report, stripePayments, checked.checks) };
   } catch {
     return { status: "ready", report: markStripeUnavailable(report) };
   }

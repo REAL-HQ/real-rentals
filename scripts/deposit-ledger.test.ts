@@ -150,10 +150,15 @@ it("keeps a database mismatch as evidence and does not change the input", () => 
 });
 
 it("shows Unknown when the payment refund and the rental refund differ", () => {
-  const report = ledger(
-    [rental({ status: "completed", endDate: "2026-10-11", refundCents: 15000 })],
-    [payment({ amountCents: 50000, netCollectedCents: 50000, refundedCents: 10000 })],
-  );
+  const report = buildDepositLedger({
+    today: TODAY,
+    rentals: [rental({ status: "completed", endDate: "2026-10-11", refundCents: 15000 })],
+    payments: [payment({ amountCents: 50000, netCollectedCents: 50000, refundedCents: 10000 })],
+    deductions: [],
+    people,
+    vehicles,
+    resolveRefundConflict: true,
+  });
   const row = report!.rows[0];
   expect(row.collectedCents).toBe(50000);
   expect(row.refundCents).toBe(15000);
@@ -163,6 +168,24 @@ it("shows Unknown when the payment refund and the rental refund differ", () => {
   expect(row.evidence.join(" ")).toContain("The payment refund and the rental refund differ. Neither amount was chosen.");
   expect(report!.heldCents).toBe(0);
   expect(report!.dueBackCents).toBe(0);
+});
+
+it("keeps the RC12 refund state and CSV notes while Deposit Returns Due is off", () => {
+  const report = ledger(
+    [rental({ status: "completed", endDate: "2026-10-11", refundCents: 15000 })],
+    [payment({ amountCents: 50000, netCollectedCents: 50000, refundedCents: 10000 })],
+  );
+  const row = report!.rows[0];
+  expect(row.state).toBe("due_back");
+  expect(row.remainingCents).toBe(35000);
+  expect(row.evidence.join(" ")).toContain("both record a deposit refund");
+  expect(row.evidence.join(" ")).not.toContain("Neither amount was chosen");
+  const csv = depositLedgerToCsv(report!);
+  expect(csv).toContain("through list and retrieve of charges, payment intents, and refunds");
+  expect(csv).toContain("When the payment and the rental both record a refund, the row says so.");
+  expect(csv).not.toContain("on a listed row");
+  expect(csv).not.toContain("Neither amount was chosen");
+  expect(csv).not.toContain("Days Since Close");
 });
 
 it("counts Eastern days since close only for a closed Due Back row", () => {
@@ -391,6 +414,8 @@ it("keeps Deposit Ledger out of the dark nav and behind the throw", () => {
   expect(flag).toContain("export const DEPOSIT_LEDGER_ENABLED = false");
   expect(flag).toContain("export const DEPOSIT_RETURNS_DUE_ENABLED = false");
   expect(disabled).toBeGreaterThan(-1);
+  expect(fn.indexOf("const data = ledgerInput(")).toBeGreaterThan(disabled);
+  expect(fn).not.toContain(".inputValidator");
   expect(returnsOff).toBeGreaterThan(disabled);
   expect(manager).toBeGreaterThan(returnsOff);
   expect(table).toBeGreaterThan(manager);
@@ -411,8 +436,8 @@ it("keeps Deposit Ledger out of the dark nav and behind the throw", () => {
   expect(server).not.toContain("createStripeClient");
   expect(stripeFile).toContain('createReadOnlyStripe("live", { cache: true })');
   expect(stripeFile).not.toContain("createStripeClient");
-  expect(stripeFile).not.toContain("refunds.list");
-  expect(stripeFile).not.toContain("paginateStripeList");
+  expect(stripeFile).toContain("refunds.list");
+  expect(stripeFile).toContain("paginateStripeList");
   expect(panel).toContain("STRIPE_CHECK_UNAVAILABLE");
   expect(panel).toContain("Stripe Captured");
   expect(panel).toContain("DEPOSIT_RETURNS_DUE_ENABLED");
