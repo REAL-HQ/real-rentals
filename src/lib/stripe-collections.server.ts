@@ -80,7 +80,7 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
   }
   const normalizedSubs: CollectionSubscription[] = subscriptions.map(s => {
     const customer = s.customer;
-    const items = s.items.data;
+    const items: any[] = s.items.data;
     const cadences = new Set(items.map(i => `${i.price.recurring?.interval}:${i.price.recurring?.interval_count}`));
     const periods = items.map(i => i.current_period_end).filter(n => Number.isFinite(n));
     const complete = !s.items.has_more && items.length > 0 && cadences.size === 1 && new Set(periods).size === 1 && periods.length === items.length && items.every(i => i.price.unit_amount !== null && !i.price.transform_quantity && i.price.recurring?.interval && i.price.recurring.usage_type !== "metered" && i.price.currency === s.currency);
