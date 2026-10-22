@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start';
 import { requireSupabaseAuth } from '@/integrations/supabase/auth-middleware';
 import { createStripeClient, getStripeErrorMessage, type StripeEnv } from '@/lib/stripe.server';
+import { CARD_LINK_EXPIRED_COPY } from '@/lib/card-page';
 import { tierAllows } from '@/lib/roles';
 
 type SessionResult = { clientSecret: string } | { error: string };
@@ -12,7 +13,29 @@ type CardSessionInput = {
 };
 
 const APPLICATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const LINK_ERROR = "This link is no longer valid. Ask us for a new one and we'll send it over.";
+const LINK_ERROR = CARD_LINK_EXPIRED_COPY;
+
+/**
+ * Stripe keeps an idempotency key for 24 hours and rejects a retry whose
+ * parameters differ. The application id stays in the key. The hash is the
+ * email, name, and phone actually sent, so an identical retry is one customer
+ * and a changed field is a new key.
+ */
+export async function cardCustomerIdempotencyKey(
+  applicationId: string,
+  params: { email?: string | null; name?: string | null; phone?: string | null },
+): Promise<string> {
+  const material = JSON.stringify({
+    applicationId,
+    email: params.email || null,
+    name: params.name || null,
+    phone: params.phone || null,
+  });
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
+  const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `card-on-file-customer:${applicationId}:${hash}`;
+}
+
 const SETUP_ERROR = "Could not start the card setup. Ask us for a new link and we'll send it over.";
 
 /**
@@ -188,14 +211,17 @@ export const createCardOnFileSession = createServerFn({ method: 'POST' })
 
       const stripe = createStripeClient(data.environment);
       if (!customerId) {
+        const email = typeof app.email === 'string' ? app.email : null;
+        const name = typeof app.full_name === 'string' ? app.full_name : null;
+        const phone = typeof app.phone === 'string' ? app.phone : null;
         const created = await stripe.customers.create(
           {
-            ...(app.email && { email: app.email as string }),
-            ...(app.full_name && { name: app.full_name as string }),
-            ...(app.phone && { phone: app.phone as string }),
+            ...(email ? { email } : {}),
+            ...(name ? { name } : {}),
+            ...(phone ? { phone } : {}),
             metadata: { applicationId: app.id as string },
           },
-          { idempotencyKey: `card-on-file-customer:${app.id}` },
+          { idempotencyKey: await cardCustomerIdempotencyKey(app.id as string, { email, name, phone }) },
         );
         customerId = created.id;
         const { data: saved, error: saveError } = await supabaseAdmin

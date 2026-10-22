@@ -74,7 +74,7 @@ const stub = {
         export const CARD_LINK_MS = 72 * 60 * 60 * 1000;
         export async function resolveCardToken(_admin, raw) {
           const id = globalThis.__cardTokens[raw];
-          if (!id) throw new Error("This link is no longer valid.");
+          if (!id || id === "expired") throw new Error("This link is no longer valid.");
           return id;
         }
         export async function issueResumeToken(_admin, _id, opts) {
@@ -114,7 +114,7 @@ await build({
   plugins: [stub],
 });
 
-const { createCardOnFileSession, issueCardOnFileLink } = await import(pathToFileURL(join(out, "payments.mjs")).href);
+const { createCardOnFileSession, issueCardOnFileLink, cardCustomerIdempotencyKey } = await import(pathToFileURL(join(out, "payments.mjs")).href);
 process.env.SUPABASE_URL = "https://example.supabase.co";
 process.env.SUPABASE_PUBLISHABLE_KEY = "publishable-test-key";
 
@@ -201,10 +201,38 @@ globalThis.__cardTokens[TOKEN] = APP;
 const created = await session({ token: TOKEN });
 assert.equal(created.clientSecret, "cs_test_secret");
 assert.equal(globalThis.__stripe.customers.length, 1);
-assert.equal(globalThis.__stripe.customers[0].opts.idempotencyKey, `card-on-file-customer:${APP}`);
+const sameParams = { email: "dana@example.com", name: "Dana Reyes", phone: "555" };
+const expectedKey = await cardCustomerIdempotencyKey(APP, sameParams);
+assert.equal(globalThis.__stripe.customers[0].opts.idempotencyKey, expectedKey);
+assert.match(expectedKey, new RegExp(`^card-on-file-customer:${APP}:[0-9a-f]{64}$`));
+assert.notEqual(expectedKey, `card-on-file-customer:${APP}`);
 assert.equal(globalThis.__stripe.sessions[0].customer, "cus_new");
 assert.equal(JSON.stringify(created).includes("cus_new"), false);
 ok("a first card setup creates one customer with a stable idempotency key");
+
+assert.equal(await cardCustomerIdempotencyKey(APP, sameParams), expectedKey);
+assert.notEqual(await cardCustomerIdempotencyKey(APP, { ...sameParams, email: "dana.reyes@example.com" }), expectedKey);
+assert.notEqual(await cardCustomerIdempotencyKey(APP, { ...sameParams, name: "Dana R. Reyes" }), expectedKey);
+assert.notEqual(await cardCustomerIdempotencyKey(APP, { ...sameParams, phone: "556" }), expectedKey);
+const CHANGED = "44444444-4444-4444-8444-444444444444";
+globalThis.__cardTokens[TOKEN] = CHANGED;
+globalThis.__app.email = "dana.reyes@example.com";
+globalThis.__stripe.customers = [];
+const changed = await createCardOnFileSession.handle({
+  data: {
+    applicationId: CHANGED,
+    returnUrl: `http://127.0.0.1:5199/card/${CHANGED}?status=success`,
+    environment: "sandbox",
+    token: TOKEN,
+  },
+});
+assert.equal(changed.clientSecret, "cs_test_secret");
+assert.equal(
+  globalThis.__stripe.customers[0].opts.idempotencyKey,
+  await cardCustomerIdempotencyKey(APP, { email: "dana.reyes@example.com", name: "Dana Reyes", phone: "555" }),
+);
+assert.notEqual(globalThis.__stripe.customers[0].opts.idempotencyKey, expectedKey);
+ok("a changed email, name, or phone gets a new customer idempotency key");
 
 reset();
 globalThis.__headers.authorization = "Bearer manager-token";
@@ -285,6 +313,27 @@ const resumeShaped = await session({ token: "this-is-a-resume-token-not-a-card-l
 assert.equal(resumeShaped.error?.includes("no longer valid"), true);
 assert.equal(globalThis.__stripe.clients, 0);
 ok("a resume token is not a card link");
+
+const LINK = "This link is no longer valid. Ask us for a new one and we'll send it over.";
+
+reset();
+const badToken = await session({ token: "card.bogus-token-value-ok" });
+assert.equal(badToken.error, LINK);
+assert.equal("clientSecret" in badToken, false);
+assert.equal(globalThis.__stripe.clients, 0);
+assert.equal(globalThis.__stripe.customers.length, 0);
+assert.equal(globalThis.__stripe.sessions.length, 0);
+ok("a bad card token is refused before any Stripe call");
+
+reset();
+globalThis.__cardTokens[TOKEN] = "expired";
+const expiredToken = await session({ token: TOKEN });
+assert.equal(expiredToken.error, LINK);
+assert.equal("clientSecret" in expiredToken, false);
+assert.equal(globalThis.__stripe.clients, 0);
+assert.equal(globalThis.__stripe.customers.length, 0);
+assert.equal(globalThis.__stripe.sessions.length, 0);
+ok("an expired card token is refused before any Stripe call");
 
 reset();
 globalThis.__cardIssue = null;
