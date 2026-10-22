@@ -8,12 +8,52 @@ import { ApplyProgressSlot, ProgressBar } from "@/components/site/ApplicationWiz
 import { APPLY_PROGRESS_ENABLED } from "@/lib/apply-progress";
 import { APPLY_VEHICLE_PREFILL_ENABLED } from "@/lib/apply-vehicle-prefill";
 import { savePartialApplication } from "@/lib/applications.functions";
+import { readWaitlistClaim } from "@/lib/waitlist.functions";
+import {
+  WAITLIST_CLAIM_ENABLED,
+  applySearchKeys,
+  claimTokenFromUrl,
+  type WaitlistClaimPrefill,
+} from "@/lib/waitlist-claim";
 import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
 import { resumeTargetFromApply, useResumeToken } from "@/lib/resume-token";
 import { SmsConsentField } from "@/components/site/SmsConsentField";
 import { PhoneLink } from "@/components/site/PhoneLink";
+
+const CLAIM_STASH = "rr_waitlist_claim";
+
+/**
+ * Included in this route's head only while WAITLIST_CLAIM_ENABLED is true.
+ * It stashes a real `claim` key and removes it from the address. It does not
+ * read or write the Google tag. The tag hotfix already strips `claim` from
+ * the address sent to Google, and a route script cannot run before that config.
+ * `reclaim=` is left alone.
+ */
+const STRIP_CLAIM_SCRIPT = `(function () {
+  if (location.pathname !== "/apply") return;
+  var queryRe = /(?:^|[?&])claim=([^&#]*)/;
+  var hashRe = /(?:^|[#&])claim=([^&#]*)/;
+  var search = location.search || "";
+  var hash = location.hash || "";
+  var query = queryRe.exec(search);
+  var frag = hashRe.exec(hash);
+  var raw = (frag && frag[1]) || (query && query[1]) || "";
+  if (!raw) return;
+  var token = raw;
+  try { token = decodeURIComponent(raw); } catch (e) {}
+  try { sessionStorage.setItem(${JSON.stringify(CLAIM_STASH)}, token); } catch (e) {}
+  var params = new URLSearchParams(search);
+  params.delete("claim");
+  var nextSearch = params.toString();
+  var hashBody = hash.charAt(0) === "#" ? hash.slice(1) : hash;
+  var kept = hashBody ? hashBody.split("&").filter(function (part) {
+    return part !== "claim" && part.indexOf("claim=") !== 0;
+  }) : [];
+  var nextHash = kept.length ? "#" + kept.join("&") : "";
+  history.replaceState(history.state, "", location.pathname + (nextSearch ? "?" + nextSearch : "") + nextHash);
+})();`;
 
 export const Route = createFileRoute("/apply")({
   validateSearch: (
@@ -40,7 +80,7 @@ export const Route = createFileRoute("/apply")({
       return str ? str : undefined;
     };
     const out: Record<string, string> = {};
-    for (const key of ["t", "city", "pickup", "vehicle", "vehicle_type"] as const) {
+    for (const key of applySearchKeys(WAITLIST_CLAIM_ENABLED)) {
       const value = pick(s[key]);
       if (value) out[key] = value;
     }
@@ -61,6 +101,7 @@ export const Route = createFileRoute("/apply")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [{ rel: "canonical", href: "https://drivereal.com/apply" }],
+    scripts: WAITLIST_CLAIM_ENABLED ? [{ children: STRIP_CLAIM_SCRIPT }] : [],
   }),
   component: ApplyPage,
 });
@@ -99,6 +140,56 @@ function ApplyPage() {
   // allowStashed: false — /apply starts a new application. A token stashed by
   // the previous person on a shared or kiosk device must not open their form.
   const token = useResumeToken(t, { allowStashed: false });
+  const readClaim = useServerFn(readWaitlistClaim);
+  const [claimPrefill, setClaimPrefill] = useState<WaitlistClaimPrefill | null>(null);
+  const [claimNote, setClaimNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!WAITLIST_CLAIM_ENABLED) {
+      try {
+        sessionStorage.removeItem(CLAIM_STASH);
+      } catch {
+        /* storage blocked */
+      }
+      return;
+    }
+    let claimToken = "";
+    try {
+      const url = new URL(window.location.href);
+      const fromUrl = claimTokenFromUrl(url.search, url.hash) || "";
+      claimToken = fromUrl || sessionStorage.getItem(CLAIM_STASH) || "";
+      sessionStorage.removeItem(CLAIM_STASH);
+      if (fromUrl) {
+        url.searchParams.delete("claim");
+        const hashBody = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+        const kept = hashBody
+          ? hashBody.split("&").filter((part) => part !== "claim" && !part.startsWith("claim="))
+          : [];
+        url.hash = kept.length ? `#${kept.join("&")}` : "";
+        window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+      }
+    } catch {
+      claimToken = "";
+    }
+    if (!claimToken) return;
+    let live = true;
+    readClaim({ data: { token: claimToken } })
+      .then((res) => {
+        if (!live) return;
+        if (res.ok) {
+          setClaimPrefill(res.prefill);
+          setClaimNote(null);
+        } else {
+          setClaimNote("error" in res && res.error ? res.error : "This link is not valid.");
+        }
+      })
+      .catch(() => {
+        if (live) setClaimNote("This link is not valid.");
+      });
+    return () => {
+      live = false;
+    };
+  }, [readClaim]);
 
   return (
     // No site header here. The wizard's dark panel already carries the
@@ -115,6 +206,8 @@ function ApplyPage() {
             prePickup={prePickup ?? ""}
             preVehicleSize={VEHICLE_TYPE_TO_SIZE[(preType ?? "").toLowerCase()] ?? null}
             preVehicle={preVehicle}
+            claimPrefill={WAITLIST_CLAIM_ENABLED ? claimPrefill : null}
+            claimNote={WAITLIST_CLAIM_ENABLED ? claimNote : null}
           />
         </main>
       )}
@@ -127,6 +220,8 @@ function ContactStep({
   prePickup,
   preVehicleSize,
   preVehicle,
+  claimPrefill,
+  claimNote,
 }: {
   preCity: string;
   prePickup: string;
@@ -134,6 +229,8 @@ function ContactStep({
   preVehicleSize: "Sedan" | "SUV" | "XL" | null;
   /** A vehicles.id from the search key. Shown only while the prefill flag is on. */
   preVehicle?: string;
+  claimPrefill: WaitlistClaimPrefill | null;
+  claimNote: string | null;
 }) {
   const navigate = useNavigate();
   const savePartial = useServerFn(savePartialApplication);
@@ -146,6 +243,7 @@ function ContactStep({
 
   useEffect(() => {
     if (!preCity) return;
+    if (WAITLIST_CLAIM_ENABLED && claimPrefill?.market_id) return;
     supabase
       .from("sites")
       .select("market_id, markets(name, state)")
@@ -157,7 +255,24 @@ function ContactStep({
         const m = data.markets as { name: string; state: string | null } | null;
         setMarket({ id: data.market_id, name: m?.name ?? preCity, state: m?.state ?? null });
       });
-  }, [preCity]);
+  }, [preCity, claimPrefill]);
+
+  useEffect(() => {
+    if (!WAITLIST_CLAIM_ENABLED || !claimPrefill) return;
+    setForm((prev) => ({
+      ...prev,
+      full_name: claimPrefill.full_name,
+      email: claimPrefill.email,
+      phone: claimPrefill.phone ?? "",
+    }));
+    if (claimPrefill.market_id) {
+      setMarket({
+        id: claimPrefill.market_id,
+        name: claimPrefill.city ?? preCity,
+        state: claimPrefill.state,
+      });
+    }
+  }, [claimPrefill, preCity]);
 
   // Attribution captured in __root; read here at submit time.
 
@@ -192,7 +307,7 @@ function ContactStep({
           market_id: market?.id ?? null,
           city: market?.name ?? preCity ?? null,
           state: market?.state ?? null,
-          pickup_date: prePickup || null,
+          pickup_date: (WAITLIST_CLAIM_ENABLED && claimPrefill?.pickup_date) || prePickup || null,
           vehicle_size: preVehicleSize,
           source: "homepage",
           ...getAttribution(),
@@ -217,6 +332,11 @@ function ContactStep({
   const contact = (
     <>
         <ProgressBar current="your_info" source="homepage" />
+        {claimNote && (
+          <p role="alert" className="mb-4 text-sm text-real-red">
+            {claimNote}
+          </p>
+        )}
         {APPLY_PROGRESS_ENABLED ? null : (
           <div className="mt-8 text-xs tracking-[0.18em] font-semibold text-real-red uppercase mb-3">Step 1 Of 3</div>
         )}
