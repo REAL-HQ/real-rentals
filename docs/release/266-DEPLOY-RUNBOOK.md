@@ -129,6 +129,48 @@ one when Stripe reports a payment. Duplicates and unmatched rows are the fault.*
 **Anything else**
 - A driver or renter reports a wrong charge, a wrong balance or an unexpected email.
 
+## E0. The deployed identity is unverified — read before rolling back
+
+Lovable's Publish panel has **no deployment history and no published commit
+SHA** (its menu is only Social & Search Appearance, View Docs, Unpublish). The
+site reports its last publication as **about two days ago**. So:
+
+| Commit | Committed (UTC) | Fits "~2 days ago"? |
+|---|---|---|
+| `7e3e6eb6` | 2026-10-21 02:21 | **yes** |
+| `ec07e587` "Work in progress" | 2026-10-22 12:32 | no — after |
+| `0946c750` "Lovable update" | 2026-10-22 12:33 | no — after |
+
+**The deployed build is more likely `7e3e6eb6` than `0946c750`.** Both commits
+above `7e3e6eb6` were made the day *after* the reported publication, so they may
+never have shipped.
+
+### What that costs, exactly
+
+Rolling back to `0946c750` when production is actually `7e3e6eb6` would ship
+**2 files, +72 / −79**, neither previously in production:
+
+- `src/integrations/supabase/previewAuthStorage.ts` — a substantial rewrite
+- `src/integrations/supabase/types.ts` — mostly deletions
+
+Both are Lovable's own edits. The risk is **bounded and enumerable**: that is
+the entire difference between the two candidate targets. It is not nothing —
+one of the commits is titled "Work in progress", and shipping an unreviewed
+auth-storage change during an incident is the wrong moment for it.
+
+### Why `0946c750` is still the target
+
+Lovable's rollback workflow selects a **branch**, not a commit, and
+`codex/revenue-publication` points at `0946c750`. **Through the supported
+interface, `0946c750` is the only reachable rollback target.** Reaching
+`7e3e6eb6` would mean moving the branch pointer on GitHub first — a larger,
+riskier action to take mid-incident.
+
+**Decision, to make now rather than under pressure:** roll back to `0946c750`
+and accept those two files. If you would rather not, say so before authorizing,
+and I will prepare a branch that restores `7e3e6eb6` exactly so the target is
+unambiguous either way.
+
 ## E. Rollback
 
 - [ ] **E1.** Lovable → Project settings → Git → branch picker →
