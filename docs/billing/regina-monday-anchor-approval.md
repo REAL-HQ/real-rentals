@@ -14,13 +14,15 @@ following Monday.
 
 Two separate blocks:
 
-1. **No Stripe credential exists in this container.** The only payment value
-   present is `VITE_PAYMENTS_CLIENT_TOKEN` in `.env.development` /
-   `.env.production`, a browser publishable token; there is no secret or
-   restricted key in the environment or in any tracked file. So the instruction
-   to "verify the actual current state through authorized read-only Stripe
-   access" could not be carried out here. Every subscription-specific number
-   below is therefore **unverified** and marked as such.
+1. **No Stripe credential exists in this container, and none is being asked
+   for.** The only payment value present is `VITE_PAYMENTS_CLIENT_TOKEN` in
+   `.env.development` / `.env.production`, a browser publishable token; there is
+   no secret or restricted key in the environment or in any tracked file. A live
+   secret key must not be put in this repository, this chat, logs or local
+   source — so verification is done **by the owner in the Stripe Dashboard**,
+   read-only, with the steps in "How to verify" below. Every
+   subscription-specific number here is **unverified** until those steps are
+   run.
 2. **The in-app billing-day change cannot touch live Stripe.** It is in the
    baseline but refuses live by construction — see "Why the in-app path will
    not do this" below. Flipping flags does not change that.
@@ -90,19 +92,70 @@ her subscription.** It must be `now`, or absent (legacy semantics). If it is
 moved a different way. A mocked `subscriptions.update` cannot distinguish these
 two cases, which is why passing tests are not evidence here.
 
-## Pre-flight reads required (read-only, need a Stripe key)
+## How to verify — read-only Stripe Dashboard steps
 
-1. The subscription's `status`, `current_period_end`, `billing_cycle_anchor`.
-2. `trial_settings.end_behavior.billing_cycle_anchor` (see above).
-3. That **no** invoice already exists whose period starts at the new
-   `trial_end`, and no Saturday renewal invoice has been created yet.
-4. `items` — confirm exactly one weekly $350 item, and that item-level
-   `current_period_end` agrees with the subscription's. `subscriptionAnchorUnix`
-   (`src/lib/billing-controls.ts:327`) returns `null` when they disagree, which
-   is the signal that this subscription is not shaped the way this change
-   assumes.
-5. A default payment method is attached and not expired, or the Monday renewal
-   fails.
+No key, no API call, nothing written. Stay in **Live mode** throughout: the
+mode switch is in the Dashboard header, and Test/Sandbox data will not answer
+these questions.
+
+### Step 1 — open the subscription
+
+1. Sign in at `dashboard.stripe.com` and confirm the header does **not** say
+   Test mode or Sandbox.
+2. **Billing → Subscriptions**, search for Regina by name, email or phone.
+   (Or **Customers → ** her record → the **Subscriptions** section.)
+3. Open the active **$350 / week** subscription.
+4. Write down, from this page: the subscription id (`sub_…`), the **status**, and
+   the **Next invoice** date *and time*.
+
+### Step 2 — the trial setting that decides whether this works
+
+This is the one that matters, and the subscription page has no labeled field for
+it. Use the Inspector:
+
+1. On the subscription page, click the **Inspector** icon — or open
+   **Workbench → Inspector** and paste the `sub_…` id.
+2. The **Overview** tab shows the object's raw JSON, read-only.
+3. Find `trial_settings` → `end_behavior` → `billing_cycle_anchor` and read it:
+
+   | Value | What it means |
+   |---|---|
+   | `now` | The anchor **moves to Monday permanently.** Proceed. |
+   | absent / no `trial_settings` | Legacy `trial_end` semantics — anchor moves to Monday. Proceed. |
+   | `unchanged` | **Stop.** The anchor stays on **Saturday**; Stripe bills a proration for the gap and she reverts to Saturday after one cycle. This change would not do what you asked, and must be reworked before it is applied. |
+
+   If Workbench is not visible, enable it from the Dashboard's Developer
+   settings / Beta features.
+4. While in the JSON, also read `current_period_end` (a Unix timestamp) and
+   confirm it is the Saturday shown on the page — this is the value the real
+   `trial_end` must be derived from, rather than the `11:41 ET` fixture above.
+5. In the same JSON, check `items.data` holds exactly **one** weekly $350 item,
+   and that its `current_period_end` equals the subscription's. If they differ,
+   stop: `subscriptionAnchorUnix` returns `null` for that shape, which is the
+   signal this subscription is not built the way this change assumes.
+
+### Step 3 — has the Saturday renewal already been created?
+
+1. **Billing → Invoices**, filter by her customer.
+2. Look for any invoice — **draft, open, or paid** — whose billing period starts
+   on **Sat Oct 24**. The subscription page's **Next invoice** line says the same
+   thing from the other direction.
+3. If such an invoice exists, the Monday move is **off the table for this week**:
+   applying it now double-bills her. Say so and the plan shifts to Nov 2.
+4. Also confirm no invoice already covers a period starting **Mon Oct 26**.
+
+### Step 4 — can she actually pay on Monday?
+
+On the subscription (or the customer's **Payment methods**), confirm a default
+payment method is attached and not expired. Otherwise the Monday renewal simply
+fails.
+
+### What to send back
+
+The `sub_…` id, `status`, `current_period_end`, the
+`trial_settings.end_behavior.billing_cycle_anchor` value, and whether a
+Saturday-period invoice exists. That is enough to finalise `trial_end` and
+confirm the schedule — and nothing in that list is a credential.
 
 ## Why the in-app path will not do this
 
@@ -127,17 +180,25 @@ none of which can be done before tomorrow's renewal.
 Reported: a new Visa debit ending 8542, an owner-approved collection pause, and
 a one-time $350 invoice charge scheduled Oct 23 12:15 AM ET.
 
-**Unverified — and deliberately not acted on.** With no Stripe read access I
-cannot see whether that charge already succeeded, is still scheduled, or failed.
-The instruction was explicit: do not create a second charge and do not retry an
-existing payment automatically. So nothing was sent, retried, or scheduled.
-Verifying this needs the same read-only Stripe key as above.
+**Unverified — and deliberately not acted on.** I cannot see whether that charge
+already succeeded, is still scheduled, or failed. The instruction was explicit:
+do not create a second charge and do not retry an existing payment
+automatically. So nothing was sent, retried, or scheduled.
+
+To check it in the Dashboard, read-only: **Payments**, filter to his customer,
+and look for a $350 charge dated **Oct 23**. Its state answers it —
+`Succeeded` means done, `Failed` means a retry decision is yours to make, and
+nothing listed means the scheduled charge has not run. Then **Billing →
+Subscriptions →** his subscription: if collection is paused, the page says so
+(`pause_collection` in the Inspector JSON gives the exact `behavior` and
+`resumes_at`). Confirm the Visa debit ending **8542** is the default payment
+method before anything is resumed.
 
 ## Decision needed
 
 - [ ] Approve the `trial_end` change for Regina, **after** the five pre-flight
       reads pass, accepting the 2 unbilled days — or reject it.
-- [ ] Provide read-only Stripe access (a restricted key with read scopes) so the
-      pre-flight reads and Adam's charge state can actually be checked.
+- [ ] Run the four Dashboard steps above and send back the five values. No key
+      leaves the Dashboard.
 
 Until both are answered nothing here will be executed. Silence is not approval.
