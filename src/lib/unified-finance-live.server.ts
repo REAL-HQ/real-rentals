@@ -5,6 +5,7 @@ import { assembleUnifiedFinanceReport, assertUnifiedFinanceAccess } from "./unif
 import { createStripeClient } from "./stripe.server";
 import { readStripeFinanceWindow } from "./unified-finance-stripe-read.server";
 import { buildVerifiedCollections, verifiedCollectionReport, type VerifiedPayment, type VerifiedRefundRow } from "./unified-finance-verified";
+import { applyOperatingCards, assessOperating, type OperatingAssessment, type OperatingExpenseRow, type OperatingMaintenanceRow, type WaivedFeeRow } from "./unified-finance-operating";
 import { unifiedFinanceRequestSchema, type FinanceSnapshots, type SourceCoverage, type SourceSnapshot, type UnifiedFinanceReport, type UnifiedFinanceRequest, type UnifiedFinanceResponse, type VehicleProfitSection } from "./unified-finance-contract";
 import { vehicleProfitability, type ProfitExpense, type ProfitMaintenance, type ProfitPayment, type ProfitVehicle } from "./unified-finance-vehicles";
 
@@ -43,9 +44,19 @@ export async function loadUnifiedFinanceReport(input: {
   };
   const assembled = assembleUnifiedFinanceReport(request, tier, snapshots);
   const verified = await readVerifiedCollections(input.supabase, request, input.signal);
-  const report: UnifiedFinanceReport = verified
-    ? { ...assembled, verifiedCollections: verified.cards, unmatched: verified.unmatched, sources: { ...assembled.sources, stripe: verified.stripe, payments: verified.payments } }
-    : assembled;
+  const operating = await readOperating(input.supabase, request.period, input.signal);
+  const verifiedCollections = applyOperatingCards(verified?.cards ?? assembled.verifiedCollections, operating.assessment);
+  const report: UnifiedFinanceReport = {
+    ...assembled,
+    verifiedCollections,
+    unmatched: { ...(verified?.unmatched ?? { charges: 0, refunds: 0, payouts: 0, payments: 0, balanceTransactions: 0 }), ...operating.assessment.counts },
+    gaps: operating.assessment.gaps,
+    sources: {
+      ...assembled.sources,
+      ...(verified ? { stripe: verified.stripe, payments: verified.payments } : {}),
+      expenses: operating.coverage,
+    },
+  };
   const vehicles = await readVehicleSection(input.supabase, request.period, input.signal);
   return { status: "ready", report, vehicles };
 }
@@ -100,6 +111,66 @@ async function readVerifiedCollections(
   } catch {
     return null;
   }
+}
+
+async function readOperating(
+  supabase: SupabaseClient<Database>,
+  period: { from: string; to: string },
+  signal?: AbortSignal,
+): Promise<{ assessment: OperatingAssessment; coverage: SourceCoverage }> {
+  const failed: SourceCoverage = { state: "incomplete", reasons: ["Operating expense evidence was incomplete or changed during the read"], pages: 0 };
+  try {
+    const [expenses, maintenance, payments] = await Promise.all([
+      readStable(async (cursor) => {
+        let query = supabase.from("vehicle_expenses").select("id,vehicle_id,amount,incurred_on,maintenance_record_id").order("id", { ascending: true }).limit(PAGE);
+        if (cursor) query = query.gt("id", cursor);
+        if (signal) query = query.abortSignal(signal);
+        return query;
+      }, signal),
+      readStable(async (cursor) => {
+        let query = supabase.from("maintenance_records").select("id,vehicle_id,company_share,performed_on,completed_at,created_at").order("id", { ascending: true }).limit(PAGE);
+        if (cursor) query = query.gt("id", cursor);
+        if (signal) query = query.abortSignal(signal);
+        return query;
+      }, signal),
+      readStable(async (cursor) => {
+        let query = supabase.from("payments").select("id,status,type,amount,paid_date,due_date").order("id", { ascending: true }).limit(PAGE);
+        if (cursor) query = query.gt("id", cursor);
+        if (signal) query = query.abortSignal(signal);
+        return query;
+      }, signal),
+    ]);
+    if (!expenses || !maintenance || !payments) return { assessment: blankOperating(period), coverage: failed };
+    const assessment = assessOperating({
+      period,
+      expenses: expenses.map(mapOperatingExpense),
+      maintenance: maintenance.map(mapOperatingMaintenance),
+      waivedFees: payments.map(mapWaivedFee),
+    });
+    if (!expenses.length && !maintenance.length && assessment.expensesComplete) {
+      return { assessment, coverage: { state: "complete", reasons: [], pages: 1 } };
+    }
+    return {
+      assessment,
+      coverage: { state: assessment.expensesComplete ? "complete" : "incomplete", reasons: assessment.reasons, pages: assessment.expensesComplete ? 1 : 0 },
+    };
+  } catch {
+    return { assessment: blankOperating(period), coverage: failed };
+  }
+}
+
+function blankOperating(period: { from: string; to: string }): OperatingAssessment {
+  return { ...assessOperating({ period, expenses: [], maintenance: [], waivedFees: [] }), expensesComplete: false, expenseCents: null };
+}
+
+function mapOperatingExpense(row: { id: string; vehicle_id: string | null; amount: number | null; incurred_on: string | null; maintenance_record_id: string | null }): OperatingExpenseRow {
+  return { id: row.id, vehicleId: text(row.vehicle_id), amount: money(row.amount), incurredOn: text(row.incurred_on), maintenanceRecordId: text(row.maintenance_record_id) };
+}
+function mapOperatingMaintenance(row: { id: string; vehicle_id: string | null; company_share: number | null; performed_on: string | null; completed_at: string | null; created_at: string | null }): OperatingMaintenanceRow {
+  return { id: row.id, vehicleId: text(row.vehicle_id), companyShare: money(row.company_share), performedOn: text(row.performed_on), completedAt: text(row.completed_at), createdAt: text(row.created_at) };
+}
+function mapWaivedFee(row: { id: string; status: string | null; type: string | null; amount: number | null; paid_date: string | null; due_date: string | null }): WaivedFeeRow {
+  return { id: row.id, status: text(row.status), type: text(row.type), amount: money(row.amount), paidDate: text(row.paid_date), dueDate: text(row.due_date) };
 }
 
 function unavailable(reason: string): SourceSnapshot {

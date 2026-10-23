@@ -6,6 +6,8 @@ import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Nav } from "@/components/site/Nav";
 import { getMyPortalAccess, openMyApplication, updateMyWaitlist } from "@/lib/portal-access.functions";
+import { APPLICATION_TIMELINE_ENABLED } from "@/lib/application-timeline";
+import { ApplicationTimelineSection } from "@/components/portal/ApplicationTimeline";
 import { fmtDate } from "@/lib/date-format";
 
 /**
@@ -43,6 +45,7 @@ export function ApplicantHome() {
               </div>
             )}
             {data.application ? <ApplicationCard app={data.application} approved={data.stage === "approved"} /> : null}
+            {APPLICATION_TIMELINE_ENABLED && data.stage === "applicant" ? <ApplicationTimelineSection /> : null}
             {!data.application && data.waitlist ? <WaitlistCard w={data.waitlist} /> : null}
             {data.stage === "none" && !data.review && (
               <div className="mt-8 rounded-xl border border-border p-6">
