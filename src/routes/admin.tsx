@@ -47,13 +47,19 @@ import { OverviewPanel } from "@/components/admin/OverviewPanel";
 import { VendorsPanel } from "@/components/admin/VendorsPanel";
 import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
+import { DepositsLedgerPanel } from "@/components/admin/DepositsLedgerPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
 import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { StripeMatchPanel } from "@/components/admin/StripeMatchPanel";
+import { VehicleProfitPanel } from "@/components/admin/VehicleProfitPanel";
+import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
+import { CollectionsWatchPanel } from "@/components/admin/CollectionsWatchPanel";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
+import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
@@ -297,6 +303,10 @@ function Admin() {
     if (urlTab === "finance") {
       if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "finance";
+    }
+    if (urlTab === "vehicle_profit") {
+      if (!VEHICLE_PROFITABILITY_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "vehicle_profit";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -777,9 +787,10 @@ function Admin() {
           <main data-admin-main className="flex-1 min-w-0 px-4 pb-4 md:px-8 md:pb-8 pt-2">
             {tab === "overview" && <OverviewPanel canSeeCollections={tierAllows(tier, "manager")} />}
             {tab === "drivers" && (
-              <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
+              <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
-            {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} openId={urlRecordId} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
+            {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} openId={urlRecordId} canSeeMaintenanceDue={tierAllows(tier, "manager")} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
+            {tab === "active_rentals" && <ActiveRentalsPanel />}
             {tab === "bookings" && (
               <BookingsPanel
                 externalSearch={globalSearch}
@@ -801,10 +812,14 @@ function Admin() {
             {tab === "vendors" && <VendorsPanel />}
             {tab === "inspections" && <InspectionsPanel />}
             {tab === "charges" && <ChargesPanel />}
+            {tab === "stripe_match" && <StripeMatchPanel />}
+            {tab === "collections_watch" && <CollectionsWatchPanel />}
+            {tab === "deposits_ledger" && <DepositsLedgerPanel />}
             {tab === "incidents" && <IncidentsPanel seedIssueId={search.issue ?? null} />}
             {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
+            {VEHICLE_PROFITABILITY_ENABLED && tab === "vehicle_profit" && <VehicleProfitPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>

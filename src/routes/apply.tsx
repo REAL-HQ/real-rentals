@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate, redirect, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -9,7 +9,7 @@ import { savePartialApplication } from "@/lib/applications.functions";
 import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
-import { useResumeToken } from "@/lib/resume-token";
+import { resumeTargetFromApply, useResumeToken } from "@/lib/resume-token";
 import { SmsConsentField } from "@/components/site/SmsConsentField";
 import { PhoneLink } from "@/components/site/PhoneLink";
 
@@ -43,6 +43,11 @@ export const Route = createFileRoute("/apply")({
       if (value) out[key] = value;
     }
     return out;
+  },
+  beforeLoad: ({ search }) => {
+    // Hand the token to /thank-you before this page strips it from the URL.
+    const handoff = resumeTargetFromApply(search);
+    if (handoff) throw redirect(handoff);
   },
   head: () => ({
     meta: [

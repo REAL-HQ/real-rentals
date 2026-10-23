@@ -39,7 +39,14 @@ export type UnifiedFinanceReport = {
   attributionComplete: AdapterResult["attributionComplete"];
   issues: string[]; complete: boolean;
   /** Present when the live reader ran. Unmatched items have no dollars. */
-  unmatched?: { charges: number; refunds: number; payouts: number; payments: number; balanceTransactions: number };
+  unmatched?: {
+    charges: number; refunds: number; payouts: number; payments: number; balanceTransactions: number;
+    undatedExpenses?: number; unallocatedExpenses?: number; inexactExpenses?: number;
+    undatedMaintenance?: number; unallocatedMaintenance?: number; inexactMaintenance?: number; conflictingMaintenance?: number;
+    undatedWaivedFees?: number; inexactWaivedFees?: number;
+  };
+  /** Named sources that are absent, so the related card stays blank. */
+  gaps?: string[];
 };
 /** Existing per-vehicle profitability, in cents. Separate from unified event totals. */
 export type VehicleProfitLine = {

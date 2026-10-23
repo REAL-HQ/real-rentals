@@ -17,6 +17,7 @@ import {
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { DepositDialog } from "./DepositDialog";
+import { DriverStatement } from "./DriverStatement";
 import { NO_PAY_CELLS, type PayCells } from "@/lib/driver-payment-status";
 import { getDriverPayStatuses } from "@/lib/driver-payment-status.functions";
 import { endRental } from "@/lib/rentals.functions";
@@ -76,6 +77,9 @@ import {
 import { removeCardOnFile } from "@/lib/payments.functions";
 import { AgreementsCard } from "./AgreementsCard";
 import { ContactStatusCell } from "./ContactStatusCell";
+import { ApprovedNotRentingList } from "./ApprovedNotRenting";
+import { listApprovedNotRenting } from "@/lib/booking-funnel.functions";
+import type { ApprovedNotRentingResult } from "@/lib/booking-funnel";
 import { listDriverRows, type DriverListResult } from "@/lib/drivers-list.functions";
 import {
   CONTACT_STATUSES,
@@ -135,6 +139,9 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import { DocumentsExpiringList } from "./DocumentsExpiring";
+import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
+import type { ExpiryScope } from "@/lib/document-expiry";
 
 /**
  * What arrived, at a glance, above the tabs.
@@ -295,6 +302,7 @@ export function DriversPanel({
   externalSearch = "",
   initialOpenId,
   isOwner = false,
+  isManager = false,
   canManageWaitlist = false,
   urlFilter,
 }: {
@@ -302,10 +310,15 @@ export function DriversPanel({
   canManageWaitlist?: boolean;
   externalSearch?: string;
   initialOpenId?: string;
-  /** ?filter= from the address bar; only "waitlist" is honoured (old ?tab=waitlist links land here). */
+  /**
+   * ?filter= from the address bar. "waitlist" is honoured for every staff
+   * tier. "documents-expiring" and "approved-not-renting" are honoured for a manager.
+   */
   urlFilter?: string;
   /** Verification recordings are Owner-only. See VerificationRecording. */
   isOwner?: boolean;
+  /** Owner and Manager. The statement server checks the same tier. */
+  isManager?: boolean;
 } = {}) {
   const [drivers, setDrivers] = useState<Application[]>([]);
   // Whether the applications fetch has come back, as distinct from having
@@ -330,12 +343,20 @@ export function DriversPanel({
   const navigate = useNavigate();
   const openId = initialOpenId ?? null;
   const setOpenId = useCallback(
-    (id: string | null) =>
-      void navigate({
-        to: "/admin",
-        search: id ? { tab: "drivers", id } : { tab: "drivers" },
-      }),
-    [navigate],
+    (id: string | null) => {
+      const search: {
+        tab: "drivers";
+        id?: string;
+        filter?: "documents-expiring" | "approved-not-renting";
+      } = id ? { tab: "drivers", id } : { tab: "drivers" };
+      // Opening a driver from either manager list comes back to that list.
+      // Waitlist links stay as they were: the filter is not kept.
+      if (canManageWaitlist && (urlFilter === "documents-expiring" || urlFilter === "approved-not-renting")) {
+        search.filter = urlFilter;
+      }
+      void navigate({ to: "/admin", search });
+    },
+    [navigate, urlFilter, canManageWaitlist],
   );
   const [localFilter, setLocalFilter] = useState<string>("all");
   /*
@@ -357,19 +378,55 @@ export function DriversPanel({
    * says so rather than showing a score built on absent data.
    */
   const [canSeeSensitive, setCanSeeSensitive] = useState(true);
-  // Waitlist lives in the URL so old ?tab=waitlist bookmarks and the back button work.
-  const filter = urlFilter === "waitlist" ? "waitlist" : localFilter;
+  // Waitlist, Documents Expiring, and Approved, Not Yet Renting live in the URL
+  // so a chip, a bookmark, and the back button agree. The two manager lists
+  // are ignored for a coordinator.
+  const urlListFilter =
+    urlFilter === "waitlist" ||
+    ((urlFilter === "documents-expiring" || urlFilter === "approved-not-renting") && canManageWaitlist)
+      ? urlFilter
+      : null;
+  const filter = urlListFilter ?? localFilter;
   const setFilter = useCallback(
     (f: string) => {
-      if (f === "waitlist") {
-        void navigate({ to: "/admin", search: { tab: "drivers", filter: "waitlist" } });
+      if (f === "waitlist" || (f === "documents-expiring" && canManageWaitlist)) {
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: f } });
+        return;
+      }
+      if (f === "approved-not-renting" && canManageWaitlist) {
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: "approved-not-renting" } });
         return;
       }
       setLocalFilter(f);
-      if (urlFilter === "waitlist") void navigate({ to: "/admin", search: { tab: "drivers" } });
+      if (urlFilter === "waitlist" || urlFilter === "documents-expiring" || urlFilter === "approved-not-renting") {
+        void navigate({ to: "/admin", search: { tab: "drivers" } });
+      }
     },
-    [navigate, urlFilter],
+    [navigate, urlFilter, canManageWaitlist],
   );
+  const loadExpiring = useServerFn(listExpiringRenterDocuments);
+  const [expiringDocs, setExpiringDocs] = useState<ExpiringRenterDocuments | null>(null);
+  const [expiringFailed, setExpiringFailed] = useState(false);
+  const [expiringScope, setExpiringScope] = useState<ExpiryScope>("approved");
+  useEffect(() => {
+    if (!canManageWaitlist) return;
+    let live = true;
+    loadExpiring({ data: undefined })
+      .then((result) => {
+        if (!live) return;
+        setExpiringDocs(result);
+        setExpiringScope(result.defaultScope);
+        setExpiringFailed(false);
+      })
+      .catch(() => {
+        if (!live) return;
+        setExpiringFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManageWaitlist]);
   // Live waitlist size (entries not yet promoted) — never hard-coded.
   const loadWaitlist = useServerFn(listWaitlist);
   const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
@@ -395,6 +452,35 @@ export function DriversPanel({
       );
   }, []);
   useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters]);
+  const loadFunnel = useServerFn(listApprovedNotRenting);
+  const [funnel, setFunnel] = useState<ApprovedNotRentingResult | null>(null);
+  const [funnelFailed, setFunnelFailed] = useState(false);
+  const [funnelLoading, setFunnelLoading] = useState(canManageWaitlist);
+  const viewingFunnel = filter === "approved-not-renting";
+  useEffect(() => {
+    if (!canManageWaitlist) return;
+    let cancelled = false;
+    setFunnelLoading(true);
+    setFunnelFailed(false);
+    loadFunnel()
+      .then((r) => {
+        if (cancelled) return;
+        setFunnel(r);
+        setFunnelFailed(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFunnel(null);
+          setFunnelFailed(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setFunnelLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageWaitlist, loadFunnel, viewingFunnel]);
   const [holdBusy, setHoldBusy] = useState<string | null>(null);
   const refreshHolds = useCallback(
     () =>
@@ -631,6 +717,15 @@ setDocCounts(requiredDocCounts(rows));
     });
   }, [drivers, filter, contactFilter, externalSearch, held, activeRenters]);
 
+  const funnelRows = useMemo(() => {
+    const q = externalSearch.trim().toLowerCase();
+    return (funnel?.rows ?? []).filter((r) => {
+      if (contactFilter !== "all" && readContactStatus(r.contact).state.status !== contactFilter) return false;
+      if (!q) return true;
+      return r.fullName.toLowerCase().includes(q);
+    });
+  }, [funnel, contactFilter, externalSearch]);
+
   const saveLifecycle = useServerFn(updateApplicationLifecycle);
   function applySaved(id: string, patch: Partial<Application>) {
     setDrivers((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
@@ -659,6 +754,31 @@ setDocCounts(requiredDocCounts(rows));
    * which will not carry the contact_* columns until the migration is applied
    * and the types are regenerated.
    */
+  function applyFunnelContact(id: string, st: ContactStatusState) {
+    setFunnel((prev) =>
+      prev
+        ? {
+            ...prev,
+            rows: prev.rows.map((r) =>
+              r.id === id
+                ? {
+                    ...r,
+                    contact: {
+                      contact_status: st.status,
+                      contact_status_note: st.note,
+                      contact_follow_up_on: st.followUpOn,
+                      contact_status_at: st.changedAt,
+                      contact_status_by: st.changedBy,
+                    },
+                  }
+                : r,
+            ),
+          }
+        : prev,
+    );
+    applyContactStatus(id, st);
+  }
+
   function applyContactStatus(id: string, st: ContactStatusState) {
     setDrivers((arr) =>
       arr.map((x) =>
@@ -775,6 +895,7 @@ setDocCounts(requiredDocCounts(rows));
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
+        isManager={isManager}
       />
       {deleteDialog}
       </>
@@ -817,6 +938,27 @@ setDocCounts(requiredDocCounts(rows));
       )}
       <div className="admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
         {filterButtons}
+        {canManageWaitlist && (
+          <button
+            type="button"
+            data-documents-expiring-filter
+            onClick={() => setFilter("documents-expiring")}
+            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "documents-expiring" ? "bg-black text-white" : "bg-white border border-border"}`}
+          >
+            Documents Expiring ({expiringFailed ? "—" : expiringDocs ? (expiringDocs.defaultScope === "renting" ? expiringDocs.renting.length : expiringDocs.approved.length) : "…"})
+          </button>
+        )}
+        {canManageWaitlist && (
+          <button
+            type="button"
+            data-approved-not-renting-filter
+            onClick={() => setFilter("approved-not-renting")}
+            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "approved-not-renting" ? "bg-black text-white" : "bg-white border border-border"}`}
+          >
+            Approved, Not Yet Renting (
+            {funnelFailed || !funnel ? (funnelLoading ? "…" : "—") : funnel.rows.length})
+          </button>
+        )}
         {/*
          * Contact Status filter. Reads "Contact: All" so it can never be
          * mistaken for the application-status chips beside it.
@@ -851,6 +993,28 @@ setDocCounts(requiredDocCounts(rows));
           </button>
         </div>
       </div>
+      {filter === "documents-expiring" ? (
+        <DocumentsExpiringList
+          result={expiringDocs}
+          failed={expiringFailed}
+          scope={expiringScope}
+          onScope={setExpiringScope}
+          onOpen={(id) => setOpenId(id)}
+        />
+      ) : filter === "approved-not-renting" ? (
+        <ApprovedNotRentingList
+          rows={funnelRows}
+          populationEmpty={!!funnel && funnel.rows.length === 0}
+          failed={funnelFailed}
+          loading={funnelLoading && !funnel}
+          onOpen={(id) => {
+            const match = drivers.find((d) => d.id === id);
+            if (match) openDriver(match);
+            else setOpenId(id);
+          }}
+          onContactSaved={applyFunnelContact}
+        />
+      ) : (
       <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -1136,6 +1300,7 @@ setDocCounts(requiredDocCounts(rows));
             </tbody>
           </table>
       </AdminTableScroll>
+      )}
       {filter === "waitlist" && (
         <div className="mt-6">
           <div className="mb-4">
@@ -1162,6 +1327,7 @@ function DriverDetail({
   onScreeningChange,
   onVaultChange,
   isOwner,
+  isManager,
   hasActiveRental,
   onRentalStarted,
 }: {
@@ -1174,6 +1340,7 @@ function DriverDetail({
   onScreeningChange?: (s: DriverScreeningRow) => void;
   onVaultChange?: (requiredCount: number) => void;
   isOwner: boolean;
+  isManager: boolean;
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
@@ -2067,6 +2234,7 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="payments" className="mt-0 space-y-4">
+                {isManager && <DriverStatement driverId={driver.id} />}
                 <Card title="Payment Terms" icon={<CreditCard className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <NumField

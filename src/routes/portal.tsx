@@ -36,6 +36,9 @@ import {
 import { getMyCharges } from "@/lib/charges.functions";
 import { searchPreviewDrivers, recordDriverPreview } from "@/lib/driver-preview.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
+import { NEXT_STEPS_CARD_ENABLED } from "@/lib/next-steps";
+import { getMyNextSteps } from "@/lib/next-steps.functions";
+import { NextStepsCard } from "@/components/portal/NextStepsCard";
 import { Nav } from "@/components/site/Nav";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
@@ -60,11 +63,14 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { ApplicantHome } from "@/components/portal/ApplicantHome";
+import { APPLICATION_TIMELINE_ENABLED } from "@/lib/application-timeline";
+import { ApplicationTimelineSection } from "@/components/portal/ApplicationTimeline";
 import { tierFromRoles, type StaffTier } from "@/lib/roles";
 import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { fmtDate } from "@/lib/date-format";
+import { buildRoadsideIssue, ROADSIDE_TYPES } from "@/lib/driver-issues";
 
 export const Route = createFileRoute("/portal")({
   head: () => ({
@@ -491,6 +497,126 @@ function AgreementsView() {
 
 function IssuesView() {
   return <IssuesViewInner />;
+}
+
+function RoadsideHelpForm({ onReported }: { onReported: () => void }) {
+  const businessPhone = useBusinessPhone();
+  const submitIssue = usePortalWrite(createDriverIssue);
+  const [kind, setKind] = useState<string>(ROADSIDE_TYPES[0].kind);
+  const [location, setLocation] = useState("");
+  const [drivable, setDrivable] = useState<boolean | null>(null);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (drivable === null) return;
+    setBusy(true);
+    try {
+      const res = await submitIssue({ data: buildRoadsideIssue({ kind, location, drivable, note }) });
+      if ("error" in res) throw new Error(res.error);
+      toast.success("Roadside request sent. Keep the number above handy.");
+      setLocation("");
+      setNote("");
+      setDrivable(null);
+      setKind(ROADSIDE_TYPES[0].kind);
+      onReported();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not send roadside request");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="rounded-2xl border border-[#D03020] bg-white p-5"
+      data-testid="need-roadside-help"
+    >
+      <h3 className="font-semibold text-[#D03020]">Need Roadside Help</h3>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Breakdown, flat, lockout, accident, or a tow. Call this number, then send the details.
+      </p>
+      <a
+        href={businessPhone.tel}
+        className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#D03020] px-4 py-2.5 text-base font-semibold text-white"
+      >
+        <Phone className="w-5 h-5" />
+        {businessPhone.display}
+      </a>
+
+      <div className="mt-5 text-sm font-medium">What Happened</div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {ROADSIDE_TYPES.map((t) => (
+          <button
+            key={t.kind}
+            type="button"
+            onClick={() => setKind(t.kind)}
+            className={`rounded-lg px-3 py-1.5 text-sm border transition ${
+              kind === t.kind
+                ? "border-[#D03020] text-[#D03020] bg-[#D03020]/5"
+                : "border-border text-muted-foreground hover:bg-soft"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <label className="block mt-4 text-sm font-medium" htmlFor="roadside-location">
+        Where Are You
+      </label>
+      <input
+        id="roadside-location"
+        value={location}
+        onChange={(e) => setLocation(e.target.value)}
+        placeholder="Optional. Cross street, exit, or address"
+        className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-white outline-none focus:border-real-red"
+      />
+
+      <div className="mt-4 text-sm font-medium">Is The Car Drivable</div>
+      <div className="mt-2 flex gap-2">
+        {[
+          { id: true, label: "Yes" },
+          { id: false, label: "No" },
+        ].map((opt) => (
+          <button
+            key={opt.label}
+            type="button"
+            onClick={() => setDrivable(opt.id)}
+            className={`rounded-lg px-3 py-1.5 text-sm border transition ${
+              drivable === opt.id
+                ? "border-[#D03020] text-[#D03020] bg-[#D03020]/5"
+                : "border-border text-muted-foreground hover:bg-soft"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      <label className="block mt-4 text-sm font-medium" htmlFor="roadside-note">
+        Anything Else
+      </label>
+      <textarea
+        id="roadside-note"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={2}
+        placeholder="Optional. What you see, or what you already tried"
+        className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-white outline-none focus:border-real-red"
+      />
+
+      <button
+        type="submit"
+        disabled={busy || drivable === null}
+        className="mt-5 inline-flex items-center justify-center rounded-lg bg-[#D03020] text-white px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
+      >
+        {busy ? "Sending…" : "Send Roadside Request"}
+      </button>
+    </form>
+  );
 }
 
 function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }) {
@@ -1064,7 +1190,9 @@ function IssuesViewInner() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl">
+    <div className="space-y-6 max-w-5xl">
+      <RoadsideHelpForm onReported={() => refetch()} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">Report an Issue</h3>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -1169,6 +1297,7 @@ function IssuesViewInner() {
             ))}
           </ul>
         )}
+      </div>
       </div>
     </div>
   );
@@ -1353,6 +1482,18 @@ function PreRentalPanel({
   );
 }
 
+function NextStepsSection() {
+  const fetchSteps = usePortalRead(getMyNextSteps);
+  const previewId = usePreviewDriver();
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["driver-next-steps", previewId],
+    queryFn: () => fetchSteps(),
+    enabled: NEXT_STEPS_CARD_ENABLED,
+  });
+  if (!NEXT_STEPS_CARD_ENABLED) return null;
+  return <NextStepsCard data={data} loading={isLoading} failed={Boolean(error)} />;
+}
+
 function DashboardView({
   data,
   onNavigate,
@@ -1361,12 +1502,35 @@ function DashboardView({
   onNavigate: (t: Tab) => void;
 }) {
   const { rental, vehicle, payments, maintenance, notifications } = data;
+  const applicationStatus = data.applicationStatus;
   const activeMaint = maintenance.filter((m) => m.status !== "completed");
   const lastPayment = payments.find((p) => p.status === "paid");
   const businessPhone = useBusinessPhone();
 
   return (
     <div className="space-y-6">
+      <div className="rounded-2xl border border-[#D03020] bg-[#D03020]/5 p-5" data-testid="roadside-dashboard">
+        <h3 className="font-semibold text-[#D03020]">Need Roadside Help</h3>
+        <p className="mt-1 text-sm text-[#111114]">
+          Breakdown, flat, lockout, accident, or a tow. Call this number, then send the details.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <a
+            href={businessPhone.tel}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#D03020] px-4 py-2.5 text-base font-semibold text-white"
+          >
+            <Phone className="w-5 h-5" />
+            {businessPhone.display}
+          </a>
+          <button
+            type="button"
+            onClick={() => onNavigate("issue")}
+            className="inline-flex items-center rounded-lg border border-[#D03020] px-4 py-2.5 text-sm font-semibold text-[#D03020]"
+          >
+            Send Roadside Request
+          </button>
+        </div>
+      </div>
       {activeMaint.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 text-sm flex items-start gap-3">
           <Wrench className="w-4 h-4 mt-0.5 shrink-0" />
@@ -1386,7 +1550,15 @@ function DashboardView({
       )}
 
       {!rental ? (
-        <PreRentalPanel onNavigate={onNavigate} status={data.applicationStatus} />
+        <>
+          <PreRentalPanel onNavigate={onNavigate} status={data.applicationStatus} />
+          {NEXT_STEPS_CARD_ENABLED && !rental && data.applicationStatus === "approved" ? (
+            <NextStepsSection />
+          ) : null}
+          {APPLICATION_TIMELINE_ENABLED && !rental && applicationStatus !== "approved" && applicationStatus !== "active" ? (
+            <ApplicationTimelineSection />
+          ) : null}
+        </>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 rounded-2xl border border-border overflow-hidden bg-white">
