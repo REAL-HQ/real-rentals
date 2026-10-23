@@ -173,32 +173,26 @@ The plan is written so that when they land, nothing else has to be rethought.
 | # | Needed | How |
 |---|---|---|
 | P1 | The resealed artifact, or approval to re-derive it | §5 |
-| P2 | The identity of the `supabase/migrations/` executor | One read-only probe, §6.1 — needs your approval, as it executes in production |
+| P2 | The identity and present authority of the `supabase/migrations/` executor | **No read-only operation reports it** — see `0031-executor-verification.md`. Recommended: one narrow question to Lovable Support, zero execution. The probe is the fallback and **would be recorded**, so it is not run |
 
-### 6.1 Prerequisite probe (read-only, needs your approval)
+### 6.1 Prerequisite: establishing the executor
 
-A single `supabase/migrations/` file that writes nothing and only reports who it
-is:
-
-```sql
-DO $$
-BEGIN
-  RAISE NOTICE 'executor=% session=% super=% owns_storage_objects=%',
-    current_user, session_user,
-    (SELECT rolsuper FROM pg_roles WHERE rolname = current_user),
-    pg_has_role(current_user, 'supabase_storage_admin', 'USAGE');
-END $$;
-```
-
-No DDL, no DML, no grants. It takes a receipt in
-`supabase_migrations.schema_migrations` and nothing else changes. Its output
-settles P2 and is the value the re-seal must pin. **It is still production SQL
-execution and I will not run it without your approval.**
+Superseded by `docs/security/0031-executor-verification.md`. Summary: no
+supported read-only operation reports the migration executor's effective role.
+The probe that would self-report **creates a migration receipt**, which is
+persistent deployment state, so **it has not been run** — the exact statement
+and its consequences are in that document for your separate approval. The
+recommended first step is one narrow question to Lovable Support, which costs
+and risks nothing.
 
 ### 6.2 Expected executor
 
-Whatever the probe reports — **not** `postgres`, per §2. The re-sealed package
-must pin that exact value in `execution_role`.
+**Unresolved, and deliberately not guessed.** Object ownership from the Oct 7
+migration points at `postgres`, but ownership can be normalized after creation,
+so it is evidence rather than proof. If the executor is `postgres`, the existing
+seal's `execution_role` pin is already correct and **nothing needs resealing**.
+If it is not, the role pin changes and that makes a **new package** with a new
+checksum, which cannot inherit the old approval.
 
 ### 6.3 Policies installed (unchanged from the approved package)
 
@@ -214,23 +208,41 @@ category carve-out on the two document relations):
 | **`coordinator_identity_storage_containment`** | **`storage.objects`** |
 | `coordinator_agreement_containment` | `public.agreements` (conditional) |
 
-### 6.4 Split by authority
+### 6.4 One transaction, all five policies — no split
 
-- **Part A — the four `public.*` policies.** `postgres` owns `public.*`, so
-  these need no new authority. They can keep the existing sealed form.
-- **Part B — the `storage.objects` policy.** Ships as a
-  `supabase/migrations/` file, the path proved on October 7. This is the only
-  part that required the new evidence.
+**Owner instruction 2026-10-23: a single atomic installation of all five
+policies through the proven Supabase route. Do not split unless the
+single-transaction route is demonstrated impossible and a split plan is
+separately reviewed.** The earlier Part A / Part B split in this document is
+**withdrawn**.
 
-Both parts must land, or the migration is a `PARTIAL_INSTALL` by its own
-definition. Part B is the one that needs the re-seal.
+This is also the better engineering answer, and one finding makes it cleaner
+than expected:
+
+> **Installing through `supabase/migrations/` does not touch the drizzle
+> ledger.** `drizzle.__drizzle_migrations` stays at 23 rows, so a package whose
+> journal pin expects **23** — the missing resealed artifact — is exactly right
+> for this route.
+
+- All four `public.*` policies sit on tables `postgres` owns. The fifth,
+  `storage.objects`, is the only one needing storage authority.
+- The package is a single `DO` block, and the October 7 precedent shows this
+  mechanism submits a whole file as one statement — so all five policies, the
+  pre-flight guards, the post-flight re-verification and the `audit_log`
+  evidence row commit together or not at all.
+- Atomicity is therefore **preserved**, which the split would have broken.
+
+Unresolved: whether that executor still has `CREATE POLICY` authority on
+`storage.objects`. See `docs/security/0031-executor-verification.md` §3 — the
+October 7 success does not establish present-day authority, and two
+explanations fit the evidence equally.
 
 ### 6.5 Journal changes
 
 | Ledger | Before | After |
 |---|---|---|
-| `drizzle.__drizzle_migrations` | 23 | 23 (Part A is not a drizzle file) or 24 (if shipped as one) |
-| `supabase_migrations.schema_migrations` | 105 | 106 (Part B), +1 more if the probe runs |
+| `drizzle.__drizzle_migrations` | 23 | **23 — unchanged.** The Supabase route does not write this ledger, which is why a pin at 23 is correct |
+| `supabase_migrations.schema_migrations` | 105 | 106 |
 
 **0023 must not be applied between sealing and installing**, or the journal pin
 fails (§4).
@@ -248,10 +260,9 @@ taken before the writes. Any guard — `UNSEALED_TARGET_PROFILE`,
 `POST_POLICY_MISMATCH`, `POST_JOURNAL_CHANGED`,
 `POST_UNEXPECTED_CATALOG_CHANGE` — aborts the whole thing with nothing applied.
 
-Splitting into Part A and Part B **breaks that single-transaction property
-across the two parts.** That is a real change from the approved package and is
-exactly why Part B needs independent review, not an inherited seal. If both
-parts must be atomic together, they must both run on the Part B path.
+Running all five on the Supabase route keeps that single-transaction property
+intact. This is why the split is withdrawn: it would have traded the package's
+strongest guarantee for nothing.
 
 ### 6.7 Rollback
 
@@ -260,7 +271,7 @@ DROP POLICY IF EXISTS coordinator_application_containment ON public.applications
 DROP POLICY IF EXISTS coordinator_review_containment      ON public.application_identity_reviews;
 DROP POLICY IF EXISTS coordinator_document_containment    ON public.documents;
 DROP POLICY IF EXISTS coordinator_agreement_containment   ON public.agreements;
-DROP POLICY IF EXISTS coordinator_identity_storage_containment ON storage.objects;  -- Part B path only
+DROP POLICY IF EXISTS coordinator_identity_storage_containment ON storage.objects;
 ```
 
 Dropping five policies that nothing else references. No grants, ownership, RLS
