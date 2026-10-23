@@ -422,6 +422,13 @@
   },
   {
    "ledger": "supabase",
+   "key": "20260921180000",
+   "at": "20260921180000",
+   "path": "supabase/migrations/20260921180000_rental_activation_guards.sql",
+   "provenance": "out_of_band_no_receipt__repo_file_evidenced_by_catalog"
+  },
+  {
+   "ledger": "supabase",
    "key": "20260925130309",
    "at": "20260925130309",
    "path": "supabase/migrations/20260925130309_ab9eab21-15db-4bda-93a5-70fd3e4fcb9e.sql",
@@ -979,11 +986,24 @@
    "at": "20261019112259",
    "path": "drizzle/migrations/0022_waitlist_resolve_phone_conflict.sql",
    "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "runner",
+   "key": "__drizzle_migrations",
+   "at": "20261019112259",
+   "path": "proposed/rehearsal/receipts/drizzle_runner_ledger.sql",
+   "provenance": "runner_ledger__rows_fetched_from_production"
+  },
+  {
+   "ledger": "parity",
+   "key": "catalog",
+   "at": "end",
+   "path": "proposed/rehearsal/parity/production-catalog-parity.sql",
+   "provenance": "catalog_parity__definitions_fetched_from_production"
   }
  ],
  "excluded": [
   "20260921120000_fleet_ops_foundation.sql",
-  "20260921180000_rental_activation_guards.sql",
   "20260921200000_charges_incidents_deposits.sql",
   "20260921220000_inspection_signature.sql",
   "20260921234500_followup_email_steps.sql",

@@ -721,6 +721,18 @@
  },
  {
   "kind": "migration",
+  "path": "supabase/migrations/20260921180000_rental_activation_guards.sql",
+  "transform": "none",
+  "sha256": "efe73ed42b1ddb6f0cb41395dc4ca634ac37e3403227df9d59b102aaa8d65301",
+  "executed_sha256": "efe73ed42b1ddb6f0cb41395dc4ca634ac37e3403227df9d59b102aaa8d65301",
+  "bytes": 1233,
+  "ledger": "supabase",
+  "key": "20260921180000",
+  "provenance": "out_of_band_no_receipt__repo_file_evidenced_by_catalog",
+  "ord": 61
+ },
+ {
+  "kind": "migration",
   "path": "supabase/migrations/20260925130309_ab9eab21-15db-4bda-93a5-70fd3e4fcb9e.sql",
   "transform": "none",
   "sha256": "943396c150a62ce5f5a8ab5db345048e3a296d71095d1ae43cec368c68dbd2ce",
@@ -729,7 +741,7 @@
   "ledger": "supabase",
   "key": "20260925130309",
   "provenance": "byte_identical_to_receipt",
-  "ord": 61
+  "ord": 62
  },
  {
   "kind": "migration",
@@ -741,7 +753,7 @@
   "ledger": "supabase",
   "key": "20260925130344",
   "provenance": "byte_identical_to_receipt",
-  "ord": 62
+  "ord": 63
  },
  {
   "kind": "migration",
@@ -753,7 +765,7 @@
   "ledger": "supabase",
   "key": "20260925130510",
   "provenance": "byte_identical_to_receipt",
-  "ord": 63
+  "ord": 64
  },
  {
   "kind": "migration",
@@ -765,7 +777,7 @@
   "ledger": "supabase",
   "key": "20260925130550",
   "provenance": "byte_identical_to_receipt",
-  "ord": 64
+  "ord": 65
  },
  {
   "kind": "migration",
@@ -777,7 +789,7 @@
   "ledger": "supabase",
   "key": "20260925130612",
   "provenance": "byte_identical_to_receipt",
-  "ord": 65
+  "ord": 66
  },
  {
   "kind": "migration",
@@ -789,7 +801,7 @@
   "ledger": "supabase",
   "key": "20260925130632",
   "provenance": "byte_identical_to_receipt",
-  "ord": 66
+  "ord": 67
  },
  {
   "kind": "migration",
@@ -801,7 +813,7 @@
   "ledger": "supabase",
   "key": "20260925132035",
   "provenance": "byte_identical_to_receipt",
-  "ord": 67
+  "ord": 68
  },
  {
   "kind": "migration",
@@ -813,7 +825,7 @@
   "ledger": "supabase",
   "key": "20260925160000",
   "provenance": "out_of_band_receipt_empty__repo_file_assumed",
-  "ord": 68
+  "ord": 69
  },
  {
   "kind": "migration",
@@ -825,7 +837,7 @@
   "ledger": "supabase",
   "key": "20260925161000",
   "provenance": "out_of_band_receipt_empty__repo_file_assumed",
-  "ord": 69
+  "ord": 70
  },
  {
   "kind": "migration",
@@ -837,7 +849,7 @@
   "ledger": "supabase",
   "key": "20260925170000",
   "provenance": "out_of_band_receipt_empty__repo_file_assumed",
-  "ord": 70
+  "ord": 71
  },
  {
   "kind": "migration",
@@ -849,7 +861,7 @@
   "ledger": "supabase",
   "key": "20260925171020",
   "provenance": "byte_identical_to_receipt",
-  "ord": 71
+  "ord": 72
  },
  {
   "kind": "migration",
@@ -861,7 +873,7 @@
   "ledger": "supabase",
   "key": "20260926090000",
   "provenance": "out_of_band_no_receipt__repo_file_assumed",
-  "ord": 72
+  "ord": 73
  },
  {
   "kind": "migration",
@@ -873,7 +885,7 @@
   "ledger": "supabase",
   "key": "20260926120000",
   "provenance": "out_of_band_no_receipt__repo_file_assumed",
-  "ord": 73
+  "ord": 74
  },
  {
   "kind": "migration",
@@ -885,7 +897,7 @@
   "ledger": "supabase",
   "key": "20260926140000",
   "provenance": "out_of_band_no_receipt__repo_file_assumed",
-  "ord": 74
+  "ord": 75
  },
  {
   "kind": "migration",
@@ -897,7 +909,7 @@
   "ledger": "supabase",
   "key": "20260926160000",
   "provenance": "out_of_band_no_receipt__repo_file_assumed",
-  "ord": 75
+  "ord": 76
  },
  {
   "kind": "migration",
@@ -909,7 +921,7 @@
   "ledger": "supabase",
   "key": "20260926180000",
   "provenance": "out_of_band_no_receipt__repo_file_assumed",
-  "ord": 76
+  "ord": 77
  },
  {
   "kind": "migration",
@@ -921,7 +933,7 @@
   "ledger": "supabase",
   "key": "20260926200000",
   "provenance": "out_of_band_no_receipt__repo_file_assumed",
-  "ord": 77
+  "ord": 78
  },
  {
   "kind": "migration",
@@ -933,7 +945,7 @@
   "ledger": "supabase",
   "key": "20260926210000",
   "provenance": "out_of_band_no_receipt__repo_file_assumed",
-  "ord": 78
+  "ord": 79
  },
  {
   "kind": "migration",
@@ -945,7 +957,7 @@
   "ledger": "supabase",
   "key": "20260926220000",
   "provenance": "out_of_band_no_receipt__repo_file_assumed",
-  "ord": 79
+  "ord": 80
  },
  {
   "kind": "migration",
@@ -957,7 +969,7 @@
   "ledger": "supabase",
   "key": "20260926234500",
   "provenance": "out_of_band_no_receipt__repo_file_assumed",
-  "ord": 80
+  "ord": 81
  },
  {
   "kind": "migration",
@@ -969,7 +981,7 @@
   "ledger": "supabase",
   "key": "20260927010000",
   "provenance": "out_of_band_no_receipt__repo_file_assumed",
-  "ord": 81
+  "ord": 82
  },
  {
   "kind": "migration",
@@ -981,7 +993,7 @@
   "ledger": "supabase",
   "key": "20260927020000",
   "provenance": "out_of_band_no_receipt__repo_file_assumed",
-  "ord": 82
+  "ord": 83
  },
  {
   "kind": "migration",
@@ -993,7 +1005,7 @@
   "ledger": "supabase",
   "key": "20260927190000",
   "provenance": "out_of_band_no_receipt__repo_file_assumed",
-  "ord": 83
+  "ord": 84
  },
  {
   "kind": "migration",
@@ -1005,7 +1017,7 @@
   "ledger": "supabase",
   "key": "20260930222027",
   "provenance": "byte_identical_to_receipt",
-  "ord": 84
+  "ord": 85
  },
  {
   "kind": "migration",
@@ -1017,7 +1029,7 @@
   "ledger": "supabase",
   "key": "20260930223843",
   "provenance": "byte_identical_to_receipt",
-  "ord": 85
+  "ord": 86
  },
  {
   "kind": "migration",
@@ -1029,7 +1041,7 @@
   "ledger": "supabase",
   "key": "20261005021612",
   "provenance": "byte_identical_to_receipt",
-  "ord": 86
+  "ord": 87
  },
  {
   "kind": "migration",
@@ -1041,7 +1053,7 @@
   "ledger": "supabase",
   "key": "20261005060239",
   "provenance": "byte_identical_to_receipt",
-  "ord": 87
+  "ord": 88
  },
  {
   "kind": "migration",
@@ -1053,7 +1065,7 @@
   "ledger": "supabase",
   "key": "20261005072446",
   "provenance": "byte_identical_to_receipt",
-  "ord": 88
+  "ord": 89
  },
  {
   "kind": "migration",
@@ -1065,7 +1077,7 @@
   "ledger": "supabase",
   "key": "20261005080129",
   "provenance": "byte_identical_to_receipt",
-  "ord": 89
+  "ord": 90
  },
  {
   "kind": "migration",
@@ -1077,7 +1089,7 @@
   "ledger": "supabase",
   "key": "20261006012455",
   "provenance": "byte_identical_to_receipt",
-  "ord": 90
+  "ord": 91
  },
  {
   "kind": "migration",
@@ -1089,7 +1101,7 @@
   "ledger": "supabase",
   "key": "20261006012758",
   "provenance": "byte_identical_to_receipt",
-  "ord": 91
+  "ord": 92
  },
  {
   "kind": "migration",
@@ -1101,7 +1113,7 @@
   "ledger": "supabase",
   "key": "20261006013924",
   "provenance": "byte_identical_to_receipt",
-  "ord": 92
+  "ord": 93
  },
  {
   "kind": "migration",
@@ -1113,7 +1125,7 @@
   "ledger": "supabase",
   "key": "20261006013942",
   "provenance": "byte_identical_to_receipt",
-  "ord": 93
+  "ord": 94
  },
  {
   "kind": "migration",
@@ -1125,7 +1137,7 @@
   "ledger": "supabase",
   "key": "20261006014106",
   "provenance": "byte_identical_to_receipt",
-  "ord": 94
+  "ord": 95
  },
  {
   "kind": "migration",
@@ -1137,7 +1149,7 @@
   "ledger": "supabase",
   "key": "20261006014406",
   "provenance": "byte_identical_to_receipt",
-  "ord": 95
+  "ord": 96
  },
  {
   "kind": "migration",
@@ -1149,7 +1161,7 @@
   "ledger": "supabase",
   "key": "20261006020456",
   "provenance": "byte_identical_to_receipt",
-  "ord": 96
+  "ord": 97
  },
  {
   "kind": "migration",
@@ -1161,7 +1173,7 @@
   "ledger": "supabase",
   "key": "20261006025756",
   "provenance": "byte_identical_to_receipt",
-  "ord": 97
+  "ord": 98
  },
  {
   "kind": "migration",
@@ -1173,7 +1185,7 @@
   "ledger": "supabase",
   "key": "20261006072823",
   "provenance": "byte_identical_to_receipt",
-  "ord": 98
+  "ord": 99
  },
  {
   "kind": "migration",
@@ -1185,7 +1197,7 @@
   "ledger": "supabase",
   "key": "20261006083427",
   "provenance": "byte_identical_to_receipt",
-  "ord": 99
+  "ord": 100
  },
  {
   "kind": "migration",
@@ -1197,7 +1209,7 @@
   "ledger": "supabase",
   "key": "20261006083446",
   "provenance": "byte_identical_to_receipt",
-  "ord": 100
+  "ord": 101
  },
  {
   "kind": "migration",
@@ -1209,7 +1221,7 @@
   "ledger": "supabase",
   "key": "20261006083501",
   "provenance": "byte_identical_to_receipt",
-  "ord": 101
+  "ord": 102
  },
  {
   "kind": "migration",
@@ -1221,7 +1233,7 @@
   "ledger": "supabase",
   "key": "20261006083905",
   "provenance": "byte_identical_to_receipt",
-  "ord": 102
+  "ord": 103
  },
  {
   "kind": "migration",
@@ -1233,7 +1245,7 @@
   "ledger": "supabase",
   "key": "20261006084912",
   "provenance": "byte_identical_to_receipt",
-  "ord": 103
+  "ord": 104
  },
  {
   "kind": "migration",
@@ -1245,7 +1257,7 @@
   "ledger": "supabase",
   "key": "20261006085332",
   "provenance": "byte_identical_to_receipt",
-  "ord": 104
+  "ord": 105
  },
  {
   "kind": "migration",
@@ -1257,7 +1269,7 @@
   "ledger": "supabase",
   "key": "20261006092634",
   "provenance": "byte_identical_to_receipt",
-  "ord": 105
+  "ord": 106
  },
  {
   "kind": "migration",
@@ -1269,7 +1281,7 @@
   "ledger": "supabase",
   "key": "20261006094717",
   "provenance": "byte_identical_to_receipt",
-  "ord": 106
+  "ord": 107
  },
  {
   "kind": "migration",
@@ -1281,7 +1293,7 @@
   "ledger": "supabase",
   "key": "20261006104154",
   "provenance": "byte_identical_to_receipt",
-  "ord": 107
+  "ord": 108
  },
  {
   "kind": "migration",
@@ -1293,7 +1305,7 @@
   "ledger": "supabase",
   "key": "20261006110204",
   "provenance": "byte_identical_to_receipt",
-  "ord": 108
+  "ord": 109
  },
  {
   "kind": "migration",
@@ -1305,7 +1317,7 @@
   "ledger": "supabase",
   "key": "20261006110227",
   "provenance": "byte_identical_to_receipt",
-  "ord": 109
+  "ord": 110
  },
  {
   "kind": "migration",
@@ -1317,7 +1329,7 @@
   "ledger": "supabase",
   "key": "20261006110937",
   "provenance": "byte_identical_to_receipt",
-  "ord": 110
+  "ord": 111
  },
  {
   "kind": "migration",
@@ -1329,7 +1341,7 @@
   "ledger": "supabase",
   "key": "20261006112250",
   "provenance": "byte_identical_to_receipt",
-  "ord": 111
+  "ord": 112
  },
  {
   "kind": "migration",
@@ -1341,7 +1353,7 @@
   "ledger": "supabase",
   "key": "20261006112513",
   "provenance": "byte_identical_to_receipt",
-  "ord": 112
+  "ord": 113
  },
  {
   "kind": "migration",
@@ -1353,7 +1365,7 @@
   "ledger": "supabase",
   "key": "20261007034524",
   "provenance": "byte_identical_to_receipt",
-  "ord": 113
+  "ord": 114
  },
  {
   "kind": "migration",
@@ -1365,7 +1377,7 @@
   "ledger": "supabase",
   "key": "20261007053328",
   "provenance": "byte_identical_to_receipt",
-  "ord": 114
+  "ord": 115
  },
  {
   "kind": "migration",
@@ -1377,7 +1389,7 @@
   "ledger": "supabase",
   "key": "20261007054953",
   "provenance": "byte_identical_to_receipt",
-  "ord": 115
+  "ord": 116
  },
  {
   "kind": "migration",
@@ -1389,7 +1401,7 @@
   "ledger": "supabase",
   "key": "20261007120336",
   "provenance": "byte_identical_to_receipt",
-  "ord": 116
+  "ord": 117
  },
  {
   "kind": "drizzle",
@@ -1401,7 +1413,7 @@
   "ledger": "drizzle",
   "key": "1",
   "provenance": "byte_identical_to_receipt",
-  "ord": 117
+  "ord": 118
  },
  {
   "kind": "drizzle",
@@ -1413,7 +1425,7 @@
   "ledger": "drizzle",
   "key": "2",
   "provenance": "byte_identical_to_receipt",
-  "ord": 118
+  "ord": 119
  },
  {
   "kind": "drizzle",
@@ -1425,7 +1437,7 @@
   "ledger": "drizzle",
   "key": "3",
   "provenance": "byte_identical_to_receipt",
-  "ord": 119
+  "ord": 120
  },
  {
   "kind": "drizzle",
@@ -1437,7 +1449,7 @@
   "ledger": "drizzle",
   "key": "4",
   "provenance": "byte_identical_to_receipt",
-  "ord": 120
+  "ord": 121
  },
  {
   "kind": "drizzle",
@@ -1449,7 +1461,7 @@
   "ledger": "drizzle",
   "key": "5",
   "provenance": "byte_identical_to_receipt",
-  "ord": 121
+  "ord": 122
  },
  {
   "kind": "drizzle",
@@ -1461,7 +1473,7 @@
   "ledger": "drizzle",
   "key": "6",
   "provenance": "byte_identical_to_receipt",
-  "ord": 122
+  "ord": 123
  },
  {
   "kind": "drizzle",
@@ -1473,7 +1485,7 @@
   "ledger": "drizzle",
   "key": "7",
   "provenance": "byte_identical_to_receipt",
-  "ord": 123
+  "ord": 124
  },
  {
   "kind": "drizzle",
@@ -1485,7 +1497,7 @@
   "ledger": "drizzle",
   "key": "8",
   "provenance": "byte_identical_to_receipt",
-  "ord": 124
+  "ord": 125
  },
  {
   "kind": "drizzle",
@@ -1497,7 +1509,7 @@
   "ledger": "drizzle",
   "key": "9",
   "provenance": "byte_identical_to_receipt",
-  "ord": 125
+  "ord": 126
  },
  {
   "kind": "drizzle",
@@ -1509,7 +1521,7 @@
   "ledger": "drizzle",
   "key": "10",
   "provenance": "byte_identical_to_receipt",
-  "ord": 126
+  "ord": 127
  },
  {
   "kind": "drizzle",
@@ -1521,7 +1533,7 @@
   "ledger": "drizzle",
   "key": "11",
   "provenance": "byte_identical_to_receipt",
-  "ord": 127
+  "ord": 128
  },
  {
   "kind": "drizzle",
@@ -1533,7 +1545,7 @@
   "ledger": "drizzle",
   "key": "12",
   "provenance": "byte_identical_to_receipt",
-  "ord": 128
+  "ord": 129
  },
  {
   "kind": "drizzle",
@@ -1545,7 +1557,7 @@
   "ledger": "drizzle",
   "key": "13",
   "provenance": "byte_identical_to_receipt",
-  "ord": 129
+  "ord": 130
  },
  {
   "kind": "drizzle",
@@ -1557,7 +1569,7 @@
   "ledger": "drizzle",
   "key": "14",
   "provenance": "byte_identical_to_receipt",
-  "ord": 130
+  "ord": 131
  },
  {
   "kind": "drizzle",
@@ -1569,7 +1581,7 @@
   "ledger": "drizzle",
   "key": "15",
   "provenance": "byte_identical_to_receipt",
-  "ord": 131
+  "ord": 132
  },
  {
   "kind": "drizzle",
@@ -1581,7 +1593,7 @@
   "ledger": "drizzle",
   "key": "16",
   "provenance": "byte_identical_to_receipt",
-  "ord": 132
+  "ord": 133
  },
  {
   "kind": "drizzle",
@@ -1593,7 +1605,7 @@
   "ledger": "drizzle",
   "key": "17",
   "provenance": "byte_identical_to_receipt",
-  "ord": 133
+  "ord": 134
  },
  {
   "kind": "drizzle",
@@ -1605,7 +1617,7 @@
   "ledger": "drizzle",
   "key": "18",
   "provenance": "byte_identical_to_receipt",
-  "ord": 134
+  "ord": 135
  },
  {
   "kind": "drizzle",
@@ -1617,7 +1629,7 @@
   "ledger": "drizzle",
   "key": "19",
   "provenance": "byte_identical_to_receipt",
-  "ord": 135
+  "ord": 136
  },
  {
   "kind": "drizzle",
@@ -1629,7 +1641,7 @@
   "ledger": "drizzle",
   "key": "20",
   "provenance": "byte_identical_to_receipt",
-  "ord": 136
+  "ord": 137
  },
  {
   "kind": "drizzle",
@@ -1641,7 +1653,7 @@
   "ledger": "drizzle",
   "key": "21",
   "provenance": "byte_identical_to_receipt",
-  "ord": 137
+  "ord": 138
  },
  {
   "kind": "drizzle",
@@ -1653,7 +1665,7 @@
   "ledger": "drizzle",
   "key": "22",
   "provenance": "byte_identical_to_receipt",
-  "ord": 138
+  "ord": 139
  },
  {
   "kind": "migration",
@@ -1665,7 +1677,7 @@
   "ledger": "supabase",
   "key": "20261011180000",
   "provenance": "install_wrapper__body_hash_declared_by_receipt",
-  "ord": 139
+  "ord": 140
  },
  {
   "kind": "drizzle",
@@ -1677,7 +1689,31 @@
   "ledger": "drizzle",
   "key": "23",
   "provenance": "byte_identical_to_receipt",
-  "ord": 140
+  "ord": 141
+ },
+ {
+  "kind": "migration",
+  "path": "proposed/rehearsal/receipts/drizzle_runner_ledger.sql",
+  "transform": "none",
+  "sha256": "c94817fc305984a2c381a4b685593498aa58a8d255e31dbb56bbcc18810b0ffe",
+  "executed_sha256": "c94817fc305984a2c381a4b685593498aa58a8d255e31dbb56bbcc18810b0ffe",
+  "bytes": 2611,
+  "ledger": "runner",
+  "key": "__drizzle_migrations",
+  "provenance": "runner_ledger__rows_fetched_from_production",
+  "ord": 142
+ },
+ {
+  "kind": "migration",
+  "path": "proposed/rehearsal/parity/production-catalog-parity.sql",
+  "transform": "none",
+  "sha256": "191be5858c509c34df9c7e0ab681270859f340237206608385975c1e0a7b37ac",
+  "executed_sha256": "191be5858c509c34df9c7e0ab681270859f340237206608385975c1e0a7b37ac",
+  "bytes": 4165,
+  "ledger": "parity",
+  "key": "catalog",
+  "provenance": "catalog_parity__definitions_fetched_from_production",
+  "ord": 143
  },
  {
   "kind": "query",
@@ -1687,7 +1723,7 @@
   "executed_sha256": "29f77bfc7f8c0428e5eaaf2c394328a48430a4c19c048fa96fa08545a4d4407f",
   "bytes": 140016,
   "expect": "preflight: zero rows WHERE ok IS NOT TRUE",
-  "ord": 141
+  "ord": 144
  },
  {
   "kind": "packet",
@@ -1697,7 +1733,7 @@
   "executed_sha256": "d6fb0b76aa88dd1bd5615e9854aa4593a60889059ac5887eef15b4535709ef8c",
   "bytes": 3970,
   "step": 1,
-  "ord": 142
+  "ord": 145
  },
  {
   "kind": "verify",
@@ -1708,7 +1744,7 @@
   "bytes": 1641,
   "step": 1,
   "expect": "t",
-  "ord": 143
+  "ord": 146
  },
  {
   "kind": "packet",
@@ -1718,7 +1754,7 @@
   "executed_sha256": "b9113601b1eebed5d89b8da251d57a6bb2f3f742a9d12479627354c4369e829a",
   "bytes": 7069,
   "step": 2,
-  "ord": 144
+  "ord": 147
  },
  {
   "kind": "verify",
@@ -1729,7 +1765,7 @@
   "bytes": 1983,
   "step": 2,
   "expect": "t",
-  "ord": 145
+  "ord": 148
  },
  {
   "kind": "packet",
@@ -1739,7 +1775,7 @@
   "executed_sha256": "7810c0749d2e872fe0538518b0bfc91e8c26789c67fa784f23499d930a5448cc",
   "bytes": 35014,
   "step": 3,
-  "ord": 146
+  "ord": 149
  },
  {
   "kind": "verify",
@@ -1750,7 +1786,7 @@
   "bytes": 3883,
   "step": 3,
   "expect": "t",
-  "ord": 147
+  "ord": 150
  },
  {
   "kind": "packet",
@@ -1760,7 +1796,7 @@
   "executed_sha256": "922b5bcbcf1b1481057463647a7dc8d5fbcb467de926c9c2e3cb414fe3b164bb",
   "bytes": 20559,
   "step": 4,
-  "ord": 148
+  "ord": 151
  },
  {
   "kind": "verify",
@@ -1771,7 +1807,7 @@
   "bytes": 4394,
   "step": 4,
   "expect": "t",
-  "ord": 149
+  "ord": 152
  },
  {
   "kind": "packet",
@@ -1781,7 +1817,7 @@
   "executed_sha256": "596df528c0561a9e9559a6d1ab70a8695def75cc742da48a61a20affeb14338b",
   "bytes": 19209,
   "step": 5,
-  "ord": 150
+  "ord": 153
  },
  {
   "kind": "verify",
@@ -1792,7 +1828,7 @@
   "bytes": 5211,
   "step": 5,
   "expect": "t",
-  "ord": 151
+  "ord": 154
  },
  {
   "kind": "packet",
@@ -1802,7 +1838,7 @@
   "executed_sha256": "c29fa122bf9ddb4f7242ede634568e55a1622e2b01356d132c58279788705f8c",
   "bytes": 8758,
   "step": 6,
-  "ord": 152
+  "ord": 155
  },
  {
   "kind": "verify",
@@ -1813,7 +1849,7 @@
   "bytes": 5505,
   "step": 6,
   "expect": "t",
-  "ord": 153
+  "ord": 156
  },
  {
   "kind": "packet",
@@ -1823,7 +1859,7 @@
   "executed_sha256": "c27b49a46e55381eacbfc6f1bb2c246c9ee2c73ce549172d81d44bbadac9b665",
   "bytes": 24183,
   "step": 7,
-  "ord": 154
+  "ord": 157
  },
  {
   "kind": "verify",
@@ -1834,7 +1870,7 @@
   "bytes": 6504,
   "step": 7,
   "expect": "t",
-  "ord": 155
+  "ord": 158
  },
  {
   "kind": "packet",
@@ -1844,7 +1880,7 @@
   "executed_sha256": "39863c6763c8fdbfd5908a53397e364c3d9f7f684f9cf09e45160424c1547159",
   "bytes": 14467,
   "step": 8,
-  "ord": 156
+  "ord": 159
  },
  {
   "kind": "verify",
@@ -1855,7 +1891,7 @@
   "bytes": 7464,
   "step": 8,
   "expect": "t",
-  "ord": 157
+  "ord": 160
  },
  {
   "kind": "packet",
@@ -1865,7 +1901,7 @@
   "executed_sha256": "0c15a27c68861b5f0b94751f18f15946987808d11ffaca6083686609680ce24e",
   "bytes": 5250,
   "step": 9,
-  "ord": 158
+  "ord": 161
  },
  {
   "kind": "verify",
@@ -1876,7 +1912,7 @@
   "bytes": 7498,
   "step": 9,
   "expect": "t",
-  "ord": 159
+  "ord": 162
  },
  {
   "kind": "packet",
@@ -1886,7 +1922,7 @@
   "executed_sha256": "6537823ca84203a69af5b37127b317f6a5c2cc326663d77076a276f45430e537",
   "bytes": 13146,
   "step": 10,
-  "ord": 160
+  "ord": 163
  },
  {
   "kind": "verify",
@@ -1897,7 +1933,7 @@
   "bytes": 7709,
   "step": 10,
   "expect": "t",
-  "ord": 161
+  "ord": 164
  },
  {
   "kind": "packet",
@@ -1907,7 +1943,7 @@
   "executed_sha256": "814d00b8ff505457b4d5707e95fb887944a51c15dd3faea6333952203c3ef99f",
   "bytes": 1025,
   "step": 11,
-  "ord": 162
+  "ord": 165
  },
  {
   "kind": "verify",
@@ -1918,7 +1954,7 @@
   "bytes": 7833,
   "step": 11,
   "expect": "t",
-  "ord": 163
+  "ord": 166
  },
  {
   "kind": "packet",
@@ -1928,7 +1964,7 @@
   "executed_sha256": "290f3b4aceee1c68bfc1e1c7bcc1f7c09f2750811d23c4f0f24cad7aaf829b1d",
   "bytes": 7678,
   "step": 12,
-  "ord": 164
+  "ord": 167
  },
  {
   "kind": "verify",
@@ -1939,7 +1975,7 @@
   "bytes": 8039,
   "step": 12,
   "expect": "t",
-  "ord": 165
+  "ord": 168
  },
  {
   "kind": "packet",
@@ -1949,7 +1985,7 @@
   "executed_sha256": "cf40bd9d02cf03d999c8413ae4123ec23d0e7133bba912b2dad7ffd49bb5d764",
   "bytes": 7692,
   "step": 13,
-  "ord": 166
+  "ord": 169
  },
  {
   "kind": "verify",
@@ -1960,7 +1996,7 @@
   "bytes": 8261,
   "step": 13,
   "expect": "t",
-  "ord": 167
+  "ord": 170
  },
  {
   "kind": "packet",
@@ -1970,7 +2006,7 @@
   "executed_sha256": "bf1a137cf159be7ea88b9477609cdb6649ae2a8173a616cb75218c6839a1cf6c",
   "bytes": 2532,
   "step": 14,
-  "ord": 168
+  "ord": 171
  },
  {
   "kind": "verify",
@@ -1981,7 +2017,7 @@
   "bytes": 8527,
   "step": 14,
   "expect": "t",
-  "ord": 169
+  "ord": 172
  },
  {
   "kind": "packet",
@@ -1991,7 +2027,7 @@
   "executed_sha256": "b8fde7718e9893c3ed97dd0066808c6d02a921de15fccc7ff5514976753472a2",
   "bytes": 10096,
   "step": 15,
-  "ord": 170
+  "ord": 173
  },
  {
   "kind": "verify",
@@ -2002,7 +2038,7 @@
   "bytes": 8533,
   "step": 15,
   "expect": "t",
-  "ord": 171
+  "ord": 174
  },
  {
   "kind": "packet",
@@ -2012,7 +2048,7 @@
   "executed_sha256": "c26bcdd58f62a8d75f8990432cf86c511746079bccdf204d01c3d754a2f0622a",
   "bytes": 330,
   "step": 16,
-  "ord": 172
+  "ord": 175
  },
  {
   "kind": "verify",
@@ -2023,7 +2059,7 @@
   "bytes": 8610,
   "step": 16,
   "expect": "t",
-  "ord": 173
+  "ord": 176
  },
  {
   "kind": "packet",
@@ -2033,7 +2069,7 @@
   "executed_sha256": "0269b937f4189257f5ad1f5a4d3105302cf49d1e346e6a507ae950a700a8f00d",
   "bytes": 6048,
   "step": 17,
-  "ord": 174
+  "ord": 177
  },
  {
   "kind": "verify",
@@ -2044,7 +2080,7 @@
   "bytes": 8638,
   "step": 17,
   "expect": "t",
-  "ord": 175
+  "ord": 178
  },
  {
   "kind": "packet",
@@ -2054,7 +2090,7 @@
   "executed_sha256": "4f9217759844e9344046424c54bd51586e6302ba510395e8295f3d86517c166b",
   "bytes": 724,
   "step": 18,
-  "ord": 176
+  "ord": 179
  },
  {
   "kind": "verify",
@@ -2065,7 +2101,7 @@
   "bytes": 8541,
   "step": 18,
   "expect": "t",
-  "ord": 177
+  "ord": 180
  },
  {
   "kind": "packet",
@@ -2075,7 +2111,7 @@
   "executed_sha256": "0e3977d47842d9d0d647ce06a5764bd63540cdc2e3f5d3cdf9c8b3c4fa62ca9f",
   "bytes": 3080,
   "step": 19,
-  "ord": 178
+  "ord": 181
  },
  {
   "kind": "verify",
@@ -2086,7 +2122,7 @@
   "bytes": 8593,
   "step": 19,
   "expect": "t",
-  "ord": 179
+  "ord": 182
  },
  {
   "kind": "packet",
@@ -2096,7 +2132,7 @@
   "executed_sha256": "09f339e76fd669c9a949c5f995214fe55ae2ebc725d0c9be33833defde04d2bc",
   "bytes": 7324,
   "step": 20,
-  "ord": 180
+  "ord": 183
  },
  {
   "kind": "verify",
@@ -2107,7 +2143,7 @@
   "bytes": 8648,
   "step": 20,
   "expect": "t",
-  "ord": 181
+  "ord": 184
  },
  {
   "kind": "packet",
@@ -2117,7 +2153,7 @@
   "executed_sha256": "36b3d8e9525bbe6f688b3fd865f005cb09bcccccdb3ed21767a6cee71e831b25",
   "bytes": 1291,
   "step": 21,
-  "ord": 182
+  "ord": 185
  },
  {
   "kind": "verify",
@@ -2128,7 +2164,7 @@
   "bytes": 8727,
   "step": 21,
   "expect": "t",
-  "ord": 183
+  "ord": 186
  },
  {
   "kind": "packet",
@@ -2138,7 +2174,7 @@
   "executed_sha256": "7057c340052ea363ba91c066cdb0d712b0a7d1390b3d7696cddb16e59a3ed555",
   "bytes": 8249,
   "step": 22,
-  "ord": 184
+  "ord": 187
  },
  {
   "kind": "verify",
@@ -2149,7 +2185,7 @@
   "bytes": 9198,
   "step": 22,
   "expect": "t",
-  "ord": 185
+  "ord": 188
  },
  {
   "kind": "packet",
@@ -2159,7 +2195,7 @@
   "executed_sha256": "8ddf84ce34a9ecbddafc9c626a4acc8ce6ed0f867e3a5d8e0014ca81dd7775c9",
   "bytes": 4181,
   "step": 23,
-  "ord": 186
+  "ord": 189
  },
  {
   "kind": "verify",
@@ -2170,7 +2206,7 @@
   "bytes": 9475,
   "step": 23,
   "expect": "t",
-  "ord": 187
+  "ord": 190
  },
  {
   "kind": "packet",
@@ -2180,7 +2216,7 @@
   "executed_sha256": "af1f5b28d91b774a1bd0e39fe26668fc487b15c3f4a6ed3662b1c911b0d12384",
   "bytes": 12933,
   "step": 24,
-  "ord": 188
+  "ord": 191
  },
  {
   "kind": "verify",
@@ -2191,7 +2227,7 @@
   "bytes": 9816,
   "step": 24,
   "expect": "t",
-  "ord": 189
+  "ord": 192
  },
  {
   "kind": "packet",
@@ -2201,7 +2237,7 @@
   "executed_sha256": "9194842f9d392fa2e07677cbe3972677d0997f230c66032a79194fb8e2f5c47f",
   "bytes": 4324,
   "step": 25,
-  "ord": 190
+  "ord": 193
  },
  {
   "kind": "verify",
@@ -2212,7 +2248,7 @@
   "bytes": 9903,
   "step": 25,
   "expect": "t",
-  "ord": 191
+  "ord": 194
  },
  {
   "kind": "packet",
@@ -2222,7 +2258,7 @@
   "executed_sha256": "57260b67d037f8173a972054ff278b4c75abe49a3ebd606e1b139520a03e71ea",
   "bytes": 23111,
   "step": 26,
-  "ord": 192
+  "ord": 195
  },
  {
   "kind": "verify",
@@ -2233,7 +2269,7 @@
   "bytes": 10496,
   "step": 26,
   "expect": "t",
-  "ord": 193
+  "ord": 196
  },
  {
   "kind": "packet",
@@ -2243,7 +2279,7 @@
   "executed_sha256": "c849bb754d4d4f854eb873783eb348ddf99789c7cebd3c00463a5080fb0478a8",
   "bytes": 12328,
   "step": 27,
-  "ord": 194
+  "ord": 197
  },
  {
   "kind": "verify",
@@ -2254,7 +2290,7 @@
   "bytes": 11621,
   "step": 27,
   "expect": "t",
-  "ord": 195
+  "ord": 198
  },
  {
   "kind": "packet",
@@ -2264,7 +2300,7 @@
   "executed_sha256": "4eca4e74ba21b1cb8eaad795ea7b03fb7ce6bda0e5ea5bedf0c28234d31f566e",
   "bytes": 4578,
   "step": 28,
-  "ord": 196
+  "ord": 199
  },
  {
   "kind": "verify",
@@ -2275,7 +2311,7 @@
   "bytes": 10628,
   "step": 28,
   "expect": "t",
-  "ord": 197
+  "ord": 200
  },
  {
   "kind": "packet",
@@ -2285,7 +2321,7 @@
   "executed_sha256": "2eea1a9184bc545d668e7821a3782156ee80492d31543dd11b5dac8b3744c70a",
   "bytes": 294,
   "step": 29,
-  "ord": 198
+  "ord": 201
  },
  {
   "kind": "verify",
@@ -2296,7 +2332,7 @@
   "bytes": 10826,
   "step": 29,
   "expect": "t",
-  "ord": 199
+  "ord": 202
  },
  {
   "kind": "verify",
@@ -2306,7 +2342,7 @@
   "executed_sha256": "20c7a57c7801151f578c53f9ebb2eea03f554789acbaeebeef283f8a4022353c",
   "bytes": 10816,
   "expect": "t (reduced path only)",
-  "ord": 200
+  "ord": 203
  },
  {
   "kind": "verify",
@@ -2316,7 +2352,7 @@
   "executed_sha256": "17a9ec0c7960e935d45c1d35d080b9df4f9e6bac2c8be4eaf324a0ab7044341b",
   "bytes": 1201,
   "expect": "t",
-  "ord": 201
+  "ord": 204
  },
  {
   "kind": "query",
@@ -2326,7 +2362,7 @@
   "executed_sha256": "5bd9185ca4ed9cdacedb56fd747f0d9e734403c45f3d05f889dd7df2026fcd00",
   "bytes": 4439,
   "expect": "missing=0 and mismatched=0",
-  "ord": 202
+  "ord": 205
  },
  {
   "kind": "rollback",
@@ -2336,7 +2372,7 @@
   "executed_sha256": "ba85b86bf2cb6d6943bf30f4074656a200732051b8c7e43581ce80bde9048642",
   "bytes": 312,
   "step": 29,
-  "ord": 203
+  "ord": 206
  },
  {
   "kind": "rollback",
@@ -2346,7 +2382,7 @@
   "executed_sha256": "7f54a0e8ddba878b486ea320a1da9ab3f453fffa82f6a8562e339a17abd464f0",
   "bytes": 1927,
   "step": 28,
-  "ord": 204
+  "ord": 207
  },
  {
   "kind": "rollback",
@@ -2356,7 +2392,7 @@
   "executed_sha256": "d504666298ecff76549332e53b7b3ae6b5c8c6b04f66dd2565d978daa8d7c4c6",
   "bytes": 1641,
   "step": 27,
-  "ord": 205
+  "ord": 208
  },
  {
   "kind": "rollback",
@@ -2366,7 +2402,7 @@
   "executed_sha256": "ff7c4cf4c2a1a4bf95d47e67b113936b116aed5bff4f9810daa5f38a905118a5",
   "bytes": 2535,
   "step": 26,
-  "ord": 206
+  "ord": 209
  },
  {
   "kind": "rollback",
@@ -2376,7 +2412,7 @@
   "executed_sha256": "d14b1ad96153a8c66e762e4138ab4d79a6daeaa526ae604262f3ba86915e6bd8",
   "bytes": 796,
   "step": 25,
-  "ord": 207
+  "ord": 210
  },
  {
   "kind": "rollback",
@@ -2386,7 +2422,7 @@
   "executed_sha256": "80191dc4007cc9ce25b334c5ca8578460d34aa09ce4f763aed74c09f14745814",
   "bytes": 2066,
   "step": 24,
-  "ord": 208
+  "ord": 211
  },
  {
   "kind": "rollback",
@@ -2396,7 +2432,7 @@
   "executed_sha256": "bcbbf3bfb71932f6d9ce90321efb8f0658ce333dc41f4f4b790134c58b28e738",
   "bytes": 1619,
   "step": 23,
-  "ord": 209
+  "ord": 212
  },
  {
   "kind": "rollback",
@@ -2406,7 +2442,7 @@
   "executed_sha256": "bfa301a6a5718d301c13c5c838b57a21c125916cb8f8f318f9db6b40a22b041d",
   "bytes": 1745,
   "step": 22,
-  "ord": 210
+  "ord": 213
  },
  {
   "kind": "rollback",
@@ -2416,7 +2452,7 @@
   "executed_sha256": "130027d6e2941bdd6f0aa1637be10135c0f627ccd06936ba3ad7c4e4d7cf4a16",
   "bytes": 1505,
   "step": 21,
-  "ord": 211
+  "ord": 214
  },
  {
   "kind": "rollback",
@@ -2426,7 +2462,7 @@
   "executed_sha256": "e8c36b1f2e09d4762d637a03e35202a421b4cab3431c91e01f38bba3f3cd086c",
   "bytes": 7159,
   "step": 20,
-  "ord": 212
+  "ord": 215
  },
  {
   "kind": "rollback",
@@ -2436,7 +2472,7 @@
   "executed_sha256": "203429b9854efbd38244d89fcfc29258c736558667ea45ed5707e01be41608e4",
   "bytes": 3629,
   "step": 19,
-  "ord": 213
+  "ord": 216
  },
  {
   "kind": "rollback",
@@ -2446,7 +2482,7 @@
   "executed_sha256": "e4a977e4270e2943813255d61410c7e2a10793cd5aba74223458fd9f2cbe09bf",
   "bytes": 1777,
   "step": 18,
-  "ord": 214
+  "ord": 217
  },
  {
   "kind": "rollback",
@@ -2456,7 +2492,7 @@
   "executed_sha256": "dbf89ff1d4c74c5f86fec231fe525efa2790483c466a8103ca55ad16b9b7dc47",
   "bytes": 7025,
   "step": 17,
-  "ord": 215
+  "ord": 218
  },
  {
   "kind": "rollback",
@@ -2466,7 +2502,7 @@
   "executed_sha256": "c828b203513038736808cfb600c83ac06cd176c568cd40b8bf37a416c736c063",
   "bytes": 1237,
   "step": 16,
-  "ord": 216
+  "ord": 219
  },
  {
   "kind": "rollback",
@@ -2476,7 +2512,7 @@
   "executed_sha256": "8a421fd2502fffb8c8a764406c20492b3c5341927a39c917ca956a621af7e502",
   "bytes": 4992,
   "step": 15,
-  "ord": 217
+  "ord": 220
  },
  {
   "kind": "rollback",
@@ -2486,7 +2522,7 @@
   "executed_sha256": "41fddb2cc5120fb52c13388246db26c0e2fc4e7aafd46287444f2304dc5e3300",
   "bytes": 1902,
   "step": 14,
-  "ord": 218
+  "ord": 221
  },
  {
   "kind": "rollback",
@@ -2496,7 +2532,7 @@
   "executed_sha256": "805c2ff886f71d87ef35798216611ff7e155bcccc448c93a7514ad275bafa9bf",
   "bytes": 5648,
   "step": 13,
-  "ord": 219
+  "ord": 222
  },
  {
   "kind": "rollback",
@@ -2506,7 +2542,7 @@
   "executed_sha256": "1e21ac83f177e6bb23301cf70187c37b8905d0ef9c481cfc24e1e21bf4a2471b",
   "bytes": 5703,
   "step": 12,
-  "ord": 220
+  "ord": 223
  },
  {
   "kind": "rollback",
@@ -2516,7 +2552,7 @@
   "executed_sha256": "e3cac75e1a2920e221b903eb2b33c35269603c21a1d6ae122eefce1c19bcff63",
   "bytes": 1169,
   "step": 11,
-  "ord": 221
+  "ord": 224
  },
  {
   "kind": "rollback",
@@ -2526,7 +2562,7 @@
   "executed_sha256": "03a38451367be2edf4f9225437aa0475d62aad212b08a91e6b11d684b1af910c",
   "bytes": 12737,
   "step": 10,
-  "ord": 222
+  "ord": 225
  },
  {
   "kind": "rollback",
@@ -2536,7 +2572,7 @@
   "executed_sha256": "4c85579f5429e65582f5ced6a5120a51bda85bf81c3a34cc9d4fff83d5d8465f",
   "bytes": 2175,
   "step": 9,
-  "ord": 223
+  "ord": 226
  },
  {
   "kind": "rollback",
@@ -2546,7 +2582,7 @@
   "executed_sha256": "f206eda65f108c1efec6940f91cc3c5009295cfbda93f2ba0f81f828eaf758a8",
   "bytes": 8031,
   "step": 8,
-  "ord": 224
+  "ord": 227
  },
  {
   "kind": "rollback",
@@ -2556,7 +2592,7 @@
   "executed_sha256": "40dfa3761e31bd51fb0438d464f5e66196d98cfa100649e84d42258179a712ce",
   "bytes": 7050,
   "step": 7,
-  "ord": 225
+  "ord": 228
  },
  {
   "kind": "rollback",
@@ -2566,7 +2602,7 @@
   "executed_sha256": "8030d9b7832867c3c505bf46eb10e367dab5a13000fa29546ed3e4d51aeb29fa",
   "bytes": 1623,
   "step": 6,
-  "ord": 226
+  "ord": 229
  },
  {
   "kind": "rollback",
@@ -2576,7 +2612,7 @@
   "executed_sha256": "3fd482256a6c14a0d99fe1b6f49c78edf2caa45f870047a69cb6bacd014a4a86",
   "bytes": 6075,
   "step": 5,
-  "ord": 227
+  "ord": 230
  },
  {
   "kind": "rollback",
@@ -2586,7 +2622,7 @@
   "executed_sha256": "a92363580a27d72e2f1b009145d6306be448ba53d2deb91371f0dada3b49dc58",
   "bytes": 8418,
   "step": 4,
-  "ord": 228
+  "ord": 231
  },
  {
   "kind": "rollback",
@@ -2596,7 +2632,7 @@
   "executed_sha256": "266464cd98426380a15796bcbee85132725989304ef4acce2503677f290b1109",
   "bytes": 6730,
   "step": 3,
-  "ord": 229
+  "ord": 232
  },
  {
   "kind": "rollback",
@@ -2606,7 +2642,7 @@
   "executed_sha256": "8a83411e4746aebf0513814197570fde60e985e380cb785dbefa783a5b133ae5",
   "bytes": 564,
   "step": 2,
-  "ord": 230
+  "ord": 233
  },
  {
   "kind": "rollback",
@@ -2616,6 +2652,6 @@
   "executed_sha256": "a3ec312864cbccf472803ffeb49025918e3dad0d2b2d5088acd943a0ed337b8a",
   "bytes": 3756,
   "step": 1,
-  "ord": 231
+  "ord": 234
  }
 ]

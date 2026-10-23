@@ -51,6 +51,10 @@ export function baselineOrder() {
       rows.push({ ledger: "supabase", key: v, at: v, path: `supabase/migrations/${f}`, provenance: "out_of_band_no_receipt__repo_file_assumed" });
     }
   }
+  // Repo seq 61 has no receipt either, but production holds exactly the two
+  // partial unique indexes it creates (rentals_one_active_per_*), and the packet
+  // depends on them. No other file creates them.
+  rows.push({ ledger: "supabase", key: "20260921180000", at: "20260921180000", path: "supabase/migrations/20260921180000_rental_activation_guards.sql", provenance: "out_of_band_no_receipt__repo_file_evidenced_by_catalog" });
   const dz = readdirSync("drizzle/migrations").filter((f) => f.endsWith(".sql")).sort();
   for (const tok of DRIZZLE.split(/\s+/)) {
     const [id, h, at] = tok.split(":");
@@ -59,6 +63,18 @@ export function baselineOrder() {
     rows.push({ ledger: "drizzle", key: id, at, path, provenance: "byte_identical_to_receipt" });
   }
   rows.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.ledger === "supabase" ? -1 : 1));
+  // The drizzle-kit runner's own ledger table (no migration file creates it),
+  // after its last receipt; then the catalog parity production holds beyond
+  // every file. Both are read-only reproductions of production state.
+  const ledger = "proposed/rehearsal/receipts/drizzle_runner_ledger.sql";
+  const lt = readFileSync(ledger, "utf8");
+  for (const [i, f] of dz.slice(0, 23).entries()) {
+    const full = createHash("sha256").update(readFileSync(`drizzle/migrations/${f}`)).digest("hex");
+    if (!lt.includes(`(${i + 1}, '${full}', `)) throw new Error(`runner ledger row ${i + 1} does not hash ${f}`);
+  }
+  const lastDz = rows.findLastIndex((r) => r.ledger === "drizzle");
+  rows.splice(lastDz + 1, 0, { ledger: "runner", key: "__drizzle_migrations", at: rows[lastDz].at, path: ledger, provenance: "runner_ledger__rows_fetched_from_production" });
+  rows.push({ ledger: "parity", key: "catalog", at: "end", path: "proposed/rehearsal/parity/production-catalog-parity.sql", provenance: "catalog_parity__definitions_fetched_from_production" });
   const used = new Set(rows.map((r) => r.path));
   const excluded = repo.filter((f) => !used.has(`supabase/migrations/${f}`));
   return { rows, excluded };
