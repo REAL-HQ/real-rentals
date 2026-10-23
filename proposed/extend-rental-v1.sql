@@ -1,0 +1,9 @@
+-- LOCAL POINTER. Not a migration. Not installed. Do not run this file.
+--
+-- The extend rental SQL has one source: proposed/m2-packet/extend.sql
+-- (HOSTED-INSTALL step 27). This file used to carry a copy.
+-- It is a pointer now, so the two files cannot drift.
+-- That file sets lock_timeout to 5 seconds and can be run again.
+-- Execute is service_role only. anon and authenticated are not granted.
+-- Undo: proposed/rollback/extend-rental.sql. It returns the schema to
+-- the pre-install state.

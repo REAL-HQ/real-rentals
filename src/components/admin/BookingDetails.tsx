@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { getBooking, type BookingDetail } from "@/lib/bookings.functions";
 import { BookingActions } from "@/components/admin/BookingActions";
+import { ExtendRentalButton } from "@/components/admin/ExtendRental";
 import { listConditionMedia } from "@/lib/inspections.functions";
 import { getAgreementPdf } from "@/lib/agreements.functions";
 import { listAuditLog, type AuditRow } from "@/lib/team.functions";
@@ -261,6 +262,13 @@ function Overview({
             onRefresh={onRefresh}
             onOpenMessages={onOpenMessages}
             onOpenTab={onOpenTab}
+          />
+          {/* Unmounted while EXTEND_RENTAL_ENABLED is false. */}
+          <ExtendRentalButton
+            rentalId={b.id}
+            phase={b.phase}
+            canManage={d.canManage}
+            onExtended={onRefresh}
           />
         </SectionCard>
         <SectionCard title="Rental" icon={<CalendarCheck className="w-4 h-4" strokeWidth={1.75} />}>
