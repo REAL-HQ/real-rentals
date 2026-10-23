@@ -54,6 +54,7 @@ import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
+import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
@@ -780,6 +781,7 @@ function Admin() {
               <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} canManageWaitlist={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
             {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} autoOpenAdd={urlAdd} openId={urlRecordId} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
+            {tab === "active_rentals" && <ActiveRentalsPanel />}
             {tab === "bookings" && (
               <BookingsPanel
                 externalSearch={globalSearch}
