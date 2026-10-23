@@ -2,7 +2,11 @@
 
 Updated 2026-10-23 by Claude Code.
 
-> **RC `67b62664` is FROZEN.** No further commits to
+> **RC `67b62664` is LIVE** — published 2026-10-23, initial smoke tests pass.
+> See `266-PUBLISHED.md`. Remaining checks: Drivers, Bookings, Active Rentals,
+> Payments, eSign, deployed-version confirmation. Rollback branches intact.
+>
+> **The branch stays FROZEN.** No further commits to
 > `integration/grok-baseline-2026-10-22` unless a demonstrated release-blocking
 > defect requires a fix. Feature work continues on separate branches and is not
 > merged into this candidate.
