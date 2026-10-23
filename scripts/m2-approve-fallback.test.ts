@@ -94,7 +94,8 @@ const flagOff = fn.slice(fn.indexOf("if (!DOCUMENT_CONTENT_SHA256_ENABLED)"), fn
 assert(!flagOff.includes("catch"), "flag off does not catch");
 
 const identityFlag = readFileSync(new URL("../src/lib/identity-verification.ts", import.meta.url), "utf8");
-assert(identityFlag.includes("IDENTITY_VERIFICATION_ENABLED = false"), "identity flag is false");
+// Release B branch: the identity flag ships ON here.
+assert(identityFlag.includes("IDENTITY_VERIFICATION_ENABLED = true"), "identity flag is true on release/m2-app-flags-on");
 assert(!identityFlag.includes("process.env"), "identity flag does not read the environment");
 
 const identityFn = readFileSync(new URL("../src/lib/identity-verification.functions.ts", import.meta.url), "utf8");

@@ -6,7 +6,7 @@
  * before a role lookup, a table read, or an RPC. No environment variable
  * opens this. A rebuild that changes this constant is the release.
  */
-export const IDENTITY_VERIFICATION_ENABLED = false;
+export const IDENTITY_VERIFICATION_ENABLED = true;
 
 export const IDENTITY_VERIFICATION_HOLD =
   "Identity verification awaits release approval.";

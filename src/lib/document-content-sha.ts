@@ -20,7 +20,7 @@
  * is confirmed with a null content hash and approval stays closed.
  * A missing packet function is logged once per process.
  */
-export const DOCUMENT_CONTENT_SHA256_ENABLED = false;
+export const DOCUMENT_CONTENT_SHA256_ENABLED = true;
 
 const MISSING_CONTENT_SHA_LOG =
   "[documents] record_uploaded_content_sha is not installed; confirming the upload without a content hash. Approval stays closed while content_sha256 is null.";

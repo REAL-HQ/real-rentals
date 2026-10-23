@@ -33,8 +33,11 @@ const PROOF = new URL("./m2-functional-proof.sql", import.meta.url);
 const proof = readFileSync(PROOF, "utf8");
 const hasher = readFileSync(new URL("../src/lib/document-content-sha.ts", import.meta.url), "utf8");
 
-if (DOCUMENT_CONTENT_SHA256_ENABLED !== false) {
-  throw new Error("DOCUMENT_CONTENT_SHA256_ENABLED must stay false");
+// Release B branch: this flag ships ON here. On release/m2-app-flags-off the
+// same guard asserts false. Flipping it is the whole content of Release B, so
+// the guard inverts rather than being deleted.
+if (DOCUMENT_CONTENT_SHA256_ENABLED !== true) {
+  throw new Error("DOCUMENT_CONTENT_SHA256_ENABLED must be true on release/m2-app-flags-on");
 }
 if (hasher.includes(".upload(")) throw new Error("hasher re-uploads the object");
 if (hasher.includes('schema("storage")') || hasher.includes("schema('storage')")) {
