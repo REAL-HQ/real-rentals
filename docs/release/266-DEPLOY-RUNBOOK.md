@@ -25,8 +25,41 @@ Project: **https://lovable.dev/projects/8cf1f99e-71ad-4a93-a47c-bfbe833616d6**
 - [ ] **A2. Deployment identity, before.** Lovable → Project settings → Git.
       Branch = `integration/grok-baseline-2026-10-22`, commit = **`67b62664`**,
       status **"In sync with GitHub"**.
+
+      **I cannot confirm the currently *deployed* SHA from here, and neither
+      does that field.** It reports the *selected branch* — it already reads
+      `67b62664` because you switched the picker, while the published site is
+      still the previous build. drivereal.com is unreachable from this
+      container (HTTP 000), and Lovable exposes no deploy-history tool. **Read
+      the last published commit in the Lovable editor's publish/deployment
+      history** and write it here before publishing: `________`. It should be
+      `0946c750`; if it is anything else, that is the real rollback target.
 - [ ] **A3. Note what production is on now** so rollback is unambiguous:
       `codex/revenue-publication` @ **`0946c750`**.
+
+### A3b. Pre-publish database baseline — measured 2026-10-23 11:43 UTC
+
+Read-only from production. Compare against these after publishing.
+
+| | Before |
+|---|---|
+| `payments` rows | **0** |
+| `payments` net collected | **0** |
+| rows with a Stripe invoice id / payment intent id | **0 / 0** |
+| `rentals` (total / active) | **0 / 0** |
+| `vehicles` (total / available / rented) | **10 / 4 / 0** |
+| `applications` | **142** — new 94, closed 21, reviewing 9, partial 8, declined 6, duplicate 4 |
+| `agreements` | **1** |
+
+> **Read this before trusting the Revenue check.** The payments table is
+> **empty**, and there are no rentals. Money currently lives in Stripe, not in
+> the app's tables — consistent with the known unrecorded Stripe invoices. So
+> **Revenue showing `$0` or near-zero is the correct present value, not a
+> fault**, and a Revenue figure that suddenly shows a large number after
+> publishing is the suspicious direction, not the other way round.
+>
+> There is also **no `bookings` table**; that screen is backed by other data.
+> Judge C6 by "the screen loads and an item opens", not by row counts.
 - [ ] **A4. Pick a quiet window.** Publishing swaps the Worker for every user.
 - [ ] **A5. Owner approval** — yours, explicitly, after A1 and A2.
 
@@ -58,26 +91,34 @@ Stop at the first failure and go to section D.
 C1 and C2 are first deliberately: the Stripe reader refactor is the one change
 Preview could not exercise.
 
-- [ ] **C9.** Write down the Revenue total **before** publishing, so C1 is a
-      comparison and not a guess.
+- [ ] **C9.** Record the on-screen Revenue and Collections figures **before**
+      publishing, so C1 and C2 are comparisons and not guesses. The database
+      baseline in A3b is the other half of that comparison.
 
 ## D. Roll back immediately if any of these
 
-**Payment double-counting**
-- A payment row appears twice for one Stripe charge or invoice.
-- Revenue or Collections totals are visibly higher than before publish with no
-  new collections to explain it.
+**Payment double-counting** — the baseline is **0 payment rows**
+- Any payment row whose `stripe_invoice_id` or `stripe_payment_intent_id`
+  already appears on another row.
+- Revenue rising with no matching Stripe collection behind it.
+- More payment rows than Stripe charges in the same period.
 - A driver's balance drops by more than they actually paid.
+
+*A payment row appearing at all is not automatically wrong — the webhook writes
+one when Stripe reports a payment. Duplicates and unmatched rows are the fault.*
 
 **Incorrect payment status**
 - A row that was `paid` now reads `pending`, `failed` or anything else.
 - A `refunded` row changes state.
 - A row staff marked paid by hand loses its `failure_reason`, `paid_date` or status.
 
-**Missing production data**
-- Any of C3–C8 shows an empty list where production had rows.
-- A driver, booking, vehicle or agreement that existed before is gone.
-- Revenue reads `$0` rather than "Unavailable".
+**Missing production data** — measured against A3b, not against an assumption
+- Applications shows fewer than **142**, or Drivers is empty.
+- Vehicles shows fewer than **10**.
+- An agreement that existed before is gone (**1** on file).
+- ~~Revenue reads `$0`~~ — **removed. `$0` is correct today**: the payments
+  table is empty. The suspicious direction is Revenue showing a *large* figure
+  with no collections behind it, which is covered under double-counting.
 
 **Failed Stripe collection reads**
 - Revenue shows "Unavailable" **after** publish when it worked before.
