@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
+import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 
 const STATUSES = [
   "upcoming",
@@ -36,7 +37,7 @@ const STATUSES = [
   "waived",
 ] as const;
 /** Everything the dashboard's Collections card counts: due and not received. */
-const OVERDUE_SET = new Set(["late", "past_due", "collections", "failed", "overdue", "unpaid"]);
+const OVERDUE_SET = new Set<string>(COLLECTIONS_WATCH_STATUSES);
 const STATUS_LABEL: Record<string, string> = {
   upcoming: "Upcoming",
   pending: "Processing",
