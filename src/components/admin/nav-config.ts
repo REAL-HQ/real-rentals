@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { DEPOSITS_LEDGER_ENABLED } from "@/lib/deposits-refunds-flag";
 
 export type TabDef = {
   id: string;
@@ -102,6 +103,15 @@ export function visibleSettingsSections(tier: StaffTier | null): SettingsSection
   return SETTINGS_SECTIONS.filter((s) => tierAllows(tier, s.minTier));
 }
 
+/** Shown only while the deposits ledger is compiled on. Kept out of TABS so a dark build cannot list it. */
+const DEPOSITS_REFUNDS_TAB: TabDef = {
+  id: "deposits_refunds",
+  label: "Deposits & Refunds",
+  icon: Landmark,
+  minTier: "manager",
+  description: "Deposits Held, Returned, Applied, And Outstanding",
+};
+
 /** Shown only while Unified Finance is compiled on. Kept out of TABS so a dark build cannot list it. */
 const FINANCE_TAB: TabDef = {
   id: "finance",
@@ -126,7 +136,11 @@ export function visibleTabs(tier: StaffTier | null): TabDef[] {
  * own id, minTier, panel and server checks — this only groups them.
  */
 export const WORKSPACE_TABS: Record<string, readonly { id: string; label: string }[]> = {
-  payments: [{ id: "payments", label: "Payments" }, { id: "charges", label: "Charges" }],
+  payments: [
+    { id: "payments", label: "Payments" },
+    { id: "charges", label: "Charges" },
+    ...(DEPOSITS_LEDGER_ENABLED ? [{ id: "deposits_refunds", label: "Deposits & Refunds" }] : []),
+  ],
   maintenance: [{ id: "maintenance", label: "Maintenance" }, { id: "inspections", label: "Inspections" }],
   partners: [{ id: "partners", label: "Partners" }, { id: "vendors", label: "Vendors" }, { id: "shops", label: "Repair Shops" }],
 };
@@ -141,8 +155,10 @@ export function navOwner(tab: string): string {
 export function visibleWorkspaceTabs(parent: string, tier: StaffTier | null) {
   const kids = WORKSPACE_TABS[parent] ?? [{ id: parent, label: "" }];
   return kids.filter((k) => {
-    const def = TABS.find((t) => t.id === k.id);
-    return !!def && tierAllows(tier, def.minTier);
+    const def = TABS.find((t) => t.id === k.id) ?? (k.id === DEPOSITS_REFUNDS_TAB.id ? DEPOSITS_REFUNDS_TAB : undefined);
+    if (!def || !tierAllows(tier, def.minTier)) return false;
+    if (def.id === "deposits_refunds" && !DEPOSITS_LEDGER_ENABLED) return false;
+    return true;
   });
 }
 
