@@ -36,6 +36,9 @@ import {
 import { getMyCharges } from "@/lib/charges.functions";
 import { searchPreviewDrivers, recordDriverPreview } from "@/lib/driver-preview.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
+import { NEXT_STEPS_CARD_ENABLED } from "@/lib/next-steps";
+import { getMyNextSteps } from "@/lib/next-steps.functions";
+import { NextStepsCard } from "@/components/portal/NextStepsCard";
 import { Nav } from "@/components/site/Nav";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
@@ -1353,6 +1356,18 @@ function PreRentalPanel({
   );
 }
 
+function NextStepsSection() {
+  const fetchSteps = usePortalRead(getMyNextSteps);
+  const previewId = usePreviewDriver();
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["driver-next-steps", previewId],
+    queryFn: () => fetchSteps(),
+    enabled: NEXT_STEPS_CARD_ENABLED,
+  });
+  if (!NEXT_STEPS_CARD_ENABLED) return null;
+  return <NextStepsCard data={data} loading={isLoading} failed={Boolean(error)} />;
+}
+
 function DashboardView({
   data,
   onNavigate,
@@ -1386,7 +1401,12 @@ function DashboardView({
       )}
 
       {!rental ? (
-        <PreRentalPanel onNavigate={onNavigate} status={data.applicationStatus} />
+        <>
+          <PreRentalPanel onNavigate={onNavigate} status={data.applicationStatus} />
+          {NEXT_STEPS_CARD_ENABLED && !rental && data.applicationStatus === "approved" ? (
+            <NextStepsSection />
+          ) : null}
+        </>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 rounded-2xl border border-border overflow-hidden bg-white">
