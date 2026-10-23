@@ -255,7 +255,7 @@ function Portal() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${
+                  className={`min-h-11 px-3 rounded-lg text-sm whitespace-nowrap ${
                     tab === t.id ? "bg-real-red" : "bg-white/5 text-white/70"
                   }`}
                 >
@@ -265,10 +265,10 @@ function Portal() {
             </div>
           </div>
           <main className="flex-1 min-w-0 bg-white">
-            <header className="bg-white border-b border-border px-8 py-6">
+            <header className="bg-white border-b border-border px-4 py-4 md:px-8 md:py-6">
               <h1 className="text-2xl font-semibold">{current.label}</h1>
             </header>
-            <div className="p-8">
+            <div className="p-4 md:p-8">
               <PortalBody tab={tab} onNavigate={setTab} />
             </div>
           </main>

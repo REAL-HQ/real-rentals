@@ -97,14 +97,14 @@ export function WelcomeBack({
           aria-label="Email"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          className="flex-1 rounded-lg border border-border bg-white px-3 py-2.5 text-sm text-foreground"
+          className="flex-1 min-h-11 rounded-lg border border-border bg-white px-3 text-base text-foreground"
           placeholder="you@example.com"
         />
         <button
           type="button"
           onClick={send}
           disabled={state === "sending" || wait > 0}
-          className="rounded-lg bg-real-red px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+          className="min-h-11 rounded-lg bg-real-red px-5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
         >
           {state === "sending"
             ? "Sending…"
