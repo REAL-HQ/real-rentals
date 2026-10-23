@@ -24,6 +24,15 @@ const emailLower = z
   .email()
   .transform((e) => e.trim().toLowerCase());
 
+/**
+ * PostgREST ilike treats % and _ as wildcards. Escape them so a duplicate
+ * check matches one address, including addresses that contain those characters.
+ * Backslash is escaped first so the escapes themselves stay literal.
+ */
+export function literalIlike(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 // ---------------------------------------------------------------- public
 
 export const getAvailability = createServerFn({ method: "GET" }).handler(async () => {
@@ -78,7 +87,7 @@ export const joinWaitlist = createServerFn({ method: "POST" })
     const { data: existing } = await supabaseAdmin
       .from("waitlist")
       .select("id")
-      .ilike("email", data.email)
+      .ilike("email", literalIlike(data.email))
       .eq("status", "waiting")
       .limit(1);
     if (existing?.length) return { ok: true as const, already: true };
