@@ -3,8 +3,15 @@ import { useEffect, useState } from 'react';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 import { getStripe, getStripeEnvironment } from '@/lib/stripe';
 import { createCardOnFileSession } from '@/lib/payments.functions';
+import { CARD_TOKEN_KEY, useResumeToken } from '@/lib/resume-token';
+import { supabase } from '@/integrations/supabase/client';
 
 export const Route = createFileRoute('/card/$applicationId')({
+  validateSearch: (s: Record<string, unknown>): { t?: string; status?: string } => {
+    const t = typeof s.t === 'string' ? s.t.trim() : '';
+    const status = s.status === 'success' ? 'success' : undefined;
+    return { ...(t ? { t } : {}), ...(status ? { status } : {}) };
+  },
   component: CardOnFilePage,
   head: () => ({
     meta: [
@@ -17,20 +24,42 @@ export const Route = createFileRoute('/card/$applicationId')({
 
 function CardOnFilePage() {
   const { applicationId } = Route.useParams();
+  const { t, status: returnStatus } = Route.useSearch();
+  // Take `t` out of the address bar. The card token uses its own sessionStorage
+  // key, so this tab does not present it to /thank-you as a resume credential.
+  const token = useResumeToken(t, { storageKey: CARD_TOKEN_KEY });
   const [status, setStatus] = useState<'idle' | 'error' | 'done'>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [sessionState, setSessionState] = useState<'unknown' | 'yes' | 'no'>('unknown');
 
-  const search = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const isReturn = search?.get('status') === 'success';
+  const isReturn = returnStatus === 'success';
 
   useEffect(() => {
     if (isReturn) setStatus('done');
   }, [isReturn]);
 
+  useEffect(() => {
+    if (token === undefined || token) return;
+    let live = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (live) setSessionState(data.session ? 'yes' : 'no');
+    }).catch(() => {
+      if (live) setSessionState('no');
+    });
+    return () => {
+      live = false;
+    };
+  }, [token]);
+
   const fetchClientSecret = async (): Promise<string> => {
     const returnUrl = `${window.location.origin}/card/${applicationId}?status=success`;
     const result = await createCardOnFileSession({
-      data: { applicationId, returnUrl, environment: getStripeEnvironment() },
+      data: {
+        applicationId,
+        returnUrl,
+        environment: getStripeEnvironment(),
+        ...(token ? { token } : {}),
+      },
     });
     if ('error' in result) {
       setErrorMsg(result.error);
@@ -39,6 +68,24 @@ function CardOnFilePage() {
     }
     return result.clientSecret;
   };
+
+  const waiting = !isReturn && status !== 'error' && (token === undefined || (!token && sessionState === 'unknown'));
+  const needsLink = !isReturn && status !== 'error' && token === null && sessionState === 'no';
+
+  if (waiting) return null;
+
+  if (needsLink) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-soft px-4">
+        <div className="max-w-md w-full bg-white border border-border rounded-2xl p-8 text-center">
+          <h1 className="text-xl font-semibold">Link Expired</h1>
+          <p className="text-sm text-muted-foreground mt-2">
+            This link is no longer valid. Ask us for a new one and we'll send it over.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (status === 'done') {
     return (
