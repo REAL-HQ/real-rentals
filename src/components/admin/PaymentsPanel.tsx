@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
+import { DEPOSIT_REFUNDS_DUE_ENABLED } from "@/lib/deposit-refunds-due-flag";
+import { DepositRefundsDueSection } from "./DepositRefundsDueSection";
 
 const STATUSES = [
   "upcoming",
@@ -181,6 +183,8 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
           + Add Payment
         </button>
       </div>
+
+      {DEPOSIT_REFUNDS_DUE_ENABLED ? <DepositRefundsDueSection /> : null}
 
       {showManual && <ManualPaymentsWorkspace payments={payments} driverMap={driverMap} onClose={() => setShowManual(false)} />}
       <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
