@@ -6,6 +6,9 @@
 RESET SESSION AUTHORIZATION;
 CREATE TABLE public.rr_harness_bytes AS SELECT slot, bytes, doc FROM upload_bytes;
 REVOKE ALL ON public.rr_harness_bytes FROM PUBLIC, anon, authenticated, service_role;
+-- The positive-license step needs the approval executor, which the production
+-- transport does not get; lend it for the seed only and take it back below.
+GRANT rr_approval_executor TO rr_evidence_transport WITH INHERIT FALSE, SET TRUE;
 SET LOCAL SESSION AUTHORIZATION rr_evidence_transport;
 SET LOCAL ROLE rr_evidence_issuer;
 SET LOCAL TIME ZONE 'UTC';
@@ -32,6 +35,7 @@ BEGIN
  PERFORM private.verify_license_v1('44444444-4444-4444-8444-444444444444', lic);
 END $$;
 RESET SESSION AUTHORIZATION;
+REVOKE rr_approval_executor FROM rr_evidence_transport;
 -- A second, unrelated approved driver with no signed agreement, for refusal tests.
 INSERT INTO public.vehicles (id, year, make, model, vin, weekly_rate, status)
 VALUES ('78888888-7777-4777-8777-777777777777',2021,'Toyota','Camry','4T1BF1FK5CU123456',275,'available');

@@ -31,12 +31,12 @@ ln -sfn "$ROOT/node_modules" $D/packet/node_modules
 cp scripts/record-rental-harness/apply.mjs $D/packet/rr-apply.mjs
 (cd $D/packet && RR_HARNESS_DB_URL="$U" node rr-apply.mjs "${RR_HARNESS_LAST_ORD:-206}")
 
-# Transport login: issuer membership only for SET ROLE, no inherited privileges.
+# Transport login as proposed/record-rental-transport: issuer membership only, SET ROLE, never inherited.
 psql "$U" -q -v ON_ERROR_STOP=1 <<'SQL'
 CREATE ROLE rr_evidence_transport LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'harness-transport-only';
 -- Grants only the roles the installed steps have created (a partial install stops early).
 DO $$ DECLARE r text; BEGIN
- FOREACH r IN ARRAY ARRAY['rr_evidence_issuer','rr_approval_executor'] LOOP
+ FOREACH r IN ARRAY ARRAY['rr_evidence_issuer'] LOOP
   IF to_regrole(r) IS NOT NULL THEN EXECUTE format('GRANT %I TO rr_evidence_transport WITH INHERIT FALSE, SET TRUE', r); END IF;
  END LOOP; END $$;
 GRANT CONNECT ON DATABASE rr TO rr_evidence_transport;
