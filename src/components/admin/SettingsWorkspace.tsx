@@ -13,6 +13,7 @@ import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
 import { ActivityPanel } from "@/components/admin/ActivityPanel";
 import { AgreementTemplatesPanel } from "@/components/admin/AgreementTemplatesPanel";
 import { visibleSettingsSections } from "@/components/admin/nav-config";
+import { PricingReminderSettings } from "@/components/admin/PricingReminderSettings";
 import type { StaffTier } from "@/lib/roles";
 
 const DESCRIPTIONS: Record<string, string> = {
@@ -107,6 +108,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           <h2 className="text-[17px] font-semibold text-[#111114]">{current.label}</h2>
           <p className="text-[13px] text-[#55555E] mt-0.5">{DESCRIPTIONS[current.id]}</p>
         </div>
+        {current.id === "vehicle_defaults" || current.id === "automations" ? <PricingReminderSettings /> : null}
         {current.id === "automations" ? (
           <AutomationsPanel />
         ) : current.id === "vehicle_defaults" ? (
