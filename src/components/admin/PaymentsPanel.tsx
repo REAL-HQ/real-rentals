@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
+import { AR_AGING_ENABLED } from "@/lib/ar-aging-flag";
+import { ArAgingSection } from "./ArAgingSection";
 
 const STATUSES = [
   "upcoming",
@@ -301,6 +303,8 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
           </tbody>
         </table>
       </AdminTableScroll>
+
+      {AR_AGING_ENABLED ? <ArAgingSection /> : null}
 
       {showAdd && (
         <AddPayment
