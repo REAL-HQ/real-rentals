@@ -19,10 +19,12 @@ import {
   Inbox,
   Upload,
   Landmark,
+  RefreshCw,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { RENEWALS_DUE_ENABLED } from "@/lib/renewals-due-flag";
 
 export type TabDef = {
   id: string;
@@ -112,13 +114,53 @@ const FINANCE_TAB: TabDef = {
   description: "Combined Finance Coverage And Per-Vehicle Profitability",
 };
 
+/** Shown only while Rental Renewal Due is compiled on. Kept out of TABS so a dark build cannot list it. */
+const RENEWALS_DUE_TAB: TabDef = {
+  id: "renewals_due",
+  label: "Renewal Due",
+  icon: RefreshCw,
+  minTier: "manager",
+  group: "RENTALS",
+  description: "Active Rentals With A Billing Or End Date In The Next 7 Days",
+};
+
+function insertAfter(tabs: TabDef[], id: string, tab: TabDef): TabDef[] {
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === id);
+  next.splice(at + 1, 0, tab);
+  return next;
+}
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return tabs;
-  const next = [...tabs];
-  const at = next.findIndex((t) => t.id === "expenses");
-  next.splice(at + 1, 0, FINANCE_TAB);
-  return next;
+  const withRenewals =
+    RENEWALS_DUE_ENABLED && tierAllows(tier, "manager") ? insertAfter(tabs, "bookings", RENEWALS_DUE_TAB) : tabs;
+  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return withRenewals;
+  return insertAfter(withRenewals, "expenses", FINANCE_TAB);
+}
+
+/**
+ * Where the admin shell is. An unknown tab renders Overview. Renewal Due
+ * and Unified Finance stay off the rail while their flags are false, including
+ * a direct link, and that decision does not wait on the role lookup.
+ */
+export function resolveAdminTab(args: {
+  urlTab: string | null;
+  tier: StaffTier | null;
+  navTabs: readonly { id: string }[];
+}): string {
+  if (args.urlTab === "settings") return "settings";
+  if (args.urlTab === "finance") {
+    if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "finance";
+  }
+  if (args.urlTab === "renewals_due") {
+    if (!RENEWALS_DUE_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "renewals_due";
+  }
+  if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
+  if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";
+  return args.urlTab;
 }
 
 /**
@@ -151,6 +193,10 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
+  if (RENEWALS_DUE_ENABLED && tierAllows(tier, "manager")) {
+    const at = entries.findIndex((t) => t.id === "bookings");
+    entries.splice(at + 1, 0, { ...RENEWALS_DUE_TAB, href: "renewals_due" });
+  }
   if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return entries;
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
