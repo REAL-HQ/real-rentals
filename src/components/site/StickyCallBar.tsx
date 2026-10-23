@@ -5,7 +5,7 @@ import { trackCallClick } from "./PhoneLink";
 export function StickyCallBar({ onApplyClick }: { onApplyClick?: () => void }) {
   const phone = useBusinessPhone();
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 sm:hidden border-t border-border bg-white/95 backdrop-blur-md shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.25)]">
+    <div className="mobile-call-bar fixed inset-x-0 bottom-0 z-40 sm:hidden border-t border-border bg-white/95 backdrop-blur-md shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.25)]" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
       <div className="grid grid-cols-2 gap-2 p-2">
         <a
           href={phone.tel}

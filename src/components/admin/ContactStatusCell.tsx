@@ -37,11 +37,18 @@ export function ContactStatusCell({
   applicationId,
   row,
   onSaved,
+  showMarkContacted = false,
 }: {
   applicationId: string;
   /** The applications row, read for its contact_* fields. */
   row: unknown;
   onSaved: (state: ContactStatusState) => void;
+  /**
+   * One-click Mark Contacted. Off on the Drivers list.
+   * Uses this cell's setContactStatus save, and sends the note and follow-up
+   * already stored so a blank form cannot clear them.
+   */
+  showMarkContacted?: boolean;
 }) {
   const { supported, state } = useMemo(() => readContactStatus(row), [row]);
   const [open, setOpen] = useState(false);
@@ -77,16 +84,16 @@ export function ContactStatusCell({
     setTimeout(() => noteRef.current?.focus(), 0);
   }
 
-  async function commit() {
-    if (!draft || blockers.length || saving) return;
+  async function persist(next: ContactStatusDraft) {
+    if (saving) return;
     setSaving(true);
     try {
       const res = await save({
         data: {
           applicationId,
-          status: draft.status,
-          note: draft.note.trim() || undefined,
-          followUpOn: draft.followUpOn || undefined,
+          status: next.status,
+          note: next.note.trim() || undefined,
+          followUpOn: next.followUpOn || undefined,
         },
       });
       onSaved(res.state);
@@ -100,6 +107,26 @@ export function ContactStatusCell({
     } finally {
       setSaving(false);
     }
+  }
+
+  async function commit() {
+    if (!draft || blockers.length || saving) return;
+    await persist(draft);
+  }
+
+  async function markContactedNow() {
+    if (saving) return;
+    const next: ContactStatusDraft = {
+      status: "contacted",
+      note: state.note ?? "",
+      followUpOn: state.followUpOn ?? "",
+    };
+    const why = contactStatusBlockers(next);
+    if (why.length) {
+      toast.error(why.map((b) => b.why).join(" "));
+      return;
+    }
+    await persist(next);
   }
 
   const tone = CONTACT_STATUS_TONE[state.status] ?? CONTACT_STATUS_TONE.new;
@@ -117,7 +144,7 @@ export function ContactStatusCell({
     );
   }
 
-  return (
+  const editor = (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         data-contact-status={state.status}
@@ -255,6 +282,23 @@ export function ContactStatusCell({
         )}
       </PopoverContent>
     </Popover>
+  );
+
+  if (!showMarkContacted) return editor;
+
+  return (
+    <div className="inline-flex flex-col items-start gap-1">
+      {editor}
+      <button
+        type="button"
+        data-mark-contacted
+        disabled={saving}
+        onClick={() => void markContactedNow()}
+        className="rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium hover:bg-soft disabled:opacity-50"
+      >
+        {saving ? "Saving…" : "Mark Contacted"}
+      </button>
+    </div>
   );
 }
 
