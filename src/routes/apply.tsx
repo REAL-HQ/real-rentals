@@ -1,6 +1,6 @@
 import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { FadeUp } from "@/components/site/FadeUp";
@@ -69,8 +69,28 @@ const VEHICLE_TYPE_TO_SIZE: Record<string, "Sedan" | "SUV" | "XL"> = {
   xl: "XL",
 };
 
+/** Hard off. Duplicated so /apply does not import the prefill module while the flag is off. */
+const APPLY_VEHICLE_PREFILL_ENABLED: boolean = false as boolean;
+
+function ApplyVehiclePrefillSlot({ vehicleId }: { vehicleId?: string }) {
+  const [Panel, setPanel] = useState<ComponentType<{ vehicleId?: string; source: "search" }> | null>(null);
+  useEffect(() => {
+    if (APPLY_VEHICLE_PREFILL_ENABLED !== true) return;
+    if (!vehicleId) return;
+    let cancelled = false;
+    import("@/components/site/ApplyVehiclePrefill").then((mod) => {
+      if (!cancelled) setPanel(() => mod.ApplyVehiclePrefill);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [vehicleId]);
+  if (APPLY_VEHICLE_PREFILL_ENABLED !== true || !vehicleId || !Panel) return null;
+  return <Panel vehicleId={vehicleId} source="search" />;
+}
+
 function ApplyPage() {
-  const { t, city: preCity, pickup: prePickup, vehicle_type: preType } = Route.useSearch();
+  const { t, city: preCity, pickup: prePickup, vehicle_type: preType, vehicle: preVehicle } = Route.useSearch();
   // allowStashed: false — /apply starts a new application. A token stashed by
   // the previous person on a shared or kiosk device must not open their form.
   const token = useResumeToken(t, { allowStashed: false });
@@ -89,6 +109,7 @@ function ApplyPage() {
             preCity={preCity ?? ""}
             prePickup={prePickup ?? ""}
             preVehicleSize={VEHICLE_TYPE_TO_SIZE[(preType ?? "").toLowerCase()] ?? null}
+            preVehicle={preVehicle}
           />
         </main>
       )}
@@ -100,11 +121,14 @@ function ContactStep({
   preCity,
   prePickup,
   preVehicleSize,
+  preVehicle,
 }: {
   preCity: string;
   prePickup: string;
   /** Carried from a catalog card. The applicant can still change it in Part 1. */
   preVehicleSize: "Sedan" | "SUV" | "XL" | null;
+  /** A vehicles.id from the search key. Shown only while the prefill flag is on. */
+  preVehicle?: string;
 }) {
   const navigate = useNavigate();
   const savePartial = useServerFn(savePartialApplication);
@@ -192,6 +216,7 @@ function ContactStep({
         <div className="mt-8 text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase mb-3">Step 1 Of 3</div>
         <h1 className="text-3xl md:text-4xl font-semibold">Tell Us How To Reach You</h1>
         <p className="mt-3 text-muted-foreground">Two short questions after this, then you're done. No documents needed.</p>
+        <ApplyVehiclePrefillSlot vehicleId={preVehicle} />
 
         {returning !== null ? (
           <div className="mt-8">

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { SigningPanel } from "@/components/esign/SigningPanel";
 import { layoutToText } from "@/lib/agreement-layout";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -1353,6 +1353,25 @@ function PreRentalPanel({
   );
 }
 
+/** Hard off. Duplicated so the portal does not import the payment card while the flag is off. */
+const DRIVER_PAYMENT_HISTORY_ENABLED: boolean = false as boolean;
+
+function PaymentHistoryGate() {
+  const [View, setView] = useState<ComponentType | null>(null);
+  useEffect(() => {
+    if (DRIVER_PAYMENT_HISTORY_ENABLED !== true) return;
+    let live = true;
+    void import("@/components/portal/DriverPaymentHistoryCard").then((mod) => {
+      if (live) setView(() => mod.DriverPaymentHistoryCard);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (DRIVER_PAYMENT_HISTORY_ENABLED !== true || View == null) return null;
+  return <View />;
+}
+
 function DashboardView({
   data,
   onNavigate,
@@ -1367,6 +1386,7 @@ function DashboardView({
 
   return (
     <div className="space-y-6">
+      <PaymentHistoryGate />
       {activeMaint.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 text-sm flex items-start gap-3">
           <Wrench className="w-4 h-4 mt-0.5 shrink-0" />

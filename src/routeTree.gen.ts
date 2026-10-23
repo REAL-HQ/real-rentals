@@ -33,6 +33,7 @@ import { Route as CardApplicationIdRouteImport } from './routes/card.$applicatio
 import { Route as FleetIndexRouteImport } from './routes/fleet.index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
 import { Route as SignTokenRouteImport } from './routes/sign.$token'
+import { Route as VehiclesIdRouteImport } from './routes/vehicles.$id'
 import { Route as ApiPublicCronAutomationsRouteImport } from './routes/api/public/cron/automations'
 import { Route as ApiPublicCronEsignArchiveRetryRouteImport } from './routes/api/public/cron/esign-archive-retry'
 import { Route as ApiPublicCronFleetInboxRouteImport } from './routes/api/public/cron/fleet-inbox'
@@ -165,6 +166,11 @@ const SignTokenRoute = SignTokenRouteImport.update({
   path: '/sign/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VehiclesIdRoute = VehiclesIdRouteImport.update({
+  id: '/vehicles/$id',
+  path: '/vehicles/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicCronAutomationsRoute =
   ApiPublicCronAutomationsRouteImport.update({
     id: '/api/public/cron/automations',
@@ -251,6 +257,7 @@ export interface FileRoutesByFullPath {
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/sign/$token': typeof SignTokenRoute
+  '/vehicles/$id': typeof VehiclesIdRoute
   '/fleet/': typeof FleetIndexRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
   '/api/public/cron/esign-archive-retry': typeof ApiPublicCronEsignArchiveRetryRoute
@@ -288,6 +295,7 @@ export interface FileRoutesByTo {
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/sign/$token': typeof SignTokenRoute
+  '/vehicles/$id': typeof VehiclesIdRoute
   '/fleet': typeof FleetIndexRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
   '/api/public/cron/esign-archive-retry': typeof ApiPublicCronEsignArchiveRetryRoute
@@ -326,6 +334,7 @@ export interface FileRoutesById {
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/sign/$token': typeof SignTokenRoute
+  '/vehicles/$id': typeof VehiclesIdRoute
   '/fleet/': typeof FleetIndexRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
   '/api/public/cron/esign-archive-retry': typeof ApiPublicCronEsignArchiveRetryRoute
@@ -365,6 +374,7 @@ export interface FileRouteTypes {
     | '/card/$applicationId'
     | '/fleet/$id'
     | '/sign/$token'
+    | '/vehicles/$id'
     | '/fleet/'
     | '/api/public/cron/automations'
     | '/api/public/cron/esign-archive-retry'
@@ -402,6 +412,7 @@ export interface FileRouteTypes {
     | '/card/$applicationId'
     | '/fleet/$id'
     | '/sign/$token'
+    | '/vehicles/$id'
     | '/fleet'
     | '/api/public/cron/automations'
     | '/api/public/cron/esign-archive-retry'
@@ -439,6 +450,7 @@ export interface FileRouteTypes {
     | '/card/$applicationId'
     | '/fleet/$id'
     | '/sign/$token'
+    | '/vehicles/$id'
     | '/fleet/'
     | '/api/public/cron/automations'
     | '/api/public/cron/esign-archive-retry'
@@ -477,6 +489,7 @@ export interface RootRouteChildren {
   CardApplicationIdRoute: typeof CardApplicationIdRoute
   FleetIdRoute: typeof FleetIdRoute
   SignTokenRoute: typeof SignTokenRoute
+  VehiclesIdRoute: typeof VehiclesIdRoute
   FleetIndexRoute: typeof FleetIndexRoute
   ApiPublicCronAutomationsRoute: typeof ApiPublicCronAutomationsRoute
   ApiPublicCronEsignArchiveRetryRoute: typeof ApiPublicCronEsignArchiveRetryRoute
@@ -661,6 +674,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/vehicles/$id': {
+      id: '/vehicles/$id'
+      path: '/vehicles/$id'
+      fullPath: '/vehicles/$id'
+      preLoaderRoute: typeof VehiclesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/cron/automations': {
       id: '/api/public/cron/automations'
       path: '/api/public/cron/automations'
@@ -765,6 +785,7 @@ const rootRouteChildren: RootRouteChildren = {
   CardApplicationIdRoute: CardApplicationIdRoute,
   FleetIdRoute: FleetIdRoute,
   SignTokenRoute: SignTokenRoute,
+  VehiclesIdRoute: VehiclesIdRoute,
   FleetIndexRoute: FleetIndexRoute,
   ApiPublicCronAutomationsRoute: ApiPublicCronAutomationsRoute,
   ApiPublicCronEsignArchiveRetryRoute: ApiPublicCronEsignArchiveRetryRoute,
