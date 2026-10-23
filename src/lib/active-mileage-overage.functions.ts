@@ -1,0 +1,157 @@
+// Read-only mileage overage for the Active bookings list.
+// The flag is refused before authentication and before any read.
+// No insert, update, delete, or new table.
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { ACTIVE_MILEAGE_OVERAGE_ENABLED } from "@/lib/active-mileage-overage-flag";
+import {
+  easternCalendarDate,
+  estimateMileageOverage,
+  statedAllowance,
+  type MileageOverage,
+} from "@/lib/active-mileage-overage";
+
+const refuseMileageOverage = createMiddleware({ type: "function" }).server(async ({ next }) => {
+  if (!ACTIVE_MILEAGE_OVERAGE_ENABLED) throw new Error("Mileage Overage is off");
+  return next();
+});
+
+const LIMIT = 200;
+const ID_BATCH = 80;
+
+export type ActiveMileageOverageResult = {
+  today: string;
+  rows: MileageOverage[];
+  truncated: boolean;
+};
+
+function idBatches(ids: string[]): string[][] {
+  const batches: string[][] = [];
+  for (let i = 0; i < ids.length; i += ID_BATCH) batches.push(ids.slice(i, i + ID_BATCH));
+  return batches;
+}
+
+type Page<T> = { data: T[] | null; error: { message: string } | null };
+
+type AgreementAllowance = {
+  id: string;
+  rental_id: string | null;
+  status: string;
+  signed_at: string | null;
+  agreement_mileage_allowance: string | null;
+};
+
+async function readBatches<T>(
+  ids: string[],
+  load: (batch: string[]) => PromiseLike<Page<T>>,
+): Promise<{ rows: T[]; truncated: boolean }> {
+  if (ids.length === 0) return { rows: [], truncated: false };
+  const pages = await Promise.all(idBatches(ids).map((batch) => load(batch)));
+  const rows: T[] = [];
+  let truncated = false;
+  for (const page of pages) {
+    if (page.error) throw new Error(page.error.message);
+    const data = page.data ?? [];
+    if (data.length > LIMIT) truncated = true;
+    rows.push(...data.slice(0, LIMIT));
+  }
+  return { rows, truncated };
+}
+
+/** Manager-only. The flag throws before auth and before any read. */
+export const listActiveMileageOverage = createServerFn({ method: "POST" })
+  .middleware([refuseMileageOverage, requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ rentalIds: z.array(z.string().uuid()).max(100) }).strict().parse(input ?? {}))
+  .handler(async ({ data, context }): Promise<ActiveMileageOverageResult> => {
+    const { requireManager } = await import("@/lib/roles.server");
+    await requireManager(context.userId);
+    const today = easternCalendarDate(new Date());
+    if (data.rentalIds.length === 0) return { today, rows: [], truncated: false };
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const rentalsQ = await supabaseAdmin
+      .from("rentals")
+      .select("id,vehicle_id,start_date,pickup_reading_id,status")
+      .eq("status", "active")
+      .in("id", data.rentalIds)
+      .order("id", { ascending: true })
+      .limit(LIMIT + 1);
+    if (rentalsQ.error) throw new Error(rentalsQ.error.message);
+    const rentalPage = rentalsQ.data ?? [];
+    const rentalsTruncated = rentalPage.length > LIMIT;
+    const rentals = rentalPage.slice(0, LIMIT);
+
+    const pickupIds = [...new Set(rentals.map((row) => row.pickup_reading_id).filter((id): id is string => !!id))];
+    const vehicleIds = [...new Set(rentals.map((row) => row.vehicle_id).filter((id): id is string => !!id))];
+    const rentalIds = rentals.map((row) => row.id);
+
+    const [readingsQ, vehiclesQ, agreementsQ] = await Promise.all([
+      readBatches(pickupIds, (batch) =>
+        supabaseAdmin.from("odometer_readings").select("id,mileage,status,vehicle_id").in("id", batch).limit(LIMIT + 1),
+      ),
+      readBatches(vehicleIds, (batch) =>
+        supabaseAdmin.from("vehicles").select("id,current_odometer").in("id", batch).limit(LIMIT + 1),
+      ),
+      readBatches<AgreementAllowance>(rentalIds, (batch) =>
+        (supabaseAdmin.from("agreements") as unknown as {
+          select: (columns: string) => {
+            in: (column: string, values: string[]) => {
+              order: (column: string, options: { ascending: boolean; nullsFirst?: boolean }) => {
+                order: (column: string, options: { ascending: boolean }) => {
+                  limit: (count: number) => PromiseLike<Page<AgreementAllowance>>;
+                };
+              };
+            };
+          };
+        })
+          .select("id,rental_id,status,signed_at,agreement_mileage_allowance")
+          .in("rental_id", batch)
+          .order("signed_at", { ascending: false, nullsFirst: false })
+          .order("id", { ascending: false })
+          .limit(LIMIT + 1),
+      ),
+    ]);
+
+    const readingById = new Map(readingsQ.rows.map((row) => [row.id, row]));
+    const lastByVehicle = new Map(vehiclesQ.rows.map((row) => [row.id, row.current_odometer]));
+    const agreementsByRental = new Map<string, typeof agreementsQ.rows>();
+    for (const row of agreementsQ.rows) {
+      if (!row.rental_id) continue;
+      const list = agreementsByRental.get(row.rental_id) ?? [];
+      list.push(row);
+      agreementsByRental.set(row.rental_id, list);
+    }
+
+    return {
+      today,
+      rows: rentals.map((rental) => {
+        const agreements = [...(agreementsByRental.get(rental.id) ?? [])].sort((a, b) => {
+          const aOn = a.signed_at ?? "";
+          const bOn = b.signed_at ?? "";
+          if (aOn !== bOn) return aOn < bOn ? 1 : -1;
+          return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+        });
+        let allowanceText: string | null = null;
+        for (const agreement of agreements) {
+          if (agreement.status === "void" || agreement.status === "voided") continue;
+          allowanceText = statedAllowance(agreement.agreement_mileage_allowance);
+          if (allowanceText) break;
+        }
+        const reading = rental.pickup_reading_id ? readingById.get(rental.pickup_reading_id) : null;
+        return estimateMileageOverage({
+          rentalId: rental.id,
+          rentalStatus: rental.status,
+          vehicleId: rental.vehicle_id,
+          startMiles: reading?.mileage ?? null,
+          readingStatus: reading?.status ?? null,
+          readingVehicleId: reading?.vehicle_id ?? null,
+          lastMiles: lastByVehicle.get(rental.vehicle_id) ?? null,
+          allowanceText,
+          startDate: rental.start_date,
+          today,
+        });
+      }),
+      truncated: rentalsTruncated || readingsQ.truncated || vehiclesQ.truncated || agreementsQ.truncated,
+    };
+  });
