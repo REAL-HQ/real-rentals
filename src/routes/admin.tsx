@@ -52,6 +52,8 @@ import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { FleetAvailability } from "@/components/admin/FleetAvailability";
+import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -297,6 +299,10 @@ function Admin() {
     if (urlTab === "finance") {
       if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "finance";
+    }
+    if (urlTab === "fleet_availability") {
+      if (!FLEET_AVAILABILITY_ENABLED || (tier && !tierAllows(tier, "coordinator"))) return "overview";
+      return "fleet_availability";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -805,6 +811,9 @@ function Admin() {
             {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
+            {FLEET_AVAILABILITY_ENABLED && tab === "fleet_availability" && (
+              <FleetAvailability canOpenWaitingList={tierAllows(tier, "manager")} />
+            )}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>
