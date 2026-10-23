@@ -23,6 +23,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { stepQuery } from "./m2-step29-after-step25.mjs";
 import { baselineOrder } from "./m2-rehearsal-order.mjs";
+import { HOSTED_ROLLBACKS, OUT_DIR as HOSTED_ROLLBACK_DIR } from "./m2-hosted-rollbacks.mjs";
 
 const OUT = "proposed/rehearsal/manifest.json";
 const VERIFY_DIR = "proposed/rehearsal/verify";
@@ -123,6 +124,10 @@ export function build() {
   out.push(entry("query", "proposed/backfill-document-content-sha.sql", "none", { expect: "missing=0 and mismatched=0" }));
   for (const r of orderTable(runbook).slice().reverse()) {
     out.push(entry("rollback", r.rollback, "strip_txn", { step: r.step }));
+  }
+  // Hosted variants of the role-dropping rollbacks, appended so earlier ords stay stable.
+  for (const v of HOSTED_ROLLBACKS.slice().reverse()) {
+    out.push(entry("rollback", `${HOSTED_ROLLBACK_DIR}/${v.file}`, "strip_txn", { step: v.step, hosted_variant_of: `proposed/rollback/${v.file}` }));
   }
   const ob = out.filter((e) => e.transform === "outbound_block").length;
   if (ob !== 8) throw new Error(`expected 8 outbound_block entries, got ${ob}`);

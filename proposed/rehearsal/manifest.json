@@ -2675,5 +2675,38 @@
   "bytes": 3756,
   "step": 1,
   "ord": 236
+ },
+ {
+  "kind": "rollback",
+  "path": "proposed/m2-hosted-amendments/rollback/05-evidence.sql",
+  "transform": "strip_txn",
+  "sha256": "721112c19563aa2c15410965be21122c7c64077fd45fe198dce248f4c2fd6e6e",
+  "executed_sha256": "cb4a1c4babe290ac340dc54aa5f7a8ce8806e02c54b6ac7daca2ef67c3328763",
+  "bytes": 7398,
+  "step": 7,
+  "hosted_variant_of": "proposed/rollback/05-evidence.sql",
+  "ord": 237
+ },
+ {
+  "kind": "rollback",
+  "path": "proposed/m2-hosted-amendments/rollback/03-record-rental.sql",
+  "transform": "strip_txn",
+  "sha256": "c30af163bee1e006ca6cc78d0e9bfa98d48ce0324c2ffc007fa21d883bd048e0",
+  "executed_sha256": "f819757bdf40f40d9f75f3fe927b8c282b27126e4e8d1a9be429f39c63c2573e",
+  "bytes": 6428,
+  "step": 5,
+  "hosted_variant_of": "proposed/rollback/03-record-rental.sql",
+  "ord": 238
+ },
+ {
+  "kind": "rollback",
+  "path": "proposed/m2-hosted-amendments/rollback/01-auth-binding.sql",
+  "transform": "strip_txn",
+  "sha256": "007376634d3cc687c0803b533a71614af0d920148c151140e1a3d87e47006947",
+  "executed_sha256": "20afd2f18e35696292c28b3b9ebc69f353cd396d5c13b10ab568a0d279f36a93",
+  "bytes": 4110,
+  "step": 1,
+  "hosted_variant_of": "proposed/rollback/01-auth-binding.sql",
+  "ord": 239
  }
 ]
