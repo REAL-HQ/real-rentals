@@ -101,6 +101,51 @@ const pi = (over: Row = {}): Row => ({
 const ok = async (r: Response) => { assert.equal(r.status, 200); return r; };
 
 describe("payments webhook — simulated Stripe events", () => {
+  // checkout.session.completed dispatch. The handler's first three statements
+  // are guard returns that run before any Stripe client is built, so they are
+  // reachable with no credential.
+  //
+  // A guard case alone would be vacuous: "nothing was written" looks identical
+  // whether the handler guarded correctly or the event never reached it. The
+  // last case here proves reachability -- past the guards the handler asks for
+  // a Stripe client, which throws without STRIPE_SECRET_KEY, and the route
+  // turns that into a 400. 200 means guarded; 400 means it got through.
+  const checkout = (object: Row) => ({ type: "checkout.session.completed", data: { object } });
+
+  it("a non-setup checkout session is ignored and writes nothing", async () => {
+    const db = fakeDb({ payments: [], applications: [{ id: "app_1" }], rentals: [], notifications: [] });
+    const r = await postVerifiedPaymentWebhook(checkout({ mode: "payment", metadata: { applicationId: "app_1" }, setup_intent: "seti_1" }), db, "live");
+    assert.equal(r.status, 200);
+    assert.deepEqual(db._state.payments, []);
+    assert.deepEqual(db._state.notifications, []);
+    assert.deepEqual(db._state.applications, [{ id: "app_1" }], "a payment-mode session touched an application");
+  });
+
+  it("a setup session with no applicationId writes nothing", async () => {
+    const db = fakeDb({ payments: [], applications: [{ id: "app_1" }], rentals: [], notifications: [] });
+    const r = await postVerifiedPaymentWebhook(checkout({ mode: "setup", metadata: {}, setup_intent: "seti_1" }), db, "live");
+    assert.equal(r.status, 200);
+    assert.deepEqual(db._state.applications, [{ id: "app_1" }]);
+    assert.deepEqual(db._state.notifications, []);
+  });
+
+  it("a setup session with no setup_intent writes nothing", async () => {
+    const db = fakeDb({ payments: [], applications: [{ id: "app_1" }], rentals: [], notifications: [] });
+    const r = await postVerifiedPaymentWebhook(checkout({ mode: "setup", metadata: { applicationId: "app_1" } }), db, "live");
+    assert.equal(r.status, 200);
+    assert.deepEqual(db._state.applications, [{ id: "app_1" }]);
+    assert.deepEqual(db._state.notifications, []);
+  });
+
+  it("past the guards the event really does reach the handler", async () => {
+    const db = fakeDb({ payments: [], applications: [{ id: "app_1" }], rentals: [], notifications: [] });
+    const r = await postVerifiedPaymentWebhook(
+      checkout({ mode: "setup", metadata: { applicationId: "app_1" }, setup_intent: "seti_1" }), db, "live");
+    assert.equal(r.status, 400,
+      "the handler was never reached: a setup session that passes every guard should ask for a Stripe client and fail without a key");
+    assert.deepEqual(db._state.applications, [{ id: "app_1" }], "it wrote before reaching Stripe");
+  });
+
   it("duplicate payment_intent.succeeded pays the row once and the replay changes nothing", async () => {
     const db = fakeDb({ payments: [{ id: P1, status: "pending", balance_due: 350, failure_reason: null, notified_status: null }] });
     const event = { type: "payment_intent.succeeded", data: { object: pi({ metadata: { rentalId: RENTAL, reason: "rent", paymentIds: P1 } }) } };
