@@ -22,6 +22,8 @@ import { toast } from "sonner";
 import { Plus, Trash2, Car, ArrowRight, Copy, List, LayoutGrid, ChevronLeft, ChevronRight, Archive, RotateCcw } from "lucide-react";
 import { displayVehicleWord } from "@/lib/display-normalize";
 import { EmptyState } from "./ui";
+import { MaintenanceLogBadge, MaintenanceLogBadgeSource } from "./MaintenanceLog";
+import type { LogAttention } from "@/lib/maintenance-log";
 import {
   Select,
   SelectContent,
@@ -147,12 +149,24 @@ function Rate({ v }: { v: VehicleListRow }) {
   return v.weekly_rate == null ? <span className="text-muted-foreground">Rate Not Set</span> : <span className="font-medium text-foreground">${v.weekly_rate}/wk</span>;
 }
 
-export function VehiclesPanel({
+type VehiclesPanelProps = { externalSearch?: string; autoOpenAdd?: boolean; openId?: string | null; listState?: ListState };
+
+export function VehiclesPanel(props: VehiclesPanelProps = {}) {
+  return (
+    <MaintenanceLogBadgeSource>
+      {(reminders, remindersFailed) => <FleetVehicles {...props} reminders={reminders} remindersFailed={remindersFailed} />}
+    </MaintenanceLogBadgeSource>
+  );
+}
+
+function FleetVehicles({
   externalSearch = "",
   autoOpenAdd = false,
   openId = null,
   listState = {},
-}: { externalSearch?: string; autoOpenAdd?: boolean; openId?: string | null; listState?: ListState } = {}) {
+  reminders = {},
+  remindersFailed = false,
+}: VehiclesPanelProps & { reminders?: Record<string, LogAttention>; remindersFailed?: boolean } = {}) {
   const [partners, setPartners] = useState<Array<{ id: string; name: string }>>([]);
   const navigate = useNavigate();
   const viewing = openId;
@@ -273,7 +287,7 @@ export function VehiclesPanel({
             </div>
             <div className="p-4">
               <div className="h-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{v.unit_number ?? ""}</div>
-              <div className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">{vehicleName(v)}</div>
+              <div className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</div>
               <dl className="mt-2.5 grid grid-cols-[44px_1fr] items-center gap-y-0.5 text-[13px] leading-6">
                 <dt className="text-muted-foreground">Plate</dt>
                 <dd className="truncate font-mono">{v.license_plate || <span className="text-muted-foreground">—</span>}</dd>
@@ -316,6 +330,7 @@ export function VehiclesPanel({
 
   return (
     <div>
+      {remindersFailed ? <p className="mb-3 text-sm text-[#D03020]" data-testid="maintenance-log-error">Could not load maintenance reminders.</p> : null}
       <div className="admin-sticky-bar flex flex-col lg:flex-row lg:items-center gap-3 mb-4 pb-2">
         <div className="flex-1 flex flex-wrap gap-2">
           <input
@@ -445,7 +460,7 @@ export function VehiclesPanel({
               {rows.map((v) => (
                 <tr key={v.id} onClick={() => setViewing(v.id)} className="border-t border-border cursor-pointer hover:bg-[#FAFAFB]">
                   <td className="px-3 py-2 font-medium whitespace-nowrap">{v.unit_number ?? <span className="text-muted-foreground">—</span>}</td>
-                  <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}</td>
+                  <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</td>
                   <td className="px-3 py-2 font-mono whitespace-nowrap">{v.license_plate || <span className="text-muted-foreground">—</span>}</td>
                   <td className="px-3 py-2"><CopyVin vin={v.vin} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><Availability v={v} /></td>
