@@ -261,10 +261,28 @@ ok(!/listing_photo[\s\S]{0,200}rentalReady/i.test(rules), "a published photo sti
 console.log("\nthe unused parameter is gone, and nothing was relying on it");
 ok(R.vehicleReadinessChecks.length === 3,
   "vehicleReadinessChecks takes (v, facts, docKinds) before its defaulted `today` — the photo count is gone");
+// The photo-count argument is gone. The profile checklist is the only caller
+// that supplies real facts and document kinds. Vehicle Turnaround is allowed
+// as a second caller because it reuses the same registration and insurance
+// checks, so those two statuses cannot drift. It passes expiry dates, empty
+// facts, no document kinds, and an explicit today. It does not pass a photo
+// count, and it does not grade the whole car. The board, the nav, and the
+// server read stay behind VEHICLE_TURNAROUND_ENABLED, a hard false, so this
+// call is not a live checklist until an owner changes that constant.
 const callers = execFileSync("grep", ["-rn", "vehicleReadinessChecks(", "src"], { encoding: "utf8" })
   .split("\n").filter((l) => l && !l.includes("export function"));
-ok(callers.length === 1, `exactly one caller remains (${callers.length})`);
-ok(!/publishedPhotos/.test(callers[0] ?? ""), "  and it no longer passes a published-photo count");
+const profileCallers = callers.filter((l) => l.includes("src/components/admin/VehicleProfile.tsx"));
+const turnaroundCallers = callers.filter((l) => l.includes("src/lib/vehicle-turnaround.ts"));
+const otherCallers = callers.filter((l) => !profileCallers.includes(l) && !turnaroundCallers.includes(l));
+ok(profileCallers.length === 1, `the profile checklist remains the one live caller (${profileCallers.length})`);
+ok(!/publishedPhotos/.test(profileCallers[0] ?? ""), "  and it no longer passes a published-photo count");
+ok(turnaroundCallers.length === 1, `Vehicle Turnaround is the only extra caller (${turnaroundCallers.length})`);
+ok(!/publishedPhotos/.test(turnaroundCallers[0] ?? ""), "  and Turnaround does not pass a published-photo count");
+ok(otherCallers.length === 0, `no other caller of vehicleReadinessChecks (${otherCallers.join("; ") || "0"})`);
+const turnaroundFlag = readFileSync("src/lib/vehicle-turnaround-flag.ts", "utf8");
+ok(turnaroundFlag.includes("export const VEHICLE_TURNAROUND_ENABLED = false;"),
+  "the Turnaround caller stays behind a hard-false flag");
+ok(!/process\.env/.test(turnaroundFlag), "  and no environment variable can open that flag");
 ok(/listingPhotoCheck\(p\.counts\.publishedPhotos/.test(profileSrc),
   "published photos still drive the listing check, which is where they belong");
 

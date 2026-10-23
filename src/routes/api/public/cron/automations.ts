@@ -24,6 +24,17 @@ async function handle(request: Request): Promise<Response> {
   if (tokenErr || !expectedToken) return new Response("token config missing", { status: 500 });
   if (!provided || provided !== expectedToken) return new Response("unauthorized", { status: 401 });
 
+  // Enrollment only. The sweep below still sends whatever step is due.
+  // Flag off does not import the helper and cannot fail this cron.
+  if (process.env.DOCUMENT_EXPIRY_NOTICES_ENABLED === "true") {
+    try {
+      const { enrollDocumentExpiringNotices } = await import("@/lib/document-expiry.server");
+      await enrollDocumentExpiringNotices();
+    } catch (err) {
+      console.error("[document-expiry] enroll failed", err);
+    }
+  }
+
   const result = await runDueAutomations();
   return Response.json({ ok: true, ...result });
 }

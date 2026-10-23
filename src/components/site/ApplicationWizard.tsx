@@ -271,7 +271,7 @@ export function ProgressBar({
               className={`h-1.5 rounded-full transition-colors ${done || active ? "bg-real-red" : "bg-border"}`}
             />
             <div
-              className={`mt-1.5 text-[10px] uppercase tracking-wider text-center ${active ? "text-real-red font-semibold" : "text-muted-foreground"}`}
+              className={`mt-1.5 text-xs uppercase tracking-wide text-center ${active ? "text-real-red font-semibold" : "text-muted-foreground"}`}
             >
               {s.label}
             </div>
@@ -566,7 +566,7 @@ function SideRail({ phase, source }: { phase: Phase; source: string | null | und
 function StepHeader({ eyebrow, title, sub }: { eyebrow: string; title: string; sub?: string }) {
   return (
     <div className="mb-5">
-      <div className="text-[10px] uppercase tracking-[0.22em] font-semibold text-real-red">
+      <div className="text-xs uppercase tracking-wide font-semibold text-real-red">
         {eyebrow}
       </div>
       <h2 className="mt-1.5 text-xl md:text-2xl font-semibold">{title}</h2>
@@ -590,7 +590,7 @@ function Choice<T extends string>({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
       {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
@@ -602,7 +602,7 @@ function Choice<T extends string>({
               key={o.value}
               type="button"
               onClick={() => onChange(o.value)}
-              className={`rounded-lg border px-4 py-2.5 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
+              className={`rounded-lg border px-4 min-h-11 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
             >
               {o.label}
             </button>
@@ -628,7 +628,7 @@ function YesNo({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
       <div className="mt-2 flex gap-2">
@@ -639,7 +639,7 @@ function YesNo({
               key={String(v)}
               type="button"
               onClick={() => onChange(v)}
-              className={`rounded-lg border px-5 py-2.5 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
+              className={`rounded-lg border px-5 min-h-11 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
             >
               {v ? yesLabel : noLabel}
             </button>
@@ -731,7 +731,7 @@ function TextField({
 }) {
   return (
     <label className="block">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </span>
       <input
@@ -739,7 +739,7 @@ function TextField({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+        className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
       />
     </label>
   );
@@ -779,7 +779,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
             <div className="flex items-center gap-2.5 min-w-0">
               <MapPin className="h-4 w-4 text-real-red shrink-0" />
               <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
                   Picking Up In
                 </div>
                 <div className="text-sm font-medium truncate">{place}</div>
@@ -817,7 +817,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
         />
 
         <label className="block max-w-xs">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
             When Do You Need The Vehicle?
           </span>
           <input
@@ -825,7 +825,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
             min={today}
             value={state.pickup_date ?? ""}
             onChange={(e) => update("pickup_date", e.target.value || null)}
-            className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+            className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
           />
           {/* Prefilled, and said out loud. A date box that silently arrives
               filled in reads as a default; saying where it came from makes it
@@ -882,7 +882,7 @@ function DrivingStep({
       />
       <div className="space-y-5">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
             Which Gig Apps Do You Use?
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -911,7 +911,7 @@ function DrivingStep({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
               Roughly How Many Trips Have You Completed?
             </span>
             <input
@@ -921,14 +921,14 @@ function DrivingStep({
               placeholder="e.g. 850"
               value={state.trips_completed ?? ""}
               onChange={(e) => update("trips_completed", e.target.value || null)}
-              className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+              className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
             />
             <span className="mt-1 block text-[11px] text-muted-foreground">
               A rough number across all apps is fine. Leave blank if you're not sure.
             </span>
           </label>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
               Driver Rating, If You Know It
             </span>
             <input
@@ -950,7 +950,7 @@ function DrivingStep({
                 if (!Number.isFinite(n)) return;
                 update("rating", Math.min(5, Math.max(1, n)));
               }}
-              className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+              className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
             />
             <span className="mt-1 block text-[11px] text-muted-foreground">
               Out of 5. Leave blank if you're not sure.
@@ -1079,7 +1079,7 @@ function ApplicationReceived({
       </div>
 
       <div className="mt-6 rounded-xl bg-white border border-border p-4">
-        <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">
+        <div className="text-xs uppercase tracking-wide font-semibold text-muted-foreground mb-2">
           Questions Now?
         </div>
         {/*
@@ -1504,7 +1504,7 @@ function InsuranceSection({
                 have ever handed over. */}
             {state.insurance_policy_on_file && !replacingPolicy ? (
               <div className="block">
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
                   Policy Number
                 </span>
                 <div className="mt-1.5 flex items-center justify-between gap-3 rounded-lg border border-border bg-white px-3 py-2.5">
@@ -1530,14 +1530,14 @@ function InsuranceSection({
             )}
           </div>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
               Policy Expiration Date
             </span>
             <input
               type="date"
               value={state.insurance_expires_on ?? ""}
               onChange={(e) => update("insurance_expires_on", e.target.value || null)}
-              className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+              className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
             />
           </label>
           <YesNo
@@ -1670,7 +1670,7 @@ function MultiFileUpload({
 
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
       {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}

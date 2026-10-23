@@ -321,11 +321,18 @@ export const listExpiring = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<ExpiringItem[]> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    return loadExpiringItems(supabaseAdmin, data.withinDays ?? 45);
+  });
 
-    const within = data.withinDays ?? 45;
+/**
+ * Shared read for listExpiring and Today's Ops. The day boundary is this
+ * server's local midnight, and dates that have already lapsed are included.
+ * Callers enforce their own role check before calling this.
+ */
+export async function loadExpiringItems(supabaseAdmin: any, withinDays: number): Promise<ExpiringItem[]> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const horizon = new Date(today.getTime() + within * 86400_000);
+    const horizon = new Date(today.getTime() + withinDays * 86400_000);
     const horizonStr = horizon.toISOString().slice(0, 10);
 
     const { data: vehicles } = await supabaseAdmin
@@ -362,7 +369,7 @@ export const listExpiring = createServerFn({ method: "POST" })
       .eq("is_current", true)
       .lte("expires_at", horizonStr);
 
-    const vById = new Map((vehicles ?? []).map((v: any) => [v.id, v]));
+    const vById = new Map<string, any>((vehicles ?? []).map((v: any) => [v.id, v]));
     for (const d of (docs ?? []) as any[]) {
       push(vById.get(d.vehicle_id), `${labelFor(d.kind)} (document)`, d.expires_at);
     }
@@ -384,7 +391,7 @@ export const listExpiring = createServerFn({ method: "POST" })
         .from("document_vehicle_links")
         .select("document_id,vehicle_id")
         .in("document_id", linkedIds);
-      const docById = new Map((linkedDocs ?? []).map((d: any) => [d.id, d]));
+      const docById = new Map<string, any>((linkedDocs ?? []).map((d: any) => [d.id, d]));
       // One shared insurance PDF warns once per vehicle it covers.
       for (const l of (links ?? []) as any[]) {
         const d = docById.get(l.document_id);
@@ -394,4 +401,4 @@ export const listExpiring = createServerFn({ method: "POST" })
 
     // Soonest — and most overdue — first.
     return out.sort((a, b) => a.days - b.days);
-  });
+}
