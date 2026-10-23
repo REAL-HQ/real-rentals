@@ -110,6 +110,7 @@ class Query {
   _run() {
     const t = this.table;
     if (this.kind === "select") {
+      if (S.failSelect === t) return { data: null, error: { message: `select ${t} refused` }, count: null };
       const m = this._matching();
       return { data: this.head ? null : m.map(clone), error: null, count: this.total ?? m.length };
     }
@@ -165,13 +166,16 @@ class Query {
   then(res, rej) { return this._gate().then(() => this._run()).then(res, rej); }
 }
 
-const table = (name) => ({
-  select: (cols, opts = {}) => new Query(name, "select", null, opts).select(cols, opts),
-  insert: (p) => new Query(name, "insert", p),
-  update: (p) => new Query(name, "update", p),
-  upsert: (p) => new Query(name, "upsert", p),
-  delete: () => new Query(name, "delete", null),
-});
+const table = (name) => {
+  S.reads = (S.reads ?? 0) + 1;
+  return {
+    select: (cols, opts = {}) => new Query(name, "select", null, opts).select(cols, opts),
+    insert: (p) => new Query(name, "insert", p),
+    update: (p) => new Query(name, "update", p),
+    upsert: (p) => new Query(name, "upsert", p),
+    delete: () => new Query(name, "delete", null),
+  };
+};
 
 export const supabaseAdmin = {
   from: table,
