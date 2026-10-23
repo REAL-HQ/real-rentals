@@ -14,7 +14,7 @@
 --   3. applications FOR UPDATE NOWAIT
 --   4. rentals FOR UPDATE NOWAIT
 --   5. both vehicles FOR UPDATE NOWAIT, lower uuid first
---   6. agreement and its document FOR SHARE NOWAIT
+--   6. the step 19b evidence row, then the agreement and its document, FOR SHARE NOWAIT
 --   7. identity-review rows FOR SHARE NOWAIT, then the open assignment
 --   8. closure insert, swap operation, replacement assignment
 -- Two swaps cannot deadlock each other: the vehicle locks are sorted.
@@ -33,10 +33,13 @@
 -- single open assignment. Past multi-vehicle intake is not represented by
 -- pretending the current replacement was the original vehicle.
 --
--- Agreement check below is a fail-closed column gate (signed, same application,
--- same replacement vehicle, hash and document pointer, signed_at not after
--- effective_at). It is not the reviewed private.record_agreement_evidence
--- adapter, which still denies. That adapter remains a blocker.
+-- Agreement check below reads private.agreement_evidence from step 19b.
+-- Install this file only after that table exists. A signed agreement that
+-- was never recorded there is not evidence. The row must name this
+-- application and the replacement vehicle, and the agreement's hash,
+-- document pointer and signed_at must still match the recorded evidence.
+-- signed_at may not be after effective_at. This does not update the
+-- agreement or its document.
 
 CREATE SEQUENCE private.swap_number_seq AS bigint MINVALUE 1 NO CYCLE;
 CREATE TABLE private.swap_operations (
@@ -58,18 +61,27 @@ CREATE TRIGGER swap_operations_immutable BEFORE UPDATE OR DELETE OR TRUNCATE ON 
 ALTER TABLE public.booking_vehicle_assignments
  ADD COLUMN swap_operation_id uuid REFERENCES private.swap_operations(operation_id);
 
--- Column gate only. Does not link the agreement, render a PDF, or accept a browser hash.
+-- Accepts a step 19b evidence row (by agreement id or evidence id). Does not
+-- link the agreement, render a PDF, or accept a browser hash.
 CREATE FUNCTION private.swap_agreement_evidence(_agreement uuid, _application uuid, _vehicle uuid, _effective timestamptz)
  RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path='' SET lock_timeout='500ms' AS $$
-DECLARE ag record; doc_id uuid;
+DECLARE ev private.agreement_evidence%ROWTYPE; ag record; doc_id uuid;
 BEGIN
  IF _agreement IS NULL THEN RAISE EXCEPTION 'agreement_evidence_required' USING ERRCODE='42501'; END IF;
+ SELECT * INTO ev FROM private.agreement_evidence WHERE agreement_id=_agreement FOR SHARE NOWAIT;
+ IF NOT FOUND THEN
+  SELECT * INTO ev FROM private.agreement_evidence WHERE id=_agreement FOR SHARE NOWAIT;
+ END IF;
+ IF NOT FOUND OR ev.application_id IS DISTINCT FROM _application OR ev.vehicle_id IS DISTINCT FROM _vehicle
+  OR ev.sha256 IS NULL OR ev.sha256 !~ '^[a-f0-9]{64}$' OR ev.document_id IS NULL
+  OR ev.signed_at IS NULL OR ev.signed_at>_effective
+ THEN RAISE EXCEPTION 'agreement_evidence_required' USING ERRCODE='42501'; END IF;
  SELECT id, application_id, vehicle_id, status, sha256, document_id, completed_document_id, signed_at
-  INTO ag FROM public.agreements WHERE id=_agreement FOR SHARE NOWAIT;
- IF NOT FOUND OR ag.status IS DISTINCT FROM 'signed' OR ag.application_id IS DISTINCT FROM _application
-  OR ag.vehicle_id IS DISTINCT FROM _vehicle OR ag.sha256 IS NULL OR ag.sha256 !~ '^[a-f0-9]{64}$'
-  OR ag.document_id IS NULL OR ag.completed_document_id IS DISTINCT FROM ag.document_id
-  OR ag.signed_at IS NULL OR ag.signed_at>_effective
+  INTO ag FROM public.agreements WHERE id=ev.agreement_id FOR SHARE NOWAIT;
+ IF NOT FOUND OR ag.status IS DISTINCT FROM 'signed' OR ag.application_id IS DISTINCT FROM ev.application_id
+  OR ag.vehicle_id IS DISTINCT FROM ev.vehicle_id OR ag.sha256 IS DISTINCT FROM ev.sha256
+  OR ag.document_id IS DISTINCT FROM ev.document_id OR ag.completed_document_id IS DISTINCT FROM ag.document_id
+  OR ag.signed_at IS DISTINCT FROM ev.signed_at
  THEN RAISE EXCEPTION 'agreement_evidence_required' USING ERRCODE='42501'; END IF;
  SELECT id INTO doc_id FROM public.documents WHERE id=ag.document_id FOR SHARE NOWAIT;
  IF doc_id IS NULL THEN RAISE EXCEPTION 'agreement_evidence_required' USING ERRCODE='42501'; END IF;
