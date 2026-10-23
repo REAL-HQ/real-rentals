@@ -5,7 +5,8 @@ Project: **https://lovable.dev/projects/8cf1f99e-71ad-4a93-a47c-bfbe833616d6**
 | | |
 |---|---|
 | Publish | `integration/grok-baseline-2026-10-22` @ **`67b62664`** |
-| Roll back to | `codex/revenue-publication` @ **`0946c750`** |
+| **Roll back — first choice** | `rollback/pre-rc266-7e3e6eb6` @ **`7e3e6eb6`** |
+| **Roll back — second choice** | `codex/revenue-publication` @ **`0946c750`** |
 
 > **Rollback target corrected.** Earlier notes said `7e3e6eb6`. Production has
 > moved on twice since (`ec07e587`, `0946c750`), so `7e3e6eb6` would **drop two
@@ -129,6 +130,44 @@ one when Stripe reports a payment. Duplicates and unmatched rows are the fault.*
 **Anything else**
 - A driver or renter reports a wrong charge, a wrong balance or an unexpected email.
 
+## E-options. Two prepared rollback targets
+
+Both verified 2026-10-23. Both build clean (`npm run build`, exit 0). Neither
+required any source, migration or configuration change — the rollback branch is
+a pointer at an existing commit and its tree is identical to that commit's.
+
+| | **Option A (recommended first)** | **Option B** |
+|---|---|---|
+| Branch | `rollback/pre-rc266-7e3e6eb6` | `codex/revenue-publication` |
+| Commit | **`7e3e6eb6`** | **`0946c750`** |
+| Remote HEAD verified | yes | yes, unchanged |
+| Build | exit 0 | exit 0 |
+| Visible in the GitHub branch selector | yes | yes |
+| Matches "published ~2 days ago" | **yes** | no — committed the following day |
+
+### The only difference between them
+
+2 files, +72 / −79:
+
+| File | Runtime impact |
+|---|---|
+| `src/integrations/supabase/previewAuthStorage.ts` | **real** — imported by `src/integrations/supabase/client.ts` as `brokeredPreviewStorage`, so it sits in the browser Supabase auth client path |
+| `src/integrations/supabase/types.ts` | negligible — generated types, 8 type exports and one constants object |
+
+### Which to use
+
+**Option A first.** A rollback should return to a state known to have been
+running, and the timing evidence points at `7e3e6eb6`. Option B carries an
+auth-storage change that has never been confirmed in production, and an
+incident is the wrong time to introduce one.
+
+**Use Option B only if** Option A is restored and the original symptom persists
+in a way those two files would plausibly explain — that is, a sign-in or session
+problem. Otherwise stay on A.
+
+Neither option touches the database. `codex/revenue-publication` and the
+integration branch were not modified by this preparation.
+
 ## E0. The deployed identity is unverified — read before rolling back
 
 Lovable's Publish panel has **no deployment history and no published commit
@@ -174,10 +213,13 @@ unambiguous either way.
 ## E. Rollback
 
 - [ ] **E1.** Lovable → Project settings → Git → branch picker →
-      **`codex/revenue-publication`**.
-- [ ] **E2.** Wait for "In sync with GitHub"; confirm commit **`0946c750`**.
+      **`rollback/pre-rc266-7e3e6eb6`** (Option A). Use
+      `codex/revenue-publication` only per **E-options**.
+- [ ] **E2.** Wait for "In sync with GitHub"; confirm commit **`7e3e6eb6`**
+      (or **`0946c750`** if you chose Option B).
 - [ ] **E3. Publish.**
-- [ ] **E4.** Re-read the commit: must be **`0946c750`**.
+- [ ] **E4.** Re-read the commit: must be the option you chose — **`7e3e6eb6`**
+      or **`0946c750`**.
 - [ ] **E5.** Re-run C1–C8 against the restored build.
 
 > **Rollback restores code, not data.** If a defect wrote rows — a double-counted
