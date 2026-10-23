@@ -276,7 +276,11 @@ DROP POLICY IF EXISTS coordinator_identity_storage_containment ON storage.object
 
 Dropping five policies that nothing else references. No grants, ownership, RLS
 flags or data are touched by install or rollback, so rollback cannot lose data.
-The `audit_log` evidence row stays by design — the log is immutable.
+The `audit_log` evidence row stays by design — the log is immutable — but only
+in the case where the install **committed** and is being undone. If the install
+**aborted**, the evidence row rolled back with the policies and nothing
+persists. The two cases are set out in
+`0031-APPROVAL-PACKET.md` §6, and they differ for whether a retry is clear.
 
 ### 6.8 Post-install verification (all read-only)
 

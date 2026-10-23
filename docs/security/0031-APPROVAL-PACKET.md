@@ -156,10 +156,39 @@ DROP POLICY IF EXISTS coordinator_identity_storage_containment ON storage.object
 ```
 
 No grants, ownership, RLS flags or data are touched by install or rollback, so
-rollback cannot lose data. The `audit_log` evidence row stays by design — the
-log is immutable — and does **not** block a later retry: the replay guard keys
-on that row, so a re-install after rollback would raise
-`EXECUTION_EVIDENCE_REPLAY` and must be approved as a fresh decision.
+rollback cannot lose data.
+
+### An aborted install and a compensating rollback are not the same thing
+
+An earlier draft of this packet ran these together and said the evidence row
+blocks a retry. That is wrong for the failure case. Verified against the
+package: it contains **zero `EXCEPTION` clauses**, so the nested
+`DECLARE … BEGIN … END` around the audit insert is **not** a subtransaction.
+Everything is one transaction inside one statement.
+
+**Case A — the install aborts** (any guard fires, including the storage-authority
+failure in §2). The policies and the `audit_log` evidence row roll back
+**together**. Nothing persists: no policies, **no evidence row**, no Supabase
+receipt. A later attempt starts from a clean slate — `PARTIAL_INSTALL` and
+`EXECUTION_EVIDENCE_REPLAY` both pass. **A failed install does not block a
+retry.**
+
+**Case B — the install commits, then you run the compensating rollback above.**
+The evidence row was committed with the policies, and `DROP POLICY` does not
+touch `audit_log`; the log is immutable by design. So the row persists after
+the policies are gone.
+
+A re-install in Case B then behaves as follows, in the package's own order:
+`PARTIAL_INSTALL` (line 66) **passes**, because the policies were dropped; the
+five policies are created again at line 105; then `EXECUTION_EVIDENCE_REPLAY`
+(line 130) fires and aborts the whole statement, rolling those policies back.
+So the re-install **fails cleanly and leaves nothing**, but it cannot succeed
+while that row exists.
+
+**Consequence for approval:** reinstalling after a *successful* install that was
+later rolled back is not a repeat of this approval. It needs a deliberate
+decision about the evidence row — and that decision is yours, not something to
+work around. Reinstalling after a *failed* install needs nothing extra.
 
 ---
 

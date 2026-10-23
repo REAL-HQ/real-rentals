@@ -103,7 +103,9 @@ Consequences, which are mild but must be approved knowingly:
 3. **Replay is still protected**, by two independent guards rather than the
    journal: `PARTIAL_INSTALL` (the policies already exist) and
    `EXECUTION_EVIDENCE_REPLAY` (the `audit_log` row already exists). A second
-   run refuses on both.
+   run **after a successful install** refuses on both. After an install that
+   *aborted*, neither fires — the policies and the evidence row rolled back
+   together, so a retry is clean. See `0031-APPROVAL-PACKET.md` §6.
 4. **The timestamp concern in `REVIEW.txt` does not apply.** It warns that the
    sealed journal timestamp `1791970564241` predates receipt 23
    (`1792408979135`), so *"a normal timestamp-based pending scan may skip it"*.
