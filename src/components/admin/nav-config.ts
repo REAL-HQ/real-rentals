@@ -19,10 +19,12 @@ import {
   Inbox,
   Upload,
   Landmark,
+  BarChart3,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
 
 export type TabDef = {
   id: string;
@@ -112,8 +114,30 @@ const FINANCE_TAB: TabDef = {
   description: "Combined Finance Coverage And Per-Vehicle Profitability",
 };
 
+/** Shown only while the applicant funnel is compiled on. Kept out of TABS so a dark build cannot list it. */
+const FUNNEL_TAB: TabDef = {
+  id: "funnel",
+  label: "Applicant Funnel",
+  icon: BarChart3,
+  minTier: "manager",
+  group: "PEOPLE",
+  description: "Application Counts And Conversion For An Eastern Time Range",
+};
+
+function insertFunnel(tabs: TabDef[]): TabDef[] {
+  const next = [...tabs];
+  const at = next.findIndex((tab) => tab.id === "drivers");
+  next.splice(at + 1, 0, FUNNEL_TAB);
+  return next;
+}
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
+  if (!APPLICANT_FUNNEL_ENABLED || !tierAllows(tier, "manager")) return withFinance(tabs, tier);
+  return withFinance(insertFunnel(tabs), tier);
+}
+
+function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
   if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return tabs;
   const next = [...tabs];
   const at = next.findIndex((t) => t.id === "expenses");
@@ -151,6 +175,10 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
+  if (APPLICANT_FUNNEL_ENABLED && tierAllows(tier, "manager")) {
+    const drivers = entries.findIndex((t) => t.id === "drivers");
+    entries.splice(drivers + 1, 0, { ...FUNNEL_TAB, href: "funnel" });
+  }
   if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return entries;
   const at = entries.findIndex((t) => t.id === "expenses");
   entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
