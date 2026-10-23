@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { createClient } from '@supabase/supabase-js';
 import { type StripeEnv, verifyWebhook, createStripeClient } from '@/lib/stripe.server';
+import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatched';
 import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail } from '@/lib/email.server';
 
 let _supabase: ReturnType<typeof createClient> | null = null;
@@ -106,6 +107,41 @@ function must<T extends { error: any }>(res: T): T {
   return res;
 }
 
+async function customerLinked(admin: any, customerId: string | null): Promise<boolean> {
+  if (!customerId) return false;
+  const rental = await admin.from('rentals').select('id').eq('stripe_customer_id', customerId).limit(1);
+  if (rental.error) throw new Error(rental.error.message);
+  if (rental.data?.length) return true;
+  const application = await admin.from('applications').select('id').eq('stripe_customer_id', customerId).limit(1);
+  if (application.error) throw new Error(application.error.message);
+  return !!application.data?.length;
+}
+
+async function warnUnmatchedInvoice(admin: any, invoice: any, status: 'paid' | 'failed', subscriptionId: string | null) {
+  const customerId = customerIdOf(invoice);
+  if (await customerLinked(admin, customerId)) return;
+  const raw = status === 'paid' ? Number(invoice?.amount_paid ?? invoice?.amount_due ?? 0) : Number(invoice?.amount_due ?? invoice?.amount_paid ?? 0);
+  console.warn(formatUnmatchedWarn({
+    invoiceId: stripeId(invoice?.id),
+    subscriptionId,
+    customerId,
+    amountCents: Number.isFinite(raw) ? Math.round(raw) : null,
+    status,
+  }));
+}
+
+async function warnUnmatchedPayment(admin: any, pi: any, status: 'paid' | 'failed') {
+  const customerId = customerIdOf(pi);
+  if (await customerLinked(admin, customerId)) return;
+  const raw = Number(pi?.amount ?? 0);
+  console.warn(formatUnmatchedWarn({
+    paymentIntentId: stripeId(pi?.id),
+    customerId,
+    amountCents: Number.isFinite(raw) ? Math.round(raw) : null,
+    status,
+  }));
+}
+
 async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed') {
   const admin: any = getSupabase();
   const rentalId = pi.metadata?.rentalId as string | undefined;
@@ -156,6 +192,8 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
         paid_date: status === 'paid' ? today() : null,
       }).select('id'));
       changed = ins.data?.length ?? 0; // 0 when a duplicate event lost the insert race
+    } else {
+      await warnUnmatchedPayment(admin, pi, status);
     }
   }
 
@@ -214,13 +252,22 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
   const admin: any = getSupabase();
   const subId = typeof invoice.subscription === 'string' ? invoice.subscription
     : invoice.subscription?.id ?? invoice.parent?.subscription_details?.subscription;
-  if (!subId) return;
-  const { data: rental } = await admin
+  const subscriptionId = typeof subId === 'string' ? subId : null;
+  if (!subscriptionId) {
+    await warnUnmatchedInvoice(admin, invoice, status, null);
+    return;
+  }
+  const rentalResult = await admin
     .from('rentals')
     .select('id, application_id, vehicle_id')
-    .eq('stripe_subscription_id', subId)
+    .eq('stripe_subscription_id', subscriptionId)
     .maybeSingle();
-  if (!rental) return;
+  if (rentalResult.error) throw new Error(rentalResult.error.message);
+  const rental = rentalResult.data;
+  if (!rental) {
+    await warnUnmatchedInvoice(admin, invoice, status, subscriptionId);
+    return;
+  }
 
   // The week's rent is owed whether or not the card worked.
   const owed = Number(invoice.amount_due ?? invoice.amount_paid ?? 0) / 100;
@@ -239,7 +286,7 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     status: 'pending',
     due_date: invoice.period_start ? new Date(invoice.period_start * 1000).toISOString().slice(0, 10) : today(),
     stripe_invoice_id: invoice.id,
-    stripe_subscription_id: subId,
+    stripe_subscription_id: subscriptionId,
   }));
 
   const patch = status === 'paid'
