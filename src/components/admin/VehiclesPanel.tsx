@@ -19,9 +19,11 @@ import { VehicleProfile } from "./VehicleProfile";
 import { AddVehicleDialog } from "./AddVehicleDialog";
 import { VehicleLifecycleDialog, type LifecycleMode } from "./VehicleLifecycleDialog";
 import { toast } from "sonner";
-import { Plus, Trash2, Car, ArrowRight, Copy, List, LayoutGrid, ChevronLeft, ChevronRight, Archive, RotateCcw } from "lucide-react";
+import { Plus, Trash2, Car, ArrowRight, Copy, List, LayoutGrid, ChevronLeft, ChevronRight, Archive, RotateCcw, Wrench } from "lucide-react";
 import { displayVehicleWord } from "@/lib/display-normalize";
 import { EmptyState } from "./ui";
+import { MaintenanceDue } from "./MaintenanceDue";
+import { MAINTENANCE_DUE_ENABLED } from "@/lib/maintenance-due";
 import {
   Select,
   SelectContent,
@@ -152,7 +154,8 @@ export function VehiclesPanel({
   autoOpenAdd = false,
   openId = null,
   listState = {},
-}: { externalSearch?: string; autoOpenAdd?: boolean; openId?: string | null; listState?: ListState } = {}) {
+  canSeeMaintenanceDue = false,
+}: { externalSearch?: string; autoOpenAdd?: boolean; openId?: string | null; listState?: ListState; canSeeMaintenanceDue?: boolean } = {}) {
   const [partners, setPartners] = useState<Array<{ id: string; name: string }>>([]);
   const navigate = useNavigate();
   const viewing = openId;
@@ -169,7 +172,9 @@ export function VehiclesPanel({
   useEffect(() => {
     try { setStoredView(window.localStorage.getItem(VIEW_KEY)); } catch { /* ignore */ }
   }, []);
-  const view = listState.view ?? storedView ?? "list";
+  const requestedView = listState.view ?? storedView ?? "list";
+  const dueAllowed = MAINTENANCE_DUE_ENABLED && canSeeMaintenanceDue;
+  const view = requestedView === "due" && !dueAllowed ? "list" : requestedView;
 
   const listSearch = useCallback(
     (over: Partial<ListState> = {}) => {
@@ -224,6 +229,7 @@ export function VehiclesPanel({
     queryKey: ["admin-vehicles-list", params],
     queryFn: () => fetchList({ data: params }),
     placeholderData: keepPreviousData,
+    enabled: view !== "due",
   });
   const result = listQuery.data;
   const rows = result?.rows ?? [];
@@ -252,7 +258,7 @@ export function VehiclesPanel({
   // through audited server actions.
   const [lifecycle, setLifecycle] = useState<{ v: VehicleListRow; mode: LifecycleMode } | null>(null);
 
-  function chooseView(next: "list" | "cards") {
+  function chooseView(next: "list" | "cards" | "due") {
     try { window.localStorage.setItem(VIEW_KEY, next); } catch { /* ignore */ }
     setStoredView(next);
     void navigate({ to: "/admin", search: listSearch({ view: next }) as any, replace: true });
@@ -416,6 +422,9 @@ export function VehiclesPanel({
             <button onClick={() => chooseView("list")} aria-pressed={view === "list"} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === "list" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><List className="h-3.5 w-3.5" /> List</button>
             <button onClick={() => chooseView("cards")} aria-pressed={view === "cards"} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === "cards" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><LayoutGrid className="h-3.5 w-3.5" /> Cards</button>
           </div>
+          {dueAllowed && (
+            <button onClick={() => chooseView("due")} aria-pressed={view === "due"} className={`inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-xs ${view === "due" ? "bg-[#F1F1F4] font-medium" : "bg-white text-muted-foreground"}`}><Wrench className="h-3.5 w-3.5" /> Maintenance Due</button>
+          )}
           <button onClick={() => void navigate({ to: "/admin", search: { tab: "fleet_inbox" } as any })} className="inline-flex items-center gap-2 rounded-md border border-[#EDEDF0] bg-white px-4 py-2 text-sm font-medium hover:bg-[#FAFAFB]">
             Import / Fleet Inbox
           </button>
@@ -425,7 +434,11 @@ export function VehiclesPanel({
         </div>
       </div>
 
-      {view === "list" && rows.length > 0 && (
+      {view === "due" && dueAllowed && (
+        <MaintenanceDue query={effectiveQ} status={statusFilter} body={bodyFilter} partner={partnerFilter} />
+      )}
+
+      {view !== "due" && view === "list" && rows.length > 0 && (
         <div className="hidden md:block mt-4 rounded-xl border border-border bg-white overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
@@ -463,9 +476,9 @@ export function VehiclesPanel({
           </table>
         </div>
       )}
-      {rows.length > 0 && cardsGrid}
+      {view !== "due" && rows.length > 0 && cardsGrid}
 
-      {result && total > 0 && (
+      {view !== "due" && result && total > 0 && (
         <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
           <span>Showing {firstShown}–{lastShown} of {total}</span>
           <div className="flex items-center gap-2">
@@ -475,11 +488,11 @@ export function VehiclesPanel({
           </div>
         </div>
       )}
-      {listQuery.isError && <div className="mt-6 text-sm text-real-red">Could not load vehicles.</div>}
-      {result && total === 0 && !hasActiveFilters && !effectiveQ && (
+      {view !== "due" && listQuery.isError && <div className="mt-6 text-sm text-real-red">Could not load vehicles.</div>}
+      {view !== "due" && result && total === 0 && !hasActiveFilters && !effectiveQ && (
         <EmptyState className="mt-6" icon={<Car className="w-6 h-6" strokeWidth={1.75} />} title="No Vehicles Yet" hint={'Click "Add Vehicle" to put your first car into the fleet.'} />
       )}
-      {result && total === 0 && (hasActiveFilters || !!effectiveQ) && (
+      {view !== "due" && result && total === 0 && (hasActiveFilters || !!effectiveQ) && (
         <EmptyState
           className="mt-6"
           icon={<Car className="w-6 h-6" strokeWidth={1.75} />}
