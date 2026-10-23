@@ -48,6 +48,8 @@ import { VendorsPanel } from "@/components/admin/VendorsPanel";
 import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
+import { IncidentBoard } from "@/components/admin/IncidentBoard";
+import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
 import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
@@ -297,6 +299,10 @@ function Admin() {
     if (urlTab === "finance") {
       if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "finance";
+    }
+    if (urlTab === "incident_board") {
+      if (!INCIDENT_BOARD_ENABLED || (tier && !tierAllows(tier, "coordinator"))) return "overview";
+      return "incident_board";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -802,6 +808,7 @@ function Admin() {
             {tab === "inspections" && <InspectionsPanel />}
             {tab === "charges" && <ChargesPanel />}
             {tab === "incidents" && <IncidentsPanel seedIssueId={search.issue ?? null} />}
+            {INCIDENT_BOARD_ENABLED && tab === "incident_board" && <IncidentBoard />}
             {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
