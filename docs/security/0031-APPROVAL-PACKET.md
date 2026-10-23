@@ -3,9 +3,12 @@
 Prepared 2026-10-23 by Claude Code. Package `32c17aa76e5026c4f50a2179aab143baa5d05463743b1a0f366ab4339103494f`,
 verified and unmodified at `docs/security/0031-package/`.
 
-> ## VERDICT: NO-GO for execution.
-> Executor authority for the one `storage.objects` policy is **unverified**
-> (§2). Everything else is ready. **Nothing was executed.**
+> ## VERDICT: the authority blocker is RESOLVED. Execution still needs your approval.
+> The one thing that held this packet — executor authority over
+> `storage.objects` — is **settled** (§2, §2a). `postgres` holds that authority
+> through Supabase's `supautils.policy_grants`, confirmed on production by
+> read-only query. Route, receipts, journal, rollback and verification are
+> unchanged and still ready. **Nothing was executed.**
 
 ---
 
@@ -24,7 +27,7 @@ Lovable deploy does not run it.
 The package is one `DO $rr0031$ … $rr0031$;` block — one statement, as that
 route requires.
 
-## 2. Executor authority — **UNVERIFIED. This is the blocker.**
+## 2. Executor authority — **RESOLVED**
 
 The package needs `current_user = postgres` **and** authority to
 `CREATE POLICY ON storage.objects`.
@@ -32,22 +35,98 @@ The package needs `current_user = postgres` **and** authority to
 | | |
 |---|---|
 | `current_user = postgres` | satisfied on every path I can read |
-| Authority over `storage.objects` | **not established** |
+| Authority over `storage.objects` | **established — see §2a** |
 
-Read-only, today: `postgres` is **not** superuser; `storage.objects` is owned by
-`supabase_storage_admin`, which has **zero members**; `postgres` has no `CREATE`
-on the `storage` schema. On that evidence it **cannot**.
+### The earlier analysis was incomplete
 
-Against that: the Oct 7 migration did create two such policies through this
-route. Two explanations fit — the executor was not `postgres` and ownership of
-its new table was normalized afterwards, or `postgres` held privileges since
-revoked — and **no read-only operation distinguishes them**, because
-`created_by` is an API identity, not a role.
+What it established is still true and was re-verified: `postgres` is **not**
+superuser; `storage.objects` is owned by `supabase_storage_admin`, which has
+**zero members**; `postgres` has **no `CREATE`** on the `storage` schema.
 
-**If executed without this resolved** and the authority is absent, the result is
-a clean failure: `ERROR: must be owner of table objects`, the whole statement
-aborts, **zero policies installed, nothing changed** (§5, proven). The risk is a
-wasted migration version, not damage. That is still not a reason to execute.
+The error was the inference drawn from it — that policy creation is therefore
+impossible. That holds for stock PostgreSQL. It does not hold on Supabase, which
+adds a supported privileged execution context the analysis had no reason to look
+for. The two competing explanations it offered (a different executor with
+ownership normalised afterwards, or privileges since revoked) are both
+unnecessary: **neither is required to explain the Oct 7 migration.**
+
+This also removes the reason to doubt the three receipts carrying
+`created_by = 'reconciled: applied out-of-band'`. A receipt is still not proof of
+execution, but the executor's authority is no longer in question.
+
+## 2a. The new evidence — `supautils.policy_grants`
+
+Supabase preloads **`supautils`**, which keeps a per-role allowlist of tables on
+which a non-owner may run policy DDL:
+
+```
+supautils.policy_grants = {"postgres": [ ...24 tables... ]}
+```
+
+That list includes **`storage.objects`**, plus `storage.buckets`,
+`storage.prefixes`, `auth.users`, `realtime.subscription` and others.
+
+**Production, read-only:** `supautils.policy_grants` is present and names
+`storage.objects` under `postgres`. It is **byte-identical** to the setting on
+the disposable rehearsal project. `supautils.privileged_role` is
+`supabase_privileged_role` on both, and `postgres` is a member of it on both.
+
+**Demonstrated on the disposable rehearsal project** (`nhcgrevnanuzroudxpux`,
+PostgreSQL 17.11), never on production. `CREATE POLICY ... ON storage.objects`
+as `postgres` **succeeded**. The asymmetry is what identifies the mechanism —
+all in one transaction, as the same role:
+
+| Probe as `postgres` | Result |
+|---|---|
+| `CREATE POLICY` on `storage.objects` | **SUCCESS** |
+| `ALTER TABLE storage.objects ADD COLUMN` | `42501 must be owner of table objects` |
+| `SET ROLE supabase_storage_admin` | `42501 permission denied to set role` |
+
+So `postgres` is not the owner, cannot become the owner, and is refused every
+other owner-only operation. Only **policy DDL on allowlisted tables** is
+permitted.
+
+Ordinary ownership rules still bind everyone else — same statement, same table:
+
+| Role | Result |
+|---|---|
+| `authenticated` | `42501 must be owner of table objects` |
+| `service_role` | `42501 must be owner of table objects` |
+| `supabase_privileged_role` | `42501 permission denied for schema storage` |
+
+The privileged role *itself* cannot do it: the grant is to `postgres` by name,
+which is why reasoning about role membership never found it.
+
+### Consistent with the package's own design
+
+The package assumes exactly this. At line 104 of
+`0031-package/0031_guarded_coordinator_containment.sql`:
+
+> `-- Native CREATE POLICY and INSERT permission checks remain authoritative; no role elevation.`
+
+It never elevates, and it relies on the native check passing. That is precisely
+what `supautils.policy_grants` makes true for `postgres`.
+
+### One honest gap
+
+The package does **not** seal `supautils.policy_grants`. It contains no reference
+to `supautils` at all, and `SCHEMA_POLICY_GRANT_DRIFT` — despite its name — is
+the catalog-seal comparison, not a check on this setting.
+
+Consequence: if Supabase ever removed `storage.objects` from that allowlist, no
+pre-flight gate would catch it. The install would instead **fail safe** at
+`EXECUTE approved_sql` with `must be owner of table objects`, aborting the whole
+statement with zero policies installed (§5). So the gap costs a migration
+version, not correctness. **Mitigation, no SQL change required:** re-read the
+setting immediately before executing and confirm it still names
+`storage.objects` —
+
+```sql
+SELECT setting FROM pg_settings WHERE name = 'supautils.policy_grants';
+```
+
+Add that as pre-flight gate 11, run read-only, in the same session that will run
+the install.
 
 ## 3. Atomicity of all five policies
 
@@ -194,9 +273,34 @@ work around. Reinstalling after a *failed* install needs nothing extra.
 
 ## What this needs from you
 
-1. **Resolve §2** — the executor's authority over `storage.objects`. Without it
-   this stays NO-GO.
-2. **Then** approve execution, if you want it attempted.
+§2 is resolved, so only one thing is left.
+
+1. **Approve execution**, or decline it. Nothing else is outstanding: the route
+   (§1), the receipts (§4), the unchanged drizzle journal (§4), the rollback
+   behaviour (§5) and the post-install verification (§6) are all as previously
+   accepted and are unchanged by this update.
+2. **One precondition still holds:** drizzle `0023` must not be applied first.
+   It would move that ledger to 24 and both journal pins would fail. It is
+   pending today — confirm that at execution time.
+3. **One line added to pre-flight** (§2a, gate 11): re-read
+   `supautils.policy_grants` read-only in the same session and confirm it still
+   names `storage.objects`. No change to the approved SQL.
+
+### Summary of the supported installation route
+
+| | |
+|---|---|
+| Route | One new file under `supabase/migrations/`, the package verbatim, one `DO $rr0031$ … $rr0031$;` statement |
+| Executor | `postgres`, authority via `supautils.policy_grants` (§2a) |
+| Expected Supabase receipt | `supabase_migrations.schema_migrations` **105 → 106**, one new version row |
+| Expected drizzle journal | `drizzle.__drizzle_migrations` **23 → 23, unchanged** — 0031 takes no drizzle receipt |
+| Rollback behaviour | Any guard aborts the single statement with **zero** policies installed; partial installation impossible by construction; proven 16/16 in a disposable cluster |
+| Post-install verification | §6 — expect 5 policies / 1 restrictive on `storage.objects` / 1 evidence row / ledgers (106, 23), then the Coordinator and Owner/Manager functional check |
+
+**The approved SQL is unmodified.** Package
+`32c17aa76e5026c4f50a2179aab143baa5d05463743b1a0f366ab4339103494f` at
+`docs/security/0031-package/` is byte-identical to what was verified; this update
+changes only this document.
 
 ## Standing context
 
@@ -205,4 +309,5 @@ buckets' permissive SELECT policies already resolve to Owner-only, so
 Coordinators cannot read identity objects today. This keeps that true if a
 future permissive policy is added. Important; not urgent.
 
-**0031 investigation stops here** unless new evidence materially changes §2.
+The investigation that was paused pending §2 is complete. Root-cause detail is
+in `docs/security/0031-ROOT-CAUSE.md`.
