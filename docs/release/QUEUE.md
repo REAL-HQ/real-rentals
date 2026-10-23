@@ -2,6 +2,11 @@
 
 Updated 2026-10-23 by Claude Code.
 
+> **RC `67b62664` is FROZEN.** No further commits to
+> `integration/grok-baseline-2026-10-22` unless a demonstrated release-blocking
+> defect requires a fix. Feature work continues on separate branches and is not
+> merged into this candidate.
+
 | Queue | Means |
 |---|---|
 | **Ready to Ship** | Production-compatible, fully verified, **no unresolved prerequisites** |
@@ -15,7 +20,7 @@ Updated 2026-10-23 by Claude Code.
 
 | Item | Where | Why it needs nothing from you |
 |---|---|---|
-| **Link to Rental** (`96bc898a`, dark) | `claude/unmatched-link-96bc898a` | 22/22, tsc 0, three gates keep it off. Enabling it later is a separate decision |
+| — | — | — |
 | **Release-verification tests** | now in the RC at `67b62664` | Dark-feature ledger (59 modules, 0 unaccounted), webhook invariants (13 statements), 9 simulated-event cases. Test files and `package.json` only — no application code |
 
 ## Ready for Approval
@@ -33,6 +38,12 @@ Updated 2026-10-23 by Claude Code.
 | **Security 0031** | Executor authority to `CREATE POLICY ON storage.objects`. No read-only operation reports it. **Not reopening until new evidence appears.** |
 | **Application Resume (atomic path)** | Migration `0023`, pending. Until then `APPLICATION_RESUME_ATOMIC_ENABLED` must not be `"true"` |
 | **Repo branch protection** | Token lacks admin scope; protection can be neither read nor set from here |
+
+## Development Complete — Awaiting Integration / Activation
+
+| Item | Where | Dependencies still unsatisfied |
+|---|---|---|
+| **Link to Rental** (`96bc898a`, dark) | `claude/unmatched-link-96bc898a` | Not in RC `67b62664`. 22/22, tsc 0, three gates keep it off. Needs: integration into a future candidate, then your approval to enable — enabling writes financial records |
 
 ## Development / Integration
 

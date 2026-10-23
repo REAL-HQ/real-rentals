@@ -4,8 +4,18 @@ Fifteen minutes. **Everything you click writes to the real database**, so look
 and filter; don't create, send, charge or sign. **Never press Publish while the
 preview is on this branch.**
 
-**Switch:** Project settings → Git → branch picker → `integration/grok-baseline-2026-10-22`
-→ wait for "In sync with GitHub". Commit should read `67b62664`.
+## Switching Preview to the candidate
+
+1. Open **https://lovable.dev/projects/8cf1f99e-71ad-4a93-a47c-bfbe833616d6**
+2. **Project settings → Git → GitHub branch picker**
+3. Select **`integration/grok-baseline-2026-10-22`**
+4. Wait for **"In sync with GitHub"**. The commit must read **`67b62664`**.
+   (It currently reads `0946c750` — production.)
+5. Preview opens at **https://id-preview--8cf1f99e-71ad-4a93-a47c-bfbe833616d6.lovable.app**
+
+**Preview runs against the LIVE database.** Nothing below asks you to create,
+edit or submit a record — every step is read-only looking. Do not press Publish
+while the picker is on this branch.
 
 Open production in a second tab and compare as you go.
 
