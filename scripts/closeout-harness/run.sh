@@ -109,7 +109,7 @@ is "odometer history kept"   "$(Q -c "SELECT count(*) FROM public.odometer_readi
 echo "C. eligibility decisions made during the rental are NOT overwritten"
 #  The whole point of `AND status = 'active'`. Without it, returning a car
 #  would silently clear a suspension.
-for s in suspended declined reviewing; do
+for s in suspended declined closed reviewing; do
   seed "$s" 2>/dev/null || true
   # the guard blocks 'active' -> these are set directly, which is allowed
   Q -c "UPDATE public.applications SET status='$s' WHERE id='$APP'" >/dev/null

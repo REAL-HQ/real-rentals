@@ -77,6 +77,14 @@ reseal** and needs independent review before it is treated as the approved
 package. This document does not reseal it — altering the approved SQL is not
 something to do silently.
 
+> **SUPERSEDED IN PART, same day.** The section below concluded the
+> `storage.objects` blocker needed Lovable engineering. New evidence (an Oct 7
+> Lovable migration that did create two Storage policies, verified) shows an
+> execution path with that authority already exists. The role facts below are
+> still accurate for `postgres`; the conclusion drawn from them is not.
+> See **`docs/security/0031-installation-plan.md`** — the blocker is a re-seal
+> plus a path change, both ours.
+
 ## Installation remains blocked, for the unchanged second reason
 
 Appending entry 23 clears the journal blocker. It does **not** clear the other

@@ -18,7 +18,7 @@ are collected at the bottom. Everything else is being worked.
 
 | Item | Blocker | Who |
 |---|---|---|
-| **Security 0031** | `storage.objects` is owned by `supabase_storage_admin`; `CREATE POLICY` needs superuser or ownership, and `BYPASSRLS` does not grant it. Only `supabase_admin` can create the fifth policy, and it is not reachable. Lovable Support has not answered. **Installation stays blocked.** | Lovable engineering |
+| **Security 0031** | **Re-diagnosed 2026-10-23 — no longer a Lovable ticket.** An Oct 7 Lovable migration did create two `storage.objects` policies (verified), so the authority exists in the `supabase/migrations/` path. But 0031's seal pins `execution_role: postgres`, and `postgres` cannot create that policy — so the sealed package fails on *both* paths, for two different reasons. Blocked on two small things, both ours: the resealed artifact (`32c17aa7…`, still not found anywhere) and one read-only probe to identify the real executor. Plan: `docs/security/0031-installation-plan.md` | You (artifact + probe approval) |
 | **Adam — card 8542 / $350 Oct 23** | Needs a read-only Dashboard check (steps in the billing doc). Nothing sent, retried or scheduled. | You (Dashboard) |
 | **Repo visibility / branch protection** | Reading protection returns HTTP 403 "Resource not accessible by integration" — the token has no admin scope, so it can neither be read nor set. Ruleset proposal exists, not applied. | You |
 | **M2 / M3 hosted install** | Separate owner migration approvals, in the documented order | You |
@@ -28,7 +28,7 @@ are collected at the bottom. Everything else is being worked.
 | Item | Status | Notes |
 |---|---|---|
 | **Link to Rental** (`96bc898a` from #267) | **Testing — done, dark** | `claude/unmatched-link-96bc898a`. Cherry-picked alone; 22/22 tests, tsc 0. Three gates keep it off. The rejected double-collection work was **not** brought in — the one failing assertion depended on it and was narrowed instead. Enabling it writes financial records and needs your approval. |
-| **Rental closeout (Option B)** | **Ready for Approval** | See above. Harness hardened so a dead cluster can't look like findings. |
+| **Rental closeout (Option B)** | **Ready for Approval** | See above. Owner re-confirmed the spec 2026-10-23: return to Approved only from Active; Suspended, Declined and **Closed** all preserved — each now a harness case. 24/24. |
 | **0031 ledger reconciliation** | **Done** | `docs/security/0031-journal-reconciliation-2026-10-23.md`. Reported reseal SHA `32c17aa7…` matches nothing available (279 refs, 6,873 blobs, Drive, handoff zip) — unverified, not claimed. Live ledger: entries 1–22 identical to the seal, one row appended. |
 
 ## In Development — next, not waiting on you
