@@ -10,15 +10,31 @@ export const VAULT_TO_REQUIRED: Record<string, string> = {
 
 type DocRow = { lead_id?: string | null; category?: string | null; review_status?: string | null; is_current?: boolean | null };
 
+/**
+ * The required-document name a vault row counts as, or null when it does not
+ * count. Current and not rejected. requiredDocCounts is the caller that turns
+ * this name into the x/4 number on the Drivers list and the Waitlist.
+ */
+export function canonicalRequiredDoc(row: {
+  category?: string | null;
+  review_status?: string | null;
+  is_current?: boolean | null;
+}): string | null {
+  if (row.is_current === false || row.review_status === "rejected") return null;
+  const cat = (row.category ?? "").trim();
+  if (!cat) return null;
+  const canonical = VAULT_TO_REQUIRED[cat] ?? cat;
+  if (!REQUIRED_DOC_TYPES.includes(canonical as RequiredDocType)) return null;
+  return canonical;
+}
+
 /** Distinct current, non-rejected required documents per applicant. */
 export function requiredDocCounts(rows: readonly DocRow[] | null | undefined): Record<string, number> {
   const seen: Record<string, Set<string>> = {};
   for (const r of rows ?? []) {
     const id = r.lead_id;
-    if (!id || r.is_current === false || r.review_status === "rejected") continue;
-    const cat = (r.category ?? "").trim();
-    const canonical = VAULT_TO_REQUIRED[cat] ?? cat;
-    if (!REQUIRED_DOC_TYPES.includes(canonical as RequiredDocType)) continue;
+    const canonical = id ? canonicalRequiredDoc(r) : null;
+    if (!id || !canonical) continue;
     (seen[id] ?? (seen[id] = new Set())).add(canonical);
   }
   return Object.fromEntries(Object.entries(seen).map(([k, v]) => [k, v.size]));
