@@ -48,6 +48,8 @@ import { VendorsPanel } from "@/components/admin/VendorsPanel";
 import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
+import { IncidentsLog } from "@/components/admin/IncidentsLog";
+import { INCIDENTS_LOG_ENABLED } from "@/lib/incidents-log-flag";
 import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
@@ -801,7 +803,12 @@ function Admin() {
             {tab === "vendors" && <VendorsPanel />}
             {tab === "inspections" && <InspectionsPanel />}
             {tab === "charges" && <ChargesPanel />}
-            {tab === "incidents" && <IncidentsPanel seedIssueId={search.issue ?? null} />}
+            {tab === "incidents" && (
+              <>
+                {INCIDENTS_LOG_ENABLED ? <IncidentsLog /> : null}
+                <IncidentsPanel seedIssueId={search.issue ?? null} />
+              </>
+            )}
             {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
