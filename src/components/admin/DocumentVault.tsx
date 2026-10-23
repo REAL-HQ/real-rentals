@@ -16,6 +16,7 @@ import {
   type DocCategory,
 } from "@/lib/documents.functions";
 import { fmtDate } from "@/lib/date-format";
+import { documentExpiryTone } from "@/lib/document-expiry";
 
 const MAX_MB = 15;
 
@@ -27,11 +28,7 @@ function fmtSize(n: number | null) {
 }
 
 function expiryTone(d: VaultDocument): "expired" | "soon" | null {
-  if (!d.expires_at) return null;
-  const days = (new Date(d.expires_at).getTime() - Date.now()) / 86400000;
-  if (days < 0) return "expired";
-  if (days < 30) return "soon";
-  return null;
+  return documentExpiryTone(d.expires_at);
 }
 
 /**

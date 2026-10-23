@@ -17,8 +17,11 @@ import {
   getDriverProfile,
   updateDriverProfile,
   getDriverPictures,
+  getMyPaymentBanner,
   type DriverDashboard,
 } from "@/lib/portal.functions";
+import { RenterPaymentBanner } from "@/components/portal/RenterPaymentBanner";
+import { RENTER_PAYMENT_BANNER_ENABLED, renterPaymentBanner } from "@/lib/renter-payment-banner";
 import {
   getRentalBilling,
   payRentalBalance,
@@ -27,6 +30,17 @@ import {
 import { getMyAgreements, signMyAgreement, getAgreementPdf } from "@/lib/agreements.functions";
 import { saveAgreementPdf } from "@/lib/agreement-download";
 import { DocumentVault } from "@/components/admin/DocumentVault";
+import { DocumentUpdateCard } from "@/components/portal/DocumentUpdateCard";
+import { PORTAL_DOCUMENT_UPDATE_ENABLED } from "@/lib/portal-document-update";
+import { getPortalDocumentUpdates } from "@/lib/portal-document-update.functions";
+import { MyRentalCard } from "@/components/portal/MyRentalCard";
+import { PORTAL_MY_RENTAL_ENABLED } from "@/lib/portal-my-rental";
+import { getPortalMyRental } from "@/lib/portal-my-rental.functions";
+import { PaymentHistoryCard } from "@/components/portal/PaymentHistoryCard";
+import { PORTAL_PAYMENT_HISTORY_ENABLED } from "@/lib/portal-payment-history";
+import { DRIVER_DOC_EXPIRY_CARD_ENABLED } from "@/lib/driver-doc-expiry";
+import { DRIVER_AGREEMENT_VIEW_ENABLED } from "@/lib/driver-agreement-view";
+import { getPortalPaymentHistory } from "@/lib/portal-payment-history.functions";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import {
   listConditionMedia,
@@ -36,6 +50,9 @@ import {
 import { getMyCharges } from "@/lib/charges.functions";
 import { searchPreviewDrivers, recordDriverPreview } from "@/lib/driver-preview.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
+import { NEXT_STEPS_CARD_ENABLED } from "@/lib/next-steps";
+import { getMyNextSteps } from "@/lib/next-steps.functions";
+import { NextStepsCard } from "@/components/portal/NextStepsCard";
 import { Nav } from "@/components/site/Nav";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
@@ -60,11 +77,28 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { ApplicantHome } from "@/components/portal/ApplicantHome";
+import { APPLICATION_TIMELINE_ENABLED } from "@/lib/application-timeline";
+import { ApplicationTimelineSection } from "@/components/portal/ApplicationTimeline";
+import { PickupChecklistCard } from "@/components/portal/PickupChecklistCard";
+import { PORTAL_PICKUP_CHECKLIST_ENABLED } from "@/lib/portal-pickup-checklist";
+import { getPortalPickupChecklist } from "@/lib/portal-pickup-checklist.functions";
+import { PortalNotices } from "@/components/portal/PortalNotices";
+import { PORTAL_NOTICES_ENABLED } from "@/lib/portal-notices";
+import { getPortalNotices } from "@/lib/portal-notices.functions";
+import { DriverReceipts } from "@/components/portal/DriverReceipts";
+import { DRIVER_RECEIPTS_ENABLED } from "@/lib/driver-receipts";
+import { getDriverReceipts } from "@/lib/driver-receipts.functions";
+import { DriverHelpLink } from "@/components/portal/DriverHelp";
+import { DRIVER_HELP_ENABLED } from "@/lib/driver-help";
+import { MyCarCard } from "@/components/portal/MyCarCard";
+import { MY_CAR_CARD_ENABLED } from "@/lib/my-car-card";
+import { getMyCar } from "@/lib/my-car-card.functions";
 import { tierFromRoles, type StaffTier } from "@/lib/roles";
 import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { fmtDate } from "@/lib/date-format";
+import { buildRoadsideIssue, ROADSIDE_TYPES } from "@/lib/driver-issues";
 
 export const Route = createFileRoute("/portal")({
   head: () => ({
@@ -86,6 +120,42 @@ const TABS = [
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
+
+/** Card stays unloaded unless DRIVER_DOC_EXPIRY_CARD_ENABLED is exactly true. */
+function DocExpiryGate({ onOpenDocuments }: { onOpenDocuments: () => void }) {
+  const [View, setView] = useState<
+    null | ((props: { onOpenDocuments: () => void }) => React.ReactNode)
+  >(null);
+  useEffect(() => {
+    if (DRIVER_DOC_EXPIRY_CARD_ENABLED !== true) return;
+    let live = true;
+    void import("@/components/portal/DriverDocExpiryCard").then((mod) => {
+      if (live) setView(() => mod.DriverDocExpiryCard);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (DRIVER_DOC_EXPIRY_CARD_ENABLED !== true || View == null) return null;
+  return <View onOpenDocuments={onOpenDocuments} />;
+}
+
+/** Card stays unloaded unless DRIVER_AGREEMENT_VIEW_ENABLED is exactly true. */
+function DriverAgreementGate() {
+  const [View, setView] = useState<null | (() => React.ReactNode)>(null);
+  useEffect(() => {
+    if (DRIVER_AGREEMENT_VIEW_ENABLED !== true) return;
+    let live = true;
+    void import("@/components/portal/DriverAgreementCard").then((mod) => {
+      if (live) setView(() => mod.DriverAgreementCard);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (DRIVER_AGREEMENT_VIEW_ENABLED !== true || View == null) return null;
+  return <View />;
+}
 
 /**
  * Tabs that only make sense once a vehicle is actually assigned.
@@ -245,6 +315,7 @@ function Portal() {
                 </button>
               );
             })}
+            {DRIVER_HELP_ENABLED ? <DriverHelpLink /> : null}
           </nav>
         </aside>
         <div className="flex-1 min-w-0 flex flex-col">
@@ -255,20 +326,21 @@ function Portal() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${
+                  className={`min-h-11 px-3 rounded-lg text-sm whitespace-nowrap ${
                     tab === t.id ? "bg-real-red" : "bg-white/5 text-white/70"
                   }`}
                 >
                   {t.label}
                 </button>
               ))}
+              {DRIVER_HELP_ENABLED ? <DriverHelpLink compact /> : null}
             </div>
           </div>
           <main className="flex-1 min-w-0 bg-white">
-            <header className="bg-white border-b border-border px-8 py-6">
+            <header className="bg-white border-b border-border px-4 py-4 md:px-8 md:py-6">
               <h1 className="text-2xl font-semibold">{current.label}</h1>
             </header>
-            <div className="p-8">
+            <div className="p-4 md:p-8">
               <PortalBody tab={tab} onNavigate={setTab} />
             </div>
           </main>
@@ -294,17 +366,62 @@ function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => voi
     );
   if (!data) return null;
 
-  if (tab === "dashboard") return <DashboardView data={data} onNavigate={onNavigate} />;
-  if (tab === "documents") return <DocumentsView />;
-  if (tab === "pictures") return <PicturesView />;
-  if (tab === "settings") return <SettingsView />;
-  if (tab === "issue") return <IssuesView />;
-  if (tab === "referrals") return <ReferralsView />;
-  if (tab === "vehicle") return <VehicleView data={data} />;
-  if (tab === "payments") return <PaymentsView data={data} />;
-  if (tab === "deposit") return <DepositView data={data} />;
-  if (tab === "maintenance") return <MaintenanceView data={data} />;
-  return <Stub label={TABS.find((t) => t.id === tab)!.label} />;
+  const body =
+    tab === "dashboard" ? (
+      <DashboardView data={data} onNavigate={onNavigate} />
+    ) : tab === "documents" ? (
+      <DocumentsView />
+    ) : tab === "pictures" ? (
+      <PicturesView />
+    ) : tab === "settings" ? (
+      <SettingsView />
+    ) : tab === "issue" ? (
+      <IssuesView />
+    ) : tab === "referrals" ? (
+      <ReferralsView />
+    ) : tab === "vehicle" ? (
+      <VehicleView data={data} />
+    ) : tab === "payments" ? (
+      <PaymentsView data={data} />
+    ) : tab === "deposit" ? (
+      <DepositView data={data} />
+    ) : tab === "maintenance" ? (
+      <MaintenanceView data={data} />
+    ) : (
+      <Stub label={TABS.find((t) => t.id === tab)!.label} />
+    );
+
+  return (
+    <div className="space-y-6">
+      {PORTAL_NOTICES_ENABLED ? <PortalNoticesGate onNavigate={onNavigate} /> : null}
+      {RENTER_PAYMENT_BANNER_ENABLED === true ? <RenterPaymentBannerGate /> : null}
+      {body}
+    </div>
+  );
+}
+
+function PortalNoticesGate({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  const read = usePortalRead(getPortalNotices);
+  return <PortalNotices onNavigate={onNavigate} read={() => read()} />;
+}
+
+function RenterPaymentBannerGate() {
+  const phone = useBusinessPhone();
+  const previewId = usePreviewDriver();
+  const fetchBanner = usePortalRead(getMyPaymentBanner);
+  const { data } = useQuery({
+    queryKey: ["renter-payment-banner", previewId],
+    queryFn: () => fetchBanner(),
+    enabled: RENTER_PAYMENT_BANNER_ENABLED === true,
+  });
+  if (!data) return null;
+  const model = renterPaymentBanner(
+    { hasActiveRental: data.active, weeklyRate: data.weeklyRate, nextPaymentDue: data.nextPaymentDue },
+    new Date(),
+    phone.display,
+  );
+  if (!model) return null;
+  return <RenterPaymentBanner model={model} phone={phone} />;
 }
 
 function Stub({ label }: { label: string }) {
@@ -335,6 +452,27 @@ function Stub({ label }: { label: string }) {
 
 function fmt(amount: number) {
   return amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function PortalDocumentUpdate() {
+  const previewId = usePreviewDriver();
+  const fetchUpdates = usePortalRead(getPortalDocumentUpdates);
+  const { data, isError, isLoading, refetch } = useQuery({
+    queryKey: ["portal-document-update", previewId ?? "self"],
+    queryFn: () => fetchUpdates(),
+    enabled: PORTAL_DOCUMENT_UPDATE_ENABLED === true,
+  });
+  if (PORTAL_DOCUMENT_UPDATE_ENABLED !== true) return null;
+  if (isLoading || isError || !data?.length) return null;
+  return (
+    <DocumentUpdateCard
+      items={data}
+      readOnly={previewId != null}
+      onUploaded={() => {
+        void refetch();
+      }}
+    />
+  );
 }
 
 function DocumentsView() {
@@ -491,6 +629,126 @@ function AgreementsView() {
 
 function IssuesView() {
   return <IssuesViewInner />;
+}
+
+function RoadsideHelpForm({ onReported }: { onReported: () => void }) {
+  const businessPhone = useBusinessPhone();
+  const submitIssue = usePortalWrite(createDriverIssue);
+  const [kind, setKind] = useState<string>(ROADSIDE_TYPES[0].kind);
+  const [location, setLocation] = useState("");
+  const [drivable, setDrivable] = useState<boolean | null>(null);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (drivable === null) return;
+    setBusy(true);
+    try {
+      const res = await submitIssue({ data: buildRoadsideIssue({ kind, location, drivable, note }) });
+      if ("error" in res) throw new Error(res.error);
+      toast.success("Roadside request sent. Keep the number above handy.");
+      setLocation("");
+      setNote("");
+      setDrivable(null);
+      setKind(ROADSIDE_TYPES[0].kind);
+      onReported();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not send roadside request");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="rounded-2xl border border-[#D03020] bg-white p-5"
+      data-testid="need-roadside-help"
+    >
+      <h3 className="font-semibold text-[#D03020]">Need Roadside Help</h3>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Breakdown, flat, lockout, accident, or a tow. Call this number, then send the details.
+      </p>
+      <a
+        href={businessPhone.tel}
+        className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#D03020] px-4 py-2.5 text-base font-semibold text-white"
+      >
+        <Phone className="w-5 h-5" />
+        {businessPhone.display}
+      </a>
+
+      <div className="mt-5 text-sm font-medium">What Happened</div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {ROADSIDE_TYPES.map((t) => (
+          <button
+            key={t.kind}
+            type="button"
+            onClick={() => setKind(t.kind)}
+            className={`rounded-lg px-3 py-1.5 text-sm border transition ${
+              kind === t.kind
+                ? "border-[#D03020] text-[#D03020] bg-[#D03020]/5"
+                : "border-border text-muted-foreground hover:bg-soft"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <label className="block mt-4 text-sm font-medium" htmlFor="roadside-location">
+        Where Are You
+      </label>
+      <input
+        id="roadside-location"
+        value={location}
+        onChange={(e) => setLocation(e.target.value)}
+        placeholder="Optional. Cross street, exit, or address"
+        className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-white outline-none focus:border-real-red"
+      />
+
+      <div className="mt-4 text-sm font-medium">Is The Car Drivable</div>
+      <div className="mt-2 flex gap-2">
+        {[
+          { id: true, label: "Yes" },
+          { id: false, label: "No" },
+        ].map((opt) => (
+          <button
+            key={opt.label}
+            type="button"
+            onClick={() => setDrivable(opt.id)}
+            className={`rounded-lg px-3 py-1.5 text-sm border transition ${
+              drivable === opt.id
+                ? "border-[#D03020] text-[#D03020] bg-[#D03020]/5"
+                : "border-border text-muted-foreground hover:bg-soft"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      <label className="block mt-4 text-sm font-medium" htmlFor="roadside-note">
+        Anything Else
+      </label>
+      <textarea
+        id="roadside-note"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={2}
+        placeholder="Optional. What you see, or what you already tried"
+        className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-white outline-none focus:border-real-red"
+      />
+
+      <button
+        type="submit"
+        disabled={busy || drivable === null}
+        className="mt-5 inline-flex items-center justify-center rounded-lg bg-[#D03020] text-white px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
+      >
+        {busy ? "Sending…" : "Send Roadside Request"}
+      </button>
+    </form>
+  );
 }
 
 function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }) {
@@ -1064,7 +1322,9 @@ function IssuesViewInner() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl">
+    <div className="space-y-6 max-w-5xl">
+      <RoadsideHelpForm onReported={() => refetch()} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">Report an Issue</h3>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -1169,6 +1429,7 @@ function IssuesViewInner() {
             ))}
           </ul>
         )}
+      </div>
       </div>
     </div>
   );
@@ -1353,6 +1614,66 @@ function PreRentalPanel({
   );
 }
 
+function MyCarGate({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  const read = usePortalRead(getMyCar);
+  return (
+    <MyCarCard
+      read={() => read()}
+      onPayments={() => onNavigate("payments")}
+      onDocuments={() => onNavigate("documents")}
+    />
+  );
+}
+
+function NextStepsSection() {
+  const fetchSteps = usePortalRead(getMyNextSteps);
+  const previewId = usePreviewDriver();
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["driver-next-steps", previewId],
+    queryFn: () => fetchSteps(),
+    enabled: NEXT_STEPS_CARD_ENABLED,
+  });
+  if (!NEXT_STEPS_CARD_ENABLED) return null;
+  return <NextStepsCard data={data} loading={isLoading} failed={Boolean(error)} />;
+}
+
+function PortalMyRental() {
+  const previewId = usePreviewDriver();
+  const fetchRental = usePortalRead(getPortalMyRental);
+  const { data, isError, isLoading } = useQuery({
+    queryKey: ["portal-my-rental", previewId ?? "self"],
+    queryFn: () => fetchRental(),
+    enabled: PORTAL_MY_RENTAL_ENABLED === true,
+  });
+  if (PORTAL_MY_RENTAL_ENABLED !== true) return null;
+  if (isLoading || isError || !data?.active) return null;
+  return <MyRentalCard rental={data} />;
+}
+
+function PortalPaymentHistory() {
+  const previewId = usePreviewDriver();
+  const fetchHistory = usePortalRead(getPortalPaymentHistory);
+  const { data, isError, isLoading } = useQuery({
+    queryKey: ["portal-payment-history", previewId ?? "self"],
+    queryFn: () => fetchHistory(),
+    enabled: PORTAL_PAYMENT_HISTORY_ENABLED === true,
+  });
+  if (PORTAL_PAYMENT_HISTORY_ENABLED !== true) return null;
+  if (isLoading || isError || !data) return null;
+  return <PaymentHistoryCard items={data} />;
+}
+
+function PortalPickupChecklist() {
+  const previewId = usePreviewDriver();
+  const fetchChecklist = usePortalRead(getPortalPickupChecklist);
+  const { data } = useQuery({
+    queryKey: ["portal-pickup-checklist", previewId ?? "self"],
+    queryFn: () => fetchChecklist(),
+  });
+  if (!data?.show) return null;
+  return <PickupChecklistCard items={data.items} />;
+}
+
 function DashboardView({
   data,
   onNavigate,
@@ -1361,12 +1682,44 @@ function DashboardView({
   onNavigate: (t: Tab) => void;
 }) {
   const { rental, vehicle, payments, maintenance, notifications } = data;
+  const applicationStatus = data.applicationStatus;
   const activeMaint = maintenance.filter((m) => m.status !== "completed");
   const lastPayment = payments.find((p) => p.status === "paid");
   const businessPhone = useBusinessPhone();
 
   return (
     <div className="space-y-6">
+      {MY_CAR_CARD_ENABLED ? <MyCarGate onNavigate={onNavigate} /> : null}
+      <div className="rounded-2xl border border-[#D03020] bg-[#D03020]/5 p-5" data-testid="roadside-dashboard">
+        <h3 className="font-semibold text-[#D03020]">Need Roadside Help</h3>
+        <p className="mt-1 text-sm text-[#111114]">
+          Breakdown, flat, lockout, accident, or a tow. Call this number, then send the details.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <a
+            href={businessPhone.tel}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#D03020] px-4 py-2.5 text-base font-semibold text-white"
+          >
+            <Phone className="w-5 h-5" />
+            {businessPhone.display}
+          </a>
+          <button
+            type="button"
+            onClick={() => onNavigate("issue")}
+            className="inline-flex items-center rounded-lg border border-[#D03020] px-4 py-2.5 text-sm font-semibold text-[#D03020]"
+          >
+            Send Roadside Request
+          </button>
+        </div>
+      </div>
+      <PortalDocumentUpdate />
+      <PortalMyRental />
+      <PortalPaymentHistory />
+      {PORTAL_PICKUP_CHECKLIST_ENABLED ? <PortalPickupChecklist /> : null}
+      {DRIVER_DOC_EXPIRY_CARD_ENABLED ? (
+        <DocExpiryGate onOpenDocuments={() => onNavigate("documents")} />
+      ) : null}
+      {DRIVER_AGREEMENT_VIEW_ENABLED ? <DriverAgreementGate /> : null}
       {activeMaint.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 text-sm flex items-start gap-3">
           <Wrench className="w-4 h-4 mt-0.5 shrink-0" />
@@ -1386,7 +1739,15 @@ function DashboardView({
       )}
 
       {!rental ? (
-        <PreRentalPanel onNavigate={onNavigate} status={data.applicationStatus} />
+        <>
+          <PreRentalPanel onNavigate={onNavigate} status={data.applicationStatus} />
+          {NEXT_STEPS_CARD_ENABLED && !rental && data.applicationStatus === "approved" ? (
+            <NextStepsSection />
+          ) : null}
+          {APPLICATION_TIMELINE_ENABLED && !rental && applicationStatus !== "approved" && applicationStatus !== "active" ? (
+            <ApplicationTimelineSection />
+          ) : null}
+        </>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 rounded-2xl border border-border overflow-hidden bg-white">
@@ -1732,6 +2093,11 @@ function MyChargesCard() {
   );
 }
 
+function DriverReceiptsGate() {
+  const read = usePortalRead(getDriverReceipts);
+  return <DriverReceipts read={() => read()} />;
+}
+
 function PaymentsView({ data }: { data: DriverDashboard }) {
   const [billing, setBilling] = useState<RentalBilling | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1769,6 +2135,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
 
   return (
     <div className="space-y-6">
+      {DRIVER_RECEIPTS_ENABLED ? <DriverReceiptsGate /> : null}
       <MyChargesCard />
 
       {billing && billing.rentalId && (
@@ -2027,12 +2394,18 @@ function DriverPreview({ tier }: { tier: StaffTier | null }) {
       <aside className="hidden md:flex w-60 flex-col bg-[#0b0b0d] text-white sticky top-0 h-screen">
         <div className="px-4 py-3 flex items-center justify-center"><Logo offset={false} /></div>
         <ExperienceSwitcher value="driver" options={options} onChange={choose} />
-        <nav className="flex-1 px-3 space-y-1">{nav()}</nav>
+        <nav className="flex-1 px-3 space-y-1">
+          {nav()}
+          {DRIVER_HELP_ENABLED ? <DriverHelpLink /> : null}
+        </nav>
       </aside>
       <main className="flex-1 min-w-0">
         <div className="md:hidden bg-[#0b0b0d] pt-3">
           <ExperienceSwitcher value="driver" options={options} onChange={choose} />
-          <div className="flex gap-1 overflow-x-auto px-3 pb-3 [&>button]:w-auto [&>button]:shrink-0">{nav()}</div>
+          <div className="flex gap-1 overflow-x-auto px-3 pb-3 [&>button]:w-auto [&>button]:shrink-0">
+            {nav()}
+            {DRIVER_HELP_ENABLED ? <DriverHelpLink compact /> : null}
+          </div>
         </div>
         {validId ? (
           <div role="status" className="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">

@@ -1,4 +1,5 @@
 import { tierFromRoles, tierAllows } from "./roles";
+import { STRIPE_READER_MAX_PAGES, paginateStripeList } from "./stripe-reader";
 
 export const STRIPE_COLLECTIONS_ENABLED = true;
 export function assertCollectionsAccess(roles: string[]) {
@@ -22,17 +23,10 @@ export function collectionsWindow(range: CollectionsRange) {
 export async function readAllPages<T extends { id: string }>(
   read: (cursor?: string) => Promise<{ data: T[]; has_more: boolean }>,
 ): Promise<T[]> {
-  const rows = new Map<string, T>();
-  let cursor: string | undefined;
-  for (let page = 0; page < 100; page++) {
-    const result = await read(cursor);
-    for (const row of result.data) rows.set(row.id, row);
-    if (!result.has_more) return [...rows.values()];
-    const next = result.data.at(-1)?.id;
-    if (!next || next === cursor) throw new Error("Stripe pagination incomplete");
-    cursor = next;
-  }
-  throw new Error("Stripe report exceeds the safe page limit; no partial totals returned");
+  const result = await paginateStripeList(read, { label: "Stripe collections", dedupe: true, maxPages: STRIPE_READER_MAX_PAGES });
+  if (result.ok) return result.rows;
+  if (result.reason === "capped") throw new Error("Stripe report exceeds the safe page limit; no partial totals returned");
+  throw new Error("Stripe pagination incomplete");
 }
 
 export type CollectionCharge = {

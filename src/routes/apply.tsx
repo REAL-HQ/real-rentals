@@ -1,15 +1,16 @@
-import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate, redirect, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { FadeUp } from "@/components/site/FadeUp";
-import { ProgressBar } from "@/components/site/ApplicationWizard";
+import { ApplyProgressSlot, ProgressBar } from "@/components/site/ApplicationWizard";
+import { APPLY_PROGRESS_ENABLED } from "@/lib/apply-progress";
 import { savePartialApplication } from "@/lib/applications.functions";
 import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
-import { useResumeToken } from "@/lib/resume-token";
+import { resumeTargetFromApply, useResumeToken } from "@/lib/resume-token";
 import { SmsConsentField } from "@/components/site/SmsConsentField";
 import { PhoneLink } from "@/components/site/PhoneLink";
 
@@ -43,6 +44,11 @@ export const Route = createFileRoute("/apply")({
       if (value) out[key] = value;
     }
     return out;
+  },
+  beforeLoad: ({ search }) => {
+    // Hand the token to /thank-you before this page strips it from the URL.
+    const handoff = resumeTargetFromApply(search);
+    if (handoff) throw redirect(handoff);
   },
   head: () => ({
     meta: [
@@ -185,11 +191,12 @@ function ContactStep({
     }
   }
 
-  return (
-    <FadeUp>
-      <div className="max-w-xl mx-auto">
+  const contact = (
+    <>
         <ProgressBar current="your_info" source="homepage" />
-        <div className="mt-8 text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase mb-3">Step 1 Of 3</div>
+        {APPLY_PROGRESS_ENABLED ? null : (
+          <div className="mt-8 text-xs tracking-[0.18em] font-semibold text-real-red uppercase mb-3">Step 1 Of 3</div>
+        )}
         <h1 className="text-3xl md:text-4xl font-semibold">Tell Us How To Reach You</h1>
         <p className="mt-3 text-muted-foreground">Two short questions after this, then you're done. No documents needed.</p>
 
@@ -208,27 +215,46 @@ function ContactStep({
 
           <SmsConsentField className="mt-5" checked={form.sms_consent} onChange={(v) => update("sms_consent", v)} />
 
-          <button
-            type="button"
-            onClick={submit}
-            disabled={submitting}
-            className="mt-8 w-full inline-flex items-center justify-center rounded-lg bg-real-red text-white px-6 py-3 text-sm font-semibold hover:opacity-90 transition active:scale-[0.98] disabled:opacity-50"
+          <div
+            className="mt-8 sticky bottom-0 z-10 -mx-6 border-t border-border bg-white/95 px-6 pt-3 backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:px-0 md:pt-0 md:backdrop-blur-none"
+            style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
           >
-            {submitting ? "Saving…" : "Continue"}
-          </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitting}
+              className="w-full inline-flex min-h-11 items-center justify-center rounded-lg bg-real-red text-white px-6 text-sm font-semibold hover:opacity-90 transition active:scale-[0.98] disabled:opacity-50"
+            >
+              {submitting ? "Saving…" : "Continue"}
+            </button>
+          </div>
           <p className="mt-3 text-center text-[11px] text-muted-foreground">
             By submitting, you agree to our{" "}
-            <Link to="/terms" className="underline hover:text-foreground">Terms</Link> and{" "}
-            <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
+            <Link to="/terms" className="inline-flex min-h-11 items-center underline hover:text-foreground">Terms</Link> and{" "}
+            <Link to="/privacy" className="inline-flex min-h-11 items-center underline hover:text-foreground">Privacy Policy</Link>.
           </p>
         </div>
         )}
         <div className="mt-5 text-center text-[13px] text-muted-foreground">
           <span className="font-medium text-foreground">Need Help Applying?</span>{" "}
           Questions about availability, pricing, deposits or your application? Call{" "}
-          <PhoneLink placement="application_help" className="font-medium text-foreground underline-offset-4 hover:underline" />.
+          <PhoneLink placement="application_help" className="inline-flex min-h-11 items-center font-medium text-foreground underline-offset-4 hover:underline" />.
         </div>
+    </>
+  );
+
+  if (APPLY_PROGRESS_ENABLED) {
+    return (
+      <div className="max-w-xl mx-auto">
+        <ApplyProgressSlot stepKey="your_info" showNeeded />
+        {contact}
       </div>
+    );
+  }
+
+  return (
+    <FadeUp>
+      <div className="max-w-xl mx-auto">{contact}</div>
     </FadeUp>
   );
 }
@@ -236,12 +262,12 @@ function ContactStep({
 function In({ label, type = "text", v, e, on }: { label: string; type?: string; v: string; e?: string; on: (v: string) => void }) {
   return (
     <label className="block">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
       <input
         type={type}
         value={v}
         onChange={(ev) => on(ev.target.value)}
-        className={`mt-1 w-full bg-white border ${e ? "border-real-red" : "border-border"} rounded-lg px-3 py-2 text-sm`}
+        className={`mt-1.5 w-full min-h-11 scroll-mb-28 bg-white border ${e ? "border-real-red" : "border-border"} rounded-lg px-3 text-base`}
       />
       {e && <div className="mt-1 text-xs text-real-red">{e}</div>}
     </label>

@@ -87,7 +87,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       // viewport-fit=cover so env(safe-area-inset-*) is non-zero on a
       // notched phone — without it the sticky Continue bar sits under the
       // home indicator.
-      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" },
       { title: "Car Rentals For Uber, Lyft & Gig Apps | Unlimited Miles" },
       {
         name: "description",

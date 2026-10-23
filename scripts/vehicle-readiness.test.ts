@@ -1,19 +1,21 @@
 import { vehicleReadinessChecks, overallReadiness, vehicleAvailability, listingPhotoCheck } from "../src/lib/vehicle-readiness";
+// Fixed clock. `today` is the fourth argument; a leftover photo count in that
+// slot becomes epoch and a 2026 registration no longer reads as expired.
 const t = new Date("2026-10-09T12:00:00");
 const f = { lastPreDeliveryPassedAt: null, schedules: [], openIssues: [], openIncidents: [], hasActiveRental: false };
 const base = { year: 2020, make: "Toyota", model: "Camry", vin: "4T1B11HK5LU000001", weekly_rate: 350, license_plate: "ABC", plate_expires_on: "2027-01-01", registration_expires_on: "2026-10-01", insurance_expires_on: "2026-10-20" };
-const c = vehicleReadinessChecks(base, f, [], 0, t);
+const c = vehicleReadinessChecks(base, f, [], t);
 const by = (k: string) => c.find((x) => x.key === k)!;
 const assert = (b: boolean, m: string) => { if (!b) { console.error("FAIL", m); process.exit(1); } else console.log("ok", m); };
 assert(by("registration").value === "Expired" && by("registration").status === "not_ready", "expired registration");
 assert(by("insurance").value === "Expiring Soon", "insurance soon");
-const c2 = vehicleReadinessChecks({ ...base, weekly_rate: null, registration_expires_on: null }, f, ["registration"], 0, t);
+const c2 = vehicleReadinessChecks({ ...base, weekly_rate: null, registration_expires_on: null }, f, ["registration"], t);
 assert(c2.find((x) => x.key === "weekly_rate")!.value === "Not Set", "missing rate");
 assert(c2.find((x) => x.key === "registration")!.value === "Date Missing", "missing distinct from expired");
 assert(overallReadiness(c) === "not_ready", "overall");
-const ok = vehicleReadinessChecks({ ...base, registration_expires_on: "2027-06-01", insurance_expires_on: "2027-06-01" }, { ...f, lastPreDeliveryPassedAt: "2026-10-01T00:00:00Z", schedules: [{ item: "Oil", next_due_on: "2027-03-01", next_due_miles: null }] }, ["registration", "insurance_card"], 0, t);
+const ok = vehicleReadinessChecks({ ...base, registration_expires_on: "2027-06-01", insurance_expires_on: "2027-06-01" }, { ...f, lastPreDeliveryPassedAt: "2026-10-01T00:00:00Z", schedules: [{ item: "Oil", next_due_on: "2027-03-01", next_due_miles: null }] }, ["registration", "insurance_card"], t);
 assert(overallReadiness(ok) === "ready", "fully ready even without photos");
 assert(vehicleAvailability("available", true) === "On Rent" && vehicleAvailability("onboarding", false) === "Onboarding", "availability independent");
 assert(listingPhotoCheck(0, 2).status === "info", "photos separate");
-const s = vehicleReadinessChecks(base, { ...f, openIncidents: [{ type: "x", severity: "minor", drivable: false }] }, [], 0, t);
+const s = vehicleReadinessChecks(base, { ...f, openIncidents: [{ type: "x", severity: "minor", drivable: false }] }, [], t);
 assert(s.find((x) => x.key === "safety")!.status === "not_ready", "not drivable blocks");
