@@ -54,6 +54,23 @@ function write(token: string) {
   }
 }
 
+/**
+ * Where /apply sends a link that already carries a resume token.
+ *
+ * This runs in the route's beforeLoad, before useResumeToken can strip `t`.
+ * Stripping on /apply makes the router re-read the search with `t` gone. The
+ * effect then runs again with no URL token and allowStashed false, and clears
+ * the token, so the contact form appears instead of /thank-you. A page with
+ * no token stays here and starts a new application. The tab stash is not read.
+ */
+export function resumeTargetFromApply(search: {
+  t?: string;
+}): { to: "/thank-you"; search: { t: string }; replace: true } | null {
+  const t = typeof search.t === "string" ? search.t.trim() : "";
+  if (!t) return null;
+  return { to: "/thank-you", search: { t }, replace: true };
+}
+
 /** Replace this tab's token (after a single-use recovery link is exchanged). */
 export function storeResumeToken(token: string) {
   write(token);
