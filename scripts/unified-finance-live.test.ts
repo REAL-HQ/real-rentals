@@ -133,6 +133,10 @@ describe("live report behind the same flag", () => {
     expect(result.report.complete).toBe(false);
     expect(result.report.financialScope).toBe("operating_only");
     expect(result.report.verifiedCollections.grossCollected).toEqual({ value: null, complete: false });
+    expect(result.report.verifiedCollections.operatingExpenses).toEqual({ value: 1400, complete: true });
+    expect(result.report.verifiedCollections.customerCompensation).toEqual({ value: null, complete: false });
+    expect(result.report.gaps).toEqual(["No Customer Credit Source", "No Compensation Notes"]);
+    expect(result.report.sources.expenses.state).toBe("complete");
     expect(result.report.verifiedCollections.operatingResult.value).toBeNull();
     expect(result.report.sources.stripe.state).toBe("incomplete");
     expect(result.report.sources.payments.state).toBe("incomplete");

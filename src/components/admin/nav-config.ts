@@ -11,18 +11,22 @@ import {
   Wrench,
   LayoutDashboard,
   ClipboardCheck,
+  ListChecks,
   Truck,
   Receipt,
+  ArrowLeftRight,
   ShieldAlert,
   AlertTriangle,
   Wallet,
   Inbox,
   Upload,
   Landmark,
+  PieChart,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
 
 export type TabDef = {
   id: string;
@@ -51,8 +55,17 @@ export const TABS: readonly TabDef[] = [
     group: "RENTALS",
     description: "Active And Completed Rentals, With Their Paperwork",
   },
+  {
+    id: "active_rentals",
+    label: "Active Rentals",
+    icon: ListChecks,
+    minTier: "manager",
+    group: "RENTALS",
+    description: "Who Is Out, What Is Due, And What Is Still Open",
+  },
   { id: "payments", label: "Payments", icon: CreditCard, minTier: "manager", group: "RENTALS", description: "Rent, Deposits, Balances And Renter Charges" },
   { id: "charges", label: "Charges", icon: Receipt, minTier: "manager", description: "Tolls And Violations, Matched To The Renter Who Had The Car" },
+  { id: "stripe_match", label: "Stripe Match", icon: ArrowLeftRight, minTier: "manager", description: "Live Stripe Customers Next To The Driver They Belong To" },
   { id: "vehicles", label: "Vehicles", icon: Car, minTier: "coordinator", group: "FLEET", description: "Fleet Inventory & Vehicle Status" },
   { id: "fleet_inbox", label: "Fleet Inbox", icon: Inbox, minTier: "coordinator", group: "FLEET", description: "Drop Fleet Files — Sorted, Matched To Vehicles And Ready For Review" },
   { id: "maintenance", label: "Service", icon: Wrench, minTier: "manager", group: "FLEET", description: "Maintenance, Due Work And Inspections" },
@@ -112,12 +125,26 @@ const FINANCE_TAB: TabDef = {
   description: "Combined Finance Coverage And Per-Vehicle Profitability",
 };
 
+/** Shown only while Vehicle Profitability is compiled on. Kept out of TABS so a dark build cannot list it. */
+const VEHICLE_PROFIT_TAB: TabDef = {
+  id: "vehicle_profit",
+  label: "Vehicle Profit",
+  icon: PieChart,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Revenue, Expenses, Utilization And Partner Share By Vehicle",
+};
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const extra: TabDef[] = [];
+  const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
+  if (!financeHidden) extra.push(FINANCE_TAB);
+  if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
+  if (!extra.length) return tabs;
   const next = [...tabs];
   const at = next.findIndex((t) => t.id === "expenses");
-  next.splice(at + 1, 0, FINANCE_TAB);
+  next.splice(at + 1, 0, ...extra);
   return next;
 }
 
@@ -126,7 +153,7 @@ export function visibleTabs(tier: StaffTier | null): TabDef[] {
  * own id, minTier, panel and server checks — this only groups them.
  */
 export const WORKSPACE_TABS: Record<string, readonly { id: string; label: string }[]> = {
-  payments: [{ id: "payments", label: "Payments" }, { id: "charges", label: "Charges" }],
+  payments: [{ id: "payments", label: "Payments" }, { id: "charges", label: "Charges" }, { id: "stripe_match", label: "Stripe Match" }],
   maintenance: [{ id: "maintenance", label: "Maintenance" }, { id: "inspections", label: "Inspections" }],
   partners: [{ id: "partners", label: "Partners" }, { id: "vendors", label: "Vendors" }, { id: "shops", label: "Repair Shops" }],
 };
@@ -151,10 +178,15 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return entries;
-  const at = entries.findIndex((t) => t.id === "expenses");
-  entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
-  return entries;
+  const extra: (TabDef & { href: string })[] = [];
+  const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
+  if (!financeHidden) extra.push({ ...FINANCE_TAB, href: "finance" });
+  if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
+  if (!extra.length) return entries;
+  const next = [...entries];
+  const at = next.findIndex((t) => t.id === "expenses");
+  next.splice(at + 1, 0, ...extra);
+  return next;
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
