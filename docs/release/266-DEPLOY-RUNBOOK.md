@@ -15,12 +15,13 @@ Project: **https://lovable.dev/projects/8cf1f99e-71ad-4a93-a47c-bfbe833616d6**
 
 ## A. Before publishing
 
-- [ ] **A1. Cloudflare flags confirmed** (Workers & Pages → project → Settings →
-      Variables and Secrets → **Production**). **`APPLICATION_RESUME_ATOMIC_ENABLED`
-      must not be `true`** — it calls functions that exist only in pending 0023.
-      Record all four: `APPLICATION_RESUME_ATOMIC_ENABLED`,
-      `RENTER_LIFECYCLE_NOTICES_ENABLED`, `DRIVER_ISSUE_ALERTS_ENABLED`,
-      `STRIPE_RECONCILIATION_ENABLED`.
+- [x] **A1. Environment flags — no longer a gate.** Production is on Lovable
+      Cloud, not your Cloudflare account; my earlier instruction was wrong. All
+      four flags are strict `=== "true"` checks, so unset means **off**, and
+      **#266 does not change any of them**. The two that would matter need
+      database functions that do not exist (`stripe_ingest`,
+      `reserve_application_recovery`), so they cannot be silently working.
+      Optional confirmation only: `docs/release/266-env-flags.md`.
 - [ ] **A2. Deployment identity, before.** Lovable → Project settings → Git.
       Branch = `integration/grok-baseline-2026-10-22`, commit = **`67b62664`**,
       status **"In sync with GitHub"**.
