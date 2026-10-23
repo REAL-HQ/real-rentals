@@ -1,0 +1,315 @@
+/**
+ * Read-only checklist before proposed/m3/HOSTED-INSTALL.md.
+ *
+ * Loads proposed/m3/preflight.sql. A tokenizer accepts exactly one SELECT
+ * or WITH. Comments, standard strings, E'' strings, dollar quotes, and
+ * quoted identifiers cannot hide a second command. The statement is sent
+ * with the extended protocol. The connection sets
+ * default_transaction_read_only=on, and the transaction ends with ROLLBACK.
+ *
+ * Run it as a least-privilege read-only role. The script stops when the
+ * current role is a superuser. The message is: run as least-privilege
+ * read-only role. This file does not create that role.
+ *
+ * Function calls are an allowlist of the functions proposed/m3/preflight.sql
+ * uses: exists, to_regprocedure, to_regclass, coalesce, string_agg, count,
+ * current_setting, pg_catalog.pg_get_userbyid, and
+ * pg_catalog.has_column_privilege. Comments and newlines between a name
+ * and '(' still count as a call, including a quoted or parenthesized name.
+ * current_setting may read only server_version, transaction_read_only,
+ * default_transaction_read_only, and standard_conforming_strings,
+ * including E'server_version' with no backslash. Tables are an allowlist
+ * of the relations this checklist reads. pg_roles cannot be read with a
+ * star or rolpassword. Any other call or table is refused before connect.
+ * A U& identifier or string is refused. The URL is refused when it sets
+ * standard_conforming_strings,
+ * including through options. After connect the script stops when that
+ * setting is not on, and when dblink or postgres_fdw is installed,
+ * because those extensions can write from a read-only transaction.
+ *
+ * PGUSER, PGPASSWORD, PGHOST, PGPORT, and PGDATABASE fill in parts the URL
+ * leaves out. The script prints the host and port only. It does not read
+ * SUPABASE_URL. There is no default connection. A host other than loopback
+ * (127.0.0.1, localhost, ::1) also needs --hosted.
+ *
+ *   bun scripts/m3-hosted-preflight.ts --url postgresql://read_only_role@127.0.0.1:55442/m3_rehearsal?sslmode=disable
+ */
+import { readFileSync } from "node:fs";
+import postgres from "postgres";
+import { assertSelectOnly as guardSelect, PREFLIGHT_POLICY } from "./select-only.mjs";
+
+export function assertSelectOnly(sql: string): void {
+  guardSelect(sql, PREFLIGHT_POLICY);
+}
+
+const ROOT = new URL("..", import.meta.url);
+
+export type ChecklistRow = {
+  step: number;
+  check_name: string;
+  expected: string;
+  actual: string;
+  ok: boolean;
+};
+
+/** Absent objects this packet creates. Any other absent check is unmapped. */
+export const ABSENT_STEP = new Map<string, number>([
+  ["public.waitlist_coming_soon_email_limit()", 2],
+  ["trigger waitlist_coming_soon_email_limit", 2],
+  ["index waitlist_coming_soon_email_created_idx", 2],
+]);
+
+const LAST_STEP = 2;
+
+class ReadOnlyDone extends Error {}
+
+export function stepForCheck(name: string, expected: string): number {
+  const known = ABSENT_STEP.get(name);
+  if (known != null) return known;
+  if (expected === "absent") {
+    throw new Error(`preflight check is not mapped to an install step: ${name}`);
+  }
+  return 0;
+}
+
+export function formatChecklist(rows: ChecklistRow[]): string {
+  const byStep = new Map<number, ChecklistRow[]>();
+  for (const row of rows) {
+    const list = byStep.get(row.step) ?? [];
+    list.push(row);
+    byStep.set(row.step, list);
+  }
+  const lines: string[] = [];
+  let stops = 0;
+  let checks = 0;
+  for (let step = 0; step <= LAST_STEP; step += 1) {
+    const group = (byStep.get(step) ?? []).slice().sort((a, b) => a.check_name.localeCompare(b.check_name));
+    if (group.length === 0) {
+      lines.push(`PASS step ${step} no separate object expected=covered by an earlier object actual=covered`);
+      checks += 1;
+      continue;
+    }
+    for (const row of group) {
+      if (!row.ok) stops += 1;
+      checks += 1;
+      lines.push(`${row.ok ? "PASS" : "STOP"} step ${row.step} ${row.check_name} expected=${row.expected} actual=${row.actual}`);
+    }
+  }
+  const extra = [...byStep.keys()].filter((step) => step < 0 || step > LAST_STEP);
+  if (extra.length) throw new Error(`checklist step is outside 0..${LAST_STEP}: ${extra.join(",")}`);
+  lines.push(`checklist stops=${stops} checks=${checks}`);
+  return lines.join("\n");
+}
+
+export function checklistStops(text: string): number {
+  const match = text.match(/checklist stops=(\d+)/);
+  if (!match) throw new Error("checklist summary is missing");
+  return Number(match[1]);
+}
+
+export function connectionTarget(url: string): { hostname: string; port: string; display: string } {
+  const parsed = new URL(url);
+  const fromUrl = parsed.hostname.replace(/^\[|\]$/g, "");
+  const hostname = fromUrl || process.env.PGHOST || "";
+  const port = parsed.port || (!fromUrl ? process.env.PGPORT || "" : "");
+  if (!hostname) throw new Error("connection URL has no host");
+  const display = hostname.includes(":") ? `[${hostname}]` : hostname;
+  return { hostname, port, display: port ? `${display}:${port}` : display };
+}
+
+export function connectionHost(url: string): string {
+  return connectionTarget(url).display;
+}
+
+export function isLoopbackHost(url: string): boolean {
+  const host = connectionTarget(url).hostname.toLowerCase();
+  return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "0:0:0:0:0:0:0:1";
+}
+
+export function assertNoStandardStringsOverride(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("Refusing to run: connection URL is invalid.");
+  }
+  for (const [key, value] of parsed.searchParams) {
+    const name = key.toLowerCase();
+    if (name === "standard_conforming_strings" || (name === "options" && /standard_conforming_strings/i.test(value))) {
+      throw new Error("Refusing to run: URL sets standard_conforming_strings.");
+    }
+  }
+}
+
+export function assertPreflightTarget(url: string, hosted: boolean): void {
+  if (!url || url.startsWith("--")) throw new Error("Pass the database URL after --url. There is no default connection.");
+  assertNoStandardStringsOverride(url);
+  if (!isLoopbackHost(url) && !hosted) {
+    throw new Error("Refusing to run: host is not loopback. Pass --hosted to run the read-only checklist against that host.");
+  }
+}
+
+const SESSION_PROBE = `
+SELECT current_setting('transaction_read_only') AS read_only,
+       current_setting('default_transaction_read_only') AS default_read_only,
+       current_setting('standard_conforming_strings') AS standard_strings,
+       r.rolsuper AS is_super,
+       EXISTS (SELECT 1 FROM pg_catalog.pg_extension e WHERE e.extname = 'dblink') AS dblink,
+       EXISTS (SELECT 1 FROM pg_catalog.pg_extension e WHERE e.extname = 'postgres_fdw') AS postgres_fdw
+FROM pg_catalog.pg_roles r
+WHERE r.rolname = current_user
+`;
+
+export function guardStops(flag: Record<string, unknown>): ChecklistRow[] {
+  const stops: ChecklistRow[] = [];
+  if (String(flag.standard_strings) !== "on") {
+    stops.push({ step: 0, check_name: "standard_conforming_strings", expected: "on", actual: String(flag.standard_strings), ok: false });
+  }
+  if (flag.is_super === true || flag.is_super === "t" || flag.is_super === "true") {
+    stops.push({
+      step: 0,
+      check_name: "current role",
+      expected: "not superuser",
+      actual: "superuser; run as least-privilege read-only role",
+      ok: false,
+    });
+  }
+  if (flag.dblink === true || flag.dblink === "t" || flag.dblink === "true") {
+    stops.push({
+      step: 0,
+      check_name: "extension dblink",
+      expected: "not installed",
+      actual: "installed; dblink can write from a read-only transaction",
+      ok: false,
+    });
+  }
+  if (flag.postgres_fdw === true || flag.postgres_fdw === "t" || flag.postgres_fdw === "true") {
+    stops.push({
+      step: 0,
+      check_name: "extension postgres_fdw",
+      expected: "not installed",
+      actual: "installed; postgres_fdw can write from a read-only transaction",
+      ok: false,
+    });
+  }
+  return stops;
+}
+
+export function formatGuardFailure(rows: ChecklistRow[]): string {
+  const lines = rows.map((row) => `${row.ok ? "PASS" : "STOP"} step ${row.step} ${row.check_name} expected=${row.expected} actual=${row.actual}`);
+  const stops = rows.filter((row) => !row.ok).length;
+  lines.push(`checklist stops=${stops} checks=${rows.length}`);
+  return lines.join("\n");
+}
+
+function asBool(value: unknown): boolean {
+  return value === true || value === "t" || value === "true";
+}
+
+function asRow(row: Record<string, unknown>, step: number): ChecklistRow {
+  return {
+    step,
+    check_name: String(row.check_name),
+    expected: String(row.expected),
+    actual: String(row.actual),
+    ok: asBool(row.ok),
+  };
+}
+
+export async function executeReadOnly(
+  url: string,
+  statements: string[],
+  connect: (url: string, statements: string[]) => Promise<Record<string, unknown>[]> = defaultConnect,
+): Promise<Record<string, unknown>[]> {
+  for (const statement of statements) assertSelectOnly(statement);
+  return connect(url, statements);
+}
+
+export async function defaultConnect(url: string, statements: string[]): Promise<Record<string, unknown>[]> {
+  assertNoStandardStringsOverride(url);
+  assertSelectOnly(SESSION_PROBE);
+  for (const statement of statements) assertSelectOnly(statement);
+  const target = connectionTarget(url);
+  const sql = postgres(url, {
+    max: 1,
+    connect_timeout: 10,
+    host: [target.hostname],
+    port: [Number(target.port || process.env.PGPORT || 5432)],
+    connection: { default_transaction_read_only: "on" },
+  });
+  const rows: Record<string, unknown>[] = [];
+  try {
+    await sql.begin("READ ONLY", async (tx) => {
+      const [flag] = await tx.unsafe(SESSION_PROBE, [], { prepare: true, simple: false });
+      if (String(flag.read_only) !== "on" || String(flag.default_read_only) !== "on") {
+        throw new Error("Refusing to run: transaction_read_only is not on");
+      }
+      rows.push({
+        step: 0,
+        check_name: "transaction_read_only",
+        expected: "on",
+        actual: "on",
+        ok: true,
+      });
+      const stops = guardStops(flag);
+      if (stops.length) {
+        for (const stop of stops) rows.push({ ...stop, blocked: true });
+        throw new ReadOnlyDone();
+      }
+      for (const statement of statements) {
+        rows.push(...await tx.unsafe(statement, [], { prepare: true, simple: false }));
+      }
+      throw new ReadOnlyDone();
+    });
+  } catch (error) {
+    if (!(error instanceof ReadOnlyDone)) throw error;
+  } finally {
+    await sql.end();
+  }
+  return rows;
+}
+
+export function loadPreflight(read: (file: string) => string = (file) => readFileSync(new URL(file, ROOT), "utf8")): string {
+  const preflight = read("proposed/m3/preflight.sql");
+  assertSelectOnly(preflight);
+  return preflight;
+}
+
+export function rowsFromQuery(queryRows: Record<string, unknown>[]): ChecklistRow[] {
+  return queryRows.map((row) => {
+    const expected = String(row.expected);
+    const named = row.step == null ? stepForCheck(String(row.check_name), expected) : Number(row.step);
+    if (Number.isNaN(named)) throw new Error(`no step for ${String(row.check_name)}`);
+    return asRow(row, named);
+  });
+}
+
+export async function runChecklist(options: {
+  url: string;
+  hosted: boolean;
+  statements?: string[];
+  connect?: (url: string, statements: string[]) => Promise<Record<string, unknown>[]>;
+}): Promise<string> {
+  assertPreflightTarget(options.url, options.hosted);
+  const statements = options.statements ?? [loadPreflight()];
+  const queryRows = await executeReadOnly(options.url, statements, options.connect);
+  const checklist = rowsFromQuery(queryRows);
+  if (queryRows.some((row) => row.blocked === true)) return formatGuardFailure(checklist);
+  return formatChecklist(checklist);
+}
+
+if (import.meta.main) {
+  const hosted = process.argv.includes("--hosted");
+  const flag = process.argv.indexOf("--url");
+  const url = flag >= 0 ? process.argv[flag + 1] ?? "" : "";
+  try {
+    assertPreflightTarget(url, hosted);
+    console.log(`target host=${connectionHost(url)}`);
+    const text = await runChecklist({ url, hosted });
+    console.log(text);
+    if (checklistStops(text) !== 0) process.exit(1);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
