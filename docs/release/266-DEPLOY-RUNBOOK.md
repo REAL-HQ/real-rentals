@@ -14,6 +14,54 @@ Project: **https://lovable.dev/projects/8cf1f99e-71ad-4a93-a47c-bfbe833616d6**
 
 ---
 
+## A0. Final pre-publish verification — 2026-10-23 12:14 UTC
+
+All checks pass. Recorded here so the state at authorization is on file.
+
+| Check | Result |
+|---|---|
+| RC `integration/grok-baseline-2026-10-22` | **`67b62664…`** unmoved |
+| Primary rollback `rollback/pre-rc266-7e3e6eb6` | **`7e3e6eb6…`** unmodified |
+| Secondary rollback `codex/revenue-publication` | **`0946c750…`** unmodified |
+| Migrations shipped | **none** |
+| Feature activations vs live | **identical** — only `STRIPE_COLLECTIONS_ENABLED`, already true |
+| Production environment changes | **none** — #266 changes no environment flag |
+| `payments` / net collected | **0 / 0** |
+| `rentals` | **0** |
+| `applications` / `vehicles` / `agreements` | **142 / 10 / 1** |
+| Ledgers (drizzle / Supabase) | **23 / 105** |
+
+### The Stripe Collections baseline still has to be captured by hand
+
+I have no Stripe access, so I cannot record it. **It must be read from the
+currently published production site before the branch is published**, because
+once the new build is live there is no un-published state left to compare
+against. Preview cannot supply it either — Preview has no Stripe secret.
+
+Capture, for the reporting period you will re-check afterwards:
+
+```
+Collections period      : ____________________
+Gross                   : ____________________
+Refunds                 : ____________________
+Fees                    : ____________________
+Net                     : ____________________
+Successful / failed     : ____________________
+Active subscriptions    : ____________________
+Revenue (Overview tile) : ____________________
+```
+
+### Who presses Publish, and why it matters
+
+This session **cannot verify a deployment or run any of the smoke tests**:
+drivereal.com is unreachable from the container (HTTP 000), there is no
+deployment-history API, and every smoke test needs a signed-in Owner session in
+the admin UI. Publishing from here would leave production in a state nobody is
+watching at the moment it changes.
+
+**Publish from the Lovable editor**, where the result is in front of you and
+C1–C8 can start immediately.
+
 ## A. Before publishing
 
 - [x] **A1. Environment flags — no longer a gate.** Production is on Lovable
