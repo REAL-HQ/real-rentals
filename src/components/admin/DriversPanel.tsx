@@ -1,3 +1,10 @@
+import { ApplicationDocGaps } from "./ApplicationDocGaps";
+import { getApplicationDocGaps } from "@/lib/application-doc-gaps.functions";
+import {
+  APPLICATION_DOC_GAPS_ENABLED,
+  APPLICATION_DOC_GAPS_ROW_CAP,
+  type ApplicationDocGapsResult,
+} from "@/lib/application-doc-gaps";
 import { RecordedRentalCloseout } from "./RecordedRentalCloseout";
 import { RecordRentalDialog } from "./RecordRentalDialog";
 import { RECORD_RENTAL_CONTRACT_ENABLED } from "@/lib/record-rental-contract";
@@ -357,6 +364,7 @@ export function DriversPanel({
    * says so rather than showing a score built on absent data.
    */
   const [canSeeSensitive, setCanSeeSensitive] = useState(true);
+  const [docGaps, setDocGaps] = useState<ApplicationDocGapsResult | null>(null);
   // Waitlist lives in the URL so old ?tab=waitlist bookmarks and the back button work.
   const filter = urlFilter === "waitlist" ? "waitlist" : localFilter;
   const setFilter = useCallback(
@@ -519,6 +527,28 @@ export function DriversPanel({
    * blanked or hidden.
    */
   const loadDriverRows = useServerFn(listDriverRows);
+  const loadDocGaps = useServerFn(getApplicationDocGaps);
+  useEffect(() => {
+    if (APPLICATION_DOC_GAPS_ENABLED !== true || !driversLoaded || canSeeSensitive !== true) return;
+    let cancel = false;
+    void loadDocGaps()
+      .then((result) => {
+        if (!cancel) setDocGaps(result);
+      })
+      .catch(() => {
+        if (!cancel) {
+          setDocGaps({
+            failed: true,
+            truncated: false,
+            cap: APPLICATION_DOC_GAPS_ROW_CAP,
+            applications: [],
+          });
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [loadDocGaps, driversLoaded, canSeeSensitive]);
   const refreshDrivers = useCallback(
     () =>
       void loadDriverRows({ data: undefined })
@@ -809,6 +839,9 @@ setDocCounts(requiredDocCounts(rows));
   return (
     <div>
       {deleteDialog}
+      {APPLICATION_DOC_GAPS_ENABLED === true && driversLoaded && canSeeSensitive ? (
+        <ApplicationDocGaps canView={canSeeSensitive} result={docGaps} />
+      ) : null}
       {showDeleted && (
         <RecentlyDeletedDialog
           onClose={() => setShowDeleted(false)}
