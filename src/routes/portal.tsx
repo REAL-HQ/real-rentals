@@ -60,6 +60,9 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { ApplicantHome } from "@/components/portal/ApplicantHome";
+import { MyCarCard } from "@/components/portal/MyCarCard";
+import { MY_CAR_CARD_ENABLED } from "@/lib/my-car-card";
+import { getMyCar } from "@/lib/my-car-card.functions";
 import { tierFromRoles, type StaffTier } from "@/lib/roles";
 import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -1353,6 +1356,17 @@ function PreRentalPanel({
   );
 }
 
+function MyCarGate({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  const read = usePortalRead(getMyCar);
+  return (
+    <MyCarCard
+      read={() => read()}
+      onPayments={() => onNavigate("payments")}
+      onDocuments={() => onNavigate("documents")}
+    />
+  );
+}
+
 function DashboardView({
   data,
   onNavigate,
@@ -1367,6 +1381,7 @@ function DashboardView({
 
   return (
     <div className="space-y-6">
+      {MY_CAR_CARD_ENABLED ? <MyCarGate onNavigate={onNavigate} /> : null}
       {activeMaint.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 text-sm flex items-start gap-3">
           <Wrench className="w-4 h-4 mt-0.5 shrink-0" />
