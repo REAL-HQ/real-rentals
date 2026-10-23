@@ -1,0 +1,992 @@
+{
+ "rows": [
+  {
+   "ledger": "supabase",
+   "key": "20260611133219",
+   "at": "20260611133219",
+   "path": "supabase/migrations/20260611133221_1d498ba4-0cec-4514-83aa-3a17a058b8fd.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260611133238",
+   "at": "20260611133238",
+   "path": "supabase/migrations/20260611133241_6ffca8b2-ed77-4a65-b36b-74126af0bafe.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260611133303",
+   "at": "20260611133303",
+   "path": "supabase/migrations/20260611133305_83007993-9bc2-4d57-aa91-6403132b494e.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260611143823",
+   "at": "20260611143823",
+   "path": "supabase/migrations/20260611143825_87ba2e25-6bb5-4c92-ae21-48c863358192.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260611164516",
+   "at": "20260611164516",
+   "path": "supabase/migrations/20260611164518_a88ae8de-b79c-423a-97d4-03318a23ce64.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260611233333",
+   "at": "20260611233333",
+   "path": "supabase/migrations/20260611233335_5b9afbe9-8d74-4d34-b151-a3d1c6843760.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260613214528",
+   "at": "20260613214528",
+   "path": "supabase/migrations/20260613214529_503cc03e-5e95-4237-99d6-9d92d0f3f92e.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260613214556",
+   "at": "20260613214556",
+   "path": "supabase/migrations/20260613214557_638770a4-16fd-47a5-863f-d0ba0b8a7c15.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260613215546",
+   "at": "20260613215546",
+   "path": "supabase/migrations/20260613215547_8d5b5f38-d309-4f32-bd9f-cf51edd2edab.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260613215603",
+   "at": "20260613215603",
+   "path": "supabase/migrations/20260613215605_4caedb26-b9fb-4ddd-8516-ce3f4c283f66.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260614110610",
+   "at": "20260614110610",
+   "path": "supabase/migrations/20260614110612_35d767bc-1675-4c68-a3e9-e728eb38d885.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260614225401",
+   "at": "20260614225401",
+   "path": "supabase/migrations/20260614225404_0809c198-8fdf-4f4c-a052-6c1fbc39ebae.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260615002158",
+   "at": "20260615002158",
+   "path": "supabase/migrations/20260615002200_3858360c-27e4-431d-bb64-5c128afaa45c.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260615002323",
+   "at": "20260615002323",
+   "path": "supabase/migrations/20260615002324_32273bb7-22b6-46b9-9b48-775a185053fa.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260615003004",
+   "at": "20260615003004",
+   "path": "supabase/migrations/20260615003005_83c412ea-6b27-454b-86b1-9dedc64622cc.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260617212930",
+   "at": "20260617212930",
+   "path": "supabase/migrations/20260617212934_654afb99-b681-4924-8cd4-04b97197c7b8.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260617224145",
+   "at": "20260617224145",
+   "path": "supabase/migrations/20260617224148_12889fb6-b8be-49b5-8244-00f595ed7d67.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260618000852",
+   "at": "20260618000852",
+   "path": "supabase/migrations/20260618000855_644fe83a-4003-40cc-a0f9-692fc1f87f11.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260618002018",
+   "at": "20260618002018",
+   "path": "supabase/migrations/20260618002021_4fe5d5e5-454b-4edf-9123-044c0abb6abe.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260618003112",
+   "at": "20260618003112",
+   "path": "supabase/migrations/20260618003115_87fe75da-5bfd-4598-a0ad-46364770a6f6.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260618003302",
+   "at": "20260618003302",
+   "path": "supabase/migrations/20260618003305_ec98f7ff-fee5-4b2a-9bed-40e853242cde.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260618003421",
+   "at": "20260618003421",
+   "path": "supabase/migrations/20260618003424_dbde5284-740b-4b37-abe0-7c17ff91869e.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260618003533",
+   "at": "20260618003533",
+   "path": "supabase/migrations/20260618003536_02cb905f-d55c-4bc2-87cb-ac517788268d.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260618005441",
+   "at": "20260618005441",
+   "path": "supabase/migrations/20260618005445_c17d7dee-f411-4cd1-ac27-7ed40874e7ee.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260620045006",
+   "at": "20260620045006",
+   "path": "supabase/migrations/20260620045007_bedda93d-3518-44e7-9fb6-b5850ff1da99.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260621011523",
+   "at": "20260621011523",
+   "path": "supabase/migrations/20260621011525_22b1864d-5a3f-45fc-a9bd-c0ca7d099cf3.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260621024849",
+   "at": "20260621024849",
+   "path": "supabase/migrations/20260621024851_a66d4d97-3ffc-4c21-b656-708680cf6935.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260621025138",
+   "at": "20260621025138",
+   "path": "supabase/migrations/20260621025139_c5303b4c-286b-4ac4-9c94-cc58f84bb9a8.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260622160002",
+   "at": "20260622160002",
+   "path": "supabase/migrations/20260622160004_1e31d255-d9fa-4fd7-846d-7cac1264cf47.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260622221326",
+   "at": "20260622221326",
+   "path": "supabase/migrations/20260622221327_218526c7-be86-44b9-ab58-f540be35d48a.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260628200526",
+   "at": "20260628200526",
+   "path": "proposed/rehearsal/receipts/20260628200526_receipt_only.sql",
+   "provenance": "receipt_only__statement_fetched_from_production"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260629044107",
+   "at": "20260629044107",
+   "path": "supabase/migrations/20260629044108_243e519d-f01a-430e-b2ef-e95c814dac1c.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260629044126",
+   "at": "20260629044126",
+   "path": "supabase/migrations/20260629044128_dc4b947c-2d70-4792-a76a-58ba57caac3c.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260629052830",
+   "at": "20260629052830",
+   "path": "supabase/migrations/20260629052831_c87beec8-078a-445f-9f0b-771f276c1559.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260713030451",
+   "at": "20260713030451",
+   "path": "supabase/migrations/20260713030450_8846ea0d-b338-401d-aa4b-6773cab6a53f.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260713042531",
+   "at": "20260713042531",
+   "path": "supabase/migrations/20260713042527_1ae06c72-8a4f-4ca4-9c38-69778f0ff24f.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260713042640",
+   "at": "20260713042640",
+   "path": "supabase/migrations/20260713042639_9bf58551-8e30-4378-8ed1-178633546ae9.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260721191236",
+   "at": "20260721191236",
+   "path": "supabase/migrations/20260721191235_4dcdb9df-90d5-465f-a1ab-3ae3fa27e6ed.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260721192417",
+   "at": "20260721192417",
+   "path": "supabase/migrations/20260721192409_e6878fdf-a4f4-41ec-9e23-870d17b3d35b.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260721192713",
+   "at": "20260721192713",
+   "path": "supabase/migrations/20260721192708_1efcc7f8-cfa7-4788-93eb-643981f90c06.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260722203536",
+   "at": "20260722203536",
+   "path": "supabase/migrations/20260722203533_18466fe8-be99-4538-95b7-c87c8bffdf41.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260722204255",
+   "at": "20260722204255",
+   "path": "supabase/migrations/20260722204249_27ff449f-83e8-463a-8f69-89a7cf9c89a4.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260722204455",
+   "at": "20260722204455",
+   "path": "supabase/migrations/20260722204451_ebfe61aa-64c5-4904-968d-1204e3131ea7.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260722204829",
+   "at": "20260722204829",
+   "path": "supabase/migrations/20260722204827_e7608c8a-a8a6-4539-858a-81f913cecfc2.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260722205427",
+   "at": "20260722205427",
+   "path": "supabase/migrations/20260722205426_c7483f5d-3a7e-4a23-a76e-cc500e341971.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260722234432",
+   "at": "20260722234432",
+   "path": "supabase/migrations/20260722234430_94330681-77f2-486e-a71c-6a58536f2e50.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260722235627",
+   "at": "20260722235627",
+   "path": "supabase/migrations/20260722235626_0c2a4606-69bc-4371-b82d-de52b351e7ac.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260722235658",
+   "at": "20260722235658",
+   "path": "supabase/migrations/20260722235657_f2c6714d-16f7-4b08-9114-676af87ffed4.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260722235748",
+   "at": "20260722235748",
+   "path": "supabase/migrations/20260722235747_db3d8eb0-0380-4310-92a3-d46ab3c47669.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260723011027",
+   "at": "20260723011027",
+   "path": "supabase/migrations/20260723011026_3c778a7e-eed2-462c-80eb-5b1aaab987b9.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260723044136",
+   "at": "20260723044136",
+   "path": "supabase/migrations/20260723044134_760ac4d5-e8b9-4aeb-b8dd-547dd2ee9324.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260723121700",
+   "at": "20260723121700",
+   "path": "supabase/migrations/20260723121657_4f6995d7-4c15-466a-a789-20ac7e2b2536.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260723135200",
+   "at": "20260723135200",
+   "path": "supabase/migrations/20260723135157_e1170877-9852-470e-b804-36a8f4e987ca.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260723182819",
+   "at": "20260723182819",
+   "path": "supabase/migrations/20260723182817_a46eb7d4-9c4b-4c2b-8f16-a7619c0ab521.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260723183257",
+   "at": "20260723183257",
+   "path": "supabase/migrations/20260723183256_81010d0c-a7f4-4cce-a3e2-1c900a764895.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260726131244",
+   "at": "20260726131244",
+   "path": "supabase/migrations/20260726131242_283dfbea-b674-4433-89e0-758d2e8cc7e2.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260727033225",
+   "at": "20260727033225",
+   "path": "supabase/migrations/20260727033224_68c459f8-788b-4264-a625-e06290c01d49.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260804060953",
+   "at": "20260804060953",
+   "path": "supabase/migrations/20260804060953_a5c2087c-1cde-40be-973c-c493fcdf1da2.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260815153000",
+   "at": "20260815153000",
+   "path": "supabase/migrations/20260815153000_4b3d85d0-a634-441c-b358-bd1b52b7550c.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260917021934",
+   "at": "20260917021934",
+   "path": "supabase/migrations/20260917021934_4ce1e744-f90c-445d-b3cf-2e2a4fae14e1.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260925130309",
+   "at": "20260925130309",
+   "path": "supabase/migrations/20260925130309_ab9eab21-15db-4bda-93a5-70fd3e4fcb9e.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260925130344",
+   "at": "20260925130344",
+   "path": "supabase/migrations/20260925130344_29f37878-876c-4240-ab34-6a0601393c95.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260925130510",
+   "at": "20260925130510",
+   "path": "supabase/migrations/20260925130510_a3a91f8e-acb2-4d28-bef6-2e65667713f8.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260925130550",
+   "at": "20260925130550",
+   "path": "supabase/migrations/20260925130550_39538d51-c101-4f3e-bdfd-16daa1e9294a.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260925130612",
+   "at": "20260925130612",
+   "path": "supabase/migrations/20260925130612_4b2f88bc-016e-44c3-9f59-374a000454b2.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260925130632",
+   "at": "20260925130632",
+   "path": "supabase/migrations/20260925130632_fc932a46-6fd8-41b8-ac40-ba08b45c22a3.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260925132035",
+   "at": "20260925132035",
+   "path": "supabase/migrations/20260925132035_f19ae6b6-92cc-4df9-834d-f7f03682c009.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260925160000",
+   "at": "20260925160000",
+   "path": "supabase/migrations/20260925160000_staff_tiers_invites_audit.sql",
+   "provenance": "out_of_band_receipt_empty__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260925161000",
+   "at": "20260925161000",
+   "path": "supabase/migrations/20260925161000_vehicle_expenses.sql",
+   "provenance": "out_of_band_receipt_empty__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260925170000",
+   "at": "20260925170000",
+   "path": "supabase/migrations/20260925170000_audit_log_revoke_default_grants.sql",
+   "provenance": "out_of_band_receipt_empty__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260925171020",
+   "at": "20260925171020",
+   "path": "supabase/migrations/20260925171020_f64f88ac-b2c1-4e1c-bcc7-7e0bfa86116f.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260926090000",
+   "at": "20260926090000",
+   "path": "supabase/migrations/20260926090000_vehicle_records_phase1.sql",
+   "provenance": "out_of_band_no_receipt__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260926120000",
+   "at": "20260926120000",
+   "path": "supabase/migrations/20260926120000_vehicle_finance_and_public_projection.sql",
+   "provenance": "out_of_band_no_receipt__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260926140000",
+   "at": "20260926140000",
+   "path": "supabase/migrations/20260926140000_vehicle_photos_and_import.sql",
+   "provenance": "out_of_band_no_receipt__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260926160000",
+   "at": "20260926160000",
+   "path": "supabase/migrations/20260926160000_insurance_effective_date.sql",
+   "provenance": "out_of_band_no_receipt__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260926180000",
+   "at": "20260926180000",
+   "path": "supabase/migrations/20260926180000_application_reviewed_at.sql",
+   "provenance": "out_of_band_no_receipt__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260926200000",
+   "at": "20260926200000",
+   "path": "supabase/migrations/20260926200000_document_review_status.sql",
+   "provenance": "out_of_band_no_receipt__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260926210000",
+   "at": "20260926210000",
+   "path": "supabase/migrations/20260926210000_retire_lead_documents.sql",
+   "provenance": "out_of_band_no_receipt__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260926220000",
+   "at": "20260926220000",
+   "path": "supabase/migrations/20260926220000_resume_tokens_and_duration.sql",
+   "provenance": "out_of_band_no_receipt__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260926234500",
+   "at": "20260926234500",
+   "path": "supabase/migrations/20260926234500_part1_part2_onboarding.sql",
+   "provenance": "out_of_band_no_receipt__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260927010000",
+   "at": "20260927010000",
+   "path": "supabase/migrations/20260927010000_ai_columns_service_role_only.sql",
+   "provenance": "out_of_band_no_receipt__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260927020000",
+   "at": "20260927020000",
+   "path": "supabase/migrations/20260927020000_applicant_upload_limits.sql",
+   "provenance": "out_of_band_no_receipt__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260927190000",
+   "at": "20260927190000",
+   "path": "supabase/migrations/20260927190000_duration_months_and_trip_history.sql",
+   "provenance": "out_of_band_no_receipt__repo_file_assumed"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260930222027",
+   "at": "20260930222027",
+   "path": "supabase/migrations/20260930222027_8aa77696-37ad-4595-a1b6-ba4b7dc384b1.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20260930223843",
+   "at": "20260930223843",
+   "path": "supabase/migrations/20260930223843_3c1454a2-4539-484a-9f94-627af1428c28.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261005021612",
+   "at": "20261005021612",
+   "path": "supabase/migrations/20261005021612_73d08e59-fe57-48a1-be03-ebd8afa9770f.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261005060239",
+   "at": "20261005060239",
+   "path": "supabase/migrations/20261005060239_93581d0b-f7c5-416a-8b96-60770d1e64c2.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261005072446",
+   "at": "20261005072446",
+   "path": "supabase/migrations/20261005072446_b974ac03-3fbe-4109-bb66-36f75bf7d07e.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261005080129",
+   "at": "20261005080129",
+   "path": "supabase/migrations/20261005080129_16fc3ee9-96a9-430e-83a8-8d4c370a65fe.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006012455",
+   "at": "20261006012455",
+   "path": "supabase/migrations/20261006012455_0e19926e-9f07-438a-a62d-534e9f14673f.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006012758",
+   "at": "20261006012758",
+   "path": "supabase/migrations/20261006012758_6f7404c1-aece-4130-91a0-4099e9775674.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006013924",
+   "at": "20261006013924",
+   "path": "supabase/migrations/20261006013924_3e5843be-f373-4888-9fb6-d24f776213e0.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006013942",
+   "at": "20261006013942",
+   "path": "supabase/migrations/20261006013942_5dbe930e-574b-489e-b8f2-f19be3ce93f7.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006014106",
+   "at": "20261006014106",
+   "path": "supabase/migrations/20261006014106_c6b9a07d-4e80-4bb3-9f3c-1b26acdcba99.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006014406",
+   "at": "20261006014406",
+   "path": "supabase/migrations/20261006014406_0abdea2e-a87c-4adc-9431-d697b5bb30bb.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006020456",
+   "at": "20261006020456",
+   "path": "supabase/migrations/20261006020456_cf3a2cce-fa6e-4f72-85b9-c95c5d634bb4.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006025756",
+   "at": "20261006025756",
+   "path": "supabase/migrations/20261006025756_a389dc79-68cb-4791-a4c8-9b27553f2085.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006072823",
+   "at": "20261006072823",
+   "path": "supabase/migrations/20261006072823_b3db3a6a-c49c-49f5-aa4e-9e67febaf4f3.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006083427",
+   "at": "20261006083427",
+   "path": "supabase/migrations/20261006083427_849bfc90-1928-4cbc-a850-3524287f60bb.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006083446",
+   "at": "20261006083446",
+   "path": "supabase/migrations/20261006083446_5fe0369d-2cd4-4424-9c80-841c32423399.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006083501",
+   "at": "20261006083501",
+   "path": "supabase/migrations/20261006083501_ed09dc6a-9375-4028-85cf-62819692ec4f.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006083905",
+   "at": "20261006083905",
+   "path": "supabase/migrations/20261006083905_e4027234-f89e-42ba-a036-a46f7c531b34.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006084912",
+   "at": "20261006084912",
+   "path": "supabase/migrations/20261006084912_1bf46cf7-571d-4014-b3d3-df8f58bb7ad3.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006085332",
+   "at": "20261006085332",
+   "path": "supabase/migrations/20261006085332_3fbcd0f8-08e1-480e-8982-4f9aa21201b6.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006092634",
+   "at": "20261006092634",
+   "path": "supabase/migrations/20261006092634_be010983-dd80-42bb-86eb-f87ed5131c3a.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006094717",
+   "at": "20261006094717",
+   "path": "supabase/migrations/20261006094717_dbf08f14-c299-4439-b453-e63821363b39.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006104154",
+   "at": "20261006104154",
+   "path": "supabase/migrations/20261006104154_df7902d0-18eb-4adb-aa22-b9bab6ccee0e.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006110204",
+   "at": "20261006110204",
+   "path": "supabase/migrations/20261006110204_b5c6296a-2396-4e8e-9be8-0e6eea261153.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006110227",
+   "at": "20261006110227",
+   "path": "supabase/migrations/20261006110227_b09ba4bb-e34a-40d0-b547-240247b8db03.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006110937",
+   "at": "20261006110937",
+   "path": "supabase/migrations/20261006110937_f7862272-5729-451d-9c2d-4617844f3b5e.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006112250",
+   "at": "20261006112250",
+   "path": "supabase/migrations/20261006112250_6c73a4f7-a851-44fd-bdf1-f8fc85906eda.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261006112513",
+   "at": "20261006112513",
+   "path": "supabase/migrations/20261006112513_bc809a22-b57b-4195-b431-b32a71111008.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261007034524",
+   "at": "20261007034524",
+   "path": "supabase/migrations/20261007034524_2033b2f1-e324-4b1a-bf59-e2ad2fa70e0d.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261007053328",
+   "at": "20261007053328",
+   "path": "supabase/migrations/20261007053328_d8c6b21b-adde-4adb-9e59-ed5bf6ddc752.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261007054953",
+   "at": "20261007054953",
+   "path": "supabase/migrations/20261007054953_f8d9eea7-65b0-4160-9575-d8b385a998cc.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261007120336",
+   "at": "20261007120336",
+   "path": "supabase/migrations/20261007120336_5389cf90-0087-4970-a593-e25754d27a74.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "1",
+   "at": "20261008005615",
+   "path": "drizzle/migrations/0000_fleet_inbox_job_queue.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "2",
+   "at": "20261008005754",
+   "path": "drizzle/migrations/0001_fleet_inbox_wake_timeout.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "3",
+   "at": "20261008033926",
+   "path": "drizzle/migrations/0002_owner_only_acquisition_finance.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "4",
+   "at": "20261008034759",
+   "path": "drizzle/migrations/0003_title_originals_owner_only.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "5",
+   "at": "20261008040950",
+   "path": "drizzle/migrations/0004_owner_only_vehicle_titles.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "6",
+   "at": "20261008041352",
+   "path": "drizzle/migrations/0005_vehicle_titles_revoke_anon.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "7",
+   "at": "20261008112103",
+   "path": "drizzle/migrations/0006_migration.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "8",
+   "at": "20261008114551",
+   "path": "drizzle/migrations/0007_safe_autofill.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "9",
+   "at": "20261008122413",
+   "path": "drizzle/migrations/0008_fin_core_c1.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "10",
+   "at": "20261008122546",
+   "path": "drizzle/migrations/0009_fin_core_c1_tables.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "11",
+   "at": "20261008124536",
+   "path": "drizzle/migrations/0010_fin_c1_deposit_correction.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "12",
+   "at": "20261008124558",
+   "path": "drizzle/migrations/0011_fin_c1_deposit_reverse_guard.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "13",
+   "at": "20261008125339",
+   "path": "drizzle/migrations/0012_photo_enhancer.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "14",
+   "at": "20261008145417",
+   "path": "drizzle/migrations/0013_vehicle_docs_finance_owner_only_writes.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "15",
+   "at": "20261008152821",
+   "path": "drizzle/migrations/0014_waitlist_holds_and_safe_promotion.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "16",
+   "at": "20261008153710",
+   "path": "drizzle/migrations/0015_waitlist_promotion_identity_review.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "17",
+   "at": "20261008163219",
+   "path": "drizzle/migrations/0016_0016_driver_deletion_stage1.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "18",
+   "at": "20261008171203",
+   "path": "drizzle/migrations/0017_0017_driver_deletion_security_repair.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "19",
+   "at": "20261008172732",
+   "path": "drizzle/migrations/0018_portal_signin_challenges.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "20",
+   "at": "20261008173542",
+   "path": "drizzle/migrations/0019_application_identity_reviews.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "21",
+   "at": "20261008173715",
+   "path": "drizzle/migrations/0020_identity_reviews_tighten_grants.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "22",
+   "at": "20261008215352",
+   "path": "drizzle/migrations/0021_phase_b_active_requires_running_rental.sql",
+   "provenance": "byte_identical_to_receipt"
+  },
+  {
+   "ledger": "supabase",
+   "key": "20261011180000",
+   "at": "20261011180000",
+   "path": "supabase/migrations/20261011180000_contact_status.sql",
+   "provenance": "install_wrapper__body_hash_declared_by_receipt"
+  },
+  {
+   "ledger": "drizzle",
+   "key": "23",
+   "at": "20261019112259",
+   "path": "drizzle/migrations/0022_waitlist_resolve_phone_conflict.sql",
+   "provenance": "byte_identical_to_receipt"
+  }
+ ],
+ "excluded": [
+  "20260921120000_fleet_ops_foundation.sql",
+  "20260921180000_rental_activation_guards.sql",
+  "20260921200000_charges_incidents_deposits.sql",
+  "20260921220000_inspection_signature.sql",
+  "20260921234500_followup_email_steps.sql",
+  "20260925093000_fix_applicant_uploads.sql"
+ ]
+}

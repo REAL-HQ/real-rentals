@@ -1,0 +1,1 @@
+ALTER TABLE public.applications ADD COLUMN sms_consent boolean DEFAULT false;

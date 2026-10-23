@@ -22,6 +22,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { stepQuery } from "./m2-step29-after-step25.mjs";
+import { baselineOrder } from "./m2-rehearsal-order.mjs";
 
 const OUT = "proposed/rehearsal/manifest.json";
 const VERIFY_DIR = "proposed/rehearsal/verify";
@@ -57,19 +58,31 @@ export function stripTxn(text, path) {
   return lines.filter((_, i) => i !== b[0] && i !== c[0]).join("\n");
 }
 
-export function cronBlock(text, path) {
-  const parts = text.split("cron.schedule(");
-  if (parts.length !== 2) throw new Error(`${path}: cron_block needs exactly one cron.schedule( (got ${parts.length - 1})`);
-  if (!text.includes("drivereal.com")) throw new Error(`${path}: expected a drivereal.com job body`);
-  return parts.join("rehearsal.cron_schedule_blocked(");
+export function outboundBlock(text, path) {
+  // One uniform rule for every replayed file that can reach production:
+  // scheduling and HTTP calls are replaced by recording stubs. The same three
+  // literal substitutions are applied, in this order, by the in-database
+  // executor; the resulting hashes must agree.
+  if (!text.includes("drivereal.com")) throw new Error(`${path}: expected a drivereal.com target`);
+  const subs = [["cron.schedule(", "rehearsal.cron_schedule_blocked("],
+                ["net.http_post(", "rehearsal.http_post_blocked("],
+                ["extensions.http_post(", "rehearsal.http_post_blocked("]];
+  let out = text, n = 0;
+  for (const [a, b] of subs) { n += out.split(a).length - 1; out = out.split(a).join(b); }
+  if (n < 1) throw new Error(`${path}: outbound_block made no substitution`);
+  // Any surviving *call* fails closed, including whitespace before the paren.
+  // Mentions in comments (e.g. "it referenced net.http_post in public") are not calls.
+  for (const bad of [/\bcron\.schedule\s*\(/, /\bnet\.http_\w+\s*\(/, /\bextensions\.http_\w+\s*\(/]) {
+    if (bad.test(out)) throw new Error(`${path}: a call matching ${bad} survived`);
+  }
+  return out;
 }
 
 function entry(kind, path, transform, extra = {}) {
   const original = readFileSync(path, "utf8");
   const executed = transform === "strip_txn" ? stripTxn(original, path)
-    : transform === "cron_block" ? cronBlock(original, path)
+    : transform === "outbound_block" ? outboundBlock(original, path)
     : original;
-  if (transform === "cron_block" && executed.includes("cron.schedule(")) throw new Error(`${path}: cron.schedule survived`);
   return { kind, path, transform, sha256: sha(original), executed_sha256: sha(executed), bytes: Buffer.byteLength(original), ...extra };
 }
 
@@ -88,16 +101,13 @@ function orderTable(runbook) {
 export function build() {
   const runbook = readFileSync("proposed/HOSTED-INSTALL.md", "utf8");
   const out = [];
-  const migrations = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort();
-  migrations.forEach((f, i) => {
-    const seq = i + 1;
-    if (seq === 39) out.push({ ...entry("prestep", PRESTEP_SMS, "none"), before_seq: 39 });
-    const path = `supabase/migrations/${f}`;
-    const text = readFileSync(path, "utf8");
+  for (const r of baselineOrder().rows) {
+    const text = readFileSync(r.path, "utf8");
+    const outbound = /cron\.schedule\(|http_post\(/.test(text);
     const own = /^\s*BEGIN\s*;\s*$/im.test(text);
-    out.push(entry("migration", path, CRON_FILES.has(f) ? "cron_block" : own ? "strip_txn" : "none", { seq }));
-  });
-  out.push(entry("prerequisite", "proposed/rehearsal/drizzle-prerequisites.sql", "strip_txn"));
+    if (outbound && own) throw new Error(`${r.path}: both transforms would apply`);
+    out.push(entry(r.ledger === "drizzle" ? "drizzle" : "migration", r.path, outbound ? "outbound_block" : own ? "strip_txn" : "none", { ledger: r.ledger, key: r.key, provenance: r.provenance }));
+  }
   out.push(entry("query", "proposed/m2-preflight.sql", "none", { expect: "preflight: zero rows WHERE ok IS NOT TRUE" }));
   for (const r of orderTable(runbook)) {
     out.push(entry("packet", r.file, r.own ? "strip_txn" : "none", { step: r.step }));
@@ -109,8 +119,9 @@ export function build() {
   for (const r of orderTable(runbook).slice().reverse()) {
     out.push(entry("rollback", r.rollback, "strip_txn", { step: r.step }));
   }
-  const cron = out.filter((e) => e.transform === "cron_block").length;
-  if (cron !== 8) throw new Error(`expected 8 cron_block entries, got ${cron}`);
+  const ob = out.filter((e) => e.transform === "outbound_block").length;
+  if (ob !== 8) throw new Error(`expected 8 outbound_block entries, got ${ob}`);
+  out.forEach((e, i) => { e.ord = i + 1; });
   const names = out.map((e) => e.path);
   const dup = names.filter((n, i) => names.indexOf(n) !== i && !n.startsWith(VERIFY_DIR));
   if (dup.length) throw new Error(`duplicate entries: ${dup.join(", ")}`);
@@ -124,8 +135,6 @@ function writeVerifyFiles() {
     const p = `${VERIFY_DIR}/step-${String(s).padStart(2, "0")}.sql`;
     writeFileSync(p, `-- GENERATED verbatim from proposed/HOSTED-INSTALL.md, Step ${s}. Do not edit.\n${stepQuery(runbook, s)}\n`);
   }
-  mkdirSync("proposed/rehearsal/presteps", { recursive: true });
-  writeFileSync(PRESTEP_SMS, PRESTEP_SMS_SQL);
 }
 
 const direct = process.argv[1] && process.argv[1].endsWith("m2-rehearsal-manifest.mjs");
@@ -143,6 +152,6 @@ if (direct) {
   const m = build();
   const by = (k) => m.filter((e) => e.kind === k).length;
   const tr = (t) => m.filter((e) => e.transform === t).length;
-  console.log(`entries=${m.length} migrations=${by("migration")} prestep=${by("prestep")} prerequisite=${by("prerequisite")} packet=${by("packet")} verify=${by("verify")} rollback=${by("rollback")} query=${by("query")}`);
-  console.log(`transforms: none=${tr("none")} strip_txn=${tr("strip_txn")} cron_block=${tr("cron_block")}  total bytes=${m.reduce((a, e) => a + e.bytes, 0)}`);
+  console.log(`entries=${m.length} migrations=${by("migration")} drizzle=${by("drizzle")} packet=${by("packet")} verify=${by("verify")} rollback=${by("rollback")} query=${by("query")}`);
+  console.log(`transforms: none=${tr("none")} strip_txn=${tr("strip_txn")} outbound_block=${tr("outbound_block")}  total bytes=${m.reduce((a, e) => a + e.bytes, 0)}`);
 }
