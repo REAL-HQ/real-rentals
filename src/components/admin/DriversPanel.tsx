@@ -125,6 +125,8 @@ import { DeleteDriverDialog } from "./DeleteDriverDialog";
 import { RecentlyDeletedDialog } from "./RecentlyDeletedDialog";
 import { listWaitlist, listWaitlistHolds, setWaitlistHold } from "@/lib/waitlist.functions";
 import { IdentityReviewCard } from "@/components/admin/IdentityReviewCard";
+import { ApplicationQuickReview } from "@/components/admin/ApplicationQuickReview";
+import { APPLICATION_QUICK_REVIEW_ENABLED, isPendingReviewStatus } from "@/lib/application-quick-review";
 import {
   Dialog,
   DialogContent,
@@ -295,11 +297,14 @@ export function DriversPanel({
   externalSearch = "",
   initialOpenId,
   isOwner = false,
+  isManager = false,
   canManageWaitlist = false,
   urlFilter,
 }: {
   /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
   canManageWaitlist?: boolean;
+  /** Manager and above. The quick review panel is not mounted for anyone else. */
+  isManager?: boolean;
   externalSearch?: string;
   initialOpenId?: string;
   /** ?filter= from the address bar; only "waitlist" is honoured (old ?tab=waitlist links land here). */
@@ -775,6 +780,7 @@ setDocCounts(requiredDocCounts(rows));
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
+        isManager={isManager}
       />
       {deleteDialog}
       </>
@@ -1162,6 +1168,7 @@ function DriverDetail({
   onScreeningChange,
   onVaultChange,
   isOwner,
+  isManager = false,
   hasActiveRental,
   onRentalStarted,
 }: {
@@ -1174,6 +1181,8 @@ function DriverDetail({
   onScreeningChange?: (s: DriverScreeningRow) => void;
   onVaultChange?: (requiredCount: number) => void;
   isOwner: boolean;
+  /** Manager and above. The quick review panel is not mounted otherwise. */
+  isManager?: boolean;
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
@@ -1891,6 +1900,14 @@ function DriverDetail({
 
         <div className="px-4 sm:px-8 py-6 max-w-[1400px]">
               <TabsContent value="overview" className="mt-0 space-y-5">
+                {APPLICATION_QUICK_REVIEW_ENABLED && isManager && isPendingReviewStatus(driver.status) ? (
+                  <ApplicationQuickReview
+                    applicationId={driver.id}
+                    documents={vaultDocs}
+                    onRefreshDocuments={refreshVault}
+                    onOpenDocuments={() => setTab("documents")}
+                  />
+                ) : null}
                 <LifecycleRail
                   stages={lifecycle}
                   percent={percentComplete}
