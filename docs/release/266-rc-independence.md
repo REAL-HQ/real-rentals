@@ -46,16 +46,19 @@ Smaller live-path changes: `revenue-state.ts` `+15/−2`,
 `payment-collection.server.ts` `+10/−2`. `esign.server.ts` and
 `rentals.functions.ts` are **unchanged**.
 
-### 2. Two flags are environment variables, not source constants
+### 2. Four flags are environment variables, not source constants
 
-I previously said every flag is a source constant. **That was wrong for two of
-them**, and the correction matters because an env var can switch a feature on at
-publish with no code change:
+I previously said every flag is a source constant, then said two were env vars.
+**Both were wrong: there are four**, listed authoritatively in
+`scripts/live-enabled-flags.mjs`. Two of them send messages to real people. An
+env var can switch a feature on at publish with no code change:
 
-| Flag | Gate | Risk |
-|---|---|---|
-| `DRIVER_ISSUE_ALERTS_ENABLED` | `process.env.… === "true"` | If set `"true"`, driver issue **emails send** |
-| `APPLICATION_RESUME_ATOMIC_ENABLED` | `process.env.… === "true"` | Switches Application Resume to `reserve_application_recovery` / `finish_application_recovery` — **functions that only exist in pending 0023**. If `"true"` while 0023 is unapplied, that path calls RPCs that are not there |
+| Flag (all `process.env.… === "true"`) | If it is `"true"` |
+|---|---|
+| **`APPLICATION_RESUME_ATOMIC_ENABLED`** | Switches Application Resume to `reserve_application_recovery` / `finish_application_recovery` — **functions that only exist in pending 0023** |
+| `RENTER_LIFECYCLE_NOTICES_ENABLED` | Renters get lifecycle notices after a rental or incident write |
+| `DRIVER_ISSUE_ALERTS_ENABLED` | Staff get an email each time a driver files an issue |
+| `STRIPE_RECONCILIATION_ENABLED` | Turns on the reconciliation activation pin |
 
 **Both already exist in live** — verified present in `codex/revenue-publication`
 as well as the baseline — so **#266 does not add this exposure**; it inherits it.
