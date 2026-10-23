@@ -98,7 +98,7 @@ export function Footer() {
           <ul className="space-y-2 text-muted-foreground">
             {driverLinks.map((l, i) => (
               <li key={`${l.label}-${i}`}>
-                <Link to={l.to} className="hover:text-foreground transition-colors">{l.label}</Link>
+                <Link to={l.to} className="inline-flex min-h-11 min-w-11 items-center hover:text-foreground transition-colors">{l.label}</Link>
               </li>
             ))}
           </ul>
@@ -108,7 +108,7 @@ export function Footer() {
           <ul className="space-y-2 text-muted-foreground">
             {ownerLinks.map((l, i) => (
               <li key={`${l.label}-${i}`}>
-                <Link to={l.to} hash={l.hash} className="hover:text-foreground transition-colors">{l.label}</Link>
+                <Link to={l.to} hash={l.hash} className="inline-flex min-h-11 min-w-11 items-center hover:text-foreground transition-colors">{l.label}</Link>
               </li>
             ))}
           </ul>
@@ -116,8 +116,8 @@ export function Footer() {
         <div className="md:col-span-3">
           <div className="text-[11px] tracking-[0.2em] font-semibold text-muted-foreground uppercase mb-4">Contact</div>
           <ul className="space-y-3 text-muted-foreground">
-            <li className="flex items-center gap-2"><Phone className="w-4 h-4" /> <PhoneLink placement="footer" className="hover:text-foreground" /></li>
-            <li className="flex items-center gap-2"><Mail className="w-4 h-4" /> <a href="mailto:team@drivereal.com" className="hover:text-foreground">team@drivereal.com</a></li>
+            <li className="flex items-center gap-2"><Phone className="w-4 h-4" /> <PhoneLink placement="footer" className="inline-flex min-h-11 min-w-11 items-center hover:text-foreground" /></li>
+            <li className="flex items-center gap-2"><Mail className="w-4 h-4" /> <a href="mailto:team@drivereal.com" className="inline-flex min-h-11 min-w-11 items-center hover:text-foreground">team@drivereal.com</a></li>
             <li className="flex items-center gap-2"><MapPin className="w-4 h-4" /> Tampa, Florida</li>
             <li className="flex items-center gap-2"><Clock className="w-4 h-4" /> Mon–Sat, 9am – 7pm</li>
           </ul>
@@ -127,9 +127,9 @@ export function Footer() {
         <div className="container-real py-6 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
           <div>© 2026 REAL RENTALS. All Rights Reserved.</div>
           <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-            <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
-            <Link to="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link>
-            <Link to="/sms-consent" className="hover:text-foreground transition-colors">SMS Consent</Link>
+            <Link to="/privacy" className="inline-flex min-h-11 min-w-11 items-center hover:text-foreground transition-colors">Privacy Policy</Link>
+            <Link to="/terms" className="inline-flex min-h-11 min-w-11 items-center hover:text-foreground transition-colors">Terms of Service</Link>
+            <Link to="/sms-consent" className="inline-flex min-h-11 min-w-11 items-center hover:text-foreground transition-colors">SMS Consent</Link>
           </div>
         </div>
       </div>

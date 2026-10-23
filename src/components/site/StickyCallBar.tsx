@@ -11,7 +11,7 @@ export function StickyCallBar({ onApplyClick }: { onApplyClick?: () => void }) {
           href={phone.tel}
           onClick={() => trackCallClick(window.location.pathname === "/" ? "hero" : "paid_landing", phone.e164)}
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-real-red px-3 py-3 text-sm font-semibold text-real-red active:scale-95 transition"
-          aria-label="Call REAL RENTALS"
+          aria-label={`Call Now, ${phone.display}`}
         >
           <Phone className="w-4 h-4" strokeWidth={2.25} /> Call Now
         </a>

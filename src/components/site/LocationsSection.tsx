@@ -63,10 +63,10 @@ export function LocationsSection() {
             <h2 className="mt-2 text-3xl md:text-5xl">Where We Operate.</h2>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => scrollBy(-1)} aria-label="Scroll left" className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-border hover:bg-soft transition active:scale-95">
+            <button onClick={() => scrollBy(-1)} aria-label="Scroll Left" className="inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg border border-border hover:bg-soft transition active:scale-95">
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <button onClick={() => scrollBy(1)} aria-label="Scroll right" className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-border hover:bg-soft transition active:scale-95">
+            <button onClick={() => scrollBy(1)} aria-label="Scroll Right" className="inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg border border-border hover:bg-soft transition active:scale-95">
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>

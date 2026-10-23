@@ -17,25 +17,25 @@ export function SmsConsentField({
 }) {
   return (
     <div className={className}>
-      <label className="flex items-start gap-2.5 cursor-pointer">
+      <label className="flex min-h-11 items-center gap-3 cursor-pointer">
         <input
           type="checkbox"
           name="sms_consent"
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
-          className="mt-0.5 h-4 w-4 accent-real-red shrink-0"
+          className="size-11 accent-real-red shrink-0"
           aria-describedby="sms-consent-disclosure"
         />
         <span className="text-sm leading-snug text-foreground">
           {SMS_CONSENT_LABEL} <span className="text-muted-foreground">(Optional)</span>
         </span>
       </label>
-      <p id="sms-consent-disclosure" className="mt-2 pl-[26px] text-xs leading-relaxed text-muted-foreground">
+      <p id="sms-consent-disclosure" className="mt-2 pl-14 text-xs leading-relaxed text-muted-foreground">
         By checking this box, you agree to receive recurring transactional SMS messages from REAL RENTALS
         at the mobile number provided. Message frequency varies. Message and data rates may apply. Reply
         STOP to opt out or HELP for help. Consent is not a condition of renting a vehicle. View our{" "}
-        <Link to="/terms" hash="sms" className="underline hover:text-foreground">Terms</Link> and{" "}
-        <Link to="/privacy" hash="sms" className="underline hover:text-foreground">Privacy Policy</Link>.
+        <Link to="/terms" hash="sms" className="underline hover:text-foreground box-decoration-clone px-2 -mx-2 pt-[10px] pb-[19px]">Terms</Link> and{" "}
+        <Link to="/privacy" hash="sms" className="underline hover:text-foreground box-decoration-clone px-2 -mx-2 pt-[10px] pb-[19px]">Privacy Policy</Link>.
       </p>
     </div>
   );

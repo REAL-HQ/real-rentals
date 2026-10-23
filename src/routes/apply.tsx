@@ -218,15 +218,15 @@ function ContactStep({
           </button>
           <p className="mt-3 text-center text-[11px] text-muted-foreground">
             By submitting, you agree to our{" "}
-            <Link to="/terms" className="underline hover:text-foreground">Terms</Link> and{" "}
-            <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
+            <Link to="/terms" className="underline hover:text-foreground box-decoration-clone px-2 -mx-2 pt-[10px] pb-[19px]">Terms</Link> and{" "}
+            <Link to="/privacy" className="underline hover:text-foreground box-decoration-clone px-2 -mx-2 pt-[10px] pb-[19px]">Privacy Policy</Link>.
           </p>
         </div>
         )}
         <div className="mt-5 text-center text-[13px] text-muted-foreground">
           <span className="font-medium text-foreground">Need Help Applying?</span>{" "}
           Questions about availability, pricing, deposits or your application? Call{" "}
-          <PhoneLink placement="application_help" className="font-medium text-foreground underline-offset-4 hover:underline" />.
+          <PhoneLink placement="application_help" className="inline-flex min-h-11 items-center font-medium text-foreground underline-offset-4 hover:underline" />.
         </div>
       </div>
     </FadeUp>
@@ -241,7 +241,7 @@ function In({ label, type = "text", v, e, on }: { label: string; type?: string; 
         type={type}
         value={v}
         onChange={(ev) => on(ev.target.value)}
-        className={`mt-1 w-full bg-white border ${e ? "border-real-red" : "border-border"} rounded-lg px-3 py-2 text-sm`}
+        className={`mt-1 w-full min-h-11 bg-white border ${e ? "border-real-red" : "border-border"} rounded-lg px-3 py-2 text-sm`}
       />
       {e && <div className="mt-1 text-xs text-real-red">{e}</div>}
     </label>

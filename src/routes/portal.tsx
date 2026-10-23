@@ -187,7 +187,7 @@ function Portal() {
     return (
       <div className="min-h-screen flex flex-col">
         <Nav />
-        <div className="container-real py-32 text-center text-muted-foreground">Loading…</div>
+        <main className="container-real py-32 text-center text-muted-foreground">Loading…</main>
       </div>
     );
   }
@@ -195,7 +195,7 @@ function Portal() {
     return (
       <div className="min-h-screen flex flex-col">
         <Nav />
-        <div className="container-real py-32 text-center max-w-lg">
+        <main className="container-real py-32 text-center max-w-lg">
           <h1 className="text-2xl font-semibold">Driver Portal</h1>
           <p className="mt-3 text-muted-foreground text-sm">
             Please sign in to access your driver portal.
@@ -206,7 +206,7 @@ function Portal() {
           >
             Sign In
           </Link>
-        </div>
+        </main>
       </div>
     );
   }

@@ -147,7 +147,7 @@ function FleetPage() {
             <div className="flex flex-col">
               <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Make</label>
               <Select value={make} onValueChange={setMake}>
-                <SelectTrigger className="h-9 w-36 rounded-lg bg-white text-foreground">
+                <SelectTrigger aria-label={make === "all" ? "Make, All" : `Make, ${make}`} className="h-11 w-36 rounded-lg bg-white text-foreground">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -168,7 +168,7 @@ function FleetPage() {
                     key={c.k}
                     type="button"
                     onClick={() => toggleCat(c.k)}
-                    className={`text-left px-4 py-2 rounded-lg text-sm border transition ${
+                    className={`min-h-11 text-left px-4 py-2 rounded-lg text-sm border transition ${
                       categories[c.k]
                         ? "bg-real-red text-white border-real-red"
                         : "bg-white text-foreground border-border hover:border-foreground/40"
@@ -185,8 +185,8 @@ function FleetPage() {
                 by availability. Unchecking it widens what is shown — it is not
                 a way to make the marketing fleet disappear. */}
             <label className="flex flex-col gap-1 text-sm">
-              <span className="inline-flex items-center gap-2">
-                <input type="checkbox" checked={onlyAvail} onChange={(e) => setOnlyAvail(e.target.checked)} className="accent-[#D03020]" />
+              <span className="inline-flex min-h-11 items-center gap-2">
+                <input type="checkbox" checked={onlyAvail} onChange={(e) => setOnlyAvail(e.target.checked)} className="size-11 accent-[#D03020]" />
                 Available Now Only
               </span>
               <span className="text-[10px] text-muted-foreground leading-tight">

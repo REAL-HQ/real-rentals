@@ -77,7 +77,12 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
         </FadeUp>
 
         <FadeUp delay={60}>
-          <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+          <div
+            className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-real-red"
+            tabIndex={0}
+            role="region"
+            aria-label="Compare Rental Options"
+          >
             <div className="min-w-[640px] rounded-2xl border border-border bg-white overflow-hidden shadow-sm">
               <table className="w-full border-collapse">
                 <thead>

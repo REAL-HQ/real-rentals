@@ -18,9 +18,7 @@ export function Logo({
   href?: boolean;
 }) {
   const Wrapper = href ? Link : ("div" as const);
-  const wrapperProps = href
-    ? ({ to: "/", "aria-label": "REAL RENTALS home" } as const)
-    : ({ role: "img", "aria-label": "REAL RENTALS" } as const);
+  const wrapperProps = href ? ({ to: "/" } as const) : ({} as const);
   return (
     <Wrapper
       {...(wrapperProps as any)}
@@ -71,6 +69,7 @@ export function Logo({
         >
           RENTALS
         </span>
+        {href ? <span className="sr-only">home</span> : null}
       </div>
     </Wrapper>
   );
