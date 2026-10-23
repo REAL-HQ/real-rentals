@@ -320,3 +320,33 @@ See `docs/development/M2-REHEARSAL-BULK-PROPOSAL.md`. Hand relay cannot prove a
 file is byte-identical to the repo, so **the packet will not be run by hand
 relay**: a packet result whose bytes cannot be proven is not a result. Baseline
 relay continues meanwhile.
+
+---
+
+## 11. Paused at 60 of 122 — pending the bulk-staging decision
+
+Migration 60 (`fleet_ops_foundation`, 33 KB) applied in two parts: 39 public
+tables, 6 buckets (adds `vehicle-docs`), 30 inspection-template items, one
+automation workflow seeded **inactive**, `cron.job` still **0**. Its
+`automations-every-5-min` job (POSTs to drivereal.com every five minutes) is the
+fourth intentional rehearsal safety exclusion.
+
+**Why the relay is paused rather than continued.** Files 1–60 were retyped
+through tool arguments. Their schema effects are catalog-verified batch by batch,
+but their bytes cannot be proven identical to the repo. Every further file
+relayed by hand adds to that unprovable set, while the proposal in
+`M2-REHEARSAL-BULK-PROPOSAL.md` would let files 61–122 — and the packet — run
+byte-exact with the database computing each hash. Continuing by hand now would
+lower the provability of the final result.
+
+If the proposal is approved there are two ways forward:
+
+| Option | Files 1–60 | Effort |
+|---|---|---|
+| Continue from 61 on this project | stay hand-relayed, catalog-verified only | lowest |
+| **Rebuild from scratch on a fresh disposable project** | **byte-exact like the rest** | slightly higher; bytes travel by `curl`, not transcription |
+
+The second makes the whole rehearsal provable end to end and is the
+recommendation. The `sms_consent` ordering fix and the cron exclusions carry over
+unchanged: the column is added by a separate recorded statement before file 39
+runs, and cron files run byte-exact with every job unscheduled before commit.
