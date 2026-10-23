@@ -1,0 +1,7 @@
+{
+  "name": "real-rentals-release-scripts",
+  "private": true,
+  "devDependencies": {
+    "playwright-core": "^1.56.1"
+  }
+}
