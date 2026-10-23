@@ -1,124 +1,169 @@
-# Rental closeout correction — readiness evidence
+# Rental closeout correction (Option B) — readiness evidence
 
-Prepared 2026-10-23 by Claude Code. Read-only against production; all behavioural
-testing in a throwaway PostgreSQL 16 cluster. **No migration was installed.**
+Prepared 2026-10-23 by Claude Code. Read-only against production; all
+behavioural testing in a throwaway PostgreSQL 16 cluster.
+**No production SQL was installed.**
 
-Subject: `proposed/end-rental-preserves-application-v1.sql` — stop ending a
-rental from closing the renter's application.
+Owner decision 2026-10-23: **Option B** — a rental that ends successfully
+returns the driver to **Approved**, not Active and not Closed.
 
-## 1. The proposal matches what is actually installed
+Proposal: `proposed/end-rental-returns-approved-v2.sql`.
+`proposed/end-rental-preserves-application-v1.sql` (Option A) is marked
+**SUPERSEDED** and kept only for the record.
 
-`scripts/end-rental-preserves-application.test.mjs` compares the proposal against
-the *migration file*. That leaves open whether the migration file is still what
-production runs. It is. A read-only `pg_get_functiondef` on
-`public.end_rental_tx` was diffed against both halves of the proposal:
+## 1. The schema and the derived-Active logic, verified first
+
+You asked that this be checked before touching the function. It was, and the
+answer has two halves — both matter.
+
+**`applications.status` really does store `'active'`.** `activate_rental_tx`
+(read live via `pg_get_functiondef`) ends with:
+
+```sql
+UPDATE public.applications SET status = 'active', vehicle_id = _vehicle_id
+  WHERE id = _application_id;
+```
+
+and it refuses to start unless the application is already `approved` or
+`active` (`IF v_app.status NOT IN ('approved','active') THEN RAISE 'not_approved'`).
+`private.application_active_guard` then refuses any move *into* `'active'`
+without a running rental.
+
+**But the Active list and count are derived, not read from that column.**
+`applicationFilterCount` (`src/lib/application-status.ts:340`) answers the
+`active` key from `activeIds` — built by `activeFilterApplicationIds` /
+`openRentalApplicationIds` from rentals whose `status = 'active'`. Every *other*
+filter matches `driver.status === key`.
+
+Live confirmation: **zero** applications currently sit at `'active'`, and no
+application has a running rental — consistent with the column only holding
+`'active'` while a rental is open.
+
+### Why that settles the design
+
+| After a successful closeout the stored status is… | Active list | Any other filter |
+|---|---|---|
+| `'closed'` (today) | gone (derived) | **Closed** — and `closed → approved` is disabled for *every* tier by design (`applicationStatusChoiceDisabled:155`), so re-renting needs an Owner/Manager reopen plus re-approval. A Coordinator cannot do it at all. |
+| `'active'` (Option A) | gone (derived) | **none — the driver matches no filter and is invisible in every tab** |
+| `'approved'` (Option B) | gone (derived) | **Approved** — which is exactly what `activate_rental_tx` requires to start the next rental |
+
+So Option B is the only one of the three where the driver both leaves Active
+*and* lands somewhere that means "ready to rent again".
+
+## 2. The change
+
+Vs. the function installed in production, **one statement changes**:
+
+```sql
+-- installed
+UPDATE public.applications SET status = 'closed' WHERE id = r.application_id;
+-- proposed
+UPDATE public.applications SET status = 'approved'
+  WHERE id = r.application_id AND status = 'active';
+```
+
+`AND status = 'active'` is load-bearing, not decoration. `'active'` is what a
+running rental means, so that is the state a normal closeout unwinds. If a
+person moved the driver to **suspended** or **declined** during the rental, that
+is an eligibility decision — and without the guard, returning a car would
+silently clear a suspension. Section 4 proves both halves.
+
+Everything else is untouched: approval and vetting history, documents, payment
+history, rental history, odometer history, and the application's own columns
+(including `vehicle_id`, which the installed activation sets and the installed
+closeout already leaves alone). Automation cancellation is unchanged.
+
+## 3. Verified against what is actually installed
+
+The text test compares the proposal to the *migration file*; that leaves open
+whether the migration file is still what production runs. It is — checked by
+read-only `pg_get_functiondef`:
 
 | Check | Result |
 |---|---|
-| ROLLBACK block vs the live function | **identical** (normalized) |
-| Forward change vs the live function | **one line removed**, nothing else |
+| Rollback half vs the live function | identical (modulo `CREATE OR REPLACE`, see below) |
+| Forward half vs the live function | the one statement above, nothing else |
+| Other functions that write `applications.status` | `activate_rental_tx`, `promote_waitlist_entry`, `resolve_waitlist_phone_conflict` — none on the closeout path |
+| Triggers on `public.rentals` | `guard_rental_lifecycle`, `rentals_set_updated_at` — neither writes `applications` |
 
-The only semantic difference is the removal of:
+**Defect found and fixed while testing:** the installed migration declares
+`CREATE FUNCTION`, not `CREATE OR REPLACE`. A rollback block copied verbatim
+from it fails with *"function already exists with same argument types"* — the
+function necessarily exists by the time anyone rolls back. The v2 rollback now
+says `CREATE OR REPLACE`, and both the text test and the harness assert it.
 
-```sql
-UPDATE public.applications SET status = 'closed' WHERE id = r.application_id;
-```
+## 4. Behavioural evidence — `scripts/closeout-harness/run.sh`
 
-The remaining diff is cosmetic header formatting that `pg_get_functiondef`
-normalizes (`DEFAULT NULL` vs `DEFAULT NULL::integer`, clause line wrapping).
-
-## 2. No other path closes the application
-
-- Functions whose body touches `applications` + `status` + `update`:
-  `activate_rental_tx`, `end_rental_tx`, `promote_waitlist_entry`,
-  `resolve_waitlist_phone_conflict`. Only `end_rental_tx` is on the closeout path.
-- Triggers on `public.rentals`: `guard_rental_lifecycle`, `rentals_set_updated_at`.
-  **Neither writes to `applications`.**
-- Triggers on `public.applications`: `applications_active_guard`,
-  `applications_updated_at`.
-
-So removing that one line is sufficient. Nothing else re-closes the row.
-
-## 3. Behavioural evidence — `scripts/closeout-harness/run.sh`
-
-A throwaway cluster, the live `private.application_active_guard` copied verbatim,
-and both function versions run against it. **18/18 checks pass.**
+Throwaway cluster, `private.application_active_guard` copied verbatim from
+production, both function versions run for real. **23/23 pass.**
 
 ```
 A. installed function (control: it closes the application)
   ok  end_rental_tx returns closed
-  ok  application is closed by the installed function
-B. proposed function
-  ok  end_rental_tx returns closed
-  ok  application status is PRESERVED
-  ok  rental is closed            ok  rental end_date is set
-  ok  autopay is off              ok  vehicle is available
-  ok  automation is cancelled     ok  cancel reason kept
-  ok  application notes untouched
-C. the active guard after the rental ended
-  ok  an edit to the still-active application succeeds
-  ok  the edit landed
-  ok  guard still refuses a new Active with no rental        <- negative control
-  ok  cannot hand-edit back to Active after the rental ended <- negative control
-D. rollback restores today's behaviour
+  ok  application is CLOSED today
+  ok  and today the driver CANNOT re-rent
+B. proposed v2 — Option B
+  ok  end_rental_tx returns closed      ok  application RETURNS TO APPROVED
+  ok  the driver CAN re-rent            ok  rental is closed
+  ok  rental end_date is set            ok  autopay is off
+  ok  vehicle is available              ok  automation is cancelled
+  ok  cancel reason kept                ok  vetting notes untouched
+  ok  rental history kept               ok  odometer history kept
+C. eligibility decisions made during the rental are NOT overwritten
+  ok  a 'suspended' driver stays 'suspended' after the rental ends
+  ok  a 'declined'  driver stays 'declined'  after the rental ends
+  ok  a 'reviewing' driver stays 'reviewing' after the rental ends
+D. the active guard
+  ok  application is approved, no running rental
+  ok  cannot hand-edit back to Active with no rental     <- negative control
+  ok  guard still refuses a new Active with no rental    <- negative control
+E. Active is derived, so the driver leaves the Active list either way
+  ok  no active rental remains for this application
+F. rollback restores today's behaviour
   ok  application closes again after rollback
 ```
 
-Section A is the control: it proves the harness can see the closing write, so
-section B's "PRESERVED" is not vacuous. The two controls in C prove the guard is
-live in the harness rather than silently absent.
+Section A is the control: it proves the harness sees the closing write *and*
+that today's behaviour genuinely blocks a re-rental, so B's two headline rows
+are not vacuous. "CAN / CANNOT re-rent" is the real precondition from
+`activate_rental_tx` (`status IN ('approved','active')`), not a restatement of
+the status.
 
-### What C establishes
+**Mutation check.** Deleting `AND status = 'active'` from the proposal:
 
-`private.application_active_guard` only fires on the **transition into**
-`active` (`TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'active'`). It does
-not police a row that stays `active`. So after the change the application sits at
-`active` with no running rental, the guard tolerates it, and the row stays
-editable. Nothing errors.
+- the text test fails, and
+- the harness fails with `a 'suspended' driver stays 'suspended' … got 'approved'`
+  and the same for `'declined'`.
 
-## 4. The argument for installing it, which is stronger than "preserve the status"
+So the guard is covered by a test that fails without it, in both layers.
 
-Today's behaviour does not merely lose information — it **traps the renter's
-record**. `applicationStatusChoiceDisabled` (`src/lib/application-status.ts:155`)
-disables `closed → approved` for **every tier, including Owner**, by design:
-Approved must go through `approveApplication` after an Owner or Manager reopens
-the row. And a Coordinator cannot leave `closed` at all
-(`canReopenClosedApplication`, line 139).
+**Harness hardening.** An earlier run lost the cluster mid-way and printed 23
+failed assertions that looked like findings. The harness now refuses to start
+without a reachable server and aborts with exit 2 if it loses the connection
+mid-run — a dead cluster can never be mistaken for a result. (Keep `PGDATA`
+outside the session scratchpad: its parent directory's permissions are
+re-tightened periodically, which is what killed that run.)
 
-So a driver who simply finishes a rental lands in `closed`, and putting them back
-in a car takes an Owner or Manager reopening the row and re-approving it. With
-the proposal the application stays `active`, and `active → approved` is open —
-which is the path the Application Resume work assumes.
-
-## 5. Open decision for the owner
-
-After the change the application reads **Active** for a driver with no car, until
-someone moves it. The guard means that once moved off Active it cannot be set
-back by hand — only `activate_rental_tx` (a new rental) can.
-
-Two readings of "preserve the driver's application status":
-
-- **(a) Leave it `active`** — what the proposal does. Nothing else to build.
-  Cost: the Drivers list shows Active drivers with no vehicle.
-- **(b) Return it to `approved`** — matches "ready to rent again". Needs one more
-  line in the function and a separate decision; **not** in the proposal and not
-  written.
-
-The proposal as it stands is (a). Say which you want before the migration is
-approved; (b) changes the SQL and would need re-review.
-
-## 6. Status
+## 5. Status
 
 | | |
 |---|---|
-| Proposal verified against live | yes |
-| Behaviour proven, rollback proven | yes, 18/18 |
-| App-side flag correct | yes — `END_RENTAL_PRESERVES_APPLICATION_ENABLED` is a hard `false`; with it on, `DriversPanel` correctly skips the local `onSaved({status:"closed"})` patch so the screen matches the database |
-| Installed | **no — needs owner migration approval** |
-| Release status | **Ready for Approval** (blocked only on the owner, and on decision 5) |
-
-Run the harness:
+| Schema and derived-Active logic verified first | yes |
+| Proposal verified against the live function | yes |
+| Behaviour proven, rollback proven | yes, 23/23 + mutation check |
+| App-side flag | `END_RENTAL_PRESERVES_APPLICATION_ENABLED` is a hard `false`; with it on, `DriversPanel` correctly skips the local `onSaved({status:"closed"})` patch so the screen matches the database |
+| Installed | **no — needs your separate migration approval** |
+| Release status | **Ready for Approval** |
 
 ```
 scripts/closeout-harness/run.sh <datadir> <port>   # throwaway cluster only
+node scripts/end-rental-preserves-application.test.mjs
 ```
+
+## 6. One note, not a question
+
+The flag's name now understates what it does — it reads "preserves application"
+but the behaviour is "returns to Approved". Renaming it touches `DriversPanel`,
+`application-status.ts` and two tests. Not done, because you asked for the
+smallest compatible change and the name is not part of the migration. Worth
+doing in a later cleanup.

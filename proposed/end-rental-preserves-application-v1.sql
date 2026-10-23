@@ -1,3 +1,7 @@
+-- SUPERSEDED on 2026-10-23 by proposed/end-rental-returns-approved-v2.sql.
+-- This file is Option A: it left the application at 'active' after the rental
+-- ended, which matches no filter in the Drivers list. The owner chose Option B
+-- (return to Approved). Kept for the record; do not install.
 -- PROPOSED ONLY. This file is not a migration and must not be run from the app.
 -- Do not copy it into supabase/migrations or drizzle/migrations.
 --

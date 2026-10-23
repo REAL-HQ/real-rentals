@@ -80,11 +80,19 @@ Sign in as **Owner**. For each, the pass condition is "same as production", not
 
 ## 4. The money-touching changed files
 
-- [ ] **`/thank-you`** — decide the Google tag question *before* publishing, not
-      after. Confirm whether the tag is present here, and confirm it is absent on
-      `/login`, `/sign` and `/card/<id>`. Publishing with it missing stops Ads
-      conversion tracking; publishing with it on a token page risks leaking a
-      credential URL if the sanitizer regresses.
+- [x] **`/thank-you` Google Ads tag — verified preserved, nothing to decide.**
+      Owner instruction 2026-10-23: keep it; do not remove or disable it. The
+      baseline keeps it. Verified by diff, not assumed:
+      the tag is not in `thank-you.tsx` on either side — live injects it inline
+      from `__root.tsx` on *every* page, and the baseline moves it to
+      `GOOGLE_ADS_BOOTSTRAP` in `src/lib/tracking-url.ts`, still injected from
+      `__root.tsx` for every path **except** `isCredentialTrackingPath`
+      (`/login`, `/invite`, `/sign`, `/sign/*`, `/card`, `/card/*`).
+      `/thank-you` is **not** in that list, so the tag loads there, and the
+      conversion id is byte-identical on both branches. Net effect: tracking
+      unchanged on /thank-you, removed from credential routes, plus a sanitized
+      `page_location`. Confirm in the preview that the tag request fires on
+      /thank-you and does **not** fire on /login.
 - [ ] **Payments webhook** (`api/public/payments/webhook`) — cannot be clicked
       through. Review the diff against live by eye and confirm it still: never
       un-pays a row, claims notices via `notified_status`, and writes no second
