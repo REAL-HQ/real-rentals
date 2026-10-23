@@ -19,10 +19,12 @@ import {
   Inbox,
   Upload,
   Landmark,
+  Ticket,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { TOLLS_TICKETS_LEDGER_ENABLED } from "@/lib/tolls-tickets-flag";
 
 export type TabDef = {
   id: string;
@@ -102,6 +104,16 @@ export function visibleSettingsSections(tier: StaffTier | null): SettingsSection
   return SETTINGS_SECTIONS.filter((s) => tierAllows(tier, s.minTier));
 }
 
+/** Shown only while Tolls And Tickets is compiled on. Kept out of TABS so a dark build cannot list it. */
+const TOLLS_TAB: TabDef = {
+  id: "tolls_tickets",
+  label: "Tolls And Tickets",
+  icon: Ticket,
+  minTier: "manager",
+  group: "RENTALS",
+  description: "Tolls, Tickets, And Violations For Each Rental And Vehicle",
+};
+
 /** Shown only while Unified Finance is compiled on. Kept out of TABS so a dark build cannot list it. */
 const FINANCE_TAB: TabDef = {
   id: "finance",
@@ -114,11 +126,29 @@ const FINANCE_TAB: TabDef = {
 
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const finance = UNIFIED_FINANCE_ENDPOINT_ENABLED && tierAllows(tier, "manager");
+  const tolls = TOLLS_TICKETS_LEDGER_ENABLED && tierAllows(tier, "manager");
+  if (!finance && !tolls) return tabs;
   const next = [...tabs];
-  const at = next.findIndex((t) => t.id === "expenses");
-  next.splice(at + 1, 0, FINANCE_TAB);
+  if (tolls) {
+    const at = next.findIndex((t) => t.id === "payments");
+    next.splice(at + 1, 0, TOLLS_TAB);
+  }
+  if (finance) {
+    const at = next.findIndex((t) => t.id === "expenses");
+    next.splice(at + 1, 0, FINANCE_TAB);
+  }
   return next;
+}
+
+/**
+ * Direct ?tab=tolls_tickets. Null means this URL is some other tab.
+ * While the flag is off, Overview is chosen before the role lookup returns.
+ */
+export function resolveTollsTicketsTab(urlTab: string | null | undefined, tier: StaffTier | null): "tolls_tickets" | "overview" | null {
+  if (urlTab !== "tolls_tickets") return null;
+  if (!TOLLS_TICKETS_LEDGER_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+  return "tolls_tickets";
 }
 
 /**
@@ -151,9 +181,17 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return entries;
-  const at = entries.findIndex((t) => t.id === "expenses");
-  entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
+  const finance = UNIFIED_FINANCE_ENDPOINT_ENABLED && tierAllows(tier, "manager");
+  const tolls = TOLLS_TICKETS_LEDGER_ENABLED && tierAllows(tier, "manager");
+  if (!finance && !tolls) return entries;
+  if (tolls) {
+    const at = entries.findIndex((t) => t.id === "payments");
+    entries.splice(at + 1, 0, { ...TOLLS_TAB, href: "tolls_tickets" });
+  }
+  if (finance) {
+    const at = entries.findIndex((t) => t.id === "expenses");
+    entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
+  }
   return entries;
 }
 
