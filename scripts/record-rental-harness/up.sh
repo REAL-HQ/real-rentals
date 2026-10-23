@@ -34,8 +34,11 @@ cp scripts/record-rental-harness/apply.mjs $D/packet/rr-apply.mjs
 # Transport login: issuer membership only for SET ROLE, no inherited privileges.
 psql "$U" -q -v ON_ERROR_STOP=1 <<'SQL'
 CREATE ROLE rr_evidence_transport LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'harness-transport-only';
-GRANT rr_evidence_issuer TO rr_evidence_transport WITH INHERIT FALSE, SET TRUE;
-GRANT rr_approval_executor TO rr_evidence_transport WITH INHERIT FALSE, SET TRUE;
+-- Grants only the roles the installed steps have created (a partial install stops early).
+DO $$ DECLARE r text; BEGIN
+ FOREACH r IN ARRAY ARRAY['rr_evidence_issuer','rr_approval_executor'] LOOP
+  IF to_regrole(r) IS NOT NULL THEN EXECUTE format('GRANT %I TO rr_evidence_transport WITH INHERIT FALSE, SET TRUE', r); END IF;
+ END LOOP; END $$;
 GRANT CONNECT ON DATABASE rr TO rr_evidence_transport;
 GRANT CONNECT ON DATABASE rr TO authenticator;
 INSERT INTO storage.buckets(id, name, public) VALUES ('rental-agreements','rental-agreements',false),('driver-docs','driver-docs',false) ON CONFLICT DO NOTHING;

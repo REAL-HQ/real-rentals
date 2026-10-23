@@ -167,6 +167,26 @@ try {
 
   const direct = await coord.ctx.supabase.rpc("record_existing_rental_evidence_v1", { token: randomUUID(), req: request() });
   assert.ok(direct.error, "coordinator reached the consumption RPC"); pass(`Coordinator calling the consumption RPC directly is refused (${(direct.error as any).code ?? ""})`);
+  // Closeout of the recorded rental, exactly as rentals.functions.ts calls it.
+  const closeArgs = { _operation_id: randomUUID(), _rental_id: result.rentalId, _ended_at: new Date().toISOString(),
+    _vehicle_status: "available", _return_miles: 43900, _reason: "Driver returned the vehicle" };
+  const coordClose = await coord.ctx.supabase.rpc("close_recorded_rental_v2", closeArgs);
+  assert.ok(coordClose.error); pass(`Coordinator cannot close the recorded rental (${(coordClose.error as any).message})`);
+  const paymentsBeforeClose = (await counts()).payments;
+  const closed = await owner.ctx.supabase.rpc("close_recorded_rental_v2", closeArgs);
+  assert.equal(closed.error, null, (closed.error as any)?.message);
+  const c = closed.data as any;
+  assert.equal(c.contract, "record-close-v2"); assert.equal(c.rentalId, result.rentalId); assert.equal(c.billing, "unchanged"); assert.equal(c.recovered, false);
+  const [afterClose] = await db`select r.status, r.end_date::text end_date, v.status vehicle_status from public.rentals r join public.vehicles v on v.id = r.vehicle_id where r.id = ${result.rentalId}`;
+  assert.notEqual(afterClose.status, "active"); assert.equal(afterClose.vehicle_status, c.vehicleStatus); assert.ok(afterClose.end_date);
+  // Safe release: the car only goes back to Available when its readiness checks pass.
+  if (c.vehicleStatus !== "available") assert.ok(c.releaseReasons.length > 0, "vehicle held without a stated reason");
+  assert.equal((await counts()).payments, paymentsBeforeClose);
+  pass(`recorded rental closed: rental ${afterClose.status} on ${afterClose.end_date}, vehicle ${c.vehicleStatus} (${c.releaseReasons.join(", ") || "released"}), billing unchanged`);
+  const replay = await owner.ctx.supabase.rpc("close_recorded_rental_v2", closeArgs);
+  assert.equal(replay.error, null); assert.equal((replay.data as any).recovered, true);
+  pass("closeout replay with the same operation recovers instead of closing twice");
+
   const [{ jobs }] = await db`select count(*)::int jobs from cron.job`;
   assert.equal(jobs, 0); pass("no scheduled job committed");
   console.log(`\nrecord-rental-e2e: ${results.length} checks passed`);

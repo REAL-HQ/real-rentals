@@ -8,14 +8,14 @@ import { stripTxn, outboundBlock } from "./scripts/m2-rehearsal-manifest.mjs";
 
 const url = process.env.RR_HARNESS_DB_URL;
 if (!url || !/@127\.0\.0\.1:/.test(url)) throw new Error("refusing: RR_HARNESS_DB_URL must be a 127.0.0.1 database");
-const last = Number(process.argv[2] ?? 206);
+const last = Number(process.argv[2] ?? 206), first = Number(process.argv[3] ?? 1);
 const manifest = JSON.parse(readFileSync("proposed/rehearsal/manifest.json", "utf8"));
 const sql = postgres(url, { max: 1, onnotice: () => {} });
 const sanitize = (t) => t.replace(/^\s*create extension[^;]*(pg_net|pg_cron|pg_graphql|supabase_vault|pgsodium)[^;]*;/gim, "");
 let applied = 0, verified = 0;
 try {
   for (const e of manifest) {
-    if (e.ord > last || e.kind === "rollback" || e.ord === 205) continue;
+    if (e.ord < first || e.ord > last || e.kind === "rollback" || e.ord === 205) continue;
     let body = readFileSync(e.path, "utf8");
     if (e.transform === "outbound_block") body = outboundBlock(body, e.path);
     if (e.transform === "strip_txn") body = stripTxn(body, e.path);
@@ -39,7 +39,7 @@ try {
   const [{ jobs }] = await sql`select count(*)::int jobs from cron.job`;
   const [{ queued }] = await sql`select count(*)::int queued from net.http_request_queue`;
   if (jobs || queued) throw new Error(`outbound effects committed: cron.job=${jobs} http=${queued}`);
-  console.log(`applied ${applied} files, ${verified} verifies true, through ord ${last}`);
+  console.log(`applied ${applied} files, ${verified} verifies true, ords ${first}-${last}`);
 } finally {
   await sql.end();
 }
