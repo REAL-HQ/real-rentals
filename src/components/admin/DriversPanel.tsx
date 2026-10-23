@@ -6,6 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
+import { STALLED_APPLICATIONS_ENABLED } from "@/lib/stalled-applications";
+import { listStalledApplications, type StalledApplicationRow } from "@/lib/stalled-applications.functions";
+import { StalledApplications } from "./StalledApplications";
 import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -329,13 +332,22 @@ export function DriversPanel({
    */
   const navigate = useNavigate();
   const openId = initialOpenId ?? null;
+  const stalledOn = STALLED_APPLICATIONS_ENABLED === true && canManageWaitlist;
   const setOpenId = useCallback(
-    (id: string | null) =>
+    (id: string | null) => {
+      const keepStalled = urlFilter === "stalled" && stalledOn;
       void navigate({
         to: "/admin",
-        search: id ? { tab: "drivers", id } : { tab: "drivers" },
-      }),
-    [navigate],
+        search: id
+          ? keepStalled
+            ? { tab: "drivers", id, filter: "stalled" }
+            : { tab: "drivers", id }
+          : keepStalled
+            ? { tab: "drivers", filter: "stalled" }
+            : { tab: "drivers" },
+      });
+    },
+    [navigate, stalledOn, urlFilter],
   );
   const [localFilter, setLocalFilter] = useState<string>("all");
   /*
@@ -358,17 +370,25 @@ export function DriversPanel({
    */
   const [canSeeSensitive, setCanSeeSensitive] = useState(true);
   // Waitlist lives in the URL so old ?tab=waitlist bookmarks and the back button work.
-  const filter = urlFilter === "waitlist" ? "waitlist" : localFilter;
+  const filter =
+    urlFilter === "waitlist" ? "waitlist" : urlFilter === "stalled" && stalledOn ? "stalled" : localFilter;
   const setFilter = useCallback(
     (f: string) => {
       if (f === "waitlist") {
         void navigate({ to: "/admin", search: { tab: "drivers", filter: "waitlist" } });
         return;
       }
+      if (f === "stalled") {
+        if (!stalledOn) return;
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: "stalled" } });
+        return;
+      }
       setLocalFilter(f);
-      if (urlFilter === "waitlist") void navigate({ to: "/admin", search: { tab: "drivers" } });
+      if (urlFilter === "waitlist" || urlFilter === "stalled") {
+        void navigate({ to: "/admin", search: { tab: "drivers" } });
+      }
     },
-    [navigate, urlFilter],
+    [navigate, stalledOn, urlFilter],
   );
   // Live waitlist size (entries not yet promoted) — never hard-coded.
   const loadWaitlist = useServerFn(listWaitlist);
@@ -380,6 +400,22 @@ export function DriversPanel({
   }, [loadWaitlist]);
   // Drivers held on the waitlist. A display status only: the application
   // stage underneath is never changed, so Remove restores it automatically.
+  const loadStalled = useServerFn(listStalledApplications);
+  const [stalledRows, setStalledRows] = useState<StalledApplicationRow[] | null>(null);
+  useEffect(() => {
+    if (!stalledOn) return;
+    let cancelled = false;
+    loadStalled()
+      .then((result) => {
+        if (!cancelled) setStalledRows(result.rows);
+      })
+      .catch(() => {
+        if (!cancelled) setStalledRows([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadStalled, stalledOn]);
   const loadHolds = useServerFn(listWaitlistHolds);
   const holdFn = useServerFn(setWaitlistHold);
   const [held, setHeld] = useState<Set<string>>(new Set());
@@ -805,6 +841,38 @@ setDocCounts(requiredDocCounts(rows));
       {FILTER_LABEL[s]} ({filterCount(s)})
     </button>
   ));
+  if (stalledOn) {
+    filterButtons.push(
+      <button
+        key="stalled"
+        type="button"
+        data-stalled-filter
+        onClick={() => setFilter("stalled")}
+        className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "stalled" ? "bg-black text-white" : "bg-white border border-border"}`}
+      >
+        Stalled ({stalledRows == null ? "…" : stalledRows.length})
+      </button>,
+    );
+  }
+  function saveStalledContact(applicationId: string, state: ContactStatusState) {
+    setStalledRows(
+      (rows) =>
+        rows?.map((row) =>
+          row.id === applicationId
+            ? {
+                ...row,
+                contact: {
+                  contact_status: state.status,
+                  contact_status_note: state.note,
+                  contact_follow_up_on: state.followUpOn,
+                  contact_status_at: state.changedAt,
+                  contact_status_by: state.changedBy,
+                },
+              }
+            : row,
+        ) ?? rows,
+    );
+  }
 
   return (
     <div>
@@ -851,6 +919,9 @@ setDocCounts(requiredDocCounts(rows));
           </button>
         </div>
       </div>
+      {filter === "stalled" && stalledOn ? (
+        <StalledApplications rows={stalledRows ?? []} loading={stalledRows == null} onContactSaved={saveStalledContact} />
+      ) : (
       <AdminTableScroll className="rounded-lg border border-border bg-white">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -1136,6 +1207,7 @@ setDocCounts(requiredDocCounts(rows));
             </tbody>
           </table>
       </AdminTableScroll>
+      )}
       {filter === "waitlist" && (
         <div className="mt-6">
           <div className="mb-4">
