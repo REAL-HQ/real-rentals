@@ -180,3 +180,95 @@ packet files and the 31 rollbacks run locally with `psql -f`, at full fidelity,
 and with the runbook's `-1` and own-transaction modes applied natively instead
 of emulated. That is a credential for a throwaway project holding no real data —
 not a production credential.
+
+---
+
+## 7. Update — 59 of 122, and a production-contact hazard found in the migrations
+
+### Progress
+
+| | |
+|---|---|
+| Migrations applied | **59 of 122** (sequence 1–59, contiguous) |
+| Public tables | 27 |
+| Public policies | 70 |
+| Storage policies | 23 |
+| `private` functions | 7 |
+| Storage buckets | 5, all private |
+| `cron.job` rows | **0 — deliberately** (see below) |
+| Rows of real data | none; `markets`/`sites` hold configuration rows only |
+
+Checks that passed along the way, each asserted in the same statement that
+applied the work:
+
+- Migration 36 rewrote every helper reference from `public.*` to `private.*`
+  through a `DO` block: **6 private helpers created, 0 leftover public
+  wrappers, 53 policies rewritten.** That is the largest structural migration
+  in the baseline and it applied cleanly.
+- `anon` and `authenticated` both have **no `USAGE` on `private`** after
+  migration 46 — one of the privilege assertions every HOSTED-INSTALL per-step
+  verify repeats.
+- `app_role` carries all 5 enum values; `public.documents`, `public.rentals`,
+  `public.agreements` and `public.agreement_templates` all present.
+
+### Deviations, all recorded in the ledger — sequences 39, 46, 47, 58
+
+**One replay fix (39).** Migration 39 grants `INSERT` on
+`applications.sms_consent`, a column migration 44 adds. The column was added
+first, exactly as `docs/m2-rehearsal.md` records from the earlier run. **The
+defect reproduced precisely**, which is itself a result for validation item 1:
+the dependency ordering in `supabase/migrations` is wrong in that one place, on
+any fresh replay. No migration file was edited.
+
+**Three production-contact safety omissions (46, 47, 58).** This is worth your
+attention beyond the rehearsal.
+
+Migrations 46, 47 and 58 each call `cron.schedule(...)` with a job body that
+does:
+
+```
+extensions.http_post(url := 'https://drivereal.com/api/public/cron/wizard-recovery', ...)
+extensions.http_post(url := 'https://drivereal.com/api/public/cron/ops-reminders', ...)
+```
+
+`pg_cron` and `pg_net` are **really installed** on this rehearsal project, not
+stubbed as they were in the vanilla run. So scheduling those jobs would have
+made the **rehearsal database call production every hour**, with a bearer token
+from its own `private.cron_tokens`. That is squarely inside "do not connect to
+production", so the `cron.schedule` calls were skipped. Everything else in those
+files — the columns, `private.cron_tokens`, the token rows, the
+`get_cron_token` functions — was applied.
+
+`cron.job` is verified **empty**, and the M2 packet touches no cron object, so
+nothing downstream depends on this.
+
+**The general point:** any replay of `supabase/migrations` into a live Supabase
+project will schedule hourly POSTs at drivereal.com unless those three calls are
+removed. Worth knowing before anyone clones production for any other purpose.
+
+### Connection investigation — settled, no faster route exists
+
+You approved a direct PostgreSQL connection if available. It is not, and no
+credential would change that:
+
+| Probe | Result |
+|---|---|
+| DNS for `db.<ref>.supabase.co` and `aws-0-*.pooler.supabase.com` | **does not resolve** in this environment |
+| Proxy `CONNECT` to port **5432** | connection reset — non-443 ports are not tunnelled |
+| Proxy `CONNECT` to port **443** | **403**, a policy denial — this is the allowlist |
+| `socat` / `ncat` / `proxytunnel` | **not installed** |
+| `psql` | present (16.15), but has nothing it can reach |
+
+So I did not ask for a database password: it could not be used, and asking would
+have put a credential in chat for nothing.
+
+**What the 443 allowlist would unlock, beyond the Storage and JWT tests:** with
+HTTPS to the project reachable, a `SECURITY DEFINER` exec function created in
+this disposable database and called over PostgREST with the project's service
+key becomes a genuine bulk SQL channel — the remaining migrations, the 24 packet
+files and the 31 rollbacks could be posted in a handful of requests instead of
+transcribed. That is acceptable **only** because this database is disposable and
+holds no real data, and the function would be dropped at the end. It is not a
+pattern for production.
+
+Until then the relay continues in verified batches, as instructed.
