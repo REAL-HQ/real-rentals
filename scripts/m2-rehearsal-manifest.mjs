@@ -98,6 +98,8 @@ function orderTable(runbook) {
   return rows;
 }
 
+const AMEND_DIR = "proposed/m2-hosted-amendments";
+
 export function build() {
   const runbook = readFileSync("proposed/HOSTED-INSTALL.md", "utf8");
   const out = [];
@@ -110,7 +112,10 @@ export function build() {
   }
   out.push(entry("query", "proposed/m2-preflight.sql", "none", { expect: "preflight: zero rows WHERE ok IS NOT TRUE" }));
   for (const r of orderTable(runbook)) {
+    // Hosted amendments (see the files): separate, checksummed, never edits of the approved packet.
+    if (r.step === 3) out.push(entry("packet", `${AMEND_DIR}/03-pre-approval-executor-owner.sql`, "none", { step: "3-pre", amendment: true }));
     out.push(entry("packet", r.file, r.own ? "strip_txn" : "none", { step: r.step }));
+    if (r.step === 3) out.push(entry("packet", `${AMEND_DIR}/03-post-approval-executor-create.sql`, "none", { step: "3-post", amendment: true }));
     out.push(entry("verify", `${VERIFY_DIR}/step-${String(r.step).padStart(2, "0")}.sql`, "none", { step: r.step, expect: "t" }));
   }
   out.push(entry("verify", "proposed/m2-verify/step29-after-step25.sql", "none", { expect: "t (reduced path only)" }));
