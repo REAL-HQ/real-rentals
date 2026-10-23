@@ -1,6 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { applicantPhone } from "@/lib/applicant-validation";
+import { APPROVAL_SOURCE_STATUSES, APPROVAL_STATUS_NOT_APPROVABLE } from "@/lib/approval-source-statuses";
+import { DOCUMENT_CONTENT_SHA256_ENABLED } from "@/lib/document-content-sha";
+import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { applicationResumeAtomicEnabled, deliverApplicationRecovery } from "@/lib/application-recovery.server";
 import { z } from "zod";
 
@@ -1251,23 +1254,69 @@ export const approveApplication = createServerFn({ method: "POST" })
           error: "Application not found",
         };
 
-      const patch: Record<string, unknown> = { status: "approved" };
-      if (!app.contacted_at) patch.contacted_at = new Date().toISOString();
-      const { error: updErr } = await supabaseAdmin
-        .from("applications")
-        .update(patch as any)
-        .eq("id", data.id);
-      if (updErr)
-        return { ok: false, agreementSent: false, portalAccount: "failed", error: updErr.message };
-
-      const { logAudit } = await import("@/lib/audit.server");
-      await logAudit(actor, {
-        action: "application.approved",
-        summary: `Approved ${app.full_name ?? app.email ?? data.id}`,
-        entityType: "application",
-        entityId: data.id,
-        metadata: { previous_status: app.status, send_agreement: data.sendAgreement !== false },
-      });
+      // Already approved: do not write status or application.approved again.
+      // The packet trigger refuses both, and a repeat call is how the
+      // agreement goes out after the first approval.
+      if (app.status !== "approved") {
+        const { approveThroughPacket } = await import("@/lib/approval-rpc.server");
+        const approved = await approveThroughPacket({
+          applicationId: data.id,
+          readVersion: async () => {
+            const read = await (supabaseAdmin as any)
+              .from("applications")
+              .select("approval_evidence_version")
+              .eq("id", data.id)
+              .maybeSingle();
+            const row = read.data as { approval_evidence_version?: number | null } | null;
+            return {
+              version: row?.approval_evidence_version ?? null,
+              error: read.error,
+            };
+          },
+          rpc: (name, params) =>
+            (
+              context.supabase as unknown as {
+                rpc: (
+                  fn: string,
+                  args: Record<string, unknown>,
+                ) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>;
+              }
+            ).rpc(name, params),
+          legacy: async () => {
+            // The packet refuses active and suspended. This fallback runs only
+            // when that function is not installed. Once an owner has approved
+            // the flag-on build, the same refusal applies here too.
+            if (DOCUMENT_CONTENT_SHA256_ENABLED && IDENTITY_VERIFICATION_ENABLED) {
+              const status = String(app.status ?? "").toLowerCase();
+              if (status === "active" || status === "suspended") {
+                return { error: { message: APPROVAL_STATUS_NOT_APPROVABLE } };
+              }
+              if (!(APPROVAL_SOURCE_STATUSES as readonly string[]).includes(status)) {
+                return { error: { message: "application_state_invalid" } };
+              }
+            }
+            const patch: Record<string, unknown> = { status: "approved" };
+            if (!app.contacted_at) patch.contacted_at = new Date().toISOString();
+            const { error: updErr } = await supabaseAdmin
+              .from("applications")
+              .update(patch as any)
+              .eq("id", data.id);
+            if (updErr) return { error: updErr };
+            const { logAudit } = await import("@/lib/audit.server");
+            await logAudit(actor, {
+              action: "application.approved",
+              summary: `Approved ${app.full_name ?? app.email ?? data.id}`,
+              entityType: "application",
+              entityId: data.id,
+              metadata: { previous_status: app.status, send_agreement: data.sendAgreement !== false },
+            });
+            return { error: null };
+          },
+        });
+        if (!approved.ok) {
+          return { ok: false, agreementSent: false, portalAccount: "failed", error: approved.error };
+        }
+      }
 
       /*
        * Give them a login now, not when a car is assigned.
