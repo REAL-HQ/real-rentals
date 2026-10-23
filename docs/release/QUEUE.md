@@ -2,11 +2,12 @@
 
 Updated 2026-10-23 by Claude Code.
 
-> **RC `67b62664` is LIVE** — published 2026-10-23, initial smoke tests pass.
-> See `266-PUBLISHED.md`. Remaining checks: Drivers, Bookings, Active Rentals,
-> Payments, eSign, deployed-version confirmation. Rollback branches intact.
+> **RC `67b62664` is LIVE and ACCEPTED** — published and accepted 2026-10-23,
+> 8/8 smoke-test areas passed, financials matched baseline, no rollback needed.
+> See `266-PUBLISHED.md`. Rollback branches preserved and **not to be deleted**.
 >
-> **The branch stays FROZEN.** No further commits to
+> **The release branch stays FROZEN.** Development continues on separate
+> branches and is not merged into it without owner approval. No further commits to
 > `integration/grok-baseline-2026-10-22` unless a demonstrated release-blocking
 > defect requires a fix. Feature work continues on separate branches and is not
 > merged into this candidate.

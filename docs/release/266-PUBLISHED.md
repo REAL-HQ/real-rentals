@@ -3,7 +3,18 @@
 **Published 2026-10-23 by the owner, through the Lovable editor.**
 Release candidate `67b62664` (`integration/grok-baseline-2026-10-22`).
 
-Status: **initial production smoke-test pass — not full release acceptance.**
+Status: **ACCEPTED by the owner, 23 October 2026.**
+
+| | |
+|---|---|
+| Published | 23 October 2026, through the Lovable editor |
+| Owner-accepted | 23 October 2026 |
+| Smoke-test areas passed | **8 of 8** — Revenue & Stripe Collections, Lead Priorities, Recent Applications, Drivers, Bookings, Active Rentals, Payments, eSign |
+| Financial reporting | matched the pre-publication baseline exactly |
+| Production SQL in this release | **none** |
+| Stripe subscription changes in this release | **none** |
+| Selected RC | `67b62664` — **Lovable does not independently expose the deployed SHA**, so this is the selected branch commit, verified by behaviour rather than by a platform field |
+| Rollback | not required |
 
 ## Before / after, captured from the live Overview
 
@@ -49,10 +60,11 @@ Those are the three known unrecorded Stripe invoices. Publishing did not change
 that, and was not expected to — it is the gap **Link to Rental** was built to
 close, and that feature is not in this release and remains off.
 
-## Remaining before full acceptance
+## Acceptance
 
-Drivers · Bookings · Active Rentals · Payments · eSign · deployed-version
-confirmation.
+All eight areas passed and the owner accepted the release on 23 October 2026.
+No release-blocking regression was reported. **Do not re-run these tests or
+re-open the release investigations unless a new production issue appears.**
 
 ## Rollback remains available, untouched
 
@@ -61,5 +73,6 @@ confirmation.
 | Primary | `rollback/pre-rc266-7e3e6eb6` @ `7e3e6eb6` |
 | Secondary | `codex/revenue-publication` @ `0946c750` |
 
-Neither branch was modified. Triggers and the restore procedure are in
-`266-DEPLOY-RUNBOOK.md` sections D and E. **Rollback restores code, not data.**
+Neither branch was modified, and **neither may be deleted**. Triggers and the
+restore procedure stay in `266-DEPLOY-RUNBOOK.md` sections D and E.
+**Rollback restores code, not data.**
