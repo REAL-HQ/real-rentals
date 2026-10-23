@@ -60,6 +60,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { ApplicantHome } from "@/components/portal/ApplicantHome";
+import { DriverHelpLink } from "@/components/portal/DriverHelp";
+import { DRIVER_HELP_ENABLED } from "@/lib/driver-help";
 import { tierFromRoles, type StaffTier } from "@/lib/roles";
 import { availableExperiences, storeExperience, type Experience } from "@/lib/experience";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -245,6 +247,7 @@ function Portal() {
                 </button>
               );
             })}
+            {DRIVER_HELP_ENABLED ? <DriverHelpLink /> : null}
           </nav>
         </aside>
         <div className="flex-1 min-w-0 flex flex-col">
@@ -262,6 +265,7 @@ function Portal() {
                   {t.label}
                 </button>
               ))}
+              {DRIVER_HELP_ENABLED ? <DriverHelpLink compact /> : null}
             </div>
           </div>
           <main className="flex-1 min-w-0 bg-white">
@@ -2027,12 +2031,18 @@ function DriverPreview({ tier }: { tier: StaffTier | null }) {
       <aside className="hidden md:flex w-60 flex-col bg-[#0b0b0d] text-white sticky top-0 h-screen">
         <div className="px-4 py-3 flex items-center justify-center"><Logo offset={false} /></div>
         <ExperienceSwitcher value="driver" options={options} onChange={choose} />
-        <nav className="flex-1 px-3 space-y-1">{nav()}</nav>
+        <nav className="flex-1 px-3 space-y-1">
+          {nav()}
+          {DRIVER_HELP_ENABLED ? <DriverHelpLink /> : null}
+        </nav>
       </aside>
       <main className="flex-1 min-w-0">
         <div className="md:hidden bg-[#0b0b0d] pt-3">
           <ExperienceSwitcher value="driver" options={options} onChange={choose} />
-          <div className="flex gap-1 overflow-x-auto px-3 pb-3 [&>button]:w-auto [&>button]:shrink-0">{nav()}</div>
+          <div className="flex gap-1 overflow-x-auto px-3 pb-3 [&>button]:w-auto [&>button]:shrink-0">
+            {nav()}
+            {DRIVER_HELP_ENABLED ? <DriverHelpLink compact /> : null}
+          </div>
         </div>
         {validId ? (
           <div role="status" className="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
