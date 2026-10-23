@@ -28,6 +28,7 @@ import {
   GROUP_ORDER,
   ADD_TABS,
   visibleTabs,
+  resolveAdminTab,
   visibleCreateActions,
   navOwner,
   railEntries,
@@ -51,7 +52,9 @@ import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
 import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
+import { TodaysOps } from "@/components/admin/TodaysOps";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { TODAYS_OPS_ENABLED } from "@/lib/todays-ops-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -290,18 +293,10 @@ function Admin() {
    * unauthorized caller regardless — this is the presentation half of that
    * rule, not the enforcement, and it must never be the only lock.
    */
-  const tab: Tab = useMemo(() => {
-    // Settings is off the rail (profile dropdown) but must stay reachable; its sections filter by tier.
-    if (urlTab === "settings") return "settings";
-    // Reviewed Unified Finance is not an Overview block. This tab is the screen.
-    if (urlTab === "finance") {
-      if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
-      return "finance";
-    }
-    if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
-    if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
-    return urlTab as Tab;
-  }, [urlTab, tier, navTabs]);
+  const tab: Tab = useMemo(
+    () => resolveAdminTab({ urlTab, tier, navTabs }),
+    [urlTab, tier, navTabs],
+  );
 
   /*
    * Normalize the address bar to match what is on screen — replace, not
@@ -805,6 +800,7 @@ function Admin() {
             {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
+            {TODAYS_OPS_ENABLED && tab === "todays_ops" && <TodaysOps />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>
