@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { recordUploadedContentSha } from "@/lib/document-content-sha";
 
 export const DOC_BUCKET = "driver-docs";
 
@@ -223,6 +224,9 @@ export async function registerDocument(
     return { id: seen.id as string };
   }
 
+  // Flag on, a missing object or a user_metadata write throws. Callers catch
+  // that. Flag off, this returns null and the insert columns stay as they are.
+  const contentSha = await recordUploadedContentSha(admin, args.bucket, args.path);
   const { data: row, error } = await admin
     .from("documents")
     .insert({
@@ -240,6 +244,7 @@ export async function registerDocument(
       is_current: true,
       uploaded_by: args.uploadedBy ?? null,
       uploaded_by_role: args.uploadedByRole ?? "driver",
+      ...(contentSha ? { content_sha256: contentSha } : {}),
     })
     .select("id")
     .single();
@@ -350,38 +355,48 @@ export async function syncApplicationUploads(
     // Legacy rows stored a full URL rather than a storage path; those are not
     // objects we own, so leave them alone.
     if (!path || typeof path !== "string" || path.startsWith("http")) continue;
-    const res = await registerDocument(admin, {
-      applicationId: application.id as string,
-      category: field.category,
-      bucket: field.bucket,
-      path,
-      fileName: path.split("/").pop() ?? null,
-      label: field.label,
-      expiresAt:
-        field.category === "license_front" ? (application.license_expiration ?? null) : null,
-      uploadedBy: (application.user_id as string) ?? null,
-      uploadedByRole: "driver",
-      ...(await objectMeta(admin, field.bucket, path)),
-    });
-    if (res) registered++;
+    try {
+      const res = await registerDocument(admin, {
+        applicationId: application.id as string,
+        category: field.category,
+        bucket: field.bucket,
+        path,
+        fileName: path.split("/").pop() ?? null,
+        label: field.label,
+        expiresAt:
+          field.category === "license_front" ? (application.license_expiration ?? null) : null,
+        uploadedBy: (application.user_id as string) ?? null,
+        uploadedByRole: "driver",
+        ...(await objectMeta(admin, field.bucket, path)),
+      });
+      if (res) registered++;
+    } catch (e) {
+      // Flag on, registerDocument throws when the content hash cannot be
+      // recorded. One file must not drop the rest of the wizard sync.
+      console.error("[documents] registration refused", field.category, e);
+    }
   }
 
   // Gig trip screenshots arrive as an array of paths.
   const shots = Array.isArray(application.trip_screenshots) ? application.trip_screenshots : [];
   for (const path of shots) {
     if (!path || typeof path !== "string" || path.startsWith("http")) continue;
-    const res = await registerDocument(admin, {
-      applicationId: application.id as string,
-      category: "trip_history",
-      bucket: TRIP_SCREENSHOT_BUCKET,
-      path,
-      fileName: path.split("/").pop() ?? null,
-      label: "Trip screenshot (from application)",
-      uploadedBy: (application.user_id as string) ?? null,
-      uploadedByRole: "driver",
-      ...(await objectMeta(admin, TRIP_SCREENSHOT_BUCKET, path)),
-    });
-    if (res) registered++;
+    try {
+      const res = await registerDocument(admin, {
+        applicationId: application.id as string,
+        category: "trip_history",
+        bucket: TRIP_SCREENSHOT_BUCKET,
+        path,
+        fileName: path.split("/").pop() ?? null,
+        label: "Trip screenshot (from application)",
+        uploadedBy: (application.user_id as string) ?? null,
+        uploadedByRole: "driver",
+        ...(await objectMeta(admin, TRIP_SCREENSHOT_BUCKET, path)),
+      });
+      if (res) registered++;
+    } catch (e) {
+      console.error("[documents] registration refused", "trip_history", e);
+    }
   }
 
   /*
@@ -548,6 +563,62 @@ async function assertMayTouch(userId: string, documentId: string): Promise<void>
   }
 }
 
+type UploadHasher = (admin: any, bucket: string, path: string) => Promise<string | null>;
+
+/**
+ * Insert the documents row, then hash. The hasher returns null when the flag
+ * is off, and when the packet function is not installed yet. A thrown hasher
+ * marks this new row not current and is rethrown. The previous current row
+ * stays current. The new row is not deleted. Supersede runs only after the
+ * hasher returns.
+ */
+export async function persistConfirmedDocument(
+  admin: any,
+  fields: {
+    driver_id: string;
+    kind: string;
+    category: string;
+    label: string | null;
+    storage_bucket: string;
+    storage_path: string;
+    visibility: string[];
+    file_name: string | null;
+    mime_type: string | null;
+    size_bytes: number | null;
+    expires_at: string | null;
+    uploaded_by: string | null;
+    uploaded_by_role: string;
+  },
+  hash: UploadHasher = recordUploadedContentSha,
+): Promise<{ id: string }> {
+  const { data: row, error } = await admin
+    .from("documents")
+    .insert({ ...fields, is_current: true })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  try {
+    await hash(admin, fields.storage_bucket, fields.storage_path);
+  } catch (hashError) {
+    const demoted = await admin.from("documents").update({ is_current: false }).eq("id", row.id);
+    if (demoted?.error) {
+      console.error(
+        "[documents] could not mark the unhashed upload not current",
+        demoted.error.message ?? demoted.error,
+      );
+    }
+    throw hashError;
+  }
+  await admin
+    .from("documents")
+    .update({ is_current: false, superseded_by: row.id })
+    .eq("driver_id", fields.driver_id)
+    .eq("category", fields.category)
+    .eq("is_current", true)
+    .neq("id", row.id);
+  return { id: row.id as string };
+}
+
 /** True for Coordinator and above. */
 async function isStaffUser(userId: string): Promise<boolean> {
   try {
@@ -606,39 +677,22 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
     // A recording is never shared with the applicant, whatever the caller
     // asked for.
     const visibility = restricted || (staff && data.internal) ? ["admin"] : ["driver", "admin"];
-
-    const { data: row, error } = await supabaseAdmin
-      .from("documents")
-      .insert({
-        driver_id: data.applicationId,
-        kind: data.category,
-        category: data.category,
-        label: data.label ?? null,
-        storage_bucket: DOC_BUCKET,
-        storage_path: data.path,
-        visibility,
-        file_name: data.fileName ?? null,
-        mime_type: data.mimeType ?? null,
-        size_bytes: data.sizeBytes ?? null,
-        expires_at: data.expiresAt || null,
-        is_current: true,
-        uploaded_by: context.userId,
-        uploaded_by_role: admin ? "team" : "driver",
-      })
-      .select("id")
-      .single();
-    if (error) throw new Error(error.message);
-
-    // Supersede the previous current document in the same category.
-    await supabaseAdmin
-      .from("documents")
-      .update({ is_current: false, superseded_by: row.id })
-      .eq("driver_id", data.applicationId)
-      .eq("category", data.category)
-      .eq("is_current", true)
-      .neq("id", row.id);
-
-    return { ok: true, id: row.id as string };
+    const saved = await persistConfirmedDocument(supabaseAdmin, {
+      driver_id: data.applicationId,
+      kind: data.category,
+      category: data.category,
+      label: data.label ?? null,
+      storage_bucket: DOC_BUCKET,
+      storage_path: data.path,
+      visibility,
+      file_name: data.fileName ?? null,
+      mime_type: data.mimeType ?? null,
+      size_bytes: data.sizeBytes ?? null,
+      expires_at: data.expiresAt || null,
+      uploaded_by: context.userId,
+      uploaded_by_role: admin ? "team" : "driver",
+    });
+    return { ok: true, id: saved.id };
   });
 
 export const updateDocumentMeta = createServerFn({ method: "POST" })
