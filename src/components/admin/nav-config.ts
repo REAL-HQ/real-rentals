@@ -19,10 +19,12 @@ import {
   Inbox,
   Upload,
   Landmark,
+  TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { REVENUE_FORECAST_ENABLED } from "@/lib/revenue-forecast-flag";
 
 export type TabDef = {
   id: string;
@@ -112,12 +114,25 @@ const FINANCE_TAB: TabDef = {
   description: "Combined Finance Coverage And Per-Vehicle Profitability",
 };
 
+/** Shown only while Revenue Forecast is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
+const REVENUE_FORECAST_TAB: TabDef = {
+  id: "revenue_forecast",
+  label: "Revenue Forecast",
+  icon: TrendingUp,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Projected Rental Income For The Next 4 Weeks",
+};
+
 export function visibleTabs(tier: StaffTier | null): TabDef[] {
   const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return tabs;
+  const extra: TabDef[] = [];
+  if (UNIFIED_FINANCE_ENDPOINT_ENABLED && tierAllows(tier, "manager")) extra.push(FINANCE_TAB);
+  if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push(REVENUE_FORECAST_TAB);
+  if (!extra.length) return tabs;
   const next = [...tabs];
   const at = next.findIndex((t) => t.id === "expenses");
-  next.splice(at + 1, 0, FINANCE_TAB);
+  next.splice(at + 1, 0, ...extra);
   return next;
 }
 
@@ -151,9 +166,12 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
   const entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return entries;
+  const extra: (TabDef & { href: string })[] = [];
+  if (UNIFIED_FINANCE_ENDPOINT_ENABLED && tierAllows(tier, "manager")) extra.push({ ...FINANCE_TAB, href: "finance" });
+  if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push({ ...REVENUE_FORECAST_TAB, href: "revenue_forecast" });
+  if (!extra.length) return entries;
   const at = entries.findIndex((t) => t.id === "expenses");
-  entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
+  entries.splice(at + 1, 0, ...extra);
   return entries;
 }
 
