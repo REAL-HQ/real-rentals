@@ -93,12 +93,39 @@ Sign in as **Owner**. For each, the pass condition is "same as production", not
       unchanged on /thank-you, removed from credential routes, plus a sanitized
       `page_location`. Confirm in the preview that the tag request fires on
       /thank-you and does **not** fire on /login.
-- [ ] **Payments webhook** (`api/public/payments/webhook`) — cannot be clicked
-      through. Review the diff against live by eye and confirm it still: never
-      un-pays a row, claims notices via `notified_status`, and writes no second
-      charge. If the diff touches any of those three, hold the release.
+- [x] **Payments webhook** (`api/public/payments/webhook`, +212/−42) — cannot be
+      clicked through, and now does not have to be. `npm run test:webhook`
+      (`scripts/payments-webhook-invariants.test.mjs`) asserts the three
+      AGENTS.md rules structurally and fails if a guard is dropped:
+      every payments update carries `.neq('status','paid')` and
+      `.neq('status','refunded')` so a collected row cannot be un-paid
+      (including updates built from a variable); every `notified_status` write
+      is a conditional claim so a replayed Stripe event cannot email twice;
+      the unmatched-invoice warnings only `console.warn` and write no charge;
+      and a row staff marked paid while a failure reason was set keeps that
+      record. Both guard-removal mutations fail the test.
+      **Still do by hand:** confirm a real Stripe event in the preview produces
+      the same payment row state as production.
 - [ ] **`api/public/cron/automations`** — confirm the diff does not change send
       timing or recipients.
+
+- [ ] **The two environment flags — the only link from this release to a pending
+      migration.** Both already exist in live, so #266 does not add them, but
+      their production values are not readable from this session and one of them
+      is dangerous while drizzle `0023` is unapplied. In the Cloudflare/Lovable
+      environment settings for the production deployment, confirm each is
+      **unset, or set to anything other than the exact string `"true"`**:
+
+      | Variable | If it is `"true"` |
+      |---|---|
+      | `APPLICATION_RESUME_ATOMIC_ENABLED` | Application Resume calls `reserve_application_recovery` / `finish_application_recovery` — **functions that only exist in pending 0023**, so recovery sends would fail at the RPC |
+      | `DRIVER_ISSUE_ALERTS_ENABLED` | Driver issue **emails send** to drivers |
+
+      The code states the rule itself (`src/lib/application-recovery.server.ts`):
+      *"Set `APPLICATION_RESUME_ATOMIC_ENABLED=true` only after that SQL."*
+      Record both observed values here before publishing:
+      `APPLICATION_RESUME_ATOMIC_ENABLED = ______`  ·
+      `DRIVER_ISSUE_ALERTS_ENABLED = ______`
 
 ## 5. Driver-facing spot check
 

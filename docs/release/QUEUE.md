@@ -1,16 +1,35 @@
 # Release queue
 
-Updated 2026-10-23 by Claude Code. Statuses: In Development · Testing ·
-Integration · Blocked · Ready for Approval · Ready to Ship · Live.
+Updated 2026-10-23 by Claude Code.
 
-**Only two things need you:** production approvals and business decisions. They
-are collected at the bottom. Everything else is being worked.
+**Three separate queues.** Nothing moves between them without the gate named in
+its row. Development does not stop while approvals are pending.
 
-## Ready for Approval — waiting on you
+| Queue | Means |
+|---|---|
+| **Ready to Ship** | Verified, needs no approval from you — merged or mergeable into a non-production branch |
+| **Ready for Approval** | Complete and evidenced; waiting on your decision |
+| **Blocked** | Cannot proceed, and the blocker is named |
+
+---
+
+## Ready to Ship — no approval needed
+
+| Item | Where | Evidence |
+|---|---|---|
+| **Link to Rental** (`96bc898a`, dark) | `claude/unmatched-link-96bc898a` | 22/22 tests, tsc 0, three gates keep it off. The rejected double-collection work was not brought in |
+| **Dark-feature coverage ledger** | `scripts/dark-flag-coverage.test.mjs`, in `npm test` | 59 modules, 0 unaccounted; both negative controls fail correctly |
+| **Payments webhook invariants** | `scripts/payments-webhook-invariants.test.mjs`, in `npm test` | 13 statements checked; both guard-removal mutations fail the test |
+| **Closeout harness + v2 proposal** | `scripts/closeout-harness/`, `proposed/end-rental-returns-approved-v2.sql` | 24/24 + mutation check. The SQL itself is a separate approval, below |
+| **0031 documentation set** | `docs/security/` | Package verified `32c17aa7…`; feasibility 16/16. Installation is a separate approval, below |
+
+---
+
+## Ready for Approval — waiting on your decision
 
 | Item | Branch / artifact | What you decide | Evidence |
 |---|---|---|---|
-| **Release #266** — the grok baseline | `integration/grok-baseline-2026-10-22` @ `f9ffc71a`, [PR #266](https://github.com/REAL-HQ/real-rentals/pull/266) | Walk the preview checklist, then approve publish | `docs/release/266-lovable-preview-acceptance.md`. tsc 0 errors, prod build exit 0, 0 merge conflicts, **no migrations ship**, **only flag true is one already true live** |
+| **Release #266** — the grok baseline | `integration/grok-baseline-2026-10-22` @ `f9ffc71a`, [PR #266](https://github.com/REAL-HQ/real-rentals/pull/266) | Walk the preview checklist, then approve publish | `docs/release/266-lovable-preview-acceptance.md`. tsc 0, prod build exit 0, 0 conflicts, **no migrations ship**, only flag true is already true live. Webhook invariants now **tested**, not eyeballed. Two items left for you: the preview walkthrough and the two env flag values |
 | **Rental closeout (Option B)** | `proposed/end-rental-returns-approved-v2.sql` | Approve the migration | `docs/rental-closeout-readiness.md`. 23/23 behavioural + mutation check; verified against the live function |
 | ~~Regina — Monday billing~~ | `docs/billing/regina-change-status.md` | **Nothing — done by Grok 2026-10-23.** Reported complete, independently unverified (no Stripe credential here). Matches the schedule computed in advance | Optional read-only Dashboard confirmation listed |
 
