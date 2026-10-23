@@ -53,6 +53,6 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
    checkOutput(suite,result);process.stdout.write(result.stdout);
    console.log(`VERIFIED ${suite.checks} ${suite.kind}: ${suite.file}`);
   }
-  console.log('PASS 126 application assertions plus 2 validation-recovery scenario groups plus 31 evidence assertions');
+  console.log('PASS 130 application assertions plus 2 validation-recovery scenario groups plus 31 evidence assertions');
  }
 }
