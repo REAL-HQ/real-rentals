@@ -1,7 +1,9 @@
 # M2 rehearsal — environment provisioned, replay in progress
 
 2026-10-23. **Status: IN PROGRESS. Not a GO/NO-GO.** The environment exists and
-its fidelity is proven; the baseline replay is 4 of 122 migrations in.
+its fidelity is proven; the baseline replay is **14 of 122** migrations in.
+Security 0031 is resolved (`docs/security/0031-ROOT-CAUSE.md`). Two blockers are
+open, both needing an owner action: see section 6.
 
 No production SQL was executed. No production credential, Stripe key or
 customer record was used or copied. One **read-only** catalog query was run
@@ -48,14 +50,21 @@ multi-statement batches and explicit transactions, proven with a `BEGIN /
 CREATE TABLE / ROLLBACK` probe that genuinely rolled back. So a `-1` packet file
 runs as `BEGIN; <file> COMMIT;` and an own-transaction file runs verbatim.
 
-## 3. Replay progress — 4 of 122, and what was deliberately omitted
+## 3. Replay progress — 14 of 122, and what was deliberately omitted
 
-Applied: the DDL of migrations 1, 2, 4 and 5, plus one `storage.objects` policy
-from migration 3 (as a privilege probe, section 4).
+Progress is tracked in the rehearsal database itself, not in notes:
+**`public.__rehearsal_ledger`** records each applied migration with its
+sequence, filename, local SHA-256 prefix and a note. It is the authority on
+what has been applied, and it caught a bookkeeping error early — two
+migrations believed applied were not, which the ledger and a catalog check
+(`public.documents` absent, `app_role` having 2 of 5 values) exposed
+immediately.
 
-Current state: **5 tables** (`applications`, `contact_leads`, `investor_leads`,
-`user_roles`, `vehicles`), **11 public policies**, 1 storage policy, 1 public
-function (`has_role`), **0 rows**.
+Applied: migrations **1 – 14** (all of them; 6 was a no-op, see below).
+
+Current state: **22 tables**, **59 public policies**, 8 storage policies,
+5 private storage buckets (`driver-docs`, `license-uploads`,
+`profile-screenshots`, `rental-agreements`, `condition-media`), **0 rows**.
 
 **Omitted on purpose, and this must not be forgotten:**
 
@@ -65,14 +74,13 @@ function (`has_role`), **0 rows**.
   statements, not schema**, so the baseline schema is unaffected — but any
   later claim of a "full faithful replay" has to exclude them explicitly.
 
-**118 migrations remain.** The channel is the constraint: there is no
-connection string, so every statement is relayed through tool arguments. The
-remaining 358 KB of migrations plus the 257 KB packet is mechanical but long,
-and the per-step verify queries are what will catch any relay error — a
-corrupted statement shows up as a failed verification, which fails the
-rehearsal by the rule you set.
+**108 migrations remain.** The channel is the constraint: there is no
+connection string, so every statement is relayed through tool arguments. Batches
+of ~20 KB are accepted, so this is mechanical but long, and the per-step verify
+queries are what will catch any relay error — a corrupted statement shows up as
+a failed verification, which fails the rehearsal by the rule you set.
 
-## 4. Security 0031 — the blocker looks like a misdiagnosis
+## 4. Security 0031 — RESOLVED, see docs/security/0031-ROOT-CAUSE.md
 
 This came out of a privilege probe on the rehearsal project and is the most
 consequential thing found today.
@@ -127,3 +135,48 @@ reported as such rather than claimed: the **real Storage API upload path**
 Manager and Coordinator boundaries can be exercised with `SET LOCAL ROLE` plus
 `request.jwt.claims`, which is how Supabase RLS is normally tested, and that
 distinction will be stated in the final report.
+
+---
+
+## 6. The two open blockers
+
+### 6a. Storage API and PostgREST JWT testing — blocked by the session's network policy
+
+The rehearsal Supabase project is reachable in principle: its endpoint and
+publishable key are now in the project source, and the five private buckets
+exist. But outbound HTTPS from this session is refused:
+
+```
+nhcgrevnanuzroudxpux.supabase.co:443 — connect_rejected
+gateway answered 403 to CONNECT (policy denial)
+```
+
+This is the session's egress policy, not Supabase. **To unblock, add
+`nhcgrevnanuzroudxpux.supabase.co` to the environment's Allowed domains** (cloud
+environment menu → Edit → Network access), leaving "Allow package managers"
+ticked. Steps: https://code.claude.com/docs/en/cloud-environments#network-access
+
+Per the instruction not to substitute SQL-only role simulation for real API
+testing, nothing here is being simulated and nothing is reported as passed.
+Once the host is allowed, this covers real uploads and downloads, content
+hashing over the real `info()`/`download()` path, JWT authorization through
+PostgREST, and schema-cache reload behaviour after step 3.
+
+### 6b. No bulk SQL path — the relay works but is slow
+
+Investigated, as asked:
+
+| Route | Available |
+|---|---|
+| Postgres connection string from the Lovable MCP | **no** — no tool exposes one |
+| `query_database` with large multi-statement batches | **yes** — ~20 KB per call, explicit transactions supported |
+| Supabase Management API | needs a personal access token |
+| Having the Lovable agent apply the SQL | rejected: it would paraphrase, and fidelity is the whole point |
+
+So the relay is viable and verified, just slow. **The fast supported route is a
+direct Postgres connection string for the disposable project only**, from that
+project's Supabase dashboard. With it the remaining 108 migrations, the 24
+packet files and the 31 rollbacks run locally with `psql -f`, at full fidelity,
+and with the runbook's `-1` and own-transaction modes applied natively instead
+of emulated. That is a credential for a throwaway project holding no real data —
+not a production credential.
