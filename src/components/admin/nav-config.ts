@@ -11,18 +11,47 @@ import {
   Wrench,
   LayoutDashboard,
   ClipboardCheck,
+  ListChecks,
   Truck,
   Receipt,
+  ArrowLeftRight,
+  Bell,
+  Banknote,
+  TrendingUp,
   ShieldAlert,
   AlertTriangle,
   Wallet,
   Inbox,
   Upload,
   Landmark,
+  PieChart,
+  LayoutGrid,
+  ScrollText,
+  Scale,
+  FileSpreadsheet,
+  HeartPulse,
+  BarChart3,
+  CalendarClock,
+  CalendarRange,
   type LucideIcon,
 } from "lucide-react";
 import { tierAllows, type StaffTier } from "@/lib/roles";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { VEHICLE_PROFITABILITY_ENABLED } from "@/lib/vehicle-profitability-flag";
+import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
+import { FLEET_AVAILABILITY_ENABLED } from "@/lib/fleet-availability";
+import { PARTNER_STATEMENT_ENABLED } from "@/lib/partner-statement-flag";
+import { OWNER_PNL_ENABLED } from "@/lib/owner-pnl-flag";
+import { OWNER_EXPENSE_ENTRY_ENABLED } from "@/lib/owner-expense-entry-flag";
+import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
+import { PAYOUT_BREAKDOWN_ENABLED } from "@/lib/payout-breakdown-flag";
+import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
+import { APPLICANT_FUNNEL_ENABLED } from "@/lib/applicant-funnel";
+import { TODAYS_OPS_ENABLED } from "@/lib/todays-ops-flag";
+import { FLEET_CALENDAR_ENABLED } from "@/lib/fleet-calendar-flag";
+import { REVENUE_FORECAST_ENABLED } from "@/lib/revenue-forecast-flag";
+import { RECEIVABLES_AGING_ENABLED } from "@/lib/receivables-aging-flag";
+import { DEPOSIT_LEDGER_ENABLED } from "@/lib/deposit-ledger-flag";
 
 export type TabDef = {
   id: string;
@@ -51,8 +80,20 @@ export const TABS: readonly TabDef[] = [
     group: "RENTALS",
     description: "Active And Completed Rentals, With Their Paperwork",
   },
+  {
+    id: "active_rentals",
+    label: "Active Rentals",
+    icon: ListChecks,
+    minTier: "manager",
+    group: "RENTALS",
+    description: "Who Is Out, What Is Due, And What Is Still Open",
+  },
   { id: "payments", label: "Payments", icon: CreditCard, minTier: "manager", group: "RENTALS", description: "Rent, Deposits, Balances And Renter Charges" },
   { id: "charges", label: "Charges", icon: Receipt, minTier: "manager", description: "Tolls And Violations, Matched To The Renter Who Had The Car" },
+  { id: "stripe_match", label: "Stripe Match", icon: ArrowLeftRight, minTier: "manager", description: "Live Stripe Customers Next To The Driver They Belong To" },
+  { id: "collections_watch", label: "Collections Watch", icon: Bell, minTier: "manager", description: "Past Due Subscriptions, Failed Charges And What Is Due This Week" },
+  { id: "deposits_ledger", label: "Deposits & Refunds", icon: Banknote, minTier: "manager", description: "Stripe Refunds, Deposits Held And The Period Net" },
+  { id: "weekly_cash_flow", label: "Weekly Cash Flow", icon: TrendingUp, minTier: "manager", description: "Twelve Weeks Of Collections, Refunds, Expenses And Cash Flow" },
   { id: "vehicles", label: "Vehicles", icon: Car, minTier: "coordinator", group: "FLEET", description: "Fleet Inventory & Vehicle Status" },
   { id: "fleet_inbox", label: "Fleet Inbox", icon: Inbox, minTier: "coordinator", group: "FLEET", description: "Drop Fleet Files — Sorted, Matched To Vehicles And Ready For Review" },
   { id: "maintenance", label: "Service", icon: Wrench, minTier: "manager", group: "FLEET", description: "Maintenance, Due Work And Inspections" },
@@ -102,6 +143,73 @@ export function visibleSettingsSections(tier: StaffTier | null): SettingsSection
   return SETTINGS_SECTIONS.filter((s) => tierAllows(tier, s.minTier));
 }
 
+/** Shown only while Fleet Availability is compiled on. Kept out of TABS so a dark build cannot list it. */
+const FLEET_AVAILABILITY_TAB: TabDef = {
+  id: "fleet_availability",
+  label: "Fleet Availability",
+  icon: LayoutGrid,
+  minTier: "coordinator",
+  group: "FLEET",
+  description: "Which Cars Are Available, Rented, In Shop, Or Not Rentable",
+};
+
+function spliceAfter<T extends { id: string }>(entries: T[], afterId: string, item: T): T[] {
+  const next = [...entries];
+  const at = next.findIndex((entry) => entry.id === afterId);
+  next.splice(at === -1 ? next.length : at + 1, 0, item);
+  return next;
+}
+
+/** Shown only while Today's Ops is compiled on. Kept out of TABS so a dark build cannot list it. */
+const TODAYS_OPS_TAB: TabDef = {
+  id: "todays_ops",
+  label: "Today's Ops",
+  icon: CalendarClock,
+  minTier: "manager",
+  group: "HOME",
+  description: "Pickups, Returns, Payments And Open Issues For Today",
+};
+
+/** Shown only while Fleet Calendar is compiled on. Kept out of TABS so a dark build cannot list it. */
+const FLEET_CALENDAR_TAB: TabDef = {
+  id: "fleet_calendar",
+  label: "Fleet Calendar",
+  icon: CalendarRange,
+  minTier: "manager",
+  group: "FLEET",
+  description: "The Week Ahead For Every Vehicle",
+};
+
+/** Shown only while Receivables Aging is compiled on. Kept out of TABS so a dark build cannot list it. */
+const AGING_TAB: TabDef = {
+  id: "receivables_aging",
+  label: "Receivables Aging",
+  icon: CalendarClock,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Unpaid Rent By How Long It Has Been Due",
+};
+
+/** Shown only while Deposit Ledger is compiled on. Kept out of TABS so a dark build cannot list it. */
+const DEPOSIT_TAB: TabDef = {
+  id: "deposit_ledger",
+  label: "Deposit Ledger",
+  icon: Banknote,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Security Deposits Held, Due Back, Or Unknown",
+};
+
+/** Shown only while Revenue Forecast is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
+const REVENUE_FORECAST_TAB: TabDef = {
+  id: "revenue_forecast",
+  label: "Revenue Forecast",
+  icon: TrendingUp,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Projected Rental Income For The Next 4 Weeks",
+};
+
 /** Shown only while Unified Finance is compiled on. Kept out of TABS so a dark build cannot list it. */
 const FINANCE_TAB: TabDef = {
   id: "finance",
@@ -112,13 +220,175 @@ const FINANCE_TAB: TabDef = {
   description: "Combined Finance Coverage And Per-Vehicle Profitability",
 };
 
-export function visibleTabs(tier: StaffTier | null): TabDef[] {
-  const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return tabs;
+/** Shown only while Payout Breakdown is compiled on. Kept out of TABS so a dark build cannot list it. */
+const PAYOUT_BREAKDOWN_TAB: TabDef = {
+  id: "payout_breakdown",
+  label: "Payout Breakdown",
+  icon: Banknote,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Stripe Payouts Split Into Charges, Refunds, Fees And Adjustments",
+};
+
+/** Shown only while Billing Health is compiled on. Kept out of TABS so a dark build cannot list it. Owners only. */
+const BILLING_HEALTH_TAB: TabDef = {
+  id: "billing_health",
+  label: "Billing Health",
+  icon: HeartPulse,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Active Rentals Compared With Stripe Subscriptions",
+};
+
+/** Shown only while the applicant funnel is compiled on. Kept out of TABS so a dark build cannot list it. */
+const FUNNEL_TAB: TabDef = {
+  id: "funnel",
+  label: "Applicant Funnel",
+  icon: BarChart3,
+  minTier: "manager",
+  group: "PEOPLE",
+  description: "Application Counts And Conversion For An Eastern Time Range",
+};
+
+/** Shown only while Vehicle Profitability is compiled on. Kept out of TABS so a dark build cannot list it. */
+const VEHICLE_PROFIT_TAB: TabDef = {
+  id: "vehicle_profit",
+  label: "Vehicle Profit",
+  icon: PieChart,
+  minTier: "manager",
+  group: "BUSINESS",
+  description: "Revenue, Expenses, Utilization And Partner Share By Vehicle",
+};
+
+/** Shown only while the Incident Board flag is on. Kept out of TABS so a dark build cannot list it. */
+const INCIDENT_BOARD_TAB: TabDef = {
+  id: "incident_board",
+  label: "Incident Board",
+  icon: ShieldAlert,
+  minTier: "coordinator",
+  group: "FLEET",
+  description: "Open Accidents, Damage And Breakdowns",
+};
+
+/** Shown only while Partner Statement is compiled on. Kept out of TABS so a dark build cannot list it. */
+const PARTNER_STATEMENT_TAB: TabDef = {
+  id: "partner_statement",
+  label: "Partner Statement",
+  icon: ScrollText,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Per-Partner Revenue, Expenses And Share For A Period",
+};
+
+/** Shown only while Monthly Owner P&L is compiled on. Kept out of TABS so a dark build cannot list it. */
+const OWNER_PNL_TAB: TabDef = {
+  id: "owner_pnl",
+  label: "Monthly Owner P&L",
+  icon: Scale,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "One Month Of Revenue, Refunds, Expenses And Net",
+};
+
+/** Shown only while Owner Expense Entry is compiled on. Kept out of TABS so a dark build cannot list it. */
+const EXPENSE_ENTRY_TAB: TabDef = {
+  id: "expense_entry",
+  label: "Expense Entry",
+  icon: Banknote,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Add One Vehicle Expense",
+};
+
+function withPartnerStatement<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!PARTNER_STATEMENT_ENABLED || !tierAllows(tier, "owner")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "partners");
+  const entry = href ? { ...PARTNER_STATEMENT_TAB, href } : PARTNER_STATEMENT_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
+function withOwnerPnl<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!OWNER_PNL_ENABLED || !tierAllows(tier, "owner")) return tabs;
+  const next = [...tabs];
+  const at = next.findIndex((t) => t.id === "partners");
+  const entry = href ? { ...OWNER_PNL_TAB, href } : OWNER_PNL_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
+function withExpenseEntry<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!OWNER_EXPENSE_ENTRY_ENABLED || !tierAllows(tier, "owner")) return tabs;
   const next = [...tabs];
   const at = next.findIndex((t) => t.id === "expenses");
-  next.splice(at + 1, 0, FINANCE_TAB);
+  const entry = href ? { ...EXPENSE_ENTRY_TAB, href } : EXPENSE_ENTRY_TAB;
+  next.splice(at + 1, 0, entry as T);
   return next;
+}
+
+/** Shown only while the Accountant Export is compiled on. Kept out of TABS so a dark build cannot list it. */
+const ACCOUNTANT_EXPORT_TAB: TabDef = {
+  id: "accountant_export",
+  label: "Accountant Export",
+  icon: FileSpreadsheet,
+  minTier: "owner",
+  group: "BUSINESS",
+  description: "Year To Date Revenue, Refunds, Expenses And Net",
+};
+
+function withAccountantExport<T extends TabDef>(tabs: T[], tier: StaffTier | null, href?: string): T[] {
+  if (!ACCOUNTANT_EXPORT_ENABLED || !tierAllows(tier, "owner")) return tabs;
+  const next = [...tabs];
+  const ownerPnl = next.findIndex((t) => t.id === "owner_pnl");
+  const at = ownerPnl >= 0 ? ownerPnl : next.findIndex((t) => t.id === "partners");
+  const entry = href ? { ...ACCOUNTANT_EXPORT_TAB, href } : ACCOUNTANT_EXPORT_TAB;
+  next.splice(at + 1, 0, entry as T);
+  return next;
+}
+
+export function visibleTabs(tier: StaffTier | null): TabDef[] {
+  const tabs = TABS.filter((t) => tierAllows(tier, t.minTier));
+  if (!APPLICANT_FUNNEL_ENABLED || !tierAllows(tier, "manager")) return withFinance(tabs, tier);
+  return withFinance(insertFunnel(tabs), tier);
+}
+
+function insertFunnel(tabs: TabDef[]): TabDef[] {
+  const next = [...tabs];
+  const at = next.findIndex((tab) => tab.id === "drivers");
+  next.splice(at + 1, 0, FUNNEL_TAB);
+  return next;
+}
+
+function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
+  let next = tabs;
+  if (TODAYS_OPS_ENABLED && tierAllows(tier, "manager")) {
+    next = spliceAfter(next, "overview", TODAYS_OPS_TAB);
+  }
+  if (FLEET_CALENDAR_ENABLED && tierAllows(tier, "manager")) {
+    next = spliceAfter(next, "vehicles", FLEET_CALENDAR_TAB);
+  }
+  if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
+    next = spliceAfter(next, "vehicles", FLEET_AVAILABILITY_TAB);
+  }
+  if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
+    const at = next.findIndex((t) => t.id === "incidents");
+    const insertAt = at >= 0 ? at : next.findIndex((t) => t.id === "maintenance");
+    next.splice(insertAt >= 0 ? insertAt : next.length, 0, INCIDENT_BOARD_TAB);
+  }
+  const extra: TabDef[] = [];
+  const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
+  if (!financeHidden) extra.push(FINANCE_TAB);
+  if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push(VEHICLE_PROFIT_TAB);
+  if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push(PAYOUT_BREAKDOWN_TAB);
+  if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push(BILLING_HEALTH_TAB);
+  if (RECEIVABLES_AGING_ENABLED && tierAllows(tier, "manager")) extra.push(AGING_TAB);
+  if (DEPOSIT_LEDGER_ENABLED && tierAllows(tier, "manager")) extra.push(DEPOSIT_TAB);
+  if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push(REVENUE_FORECAST_TAB);
+  if (!extra.length) return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
+  const at = next.findIndex((t) => t.id === "expenses");
+  next.splice(at + 1, 0, ...extra);
+  return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(next, tier), tier), tier), tier);
 }
 
 /**
@@ -126,7 +396,7 @@ export function visibleTabs(tier: StaffTier | null): TabDef[] {
  * own id, minTier, panel and server checks — this only groups them.
  */
 export const WORKSPACE_TABS: Record<string, readonly { id: string; label: string }[]> = {
-  payments: [{ id: "payments", label: "Payments" }, { id: "charges", label: "Charges" }],
+  payments: [{ id: "payments", label: "Payments" }, { id: "charges", label: "Charges" }, { id: "stripe_match", label: "Stripe Match" }, { id: "collections_watch", label: "Collections Watch" }, { id: "deposits_ledger", label: "Deposits & Refunds" }, { id: "weekly_cash_flow", label: "Weekly Cash Flow" }],
   maintenance: [{ id: "maintenance", label: "Maintenance" }, { id: "inspections", label: "Inspections" }],
   partners: [{ id: "partners", label: "Partners" }, { id: "vendors", label: "Vendors" }, { id: "shops", label: "Repair Shops" }],
 };
@@ -148,13 +418,42 @@ export function visibleWorkspaceTabs(parent: string, tier: StaffTier | null) {
 
 /** Rail entries: a workspace shows if any of its tabs is allowed; it links to the first allowed tab. */
 export function railEntries(tier: StaffTier | null): (TabDef & { href: string })[] {
-  const entries = TABS.filter((t) => t.group)
+  let entries = TABS.filter((t) => t.group)
     .map((t) => ({ ...t, href: visibleWorkspaceTabs(t.id, tier)[0]?.id ?? "" }))
     .filter((t) => t.href);
-  if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager")) return entries;
+  if (TODAYS_OPS_ENABLED && tierAllows(tier, "manager")) {
+    entries = spliceAfter(entries, "overview", { ...TODAYS_OPS_TAB, href: "todays_ops" });
+  }
+  if (FLEET_CALENDAR_ENABLED && tierAllows(tier, "manager")) {
+    entries = spliceAfter(entries, "vehicles", { ...FLEET_CALENDAR_TAB, href: "fleet_calendar" });
+  }
+  if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
+    entries = spliceAfter(entries, "vehicles", { ...FLEET_AVAILABILITY_TAB, href: "fleet_availability" });
+  }
+  if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
+    const at = entries.findIndex((t) => t.id === "incidents");
+    const insertAt = at >= 0 ? at : entries.findIndex((t) => t.id === "maintenance");
+    entries.splice(insertAt >= 0 ? insertAt : entries.length, 0, { ...INCIDENT_BOARD_TAB, href: "incident_board" });
+  }
+  if (APPLICANT_FUNNEL_ENABLED && tierAllows(tier, "manager")) {
+    const drivers = entries.findIndex((t) => t.id === "drivers");
+    entries.splice(drivers + 1, 0, { ...FUNNEL_TAB, href: "funnel" });
+  }
+  const extra: (TabDef & { href: string })[] = [];
+  const financeHidden = !UNIFIED_FINANCE_ENDPOINT_ENABLED || !tierAllows(tier, "manager");
+  if (!financeHidden) extra.push({ ...FINANCE_TAB, href: "finance" });
+  if (VEHICLE_PROFITABILITY_ENABLED && tierAllows(tier, "manager")) extra.push({ ...VEHICLE_PROFIT_TAB, href: "vehicle_profit" });
+  if (PAYOUT_BREAKDOWN_ENABLED && tierAllows(tier, "owner")) extra.push({ ...PAYOUT_BREAKDOWN_TAB, href: "payout_breakdown" });
+  if (BILLING_HEALTH_ENABLED && tierAllows(tier, "owner")) extra.push({ ...BILLING_HEALTH_TAB, href: "billing_health" });
+  if (RECEIVABLES_AGING_ENABLED && tierAllows(tier, "manager")) extra.push({ ...AGING_TAB, href: "receivables_aging" });
+  if (DEPOSIT_LEDGER_ENABLED && tierAllows(tier, "manager")) extra.push({ ...DEPOSIT_TAB, href: "deposit_ledger" });
+  if (REVENUE_FORECAST_ENABLED && tierAllows(tier, "owner")) extra.push({ ...REVENUE_FORECAST_TAB, href: "revenue_forecast" });
+  if (!extra.length) {
+    return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
+  }
   const at = entries.findIndex((t) => t.id === "expenses");
-  entries.splice(at + 1, 0, { ...FINANCE_TAB, href: "finance" });
-  return entries;
+  entries.splice(at + 1, 0, ...extra);
+  return withAccountantExport(withExpenseEntry(withOwnerPnl(withPartnerStatement(entries, tier, "partner_statement"), tier, "owner_pnl"), tier, "expense_entry"), tier, "accountant_export");
 }
 
 /** Global "+ Create" — each entry is an existing flow reached by deep link. */
@@ -166,6 +465,86 @@ export const CREATE_ACTIONS: readonly CreateAction[] = [
   { id: "payment", label: "Payment", icon: CreditCard, tab: "payments", add: true, minTier: "manager" },
   { id: "expense", label: "Expense", icon: Wallet, tab: "expenses", add: true, minTier: "manager" },
 ];
+
+/**
+ * Where the admin shell is. An unknown tab renders Overview. A direct link to
+ * a flag-gated screen falls back while that flag is off, including before the
+ * role lookup returns.
+ */
+export function resolveAdminTab(args: {
+  urlTab: string | null;
+  tier: StaffTier | null;
+  navTabs: readonly { id: string }[];
+}): string {
+  if (args.urlTab === "settings") return "settings";
+  if (args.urlTab === "finance") {
+    if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "finance";
+  }
+  if (args.urlTab === "vehicle_profit") {
+    if (!VEHICLE_PROFITABILITY_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "vehicle_profit";
+  }
+  if (args.urlTab === "incident_board") {
+    if (!INCIDENT_BOARD_ENABLED || (args.tier && !tierAllows(args.tier, "coordinator"))) return "overview";
+    return "incident_board";
+  }
+  if (args.urlTab === "fleet_availability") {
+    if (!FLEET_AVAILABILITY_ENABLED || (args.tier && !tierAllows(args.tier, "coordinator"))) return "overview";
+    return "fleet_availability";
+  }
+  if (args.urlTab === "partner_statement") {
+    if (!PARTNER_STATEMENT_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "partner_statement";
+  }
+  if (args.urlTab === "owner_pnl") {
+    if (!OWNER_PNL_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "owner_pnl";
+  }
+  if (args.urlTab === "expense_entry") {
+    if (!OWNER_EXPENSE_ENTRY_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "expense_entry";
+  }
+  if (args.urlTab === "accountant_export") {
+    if (!ACCOUNTANT_EXPORT_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "accountant_export";
+  }
+  if (args.urlTab === "payout_breakdown") {
+    if (!PAYOUT_BREAKDOWN_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "payout_breakdown";
+  }
+  if (args.urlTab === "billing_health") {
+    if (!BILLING_HEALTH_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "billing_health";
+  }
+  if (args.urlTab === "funnel") {
+    if (!APPLICANT_FUNNEL_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "funnel";
+  }
+  if (args.urlTab === "todays_ops") {
+    if (!TODAYS_OPS_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "todays_ops";
+  }
+  if (args.urlTab === "fleet_calendar") {
+    if (!FLEET_CALENDAR_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "fleet_calendar";
+  }
+  if (args.urlTab === "revenue_forecast") {
+    if (!REVENUE_FORECAST_ENABLED || (args.tier && !tierAllows(args.tier, "owner"))) return "overview";
+    return "revenue_forecast";
+  }
+  if (args.urlTab === "receivables_aging") {
+    if (!RECEIVABLES_AGING_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "receivables_aging";
+  }
+  if (args.urlTab === "deposit_ledger") {
+    if (!DEPOSIT_LEDGER_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "deposit_ledger";
+  }
+  if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
+  if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";
+  return args.urlTab;
+}
 
 export function visibleCreateActions(tier: StaffTier | null): CreateAction[] {
   return CREATE_ACTIONS.filter((a) => tierAllows(tier, a.minTier));
