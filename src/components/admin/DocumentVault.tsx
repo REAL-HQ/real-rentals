@@ -16,6 +16,7 @@ import {
   type DocCategory,
 } from "@/lib/documents.functions";
 import { fmtDate } from "@/lib/date-format";
+import { documentExpiryTone } from "@/lib/document-expiry";
 
 const MAX_MB = 15;
 
@@ -24,14 +25,6 @@ function fmtSize(n: number | null) {
   return n > 1024 * 1024
     ? `${(n / 1024 / 1024).toFixed(1)} MB`
     : `${Math.max(1, Math.round(n / 1024))} KB`;
-}
-
-function expiryTone(d: VaultDocument): "expired" | "soon" | null {
-  if (!d.expires_at) return null;
-  const days = (new Date(d.expires_at).getTime() - Date.now()) / 86400000;
-  if (days < 0) return "expired";
-  if (days < 30) return "soon";
-  return null;
 }
 
 /**
@@ -131,7 +124,7 @@ export function DocumentVault({
       <ul className="divide-y divide-[#EDEDF0] border border-[#EDEDF0] rounded-xl overflow-hidden bg-white">
         {categories.map((cat) => {
           const doc = current.find((d) => d.category === cat.key) ?? null;
-          const tone = doc ? expiryTone(doc) : null;
+          const tone = doc ? documentExpiryTone(doc.expires_at) : null;
           return (
             <li key={cat.key} className="flex items-center gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
