@@ -45,7 +45,12 @@ const missing = await approveThroughPacket({
   },
 });
 assert(missing.ok && missing.via === "legacy", "missing rpc uses legacy");
-assert(calls.join(",") === "rpc,legacy", "legacy follows the missing rpc");
+// The compatibility gate short-circuits here: a missing
+// approval_evidence_version means the step 3 packet is absent, so the RPC is
+// not called at all and the approval goes straight to the legacy path. Before
+// the gate this read "rpc,legacy" -- one failing round trip per approval that
+// the gate now skips.
+assert(calls.join(",") === "legacy", `gate skips the rpc when the column is absent, got ${calls.join(",")}`);
 
 calls.length = 0;
 const refused = await approveThroughPacket({

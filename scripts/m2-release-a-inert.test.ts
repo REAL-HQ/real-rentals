@@ -83,13 +83,14 @@ assert(writes[1].op === "update" && writes[1].patch?.is_current === false, "seco
 assert(writes[1].patch?.superseded_by === "doc-1", "the supersede points at the new row");
 assert(!writes.some((w) => w.patch && "content_sha256" in w.patch), "flag off never stamps a hash");
 
-// 3. The approval version read is NOT behind either flag. It runs on every
-//    Approve from the moment Release A ships, and applications.approval_
-//    evidence_version does not exist until packet step 3. Only 42703, and
-//    PGRST204 naming that column, are tolerated; anything else refuses the
-//    approval that the accepted release would have completed. This is the one
-//    new failure mode Release A introduces, so it is pinned rather than
-//    described.
+// 3. The approval version read is NOT behind either flag: it runs on every
+//    Approve from the moment Release A ships, and
+//    applications.approval_evidence_version does not exist until packet step 3.
+//    A compatibility gate, not an error code, decides the path -- any failed
+//    read means "prerequisites absent" and the approval takes the legacy path,
+//    which is the accepted release's behaviour. The full matrix is in
+//    scripts/m2-approval-compat-gate.test.ts; these two pin the property that
+//    matters for Release A.
 const legacyRan: string[] = [];
 const args = (versionError: { code?: string; message?: string } | null) => ({
   applicationId: "44444444-4444-4444-8444-444444444444",
@@ -106,17 +107,12 @@ const absentColumn = await approveThroughPacket(args({ code: "42703", message: '
 assert(absentColumn.ok && absentColumn.via === "legacy", "42703 on the version read still approves through legacy");
 assert(legacyRan.length === 1, "the legacy write ran once");
 
-// Any other code refuses, before either flag is consulted.
+// And no unexpected error code can refuse an approval the accepted release
+// would have completed. This is the fail-safe direction.
 legacyRan.length = 0;
 const unexpected = await approveThroughPacket(args({ code: "PGRST100", message: "unexpected" }));
-assert(!unexpected.ok, "an unexpected version-read error refuses the approval");
-assert(legacyRan.length === 0, "and the legacy write does not run");
-
-// A PGRST204 that names another column is not tolerated either.
-legacyRan.length = 0;
-const otherColumn = await approveThroughPacket(args({ code: "PGRST204", message: "Could not find the email column" }));
-assert(!otherColumn.ok, "PGRST204 naming another column refuses the approval");
-assert(legacyRan.length === 0, "and the legacy write does not run");
+assert(unexpected.ok && unexpected.via === "legacy", "an unrecognised version-read error still approves through legacy");
+assert(legacyRan.length === 1, "and the legacy write ran");
 
 // 4. Re-approving an already-approved application is handled in the caller, not
 //    here: the accepted release rewrote status and logged a second
@@ -131,6 +127,6 @@ assert(guard < packetCall, "the guard precedes the packet call, so an approved r
 
 console.log(
   "release A inert: both flags false, storage untouched, 2 document writes with no content_sha256, " +
-  "42703 version read still approves through legacy, any other version-read error refuses, " +
+  "42703 version read still approves through legacy, an unrecognised one does too, " +
   "already-approved writes no status and no second audit",
 );
