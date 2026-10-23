@@ -2,6 +2,8 @@ import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/li
 import { tierFromRoles, tierAllows } from "@/lib/roles";
 import { StripeCollections } from "./StripeCollections";
 import LeadPriorities from "./LeadPriorities";
+import { OverviewTodayCard } from "./OverviewTodayCard";
+import { OVERVIEW_TODAY_ENABLED } from "@/lib/overview-today";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
@@ -436,6 +438,8 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">Overview</h1>
         <p className="text-[13px] text-[#55555E] mt-1">Pipeline, Fleet And Revenue At A Glance</p>
       </div>
+
+      {OVERVIEW_TODAY_ENABLED && canSeeCollections ? <OverviewTodayCard /> : null}
 
       <LeadPriorities />
 
