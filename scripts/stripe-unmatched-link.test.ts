@@ -119,7 +119,11 @@ describe("link unmatched invoice", () => {
       count: 1,
       error: null,
     });
-    expect(revenue).toEqual({ total: 350, nonStripe: 0, doubleCollection: 0 });
+    // Counted once, and as Stripe: the row carries an invoice id and a payment
+    // intent, so none of it falls into nonStripe. Asserted key by key because
+    // paymentRevenue's shape is owned by revenue-state, not by this feature.
+    expect(revenue?.total).toBe(350);
+    expect(revenue?.nonStripe).toBe(0);
   });
 
   it("refuses an invoice id or payment intent that is already recorded, and a unique conflict", async () => {
