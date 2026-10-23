@@ -1,0 +1,252 @@
+{
+ "project": "nhcgrevnanuzroudxpux (disposable)",
+ "date": "2026-10-23",
+ "synthetic_application": "6e2a0000-0000-4000-8000-0000000000a1",
+ "results": {
+  "hold": {
+   "checks": [
+    {
+     "name": "owner upload license_front",
+     "pass": true,
+     "detail": "HTTP 200"
+    },
+    {
+     "name": "manager cannot read driver-docs/front",
+     "pass": true,
+     "detail": "HTTP 400"
+    },
+    {
+     "name": "coordinator cannot read driver-docs/front",
+     "pass": true,
+     "detail": "HTTP 400"
+    },
+    {
+     "name": "driver cannot read driver-docs/front",
+     "pass": true,
+     "detail": "HTTP 400"
+    },
+    {
+     "name": "manager cannot write driver-docs",
+     "pass": true,
+     "detail": "HTTP 400"
+    },
+    {
+     "name": "owner download license_front bytes equal upload",
+     "pass": true,
+     "detail": "sha 4da2c2bdff28"
+    },
+    {
+     "name": "owner object info license_front",
+     "pass": true,
+     "detail": "HTTP 200 version=present"
+    },
+    {
+     "name": "owner upload license_back",
+     "pass": true,
+     "detail": "HTTP 200"
+    },
+    {
+     "name": "manager cannot read driver-docs/back",
+     "pass": true,
+     "detail": "HTTP 400"
+    },
+    {
+     "name": "coordinator cannot read driver-docs/back",
+     "pass": true,
+     "detail": "HTTP 400"
+    },
+    {
+     "name": "driver cannot read driver-docs/back",
+     "pass": true,
+     "detail": "HTTP 400"
+    },
+    {
+     "name": "manager cannot write driver-docs",
+     "pass": true,
+     "detail": "HTTP 400"
+    },
+    {
+     "name": "owner download license_back bytes equal upload",
+     "pass": true,
+     "detail": "sha 3ac48481c677"
+    },
+    {
+     "name": "owner object info license_back",
+     "pass": true,
+     "detail": "HTTP 200 version=present"
+    },
+    {
+     "name": "manager JWT refused record_uploaded_content_sha",
+     "pass": true,
+     "detail": "HTTP 403 42501"
+    }
+   ],
+   "objects": {
+    "front": {
+     "path": "6e2a0000-0000-4000-8000-0000000000a1/license_front.png",
+     "sha256": "4da2c2bdff2833430978baa3ebf607a6ab45884fc9cb2555035be48b58eab118",
+     "id": "743d7f97-9344-41cd-9241-79381811dc44",
+     "version": "f9c8bbd7-f8e9-4ee4-8181-4e1dbfe787e3",
+     "updated_at": "2026-10-23T21:51:23.586Z"
+    },
+    "back": {
+     "path": "6e2a0000-0000-4000-8000-0000000000a1/license_back.png",
+     "sha256": "3ac48481c677c7738ffe301fad1264510e777017aee24256c68e36c54b38cc19",
+     "id": "f87b3c5a-5c67-41ca-a79c-497e9c4639e4",
+     "version": "3929b0a3-449c-495b-8629-67af86b7b3df",
+     "updated_at": "2026-10-23T21:51:26.971Z"
+    }
+   }
+  },
+  "approve": {
+   "checks": [
+    {
+     "name": "coordinator preview refused",
+     "pass": true,
+     "detail": "HTTP 403 42501 manager_required",
+     "note": "refused as required; original check expected the step-1 wording approval_manager_required, the installed step-29 actor raises manager_required"
+    },
+    {
+     "name": "driver preview refused",
+     "pass": true,
+     "detail": "HTTP 403 42501 manager_required",
+     "note": "refused as required; original check expected the step-1 wording approval_manager_required, the installed step-29 actor raises manager_required"
+    },
+    {
+     "name": "anon approve refused",
+     "pass": true,
+     "detail": "HTTP 401 42501 permission denied for function approve_application_checked"
+    },
+    {
+     "name": "readiness before identity review refused",
+     "pass": true,
+     "detail": "HTTP 400 P0001 positive_identity_required"
+    },
+    {
+     "name": "manager preview",
+     "pass": true,
+     "detail": "HTTP 200  "
+    },
+    {
+     "name": "identity verify without a real note refused",
+     "pass": true,
+     "detail": "HTTP 400 P0001 review_note_required"
+    },
+    {
+     "name": "identity verify with altered evidence refused",
+     "pass": true,
+     "detail": "HTTP 400 P0001 review_evidence_stale"
+    },
+    {
+     "name": "coordinator identity verify refused",
+     "pass": true,
+     "detail": "HTTP 403 42501 manager_required",
+     "note": "refused as required; original check expected the step-1 wording approval_manager_required, the installed step-29 actor raises manager_required"
+    },
+    {
+     "name": "manager identity verify",
+     "pass": true,
+     "detail": "HTTP 200  "
+    },
+    {
+     "name": "readiness after identity review",
+     "pass": true,
+     "detail": "HTTP 200   version=2"
+    },
+    {
+     "name": "approve with stale version refused",
+     "pass": true,
+     "detail": "HTTP 400 P0001 approval_version_stale"
+    },
+    {
+     "name": "coordinator approve refused",
+     "pass": true,
+     "detail": "HTTP 403 42501 manager_required",
+     "note": "refused as required; original check expected the step-1 wording approval_manager_required, the installed step-29 actor raises manager_required"
+    },
+    {
+     "name": "manager direct status write cannot approve",
+     "pass": true,
+     "detail": "HTTP 403 42501 approval_rpc_required"
+    },
+    {
+     "name": "manager approve",
+     "pass": true,
+     "detail": "HTTP 200   {\"ok\":true,\"recovered\":false,\"confirmedAt\":\"2026-10-23T21:57:57.80612+00:00\",\"operationId\":\"2fce695b-bd1d-4fef-8716-142fdad060a3\",\"agreementSent\":false,\"applica"
+    },
+    {
+     "name": "second approve of an approved application refused",
+     "pass": true,
+     "detail": "HTTP 400 P0001 application_state_invalid"
+    },
+    {
+     "name": "recover returns the committed operation",
+     "pass": true,
+     "detail": "HTTP 200   {\"ok\":true,\"recovered\":true,\"confirmedAt\":\"2026-10-23T21:57:57.80612+00:00\",\"operationId\":\"2fce695b-bd1d-4fef-8716-142fdad060a3\",\"agreementSent\":false,\"applicat"
+    },
+    {
+     "name": "coordinator recover refused",
+     "pass": true,
+     "detail": "HTTP 403 42501 manager_required"
+    }
+   ],
+   "op": "2fce695b-bd1d-4fef-8716-142fdad060a3",
+   "version": 2
+  },
+  "reapprove-before_review": [
+   {
+    "name": "replacement not yet reviewed blocks readiness",
+    "pass": true,
+    "detail": "HTTP 400 P0001 documents_unverified"
+   }
+  ],
+  "reapprove-after_review": [
+   {
+    "name": "previous identity decision does not carry over to the new photo",
+    "pass": true,
+    "detail": "HTTP 400 P0001 positive_identity_required"
+   },
+   {
+    "name": "preview shows the replacement",
+    "pass": true,
+    "detail": "HTTP 200  "
+   },
+   {
+    "name": "fresh identity decision",
+    "pass": true,
+    "detail": "HTTP 200  "
+   },
+   {
+    "name": "ready after fresh decision",
+    "pass": true,
+    "detail": "HTTP 200   version=6"
+   },
+   {
+    "name": "re-approval",
+    "pass": true,
+    "detail": "HTTP 200  "
+   }
+  ],
+  "tamper": {
+   "upsert_status": 200,
+   "readiness_status": 403,
+   "message": "approval_storage_version_unverified",
+   "pass": true
+  },
+  "replace": {
+   "path": "6e2a0000-0000-4000-8000-0000000000a1/license_front_v2.png",
+   "sha256": "c0b3a1958bad4663263d4254e80f9f4a7a88971693a1b7d8d699423e1bf051d6",
+   "id": "935b2f71-8b03-4eef-b3a0-b94137e77acb",
+   "version": "a9de6aa4-de28-4766-8d0e-016824b14fe6",
+   "updated_at": "2026-10-23T21:58:31.481Z"
+  },
+  "cleanup-storage": {
+   "status": 200,
+   "paths": [
+    "6e2a0000-0000-4000-8000-0000000000a1/license_front.png",
+    "6e2a0000-0000-4000-8000-0000000000a1/license_back.png",
+    "6e2a0000-0000-4000-8000-0000000000a1/license_front_v2.png"
+   ]
+  }
+ }
+}

@@ -109,6 +109,14 @@ step. No new SQL, no recollection.
 
 ### The one temporary privilege
 
+> **Hosted correction (2026-10-23 rehearsal).** On hosted PostgreSQL 17 step 3
+> needs a second, shorter-lived grant: `03-pre-approval-executor-owner.sql`
+> grants `CREATE` to `rr_approval_executor` and `03-post-approval-executor-create.sql`
+> revokes it right after step 3 (both in `proposed/m2-hosted-amendments/`). A stop
+> between 3-pre and 3-post leaves that grant: run 3-post, then the assertion.
+> Rollbacks 1, 5 and 7 use the hosted variants in that directory. See
+> `M2-REHEARSAL-RESULT.md`.
+
 Step 5 (`proposed/m2-packet/03.sql`) holds the packet's **only** `GRANT CREATE`:
 
 ```sql

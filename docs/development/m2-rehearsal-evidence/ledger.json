@@ -1,0 +1,55 @@
+{
+ "project": "nhcgrevnanuzroudxpux (disposable rehearsal; never production)",
+ "date": "2026-10-23",
+ "manifest": "proposed/rehearsal/manifest.json",
+ "manifest_anchor_sha256": "6efe031120870213231b40ff02093315dd52cf1b442f0e1c41c1c775e35dc2fa",
+ "integrity": "All 453 ledger rows: path and executed_sha256 equal the manifest entry at that ord (checked in the database before export). The database computed each executed hash from the sealed bytes it ran.",
+ "runs": {
+  "install1": {
+   "purpose": "Production-order baseline, full 29-step install, real-JWT and Storage tests",
+   "ords": "1-206 except 205 (205 is the reduced-path verify)",
+   "baseline": "1-143: 118 Supabase receipts + 23 drizzle + drizzle runner ledger + catalog parity",
+   "preflight": "144: 0 rows not ok",
+   "install": "145-203: steps 1-29 including hosted amendments 149 (3-pre) and 151 (3-post)",
+   "verifies": "146,148,152,...,204: all t (29 of 29)",
+   "no_executor_create": "206: t",
+   "first_attempt_of_step_3": "refused 42501 must be able to SET ROLE rr_approval_executor; rolled back atomically; led to the hosted amendments"
+  },
+  "rollback1": {
+   "purpose": "Step-aware rollback of the used install, 29 down to 10",
+   "ords": "208-227",
+   "result": "each rollback committed, then the previous step's verify = t (steps 28 down to 9)"
+  },
+  "refusal": {
+   "228": "rollback step 9 refused: 55000 06b_rollback_unused_install_only (verified approval_identity rows present)",
+   "234": "rollback step 3 refused: 55000 00_rollback_unused_install_only",
+   "row_removal": "DELETE of the resolved identity reviews refused: 42501 resolved_identity_review_immutable. Not forced."
+  },
+  "main (install2)": {
+   "purpose": "Fresh reset, reproducible baseline, interrupted-install drill, reduced 1-25 + 29 path",
+   "ords": "1-160, then 203 early, then 161-196, then 204-206",
+   "baseline_fingerprint_equals_production": true,
+   "interrupted_drill": "stop after step 7: no-executor-create = f; run step 29 file early; no-executor-create = t; resume 8-25",
+   "reduced_path": "205 composed step29-after-step25 = t; 206 no-executor-create = t; 204 step 29 own verify = f (expected on a correct 1-25 install)"
+  },
+  "rollback2": {
+   "purpose": "Full rollback of the unused reduced install back to the pre-install baseline",
+   "ords": "208, 212-229, 237 (hosted 7), 231, 238 (hosted 5), 233, 234, 235, 239 (hosted 1)",
+   "result": "every rollback committed, previous step's verify = t after each; 0 rr_ roles; 0 rr_ memberships",
+   "approved_rollback_7_on_hosted": "failed 42501 permission denied for function _crypto_aead_det_noncegen (vault REVOKE) and 42501 permission denied to drop objects (DROP OWNED BY); rolled back atomically; led to the hosted rollback variants",
+   "fingerprint_vs_baseline": "16 of 18 groups byte-equal. fn:private and rel:private differ only in ACL representation on 6 objects (NULL default ACL became the identical explicit acldefault after the rollbacks' blanket REVOKE ... IN SCHEMA private); acl = acldefault(...) checked true for all 6, so privileges are identical"
+  }
+ },
+ "fingerprints": {
+  "production_and_baseline_run2": "bucket:* 10 6e194ed3f91e\ncon:drizzle 1 6d7730dc8af9\ncon:private 1 7e467fad9565\ncon:public 360 e6ff65a3a2f6\nenum:public 1 a25afbe395c9\next:* 7 a74d26446781\nfn:private 18 1179012ada5b\nfn:public 69 5a5f2b6c8834\nidx:drizzle 1 3e17810f6939\nidx:private 1 78d36733b30c\nidx:public 241 c5913e4b8a51\nnsp:* 3 0a505365b444\npol:public 139 a744acd93138\npol:storage 24 40d4aef46cf8\nrel:drizzle 2 4d943faa3f92\nrel:private 2 2a95982b8293\nrel:public 82 da47cc1a0042\ntrg:public 65 7e1f54fe854f",
+  "after_full_rollback_run2": "bucket:* 10 6e194ed3f91e\ncon:drizzle 1 6d7730dc8af9\ncon:private 1 7e467fad9565\ncon:public 360 e6ff65a3a2f6\nenum:public 1 a25afbe395c9\next:* 7 a74d26446781\nfn:private 18 591032110928\nfn:public 69 5a5f2b6c8834\nidx:drizzle 1 3e17810f6939\nidx:private 1 78d36733b30c\nidx:public 241 c5913e4b8a51\nnsp:* 3 0a505365b444\npol:public 139 a744acd93138\npol:storage 24 40d4aef46cf8\nrel:drizzle 2 4d943faa3f92\nrel:private 2 ba083ba91b2b\nrel:public 82 da47cc1a0042\ntrg:public 65 7e1f54fe854f",
+  "excluded_object": "public.fleet_inbox_wake() (differs by design: outbound_block transform)"
+ },
+ "outbound": {
+  "blocked_cron_schedule_calls_per_baseline_build": ["wizard-recovery-hourly", "wizard-recovery-hourly", "ops-reminders-daily", "automations-every-5-min", "late-fees-daily", "esign-archive-retry-hourly"],
+  "all_targeted_drivereal": true,
+  "http_post_calls": 0,
+  "cron_job_rows_ever_committed": 0,
+  "net_http_request_queue_rows_ever_committed": 0
+ }
+}
