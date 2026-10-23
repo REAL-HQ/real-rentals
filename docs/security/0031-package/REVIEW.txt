@@ -1,0 +1,45 @@
+SECURITY 0031 RECEIPT BASELINE RESEAL — 2026-10-20
+Local correction PASS. GO for installation preparation; NO-GO for execution until executor requirements are verified.
+
+Original SHA256: 479d44d3377103c78894ee46426621ca777dc9de68832918d5dcaf8fd6309f0a
+Corrected SHA256: 32c17aa76e5026c4f50a2179aab143baa5d05463743b1a0f366ab4339103494f
+Original local file unchanged; GitHub preserved codex/0031-isolated-sync content matches.
+No Git history, branch, journal or automatic migration-path files changed.
+Corrected copy is outside migration discovery.
+
+Actual hosted receipt table read directly through authorized Lovable query_database SELECT.
+All 23 rows captured in hosted-receipts.json; rows 1–22 exactly match original sealed baseline.
+Receipt 23: hash 9ee4a1ced75ee787ab8647f67775ae4bb9c0bc7fc23d51acf17416e469948e11;
+created_at 1792408979135; id 23. PASS: actual receipt, not inferred from source journal.
+The table has no migration-name field. The Waitlist Conflict / 0022 label is supplied by the
+request; independent filename-to-checksum mapping was not established. Current accessible
+main/editor journal ends at 0021. This does not affect the verified three receipt values.
+
+EXACT DIFF: lines 65 and 111 only. Append the same receipt-23 JSON object to each expected
+receipt array. Removing these two insertions reconstructs the original exact bytes.
+All five restrictive policies, role/current_user check, target/catalog/security fingerprints,
+audit logic and inner SQL remain byte-identical. Inner checksum remains
+cf8d5572670cb3f865fc0911d623ff070e6a9be1ca8d254c87db8f2a5c3cd723.
+
+Fresh disposable suite: 41 PASS. Reused original guards with explicit 23-row fixture,
+24-row post-receipt expectations, plus original-baseline rejection and receipt-23 drift tests.
+Policy, privilege, role, audit, receipt failure/rollback, replay and historical preservation checks
+pass. Local target/system/catalog/audit fixture profile substitutes are necessary; this is not
+execution of the production-pinned payload against a matching hosted schema. Production-profile
+builder output is separately asserted byte-equal to the corrected payload. No hosted writes.
+
+EXECUTOR REQUIREMENTS (UNCHANGED)
+current_user must be postgres AND have legitimate authority for all CREATE POLICY operations,
+including storage.objects owned by supabase_storage_admin. Another privileged current_user
+fails TARGET_MISMATCH. No grants, membership changes or guard bypass are proposed.
+Runner must execute only approved payload in one transaction, then append exactly one receipt
+with corrected outer checksum; failure must roll back policies, audit and receipt together.
+With current 23 rows, successful run should leave 24 rows, not 25 or more.
+Sealed 0031 journal timestamp 1791970564241 predates receipt 23 timestamp 1792408979135:
+a normal timestamp-based pending scan may skip it. Exact isolated execution and receipt selection
+must be verified; neither journal nor embedded audit timestamp was changed in this narrow patch.
+Current security/audit fingerprint compatibility and executor authority are not attested by
+these receipt-only reads. No installation is authorized or claimed ready.
+
+Smallest next action: review this exact two-location reseal and establish authorized postgres
+policy-DDL plus isolated transactional receipt behavior before requesting installation approval.
