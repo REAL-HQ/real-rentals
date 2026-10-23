@@ -2,6 +2,7 @@ import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/li
 import { tierFromRoles, tierAllows } from "@/lib/roles";
 import { StripeCollections } from "./StripeCollections";
 import LeadPriorities from "./LeadPriorities";
+import { BookingConversion } from "./BookingConversion";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
@@ -438,6 +439,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       </div>
 
       <LeadPriorities />
+      <BookingConversion canView={canSeeCollections} />
 
       {/* Priority strip — who is worth calling first, above everything else.
           Absent entirely when there is nobody, rather than an empty module.
