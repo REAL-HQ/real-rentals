@@ -272,3 +272,51 @@ holds no real data, and the function would be dropped at the end. It is not a
 pattern for production.
 
 Until then the relay continues in verified batches, as instructed.
+
+---
+
+## 8. Intentional rehearsal safety exclusions — cron jobs that call production
+
+Owner-acknowledged 2026-10-23. These are **deliberate**, not defects in the
+rehearsal, and they are recorded on each affected ledger row with the prefix
+`INTENTIONAL REHEARSAL SAFETY EXCLUSION`.
+
+Rule, set by the owner: no scheduled jobs or webhooks calling drivereal.com from
+the rehearsal environment.
+
+| Ledger seq | Migration | Job | Target |
+|---|---|---|---|
+| 46 | `20260722235626_0c2a4606…` | `wizard-recovery-hourly` | `https://drivereal.com/api/public/cron/wizard-recovery` |
+| 47 | `20260722235657_f2c6714d…` | `wizard-recovery-hourly` (reschedule) | same |
+| 58 | `20260815153000_4b3d85d0…` | `ops-reminders-daily` | `https://drivereal.com/api/public/cron/ops-reminders` |
+
+In each file only the `cron.schedule(...)` call was excluded (and in 47 the
+`DROP`/`CREATE EXTENSION pg_net` cycle, since `pg_net` already lives in
+`extensions`). Every other statement — columns, `private.cron_tokens`, the token
+rows, `get_cron_token` — was applied. `cron.job` is verified empty. The M2
+packet touches no cron object.
+
+**Five more files schedule the same kind of job** and will be handled the same
+way: 60 (`/cron/automations`), 62 (`/cron/late-fees`), 68 (`/cron/automations`),
+69 (`/cron/late-fees`), 92 (`/cron/esign-archive-retry`). Migrations 93, 94 and
+121 only name a `resend_message_id` / `provider` column and send nothing.
+
+## 9. Connectivity — allowlist confirmed
+
+After the owner allowlisted `nhcgrevnanuzroudxpux.supabase.co` on 443, a single
+harmless read-only request was made:
+
+```
+GET /rest/v1/markets?select=slug&limit=2   (publishable key)
+-> HTTP 200  [{"slug":"tampa"}, {"slug":"orlando"}]
+```
+
+Configuration rows only. The Storage API and PostgREST JWT validations are now
+reachable. They depend on the packet being installed, so they run after it.
+
+## 10. Bulk execution — proposed, not built
+
+See `docs/development/M2-REHEARSAL-BULK-PROPOSAL.md`. Hand relay cannot prove a
+file is byte-identical to the repo, so **the packet will not be run by hand
+relay**: a packet result whose bytes cannot be proven is not a result. Baseline
+relay continues meanwhile.
