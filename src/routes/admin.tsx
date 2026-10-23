@@ -52,6 +52,8 @@ import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
+import { ReceivablesAgingPanel } from "@/components/admin/ReceivablesAgingPanel";
+import { RECEIVABLES_AGING_ENABLED } from "@/lib/receivables-aging-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -297,6 +299,11 @@ function Admin() {
     if (urlTab === "finance") {
       if (!UNIFIED_FINANCE_ENDPOINT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
       return "finance";
+    }
+    // Receivables Aging is not in TABS. While the flag is off a direct link falls back to Overview.
+    if (urlTab === "receivables_aging") {
+      if (!RECEIVABLES_AGING_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "receivables_aging";
     }
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
@@ -805,6 +812,7 @@ function Admin() {
             {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
+            {RECEIVABLES_AGING_ENABLED && tab === "receivables_aging" && <ReceivablesAgingPanel />}
             {tab === "settings" && <SettingsWorkspace tier={tier} section={search.section ?? null} />}
           </main>
         </div>
