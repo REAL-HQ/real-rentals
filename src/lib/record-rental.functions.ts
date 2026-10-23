@@ -13,6 +13,8 @@ export const recordExistingRentalV3 = createServerFn({method:'POST'})
    const request=getRequest();
    const bearer=request.headers.get('authorization');
    if(!bearer?.startsWith('Bearer ')) throw new Error('Authenticated session required');
+   const {ensureRecordRentalResources}=await import('./record-rental-resources.server');
+   await ensureRecordRentalResources();
    const {getRecordRentalTransportV2}=await import('./record-rental-runtime.server');
    const {executeRecordRental}=await import('./record-rental-operation.server');
    return executeRecordRental(data.request,data.expectedActorId,

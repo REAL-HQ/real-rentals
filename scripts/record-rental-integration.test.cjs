@@ -1,10 +1,11 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict'),ts=require('typescript');
-let enabled=false, role='admin',calls=0,roleCalls=0;
+let enabled=false, role='admin',calls=0,roleCalls=0,ensures=0;
 function load(file,imports){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,require:n=>{if(n in imports)return imports[n];throw Error('Unexpected dependency '+n)},console});return exports;}
 const contract=load('src/lib/record-rental-contract.ts',{zod:require('zod')});
 assert.equal(contract.RECORD_RENTAL_CONTRACT_ENABLED,false);
 const modules={zod:require('zod'),'./record-rental-contract':{...contract,get RECORD_RENTAL_CONTRACT_ENABLED(){return enabled}},'@/integrations/supabase/auth-middleware':{requireSupabaseAuth:{}},'@tanstack/react-start':{createServerFn(){let parse;return {middleware(){return this},inputValidator(f){parse=f;return this},handler(fn){return async arg=>fn({...arg,data:parse(arg.data)})}}}},'./roles.server':{requireManager:async()=>{roleCalls++;if(!['admin','team'].includes(role))throw Error('forbidden')}}};
 modules['@tanstack/react-start/server']={getRequest:()=>new Request('https://synthetic.invalid',{headers:{authorization:'Bearer synthetic'}})};
+modules['./record-rental-resources.server']={ensureRecordRentalResources:async()=>{assert.ok(roleCalls>0,'resources built before the Manager check');ensures++}};
 modules['./record-rental-runtime.server']={getRecordRentalTransportV2:(c,t)=>{assert.equal(t,'synthetic');return c.supabase}};
 modules['./record-rental-operation.server']={executeRecordRental:async(req,actor,transport)=>{const r=await transport.rpc('record_existing_rental_evidence_v1',{token:id(9),req});if(r.error)throw Error(r.error.message);return contract.recordResult.parse(r.data)}};
 const handler=load('src/lib/record-rental.functions.ts',modules).recordExistingRentalV3;
@@ -16,7 +17,7 @@ const context={userId:id(5),supabase:{rpc:async(name,args)=>{calls++;assert.equa
 const data={request:req,expectedActorId:id(5)};
 let pass=0;async function test(name,f){await f();pass++;console.log('PASS',name)}
 (async()=>{
-await test('disabled before any database or role read',async()=>{await assert.rejects(handler({data,context}),/disabled/);assert.equal(calls+roleCalls,0)});
+await test('disabled before any database or role read',async()=>{await assert.rejects(handler({data,context}),/disabled/);assert.equal(calls+roleCalls+ensures,0)});
 enabled=true;
 await test('Owner uses exact authenticated RPC',async()=>{await handler({data,context})});
 await test('Manager allowed',async()=>{role='team';await handler({data,context})});

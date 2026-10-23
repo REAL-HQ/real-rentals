@@ -1,0 +1,36 @@
+-- Disposable Supabase stand-ins for the Record Rental harness only. Never hosted.
+create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
+create role authenticator login noinherit password 'harness-authenticator'; grant anon, authenticated, service_role to authenticator;
+create role supabase_admin; create role supabase_storage_admin; create role supabase_auth_admin;
+create schema auth; create schema storage; create schema extensions; create schema cron; create schema net; create schema vault; create schema graphql_public;
+create extension if not exists pgcrypto with schema extensions; create extension if not exists "uuid-ossp" with schema extensions;
+create table auth.users(id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb default '{}', raw_app_meta_data jsonb default '{}', created_at timestamptz default now(), updated_at timestamptz default now(), email_confirmed_at timestamptz, last_sign_in_at timestamptz, phone text, deleted_at timestamptz, is_anonymous boolean default false);
+create table auth.sessions(id uuid primary key, user_id uuid references auth.users(id) on delete cascade, created_at timestamptz default now(), not_after timestamptz);
+create table auth.identities(id uuid primary key default gen_random_uuid(), user_id uuid references auth.users(id) on delete cascade, provider text, provider_id text, identity_data jsonb);
+create function auth.uid() returns uuid language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claim.sub', true),''), (nullif(current_setting('request.jwt.claims', true),'')::jsonb ->> 'sub'))::uuid $$;
+create function auth.role() returns text language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claim.role', true),''), (nullif(current_setting('request.jwt.claims', true),'')::jsonb ->> 'role')) $$;
+create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true),''),'{}')::jsonb $$;
+create function auth.email() returns text language sql stable as $$ select auth.jwt() ->> 'email' $$;
+create table storage.buckets(id text primary key, name text, public boolean default false, file_size_limit bigint, allowed_mime_types text[], created_at timestamptz default now(), updated_at timestamptz default now(), owner uuid);
+create table storage.objects(id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets(id), name text, owner uuid, owner_id text, metadata jsonb, user_metadata jsonb, version text, path_tokens text[], created_at timestamptz default now(), updated_at timestamptz default now(), last_accessed_at timestamptz default now(), unique(bucket_id, name));
+alter table storage.objects enable row level security;
+create function storage.foldername(name text) returns text[] language sql immutable as $$ select (string_to_array(name,'/'))[1:array_length(string_to_array(name,'/'),1)-1] $$;
+create function storage.filename(name text) returns text language sql immutable as $$ select (string_to_array(name,'/'))[array_length(string_to_array(name,'/'),1)] $$;
+create function storage.extension(name text) returns text language sql immutable as $$ select split_part(name,'.',-1) $$;
+create table cron.job(jobid bigserial, jobname text, schedule text, command text);
+create function cron.schedule(a text, b text, c text) returns bigint language sql as $$ insert into cron.job(jobname,schedule,command) values(a,b,c) returning jobid $$;
+create function cron.schedule(b text, c text) returns bigint language sql as $$ insert into cron.job(schedule,command) values(b,c) returning jobid $$;
+create function cron.unschedule(a text) returns boolean language sql as $$ delete from cron.job where jobname=a returning true $$;
+create table net.http_request_queue(id bigserial, url text);
+create function net.http_post(url text, body jsonb default '{}', params jsonb default '{}', headers jsonb default '{}', timeout_milliseconds int default 1000) returns bigint language sql as $$ insert into net.http_request_queue(url) values(url) returning id $$;
+create table vault.decrypted_secrets(name text, decrypted_secret text);
+create function vault.create_secret(s text, n text default null, d text default null) returns uuid language sql as $$ insert into vault.decrypted_secrets values(n,s); select gen_random_uuid() $$;
+-- The rehearsal manifest's outbound_block transform targets these; they record and schedule nothing.
+create schema rehearsal;
+create table rehearsal.blocked_calls(id bigserial primary key, fn text, args jsonb);
+create function rehearsal.cron_schedule_blocked(job_name text, schedule text, command text) returns bigint language sql as $$ insert into rehearsal.blocked_calls(fn,args) values('cron.schedule', jsonb_build_object('job_name',job_name)) returning -1::bigint $$;
+create function rehearsal.cron_schedule_blocked(schedule text, command text) returns bigint language sql as $$ insert into rehearsal.blocked_calls(fn,args) values('cron.schedule', '{}') returning -1::bigint $$;
+create function rehearsal.http_post_blocked(url text, body jsonb default '{}', params jsonb default '{}', headers jsonb default '{}', timeout_milliseconds int default 5000) returns bigint language sql as $$ insert into rehearsal.blocked_calls(fn,args) values('http_post', jsonb_build_object('url',url)) returning -1::bigint $$;
+grant usage on schema auth, storage, extensions to anon, authenticated, service_role;
+grant select on auth.users to service_role;
+grant all on all tables in schema storage to service_role, authenticated;
