@@ -65,10 +65,28 @@ on that ref: windows, stop-point table and rollback variants. **Exact submission
   `BEGIN`/`COMMIT` (as five window files do) ran correctly, and its tampered copy was refused.
 
 **Prerequisites before Window 1**
-1. **Backup and PITR.** In the Supabase dashboard, confirm PITR is enabled for
-   `yuyzdsnrbfhkmfzpvhwx`, and record the restore point and how to request it. After the
-   first real identity approval, steps 3 and 9 cannot be rolled back; restore is the only
-   way back.
+1. **Backup and PITR: NOT confirmed. M2 production is NO-GO.** As of 2026-10-24, Lovable's
+   documentation ("Back up, restore, and export your project's database"; the Lovable Cloud docs)
+   describes Lovable Cloud backups as follows:
+   - **One daily backup, kept about 14 days. No point-in-time recovery.**
+   - **Method:** in the Lovable editor, More → Database → Manage → Backups → *Restore to this
+     backup*. There is no Supabase dashboard or Management API restore for this project.
+   - **Permission:** anyone with edit access to the project can restore. On Enterprise plans,
+     restores appear in the workspace audit log.
+   - **Effect:** irreversible. The database is down for a few minutes. **Everything written after the
+     snapshot is lost:**
+     - payments (including webhook-recorded Stripe charges, which Stripe will not resend);
+     - applications and approvals;
+     - documents rows, agreements and signatures;
+     - `audit_log`.
+   - **Schema rolls back too.** A snapshot from before 2026-10-24 would also remove Security 0031.
+   - **Storage files are not restored.** Objects uploaded after the snapshot stay, with no rows.
+
+   Claude could not open the documentation directly or reach the project's backups list from this
+   session (proxy 403). The owner must look at the Backups list and confirm what it shows. Before
+   Window 1, the owner either accepts daily-snapshot restore as the recovery for Window 2's
+   restore-only case, with an export taken immediately before (a separate approval), or provides
+   PITR another way. After the first real identity approval, steps 3 and 9 cannot be rolled back.
 2. Release A live.
 3. No approvals or agreement signing during the window.
 4. **Hash backfill (operator step, not SQL):** `bun scripts/backfill-document-content-sha.ts --url <project>`,
@@ -132,8 +150,10 @@ hash-matched preview and explicit linkage.
 
 ## 5. Owner approvals, in order
 
-1. Merge Release A into the production branch (no publish), then publish Release A.
-2. Confirm PITR and the restore point. Then M2 Window 1, including the operator-run backfill.
+1. ~~Merge Release A into the production branch~~ (done: `14cbf81b`, not published; see
+   `RELEASE-A-ROLLBACK.md`). Next: the Preview check, then publish Release A.
+2. The recovery decision (no PITR on Lovable Cloud; §2 item 1). Then M2 Window 1, including the
+   operator-run backfill.
 3. Release B: merge, then publish.
 4. M2 Window 2.
 5. Record Rental installs 2–5, each separately, then the gateway secret and server env.
