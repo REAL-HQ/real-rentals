@@ -1,4 +1,4 @@
-# Security 0031 v2 — collation-corrected package (prepared; not approved for production)
+# Security 0031 v2 — collation-corrected package (**installed 2026-10-24 13:15:26 UTC**, see `../0031-install-2026-10-24/`)
 
 Supersedes `../0031-package/0031_guarded_coordinator_containment.sql`
 (`32c17aa76e5026c4f50a2179aab143baa5d05463743b1a0f366ab4339103494f`). That file stays

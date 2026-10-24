@@ -1,0 +1,9 @@
+Approved once: docs/security/0031-package-v2/coordinator-access-test.sql (sha256 57c42b48...0dbe), after install.
+Result (verbatim): ERROR: 42501: permission denied for schema private
+  at the counts query (line 13), which called private.is_staff()/private.is_manager() directly
+  after SET LOCAL ROLE authenticated. In production, authenticated has no USAGE on schema private
+  (row-level security policies reach those helpers by OID, so the application is unaffected).
+The statement aborted; nothing committed. Read-only after: user_roles 6 rows, md5 c1d4c1c0...698e
+(unchanged), 0 coordinator rows, policies 5, evidence 1, audit rows 887, receipts 23/105.
+No aggregate counts were produced. Not retried. Corrected test: ../0031-package-v2/coordinator-access-test-v2.sql
+(reads the two helpers before switching role); rehearsed (T9, T9c control) - needs its own approval.

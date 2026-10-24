@@ -160,7 +160,8 @@ try {
 
   // 9. The proposed production Coordinator test, rehearsed: with no coordinator account, the
   //    always-aborting statement borrows a driver login as coordinator, counts, and commits nothing.
-  const COORD = readFileSync(join(sec, "0031-package-v2/coordinator-access-test.sql"), "utf8");
+  const COORD = readFileSync(join(sec, "0031-package-v2/coordinator-access-test-v2.sql"), "utf8");
+  const COORD_V1 = readFileSync(join(sec, "0031-package-v2/coordinator-access-test.sql"), "utf8");
   await db.unsafe("DELETE FROM public.user_roles WHERE role = 'coordinator'");
   const rolesBefore = (await db.unsafe("SELECT md5(string_agg(user_id::text || role, ',' ORDER BY user_id, role)) AS h FROM public.user_roles"))[0].h;
   r = await send(COORD);
@@ -170,6 +171,9 @@ try {
   check("T9", "Coordinator test plan: borrowed login is staff not manager, sees no identity data, keeps non-identity documents; role change never commits",
     !!counts && counts.is_staff === true && counts.is_manager === false && counts.applications === 0 && counts.identity_reviews === 0 && counts.identity_documents === 0 && counts.agreements === 0 && counts.identity_objects === 0 && counts.other_documents === 1 && rolesBefore === rolesAfter && unchanged(s2, await state()),
     { counts, rolesUnchanged: rolesBefore === rolesAfter });
+  r = await send(COORD_V1);
+  const rolesV1 = (await db.unsafe("SELECT md5(string_agg(user_id::text || role, ',' ORDER BY user_id, role)) AS h FROM public.user_roles"))[0].h;
+  check("T9c", "control: the first Coordinator test fails as it did in production (authenticated has no USAGE on schema private); roles unchanged", r.includes("permission denied for schema private") && rolesV1 === rolesBefore, { result: r });
   await db.unsafe("INSERT INTO public.user_roles VALUES ('00000000-0000-4000-8000-0000000000c1', 'coordinator')");
   r = await send(COORD);
   check("T9b", "Coordinator test plan refuses when a real coordinator exists (use that account instead)", r.includes("RRCOORD_REAL_COORDINATOR_EXISTS"), { result: r });

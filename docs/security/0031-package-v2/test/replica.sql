@@ -6,7 +6,9 @@
 DO $r$ DECLARE r text; BEGIN FOREACH r IN ARRAY ARRAY['anon','authenticated','service_role','sandbox_exec'] LOOP
  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN EXECUTE format('CREATE ROLE %I NOLOGIN', r); END IF; END LOOP; END $r$;
 CREATE SCHEMA auth; CREATE SCHEMA private; CREATE SCHEMA storage; CREATE SCHEMA drizzle; CREATE SCHEMA extensions;
-GRANT USAGE ON SCHEMA auth, private, storage, public TO anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA auth, storage, public TO anon, authenticated, service_role;
+-- As in production: authenticated has no USAGE on private (policies reference its functions by OID).
+GRANT USAGE ON SCHEMA private TO service_role;
 CREATE FUNCTION extensions.gen_random_uuid() RETURNS uuid LANGUAGE sql AS 'SELECT pg_catalog.gen_random_uuid()';
 CREATE TABLE auth.users (id uuid PRIMARY KEY);
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;

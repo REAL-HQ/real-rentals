@@ -6,7 +6,7 @@
    "name": "cluster collation en_US.UTF-8: old normalisation reorders storage.objects policies, corrected one keeps them",
    "pass": true,
    "detail": {
-    "sysid": "7700205452658551062",
+    "sysid": "7700222781846430079",
     "cat": "71f1883b3eb908c8e8d403ab4439870157d6d9ebb8664cf21efff36b29c43cb9",
     "coll": "en_US.UTF-8",
     "old_keeps_order": false,
@@ -183,6 +183,14 @@
      "identity_documents": 0
     },
     "rolesUnchanged": true
+   }
+  },
+  {
+   "id": "T9c",
+   "name": "control: the first Coordinator test fails as it did in production (authenticated has no USAGE on schema private); roles unchanged",
+   "pass": true,
+   "detail": {
+    "result": "permission denied for schema private"
    }
   },
   {
