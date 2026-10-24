@@ -1,0 +1,10 @@
+2026-10-24, Lovable query_database, project 8cf1f99e-71ad-4a93-a47c-bfbe833616d6 (Supabase yuyzdsnrbfhkmfzpvhwx).
+Submitted once: docs/security/0031-direct-route/request.sql (sha256 0d0c67d89742f43cff02efea9b0bc2642e252974f369efeb05deb517eb5ea77d).
+Result (verbatim):
+  Lovable API error: 400 query_error: Failed to run sql query: ERROR:  P0001: POST_UNEXPECTED_CATALOG_CHANGE
+  CONTEXT:  PL/pgSQL function inline_code_block line 121 at RAISE
+Meaning: the submission guard passed (it raises RRGUARD_* before the package runs), so the
+package bytes were exactly 32c17aa7...494f. Every package gate before the DDL passed, the five
+policies were created and matched the sealed POST_POLICY_MISMATCH literal, the journal was still
+23 (POST_JOURNAL_CHANGED passed), and the normalised catalog comparison then refused. The one
+statement rolled back. No retry was made.
