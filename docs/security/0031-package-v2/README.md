@@ -144,7 +144,19 @@ Verdict on the first submission: **approve with notes**.
     guard v3, which is fixed.
 - **Note, addressed:** trailer format on the Lovable route (see the guard section).
 
-A third review of guard v3 is requested before approval.
+**Third review (fresh agent, attacks executed as a non-superuser, real request and a stand-in):
+approve.**
+- Refused before the package ran, with nothing committing:
+  - `current_query()` shadowed (returning NULL, or the clean text);
+  - shadowed `=`, `>` and `~`;
+  - shadowed `strpos`, `substr`, `encode`, `sha256` and `textcat`, and a `public.bool` domain;
+  - text after the trailer;
+  - `COMMIT` plus a statement after the package;
+  - a duplicate header.
+- `gen-guard3.py` reproduces the guard byte for byte, and no unqualified call remains.
+- The README's "guarantees / cannot" section is accurate.
+- **Residual:** the self-committing prefix, as documented; the package does not run.
+- No blocking or should-fix findings.
 
 ## Production read-only check (2026-10-24, `production-readonly-check.json`)
 
