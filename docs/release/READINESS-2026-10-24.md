@@ -87,6 +87,8 @@ on that ref: windows, stop-point table and rollback variants. **Exact submission
    Window 1, the owner either accepts daily-snapshot restore as the recovery for Window 2's
    restore-only case, with an export taken immediately before (a separate approval), or provides
    PITR another way. After the first real identity approval, steps 3 and 9 cannot be rolled back.
+   **Superseded by `M2-RECOVERY-STRATEGY.md`:** the owner declined 24-hour loss. Window 1 can be recovered by SQL
+   (with the noted gap closed). Window 2 stays NO-GO until the evidence-preserving rollback is rehearsed.
 2. Release A live.
 3. No approvals or agreement signing during the window.
 4. **Hash backfill (operator step, not SQL):** `bun scripts/backfill-document-content-sha.ts --url <project>`,
