@@ -58,6 +58,7 @@
     "test:record-rental-gateway": "bash scripts/record-rental-harness/up.sh && bash scripts/record-rental-harness/seed.sh && bun scripts/record-rental-gateway.test.ts && RR_TRANSPORT=gateway bun scripts/record-rental-acceptance.test.ts",
     "test:record-rental-eligibility": "bash scripts/record-rental-harness/up.sh && bash scripts/record-rental-harness/seed.sh && bun scripts/record-rental-eligibility.test.ts",
     "test:record-rental-bundle": "node scripts/record-rental-client-bundle.test.mjs",
+    "test:record-rental-dialog": "node scripts/record-rental-dialog.test.cjs",
     "test:record-rental-e2e": "bash scripts/record-rental-harness/up.sh && bash scripts/record-rental-harness/seed.sh && bun scripts/record-rental-e2e.test.ts && node scripts/record-rental-transport.test.mjs",
     "test:m2-window1-drill": "RR_HARNESS_LAST_ORD=148 bash scripts/record-rental-harness/up.sh && bun scripts/m2-window1-drill.test.ts",
     "test:m2": "bun scripts/m2-release-a-inert.test.ts && bun scripts/m2-approve-fallback.test.ts && bun scripts/m2-approval-compat-gate.test.ts && node scripts/m2-rehearsal-prerequisites.test.mjs && node scripts/m2-rehearsal-prerequisites.mjs --check && bun scripts/m2-content-sha.test.ts"

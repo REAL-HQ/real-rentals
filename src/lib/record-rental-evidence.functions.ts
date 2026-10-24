@@ -73,3 +73,36 @@ export const voidHistoricalAgreement = createServerFn({ method: "POST" })
     const { voidHistoricalAgreementV1 } = await import("./record-rental-historical.server");
     return voidHistoricalAgreementV1(context, data);
   });
+
+// Read-only facts for the Record Rental screens (record-rental-status.server.ts).
+export const recordRentalStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: unknown) => z.object({ applicationId: uuid }).strict().parse(v))
+  .handler(async ({ data, context }) => {
+    if (!RECORD_RENTAL_CONTRACT_ENABLED) throw new Error("Record Rental is disabled pending contract installation and acceptance");
+    const { configured } = await staffResources(context.userId);
+    const { readRecordRentalStatusV1 } = await import("./record-rental-status.server");
+    return readRecordRentalStatusV1(context, configured, data.applicationId);
+  });
+
+export const previewBillingLink = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: unknown) => z.object({ applicationId: uuid }).strict().parse(v))
+  .handler(async ({ data, context }) => {
+    if (!RECORD_RENTAL_CONTRACT_ENABLED) throw new Error("Record Rental is disabled pending contract installation and acceptance");
+    const { configured } = await staffResources(context.userId);
+    const { previewBillingLinkV1 } = await import("./record-rental-status.server");
+    return previewBillingLinkV1(context, configured, data.applicationId);
+  });
+
+export const registerLegacyEsignAgreement = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: unknown) => v)
+  .handler(async ({ data, context }) => {
+    if (!RECORD_RENTAL_CONTRACT_ENABLED) throw new Error("Record Rental is disabled pending contract installation and acceptance");
+    if (!HISTORICAL_AGREEMENTS_V1_ENABLED) throw new Error("Historical agreements are not installed");
+    const { token, configured } = await staffResources(context.userId);
+    const { ports } = await import("./paper-agreements.functions");
+    const { registerLegacyEsignAgreementV1 } = await import("./record-rental-historical.server");
+    return registerLegacyEsignAgreementV1(context, token, configured, data, await ports(context.supabase));
+  });

@@ -15,6 +15,9 @@ import { createRecordRentalTransportV2 } from "../src/lib/record-rental-runtime.
 import { executeRecordRental } from "../src/lib/record-rental-operation.server";
 import { previewPositiveLicenseV1, verifyPositiveLicenseV1 } from "../src/lib/record-rental-archive.server";
 import { registerHistoricalAgreementV1, registerLegacyEsignAgreementV1 } from "../src/lib/record-rental-historical.server";
+import { readRecordRentalStatusV1, previewBillingLinkV1 } from "../src/lib/record-rental-status.server";
+import { agreementRoute } from "../src/lib/record-rental-readiness";
+import { weeklySub } from "./record-rental-harness/clients";
 import type { Port } from "../src/lib/paper-contract";
 
 const db = postgres(DB, { max: 1, onnotice: () => {} });
@@ -101,10 +104,17 @@ try {
   await assert.rejects(() => registerHistoricalAgreementV1(owner.ctx, owner.token, resources(), { operationId: randomUUID(), applicationId: UMA.app,
     vehicleId: UMA.veh, documentId: umaDoc, signedOn: "2026-09-01", rentalStart: "2026-09-02T10:00:00-04:00", weeklyRate: 275, deposit: null,
     termsSummary: "Paper original while an unsigned eSign agreement is still open." }), /eSign agreement that is not yet linked/);
-  pass("an open, unsigned eSign agreement still blocks until staff void it");
+  const umaStatus = await readRecordRentalStatusV1(owner.ctx, resources(), UMA.app);
+  assert.deepEqual(agreementRoute(umaStatus, UMA.veh).blockers, ["agreement_unsigned"]);
+  pass("an open, unsigned eSign agreement still blocks until staff void it, and the screens explain why");
 
   // ---- Leo: legacy eSign agreement through the app's legacy route.
   const legacy = await agreementRow(LEO, {});
+  const leoBefore = await readRecordRentalStatusV1(owner.ctx, resources(), LEO.app);
+  assert.equal(leoBefore.licence.front, "verified"); assert.equal(leoBefore.driver.portalLogin, true);
+  assert.deepEqual(leoBefore.agreements.map(a => [a.id, a.archived, a.signedTerms]), [[legacy.id, true, false]]);
+  assert.deepEqual(agreementRoute(leoBefore, LEO.veh).blockers, ["agreement_legacy_terms"]);
+  pass("status reader (staff RLS): a legacy eSign agreement is shown archived without signed terms, routed to legacy registration");
   const input = (over: Record<string, unknown> = {}) => ({ operationId: randomUUID(), paperOperationId: randomUUID(), agreementId: legacy.id,
     rentalStart: "2026-09-01T09:00:00-04:00", weeklyRate: 275, deposit: 250,
     termsSummary: "Weekly rent $275, $250 deposit, terms as printed in the signed eSign PDF.", ...over });
@@ -120,6 +130,11 @@ try {
   const [lagBefore] = await db`select rental_id, sha256, signed_at, merge_data from public.agreements where id = ${legacy.id}`;
   assert.equal(lagBefore.rental_id, null); assert.deepEqual(lagBefore.merge_data, { weekly_rate: "$275" });
   pass("legacy eSign agreement registered: copy hashes to agreements.sha256, signing date from the eSign record, eSign row unchanged");
+  const leoAfter = await readRecordRentalStatusV1(owner.ctx, resources(), LEO.app);
+  assert.equal(leoAfter.historical?.source, "legacy_esign"); assert.equal(leoAfter.historical?.legacyAgreementId, legacy.id);
+  assert.deepEqual(agreementRoute(leoAfter, LEO.veh), { route: { kind: "historical", source: "legacy_esign", historicalId: h.historicalAgreementId }, blockers: [] });
+  assert.deepEqual(agreementRoute(leoAfter, VERA.veh).blockers, ["historical_vehicle_mismatch"]);
+  pass("status reader shows the registration with its provenance; the screens route to it and refuse another vehicle");
   await assert.rejects(() => record(owner, OWNER, { applicationId: LEO.app, vehicleId: LEO.veh, startedAt: "2026-09-01T09:00:00-04:00", weeklyRate: 275, deposit: 300 }),
     /unavailable|recover/i);
   const lrec = await record(owner, OWNER, { applicationId: LEO.app, vehicleId: LEO.veh, startedAt: "2026-09-01T09:00:00-04:00", weeklyRate: 275, deposit: 250 });
@@ -132,6 +147,17 @@ try {
   pass("legacy rental recorded (deposit mismatch refused first); the eSign row is linked to it once; evidence keeps the real signing instant; audited");
   await assert.rejects(() => registerLegacyEsignAgreementV1(owner.ctx, owner.token, resources(), input(), paperPort(owner)), /not yet linked to a rental/);
   pass("a legacy agreement already linked to a rental cannot be registered again");
+  // Billing preview: retrieve-only (fakeStripe throws on any other method), Owner's own client.
+  await db`update public.applications set stripe_customer_id = 'cus_HarnessVera' where id = ${VERA.app}`;
+  const stripeCalls: string[] = [];
+  const billed = buildRecordResources({ ...ISSUER_CONFIG, stripeEnvironment: "sandbox", currency: "usd", historicalAgreements: true },
+    { stripe: fakeStripe({ cus_HarnessVera: [weeklySub("sub_harness_vera", "cus_HarnessVera", 27500)] }, stripeCalls), ...storage });
+  const preview = await previewBillingLinkV1(owner.ctx, billed, VERA.app);
+  assert.equal(preview.subscription, "sub_harness_vera"); assert.equal(preview.unitAmount, 27500); assert.equal(preview.environment, "sandbox");
+  assert.deepEqual([...new Set(stripeCalls)].sort(), ["accounts.retrieve", "subscriptions.list", "subscriptions.retrieve"]);
+  const none = await previewBillingLinkV1(owner.ctx, billed, UMA.app);
+  assert.equal(none.subscription, null);
+  pass("billing preview reads the existing subscription only: account, list and retrieve, no write method");
   console.log(`\nrecord-rental-eligibility: ${checks} checks passed`);
 } finally {
   await db.end();

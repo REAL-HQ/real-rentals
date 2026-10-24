@@ -20,4 +20,5 @@ resolveRpc({ok:false});await inFlight;
 {nodes=flatten(render());assert.equal(nodes.filter(n=>n.type==='button').at(-1).props.disabled,true,'rejected closeout stays locked');assert.equal(nodes.some(n=>n.type==='fieldset'),false,'unresolved payload cannot be edited');}
 await nodes.filter(n=>n.type==='button').at(-1).props.onClick();assert.equal(called,1,'unresolved operation never sends a second RPC');
 console.log('PASS',name,'multiple invalid -> partial -> valid, preserved draft, exactly one valid RPC, actor binding, in-flight and unresolved locks');}
-(async()=>{if(process.env.ONLY!=='close')await probe('src/components/admin/RecordRentalDialog.tsx','RecordRentalDialog',{driver:{id:'10000000-0000-4000-8000-000000000002'},vehicles:[],onRecorded:()=>{}});if(process.env.ONLY!=='record')await probe('src/components/admin/RecordedRentalCloseout.tsx','RecordedRentalCloseout',{rentalId:'10000000-0000-4000-8000-000000000003'});})().catch(e=>{console.error(e);process.exitCode=1});
+// The stepped RecordRentalDialog carries these invariants in scripts/record-rental-dialog.test.cjs.
+(async()=>{if(process.env.ONLY!=='record')await probe('src/components/admin/RecordedRentalCloseout.tsx','RecordedRentalCloseout',{rentalId:'10000000-0000-4000-8000-000000000003'});})().catch(e=>{console.error(e);process.exitCode=1});
