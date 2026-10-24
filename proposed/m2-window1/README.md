@@ -114,3 +114,23 @@ bytes.
   objects, other documents and Security 0031 are unchanged.
 - A second submission is refused.
 - After steps 1–2 and a backfill, the gate reads **missing=0 mismatched=0**.
+
+## Correction executed 2026-10-24 (owner-approved, once)
+
+Evidence: `correction-result-2026-10-24.json`.
+- **Preflight** at 16:56:53Z: all facts unchanged.
+  - 4 targets, matching the investigation.
+  - Both applications closed and unqualified. No rental, identity review, file or replacement.
+  - Security 0031: 5 policies, `d3387761…`. Policies total 170. Drizzle 23, Supabase 105.
+- **Request:** sha256 `e2c91d05…be1a3`, rebuilt byte-identical. Submitted once; response `rows: []`.
+- **Post-verification** at 16:57:56Z:
+  - 4 rows went from current to not current. They are the same id set (`688a833a…`), with identical
+    content apart from `is_current` and `updated_at`.
+  - 4 well-formed audit rows were written.
+  - Documents total 91 (87 + 4): nothing deleted. Every other document, application, agreement,
+    rental, payment, identity review, audit row and Storage object is byte-identical to the preflight.
+  - Security 0031, the policies total and both journals are unchanged.
+  - No current licence names a missing file.
+- **Backfill scope after:** 20 documents, 20 objects, **0 without an object**, 0 hashes already set.
+  Every undo-exactness count is still 0. The gate itself (`missing`/`mismatched`) is read only
+  after steps 1–2 and the backfill in Window 1; the rehearsal on this profile reads 0 / 0.
