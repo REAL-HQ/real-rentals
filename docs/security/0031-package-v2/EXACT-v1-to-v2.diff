@@ -1,0 +1,11 @@
+--- docs/security/0031-package/0031_guarded_coordinator_containment.sql	2026-10-24 10:58:05.446048410 +0000
++++ docs/security/0031-package-v2/0031_guarded_coordinator_containment_v2.sql	2026-10-24 11:46:06.467320213 +0000
+@@ -119,7 +119,7 @@
+  'helpers',(SELECT jsonb_agg(jsonb_build_object('name',p.proname,'owner',pg_get_userbyid(p.proowner),'acl',p.proacl::text,'def',pg_get_functiondef(p.oid)) ORDER BY p.proname) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='private' AND p.proname IN ('is_manager','is_staff') AND p.pronargs=0)
+ ));
+  -- Only the five reviewed policies may differ after DDL; grants, columns and helpers must remain identical.
+- SELECT jsonb_set(after_catalog,'{tables}',jsonb_agg(jsonb_set(t,'{policies}',coalesce((SELECT jsonb_agg(p ORDER BY p->>'policyname') FROM jsonb_array_elements(coalesce(nullif(t->'policies','null'::jsonb),'[]'::jsonb)) p WHERE p->>'policyname' NOT IN ('coordinator_application_containment','coordinator_review_containment','coordinator_document_containment','coordinator_identity_storage_containment','coordinator_agreement_containment')),'null'::jsonb)) ORDER BY t->>'schema',t->>'name')) INTO after_catalog FROM jsonb_array_elements(after_catalog->'tables') t;
++ SELECT jsonb_set(after_catalog,'{tables}',jsonb_agg(jsonb_set(t,'{policies}',coalesce((SELECT jsonb_agg(p ORDER BY (p->>'policyname') COLLATE "C") FROM jsonb_array_elements(coalesce(nullif(t->'policies','null'::jsonb),'[]'::jsonb)) p WHERE p->>'policyname' NOT IN ('coordinator_application_containment','coordinator_review_containment','coordinator_document_containment','coordinator_identity_storage_containment','coordinator_agreement_containment')),'null'::jsonb)) ORDER BY t->>'schema',t->>'name')) INTO after_catalog FROM jsonb_array_elements(after_catalog->'tables') t;
+  IF after_catalog IS DISTINCT FROM before_catalog THEN RAISE EXCEPTION 'POST_UNEXPECTED_CATALOG_CHANGE'; END IF;
+ DECLARE
+  evidence_time timestamptz := clock_timestamp();

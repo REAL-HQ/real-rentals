@@ -1,5 +1,9 @@
 # Security 0031 — direct, guarded submission (proposal; nothing executed in production)
 
+> **Superseded:** `request.sql` carries the v1 package, which cannot pass on production. Use
+> `../0031-package-v2/request-v2.sql` once that is approved. The route, guard design and
+> recovery table below still apply.
+
 Prepared 2026-10-24. The approved package `../0031-package/0031_guarded_coordinator_containment.sql`
 (`32c17aa76e5026c4f50a2179aab143baa5d05463743b1a0f366ab4339103494f`) is unchanged.
 No production SQL, migration metadata or deployment was touched while preparing this.

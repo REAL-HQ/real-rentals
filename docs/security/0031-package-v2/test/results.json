@@ -1,0 +1,357 @@
+{
+ "postgres": "17.6",
+ "results": [
+  {
+   "id": "T0",
+   "name": "cluster collation en_US.UTF-8: old normalisation reorders storage.objects policies, corrected one keeps them",
+   "pass": true,
+   "detail": {
+    "sysid": "7700200757550629605",
+    "cat": "71f1883b3eb908c8e8d403ab4439870157d6d9ebb8664cf21efff36b29c43cb9",
+    "coll": "en_US.UTF-8",
+    "old_keeps_order": false,
+    "new_keeps_order": true
+   }
+  },
+  {
+   "id": "T0b",
+   "name": "test copies differ only in the two profile values, and v1/v2 copies differ only by the reviewed line",
+   "pass": true,
+   "detail": {
+    "lines": 1
+   }
+  },
+  {
+   "id": "T1",
+   "name": "original package refuses with POST_UNEXPECTED_CATALOG_CHANGE on en_US; nothing persists",
+   "pass": true,
+   "detail": {
+    "result": "POST_UNEXPECTED_CATALOG_CHANGE",
+    "after": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    }
+   }
+  },
+  {
+   "id": "T1b",
+   "name": "control: on a C-collation database the original package passes (why earlier tests missed the defect)",
+   "pass": true,
+   "detail": {
+    "result": "ok"
+   }
+  },
+  {
+   "id": "T2",
+   "name": "corrected package installs on en_US with production's mixed-case storage policy names",
+   "pass": true,
+   "detail": {
+    "result": "ok"
+   }
+  },
+  {
+   "id": "T3",
+   "name": "exactly five restrictive SELECT policies for authenticated, and exactly one evidence row",
+   "pass": true,
+   "detail": {
+    "policies": 5,
+    "restrictive": 5,
+    "evidence": 1,
+    "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+    "receipts": 23,
+    "audit_rows": 6
+   }
+  },
+  {
+   "id": "T7",
+   "name": "Drizzle journal identical before and after the direct route (23 receipts, same hashes)",
+   "pass": true,
+   "detail": {
+    "before": "5cfa7e88ccac860637339bd9bdaab72c",
+    "after": "5cfa7e88ccac860637339bd9bdaab72c"
+   }
+  },
+  {
+   "id": "T3b",
+   "name": "role rehearsal: Coordinator loses identity data but keeps vehicle documents and other objects; Owner, Manager and driver unchanged",
+   "pass": true,
+   "detail": {
+    "before": {
+     "owner": {
+      "applications": 3,
+      "identity_reviews": 3,
+      "identity_documents": 2,
+      "vehicle_documents": 1,
+      "agreements": 1,
+      "identity_objects": 2,
+      "other_objects": 1
+     },
+     "manager": {
+      "applications": 3,
+      "identity_reviews": 3,
+      "identity_documents": 2,
+      "vehicle_documents": 1,
+      "agreements": 1,
+      "identity_objects": 2,
+      "other_objects": 1
+     },
+     "coordinator": {
+      "applications": 3,
+      "identity_reviews": 3,
+      "identity_documents": 2,
+      "vehicle_documents": 1,
+      "agreements": 1,
+      "identity_objects": 2,
+      "other_objects": 1
+     },
+     "driver": {
+      "applications": 1,
+      "identity_reviews": 0,
+      "identity_documents": 1,
+      "vehicle_documents": 0,
+      "agreements": 0,
+      "identity_objects": 0,
+      "other_objects": 0
+     }
+    },
+    "after": {
+     "owner": {
+      "applications": 3,
+      "identity_reviews": 3,
+      "identity_documents": 2,
+      "vehicle_documents": 1,
+      "agreements": 1,
+      "identity_objects": 2,
+      "other_objects": 1
+     },
+     "manager": {
+      "applications": 3,
+      "identity_reviews": 3,
+      "identity_documents": 2,
+      "vehicle_documents": 1,
+      "agreements": 1,
+      "identity_objects": 2,
+      "other_objects": 1
+     },
+     "coordinator": {
+      "applications": 0,
+      "identity_reviews": 0,
+      "identity_documents": 0,
+      "vehicle_documents": 1,
+      "agreements": 0,
+      "identity_objects": 0,
+      "other_objects": 1
+     },
+     "driver": {
+      "applications": 1,
+      "identity_reviews": 0,
+      "identity_documents": 1,
+      "vehicle_documents": 0,
+      "agreements": 0,
+      "identity_objects": 0,
+      "other_objects": 0
+     }
+    }
+   }
+  },
+  {
+   "id": "T6",
+   "name": "re-run after success refused by PARTIAL_INSTALL; state unchanged",
+   "pass": true,
+   "detail": {
+    "result": "PARTIAL_INSTALL"
+   }
+  },
+  {
+   "id": "T9",
+   "name": "Coordinator test plan: borrowed login is staff not manager, sees no identity data, keeps non-identity documents; role change never commits",
+   "pass": true,
+   "detail": {
+    "counts": {
+     "is_staff": true,
+     "vehicles": 2,
+     "agreements": 0,
+     "is_manager": false,
+     "applications": 0,
+     "other_documents": 1,
+     "identity_objects": 0,
+     "identity_reviews": 0,
+     "identity_documents": 0
+    },
+    "rolesUnchanged": true
+   }
+  },
+  {
+   "id": "T9b",
+   "name": "Coordinator test plan refuses when a real coordinator exists (use that account instead)",
+   "pass": true,
+   "detail": {
+    "result": "RRCOORD_REAL_COORDINATOR_EXISTS"
+   }
+  },
+  {
+   "id": "T5a",
+   "name": "injected failure after the DDL: refused with INJECTED_FAILURE; no partial policies or evidence",
+   "pass": true,
+   "detail": {
+    "result": "INJECTED_FAILURE",
+    "after": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    }
+   }
+  },
+  {
+   "id": "T4a",
+   "name": "extra grant on a protected table: refused with POST_UNEXPECTED_CATALOG_CHANGE; no partial policies or evidence",
+   "pass": true,
+   "detail": {
+    "result": "POST_UNEXPECTED_CATALOG_CHANGE",
+    "after": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    }
+   }
+  },
+  {
+   "id": "T4b",
+   "name": "extra mixed-case storage policy: refused with POST_UNEXPECTED_CATALOG_CHANGE; no partial policies or evidence",
+   "pass": true,
+   "detail": {
+    "result": "POST_UNEXPECTED_CATALOG_CHANGE",
+    "after": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    }
+   }
+  },
+  {
+   "id": "T4c",
+   "name": "dropped existing storage policy: refused with POST_UNEXPECTED_CATALOG_CHANGE; no partial policies or evidence",
+   "pass": true,
+   "detail": {
+    "result": "POST_UNEXPECTED_CATALOG_CHANGE",
+    "after": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    }
+   }
+  },
+  {
+   "id": "T4d",
+   "name": "widened role-helper ACL: refused with POST_UNEXPECTED_CATALOG_CHANGE; no partial policies or evidence",
+   "pass": true,
+   "detail": {
+    "result": "POST_UNEXPECTED_CATALOG_CHANGE",
+    "after": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    }
+   }
+  },
+  {
+   "id": "T4e",
+   "name": "new column on documents: refused with POST_UNEXPECTED_CATALOG_CHANGE; no partial policies or evidence",
+   "pass": true,
+   "detail": {
+    "result": "POST_UNEXPECTED_CATALOG_CHANGE",
+    "after": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    }
+   }
+  },
+  {
+   "id": "T7b",
+   "name": "a pending migration applied first (receipt 24) is refused by JOURNAL_DRIFT_OR_REPLAY",
+   "pass": true,
+   "detail": {
+    "result": "JOURNAL_DRIFT_OR_REPLAY"
+   }
+  },
+  {
+   "id": "T8a",
+   "name": "real request-v2.sql: guard passes, package refuses this foreign database with TARGET_MISMATCH",
+   "pass": true,
+   "detail": {
+    "result": "TARGET_MISMATCH"
+   }
+  },
+  {
+   "id": "T8b",
+   "name": "real request with one weakened policy byte: refused by RRGUARD_BYTES_MISMATCH before anything runs",
+   "pass": true,
+   "detail": {
+    "result": "RRGUARD_BYTES_MISMATCH"
+   }
+  },
+  {
+   "id": "T8c",
+   "name": "real request with a statement placed before the guard: refused, and the prepended statement rolled back",
+   "pass": true,
+   "detail": {
+    "result": "RRGUARD_TEXT_BEFORE"
+   }
+  },
+  {
+   "id": "N1",
+   "name": "catalog comparison removed: the guarded expectation (POST_UNEXPECTED_CATALOG_CHANGE) no longer holds, so the test detects the weakened guard (got: ok)",
+   "pass": true,
+   "detail": {
+    "result": "ok"
+   }
+  },
+  {
+   "id": "N2",
+   "name": "partial-install check removed: the guarded expectation (PARTIAL_INSTALL) no longer holds, so the test detects the weakened guard (got: SCHEMA_POLICY_GRANT_DRIFT)",
+   "pass": true,
+   "detail": {
+    "result": "SCHEMA_POLICY_GRANT_DRIFT"
+   }
+  },
+  {
+   "id": "N3",
+   "name": "journal check removed: the guarded expectation (JOURNAL_DRIFT_OR_REPLAY) no longer holds, so the test detects the weakened guard (got: POST_JOURNAL_CHANGED)",
+   "pass": true,
+   "detail": {
+    "result": "POST_JOURNAL_CHANGED"
+   }
+  },
+  {
+   "id": "N4",
+   "name": "policy definition weakened (inner checksum must refuse): refused with SQL_CHECKSUM_MISMATCH",
+   "pass": true,
+   "detail": {
+    "result": "SQL_CHECKSUM_MISMATCH"
+   }
+  }
+ ]
+}
