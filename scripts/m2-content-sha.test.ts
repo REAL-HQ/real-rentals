@@ -33,8 +33,10 @@ const PROOF = new URL("./m2-functional-proof.sql", import.meta.url);
 const proof = readFileSync(PROOF, "utf8");
 const hasher = readFileSync(new URL("../src/lib/document-content-sha.ts", import.meta.url), "utf8");
 
-if (DOCUMENT_CONTENT_SHA256_ENABLED !== false) {
-  throw new Error("DOCUMENT_CONTENT_SHA256_ENABLED must stay false");
+// Hash-only branch: this flag ships ON here (identity stays off). On
+// release/m2-app-flags-off the same guard asserts false.
+if (DOCUMENT_CONTENT_SHA256_ENABLED !== true) {
+  throw new Error("DOCUMENT_CONTENT_SHA256_ENABLED must be true on release/m2-app-hash-only");
 }
 if (hasher.includes(".upload(")) throw new Error("hasher re-uploads the object");
 if (hasher.includes('schema("storage")') || hasher.includes("schema('storage')")) {

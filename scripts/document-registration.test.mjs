@@ -94,8 +94,15 @@ function fakeAdmin(seed = []) {
         list: () => Promise.resolve({ data: [], error: null }),
         createSignedUrl: () =>
           Promise.resolve({ data: { signedUrl: "https://signed" }, error: null }),
+        // With DOCUMENT_CONTENT_SHA256_ENABLED on, registration hashes the
+        // stored bytes: info + download, then record_uploaded_content_sha.
+        info: () => Promise.resolve({ data: { id: "obj-1", version: "v1", updatedAt: "2026-10-24T00:00:00Z" }, error: null }),
+        download: () => Promise.resolve({ data: { arrayBuffer: async () => new ArrayBuffer(4) }, error: null }),
       }),
     },
+    // Step 2 not installed (today's production): the hash is skipped, the
+    // upload still registers. Registration categories are what this file tests.
+    rpc: () => Promise.resolve({ data: null, error: { code: "PGRST202", message: "Could not find the function" } }),
   };
 }
 

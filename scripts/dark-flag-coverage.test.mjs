@@ -44,16 +44,15 @@ const GATE_BEFORE_AUTH = new Set([
 //    traffic today. Listing them stops the scan from mis-classifying a live
 //    module as dark, which would make this test meaningless in the other
 //    direction.
-//    applications.functions.ts and documents.functions.ts are the M2 pair:
-//    Approve, the application list and the document vault all serve real
-//    traffic. The two M2 flags only tighten one sub-path each — the legacy
-//    approval fallback's status refusal, and whether an upload is hashed —
-//    and neither flag can stop a live call.
+//    applications.functions.ts: Approve and the application list serve real
+//    traffic; the identity flag (off on this hash-only branch) tightens only the
+//    legacy approval fallback's status refusal and cannot stop a live call.
+//    documents.functions.ts is not listed: the content-hash flag is ON here, so
+//    the module is no longer dark (it is listed on release/m2-app-flags-off).
 const MIXED_LIVE = new Set([
   "portal-access.functions.ts",
   "waitlist.functions.ts",
   "applications.functions.ts",
-  "documents.functions.ts",
 ]);
 
 // Modules whose flag check is the first statement in the handler: auth runs
