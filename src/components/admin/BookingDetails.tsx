@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { getBooking, type BookingDetail } from "@/lib/bookings.functions";
 import { BookingActions } from "@/components/admin/BookingActions";
+import { CloseoutPreview } from "@/components/admin/CloseoutPreview";
+import { CLOSEOUT_PREVIEW_ENABLED, showsCloseoutPreview } from "@/lib/closeout-preview-flag";
 import { listConditionMedia } from "@/lib/inspections.functions";
 import { getAgreementPdf } from "@/lib/agreements.functions";
 import { listAuditLog, type AuditRow } from "@/lib/team.functions";
@@ -29,6 +31,8 @@ import { BOOKING_PHASE_LABEL, bookingDates } from "@/lib/bookings-list";
 import { persistedNumber } from "@/lib/record-numbers";
 import { RecordNumber } from "@/components/admin/RecordNumber";
 import { BookingVehicleHistory } from "@/components/admin/BookingVehicleHistory";
+import { CloseoutSummary } from "@/components/admin/CloseoutSummary";
+import { CLOSEOUT_SUMMARY_ENABLED, closeoutApplies } from "@/lib/closeout-summary";
 
 // A booking, read.
 //
@@ -135,14 +139,14 @@ export function BookingDetails({
       }}
     >
       <div
-        className="bg-[#FAFAFB] w-full max-w-5xl rounded-none sm:rounded-2xl min-h-full sm:min-h-0 sm:my-2 overflow-hidden shadow-2xl"
+        className="min-w-0 w-full max-w-5xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="bg-white border-b border-[#EDEDF0] px-5 sm:px-6 pt-4 pb-0">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-[17px] font-semibold text-[#111114] truncate">
+                <h2 className="min-w-0 max-w-full truncate text-[17px] font-semibold text-[#111114] lg:min-w-[auto] lg:max-w-none">
                   {b?.driverName ?? (loading ? "…" : "Driver Record Not Linked")}
                 </h2>
                 {b && (
@@ -157,7 +161,7 @@ export function BookingDetails({
                 )}
                 {b && <RecordNumber label="Booking" value={persistedNumber(b, "bookingNumber")} />}
               </div>
-              <p className="text-[13px] text-[#55555E] mt-1">
+              <p className="mt-1 break-words text-[13px] text-[#55555E] lg:break-normal">
                 {b ? (
                   <>
                     {[b.unitNumber, b.vehicleLabel].filter(Boolean).join(" · ") ||
@@ -252,6 +256,9 @@ function Overview({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 space-y-5">
+        {CLOSEOUT_SUMMARY_ENABLED && d.canSeeMoney && closeoutApplies(b.status) && (
+          <CloseoutSummary rentalId={b.id} />
+        )}
         <SectionCard
           title="Actions"
           icon={<ClipboardCheck className="w-4 h-4" strokeWidth={1.75} />}
@@ -310,6 +317,11 @@ function Overview({
             </div>
           )}
         </SectionCard>
+
+        {/* Unmounted while CLOSEOUT_PREVIEW_ENABLED is false. */}
+        {CLOSEOUT_PREVIEW_ENABLED && d.canManage && showsCloseoutPreview(b.status) ? (
+          <CloseoutPreview rentalId={b.id} />
+        ) : null}
 
         <SectionCard
           title="Driver"
@@ -779,7 +791,8 @@ function Money({ d }: { d: BookingDetail }) {
         {m.payments.length === 0 ? (
           <p className="text-[13px] text-[#55555E]">No payment rows exist for this booking.</p>
         ) : (
-          <table className="w-full text-[12px]" data-testid="booking-payments">
+          <div className="-mx-5 overflow-x-auto px-5 sm:mx-0 sm:px-0 lg:overflow-visible">
+          <table className="w-full min-w-[36rem] text-[12px] lg:min-w-[auto]" data-testid="booking-payments">
             <thead className="text-left text-[#9A9AA3]">
               <tr>
                 <th className="py-1 font-medium">Type</th>
@@ -809,6 +822,7 @@ function Money({ d }: { d: BookingDetail }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </SectionCard>
 

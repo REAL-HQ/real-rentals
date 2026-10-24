@@ -1,7 +1,12 @@
+import { paymentOverlap } from "@/lib/payment-overlap";
 import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/lib/revenue-state";
 import { tierFromRoles, tierAllows } from "@/lib/roles";
 import { StripeCollections } from "./StripeCollections";
+import { OVERVIEW_TODAY_ENABLED } from "@/lib/overview-today-flag";
 import LeadPriorities from "./LeadPriorities";
+import OverviewToday from "./OverviewToday";
+import { BookingFollowupSlot } from "./BookingFollowupSlot";
+import { BookingConversion } from "./BookingConversion";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
@@ -34,6 +39,8 @@ import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill, ReadinessMetri
 import { isHotProspect, compareReadiness, type ReadinessResult } from "@/lib/readiness";
 import { summarizeFleet, type FleetSummary } from "@/lib/fleet-summary";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
+import { MaintenanceDueTile } from "./MaintenanceLog";
+import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
 import {
   APPLICANT_WINDOW,
   type OverviewApplicantRow,
@@ -68,7 +75,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getStripeCollections } from "@/lib/stripe-collections.functions";
 import { consolidatedRevenue } from "@/lib/stripe-collections";
 import { useNavigate } from "@tanstack/react-router";
+import { DocumentsExpiringChip } from "./DocumentsExpiring";
 import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
+import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
 
@@ -90,8 +99,6 @@ const REVENUE_TYPES = ["rent", "late_fee", "other"] as const;
  * figure summed every row whose status was not 'paid', which swept in
  * invoices that are simply not due yet and showed them as outstanding debt.
  */
-const OVERDUE_STATUSES = ["late", "past_due", "collections", "overdue", "failed", "unpaid"] as const;
-
 function usd(n: number | undefined | null) {
   if (n == null) return "—";
   return n.toLocaleString(undefined, {
@@ -194,6 +201,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const [priorRevenue, setPriorRevenue] = useState<number | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(true);
   const [internalNonStripe, setInternalNonStripe] = useState<number | null>(null);
+  const [overlapOwed, setOverlapOwed] = useState<number | null>(null);
   const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
   const [nextReturn, setNextReturn] = useState<string | null>(null);
   const [recentApps, setRecentApps] = useState<ApplicantRow[]>([]);
@@ -236,7 +244,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         supabase
           .from("payments")
           .select("amount, driver_id")
-          .in("status", OVERDUE_STATUSES as unknown as string[]),
+          .in("status", [...COLLECTIONS_WATCH_STATUSES]),
         supabase
           .from("payments")
           .select("net_collected, paid_date")
@@ -340,14 +348,14 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const compare = useMemo(() => priorRange(range), [range]);
 
   useEffect(() => {
-    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setRevenueLoading(false);return;}
+    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setOverlapOwed(null);setRevenueLoading(false);return;}
     let live = true;
     setRevenueLoading(true);
     (async () => {
       const q = (r: DayRange) =>
         supabase
           .from("payments")
-          .select("net_collected, stripe_payment_intent_id", { count: "exact" })
+          .select("net_collected, stripe_payment_intent_id, stripe_invoice_id, failure_reason, notified_status", { count: "exact" })
           .in("status", ["paid", "refunded"])
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", r.from)
@@ -357,11 +365,12 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       const current=paymentRevenue(cur), previous=paymentRevenue(prev);
       setRevenue(current?.total ?? null);
       setInternalNonStripe(current?.nonStripe ?? null);
+      setOverlapOwed(paymentOverlap(cur));
       setPriorRevenue(previous?.total ?? null);
       setRevenueLoading(false);
     })().catch(()=>{
       if(!live)return;
-      setRevenue(null);setInternalNonStripe(null);setPriorRevenue(null);setRevenueLoading(false);
+      setRevenue(null);setInternalNonStripe(null);setOverlapOwed(null);setPriorRevenue(null);setRevenueLoading(false);
     });
     return () => {
       live = false;
@@ -429,7 +438,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   }, [recentApps, appSort, readinessIndex]);
 
   return (
-    <div className="space-y-6">
+    <div className="max-lg:min-w-0 space-y-6">
       {/* Heading — the floating Weekly Revenue metric that sat here has moved
           into the Revenue card, where it has a range and a comparison. */}
       <div>
@@ -437,7 +446,11 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         <p className="text-[13px] text-[#55555E] mt-1">Pipeline, Fleet And Revenue At A Glance</p>
       </div>
 
-      <LeadPriorities />
+      {OVERVIEW_TODAY_ENABLED && canSeeCollections && <OverviewToday />}
+
+      <LeadPriorities isManager={canSeeCollections} />
+      <BookingFollowupSlot />
+      <BookingConversion canView={canSeeCollections} />
 
       {/* Priority strip — who is worth calling first, above everything else.
           Absent entirely when there is nobody, rather than an empty module.
@@ -448,8 +461,8 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           prospect who is still 55% known says so on its face. */}
       {hot.length > 0 && (
         <div className="rounded-2xl border border-[#D03020]/25 bg-[rgba(208,48,32,0.03)] px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Flame className="w-4 h-4 text-[#D03020]" strokeWidth={2} />
+          <div className="flex items-center lg:gap-2 max-lg:flex-wrap max-lg:gap-x-2 max-lg:gap-y-1">
+            <Flame className="w-4 h-4 text-[#D03020] max-lg:shrink-0" strokeWidth={2} />
             <span className="text-[12px] font-semibold text-[#111114]">Hot Prospects</span>
             <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#D03020] text-white text-[10px] font-semibold">
               {hot.length}
@@ -530,6 +543,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           custom={customRange}
           onCustom={setCustomRange}
           consolidated={canSeeCollections ? { internalNonStripe } : null}
+          overlapOwed={overlapOwed}
         />
 
         <ActionCard
@@ -572,7 +586,9 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           tint={svc.overdue > 0 ? "red" : svc.due + svc.open + svc.conflict > 0 ? "amber" : undefined}
           badge={serviceAttention > 0 ? serviceAttention : undefined}
         />
+        {MAINTENANCE_LOG_ENABLED ? <MaintenanceDueTile /> : null}
       </div>
+      {canSeeCollections ? <DocumentsExpiringChip /> : null}
 
       {/* Fleet snapshot + Applications queue */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
@@ -590,7 +606,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
             </Link>
           }
         >
-          <div className="grid grid-cols-[auto_1fr] gap-6 items-center">
+          <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-6 lg:grid-cols-[auto_1fr]">
             <SegmentedDonut
               total={total}
               segments={[
@@ -615,18 +631,18 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
                       className="h-2 w-2 rounded-full shrink-0"
                       style={{ background: s.color }}
                     />
-                    <span className="text-[#111114] flex-1">{s.label}</span>
-                    <span className="tabular-nums font-medium text-[#111114]">{s.value}</span>
-                    <span className="tabular-nums text-[11px] text-[#9A9AA3] w-9 text-right">
+                    <span className="min-w-0 flex-1 text-[#111114] lg:min-w-[auto]">{s.label}</span>
+                    <span className="shrink-0 tabular-nums font-medium text-[#111114] lg:shrink">{s.value}</span>
+                    <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-[#9A9AA3] lg:shrink">
                       {pctOf(s.value)}%
                     </span>
                   </li>
                 ))}
               </ul>
               <div className="mt-4">
-                <div className="flex items-baseline justify-between mb-1">
-                  <MicroLabel>Utilization {utilPct === null ? "—" : `${utilPct}%`} (Of Rentable)</MicroLabel>
-                  <span className="text-[11px] text-[#9A9AA3] tabular-nums">
+                <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 lg:flex-nowrap lg:gap-x-0 lg:gap-y-0">
+                  <MicroLabel className="min-w-0 lg:min-w-[auto]">Utilization {utilPct === null ? "—" : `${utilPct}%`} (Of Rentable)</MicroLabel>
+                  <span className="shrink-0 text-[11px] text-[#9A9AA3] tabular-nums lg:shrink">
                     {rented} of {rentable} rentable
                   </span>
                 </div>
@@ -717,35 +733,39 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
                     <Link
                       to="/admin"
                       search={{ tab: "drivers", id: a.id }}
-                      className="flex items-center gap-3 px-5 py-3 border-b border-[#F4F4F6] last:border-0 hover:bg-[#FAFAFB] transition-colors"
+                      className="flex flex-wrap items-center max-lg:gap-x-3 max-lg:gap-y-2 border-b border-[#F4F4F6] px-4 py-3 last:border-0 transition-colors hover:bg-[#FAFAFB] sm:px-5 lg:flex-nowrap lg:gap-3"
                     >
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#F4F4F6] to-[#EDEDF0] grid place-items-center text-[12px] font-semibold text-[#55555E] shrink-0">
-                        {initials(a.full_name)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[13px] font-medium text-[#111114] truncate flex items-center gap-1.5">
-                          {unread && (
-                            <span
-                              className="h-1.5 w-1.5 rounded-full bg-[#D03020] shrink-0"
-                              title="Not Yet Opened"
-                            />
-                          )}
-                          <span className="truncate">{a.full_name ? displayPersonName(a.full_name) : "Unnamed Driver"}</span>
+                      <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:flex-1 lg:contents">
+                        <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-[#F4F4F6] to-[#EDEDF0] grid place-items-center text-[12px] font-semibold text-[#55555E]">
+                          {initials(a.full_name)}
                         </div>
-                        <div className="text-[11px] text-[#9A9AA3] mt-0.5 truncate">
-                          {timeAgo(a.created_at)}
-                          {progress ? ` · ${progress}` : ""}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 truncate text-[13px] font-medium text-[#111114]">
+                            {unread && (
+                              <span
+                                className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#D03020]"
+                                title="Not Yet Opened"
+                              />
+                            )}
+                            <span className="truncate">{a.full_name ? displayPersonName(a.full_name) : "Unnamed Driver"}</span>
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] text-[#9A9AA3]">
+                            {timeAgo(a.created_at)}
+                            {progress ? ` · ${progress}` : ""}
+                          </div>
                         </div>
                       </div>
-                      <StatusPill tone={stage.tone as any}>{stage.label}</StatusPill>
-                      {(() => {
-                        const r = readinessIndex.get(a.id);
-                        // The old bare score pill lived here. A number on its
-                        // own could not say whether 100 meant a complete
-                        // applicant or two lucky answers, so the state goes in
-                        // its place and the figures stay on the profile.
-                        return r ? <ReadinessStatePill state={r.state} short /> : null;
-                      })()}
+                      <div className="flex flex-wrap items-center gap-1.5 pl-12 sm:pl-0 lg:contents">
+                        <StatusPill tone={stage.tone as any}>{stage.label}</StatusPill>
+                        {(() => {
+                          const r = readinessIndex.get(a.id);
+                          // The old bare score pill lived here. A number on its
+                          // own could not say whether 100 meant a complete
+                          // applicant or two lucky answers, so the state goes in
+                          // its place and the figures stay on the profile.
+                          return r ? <ReadinessStatePill state={r.state} short /> : null;
+                        })()}
+                      </div>
                     </Link>
                   </li>
                 );
@@ -800,7 +820,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
                 : `Last 12 Weeks · ${collectionRate}% Collection Rate${worst ? ` · Worst Week ${shortDate(worst.iso)}` : ""}`
             }
             right={
-              <div className="flex items-baseline gap-3">
+              <div className="flex max-w-[11rem] flex-wrap justify-end max-lg:gap-x-3 max-lg:gap-y-0.5 sm:max-w-none lg:max-w-none lg:flex-nowrap lg:items-baseline lg:justify-start lg:gap-3">
                 <span className="text-[11px] text-[#55555E]">
                   Billed{" "}
                   <span className="tabular-nums font-medium text-[#111114]">{usd(totBilled)}</span>
@@ -968,6 +988,7 @@ function RevenueCard({
   custom,
   onCustom,
   consolidated,
+  overlapOwed,
 }: {
   amount: number | null;
   delta: number | null;
@@ -979,6 +1000,7 @@ function RevenueCard({
   custom: Partial<DayRange>;
   onCustom: (c: Partial<DayRange>) => void;
   consolidated?: { internalNonStripe: number | null } | null;
+  overlapOwed?: number | null;
 }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -988,7 +1010,7 @@ function RevenueCard({
   const sq = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, Boolean(consolidated)));
   const c = consolidated
     ? sq.isError ? { amount: null, coverage: "Unavailable" as const }
-      : consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, report: sq.data })
+      : consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, overlap: overlapOwed, report: sq.data })
     : null;
   const shownLoading = consolidated ? loading || (sq.isFetching && !sq.data) : loading;
   const shownAmount = c ? c.amount : amount;
@@ -996,7 +1018,7 @@ function RevenueCard({
   const coverageHint = coverage === "Unavailable"
     ? "A required revenue source could not be verified for this period, so no consolidated total is shown. Verified Stripe collections remain available in Collections."
     : c
-      ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
+      ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. A manual receipt Stripe later collected is not added on top of that Stripe net. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
       : "Recorded payments only. Stripe, Zelle, Cash App, Venmo, cash and bank transfers are not all verified yet.";
   const goPayments = () => !open && navigate({ to: "/admin", search: { tab: "payments" } });
   const label = RANGE_LABELS.find((r) => r.key === rangeKey)?.label ?? "Range";
@@ -1037,6 +1059,11 @@ function RevenueCard({
       <div className="mt-1 text-[22px] font-semibold tracking-tight tabular-nums leading-none">
         {shownLoading || shownAmount == null ? <span className="text-[#C7C7CC]">—</span> : usd(shownAmount)}
       </div>
+      {overlapOwed != null && overlapOwed > 0 && (
+        <div className="mt-1 text-[11px] text-[#8A5A00]">
+          Possible Double Collection / Refund Owed · {usd(overlapOwed)}
+        </div>
+      )}
       <div className="mt-1 text-[11px] text-[#55555E] truncate">
         {describeRange(range)}
         {c ? null : delta != null ? (
@@ -1118,12 +1145,12 @@ function RevenueCard({
 
 function OpStat({ label, value, tone }: { label: string; value: string; tone?: "red" }) {
   return (
-    <div className="rounded-xl border border-[#EDEDF0] bg-white px-3 py-2.5">
-      <div className="text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+    <div className="min-w-0 rounded-xl border border-[#EDEDF0] bg-white px-2 py-2.5 sm:px-3 lg:min-w-[auto] lg:px-3">
+      <div className="text-[9px] font-semibold uppercase leading-tight tracking-normal text-[#9A9AA3] sm:text-[10px] sm:tracking-[0.12em] lg:text-[10px] lg:leading-normal lg:tracking-[0.12em]">
         {label}
       </div>
       <div
-        className={`mt-1 text-[18px] font-semibold tabular-nums leading-none ${tone === "red" ? "text-[#CC0000]" : "text-[#111114]"}`}
+        className={`mt-1 break-words text-[16px] font-semibold tabular-nums leading-tight sm:text-[18px] lg:break-normal lg:text-[18px] lg:leading-none ${tone === "red" ? "text-[#CC0000]" : "text-[#111114]"}`}
       >
         {value}
       </div>
@@ -1146,7 +1173,7 @@ function SegmentedDonut({
   let offset = 0;
   const sum = segments.reduce((a, s) => a + s.value, 0) || 1;
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
+    <div className="relative mx-auto shrink-0 sm:mx-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle
           cx={size / 2}

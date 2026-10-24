@@ -30,6 +30,13 @@ type SendSmsArgs = {
    * still require an opt-out check but not a marketing opt-in.
    */
   requireConsent?: boolean;
+  /**
+   * Driver notices set this. Live sends omit it, so the Twilio fetch is the
+   * same request it was before: no abort signal is created.
+   */
+  noticeTimeout?: boolean;
+  /** Combined with the 5s notice abort. Live sends omit noticeTimeout, so this is ignored. */
+  signal?: AbortSignal;
 };
 
 /**
@@ -105,6 +112,12 @@ async function logMessage(admin: any, row: Record<string, unknown>): Promise<voi
   if (error && !String(error.message).includes("duplicate key")) {
     console.error("[sms] could not log outbound message", error.message);
   }
+}
+
+function noticeFetchSignal(noticeTimeout: boolean | undefined, signal: AbortSignal | undefined): AbortSignal | undefined {
+  if (noticeTimeout !== true) return undefined;
+  const timeout = AbortSignal.timeout(5000);
+  return signal ? AbortSignal.any([timeout, signal]) : timeout;
 }
 
 export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
@@ -199,6 +212,7 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
   if (messagingServiceSid) form.set("MessagingServiceSid", messagingServiceSid);
   else form.set("From", from as string);
 
+  const noticeSignal = noticeFetchSignal(args.noticeTimeout, args.signal);
   try {
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
       method: "POST",
@@ -207,6 +221,7 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: form.toString(),
+      ...(noticeSignal ? { signal: noticeSignal } : {}),
     });
     const payload = (await res.json().catch(() => ({}))) as { sid?: string; message?: string };
 

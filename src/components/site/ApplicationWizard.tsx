@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -27,6 +27,10 @@ import { clearResumeToken } from "@/lib/resume-token";
 import { WelcomeBack } from "./WelcomeBack";
 import { FadeUp } from "./FadeUp";
 import { fmtDate as formatDate } from "@/lib/date-format";
+import { APPLY_PROGRESS_ENABLED } from "@/lib/apply-progress";
+import { UPLOAD_PRECHECK_ENABLED } from "@/lib/upload-precheck";
+import { APPLY_VEHICLE_PREFILL_ENABLED } from "@/lib/apply-vehicle-prefill";
+import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
 
 /*
  * ONE application, TWO parts.
@@ -271,7 +275,7 @@ export function ProgressBar({
               className={`h-1.5 rounded-full transition-colors ${done || active ? "bg-real-red" : "bg-border"}`}
             />
             <div
-              className={`mt-1.5 text-[10px] uppercase tracking-wider text-center ${active ? "text-real-red font-semibold" : "text-muted-foreground"}`}
+              className={`mt-1.5 text-xs uppercase tracking-wide text-center ${active ? "text-real-red font-semibold" : "text-muted-foreground"}`}
             >
               {s.label}
             </div>
@@ -280,6 +284,33 @@ export function ProgressBar({
       })}
     </div>
   );
+}
+
+/** Panel loads only when APPLY_PROGRESS_ENABLED is exactly true. */
+export function ApplyProgressSlot({
+  stepKey,
+  showNeeded,
+  className = "",
+}: {
+  stepKey: string;
+  showNeeded: boolean;
+  className?: string;
+}) {
+  const [View, setView] = useState<
+    null | ((props: { stepKey: string; showNeeded: boolean; className?: string }) => React.ReactNode)
+  >(null);
+  useEffect(() => {
+    if (APPLY_PROGRESS_ENABLED !== true) return;
+    let live = true;
+    void import("@/components/site/ApplyProgress").then((mod) => {
+      if (live) setView(() => mod.ApplyProgress);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (APPLY_PROGRESS_ENABLED !== true || View == null) return null;
+  return <View stepKey={stepKey} showNeeded={showNeeded} className={className} />;
 }
 
 // ------------------------------------------------------------------ wizard
@@ -327,7 +358,13 @@ export function ApplicationWizard({ token }: { token: string }) {
 
   useEffect(() => {
     fetchApp({ data: { token } })
-      .then((row) => {
+      .then(async (row) => {
+        let phase = phaseFrom(row.current_step);
+        if (APPLICATION_RESUME_ENABLED === true) {
+          const mod = await import("@/lib/application-resume");
+          const progress = mod.progressFromWizard(row);
+          if (progress.phase) phase = progress.phase;
+        }
         setState({
           full_name: row.full_name ?? "",
           city: row.city,
@@ -358,7 +395,7 @@ export function ApplicationWizard({ token }: { token: string }) {
           insurance_policy_last4: row.insurance_policy_last4,
           insurance_policy_number: null,
         });
-        setPhase(phaseFrom(row.current_step));
+        setPhase(phase);
       })
       .catch((e) => setLoadError(e?.message ?? "Could not load your application."));
   }, [token, fetchApp]);
@@ -396,6 +433,19 @@ export function ApplicationWizard({ token }: { token: string }) {
   };
 
   const inPart1 = phase === "rental" || phase === "driving";
+  const wizardSteps = (
+    <WizardSteps
+      phase={phase}
+      state={state}
+      update={update}
+      saving={saving}
+      savedAt={savedAt}
+      inPart1={inPart1}
+      token={token}
+      go={go}
+      setPhase={setPhase}
+    />
+  );
 
   return (
     <div className="min-h-screen w-full">
@@ -406,72 +456,111 @@ export function ApplicationWizard({ token }: { token: string }) {
           widened by an overflowing descendant. */}
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] lg:min-h-screen bg-soft min-w-0">
         <SideRail phase={phase} source={state.source} />
-        <FadeUp delay={50} className="min-w-0">
-          <div className="p-5 md:p-8 min-w-0">
-            {/* The side rail is desktop-only, so on mobile it would otherwise
-              carry no branding at all once the site nav was removed. One mark,
-              either way — never both on screen at once. */}
-            <div className="lg:hidden mb-6">
-              <div className="mb-5">
-                <Logo width={84} offset={false} href={false} />
-              </div>
-              {inPart1 && (
-                <>
-                  <ProgressBar current={phase} source={state.source} />
-                  <SavedIndicator savedAt={savedAt} saving={saving} />
-                </>
-              )}
-            </div>
-
-            {phase === "rental" && (
-              <RentalStep
-                state={state}
-                update={update}
-                saving={saving}
-                onNext={() => go("driving", fieldsFor("rental", state))}
-              />
-            )}
-            {phase === "driving" && (
-              <DrivingStep
-                state={state}
-                update={update}
-                saving={saving}
-                onBack={() => setPhase("rental")}
-                onSubmit={() => go("submitted", fieldsFor("driving", state))}
-              />
-            )}
-            {phase === "submitted" && (
-              <ApplicationReceived
-                state={state}
-                onContinue={() => go("documents", {})}
-                saving={saving}
-              />
-            )}
-            {(phase === "documents" || phase === "profile_complete") && (
-              <DriverProfile
-                token={token}
-                state={state}
-                update={update}
-                phase={phase}
-                onFinish={async () => {
-                  await go("profile_complete", {});
-                  // Done for now: stop this tab holding a credential for a
-                  // flow nobody is in any more. The emailed link still works.
-                  clearResumeToken();
-                }}
-                saving={saving}
-              />
-            )}
-
-            {inPart1 && (
-              <p className="mt-6 text-center text-[11px] text-muted-foreground lg:hidden">
-                No documents needed to apply · No payment required.
-              </p>
-            )}
+        {APPLY_PROGRESS_ENABLED ? (
+          <div className="min-w-0">
+            <ApplyProgressSlot
+              stepKey={phase}
+              showNeeded={phase === "rental" && state.source !== "homepage"}
+              className="px-5 pt-4 md:px-8"
+            />
+            <FadeUp delay={50} className="min-w-0">
+              <div className="p-5 md:p-8 min-w-0">{wizardSteps}</div>
+            </FadeUp>
           </div>
+        ) : (
+        <FadeUp delay={50} className="min-w-0">
+          <div className="p-5 md:p-8 min-w-0">{wizardSteps}</div>
         </FadeUp>
+        )}
       </div>
     </div>
+  );
+}
+
+function WizardSteps({
+  phase,
+  state,
+  update,
+  saving,
+  savedAt,
+  inPart1,
+  token,
+  go,
+  setPhase,
+}: {
+  phase: Phase;
+  state: WizardState;
+  update: <K extends keyof WizardState>(k: K, v: WizardState[K]) => void;
+  saving: boolean;
+  savedAt: number | null;
+  inPart1: boolean;
+  token: string;
+  go: (next: Phase, payload: Record<string, unknown>) => void;
+  setPhase: (phase: Phase) => void;
+}) {
+  return (
+    <>
+      {/* The side rail is desktop-only, so on mobile it would otherwise
+          carry no branding at all once the site nav was removed. One mark,
+          either way — never both on screen at once. */}
+      <div className="lg:hidden mb-6">
+        <div className="mb-5">
+          <Logo width={84} offset={false} href={false} />
+        </div>
+        {inPart1 && (
+          <>
+            <ProgressBar current={phase} source={state.source} />
+            <SavedIndicator savedAt={savedAt} saving={saving} />
+          </>
+        )}
+      </div>
+
+      {phase === "rental" && (
+        <RentalStep
+          state={state}
+          update={update}
+          saving={saving}
+          onNext={() => go("driving", fieldsFor("rental", state))}
+        />
+      )}
+      {phase === "driving" && (
+        <DrivingStep
+          state={state}
+          update={update}
+          saving={saving}
+          onBack={() => setPhase("rental")}
+          onSubmit={() => go("submitted", fieldsFor("driving", state))}
+        />
+      )}
+      {phase === "submitted" && (
+        <ApplicationReceived
+          state={state}
+          onContinue={() => go("documents", {})}
+          saving={saving}
+        />
+      )}
+      {(phase === "documents" || phase === "profile_complete") && (
+        <DriverProfile
+          token={token}
+          state={state}
+          update={update}
+          phase={phase}
+          onFinish={async () => {
+            await go("profile_complete", {});
+            // Done for now: stop this tab holding a credential for a
+            // flow nobody is in any more. The emailed link still works.
+            clearResumeToken();
+          }}
+          saving={saving}
+        />
+      )}
+
+      {inPart1 && (
+        <p className="mt-6 text-center text-[11px] text-muted-foreground lg:hidden">
+          No documents needed to apply · No payment required.
+        </p>
+      )}
+    </>
   );
 }
 
@@ -566,7 +655,7 @@ function SideRail({ phase, source }: { phase: Phase; source: string | null | und
 function StepHeader({ eyebrow, title, sub }: { eyebrow: string; title: string; sub?: string }) {
   return (
     <div className="mb-5">
-      <div className="text-[10px] uppercase tracking-[0.22em] font-semibold text-real-red">
+      <div className="text-xs uppercase tracking-wide font-semibold text-real-red">
         {eyebrow}
       </div>
       <h2 className="mt-1.5 text-xl md:text-2xl font-semibold">{title}</h2>
@@ -590,7 +679,7 @@ function Choice<T extends string>({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
       {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
@@ -602,7 +691,7 @@ function Choice<T extends string>({
               key={o.value}
               type="button"
               onClick={() => onChange(o.value)}
-              className={`rounded-lg border px-4 py-2.5 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
+              className={`rounded-lg border px-4 min-h-11 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
             >
               {o.label}
             </button>
@@ -628,7 +717,7 @@ function YesNo({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
       <div className="mt-2 flex gap-2">
@@ -639,7 +728,7 @@ function YesNo({
               key={String(v)}
               type="button"
               onClick={() => onChange(v)}
-              className={`rounded-lg border px-5 py-2.5 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
+              className={`rounded-lg border px-5 min-h-11 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
             >
               {v ? yesLabel : noLabel}
             </button>
@@ -731,7 +820,7 @@ function TextField({
 }) {
   return (
     <label className="block">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </span>
       <input
@@ -739,7 +828,7 @@ function TextField({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+        className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
       />
     </label>
   );
@@ -771,6 +860,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
         sub="Three questions. No documents and no payment to apply."
       />
       <div className="space-y-5">
+        <ApplyVehiclePrefillSlot />
         {/* Carried forward from the form they already filled in. Shown, not
             re-asked — but editable, because a wrong city silently attached to
             an application is worse than one extra tap. */}
@@ -779,7 +869,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
             <div className="flex items-center gap-2.5 min-w-0">
               <MapPin className="h-4 w-4 text-real-red shrink-0" />
               <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
                   Picking Up In
                 </div>
                 <div className="text-sm font-medium truncate">{place}</div>
@@ -817,7 +907,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
         />
 
         <label className="block max-w-xs">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
             When Do You Need The Vehicle?
           </span>
           <input
@@ -825,7 +915,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
             min={today}
             value={state.pickup_date ?? ""}
             onChange={(e) => update("pickup_date", e.target.value || null)}
-            className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+            className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
           />
           {/* Prefilled, and said out loud. A date box that silently arrives
               filled in reads as a default; saying where it came from makes it
@@ -882,7 +972,7 @@ function DrivingStep({
       />
       <div className="space-y-5">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
             Which Gig Apps Do You Use?
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -911,7 +1001,7 @@ function DrivingStep({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
               Roughly How Many Trips Have You Completed?
             </span>
             <input
@@ -921,14 +1011,14 @@ function DrivingStep({
               placeholder="e.g. 850"
               value={state.trips_completed ?? ""}
               onChange={(e) => update("trips_completed", e.target.value || null)}
-              className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+              className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
             />
             <span className="mt-1 block text-[11px] text-muted-foreground">
               A rough number across all apps is fine. Leave blank if you're not sure.
             </span>
           </label>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
               Driver Rating, If You Know It
             </span>
             <input
@@ -950,7 +1040,7 @@ function DrivingStep({
                 if (!Number.isFinite(n)) return;
                 update("rating", Math.min(5, Math.max(1, n)));
               }}
-              className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+              className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
             />
             <span className="mt-1 block text-[11px] text-muted-foreground">
               Out of 5. Leave blank if you're not sure.
@@ -1079,7 +1169,7 @@ function ApplicationReceived({
       </div>
 
       <div className="mt-6 rounded-xl bg-white border border-border p-4">
-        <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">
+        <div className="text-xs uppercase tracking-wide font-semibold text-muted-foreground mb-2">
           Questions Now?
         </div>
         {/*
@@ -1504,7 +1594,7 @@ function InsuranceSection({
                 have ever handed over. */}
             {state.insurance_policy_on_file && !replacingPolicy ? (
               <div className="block">
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
                   Policy Number
                 </span>
                 <div className="mt-1.5 flex items-center justify-between gap-3 rounded-lg border border-border bg-white px-3 py-2.5">
@@ -1530,14 +1620,14 @@ function InsuranceSection({
             )}
           </div>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
               Policy Expiration Date
             </span>
             <input
               type="date"
               value={state.insurance_expires_on ?? ""}
               onChange={(e) => update("insurance_expires_on", e.target.value || null)}
-              className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+              className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
             />
           </label>
           <YesNo
@@ -1562,6 +1652,8 @@ function InsuranceSection({
  * stored array — so the applicant can delete a wrong screenshot without us
  * handing back the paths of the right ones.
  */
+type PrecheckView = { warnings: { code: string; message: string }[]; tips: string[] };
+
 function MultiFileUpload({
   label,
   hint,
@@ -1583,6 +1675,25 @@ function MultiFileUpload({
   const [uploading, setUploading] = useState(false);
   const cameraInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const overrideWait = useRef<((ok: boolean) => void) | null>(null);
+  const [precheck, setPrecheck] = useState<PrecheckView | null>(null);
+  const [PrecheckNotice, setPrecheckNotice] = useState<
+    null | ((props: PrecheckView & { onUpload: () => void; onRetake: () => void }) => React.ReactNode)
+  >(null);
+
+  async function askOverride(result: PrecheckView): Promise<boolean> {
+    if (UPLOAD_PRECHECK_ENABLED !== true) return true;
+    const mod = await import("@/components/site/UploadPrecheckNotice");
+    setPrecheckNotice(() => mod.UploadPrecheckNotice);
+    return new Promise((resolve) => {
+      overrideWait.current = (ok: boolean) => {
+        overrideWait.current = null;
+        setPrecheck(null);
+        resolve(ok);
+      };
+      setPrecheck(result);
+    });
+  }
   /** The screenshot a retake is about to stand in for, if any. */
   const [replacing, setReplacing] = useState<
     { name: string; stored: boolean; path?: string } | null
@@ -1633,6 +1744,18 @@ function MultiFileUpload({
     try {
       for (const file of chosen) {
         try {
+          if (UPLOAD_PRECHECK_ENABLED === true) {
+            const { reviewUpload } = await import("@/lib/upload-precheck");
+            const result = await reviewUpload(file);
+            if (result.blocked) {
+              toast.error(`${file.name}: ${result.blockMessage ?? "This file can't be uploaded."}`);
+              continue;
+            }
+            if (result.warnings.length && !(await askOverride(result))) {
+              toast.message("Choose another photo and try again.");
+              continue;
+            }
+          }
           const { path } = await uploadApplicantFile({ token, kind: "trip_history", file });
           uploaded.push(path);
         } catch (e) {
@@ -1670,7 +1793,7 @@ function MultiFileUpload({
 
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
       {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
@@ -1796,6 +1919,14 @@ function MultiFileUpload({
           ))}
         </ul>
       )}
+      {UPLOAD_PRECHECK_ENABLED && PrecheckNotice && precheck ? (
+        <PrecheckNotice
+          warnings={precheck.warnings}
+          tips={precheck.tips}
+          onUpload={() => overrideWait.current?.(true)}
+          onRetake={() => overrideWait.current?.(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1804,4 +1935,21 @@ function fmtDate(s: string) {
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   return formatDate(d);
+}
+
+/** Panel loads only when APPLY_VEHICLE_PREFILL_ENABLED is exactly true. */
+function ApplyVehiclePrefillSlot() {
+  const [Panel, setPanel] = useState<ComponentType<{ source: "session" }> | null>(null);
+  useEffect(() => {
+    if (APPLY_VEHICLE_PREFILL_ENABLED !== true) return;
+    let cancelled = false;
+    import("@/components/site/ApplyVehiclePrefill").then((mod) => {
+      if (!cancelled) setPanel(() => mod.ApplyVehiclePrefill);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (APPLY_VEHICLE_PREFILL_ENABLED !== true || !Panel) return null;
+  return <Panel source="session" />;
 }

@@ -28,6 +28,8 @@ import { DocumentViewer, type ViewerDoc } from "./DocumentViewer";
 import { MicroLabel } from "./ui";
 import { FileUploader } from "@/components/FileUploader";
 import { fmtDate } from "@/lib/date-format";
+import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
+import { verifyApprovalIdentity } from "@/lib/identity-verification.functions";
 
 // Everything an applicant sent us, in one place, grouped the way somebody
 // looking at it actually thinks.
@@ -95,6 +97,49 @@ export const REQUIRED_VAULT_CATEGORIES: DocCategory[] = [
   "insurance",
   "gig_profile",
 ];
+
+function VerifyIdentityAction({ applicationId }: { applicationId: string }) {
+  if (!IDENTITY_VERIFICATION_ENABLED) return null;
+  return <VerifyIdentityForm applicationId={applicationId} />;
+}
+
+function VerifyIdentityForm({ applicationId }: { applicationId: string }) {
+  const verify = useServerFn(verifyApprovalIdentity);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const note = window.prompt("What did you check? The note is stored with the decision.")?.trim() ?? "";
+    if (!note) return;
+    if (note.length < 3) {
+      toast.error("The note needs at least 3 characters");
+      return;
+    }
+    setBusy(true);
+    try {
+      await verify({ data: { applicationId, note } });
+      toast.success("Identity verified");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not verify identity");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-[#EDEDF0] bg-white px-3 py-2">
+      <span className="text-[12px] text-[#55555E]">Record the identity decision for this application.</span>
+      <button
+        type="button"
+        onClick={() => void submit()}
+        disabled={busy}
+        className="inline-flex items-center gap-1 rounded-md bg-[#111114] text-white px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50"
+      >
+        {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+        Verify Identity
+      </button>
+    </div>
+  );
+}
 
 export function ApplicantDocuments({
   applicationId,
@@ -281,6 +326,8 @@ export function ApplicantDocuments({
           </button>
         )}
       </div>
+
+      <VerifyIdentityAction applicationId={applicationId} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
         {ORDER.map((key) => {

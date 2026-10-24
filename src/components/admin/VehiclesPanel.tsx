@@ -19,9 +19,13 @@ import { VehicleProfile } from "./VehicleProfile";
 import { AddVehicleDialog } from "./AddVehicleDialog";
 import { VehicleLifecycleDialog, type LifecycleMode } from "./VehicleLifecycleDialog";
 import { toast } from "sonner";
-import { Plus, Trash2, Car, ArrowRight, Copy, List, LayoutGrid, ChevronLeft, ChevronRight, Archive, RotateCcw } from "lucide-react";
+import { Plus, Trash2, Car, ArrowRight, Copy, List, LayoutGrid, ChevronLeft, ChevronRight, Archive, RotateCcw, Wrench } from "lucide-react";
 import { displayVehicleWord } from "@/lib/display-normalize";
 import { EmptyState } from "./ui";
+import { MaintenanceDue } from "./MaintenanceDue";
+import { MAINTENANCE_DUE_ENABLED } from "@/lib/maintenance-due";
+import { MaintenanceLogBadge, MaintenanceLogBadgeSource } from "./MaintenanceLog";
+import type { LogAttention } from "@/lib/maintenance-log";
 import {
   Select,
   SelectContent,
@@ -147,12 +151,35 @@ function Rate({ v }: { v: VehicleListRow }) {
   return v.weekly_rate == null ? <span className="text-muted-foreground">Rate Not Set</span> : <span className="font-medium text-foreground">${v.weekly_rate}/wk</span>;
 }
 
-export function VehiclesPanel({
+type VehiclesPanelProps = {
+  externalSearch?: string;
+  autoOpenAdd?: boolean;
+  openId?: string | null;
+  listState?: ListState;
+  canSeeMaintenanceDue?: boolean;
+};
+
+export function VehiclesPanel(props: VehiclesPanelProps = {}) {
+  return (
+    <MaintenanceLogBadgeSource>
+      {(reminders, remindersFailed) => <FleetVehicles {...props} reminders={reminders} remindersFailed={remindersFailed} />}
+    </MaintenanceLogBadgeSource>
+  );
+}
+
+function FleetVehicles({
   externalSearch = "",
   autoOpenAdd = false,
   openId = null,
   listState = {},
-}: { externalSearch?: string; autoOpenAdd?: boolean; openId?: string | null; listState?: ListState } = {}) {
+  canSeeMaintenanceDue = false,
+  reminders = {},
+  remindersFailed = false,
+}: VehiclesPanelProps & {
+  canSeeMaintenanceDue?: boolean;
+  reminders?: Record<string, LogAttention>;
+  remindersFailed?: boolean;
+} = {}) {
   const [partners, setPartners] = useState<Array<{ id: string; name: string }>>([]);
   const navigate = useNavigate();
   const viewing = openId;
@@ -169,7 +196,9 @@ export function VehiclesPanel({
   useEffect(() => {
     try { setStoredView(window.localStorage.getItem(VIEW_KEY)); } catch { /* ignore */ }
   }, []);
-  const view = listState.view ?? storedView ?? "list";
+  const requestedView = listState.view ?? storedView ?? "list";
+  const dueAllowed = MAINTENANCE_DUE_ENABLED && canSeeMaintenanceDue;
+  const view = requestedView === "due" && !dueAllowed ? "list" : requestedView;
 
   const listSearch = useCallback(
     (over: Partial<ListState> = {}) => {
@@ -224,6 +253,7 @@ export function VehiclesPanel({
     queryKey: ["admin-vehicles-list", params],
     queryFn: () => fetchList({ data: params }),
     placeholderData: keepPreviousData,
+    enabled: view !== "due",
   });
   const result = listQuery.data;
   const rows = result?.rows ?? [];
@@ -252,7 +282,7 @@ export function VehiclesPanel({
   // through audited server actions.
   const [lifecycle, setLifecycle] = useState<{ v: VehicleListRow; mode: LifecycleMode } | null>(null);
 
-  function chooseView(next: "list" | "cards") {
+  function chooseView(next: "list" | "cards" | "due") {
     try { window.localStorage.setItem(VIEW_KEY, next); } catch { /* ignore */ }
     setStoredView(next);
     void navigate({ to: "/admin", search: listSearch({ view: next }) as any, replace: true });
@@ -263,17 +293,17 @@ export function VehiclesPanel({
   const lastShown = Math.min(total, page * VEHICLE_LIST_PAGE_SIZE);
 
   const cardsGrid = (
-    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 ${view === "list" ? "md:hidden" : ""}`}>
+    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-lg:min-w-0 ${view === "list" ? "md:hidden" : ""}`}>
       {rows.map((v) => {
         const img = resolvePhotoUrl(v.photo ?? undefined);
         return (
-          <div key={v.id} onClick={() => setViewing(v.id)} className="rounded-2xl bg-soft overflow-hidden cursor-pointer transition-shadow hover:shadow-md">
+          <div key={v.id} onClick={() => setViewing(v.id)} className="rounded-2xl bg-soft overflow-hidden cursor-pointer transition-shadow hover:shadow-md max-lg:min-w-0">
             <div className={`aspect-[4/3] bg-white items-center justify-center ${view === "list" ? "hidden" : "flex"}`}>
               {img ? <img src={img} alt="" loading="lazy" className="w-full h-full object-cover" /> : <span className="text-xs text-muted-foreground">No photo</span>}
             </div>
             <div className="p-4">
               <div className="h-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{v.unit_number ?? ""}</div>
-              <div className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">{vehicleName(v)}</div>
+              <div className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</div>
               <dl className="mt-2.5 grid grid-cols-[44px_1fr] items-center gap-y-0.5 text-[13px] leading-6">
                 <dt className="text-muted-foreground">Plate</dt>
                 <dd className="truncate font-mono">{v.license_plate || <span className="text-muted-foreground">—</span>}</dd>
@@ -288,7 +318,7 @@ export function VehiclesPanel({
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Partner</div>
                 <PartnerAssignSelect value={v.partner_id} partners={partners} onChange={(pid) => assignPartner(v, pid)} />
               </div>
-              <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="mt-3 flex gap-2 max-lg:flex-wrap" onClick={(e) => e.stopPropagation()}>
                 <button onClick={() => setViewing(v.id)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
                   Open Record <ArrowRight className="w-3.5 h-3.5" />
                 </button>
@@ -315,32 +345,33 @@ export function VehiclesPanel({
   );
 
   return (
-    <div>
-      <div className="admin-sticky-bar flex flex-col lg:flex-row lg:items-center gap-3 mb-4 pb-2">
-        <div className="flex-1 flex flex-wrap gap-2">
+    <div className="max-lg:min-w-0">
+      {remindersFailed ? <p className="mb-3 text-sm text-[#D03020]" data-testid="maintenance-log-error">Could not load maintenance reminders.</p> : null}
+      <div className="admin-sticky-bar flex flex-col lg:flex-row lg:items-center gap-3 mb-4 pb-2 max-lg:min-w-0">
+        <div className="flex-1 flex gap-2 max-lg:min-w-0 max-lg:flex-col lg:flex-wrap">
           <input
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search unit, VIN, plate, year, make, model…"
             aria-label="Search vehicles"
-            className="flex-1 min-w-[200px] border border-border rounded-md px-3 py-2 text-sm bg-white"
+            className="flex-1 min-w-[200px] border border-border rounded-md px-3 py-2 text-sm bg-white max-lg:w-full max-lg:min-w-0"
           />
           <Select value={statusFilter} onValueChange={(v) => setList({ status: v })}>
-            <SelectTrigger className="h-9 w-[140px] bg-white text-foreground text-sm" aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-[140px] bg-white text-foreground text-sm max-lg:w-full" aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
               {(result?.statuses ?? []).map((s) => <SelectItem key={s} value={s}>{availabilityLabel({ on_rent: false, status: s })}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={bodyFilter} onValueChange={(v) => setList({ body: v })}>
-            <SelectTrigger className="h-9 w-[140px] bg-white text-foreground text-sm" aria-label="Body Type"><SelectValue placeholder="Body Type" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-[140px] bg-white text-foreground text-sm max-lg:w-full" aria-label="Body Type"><SelectValue placeholder="Body Type" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Body Types</SelectItem>
               {(result?.bodyTypes ?? []).map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={partnerFilter} onValueChange={(v) => setList({ partner: v })}>
-            <SelectTrigger className="h-9 w-[160px] bg-white text-foreground text-sm" aria-label="Partner"><SelectValue placeholder="Partner" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-[160px] bg-white text-foreground text-sm max-lg:w-full" aria-label="Partner"><SelectValue placeholder="Partner" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Partners</SelectItem>
               <SelectItem value="__none__">Unassigned</SelectItem>
@@ -348,7 +379,7 @@ export function VehiclesPanel({
             </SelectContent>
           </Select>
           <Select value={sort} onValueChange={(v) => setList({ sort: v })}>
-            <SelectTrigger className="h-9 w-[150px] bg-white text-foreground text-sm" aria-label="Sort"><SelectValue placeholder="Sort" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-[150px] bg-white text-foreground text-sm max-lg:w-full" aria-label="Sort"><SelectValue placeholder="Sort" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="unit">Sort: Unit</SelectItem>
               <SelectItem value="make">Sort: Make</SelectItem>
@@ -362,7 +393,7 @@ export function VehiclesPanel({
               everything the current search and filters match, not the page,
               and each chip is the filter for its own band. */}
           {result && (
-            <span className="inline-flex items-center gap-2" data-testid="fleet-readiness">
+            <span className="inline-flex items-center gap-2 max-lg:max-w-full max-lg:flex-wrap" data-testid="fleet-readiness">
               <span className="whitespace-nowrap text-xs text-muted-foreground">Fleet readiness</span>
               {READINESS_BANDS.map((band) => {
                 const n = result.readinessCounts?.[band] ?? 0;
@@ -411,23 +442,30 @@ export function VehiclesPanel({
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2 self-start lg:self-auto">
-          <div className="hidden md:inline-flex rounded-md border border-[#EDEDF0] bg-white p-0.5" role="group" aria-label="View">
+        <div className="flex items-center gap-2 self-start lg:self-auto max-lg:w-full max-lg:flex-wrap">
+          <div className="hidden md:inline-flex rounded-md border border-[#EDEDF0] bg-white p-0.5 max-lg:w-full max-lg:justify-center" role="group" aria-label="View">
             <button onClick={() => chooseView("list")} aria-pressed={view === "list"} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === "list" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><List className="h-3.5 w-3.5" /> List</button>
             <button onClick={() => chooseView("cards")} aria-pressed={view === "cards"} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === "cards" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><LayoutGrid className="h-3.5 w-3.5" /> Cards</button>
           </div>
-          <button onClick={() => void navigate({ to: "/admin", search: { tab: "fleet_inbox" } as any })} className="inline-flex items-center gap-2 rounded-md border border-[#EDEDF0] bg-white px-4 py-2 text-sm font-medium hover:bg-[#FAFAFB]">
+          {dueAllowed && (
+            <button onClick={() => chooseView("due")} aria-pressed={view === "due"} className={`inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-xs max-lg:w-full max-lg:justify-center ${view === "due" ? "bg-[#F1F1F4] font-medium" : "bg-white text-muted-foreground"}`}><Wrench className="h-3.5 w-3.5" /> Maintenance Due</button>
+          )}
+          <button onClick={() => void navigate({ to: "/admin", search: { tab: "fleet_inbox" } as any })} className="inline-flex items-center gap-2 rounded-md border border-[#EDEDF0] bg-white px-4 py-2 text-sm font-medium hover:bg-[#FAFAFB] max-lg:w-full max-lg:justify-center">
             Import / Fleet Inbox
           </button>
-          <button onClick={() => setAdding(true)} className="inline-flex items-center gap-2 rounded-md bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150">
+          <button onClick={() => setAdding(true)} className="inline-flex items-center gap-2 rounded-md bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150 max-lg:w-full max-lg:justify-center">
             <Plus className="w-4 h-4" /> Add Vehicle
           </button>
         </div>
       </div>
 
-      {view === "list" && rows.length > 0 && (
-        <div className="hidden md:block mt-4 rounded-xl border border-border bg-white overflow-hidden">
-          <table className="w-full text-sm">
+      {view === "due" && dueAllowed && (
+        <MaintenanceDue query={effectiveQ} status={statusFilter} body={bodyFilter} partner={partnerFilter} />
+      )}
+
+      {view !== "due" && view === "list" && rows.length > 0 && (
+        <div className="hidden md:block mt-4 max-lg:min-w-0 max-lg:overflow-x-auto rounded-xl border border-border bg-white lg:overflow-hidden">
+          <table className="w-full text-sm max-lg:min-w-[64rem]">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">Unit</th>
@@ -445,7 +483,7 @@ export function VehiclesPanel({
               {rows.map((v) => (
                 <tr key={v.id} onClick={() => setViewing(v.id)} className="border-t border-border cursor-pointer hover:bg-[#FAFAFB]">
                   <td className="px-3 py-2 font-medium whitespace-nowrap">{v.unit_number ?? <span className="text-muted-foreground">—</span>}</td>
-                  <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}</td>
+                  <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</td>
                   <td className="px-3 py-2 font-mono whitespace-nowrap">{v.license_plate || <span className="text-muted-foreground">—</span>}</td>
                   <td className="px-3 py-2"><CopyVin vin={v.vin} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><Availability v={v} /></td>
@@ -463,10 +501,10 @@ export function VehiclesPanel({
           </table>
         </div>
       )}
-      {rows.length > 0 && cardsGrid}
+      {view !== "due" && rows.length > 0 && cardsGrid}
 
-      {result && total > 0 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+      {view !== "due" && result && total > 0 && (
+        <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground max-lg:flex-wrap max-lg:gap-y-2">
           <span>Showing {firstShown}–{lastShown} of {total}</span>
           <div className="flex items-center gap-2">
             <button disabled={page <= 1} onClick={() => setList({ page: String(page - 1) })} aria-label="Previous page" className="rounded-md border border-border bg-white p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
@@ -475,11 +513,11 @@ export function VehiclesPanel({
           </div>
         </div>
       )}
-      {listQuery.isError && <div className="mt-6 text-sm text-real-red">Could not load vehicles.</div>}
-      {result && total === 0 && !hasActiveFilters && !effectiveQ && (
+      {view !== "due" && listQuery.isError && <div className="mt-6 text-sm text-real-red">Could not load vehicles.</div>}
+      {view !== "due" && result && total === 0 && !hasActiveFilters && !effectiveQ && (
         <EmptyState className="mt-6" icon={<Car className="w-6 h-6" strokeWidth={1.75} />} title="No Vehicles Yet" hint={'Click "Add Vehicle" to put your first car into the fleet.'} />
       )}
-      {result && total === 0 && (hasActiveFilters || !!effectiveQ) && (
+      {view !== "due" && result && total === 0 && (hasActiveFilters || !!effectiveQ) && (
         <EmptyState
           className="mt-6"
           icon={<Car className="w-6 h-6" strokeWidth={1.75} />}

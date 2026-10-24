@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import {
@@ -6,8 +7,11 @@ import {
   ISSUE_STATUSES,
   incidentSeedFromIssue,
   isIssueClosed,
+  isPinnedIssue,
+  pinIssues,
   type IssueIncidentSeed,
 } from "@/lib/driver-issues";
+import { DRIVER_NOTIFICATIONS_ENABLED } from "@/lib/driver-notifications";
 
 // Manager inbox for public.issues.
 //
@@ -19,6 +23,34 @@ import {
 async function gate(userId: string) {
   const { requireManager } = await import("@/lib/roles.server");
   return requireManager(userId);
+}
+
+/** Workers keep the notice alive via waitUntil. Other runtimes wait at most 3s. */
+function noticeWaitUntil(context: unknown): ((promise: Promise<unknown>) => void) | undefined {
+  const fromContext = (context as { waitUntil?: (promise: Promise<unknown>) => void }).waitUntil;
+  if (typeof fromContext === "function") return fromContext;
+  try {
+    const request = getRequest() as { waitUntil?: (promise: Promise<unknown>) => void };
+    return typeof request?.waitUntil === "function" ? request.waitUntil.bind(request) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Clears the 3s timer, and aborts the notice so a 5s email plus a 5s SMS cannot continue. */
+async function boundedNotice(notice: Promise<unknown>, controller: AbortController): Promise<void> {
+  const timer = setTimeout(() => controller.abort(), 3000);
+  try {
+    await Promise.race([
+      notice,
+      new Promise<void>((resolve) => {
+        if (controller.signal.aborted) resolve();
+        else controller.signal.addEventListener("abort", () => resolve(), { once: true });
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const CLOSED = ["resolved", "closed"] as const;
@@ -38,6 +70,7 @@ export type DriverIssueRow = {
   vehicleId: string | null;
   vehicleLabel: string | null;
   rentalId: string | null;
+  pinned: boolean;
   notesEnabled: false;
 };
 
@@ -107,7 +140,7 @@ export const listDriverIssues = createServerFn({ method: "POST" })
 
     return {
       truncated: (count ?? list.length) > list.length,
-      rows: list.map((r) => {
+      rows: pinIssues(list.map((r) => {
         const linkedApp = r.rental_id ? rentalApp.get(String(r.rental_id)) : null;
         const candidates = appsByUser.get(String(r.driver_id)) ?? [];
         const chosen = (linkedApp && candidates.find((a) => a.id === linkedApp)) || candidates[0] || null;
@@ -126,9 +159,10 @@ export const listDriverIssues = createServerFn({ method: "POST" })
           vehicleId: r.vehicle_id,
           vehicleLabel: r.vehicle_id ? vehicleById.get(String(r.vehicle_id)) ?? "Vehicle" : null,
           rentalId: r.rental_id,
+          pinned: isPinnedIssue({ kind: r.kind, severity: r.severity }),
           notesEnabled: DRIVER_ISSUE_NOTES_ENABLED,
         };
-      }),
+      })),
     };
   });
 
@@ -160,6 +194,22 @@ export const updateDriverIssueStatus = createServerFn({ method: "POST" })
       entityId: data.id,
       metadata: { from: existing.status, to: data.status },
     });
+    if (DRIVER_NOTIFICATIONS_ENABLED === true) {
+      const waitUntil = noticeWaitUntil(context);
+      // No waitUntil: abort at 3s so email (5s) plus SMS (5s) cannot outlive the handler.
+      const controller = waitUntil ? undefined : new AbortController();
+      const notice = (async () => {
+        try {
+          const { notifyIssueStatusChanged } = await import("@/lib/driver-notifications.server");
+          await notifyIssueStatusChanged(data.id, controller?.signal);
+        } catch (err) {
+          if (controller?.signal.aborted) return;
+          console.error("[driver-notifications] issue_status", err);
+        }
+      })();
+      if (waitUntil) waitUntil(notice);
+      else await boundedNotice(notice, controller!);
+    }
     return { ok: true, status: data.status };
   });
 

@@ -22,6 +22,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { fmtDate } from "@/lib/date-format";
+import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
+import { WAITLIST_AGING_ENABLED, failedWaitlistAging, type WaitlistAgingResult } from "@/lib/waitlist-aging";
+import { getWaitlistAging } from "@/lib/waitlist-aging.functions";
+import { WaitlistAging } from "./WaitlistAging";
 
 // Waitlist back office.
 //
@@ -43,6 +47,8 @@ export function WaitlistPanel({
   const saveAvailability = useServerFn(setCarsAvailable);
   const notifyTop = useServerFn(notifyWaitlistTop);
   const promote = useServerFn(promoteToApplicant);
+  const loadAging = useServerFn(getWaitlistAging);
+  const [aging, setAging] = useState<WaitlistAgingResult | null>(null);
 
   const [entries, setEntries] = useState<WaitlistEntry[] | null>(null);
   const [carsAvailable, setCarsAvailableState] = useState<number | null>(null);
@@ -54,6 +60,7 @@ export function WaitlistPanel({
   const [promotingId, setPromotingId] = useState<string | null>(null);
   const [conflictIds, setConflictIds] = useState<Set<string>>(new Set());
   const [reviewId, setReviewId] = useState<string | null>(null);
+  const [resumeLink, setResumeLink] = useState<{ href: string; name: string } | null>(null);
 
   const refresh = useCallback(async () => {
     setFleet(null); // Never leave a previous successful count visible after a failed refresh.
@@ -70,6 +77,21 @@ export function WaitlistPanel({
   useEffect(() => {
     refresh().catch((e) => toast.error(e?.message ?? "Could not load the waitlist."));
   }, [refresh]);
+
+  useEffect(() => {
+    if (WAITLIST_AGING_ENABLED !== true) return;
+    let cancelled = false;
+    loadAging()
+      .then((result) => {
+        if (!cancelled) setAging(result);
+      })
+      .catch(() => {
+        if (!cancelled) setAging(failedWaitlistAging());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAging]);
 
   const waitingCount = entries?.filter((e) => e.status === "waiting").length ?? 0;
 
@@ -132,9 +154,11 @@ export function WaitlistPanel({
 
   async function handlePromote(entry: WaitlistEntry) {
     setPromotingId(entry.id);
+    setResumeLink(null);
     try {
       const res = await promote({ data: { entryId: entry.id } });
       if (!res.ok) {
+        setResumeLink(null);
         if ("conflict" in res && res.conflict) {
           setConflictIds((s) => new Set(s).add(entry.id));
           toast.warning("Needs review: the email matches an existing driver but the phone differs. Use Review Conflict.");
@@ -143,9 +167,17 @@ export function WaitlistPanel({
         throw new Error(res.error);
       }
       toast.success(`${entry.full_name} is now an applicant — you'll find them under New.`);
+      if (APPLICATION_RESUME_ENABLED === true) {
+        const { resumeLinkForPromotion } = await import("@/lib/application-resume");
+        const link = resumeLinkForPromotion({ ok: res.ok, token: res.token, name: entry.full_name });
+        setResumeLink(link?.href && link.name ? link : null);
+      } else {
+        setResumeLink(null);
+      }
       await refresh();
       onPromoted?.();
     } catch (e: any) {
+      setResumeLink(null);
       toast.error(e?.message ?? "Could not promote.");
     } finally {
       setPromotingId(null);
@@ -156,8 +188,42 @@ export function WaitlistPanel({
     s === "promoted" ? "green" : "amber";
   const statusLabel = (s: string) => (s === "waiting" ? "Waiting" : s === "notified" ? "Notified" : "Promoted");
 
+  async function copyResumeLink() {
+    if (!resumeLink) return;
+    try {
+      await navigator.clipboard.writeText(resumeLink.href);
+      toast.success("Link copied.");
+    } catch {
+      toast.error("Select the link and copy it.");
+    }
+  }
+
   return (
     <div className="space-y-4">
+      {APPLICATION_RESUME_ENABLED === true && resumeLink?.href && resumeLink.name ? (
+        <section className="rounded-xl border border-[#EDEDF0] bg-white px-5 py-4" aria-label={`Resume Link For ${resumeLink.name}`}>
+          <div className="text-sm font-semibold text-[#111114]">Resume Link For {resumeLink.name}</div>
+          <p className="mt-1 text-[13px] leading-snug text-[#55555E]">
+            Promotion created this application for {resumeLink.name}. Copy this link and give it to them. This page does not send an email.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              readOnly
+              aria-label={`Resume Link For ${resumeLink.name}`}
+              value={resumeLink.href}
+              className="min-h-11 w-full rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] px-3 text-sm text-[#111114]"
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <button
+              type="button"
+              onClick={() => void copyResumeLink()}
+              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg bg-[#D03020] px-4 text-sm font-semibold text-white hover:opacity-90"
+            >
+              Copy Link
+            </button>
+          </div>
+        </section>
+      ) : null}
       <SectionCard
         title="Cars Available"
         subtitle="Fleet counts come from your vehicles. The public override is optional and only changes what the website shows."
@@ -230,6 +296,8 @@ export function WaitlistPanel({
           applications, and drivers are never told their position.
         </p>
       </SectionCard>
+
+      {WAITLIST_AGING_ENABLED === true ? <WaitlistAging result={aging} /> : null}
 
       <SectionCard
         title="Waitlist"
