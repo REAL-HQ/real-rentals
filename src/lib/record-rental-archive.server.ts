@@ -77,6 +77,8 @@ export async function archiveEvidenceDocumentV1(context: RentalContext, token: s
 
 // Gap 3: a signed eSign agreement's completed PDF, archived and bound with its agreement.
 export async function archiveSignedAgreementV1(context: RentalContext, token: string, configured: RecordResources, agreementId: string) {
+ // Owner or Manager first (Security 0031 hides agreements from a Coordinator).
+ await authenticatedPrincipal(context.supabase, context.userId, z.string().uuid().parse(context.claims.session_id), token)();
  const ag = await context.supabase.from('agreements').select('id,status,voided_at,archive_status,document_id,completed_document_id,sha256')
   .eq('id', uuid.parse(agreementId)).single();
  if (ag.error || !ag.data) throw new Error('Agreement unavailable');
@@ -96,6 +98,10 @@ export async function licenseFingerprint(snapshot: unknown) {
 }
 export async function previewPositiveLicenseV1(context: RentalContext, token: string, configured: RecordResources, applicationId: string) {
  const app = uuid.parse(applicationId);
+ // Owner or Manager first: under Security 0031 a Coordinator cannot see licence documents,
+ // so checking the images first would refuse with a misleading message.
+ const authorize = authenticatedPrincipal(context.supabase, context.userId, z.string().uuid().parse(context.claims.session_id), token);
+ await authorize();
  const docs = await context.supabase.from('documents').select('id,category,review_status')
   .eq('driver_id', app).in('category', ['license_front', 'license_back']).eq('is_current', true);
  if (docs.error || !Array.isArray(docs.data)) throw new Error('Licence images unavailable');
@@ -107,7 +113,6 @@ export async function previewPositiveLicenseV1(context: RentalContext, token: st
  }
  const archived = [];
  for (const r of rows) archived.push(await archiveEvidenceDocumentV1(context, token, configured, 'license', r.id));
- const authorize = authenticatedPrincipal(context.supabase, context.userId, z.string().uuid().parse(context.claims.session_id), token);
  const snapshot = await trustedIssuer(configured.sql, authorize, context.supabase).licenseSnapshot(app) as Json;
  return { snapshot, fingerprint: await licenseFingerprint(snapshot), archived };
 }
