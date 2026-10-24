@@ -1,0 +1,11 @@
+Lovable production project 8cf1f99e, message main:user#00000000002893#usr:XYQGE2FN, 2026-10-24T08:01:10Z.
+Submitted file: 0031_guarded_coordinator_containment.sql, sha256 32c17aa76e5026c4f50a2179aab143baa5d05463743b1a0f366ab4339103494f
+(verified by the Lovable agent before submission; the agent passed the contents to lov_database--migration).
+Tool result (verbatim from the agent):
+  The migration could not be applied: JOURNAL_DRIFT_OR_REPLAY
+  code: P0001
+  where: PL/pgSQL function inline_code_block line 63 at RAISE
+No approval confirmation was presented. Lovable edit edt-99b5082d, commit 7c7d7b6b5470ace54826eac0e040b73d909b2ed8
+(regenerated src/integrations/supabase/types.ts and previewAuthStorage.ts; unpublished).
+Disposable runner probe (project c27f585c, 08:15Z): RUNNER_PROBE drizzle_count=23 newest=...,23:1792408979135:9ee4a1ced75e
+user=postgres session=postgres -- the runner's receipt is written after the submitted SQL.
