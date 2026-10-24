@@ -64,14 +64,19 @@ export async function readHistorical(client:CallerClient, download:(bucket:strin
   applicationId:uuid,vehicleId:uuid,documentId:uuid,documentSha256:hash,signedOn:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   rentalStart:z.string().min(1),weeklyCents:z.number().int().positive().safe(),depositCents:z.number().int().nonnegative().safe().nullable(),
   currency:z.literal('usd'),driverUserId:uuid,rentalId:z.null(),
+  // Present once 04 is installed; a 01-only registration is a paper original.
+  source:z.enum(['paper','legacy_esign']).default('paper'),legacyAgreementId:uuid.nullable().default(null),legacySignedAt:z.string().nullable().default(null),
   document:z.object({id:uuid,bucket:z.literal('rental-agreements'),path:z.string(),sha256:hash,source:z.literal('paper'),
    integrity:z.object({sha256:hash,version:hash,agreement:z.null(),application:uuid,driver:uuid,path:z.string()}).passthrough()})}).passthrough().parse(res.data);
  if(h.applicationId!==applicationId) throw new Error('Historical agreement unavailable');
  if(h.vehicleId!==vehicleId) throw new Error('The registered historical agreement names a different vehicle');
  // Two agreements for one rental is a contradiction to resolve by voiding one, never to pick from.
- const pending=await client.from('agreements').select('id').eq('application_id',applicationId).is('rental_id',null).limit(1);
+ // A voided agreement is not open (proposed/record-rental-historical/04); a legacy-eSign
+ // registration names exactly one open agreement: its own.
+ const pending=await client.from('agreements').select('id,status,voided_at').eq('application_id',applicationId).is('rental_id',null);
  if(pending.error || !Array.isArray(pending.data)) throw new Error('Agreement state unavailable');
- if(pending.data.length) throw new Error('This driver has both a historical agreement and an eSign agreement; void one before recording');
+ const open=(pending.data as Array<{id:string;status:string;voided_at:string|null}>).filter(r=>r.voided_at===null && r.status!=='voided');
+ if(open.some(r=>r.id!==h.legacyAgreementId)) throw new Error('This driver has both a historical agreement and an eSign agreement; void one before recording');
  const d=h.document, sha=h.documentSha256;
  if(d.id!==h.documentId || d.sha256!==sha || d.integrity.sha256!==sha || d.integrity.version!==sha ||
   d.integrity.application!==applicationId || d.integrity.driver!==h.driverUserId ||
@@ -80,9 +85,12 @@ export async function readHistorical(client:CallerClient, download:(bucket:strin
  const {createHash}=await import('node:crypto');
  if(createHash('sha256').update(bytes).digest('hex')!==sha) throw new Error('Historical agreement document integrity mismatch');
  const {zonedDayStart}=await import('./signed-rental-terms');
+ // A legacy eSign registration keeps the eSign record's own signing instant.
+ if(h.source==='legacy_esign' && (h.legacyAgreementId===null || h.legacySignedAt===null)) throw new Error('Historical agreement unavailable');
+ const signedAt=h.source==='legacy_esign'?new Date(Date.parse(h.legacySignedAt as string)).toISOString():zonedDayStart(h.signedOn);
  const effectiveAt=new Date(Date.parse(h.rentalStart)).toISOString();
  return {id:h.historicalAgreementId,kind:'paper',applicationId,driverId:h.driverUserId,vehicleId,
-  weeklyCents:h.weeklyCents,currency:h.currency,effectiveAt,signedAt:zonedDayStart(h.signedOn),
+  weeklyCents:h.weeklyCents,currency:h.currency,effectiveAt,signedAt,
   documentId:d.id,signedVersion:sha,currentVersion:sha,signedHash:sha,currentHash:sha,status:'signed',
   verification:'paper-registered',provenanceId:h.historicalAgreementId};
 }

@@ -7,9 +7,10 @@
 --    a voided one -- so the snapshot raised legacy_agreement_conflict and registration
 --    raised esign_agreement_pending forever. A voided agreement can never be evidence
 --    (status 'voided', voided_at set; both readers already require 'signed' and no
---    void), so it is now ignored by those two checks only. The row itself is untouched:
---    never linked, never deleted, its audit history and archive kept. An unsigned,
---    unvoided agreement still blocks; staff void it through the existing eSign flow.
+--    void), so it is now ignored by those two checks only. The row keeps its status,
+--    archive and audit history; when the rental starts, activate_rental_tx attaches it to
+--    the rental exactly as it does for every activation today. An unsigned, unvoided
+--    agreement still blocks; staff void it through the existing eSign flow.
 --
 -- 2. A legacy eSign agreement (no record_rental_terms_v1 block, archive at a legacy
 --    path that M2 forbids moving) can become staff-verified evidence:
@@ -17,8 +18,9 @@
 --    and terms against the signed PDF; the database proves the registered document IS
 --    the eSign archive (its SHA-256 equals agreements.sha256, recorded at signing) and
 --    takes the signing instant from the real eSign event (agreements.signed_at) -- never
---    staff-entered. The eSign agreement row is not modified except that recording the
---    rental links it (agreements.rental_id), in the same transaction, exactly once.
+--    staff-entered. The eSign agreement row is not modified; recording the rental links
+--    it (agreements.rental_id) through activate_rental_tx, and the consume trigger
+--    verifies that link in the same transaction.
 --    The evidence stays kind 'paper' / verification 'paper-registered' with source
 --    'legacy_esign', so it is never presented as a platform-verified eSign recording.
 BEGIN;
@@ -291,7 +293,7 @@ DECLARE e private.record_evidence_v1; g jsonb; h private.historical_agreements_v
  RETURN (g->>'provenanceId')::uuid;
 END$function$;
 
--- Linking: as 01, plus the legacy eSign agreement linked to the same rental, once.
+-- Linking: as 01, plus a check that the legacy eSign agreement is linked to this rental.
 CREATE OR REPLACE FUNCTION private.historical_agreement_consume_v1() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE e private.record_evidence_v1; h private.historical_agreements_v1;
@@ -304,10 +306,12 @@ BEGIN
    WHERE id = (e.verified->'agreement'->>'provenanceId')::uuid AND status = 'registered' AND rental_id IS NULL
    RETURNING * INTO h;
   IF h.id IS NULL THEN RAISE EXCEPTION 'historical_agreement_consumed'; END IF;
-  IF h.legacy_agreement_id IS NOT NULL THEN
-    UPDATE public.agreements SET rental_id = NEW.rental_id
-     WHERE id = h.legacy_agreement_id AND rental_id IS NULL AND status = 'signed' AND voided_at IS NULL AND sha256 = h.document_sha256;
-    IF NOT FOUND THEN RAISE EXCEPTION 'legacy_agreement_link_failed'; END IF;
+  -- activate_rental_tx (the only rental start path) has already linked every unlinked
+  -- agreement row of the driver to this rental; the legacy one must be among them, unchanged.
+  IF h.legacy_agreement_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.agreements
+     WHERE id = h.legacy_agreement_id AND rental_id = NEW.rental_id AND status = 'signed' AND voided_at IS NULL
+       AND sha256 = h.document_sha256) THEN
+    RAISE EXCEPTION 'legacy_agreement_link_failed';
   END IF;
   INSERT INTO public.audit_log (actor_user_id, action, entity_type, entity_id, summary, metadata)
   VALUES (NEW.actor_id, 'historical_agreement.recorded', 'rental', NEW.rental_id::text,

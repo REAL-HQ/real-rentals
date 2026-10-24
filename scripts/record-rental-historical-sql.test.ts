@@ -10,6 +10,9 @@ import { DB } from "./record-rental-harness/clients";
 const db = postgres(DB, { max: 1, onnotice: () => {} });
 const install = readFileSync("proposed/record-rental-historical/01-historical-agreements-v1.sql", "utf8");
 const rollback = readFileSync("proposed/record-rental-historical/02-rollback.sql", "utf8");
+// 04 (eligibility) sits on top of 01 in the harness: it is rolled back first and reinstalled last.
+const eligibility = readFileSync("proposed/record-rental-historical/04-eligibility-v1.sql", "utf8");
+const eligibilityRollback = readFileSync("proposed/record-rental-historical/05-eligibility-rollback.sql", "utf8");
 const def = async (fn: string) => (await db`select pg_get_functiondef(${fn}::regprocedure) d`)[0].d as string;
 const SNAP = "private.record_snapshot_v1(uuid,uuid,uuid,uuid)";
 const CONSUME = "private.record_agreement_evidence_v1(uuid,uuid,timestamp with time zone,numeric)";
@@ -18,6 +21,13 @@ const objects = async () => (await db`select
   to_regprocedure('public.register_historical_agreement_v1(uuid,uuid,uuid,uuid,date,timestamptz,numeric,numeric,text)') is not null r,
   exists(select 1 from pg_trigger where tgname = 'historical_agreement_consume_v1') g`)[0];
 try {
+  const eligibilityPrior = Object.fromEntries((await db`select fn, definition from private.historical_eligibility_v1_prior`).map((r) => [r.fn, r.definition]));
+  await db.unsafe(eligibilityRollback);
+  assert.equal(await def(SNAP), eligibilityPrior[SNAP]);
+  assert.equal(await def(CONSUME), eligibilityPrior[CONSUME]);
+  const [{ cols }] = await db`select count(*)::int cols from information_schema.columns where table_schema='private' and table_name='historical_agreements_v1' and column_name in ('source','legacy_agreement_id','legacy_signed_at')`;
+  assert.equal(cols, 0);
+  console.log("PASS eligibility rollback restores 01's function text and removes the legacy columns");
   const prior = Object.fromEntries((await db`select fn, definition from private.historical_agreements_v1_prior`).map((r) => [r.fn, r.definition]));
   assert.match(await def(SNAP), /historical_binding_mismatch/);
   assert.doesNotMatch(prior[SNAP], /historical/);
@@ -48,6 +58,9 @@ try {
   await assert.rejects(() => db`truncate private.historical_agreements_v1`, /./);
   console.log("PASS registrations cannot be deleted or truncated");
   await db.begin(async (tx) => { await tx.unsafe("SET LOCAL session_replication_role = replica"); await tx`delete from private.historical_agreements_v1`; });
+  await db.unsafe(eligibility);
+  assert.ok(await def(SNAP).then((d) => d.includes("agreement_open_v1")));
+  console.log("PASS eligibility (04) reinstalls on top of 01");
 } finally {
   await db.end();
 }
