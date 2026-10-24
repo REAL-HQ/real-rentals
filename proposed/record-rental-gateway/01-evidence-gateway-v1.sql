@@ -35,7 +35,10 @@ CREATE TABLE private.record_gateway_key_v1 (
   created_at timestamptz NOT NULL DEFAULT clock_timestamp());
 CREATE TABLE private.record_gateway_nonce_v1 (
   nonce uuid PRIMARY KEY,
+  actor uuid NOT NULL,
+  op text NOT NULL,
   used_at timestamptz NOT NULL DEFAULT clock_timestamp());
+CREATE INDEX record_gateway_nonce_v1_actor ON private.record_gateway_nonce_v1 (actor, used_at);
 ALTER TABLE private.record_gateway_key_v1 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE private.record_gateway_nonce_v1 ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON private.record_gateway_key_v1, private.record_gateway_nonce_v1 FROM PUBLIC, anon, authenticated, service_role;
@@ -65,20 +68,26 @@ GRANT EXECUTE ON FUNCTION private.hmac_sha256_v1(bytea, bytea) TO rr_evidence_is
 -- Runs as the calling wrapper's owner (SECURITY INVOKER). Returns the parsed arguments.
 CREATE FUNCTION private.record_gateway_check_v1(_op text, _args text, _issued_ms bigint, _nonce uuid, _mac text)
 RETURNS jsonb LANGUAGE plpgsql SET search_path = '' AS $$
-DECLARE k bytea; actor uuid; sid uuid; msg text; a jsonb;
+DECLARE k bytea; caller uuid; sid uuid; msg text; a jsonb;
 BEGIN
   -- The PostgREST-verified staff session: Owner or Manager, live, not a Coordinator.
-  actor := private.approval_actor(); sid := private.record_session_v1();
+  caller := private.approval_actor(); sid := private.record_session_v1();
   IF _issued_ms IS NULL OR abs(extract(epoch FROM clock_timestamp()) * 1000 - _issued_ms) > 60000 THEN
     RAISE EXCEPTION 'gateway_request_stale' USING ERRCODE = '42501'; END IF;
   SELECT key INTO k FROM private.record_gateway_key_v1;
   IF k IS NULL THEN RAISE EXCEPTION 'gateway_not_provisioned' USING ERRCODE = '42501'; END IF;
-  msg := concat_ws(E'\n', 'record-evidence-gateway-v1', _op, actor::text, sid::text, _issued_ms::text, _nonce::text, _args);
-  IF _mac IS NULL OR _nonce IS NULL OR _args IS NULL
-     OR _mac IS DISTINCT FROM encode(private.hmac_sha256_v1(k, convert_to(msg, 'UTF8')), 'hex') THEN
+  msg := concat_ws(E'\n', 'record-evidence-gateway-v1', _op, caller::text, sid::text, _issued_ms::text, _nonce::text, _args);
+  -- Compared through a second hash, so the comparison's timing says nothing about the MAC.
+  IF _mac IS NULL OR _nonce IS NULL OR _args IS NULL OR _mac !~ '^[0-9a-f]{64}$'
+     OR pg_catalog.sha256(convert_to(_mac, 'UTF8'))
+        IS DISTINCT FROM pg_catalog.sha256(convert_to(encode(private.hmac_sha256_v1(k, convert_to(msg, 'UTF8')), 'hex'), 'UTF8')) THEN
     RAISE EXCEPTION 'gateway_signature_invalid' USING ERRCODE = '42501'; END IF;
-  INSERT INTO private.record_gateway_nonce_v1 (nonce) VALUES (_nonce) ON CONFLICT DO NOTHING;
+  INSERT INTO private.record_gateway_nonce_v1 (nonce, actor, op) VALUES (_nonce, caller, _op) ON CONFLICT DO NOTHING;
   IF NOT FOUND THEN RAISE EXCEPTION 'gateway_replay' USING ERRCODE = '42501'; END IF;
+  -- At most 120 signed calls per staff member per minute (one recording uses about ten).
+  IF (SELECT count(*) FROM private.record_gateway_nonce_v1 n WHERE n.actor = caller
+      AND n.used_at > clock_timestamp() - interval '60 seconds') > 120 THEN
+    RAISE EXCEPTION 'gateway_rate_limited' USING ERRCODE = '42501'; END IF;
   DELETE FROM private.record_gateway_nonce_v1 WHERE used_at < clock_timestamp() - interval '10 minutes';
   a := _args::jsonb;
   IF jsonb_typeof(a) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'gateway_arguments_invalid'; END IF;

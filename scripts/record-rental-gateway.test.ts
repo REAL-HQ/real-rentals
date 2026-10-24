@@ -92,6 +92,31 @@ try {
     pg_get_userbyid((select proowner from pg_proc where oid = 'public.record_evidence_gateway_v1(text,text,bigint,uuid,text)'::regprocedure)) owner`;
   assert.deepEqual({ ...g }, { anon_exec: false, service_exec: false, auth_key: false, transport_key: false, issuer_create: false, owner: "rr_evidence_issuer" });
   pass("grants as reviewed: authenticated only, key unreadable by API roles, owner rr_evidence_issuer without CREATE on public");
+  // Rate limit: 120 signed calls per staff member per minute (filled directly, harness only).
+  await db`insert into private.record_gateway_nonce_v1 (nonce, actor, op) select gen_random_uuid(), ${OWNER}, 'identity' from generate_series(1, 120)`;
+  await refused("more than 120 calls a minute from one staff member are refused", () => call(owner, "record_evidence_gateway_v1",
+    signed("identity", { application: APP }, OWNER, OWNER_SESSION)), /gateway_rate_limited/);
+  assert.equal((await call(manager, "record_evidence_gateway_v1", signed("identity", { application: APP }, MANAGER, MANAGER_SESSION))).message, undefined);
+  await db`delete from private.record_gateway_nonce_v1 where actor = ${OWNER}`;
+  pass("the limit is per staff member: the Manager is unaffected");
+
+  // Revocation and rotation are audited by key id only; a revoked key refuses everything.
+  await db.unsafe(readFileSync("proposed/record-rental-gateway/04-revoke-gateway-key.sql", "utf8"));
+  await refused("after revocation every call is refused", () => call(owner, "record_evidence_gateway_v1",
+    signed("identity", { application: APP }, OWNER, OWNER_SESSION)), /gateway_not_provisioned/);
+  const rotated = "ef".repeat(32);
+  await db.unsafe(readFileSync("proposed/record-rental-gateway/02-set-gateway-key.sql", "utf8").replace(":'gateway_key_hex'", `'${rotated}'`));
+  await refused("the old key is refused after rotation", () => call(owner, "record_evidence_gateway_v1",
+    signed("identity", { application: APP }, OWNER, OWNER_SESSION)), /gateway_signature_invalid/);
+  assert.equal((await call(owner, "record_evidence_gateway_v1", signed("identity", { application: APP }, OWNER, OWNER_SESSION, { key: rotated }))).message, undefined);
+  const audit = await db`select action, metadata from public.audit_log where action like 'record_gateway.%' order by created_at`;
+  assert.deepEqual(audit.map((a) => a.action).slice(-2), ["record_gateway.key_revoked", "record_gateway.key_set"]);
+  for (const a of audit) {
+    assert.match(a.metadata.key_id, /^[0-9a-f]{12}$/);
+    assert.ok(!JSON.stringify(a.metadata).includes(GATEWAY_KEY) && !JSON.stringify(a.metadata).includes(rotated), "key material in the audit log");
+  }
+  pass("revocation and rotation are audited with a 12-hex key id and never the key; the new key works");
+
   // Rollback removes the gateway entirely; reinstall and the key restore it for the suites after this one.
   await db.unsafe(readFileSync("proposed/record-rental-gateway/03-rollback.sql", "utf8"));
   const [gone] = await db`select to_regprocedure('public.record_evidence_gateway_v1(text,text,bigint,uuid,text)') is null a,
