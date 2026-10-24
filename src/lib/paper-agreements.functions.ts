@@ -20,7 +20,8 @@ async function authorize(id: string, write = false) {
   if (!PAPER_RELEASE.visible || (write && !PAPER_RELEASE.registration)) throw Error(PAPER_HOLD);
   return actor;
 }
-async function ports(user: SupabaseClient<Database>): Promise<Port> {
+// Also used server-side by the legacy-eSign registration (record-rental-historical.server).
+export async function ports(user: SupabaseClient<Database>): Promise<Port> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const admin = paperClient(supabaseAdmin);
   const scoped = paperClient(user);
