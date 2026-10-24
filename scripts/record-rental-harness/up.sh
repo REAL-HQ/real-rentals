@@ -29,10 +29,14 @@ rm -rf $D/packet; mkdir -p $D/packet
 git archive "$REF" proposed scripts supabase/migrations drizzle/migrations | tar -x -C $D/packet
 ln -sfn "$ROOT/node_modules" $D/packet/node_modules
 cp scripts/record-rental-harness/apply.mjs $D/packet/rr-apply.mjs
-(cd $D/packet && RR_HARNESS_DB_URL="$U" node rr-apply.mjs "${RR_HARNESS_LAST_ORD:-206}")
-# Production carries Security 0031 (installed 2026-10-24); run every suite under the same policies.
-if [ "${RR_HARNESS_0031:-1}" = "1" ] && [ "${RR_HARNESS_LAST_ORD:-206}" -ge 206 ]; then
+# Production order: the baseline (ords 1-143), then Security 0031 (installed in production on
+# 2026-10-24, before M2), then the M2 preflight, packet steps and verifies up to LAST_ORD.
+if [ "${RR_HARNESS_0031:-1}" = "1" ]; then
+  (cd $D/packet && RR_HARNESS_DB_URL="$U" node rr-apply.mjs 143)
   psql "$U" -q -v ON_ERROR_STOP=1 -f scripts/record-rental-harness/security-0031-policies.sql >/dev/null
+  (cd $D/packet && RR_HARNESS_DB_URL="$U" node rr-apply.mjs "${RR_HARNESS_LAST_ORD:-206}" 144)
+else
+  (cd $D/packet && RR_HARNESS_DB_URL="$U" node rr-apply.mjs "${RR_HARNESS_LAST_ORD:-206}")
 fi
 
 # Transport login as proposed/record-rental-transport: issuer and approval-executor memberships, SET ROLE only, never inherited.
