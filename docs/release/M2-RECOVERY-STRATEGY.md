@@ -51,6 +51,11 @@ To close the gap, before the backfill:
 With the Lovable export taken immediately before as the forensic baseline, Window 1's recovery
 loses no customer activity.
 
+**Result (2026-10-24):** production count 0 on every case that would make the undo inexact, so no
+capture is needed. The undo is rehearsed as exact apart from trigger-maintained `updated_at`
+(`proposed/m2-window1/README.md`). New blocker: 4 licence documents have no stored object, so the
+gate cannot reach `missing=0`.
+
 ## Window 2 (steps 3–29): NO-GO until the post-use path exists
 
 | Situation | Recovery | Customer activity lost |
@@ -93,3 +98,12 @@ and checks:
 
 This proves the procedure without touching customer data. The production export itself stays with
 the owner.
+
+**Handling any production export:** treat it as sensitive. It holds all customer rows and auth
+password hashes. Never commit it to GitHub, paste it in chat, upload it to a shared or public
+location, or give it to Claude. After downloading, check whether the copy Lovable saved in project
+storage sits in a private bucket. Creating or restoring a production export or backup needs
+separate approval.
+
+Window 2 post-use recovery is now forward-fix with an approval freeze; see
+`M2-WINDOW2-FREEZE-AND-FORWARD-FIX.md`. Archive-then-roll-back is not adopted.
