@@ -39,6 +39,9 @@ const missingInScope = () => db`select count(*)::int n from public.documents d
     and not exists (select 1 from storage.objects o where o.bucket_id = d.storage_bucket and o.name = d.storage_path)`.then((r) => r[0].n);
 
 try {
+  // The harness has no Supabase migration ledger; production does. A stub lets the same read-only files run.
+  psql(`CREATE SCHEMA IF NOT EXISTS supabase_migrations; CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations(version text PRIMARY KEY);
+INSERT INTO supabase_migrations.schema_migrations VALUES ('1'),('2') ON CONFLICT DO NOTHING;`);
   psql(`SET session_replication_role = replica;
 INSERT INTO public.applications(id, full_name, email, phone, status, contact_status, created_at, reviewed_at, user_id)
 SELECT ('00000000-0000-4000-8000-' || lpad(i::text, 12, '0'))::uuid, 'Synthetic ' || i, 'syn' || i || '@example.test', '000',
@@ -81,7 +84,22 @@ VALUES ('00000000-0000-4000-9000-00000000d71f', '00000000-0000-4000-8000-0000000
   assert.deepEqual(await state(), s0);
   pass("drift from the investigated state (an extra missing row, a reopened application) is refused whole; nothing changes");
 
+  // The production procedure: read-only preflight, the request once, read-only post-verification.
+  const pre = JSON.parse(psql(readFileSync("proposed/m2-window1/correction-preflight-readonly.sql", "utf8")).trim());
+  assert.equal(pre.targets, 4); assert.equal(pre.targets_match_investigation, true); assert.equal(pre.applications, 2);
+  assert.equal(pre.applications_closed_unqualified, 2); assert.equal(pre.applications_rentals, 0); assert.equal(pre.applications_identity_reviews, 0);
+  assert.equal(pre.applications_current_licence_docs, 4); assert.equal(pre.applications_licence_docs_with_object, 0); assert.equal(pre.correction_audit_rows, 0);
   assert.equal(await send(REQUEST), "ok");
+  const post = JSON.parse(psql(readFileSync("proposed/m2-window1/correction-postverify-readonly.sql", "utf8")).trim());
+  assert.equal(post.correction_audit_rows, 4); assert.equal(post.correction_audit_rows_well_formed, 4);
+  assert.equal(post.corrected_documents, 4); assert.equal(post.corrected_not_current, 4);
+  assert.equal(post.corrected_ids_md5, pre.target_ids_md5);
+  assert.equal(post.corrected_rows_md5_excl_current_updated, pre.target_rows_md5_excl_current_updated);
+  assert.equal(post.applications_md5, pre.applications_md5); assert.equal(post.applications_closed_unqualified, 2);
+  assert.equal(post.missing_object_current_licence_in_scope, 0);
+  assert.deepEqual(post.others, pre.others);
+  for (const k of ["policies_0031", "policies_total", "drizzle_receipts", "supabase_receipts"]) assert.deepEqual(post[k], pre[k], k);
+  pass("production procedure: preflight passes; post-verification shows exactly the preflight's 4 rows corrected, 4 well-formed audit rows, every other record unchanged, 0031 and journals unchanged");
   const s1 = await state();
   assert.equal(await missingInScope(), 0);
   const changed = await db`select d.category, d.is_current, d.storage_path, d.content_sha256 from public.documents d where d.storage_bucket = 'license-uploads' order by 1`;
