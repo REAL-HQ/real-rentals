@@ -20,7 +20,9 @@ const DIR = "/tmp/rr0031v2", DATA = DIR + "/data", PORT = 55931;
 const sha = (b: string | Buffer) => createHash("sha256").update(b).digest("hex");
 const V1 = readFileSync(join(sec, "0031-package/0031_guarded_coordinator_containment.sql"), "utf8");
 const V2 = readFileSync(join(sec, "0031-package-v2/0031_guarded_coordinator_containment_v2.sql"), "utf8");
-const REQ = readFileSync(join(sec, "0031-package-v2/request-v2-guard2.sql"), "utf8");
+const REQ = readFileSync(join(sec, "0031-package-v2/request-v2-guard3.sql"), "utf8");
+// Superseded guard v2, kept only to show the search_path substitutions were real.
+const GEN2 = join(sec, "0031-direct-route/gen-guard2.py");
 // The superseded first guard, kept only to show the two bypasses were real.
 const REQ_OLD_GUARD = readFileSync(join(sec, "0031-package-v2/request-v2.sql"), "utf8");
 const REPLICA = readFileSync(join(here, "replica.sql"), "utf8");
@@ -64,9 +66,9 @@ function testCopy(pkg: string, p: { sysid: string; cat: string }, inject?: strin
   if (inject !== undefined) { if (out.split(FAILPOINT).length !== 2) throw new Error("failure point missing"); out = out.replace(FAILPOINT, inject); }
   return out;
 }
-function guarded(pkg: string) {
+function guarded(pkg: string, gen = join(sec, "0031-direct-route/gen-guard3.py")) {
   const f = join(DIR, "pkg.sql"); writeFileSync(f, pkg);
-  const guard = execFileSync("python3", ["-I", join(sec, "0031-direct-route/gen-guard2.py"), f], { encoding: "utf8" });
+  const guard = execFileSync("python3", ["-I", gen, f], { encoding: "utf8" });
   return guard + pkg;
 }
 async function send(text: string, trailer = TRAILER) {
@@ -201,6 +203,7 @@ try {
   // 8. The real request (guard v2 + exact v2 package). On this foreign database the guard
   //    passes and the package refuses the target. Every tampering shape the reviewer found or
   //    the guard claims to cover is refused before anything runs, and nothing it carried survives.
+  const edit = (text: string, from: string, to: string) => { if (text.split(from).length !== 2) throw new Error("edit anchor missing: " + from.slice(0, 40)); return text.replace(from, to); };
   const gone = async (t: string) => (await db.unsafe(`SELECT to_regclass('public.${t}') IS NULL AS g`))[0].g;
   const insideGuard = (req: string, sql: string) => req.slice(0, req.indexOf("\n") + 1) + sql + "\n" + req.slice(req.indexOf("\n") + 1);
   const crTrailer = "\n\n-- source: POST /v1/projects/:ref/database/query\n-- user: x\rCREATE TABLE public.inj_tail(id int);\n-- date: 2026-10-24T00:00:00.000Z";
@@ -208,19 +211,19 @@ try {
   b = await state();
   r = await send(REQ);
   check("T8a", "real request: guard passes, package refuses this foreign database with TARGET_MISMATCH", r.includes("TARGET_MISMATCH") && unchanged(b, await state()), { result: r });
-  r = await send(REQ.replace("IS TRUE OR private.is_staff() IS FALSE);\n\n-- Review", "IS TRUE OR private.is_staff() IS NOT FALSE);\n\n-- Review"));
+  r = await send(edit(REQ, "IS TRUE OR private.is_staff() IS FALSE);\n\n-- Review", "IS TRUE OR private.is_staff() IS NOT FALSE);\n\n-- Review"));
   check("T8b", "one weakened policy byte in the package: RRGUARD_BYTES_MISMATCH", r.includes("RRGUARD_BYTES_MISMATCH"), { result: r });
   r = await send("CREATE TABLE public.inj_prefix(id int);\n" + REQ);
   check("T8c", "statement placed before the guard: RRGUARD_GUARD_TEXT_CHANGED, rolled back", r.includes("RRGUARD_GUARD_TEXT_CHANGED") && await gone("inj_prefix"), { result: r });
   r = await send(insideGuard(REQ, "CREATE TABLE public.inj_before(id int);"));
   check("T8d", "reviewer bypass A (statement inside the guard text): RRGUARD_GUARD_TEXT_CHANGED, rolled back", r.includes("RRGUARD_GUARD_TEXT_CHANGED") && await gone("inj_before"), { result: r });
-  r = await send(REQ.replace("tail !~ '^(", "tail ~ '^("));
+  r = await send(edit(REQ, "OPERATOR(pg_catalog.~) '^(", "OPERATOR(pg_catalog.!~) '^("));
   check("T8e", "guard logic edited (trailer check inverted): RRGUARD_GUARD_TEXT_CHANGED", r.includes("RRGUARD_GUARD_TEXT_CHANGED"), { result: r });
   r = await send(REQ, crTrailer);
   check("T8f", "reviewer bypass B (carriage return in the trailer, then a statement): RRGUARD_TRAILING_TEXT, rolled back", r.includes("RRGUARD_TRAILING_TEXT") && await gone("inj_tail"), { result: r });
   r = await send(REQ + "SELECT 1;\n");
   check("T8g", "statement after the package: RRGUARD_TRAILING_TEXT", r.includes("RRGUARD_TRAILING_TEXT"), { result: r });
-  r = await send(REQ.replace("END $rrguard$;\n", "END $rrguard$;\nSELECT 1;\n"));
+  r = await send(edit(REQ, "END $rrguard$;\n", "END $rrguard$;\nSELECT 1;\n"));
   check("T8h", "statement between guard and package: RRGUARD_GUARD_TEXT_CHANGED", r.includes("RRGUARD_GUARD_TEXT_CHANGED"), { result: r });
   // The same two bypasses against the superseded guard, which accepted them (so the fix matters).
   r = await send(insideGuard(REQ_OLD_GUARD, "CREATE TABLE public.inj_old_a(id int);"));
@@ -234,6 +237,39 @@ try {
   const ra = r;
   r = await send(guarded(v2), crTrailer);
   check("T8i", "end to end with a matching copy: both bypasses refused, no policies, no evidence, no injected tables", ra.includes("RRGUARD_GUARD_TEXT_CHANGED") && r.includes("RRGUARD_TRAILING_TEXT") && unchanged(b, await state()) && await gone("inj_before") && await gone("inj_tail"), { a: ra, b: r });
+  // Second review: prefixes. With a matching copy, a prefix without COMMIT is rolled back and
+  // the package never runs; a prefix that commits itself survives (no guard can undo work
+  // committed before it runs), but the package still never runs.
+  const INJ = "CREATE TABLE public.inj(id int);";
+  const SUBST_NULL = "SET search_path = public, pg_catalog; CREATE FUNCTION public.current_query() RETURNS text LANGUAGE sql AS 'SELECT NULL::text';\n";
+  const OPS = "SET search_path = public, pg_catalog; CREATE FUNCTION public.rr_f(text, text) RETURNS boolean LANGUAGE sql AS 'SELECT false'; CREATE FUNCTION public.rr_fi(int, int) RETURNS boolean LANGUAGE sql AS 'SELECT false'; CREATE OPERATOR public.<> (LEFTARG = text, RIGHTARG = text, FUNCTION = public.rr_f); CREATE OPERATOR public.<> (LEFTARG = int, RIGHTARG = int, FUNCTION = public.rr_fi); CREATE OPERATOR public.!~ (LEFTARG = text, RIGHTARG = text, FUNCTION = public.rr_f);\n";
+  const scenario = async (label: string, prefix: string, gen?: string, trailer = TRAILER) => {
+    await fresh();
+    const b0 = await state();
+    const res = await send(prefix + guarded(v2, gen), trailer);
+    return { res, s: await state(), b0, inj: !(await gone("inj")) };
+  };
+  let x = await scenario("prefix", INJ + "\n");
+  check("T8c2", "matching copy, statement before the guard: refused, rolled back, package not run", x.res.includes("RRGUARD_GUARD_TEXT_CHANGED") && !x.inj && unchanged(x.b0, x.s), x);
+  x = await scenario("commit", INJ + " COMMIT;\n");
+  check("T8j", "LIMITATION: a prefix ending in COMMIT survives the refusal, but the package never runs (no policies, no evidence)", x.res.includes("RRGUARD_GUARD_TEXT_CHANGED") && x.inj && x.s.policies === 0 && x.s.evidence === 0, x);
+  x = await scenario("null", SUBST_NULL + INJ + "\n");
+  check("T8k", "search_path substitution of current_query() returning NULL: refused, nothing commits", x.res.includes("RRGUARD_GUARD_TEXT_CHANGED") && !x.inj && unchanged(x.b0, x.s), x);
+  const clean = guarded(v2) + TRAILER;
+  x = await scenario("spoof", `SET search_path = public, pg_catalog; CREATE FUNCTION public.current_query() RETURNS text LANGUAGE sql AS $spoof$SELECT $q$${clean}$q$::text$spoof$;\n` + INJ + "\n");
+  check("T8l", "search_path substitution of current_query() returning the clean request text: refused (the prefix carries a second package header), nothing commits", x.res.includes("RRGUARD_PACKAGE_MISSING") && !x.inj && unchanged(x.b0, x.s), x);
+  x = await scenario("ops", OPS + INJ + "\n");
+  check("T8m", "operator substitution (<> and !~ always false): refused, nothing commits", x.res.includes("RRGUARD_GUARD_TEXT_CHANGED") && !x.inj && unchanged(x.b0, x.s), x);
+  await fresh();
+  r = await send(REQ + REQ.slice(REQ.indexOf("\n-- PREPARATION ONLY.") + 1, REQ.indexOf("\n-- PREPARATION ONLY.") + 90) + "\n");
+  check("T8n", "second copy of the package header after the package: RRGUARD_PACKAGE_MISSING", r.includes("RRGUARD_PACKAGE_MISSING"), { result: r });
+  x = await scenario("notrailer", "", undefined, "");
+  check("T8o", "by design: with no API trailer (direct psql-style delivery) the exact request installs", x.res === "ok" && x.s.policies === 5 && x.s.evidence === 1, x);
+  // Controls: the same substitutions defeated guard v2, so the package ran with the injected table.
+  x = await scenario("null-g2", SUBST_NULL + INJ + "\n", GEN2);
+  check("B3", "control: guard v2 let the NULL current_query() substitution through (package ran, injected table committed)", x.res === "ok" && x.inj && x.s.policies === 5, x);
+  x = await scenario("ops-g2", OPS + INJ + "\n", GEN2);
+  check("B4", "control: guard v2 let the operator substitution through to the package (which refused only because the substituted <> also broke its own NOT IN filter)", !x.res.startsWith("RRGUARD") && x.res.includes("POST_UNEXPECTED_CATALOG_CHANGE"), x);
   check("T4f", "weakened policy definition in the package refused by the inner checksum", (await (async () => { await fresh(); return send(guarded(testCopy(V2, p).replace("USING (private.is_manager() IS TRUE OR private.is_staff() IS FALSE);\n\n-- Review", "USING (true);\n\n-- Review"))); })()).includes("SQL_CHECKSUM_MISMATCH"), {});
 
   // Negative controls: weaken one guard in a v2 test copy and record exactly what happens.

@@ -6,7 +6,7 @@
    "name": "cluster collation en_US.UTF-8: old normalisation reorders storage.objects policies, corrected one keeps them",
    "pass": true,
    "detail": {
-    "sysid": "7700203084066518572",
+    "sysid": "7700205452658551062",
     "cat": "71f1883b3eb908c8e8d403ab4439870157d6d9ebb8664cf21efff36b29c43cb9",
     "coll": "en_US.UTF-8",
     "old_keeps_order": false,
@@ -384,6 +384,214 @@
    "detail": {
     "a": "RRGUARD_GUARD_TEXT_CHANGED",
     "b": "RRGUARD_TRAILING_TEXT"
+   }
+  },
+  {
+   "id": "T8c2",
+   "name": "matching copy, statement before the guard: refused, rolled back, package not run",
+   "pass": true,
+   "detail": {
+    "res": "RRGUARD_GUARD_TEXT_CHANGED",
+    "s": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "b0": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "inj": false
+   }
+  },
+  {
+   "id": "T8j",
+   "name": "LIMITATION: a prefix ending in COMMIT survives the refusal, but the package never runs (no policies, no evidence)",
+   "pass": true,
+   "detail": {
+    "res": "RRGUARD_GUARD_TEXT_CHANGED",
+    "s": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "b0": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "inj": true
+   }
+  },
+  {
+   "id": "T8k",
+   "name": "search_path substitution of current_query() returning NULL: refused, nothing commits",
+   "pass": true,
+   "detail": {
+    "res": "RRGUARD_GUARD_TEXT_CHANGED",
+    "s": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "b0": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "inj": false
+   }
+  },
+  {
+   "id": "T8l",
+   "name": "search_path substitution of current_query() returning the clean request text: refused (the prefix carries a second package header), nothing commits",
+   "pass": true,
+   "detail": {
+    "res": "RRGUARD_PACKAGE_MISSING",
+    "s": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "b0": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "inj": false
+   }
+  },
+  {
+   "id": "T8m",
+   "name": "operator substitution (<> and !~ always false): refused, nothing commits",
+   "pass": true,
+   "detail": {
+    "res": "RRGUARD_GUARD_TEXT_CHANGED",
+    "s": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "b0": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "inj": false
+   }
+  },
+  {
+   "id": "T8n",
+   "name": "second copy of the package header after the package: RRGUARD_PACKAGE_MISSING",
+   "pass": true,
+   "detail": {
+    "result": "RRGUARD_PACKAGE_MISSING"
+   }
+  },
+  {
+   "id": "T8o",
+   "name": "by design: with no API trailer (direct psql-style delivery) the exact request installs",
+   "pass": true,
+   "detail": {
+    "res": "ok",
+    "s": {
+     "policies": 5,
+     "restrictive": 5,
+     "evidence": 1,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 6
+    },
+    "b0": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "inj": false
+   }
+  },
+  {
+   "id": "B3",
+   "name": "control: guard v2 let the NULL current_query() substitution through (package ran, injected table committed)",
+   "pass": true,
+   "detail": {
+    "res": "ok",
+    "s": {
+     "policies": 5,
+     "restrictive": 5,
+     "evidence": 1,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 6
+    },
+    "b0": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "inj": true
+   }
+  },
+  {
+   "id": "B4",
+   "name": "control: guard v2 let the operator substitution through to the package (which refused only because the substituted <> also broke its own NOT IN filter)",
+   "pass": true,
+   "detail": {
+    "res": "POST_UNEXPECTED_CATALOG_CHANGE",
+    "s": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "b0": {
+     "policies": 0,
+     "restrictive": 0,
+     "evidence": 0,
+     "journal": "5cfa7e88ccac860637339bd9bdaab72c",
+     "receipts": 23,
+     "audit_rows": 5
+    },
+    "inj": false
    }
   },
   {
