@@ -27,17 +27,30 @@ Both M2 flags are `false`. Background and the after-M2-step-3 rules are in `RELE
    written approval. One publish, no retry. If the publish is ambiguous, check the published state
    read-only before doing anything else.
 
-## C. After publishing (live site, read-only)
+## C. After publishing (read-only; no test records)
 
+**No artificial customer activity.** Nobody creates test approvals, uploads, applications or
+documents in production to exercise the release. Every check below either only reads, or observes
+activity that happens naturally.
+
+**Smoke tests, immediately (read-only):**
 7. ☐ Repeat the four §A checks on the live site.
-8. ☐ Public pages load: `/`, `/apply`, and a sign-in to `/admin` and `/portal`.
-9. ☐ An applicant upload and a staff document view work (normal business use, not a test record).
-10. ☐ **The first real staff approval** after publishing:
+8. ☐ Public pages load: `/` and `/apply` (load only; no submission).
+9. ☐ Sign in to `/admin` and `/portal` with existing accounts. The Applications list, an applicant's
+   detail and the document vault open, and existing documents display.
+10. ☐ `proposed/m2-window1/release-a-watch-readonly.sql` at publish time records the baseline counts.
+
+**Behaviour, observed during the 24-hour watch (only if it happens naturally):**
+11. ☐ The next legitimate approval:
     - the status becomes approved;
-    - exactly one `application.approved` audit row is written, as with #266;
-    - re-opening Approve on an approved applicant writes no second row (the one deliberate change).
-11. ☐ No new server errors in the Lovable logs for 24 hours. Release A is then "live and healthy" for
-    Window 1 stage 1.
+    - exactly one `application.approved` audit row is written for that application;
+    - the watch query's `apps_with_multiple_approvals_24h` stays 0.
+12. ☐ The next legitimate upload: its document row exists and displays.
+13. ☐ No new server errors in the Lovable logs for 24 hours.
+
+Items 11 and 12 are marked **PENDING**, not failed, if no approval or upload occurs in the 24 hours.
+Release A is then "live and healthy" for Window 1 stage 1 on items 7–10 and 13. The pending items
+are re-observed later and reported, and nobody manufactures activity to clear them.
 
 ## D. Rollback (valid only until M2 step 3)
 

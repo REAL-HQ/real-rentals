@@ -84,7 +84,9 @@ These were rehearsed on the harness, including after a used and undone backfill.
 2. Confirm Lovable `latest_commit_sha` = the merge commit. Quick Preview check: the Verify Identity
    control is still absent.
 3. Publish (owner approval). Wait at least 10 minutes for the old workers to drain before Stage 5.
-4. One real document upload through the app. Its row gets a `content_sha256`.
+4. No test upload. The next legitimate upload, whenever it occurs, must get a `content_sha256`.
+   Stage 7's `licence_docs_unhashed` covers licences. If no upload occurs during the window, mark
+   it PENDING.
 
 **Stop if:**
 - the merge is not clean;
@@ -146,8 +148,9 @@ These were rehearsed on the harness, including after a used and undone backfill.
    - `bindings` ≥ `licence_docs_in_scope`.
    - `recent_uploads_24h_unhashed` is informational: uploads from before the hash-only publish
      count there.
-2. Business check: the next real staff approval still works as on Release A, with one
-   `application.approved` row. An upload is hashed.
+2. Behaviour, observed only (no test records). The next legitimate approval works as on Release
+   A, with one `application.approved` row, and the next legitimate upload is hashed. If either does
+   not occur, mark it PENDING; never manufacture it.
 
 **Stop if:** any expected value differs.
 
