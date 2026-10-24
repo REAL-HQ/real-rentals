@@ -8,7 +8,7 @@
 |---|---|---|---|---|---|
 | Release A | `release/m2-app-flags-off` `f8b2480f` | off | off | legacy approvals | approvals refused |
 | **Hash-only (new)** | `release/m2-app-hash-only` `7220bf34` | **on** | off | legacy approvals, identical to A | approvals refused (`positive_identity_required`), nothing written |
-| Release B | `release/m2-app-flags-on` `6ee81415` | on | on | must not be live before step 2 | verify identity, then approve |
+| Release B | `release/m2-app-flags-on` `393ec914` (fixture fix on `6ee81415`) | on | on | must not be live before step 2 | verify identity, then approve |
 
 The hash-only build is Release A plus one line, `DOCUMENT_CONTENT_SHA256_ENABLED = true`.
 - **Before step 3, approvals are unchanged.** The legacy refusals require *both* flags
@@ -26,7 +26,7 @@ The hash-only build is Release A plus one line, `DOCUMENT_CONTENT_SHA256_ENABLED
 **Release B finding:** Release B's own readiness chain fails at `document-registration.test.mjs`. Its
 fake Storage client has no `info()`, which hashing needs. The real `@supabase/storage-js` 2.118
 has `info()`, so production is not affected. The hash-only branch carries the one-fixture fix.
-Release B needs the same fix before its own publish approval.
+Fixed on Release B in `393ec914` (owner-approved; fixture only, 17 assertions unchanged). Release B is green on typecheck, build, full `npm test`, agreement-evidence 11/11 and `test:m2` with the live backfill rehearsal.
 
 ## Sequence (approval interruption: only from step 3 to the owner's resume)
 
