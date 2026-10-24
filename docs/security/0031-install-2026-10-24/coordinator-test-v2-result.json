@@ -1,0 +1,5 @@
+{"file":"docs/security/0031-package-v2/coordinator-access-test-v2.sql","sha256":"b54ba51cb679dfb718eecb5e70be3ec5c64ea3dc550ffc57e9b31f58f7fc4fd5","executions":1,
+ "pre":{"system_identifier":"7642734024280108049","current_user":"postgres","superuser":false,"containment_policies":5,"policies_total":170,"storage_objects_policies":25,"evidence_rows":1,"audit_log_rows":887,"drizzle_receipts":23,"supabase_receipts":105,"user_roles_count":6,"user_roles_md5":"c1d4c1c0541c1c32049229c32d96698e","coordinator_rows":0,"user_roles_triggers":0},
+ "result":"RRCOORD_RESULT (statement aborted by design)",
+ "counts":{"is_staff":true,"is_manager":false,"applications":0,"identity_reviews":0,"identity_documents":0,"agreements":0,"identity_objects":0,"other_documents":20,"vehicles":10},
+ "post":{"user_roles_count":6,"user_roles_md5":"c1d4c1c0541c1c32049229c32d96698e","coordinator_rows":0,"containment_policies":5,"policies_total":170,"storage_objects_policies":25,"policies_other_md5":"1af2586798205b36524a0dea1a5e026e","evidence_rows":1,"audit_log_rows":887,"drizzle_receipts":23,"supabase_receipts":105}}

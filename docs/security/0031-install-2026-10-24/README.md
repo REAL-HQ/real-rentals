@@ -14,3 +14,7 @@ with `../0031-package-v2/request-v2-guard3.sql` (`1acaf722…7c32`, package `d10
 | Fingerprint (`fingerprint-before.json`, `after-install.json`) | policies 165 → 170, storage policies 24 → 25, audit rows 886 → 887; every other value identical, including roles, memberships, grants, functions, columns, triggers and other policies |
 | Owner / Manager / driver access (`access-before-after.json`) | identical before and after |
 | Coordinator test (`coordinator-test-result.txt`) | aborted with `permission denied for schema private` before counting; nothing committed; role state unchanged; not retried |
+| Coordinator test v2 (`coordinator-test-v2-result.json`), one approved run | aborted by design; simulated Coordinator is staff, not manager; **0** applications, identity reviews, identity documents, agreements and identity files; keeps 20 non-identity documents and 10 vehicles. Role table hash, policies, evidence and receipts unchanged |
+
+**Status: Security 0031 fully verified, 2026-10-24. Installation workstream closed.** Do not reinstall
+or modify the five policies; any change is a new, separately approved package.
