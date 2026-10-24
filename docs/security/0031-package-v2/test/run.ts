@@ -20,7 +20,9 @@ const DIR = "/tmp/rr0031v2", DATA = DIR + "/data", PORT = 55931;
 const sha = (b: string | Buffer) => createHash("sha256").update(b).digest("hex");
 const V1 = readFileSync(join(sec, "0031-package/0031_guarded_coordinator_containment.sql"), "utf8");
 const V2 = readFileSync(join(sec, "0031-package-v2/0031_guarded_coordinator_containment_v2.sql"), "utf8");
-const REQ_V2 = readFileSync(join(sec, "0031-package-v2/request-v2.sql"), "utf8");
+const REQ = readFileSync(join(sec, "0031-package-v2/request-v2-guard2.sql"), "utf8");
+// The superseded first guard, kept only to show the two bypasses were real.
+const REQ_OLD_GUARD = readFileSync(join(sec, "0031-package-v2/request-v2.sql"), "utf8");
 const REPLICA = readFileSync(join(here, "replica.sql"), "utf8");
 const PREFLIGHT = readFileSync(join(sec, "0031-preflight-readonly.sql"), "utf8");
 const TRAILER = "\n\n-- source: POST /v1/projects/:ref/database/query\n-- user: pat:disposable\n-- date: 2026-10-24T00:00:00.000Z";
@@ -64,11 +66,11 @@ function testCopy(pkg: string, p: { sysid: string; cat: string }, inject?: strin
 }
 function guarded(pkg: string) {
   const f = join(DIR, "pkg.sql"); writeFileSync(f, pkg);
-  const guard = execFileSync("python3", ["-I", join(sec, "0031-direct-route/gen-guard.py"), f], { encoding: "utf8" });
+  const guard = execFileSync("python3", ["-I", join(sec, "0031-direct-route/gen-guard2.py"), f], { encoding: "utf8" });
   return guard + pkg;
 }
-async function send(text: string) {
-  try { await db.unsafe(text + TRAILER); return "ok"; } catch (e: any) { return String(e.message); }
+async function send(text: string, trailer = TRAILER) {
+  try { await db.unsafe(text + trailer); return "ok"; } catch (e: any) { return String(e.message); }
 }
 async function state() {
   const [r] = await db.unsafe(`SELECT
@@ -196,40 +198,66 @@ try {
   r = await send(guarded(v2));
   check("T7b", "a pending migration applied first (receipt 24) is refused by JOURNAL_DRIFT_OR_REPLAY", r.includes("JOURNAL_DRIFT_OR_REPLAY") && unchanged(b, await state()), { result: r });
 
-  // 8. The real v2 artifacts: the request is guard + exact package; on a foreign database the
-  //    guard passes and the package refuses the target; a one-byte change is refused by the guard.
+  // 8. The real request (guard v2 + exact v2 package). On this foreign database the guard
+  //    passes and the package refuses the target. Every tampering shape the reviewer found or
+  //    the guard claims to cover is refused before anything runs, and nothing it carried survives.
+  const gone = async (t: string) => (await db.unsafe(`SELECT to_regclass('public.${t}') IS NULL AS g`))[0].g;
+  const insideGuard = (req: string, sql: string) => req.slice(0, req.indexOf("\n") + 1) + sql + "\n" + req.slice(req.indexOf("\n") + 1);
+  const crTrailer = "\n\n-- source: POST /v1/projects/:ref/database/query\n-- user: x\rCREATE TABLE public.inj_tail(id int);\n-- date: 2026-10-24T00:00:00.000Z";
   await fresh();
   b = await state();
-  r = await send(REQ_V2);
-  check("T8a", "real request-v2.sql: guard passes, package refuses this foreign database with TARGET_MISMATCH", r.includes("TARGET_MISMATCH") && unchanged(b, await state()), { result: r });
-  r = await send(REQ_V2.replace("IS TRUE OR private.is_staff() IS FALSE);\n\n-- Review", "IS TRUE OR private.is_staff() IS NOT FALSE);\n\n-- Review"));
-  check("T8b", "real request with one weakened policy byte: refused by RRGUARD_BYTES_MISMATCH before anything runs", r.includes("RRGUARD_BYTES_MISMATCH"), { result: r });
-  r = await send("CREATE TABLE public.injected_before(id int);\n" + REQ_V2);
-  check("T8c", "real request with a statement placed before the guard: refused, and the prepended statement rolled back", r.includes("RRGUARD_TEXT_BEFORE") && (await db.unsafe("SELECT to_regclass('public.injected_before') IS NULL AS gone"))[0].gone, { result: r });
+  r = await send(REQ);
+  check("T8a", "real request: guard passes, package refuses this foreign database with TARGET_MISMATCH", r.includes("TARGET_MISMATCH") && unchanged(b, await state()), { result: r });
+  r = await send(REQ.replace("IS TRUE OR private.is_staff() IS FALSE);\n\n-- Review", "IS TRUE OR private.is_staff() IS NOT FALSE);\n\n-- Review"));
+  check("T8b", "one weakened policy byte in the package: RRGUARD_BYTES_MISMATCH", r.includes("RRGUARD_BYTES_MISMATCH"), { result: r });
+  r = await send("CREATE TABLE public.inj_prefix(id int);\n" + REQ);
+  check("T8c", "statement placed before the guard: RRGUARD_GUARD_TEXT_CHANGED, rolled back", r.includes("RRGUARD_GUARD_TEXT_CHANGED") && await gone("inj_prefix"), { result: r });
+  r = await send(insideGuard(REQ, "CREATE TABLE public.inj_before(id int);"));
+  check("T8d", "reviewer bypass A (statement inside the guard text): RRGUARD_GUARD_TEXT_CHANGED, rolled back", r.includes("RRGUARD_GUARD_TEXT_CHANGED") && await gone("inj_before"), { result: r });
+  r = await send(REQ.replace("tail !~ '^(", "tail ~ '^("));
+  check("T8e", "guard logic edited (trailer check inverted): RRGUARD_GUARD_TEXT_CHANGED", r.includes("RRGUARD_GUARD_TEXT_CHANGED"), { result: r });
+  r = await send(REQ, crTrailer);
+  check("T8f", "reviewer bypass B (carriage return in the trailer, then a statement): RRGUARD_TRAILING_TEXT, rolled back", r.includes("RRGUARD_TRAILING_TEXT") && await gone("inj_tail"), { result: r });
+  r = await send(REQ + "SELECT 1;\n");
+  check("T8g", "statement after the package: RRGUARD_TRAILING_TEXT", r.includes("RRGUARD_TRAILING_TEXT"), { result: r });
+  r = await send(REQ.replace("END $rrguard$;\n", "END $rrguard$;\nSELECT 1;\n"));
+  check("T8h", "statement between guard and package: RRGUARD_GUARD_TEXT_CHANGED", r.includes("RRGUARD_GUARD_TEXT_CHANGED"), { result: r });
+  // The same two bypasses against the superseded guard, which accepted them (so the fix matters).
+  r = await send(insideGuard(REQ_OLD_GUARD, "CREATE TABLE public.inj_old_a(id int);"));
+  check("B1", "control: the superseded guard let bypass A through (reached the package: TARGET_MISMATCH)", r.includes("TARGET_MISMATCH"), { result: r });
+  r = await send(REQ_OLD_GUARD, crTrailer);
+  check("B2", "control: the superseded guard let bypass B through (reached the package: TARGET_MISMATCH)", r.includes("TARGET_MISMATCH"), { result: r });
+  // With a package copy that targets this database, both bypasses are refused by guard v2 and nothing commits.
+  await fresh();
+  b = await state();
+  r = await send(insideGuard(guarded(v2), "CREATE TABLE public.inj_before(id int);"));
+  const ra = r;
+  r = await send(guarded(v2), crTrailer);
+  check("T8i", "end to end with a matching copy: both bypasses refused, no policies, no evidence, no injected tables", ra.includes("RRGUARD_GUARD_TEXT_CHANGED") && r.includes("RRGUARD_TRAILING_TEXT") && unchanged(b, await state()) && await gone("inj_before") && await gone("inj_tail"), { a: ra, b: r });
+  check("T4f", "weakened policy definition in the package refused by the inner checksum", (await (async () => { await fresh(); return send(guarded(testCopy(V2, p).replace("USING (private.is_manager() IS TRUE OR private.is_staff() IS FALSE);\n\n-- Review", "USING (true);\n\n-- Review"))); })()).includes("SQL_CHECKSUM_MISMATCH"), {});
 
-  // Negative controls: weaken one guard in a v2 test copy and show the matching test would fail.
+  // Negative controls: weaken one guard in a v2 test copy and record exactly what happens.
+  // N1 shows the catalog comparison is load-bearing (the mutation is accepted without it).
+  // N2 and N3 show those checks are backed by a second layer (a different guard still refuses).
   const weaken = (pkg: string, from: string, to: string) => { if (pkg.split(from).length !== 2) throw new Error("control anchor missing: " + from); return pkg.replace(from, to); };
-  const controls: Array<[string, string, (s: string) => string, string | null, string]> = [
-    ["N1", "catalog comparison removed", s => weaken(s, "IF after_catalog IS DISTINCT FROM before_catalog THEN RAISE EXCEPTION 'POST_UNEXPECTED_CATALOG_CHANGE'; END IF;", ""), `CREATE POLICY "aaa Injected Policy" ON storage.objects FOR SELECT TO authenticated USING (true);`, "POST_UNEXPECTED_CATALOG_CHANGE"],
-    ["N2", "partial-install check removed", s => weaken(s, "THEN RAISE EXCEPTION 'PARTIAL_INSTALL'; END IF;", "THEN NULL; END IF;"), "rerun", "PARTIAL_INSTALL"],
-    ["N3", "journal check removed", s => weaken(s, "::jsonb THEN RAISE EXCEPTION 'JOURNAL_DRIFT_OR_REPLAY'; END IF;", "::jsonb THEN NULL; END IF;"), "drift", "JOURNAL_DRIFT_OR_REPLAY"],
-    ["N4", "policy definition weakened (inner checksum must refuse)", s => weaken(s, "USING (private.is_manager() IS TRUE OR private.is_staff() IS FALSE);\n\n-- Review", "USING (true);\n\n-- Review"), null, "SQL_CHECKSUM_MISMATCH"],
+  const controls: Array<[string, string, (s: string) => string, string | null, string, string]> = [
+    ["N1", "catalog comparison removed: an injected mixed-case storage policy is accepted", s => weaken(s, "IF after_catalog IS DISTINCT FROM before_catalog THEN RAISE EXCEPTION 'POST_UNEXPECTED_CATALOG_CHANGE'; END IF;", ""), `CREATE POLICY "aaa Injected Policy" ON storage.objects FOR SELECT TO authenticated USING (true);`, "ok", "load-bearing"],
+    ["N2", "partial-install check removed: a re-run is refused only by the catalog-drift guard", s => weaken(s, "THEN RAISE EXCEPTION 'PARTIAL_INSTALL'; END IF;", "THEN NULL; END IF;"), "rerun", "SCHEMA_POLICY_GRANT_DRIFT", "backed by a second layer"],
+    ["N3", "pre-DDL journal check removed: journal drift is refused only by the post-DDL journal check", s => weaken(s, "::jsonb THEN RAISE EXCEPTION 'JOURNAL_DRIFT_OR_REPLAY'; END IF;", "::jsonb THEN NULL; END IF;"), "drift", "POST_JOURNAL_CHANGED", "backed by a second layer"],
   ];
-  for (const [id, label, mutate, scenario, expected] of controls) {
+  for (const [id, label, mutate, scenario, expected, kind] of controls) {
     await fresh();
     const copy = mutate(testCopy(V2, p, scenario && scenario.startsWith("CREATE") ? scenario : undefined));
     if (scenario === "rerun") await send(guarded(testCopy(V2, p)));
     if (scenario === "drift") await db.unsafe("INSERT INTO drizzle.__drizzle_migrations (id, hash, created_at) VALUES (24, 'synthetic', 1792545492197)");
     const res = await send(guarded(copy));
-    const detected = !res.includes(expected) ? true : false;
-    // N4 is the opposite shape: the weakened copy must still be refused by the inner checksum.
-    const ok = id === "N4" ? res.includes(expected) : detected;
-    check(id, id === "N4" ? `${label}: refused with ${expected}` : `${label}: the guarded expectation (${expected}) no longer holds, so the test detects the weakened guard (got: ${res.slice(0, 60)})`, ok, { result: res });
+    check(id, `${label} (${kind}; got ${res.slice(0, 40)})`, expected === "ok" ? res === "ok" : res.includes(expected), { result: res });
   }
 } finally {
   if (db) await db.end();
   await admin.end();
   try { asTester("pg_ctl", ["-D", DATA, "-m", "fast", "stop"]); } catch {}
+  rmSync(DIR, { recursive: true, force: true });
 }
 writeFileSync(join(here, "results.json"), JSON.stringify({ postgres: "17.6", results }, null, 1) + "\n");
 const failed = results.filter(r => !r.pass);

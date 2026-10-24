@@ -6,7 +6,7 @@
    "name": "cluster collation en_US.UTF-8: old normalisation reorders storage.objects policies, corrected one keeps them",
    "pass": true,
    "detail": {
-    "sysid": "7700200757550629605",
+    "sysid": "7700203084066518572",
     "cat": "71f1883b3eb908c8e8d403ab4439870157d6d9ebb8664cf21efff36b29c43cb9",
     "coll": "en_US.UTF-8",
     "old_keeps_order": false,
@@ -299,7 +299,7 @@
   },
   {
    "id": "T8a",
-   "name": "real request-v2.sql: guard passes, package refuses this foreign database with TARGET_MISMATCH",
+   "name": "real request: guard passes, package refuses this foreign database with TARGET_MISMATCH",
    "pass": true,
    "detail": {
     "result": "TARGET_MISMATCH"
@@ -307,7 +307,7 @@
   },
   {
    "id": "T8b",
-   "name": "real request with one weakened policy byte: refused by RRGUARD_BYTES_MISMATCH before anything runs",
+   "name": "one weakened policy byte in the package: RRGUARD_BYTES_MISMATCH",
    "pass": true,
    "detail": {
     "result": "RRGUARD_BYTES_MISMATCH"
@@ -315,15 +315,86 @@
   },
   {
    "id": "T8c",
-   "name": "real request with a statement placed before the guard: refused, and the prepended statement rolled back",
+   "name": "statement placed before the guard: RRGUARD_GUARD_TEXT_CHANGED, rolled back",
    "pass": true,
    "detail": {
-    "result": "RRGUARD_TEXT_BEFORE"
+    "result": "RRGUARD_GUARD_TEXT_CHANGED"
    }
   },
   {
+   "id": "T8d",
+   "name": "reviewer bypass A (statement inside the guard text): RRGUARD_GUARD_TEXT_CHANGED, rolled back",
+   "pass": true,
+   "detail": {
+    "result": "RRGUARD_GUARD_TEXT_CHANGED"
+   }
+  },
+  {
+   "id": "T8e",
+   "name": "guard logic edited (trailer check inverted): RRGUARD_GUARD_TEXT_CHANGED",
+   "pass": true,
+   "detail": {
+    "result": "RRGUARD_GUARD_TEXT_CHANGED"
+   }
+  },
+  {
+   "id": "T8f",
+   "name": "reviewer bypass B (carriage return in the trailer, then a statement): RRGUARD_TRAILING_TEXT, rolled back",
+   "pass": true,
+   "detail": {
+    "result": "RRGUARD_TRAILING_TEXT"
+   }
+  },
+  {
+   "id": "T8g",
+   "name": "statement after the package: RRGUARD_TRAILING_TEXT",
+   "pass": true,
+   "detail": {
+    "result": "RRGUARD_TRAILING_TEXT"
+   }
+  },
+  {
+   "id": "T8h",
+   "name": "statement between guard and package: RRGUARD_GUARD_TEXT_CHANGED",
+   "pass": true,
+   "detail": {
+    "result": "RRGUARD_GUARD_TEXT_CHANGED"
+   }
+  },
+  {
+   "id": "B1",
+   "name": "control: the superseded guard let bypass A through (reached the package: TARGET_MISMATCH)",
+   "pass": true,
+   "detail": {
+    "result": "TARGET_MISMATCH"
+   }
+  },
+  {
+   "id": "B2",
+   "name": "control: the superseded guard let bypass B through (reached the package: TARGET_MISMATCH)",
+   "pass": true,
+   "detail": {
+    "result": "TARGET_MISMATCH"
+   }
+  },
+  {
+   "id": "T8i",
+   "name": "end to end with a matching copy: both bypasses refused, no policies, no evidence, no injected tables",
+   "pass": true,
+   "detail": {
+    "a": "RRGUARD_GUARD_TEXT_CHANGED",
+    "b": "RRGUARD_TRAILING_TEXT"
+   }
+  },
+  {
+   "id": "T4f",
+   "name": "weakened policy definition in the package refused by the inner checksum",
+   "pass": true,
+   "detail": {}
+  },
+  {
    "id": "N1",
-   "name": "catalog comparison removed: the guarded expectation (POST_UNEXPECTED_CATALOG_CHANGE) no longer holds, so the test detects the weakened guard (got: ok)",
+   "name": "catalog comparison removed: an injected mixed-case storage policy is accepted (load-bearing; got ok)",
    "pass": true,
    "detail": {
     "result": "ok"
@@ -331,7 +402,7 @@
   },
   {
    "id": "N2",
-   "name": "partial-install check removed: the guarded expectation (PARTIAL_INSTALL) no longer holds, so the test detects the weakened guard (got: SCHEMA_POLICY_GRANT_DRIFT)",
+   "name": "partial-install check removed: a re-run is refused only by the catalog-drift guard (backed by a second layer; got SCHEMA_POLICY_GRANT_DRIFT)",
    "pass": true,
    "detail": {
     "result": "SCHEMA_POLICY_GRANT_DRIFT"
@@ -339,18 +410,10 @@
   },
   {
    "id": "N3",
-   "name": "journal check removed: the guarded expectation (JOURNAL_DRIFT_OR_REPLAY) no longer holds, so the test detects the weakened guard (got: POST_JOURNAL_CHANGED)",
+   "name": "pre-DDL journal check removed: journal drift is refused only by the post-DDL journal check (backed by a second layer; got POST_JOURNAL_CHANGED)",
    "pass": true,
    "detail": {
     "result": "POST_JOURNAL_CHANGED"
-   }
-  },
-  {
-   "id": "N4",
-   "name": "policy definition weakened (inner checksum must refuse): refused with SQL_CHECKSUM_MISMATCH",
-   "pass": true,
-   "detail": {
-    "result": "SQL_CHECKSUM_MISMATCH"
    }
   }
  ]
