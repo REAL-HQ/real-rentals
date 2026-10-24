@@ -198,6 +198,17 @@ const pass = name => { console.log('PASS ' + name); passed++; };
     pass('without the historical SQL, no registration control is offered');
   }
 
+  // 6b. Registration is offered only where the database would accept it.
+  {
+    const facts = base(); facts.agreements[0] = { ...facts.agreements[0], status: 'sent', signedAt: null, archived: false, signedTerms: false, sha256: null };
+    const h = harness(facts); await h.start(); await h.set('Vehicle', CAR); await h.go('Signed Agreement');
+    assert.match(h.text(), /Agreement Not Signed/); assert.equal(h.button('Register'), undefined); assert.equal(h.field('Terms Checked'), undefined);
+    const legacyFacts = base(); legacyFacts.agreements[0].signedTerms = false;
+    const l = harness(legacyFacts); await l.start(); await l.set('Vehicle', CAR); await l.go('Signed Agreement');
+    assert.ok(l.button('Register As Legacy Agreement')); assert.equal(l.button('Register Signed Original'), undefined); assert.equal(l.field('Paper Original'), undefined);
+    pass('an open unsigned agreement offers no registration; a legacy agreement offers only the legacy route');
+  }
+
   // 7. A billing read failure is shown, never treated as reviewed.
   {
     const h = harness(base(), { billing: async () => { throw new Error('This renter has more than one active Stripe subscription; resolve it in Stripe before recording'); } });

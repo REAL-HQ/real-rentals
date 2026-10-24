@@ -101,6 +101,10 @@ export function RecordRentalDialog({driver,vehicles,onClose,onRecorded}:{driver:
  const index=STEPS.findIndex(([k])=>k===step), current=view?.steps[index];
  const vehicle=vehicles.find(v=>v.id===vehicleId), h=facts?.historical;
  const open=facts?.agreements.filter(a=>!a.voided&&a.status!=='voided')??[];
+ // Registration is offered only where the database would accept it: a paper original when no
+ // agreement is open, or the one open, signed and archived eSign agreement that has no signed terms.
+ const canPaper=!!facts?.historicalInstalled&&!h&&open.length===0;
+ const legacy=facts?.historicalInstalled&&!h&&open.length===1&&open[0].status==='signed'&&open[0].archived&&!open[0].signedTerms?open[0]:null;
  const blockersFor=(key:StepKey)=>view?.steps.find(s=>s.key===key)?.blockers??[];
 
  const body=()=>{
@@ -125,24 +129,23 @@ export function RecordRentalDialog({driver,vehicles,onClose,onRecorded}:{driver:
     <div className="font-medium">eSign Agreement · {a.voided||a.status==='voided'?'Voided':a.status==='signed'?'Signed':'Awaiting Signature'}</div>
     <div className="text-muted-foreground">{vehicleLabel(vehicles.find(v=>v.id===a.vehicleId))} · Signed {a.signedAt??'—'} · {a.archived?'Archived':'Not Archived'} · {a.signedTerms?'Signed Rental Terms':'No Signed Rental Terms'} · SHA-256 {short(a.sha256)}</div>
     {!a.voided&&a.status==='signed'&&!a.archived&&<ModalButton className="mt-2" disabled={!!action} onClick={()=>run('archive',()=>archive({data:{agreementId:a.id}}),()=>void refresh())}>Archive Signed Agreement</ModalButton>}
-    {!a.voided&&a.status==='signed'&&a.archived&&!a.signedTerms&&facts.historicalInstalled&&!h&&open.length===1&&<ModalButton className="mt-2" disabled={!!action||!registerReady}
-     onClick={()=>run('legacy',()=>registerLegacy({data:{operationId:ops.register,paperOperationId:ops.paper,agreementId:a.id,...amounts}}),()=>{setOps({register:crypto.randomUUID(),paper:crypto.randomUUID()});void refresh();})}>Register As Legacy Agreement</ModalButton>}
    </div>)}</div>}
    {h?<div className="space-y-2">
     <p className="text-sm">Not yet used by a rental. Void it if it is wrong; the original stays preserved and the void is audited.</p>
     <ModalButton disabled={!!action} onClick={()=>setVoidOpen(true)}>Void Historical Agreement</ModalButton>
-   </div>:facts.historicalInstalled&&<div className="space-y-3">
-    <p className="text-sm">Register a signed original: confirm the start, weekly rate and deposit written in it (also used in Rental Details) and summarize the terms you checked.</p>
+   </div>:(canPaper||legacy)&&<div className="space-y-3">
+    <p className="text-sm">{legacy?'Register this eSign agreement as staff-verified: the server copies its archived PDF byte for byte and keeps its signing date. Confirm the start, weekly rate and deposit written in it':'Register a signed paper original: confirm the start, weekly rate and deposit written in it'} (also used in Rental Details) and summarize the terms you checked.</p>
     <FormGrid cols={2}>
-     <Field label="Paper Original"><select className={inputCls} value={documentId} onChange={e=>{setDocument(e.target.value);setSignedOn(originals.find(o=>o.id===e.target.value)?.signed_on??'');}}>
-      <option value="">{originals.length?'Select Uploaded Original':'No Verified Originals Uploaded'}</option>{originals.map(o=><option key={o.id} value={o.id}>{o.file_name??'Original'} · {o.signed_on??'Undated'} · {short(o.content_sha256)}</option>)}</select></Field>
-     <Field label="Date Written On Agreement"><input className={inputCls} type="date" value={signedOn} onChange={e=>setSignedOn(e.target.value)}/></Field>
+     {canPaper&&<Field label="Paper Original"><select className={inputCls} value={documentId} onChange={e=>{setDocument(e.target.value);setSignedOn(originals.find(o=>o.id===e.target.value)?.signed_on??'');}}>
+      <option value="">{originals.length?'Select Uploaded Original':'No Verified Originals Uploaded'}</option>{originals.map(o=><option key={o.id} value={o.id}>{o.file_name??'Original'} · {o.signed_on??'Undated'} · {short(o.content_sha256)}</option>)}</select></Field>}
+     {canPaper&&<Field label="Date Written On Agreement"><input className={inputCls} type="date" value={signedOn} onChange={e=>setSignedOn(e.target.value)}/></Field>}
      <Field label="Verified Start (With UTC Offset)"><input className={inputCls} placeholder="2026-08-01T10:00:00-04:00" value={startedAt} onChange={e=>setStart(e.target.value)}/></Field>
      <Field label="Weekly Rate"><input className={inputCls} value={rate} onChange={e=>setRate(e.target.value)}/></Field>
      <Field label="Deposit (Blank If Unknown)"><input className={inputCls} value={deposit} onChange={e=>setDeposit(e.target.value)}/></Field>
     </FormGrid>
     <Field label="Terms Checked"><textarea className={inputCls} rows={3} value={terms} onChange={e=>setTerms(e.target.value)}/></Field>
-    <ModalButton variant="primary" disabled={!!action||!registerReady||!documentId||!signedOn} onClick={()=>run('register',()=>registerPaper({data:{operationId:ops.register,applicationId:driver.id,vehicleId,documentId,signedOn,...amounts}}),()=>{setOps({register:crypto.randomUUID(),paper:crypto.randomUUID()});void refresh();})}>Register Signed Original</ModalButton>
+    {legacy?<ModalButton variant="primary" disabled={!!action||!registerReady} onClick={()=>run('legacy',()=>registerLegacy({data:{operationId:ops.register,paperOperationId:ops.paper,agreementId:legacy.id,...amounts}}),()=>{setOps({register:crypto.randomUUID(),paper:crypto.randomUUID()});void refresh();})}>Register As Legacy Agreement</ModalButton>
+     :<ModalButton variant="primary" disabled={!!action||!registerReady||!documentId||!signedOn} onClick={()=>run('register',()=>registerPaper({data:{operationId:ops.register,applicationId:driver.id,vehicleId,documentId,signedOn,...amounts}}),()=>{setOps({register:crypto.randomUUID(),paper:crypto.randomUUID()});void refresh();})}>Register Signed Original</ModalButton>}
    </div>}
    <PaperAgreements applicationId={driver.id}/>
    <Blockers codes={blockersFor('agreement')}/></div>;

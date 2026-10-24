@@ -72,7 +72,7 @@ assert.equal(m.suites.find(x=>x.kind==='scenario groups').checks,1);
 // The stepped RecordRentalDialog's recovery invariants moved from validation-recovery to the dialog suite.
 const dialog=m.suites.find(x=>x.kind==='dialog scenarios');
 assert.equal(dialog.file,'scripts/record-rental-dialog.test.cjs');
-assert.equal(dialog.checks,8);
+assert.equal(dialog.checks,9);
 assert.match(dialog.stdout,/exactly one RPC, actor bound, no client evidence, in-flight and unresolved locks/);
 assert.match(dialog.stdout,/unready driver: per-step explanations, registration locked, Save disabled and no RPC/);
 assert.equal(m.suites.find(x=>x.kind==='evidence assertions').checks,31);
