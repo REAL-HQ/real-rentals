@@ -68,7 +68,13 @@ const built={status:0,signal:null,stdout:identity.stdout,stderr:progress};
 test('specific successful esbuild progress accepted',()=>checkOutput(identity,built));
 test('additional error after progress rejected',()=>assert.throws(()=>checkOutput(identity,{...built,stderr:progress+'\nerror: failure'})));
 assert.equal(m.suites.filter(x=>x.kind==='application assertions').reduce((a,x)=>a+x.checks,0),130);
-assert.equal(m.suites.find(x=>x.kind==='scenario groups').checks,2);
+assert.equal(m.suites.find(x=>x.kind==='scenario groups').checks,1);
+// The stepped RecordRentalDialog's recovery invariants moved from validation-recovery to the dialog suite.
+const dialog=m.suites.find(x=>x.kind==='dialog scenarios');
+assert.equal(dialog.file,'scripts/record-rental-dialog.test.cjs');
+assert.equal(dialog.checks,8);
+assert.match(dialog.stdout,/exactly one RPC, actor bound, no client evidence, in-flight and unresolved locks/);
+assert.match(dialog.stdout,/unready driver: per-step explanations, registration locked, Save disabled and no RPC/);
 assert.equal(m.suites.find(x=>x.kind==='evidence assertions').checks,31);
 const driversPanel=m.application['src/components/admin/DriversPanel.tsx'];
 test('DriversPanel pin records the RC3–RC7 justification',()=>{

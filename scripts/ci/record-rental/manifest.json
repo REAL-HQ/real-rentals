@@ -7,27 +7,51 @@
     "scripts/esign-immutable-archive-v1.test.cjs": "eb099d17a8824e4ce6f236cccb739440aceb59406db6ae9b367922da0419e35b",
     "scripts/record-rental-closeout.test.cjs": "42d2f9eaa775651bfd6af3429fbaa3746b48352ac916927a4c48fb82b7c7a5cf",
     "scripts/record-rental-document-reader.test.cjs": "bb8ea2c04f8c365a3fd1ea127c0e0f273dbb0a30ff7de1858bba967b7bb0f580",
-    "scripts/record-rental-integration.test.cjs": "b6d7c0139b4823e7c46aa434a89b7fbf8cdb3150b6b47e9678e919f262e8bec0",
+    "scripts/record-rental-integration.test.cjs": {
+      "sha256": "a21446735e740eaae1ebd6888f746afca54bc9f79cfd2cda556d2344eab5fa4a",
+      "justification": "Previous pin b6d7c0139b4823e7c46aa434a89b7fbf8cdb3150b6b47e9678e919f262e8bec0. 3106b348 adds the ensureRecordRentalResources double: it must run after the Manager check and never while the flag is false. Output and the 15 checks are unchanged. Reviewed in the Record Rental integration branch."
+    },
     "scripts/record-rental-operation.test.cjs": "e96a69019de56c115aa765ccd18b7c1234f91bdebad3e4ad84c570a3565fe0ad",
     "scripts/record-rental-runtime.test.cjs": "6235b2a624f83fa6bea651081cba301b4194a45261a1f08e16474778a1b45472",
     "scripts/record-rental-schema-compatibility.test.cjs": "4f3aae132afb7526cf2248086852b203d598bb50400e31b735b8c89443f4ec3a",
     "scripts/record-rental-scope-v5.test.cjs": "e12f1198d2c91d3a6d314d4ea7706798e16715c8f745e3bf4a17b9725379fc33",
-    "scripts/record-rental-validation-recovery.test.cjs": "cc3022723adebf893bf99e892ab7741413f2d7ef8254a70b4c13fe58951d734c",
+    "scripts/record-rental-validation-recovery.test.cjs": {
+      "sha256": "217148457b3b5e7c38d5c77c3d6dc3ce762cbc581f3a28d5849156e5473b6681",
+      "justification": "Previous pin cc3022723adebf893bf99e892ab7741413f2d7ef8254a70b4c13fe58951d734c. 25fef656 moves the RecordRentalDialog probe to scripts/record-rental-dialog.test.cjs (the stepped dialog cannot be driven as a single form); the RecordedRentalCloseout probe is unchanged. Reviewed in the Record Rental integration branch."
+    },
     "src/components/admin/DriversPanel.tsx": {
       "sha256": "9de411a0688ed07506027c812fa5725cdafe7c99305fb28430b62a555f5287d2",
       "justification": "Active filter counts ongoing rentals while Record Rental is uninstalled, closure and reopen stay on the activity list, and a Coordinator cannot leave Closed. Previous pin 8398c7106b21430d8dfb8a1ed656aa7f906fd3510235a207b3bc4c961e1d765e is the driver application status file. Previous pin be3df1f098627676c97871148c30943bfe7b5151b65f87b5c5d2c1a46a8fcc17 is the card-on-file Drivers list. Driver Application Status adds Approved and Closed to the status menu, records a closure reason in audit_log, and leaves Record Rental disabled. Previous pin 9c6cc91670d353b955c4337e8db9eed5a76c355c2036aaad04c9b6c09b13e07f is the RC2 file (7e3e6eb6). The release line changed it in RC3\\u2013RC7, and these bytes have been stable since RC7. RC3: 0ebddd0f and 67348401 (Documents Expiring #74) merged at 9e5cb3fd; e25ec28b (Approved, Not Yet Renting #79) merged at 8ca05d51; RC3 tip e2d63191 is ee9e319f052a1340560bbb884629b313df393a75492845b96d7fea81524d2796. RC4: 8ef7f8c5 (Driver Statement #88) merged at a53f837f; tip ff680f20c8e9378d233227861a2430501c2a5f657e88f830f378838de32cb452. RC5: b175d63c (Stalled Applications #91) merged at d3be19d9; RC5 tip c00fb23c and RC6 tip 70a87524 are de0ed9ee88f2d81f874a137b0be8f3fb242747873a6dc4b5847064d2c92ec8e7. RC6 did not change the file. RC7: 17807108 and cff56f56 (Application Quick Review #108) merged at 146028a7; RC7 tip e43227d2 is ac07e5d3bca423e1777512d9bbc0571512621730a795318a3125aed58347b5f7. RC8\\u2013RC11, including the #126 merge 69ecfeec, kept that hash. #126 updated the closeout suite hash only. Previous pin ac07e5d3bca423e1777512d9bbc0571512621730a795318a3125aed58347b5f7 is that RC7 file. RC12 changed the Stalled list on Applications: the read is capped, a failed load is not shown as an empty list, and Contact Status stays on the row. Previous pin 6ec0db9d7880731dc34de808b1cd12fbcd662429225feaa24c98e669ee26f1af is the #205 stalled-list file. RC16 integrates the passed dark Drivers sections onto this list. #258 (54e90f4c) changed only Tailwind classes for the Drivers phone layout. The record-rental gate is unchanged. This entry now requires these exact bytes. #250 adds the staff card-link controls on top of the #258 phone layout."
     },
-    "src/components/admin/RecordRentalDialog.tsx": "234aa8fcdce5ee01c21d0876283da3e11f069a7b053ab8eaac023d2f38bd1dd5",
+    "src/components/admin/RecordRentalDialog.tsx": {
+      "sha256": "d4f8926d6885f43a7f0c5040933de2fdd0a3990202d5682e91b7129d0fc81415",
+      "justification": "Previous pin 234aa8fcdce5ee01c21d0876283da3e11f069a7b053ab8eaac023d2f38bd1dd5. 25fef656 turns the dialog into six steps (Driver & Vehicle, Licence, Signed Agreement, Rental Details, Billing, Review) with plain-language blockers. It still opens only when RECORD_RENTAL_CONTRACT_ENABLED is true, and the submit path is unchanged (recordExistingRentalV3, recovery saved before the request, no client evidence id). Its recovery invariants moved to scripts/record-rental-dialog.test.cjs, pinned as a suite. Reviewed in the Record Rental integration branch."
+    },
     "src/components/admin/RecordedRentalCloseout.tsx": "03287cad99ffb26aae0744197458d05d8ecb2776ea237db4af79f2138d94c06c",
     "src/lib/esign-immutable-archive-v1.server.ts": "efe249d19586bd5f8c2cfba5b1cc792888f249b6a558aee906f58070f62043d6",
     "src/lib/record-rental-contract.ts": "519f536b846c9ec47be234da44aab8c661bc574ff206871e76592bae561734c0",
-    "src/lib/record-rental-document-reader.server.ts": "a42ef84b1c5c9f020652f4d5a369673e82c4a8955c4b44361108adf2a372c45f",
+    "src/lib/record-rental-document-reader.server.ts": {
+      "sha256": "1809238ecad56f5638f7bd00bc1f07018e3c51b94689da24dc5dafb2277cf469",
+      "justification": "Previous pin a42ef84b1c5c9f020652f4d5a369673e82c4a8955c4b44361108adf2a372c45f. 1f341899 accepts the v1 signed-terms block (a signed start DATE with time zone) and then requires the staff handover instant to fall on that local date; exact-instant terms are verified as before. Archive binding and hash checks are unchanged. Reviewed in the Record Rental integration branch."
+    },
     "src/lib/record-rental-operation.server.ts": "6f53b3250b160c4e8a6d2be038391d55e6f68da58187f2fe5e778d990ddcdec9",
-    "src/lib/record-rental-readers.server.ts": "8fd4dc9849fce2b6bb9525ac92d8f486904701ba1f305d7a0a6f980fd5545dba",
+    "src/lib/record-rental-readers.server.ts": {
+      "sha256": "f258f89a6547847fbe714c65b2eeeada54dbed30769d8502db5bba0e4906819a",
+      "justification": "Previous pin 8fd4dc9849fce2b6bb9525ac92d8f486904701ba1f305d7a0a6f980fd5545dba. 1f341899 adds readHistorical: a registered staff-verified paper agreement, its immutable-v1 binding re-checked and its bytes re-hashed, refused when an eSign agreement is also open. 541042bb ignores voided agreements and accepts only a legacy-eSign registration's own agreement (proposed/record-rental-historical/04). Read-only, staff client only. Reviewed in the Record Rental integration branch."
+    },
     "src/lib/record-rental-recovery.ts": "a58d7338c16384f92f6345c6d5190652ed849f31be5f4160e05dfcd160278de2",
-    "src/lib/record-rental-runtime.server.ts": "8905acd02161f6fa7822fccbfe23e10740552aa4ae4cec14fb30119eb06e400b",
-    "src/lib/record-rental-transport.server.ts": "1762071545760c15b0859ec13ca14e9d93d58d2f2a8b1ac10fb3c4981d794823",
-    "src/lib/record-rental.functions.ts": "f57639a3582312995c24a12db1d9d853da5abf20dc2416aa99bc4bb1673e3ed7",
+    "src/lib/record-rental-runtime.server.ts": {
+      "sha256": "186ad9cfc15983f3c8c74b8a4d0d8313dcd25cbad3bd96a5ab6aace1d254f8cd",
+      "justification": "Previous pin 8905acd02161f6fa7822fccbfe23e10740552aa4ae4cec14fb30119eb06e400b. 1f341899 adds the evidence-gateway issuer option, the write-once archival resources and the historical reader behind configured.historicalAgreements (HISTORICAL_AGREEMENTS_V1_ENABLED is false). No admin client; the staff client carries every read. Reviewed in the Record Rental integration branch."
+    },
+    "src/lib/record-rental-transport.server.ts": {
+      "sha256": "874862dd66d18d8773b32cfa9f628ef6787c2113859c291b32ce948dcfc473b6",
+      "justification": "Previous pin 1762071545760c15b0859ec13ca14e9d93d58d2f2a8b1ac10fb3c4981d794823. 1f341899 replaces caller-supplied SQL text with a fixed operation list (snapshot, issue, bind, identity, recover, licenseSnapshot, verifyLicense), each bound to its database role, and adds the HMAC-signed evidence gateway (proposed/record-rental-gateway) for the same fixed operations. The gateway key is server-held; scripts/record-rental-client-bundle.test.mjs proves it is absent from client chunks. Reviewed in the Record Rental integration branch."
+    },
+    "src/lib/record-rental.functions.ts": {
+      "sha256": "9ff6e1c52ea92996a0981090eabd75ff4d9800a8744fdf39ad74dcf9b5cc28aa",
+      "justification": "Previous pin f57639a3582312995c24a12db1d9d853da5abf20dc2416aa99bc4bb1673e3ed7. 3106b348 connects the runtime: after the unchanged disabled-flag check, the Manager check and the bearer check, the handler builds the server-owned resources (ensureRecordRentalResources) before taking the transport. No new input, no write, no admin client; scripts/record-rental-integration.test.cjs asserts that nothing (database, role or resources) runs while disabled and that resources are built only after the Manager check. Reviewed in the Record Rental integration branch."
+    },
     "src/lib/rentals.functions.ts": "fe50277a7c5b70c74124bae9d1aacb1cc2350cc38f70efd2762cde14dc508b6a"
   },
   "ciFiles": [
@@ -39,13 +63,16 @@
     "scripts/ci/record-rental/network-check.mjs"
   ],
   "lockedFiles": {
-    "package.json": "a161734dd7e04a7c9b18f80c0e97f255fc548aeb296738ce0b70ca173b8eb390",
+    "package.json": {
+      "sha256": "9ba9f3bd603c4f7484acfc25eb9beabfd50402a4f027580820ea5a37d97e3af4",
+      "justification": "Previous pin a161734dd7e04a7c9b18f80c0e97f255fc548aeb296738ce0b70ca173b8eb390. Scripts only; dependencies, lifecycle hooks and bun.lock are unchanged. 67b62664 adds dark-flag coverage, webhook, M2 and Record Rental unit tests to npm test; 3106b348, 98e69b63, 2351601f, 1f341899, 541042bb, 6e8c9397 and 25fef656 add the test:record-rental-*, test:m2 and test:m2-window1-drill entries (local harness only). Reviewed in the Record Rental integration branch."
+    },
     "bun.lock": "4935d5c63f3801ae82a9a0ab2769c7c4a6a862fbb0517ab626b6f2c72f152345"
   },
   "suites": [
     {
       "file": "scripts/record-rental-integration.test.cjs",
-      "sha256": "b6d7c0139b4823e7c46aa434a89b7fbf8cdb3150b6b47e9678e919f262e8bec0",
+      "sha256": "a21446735e740eaae1ebd6888f746afca54bc9f79cfd2cda556d2344eab5fa4a",
       "checks": 15,
       "kind": "application assertions",
       "stdout": "PASS disabled before any database or role read\nPASS Owner uses exact authenticated RPC\nPASS Manager allowed\nPASS coordinator denied\nPASS driver denied\nPASS anonymous denied\nPASS account switch rejects request binding\nPASS missing RPC no fallback or retry\nPASS unknown and zero deposits distinct\nPASS timestamp must contain time and offset\nPASS recovery survives reload exact operation\nPASS recovery isolated from other actor and applicant\nPASS forged storage binding rejected\nPASS storage error prevents operation persistence\nPASS disabled UI and no Stripe/payment import path\n{\"pass\":15,\"fail\":0}"
@@ -69,7 +96,7 @@
       "sha256": "22fe5b33beb802b8fb0f9efb67baa16844951e95d15ba2a9441718598cd07e76",
       "checks": 46,
       "kind": "application assertions",
-      "stdout": "THE SIX IDENTITY ENDPOINTS ARE MANAGER AND ABOVE\n\nadminListDriverDocuments\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    a driver is refused (Forbidden)\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\ncreateDocumentUploadUrl\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    the driver who OWNS this application is still allowed\n  PASS    a signed-in stranger with no grant and no application is refused (No application on file)\n\nconfirmDocumentUpload\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    the driver who OWNS this application is still allowed\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\nupdateDocumentMeta\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    a driver is refused (Forbidden)\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\nsetDocumentReview\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    a driver is refused (Forbidden)\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\nreissueApplicantLink\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    a driver is refused (Forbidden)\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\nTHE DRIVER'S OWN ACCESS IS NOT COLLATERAL DAMAGE\n  PASS  a driver can still ask for an upload url for their own application (allowed)\n  PASS    but not for somebody else's (No application on file)\n  PASS  a driver can still confirm their own upload (allowed)\n  PASS    and a path outside their own folder is still refused (Invalid upload path)\n\nTHE UPLOAD GATE IS TIERED, NOT FLAT\n  PASS  both upload endpoints use the staff-only-if-staff gate, so an applicant keeps their own path\n  PASS  and no identity endpoint in this module settles for requireStaff any more\n\nTHE REVIEWED AGREEMENT CORRECTION FROM PR #25 IS UNTOUCHED\n  PASS  getAgreementPdf still carries its Manager gate\n  PASS  and reissueApplicantLink checks the tier before it mints a link\n\nWHAT WAS NOT TIGHTENED, DELIBERATELY\n  PASS  acknowledging an applicant stays Coordinator work \u2014 it reads no document and mints no link\n  PASS  and a Coordinator keeps the handoff inspection permission Bookings R1 gave them\n\nall identity authorization checks pass",
+      "stdout": "THE SIX IDENTITY ENDPOINTS ARE MANAGER AND ABOVE\n\nadminListDriverDocuments\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    a driver is refused (Forbidden)\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\ncreateDocumentUploadUrl\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    the driver who OWNS this application is still allowed\n  PASS    a signed-in stranger with no grant and no application is refused (No application on file)\n\nconfirmDocumentUpload\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    the driver who OWNS this application is still allowed\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\nupdateDocumentMeta\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    a driver is refused (Forbidden)\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\nsetDocumentReview\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    a driver is refused (Forbidden)\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\nreissueApplicantLink\n  PASS  an Owner is allowed\n  PASS  a Manager is allowed\n  PASS    a Coordinator is refused (Forbidden)\n  PASS      and nothing was written\n  PASS    a driver is refused (Forbidden)\n  PASS    a signed-in stranger with no grant and no application is refused (Forbidden)\n\nTHE DRIVER'S OWN ACCESS IS NOT COLLATERAL DAMAGE\n  PASS  a driver can still ask for an upload url for their own application (allowed)\n  PASS    but not for somebody else's (No application on file)\n  PASS  a driver can still confirm their own upload (allowed)\n  PASS    and a path outside their own folder is still refused (Invalid upload path)\n\nTHE UPLOAD GATE IS TIERED, NOT FLAT\n  PASS  both upload endpoints use the staff-only-if-staff gate, so an applicant keeps their own path\n  PASS  and no identity endpoint in this module settles for requireStaff any more\n\nTHE REVIEWED AGREEMENT CORRECTION FROM PR #25 IS UNTOUCHED\n  PASS  getAgreementPdf still carries its Manager gate\n  PASS  and reissueApplicantLink checks the tier before it mints a link\n\nWHAT WAS NOT TIGHTENED, DELIBERATELY\n  PASS  acknowledging an applicant stays Coordinator work — it reads no document and mints no link\n  PASS  and a Coordinator keeps the handoff inspection permission Bookings R1 gave them\n\nall identity authorization checks pass",
       "stderrKind": "identity-esbuild-progress"
     },
     {
@@ -81,10 +108,10 @@
     },
     {
       "file": "scripts/record-rental-validation-recovery.test.cjs",
-      "sha256": "cc3022723adebf893bf99e892ab7741413f2d7ef8254a70b4c13fe58951d734c",
-      "checks": 2,
+      "sha256": "217148457b3b5e7c38d5c77c3d6dc3ce762cbc581f3a28d5849156e5473b6681",
+      "checks": 1,
       "kind": "scenario groups",
-      "stdout": "PASS RecordRentalDialog multiple invalid -> partial -> valid, preserved draft, exactly one valid RPC, actor binding, in-flight and unresolved locks\nPASS RecordedRentalCloseout multiple invalid -> partial -> valid, preserved draft, exactly one valid RPC, actor binding, in-flight and unresolved locks"
+      "stdout": "PASS RecordedRentalCloseout multiple invalid -> partial -> valid, preserved draft, exactly one valid RPC, actor binding, in-flight and unresolved locks"
     },
     {
       "file": "scripts/record-rental-evidence.test.cjs",
@@ -92,11 +119,21 @@
       "checks": 31,
       "kind": "evidence assertions",
       "stdout": "PASS 31 mocked evidence checks; no DB replay/rollback claim"
+    },
+    {
+      "file": "scripts/record-rental-dialog.test.cjs",
+      "sha256": "51d3f793b69d4737451a546aec4ca290f740291629f8f0d7c87836a80f396701",
+      "checks": 8,
+      "kind": "dialog scenarios",
+      "stdout": "PASS every blocker has a Title Case title and a plain-language next step\nPASS unready driver: per-step explanations, registration locked, Save disabled and no RPC\nPASS eSign path: licence preview+confirm by fingerprint, billing must be checked, exactly one RPC, actor bound, no client evidence, in-flight and unresolved locks\nPASS historical: vehicle, start and rate fixed by the registration; void refuses without a reason and sends the trimmed reason\nPASS legacy eSign: explained, registration needs confirmed values, a retry reuses the same operation ids\nPASS without the historical SQL, no registration control is offered\nPASS billing failure blocks with an explanation\nPASS no CSS text-transform; Title Case labels\n8 passed"
     }
   ],
   "evidenceCandidate": "7af91c401c50d7d81e2155003f1b71e9c513182a",
   "evidence": {
-    "src/lib/record-rental-evidence.server.ts": "64009c1b9998df0d3654c346658c1d430559da1d2ea847772c04ca7261c6e3e2",
+    "src/lib/record-rental-evidence.server.ts": {
+      "sha256": "835dc2ba565d1ff77147cc2b94a98ca34fc6c42562e163e0bfdec3974d28871c",
+      "justification": "Previous pin 64009c1b9998df0d3654c346658c1d430559da1d2ea847772c04ca7261c6e3e2. 1f341899 passes the staff-entered startedAt to the agreement reader so a date-only signed-terms block can be matched to the handover instant. No new input source, issuer or write. Reviewed in the Record Rental integration branch."
+    },
     "scripts/record-rental-evidence.test.cjs": "39eea6eac431b5cdd07b8fb7d74c1e013e241fc545c80d8c7c2c243eea2056d2",
     "proposed/evidence-v1.sql": "c27b49a46e55381eacbfc6f1bb2c246c9ee2c73ce549172d81d44bbadac9b665",
     "tests/database.py": "f45373110966b1d7c9e034ec6a0ab0803587ee19c93d0afdfab33480541e2ad1"
