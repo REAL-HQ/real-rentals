@@ -38,8 +38,8 @@ until authorization, so Release B is held back. The cost is that uploads made wh
    against the audit row.
 5. Approvals resume.
 
-If the backfill re-run is unwanted, a third build could be prepared: Release A with only the
-content-hash flag on, so uploads are hashed while identity verification stays off.
+**Superseded by `M2-WINDOW2-CUTOVER.md`:** the hash-only build (`release/m2-app-hash-only`) is
+published inside Window 1, so no backfill re-run is needed. The forward-fix route is built and rehearsed.
 
 ## Forward-fix recovery (after real use)
 
