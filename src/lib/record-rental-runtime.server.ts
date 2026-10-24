@@ -1,15 +1,24 @@
-import {authenticatedPrincipal,authenticatedConsumption,trustedIssuer,type CallerClient,type IssuerSql} from './record-rental-transport.server';
-import {readEsign,readExistingSubscription,type SubscriptionGateway} from './record-rental-readers.server';
+import {authenticatedPrincipal,authenticatedConsumption,trustedIssuer,type CallerClient,type EvidenceGateway,type IssuerSql} from './record-rental-transport.server';
+import {readEsign,readExistingSubscription,readHistorical,type SubscriptionGateway} from './record-rental-readers.server';
 import {boundSignedTermsV2} from './record-rental-document-reader.server';
 import type {RecordOperationTransport} from './record-rental-operation.server';
 import {z} from 'zod';
 export type RentalContext={supabase:CallerClient;userId:string;claims:Record<string,unknown>};
 type Link={driverId:string;account:string;environment:'live'|'sandbox';currency:string;subscriptionId:string|null;customer:string};
 export interface RecordResources {
- sql:IssuerSql;
+ // The evidence issuer: the rr_evidence_transport TCP login, or the signed evidence gateway.
+ sql:IssuerSql|EvidenceGateway;
  provider:SubscriptionGateway;
  linkage(context:RentalContext,applicationId:string):Promise<Link>;
  download(context:RentalContext,bucket:string,path:string):Promise<Uint8Array>;
+ // Evidence archival only (record-rental-archive.server.ts): read a document's stored
+ // object, and write a new immutable-v1 content address once, never overwriting.
+ // Whether the historical-agreements SQL is installed (HISTORICAL_AGREEMENTS_V1_ENABLED).
+ historicalAgreements?:boolean;
+ archive:{
+  read(bucket:string,path:string):Promise<Uint8Array>;
+  writeOnce(bucket:string,path:string,bytes:Uint8Array,contentType:string):Promise<{error:unknown}>;
+ };
 }
 let resources:RecordResources|undefined;
 // Server bootstrap only. No endpoint accepts these capabilities, credentials or verified facts.
@@ -20,27 +29,37 @@ export function configureRecordRentalV2(value:RecordResources) {
 export function createRecordRentalTransportV2(context:RentalContext,token:string,configured:RecordResources):RecordOperationTransport {
  const session=z.string().uuid().parse(context.claims.session_id);
  const authorize=authenticatedPrincipal(context.supabase,context.userId,session,token);
- const trusted=trustedIssuer(configured.sql,authorize);
+ const trusted=trustedIssuer(configured.sql,authorize,context.supabase);
  let current:{app:string;link:Link}|undefined;
  const linkage=async(app:string)=>{
   const link=await configured.linkage(context,app);current={app,link};return link;
  };
- const artifacts={verify:async(agreementId:string,documentId:string)=>{
+ const artifacts={verify:async(agreementId:string,documentId:string,startedAt?:string)=>{
   const [ag,doc]=await Promise.all([
    context.supabase.from('agreements').select('*').eq('id',agreementId).single(),
    context.supabase.from('documents').select('*').eq('id',documentId).single()]);
   if(ag.error||doc.error||!ag.data||!doc.data)throw new Error('Signed evidence unavailable');
   const bytes=await configured.download(context,doc.data.storage_bucket,doc.data.storage_path);
-  return boundSignedTermsV2(ag.data,doc.data,bytes);
+  return boundSignedTermsV2(ag.data,doc.data,bytes,startedAt);
  }};
  return {issuer:trusted.issuer,recover:trusted.recover,consume:authenticatedConsumption(context.supabase),linkage,
-  readers:{authorize,identity:trusted.identity,agreement:(app,vehicle)=>readEsign(context.supabase,artifacts,app,vehicle),
+  readers:{authorize,identity:trusted.identity,agreement:async(app,vehicle,startedAt)=>{
+   // A registered historical (paper) agreement is the evidence when one exists; the
+   // reader refuses if an eSign agreement is also pending, rather than choosing.
+   const historical=configured.historicalAgreements
+    ?await readHistorical(context.supabase,(b,p)=>configured.download(context,b,p),app,vehicle):null;
+   return historical ?? readEsign(context.supabase,artifacts,app,vehicle,startedAt);
+  },
    linkedCustomer:async app=>{if(!current||current.app!==app)throw new Error('Linkage unavailable');return current.link.customer},
    subscription:async id=>{
     if(!current||current.link.subscriptionId!==id)throw new Error('Subscription linkage unavailable');
     const {link,app}=current;
     return readExistingSubscription(configured.provider,id,{account:link.account,environment:link.environment,customer:link.customer,applicationId:app,driverId:link.driverId},Date.now);
    }}};
+}
+export function getRecordResourcesV2():RecordResources {
+ if(!resources) throw new Error('Record Rental trusted resources are not installed');
+ return resources;
 }
 export function getRecordRentalTransportV2(context:RentalContext,token:string) {
  if(!resources) throw new Error('Record Rental trusted resources are not installed');
@@ -59,7 +78,7 @@ export async function finalizeRecordArchiveV2(context:RentalContext,token:string
  if(doc.error||!doc.data||doc.data.storage_bucket!=='rental-agreements')throw new Error('Document unavailable');
  const {preserveCompletedPdfV1}=await import('./esign-immutable-archive-v1.server');
  const archived=await preserveCompletedPdfV1(store,doc.data.id,bytes,ag.data.sha256);
- const trusted=trustedIssuer(configured.sql,authorize);
+ const trusted=trustedIssuer(configured.sql,authorize,context.supabase);
  await trusted.bindDocument(doc.data.id,doc.data,archived.sha256,archived.path,agreementId);
  await authorize();
  return archived;

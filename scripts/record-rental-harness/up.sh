@@ -15,7 +15,7 @@ pkill -f "postgrest $D" 2>/dev/null || true; pkill -f "record-rental-harness/[p]
 if ! psql "$B/postgres?sslmode=disable" -Atc 'select 1' >/dev/null 2>&1; then
   rm -rf $D; mkdir -p $D; chown 65534:65534 $D
   $R $PGBIN/initdb -D $D/data -U postgres -A trust >/dev/null
-  $R $PGBIN/pg_ctl -D $D/data -o "-p 55462 -k /tmp -c listen_addresses=127.0.0.1" -l $D/log start >/dev/null; sleep 2
+  setsid $R $PGBIN/pg_ctl -D $D/data -o "-p 55462 -k /tmp -c listen_addresses=127.0.0.1" -l $D/log start >/dev/null < /dev/null; sleep 2
 fi
 psql "$B/postgres?sslmode=disable" -qc "drop database if exists rr with (force)" -c "create database rr"
 for r in anon authenticated service_role authenticator supabase_admin supabase_storage_admin supabase_auth_admin rr_evidence_transport rr_evidence_issuer rr_approval_executor rr_record_executor; do
@@ -31,18 +31,32 @@ ln -sfn "$ROOT/node_modules" $D/packet/node_modules
 cp scripts/record-rental-harness/apply.mjs $D/packet/rr-apply.mjs
 (cd $D/packet && RR_HARNESS_DB_URL="$U" node rr-apply.mjs "${RR_HARNESS_LAST_ORD:-206}")
 
-# Transport login as proposed/record-rental-transport: issuer membership only, SET ROLE, never inherited.
+# Transport login as proposed/record-rental-transport: issuer and approval-executor memberships, SET ROLE only, never inherited.
 psql "$U" -q -v ON_ERROR_STOP=1 <<'SQL'
 CREATE ROLE rr_evidence_transport LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'harness-transport-only';
 -- Grants only the roles the installed steps have created (a partial install stops early).
 DO $$ DECLARE r text; BEGIN
- FOREACH r IN ARRAY ARRAY['rr_evidence_issuer'] LOOP
+ FOREACH r IN ARRAY ARRAY['rr_evidence_issuer','rr_approval_executor'] LOOP
   IF to_regrole(r) IS NOT NULL THEN EXECUTE format('GRANT %I TO rr_evidence_transport WITH INHERIT FALSE, SET TRUE', r); END IF;
  END LOOP; END $$;
 GRANT CONNECT ON DATABASE rr TO rr_evidence_transport;
 GRANT CONNECT ON DATABASE rr TO authenticator;
 INSERT INTO storage.buckets(id, name, public) VALUES ('rental-agreements','rental-agreements',false),('driver-docs','driver-docs',false) ON CONFLICT DO NOTHING;
 SQL
+
+# Historical agreements (proposed/record-rental-historical) on top of the full packet and
+# the paper-agreements proposal it reuses. RR_HARNESS_HISTORICAL=0 leaves them out.
+if [ "${RR_HARNESS_LAST_ORD:-206}" = 206 ] && [ "${RR_HARNESS_HISTORICAL:-1}" != 0 ]; then
+  psql "$U" -q -v ON_ERROR_STOP=1 -f $D/packet/proposed/paper-agreements-v1.sql >/dev/null
+  for f in proposed/record-rental-historical/0*.sql; do case "$f" in *rollback*) continue;; esac
+    psql "$U" -q -v ON_ERROR_STOP=1 -f "$f" >/dev/null; done
+  echo "historical agreements installed"
+  # The signed evidence gateway (proposed/record-rental-gateway) with a harness-only key.
+  psql "$U" -q -v ON_ERROR_STOP=1 -f proposed/record-rental-gateway/01-evidence-gateway-v1.sql >/dev/null
+  psql "$U" -q -v ON_ERROR_STOP=1 -v gateway_key_hex=$(printf 'record-rental-harness-gateway-key-not-real' | sha256sum | cut -c1-64) \
+    -f proposed/record-rental-gateway/02-set-gateway-key.sql >/dev/null
+  echo "evidence gateway installed"
+fi
 
 cat > $D/pgrst.conf <<C
 db-uri = "postgresql://authenticator:harness-authenticator@127.0.0.1:55462/rr?sslmode=disable"

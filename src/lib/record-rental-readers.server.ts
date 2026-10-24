@@ -4,10 +4,10 @@ const uuid=z.string().uuid(), hash=z.string().regex(/^[a-f0-9]{64}$/);
 const instant=z.string().datetime({offset:true});
 // This is an immutable signed-terms resolver, not request metadata or current application rates.
 export interface SignedArtifactReader {
- verify(agreementId:string,documentId:string):Promise<{version:string;sha256:string;bodySha256:string;
+ verify(agreementId:string,documentId:string,startedAt?:string):Promise<{version:string;sha256:string;bodySha256:string;
   applicationId:string;driverId:string;vehicleId:string;effectiveAt:string;weeklyCents:number;currency:string}>;
 }
-export async function readEsign(client:CallerClient, artifacts:SignedArtifactReader, applicationId:string, vehicleId:string) {
+export async function readEsign(client:CallerClient, artifacts:SignedArtifactReader, applicationId:string, vehicleId:string, startedAt?:string) {
  const rows=await client.from('agreements').select('id,application_id,vehicle_id,status,signed_at,voided_at,archive_status,completed_document_id,sha256,body_sha256')
   .eq('application_id',applicationId).eq('vehicle_id',vehicleId).eq('status','signed').limit(2);
  if(rows.error || !Array.isArray(rows.data) || rows.data.length!==1) throw new Error('Signed agreement unavailable or ambiguous');
@@ -20,7 +20,7 @@ export async function readEsign(client:CallerClient, artifacts:SignedArtifactRea
   storage_bucket:z.literal('rental-agreements'),storage_path:z.string().min(1)}).parse(docResult.data);
  const evidence=z.object({version:z.string().min(1),sha256:hash,bodySha256:hash,applicationId:uuid,driverId:uuid,
   vehicleId:uuid,effectiveAt:instant,weeklyCents:z.number().int().positive().safe(),currency:z.string().regex(/^[a-z]{3}$/)})
-  .parse(await artifacts.verify(ag.id,doc.id));
+  .parse(await artifacts.verify(ag.id,doc.id,startedAt));
  if(doc.id!==ag.completed_document_id || ag.application_id!==applicationId || ag.vehicle_id!==vehicleId || doc.driver_id!==applicationId ||
   evidence.applicationId!==applicationId || evidence.vehicleId!==vehicleId || evidence.sha256!==doc.content_sha256 ||
   evidence.sha256!==ag.sha256 || evidence.bodySha256!==ag.body_sha256) throw new Error('Signed artifact mismatch');
@@ -49,4 +49,40 @@ export async function readExistingSubscription(gateway:SubscriptionGateway, id:s
  return {...link,subscription:sub.id,currency:item.price.currency,unitAmount:item.price.unit_amount,quantity:1,
   interval:'week',intervalCount:1,status:'active',nextDue:item.current_period_end?new Date(item.current_period_end*1000).toISOString():null,
   observedAt:new Date(observed).toISOString(),expiresAt:new Date(observed+300000).toISOString()};
+}
+// A staff-verified historical (paper) agreement registered for this driver, or null.
+// The registration and its immutably bound original come from the database; the bytes
+// are re-hashed here. Never an eSign event: kind 'paper', verification 'paper-registered'.
+// signedAt is the start of the signing DAY in America/New_York, because a paper original
+// carries a date, not an instant; the database requires exactly that value.
+export async function readHistorical(client:CallerClient, download:(bucket:string,path:string)=>Promise<Uint8Array>,
+ applicationId:string, vehicleId:string) {
+ const res=await client.rpc('historical_agreement_for_record_v1',{_application_id:uuid.parse(applicationId)});
+ if(res.error) throw new Error('Historical agreement unavailable');
+ if(res.data===null) return null;
+ const h=z.object({historicalAgreementId:uuid,status:z.literal('registered'),verification:z.literal('staff_verified'),
+  applicationId:uuid,vehicleId:uuid,documentId:uuid,documentSha256:hash,signedOn:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  rentalStart:z.string().min(1),weeklyCents:z.number().int().positive().safe(),depositCents:z.number().int().nonnegative().safe().nullable(),
+  currency:z.literal('usd'),driverUserId:uuid,rentalId:z.null(),
+  document:z.object({id:uuid,bucket:z.literal('rental-agreements'),path:z.string(),sha256:hash,source:z.literal('paper'),
+   integrity:z.object({sha256:hash,version:hash,agreement:z.null(),application:uuid,driver:uuid,path:z.string()}).passthrough()})}).passthrough().parse(res.data);
+ if(h.applicationId!==applicationId) throw new Error('Historical agreement unavailable');
+ if(h.vehicleId!==vehicleId) throw new Error('The registered historical agreement names a different vehicle');
+ // Two agreements for one rental is a contradiction to resolve by voiding one, never to pick from.
+ const pending=await client.from('agreements').select('id').eq('application_id',applicationId).is('rental_id',null).limit(1);
+ if(pending.error || !Array.isArray(pending.data)) throw new Error('Agreement state unavailable');
+ if(pending.data.length) throw new Error('This driver has both a historical agreement and an eSign agreement; void one before recording');
+ const d=h.document, sha=h.documentSha256;
+ if(d.id!==h.documentId || d.sha256!==sha || d.integrity.sha256!==sha || d.integrity.version!==sha ||
+  d.integrity.application!==applicationId || d.integrity.driver!==h.driverUserId ||
+  d.path!==`immutable-v1/${d.id}/${sha}.pdf` || d.integrity.path!==d.path) throw new Error('Historical agreement document binding mismatch');
+ const bytes=await download(d.bucket,d.path);
+ const {createHash}=await import('node:crypto');
+ if(createHash('sha256').update(bytes).digest('hex')!==sha) throw new Error('Historical agreement document integrity mismatch');
+ const {zonedDayStart}=await import('./signed-rental-terms');
+ const effectiveAt=new Date(Date.parse(h.rentalStart)).toISOString();
+ return {id:h.historicalAgreementId,kind:'paper',applicationId,driverId:h.driverUserId,vehicleId,
+  weeklyCents:h.weeklyCents,currency:h.currency,effectiveAt,signedAt:zonedDayStart(h.signedOn),
+  documentId:d.id,signedVersion:sha,currentVersion:sha,signedHash:sha,currentHash:sha,status:'signed',
+  verification:'paper-registered',provenanceId:h.historicalAgreementId};
 }

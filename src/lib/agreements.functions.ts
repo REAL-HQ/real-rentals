@@ -15,6 +15,8 @@ import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate
 import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
 import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
 import { SWAP_ENABLED } from "@/lib/record-numbers";
+import { SIGNED_RENTAL_TERMS_V1_ENABLED } from "@/lib/record-rental-live-path";
+import { signedRentalTermsV1 } from "@/lib/signed-rental-terms";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -740,7 +742,9 @@ export async function issueAgreement(
       vehicle_id: vehicleOverride ? prep.namedVehicleId : (app.vehicle_id ?? null),
       template_id: tpl.meta.id,
       body,
-      merge_data: merge,
+      merge_data: SIGNED_RENTAL_TERMS_V1_ENABLED
+        ? { ...merge, record_rental_terms_v1: signedRentalTermsV1(prep.startIso, prep.app.weekly_rent ?? prep.vehicle?.weekly_rate, merge.weekly_rate) }
+        : merge,
       status: "sent",
       token_hash: tokenHash,
       token_expires_at: expires,

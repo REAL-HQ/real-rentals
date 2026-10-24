@@ -25,8 +25,8 @@ try {
   await su.unsafe(readFileSync("proposed/record-rental-transport/01-transport-login.sql", "utf8"));
   const [shape] = await su`select r.rolcanlogin, r.rolinherit, r.rolsuper, r.rolbypassrls, r.rolconnlimit, (select count(*)::int from pg_auth_members m where m.member = r.oid) memberships
     from pg_roles r where rolname = 'rr_evidence_transport'`;
-  assert.deepEqual({ ...shape }, { rolcanlogin: true, rolinherit: false, rolsuper: false, rolbypassrls: false, rolconnlimit: 10, memberships: 1 });
-  console.log("PASS proposed SQL creates the reviewed login shape (issuer membership only, no password)");
+  assert.deepEqual({ ...shape }, { rolcanlogin: true, rolinherit: false, rolsuper: false, rolbypassrls: false, rolconnlimit: 10, memberships: 2 });
+  console.log("PASS proposed SQL creates the reviewed login shape (issuer and approval-executor memberships, SET only, no password)");
 
   await assert.rejects(async () => { const c = login("anything"); try { await c`select 1`; } finally { await c.end(); } }, /password authentication failed|authentication/i);
   console.log("PASS a login with no password set cannot sign in");
@@ -46,10 +46,12 @@ try {
   await assert.rejects(async () => { const c = login(password + "x"); try { await c`select 1`; } finally { await c.end(); } }, /authentication/i);
   console.log("PASS a wrong password is refused");
   const bad = login(password);
-  await assert.rejects(() => bad.begin((tx) => tx.unsafe("SET LOCAL ROLE rr_approval_executor")), /permission denied/);
+  for (const role of ["service_role", "authenticated", "postgres", "rr_record_executor"])
+    await assert.rejects(() => bad.begin((tx) => tx.unsafe(`SET LOCAL ROLE ${role}`)), /permission denied/);
   await assert.rejects(() => bad`select count(*) from public.applications`, /permission denied/);
+  await assert.rejects(() => bad`select private.license_snapshot_v1(gen_random_uuid())`, /permission denied/);
   await bad.end();
-  console.log("PASS the login cannot become rr_approval_executor and has no table access of its own");
+  console.log("PASS the login cannot become any other role and, before narrowing, has no table or function access of its own");
 } finally {
   await su.end();
 }

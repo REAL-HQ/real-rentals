@@ -1,0 +1,75 @@
+PROPOSED. Not applied on this branch: src/lib/esign.server.ts is pinned to the
+published branch by scripts/agreement-evidence.test.cjs, so changing it needs
+explicit Owner approval (and that pin updated in the same reviewed change).
+
+Why: M2 step 19 (private.finalized_archive_document_v1) forbids moving a finalized
+eSign document, and private.bind_document_integrity_v1 binds only the address
+immutable-v1/<document>/<sha256>.pdf. So the eSign v1 archive (behind
+SIGNED_ARCHIVE_V1_ENABLED, still false) must write the completed PDF straight to
+that address; Record Rental then binds it in place. Without this, no new eSign
+agreement can become Record Rental evidence. Live behaviour is unchanged while the
+flag stays false. The two eSign archive tests are updated to the new layout; with
+the patch applied they pass (36/36). The acceptance test's new-renter fixture
+writes exactly what this produces.
+
+Apply: git apply proposed/record-rental-historical/03-esign-immutable-v1-archive.patch
+
+diff --git a/scripts/archive-finalization.test.cjs b/scripts/archive-finalization.test.cjs
+index 7c638e33..a99d58b9 100644
+--- a/scripts/archive-finalization.test.cjs
++++ b/scripts/archive-finalization.test.cjs
+@@ -8,7 +8,7 @@ function fixture(mode='normal'){
+  if(action==='update'&&value.archive_status==='archived'){if(mode==='db-error')return {data:null,error:{message:'denied'}};if(mode==='zero')return {data:null,error:null};if(!canonical){canonical={...ag,...value};if(mode==='conflict')canonical.sha256='f'.repeat(64);if(mode==='wrong-application')canonical.application_id='other';if(mode==='wrong-pointer')canonical.completed_document_id='other';if(mode==='changed-version')canonical.body='changed';if(['lost','matching','conflict'].includes(mode))return {data:null,error:mode==='lost'?{message:'lost response'}:null};return {data:canonical,error:null}}return {data:null,error:null}}
+  if(action==='update'){errors.push(value.archive_error);return {error:null}}return {data:canonical,error:null}}
+  return c}};
+- const m={exports:{}};const req=k=>({'@/lib/record-rental-live-path':{SIGNED_ARCHIVE_V1_ENABLED:true},'@/lib/esign-immutable-archive-v1.server':{preserveCompletedPdfV1:async(store,id,b,h)=>{const key=`completed-v1/${id}/${h}.pdf`;await store.upload(key,b,{upsert:false});const r=await store.download(key);assert.equal(await hash(r.data),h)}},'@/lib/signed-archive-protection.server':{assertSignedArchiveBytes:async(d,a,b)=>{assert.equal(await hash(b),a.sha256);assert.equal(d.id,a.completed_document_id);assert.equal(d.id,a.document_id)}},'@/lib/audit.server':{logAudit:async()=>{}},'@/lib/esign-pdf.server':{sha256Hex:hash,renderCompletedPdf:async a=>new Uint8Array(Buffer.from(a.body))}}[k]);
++ const m={exports:{}};const req=k=>({'@/lib/record-rental-live-path':{SIGNED_ARCHIVE_V1_ENABLED:true},'@/lib/esign-immutable-archive-v1.server':{preserveCompletedPdfV1:async(store,id,b,h,ns)=>{const key=`${ns}/${id}/${h}.pdf`;await store.upload(key,b,{upsert:false});const r=await store.download(key);assert.equal(await hash(r.data),h)}},'@/lib/signed-archive-protection.server':{assertSignedArchiveBytes:async(d,a,b)=>{assert.equal(await hash(b),a.sha256);assert.equal(d.id,a.completed_document_id);assert.equal(d.id,a.document_id)}},'@/lib/audit.server':{logAudit:async()=>{}},'@/lib/esign-pdf.server':{sha256Hex:hash,renderCompletedPdf:async a=>new Uint8Array(Buffer.from(a.body))}}[k]);
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:m.exports,module:m,require:req,crypto:crypto.webcrypto,Uint8Array,Blob,console:{error:()=>{}}});
+  return {run:(v=ag)=>m.exports.archiveDocument(admin,v,null),ag,docs,errors,get:()=>canonical};
+ }
+diff --git a/scripts/runtime-coordination.test.cjs b/scripts/runtime-coordination.test.cjs
+index 65f7dc1a..fc320de8 100644
+--- a/scripts/runtime-coordination.test.cjs
++++ b/scripts/runtime-coordination.test.cjs
+@@ -26,7 +26,7 @@ test('normal deletion cannot erase signed archives',()=>{assert.throws(()=>retai
+ test('completed eSign namespace uses content-addressed path',async()=>{const r=await archive({upload:async()=>({error:null}),download:async()=>({data:bytes,error:null})},id,bytes,hash,'completed-v1');assert.equal(r.path,`completed-v1/${id}/${hash}.pdf`);});
+ test('completed namespace download verifies content address',async()=>{await verify({id,content_sha256:hash,storage_path:`completed-v1/${id}/${hash}.pdf`},{document_id:id,completed_document_id:id,sha256:hash},bytes);});
+ test('completed namespace cannot be removed by generic queue',()=>{assert.throws(()=>retain('other',`completed-v1/${id}/${hash}.pdf`));});
+-function esignFixture(finalized=false, corrupt=false){let rendered=0,uploaded=0,inserted,final;const original={id,document_id:id,completed_document_id:id,sha256:hash,archive_status:'archived'};const doc={id,storage_bucket:'rental-agreements',storage_path:'legacy.pdf',content_sha256:hash};const store={upload:async(key,b,o)=>{uploaded++;assert.equal(o.upsert,false);assert.match(key,/^completed-v1\//);return {error:null};},download:async()=>({error:null,data:new Blob([corrupt?new Uint8Array([9]):bytes])})};const admin={storage:{from:()=>store},from:(table)=>{const chain={select:()=>chain,eq:()=>chain,neq:()=>chain,maybeSingle:async()=>({data:table==='agreements'?{id,body:'synthetic',application_id:id,...final}:inserted??doc,error:null}),single:async()=>({data:{id:inserted?.id},error:null}),insert:(v)=>{inserted=v;return chain;},update:(v)=>{if(table==='agreements')final=v;return chain;},then:(resolve)=>Promise.resolve({error:null}).then(resolve)};return chain;}};const m={exports:{}};const req=(key)=>({ '@/lib/record-rental-live-path':{SIGNED_ARCHIVE_V1_ENABLED:true},'@/lib/esign-immutable-archive-v1.server':{preserveCompletedPdfV1:archive},'@/lib/signed-archive-protection.server':{assertSignedArchiveBytes:verify},'@/lib/audit.server':{logAudit:async()=>{}},'@/lib/esign-pdf.server':{renderCompletedPdf:async()=>{rendered++;return bytes;},sha256Hex:async()=>hash} }[key]??require(key));const file=path.join(__dirname,'../src/lib/esign.server.ts');vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:m,exports:m.exports,require:req,Uint8Array,Blob,crypto:crypto.webcrypto,console});return {run:()=>m.exports.archiveDocument(admin,finalized?original:{id,body:'synthetic',archive_status:'pending',application_id:id},null),get:()=>({rendered,uploaded,inserted,final})};}
++function esignFixture(finalized=false, corrupt=false){let rendered=0,uploaded=0,inserted,final;const original={id,document_id:id,completed_document_id:id,sha256:hash,archive_status:'archived'};const doc={id,storage_bucket:'rental-agreements',storage_path:'legacy.pdf',content_sha256:hash};const store={upload:async(key,b,o)=>{uploaded++;assert.equal(o.upsert,false);assert.match(key,/^immutable-v1\//);return {error:null};},download:async()=>({error:null,data:new Blob([corrupt?new Uint8Array([9]):bytes])})};const admin={storage:{from:()=>store},from:(table)=>{const chain={select:()=>chain,eq:()=>chain,neq:()=>chain,maybeSingle:async()=>({data:table==='agreements'?{id,body:'synthetic',application_id:id,...final}:inserted??doc,error:null}),single:async()=>({data:{id:inserted?.id},error:null}),insert:(v)=>{inserted=v;return chain;},update:(v)=>{if(table==='agreements')final=v;return chain;},then:(resolve)=>Promise.resolve({error:null}).then(resolve)};return chain;}};const m={exports:{}};const req=(key)=>({ '@/lib/record-rental-live-path':{SIGNED_ARCHIVE_V1_ENABLED:true},'@/lib/esign-immutable-archive-v1.server':{preserveCompletedPdfV1:archive},'@/lib/signed-archive-protection.server':{assertSignedArchiveBytes:verify},'@/lib/audit.server':{logAudit:async()=>{}},'@/lib/esign-pdf.server':{renderCompletedPdf:async()=>{rendered++;return bytes;},sha256Hex:async()=>hash} }[key]??require(key));const file=path.join(__dirname,'../src/lib/esign.server.ts');vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:m,exports:m.exports,require:req,Uint8Array,Blob,crypto:crypto.webcrypto,console});return {run:()=>m.exports.archiveDocument(admin,finalized?original:{id,body:'synthetic',archive_status:'pending',application_id:id},null),get:()=>({rendered,uploaded,inserted,final})};}
+ test('existing eSign archive path finalizes content-addressed verified PDF',async()=>{const f=esignFixture();assert.equal(await f.run(),true);const v=f.get();assert.equal(v.rendered,1);assert.equal(v.uploaded,1);assert.equal(v.inserted.content_sha256,hash);assert.equal(v.final.document_id,v.final.completed_document_id);});
+ test('already finalized eSign archive verifies existing bytes without rerender/upload',async()=>{const f=esignFixture(true);assert.equal(await f.run(),true);assert.equal(f.get().rendered,0);assert.equal(f.get().uploaded,0);});
+ test('corrupt finalized eSign bytes refuse without replacing archive',async()=>{const f=esignFixture(true,true);await assert.rejects(f.run(),/hash mismatch/);assert.equal(f.get().uploaded,0);});
+diff --git a/src/lib/esign.server.ts b/src/lib/esign.server.ts
+index 9e4f1d5b..e58e754d 100644
+--- a/src/lib/esign.server.ts
++++ b/src/lib/esign.server.ts
+@@ -137,7 +137,9 @@ async function archiveCompletedV1(admin: any, ag: any, actor: Actor | null): Pro
+     const fileSha = await sha256Hex(pdf);
+     const identity = await sha256Hex(`completed-v1:${ag.id}:${fileSha}`);
+     let documentId: string = ag.document_id ?? `${identity.slice(0, 8)}-${identity.slice(8, 12)}-5${identity.slice(13, 16)}-a${identity.slice(17, 20)}-${identity.slice(20, 32)}`;
+-    const path = `completed-v1/${documentId}/${fileSha}.pdf`;
++    // Written once, straight to the content address Record Rental binds
++    // (bind_document_integrity_v1): M2 forbids relocating a finalized document later.
++    const path = `immutable-v1/${documentId}/${fileSha}.pdf`;
+     const bucket = admin.storage.from("rental-agreements");
+     await preserveCompletedPdfV1({
+       upload: (key, bytes, options) => bucket.upload(key, new Blob([bytes as BlobPart], { type: "application/pdf" }), options),
+@@ -145,7 +147,7 @@ async function archiveCompletedV1(admin: any, ag: any, actor: Actor | null): Pro
+         const r = await bucket.download(key);
+         return { error: r.error, data: r.data ? new Uint8Array(await r.data.arrayBuffer()) : null };
+       },
+-    }, documentId, pdf, fileSha, "completed-v1");
++    }, documentId, pdf, fileSha, "immutable-v1");
+     if (ag.document_id) {
+       const { data: current, error } = await admin.from("documents").select("id,storage_path,content_sha256").eq("id", documentId).maybeSingle();
+       if (error || !current || current.storage_path !== path || current.content_sha256 !== fileSha) throw new Error("Existing archive identity mismatch");
+@@ -224,7 +226,7 @@ async function archiveCompletedV1(admin: any, ag: any, actor: Actor | null): Pro
+ }
+ 
+ export async function archiveDocument(admin: any, ag: any, actor: Actor | null): Promise<boolean> {
+-  // completed-v1 layout is off until Dolmar turns the flag on. Today's archives
++  // The v1 (immutable-v1) layout is off until Dolmar turns the flag on. Today's archives
+   // stay at {applicationId}/agreement-{id}.pdf on the existing bucket.
+   if (SIGNED_ARCHIVE_V1_ENABLED) return archiveCompletedV1(admin, ag, actor);
+   const wasFailed = ag.archive_status === "failed";

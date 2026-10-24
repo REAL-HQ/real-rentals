@@ -29,7 +29,8 @@ export interface EvidenceReaders {
  // These are trusted server dependencies, never request-provided objects.
  authorize(): Promise<unknown>;
  identity(applicationId:string): Promise<unknown>;
- agreement(applicationId:string,vehicleId:string): Promise<unknown>;
+ // startedAt lets a date-only signed term match the staff-entered handover instant.
+ agreement(applicationId:string,vehicleId:string,startedAt:string): Promise<unknown>;
  subscription(subscriptionId:string): Promise<unknown>;
  linkedCustomer(applicationId:string): Promise<string>;
 }
@@ -40,7 +41,7 @@ export async function verifyRecordEvidence(raw:unknown, subscriptionId:string|nu
  const initial=principal.parse(await readers.authorize());
  requireTrue(initial.actorId===request.actorId && !signal.aborted);
  const person=identity.parse(await readers.identity(request.applicationId));
- const signed=agreement.parse(await readers.agreement(request.applicationId,request.vehicleId));
+ const signed=agreement.parse(await readers.agreement(request.applicationId,request.vehicleId,request.startedAt));
  let sub:z.infer<typeof subscription>|null=null;
  if(subscriptionId!==null){
   sub=subscription.parse(await readers.subscription(subscriptionId));

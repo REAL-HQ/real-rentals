@@ -9,8 +9,11 @@ export interface CallerClient {
 }
 // The supplied SQL transport MUST be a dedicated server-only issuer connection. It must
 // run each callback on one connection in one transaction and rollback on any error.
+// role defaults to rr_evidence_issuer; rr_approval_executor is used only for the
+// positive-license review (license_snapshot_v1 / verify_license_v1).
+export type IssuerRole='rr_evidence_issuer'|'rr_approval_executor';
 export interface IssuerSql {
- transaction<T>(run:(query:(sql:string,args:unknown[])=>Promise<Array<Record<string,unknown>>>)=>Promise<T>):Promise<T>;
+ transaction<T>(run:(query:(sql:string,args:unknown[])=>Promise<Array<Record<string,unknown>>>)=>Promise<T>,role?:IssuerRole):Promise<T>;
 }
 export function authenticatedPrincipal(client:CallerClient, expectedActor:string, expectedSession:string, bearerToken:string) {
  return async()=>{
@@ -25,34 +28,73 @@ export function authenticatedPrincipal(client:CallerClient, expectedActor:string
   return {actorId:expectedActor,sessionId:expectedSession,role};
  };
 }
-export function trustedIssuer(sql:IssuerSql, authorize:ReturnType<typeof authenticatedPrincipal>) {
- const call=async(statement:string,args:unknown[], application?:string, vehicle?:string)=>{
+// The fixed evidence operations. The TCP transport runs the statement as the role;
+// the evidence gateway (proposed/record-rental-gateway) names the operation and the
+// database maps it to the same function. Nothing else can be named either way.
+type EvidenceOp='snapshot'|'issue'|'bind'|'identity'|'recover'|'licenseSnapshot'|'verifyLicense';
+const OPS:Record<EvidenceOp,{role:IssuerRole;statement:string;params:(a:any)=>unknown[]}>={
+ snapshot:{role:'rr_evidence_issuer',statement:'SELECT private.record_snapshot_v1($1::uuid,$2::uuid,$3::uuid,$4::uuid) AS value',params:a=>[a.a,a.v,a.g,a.d]},
+ issue:{role:'rr_evidence_issuer',statement:'SELECT private.issue_record_evidence_v1($1::jsonb,$2::jsonb,$3::jsonb) AS value',params:a=>[JSON.stringify(a.req),JSON.stringify(a.verified),JSON.stringify(a.snapshot)]},
+ bind:{role:'rr_evidence_issuer',statement:'SELECT private.bind_document_integrity_v1($1::uuid,$2::jsonb,$3::text,$4::text,$5::uuid) AS value',params:a=>[a.document,JSON.stringify(a.expected),a.sha,a.path,a.agreement]},
+ identity:{role:'rr_evidence_issuer',statement:'SELECT private.record_identity_reader_v2($1::uuid) AS value',params:a=>[a.application]},
+ recover:{role:'rr_evidence_issuer',statement:'SELECT private.recover_record_evidence_v1($1::uuid) AS value',params:a=>[a.operation]},
+ // Positive-license review: the snapshot the staff member reviews, then the review itself.
+ // Both run as rr_approval_executor; verify_license_v1 refuses if the snapshot has changed.
+ licenseSnapshot:{role:'rr_approval_executor',statement:'SELECT private.license_snapshot_v1($1::uuid) AS value',params:a=>[a.application]},
+ verifyLicense:{role:'rr_approval_executor',statement:'SELECT private.verify_license_v1($1::uuid,$2::jsonb) AS value',params:a=>[a.application,JSON.stringify(a.expected)]},
+};
+// Server-held key for the evidence gateway. The staff member's own client carries the call,
+// so PostgREST verifies their JWT; the key proves the arguments came from this server.
+export interface EvidenceGateway { gatewayKey:Uint8Array }
+type Principal={actorId:string;sessionId:string};
+async function viaGateway(gateway:EvidenceGateway, client:CallerClient, op:EvidenceOp, args:Record<string,unknown>, p:Principal, application?:string, vehicle?:string) {
+ const text=JSON.stringify({...args,scopeApplication:application??'',scopeVehicle:vehicle??''});
+ const issued=Date.now(), nonce=crypto.randomUUID();
+ const message=['record-evidence-gateway-v1',op,p.actorId,p.sessionId,String(issued),nonce,text].join('\n');
+ const key=await crypto.subtle.importKey('raw',new Uint8Array(gateway.gatewayKey),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+ const mac=Array.from(new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(message))),v=>v.toString(16).padStart(2,'0')).join('');
+ const fn=OPS[op].role==='rr_evidence_issuer'?'record_evidence_gateway_v1':'record_license_gateway_v1';
+ const {data,error}=await client.rpc(fn,{_op:op,_args:text,_issued_ms:issued,_nonce:nonce,_mac:mac});
+ if(error) throw new Error(String((error as {message?:unknown}).message ?? 'Evidence response unavailable'));
+ return z.object({value:z.unknown()}).parse(data).value;
+}
+export function trustedIssuer(sql:IssuerSql|EvidenceGateway, authorize:ReturnType<typeof authenticatedPrincipal>, client?:CallerClient) {
+ const call=async(op:EvidenceOp,args:Record<string,unknown>, application?:string, vehicle?:string)=>{
+  const as=OPS[op].role;
   const p=await authorize();
-  const value=await sql.transaction(async query=>{
+  if(application!==undefined) uuid.parse(application);
+  if(vehicle!==undefined) uuid.parse(vehicle);
+  const value='gatewayKey' in sql ? await viaGateway(sql,client??(()=>{throw new Error('Evidence gateway requires the staff client')})(),op,args,p,application,vehicle)
+   : await sql.transaction(async query=>{
    const role=await query('SELECT current_user AS role',[]);
-   if(role[0]?.role!=='rr_evidence_issuer') throw new Error('Dedicated evidence issuer required');
+   if(role[0]?.role!==as) throw new Error('Dedicated evidence issuer required');
    // Claims come from authenticated server context, never a browser-provided actor field.
    await query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:p.actorId,session_id:p.sessionId,role:'authenticated'})]);
    // Each issuer transaction establishes its own scope after server authentication.
    // Clear absent scope on pooled connections; never inherit a prior operation's scope.
    await query("SELECT set_config('record.application_id',$1,true),set_config('record.vehicle_id',$2,true)",
-    [application===undefined?'':uuid.parse(application),vehicle===undefined?'':uuid.parse(vehicle)]);
-   const rows=await query(statement,args);
+    [application===undefined?'':application,vehicle===undefined?'':vehicle]);
+   const rows=await query(OPS[op].statement,OPS[op].params(args));
    if(rows.length!==1) throw new Error('Evidence response unavailable');
    return rows[0].value;
-  });
+  },as);
   const final=await authorize();
   if(final.actorId!==p.actorId || final.sessionId!==p.sessionId) throw new Error('Session changed');
   return value;
  };
  const issuer:TrustedEvidenceIssuer={
-  snapshot:(a,v,g,d)=>call('SELECT private.record_snapshot_v1($1::uuid,$2::uuid,$3::uuid,$4::uuid) AS value',[a,v,g,d],a,v),
-  issue:async(req,verified,snapshot)=>{const scope=z.object({applicationId:uuid,vehicleId:uuid}).parse(req);return uuid.parse(await call('SELECT private.issue_record_evidence_v1($1::jsonb,$2::jsonb,$3::jsonb) AS value',[JSON.stringify(req),JSON.stringify(verified),JSON.stringify(snapshot)],scope.applicationId,scope.vehicleId));},
+  snapshot:(a,v,g,d)=>call('snapshot',{a,v,g,d},a,v),
+  issue:async(req,verified,snapshot)=>{const scope=z.object({applicationId:uuid,vehicleId:uuid}).parse(req);return uuid.parse(await call('issue',{req,verified,snapshot},scope.applicationId,scope.vehicleId));},
  };
- return {issuer,bindDocument:(document:string,expected:unknown,sha:string,path:string,agreement:string)=>call('SELECT private.bind_document_integrity_v1($1::uuid,$2::jsonb,$3::text,$4::text,$5::uuid) AS value',[uuid.parse(document),JSON.stringify(expected),sha,path,uuid.parse(agreement)],z.object({driver_id:uuid}).parse(expected).driver_id),identity:(application:string)=>call('SELECT private.record_identity_reader_v2($1::uuid) AS value',[uuid.parse(application)],application),recover:async(operation:string)=>{
-  const value=await call('SELECT private.recover_record_evidence_v1($1::uuid) AS value',[uuid.parse(operation)]);
-  return value===null?null:uuid.parse(value);
- }};
+ return {issuer,
+  bindDocument:(document:string,expected:unknown,sha:string,path:string,agreement:string|null)=>call('bind',{document:uuid.parse(document),expected,sha,path,agreement:agreement===null?null:uuid.parse(agreement)},z.object({driver_id:uuid}).parse(expected).driver_id),
+  licenseSnapshot:(application:string)=>call('licenseSnapshot',{application:uuid.parse(application)},application),
+  verifyLicense:async(application:string,expected:unknown)=>uuid.parse(await call('verifyLicense',{application:uuid.parse(application),expected},application)),
+  identity:(application:string)=>call('identity',{application:uuid.parse(application)},application),
+  recover:async(operation:string)=>{
+   const value=await call('recover',{operation:uuid.parse(operation)});
+   return value===null?null:uuid.parse(value);
+  }};
 }
 export function authenticatedConsumption(client:CallerClient):RecordOperationTransport['consume'] {
  return async(token,req)=>{

@@ -1,12 +1,15 @@
 // Server-only evidence issuer transport. One short-lived connection per issuer call,
 // because a Workers socket cannot outlive the request that opened it.
 // The login is rr_evidence_transport (provisioned separately, never an API role);
-// every transaction narrows itself to rr_evidence_issuer before any statement runs.
+// every transaction narrows itself to rr_evidence_issuer (or, for the positive-license
+// review only, rr_approval_executor) before any statement runs.
 import postgres from 'postgres';
 import type { IssuerSql } from './record-rental-transport.server';
 
 export const ISSUER_LOGIN = 'rr_evidence_transport';
 export const ISSUER_ROLE = 'rr_evidence_issuer';
+export const APPROVAL_ROLE = 'rr_approval_executor';
+const ROLES = new Set<string>([ISSUER_ROLE, APPROVAL_ROLE]);
 
 const LOCAL = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
 
@@ -28,12 +31,13 @@ export function parseIssuerUrl(raw: string) {
 export function issuerSql(raw: string, connect: typeof postgres = postgres): IssuerSql {
  const target = parseIssuerUrl(raw);
  return {
-  async transaction(run) {
+  async transaction(run, role = ISSUER_ROLE) {
+   if (!ROLES.has(role)) throw new Error('Record Rental transport role refused');
    // prepare:false keeps the transport valid behind a transaction-mode pooler.
    const sql = connect(target.url, { max: 1, prepare: false, ssl: target.ssl, idle_timeout: 5, connect_timeout: 10, onnotice: () => {} });
    try {
     return await sql.begin(async tx => {
-     await tx.unsafe(`SET LOCAL ROLE ${ISSUER_ROLE}`);
+     await tx.unsafe(`SET LOCAL ROLE ${role}`);
      await tx.unsafe("SET LOCAL TIME ZONE 'UTC'");
      // The issuer statements cast every parameter in SQL ($1::jsonb, $2::uuid) and callers
      // pass JSON already serialized. Declaring strings as text (OID 25) stops the driver
