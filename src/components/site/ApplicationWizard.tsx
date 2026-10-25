@@ -31,6 +31,7 @@ import { APPLY_PROGRESS_ENABLED } from "@/lib/apply-progress";
 import { UPLOAD_PRECHECK_ENABLED } from "@/lib/upload-precheck";
 import { APPLY_VEHICLE_PREFILL_ENABLED } from "@/lib/apply-vehicle-prefill";
 import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
+import { APPLICATION_LOCKED_MESSAGE } from "@/lib/application-edit-status";
 
 /*
  * ONE application, TWO parts.
@@ -323,6 +324,9 @@ export function ApplicationWizard({ token }: { token: string }) {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // A decided application is shown, not edited. The server refuses the write
+  // either way; this keeps the applicant from filling in a form that cannot save.
+  const [locked, setLocked] = useState(false);
 
   // Autosave. Answers used to live only in React state until the applicant
   // pressed Next, so closing the tab on the last question of a step threw the
@@ -338,7 +342,7 @@ export function ApplicationWizard({ token }: { token: string }) {
   };
 
   useEffect(() => {
-    if (!state || !dirty.current) return;
+    if (!state || !dirty.current || locked) return;
     if (phase !== "rental" && phase !== "driving") return;
     const t = setTimeout(async () => {
       const snapshot = latest.current;
@@ -347,18 +351,24 @@ export function ApplicationWizard({ token }: { token: string }) {
       try {
         await updateStep({ data: { token, step: phase, ...fieldsFor(phase, snapshot) } as never });
         setSavedAt(Date.now());
-      } catch {
+      } catch (e) {
         // A failed autosave is not worth interrupting anybody over — the
         // explicit save on Next reports its own errors and is what counts.
+        // The one exception is a decided application: no retry will save.
+        if (e instanceof Error && e.message === APPLICATION_LOCKED_MESSAGE) {
+          setLocked(true);
+          return;
+        }
         dirty.current = true;
       }
     }, 1500);
     return () => clearTimeout(t);
-  }, [state, phase, token, updateStep]);
+  }, [state, phase, token, updateStep, locked]);
 
   useEffect(() => {
     fetchApp({ data: { token } })
       .then(async (row) => {
+        if (row.editable === false) setLocked(true);
         let phase = phaseFrom(row.current_step);
         if (APPLICATION_RESUME_ENABLED === true) {
           const mod = await import("@/lib/application-resume");
@@ -401,6 +411,7 @@ export function ApplicationWizard({ token }: { token: string }) {
   }, [token, fetchApp]);
 
   if (loadError) return <LinkExpired message={loadError} />;
+  if (locked) return <ApplicationLocked />;
 
   if (!state) {
     return (
@@ -426,6 +437,10 @@ export function ApplicationWizard({ token }: { token: string }) {
       setPhase(next);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e: unknown) {
+      if (e instanceof Error && e.message === APPLICATION_LOCKED_MESSAGE) {
+        setLocked(true);
+        return;
+      }
       toast.error(e instanceof Error ? e.message : "Could not save. Please try again.");
     } finally {
       setSaving(false);
@@ -585,6 +600,35 @@ function LinkExpired({ message }: { message: string }) {
           className="inline-flex items-center justify-center rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40"
         >
           Start A New Application
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Read-only state for a decided application. Deliberately the same words for
+ * every decision: the link does not say whether somebody was approved or not.
+ */
+function ApplicationLocked() {
+  return (
+    <div className="mx-auto max-w-lg px-6 py-24 text-center">
+      <h1 className="text-2xl font-semibold">Your Application Is Already Submitted</h1>
+      <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
+        {APPLICATION_LOCKED_MESSAGE}
+      </p>
+      <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+        <a
+          href="mailto:team@drivereal.com"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:opacity-90"
+        >
+          <Mail className="h-4 w-4" /> Contact Us
+        </a>
+        <Link
+          to="/"
+          className="inline-flex items-center justify-center rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40"
+        >
+          Back To Home
         </Link>
       </div>
     </div>
