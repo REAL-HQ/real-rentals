@@ -61,3 +61,37 @@ fast-forward with no `+`.
 The Preview and live hosts are not reachable from the agent environment. The cap has no visible UI. It
 takes effect only when the hourly job calls the app, which it cannot do until the scheduler SQL is
 approved and installed.
+
+## Publication (2026-10-25, Owner-approved)
+
+**Prerequisite:** the Owner verified the live source of https://drivereal.com, which showed
+`data-commit-sha="4a0eed9c65d44f7c3d09c4e2c245ab2bfc92d7fd"` (screenshot, 6:16 PM local). A.1 is live.
+
+**Pre-checks (all passed):**
+
+| Check | Result |
+|---|---|
+| Preview branch | `a3df8545…` |
+| Lovable `latest_commit_sha` | `a3df8545…`; no edits since the sync; agent idle |
+| Diff against `4a0eed9c` | The two reviewed files only |
+| M2 flags | Both `false` |
+
+**Publish:** `deploy_project` called once at about 22:18Z, with no retry.
+- Response: `status: pending`, deployment **`92c2db50-6825-4118-81e2-e725f7610dc2`**.
+- Rollback target: `4a0eed9c`.
+
+**Production (read-only):**
+
+| Item | Before (22:17:49Z) | After (23:23:22Z) |
+|---|---|---|
+| applications / documents / storage objects | 155 / 93 / 130 | 155 / 93 / 130 |
+| audit_log | 931 | 931 (0 since publish) |
+| Security 0031 | 5, `d33877618a9f40924d14e49b6653d7fa` | unchanged |
+| policies / journals | 170 / 23 / 105 | unchanged |
+| S1 guard | present | present |
+| `wizard-recovery-hourly` / `ops-reminders-daily` md5 | `1c830e74…` / `7a659464…` | unchanged |
+| reminder stamps / `application_recovery` emails | 0 / 0 | 0 / 0 |
+| drivereal.com responses to scheduled calls since publish | n/a | 14 × 200 |
+
+**Live commit:** the Owner confirms `data-commit-sha="a3df8545ea411d1322e27fbddf558fc4073ba4e7"` in the
+page source of drivereal.com. The agent cannot reach the live host.
