@@ -342,5 +342,69 @@ function fakeServer() {
   ok("mobile inputs: tel/email keyboards and autocomplete tokens, validation unchanged");
 }
 
+
+// ------------------------------------------- PR 1 lock is terminal (stacked)
+{
+  const editStatus = readFileSync("src/lib/application-edit-status.ts", "utf8");
+  const LOCKED = editStatus.match(/APPLICATION_LOCKED_MESSAGE =\s*"([^"]+)"/)[1];
+  const locked = new Error(LOCKED);
+  assert.equal(save.isApplicationLockedError(locked), true);
+  assert.equal(save.isRetryableSaveError(locked), false, "a locked refusal must never be retried");
+  assert.equal(save.isApplicationLockedError(new Error(save.SAVE_BUSY_MESSAGE)), false);
+  assert.equal(save.isApplicationLockedError(new TypeError("Failed to fetch")), false);
+
+  let calls = 0;
+  await assert.rejects(
+    save.withSaveRetry(async () => {
+      calls++;
+      throw locked;
+    }, { sleep: noSleep }),
+    (e) => e === locked,
+  );
+  assert.equal(calls, 1);
+
+  const seq = save.createSaveSequencer();
+  calls = 0;
+  await assert.rejects(seq.autosave(async () => { calls++; throw locked; }, { sleep: noSleep }), (e) => e === locked);
+  await assert.rejects(seq.stepChange(async () => { calls++; throw locked; }, { sleep: noSleep }), (e) => e === locked);
+  await assert.rejects(seq.serial(async () => { calls++; throw locked; }, { sleep: noSleep }), (e) => e === locked);
+  assert.equal(calls, 3, "each locked write was sent exactly once");
+
+  // 40001 and network errors still retry next to it.
+  calls = 0;
+  await save.withSaveRetry(async () => {
+    calls++;
+    if (calls === 1) throw new Error(save.SAVE_BUSY_MESSAGE);
+    if (calls === 2) throw new TypeError("Failed to fetch");
+  }, { sleep: noSleep });
+  assert.equal(calls, 3);
+  ok("a locked (decided) refusal is terminal: sent once, never retried; 40001 and network errors still retry");
+}
+
+{
+  const wiz = readFileSync("src/components/site/ApplicationWizard.tsx", "utf8");
+  const fns = readFileSync("src/lib/applications.functions.ts", "utf8");
+  // Autosave: the lock check comes before any retry is scheduled.
+  const auto = wiz.slice(wiz.indexOf("const autosaveNow ="), wiz.indexOf("const autosaveRef ="));
+  assert.ok(auto.indexOf("isApplicationLockedError(err)") > 0);
+  assert.ok(auto.indexOf("isApplicationLockedError(err)") < auto.indexOf("retryTimer.current = setTimeout"));
+  assert.match(auto, /lockedRef\.current\) return;/, "nothing is sent once locked");
+  const lockNow = wiz.slice(wiz.indexOf("const lockNow ="), wiz.indexOf("const lockNow =") + 300);
+  assert.match(lockNow, /lockedRef\.current = true;[\s\S]*dirty\.current = false;[\s\S]*clearRetry\(\);[\s\S]*setLocked\(true\)/);
+  // Next/Submit and Part 2 saves hand a lock to the read-only screen.
+  const go = wiz.slice(wiz.indexOf("const go = async"), wiz.indexOf("const inPart1 ="));
+  assert.ok(go.indexOf("isApplicationLockedError(e)") < go.indexOf("toast.error"));
+  assert.match(wiz, /if \(isApplicationLockedError\(e\)\) \{\s*onLocked\(\);/);
+  assert.match(wiz, /if \(locked\) return <ApplicationLocked \/>;/);
+  assert.match(wiz, /if \(row\.editable === false\) setLocked\(true\);/);
+  // Server: PR 1's guard and PR 4's 40001 mapping both present.
+  const step = fns.slice(fns.indexOf("export const updateApplicationStep"), fns.indexOf("export const updateApplicationStep") + 12000);
+  assert.match(step, /if \(!isApplicantEditableStatus\(before\?\.status\)\) \{\s*throw new Error\(APPLICATION_LOCKED_MESSAGE\);/);
+  assert.match(step, /\.in\("status", \[\.\.\.APPLICANT_EDITABLE_STATUSES\]\)\s*\.select\("\*"\)\s*\.maybeSingle\(\);/);
+  assert.match(step, /error\.code === SAVE_BUSY_CODE \? SAVE_BUSY_MESSAGE : error\.message/);
+  assert.match(step, /if \(!row\) throw new Error\(APPLICATION_LOCKED_MESSAGE\);/);
+  ok("stacked on PR 1: edit lock and 40001 mapping coexist; the wizard locks instead of retrying");
+}
+
 rmSync(out, { recursive: true, force: true });
 console.log(`${passed} wizard save checks passed`);

@@ -1,5 +1,5 @@
 /**
- * Per-kind token trimming (PR 4). No network and no database: the real
+ * Per-kind token trimming and the resume-token properties (PR 4). No network and no database: the real
  * resume-tokens.server.ts runs against an in-memory application_resume_tokens
  * table that behaves like PostgREST for the calls it makes.
  */
@@ -24,8 +24,8 @@ await build({
 });
 const tokens = await import(pathToFileURL(join(out, "tokens.mjs")).href);
 
-/** created_at defaults to the real clock, as the column default does. */
-function createAdmin() {
+/** created_at defaults to the "database" clock, as the column default does. */
+function createAdmin({ dbClockOffsetMs = 0 } = {}) {
   const rows = [];
   let seq = 0;
   const from = (table) => {
@@ -36,7 +36,7 @@ function createAdmin() {
       if (state.op === "insert") {
         const row = {
           id: `tok-${String(++seq).padStart(4, "0")}`,
-          created_at: new Date().toISOString(),
+          created_at: new Date(Date.now() + dbClockOffsetMs).toISOString(),
           revoked_at: null,
           last_used_at: null,
           ...state.values,
@@ -195,6 +195,81 @@ const ok = (name) => {
   assert.match(trim, /tokenKindOf\(row\) === kind/);
   assert.doesNotMatch(trim, /isCardRow\(row\) === \(kind === "card"\)/);
   ok("source: trim filters out expired rows and compares a three-way kind");
+}
+
+
+// ------------------------------------------------- token properties (owner)
+{
+  const admin = createAdmin();
+  const raws = [];
+  for (let i = 0; i < 40; i += 1) raws.push(await tokens.issueResumeToken(admin, APP, { recovery: i % 2 === 0 }));
+  assert.equal(new Set(raws).size, raws.length);
+  for (const raw of raws) {
+    assert.match(raw, /^[A-Za-z0-9_-]{43}$/, "32 CSPRNG bytes, base64url (256 bits)");
+    const row = await rowFor(admin, raw);
+    assert.match(row.token_hash, /^[0-9a-f]{64}$/);
+    const { createHash } = await import("node:crypto");
+    assert.equal(row.token_hash, createHash("sha256").update(raw).digest("hex"));
+  }
+  const stored = JSON.stringify(admin.rows);
+  for (const raw of raws) assert.ok(!stored.includes(raw), "a raw token reached the table");
+  const src = readFileSync("src/lib/resume-tokens.server.ts", "utf8");
+  assert.match(src, /new Uint8Array\(32\);\s*crypto\.getRandomValues\(bytes\)/);
+  assert.doesNotMatch(src, /Math\.random/);
+  ok("tokens: 256-bit CSPRNG, unique, only the SHA-256 hash is stored");
+}
+
+{
+  const admin = createAdmin();
+  const recovery = await tokens.issueResumeToken(admin, APP, { recovery: true });
+  const session = await tokens.issueResumeToken(admin, APP);
+  const r = await rowFor(admin, recovery);
+  const s = await rowFor(admin, session);
+  assert.equal(Date.parse(r.expires_at) - Date.parse(r.created_at), 30 * 60_000);
+  assert.equal(Date.parse(s.expires_at) - Date.parse(s.created_at), 14 * 86400_000);
+  assert.equal(tokens.RECOVERY_TOKEN_MINUTES, 30);
+  assert.equal(tokens.RESUME_TOKEN_DAYS, 14);
+  // A recovery link is not a session: read/write handlers refuse it until exchanged.
+  await assert.rejects(tokens.resolveResumeToken(admin, recovery), /no longer valid/);
+  assert.equal(await tokens.resolveResumeToken(admin, session), APP);
+  ok("recovery links last exactly 30 minutes and must be exchanged; sessions last 14 days");
+}
+
+{
+  const admin = createAdmin();
+  const recovery = await tokens.issueResumeToken(admin, APP, { recovery: true });
+  const session = await tokens.issueResumeToken(admin, APP);
+  // Server-side expiry: the stored expires_at decides, whatever the browser holds.
+  (await rowFor(admin, recovery)).expires_at = new Date(Date.now() - 1000).toISOString();
+  (await rowFor(admin, session)).expires_at = new Date(Date.now() - 1000).toISOString();
+  await assert.rejects(tokens.exchangeResumeToken(admin, recovery), /no longer valid/);
+  await assert.rejects(tokens.resolveResumeToken(admin, session), /no longer valid/);
+  await assert.rejects(tokens.exchangeResumeToken(admin, session), /no longer valid/);
+  ok("expiry is enforced on the server for recovery and session tokens");
+}
+
+{
+  const admin = createAdmin();
+  const recovery = await tokens.issueResumeToken(admin, APP, { recovery: true });
+  const results = await Promise.allSettled(Array.from({ length: 8 }, () => tokens.exchangeResumeToken(admin, recovery)));
+  assert.equal(results.filter((x) => x.status === "fulfilled").length, 1);
+  assert.equal(liveOf(admin, "session").length, 1, "exactly one session was issued");
+  ok("mock: eight concurrent exchanges of one recovery link yield exactly one session");
+}
+
+{
+  // The database clock is 45 minutes behind this server. Before created_at
+  // was written by the app, a 30-minute recovery row then measured 75 minutes
+  // and was treated as a reusable session token.
+  const admin = createAdmin({ dbClockOffsetMs: -45 * 60_000 });
+  const recovery = await tokens.issueResumeToken(admin, APP, { recovery: true });
+  const row = await rowFor(admin, recovery);
+  assert.equal(tokens.tokenKindOf(row), "recovery");
+  await assert.rejects(tokens.resolveResumeToken(admin, recovery), /no longer valid/);
+  const session = await tokens.exchangeResumeToken(admin, recovery);
+  assert.notEqual(session, recovery);
+  await assert.rejects(tokens.exchangeResumeToken(admin, recovery), /no longer valid/);
+  ok("clock skew between server and database cannot turn a recovery link into a session");
 }
 
 rmSync(out, { recursive: true, force: true });

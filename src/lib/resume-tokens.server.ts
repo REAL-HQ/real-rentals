@@ -230,27 +230,22 @@ async function mintToken(
   const token_hash = await hashResumeToken(raw);
   const lifetime = kind === "card" ? CARD_LINK_MS : ttlMs;
   if (lifetime == null) throw new Error("A resume link needs a lifetime.");
-  const inserted =
-    kind === "card"
-      ? await admin
-          .from("application_resume_tokens")
-          .insert({
-            application_id: applicationId,
-            token_hash,
-            created_at: new Date(now).toISOString(),
-            expires_at: new Date(now + lifetime).toISOString(),
-          })
-          .select("id")
-          .single()
-      : await admin
-          .from("application_resume_tokens")
-          .insert({
-            application_id: applicationId,
-            token_hash,
-            expires_at: new Date(now + lifetime).toISOString(),
-          })
-          .select("id")
-          .single();
+  // created_at is written with the same clock as expires_at, for every kind.
+  // A row's kind is read from expires_at - created_at, so leaving created_at
+  // to the database default let clock skew between this server and Postgres
+  // change it: a 30-minute recovery link minted by a server running more than
+  // half an hour ahead looked like a session token, and would have opened
+  // the wizard directly and repeatedly instead of being exchanged once.
+  const inserted = await admin
+    .from("application_resume_tokens")
+    .insert({
+      application_id: applicationId,
+      token_hash,
+      created_at: new Date(now).toISOString(),
+      expires_at: new Date(now + lifetime).toISOString(),
+    })
+    .select("id")
+    .single();
   const { data, error } = inserted;
   if (error) throw new Error(error.message);
   if (kind === "card") cardPlaintext.set(applicationId, { raw, expiresAt: now + CARD_LINK_MS });
