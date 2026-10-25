@@ -77,6 +77,21 @@ function createAdmin(rows, { failClaim = false } = {}) {
       if (state.op === "update" && failClaim && state.values && Object.values(state.values).some((v) => v !== null)) {
         return { data: null, error: { code: "XX000", message: "injected failure" } };
       }
+      // PostgREST 12 (checked on 12.2.3) re-applies a mutation's or= filter to
+      // the RETURNING rows, so every column the or() names must be selected or
+      // the request fails with 42703, even when no row matches.
+      if (state.op === "update") {
+        const sel = state.calls.find((c) => c[0] === "select");
+        const cols = sel ? String(sel[1] ?? "*").split(",").map((c) => c.trim()) : [];
+        for (const c of state.calls.filter((c) => c[0] === "or")) {
+          for (const part of splitTop(c[1])) {
+            const col = part.split(".")[0];
+            if (sel && !cols.includes("*") && !cols.includes(col)) {
+              return { data: null, error: { code: "42703", message: `column applications.${col} does not exist` } };
+            }
+          }
+        }
+      }
       const matched = rows.filter((r) => state.filters.every((f) => f(r)));
       // Conditional update: evaluate and apply in one synchronous step, the
       // way one UPDATE ... WHERE ... RETURNING behaves.
