@@ -30,6 +30,40 @@ import type { SendResult } from "@/lib/email.server";
 
 type Admin = typeof import("@/integrations/supabase/client.server").supabaseAdmin;
 
+/**
+ * At most this many reminder claims per run, across all three reminders. A
+ * claim is what leads to an email, so this bounds a run's emails no matter how
+ * many rows the windows hold at run time (for instance the first run after the
+ * scheduler is repaired). Rows past the cap are not stamped, so a later run can
+ * still reach them while they are in their window; a missed nudge is better
+ * than a burst. Normal volume (a few a day) never reaches it.
+ */
+export const MAX_REMINDER_CLAIMS_PER_RUN = 10;
+
+/**
+ * The same 10 also bounds every run together: after each claim the runner
+ * counts reminder stamps from the last hour (its own and any concurrent or
+ * retried run's, all committed) and, if there are more than 10, releases its
+ * own claim unsent and stops. A claim that goes on to send saw at most 10
+ * stamps after its own commit, so overlapping runs cannot together send more
+ * than 10 in an hour. Over-counting only makes it stricter.
+ */
+export const REMINDER_BUDGET_WINDOW_MINUTES = 60;
+
+/** Reminder stamps set since `sinceIso`, across all three columns; null when it cannot be read. */
+export async function recentReminderClaims(admin: Admin, sinceIso: string): Promise<number | null> {
+  let total = 0;
+  for (const column of ["recovery_email_sent_24h", "recovery_email_sent_72h", "recovery_sent_at"] as const) {
+    const { data, count, error } = await (admin as any)
+      .from("applications")
+      .select("id", { count: "exact", head: true })
+      .gte(column, sinceIso);
+    if (error) return null;
+    total += typeof count === "number" ? count : (data?.length ?? 0);
+  }
+  return total;
+}
+
 /** PostgREST `in` list for the closed statuses. Values are fixed identifiers. */
 export const CLOSED_STATUS_FILTER = `(${CLOSED_RESUME_STATUSES.join(",")})`;
 
@@ -75,6 +109,9 @@ export type WizardRecoveryReport = {
   sent_abandoned: number;
   skipped_claimed: number;
   failed: number;
+  /** Candidates left unclaimed because the run reached MAX_REMINDER_CLAIMS_PER_RUN. */
+  capped: number;
+  max_claims_per_run: number;
 };
 
 /**
@@ -227,7 +264,11 @@ export async function runWizardRecovery(
     sent_abandoned: 0,
     skipped_claimed: 0,
     failed: 0,
+    capped: 0,
+    max_claims_per_run: MAX_REMINDER_CLAIMS_PER_RUN,
   };
+  let claims = 0;
+  let budgetReached = false;
 
   /** Claim, send, and release only on a send that definitely did not happen. */
   async function claimAndSend(
@@ -238,6 +279,10 @@ export async function runWizardRecovery(
     extra?: (q: any) => any,
   ): Promise<boolean> {
     if (!isRecoveryCandidate(row)) return false;
+    if (budgetReached || claims >= MAX_REMINDER_CLAIMS_PER_RUN) {
+      report.capped++;
+      return false;
+    }
     const stamp = new Date().toISOString();
     const claim = await claimRecoverySend(admin, row.id, column, stamp, extra);
     if (claim.error) {
@@ -248,6 +293,21 @@ export async function runWizardRecovery(
     if (!claim.claimed) {
       // Another run already claimed it, or it stopped being an open draft.
       report.skipped_claimed++;
+      return false;
+    }
+    // Counted at the claim, before the send: a claim later released still
+    // counts, so the cap can only lower a run's emails.
+    claims++;
+    // Hourly budget across runs (see REMINDER_BUDGET_WINDOW_MINUTES). Fails
+    // closed: an unreadable count releases this claim unsent and stops the run.
+    const since = new Date(Date.now() - REMINDER_BUDGET_WINDOW_MINUTES * 60 * 1000).toISOString();
+    const recent = await recentReminderClaims(admin, since);
+    if (recent === null || recent > MAX_REMINDER_CLAIMS_PER_RUN) {
+      budgetReached = true;
+      report.capped++;
+      log(`[wizard-recovery] ${label} hourly budget reached; claim released unsent`, row.id, recent);
+      const released = await releaseRecoveryClaim(admin, row.id, column, stamp);
+      if (!released) log(`[wizard-recovery] ${label} claim release failed`, row.id);
       return false;
     }
     let result: SendResult | void | undefined;
