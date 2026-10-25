@@ -1,8 +1,10 @@
 /**
  * THE RULES THIS FILE EXISTS FOR:
  *
- *   DATES PRINTED INSIDE A RENTAL AGREEMENT ARE MM-DD-YYYY, FORMATTED BY THE
- *   CONTRACT FORMATTER (agreement-dates.ts), NEVER BY THE APP'S DISPLAY HELPER.
+ *   DATES PRINTED INSIDE A RENTAL AGREEMENT READ "Oct 11, 2026" (THE OWNER'S
+ *   DECISION, AND EXACTLY WHAT RELEASE A PRINTED), FORMATTED BY THE CONTRACT
+ *   FORMATTER (agreement-dates.ts), NEVER BY THE APP'S DISPLAY HELPER.
+ *   CANONICAL VALUES STAY ISO (YYYY-MM-DD) IN merge INPUTS AND THE DATABASE.
  *
  *   THE EXECUTION DATE ({{today}}) IS THE BUSINESS CALENDAR DAY IN
  *   AMERICA/NEW_YORK, NOT THE SERVER'S UTC DAY — SO A PREVIEW AND ITS SEND ON
@@ -12,8 +14,10 @@
  * fmtDate from @/lib/date-format, and computed `today` as fmtDate(new Date())
  * on a server running in UTC. `today` is part of the preview fingerprint, so a
  * preview reviewed at 7:59pm EDT (23:59 UTC) refused to Send at 8:01pm EDT
- * (00:01 UTC), and any evening signing printed tomorrow's date. Ported from
- * e208920d (fmtContractDate), with the instant read in America/New_York.
+ * (00:01 UTC), and any evening signing printed tomorrow's date. Structure
+ * ported from e208920d (fmtContractDate), instants read in America/New_York,
+ * output kept identical to Release A's wording — section 6 proves that against
+ * Release A's own source (14cbf81b) for date-only values in daytime UTC.
  *
  * Drives the real modules through the exported previewAgreement and
  * issueAgreement with a fake PostgREST and a fake clock. No database, no
@@ -24,6 +28,10 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
+
+// Release A read instants in the server's zone, which is UTC in production.
+// Pin it so the Release A comparison below is the production comparison.
+process.env.TZ = "UTC";
 
 let fail = 0;
 const ok = (c, l) => { if (!c) fail++; console.log(`  ${c ? "PASS" : "BLOCKER"}  ${l}`); };
@@ -84,6 +92,36 @@ bundle("src/lib/agreement-dates.ts", "dates.mjs");
 bundle("src/lib/agreement-prep.ts", "prep.mjs");
 bundle("src/lib/date-format.ts", "fmt.mjs");
 bundle("src/lib/agreements.functions.ts", "ag.mjs", true);
+// Release A's own source, unmodified, for the wording comparison (section 6).
+// Its agreements module resolves every other import against this tree, but
+// its date formatter and its prep module are Release A's.
+const RA = "14cbf81b";
+mkdirSync(`${OUT}/ra`, { recursive: true });
+for (const f of ["date-format.ts", "agreement-prep.ts", "agreements.functions.ts"])
+  writeFileSync(`${OUT}/ra/${f}`, execFileSync("git", ["show", `${RA}:src/lib/${f}`], { encoding: "utf8" }));
+execFileSync("npx", [
+  "esbuild", `${OUT}/ra/date-format.ts`, "--bundle", "--platform=node", "--format=esm", `--outfile=${OUT}/ra-fmt.mjs`,
+], { stdio: ["ignore", "ignore", "inherit"] });
+execFileSync("npx", [
+  "esbuild", `${OUT}/ra/agreements.functions.ts`, "--bundle", "--platform=node", "--format=esm",
+  `--outfile=${OUT}/ra-ag.mjs`, "--alias:@=./src",
+  `--alias:@/lib/date-format=./${OUT}/ra/date-format.ts`,
+  `--alias:@/lib/agreement-prep=./${OUT}/ra/agreement-prep.ts`,
+  `--alias:@tanstack/react-start=./${OUT}/stub-start.js`,
+  `--alias:@tanstack/react-start/server=./${OUT}/stub-start-server.js`,
+  `--alias:@/integrations/supabase/auth-middleware=./${OUT}/stub-auth.js`,
+  `--alias:@/integrations/supabase/client.server=./${OUT}/stub-sb.js`,
+  `--alias:@/lib/roles.server=./${OUT}/stub-roles.js`,
+  `--alias:@/lib/email.server=./${OUT}/stub-email.js`,
+  `--alias:@/lib/sms.server=./${OUT}/stub-sms.js`,
+], { stdio: ["ignore", "ignore", "inherit"] });
+const RAF = await import(`../${OUT}/ra-fmt.mjs`);
+const RAAG = await import(`../${OUT}/ra-ag.mjs`);
+{
+  const raSrc = readFileSync(`${OUT}/ra/agreements.functions.ts`, "utf8");
+  if (!/today: fmtDate\(new Date\(\)\)/.test(raSrc) || /fmtContractDate/.test(raSrc))
+    throw new Error("the Release A baseline is not the expected source");
+}
 const D = await import(`../${OUT}/dates.mjs`);
 const P = await import(`../${OUT}/prep.mjs`);
 const F = await import(`../${OUT}/fmt.mjs`);
@@ -168,10 +206,10 @@ const freshDb = () => (globalThis.__fx = fakeDb(fixtures()));
 const preview = (db) => AG.previewAgreement({ data: { applicationId: APP_ID }, context: { userId: "owner" } }).then((p) => (void db, p));
 
 // ============================================ 1. the formatter itself
-console.log("\na contract date is MM-DD-YYYY");
+console.log("\na contract date reads Mon D, YYYY");
 for (const [input, want] of [
-  ["2026-10-11", "10-11-2026"], ["2028-01-01", "01-01-2028"], ["2026-01-05", "01-05-2026"],
-  ["2026-12-31", "12-31-2026"], ["2028-02-29", "02-29-2028"],
+  ["2026-10-11", "Oct 11, 2026"], ["2027-02-03", "Feb 3, 2027"], ["2028-01-01", "Jan 1, 2028"],
+  ["2026-01-05", "Jan 5, 2026"], ["2026-12-31", "Dec 31, 2026"], ["2028-02-29", "Feb 29, 2028"],
 ]) ok(D.fmtContractDate(input) === want, `${input} -> ${D.fmtContractDate(input)} (want ${want})`);
 
 console.log("\nit refuses to guess");
@@ -196,7 +234,7 @@ console.log(JSON.stringify([
 ]));
 `;
   writeFileSync(`${OUT}/probe.mjs`, probe);
-  const want = ["10-25-2026", "10-25-2026", "10-25-2026", "10-26-2026", "12-14-2026", "12-15-2026", "10-11-2026"];
+  const want = ["Oct 25, 2026", "Oct 25, 2026", "Oct 25, 2026", "Oct 26, 2026", "Dec 14, 2026", "Dec 15, 2026", "Oct 11, 2026"];
   for (const tz of ["UTC", "America/New_York", "Pacific/Kiritimati", "Pacific/Pago_Pago", "Asia/Kolkata"]) {
     const out = execFileSync("node", [`${OUT}/probe.mjs`], { encoding: "utf8", env: { ...process.env, TZ: tz } });
     const got = JSON.parse(out.trim().split("\n").pop());
@@ -211,7 +249,7 @@ console.log("\na Date from another JS realm is still a date");
   // agreement-dates.ts. The execution date must not blank out there.
   const foreign = runInNewContext('new Date("2026-10-26T00:01:00Z")');
   ok(!(foreign instanceof Date), "the probe really is a foreign-realm Date");
-  ok(D.fmtContractDate(foreign) === "10-25-2026", `it prints its Eastern day (${D.fmtContractDate(foreign)})`);
+  ok(D.fmtContractDate(foreign) === "Oct 25, 2026", `it prints its Eastern day (${D.fmtContractDate(foreign)})`);
 }
 
 // ============================ 2. additional-driver licence expiration
@@ -220,22 +258,22 @@ const ctx = { startIso: "2026-10-12", depositClause: "There is no security depos
 const drv = { name: "Sam Q Helper", licenseNumber: "h123", licenseState: "fl", licenseExpiration: "2028-01-01", verified: true };
 {
   const r = P.applyPrep({ ...P.EMPTY_PREP, drivers: { mode: "listed", list: [drv] } }, ctx);
-  ok(r.merge.additional_drivers === "Sam Q Helper (FL DL H123, exp. 01-01-2028)", `prints exp. 01-01-2028 (${r.merge.additional_drivers})`);
+  ok(r.merge.additional_drivers === "Sam Q Helper (FL DL H123, exp. Jan 1, 2028)", `prints exp. Jan 1, 2028 (${r.merge.additional_drivers})`);
   ok(!r.blockers.length, "  with nothing blocking a complete driver");
 }
 {
   const r = P.applyPrep({ ...P.EMPTY_PREP, drivers: { mode: "listed", list: [{ ...drv, licenseExpiration: "2026-10-01" }] } }, ctx);
-  ok(/10-01-2026/.test(r.blockers.map((b) => b.why).join(" ")), "the expiry blocker names the date the same way");
+  ok(/Oct 1, 2026/.test(r.blockers.map((b) => b.why).join(" ")), "the expiry blocker names the date the same way");
 }
 
 // ====================================== 3. merge data and rendered body
 console.log("\nthe rendered agreement body carries contract dates");
 const p1 = await at("2026-10-25T16:00:00Z", () => preview(freshDb()));
-for (const [field, want] of [["start_date", "10-11-2026"], ["return_date", "04-11-2027"], ["driver_dob", "07-02-1991"], ["today", "10-25-2026"]])
+for (const [field, want] of [["start_date", "Oct 11, 2026"], ["return_date", "Apr 11, 2027"], ["driver_dob", "Jul 2, 1991"], ["today", "Oct 25, 2026"]])
   ok(p1.merge[field] === want, `${field} = ${JSON.stringify(p1.merge[field])} (want ${want})`);
-ok(String(p1.body).includes("Starts 10-11-2026") && String(p1.body).includes("Executed 10-25-2026"), "the body prints those dates");
-ok(!/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}, \d{4}/.test(String(p1.body) + JSON.stringify(p1.merge)),
-  "no month-name date reaches the contract or its merge data");
+ok(String(p1.body).includes("Starts Oct 11, 2026") && String(p1.body).includes("Executed Oct 25, 2026"), "the body prints those dates");
+ok(!/\b\d{2}-\d{2}-\d{4}\b/.test(String(p1.body) + JSON.stringify(p1.merge)),
+  "no MM-DD-YYYY date reaches the contract or its merge data");
 ok(p1.canSend === true, "the preview is sendable, so this is the text that would go out");
 
 // ============================ 4. fingerprint stability across midnight UTC
@@ -243,8 +281,8 @@ console.log("\nthe preview fingerprint is stable across 23:59 -> 00:01 UTC on th
 {
   const before = await at("2026-10-25T23:59:00Z", () => preview(freshDb()));
   const after = await at("2026-10-26T00:01:00Z", () => preview(freshDb()));
-  ok(before.merge.today === "10-25-2026" && after.merge.today === "10-25-2026",
-    `{{today}} is 10-25-2026 both times (${before.merge.today}, ${after.merge.today}) — not tomorrow's UTC date`);
+  ok(before.merge.today === "Oct 25, 2026" && after.merge.today === "Oct 25, 2026",
+    `{{today}} is Oct 25, 2026 both times (${before.merge.today}, ${after.merge.today}) — not tomorrow's UTC date`);
   ok(/^[0-9a-f]{64}$/.test(String(before.fingerprint)), "the preview carries a fingerprint");
   ok(before.fingerprint === after.fingerprint, "the fingerprint is identical across midnight UTC");
   ok(before.body === after.body, "  and so is the rendered body");
@@ -254,7 +292,7 @@ console.log("\nthe preview fingerprint is stable across 23:59 -> 00:01 UTC on th
   // moves it is midnight EASTERN (EST in December: 05:00 UTC).
   const before = await at("2026-12-15T04:59:00Z", () => preview(freshDb()));
   const after = await at("2026-12-15T05:01:00Z", () => preview(freshDb()));
-  ok(before.merge.today === "12-14-2026" && after.merge.today === "12-15-2026",
+  ok(before.merge.today === "Dec 14, 2026" && after.merge.today === "Dec 15, 2026",
     `across midnight Eastern the execution date moves (${before.merge.today} -> ${after.merge.today})`);
   ok(before.fingerprint !== after.fingerprint, "  and the fingerprint moves with it, so Send asks for a fresh review");
 }
@@ -281,6 +319,55 @@ console.log("\nSend after midnight UTC accepts a preview reviewed before it");
   catch (e) { err = String(e?.message ?? e); }
   ok(/changed since it was previewed/.test(err), `a preview from the previous Eastern day is refused (${err.slice(0, 60)}…)`);
   ok(!db.inserted.some((x) => x.table === "agreements"), "  and nothing was inserted");
+}
+
+// ============================ 6. wording identical to Release A
+console.log("\nfor date-only values the contract formatter prints exactly what Release A's fmtDate printed");
+{
+  const inputs = [];
+  for (let m = 1; m <= 12; m++) for (const d of [1, 2, 9, 10, 15, 28]) inputs.push(`2026-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  inputs.push("2026-01-31", "2026-03-31", "2026-12-31", "2027-01-01", "2028-02-29", "1991-07-02", "2030-04-30", "2099-12-31", " 2026-10-11 ");
+  const diff = inputs.filter((v) => D.fmtContractDate(v) !== RAF.fmtDate(v));
+  ok(diff.length === 0, `${inputs.length} date-only inputs agree with Release A${diff.length ? ` — differ: ${diff.map((v) => `${v}: ${D.fmtContractDate(v)} vs ${RAF.fmtDate(v)}`).join("; ")}` : ""}`);
+  ok(RAF.fmtDate("2027-02-03") === "Feb 3, 2027" && D.fmtContractDate("2027-02-03") === "Feb 3, 2027", "  e.g. Feb 3, 2027 both ways");
+  // Instants in daytime UTC (the Eastern and UTC calendar days coincide).
+  const instants = ["2026-10-25T12:00:00Z", "2026-10-25T16:00:00Z", "2026-12-15T15:30:00Z", "2027-03-14T18:00:00Z", "2028-02-29T13:00:00Z"];
+  const idiff = instants.filter((v) => D.fmtContractDate(new Date(v)) !== RAF.fmtDate(new Date(v)));
+  ok(idiff.length === 0, `${instants.length} daytime-UTC instants agree with Release A${idiff.length ? ` — differ: ${idiff.join(", ")}` : ""}`);
+  // The only intended difference: an evening instant (after 8pm EDT).
+  const eve = new Date("2026-10-26T00:30:00Z");
+  ok(RAF.fmtDate(eve) === "Oct 26, 2026" && D.fmtContractDate(eve) === "Oct 25, 2026",
+    `the timezone fix is the only change: 8:30pm EDT prints Oct 25, 2026 (Release A printed ${RAF.fmtDate(eve)})`);
+  // Release A printed impossible date-only strings verbatim; a contract now blanks them so a blocker fires.
+  ok(RAF.fmtDate("2026-02-30") === "Feb 30, 2026" && D.fmtContractDate("2026-02-30") === "",
+    "an impossible date (2026-02-30) is refused instead of printed");
+}
+
+console.log("\nthe whole rendered agreement, merge data and fingerprint equal Release A's in daytime UTC");
+{
+  // A template printing every contract date field, with a minimum term and
+  // an additional driver, rendered by THIS branch and by Release A's source.
+  const TERMS = { min_term_weeks: "4 weeks" };
+  const body = "Starts {{start_date}}, returns {{return_date}}. Born {{driver_dob}}. Executed {{today}}. " +
+    "Minimum term ends {{min_term_end}}. Drivers: {{additional_drivers}}.\n%%BUILDER_TERMS " + JSON.stringify(TERMS) + "%%";
+  const prep = {
+    drivers: { mode: "listed", list: [{ name: "Marco Reyes", licenseNumber: "R999-111-22-333-0", licenseState: "FL", licenseExpiration: "2028-01-01", verified: true }] },
+    reservation: { mode: "not_required", amount: null },
+    deposit: { mode: "none", amount: null, reason: "" },
+  };
+  const db = () => {
+    const t = fixtures();
+    t.agreement_templates = [{ ...TEMPLATE, body }];
+    return (globalThis.__fx = fakeDb(t));
+  };
+  for (const when of ["2026-10-25T16:00:00Z", "2026-12-15T15:00:00Z", "2027-02-03T14:00:00Z"]) {
+    const ours = await at(when, () => (db(), AG.previewAgreement({ data: { applicationId: APP_ID, prep }, context: { userId: "owner" } })));
+    const ra = await at(when, () => (db(), RAAG.previewAgreement({ data: { applicationId: APP_ID, prep }, context: { userId: "owner" } })));
+    ok(ours.blockers.length === 0 && ra.blockers.length === 0 && ours.body != null, `${when}: both render with no blockers`);
+    ok(ours.body === ra.body, `  the rendered body is byte-identical (${String(ours.body).split(". ")[3]})`);
+    ok(JSON.stringify(ours.merge) === JSON.stringify(ra.merge), "  every merge field is identical");
+    ok(ours.fingerprint === ra.fingerprint, "  and so is the preview fingerprint");
+  }
 }
 
 // ======================================= 5. coupling checks

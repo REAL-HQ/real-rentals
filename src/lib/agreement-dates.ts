@@ -96,15 +96,23 @@ const CONTRACT_DAY = new Intl.DateTimeFormat("en-US", {
   day: "2-digit",
 });
 
+/** English month abbreviations, the same ones Release A's contracts print. */
+const CONTRACT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 /**
- * A date as it is PRINTED INSIDE A RENTAL AGREEMENT: MM-DD-YYYY.
+ * A date as it is PRINTED INSIDE A RENTAL AGREEMENT: "Oct 11, 2026".
  *
- * Ported from e208920d. Contract fields used to be formatted with `fmtDate`
- * from @/lib/date-format, the APPLICATION-WIDE display helper, so a dashboard
- * format decision changed the wording of the agreement (and its preview
- * fingerprint) with no template edit, no new version and no Owner approval.
- * Contract text formats dates HERE, and nothing in here imports the UI
- * formatter.
+ * The Owner chose the human-readable form, which is exactly what Release A's
+ * contracts already print, so live wording does not change. What changes is
+ * WHERE it is formatted. Contract fields used to call `fmtDate` from
+ * @/lib/date-format, the application-wide display helper, so any dashboard
+ * format decision would have changed the wording of an agreement (and its
+ * preview fingerprint) with no template edit, no new version and no Owner
+ * approval. Contract text formats dates HERE, and nothing in here imports the
+ * UI formatter. (Structure ported from e208920d; output format per the Owner.)
+ *
+ * Canonical values stay ISO: merge-data inputs and database columns are
+ * YYYY-MM-DD, and calculations (minTermEndIso) read those, never this string.
  *
  * A date-only value (a start date, a licence expiry) is printed from its own
  * three fields and never goes near a timezone: the 11th of October is the
@@ -116,14 +124,14 @@ const CONTRACT_DAY = new Intl.DateTimeFormat("en-US", {
  * after 8pm EDT / 7pm EST, and because `today` is part of the preview
  * fingerprint, a preview reviewed at 7:59pm EDT refused to Send at 8:01pm.
  *
- * An unparseable value returns "" rather than a guess. A blank field makes
- * the existing readiness blockers fire, which is the honest outcome; an
- * invented date would print into a signed contract.
+ * An unparseable or impossible value (2026-02-30) returns "" rather than a
+ * guess. A blank field makes the existing readiness blockers fire, which is
+ * the honest outcome; an invented date would print into a signed contract.
  */
 export function fmtContractDate(v: unknown): string {
-  const p2 = (n: number) => String(n).padStart(2, "0");
+  const out = (y: number, m: number, d: number) => `${CONTRACT_MONTHS[m - 1]} ${d}, ${y}`;
   const p = parseDateOnly(v);
-  if (p) return `${p2(p.m)}-${p2(p.d)}-${p.y}`;
+  if (p) return out(p.y, p.m, p.d);
   // Date-shaped but not a real day (2026-02-30): refuse, rather than let
   // new Date() roll it into March.
   if (typeof v === "string" && DATE_ONLY.test(v.trim())) return "";
@@ -133,5 +141,5 @@ export function fmtContractDate(v: unknown): string {
   const d = isDate ? new Date((v as Date).getTime()) : typeof v === "string" && v.trim() ? new Date(v) : null;
   if (!d || Number.isNaN(d.getTime())) return "";
   const parts = Object.fromEntries(CONTRACT_DAY.formatToParts(d).map((x) => [x.type, x.value]));
-  return `${parts.month}-${parts.day}-${parts.year}`;
+  return out(Number(parts.year), Number(parts.month), Number(parts.day));
 }

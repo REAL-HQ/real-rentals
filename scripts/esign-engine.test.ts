@@ -503,8 +503,8 @@ describe("7. PR 3 signing fixes (dates, dead links, initials, template evidence,
       const before = await A.previewAgreement.run({ applicationId: appId }, ctx("manager"));
       vi.setSystemTime(new Date("2026-10-26T00:01:00Z")); // 8:01pm EDT, next UTC day
       const after = await A.previewAgreement.run({ applicationId: appId }, ctx("manager"));
-      expect(before.merge.today).toBe("10-25-2026");
-      expect(after.merge.today).toBe("10-25-2026");
+      expect(before.merge.today).toBe("Oct 25, 2026");
+      expect(after.merge.today).toBe("Oct 25, 2026");
       expect(after.fingerprint).toBe(before.fingerprint);
       const r = await A.sendAgreement.run({ applicationId: appId, fingerprint: before.fingerprint, companyAck: true }, ctx("manager"));
       const [row] = await q("agreements", { id: r.id });
