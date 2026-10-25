@@ -7,6 +7,7 @@
  */
 
 import { fmtDate } from "@/lib/date-format";
+import { awaitsDriverSignature } from "@/lib/portal-agreement-state";
 import { documentExpiryTone } from "@/lib/document-expiry";
 import { DOC_CATEGORIES, RESTRICTED_CATEGORIES } from "@/lib/documents.functions";
 import { leadToday } from "@/lib/lead-priorities";
@@ -154,11 +155,9 @@ export function buildPortalNotices(input: PortalNoticeInput, now = new Date()): 
     if (label) notices.push({ id: "payment-due", text: `A payment is due on ${label}.`, section: "payments" });
   }
 
-  const unsigned = (input.agreements ?? []).some((agreement) => {
-    const status = (agreement.status ?? "").toLowerCase();
-    if (status === "signed" || status === "voided") return false;
-    return !agreement.signed_at;
-  });
+  // Only an issued, unsigned agreement asks for a signature: never a voided
+  // one, and never a draft that was not sent to the driver.
+  const unsigned = (input.agreements ?? []).some((agreement) => awaitsDriverSignature(agreement));
   if (unsigned) {
     notices.push({ id: "agreement-unsigned", text: "Awaiting your signature.", section: "documents" });
   }

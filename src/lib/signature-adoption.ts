@@ -26,9 +26,28 @@ export const MarkSchema = z.discriminatedUnion("method", [
 ]);
 export type Mark = z.infer<typeof MarkSchema>;
 
+/**
+ * Initials are capitals. The signing screen used to show them in capitals with
+ * a CSS transform while the adopted mark kept the typed case, so the stored
+ * evidence (and the initials drawn on the signed PDF) differed from what the
+ * driver saw. The value itself is normalised instead: on the client as it is
+ * typed, and here, where the server accepts the mark, so no caller can store
+ * anything else.
+ */
+export function normalizeInitialsText(text: string): string {
+  return text.toUpperCase();
+}
+
+/** A typed initials mark with its text in capitals; a drawn mark unchanged. */
+export function normalizeInitialsMark<M extends Mark>(m: M): M {
+  return m.method === "typed" ? { ...m, text: normalizeInitialsText(m.text) } : m;
+}
+
 export const AdoptionSchema = z.object({
   signature: MarkSchema,
-  initials: MarkSchema,
+  // Normalised at acceptance: the parsed value the signing handlers validate
+  // and hand to the engine is the capitalised mark.
+  initials: MarkSchema.transform((m) => normalizeInitialsMark(m)),
   /** One entry per Renter Acknowledgment row, in document order. */
   acks: z.array(z.boolean()).max(60),
 });
