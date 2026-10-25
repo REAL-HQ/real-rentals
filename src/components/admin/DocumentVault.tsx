@@ -17,6 +17,7 @@ import {
 } from "@/lib/documents.functions";
 import { fmtDate } from "@/lib/date-format";
 import { documentExpiryTone } from "@/lib/document-expiry";
+import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
 
 const MAX_MB = 15;
 
@@ -193,7 +194,9 @@ export function DocumentVault({
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 ) : null}
-                {cat.key !== "agreement" ? (
+                {/* No Replace over signed-agreement evidence, in any category;
+                    the server refuses it anyway (createDocumentUploadUrl). */}
+                {cat.key !== "agreement" && !signedAgreementLocked(current, cat.key) ? (
                   <FileUploader
                     variant="inline"
                     label={doc ? "Replace" : "Upload"}

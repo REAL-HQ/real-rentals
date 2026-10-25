@@ -8,6 +8,9 @@ import {
 } from "@/lib/document-content-sha";
 import {
   SIGNED_AGREEMENT_DELETE_REFUSED,
+  SIGNED_AGREEMENT_DRIVER_UPLOAD_REFUSED,
+  SIGNED_AGREEMENT_NEEDS_NEW_REFUSED,
+  SIGNED_AGREEMENT_REPLACE_REFUSED,
   isSignedAgreementEvidence,
 } from "@/lib/signed-agreement-evidence";
 
@@ -552,11 +555,13 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
       if (await getActor(context.userId)) await requireManager(context.userId);
     }
     let applicationId = data.applicationId ?? null;
+    let staff = admin;
     if (admin) {
       if (!applicationId) throw new Error("Missing driver");
     } else if (await isStaffUser(context.userId)) {
       // Coordinator or Manager uploading on an applicant's behalf.
       if (!applicationId) throw new Error("Missing driver");
+      staff = true;
     } else {
       const { data: app } = await context.supabase
         .from("applications")
@@ -570,6 +575,12 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Before anything is signed, so a refused Replace leaves no object behind.
+    await refuseSignedAgreementReplace(supabaseAdmin, {
+      applicationId: applicationId as string,
+      category: data.category,
+      staff,
+    });
     const path = `${applicationId}/${data.category}-${crypto.randomUUID()}.${safeExt(data.fileName, data.mimeType)}`;
     const { data: signed, error } = await supabaseAdmin.storage
       .from(DOC_BUCKET)
@@ -595,6 +606,57 @@ async function assertMayTouch(userId: string, documentId: string): Promise<void>
   if (RESTRICTED_CATEGORIES.includes(doc.category as string)) {
     const { requireOwner } = await import("@/lib/roles.server");
     await requireOwner(userId);
+  }
+}
+
+/** True when an agreements row names any of these documents as its evidence. */
+async function namedByAgreement(admin: any, ids: string[], failure: string): Promise<boolean> {
+  if (!ids.length) return false;
+  for (const column of ["document_id", "completed_document_id"] as const) {
+    const { data, error } = await admin.from("agreements").select("id").in(column, ids).limit(1);
+    // Fail closed: a lookup that errored is not proof the rows are ordinary.
+    if (error) throw new Error(failure);
+    if ((data ?? []).length > 0) return true;
+  }
+  return false;
+}
+
+const REPLACE_CHECK_FAILED =
+  "Could not confirm this upload would not replace a signed agreement. Nothing was uploaded.";
+
+/**
+ * Refuse an upload that would supersede signed-agreement evidence.
+ *
+ * Replace in the vault is "upload a new file in the same category":
+ * persistConfirmedDocument marks every current row of that category
+ * is_current=false, superseded_by=<new row>. On the Signed agreement card that
+ * demoted the archived, signed PDF to "Replaced versions" and showed the new
+ * upload as the signed agreement. Signed evidence is immutable; a wrong
+ * agreement is voided and re-sent through eSign instead. Drivers never file
+ * agreements at all — theirs come from eSign. Called before an upload URL is
+ * signed and again before the row is written.
+ * See docs/esign/SIGNED-AGREEMENT-IMMUTABILITY.md.
+ */
+async function refuseSignedAgreementReplace(
+  admin: any,
+  args: { applicationId: string; category: string; staff: boolean },
+): Promise<void> {
+  if (!args.staff && args.category === "agreement") {
+    throw new Error(SIGNED_AGREEMENT_DRIVER_UPLOAD_REFUSED);
+  }
+  const { data: rows, error } = await admin
+    .from("documents")
+    .select("id,kind,category,storage_bucket,storage_path")
+    .eq("driver_id", args.applicationId)
+    .eq("category", args.category)
+    .eq("is_current", true);
+  if (error) throw new Error(REPLACE_CHECK_FAILED);
+  const current = (rows ?? []) as Array<{ id: string } & Parameters<typeof isSignedAgreementEvidence>[0]>;
+  if (current.some((r) => isSignedAgreementEvidence(r))) {
+    throw new Error(SIGNED_AGREEMENT_REPLACE_REFUSED);
+  }
+  if (await namedByAgreement(admin, current.map((r) => r.id), REPLACE_CHECK_FAILED)) {
+    throw new Error(SIGNED_AGREEMENT_REPLACE_REFUSED);
   }
 }
 
@@ -724,6 +786,12 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
     if (!data.path.startsWith(`${data.applicationId}/`)) throw new Error("Invalid upload path");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Again here: the confirm is what supersedes, and it can be called alone.
+    await refuseSignedAgreementReplace(supabaseAdmin, {
+      applicationId: data.applicationId,
+      category: data.category,
+      staff,
+    });
     // A recording is never shared with the applicant, whatever the caller
     // asked for.
     const visibility = restricted || (staff && data.internal) ? ["admin"] : ["driver", "admin"];
@@ -893,10 +961,25 @@ export const setDocumentReview = createServerFn({ method: "POST" })
 
     const { data: doc } = await supabaseAdmin
       .from("documents")
-      .select("id,driver_id,category,label,review_status")
+      .select("id,driver_id,kind,category,label,review_status,storage_bucket,storage_path")
       .eq("id", data.documentId)
       .maybeSingle();
     if (!doc) throw new Error("Document not found");
+
+    // Needs New asks for a replacement, and a signed agreement is never
+    // replaced: it is voided and re-sent through eSign. Verifying, and
+    // clearing a decision already on the row, stay allowed.
+    if (
+      data.status === "rejected" &&
+      (isSignedAgreementEvidence(doc) ||
+        (await namedByAgreement(
+          supabaseAdmin,
+          [doc.id as string],
+          "Could not confirm this document is not a signed agreement. Nothing was changed.",
+        )))
+    ) {
+      throw new Error(SIGNED_AGREEMENT_NEEDS_NEW_REFUSED);
+    }
 
     const clearing = data.status === "uploaded";
     const { error } = await supabaseAdmin
