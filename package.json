@@ -16,6 +16,7 @@
     "test:resume-reliability": "node scripts/resume-token-trim.test.mjs && node scripts/wizard-recovery-cron.test.mjs && node scripts/wizard-save.test.mjs",
     "test:resume-tokens-pg": "node scripts/resume-token-postgres.test.mjs",
     "test:reminder-scheduler-fix": "node scripts/reminder-scheduler-fix.db.test.mjs",
+    "test:reminder-cap-concurrency": "node scripts/reminder-cap-concurrency.db.test.mjs",
     "test:grants": "node scripts/grants.test.mjs",
     "test:nav": "node scripts/admin-navigation.test.mjs",
     "test:fleet": "node scripts/marketing-fleet.test.mjs",
