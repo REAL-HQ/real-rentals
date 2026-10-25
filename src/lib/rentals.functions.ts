@@ -4,6 +4,14 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { notReadyMessage } from "@/lib/vehicle-readiness";
+import {
+  decideActivation,
+  driverRequirementBlockers,
+  activationRequirements,
+  type ActivationBlocker,
+  type ActivationReadiness,
+  type DriverReadinessFacts,
+} from "@/lib/activation-readiness";
 
 // Turning an approved applicant into a live renter.
 //
@@ -30,36 +38,14 @@ async function assertStaff(_supabase: any, userId: string) {
   return requireManager(userId);
 }
 
-export type ActivationBlocker = {
-  code:
-    | "no_vehicle"
-    | "vehicle_busy"
-    | "no_passed_inspection"
-    | "no_email"
-    | "not_approved"
-    | "already_active"
-    | "invalid_dates"
-    /** Vehicle fails Rental Ready (or rate missing). Never overridable. */
-    | "vehicle_not_ready"
-    /** The application's login belongs to a different identity. Never overridable. */
-    | "account_conflict"
-    /** Pickup mileage is materially below the vehicle's mileage history. */
-    | "mileage_invalid";
-  message: string;
-};
-
-export type ActivationReadiness = {
-  ready: boolean;
-  blockers: ActivationBlocker[];
-  warnings: string[];
-  vehicleId: string | null;
-  suggestedWeeklyRate: number | null;
-  suggestedDeposit: number | null;
-  /** Odometer from the latest passed pre-delivery inspection — prefills Pickup Mileage (same observation, never duplicated). */
-  inspectionMileage: number | null;
-  /** Newest valid reading in mileage history, for the "at least" hint. */
-  currentMileage: number | null;
-};
+// The readiness rules themselves (which blockers are hard, which need a
+// written reason, the requirement checklist) live in activation-readiness.ts
+// so the dialog and the Rental tab render exactly what this file enforces.
+export type {
+  ActivationBlocker,
+  ActivationReadiness,
+  ActivationRequirement,
+} from "@/lib/activation-readiness";
 
 /**
  * Everything that would stop this applicant being activated on this vehicle.
@@ -95,12 +81,43 @@ async function evaluateReadiness(
       message: "No email on file — needed to create their portal login.",
     });
   }
-  if (!["approved", "active"].includes(String(app.status))) {
-    blockers.push({
-      code: "not_approved",
-      message: `Application is "${app.status}". Approve it before activating.`,
-    });
-  }
+
+  // Driver-side readiness, enforced here rather than only in the drawer:
+  // approval, licence front/back, a signed agreement (all hard) and the
+  // interview (soft). Same sources the drawer reads: the Document Vault
+  // (documents.driver_id = application id), driver_screenings and agreements.
+  const [docsRead, screeningRead, agreementsRead] = await Promise.all([
+    admin
+      .from("documents")
+      .select("category,is_current,review_status")
+      .eq("driver_id", applicationId)
+      .eq("is_current", true),
+    admin
+      .from("driver_screenings")
+      .select("interview_completed_at,insurance_verified")
+      .eq("lead_id", applicationId)
+      .maybeSingle(),
+    admin
+      .from("agreements")
+      .select("source,status,signed_at,voided_at,rental_id")
+      .eq("application_id", applicationId)
+      .eq("status", "signed"),
+  ]);
+  // A failed read must never read as "complete": refuse instead of guessing.
+  const readError = docsRead.error ?? screeningRead.error ?? agreementsRead.error;
+  if (readError) throw new Error("Could not check activation readiness. Try again.");
+  const docs = docsRead.data;
+  const screening = screeningRead.data;
+  const agreements = agreementsRead.data;
+  const facts: DriverReadinessFacts = {
+    status: (app.status as string | null) ?? null,
+    agreements: (agreements ?? []) as DriverReadinessFacts["agreements"],
+    documents: (docs ?? []) as DriverReadinessFacts["documents"],
+    interviewCompletedAt: ((screening as any)?.interview_completed_at as string | null) ?? null,
+    insuranceVerified: ((screening as any)?.insurance_verified as boolean | null) ?? null,
+    hasPassedInspection: null,
+  };
+  blockers.push(...driverRequirementBlockers(facts));
 
   // An applicant already on an active rental should be edited, not re-activated.
   if (app.user_id) {
@@ -170,6 +187,7 @@ async function evaluateReadiness(
         .maybeSingle();
       inspectionMileage = (inspection as any)?.odometer != null ? Number((inspection as any).odometer) : null;
       currentMileage = (v as any).current_odometer != null ? Number((v as any).current_odometer) : null;
+      facts.hasPassedInspection = !!inspection;
       if (!inspection) {
         blockers.push({
           code: "no_passed_inspection",
@@ -199,6 +217,7 @@ async function evaluateReadiness(
     ready: blockers.length === 0,
     blockers,
     warnings,
+    requirements: activationRequirements(facts),
     vehicleId: vehicleId ?? null,
     suggestedWeeklyRate:
       app.weekly_rent != null
@@ -267,23 +286,19 @@ export const activateRental = createServerFn({ method: "POST" })
 
     const readiness = await evaluateReadiness(supabaseAdmin, data.applicationId, data.vehicleId);
 
-    // Double-booking and missing-email are never overridable: the first would
-    // hand one car to two drivers, the second cannot produce a working login.
-    const hardBlockers = readiness.blockers.filter(
-      // account_conflict is not in this list on purpose: evaluateReadiness
-      // cannot know about it, so it is returned directly from the handler
-      // below rather than filtered out of a readiness result.
-      (b) => b.code === "vehicle_busy" || b.code === "no_email" || b.code === "already_active" || b.code === "vehicle_not_ready",
-    );
-    if (hardBlockers.length) return { ok: false, blockers: hardBlockers };
-    if (!readiness.ready && !data.overrideBlockers) {
-      return { ok: false, blockers: readiness.blockers };
-    }
-    // An override is deliberate and attributable: it needs a written reason.
-    const overridden = readiness.ready ? [] : readiness.blockers;
-    if (overridden.length && (data.overrideReason ?? "").length < 5) {
-      return { ok: false, blockers: [{ code: "override_reason_required" as any, message: "Enter a reason for the override." }] };
-    }
+    // Hard blockers (double-booking, no email, already active, vehicle not
+    // Rental Ready, not approved, missing licence, no signed agreement, and
+    // any code not explicitly listed as soft) refuse even with an override and
+    // a reason. Only the soft ones (no passed inspection, interview not
+    // complete) may be overridden, and only with a written reason that goes
+    // into the immutable audit log below. The identity check that needs the
+    // provisioned login is returned directly from the handler further down.
+    const decision = decideActivation(readiness.blockers, {
+      overrideBlockers: data.overrideBlockers,
+      overrideReason: data.overrideReason,
+    });
+    if (!decision.ok) return { ok: false, blockers: decision.blockers };
+    const overridden = decision.overridden;
 
     const { data: app } = await supabaseAdmin
       .from("applications")
@@ -573,6 +588,11 @@ export const endRental = createServerFn({ method: "POST" })
 
 /** Truthful messages for the reasons activate_rental_tx refuses. */
 export function activationTxBlocker(msg: string): ActivationBlocker | null {
+  // M2 approval_serialize (proposed) raises SQLSTATE 40001 when another
+  // approval write holds its lock. The whole activate_rental_tx rolled back,
+  // so nothing was written and pressing Activate Rental again is safe.
+  if (msg.includes("approval_write_busy_retry"))
+    return { code: "write_busy_retry", message: "Another approval was being saved at the same moment. Nothing was changed — try Activate Rental again." };
   if (msg.includes("vehicle_busy"))
     return { code: "vehicle_busy", message: "That vehicle was just activated on another rental. Pick a different one." };
   if (msg.includes("already_active"))

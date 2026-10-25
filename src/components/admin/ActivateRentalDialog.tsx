@@ -8,7 +8,9 @@ import {
   activateRental,
   type ActivationReadiness,
 } from "@/lib/rentals.functions";
+import { isHardBlocker, MIN_OVERRIDE_REASON } from "@/lib/activation-readiness";
 import { MicroLabel } from "./ui";
+import { ActivationRequirementList } from "./ActivationRequirementList";
 
 type VehicleLite = {
   id: string;
@@ -21,9 +23,6 @@ type VehicleLite = {
   weekly_rate?: number | null;
   deposit?: number | null;
 };
-
-/** Blockers the operator is never allowed to click past. */
-const HARD = new Set(["vehicle_busy", "no_email", "already_active", "vehicle_not_ready"]);
 
 export function ActivateRentalDialog({
   driver,
@@ -78,11 +77,11 @@ export function ActivateRentalDialog({
   }, [driver.id, vehicleId]);
 
   const hardBlockers = useMemo(
-    () => (readiness?.blockers ?? []).filter((b) => HARD.has(b.code)),
+    () => (readiness?.blockers ?? []).filter((b) => isHardBlocker(b.code)),
     [readiness],
   );
   const softBlockers = useMemo(
-    () => (readiness?.blockers ?? []).filter((b) => !HARD.has(b.code)),
+    () => (readiness?.blockers ?? []).filter((b) => !isHardBlocker(b.code)),
     [readiness],
   );
 
@@ -98,7 +97,7 @@ export function ActivateRentalDialog({
     pickupNum != null && pickupNum >= 0 &&
     !!startDate &&
     hardBlockers.length === 0 &&
-    (softBlockers.length === 0 || (acknowledged && overrideReason.trim().length >= 5));
+    (softBlockers.length === 0 || (acknowledged && overrideReason.trim().length >= MIN_OVERRIDE_REASON));
 
   async function submit() {
     setBusy(true);
@@ -153,7 +152,7 @@ export function ActivateRentalDialog({
               onChange={(e) => setVehicleId(e.target.value)}
               className={`${inputCls} mt-1.5`}
             >
-              <option value="">Select a vehicle…</option>
+              <option value="">Select A Vehicle…</option>
               {selectable.map((v) => (
                 <option key={v.id} value={v.id}>
                   {[v.year, v.make, v.model, v.trim].filter(Boolean).join(" ")}
@@ -170,10 +169,14 @@ export function ActivateRentalDialog({
             </div>
           ) : null}
 
+          {readiness?.requirements?.length ? (
+            <ActivationRequirementList requirements={readiness.requirements} />
+          ) : null}
+
           {hardBlockers.length > 0 ? (
             <div className="rounded-xl border border-[#F3C9C4] bg-[#FDF2F1] p-3">
               <div className="flex items-center gap-1.5 text-sm font-semibold text-[#8A1C10]">
-                <ShieldAlert className="w-4 h-4" /> Cannot activate
+                <ShieldAlert className="w-4 h-4" /> Cannot Activate
               </div>
               <ul className="mt-1.5 space-y-1 text-sm text-[#8A1C10]/90">
                 {hardBlockers.map((b) => (
@@ -186,7 +189,7 @@ export function ActivateRentalDialog({
           {softBlockers.length > 0 ? (
             <div className="rounded-xl border border-[#F0DCBB] bg-[#FDF8EF] p-3">
               <div className="flex items-center gap-1.5 text-sm font-semibold text-[#8A5A00]">
-                <AlertTriangle className="w-4 h-4" /> Not ready
+                <AlertTriangle className="w-4 h-4" /> Needs A Written Reason
               </div>
               <ul className="mt-1.5 space-y-1 text-sm text-[#8A5A00]/90">
                 {softBlockers.map((b) => (
@@ -208,7 +211,7 @@ export function ActivateRentalDialog({
                 <textarea
                   value={overrideReason}
                   onChange={(e) => setOverrideReason(e.target.value)}
-                  placeholder="Reason for override (required)"
+                  placeholder="Reason For Override (Required)"
                   rows={2}
                   className="mt-2 w-full rounded-md border border-[#F6E7B8] bg-white px-2 py-1.5 text-xs text-[#111114]"
                 />
@@ -218,8 +221,8 @@ export function ActivateRentalDialog({
 
           {readiness?.warnings?.length ? (
             <div className="rounded-xl border border-[#EDEDF0] bg-[#FAFAFB] p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-[#55555E]">
-                Worth knowing
+              <div className="text-xs font-semibold tracking-wide text-[#55555E]">
+                Worth Knowing
               </div>
               <ul className="mt-1.5 space-y-1 text-sm text-[#55555E]">
                 {readiness.warnings.map((w) => (
@@ -231,7 +234,7 @@ export function ActivateRentalDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <MicroLabel>Weekly rate $</MicroLabel>
+              <MicroLabel>Weekly Rate $</MicroLabel>
               <input
                 value={weeklyRate}
                 onChange={(e) => setWeeklyRate(e.target.value)}
@@ -251,7 +254,7 @@ export function ActivateRentalDialog({
               />
             </div>
             <div>
-              <MicroLabel>Start date</MicroLabel>
+              <MicroLabel>Start Date</MicroLabel>
               <input
                 type="date"
                 value={startDate}
@@ -260,7 +263,7 @@ export function ActivateRentalDialog({
               />
             </div>
             <div>
-              <MicroLabel>End date (optional)</MicroLabel>
+              <MicroLabel>End Date (Optional)</MicroLabel>
               <input
                 type="date"
                 value={endDate}
@@ -295,7 +298,7 @@ export function ActivateRentalDialog({
               checked={depositHeld}
               onChange={(e) => setDepositHeld(e.target.checked)}
             />
-            Deposit already collected
+            Deposit Already Collected
           </label>
         </ModalBody>
 

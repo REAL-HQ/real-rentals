@@ -64,7 +64,13 @@ import { DepositDialog } from "./DepositDialog";
 import { DriverStatement } from "./DriverStatement";
 import { NO_PAY_CELLS, type PayCells } from "@/lib/driver-payment-status";
 import { getDriverPayStatuses } from "@/lib/driver-payment-status.functions";
-import { endRental } from "@/lib/rentals.functions";
+import { endRental, getActivationReadiness, type ActivationReadiness } from "@/lib/rentals.functions";
+import {
+  activationEntryState,
+  missingRequiredCategories,
+  primaryStep,
+} from "@/lib/activation-readiness";
+import { ActivationRequirementList } from "./ActivationRequirementList";
 import { scoreApplication } from "@/lib/scoring.functions";
 import {
   InsuranceVerificationCard,
@@ -1788,10 +1794,12 @@ function DriverDetail({
     void refreshVault();
   }, [refreshVault]);
 
-  const vaultDocCount = useMemo(() => {
-    const current = new Set(vaultDocs.filter((d) => d.is_current).map((d) => d.category));
-    return REQUIRED_VAULT_CATEGORIES.filter((c) => current.has(c)).length;
-  }, [vaultDocs]);
+  // Current and not rejected — the same rule activation readiness enforces on
+  // the server (missingRequiredCategories), so the two never disagree.
+  const vaultDocCount = useMemo(
+    () => REQUIRED_VAULT_CATEGORIES.length - missingRequiredCategories(vaultDocs).length,
+    [vaultDocs],
+  );
   useEffect(() => {
     if (!vaultLoading) onVaultChange?.(vaultDocCount);
     // onVaultChange is parent-owned; depending on it would loop.
@@ -1870,6 +1878,36 @@ function DriverDetail({
   const approve = useServerFn(approveApplication);
   const closeRental = useServerFn(endRental);
   const [activateOpen, setActivateOpen] = useState(false);
+  // Rental tab: Activate Rental entry and the server's readiness checklist.
+  // Loaded only for Manager+ (the server refuses a Coordinator) and only while
+  // no rental is running.
+  const activationEntry = activationEntryState({ isManager, rentalActive });
+  const checkActivation = useServerFn(getActivationReadiness);
+  const [rentalTabReadiness, setRentalTabReadiness] = useState<ActivationReadiness | null>(null);
+  const [rentalTabReadinessLoading, setRentalTabReadinessLoading] = useState(false);
+  const [rentalTabReadinessFailed, setRentalTabReadinessFailed] = useState(false);
+  useEffect(() => {
+    if (tab !== "rental" || activationEntry !== "enabled" || activateOpen) return;
+    let cancelled = false;
+    setRentalTabReadinessLoading(true);
+    setRentalTabReadinessFailed(false);
+    checkActivation({ data: { applicationId: driver.id, vehicleId: driver.vehicle_id ?? null } })
+      .then((r) => {
+        if (!cancelled) setRentalTabReadiness(r);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRentalTabReadiness(null);
+          setRentalTabReadinessFailed(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRentalTabReadinessLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, activationEntry, activateOpen, driver.id, driver.vehicle_id, driver.status, checkActivation]);
   const [recordOpen, setRecordOpen] = useState(false);
   const [recordCloseOpen, setRecordCloseOpen] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -1964,33 +2002,37 @@ function DriverDetail({
     }
   }
 
-  const primaryAction = !screeningDone
-    ? { label: "Continue Interview", onClick: () => setInterviewOpen(true), icon: ClipboardList }
-    : !docsComplete
-      ? {
-          label: "Review Documents",
-          onClick: () => setTab("documents"),
-          icon: FileText,
-        }
-      : !insuranceOk
+  // The header's single next step (order unchanged). A Coordinator is sent to
+  // the Rental tab instead of Activate Rental: the server refuses them.
+  const step = primaryStep({ screeningDone, docsComplete, insuranceOk, approved, rentalActive, isManager });
+  const primaryAction =
+    step === "interview"
+      ? { label: "Continue Interview", onClick: () => setInterviewOpen(true), icon: ClipboardList }
+      : step === "documents"
         ? {
-            label: "Verify Insurance",
-            onClick: () => setTab("screening"),
-            icon: ShieldCheck,
+            label: "Review Documents",
+            onClick: () => setTab("documents"),
+            icon: FileText,
           }
-        : !approved
+        : step === "insurance"
           ? {
-              label: approving ? "Approving…" : "Approve & Send Contract",
-              onClick: approveAndSend,
-              icon: Check,
+              label: "Verify Insurance",
+              onClick: () => setTab("screening"),
+              icon: ShieldCheck,
             }
-          : !rentalActive
-            ? { label: "Activate Rental", onClick: () => setActivateOpen(true), icon: Car }
-            : {
-                label: "View Rental",
-                onClick: () => setTab("rental"),
-                icon: Car,
-              };
+          : step === "approve"
+            ? {
+                label: approving ? "Approving…" : "Approve & Send Contract",
+                onClick: approveAndSend,
+                icon: Check,
+              }
+            : step === "activate"
+              ? { label: "Activate Rental", onClick: () => setActivateOpen(true), icon: Car }
+              : {
+                  label: "View Rental",
+                  onClick: () => setTab("rental"),
+                  icon: Car,
+                };
   const PrimaryIcon = primaryAction.icon;
 
   // What to collect next, ordered by how much coverage each action unlocks.
@@ -2660,6 +2702,13 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="rental" className="mt-0">
+                <StartRentalCard
+                  entry={activationEntry}
+                  readiness={rentalTabReadiness}
+                  loading={rentalTabReadinessLoading}
+                  failed={rentalTabReadinessFailed}
+                  onActivate={() => setActivateOpen(true)}
+                />
                 <button className={btnSecondary} disabled={!RECORD_RENTAL_CONTRACT_ENABLED} onClick={()=>setRecordOpen(true)}>Record Rental — pending acceptance</button>
                 {activeRentalId ? <button className={btnSecondary} disabled={!RECORD_RENTAL_CONTRACT_ENABLED} onClick={()=>setRecordCloseOpen(true)}>Close recorded rental — pending acceptance</button> : null}
                 <Card title="Assigned Vehicle" icon={<Car className="w-4 h-4" />}>
@@ -2936,6 +2985,70 @@ function ReqRow({ ok, label }: { ok: boolean; label: string }) {
       </span>
       {label}
     </li>
+  );
+}
+
+/**
+ * The Rental tab's Activate Rental entry. A driver is Active only while a
+ * rental runs, so this says so and opens the same ActivateRentalDialog the
+ * header uses. The checklist is the server's readiness result, not a local
+ * guess; activateRental re-checks every item when the rental is started.
+ */
+function StartRentalCard({
+  entry,
+  readiness,
+  loading,
+  failed,
+  onActivate,
+}: {
+  entry: "enabled" | "manager_only" | "rental_active";
+  readiness: ActivationReadiness | null;
+  loading: boolean;
+  failed: boolean;
+  onActivate: () => void;
+}) {
+  if (entry === "rental_active") return null;
+  return (
+    <div className="mb-4">
+      <Card title="Start Rental" icon={<Car className="w-4 h-4" />}>
+        <p className="text-[13px] text-[#55555E]">
+          A driver becomes Active only when a rental starts. Activate Rental starts the rental,
+          assigns the vehicle and sets the driver to Active in one step.
+        </p>
+        {entry === "manager_only" ? (
+          <div className="mt-3">
+            <button
+              type="button"
+              disabled
+              title="Only A Manager Or Owner Can Start A Rental"
+              className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold opacity-50 cursor-not-allowed"
+            >
+              <Car className="w-3.5 h-3.5" strokeWidth={2} /> Activate Rental
+            </button>
+            <p className="mt-1.5 text-[11px] text-[#9A9AA3]">Only A Manager Or Owner Can Start A Rental.</p>
+          </div>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {loading && !readiness ? (
+              <div className="flex items-center gap-2 text-[12px] text-[#55555E]">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking Readiness…
+              </div>
+            ) : failed ? (
+              <p className="text-[12px] text-[#8A1C10]">Could Not Check Readiness. Open Activate Rental To Retry.</p>
+            ) : readiness ? (
+              <ActivationRequirementList requirements={readiness.requirements} />
+            ) : null}
+            <button
+              type="button"
+              onClick={onActivate}
+              className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
+            >
+              <Car className="w-3.5 h-3.5" strokeWidth={2} /> Activate Rental
+            </button>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 

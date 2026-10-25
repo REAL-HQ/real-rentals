@@ -90,13 +90,8 @@ function isImageDoc(d: VaultDocument): boolean {
   return !/\.(pdf|mp3|wav|m4a|ogg|mp4|mov|webm|zip|docx?)$/i.test(d.file_name ?? "");
 }
 
-/** The four categories the screening pipeline treats as required. */
-export const REQUIRED_VAULT_CATEGORIES: DocCategory[] = [
-  "license_front",
-  "license_back",
-  "insurance",
-  "gig_profile",
-];
+/** The four categories the screening pipeline treats as required. One list, shared with the server. */
+export { REQUIRED_VAULT_CATEGORIES } from "@/lib/required-docs";
 
 function VerifyIdentityAction({ applicationId }: { applicationId: string }) {
   if (!IDENTITY_VERIFICATION_ENABLED) return null;

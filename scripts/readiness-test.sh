@@ -46,3 +46,4 @@ node scripts/readiness-documents.test.mjs
 if [[ "${WORKERD_SMOKE:-}" == "1" ]]; then
   bash scripts/workerd-smoke.sh
 fi
+node scripts/activation-readiness.test.mjs
