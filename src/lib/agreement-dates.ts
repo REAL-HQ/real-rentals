@@ -143,3 +143,18 @@ export function fmtContractDate(v: unknown): string {
   const parts = Object.fromEntries(CONTRACT_DAY.formatToParts(d).map((x) => [x.type, x.value]));
   return out(Number(parts.year), Number(parts.month), Number(parts.day));
 }
+
+/**
+ * A DATE-ONLY contract field (a licence expiry): "Jun 1, 2029", or "".
+ *
+ * Strictly a YYYY-MM-DD calendar day, printed from its own three fields by
+ * fmtContractDate, so it can never shift a day across timezones. Anything else
+ * — an instant, "06/01/2029", "2029-02-30", text — returns "" rather than
+ * reaching fmtContractDate's instant branch, which would read a local-midnight
+ * string in America/New_York and print the day before on a server east of
+ * Eastern. The caller turns "" into a readiness blocker; a contract never
+ * prints a date nobody recorded.
+ */
+export function fmtContractDateOnly(v: unknown): string {
+  return parseDateOnly(v) ? fmtContractDate(v) : "";
+}

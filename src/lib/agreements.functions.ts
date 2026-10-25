@@ -8,7 +8,7 @@ import {
   renderTemplate,
   type MergeData,
 } from "@/lib/agreement-merge";
-import { fmtContractDate, minTermEndIso, minTermWeeks } from "@/lib/agreement-dates";
+import { fmtContractDate, fmtContractDateOnly, minTermEndIso, minTermWeeks } from "@/lib/agreement-dates";
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
@@ -226,8 +226,15 @@ async function buildMergeData(
     blockers.push({ field: "license_number", label: "Driver licence number", why: "Identifies the only person allowed to drive the vehicle.", fix: pay });
   if (!String(app.license_state ?? "").trim())
     blockers.push({ field: "license_state", label: "Licence issuing state", why: "A licence number is only meaningful with its issuing state.", fix: pay });
+  // The expiry prints as a contract date ("Jun 1, 2029"), like every other
+  // date in the agreement. It is a date-only value, so it is formatted from
+  // its own fields and never shifts a day; one that is not a calendar date
+  // prints nothing and blocks, rather than printing raw text or a guess.
+  const licenceExpiry = fmtContractDateOnly(app.license_expiration);
   if (!app.license_expiration)
     blockers.push({ field: "license_expiration", label: "Licence expiry date", why: "The agreement prints it, and shows the licence is valid for the rental.", fix: pay });
+  else if (!licenceExpiry)
+    blockers.push({ field: "license_expiration", label: "A valid licence expiry date", why: "The recorded licence expiry is not a calendar date. Enter the date printed on the licence.", fix: pay });
   else if (startDate && String(app.license_expiration) < String(startDate))
     blockers.push({ field: "license_expiration", label: "A licence valid on the start date", why: `The licence expires ${app.license_expiration}, before the rental starts ${startDate}.`, fix: pay });
 
@@ -292,7 +299,7 @@ async function buildMergeData(
         : "",
     license_number: app.license_number ?? "",
     license_state: app.license_state ?? "",
-    license_expiration: app.license_expiration ?? "",
+    license_expiration: licenceExpiry,
     vehicle: vehicle
       ? [vehicle.year, vehicle.make, vehicle.model, vehicle.trim].filter(Boolean).join(" ")
       : "",
