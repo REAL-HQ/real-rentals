@@ -132,7 +132,9 @@ export async function claimRecoverySend(
     // this write must not be told they didn't finish.
     .or(NOT_APPLIED_FILTER);
   q = extra(q);
-  const { data, error } = await q.select("id");
+  // current_step is selected because PostgREST re-applies the or= filter to
+  // the returned rows: with only "id" every claim fails with 42703.
+  const { data, error } = await q.select("id,current_step");
   if (error) return { claimed: false, error: error.message ?? "update failed" };
   return { claimed: Array.isArray(data) && data.length > 0, error: null };
 }
