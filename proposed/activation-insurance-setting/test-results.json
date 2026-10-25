@@ -1,0 +1,306 @@
+{
+  "generated_at": "local run",
+  "passed": 36,
+  "failed": 0,
+  "results": [
+    {
+      "id": "P0",
+      "name": "artifacts match SHA256SUMS",
+      "actual": "11 files",
+      "pass": true
+    },
+    {
+      "id": "P1",
+      "name": "preflight: every gate ok except the two local target rows",
+      "actual": "19 rows, only target rows differ",
+      "pass": true
+    },
+    {
+      "id": "P2",
+      "name": "real guarded request + trailer: guard passes, package refuses the foreign target, nothing persists",
+      "actual": "TARGET_MISMATCH",
+      "pass": true
+    },
+    {
+      "id": "P3",
+      "name": "tampered request (one package byte) refused by the guard before anything runs",
+      "actual": "RRGUARD_BYTES_MISMATCH",
+      "pass": true
+    },
+    {
+      "id": "P4",
+      "name": "failure after the DDL rolls back everything (local copy, injected failure)",
+      "actual": "nothing persisted",
+      "pass": true
+    },
+    {
+      "id": "P5",
+      "name": "local copy (target profile substituted only) installs; postconditions pass",
+      "actual": "installed",
+      "pass": true
+    },
+    {
+      "id": "P6",
+      "name": "verify-after-readonly: every row ok",
+      "actual": "15 rows ok",
+      "pass": true
+    },
+    {
+      "id": "P7",
+      "name": "re-run refused (AIS_EVIDENCE_REPLAY)",
+      "actual": "AIS_EVIDENCE_REPLAY",
+      "pass": true
+    },
+    {
+      "id": "B1",
+      "name": "wrapper and activate_rental_tx: plpgsql, SECURITY DEFINER, SET clauses, no autonomous work; wrapper has no exception handler",
+      "actual": "{\"activate_rental_tx\":{\"lang\":\"plpgsql\",\"security_definer\":true,\"config\":[\"search_path=public\"],\"exception_block\":true,\"autonomous\":false},\"activate_rental_checked_tx\":{\"lang\":\"plpgsql\",\"security_definer\":true,\"config\":[\"search_path=\\\"\\\"\"],\"exception_block\":false,\"autonomous\":false}}",
+      "pass": true
+    },
+    {
+      "id": "R0",
+      "name": "local PostgREST 12 on 127.0.0.1:55483",
+      "actual": "up",
+      "pass": true
+    },
+    {
+      "id": "T1",
+      "name": "setting OFF + insurance unverified: refused even with the acknowledgement (no override path in the transaction)",
+      "actual": "P0001 insurance_not_verified:unverified",
+      "pass": true
+    },
+    {
+      "id": "T1b",
+      "name": "setting OFF + verified-but-expired (application date, then document date): refused",
+      "actual": "P0001 insurance_not_verified:expired | P0001 insurance_not_verified:expired",
+      "pass": true
+    },
+    {
+      "id": "T2",
+      "name": "setting ON + unverified: refused without the acknowledgement; permitted with it; insurance never marked verified",
+      "actual": "P0001 insurance_ack_required:unverified → then ok with ack",
+      "pass": true
+    },
+    {
+      "id": "T2b",
+      "name": "setting ON + missing / expired: permitted only with the acknowledgement",
+      "actual": "missing, expired",
+      "pass": true
+    },
+    {
+      "id": "T2c",
+      "name": "setting ON never bypasses other requirements: agreement, licence, approval, vehicle readiness",
+      "actual": "no_signed_agreement, missing_documents, not_approved, vehicle_not_rental_ready:vin",
+      "pass": true
+    },
+    {
+      "id": "T3",
+      "name": "setting ON + verified: normal activation, exception not used",
+      "actual": "ok",
+      "pass": true
+    },
+    {
+      "id": "T3b",
+      "name": "paper agreement: counts only with its audited Manager/Owner verification",
+      "actual": "audited paper ok; P0001 no_signed_agreement",
+      "pass": true
+    },
+    {
+      "id": "T4",
+      "name": "Manager cannot change the setting: setter RPC, direct UPDATE/INSERT/DELETE (SQL as authenticated) and PostgREST",
+      "actual": "42501 owner_required | UPDATE 0 rows | 42501 rental_activation_setting_owner_rpc_only | REST rpc 403, PATCH 200 []",
+      "pass": true
+    },
+    {
+      "id": "T5",
+      "name": "Coordinator cannot change the setting: setter RPC, direct UPDATE/INSERT/DELETE (SQL as authenticated) and PostgREST",
+      "actual": "42501 owner_required | UPDATE 0 rows | 42501 rental_activation_setting_owner_rpc_only | REST rpc 403, PATCH 200 []",
+      "pass": true
+    },
+    {
+      "id": "T6",
+      "name": "Owner changes it through the setter: saved and audited (actor, old -> new, time) in the same transaction",
+      "actual": "via PostgREST: off -> on, audit 8e961497-bb59-4704-99f1-1940af7d3aef",
+      "pass": true
+    },
+    {
+      "id": "T6b",
+      "name": "even the Owner cannot write the key directly (only the audited setter); service_role cannot either",
+      "actual": "owner UPDATE 0 rows (restrictive policy) | 42501 rental_activation_setting_owner_rpc_only | 42501 rental_activation_setting_owner_rpc_only | 42501 permission denied for function set_rental_activation_insurance_exception | other keys still Owner-writable (1 row)",
+      "pass": true
+    },
+    {
+      "id": "T7",
+      "name": "direct API bypass: the wrapper and activate_rental_tx are not executable by authenticated or anon",
+      "actual": "42501 permission denied for function activate_rental_checked | 42501 permission denied for function activate_rental_tx | 42501 permission denied for function activate_rental_checked | 42501 permission denied for function activate_rental_tx | REST owner: 403/403 | REST manager: 403/403 | REST anon: 401/401",
+      "pass": true
+    },
+    {
+      "id": "T8",
+      "name": "missing setting row reads OFF; the Owner setter recreates it (audited, from_row_present=false)",
+      "actual": "P0001 insurance_not_verified:unverified | non-boolean \"true\" also OFF: insurance_not_verified:unverified",
+      "pass": true
+    },
+    {
+      "id": "T9a",
+      "name": "activation holds the setting row FOR SHARE until commit: Owner NOWAIT fails, Owner update blocks, then applies after",
+      "actual": "NOWAIT: 55P03 could not obtain lock on row in re; blocked on Lock/transactionid by A; after A commit Owner change on -> off",
+      "pass": true
+    },
+    {
+      "id": "T9b",
+      "name": "Owner switches OFF while an activation waits: the activation's own locked read sees OFF and refuses",
+      "actual": "waited for the Owner's commit, then insurance_not_verified:unverified",
+      "pass": true
+    },
+    {
+      "id": "T9c",
+      "name": "setting committed OFF between readiness and the transaction: the transaction uses its own read",
+      "actual": "readiness saw true; transaction: P0001 insurance_not_verified:unverified",
+      "pass": true
+    },
+    {
+      "id": "T9d",
+      "name": "insurance unverified (or licence rejected) after readiness: re-checked in the transaction; a concurrent change waits for the lock",
+      "actual": "P0001 insurance_not_verified:unverified | P0001 missing_documents | screening update waits: 55P03 canceling statement due  | licence update waits: 55P03 canceling statement due ",
+      "pass": true
+    },
+    {
+      "id": "T9e",
+      "name": "a failure inside activate_rental_tx rolls back the wrapper's reads, locks and audit row",
+      "actual": "P0001 vehicle_busy; no audit row, no rental, application unchanged, setting lock free",
+      "pass": true
+    },
+    {
+      "id": "T9f",
+      "name": "via PostgREST (one transaction per request): failure leaves nothing; success writes rental + in-transaction audit",
+      "actual": "failure 400 (nothing written); success 200 (rental + audit, txid 1972)",
+      "pass": true
+    },
+    {
+      "id": "RB1",
+      "name": "real rollback request + trailer: guard passes, refuses the foreign target",
+      "actual": "TARGET_MISMATCH",
+      "pass": true
+    },
+    {
+      "id": "RB2",
+      "name": "rollback (local copy) removes exactly v1; activate_rental_tx, 0031 and the ledger unchanged; history kept",
+      "actual": "removed; 15 audit rows kept; re-run AIS_ROLLBACK_REPLAY",
+      "pass": true
+    },
+    {
+      "id": "T10",
+      "name": "wrapper absent: PostgREST answers PGRST202 (the code the app fails closed on)",
+      "actual": "404 PGRST202",
+      "pass": true
+    },
+    {
+      "id": "O1",
+      "name": "order: this package, then M2 Window 1+2 (packet preflight clean, 31 writes, verifies true), then activation",
+      "actual": "applied 31 files, 30 verifies true, ords 144-206; OFF refused (insurance_not_verified:unverified), ON needs ack, ON+ack ok, verified ok, verify-after ok except activate_rental_tx.unchanged_since_install (expected: M2 Window 1 replaces activate_rental_tx; the wrapper calls the new one)",
+      "pass": true
+    },
+    {
+      "id": "O2",
+      "name": "order: M2 Window 1+2, then this package (preflight clean), then activation incl. 40001 under approval_serialize",
+      "actual": "applied 31 files, 30 verifies true, ords 144-206; m2_window1 activate=true; OFF refused (insurance_not_verified:unverified), ON needs ack, ON+ack ok, verified ok, verify-after ok; 40001 approval_write_busy_retry, nothing written, retry ok",
+      "pass": true
+    },
+    {
+      "id": "O3",
+      "name": "order: S1 then this package; both install, activation works (S1 does not block the SECURITY DEFINER path)",
+      "actual": "S1 sha b9c651b7706c; OFF refused (insurance_not_verified:unverified), ON needs ack, ON+ack ok, verified ok, verify-after ok",
+      "pass": true
+    },
+    {
+      "id": "O4",
+      "name": "order: this package then S1; both install, activation works (S1 does not block the SECURITY DEFINER path)",
+      "actual": "S1 sha b9c651b7706c; OFF refused (insurance_not_verified:unverified), ON needs ack, ON+ack ok, verified ok, verify-after ok",
+      "pass": true
+    }
+  ],
+  "evidence": {
+    "system_identifier_local": "7700424801866693512",
+    "server_version": "PostgreSQL 17.6 on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 7.5.0-3ubuntu1~18.04) 7.5.0, 64-bit",
+    "collation": "en_US.UTF-8",
+    "verify_after": [
+      "activate_rental_tx.service_role_only=true",
+      "activate_rental_tx.unchanged_since_install=dfadcc73dfa027a4e4c3364249776b3f",
+      "app_settings.restrictive_policies=rental_activation_setting_no_client_delete:d:false,rental_activation_setting_no_client_insert:a:false,rental_activation_setting_no_client_update:w:false",
+      "drizzle.first_23_receipts_md5=5cfa7e88ccac860637339bd9bdaab72c",
+      "evidence.one_row=1",
+      "guard.definition_and_no_api_execute=true",
+      "guard.trigger=1",
+      "security_0031.policies_md5=d33877618a9f40924d14e49b6653d7fa",
+      "setter.authenticated_only=true",
+      "setter.definition=true",
+      "setting.audited_changes (informational)=0",
+      "setting.value (informational)=false",
+      "setting.value_is_boolean=boolean",
+      "wrapper.definition=true",
+      "wrapper.service_role_only=true"
+    ],
+    "function_shapes": {
+      "activate_rental_tx": {
+        "lang": "plpgsql",
+        "security_definer": true,
+        "config": [
+          "search_path=public"
+        ],
+        "exception_block": true,
+        "autonomous": false
+      },
+      "activate_rental_checked_tx": {
+        "lang": "plpgsql",
+        "security_definer": true,
+        "config": [
+          "search_path=\"\""
+        ],
+        "exception_block": false,
+        "autonomous": false
+      }
+    },
+    "exception_audit": {
+      "source": "activate_rental_checked_tx",
+      "driver_id": "8c2de50e-ef3c-49ce-8dbb-08d522f4565c",
+      "checked_at": "2026-10-25T02:58:43.047136+00:00",
+      "vehicle_id": "608cb72f-723e-4d9a-8b65-a498250005c6",
+      "actor_user_id": "124bb5d0-3b4a-40ca-b279-8f101512ee14",
+      "application_id": "ff53f836-299d-423f-8f75-2847837abf73",
+      "exception_used": true,
+      "transaction_id": "1890",
+      "setting_present": true,
+      "insurance_status": "unverified",
+      "signed_agreement": "esign",
+      "insurance_exception_acknowledged": true,
+      "setting_allow_without_insurance_verification": true
+    },
+    "owner_change_audit": {
+      "actor_user_id": "db4df39f-a356-46c5-9c1a-8e2ccac10565",
+      "actor_role": "admin",
+      "metadata": {
+        "to": true,
+        "from": false,
+        "setting": "allow_activation_without_insurance_verification",
+        "changed_at": "2026-10-25T02:58:43.142622+00:00",
+        "actor_user_id": "db4df39f-a356-46c5-9c1a-8e2ccac10565",
+        "from_row_present": true
+      },
+      "created_at": "2026-10-25T02:58:43.142Z"
+    },
+    "concurrency_a": {
+      "blocked_wait_event": "Lock/transactionid",
+      "blocking_pids": [
+        15716
+      ],
+      "nowait_error": "55P03 could not obtain lock on row in relation \"app_settings\"",
+      "owner_change_after_commit": {
+        "to": false,
+        "from": true,
+        "audit_id": "fcbd2283-a019-409a-9908-bb1398676dae",
+        "changed_at": "2026-10-25T02:58:43.21005+00:00"
+      }
+    }
+  }
+}

@@ -419,7 +419,7 @@ export function InterviewTab({
             </div>
           </Field>
           <Row cols={2}>
-            <Field label="Gig Account Status">
+            <Field label="Gig Account Status (Staff Noted)">
               <SelectInput
                 value={s.gig_account_status ?? ""}
                 onChange={(v) => up("gig_account_status" as any, (v || null) as any)}

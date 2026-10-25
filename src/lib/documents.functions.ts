@@ -858,10 +858,61 @@ export const setDocumentReview = createServerFn({ method: "POST" })
 
     const { data: doc } = await supabaseAdmin
       .from("documents")
-      .select("id,driver_id,category,label,review_status")
+      .select("id,driver_id,category,label,review_status,is_current,storage_bucket,storage_path,content_sha256")
       .eq("id", data.documentId)
       .maybeSingle();
     if (!doc) throw new Error("Document not found");
+
+    // A signed paper agreement verified here counts as the signed agreement
+    // for rental activation (activation-readiness.ts isAuditedPaperAgreement,
+    // re-checked in activate_rental_checked_tx). So this verification must
+    // leave a complete, mandatory audit trail BEFORE the document changes:
+    // verifier, time, document id, storage path, content SHA-256 and version
+    // when known. If that audit row cannot be written, nothing is verified.
+    // Activation trusts the audit row, not review_status alone.
+    if (doc.category === "agreement" && data.status === "verified") {
+      if (!doc.is_current) throw new Error("Only the current agreement document can be verified.");
+      if (!doc.storage_bucket || !doc.storage_path)
+        throw new Error("Upload the signed agreement file before verifying it.");
+      const reviewedAt = new Date().toISOString();
+      const { error: auditErr } = await supabaseAdmin.from("audit_log").insert({
+        actor_user_id: actor.userId,
+        actor_email: actor.email ?? null,
+        actor_role: actor.role,
+        action: "document.verified",
+        entity_type: "application",
+        entity_id: doc.driver_id,
+        summary: `Verified signed agreement ${doc.label ?? doc.id}`,
+        metadata: {
+          documentId: doc.id,
+          category: doc.category,
+          from: doc.review_status,
+          to: "verified",
+          note: data.note ?? null,
+          paper_agreement: true,
+          verifier_user_id: actor.userId,
+          verifier_role: actor.role,
+          verifier_tier: actor.tier,
+          reviewed_at: reviewedAt,
+          reviewed_at_ms: Date.parse(reviewedAt),
+          storage_bucket: doc.storage_bucket,
+          storage_path: doc.storage_path,
+          content_sha256: doc.content_sha256 ?? null,
+          document_label: doc.label ?? null,
+          // Vault documents carry no agreement version; recorded as unknown.
+          agreement_version: null,
+        },
+      });
+      if (auditErr) throw new Error("Could not record the verification. The agreement was not verified.");
+      const { error: upErr } = await supabaseAdmin
+        .from("documents")
+        .update({ review_status: "verified", review_note: data.note ?? null, reviewed_at: reviewedAt, reviewed_by: context.userId })
+        .eq("id", data.documentId);
+      // The audit row names this exact reviewed_at; without the matching
+      // document update it never counts as a signed agreement.
+      if (upErr) throw new Error(upErr.message);
+      return { ok: true as const };
+    }
 
     const clearing = data.status === "uploaded";
     const { error } = await supabaseAdmin

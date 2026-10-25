@@ -7,6 +7,7 @@ import type { ActivationRequirement, RequirementEnforcement } from "@/lib/activa
 
 const ENFORCEMENT_LABEL: Record<RequirementEnforcement, string> = {
   hard: "Required",
+  acknowledge: "Owner Exception: Acknowledge Warning",
   soft: "Override With Written Reason",
   advisory: "Advisory",
 };
@@ -16,7 +17,9 @@ export function ActivationRequirementList({
 }: {
   requirements: ActivationRequirement[];
 }) {
-  const open = requirements.filter((r) => r.met !== true).length;
+  // Advisory items (insurance card, gig profile, gig platform) never block, so
+  // they are not counted as outstanding.
+  const open = requirements.filter((r) => r.met !== true && r.enforcement !== "advisory").length;
   return (
     <div
       className="rounded-xl border border-[#EDEDF0] bg-white p-3"
@@ -25,7 +28,7 @@ export function ActivationRequirementList({
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-semibold text-[#55555E]">Activation Readiness</div>
         <div className="text-[11px] text-[#9A9AA3]">
-          {open === 0 ? "All Complete" : `${open} Incomplete`}
+          {open === 0 ? "Required Items Complete" : `${open} Required Incomplete`}
         </div>
       </div>
       <ul className="mt-2 space-y-1.5">
@@ -49,12 +52,15 @@ export function ActivationRequirementList({
                 />
               ) : (
                 <Circle
-                  className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${r.enforcement === "hard" ? "text-[#B00000]" : r.enforcement === "soft" ? "text-[#8A5A00]" : "text-[#9A9AA3]"}`}
+                  className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${r.enforcement === "hard" ? "text-[#B00000]" : r.enforcement === "soft" || r.enforcement === "acknowledge" ? "text-[#8A5A00]" : "text-[#9A9AA3]"}`}
                   aria-label="Incomplete"
                 />
               )}
               <span className={r.met === true ? "text-[#55555E]" : "text-[#111114]"}>
                 {r.label}
+                {r.detail && r.met !== true ? (
+                  <span className="text-[#9A9AA3]"> · {r.detail}</span>
+                ) : null}
               </span>
             </span>
             {r.met !== true ? (

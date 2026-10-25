@@ -8,9 +8,13 @@ import {
   decideActivation,
   driverRequirementBlockers,
   activationRequirements,
+  businessToday,
+  checkedTxBlocker,
+  insuranceStatus,
   type ActivationBlocker,
   type ActivationReadiness,
   type DriverReadinessFacts,
+  type InsuranceReadiness,
 } from "@/lib/activation-readiness";
 
 // Turning an approved applicant into a live renter.
@@ -67,7 +71,7 @@ async function evaluateReadiness(
   const { data: app } = await admin
     .from("applications")
     .select(
-      "id,full_name,email,phone,status,vehicle_id,weekly_rent,user_id,insurance_status,sms_consent",
+      "id,full_name,email,phone,status,vehicle_id,weekly_rent,user_id,insurance_status,insurance_expires_on,sms_consent",
     )
     .eq("id", applicationId)
     .maybeSingle();
@@ -83,13 +87,15 @@ async function evaluateReadiness(
   }
 
   // Driver-side readiness, enforced here rather than only in the drawer:
-  // approval, licence front/back, a signed agreement (all hard) and the
-  // interview (soft). Same sources the drawer reads: the Document Vault
-  // (documents.driver_id = application id), driver_screenings and agreements.
-  const [docsRead, screeningRead, agreementsRead] = await Promise.all([
+  // approval, licence front/back, a signed agreement and verified insurance
+  // (all hard; insurance may instead need the Owner-exception acknowledgement)
+  // and the interview (soft). Same sources the drawer reads: the Document Vault
+  // (documents.driver_id = application id), driver_screenings, agreements and
+  // the audited paper-agreement verifications in audit_log.
+  const [docsRead, screeningRead, agreementsRead, auditsRead] = await Promise.all([
     admin
       .from("documents")
-      .select("category,is_current,review_status")
+      .select("id,category,is_current,review_status,expires_at,reviewed_at,storage_path")
       .eq("driver_id", applicationId)
       .eq("is_current", true),
     admin
@@ -102,19 +108,41 @@ async function evaluateReadiness(
       .select("source,status,signed_at,voided_at,rental_id")
       .eq("application_id", applicationId)
       .eq("status", "signed"),
+    admin
+      .from("audit_log")
+      .select("action,actor_role,metadata")
+      .eq("action", "document.verified")
+      .eq("entity_type", "application")
+      .eq("entity_id", applicationId),
   ]);
   // A failed read must never read as "complete": refuse instead of guessing.
-  const readError = docsRead.error ?? screeningRead.error ?? agreementsRead.error;
+  const readError = docsRead.error ?? screeningRead.error ?? agreementsRead.error ?? auditsRead.error;
   if (readError) throw new Error("Could not check activation readiness. Try again.");
-  const docs = docsRead.data;
+  const docs = (docsRead.data ?? []) as DriverReadinessFacts["documents"];
   const screening = screeningRead.data;
   const agreements = agreementsRead.data;
+  // The Owner exception. Missing or unreadable reads OFF; the activation
+  // transaction re-reads it under a lock and decides for itself.
+  const { loadRentalActivationSettings } = await import("@/lib/rental-activation-settings.server");
+  const setting = await loadRentalActivationSettings(admin);
+  const insurance: InsuranceReadiness = {
+    status: insuranceStatus({
+      verified: ((screening as any)?.insurance_verified as boolean | null) ?? null,
+      documents: docs,
+      applicationExpiresOn: ((app as any).insurance_expires_on as string | null) ?? null,
+      today: businessToday(),
+    }),
+    exceptionAllowed: setting.allowWithoutInsuranceVerification,
+    settingPresent: setting.present,
+    settingReadable: setting.readable,
+  };
   const facts: DriverReadinessFacts = {
     status: (app.status as string | null) ?? null,
     agreements: (agreements ?? []) as DriverReadinessFacts["agreements"],
-    documents: (docs ?? []) as DriverReadinessFacts["documents"],
+    documents: docs,
+    paperAudits: (auditsRead.data ?? []) as DriverReadinessFacts["paperAudits"],
     interviewCompletedAt: ((screening as any)?.interview_completed_at as string | null) ?? null,
-    insuranceVerified: ((screening as any)?.insurance_verified as boolean | null) ?? null,
+    insurance,
     hasPassedInspection: null,
   };
   blockers.push(...driverRequirementBlockers(facts));
@@ -218,6 +246,7 @@ async function evaluateReadiness(
     blockers,
     warnings,
     requirements: activationRequirements(facts),
+    insurance,
     vehicleId: vehicleId ?? null,
     suggestedWeeklyRate:
       app.weekly_rent != null
@@ -277,6 +306,12 @@ export const activateRental = createServerFn({ method: "POST" })
         overrideReason: z.string().trim().max(500).optional(),
         /** Odometer at handover → one canonical mileage observation (source Rental Pickup). */
         pickupMileage: z.number().int().min(0).max(2_000_000).nullable().optional(),
+        /**
+         * The operator ticked the insurance warning. Only meaningful while the Owner
+         * setting "Allow Activation Without Insurance Verification" is ON; separate
+         * from overrideBlockers/overrideReason, which never satisfy insurance.
+         */
+        insuranceExceptionAck: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -293,9 +328,10 @@ export const activateRental = createServerFn({ method: "POST" })
     // complete) may be overridden, and only with a written reason that goes
     // into the immutable audit log below. The identity check that needs the
     // provisioned login is returned directly from the handler further down.
-    const decision = decideActivation(readiness.blockers, {
+    const decision = decideActivation(readiness, {
       overrideBlockers: data.overrideBlockers,
       overrideReason: data.overrideReason,
+      insuranceExceptionAck: data.insuranceExceptionAck,
     });
     if (!decision.ok) return { ok: false, blockers: decision.blockers };
     const overridden = decision.overridden;
@@ -343,7 +379,13 @@ export const activateRental = createServerFn({ method: "POST" })
     //      active + vehicle, agreement → rental link. It row-locks the vehicle,
     //      so of two simultaneous activations exactly one wins; any failure
     //      rolls every write back. Never re-split this into separate updates.
-    const { data: rentalId, error: txErr } = await (supabaseAdmin as any).rpc("activate_rental_tx", {
+    //
+    //      It is called through activate_rental_checked_tx (proposed SQL,
+    //      proposed/activation-insurance-setting), which in the SAME transaction
+    //      locks and re-reads the Owner setting, the insurance state, the licence
+    //      documents and the signed agreement, refuses unless they pass, then
+    //      calls activate_rental_tx unchanged and writes its own audit row.
+    const txArgs = {
       _application_id: data.applicationId,
       _vehicle_id: data.vehicleId,
       _driver_id: userId,
@@ -354,13 +396,48 @@ export const activateRental = createServerFn({ method: "POST" })
       _end: data.endDate ?? null,
       _pickup_miles: data.pickupMileage ?? null,
       _actor: actor.userId,
+    };
+    const ackSent = decision.insuranceExceptionUsed && data.insuranceExceptionAck === true;
+    let rentalId: string | null = null;
+    let checked: Record<string, unknown> | null = null;
+    let checkedInTransaction = true;
+    const first = await (supabaseAdmin as any).rpc("activate_rental_checked_tx", {
+      ...txArgs,
+      _insurance_exception_ack: ackSent,
     });
-    if (txErr) {
-      const blocker = activationTxBlocker(String(txErr.message));
-      if (blocker) return { ok: false, blockers: [blocker] };
-      throw new Error(txErr.message);
+    let txErr = first.error as { code?: string; message?: string } | null;
+    if (txErr?.code === "PGRST202") {
+      // The wrapper is not installed yet. Fail closed: insurance must be
+      // verified (the Owner exception is unavailable without the in-transaction
+      // re-check), and only then is the existing transaction used directly.
+      checkedInTransaction = false;
+      if (readiness.insurance.status !== "verified") {
+        return {
+          ok: false,
+          blockers: [
+            {
+              code: "insurance_not_verified",
+              message:
+                "Insurance must be verified before activation. The Owner exception is unavailable until the activation database update is installed.",
+            },
+          ],
+        };
+      }
+      const legacy = await (supabaseAdmin as any).rpc("activate_rental_tx", txArgs);
+      txErr = legacy.error;
+      rentalId = (legacy.data as string | null) ?? null;
+    } else if (!txErr) {
+      checked = (first.data ?? {}) as Record<string, unknown>;
+      rentalId = (checked.rental_id as string | undefined) ?? null;
     }
-    const rental = { id: rentalId as string };
+    if (txErr) {
+      const msg = String(txErr.message);
+      const blocker = checkedTxBlocker(msg) ?? activationTxBlocker(msg);
+      if (blocker) return { ok: false, blockers: [blocker] };
+      throw new Error(msg);
+    }
+    if (!rentalId) throw new Error("The rental could not be confirmed. Check Bookings before retrying.");
+    const rental = { id: rentalId };
     if (process.env.RENTER_LIFECYCLE_NOTICES_ENABLED === "true") await import("@/lib/renter-lifecycle-notices.server").then((m) => m.enrollRenterLifecycleNotice({ event: "rental_started", applicationId: data.applicationId, rentalId: rental.id })).catch((e) => console.error("[renter-lifecycle] rental_started", e));
 
     // 7. Welcome the driver. A brand-new account gets the set-password link
@@ -444,6 +521,21 @@ export const activateRental = createServerFn({ method: "POST" })
               at: new Date().toISOString(),
             }
           : null,
+        // What the activation transaction itself read and decided. When the
+        // wrapper ran, these come from its locked reads (and its own audit row,
+        // written atomically with the rental); otherwise from readiness.
+        insurance: {
+          acting_user_id: actor.userId,
+          at: new Date().toISOString(),
+          status: (checked?.insurance_status as string | undefined) ?? readiness.insurance.status,
+          exception_used: checked ? checked.exception_used === true : false,
+          setting_allow_without_verification: checked ? checked.setting_allow === true : false,
+          setting_present: checked ? checked.setting_present === true : readiness.insurance.settingPresent,
+          setting_source: checked ? "activation_transaction" : "wrapper_not_installed_treated_as_off",
+          acknowledged: ackSent,
+          checked_in_transaction: checkedInTransaction,
+          transaction_audit_id: (checked?.audit_id as string | undefined) ?? null,
+        },
       },
     });
 

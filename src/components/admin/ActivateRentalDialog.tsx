@@ -8,7 +8,11 @@ import {
   activateRental,
   type ActivationReadiness,
 } from "@/lib/rentals.functions";
-import { isHardBlocker, MIN_OVERRIDE_REASON } from "@/lib/activation-readiness";
+import {
+  insuranceExceptionWarning,
+  isHardBlocker,
+  MIN_OVERRIDE_REASON,
+} from "@/lib/activation-readiness";
 import { MicroLabel } from "./ui";
 import { ActivationRequirementList } from "./ActivationRequirementList";
 
@@ -44,6 +48,9 @@ export function ActivateRentalDialog({
   const [busy, setBusy] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+  // Separate from the soft-blocker override: only the Owner exception's
+  // insurance warning. A reason typed above never satisfies it.
+  const [insuranceAck, setInsuranceAck] = useState(false);
 
   const [weeklyRate, setWeeklyRate] = useState("");
   const [deposit, setDeposit] = useState("");
@@ -58,6 +65,7 @@ export function ActivateRentalDialog({
     let cancelled = false;
     setChecking(true);
     setAcknowledged(false);
+    setInsuranceAck(false);
     check({ data: { applicationId: driver.id, vehicleId: vehicleId || null } })
       .then((r) => {
         if (cancelled) return;
@@ -85,6 +93,9 @@ export function ActivateRentalDialog({
     [readiness],
   );
 
+  const insuranceNeedsAck =
+    !!readiness && readiness.insurance.status !== "verified" && readiness.insurance.exceptionAllowed;
+
   const rateNum = Number(weeklyRate.replace(/[^\d.]/g, ""));
   const depositNum = Number(deposit.replace(/[^\d.]/g, "")) || 0;
   const pickupNum = pickupMiles.trim() ? Number(pickupMiles.replace(/[^\d]/g, "")) : null;
@@ -97,6 +108,7 @@ export function ActivateRentalDialog({
     pickupNum != null && pickupNum >= 0 &&
     !!startDate &&
     hardBlockers.length === 0 &&
+    (!insuranceNeedsAck || insuranceAck) &&
     (softBlockers.length === 0 || (acknowledged && overrideReason.trim().length >= MIN_OVERRIDE_REASON));
 
   async function submit() {
@@ -114,6 +126,7 @@ export function ActivateRentalDialog({
           pickupMileage: pickupNum,
           overrideBlockers: softBlockers.length > 0 && acknowledged,
           overrideReason: softBlockers.length > 0 && acknowledged ? overrideReason.trim() : undefined,
+          insuranceExceptionAck: insuranceNeedsAck && insuranceAck,
         },
       });
       if (!res.ok) {
@@ -183,6 +196,29 @@ export function ActivateRentalDialog({
                   <li key={b.code}>• {b.message}</li>
                 ))}
               </ul>
+            </div>
+          ) : null}
+
+          {insuranceNeedsAck && readiness ? (
+            <div className="rounded-xl border border-[#F3C9C4] bg-[#FDF2F1] p-3" aria-label="Insurance Warning">
+              <div className="flex items-center gap-1.5 text-sm font-semibold text-[#8A1C10]">
+                <ShieldAlert className="w-4 h-4" /> Insurance Not Verified
+              </div>
+              <p className="mt-1.5 text-sm text-[#8A1C10]/90">
+                {insuranceExceptionWarning(readiness.insurance.status)}
+              </p>
+              <label className="mt-2.5 flex items-start gap-2 text-xs text-[#8A1C10]">
+                <input
+                  type="checkbox"
+                  checked={insuranceAck}
+                  onChange={(e) => setInsuranceAck(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  I acknowledge this insurance warning. This is recorded against my account with the
+                  insurance status and the Owner setting.
+                </span>
+              </label>
             </div>
           ) : null}
 

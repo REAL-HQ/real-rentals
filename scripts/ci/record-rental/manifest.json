@@ -29,8 +29,8 @@
     "src/lib/record-rental-transport.server.ts": "1762071545760c15b0859ec13ca14e9d93d58d2f2a8b1ac10fb3c4981d794823",
     "src/lib/record-rental.functions.ts": "f57639a3582312995c24a12db1d9d853da5abf20dc2416aa99bc4bb1673e3ed7",
     "src/lib/rentals.functions.ts": {
-      "sha256": "5fe953af75594284463186eb4f4ec5d2a45393bc0f738e9ea28f608157cbf372",
-      "justification": "Previous pin fe50277a7c5b70c74124bae9d1aacb1cc2350cc38f70efd2762cde14dc508b6a is the Release A file (14cbf81b). Driver Activation (PR 2) enforces driver readiness on the server: approval, licence front/back and a signed agreement are hard blockers, interview and pre-delivery inspection stay soft (written reason, audit_log), decided by decideActivation in activation-readiness.ts; maps the M2 approval_serialize 40001 to a retryable blocker. activate_rental_tx, end_rental_tx and the Record Rental gate are unchanged."
+      "sha256": "c7923537969f81fd95e1718e65a8e5e49da27341776c7377c3d3379bf9c84e2b",
+      "justification": "Previous pin fe50277a7c5b70c74124bae9d1aacb1cc2350cc38f70efd2762cde14dc508b6a is the Release A file (14cbf81b). Driver Activation (PR 2) enforces driver readiness on the server: approval, licence front/back and a signed agreement are hard blockers, interview and pre-delivery inspection stay soft (written reason, audit_log), decided by decideActivation in activation-readiness.ts; maps the M2 approval_serialize 40001 to a retryable blocker. activate_rental_tx, end_rental_tx and the Record Rental gate are unchanged. Previous pin 5fe953af75594284463186eb4f4ec5d2a45393bc0f738e9ea28f608157cbf372 is the cc806e90 Driver Activation file. The owner revision makes insurance verification a hard blocker by default with an Owner-only exception (Allow Activation Without Insurance Verification, a separate acknowledgement, audited), accepts audited paper agreements, and calls the proposed activate_rental_checked_tx wrapper (proposed/activation-insurance-setting), failing closed to activate_rental_tx only with verified insurance when the wrapper is absent (PGRST202). activate_rental_tx, end_rental_tx and the Record Rental gate are unchanged."
     }
   },
   "ciFiles": [
