@@ -9,6 +9,7 @@
 
 import { DOC_CATEGORIES } from "@/lib/documents.functions";
 import { documentExpiryTone } from "@/lib/document-expiry";
+import { awaitsDriverSignature } from "@/lib/portal-agreement-state";
 import {
   deriveDepositDisplay,
   derivePaymentStatus,
@@ -94,8 +95,10 @@ export function pickupChecklist(input: {
   const signed = input.agreements.some(
     (agreement) => agreement.status === "signed" || Boolean(agreement.signedAt),
   );
+  // Same rule as the portal's agreement list: voided and draft rows never ask
+  // the driver to sign.
   const waiting = input.agreements.some(
-    (agreement) => agreement.status != null && agreement.status !== "signed" && agreement.status !== "voided",
+    (agreement) => awaitsDriverSignature({ status: agreement.status, signed_at: agreement.signedAt }),
   );
   if (!signed && waiting) {
     items.push({

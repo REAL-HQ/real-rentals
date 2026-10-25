@@ -17,6 +17,7 @@ import {
 } from "@/lib/documents.functions";
 import { fmtDate } from "@/lib/date-format";
 import { documentExpiryTone } from "@/lib/document-expiry";
+import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
 
 const MAX_MB = 15;
 
@@ -193,7 +194,9 @@ export function DocumentVault({
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 ) : null}
-                {cat.key !== "agreement" ? (
+                {/* No Replace over signed-agreement evidence, in any category;
+                    the server refuses it anyway (createDocumentUploadUrl). */}
+                {cat.key !== "agreement" && !signedAgreementLocked(current, cat.key) ? (
                   <FileUploader
                     variant="inline"
                     label={doc ? "Replace" : "Upload"}
@@ -202,7 +205,9 @@ export function DocumentVault({
                     upload={(file) => uploadDoc(cat.key as DocCategory, false, file)}
                   />
                 ) : null}
-                {mode === "admin" && doc ? (
+                {/* Signed agreements are permanent records: no Delete, and the
+                    server refuses it anyway (deleteDocument). */}
+                {mode === "admin" && doc && cat.key !== "agreement" && !doc.signed_agreement ? (
                   <button
                     onClick={async () => {
                       if (!confirm("Delete this document permanently?")) return;
@@ -210,8 +215,8 @@ export function DocumentVault({
                         await removeDoc({ data: { documentId: doc.id } });
                         toast.success("Document deleted");
                         await refresh();
-                      } catch {
-                        toast.error("Could not delete");
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : "Could not delete");
                       }
                     }}
                     className="p-1.5 rounded-md hover:bg-[#FDECEA] text-[#B3261E]"

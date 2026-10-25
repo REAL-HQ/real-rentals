@@ -86,11 +86,29 @@ function SignPage() {
             <Loader2 className="w-4 h-4 animate-spin" /> Loading your agreement…
           </div>
         ) : !agreement ? (
+          /*
+           * One answer for every link the server cannot open: already signed
+           * (signing clears the link), replaced by a resend, cancelled, or
+           * never valid. The server returns the same null for all of them, so
+           * this page reveals nothing about whether an agreement exists. A
+           * driver who has signed is pointed to the portal, where their own
+           * sign-in shows the signed copy; the cleared link is never used as
+           * a credential again.
+           */
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-8 text-center">
-            <h1 className="text-xl font-semibold text-[#111114]">This Signing Link Isn't Valid</h1>
+            <h1 className="text-xl font-semibold text-[#111114]">This Link Is No Longer Active</h1>
             <p className="mt-2 text-sm text-[#55555E]">
-              It may have expired, been cancelled, or already been used. Contact our team at{" "}
-              <a className="text-[#D03020] font-medium" href="mailto:team@drivereal.com">team@drivereal.com</a> and we'll send a new one.
+              This agreement has already been signed, or the link has expired or been replaced. If you've signed, sign in to your driver portal to view your signed copy.
+            </p>
+            <a
+              href="/portal"
+              className="inline-block mt-5 rounded-lg bg-[#D03020] text-white text-sm font-semibold px-5 py-2.5"
+            >
+              Sign In to Your Portal
+            </a>
+            <p className="mt-4 text-sm text-[#55555E]">
+              Still need to sign? Contact our team at{" "}
+              <a className="text-[#D03020] font-medium" href="mailto:team@drivereal.com">team@drivereal.com</a> and we'll send a new link.
             </p>
           </div>
         ) : agreement.expired && !done ? (
