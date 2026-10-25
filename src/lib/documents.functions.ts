@@ -6,6 +6,10 @@ import {
   isUploadedContentShaRefusal,
   recordUploadedContentSha,
 } from "@/lib/document-content-sha";
+import {
+  SIGNED_AGREEMENT_DELETE_REFUSED,
+  isSignedAgreementEvidence,
+} from "@/lib/signed-agreement-evidence";
 
 export const DOC_BUCKET = "driver-docs";
 
@@ -76,6 +80,12 @@ export type VaultDocument = {
   review_status: DocumentReviewStatus;
   review_note: string | null;
   reviewed_at: string | null;
+  /**
+   * Signed-agreement evidence by its row shape (isSignedAgreementEvidence).
+   * The vault hides Delete for these; deleteDocument refuses them regardless,
+   * and also refuses anything an agreements row points at.
+   */
+  signed_agreement: boolean;
 };
 
 export type DocumentReviewStatus = "uploaded" | "verified" | "rejected";
@@ -143,13 +153,14 @@ async function withUrls(admin: any, rows: any[]): Promise<VaultDocument[]> {
         review_status: (d.review_status ?? "uploaded") as DocumentReviewStatus,
         review_note: d.review_note ?? null,
         reviewed_at: d.reviewed_at ?? null,
+        signed_agreement: isSignedAgreementEvidence(d),
       };
     }),
   );
 }
 
 const SELECT =
-  "id,category,label,file_name,mime_type,size_bytes,expires_at,is_current,visibility,uploaded_by_role,created_at,storage_bucket,storage_path,review_status,review_note,reviewed_at";
+  "id,kind,category,label,file_name,mime_type,size_bytes,expires_at,is_current,visibility,uploaded_by_role,created_at,storage_bucket,storage_path,review_status,review_note,reviewed_at";
 
 /**
  * Register an already-uploaded file as the current document in its category
@@ -776,17 +787,41 @@ export const deleteDocument = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     if (!(await isAdmin(context.supabase, context.userId))) throw new Error("Forbidden");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: doc } = await supabaseAdmin
+    const { data: doc, error: readError } = await supabaseAdmin
       .from("documents")
-      .select("id,storage_bucket,storage_path")
+      .select("id,kind,category,storage_bucket,storage_path")
       .eq("id", data.documentId)
       .maybeSingle();
-    if (doc) {
-      await supabaseAdmin.storage
-        .from(doc.storage_bucket as string)
-        .remove([doc.storage_path as string]);
-      await supabaseAdmin.from("documents").delete().eq("id", data.documentId);
+    // Fail closed: a read that errored is not proof the document is ordinary.
+    if (readError) throw new Error(readError.message);
+    if (!doc) return { ok: true };
+
+    // Signed-agreement evidence is refused before storage is touched, so a
+    // refusal removes nothing. The storage object went first here, which is
+    // why the row-shape check and the agreements lookup both come before it.
+    if (isSignedAgreementEvidence(doc)) throw new Error(SIGNED_AGREEMENT_DELETE_REFUSED);
+    // Any document an agreement names as its evidence, whatever bucket or
+    // category it was filed under. Two equality filters, not an interpolated
+    // .or(). agreements.document_id is ON DELETE SET NULL, so deleting the row
+    // would also have silently detached the agreement from its archive.
+    for (const column of ["document_id", "completed_document_id"] as const) {
+      const { data: refs, error: refError } = await supabaseAdmin
+        .from("agreements")
+        .select("id")
+        .eq(column, data.documentId)
+        .limit(1);
+      if (refError) {
+        throw new Error(
+          "Could not confirm this document is not a signed agreement. Nothing was deleted.",
+        );
+      }
+      if ((refs ?? []).length > 0) throw new Error(SIGNED_AGREEMENT_DELETE_REFUSED);
     }
+
+    await supabaseAdmin.storage
+      .from(doc.storage_bucket as string)
+      .remove([doc.storage_path as string]);
+    await supabaseAdmin.from("documents").delete().eq("id", data.documentId);
     return { ok: true };
   });
 

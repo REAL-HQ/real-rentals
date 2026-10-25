@@ -43,6 +43,11 @@ export const RESUME_TOKEN_DAYS = 14;
  * kept in that tab, and the emailed link dies. A recovery token is recognised
  * by its lifetime (<= 1 hour), so no schema change was needed and every
  * existing 14-day link keeps working exactly as before.
+ *
+ * Recovery and session links are capped separately (see trimLiveTokens):
+ * anyone who knows an applicant's email can ask for recovery links, so a
+ * recovery mint may only ever retire older recovery links, never the session
+ * token in the applicant's open tab.
  */
 export const RECOVERY_TOKEN_MINUTES = 30;
 const RECOVERY_MAX_MS = 60 * 60_000;
@@ -66,7 +71,7 @@ export function newRawToken(): string {
 }
 
 /** How many live links one application may have out at once, per kind. */
-const MAX_LIVE_TOKENS = 5;
+export const MAX_LIVE_TOKENS = 5;
 
 /**
  * Card-on-file links are 72 hours. That stays above the 1-hour recovery
@@ -82,7 +87,22 @@ export const CARD_LINK_MS = 72 * 60 * 60 * 1000;
  */
 export const CARD_TOKEN_PREFIX = "card.";
 
-type TokenKind = "card" | "resume";
+/**
+ * What a token row is, read from its lifetime alone (the table has no purpose
+ * column): card = exactly 72 hours, recovery = 1 hour or less, session = the
+ * rest (14-day resume links). Each kind has its own cap of live links.
+ */
+export type TokenKind = "card" | "session" | "recovery";
+
+export function tokenKindOf(row: { created_at: string | Date; expires_at: string | Date }): TokenKind {
+  if (isCardRow(row)) return "card";
+  const created = instantMs(row.created_at as string);
+  const expires = instantMs(row.expires_at as string);
+  if (Number.isFinite(created) && Number.isFinite(expires) && expires - created <= RECOVERY_MAX_MS) {
+    return "recovery";
+  }
+  return "session";
+}
 
 type TokenRow = {
   id: string;
@@ -129,6 +149,21 @@ async function loadToken(admin: AdminClient, raw: string): Promise<TokenRow | nu
   return loaded.data as TokenRow;
 }
 
+/**
+ * Revoke the oldest live tokens of ONE kind once an application has more than
+ * MAX_LIVE_TOKENS of that kind.
+ *
+ * Per kind, deliberately. This used to count recovery and session tokens
+ * together, so anybody who knew an applicant's email could request a handful
+ * of recovery links and push the applicant's open-tab session token off the
+ * end of the list — their next autosave then failed with "link no longer
+ * valid". Now a recovery mint only ever retires recovery tokens, a card mint
+ * only card tokens, and a session mint only session tokens.
+ *
+ * Expired tokens do not count toward the cap: they already open nothing, and
+ * counting them meant an application with a few stale links revoked a live
+ * one earlier than it had to.
+ */
 async function trimLiveTokens(
   admin: AdminClient,
   applicationId: string,
@@ -140,12 +175,13 @@ async function trimLiveTokens(
     .select("id,created_at,expires_at")
     .eq("application_id", applicationId)
     .is("revoked_at", null)
+    .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false })
     .order("id", { ascending: false });
   if (loaded.error) return;
   const rows = (loaded.data ?? []) as { id: string; created_at: string; expires_at: string }[];
   const excess = rows
-    .filter((row) => isCardRow(row) === (kind === "card"))
+    .filter((row) => tokenKindOf(row) === kind)
     .map((row) => row.id)
     .filter((id) => id !== keepId)
     .slice(MAX_LIVE_TOKENS - 1);
@@ -153,7 +189,8 @@ async function trimLiveTokens(
   await admin
     .from("application_resume_tokens")
     .update({ revoked_at: new Date().toISOString() })
-    .in("id", excess);
+    .in("id", excess)
+    .is("revoked_at", null);
 }
 
 /** The expiry this process remembers for a card link, or null once it is too old or revoked. */
@@ -185,7 +222,7 @@ async function reuseCardLink(admin: AdminClient, applicationId: string): Promise
 async function mintToken(
   admin: AdminClient,
   applicationId: string,
-  kind: TokenKind,
+  kind: "card" | "resume",
   ttlMs?: number,
 ): Promise<string> {
   const now = Date.now();
@@ -193,31 +230,30 @@ async function mintToken(
   const token_hash = await hashResumeToken(raw);
   const lifetime = kind === "card" ? CARD_LINK_MS : ttlMs;
   if (lifetime == null) throw new Error("A resume link needs a lifetime.");
-  const inserted =
-    kind === "card"
-      ? await admin
-          .from("application_resume_tokens")
-          .insert({
-            application_id: applicationId,
-            token_hash,
-            created_at: new Date(now).toISOString(),
-            expires_at: new Date(now + lifetime).toISOString(),
-          })
-          .select("id")
-          .single()
-      : await admin
-          .from("application_resume_tokens")
-          .insert({
-            application_id: applicationId,
-            token_hash,
-            expires_at: new Date(now + lifetime).toISOString(),
-          })
-          .select("id")
-          .single();
+  // created_at is written with the same clock as expires_at, for every kind.
+  // A row's kind is read from expires_at - created_at, so leaving created_at
+  // to the database default let clock skew between this server and Postgres
+  // change it: a 30-minute recovery link minted by a server running more than
+  // half an hour ahead looked like a session token, and would have opened
+  // the wizard directly and repeatedly instead of being exchanged once.
+  const inserted = await admin
+    .from("application_resume_tokens")
+    .insert({
+      application_id: applicationId,
+      token_hash,
+      created_at: new Date(now).toISOString(),
+      expires_at: new Date(now + lifetime).toISOString(),
+    })
+    .select("id")
+    .single();
   const { data, error } = inserted;
   if (error) throw new Error(error.message);
   if (kind === "card") cardPlaintext.set(applicationId, { raw, expiresAt: now + CARD_LINK_MS });
-  await trimLiveTokens(admin, applicationId, data?.id, kind);
+  // The kind is read back from the lifetime just stored, so a recovery mint
+  // trims recovery tokens and a 14-day mint trims session tokens.
+  const trimKind: TokenKind =
+    kind === "card" ? "card" : lifetime <= RECOVERY_MAX_MS ? "recovery" : "session";
+  await trimLiveTokens(admin, applicationId, data?.id, trimKind);
   return raw;
 }
 
@@ -232,8 +268,10 @@ async function mintToken(
  *
  * Exposure is bounded instead: the oldest live tokens of the same kind are
  * revoked once an application has more than MAX_LIVE_TOKENS of that kind
- * out, and every one of them expires on its own. A card link never revokes a
- * resume link. Deliberate rotation is revokeResumeTokens() followed by this.
+ * out, and every one of them expires on its own. Kinds are card, recovery
+ * and session: a card link never revokes a resume link, and a recovery link
+ * (which anyone who knows the email can request) never revokes a session
+ * token. Deliberate rotation is revokeResumeTokens() followed by this.
  *
  * purpose "card" is the caller's request only — it is not a column. A card
  * row lasts exactly CARD_LINK_MS. A caller-supplied ttlMs is not read.
