@@ -1,6 +1,6 @@
 # Post-S1 candidate: read-only Preview review and real-device checks
 
-**Candidate:** `release/post-s1-rc` @ `700e7bcc`, tree `a9362dfb…`. Review PR #276.
+**Candidate (revised A.1):** `release/post-s1-rc2` @ `4a0eed9c`, tree `0c00c2e5…`, review PR #281. It contains PR 1 → PR 4 → PR 3 → #278. The original reference candidate is #276 (`700e7bcc`).
 
 **The Lovable Preview runs on the production database.** Every check below is read-only. Do not type into
 the application form, submit, approve, sign, void, upload or delete anything. The behaviour that needs
@@ -10,7 +10,7 @@ evidence in `post-s1-e2e-2026-10-25/results.json`). Those results stay the recor
 ## 0. Approval needed first
 
 Pointing the Preview at the candidate means updating the production-connected branch
-`integration/grok-baseline-2026-10-22` from `14cbf81b` to `700e7bcc`. **That needs explicit Owner
+`integration/grok-baseline-2026-10-22` from `14cbf81b` to `4a0eed9c`. **That needs explicit Owner
 approval.**
 
 - That branch is also what the next Publish ships, so between the Preview update and either Publish
@@ -26,10 +26,11 @@ approval.**
 
 | # | Check | How (read-only) | Expected |
 |---|---|---|---|
-| P1 | Build identity | Page source `data-commit-sha` | `700e7bcc…` |
+| P1 | Build identity | Page source `data-commit-sha` | `4a0eed9c…` |
 | P2 | Public pages | Load home, /apply (**do not type**: the first keystroke creates a `partial` row), /portal sign-in | Load; no new console errors compared with Release A |
 | P3 | Back office | Owner: Drivers list, a driver drawer, Documents tab | Load as before |
 | P4 | Signed agreement cannot be deleted | Open the Documents tab of a driver who already has a signed agreement. **Look only.** | No Delete action on the signed-agreement card; ordinary documents still show Delete |
+| P4b | Signed agreement is a permanent record (#278) | Same card as P4. **Look only.** | Shows "Permanent Record"; no Replace and no Needs New on the signed-agreement card. Ordinary documents still show Replace. |
 | P5 | Dead signing link | Open `/sign/not-a-real-token` | "This Link Is No Longer Active" with "Sign In to Your Portal"; no form. An unknown token reads nothing and writes nothing. **Never open a real customer signing link**: opening an unopened one marks it viewed and writes an audit row. |
 | P6 | Voided agreement in the portal | Only if a voided agreement already exists. Staff Driver Preview of that driver. | "Cancelled · No Action Needed", no "Review & Sign" |
 | P7 | Contract date format | Only if a Manager can open an existing agreement or preview **without** pressing Send | Dates read "Oct 11, 2026" |
