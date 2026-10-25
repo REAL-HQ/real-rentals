@@ -81,3 +81,57 @@ export function minTermWeeks(raw: unknown): number {
   const n = Number(String(raw ?? "").replace(/[^0-9]/g, ""));
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
+
+/**
+ * The business timezone contract dates are read in. REAL RENTALS operates in
+ * Eastern Time (the same zone every other business-day calculation in src/lib
+ * uses), and the server runs in UTC.
+ */
+export const CONTRACT_TIME_ZONE = "America/New_York";
+
+const CONTRACT_DAY = new Intl.DateTimeFormat("en-US", {
+  timeZone: CONTRACT_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/**
+ * A date as it is PRINTED INSIDE A RENTAL AGREEMENT: MM-DD-YYYY.
+ *
+ * Ported from e208920d. Contract fields used to be formatted with `fmtDate`
+ * from @/lib/date-format, the APPLICATION-WIDE display helper, so a dashboard
+ * format decision changed the wording of the agreement (and its preview
+ * fingerprint) with no template edit, no new version and no Owner approval.
+ * Contract text formats dates HERE, and nothing in here imports the UI
+ * formatter.
+ *
+ * A date-only value (a start date, a licence expiry) is printed from its own
+ * three fields and never goes near a timezone: the 11th of October is the
+ * 11th wherever the reader is sitting.
+ *
+ * An INSTANT (the execution date, `{{today}}`, is `new Date()`) is printed as
+ * its calendar day in America/New_York, NOT the server's zone. The server runs
+ * in UTC, so reading the instant there printed tomorrow's date on any evening
+ * after 8pm EDT / 7pm EST, and because `today` is part of the preview
+ * fingerprint, a preview reviewed at 7:59pm EDT refused to Send at 8:01pm.
+ *
+ * An unparseable value returns "" rather than a guess. A blank field makes
+ * the existing readiness blockers fire, which is the honest outcome; an
+ * invented date would print into a signed contract.
+ */
+export function fmtContractDate(v: unknown): string {
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const p = parseDateOnly(v);
+  if (p) return `${p2(p.m)}-${p2(p.d)}-${p.y}`;
+  // Date-shaped but not a real day (2026-02-30): refuse, rather than let
+  // new Date() roll it into March.
+  if (typeof v === "string" && DATE_ONLY.test(v.trim())) return "";
+  // Realm-safe Date check: `instanceof Date` is false for a Date built in
+  // another JS realm (a vm sandbox, a worker), which would blank the field.
+  const isDate = Object.prototype.toString.call(v) === "[object Date]";
+  const d = isDate ? new Date((v as Date).getTime()) : typeof v === "string" && v.trim() ? new Date(v) : null;
+  if (!d || Number.isNaN(d.getTime())) return "";
+  const parts = Object.fromEntries(CONTRACT_DAY.formatToParts(d).map((x) => [x.type, x.value]));
+  return `${parts.month}-${parts.day}-${parts.year}`;
+}

@@ -16,7 +16,7 @@ console.log("AUTHORIZED DRIVERS");
 let r = applyPrep(EMPTY_PREP, ctx);
 ok(r.merge.additional_drivers === "None Authorized" && !r.blockers.length, "none prints None Authorized");
 r = applyPrep(p({ drivers: { mode: "listed", list: [drv] } }), ctx);
-ok(!r.blockers.length && r.merge.additional_drivers.includes("Sam Q Helper (FL DL H123, exp. Jan 1, 2028)"), "verified driver printed");
+ok(!r.blockers.length && r.merge.additional_drivers.includes("Sam Q Helper (FL DL H123, exp. 01-01-2028)"), "verified driver printed");
 r = applyPrep(p({ drivers: { mode: "listed", list: [{ ...drv, verified: false }] } }), ctx);
 ok(r.blockers.some((b) => /verification/.test(b.label)), "unverified driver blocks");
 r = applyPrep(p({ drivers: { mode: "listed", list: [{ ...drv, licenseExpiration: "2026-10-01" }] } }), ctx);
