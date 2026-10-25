@@ -25,8 +25,18 @@ const RENTAL = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 type Row = Record<string, any>;
 
-/** Smallest PostgREST-shaped fake that answers the chains this file uses. */
-function fakeDb(seed: Record<string, Row[]>) {
+/**
+ * Smallest PostgREST-shaped fake that answers the chains this file uses.
+ *
+ * It models one PostgREST 12 behaviour (checked on 12.2.3) that decides
+ * whether a guarded write works at all: a PATCH's or= filter is applied again
+ * to the RETURNING rows, after the write. A select that omits a column the
+ * or() names fails with 42703 and writes nothing; one that includes it gets
+ * back only rows whose NEW values still pass. Plain filters (eq, neq, in,
+ * isdistinct) are not re-applied. `unique` lists columns whose duplicate
+ * insert fails with 23505, as payments.stripe_invoice_id does.
+ */
+function fakeDb(seed: Record<string, Row[]>, unique: Record<string, string[]> = {}) {
   const state: Record<string, Row[]> = JSON.parse(JSON.stringify(seed));
   const rpcCalls: { name: string; args: any }[] = [];
   let nextId = 1;
@@ -50,16 +60,19 @@ function fakeDb(seed: Record<string, Row[]>) {
     let patch: Row | null = null;
     let inserted: Row | null = null;
     let single = false;
+    let cols: string | null = null;
     const filters: ((r: Row) => boolean)[] = [];
+    const ors: string[] = [];
 
     const b: any = {
-      select() { return b; },
+      select(c?: string) { cols = c ?? "*"; return b; },
       insert(r: Row) { op = "insert"; inserted = r; return b; },
       update(p: Row) { op = "update"; patch = p; return b; },
       eq(c: string, v: any) { filters.push((r) => r[c] === v); return b; },
       neq(c: string, v: any) { filters.push((r) => r[c] !== v); return b; },
       in(c: string, vs: any[]) { filters.push((r) => vs.includes(r[c])); return b; },
-      or(expr: string) { filters.push(orPredicate(expr)); return b; },
+      isDistinct(c: string, v: any) { filters.push((r) => (r[c] ?? null) !== v); return b; },
+      or(expr: string) { ors.push(expr); filters.push(orPredicate(expr)); return b; },
       maybeSingle() { single = true; return b; },
       limit() { return b; },
       order() { return b; },
@@ -70,13 +83,26 @@ function fakeDb(seed: Record<string, Row[]>) {
       const match = () => state[table].filter((r) => filters.every((f) => f(r)));
       if (op === "insert") {
         const row = { id: `gen-${nextId++}`, ...inserted };
+        for (const c of unique[table] ?? []) {
+          if (row[c] != null && state[table].some((r) => r[c] === row[c])) {
+            return { data: null, error: { code: "23505", message: `duplicate key value violates unique constraint on ${c}` } };
+          }
+        }
         state[table].push(row);
         return { data: [row], error: null };
       }
       if (op === "update") {
+        if (cols !== null && cols !== "*" && ors.length) {
+          const sel = cols.split(",").map((c) => c.trim());
+          for (const expr of ors) for (const part of expr.split(",")) {
+            const col = part.trim().split(".")[0];
+            if (!sel.includes(col)) return { data: null, error: { code: "42703", message: `column ${table}.${col} does not exist` } };
+          }
+        }
         const hit = match();
         for (const r of hit) Object.assign(r, patch);
-        return { data: hit.map((r) => ({ id: r.id })), error: null };
+        const back = hit.filter((r) => ors.every((e) => orPredicate(e)(r)));
+        return { data: back.map((r) => ({ id: r.id })), error: null };
       }
       const hit = match();
       return single ? { data: hit[0] ?? null, error: null } : { data: hit, error: null };
@@ -239,5 +265,66 @@ describe("payments webhook — simulated Stripe events", () => {
     // Two rows in one charge: the intent pointer is not stored on either.
     assert.equal(a.stripe_payment_intent_id, undefined);
     assert.equal(b.stripe_payment_intent_id, undefined);
+  });
+
+  // The notice claims used or(notified_status.is.null,notified_status.neq.X)
+  // with select('id'). Against PostgREST 12 that is 42703 on every event (a
+  // 400, so Stripe retries and no receipt is ever sent); selecting the column
+  // instead claims the row but returns [], which also sends nothing.
+  it("a success claims the receipt notice exactly once, and a replay claims nothing", async () => {
+    const db = fakeDb({ payments: [{ id: P1, status: "pending", balance_due: 350, failure_reason: null, notified_status: null }] });
+    const event = { type: "payment_intent.succeeded", data: { object: pi({ metadata: { rentalId: RENTAL, reason: "rent", paymentIds: P1 } }) } };
+
+    await ok(await postVerifiedPaymentWebhook(event, db, "live"));
+    assert.equal(db._state.payments[0].notified_status, "paid");
+    assert.equal(db._state.notifications?.length, 1, "the paid notice was not sent");
+
+    await ok(await postVerifiedPaymentWebhook(event, db, "live"));
+    assert.equal(db._state.notifications.length, 1, "a replay sent a second paid notice");
+  });
+
+  it("a failure on the charge's current intent is recorded and notified once", async () => {
+    const db = fakeDb({ payments: [{ id: P1, status: "pending", balance_due: 350, failure_reason: null, stripe_payment_intent_id: "pi_1", notified_status: null }] });
+    const event = { type: "payment_intent.payment_failed", data: { object: pi({
+      metadata: { rentalId: RENTAL, reason: "rent", paymentIds: P1 },
+      last_payment_error: { message: "Your card was declined." },
+    }) } };
+
+    await ok(await postVerifiedPaymentWebhook(event, db, "live"));
+    assert.equal(db._state.payments[0].status, "failed");
+    assert.equal(db._state.payments[0].notified_status, "failed");
+    assert.equal(db._state.notifications?.length, 1, "the failed notice was not sent");
+
+    await ok(await postVerifiedPaymentWebhook(event, db, "live"));
+    assert.equal(db._state.notifications.length, 1, "a replay sent a second failed notice");
+  });
+
+  it("a stale failure for an older intent leaves a retried charge alone", async () => {
+    const db = fakeDb({ payments: [{ id: P1, status: "pending", balance_due: 350, failure_reason: null, stripe_payment_intent_id: "pi_2", notified_status: null }] });
+    await ok(await postVerifiedPaymentWebhook({ type: "payment_intent.payment_failed", data: { object: pi({
+      id: "pi_1", metadata: { rentalId: RENTAL, reason: "rent", paymentIds: P1 },
+      last_payment_error: { message: "Old attempt." },
+    }) } }, db, "live"));
+    assert.equal(db._state.payments[0].status, "pending", "a stale failure marked the retried charge failed");
+    assert.equal(db._state.payments[0].failure_reason, null);
+    assert.equal(db._state.notifications, undefined, "a stale failure sent a notice");
+  });
+
+  it("invoice.paid on a manually paid weekly charge claims one notice and keeps the manual record", async () => {
+    const db = fakeDb({
+      rentals: [{ id: RENTAL, application_id: null, vehicle_id: null, stripe_subscription_id: "sub_1" }],
+      payments: [{ id: P1, stripe_invoice_id: "in_1", status: "paid", paid_date: "2026-10-01", balance_due: 0,
+        failure_reason: "Weekly rent charge failed", notified_status: null }],
+    }, { payments: ["stripe_invoice_id"] });
+    const event = { type: "invoice.paid", data: { object: { id: "in_1", subscription: "sub_1", amount_paid: 35000, amount_due: 35000 } } };
+
+    await ok(await postVerifiedPaymentWebhook(event, db, "live"));
+    assert.equal(db._state.payments.length, 1, "a second weekly charge was written");
+    assert.equal(db._state.payments[0].paid_date, "2026-10-01", "the manual record was re-dated");
+    assert.equal(db._state.payments[0].notified_status, "paid");
+    assert.equal(db._state.notifications?.length, 1, "the overlap notice was not sent");
+
+    await ok(await postVerifiedPaymentWebhook(event, db, "live"));
+    assert.equal(db._state.notifications.length, 1, "a replay sent a second overlap notice");
   });
 });
