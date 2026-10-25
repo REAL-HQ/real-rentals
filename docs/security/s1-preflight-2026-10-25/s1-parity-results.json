@@ -1,0 +1,62 @@
+{
+ "pre.all_gates": true,
+ "pre.gates": {
+  "audit_insert": true,
+  "column_shape": true,
+  "not_installed": true,
+  "table_owner_rls": true,
+  "journal_exact_23": true,
+  "table_privileges": true,
+  "column_privileges": true,
+  "policies_0031_exact": true,
+  "private_schema_create": true,
+  "trigger_set_pre_window2": true
+ },
+ "pre.acl_items_md5_equals_production": true,
+ "pre.version_collation": [
+  "17.6",
+  "en_US.UTF-8"
+ ],
+ "pre.fingerprint_equals_production": false,
+ "before_install": {
+  "update_status": "allowed",
+  "insert_approved": "allowed",
+  "sandbox_insert_approved": "allowed"
+ },
+ "tampered_request": "P0001 RRGUARD_BYTES_MISMATCH",
+ "install": "ok",
+ "verify.all_gates": true,
+ "verify.gates": {
+  "trigger_exact": true,
+  "function_exact": true,
+  "not_rolled_back": true,
+  "journal_exact_23": true,
+  "trigger_sorts_last": true,
+  "policies_0031_exact": true,
+  "acl_matches_evidence": true,
+  "anon_insert_unchanged": true,
+  "evidence_one_well_formed": true,
+  "protected_columns_closed": true,
+  "fingerprint_matches_evidence": true,
+  "authenticated_insert_form_only": true
+ },
+ "after_install": {
+  "update_status": "42501 permission denied for table applications",
+  "insert_approved": "42501 permission denied for table applications",
+  "insert_form_partial": "allowed",
+  "anon_form_insert": "allowed",
+  "service_role_status": "allowed",
+  "sandbox_insert_approved": "allowed"
+ },
+ "sandbox_exec_acl_after": "{postgres=arwdDxtm/postgres,authenticated=rxtm/postgres,service_role=arwdDxtm/postgres,sandbox_exec=ar/postgres}",
+ "replay_install": "P0001 S1_EVIDENCE_REPLAY",
+ "rollback": "ok",
+ "post_rollback.acl_items_md5_equals_production": true,
+ "post_rollback.fingerprint_equals_pre": true,
+ "post_rollback.guard_absent": {
+  "evidence_rows": 2,
+  "guard_trigger": 0,
+  "guard_function": 0
+ },
+ "post_rollback.status_update_again": "allowed"
+}

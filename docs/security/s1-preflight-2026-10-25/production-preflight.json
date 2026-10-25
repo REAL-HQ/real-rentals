@@ -1,0 +1,146 @@
+{
+ "preflight": {
+  "file": "proposed/security-s1/preflight-readonly.sql",
+  "sha256": "0dfacd8ba59988f669d6344bd3438763b39437ec76471bf2e1e43b3c540577c8",
+  "branch_commit": "bd86d450",
+  "run": "once, read-only, query_database, project 8cf1f99e",
+  "result": {
+   "all_gates": true,
+   "at": "2026-10-25T02:24:03.864203+00:00",
+   "exposure": {
+    "applications_by_status": {
+     "approved": 2,
+     "closed": 21,
+     "declined": 6,
+     "duplicate": 4,
+     "new": 99,
+     "partial": 9,
+     "reviewing": 7
+    },
+    "applications_updated_15min": 0,
+    "approved_or_active_without_approval_audit": 0,
+    "authenticated_can_insert_table": true,
+    "authenticated_can_update_status": true,
+    "protected_columns_updatable_by_authenticated": 19
+   },
+   "facts": {
+    "acl_items": 150,
+    "acl_items_md5": "176dd288c947a0deff8c7a7626d8b1df",
+    "anon_insert_columns": [
+     "city",
+     "email",
+     "full_name",
+     "gclid",
+     "landing_page",
+     "market_id",
+     "phone",
+     "pickup_date",
+     "platform_status",
+     "primary_application_id",
+     "referrer",
+     "rental_length",
+     "rental_term",
+     "resubmission_count",
+     "resubmission_history",
+     "return_date",
+     "sms_consent",
+     "source",
+     "state",
+     "utm_campaign",
+     "utm_content",
+     "utm_medium",
+     "utm_source",
+     "utm_term",
+     "vehicle_id"
+    ],
+    "current_user_superuser": false,
+    "drizzle_journal_md5": "5cfa7e88ccac860637339bd9bdaab72c",
+    "drizzle_receipts": 23,
+    "event_triggers_enabled": [
+     "issue_graphql_placeholder",
+     "issue_pg_cron_access",
+     "issue_pg_graphql_access",
+     "issue_pg_net_access",
+     "pgrst_ddl_watch",
+     "pgrst_drop_watch"
+    ],
+    "m2_window1_installed": false,
+    "m2_window2_installed": false,
+    "policies_0031": [
+     5,
+     "d33877618a9f40924d14e49b6653d7fa"
+    ],
+    "policies_applications": [
+     "Anyone can submit applications",
+     "No direct application deletes",
+     "Partners can view their assigned drivers",
+     "Staff update applications",
+     "Staff view applications",
+     "Users can view their own application",
+     "coordinator_application_containment"
+    ],
+    "policies_total": 170,
+    "relacl": "{postgres=arwdDxtm/postgres,authenticated=arxtm/postgres,service_role=arwdDxtm/postgres,sandbox_exec=ar/postgres}",
+    "rules": 0,
+    "supabase_receipts": 105,
+    "triggers": [
+     "applications_active_guard",
+     "applications_updated_at"
+    ]
+   },
+   "fingerprint_sha256": "67726740be2e6204dac8cc2b6c3ff13e025430cb729bb4f5790f49cf85ef9603",
+   "gates": {
+    "audit_insert": true,
+    "column_privileges": true,
+    "column_shape": true,
+    "journal_exact_23": true,
+    "not_installed": true,
+    "policies_0031_exact": true,
+    "private_schema_create": true,
+    "table_owner_rls": true,
+    "table_privileges": true,
+    "trigger_set_pre_window2": true
+   },
+   "installed": {
+    "evidence_rows": 0,
+    "guard_function": 0,
+    "guard_trigger": 0
+   },
+   "target": {
+    "current_user": "postgres",
+    "database": "postgres",
+    "datcollate": "en_US.UTF-8",
+    "server_version": "17.6",
+    "system_identifier": "7642734024280108049"
+   },
+   "transaction_read_only": "off"
+  }
+ },
+ "sandbox_exec_facts": {
+  "run": "once, read-only catalog query",
+  "result": {
+   "active_sessions_as_role": 0,
+   "applications_rls_forced": false,
+   "member_of": null,
+   "members": [
+    "postgres"
+   ],
+   "policies_naming_role": 0,
+   "privilege_kinds": {
+    "INSERT": 84,
+    "SELECT": 102,
+    "USAGE": 2
+   },
+   "role": {
+    "bypassrls": true,
+    "conn_limit": -1,
+    "createrole": false,
+    "inherit": true,
+    "login": true,
+    "super": false,
+    "valid_until": null
+   },
+   "tables_with_privileges": 102
+  }
+ }
+}
