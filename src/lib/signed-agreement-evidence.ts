@@ -32,3 +32,32 @@ export function isSignedAgreementEvidence(doc: {
   // Content-addressed signed archives, wherever they are filed.
   return /^(immutable|completed)-v1\//.test(doc.storage_path ?? "");
 }
+
+/*
+ * Replace and Needs New. Signed-agreement evidence is immutable in the vault:
+ * an upload that would supersede it, and a "Needs New" review that would ask
+ * for a replacement of it, are refused on the server (documents.functions.ts).
+ * A wrong or changed agreement is voided and re-sent through eSign
+ * (esign.server.ts); it is never overwritten or superseded here.
+ * See docs/esign/SIGNED-AGREEMENT-IMMUTABILITY.md.
+ */
+export const SIGNED_AGREEMENT_REPLACE_REFUSED =
+  "Signed agreements are permanent records and can't be replaced. To correct one, void it and send a new agreement through eSign.";
+
+export const SIGNED_AGREEMENT_NEEDS_NEW_REFUSED =
+  "Signed agreements are permanent records and can't be marked Needs New. To correct one, void it and send a new agreement through eSign.";
+
+export const SIGNED_AGREEMENT_DRIVER_UPLOAD_REFUSED =
+  "Signed agreements come from eSign and can't be uploaded from the portal.";
+
+/**
+ * True when a current row in this category is signed-agreement evidence, so
+ * a new upload there would supersede it. The vault hides Replace and Needs New
+ * on that card; the server refuses both regardless.
+ */
+export function signedAgreementLocked(
+  rows: ReadonlyArray<{ category: string; is_current?: boolean | null; signed_agreement: boolean }>,
+  category: string,
+): boolean {
+  return rows.some((r) => r.is_current !== false && r.category === category && r.signed_agreement);
+}
