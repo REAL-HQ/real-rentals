@@ -65,6 +65,12 @@ checked when the package is submitted, but the job runs later, so this branch ad
 - Candidates past the cap are left unstamped and reported as `capped`, so a later run can reach them while
   they are still in their window.
 - The route's JSON report carries `capped` and `max_claims_per_run`.
+- **Across runs:** after each claim, the runner counts reminder stamps from the last 60 minutes, its own and
+  those of any overlapping, retried or manual run, all committed. If there are more than 10, it releases its
+  own claim unsent and stops.
+  - So overlapping calls cannot together send more than 10 in an hour.
+  - An unreadable count fails closed.
+  - This is a rolling hourly budget, not a lock: it may send fewer than 10, never more.
 - Unchanged: eligibility windows, claim-before-send, release rules and 30-minute links.
 - **This is an app change.** It has to ship in an app release, then be verified live on drivereal.com,
   before the SQL is submitted.

@@ -136,6 +136,9 @@ function createAdmin(rows, { failClaim = false } = {}) {
   return { from, log };
 }
 
+/** "Already sent" long ago: non-null, and outside the hourly budget window. */
+const ALREADY_SENT = hoursAgo(200);
+
 function app(overrides) {
   return {
     id: overrides.id,
@@ -148,7 +151,7 @@ function app(overrides) {
     purged_at: null,
     recovery_email_sent_24h: null,
     recovery_email_sent_72h: null,
-    recovery_sent_at: "already",
+    recovery_sent_at: ALREADY_SENT,
     market_id: null,
     city: "Tampa",
     pickup_date: null,
@@ -440,20 +443,68 @@ const ok = (name) => {
   assert.equal(report.sent_abandoned + report.sent_24h + report.sent_72h, 10);
   assert.equal(report.capped, 8);
   assert.equal(report.max_claims_per_run, 10);
-  const stamped = rows.filter((r) => r.recovery_email_sent_24h || (r.recovery_sent_at && r.recovery_sent_at !== "already"));
+  const stamped = rows.filter((r) => r.recovery_email_sent_24h || (r.recovery_sent_at && r.recovery_sent_at !== ALREADY_SENT));
   assert.equal(stamped.length, 10, "only the sent rows are stamped");
   // Rows past the cap were never claimed, so no claim update was issued for them.
   const claimUpdates = admin.log.filter((l) => l.op === "update" && l.values && Object.values(l.values).some((v) => v !== null));
   assert.equal(claimUpdates.length, 10);
   ok("a run claims and sends at most 10 reminders; the rest stay unstamped and are reported as capped");
 
-  // The next run, still inside the window, reaches the remaining rows (again at most 10).
+  // A retry or second run within the hour sends nothing: the hourly budget is spent.
   const s2 = senders();
   const report2 = await cron.runWizardRecovery(admin, s2.deps);
-  assert.equal(s2.sent.length, 8);
-  assert.equal(report2.capped, 0);
-  assert.equal(new Set([...s.sent, ...s2.sent].map((x) => `${x.kind}:${x.applicationId}`)).size, 18, "nobody emailed twice");
-  ok("the next run sends the remainder once each; no duplicates across runs");
+  assert.equal(s2.sent.length, 0, `second run in the hour sent ${s2.sent.length}`);
+  assert.ok(report2.capped >= 1);
+  assert.equal(rows.filter((r) => r.recovery_email_sent_24h || (r.recovery_sent_at && r.recovery_sent_at !== ALREADY_SENT)).length, 10,
+    "the budget check released its own claim, so nothing new stays stamped");
+  ok("a retry or second run within the hour sends nothing (hourly budget across runs)");
+
+  // An hour later (the stamps age out of the window), the remainder goes out, once each.
+  const aged = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+  for (const r of rows) {
+    if (r.recovery_email_sent_24h) r.recovery_email_sent_24h = aged;
+    if (r.recovery_sent_at && r.recovery_sent_at !== ALREADY_SENT) r.recovery_sent_at = aged;
+  }
+  const s3 = senders();
+  await cron.runWizardRecovery(admin, s3.deps);
+  assert.equal(s3.sent.length, 8);
+  assert.equal(new Set([...s.sent, ...s3.sent].map((x) => `${x.kind}:${x.applicationId}`)).size, 18, "nobody emailed twice");
+  ok("the next hour sends the remainder once each; no duplicates across runs");
+}
+
+{
+  // Overlapping runs (a retry, a manual call, a slow run) share one hourly budget of 10.
+  const rows = Array.from({ length: 30 }, (_, i) => app({ id: `c-${String(i).padStart(2, "0")}` }));
+  const admin = createAdmin(rows);
+  const a = senders({ delay: 3 });
+  const b = senders({ delay: 2 });
+  const c = senders({ delay: 1 });
+  await Promise.all([cron.runWizardRecovery(admin, a.deps), cron.runWizardRecovery(admin, b.deps), cron.runWizardRecovery(admin, c.deps)]);
+  const all = [...a.sent, ...b.sent, ...c.sent];
+  assert.ok(all.length <= 10, `three overlapping runs sent ${all.length}`);
+  assert.ok(all.length >= 1);
+  assert.equal(new Set(all.map((x) => x.applicationId)).size, all.length, "nobody emailed twice");
+  const stamped = rows.filter((r) => r.recovery_email_sent_24h).length;
+  assert.equal(stamped, all.length, "only rows actually emailed keep a stamp");
+  ok(`three overlapping runs send ${all.length} in total (never more than 10), each person once`);
+}
+
+{
+  // The budget read fails closed: the claim is released unsent and the run stops.
+  const rows = Array.from({ length: 3 }, (_, i) => app({ id: `e-${i}` }));
+  const admin = createAdmin(rows);
+  const failingAdmin = { ...admin, from: (t) => {
+    const q = admin.from(t);
+    const select = q.select;
+    q.select = (...args) => (args[1]?.head ? { gte: () => Promise.resolve({ data: null, count: null, error: { message: "read failed" } }) } : select(...args));
+    return q;
+  } };
+  const s = senders();
+  const report = await cron.runWizardRecovery(failingAdmin, s.deps);
+  assert.equal(s.sent.length, 0);
+  assert.equal(rows.filter((r) => r.recovery_email_sent_24h).length, 0, "claim released");
+  assert.ok(report.capped >= 1);
+  ok("an unreadable hourly count releases the claim unsent and stops the run");
 }
 
 {
