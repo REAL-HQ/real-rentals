@@ -9,7 +9,7 @@ DECLARE
  profile jsonb := '{"project_ref": "yuyzdsnrbfhkmfzpvhwx", "lovable_project_id": "8cf1f99e-71ad-4a93-a47c-bfbe833616d6", "database": "postgres", "system_identifier": "7642734024280108049", "execution_role": "postgres"}'::jsonb;
  approved_sql text := $approvedaisrb$-- Activation insurance setting v1 rollback inner DDL. Runner owns the transaction.
 -- Removes exactly the objects v1 created. The trigger goes first so the setting row can be removed.
-DROP FUNCTION public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean);
+DROP FUNCTION public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean, jsonb);
 DROP FUNCTION public.set_rental_activation_insurance_exception(boolean);
 DROP TRIGGER rental_activation_setting_guard ON public.app_settings;
 DROP FUNCTION private.rental_activation_setting_guard();
@@ -30,7 +30,7 @@ BEGIN
  OR pg_catalog.current_database() IS DISTINCT FROM profile->>'database'
  OR current_user IS DISTINCT FROM profile->>'execution_role'
  THEN RAISE EXCEPTION 'TARGET_MISMATCH'; END IF;
- IF pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(approved_sql, 'UTF8')), 'hex') IS DISTINCT FROM '81ec4e8e261b79c29893665319d957974ad5ef15855fff23b36d5c73480996bd'
+ IF pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(approved_sql, 'UTF8')), 'hex') IS DISTINCT FROM 'ece5d70b42f09c81273fa6eb2912323c68076293421581ce8f097d60f6089646'
  THEN RAISE EXCEPTION 'SQL_CHECKSUM_MISMATCH'; END IF;
  -- Everything below is schema-qualified or resolves in pg_catalog; no session search_path applies.
  PERFORM pg_catalog.set_config('search_path', '', true);
@@ -47,7 +47,7 @@ BEGIN
  -- Security 0031: the five containment policies exactly as installed on 2026-10-24. Never touched here.
  SELECT pg_catalog.md5(pg_catalog.string_agg(pg_catalog.concat_ws('|', schemaname, tablename, policyname, permissive, roles::text, cmd, qual, with_check), E'\n' ORDER BY policyname)) INTO p0031
  FROM pg_catalog.pg_policies WHERE policyname IN ('coordinator_agreement_containment','coordinator_application_containment','coordinator_document_containment','coordinator_identity_storage_containment','coordinator_review_containment');
- IF p0031 IS DISTINCT FROM 'd33877618a9f40924d14e49b6653d7fa' THEN RAISE EXCEPTION 'POLICY_0031_DRIFT'; END IF;
+ IF p0031 IS DISTINCT FROM 'd33877618a9f40924d14e49b6653d7fa' AND p0031 IS NOT NULL THEN RAISE EXCEPTION 'POLICY_0031_DRIFT'; END IF;
  -- The existing activation transaction: present, service-role only, and never changed by this package.
  IF pg_catalog.to_regprocedure('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)') IS NULL THEN RAISE EXCEPTION 'ACTIVATE_RENTAL_TX_MISSING'; END IF;
  IF pg_catalog.has_function_privilege('authenticated', 'public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)', 'EXECUTE')
@@ -63,11 +63,11 @@ BEGIN
  THEN RAISE EXCEPTION 'AIS_NOT_INSTALLED'; END IF;
  IF EXISTS (SELECT 1 FROM public.audit_log WHERE entity_type = 'database_migration' AND entity_id = 'activation_insurance_setting_v1_rollback')
  THEN RAISE EXCEPTION 'AIS_ROLLBACK_REPLAY'; END IF;
- IF pg_catalog.to_regprocedure('public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean)') IS NULL OR pg_catalog.to_regprocedure('public.set_rental_activation_insurance_exception(boolean)') IS NULL OR pg_catalog.to_regprocedure('private.rental_activation_setting_guard()') IS NULL
+ IF pg_catalog.to_regprocedure('public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean, jsonb)') IS NULL OR pg_catalog.to_regprocedure('public.set_rental_activation_insurance_exception(boolean)') IS NULL OR pg_catalog.to_regprocedure('private.rental_activation_setting_guard()') IS NULL
  OR (SELECT pg_catalog.count(*) FROM pg_catalog.pg_policy WHERE polrelid = 'public.app_settings'::pg_catalog.regclass AND polname LIKE 'rental_activation_setting_%') <> 3
  OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid = 'public.app_settings'::pg_catalog.regclass AND tgname = 'rental_activation_setting_guard')
  THEN RAISE EXCEPTION 'AIS_PARTIAL_STATE'; END IF;
- IF (SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') FROM pg_catalog.pg_proc p WHERE p.oid = 'public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean)'::pg_catalog.regprocedure) IS DISTINCT FROM '03d5108a342facaf3a052d3f1c83786d588c962e3d49770a48234a493106759a'
+ IF (SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') FROM pg_catalog.pg_proc p WHERE p.oid = 'public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean, jsonb)'::pg_catalog.regprocedure) IS DISTINCT FROM '669338378bd3bab69f756e923665fc3a690669fc8ed3a9b9f5c32e4f2c81298a'
  OR (SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') FROM pg_catalog.pg_proc p WHERE p.oid = 'public.set_rental_activation_insurance_exception(boolean)'::pg_catalog.regprocedure) IS DISTINCT FROM '39ff1d560ff33a22c416857840b2c6185e94876699cb0aee26d0301e2095fd97'
  THEN RAISE EXCEPTION 'AIS_OBJECTS_CHANGED_SINCE_INSTALL'; END IF;
  SELECT value INTO last_value FROM public.app_settings WHERE key = 'rental_activation';
@@ -75,7 +75,7 @@ BEGIN
  EXECUTE approved_sql;
  -- TEST_FAILURE_POINT (only disposable test copies may inject failure here)
 
- IF pg_catalog.to_regprocedure('public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean)') IS NOT NULL OR pg_catalog.to_regprocedure('public.set_rental_activation_insurance_exception(boolean)') IS NOT NULL OR pg_catalog.to_regprocedure('private.rental_activation_setting_guard()') IS NOT NULL
+ IF pg_catalog.to_regprocedure('public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean, jsonb)') IS NOT NULL OR pg_catalog.to_regprocedure('public.set_rental_activation_insurance_exception(boolean)') IS NOT NULL OR pg_catalog.to_regprocedure('private.rental_activation_setting_guard()') IS NOT NULL
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid = 'public.app_settings'::pg_catalog.regclass AND tgname = 'rental_activation_setting_guard')
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_policy WHERE polrelid = 'public.app_settings'::pg_catalog.regclass AND polname LIKE 'rental_activation_setting_%')
  OR EXISTS (SELECT 1 FROM public.app_settings WHERE key = 'rental_activation')
@@ -96,7 +96,7 @@ BEGIN
   'Activation insurance setting v1 removed by database migration executor',
   pg_catalog.jsonb_build_object('project_ref', profile->>'project_ref', 'package', 'activation-insurance-setting v1 rollback',
    'execution_at', pg_catalog.clock_timestamp(), 'transaction_id', pg_catalog.txid_current()::text, 'database_executor', current_user,
-   'inner_sql_sha256', '81ec4e8e261b79c29893665319d957974ad5ef15855fff23b36d5c73480996bd', 'last_setting_value', last_value, 'activate_rental_tx_def_md5', activate_def, 'drizzle_receipts', receipts),
+   'inner_sql_sha256', 'ece5d70b42f09c81273fa6eb2912323c68076293421581ce8f097d60f6089646', 'last_setting_value', last_value, 'activate_rental_tx_def_md5', activate_def, 'drizzle_receipts', receipts),
   pg_catalog.clock_timestamp());
  PERFORM pg_catalog.set_config('search_path', prev_search_path, true);
 END;

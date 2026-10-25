@@ -534,5 +534,24 @@ export function checkedTxBlocker(msg: string): ActivationBlocker | null {
     };
   if (msg.includes("application_not_found"))
     return { code: "not_approved", message: "Application not found." };
+  if (msg.includes("override_required:no_interview"))
+    return {
+      code: "no_interview",
+      message:
+        "The interview is not complete. Re-check readiness and override it with a written reason, or complete it.",
+    };
+  if (msg.includes("override_required:no_passed_inspection"))
+    return {
+      code: "no_passed_inspection",
+      message:
+        "No passed pre-delivery inspection. Re-check readiness and override it with a written reason, or run the checklist.",
+    };
+  if (msg.includes("override_not_allowed") || msg.includes("override_payload_invalid"))
+    return {
+      code: "override_reason_required",
+      message: "Only the interview and the pre-delivery inspection can be overridden.",
+    };
+  if (msg.includes("override_reason_required"))
+    return { code: "override_reason_required", message: "Enter a reason for the override." };
   return null;
 }

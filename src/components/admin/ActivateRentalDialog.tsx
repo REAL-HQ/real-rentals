@@ -137,6 +137,7 @@ export function ActivateRentalDialog({
         setReadiness(fresh);
         return;
       }
+      if (res.auditError) toast.error(res.auditError, { duration: Infinity });
       toast.success(
         res.accountCreated
           ? "Rental active — driver emailed a link to set their password"

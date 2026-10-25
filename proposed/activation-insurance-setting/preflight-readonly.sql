@@ -3,7 +3,7 @@
 -- every row has ok = true. Informational rows (ok always true) record M2 / S1 state for the run log.
 WITH a AS (
  SELECT 'public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)'::text AS activate,
-        'public.activate_rental_checked_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid,boolean)'::text AS wrapper,
+        'public.activate_rental_checked_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid,boolean,jsonb)'::text AS wrapper,
         'public.set_rental_activation_insurance_exception(boolean)'::text AS setter,
         'private.rental_activation_setting_guard()'::text AS guardfn
 ), c AS (
@@ -19,7 +19,7 @@ WITH a AS (
   (SELECT (NOT pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE') AND NOT pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
      AND pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE'))::text FROM pg_catalog.pg_proc p WHERE p.oid = pg_catalog.to_regprocedure((SELECT activate FROM a))) AS activate_acl_ok,
   (SELECT pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) FROM pg_catalog.pg_proc p WHERE p.oid = pg_catalog.to_regprocedure((SELECT activate FROM a))) AS activate_def_md5,
-  (SELECT (pg_catalog.pg_get_functiondef(p.oid) LIKE '%pg_advisory_xact_lock(710026,2)%')::text FROM pg_catalog.pg_proc p WHERE p.oid = pg_catalog.to_regprocedure((SELECT activate FROM a))) AS m2_window1_activate,
+  (SELECT (pg_catalog.pg_get_functiondef(p.oid) LIKE '%pg_advisory_xact_lock(710026,2)%')::text FROM pg_catalog.pg_proc p WHERE p.oid = pg_catalog.to_regprocedure((SELECT activate FROM a))) AS m2_window2_activate,
   (pg_catalog.to_regprocedure('private.application_write_guard()') IS NOT NULL)::text AS s1_installed,
   (SELECT (c.relkind = 'r' AND c.relrowsecurity)::text FROM pg_catalog.pg_class c WHERE c.oid = 'public.app_settings'::pg_catalog.regclass) AS app_settings_rls,
   (EXISTS (SELECT 1 FROM pg_catalog.pg_policy po WHERE po.polrelid = 'public.app_settings'::pg_catalog.regclass AND po.polname = 'Admins manage settings' AND po.polpermissive))::text AS app_settings_owner_policy,
@@ -27,10 +27,13 @@ WITH a AS (
   (SELECT pg_catalog.count(*) FROM pg_catalog.pg_attribute x WHERE NOT x.attisdropped AND x.attnum > 0 AND (
       (x.attrelid = 'public.driver_screenings'::pg_catalog.regclass AND x.attname = 'insurance_verified' AND x.atttypid = 'boolean'::pg_catalog.regtype) OR
       (x.attrelid = 'public.driver_screenings'::pg_catalog.regclass AND x.attname = 'lead_id' AND x.atttypid = 'uuid'::pg_catalog.regtype) OR
+      (x.attrelid = 'public.driver_screenings'::pg_catalog.regclass AND x.attname = 'interview_completed_at') OR
+      (x.attrelid = 'public.inspections'::pg_catalog.regclass AND x.attname IN ('vehicle_id','inspection_type','status')) OR
+      (x.attrelid = 'public.user_roles'::pg_catalog.regclass AND x.attname IN ('user_id','role')) OR
       (x.attrelid = 'public.applications'::pg_catalog.regclass AND x.attname = 'insurance_expires_on' AND x.atttypid = 'date'::pg_catalog.regtype) OR
       (x.attrelid = 'public.documents'::pg_catalog.regclass AND x.attname IN ('driver_id','category','is_current','review_status','expires_at','storage_path','reviewed_at')) OR
       (x.attrelid = 'public.agreements'::pg_catalog.regclass AND x.attname IN ('application_id','source','status','signed_at','voided_at','rental_id')) OR
-      (x.attrelid = 'public.audit_log'::pg_catalog.regclass AND x.attname IN ('actor_user_id','actor_role','action','entity_type','entity_id','metadata')) OR
+      (x.attrelid = 'public.audit_log'::pg_catalog.regclass AND x.attname IN ('actor_user_id','actor_role','action','entity_type','entity_id','metadata','ip','user_agent')) OR
       (x.attrelid = 'public.app_settings'::pg_catalog.regclass AND x.attname IN ('key','value'))))::text AS columns,
   pg_catalog.has_table_privilege(current_user, 'public.audit_log', 'INSERT')::text AS audit_insert,
   (SELECT pg_catalog.count(*) FROM public.audit_log WHERE entity_type = 'database_migration' AND entity_id IN ('activation_insurance_setting_v1','activation_insurance_setting_v1_rollback'))::text AS evidence_rows,
@@ -50,12 +53,12 @@ SELECT check_name, expected, actual, CASE WHEN expected = '*' THEN true ELSE act
  ('activate_rental_tx.present', 'true', activate_present),
  ('activate_rental_tx.service_role_only', 'true', activate_acl_ok),
  ('activate_rental_tx.def_md5 (informational)', '*', activate_def_md5),
- ('m2_window1.activate_rental_tx_installed (informational)', '*', m2_window1_activate),
+ ('m2_window2.activate_rental_tx_installed (informational)', '*', m2_window2_activate),
  ('security_s1.installed (informational)', '*', s1_installed),
  ('app_settings.rls', 'true', app_settings_rls),
  ('app_settings.owner_policy', 'true', app_settings_owner_policy),
  ('helpers.is_owner_and_auth_uid', 'true', helpers),
- ('columns.read_by_wrapper', '24', columns),
+ ('columns.read_by_wrapper', '32', columns),
  ('audit_log.insert_for_executor', 'true', audit_insert),
  ('evidence.none_yet', '0', evidence_rows),
  ('objects.absent', 'true', objects_absent),

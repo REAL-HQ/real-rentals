@@ -15,9 +15,11 @@ DECLARE
 --    service_role and an Owner writing the table directly; restrictive policies refuse
 --    authenticated writes of that key as a second layer. Other app_settings keys are untouched.
 -- 3. public.activate_rental_checked_tx wraps the existing public.activate_rental_tx (unchanged)
---    in the same transaction: it locks and re-reads the setting, the insurance state, the
---    licence documents and the signed agreement, refuses unless they pass, calls
---    activate_rental_tx, and writes one audit row. service_role EXECUTE only.
+--    in the same transaction: it checks the acting user is a Manager/Owner, locks and re-reads
+--    the setting, the insurance state, the licence documents, the signed agreement, the
+--    interview and the passed inspection, refuses unless they pass (only interview and
+--    inspection may be overridden, with a reason), calls activate_rental_tx, and writes the
+--    rental.activated audit row in the same transaction. service_role EXECUTE only.
 
 INSERT INTO public.app_settings (key, value)
 VALUES ('rental_activation', '{"allow_activation_without_insurance_verification": false}'::jsonb);
@@ -91,10 +93,13 @@ GRANT EXECUTE ON FUNCTION public.set_rental_activation_insurance_exception(boole
 
 -- The checked activation. Same transaction as activate_rental_tx: no exception handler, no
 -- autonomous work; any refusal or failure (here or inside activate_rental_tx) rolls back
--- every lock, read and write below, including the audit row.
+-- every lock, read and write below, including the rental.activated audit row, which this
+-- function writes itself so the activation and its required audit evidence commit together.
+-- _audit carries what only the server knows: the actor's email and role, request ip and user
+-- agent, the summary line, account_created, and the soft-blocker overrides with their reason.
 CREATE FUNCTION public.activate_rental_checked_tx(_application_id uuid, _vehicle_id uuid, _driver_id uuid,
  _weekly_rate numeric, _deposit numeric, _deposit_held boolean, _start date, _end date,
- _pickup_miles integer, _actor uuid, _insurance_exception_ack boolean) RETURNS jsonb
+ _pickup_miles integer, _actor uuid, _insurance_exception_ack boolean, _audit jsonb) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $checkedfn$
 DECLARE
  today date := (pg_catalog.now() AT TIME ZONE 'America/New_York')::date;
@@ -103,39 +108,54 @@ DECLARE
  setting_allow boolean;
  app_expires date;
  verified boolean;
+ interview_done boolean;
+ inspection_passed boolean;
  has_insurance_doc boolean;
  doc_expired boolean;
  insurance_status text;
  exception_used boolean := false;
  esign boolean;
  paper boolean;
+ overrides jsonb;
+ override_codes text[] := ARRAY[]::text[];
+ override_reason text;
+ bad_code text;
  rental uuid;
  audit_id uuid;
+ decided_at timestamptz := pg_catalog.clock_timestamp();
 BEGIN
+ IF _audit IS NULL OR pg_catalog.jsonb_typeof(_audit) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'audit_payload_required'; END IF;
  -- M2 lock order: the shared release lock before any row lock (re-entrant inside activate_rental_tx).
  PERFORM pg_catalog.pg_advisory_xact_lock(710026, 2);
+ -- 0. The acting user must be a Manager or Owner (the server already checked; this is the database's own check).
+ PERFORM 1 FROM public.user_roles r WHERE r.user_id = _actor AND r.role::text = ANY (ARRAY['admin', 'team']) FOR SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'actor_not_manager' USING ERRCODE = '42501'; END IF;
  -- 1. The Owner setting, locked FOR SHARE so a concurrent Owner change waits for this transaction.
  SELECT s.value INTO setting_value FROM public.app_settings s WHERE s.key = 'rental_activation' FOR SHARE;
  setting_present := FOUND;
  setting_allow := setting_present
   AND pg_catalog.jsonb_typeof(setting_value OPERATOR(pg_catalog.->) 'allow_activation_without_insurance_verification') OPERATOR(pg_catalog.=) 'boolean'
   AND (setting_value OPERATOR(pg_catalog.->>) 'allow_activation_without_insurance_verification') OPERATOR(pg_catalog.=) 'true';
- -- 2. The application (FOR UPDATE: the lock activate_rental_tx takes next), the screening and
- --    the documents this check reads (FOR SHARE).
+ -- 2. The application (FOR UPDATE: the lock activate_rental_tx takes next), the screening, the
+ --    documents, agreements and passed inspections this check reads (FOR SHARE).
  SELECT a.insurance_expires_on INTO app_expires FROM public.applications a WHERE a.id = _application_id FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'application_not_found'; END IF;
- SELECT sc.insurance_verified IS TRUE INTO verified FROM public.driver_screenings sc WHERE sc.lead_id = _application_id FOR SHARE;
+ SELECT sc.insurance_verified IS TRUE, sc.interview_completed_at IS NOT NULL INTO verified, interview_done
+  FROM public.driver_screenings sc WHERE sc.lead_id = _application_id FOR SHARE;
  verified := verified IS TRUE;
+ interview_done := interview_done IS TRUE;
  PERFORM 1 FROM public.documents d WHERE d.driver_id = _application_id AND d.is_current IS TRUE
   AND d.category = ANY (ARRAY['insurance', 'license_front', 'license_back', 'agreement']) FOR SHARE;
  PERFORM 1 FROM public.agreements g WHERE g.application_id = _application_id AND g.status = 'signed' FOR SHARE;
+ PERFORM 1 FROM public.inspections i WHERE i.vehicle_id = _vehicle_id AND i.inspection_type = 'pre_delivery' AND i.status = 'passed' FOR SHARE;
+ inspection_passed := FOUND;
  has_insurance_doc := EXISTS (SELECT 1 FROM public.documents d WHERE d.driver_id = _application_id AND d.is_current IS TRUE
   AND d.category = 'insurance' AND d.review_status IS DISTINCT FROM 'rejected');
  doc_expired := EXISTS (SELECT 1 FROM public.documents d WHERE d.driver_id = _application_id AND d.is_current IS TRUE
   AND d.category = 'insurance' AND d.review_status IS DISTINCT FROM 'rejected' AND d.expires_at < today);
  insurance_status := CASE WHEN app_expires < today OR doc_expired THEN 'expired'
   WHEN verified THEN 'verified' WHEN NOT has_insurance_doc THEN 'missing' ELSE 'unverified' END;
- -- 3. Hard requirements re-checked here, under the locks above.
+ -- 3. Hard requirements re-checked here, under the locks above. No override reaches these.
  IF NOT EXISTS (SELECT 1 FROM public.documents d WHERE d.driver_id = _application_id AND d.is_current IS TRUE
    AND d.category = 'license_front' AND d.review_status IS DISTINCT FROM 'rejected')
  OR NOT EXISTS (SELECT 1 FROM public.documents d WHERE d.driver_id = _application_id AND d.is_current IS TRUE
@@ -160,26 +180,52 @@ BEGIN
   IF _insurance_exception_ack IS NOT TRUE THEN RAISE EXCEPTION 'insurance_ack_required:%', insurance_status; END IF;
   exception_used := true;
  END IF;
- -- 5. The existing, unchanged activation transaction.
+ -- 5. Soft blockers (the only overridable ones): an override may name only no_interview and
+ --    no_passed_inspection, needs a written reason, and must cover every one that is unmet now.
+ overrides := _audit OPERATOR(pg_catalog.->) 'overrides';
+ IF overrides IS NOT NULL AND pg_catalog.jsonb_typeof(overrides) <> 'null' THEN
+  IF pg_catalog.jsonb_typeof(overrides) <> 'object' OR pg_catalog.jsonb_typeof(overrides OPERATOR(pg_catalog.->) 'blockers') IS DISTINCT FROM 'array' THEN
+   RAISE EXCEPTION 'override_payload_invalid';
+  END IF;
+  SELECT COALESCE(pg_catalog.array_agg(b OPERATOR(pg_catalog.->>) 'code'), ARRAY[]::text[]) INTO override_codes
+   FROM pg_catalog.jsonb_array_elements(overrides OPERATOR(pg_catalog.->) 'blockers') b;
+  SELECT c INTO bad_code FROM pg_catalog.unnest(override_codes) c
+   WHERE c IS NULL OR c <> ALL (ARRAY['no_interview', 'no_passed_inspection']) LIMIT 1;
+  IF FOUND THEN RAISE EXCEPTION 'override_not_allowed:%', COALESCE(bad_code, 'null'); END IF;
+  override_reason := pg_catalog.btrim(overrides OPERATOR(pg_catalog.->>) 'reason');
+  IF override_reason IS NULL OR pg_catalog.length(override_reason) < 5 THEN RAISE EXCEPTION 'override_reason_required'; END IF;
+ ELSE
+  overrides := NULL;
+ END IF;
+ IF NOT interview_done AND NOT ('no_interview' = ANY (override_codes)) THEN RAISE EXCEPTION 'override_required:no_interview'; END IF;
+ IF NOT inspection_passed AND NOT ('no_passed_inspection' = ANY (override_codes)) THEN RAISE EXCEPTION 'override_required:no_passed_inspection'; END IF;
+ -- 6. The existing, unchanged activation transaction.
  rental := public.activate_rental_tx(_application_id, _vehicle_id, _driver_id, _weekly_rate, _deposit, _deposit_held,
   _start, _end, _pickup_miles, _actor);
- INSERT INTO public.audit_log (actor_user_id, actor_email, actor_role, action, entity_type, entity_id, summary, metadata)
- VALUES (_actor, NULL, NULL, 'rental.activation_checked', 'rental', rental::text,
-  CASE WHEN exception_used THEN 'Rental started without verified insurance under the Owner exception'
-   ELSE 'Rental started with verified insurance' END,
-  pg_catalog.jsonb_build_object('application_id', _application_id, 'vehicle_id', _vehicle_id, 'driver_id', _driver_id,
-   'actor_user_id', _actor, 'insurance_status', insurance_status, 'exception_used', exception_used,
-   'setting_present', setting_present, 'setting_allow_without_insurance_verification', setting_allow,
-   'insurance_exception_acknowledged', _insurance_exception_ack IS TRUE, 'signed_agreement', CASE WHEN esign THEN 'esign' ELSE 'paper' END,
-   'checked_at', pg_catalog.clock_timestamp(), 'transaction_id', pg_catalog.txid_current()::text, 'source', 'activate_rental_checked_tx'))
+ -- 7. The required rental.activated audit entry, in this transaction.
+ INSERT INTO public.audit_log (actor_user_id, actor_email, actor_role, action, entity_type, entity_id, summary, metadata, ip, user_agent)
+ VALUES (_actor, pg_catalog.left(_audit OPERATOR(pg_catalog.->>) 'actor_email', 320), pg_catalog.left(_audit OPERATOR(pg_catalog.->>) 'actor_role', 40),
+  'rental.activated', 'rental', rental::text,
+  pg_catalog.left(COALESCE(NULLIF(_audit OPERATOR(pg_catalog.->>) 'summary', ''), 'Activated rental'), 300),
+  pg_catalog.jsonb_build_object('vehicle_id', _vehicle_id, 'application_id', _application_id, 'driver_id', _driver_id,
+   'account_created', (_audit OPERATOR(pg_catalog.->>) 'account_created') = 'true',
+   'overrides', CASE WHEN overrides IS NULL THEN NULL ELSE pg_catalog.jsonb_build_object(
+     'blockers', overrides OPERATOR(pg_catalog.->) 'blockers', 'reason', override_reason, 'by', _actor, 'at', decided_at) END,
+   'insurance', pg_catalog.jsonb_build_object('acting_user_id', _actor, 'at', decided_at, 'status', insurance_status,
+     'exception_used', exception_used, 'setting_allow_without_verification', setting_allow, 'setting_present', setting_present,
+     'setting_source', 'activation_transaction', 'acknowledged', _insurance_exception_ack IS TRUE, 'checked_in_transaction', true),
+   'checks', pg_catalog.jsonb_build_object('signed_agreement', CASE WHEN esign THEN 'esign' ELSE 'paper' END,
+     'interview_completed', interview_done, 'inspection_passed', inspection_passed, 'license_documents', true),
+   'transaction_id', pg_catalog.txid_current()::text, 'source', 'activate_rental_checked_tx'),
+  pg_catalog.left(_audit OPERATOR(pg_catalog.->>) 'ip', 100), pg_catalog.left(_audit OPERATOR(pg_catalog.->>) 'user_agent', 500))
  RETURNING id INTO audit_id;
  RETURN pg_catalog.jsonb_build_object('rental_id', rental, 'insurance_status', insurance_status,
   'exception_used', exception_used, 'setting_present', setting_present, 'setting_allow', setting_allow,
   'acknowledged', _insurance_exception_ack IS TRUE, 'signed_agreement', CASE WHEN esign THEN 'esign' ELSE 'paper' END,
   'audit_id', audit_id);
 END $checkedfn$;
-REVOKE ALL ON FUNCTION public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean) TO service_role;
+REVOKE ALL ON FUNCTION public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean, jsonb) TO service_role;
 $approvedais$;
  journal jsonb; receipts integer; p0031 text; activate_def text; activate_acl text;
  policies_before jsonb; policies_after jsonb; acl_before text; acl_after text; n integer;
@@ -193,7 +239,7 @@ BEGIN
  OR pg_catalog.current_database() IS DISTINCT FROM profile->>'database'
  OR current_user IS DISTINCT FROM profile->>'execution_role'
  THEN RAISE EXCEPTION 'TARGET_MISMATCH'; END IF;
- IF pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(approved_sql, 'UTF8')), 'hex') IS DISTINCT FROM '0c9089370ba8c837c08bddeda070b3a64dddb4bdcaad66c71e5224ab579014ae'
+ IF pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(approved_sql, 'UTF8')), 'hex') IS DISTINCT FROM 'ec415d3a617224857044f15a194b73f24e887b42d2b79b9faa27f06537915c17'
  THEN RAISE EXCEPTION 'SQL_CHECKSUM_MISMATCH'; END IF;
  -- Everything below is schema-qualified or resolves in pg_catalog; no session search_path applies.
  PERFORM pg_catalog.set_config('search_path', '', true);
@@ -231,17 +277,20 @@ BEGIN
  IF (SELECT pg_catalog.count(*) FROM pg_catalog.pg_attribute a WHERE NOT a.attisdropped AND a.attnum > 0 AND (
       (a.attrelid = 'public.driver_screenings'::pg_catalog.regclass AND a.attname = 'insurance_verified' AND a.atttypid = 'boolean'::pg_catalog.regtype) OR
       (a.attrelid = 'public.driver_screenings'::pg_catalog.regclass AND a.attname = 'lead_id' AND a.atttypid = 'uuid'::pg_catalog.regtype) OR
+      (a.attrelid = 'public.driver_screenings'::pg_catalog.regclass AND a.attname = 'interview_completed_at') OR
+      (a.attrelid = 'public.inspections'::pg_catalog.regclass AND a.attname IN ('vehicle_id','inspection_type','status')) OR
+      (a.attrelid = 'public.user_roles'::pg_catalog.regclass AND a.attname IN ('user_id','role')) OR
       (a.attrelid = 'public.applications'::pg_catalog.regclass AND a.attname = 'insurance_expires_on' AND a.atttypid = 'date'::pg_catalog.regtype) OR
       (a.attrelid = 'public.documents'::pg_catalog.regclass AND a.attname IN ('driver_id','category','is_current','review_status','expires_at','storage_path','reviewed_at')) OR
       (a.attrelid = 'public.agreements'::pg_catalog.regclass AND a.attname IN ('application_id','source','status','signed_at','voided_at','rental_id')) OR
-      (a.attrelid = 'public.audit_log'::pg_catalog.regclass AND a.attname IN ('actor_user_id','actor_role','action','entity_type','entity_id','metadata')) OR
-      (a.attrelid = 'public.app_settings'::pg_catalog.regclass AND a.attname IN ('key','value')))) <> 24
+      (a.attrelid = 'public.audit_log'::pg_catalog.regclass AND a.attname IN ('actor_user_id','actor_role','action','entity_type','entity_id','metadata','ip','user_agent')) OR
+      (a.attrelid = 'public.app_settings'::pg_catalog.regclass AND a.attname IN ('key','value')))) <> 32
  THEN RAISE EXCEPTION 'COLUMN_SHAPE_DRIFT'; END IF;
  IF NOT pg_catalog.has_table_privilege(current_user, 'public.audit_log', 'INSERT') THEN RAISE EXCEPTION 'AUDIT_INSERT_UNAVAILABLE'; END IF;
  -- Idempotence: one install per evidence row; a re-run, or a partial install, is refused.
  IF EXISTS (SELECT 1 FROM public.audit_log WHERE entity_type = 'database_migration' AND entity_id = 'activation_insurance_setting_v1') THEN
   RAISE EXCEPTION 'AIS_EVIDENCE_REPLAY'; END IF;
- IF pg_catalog.to_regprocedure('public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean)') IS NOT NULL OR pg_catalog.to_regprocedure('public.set_rental_activation_insurance_exception(boolean)') IS NOT NULL
+ IF pg_catalog.to_regprocedure('public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean, jsonb)') IS NOT NULL OR pg_catalog.to_regprocedure('public.set_rental_activation_insurance_exception(boolean)') IS NOT NULL
  OR pg_catalog.to_regprocedure('private.rental_activation_setting_guard()') IS NOT NULL
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid = 'public.app_settings'::pg_catalog.regclass AND tgname = 'rental_activation_setting_guard')
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_policy WHERE polrelid = 'public.app_settings'::pg_catalog.regclass AND polname LIKE 'rental_activation_setting_%')
@@ -254,11 +303,11 @@ BEGIN
 
  -- Post: the three functions are exactly the reviewed objects.
  IF (SELECT p.prosecdef AND l.lanname = 'plpgsql' AND p.proconfig = ARRAY['search_path=""'] AND pg_catalog.pg_get_userbyid(p.proowner) = 'postgres'
-      AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') = '03d5108a342facaf3a052d3f1c83786d588c962e3d49770a48234a493106759a'
+      AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') = '669338378bd3bab69f756e923665fc3a690669fc8ed3a9b9f5c32e4f2c81298a'
       AND pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')
       AND NOT pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE') AND NOT pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
       AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(p.proacl) e WHERE e.grantee = 0)
-     FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_language l ON l.oid = p.prolang WHERE p.oid = 'public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean)'::pg_catalog.regprocedure) IS NOT TRUE
+     FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_language l ON l.oid = p.prolang WHERE p.oid = 'public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean, jsonb)'::pg_catalog.regprocedure) IS NOT TRUE
  THEN RAISE EXCEPTION 'POST_WRAPPER_MISMATCH'; END IF;
  IF (SELECT p.prosecdef AND l.lanname = 'plpgsql' AND p.proconfig = ARRAY['search_path=""'] AND pg_catalog.pg_get_userbyid(p.proowner) = 'postgres'
       AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') = '39ff1d560ff33a22c416857840b2c6185e94876699cb0aee26d0301e2095fd97'
@@ -302,7 +351,7 @@ BEGIN
   'Activation insurance setting v1 postconditions verified by database migration executor',
   pg_catalog.jsonb_build_object('project_ref', profile->>'project_ref', 'package', 'activation-insurance-setting v1',
    'execution_at', pg_catalog.clock_timestamp(), 'transaction_id', pg_catalog.txid_current()::text, 'database_executor', current_user,
-   'session_executor', session_user, 'inner_sql_sha256', '0c9089370ba8c837c08bddeda070b3a64dddb4bdcaad66c71e5224ab579014ae', 'wrapper_prosrc_sha256', '03d5108a342facaf3a052d3f1c83786d588c962e3d49770a48234a493106759a',
+   'session_executor', session_user, 'inner_sql_sha256', 'ec415d3a617224857044f15a194b73f24e887b42d2b79b9faa27f06537915c17', 'wrapper_prosrc_sha256', '669338378bd3bab69f756e923665fc3a690669fc8ed3a9b9f5c32e4f2c81298a',
    'setter_prosrc_sha256', '39ff1d560ff33a22c416857840b2c6185e94876699cb0aee26d0301e2095fd97', 'guard_prosrc_sha256', '8723cbdee5c18629f112f0701a5035146ea7937d3e3567b2569c2d2ced73214e', 'activate_rental_tx_def_md5', activate_def,
    'policies_0031_md5', p0031, 'drizzle_receipts', receipts, 'setting_seeded', false),
   pg_catalog.clock_timestamp());

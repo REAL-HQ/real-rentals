@@ -282,6 +282,8 @@ export type ActivateResult = {
   blockers?: ActivationBlocker[];
   accountCreated?: boolean;
   inviteUrl?: string | null;
+  /** Only on the non-atomic fallback (wrapper not installed): the required audit write failed. */
+  auditError?: string;
 };
 
 export const activateRental = createServerFn({ method: "POST" })
@@ -382,9 +384,40 @@ export const activateRental = createServerFn({ method: "POST" })
     //
     //      It is called through activate_rental_checked_tx (proposed SQL,
     //      proposed/activation-insurance-setting), which in the SAME transaction
-    //      locks and re-reads the Owner setting, the insurance state, the licence
-    //      documents and the signed agreement, refuses unless they pass, then
-    //      calls activate_rental_tx unchanged and writes its own audit row.
+    //      checks the actor is a Manager/Owner, locks and re-reads the Owner
+    //      setting, the insurance state, the licence documents, the signed
+    //      agreement, the interview and the passed inspection (only those two
+    //      may be overridden, with a reason), then calls activate_rental_tx
+    //      unchanged and writes the required rental.activated audit entry, so
+    //      the activation and its audit evidence commit together or not at all.
+    const { data: vehicle } = await supabaseAdmin
+      .from("vehicles")
+      .select("year,make,model,license_plate")
+      .eq("id", data.vehicleId)
+      .maybeSingle();
+    const vehicleLabel =
+      [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(" ") || "your vehicle";
+    const summary = `Activated ${vehicleLabel} for ${app.full_name ?? app.email}`;
+    const overridePayload = overridden.length
+      ? {
+          blockers: overridden.map((b) => ({ code: b.code, message: b.message })),
+          reason: data.overrideReason ?? null,
+          by: actor.userId,
+          at: new Date().toISOString(),
+        }
+      : null;
+    const requestMeta = await (async () => {
+      try {
+        const { getRequest } = await import("@tanstack/react-start/server");
+        const req = getRequest();
+        return {
+          ip: req?.headers?.get("cf-connecting-ip") ?? req?.headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+          user_agent: req?.headers?.get("user-agent") ?? null,
+        };
+      } catch {
+        return { ip: null, user_agent: null };
+      }
+    })();
     const txArgs = {
       _application_id: data.applicationId,
       _vehicle_id: data.vehicleId,
@@ -399,18 +432,27 @@ export const activateRental = createServerFn({ method: "POST" })
     };
     const ackSent = decision.insuranceExceptionUsed && data.insuranceExceptionAck === true;
     let rentalId: string | null = null;
-    let checked: Record<string, unknown> | null = null;
-    let checkedInTransaction = true;
+    let auditError: string | null = null;
     const first = await (supabaseAdmin as any).rpc("activate_rental_checked_tx", {
       ...txArgs,
       _insurance_exception_ack: ackSent,
+      _audit: {
+        actor_email: actor.email ?? null,
+        actor_role: actor.role,
+        summary,
+        account_created: created,
+        overrides: overridePayload,
+        ...requestMeta,
+      },
     });
     let txErr = first.error as { code?: string; message?: string } | null;
     if (txErr?.code === "PGRST202") {
       // The wrapper is not installed yet. Fail closed: insurance must be
-      // verified (the Owner exception is unavailable without the in-transaction
-      // re-check), and only then is the existing transaction used directly.
-      checkedInTransaction = false;
+      // verified (no Owner exception without the in-transaction re-check), and
+      // overrides are refused (their audit must commit with the rental). Only
+      // then is the existing transaction used directly, and its audit entry is
+      // written right after it — not atomically. A failed audit write is
+      // returned to the operator (auditError), never swallowed.
       if (readiness.insurance.status !== "verified") {
         return {
           ok: false,
@@ -423,15 +465,64 @@ export const activateRental = createServerFn({ method: "POST" })
           ],
         };
       }
+      if (overridden.length) {
+        return {
+          ok: false,
+          blockers: [
+            {
+              code: "override_reason_required",
+              message:
+                "Overrides need the activation database update, so the override and its reason are recorded together with the rental. Resolve the item instead, or wait for the update.",
+            },
+          ],
+        };
+      }
       const legacy = await (supabaseAdmin as any).rpc("activate_rental_tx", txArgs);
       txErr = legacy.error;
       rentalId = (legacy.data as string | null) ?? null;
+      if (!txErr && rentalId) {
+        const { error: auditErr } = await (supabaseAdmin as any).from("audit_log").insert({
+          actor_user_id: actor.userId,
+          actor_email: actor.email ?? null,
+          actor_role: actor.role,
+          action: "rental.activated",
+          entity_type: "rental",
+          entity_id: rentalId,
+          summary,
+          ip: requestMeta.ip,
+          user_agent: requestMeta.user_agent,
+          metadata: {
+            vehicle_id: data.vehicleId,
+            application_id: data.applicationId,
+            account_created: created,
+            driver_id: userId,
+            overrides: null,
+            insurance: {
+              acting_user_id: actor.userId,
+              at: new Date().toISOString(),
+              status: readiness.insurance.status,
+              exception_used: false,
+              setting_allow_without_verification: false,
+              setting_present: readiness.insurance.settingPresent,
+              setting_source: "wrapper_not_installed_treated_as_off",
+              acknowledged: false,
+              checked_in_transaction: false,
+            },
+            source: "server_fallback_non_atomic",
+          },
+        });
+        if (auditErr) {
+          auditError =
+            "The rental started, but its audit entry could not be written. Tell the Owner so it can be recorded.";
+          console.error("[activate] REQUIRED AUDIT WRITE FAILED", { rentalId, error: auditErr });
+        }
+      }
     } else if (!txErr) {
-      checked = (first.data ?? {}) as Record<string, unknown>;
-      rentalId = (checked.rental_id as string | undefined) ?? null;
+      rentalId = ((first.data ?? {}) as { rental_id?: string }).rental_id ?? null;
     }
     if (txErr) {
       const msg = String(txErr.message);
+      if (/actor_not_manager/.test(msg)) throw new Error("Forbidden");
       const blocker = checkedTxBlocker(msg) ?? activationTxBlocker(msg);
       if (blocker) return { ok: false, blockers: [blocker] };
       throw new Error(msg);
@@ -446,13 +537,6 @@ export const activateRental = createServerFn({ method: "POST" })
     //    portal URL, since they already have a password.
     const inviteUrl = freshInviteUrl;
 
-    const { data: vehicle } = await supabaseAdmin
-      .from("vehicles")
-      .select("year,make,model,license_plate")
-      .eq("id", data.vehicleId)
-      .maybeSingle();
-    const vehicleLabel =
-      [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(" ") || "your vehicle";
     const firstName =
       String(app.full_name ?? "there")
         .trim()
@@ -502,44 +586,9 @@ export const activateRental = createServerFn({ method: "POST" })
       channels: ["in_app", "email"],
     });
 
-    const { logAudit } = await import("@/lib/audit.server");
-    await logAudit(actor, {
-      action: "rental.activated",
-      summary: `Activated ${vehicleLabel} for ${app.full_name ?? app.email}`,
-      entityType: "rental",
-      entityId: rental.id as string,
-      metadata: {
-        vehicle_id: data.vehicleId,
-        application_id: data.applicationId,
-        account_created: created,
-        driver_id: userId,
-        overrides: overridden.length
-          ? {
-              blockers: overridden.map((b) => ({ code: b.code, message: b.message })),
-              reason: data.overrideReason ?? null,
-              by: actor.userId,
-              at: new Date().toISOString(),
-            }
-          : null,
-        // What the activation transaction itself read and decided. When the
-        // wrapper ran, these come from its locked reads (and its own audit row,
-        // written atomically with the rental); otherwise from readiness.
-        insurance: {
-          acting_user_id: actor.userId,
-          at: new Date().toISOString(),
-          status: (checked?.insurance_status as string | undefined) ?? readiness.insurance.status,
-          exception_used: checked ? checked.exception_used === true : false,
-          setting_allow_without_verification: checked ? checked.setting_allow === true : false,
-          setting_present: checked ? checked.setting_present === true : readiness.insurance.settingPresent,
-          setting_source: checked ? "activation_transaction" : "wrapper_not_installed_treated_as_off",
-          acknowledged: ackSent,
-          checked_in_transaction: checkedInTransaction,
-          transaction_audit_id: (checked?.audit_id as string | undefined) ?? null,
-        },
-      },
-    });
-
-    return { ok: true, rentalId: rental.id as string, accountCreated: created, inviteUrl };
+    // rental.activated was written inside activate_rental_checked_tx (or, without
+    // the wrapper, immediately after activate_rental_tx with any failure returned).
+    return { ok: true, rentalId: rental.id as string, accountCreated: created, inviteUrl, ...(auditError ? { auditError } : {}) };
   });
 
 export const endRental = createServerFn({ method: "POST" })

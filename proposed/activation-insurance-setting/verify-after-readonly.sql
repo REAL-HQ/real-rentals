@@ -2,12 +2,12 @@
 -- Run after the request commits. Every row must have ok = true. The setting row is reported, not asserted OFF,
 -- because the Owner may have changed it since; setting_changes counts the audited changes.
 WITH n AS (
- SELECT pg_catalog.to_regprocedure('public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean)') AS wrapper, pg_catalog.to_regprocedure('public.set_rental_activation_insurance_exception(boolean)') AS setter,
+ SELECT pg_catalog.to_regprocedure('public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean, jsonb)') AS wrapper, pg_catalog.to_regprocedure('public.set_rental_activation_insurance_exception(boolean)') AS setter,
         pg_catalog.to_regprocedure('private.rental_activation_setting_guard()') AS guardfn, pg_catalog.to_regprocedure('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)') AS activate
 ), c AS (
  SELECT
   (SELECT (p.prosecdef AND p.proconfig = ARRAY['search_path=""'] AND pg_catalog.pg_get_userbyid(p.proowner) = 'postgres'
-     AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') = '03d5108a342facaf3a052d3f1c83786d588c962e3d49770a48234a493106759a')::text FROM pg_catalog.pg_proc p WHERE p.oid = n.wrapper) AS wrapper_body,
+     AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') = '669338378bd3bab69f756e923665fc3a690669fc8ed3a9b9f5c32e4f2c81298a')::text FROM pg_catalog.pg_proc p WHERE p.oid = n.wrapper) AS wrapper_body,
   (SELECT (pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE') AND NOT pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
      AND NOT pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE') AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(p.proacl) e WHERE e.grantee = 0))::text FROM pg_catalog.pg_proc p WHERE p.oid = n.wrapper) AS wrapper_acl,
   (SELECT (p.prosecdef AND p.proconfig = ARRAY['search_path=""'] AND pg_catalog.pg_get_userbyid(p.proowner) = 'postgres'

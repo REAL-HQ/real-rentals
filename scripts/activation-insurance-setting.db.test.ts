@@ -35,6 +35,14 @@ const RB = read("rollback.sql");
 const RB_REQ = read("request-rollback-activation-insurance-setting.sql");
 const PREFLIGHT = read("preflight-readonly.sql");
 const VERIFY = read("verify-after-readonly.sql");
+const IVA_DIR = join(ROOT, "proposed/insurance-verification-authority");
+const readIva = (f: string) => readFileSync(join(IVA_DIR, f), "utf8");
+const IVA_PKG = readIva("insurance_verification_authority_v1.sql");
+const IVA_REQ = readIva("request-insurance-verification-authority.sql");
+const IVA_RB = readIva("rollback.sql");
+const IVA_RB_REQ = readIva("request-rollback-insurance-verification-authority.sql");
+const IVA_PREFLIGHT = readIva("preflight-readonly.sql");
+const IVA_VERIFY = readIva("verify-after-readonly.sql");
 const FAILPOINT = "-- TEST_FAILURE_POINT (only disposable test copies may inject failure here)";
 const PROD_PROFILE = '"database": "postgres", "system_identifier": "7642734024280108049"';
 
@@ -119,7 +127,7 @@ async function asService(stmt: string, params: any[] = []) {
 
 // One applicant, driver, vehicle and paperwork per scenario, so activations never collide.
 type Fx = { app: string; driver: string; vehicle: string; actor: string };
-async function fixture(o: { verified?: boolean; insuranceDoc?: boolean; appExpires?: string | null; docExpires?: string | null; agreement?: "esign" | "paper" | "paper_unaudited" | "none"; licence?: boolean; status?: string } = {}): Promise<Fx> {
+async function fixture(o: { verified?: boolean; insuranceDoc?: boolean; appExpires?: string | null; docExpires?: string | null; agreement?: "esign" | "paper" | "paper_unaudited" | "none"; licence?: boolean; status?: string; interview?: boolean; inspection?: boolean } = {}): Promise<Fx> {
   const f = { app: randomUUID(), driver: randomUUID(), vehicle: randomUUID(), actor: MANAGER };
   const vin = ("1HGCM8263" + Math.random().toString(36).slice(2, 10).toUpperCase().replace(/[IOQ]/g, "A")).padEnd(17, "7").slice(0, 17);
   await db.begin(async (tx: any) => {
@@ -145,13 +153,16 @@ async function fixture(o: { verified?: boolean; insuranceDoc?: boolean; appExpir
         await tx`insert into public.audit_log(actor_user_id, actor_role, action, entity_type, entity_id, summary, metadata) values (${MANAGER}, 'team', 'document.verified', 'application', ${f.app}, 'Verified signed agreement', ${tx.json({ documentId: docId, paper_agreement: true, storage_path: f.app + "/paper.pdf", reviewed_at: reviewedAt, reviewed_at_ms: Date.parse(reviewedAt), verifier_user_id: MANAGER, storage_bucket: "driver-docs", content_sha256: null, agreement_version: null })})`;
       }
     }
-    await tx`insert into public.driver_screenings(lead_id, insurance_verified, interview_completed_at) values (${f.app}, ${o.verified ?? true}, now())`;
+    await tx`insert into public.driver_screenings(lead_id, insurance_verified, interview_completed_at, insurance_carrier, insurance_policy_number) values (${f.app}, ${o.verified ?? true}, ${o.interview === false ? null : new Date().toISOString()}, 'Acme Mutual', 'POL 12 3456')`;
+    if (o.inspection !== false) await tx`insert into public.inspections(vehicle_id, inspection_type, status, completed_at) values (${f.vehicle}, 'pre_delivery', 'passed', now())`;
   });
   return f;
 }
-const callSql = (f: Fx, ack: boolean, extra = "") =>
-  `select public.activate_rental_checked_tx('${f.app}','${f.vehicle}','${f.driver}',325,0,false,current_date${extra || ",null"},null,'${f.actor}',${ack}) as r`;
-const activate = async (f: Fx, ack: boolean) => (await asService(callSql(f, ack)))[0].r;
+const auditJson = (overrides: unknown = null) =>
+  JSON.stringify({ actor_email: "manager@test", actor_role: "team", summary: "Activated 2022 Toyota Camry for Test Driver", account_created: false, overrides, ip: "203.0.113.7", user_agent: "db-test" }).replace(/'/g, "''");
+const callSql = (f: Fx, ack: boolean, overrides: unknown = null) =>
+  `select public.activate_rental_checked_tx('${f.app}','${f.vehicle}','${f.driver}',325,0,false,current_date,null,null,'${f.actor}',${ack},'${auditJson(overrides)}'::jsonb) as r`;
+const activate = async (f: Fx, ack: boolean, overrides: unknown = null) => (await asService(callSql(f, ack, overrides)))[0].r;
 async function setSettingRaw(allow: boolean | null) {
   // Test-only direct write as the superuser, through the same guard the setter uses.
   await db.begin(async (tx: any) => {
@@ -161,7 +172,7 @@ async function setSettingRaw(allow: boolean | null) {
   });
 }
 const rentalCount = async (f: Fx) => Number((await db`select count(*)::int n from public.rentals where application_id = ${f.app}`)[0].n);
-const checkedAudits = async (f: Fx) => db`select metadata from public.audit_log where action = 'rental.activation_checked' and metadata->>'application_id' = ${f.app}`;
+const checkedAudits = async (f: Fx) => db`select actor_user_id, actor_email, actor_role, entity_id, summary, ip, user_agent, metadata from public.audit_log where action = 'rental.activated' and metadata->>'application_id' = ${f.app}`;
 const insuranceVerified = async (f: Fx) => (await db`select insurance_verified from public.driver_screenings where lead_id = ${f.app}`)[0].insurance_verified;
 
 let pgrst: ChildProcess | null = null;
@@ -225,7 +236,7 @@ try {
     ok(PKG.split(FAILPOINT).length === 2, "failpoint anchor");
     const r = psql(localCopy(PKG, sid).replace(FAILPOINT, "RAISE EXCEPTION 'INJECTED_FAILURE';"));
     ok(!r.ok && /INJECTED_FAILURE/.test(r.out), r.out);
-    const [s] = await db`select to_regprocedure('public.activate_rental_checked_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid,boolean)') w, (select count(*)::int from public.app_settings where key = 'rental_activation') k, (select count(*)::int from pg_policy where polname like 'rental_activation_setting_%') p`;
+    const [s] = await db`select to_regprocedure('public.activate_rental_checked_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid,boolean,jsonb)') w, (select count(*)::int from public.app_settings where key = 'rental_activation') k, (select count(*)::int from pg_policy where polname like 'rental_activation_setting_%') p`;
     ok(s.w === null && s.k === 0 && s.p === 0, JSON.stringify(s));
     return "nothing persisted";
   });
@@ -247,9 +258,58 @@ try {
     return "AIS_EVIDENCE_REPLAY";
   });
 
+  // ---------------------------------------------------------- insurance verification authority package
+  await check("VP0", "IVA artifacts match SHA256SUMS", async () => {
+    const sums = readIva("SHA256SUMS").trim().split("\n").map((l) => l.split(/\s+/));
+    for (const [h, f] of sums) if (f !== "test-results.json") ok(sha(readFileSync(join(IVA_DIR, f))) === h, `checksum ${f}`);
+    return `${sums.length} files`;
+  });
+  await check("VP1", "IVA preflight: every gate ok except the two local target rows", async () => {
+    const rows = await db.unsafe(IVA_PREFLIGHT);
+    const bad = rows.filter((r: any) => !r.ok).map((r: any) => r.check_name);
+    ok(JSON.stringify(bad) === JSON.stringify(["target.database", "target.system_identifier"]), `bad rows ${bad}`);
+    return `${rows.length} rows`;
+  });
+  await check("VP2", "IVA real guarded request + trailer: guard passes, package refuses the foreign target", async () => {
+    const r = psql(IVA_REQ + TRAILER);
+    ok(!r.ok && /TARGET_MISMATCH/.test(r.out) && !/RRGUARD_/.test(r.out), r.out);
+    return "TARGET_MISMATCH";
+  });
+  await check("VP3", "IVA tampered request refused by the guard", async () => {
+    const i = IVA_REQ.indexOf("IVA_PARTIAL_INSTALL");
+    ok(i > 0, "anchor");
+    const r = psql(IVA_REQ.slice(0, i) + "X" + IVA_REQ.slice(i + 1) + TRAILER);
+    ok(!r.ok && /RRGUARD_BYTES_MISMATCH/.test(r.out), r.out);
+    return "RRGUARD_BYTES_MISMATCH";
+  });
+  await check("VP4", "IVA failure after the DDL rolls back everything", async () => {
+    ok(IVA_PKG.split(FAILPOINT).length === 2, "failpoint anchor");
+    const r = psql(localCopy(IVA_PKG, sid).replace(FAILPOINT, "RAISE EXCEPTION 'INJECTED_FAILURE';"));
+    ok(!r.ok && /INJECTED_FAILURE/.test(r.out), r.out);
+    const [x] = await db`select to_regprocedure('public.set_insurance_verification(uuid,boolean,text)') f, (select count(*)::int from pg_trigger where tgname = 'zz_insurance_decision_guard') t`;
+    ok(x.f === null && x.t === 0, JSON.stringify(x));
+    return "nothing persisted";
+  });
+  await check("VP5", "IVA local copy installs; public.applications fingerprint unchanged (checked by the package)", async () => {
+    const r = psql(localCopy(IVA_PKG, sid));
+    ok(r.ok, r.out);
+    return "installed";
+  });
+  await check("VP6", "IVA verify-after-readonly: every row ok", async () => {
+    const rows = await db.unsafe(IVA_VERIFY);
+    const bad = rows.filter((r: any) => !r.ok).map((r: any) => r.check_name);
+    ok(bad.length === 0, `bad rows ${bad}`);
+    return `${rows.length} rows ok`;
+  });
+  await check("VP7", "IVA re-run refused (IVA_EVIDENCE_REPLAY)", async () => {
+    const r = psql(localCopy(IVA_PKG, sid));
+    ok(!r.ok && /IVA_EVIDENCE_REPLAY/.test(r.out), r.out);
+    return "IVA_EVIDENCE_REPLAY";
+  });
+
   // ---------------------------------------------------------- transaction boundary (inspection)
   await check("B1", "wrapper and activate_rental_tx: plpgsql, SECURITY DEFINER, SET clauses, no autonomous work; wrapper has no exception handler", async () => {
-    const rows = await db`select p.proname, l.lanname, p.prosecdef, p.proconfig, pg_get_functiondef(p.oid) def from pg_proc p join pg_language l on l.oid = p.prolang where p.oid in ('public.activate_rental_checked_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid,boolean)'::regprocedure, 'public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)'::regprocedure)`;
+    const rows = await db`select p.proname, l.lanname, p.prosecdef, p.proconfig, pg_get_functiondef(p.oid) def from pg_proc p join pg_language l on l.oid = p.prolang where p.oid in ('public.activate_rental_checked_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid,boolean,jsonb)'::regprocedure, 'public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)'::regprocedure)`;
     const out: Record<string, unknown> = {};
     for (const r of rows as any[]) {
       out[r.proname] = { lang: r.lanname, security_definer: r.prosecdef, config: r.proconfig, exception_block: /\bEXCEPTION\s+WHEN\b/i.test(r.def), autonomous: /dblink|pg_background|\bCOMMIT\b|\bROLLBACK\b/i.test(r.def) };
@@ -291,9 +351,10 @@ try {
     const r = await activate(f, true);
     ok(r.exception_used === true && r.insurance_status === "unverified" && r.setting_allow === true && r.acknowledged === true, JSON.stringify(r));
     const [a] = await checkedAudits(f);
-    ok(a?.metadata.exception_used === true && a.metadata.insurance_exception_acknowledged === true && a.metadata.setting_allow_without_insurance_verification === true && a.metadata.actor_user_id === MANAGER && a.metadata.transaction_id, JSON.stringify(a));
+    const ins = a?.metadata.insurance;
+    ok(ins?.exception_used === true && ins.acknowledged === true && ins.setting_allow_without_verification === true && ins.acting_user_id === MANAGER && ins.status === "unverified" && ins.at && a.metadata.transaction_id && a.actor_user_id === MANAGER && a.actor_role === "team" && a.entity_id === r.rental_id && a.ip === "203.0.113.7", JSON.stringify(a));
     ok((await insuranceVerified(f)) === false, "insurance flipped to verified");
-    evidence.exception_audit = a.metadata;
+    evidence.exception_audit = a;
     return `${m} → then ok with ack`;
   });
   await check("T2b", "setting ON + missing / expired: permitted only with the acknowledgement", async () => {
@@ -333,6 +394,55 @@ try {
     const r = await activate(good, false);
     ok(r.signed_agreement === "paper", JSON.stringify(r));
     return `audited paper ok; ${await refused(activate(bare, true), /no_signed_agreement/)}`;
+  });
+
+  // ---------------------------------------------------------- overrides and audit, in the transaction
+  await check("A1", "soft blockers re-checked in the transaction: interview / inspection unmet without an override refuse", async () => {
+    await setSettingRaw(false);
+    const noInt = await fixture({ interview: false });
+    const noInsp = await fixture({ inspection: false });
+    return [await refused(activate(noInt, false), /override_required:no_interview/), await refused(activate(noInsp, false), /override_required:no_passed_inspection/)].join(" | ");
+  });
+  await check("A2", "overrides: only no_interview / no_passed_inspection, with a reason of 5+ characters; recorded in rental.activated", async () => {
+    const f = await fixture({ inspection: false, verified: false, agreement: "none" });
+    const out = [
+      await refused(activate(f, true, { blockers: [{ code: "no_signed_agreement" }], reason: "owner said so" }), /override_not_allowed:no_signed_agreement|no_signed_agreement/),
+    ];
+    const g = await fixture({ inspection: false, verified: false });
+    out.push(await refused(activate(g, true, { blockers: [{ code: "insurance_not_verified" }, { code: "no_passed_inspection" }], reason: "owner said so" }), /insurance_not_verified:unverified/));
+    const h = await fixture({ inspection: false });
+    out.push(await refused(activate(h, false, { blockers: [{ code: "no_passed_inspection" }], reason: "ok " }), /override_reason_required/));
+    out.push(await refused(activate(h, false, { blockers: [{ code: "no_passed_inspection" }, { code: "vehicle_busy" }], reason: "Checked at the lot" }), /override_not_allowed:vehicle_busy/));
+    const r = await activate(h, false, { blockers: [{ code: "no_passed_inspection", message: "No passed pre-delivery inspection" }], reason: "Checked at the lot by the owner" });
+    const [a] = await checkedAudits(h);
+    ok(a.metadata.overrides.reason === "Checked at the lot by the owner" && a.metadata.overrides.blockers[0].code === "no_passed_inspection" && a.metadata.overrides.by === MANAGER && a.metadata.overrides.at && a.metadata.checks.inspection_passed === false && a.entity_id === r.rental_id, JSON.stringify(a));
+    evidence.override_audit = a;
+    return out.map((x) => x.split(" ").pop()).join(", ") + " | override with reason ok, audited with blockers/actor/driver/vehicle/time";
+  });
+  await check("A3", "activation and its rental.activated row commit together: an injected audit failure leaves no rental", async () => {
+    const f = await fixture();
+    await db.unsafe(`create function public.ais_test_fail_audit() returns trigger language plpgsql as $$ begin if NEW.action = 'rental.activated' then raise exception 'INJECTED_AUDIT_FAILURE'; end if; return NEW; end $$;
+      create trigger ais_test_fail_audit before insert on public.audit_log for each row execute function public.ais_test_fail_audit()`);
+    let m = "";
+    try {
+      m = await refused(activate(f, false), /INJECTED_AUDIT_FAILURE/);
+    } finally {
+      await db.unsafe("drop trigger ais_test_fail_audit on public.audit_log; drop function public.ais_test_fail_audit()");
+    }
+    ok((await rentalCount(f)) === 0 && (await checkedAudits(f)).length === 0, "rental without audit");
+    const [st] = await db`select status from public.applications where id = ${f.app}`;
+    const [v] = await db`select status from public.vehicles where id = ${f.vehicle}`;
+    ok(st.status === "approved" && v.status === "available", "application/vehicle changed");
+    const r = await activate(f, false);
+    const [a] = await checkedAudits(f);
+    ok(a && a.entity_id === r.rental_id && (await rentalCount(f)) === 1, "both present on success");
+    return `${m}; nothing written; then both present`;
+  });
+  await check("A4", "the acting user must be a Manager or Owner in the database too (Coordinator or unknown actor refused)", async () => {
+    const f = await fixture();
+    const out = [await refused(activate({ ...f, actor: COORD }, false), /actor_not_manager/), await refused(activate({ ...f, actor: randomUUID() }, false), /actor_not_manager/)];
+    ok((await rentalCount(f)) === 0, "rental written");
+    return out.join(" | ");
   });
 
   // ---------------------------------------------------------- 4-7 permissions
@@ -397,11 +507,11 @@ try {
       out.push(await refused(asUser(sub, `select public.activate_rental_tx('${f.app}','${f.vehicle}','${f.driver}',325,0,false,current_date,null,null,'${sub}')`), /permission denied for function activate_rental_tx/));
     }
     if (restUp) {
-      const body = { _application_id: f.app, _vehicle_id: f.vehicle, _driver_id: f.driver, _weekly_rate: 325, _deposit: 0, _deposit_held: false, _start: "2026-10-25", _end: null, _pickup_miles: null, _actor: OWNER, _insurance_exception_ack: true };
+      const body = { _application_id: f.app, _vehicle_id: f.vehicle, _driver_id: f.driver, _weekly_rate: 325, _deposit: 0, _deposit_held: false, _start: "2026-10-25", _end: null, _pickup_miles: null, _actor: OWNER, _insurance_exception_ack: true, _audit: { summary: "x" } };
       for (const [t, name] of [[TOK.owner, "owner"], [TOK.mgr, "manager"], [TOK.anon, "anon"]] as const) {
         const a = await rest("POST", "/rpc/activate_rental_checked_tx", t, body);
         ok(a.status === 401 || a.status === 403, `${name} wrapper ${a.status} ${a.text}`);
-        const { _insurance_exception_ack, ...legacy } = body;
+        const { _insurance_exception_ack, _audit, ...legacy } = body;
         const b = await rest("POST", "/rpc/activate_rental_tx", t, legacy);
         ok(b.status === 401 || b.status === 403, `${name} activate ${b.status} ${b.text}`);
         out.push(`REST ${name}: ${a.status}/${b.status}`);
@@ -424,6 +534,152 @@ try {
     });
     const m2 = await refused(activate(f, true), /insurance_not_verified/);
     return `${m} | non-boolean "true" also OFF: ${m2.split(" ").pop()}`;
+  });
+
+  // ---------------------------------------------------------- insurance verification authority
+  const screening = async (f: Fx) => (await db`select insurance_verified, insurance_verified_at, insurance_verified_by, insurance_carrier, insurance_policy_number from public.driver_screenings where lead_id = ${f.app}`)[0];
+  const decisions = async (f: Fx) => db`select action, actor_user_id, actor_role, created_at, metadata from public.audit_log where action in ('insurance.verified','insurance.verification_revoked') and entity_id = ${f.app} order by created_at`;
+  await check("V1", "Coordinator cannot verify or revoke: setter (SQL as authenticated and PostgREST)", async () => {
+    const f = await fixture({ verified: false });
+    const out = [await refused(asUser(COORD, `select public.set_insurance_verification('${f.app}', true, null)`), /manager_required/)];
+    if (restUp) {
+      const a = await rest("POST", "/rpc/set_insurance_verification", TOK.coord, { _application_id: f.app, _verified: true, _note: null });
+      ok(a.status === 403 && /manager_required/.test(a.text), `${a.status} ${a.text}`);
+      out.push(`REST ${a.status}`);
+    }
+    ok((await screening(f)).insurance_verified === false && (await decisions(f)).length === 0, "decision written");
+    return out.join(" | ");
+  });
+  await check("V2", "Coordinator (and Manager, Owner, service_role) cannot write the decision columns directly; INSERT as verified refused", async () => {
+    const f = await fixture({ verified: false });
+    const out: string[] = [];
+    for (const sub of [COORD, MANAGER, OWNER]) {
+      out.push(await refused(asUser(sub, `update public.driver_screenings set insurance_verified = true where lead_id = '${f.app}'`), /insurance_decision_manager_rpc_only/));
+    }
+    out.push(await refused(asUser(COORD, `update public.driver_screenings set insurance_verified_at = now() where lead_id = '${f.app}'`), /insurance_decision_manager_rpc_only/));
+    out.push(await refused(asUser(COORD, `update public.driver_screenings set insurance_verified_by = 'me' where lead_id = '${f.app}'`), /insurance_decision_manager_rpc_only/));
+    out.push(await refused(asService(`update public.driver_screenings set insurance_verified = true where lead_id = '${f.app}'`), /insurance_decision_manager_rpc_only/));
+    const g = await fixture({ verified: false });
+    await db`delete from public.driver_screenings where lead_id = ${g.app}`;
+    out.push(await refused(asUser(COORD, `insert into public.driver_screenings(lead_id, insurance_verified) values ('${g.app}', true)`), /insurance_decision_manager_rpc_only/));
+    if (restUp) {
+      const a = await rest("PATCH", `/driver_screenings?lead_id=eq.${f.app}`, TOK.coord, { insurance_verified: true });
+      ok(a.status === 403 && /insurance_decision_manager_rpc_only/.test(a.text), `${a.status} ${a.text}`);
+      out.push(`REST PATCH ${a.status}`);
+    }
+    ok((await screening(f)).insurance_verified === false, "decision changed");
+    return out.map((x) => x.slice(0, 45)).join(" | ");
+  });
+  await check("V3", "Coordinator may still enter/update insurance information and other screening fields (SQL and PostgREST)", async () => {
+    const f = await fixture({ verified: false });
+    const r1 = await asUser(COORD, `update public.driver_screenings set insurance_carrier = 'Beta Insurance', insurance_policy_number = 'NEW-99', insurance_carrier_phone = '555', policy_active = true, insurance_name_matches_license = true where lead_id = '${f.app}' returning id`);
+    ok(r1.length === 1, "update rows");
+    // A full-row upsert that carries the decision columns unchanged (what an older client sends) is allowed.
+    await asUser(COORD, `insert into public.driver_screenings(lead_id, insurance_verified, interview_notes) values ('${f.app}', false, 'note') on conflict (lead_id) do update set interview_notes = excluded.interview_notes, insurance_verified = excluded.insurance_verified`);
+    if (restUp) {
+      const a = await rest("PATCH", `/driver_screenings?lead_id=eq.${f.app}`, TOK.coord, { insurance_carrier: "Gamma" });
+      ok(a.status === 200, `${a.status} ${a.text}`);
+    }
+    const s2 = await screening(f);
+    ok(s2.insurance_carrier === (restUp ? "Gamma" : "Beta Insurance") && s2.insurance_verified === false, JSON.stringify(s2));
+    return "information fields written; decision unchanged";
+  });
+  for (const [id, who, sub, tok] of [["V4", "Manager", MANAGER, TOK.mgr], ["V5", "Owner", OWNER, TOK.owner]] as const) {
+    await check(id, `${who} verifies and revokes through the setter; each decision audited with actor, time, document id/SHA, insurer, policy reference`, async () => {
+      const f = await fixture({ verified: false });
+      await db`update public.documents set content_sha256 = ${"ef".repeat(32)} where driver_id = ${f.app} and category = 'insurance'`;
+      let v: any;
+      if (restUp) {
+        const a = await rest("POST", "/rpc/set_insurance_verification", tok, { _application_id: f.app, _verified: true, _note: "Called Acme" });
+        ok(a.status === 200, `${a.status} ${a.text}`);
+        v = JSON.parse(a.text);
+      } else v = (await asUser(sub, `select public.set_insurance_verification('${f.app}', true, 'Called Acme') r`))[0].r;
+      const s1 = await screening(f);
+      ok(s1.insurance_verified === true && s1.insurance_verified_at && s1.insurance_verified_by === (who === "Manager" ? "manager@test" : "owner@test"), JSON.stringify(s1));
+      await asUser(sub, `select public.set_insurance_verification('${f.app}', false, 'Policy cancelled')`);
+      const s2 = await screening(f);
+      ok(s2.insurance_verified === false && s2.insurance_verified_at === null && s2.insurance_verified_by === null, JSON.stringify(s2));
+      const d = await decisions(f);
+      ok(d.length === 2 && d[0].action === "insurance.verified" && d[1].action === "insurance.verification_revoked", JSON.stringify(d.map((x: any) => x.action)));
+      const m = d[0].metadata;
+      ok(d[0].actor_user_id === sub && d[0].actor_role === (who === "Manager" ? "team" : "admin") && m.decided_at && m.document?.content_sha256 === "ef".repeat(32) && m.document.id && m.insurer === "Acme Mutual" && m.policy_number_last4 === "3456" && /^[0-9a-f]{64}$/.test(m.policy_number_sha256) && !JSON.stringify(m).includes("POL123456"), JSON.stringify(m));
+      ok(d[1].metadata.from === true && d[1].metadata.to === false && d[1].metadata.note === "Policy cancelled", "revocation audit");
+      if (who === "Manager") evidence.verification_audit = d[0];
+      return `${restUp ? "PostgREST" : "SQL"} verify, then revoke; 2 audit rows (audit ${v.audit_id})`;
+    });
+  }
+  await check("V6", "an audit write failure refuses the verification decision (nothing changed)", async () => {
+    const f = await fixture({ verified: false });
+    await db.unsafe(`create function public.iva_test_fail_audit() returns trigger language plpgsql as $$ begin if NEW.action like 'insurance.%' then raise exception 'INJECTED_AUDIT_FAILURE'; end if; return NEW; end $$;
+      create trigger iva_test_fail_audit before insert on public.audit_log for each row execute function public.iva_test_fail_audit()`);
+    let m = "";
+    try {
+      m = await refused(asUser(MANAGER, `select public.set_insurance_verification('${f.app}', true, null)`), /INJECTED_AUDIT_FAILURE/);
+    } finally {
+      await db.unsafe("drop trigger iva_test_fail_audit on public.audit_log; drop function public.iva_test_fail_audit()");
+    }
+    ok((await screening(f)).insurance_verified === false, "decision applied without audit");
+    return m;
+  });
+  await check("I1", "independence: the Owner setting ON grants no verification rights (Coordinator still refused)", async () => {
+    await setSettingRaw(true);
+    const f = await fixture({ verified: false });
+    const m = await refused(asUser(COORD, `select public.set_insurance_verification('${f.app}', true, null)`), /manager_required/);
+    const m2 = await refused(asUser(COORD, `update public.driver_screenings set insurance_verified = true where lead_id = '${f.app}'`), /insurance_decision_manager_rpc_only/);
+    return `${m} | ${m2}`;
+  });
+  await check("I2", "independence: verification rights do not imply exception use; setting OFF: nobody (Owner included) activates with unverified insurance", async () => {
+    await setSettingRaw(false);
+    const out: string[] = [];
+    for (const actor of [MANAGER, OWNER]) {
+      const f = { ...(await fixture({ verified: false })), actor };
+      out.push(await refused(activate(f, true, { blockers: [{ code: "no_interview" }], reason: "owner says go" }), /insurance_not_verified/));
+    }
+    return out.join(" | ");
+  });
+  await check("I3", "independence: setting ON — a Manager and an Owner each use the exception with the acknowledgement; insurance stays unverified", async () => {
+    await setSettingRaw(true);
+    const out: string[] = [];
+    for (const actor of [MANAGER, OWNER]) {
+      const f = { ...(await fixture({ verified: false })), actor };
+      await refused(activate(f, false), /insurance_ack_required/);
+      const r = await activate(f, true);
+      const [a] = await checkedAudits(f);
+      ok(r.exception_used === true && a.actor_user_id === actor && a.metadata.insurance.exception_used === true, "exception audit");
+      ok((await screening(f)).insurance_verified === false && (await decisions(f)).length === 0, "the exception marked insurance verified");
+      out.push(`${actor === MANAGER ? "Manager" : "Owner"} ok`);
+    }
+    return out.join(", ");
+  });
+  await check("I4", "independence: a Coordinator cannot activate even with the setting ON (database actor check)", async () => {
+    await setSettingRaw(true);
+    const f = { ...(await fixture({ verified: false })), actor: COORD };
+    return await refused(activate(f, true), /actor_not_manager/);
+  });
+  await check("V7", "revocation racing an activation: the setter waits for the activation's FOR SHARE, or the activation waits and sees the revocation", async () => {
+    await setSettingRaw(false);
+    const f = await fixture();
+    const A = await db.reserve();
+    const B = await db.reserve();
+    try {
+      await B.unsafe("BEGIN");
+      await B.unsafe("SET LOCAL SESSION AUTHORIZATION authenticator");
+      await B.unsafe("SET LOCAL ROLE authenticated");
+      await B.unsafe(`select set_config('request.jwt.claims', '${JSON.stringify({ sub: MANAGER, role: "authenticated" })}', true)`);
+      await B.unsafe(`select public.set_insurance_verification('${f.app}', false, 'cancelled')`);
+      await A.unsafe("BEGIN");
+      await A.unsafe("SET LOCAL ROLE service_role");
+      let aErr: any = null;
+      const p = A.unsafe(callSql(f, false)).catch((e: any) => (aErr = e));
+      await new Promise((res) => setTimeout(res, 500));
+      await B.unsafe("COMMIT");
+      await p;
+      await A.unsafe("ROLLBACK");
+      ok(aErr && /insurance_not_verified:unverified/.test(aErr.message), String(aErr?.message));
+      return `activation waited for the revocation's commit, then ${aErr.message}`;
+    } finally {
+      for (const c of [A, B]) { try { await c.unsafe("ROLLBACK"); } catch {} c.release(); }
+    }
   });
 
   // ---------------------------------------------------------- 9 concurrency and the transaction boundary
@@ -454,7 +710,7 @@ try {
       const br = (await bPromise)[0].r;
       await B.unsafe("COMMIT");
       ok(br.from === true && br.to === false, JSON.stringify(br));
-      const [order] = await db`select (select created_at from public.audit_log where action = 'rental.activation_checked' and metadata->>'application_id' = ${f.app}) < (select created_at from public.audit_log where id = ${br.audit_id}) ordered`;
+      const [order] = await db`select (select created_at from public.audit_log where action = 'rental.activated' and metadata->>'application_id' = ${f.app}) < (select created_at from public.audit_log where id = ${br.audit_id}) ordered`;
       ok(order.ordered === true, "activation must precede the Owner change");
       evidence.concurrency_a = { blocked_wait_event: `${w.wait_event_type}/${w.wait_event}`, blocking_pids: w.blockers, nowait_error: nowait, owner_change_after_commit: br };
       return `NOWAIT: ${nowait.slice(0, 40)}; blocked on ${w.wait_event_type}/${w.wait_event} by A; after A commit Owner change on -> off`;
@@ -528,9 +784,9 @@ try {
     await activate({ ...other, vehicle: other.vehicle }, false);
     // Same vehicle as the running rental: activate_rental_tx raises vehicle_busy after the wrapper passed its checks.
     const busy = { ...f, vehicle: other.vehicle };
-    const before = Number((await db`select count(*)::int n from public.audit_log where action = 'rental.activation_checked'`)[0].n);
+    const before = Number((await db`select count(*)::int n from public.audit_log where action = 'rental.activated'`)[0].n);
     const m = await refused(activate(busy, true), /vehicle_busy/);
-    const after = Number((await db`select count(*)::int n from public.audit_log where action = 'rental.activation_checked'`)[0].n);
+    const after = Number((await db`select count(*)::int n from public.audit_log where action = 'rental.activated'`)[0].n);
     ok(after === before && (await rentalCount(f)) === 0, "wrapper audit or rental survived");
     const [s] = await db`select status from public.applications where id = ${f.app}`;
     ok(s.status === "approved", "application changed");
@@ -543,7 +799,7 @@ try {
     const run = await fixture();
     await activate(run, false);
     const f = await fixture({ verified: false });
-    const body = (veh: string) => ({ _application_id: f.app, _vehicle_id: veh, _driver_id: f.driver, _weekly_rate: 325, _deposit: 0, _deposit_held: false, _start: "2026-10-25", _end: null, _pickup_miles: null, _actor: MANAGER, _insurance_exception_ack: true });
+    const body = (veh: string) => ({ _application_id: f.app, _vehicle_id: veh, _driver_id: f.driver, _weekly_rate: 325, _deposit: 0, _deposit_held: false, _start: "2026-10-25", _end: null, _pickup_miles: null, _actor: MANAGER, _insurance_exception_ack: true, _audit: { actor_role: "team", summary: "via PostgREST" } });
     const bad = await rest("POST", "/rpc/activate_rental_checked_tx", TOK.service, body(run.vehicle));
     ok(bad.status >= 400 && /vehicle_busy/.test(bad.text), `${bad.status} ${bad.text}`);
     ok((await checkedAudits(f)).length === 0 && (await rentalCount(f)) === 0, "partial write via REST");
@@ -562,12 +818,12 @@ try {
     return "TARGET_MISMATCH";
   });
   await check("RB2", "rollback (local copy) removes exactly v1; activate_rental_tx, 0031 and the ledger unchanged; history kept", async () => {
-    const auditsBefore = Number((await db`select count(*)::int n from public.audit_log where action in ('settings.rental_activation_updated','rental.activation_checked')`)[0].n);
+    const auditsBefore = Number((await db`select count(*)::int n from public.audit_log where action in ('settings.rental_activation_updated','rental.activated')`)[0].n);
     const r = psql(localCopy(RB, sid));
     ok(r.ok, r.out);
-    const [s] = await db`select to_regprocedure('public.activate_rental_checked_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid,boolean)') w, to_regprocedure('public.set_rental_activation_insurance_exception(boolean)') st, (select count(*)::int from public.app_settings where key = 'rental_activation') k, md5(pg_get_functiondef('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)'::regprocedure)) d`;
+    const [s] = await db`select to_regprocedure('public.activate_rental_checked_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid,boolean,jsonb)') w, to_regprocedure('public.set_rental_activation_insurance_exception(boolean)') st, (select count(*)::int from public.app_settings where key = 'rental_activation') k, md5(pg_get_functiondef('public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)'::regprocedure)) d`;
     ok(s.w === null && s.st === null && s.k === 0 && s.d === "dfadcc73dfa027a4e4c3364249776b3f", JSON.stringify(s));
-    const auditsAfter = Number((await db`select count(*)::int n from public.audit_log where action in ('settings.rental_activation_updated','rental.activation_checked')`)[0].n);
+    const auditsAfter = Number((await db`select count(*)::int n from public.audit_log where action in ('settings.rental_activation_updated','rental.activated')`)[0].n);
     ok(auditsAfter === auditsBefore, "history removed");
     const again = psql(localCopy(RB, sid));
     ok(!again.ok && /AIS_ROLLBACK_REPLAY/.test(again.out), again.out);
@@ -576,95 +832,123 @@ try {
   await check("T10", "wrapper absent: PostgREST answers PGRST202 (the code the app fails closed on)", async () => {
     if (!restUp) return "skipped (no PostgREST)";
     await reloadRest();
-    const a = await rest("POST", "/rpc/activate_rental_checked_tx", TOK.service, { _application_id: randomUUID(), _vehicle_id: randomUUID(), _driver_id: randomUUID(), _weekly_rate: 1, _deposit: 0, _deposit_held: false, _start: "2026-10-25", _end: null, _pickup_miles: null, _actor: MANAGER, _insurance_exception_ack: true });
+    const a = await rest("POST", "/rpc/activate_rental_checked_tx", TOK.service, { _application_id: randomUUID(), _vehicle_id: randomUUID(), _driver_id: randomUUID(), _weekly_rate: 1, _deposit: 0, _deposit_held: false, _start: "2026-10-25", _end: null, _pickup_miles: null, _actor: MANAGER, _insurance_exception_ack: true, _audit: {} });
     ok(a.status === 404 && /PGRST202/.test(a.text), `${a.status} ${a.text}`);
     return `${a.status} PGRST202`;
   });
 
-  // ---------------------------------------------------------- ordering vs M2 Window 1/2 and Security S1
-  // Each order runs on its own clone of rr_tpl. M2 is the reviewed packet ref applied by its own
-  // runner (M2_PACKET_DIR, default /tmp/wt-pr2-packet); S1 is the prepared S1 package (S1_PACKAGE).
+  await check("IVRB1", "IVA real rollback request + trailer: guard passes, refuses the foreign target", async () => {
+    const r = psql(IVA_RB_REQ + TRAILER);
+    ok(!r.ok && /TARGET_MISMATCH/.test(r.out) && !/RRGUARD_/.test(r.out), r.out);
+    return "TARGET_MISMATCH";
+  });
+  await check("IVRB2", "IVA rollback removes exactly its objects; decisions and audit history kept; replay refused", async () => {
+    const before = Number((await db`select count(*)::int n from public.audit_log where action like 'insurance.%'`)[0].n);
+    const r = psql(localCopy(IVA_RB, sid));
+    ok(r.ok, r.out);
+    const [x] = await db`select to_regprocedure('public.set_insurance_verification(uuid,boolean,text)') f, (select count(*)::int from pg_trigger where tgname = 'zz_insurance_decision_guard') t, (select count(*)::int from public.audit_log where action like 'insurance.%') n`;
+    ok(x.f === null && x.t === 0 && Number(x.n) === before, JSON.stringify(x));
+    const again = psql(localCopy(IVA_RB, sid));
+    ok(!again.ok && /IVA_ROLLBACK_REPLAY/.test(again.out), again.out);
+    return `removed; ${before} decision audit rows kept; replay refused`;
+  });
+
+  // ---------------------------------------------------------- compatibility with Security 0031, S1 and M2
+  // Each order runs on its own clone of rr_tpl (production-order baseline + 0031). M2 is the reviewed
+  // packet ref applied by its own runner (Window 1 = ords 144-148, Window 2 = 149-206) and rolled back
+  // with the packet's own rollback files (ords 208-239, strip_txn). S1 is the prepared S1 package with
+  // its own verify-after and rollback. None of those artifacts is modified; only the target profile of
+  // local copies is substituted, as their own test suites do.
   const M2_DIR = process.env.M2_PACKET_DIR ?? "/tmp/wt-pr2-packet";
-  const S1_PKG = process.env.S1_PACKAGE ?? "/home/user/wt-s1/proposed/security-s1/s1_application_write_guard.sql";
+  const S1_DIR = process.env.S1_DIR ?? "/home/user/wt-s1/proposed/security-s1";
   const S1_PROFILE = '"database": "postgres", "system_identifier": "7642734024280108049"';
+  const haveM2 = existsSync(join(M2_DIR, "rr-apply.mjs"));
+  const haveS1 = existsSync(join(S1_DIR, "s1_application_write_guard.sql"));
+  const sh = (cmd: string, args: string[], opts: any = {}) => execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 << 20, ...opts });
+  const runSql = (url: string, text: string) => {
+    try {
+      sh("psql", [url, "-X", "-q", "-v", "ON_ERROR_STOP=1", "-c", text]);
+      return "ok";
+    } catch (e: any) {
+      throw new Error(String(e.message).split("\n").find((l: string) => /ERROR/.test(l)) ?? String(e.message).slice(0, 300));
+    }
+  };
+  const forDb = (text: string, name: string, profile = PROD_PROFILE) => {
+    ok(text.split(profile).length === 2, "profile anchor");
+    return text.replace(profile, `"database": "${name}", "system_identifier": "${sid}"`);
+  };
   async function clone(name: string) {
     await admin.unsafe(`drop database if exists ${name} with (force)`);
     await admin.unsafe(`create database ${name} template rr_tpl`);
-    return `postgresql://postgres@127.0.0.1:55482/${name}?sslmode=disable`;
+    const url = `postgresql://postgres@127.0.0.1:55482/${name}?sslmode=disable`;
+    // S1's verify reads the Supabase ledger; production has 105 receipts, the harness none (as S1's own suite does).
+    runSql(url, "CREATE SCHEMA IF NOT EXISTS supabase_migrations; CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text PRIMARY KEY); INSERT INTO supabase_migrations.schema_migrations SELECT lpad(g::text, 14, '0') FROM generate_series(1, 105) g ON CONFLICT DO NOTHING");
+    return url;
   }
-  const sh = (cmd: string, args: string[], opts: any = {}) => execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 << 20, ...opts });
-  const psqlTo = (url: string, text: string) => sh("psql", [url, "-X", "-q", "-v", "ON_ERROR_STOP=1", "-c", text]);
-  const aisFor = (dbname: string) => PKG.replace(PROD_PROFILE, `"database": "${dbname}", "system_identifier": "${sid}"`);
-  const m2Roles = async () => Number((await admin`select count(*)::int n from pg_roles where rolname in ('rr_approval_executor','rr_evidence_issuer','rr_record_executor')`)[0].n);
-  // M2 creates cluster-global roles, so each order starts from a cluster without them: the
-  // previous M2 clone and its roles are dropped first, and the full runner (preflight included) runs.
-  const resetM2 = async (keep: string) => {
-    for (const d of ["ais_o1", "ais_o2"]) if (d !== keep) await admin.unsafe(`drop database if exists ${d} with (force)`);
+  const ORDER_DBS = ["ais_c1", "ais_c2", "ais_c3", "ais_c4"];
+  const resetM2 = async () => {
+    for (const d of [...ORDER_DBS, "ais_o1", "ais_o2", "ais_o3", "ais_o4"]) await admin.unsafe(`drop database if exists ${d} with (force)`);
     for (const r of ["rr_approval_executor", "rr_evidence_issuer", "rr_record_executor"]) await admin.unsafe(`drop role if exists ${r}`);
   };
-  const applyM2 = async (url: string) => {
-    ok((await m2Roles()) === 0, "M2 roles already exist in this cluster");
-    const out = sh("node", ["rr-apply.mjs", "206", "144"], { cwd: M2_DIR, env: { ...process.env, RR_HARNESS_DB_URL: url } });
-    return out.trim();
-  };
-  async function scenario(url: string, allowBad: string[] = []) {
-    const c = postgres(url, { max: 2, onnotice: () => {} });
-    try {
-      const prev = db;
-      db = c as any;
+  const m2 = (url: string, last: number, first: number) => sh("node", ["rr-apply.mjs", String(last), String(first)], { cwd: M2_DIR, env: { ...process.env, RR_HARNESS_DB_URL: url } }).trim();
+  async function m2Rollback(url: string) {
+    const { stripTxn } = await import(join(M2_DIR, "scripts/m2-rehearsal-manifest.mjs"));
+    const manifest = JSON.parse(readFileSync(join(M2_DIR, "proposed/rehearsal/manifest.json"), "utf8"));
+    let n = 0;
+    for (const e of manifest) {
+      // The approved rollbacks, strict reverse order. m2-hosted-amendments/rollback/* are hosted
+      // (non-superuser) variants of steps 1, 5 and 7, not additional steps; this cluster runs the approved ones.
+      if (e.kind !== "rollback" || e.path.startsWith("proposed/m2-hosted-amendments/")) continue;
+      const body = e.transform === "strip_txn" ? stripTxn(readFileSync(join(M2_DIR, e.path), "utf8"), e.path) : readFileSync(join(M2_DIR, e.path), "utf8");
       try {
-        await db.begin(async (tx: any) => {
-          await tx`insert into auth.users(id,email) values (${OWNER}, 'owner@test'), (${MANAGER}, 'manager@test') on conflict do nothing`;
-          await tx`insert into public.user_roles(user_id, role) values (${OWNER}, 'admin'), (${MANAGER}, 'team') on conflict do nothing`;
-        });
-        await setSettingRaw(false);
-        const off = await fixture({ verified: false });
-        const r1 = await refused(activate(off, true), /insurance_not_verified/);
-        await asUser(OWNER, "select public.set_rental_activation_insurance_exception(true)");
-        const on = await fixture({ verified: false });
-        await refused(activate(on, false), /insurance_ack_required/);
-        const r2 = await activate(on, true);
-        const ok3 = await activate(await fixture(), false);
-        ok(r2.exception_used === true && ok3.exception_used === false, "activation outcomes");
-        const v = await c.unsafe(VERIFY);
-        const bad = v.filter((x: any) => !x.ok).map((x: any) => x.check_name);
-        ok(JSON.stringify(bad) === JSON.stringify(allowBad), `verify rows ${bad}`);
-        return `OFF refused (${r1.split(" ").pop()}), ON needs ack, ON+ack ok, verified ok, verify-after ok${allowBad.length ? ` except ${allowBad} (expected: M2 Window 1 replaces activate_rental_tx; the wrapper calls the new one)` : ""}`;
-      } finally {
-        db = prev;
+        sh("psql", [url, "-X", "-q", "-v", "ON_ERROR_STOP=1", "--single-transaction", "-f", "-"], { input: body, stdio: ["pipe", "pipe", "pipe"] });
+      } catch (err: any) {
+        throw new Error(`M2 rollback ${e.path}: ${String(err.stderr ?? err.message).split("\n").find((l: string) => /ERROR/.test(l))}`);
       }
-    } finally {
-      await c.end({ timeout: 2 });
+      n++;
     }
+    return `M2 rollback ${n} files`;
   }
-  const haveM2 = existsSync(join(M2_DIR, "rr-apply.mjs"));
-  const haveS1 = existsSync(S1_PKG);
-  await check("O1", "order: this package, then M2 Window 1+2 (packet preflight clean, 31 writes, verifies true), then activation", async () => {
-    if (!haveM2) return `skipped (no ${M2_DIR}/rr-apply.mjs)`;
-    await resetM2("");
-    const url = await clone("ais_o1");
-    psqlTo(url, aisFor("ais_o1"));
-    const m2 = await applyM2(url);
-    return `${m2}; ${await scenario(url, ["activate_rental_tx.unchanged_since_install"])}`;
-  });
-  await check("O2", "order: M2 Window 1+2, then this package (preflight clean), then activation incl. 40001 under approval_serialize", async () => {
-    if (!haveM2) return `skipped (no ${M2_DIR}/rr-apply.mjs)`;
-    await resetM2("");
-    const url = await clone("ais_o2");
-    const m2 = await applyM2(url);
-    const c = postgres(url, { max: 3, onnotice: () => {} });
+  const verifyRows = async (url: string, text: string) => {
+    const c = postgres(url, { max: 1, onnotice: () => {} });
+    try { return (await c.unsafe(text)).filter((r: any) => !r.ok).map((r: any) => r.check_name); } finally { await c.end({ timeout: 2 }); }
+  };
+  const s1Verify = async (url: string) => {
+    const c = postgres(url, { max: 1, onnotice: () => {} });
     try {
-      const pre = await c.unsafe(PREFLIGHT);
-      const bad = pre.filter((r: any) => !r.ok).map((r: any) => r.check_name);
-      ok(JSON.stringify(bad) === JSON.stringify(["target.database", "target.system_identifier"]), `preflight ${bad}`);
-      const m2w1 = pre.find((r: any) => r.check_name.startsWith("m2_window1"))?.actual;
-      psqlTo(url, aisFor("ais_o2"));
-      const sc = await scenario(url);
-      // approval_serialize (M2 Window 2) holds a try-lock on applications writes: activation returns 40001, wrapper rolled back.
-      const prev = db;
-      db = c as any;
+      const [r] = await c.unsafe(readFileSync(join(S1_DIR, "verify-after-readonly.sql"), "utf8"));
+      const v = r.s1_verify;
+      return { all: v.all_gates === true, failed: Object.entries(v.gates).filter(([, x]) => x !== true).map(([k]) => k) };
+    } finally { await c.end({ timeout: 2 }); }
+  };
+  const drop0031 = `DROP POLICY IF EXISTS coordinator_application_containment ON public.applications;
+DROP POLICY IF EXISTS coordinator_review_containment ON public.application_identity_reviews;
+DROP POLICY IF EXISTS coordinator_document_containment ON public.documents;
+DROP POLICY IF EXISTS coordinator_agreement_containment ON public.agreements;
+DROP POLICY IF EXISTS coordinator_identity_storage_containment ON storage.objects;`;
+  async function scenario(url: string, opts: { m2w2?: boolean } = {}) {
+    const c = postgres(url, { max: 3, onnotice: () => {} });
+    const prev = db;
+    db = c as any;
+    try {
+      await db.begin(async (tx: any) => {
+        await tx`insert into auth.users(id,email) values (${OWNER}, 'owner@test'), (${MANAGER}, 'manager@test'), (${COORD}, 'coord@test') on conflict do nothing`;
+        await tx`insert into public.user_roles(user_id, role) values (${OWNER}, 'admin'), (${MANAGER}, 'team'), (${COORD}, 'coordinator') on conflict do nothing`;
+      });
+      await setSettingRaw(false);
+      const off = await fixture({ verified: false });
+      await refused(activate(off, true), /insurance_not_verified/);
+      await refused(asUser(COORD, `select public.set_insurance_verification('${off.app}', true, null)`), /manager_required/);
+      await refused(asUser(COORD, `update public.driver_screenings set insurance_verified = true where lead_id = '${off.app}'`), /insurance_decision_manager_rpc_only/);
+      await asUser(MANAGER, `select public.set_insurance_verification('${off.app}', true, null)`);
+      const r0 = await activate(off, false);
+      await asUser(OWNER, "select public.set_rental_activation_insurance_exception(true)");
+      const on = await fixture({ verified: false });
+      await refused(activate(on, false), /insurance_ack_required/);
+      const r1 = await activate(on, true);
+      ok(r0.rental_id && r1.exception_used === true, "activation outcomes");
       let busy = "";
-      try {
+      if (opts.m2w2) {
         const f = await fixture();
         const L = await c.reserve();
         try {
@@ -674,27 +958,99 @@ try {
           await L.unsafe("ROLLBACK");
         } finally { L.release(); }
         ok((await rentalCount(f)) === 0 && (await checkedAudits(f)).length === 0, "partial write under 40001");
-        const r = await activate(f, false);
-        ok(r.rental_id, "retry after the lock clears");
-      } finally { db = prev; }
-      return `${m2}; m2_window1 activate=${m2w1}; ${sc}; ${busy.slice(0, 45)}, nothing written, retry ok`;
+        await activate(f, false);
+      }
+      return `rules hold (OFF refused, Coordinator refused, Manager verify, ON needs ack)${busy ? `; W2 lock: ${busy.split(" ")[0]} nothing written, retry ok` : ""}`;
     } finally {
+      db = prev;
       await c.end({ timeout: 2 });
     }
-  });
-  for (const [id, label, first] of [["O3", "S1 then this package", "s1"], ["O4", "this package then S1", "ais"]] as const) {
-    await check(id, `order: ${label}; both install, activation works (S1 does not block the SECURITY DEFINER path)`, async () => {
-      if (!haveS1) return `skipped (no ${S1_PKG})`;
-      const name = id === "O3" ? "ais_o3" : "ais_o4";
-      const url = await clone(name);
-      const s1 = readFileSync(S1_PKG, "utf8");
-      ok(s1.split(S1_PROFILE).length === 2, "S1 profile anchor");
-      const s1Local = s1.replace(S1_PROFILE, `"database": "${name}", "system_identifier": "${sid}"`);
-      if (first === "s1") { psqlTo(url, s1Local); psqlTo(url, aisFor(name)); }
-      else { psqlTo(url, aisFor(name)); psqlTo(url, s1Local); }
-      return `S1 sha ${sha(s1).slice(0, 12)}; ${await scenario(url)}`;
-    });
   }
+  const step = (log: string[], label: string, fn: () => string) => { log.push(`${label}: ${fn()}`); };
+
+  await check("C1", "S1 -> AIS -> IVA -> S1 verify -> Window 1 -> Window 2 -> rules; then M2 rollback -> S1 rollback -> 0031 rollback -> IVA rollback -> AIS rollback", async () => {
+    if (!haveM2 || !haveS1) return `skipped (M2 ${haveM2}, S1 ${haveS1})`;
+    await resetM2();
+    const url = await clone("ais_c1");
+    const log: string[] = [];
+    step(log, "S1", () => runSql(url, forDb(readFileSync(join(S1_DIR, "s1_application_write_guard.sql"), "utf8"), "ais_c1", S1_PROFILE)));
+    step(log, "AIS", () => runSql(url, forDb(PKG, "ais_c1")));
+    step(log, "IVA", () => runSql(url, forDb(IVA_PKG, "ais_c1")));
+    const v = await s1Verify(url);
+    ok(v.all, `S1 verify-after gates failed after AIS+IVA: ${v.failed}`);
+    log.push("S1 verify-after: all_gates true");
+    step(log, "W1", () => m2(url, 148, 144));
+    step(log, "W2", () => m2(url, 206, 149));
+    log.push(await scenario(url, { m2w2: true }));
+    const aisAfter = await verifyRows(url, VERIFY);
+    ok(JSON.stringify(aisAfter) === JSON.stringify(["activate_rental_tx.unchanged_since_install"]), `AIS verify ${aisAfter}`);
+    log.push("AIS verify: only activate_rental_tx.unchanged_since_install differs (W2 replaced it, by design)");
+    log.push(await m2Rollback(url));
+    const aisBack = await verifyRows(url, VERIFY);
+    ok(aisBack.length === 0, `AIS verify after M2 rollback ${aisBack}`);
+    log.push("AIS verify after M2 rollback: all ok");
+    step(log, "S1 rollback", () => runSql(url, forDb(readFileSync(join(S1_DIR, "rollback.sql"), "utf8"), "ais_c1", S1_PROFILE)));
+    step(log, "0031 rollback", () => runSql(url, drop0031));
+    step(log, "IVA rollback", () => runSql(url, forDb(IVA_RB, "ais_c1")));
+    step(log, "AIS rollback", () => runSql(url, forDb(RB, "ais_c1")));
+    evidence.c1 = log;
+    return log.join(" | ");
+  });
+  await check("C2", "AIS -> IVA -> S1 -> S1 verify -> W1 -> W2 -> rules; then IVA rollback -> AIS rollback -> M2 rollback -> S1 rollback (our rollbacks before the others)", async () => {
+    if (!haveM2 || !haveS1) return `skipped (M2 ${haveM2}, S1 ${haveS1})`;
+    await resetM2();
+    const url = await clone("ais_c2");
+    const log: string[] = [];
+    step(log, "AIS", () => runSql(url, forDb(PKG, "ais_c2")));
+    step(log, "IVA", () => runSql(url, forDb(IVA_PKG, "ais_c2")));
+    step(log, "S1", () => runSql(url, forDb(readFileSync(join(S1_DIR, "s1_application_write_guard.sql"), "utf8"), "ais_c2", S1_PROFILE)));
+    const v = await s1Verify(url);
+    ok(v.all, `S1 verify ${v.failed}`);
+    log.push("S1 verify-after: all_gates true");
+    step(log, "W1 (preflight clean)", () => m2(url, 148, 144));
+    step(log, "W2", () => m2(url, 206, 149));
+    log.push(await scenario(url, { m2w2: true }));
+    step(log, "IVA rollback", () => runSql(url, forDb(IVA_RB, "ais_c2")));
+    step(log, "AIS rollback", () => runSql(url, forDb(RB, "ais_c2")));
+    log.push(await m2Rollback(url));
+    step(log, "S1 rollback", () => runSql(url, forDb(readFileSync(join(S1_DIR, "rollback.sql"), "utf8"), "ais_c2", S1_PROFILE)));
+    evidence.c2 = log;
+    return log.join(" | ");
+  });
+  await check("C3", "W1 -> AIS -> IVA -> W2 (packages between the windows) -> rules; then AIS and IVA rollback with W2 still installed", async () => {
+    if (!haveM2) return "skipped (no M2)";
+    await resetM2();
+    const url = await clone("ais_c3");
+    const log: string[] = [];
+    step(log, "W1", () => m2(url, 148, 144));
+    step(log, "AIS", () => runSql(url, forDb(PKG, "ais_c3")));
+    step(log, "IVA", () => runSql(url, forDb(IVA_PKG, "ais_c3")));
+    step(log, "W2", () => m2(url, 206, 149));
+    log.push(await scenario(url, { m2w2: true }));
+    step(log, "AIS rollback", () => runSql(url, forDb(RB, "ais_c3")));
+    step(log, "IVA rollback", () => runSql(url, forDb(IVA_RB, "ais_c3")));
+    log.push(await m2Rollback(url));
+    evidence.c3 = log;
+    return log.join(" | ");
+  });
+  await check("C4", "W1 -> W2 -> IVA -> AIS (packages after both windows; preflights clean) -> rules", async () => {
+    if (!haveM2) return "skipped (no M2)";
+    await resetM2();
+    const url = await clone("ais_c4");
+    const log: string[] = [];
+    step(log, "W1", () => m2(url, 148, 144));
+    step(log, "W2", () => m2(url, 206, 149));
+    const pre1 = await verifyRows(url, IVA_PREFLIGHT);
+    const pre2 = await verifyRows(url, PREFLIGHT);
+    ok(JSON.stringify(pre1) === JSON.stringify(["target.database", "target.system_identifier"]) && JSON.stringify(pre2) === JSON.stringify(["target.database", "target.system_identifier"]), `preflights ${pre1} / ${pre2}`);
+    log.push("both preflights clean (target rows only)");
+    step(log, "IVA", () => runSql(url, forDb(IVA_PKG, "ais_c4")));
+    step(log, "AIS", () => runSql(url, forDb(PKG, "ais_c4")));
+    log.push(await scenario(url, { m2w2: true }));
+    evidence.c4 = log;
+    await resetM2();
+    return log.join(" | ");
+  });
 } catch (e: any) {
   record("FATAL", "harness", false, String(e?.stack ?? e));
 } finally {

@@ -33,6 +33,14 @@ import { PlatformLogo, platformLabel } from "./PlatformLogo";
 import { computeReadiness, type ReadinessInput } from "@/lib/readiness";
 import { VerificationRecording } from "./VerificationRecording";
 import { fmtDateTime } from "@/lib/date-format";
+import { useServerFn } from "@tanstack/react-start";
+import { withoutInsuranceDecision } from "@/lib/insurance-verification";
+import {
+  getInsuranceVerificationActivity,
+  requestInsuranceVerification,
+  setInsuranceVerification,
+  type InsuranceVerificationActivity,
+} from "@/lib/insurance-verification.functions";
 
 /* ------------------------------------------------------------------ */
 /* Disqualifier rules                                                  */
@@ -315,8 +323,9 @@ export function InterviewTab({
       // in the column as history; nothing recomputes them and nothing displays
       // them as a current signal. Completing an interview now saves the
       // answers, and coverage rises because the answers exist.
+      // The insurance decision columns are never written from the browser.
       const patch: Partial<DriverScreening> = {
-        ...s,
+        ...withoutInsuranceDecision(s as Record<string, unknown>),
         lead_id: driver.id,
         disqualified,
         disqualification_reason: disqualified ? reasons.join(", ") : null,
@@ -724,11 +733,14 @@ export function InsuranceVerificationCard({
   leadId,
   screening,
   isOwner,
+  canDecide = false,
   onScreening,
   onRecordingChange,
 }: {
   leadId: string;
   screening: DriverScreening | null;
+  /** Manager or Owner. Only they make the verification decision; the server and database enforce it. */
+  canDecide?: boolean;
   /** Recordings are Owner-only; see VerificationRecording. */
   isOwner: boolean;
   onScreening: (next: DriverScreening) => void;
@@ -740,11 +752,12 @@ export function InsuranceVerificationCard({
   async function save(patch: Partial<DriverScreening>) {
     setSaving(true);
     try {
-      const merged: Partial<DriverScreening> = {
+      // The insurance decision columns are never written from the browser.
+      const merged = withoutInsuranceDecision({
         lead_id: leadId,
         ...(screening ?? {}),
         ...patch,
-      };
+      } as Record<string, unknown>);
       const { data, error } = await supabase
         .from("driver_screenings")
         .upsert(merged as any, { onConflict: "lead_id" })
@@ -759,15 +772,48 @@ export function InsuranceVerificationCard({
     }
   }
 
+  const decide = useServerFn(setInsuranceVerification);
+  const request = useServerFn(requestInsuranceVerification);
+  const loadActivity = useServerFn(getInsuranceVerificationActivity);
+  const [activity, setActivity] = useState<InsuranceVerificationActivity | null>(null);
+  const refreshActivity = useCallback(() => {
+    loadActivity({ data: { applicationId: leadId } })
+      .then(setActivity)
+      .catch(() => setActivity(null));
+  }, [leadId, loadActivity]);
+  useEffect(() => {
+    refreshActivity();
+  }, [refreshActivity]);
+
+  // Verify or revoke: Manager/Owner only, through the audited server path. Re-reads the row after.
   async function toggleVerified(v: boolean) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    await save({
-      insurance_verified: v,
-      insurance_verified_at: v ? new Date().toISOString() : null,
-      insurance_verified_by: v ? (user?.email ?? user?.id ?? "back-office") : null,
-    });
+    if (!canDecide) return;
+    if (!v && !window.confirm("Revoke insurance verification? This is recorded against your account.")) return;
+    setSaving(true);
+    try {
+      await decide({ data: { applicationId: leadId, verified: v } });
+      const { data } = await supabase.from("driver_screenings").select("*").eq("lead_id", leadId).maybeSingle();
+      if (data) onScreening(data as DriverScreening);
+      toast.success(v ? "Insurance Verified" : "Insurance Verification Revoked");
+      refreshActivity();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save the insurance decision");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function requestVerification() {
+    setSaving(true);
+    try {
+      await request({ data: { applicationId: leadId } });
+      toast.success("Verification Requested");
+      refreshActivity();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not request verification");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -801,7 +847,26 @@ export function InsuranceVerificationCard({
         )}
         <Row cols={2}>
           <Field label="Insurance Verified">
-            <BoolToggle value={screening?.insurance_verified ?? null} onChange={toggleVerified} />
+            {canDecide ? (
+              <BoolToggle value={screening?.insurance_verified ?? null} onChange={toggleVerified} />
+            ) : (
+              <div className="space-y-1.5">
+                <div className="rounded-md bg-soft px-2 py-1.5 text-sm">
+                  {screening?.insurance_verified ? "Yes" : "No"}
+                </div>
+                {!screening?.insurance_verified ? (
+                  <button
+                    type="button"
+                    onClick={() => void requestVerification()}
+                    disabled={saving}
+                    className="text-xs font-medium text-[#D03020] hover:underline disabled:opacity-50"
+                  >
+                    Request Verification
+                  </button>
+                ) : null}
+                <p className="text-[11px] text-muted-foreground">Only A Manager Or Owner Can Verify Or Revoke.</p>
+              </div>
+            )}
           </Field>
           <Field label="Verified By">
             <div className="rounded-md bg-soft px-2 py-1.5 text-sm">
@@ -816,6 +881,12 @@ export function InsuranceVerificationCard({
             </div>
           </Field>
         </Row>
+        {activity?.lastRequest ? (
+          <p className="text-[11px] text-[#8A5A00]">
+            Verification Requested {fmtDateTime(activity.lastRequest.at)}
+            {activity.lastRequest.by ? ` By ${activity.lastRequest.by}` : ""}
+          </p>
+        ) : null}
         <div>
           <VerificationRecording
             applicationId={leadId}

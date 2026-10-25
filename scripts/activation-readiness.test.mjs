@@ -34,6 +34,7 @@ async function test(name, fn) {
 const STUBS = {
   "@tanstack/react-start": `export const createServerFn = () => { const api = { middleware: () => api, inputValidator: (v) => { api._v = v; return api; }, handler: (fn) => (arg = {}) => fn({ ...arg, data: api._v ? api._v(arg.data) : arg.data }) }; return api; };`,
   "@/integrations/supabase/auth-middleware": `export const requireSupabaseAuth = {};`,
+  "@tanstack/react-start/server": `export const getRequest = () => ({ headers: new Map([["user-agent", "activation-test-agent"], ["x-forwarded-for", "203.0.113.7"]]) });`,
   "@/integrations/supabase/client.server": `export const supabaseAdmin = new Proxy({}, { get: (_t, k) => globalThis.__fake[k] });`,
   "@/lib/audit.server": `export async function logAudit(actor, entry) { globalThis.__audit.push({ actor, entry }); }`,
   "@/lib/driver-account.server": `export async function provisionDriverAccount(_admin, args) { globalThis.__provisioned.push(args); return globalThis.__provision ?? { userId: "99999999-9999-4999-8999-999999999999", created: false, inviteUrl: null, conflict: false }; }`,
@@ -187,10 +188,14 @@ try {
   await bundle("src/lib/rentals.functions.ts", "rentals.mjs");
   await bundle("src/lib/documents.functions.ts", "documents.mjs");
   await bundle("src/lib/rental-activation-settings.functions.ts", "settings.mjs");
+  await bundle("src/lib/insurance-verification.functions.ts", "insurance.mjs");
+  await bundle("src/lib/record-rental.functions.ts", "record.mjs");
   const rules = await import(join(out, "rules.mjs"));
   const rentals = await import(join(out, "rentals.mjs"));
   const documents = await import(join(out, "documents.mjs"));
   const settingsFns = await import(join(out, "settings.mjs"));
+  const insuranceFns = await import(join(out, "insurance.mjs"));
+  const recordFns = await import(join(out, "record.mjs"));
   const readiness = (userId, data = { applicationId: APP, vehicleId: VEH }) =>
     rentals.getActivationReadiness({ data, context: { userId, supabase: null } });
   const activate = (userId, data) => rentals.activateRental({ data: activateInput(data), context: { userId, supabase: null } });
@@ -324,14 +329,15 @@ try {
       const call = db.calls.rpc.find((c) => c.name === "activate_rental_checked_tx");
       assert.equal(call.args._insurance_exception_ack, true);
       assert.equal(db.calls.rpc.some((c) => c.name === "activate_rental_tx"), false, "the wrapper, not the bare transaction");
-      const meta = globalThis.__audit.find((a) => a.entry.action === "rental.activated").entry.metadata.insurance;
-      assert.equal(meta.status, status);
-      assert.equal(meta.exception_used, true);
-      assert.equal(meta.setting_allow_without_verification, true);
-      assert.equal(meta.acknowledged, true);
-      assert.equal(meta.acting_user_id, MANAGER);
-      assert.equal(meta.checked_in_transaction, true);
-      assert.ok(meta.at && meta.transaction_audit_id);
+      // The wrapper writes rental.activated in the activation transaction; the app passes it the
+      // server-only fields and writes no separate, non-atomic entry.
+      assert.equal(call.args._audit.actor_role, "team");
+      assert.equal(call.args._audit.actor_email, "staff@example.test");
+      assert.match(call.args._audit.summary, /^Activated 2022 Toyota Camry for Dana Driver$/);
+      assert.equal(call.args._audit.user_agent, "activation-test-agent");
+      assert.equal(call.args._audit.overrides, null);
+      assert.equal(globalThis.__audit.filter((a) => a.entry.action === "rental.activated").length, 0, "no separate app-side entry");
+      assert.equal(db.calls.inserts.filter((i) => i.table === "audit_log").length, 0);
       assert.equal(db.calls.updates.filter((u) => u.table === "driver_screenings").length, 0, "insurance never marked verified");
     });
   }
@@ -342,8 +348,6 @@ try {
     const res = await activate(MANAGER, { insuranceExceptionAck: true });
     assert.equal(res.ok, true);
     assert.equal(db.calls.rpc.find((c) => c.name === "activate_rental_checked_tx").args._insurance_exception_ack, false);
-    const meta = globalThis.__audit.find((a) => a.entry.action === "rental.activated").entry.metadata.insurance;
-    assert.deepEqual([meta.status, meta.exception_used, meta.acknowledged], ["verified", false, false]);
   });
 
   await test("setting changed between readiness and the transaction: the transaction's own locked read refuses", async () => {
@@ -370,8 +374,40 @@ try {
     const res = await activate(MANAGER, {});
     assert.equal(res.ok, true);
     assert.equal(db.calls.rpc.filter((c) => c.name === "activate_rental_tx").length, 1);
-    const meta = globalThis.__audit.find((a) => a.entry.action === "rental.activated").entry.metadata.insurance;
+    // Non-atomic fallback: the entry is written with a strict insert right after the rental, not logAudit.
+    const ins = db.calls.inserts.find((i) => i.table === "audit_log" && i.row.action === "rental.activated");
+    assert.ok(ins, "fallback audit row");
+    const meta = ins.row.metadata.insurance;
     assert.deepEqual([meta.checked_in_transaction, meta.setting_source, meta.exception_used], [false, "wrapper_not_installed_treated_as_off", false]);
+    assert.equal(ins.row.metadata.source, "server_fallback_non_atomic");
+    assert.equal(res.auditError, undefined);
+  });
+
+  await test("wrapper not installed: a failed audit write is surfaced (auditError), never swallowed", async () => {
+    install(world(), { activate_rental_checked_tx: undefined });
+    globalThis.__failInsert = "audit_log";
+    const res = await activate(MANAGER, {});
+    assert.equal(res.ok, true);
+    assert.match(res.auditError, /audit entry could not be written/);
+  });
+
+  await test("wrapper not installed: overrides are refused (their audit must commit with the rental)", async () => {
+    const db = install(world({ inspections: [] }), { activate_rental_checked_tx: undefined });
+    const res = await activate(MANAGER, { overrideBlockers: true, overrideReason: "Checked in person by the owner" });
+    assert.equal(res.ok, false);
+    assert.match(res.blockers[0].message, /Overrides need the activation database update/);
+    assert.equal(db.calls.rpc.some((c) => c.name === "activate_rental_tx"), false);
+  });
+
+  await test("a stale override is caught in the transaction (override_required) and mapped to its soft blocker", async () => {
+    install(world(), { activate_rental_checked_tx: async () => ({ data: null, error: { code: "P0001", message: "override_required:no_passed_inspection" } }) });
+    const res = await activate(MANAGER, {});
+    assert.deepEqual(codes(res.blockers), ["no_passed_inspection"]);
+  });
+
+  await test("an actor the database does not accept as Manager/Owner is Forbidden", async () => {
+    install(world(), { activate_rental_checked_tx: async () => ({ data: null, error: { code: "42501", message: "actor_not_manager" } }) });
+    await assert.rejects(activate(MANAGER, {}), /Forbidden/);
   });
 
   await test("other wrapper errors are not treated as 'not installed'", async () => {
@@ -478,15 +514,16 @@ try {
       res = await activate(MANAGER, { overrideBlockers: true, overrideReason: "Checked in person by the owner" });
       assert.equal(res.ok, true);
       assert.equal(txCalls(db).length, 1);
-      const entry = globalThis.__audit.find((a) => a.entry.action === "rental.activated");
-      assert.ok(entry, "audit entry written");
-      assert.equal(entry.actor.userId, MANAGER);
-      assert.equal(entry.entry.metadata.vehicle_id, VEH);
-      assert.equal(entry.entry.metadata.driver_id, DRIVER);
-      assert.equal(entry.entry.metadata.overrides.reason, "Checked in person by the owner");
-      assert.deepEqual(entry.entry.metadata.overrides.blockers.map((b) => b.code), [code]);
-      assert.equal(entry.entry.metadata.overrides.by, MANAGER);
-      assert.ok(entry.entry.metadata.overrides.at);
+      // The override goes to the wrapper, which re-checks it and writes it in the activation transaction.
+      const call = db.calls.rpc.find((c) => c.name === "activate_rental_checked_tx");
+      assert.equal(call.args._actor, MANAGER);
+      assert.equal(call.args._driver_id, DRIVER);
+      assert.equal(call.args._vehicle_id, VEH);
+      const o = call.args._audit.overrides;
+      assert.equal(o.reason, "Checked in person by the owner");
+      assert.deepEqual(o.blockers.map((b) => b.code), [code]);
+      assert.equal(o.by, MANAGER);
+      assert.ok(o.at);
     });
   }
 
@@ -578,6 +615,103 @@ try {
     assert.deepEqual(s, { allowWithoutInsuranceVerification: false, present: false, readable: true });
   });
 
+  // ------------------------------------------------------ insurance verification authority
+  const decideIns = (userId, verified, rpc) =>
+    insuranceFns.setInsuranceVerification({ data: { applicationId: APP, verified }, context: { userId, supabase: { rpc } } });
+  await test("verification: a Coordinator cannot verify or revoke (server); the database is never called", async () => {
+    install(world({ screenings: notVerified }));
+    let called = 0;
+    const rpc = async () => (called++, { data: { verified: true }, error: null });
+    await assert.rejects(decideIns(COORD, true, rpc), /Forbidden/);
+    await assert.rejects(decideIns(COORD, false, rpc), /Forbidden/);
+    assert.equal(called, 0);
+  });
+  for (const [who, uid] of [["Manager", MANAGER], ["Owner", OWNER]]) {
+    await test(`verification: a ${who} verifies and revokes through the audited database function (own session)`, async () => {
+      install(world({ screenings: notVerified }));
+      const calls = [];
+      const rpc = async (name, args) => (calls.push([name, args]), { data: { verified: args._verified, decided_at: "2026-10-25T00:00:00Z", audit_id: "a" }, error: null });
+      assert.equal((await decideIns(uid, true, rpc)).atomic, true);
+      assert.equal((await decideIns(uid, false, rpc)).verified, false);
+      assert.deepEqual(calls.map((c) => [c[0], c[1]._verified]), [["set_insurance_verification", true], ["set_insurance_verification", false]]);
+    });
+  }
+  await test("verification: the database refusal (manager_required) is reported", async () => {
+    install(world());
+    await assert.rejects(decideIns(MANAGER, true, async () => ({ data: null, error: { code: "42501", message: "manager_required" } })), /Only a Manager or Owner/);
+  });
+  await test("verification fallback (function not installed): audit written FIRST with document/policy evidence; then the decision", async () => {
+    const db = install(world({ screenings: [{ id: "s1", lead_id: APP, interview_completed_at: "x", insurance_verified: false, insurance_carrier: "Acme Mutual", insurance_policy_number: "POL 12 3456" }], documents: [...baseDocs().map((d) => (d.category === "insurance" ? { ...d, content_sha256: "cd".repeat(32) } : d))] }));
+    const r = await decideIns(MANAGER, true, async () => ({ data: null, error: { code: "PGRST202", message: "x" } }));
+    assert.equal(r.atomic, false);
+    const ins = db.calls.inserts.find((i) => i.table === "audit_log");
+    assert.equal(ins.row.action, "insurance.verified");
+    assert.equal(ins.row.actor_user_id, MANAGER);
+    const m = ins.row.metadata;
+    assert.equal(m.document.content_sha256, "cd".repeat(32));
+    assert.equal(m.insurer, "Acme Mutual");
+    assert.equal(m.policy_number_last4, "3456");
+    assert.match(m.policy_number_sha256, /^[0-9a-f]{64}$/);
+    assert.ok(!JSON.stringify(m).includes("POL123456"), "full policy number never stored");
+    assert.equal(db.tables.driver_screenings[0].insurance_verified, true);
+    assert.ok(db.calls.inserts.indexOf(ins) === 0 && db.calls.updates.length === 1, "audit before update");
+  });
+  await test("verification fallback: an audit write failure refuses the decision (nothing changed)", async () => {
+    const db = install(world({ screenings: [{ id: "s1", lead_id: APP, insurance_verified: false }] }));
+    globalThis.__failInsert = "audit_log";
+    await assert.rejects(decideIns(MANAGER, true, async () => ({ data: null, error: { code: "PGRST202", message: "x" } })), /Nothing was changed/);
+    assert.equal(db.tables.driver_screenings[0].insurance_verified, false);
+    assert.equal(db.calls.updates.length, 0);
+  });
+  await test("revocation fallback is audited as insurance.verification_revoked", async () => {
+    const db = install(world());
+    await decideIns(OWNER, false, async () => ({ data: null, error: { code: "PGRST202", message: "x" } }));
+    const ins = db.calls.inserts.find((i) => i.table === "audit_log");
+    assert.equal(ins.row.action, "insurance.verification_revoked");
+    assert.equal(ins.row.metadata.from, true);
+    assert.equal(db.tables.driver_screenings[0].insurance_verified, false);
+  });
+  await test("a Coordinator may request verification (audited); a non-staff caller may not", async () => {
+    const db = install(world());
+    await insuranceFns.requestInsuranceVerification({ data: { applicationId: APP }, context: { userId: COORD } });
+    assert.equal(db.calls.inserts.find((i) => i.table === "audit_log").row.action, "insurance.verification_requested");
+    await assert.rejects(insuranceFns.requestInsuranceVerification({ data: { applicationId: APP }, context: { userId: DRIVER } }), /Forbidden/);
+  });
+
+  // ------------------------------------------------------ independence of the two permissions
+  await test("independence: setting ON grants no one verification rights (Coordinator still refused)", async () => {
+    install(world({ settings: settingOn, screenings: notVerified }));
+    await assert.rejects(decideIns(COORD, true, async () => ({ data: { verified: true }, error: null })), /Forbidden/);
+  });
+  await test("independence: verification rights do not imply exception use (setting OFF: Manager and Owner refused with unverified insurance)", async () => {
+    for (const uid of [MANAGER, OWNER]) {
+      const db = install(world({ screenings: notVerified }));
+      const res = await activate(uid, { insuranceExceptionAck: true, overrideBlockers: true, overrideReason: reason });
+      assert.deepEqual(codes(res.blockers), ["insurance_not_verified"]);
+      assert.equal(txCalls(db).length, 0);
+    }
+  });
+  await test("independence: with the setting ON a Manager (not only the Owner) can use the exception with the acknowledgement", async () => {
+    for (const uid of [MANAGER, OWNER]) {
+      const db = install(world({ settings: settingOn, screenings: notVerified }));
+      assert.deepEqual(codes((await activate(uid, {})).blockers), ["insurance_ack_required"]);
+      const res = await activate(uid, { insuranceExceptionAck: true });
+      assert.equal(res.ok, true);
+      assert.equal(db.calls.rpc.find((c) => c.name === "activate_rental_checked_tx").args._actor, uid);
+      assert.equal(db.calls.updates.filter((u) => u.table === "driver_screenings").length, 0, "the exception never marks insurance verified");
+    }
+  });
+  await test("independence: a Coordinator cannot use the exception or activate even with the setting ON", async () => {
+    const db = install(world({ settings: settingOn, screenings: notVerified }));
+    await assert.rejects(activate(COORD, { insuranceExceptionAck: true }), /Forbidden/);
+    await assert.rejects(readiness(COORD), /Forbidden/);
+    assert.equal(txCalls(db).length, 0);
+  });
+  await test("Record Rental on this branch refuses everyone, Coordinators included (flag off, checked before anything)", async () => {
+    install(world());
+    await assert.rejects(recordFns.recordExistingRentalV3({ data: { request: { operationId: RENTAL, applicationId: APP, vehicleId: VEH, startedAt: "2026-10-25T10:00:00-04:00", weeklyRate: 325, deposit: null, pickupMileage: null, subscriptionEvidenceId: null, reason: "historical handover" }, expectedActorId: COORD }, context: { userId: COORD } }), /Record Rental is disabled/);
+  });
+
   // ------------------------------------------------------ pure rules
   await test("decideActivation: unknown codes fail closed as hard", async () => {
     const insurance = { status: "verified", exceptionAllowed: false, settingPresent: true, settingReadable: true };
@@ -639,6 +773,18 @@ try {
       assert.doesNotMatch(readFileSync(f, "utf8"), /\buppercase\b|text-transform/);
     const docs = readFileSync("src/components/admin/ApplicantDocuments.tsx", "utf8");
     assert.match(docs, /Not Verified With Uber, Lyft Or Any Platform\./);
+  });
+
+  await test("UI wiring: the insurance decision is never written from the browser; only Manager+ sees the toggle", async () => {
+    const scr = readFileSync("src/components/admin/DriverScreening.tsx", "utf8");
+    assert.equal((scr.match(/withoutInsuranceDecision\(/g) ?? []).length, 2, "both client screening writes strip the decision columns");
+    assert.doesNotMatch(scr, /insurance_verified:\s*v\b/);
+    assert.match(scr, /canDecide \? \(\s*<BoolToggle value=\{screening\?\.insurance_verified/);
+    assert.match(scr, /decide\(\{ data: \{ applicationId: leadId, verified: v \} \}\)/);
+    assert.match(scr, /Request Verification/);
+    const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
+    assert.match(panel, /canDecide=\{isManager\}/);
+    assert.match(panel, /withoutInsuranceDecision\(base as Record<string, unknown>\)/);
   });
 
   await test("the rental transaction stays the only start path", async () => {

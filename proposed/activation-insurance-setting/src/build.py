@@ -19,7 +19,7 @@ PROFILE = '{"project_ref": "yuyzdsnrbfhkmfzpvhwx", "lovable_project_id": "8cf1f9
 # refuse; any change to these 23 does. The package never writes the ledger.
 JOURNAL23 = '[{"created_at": 1791420975062, "hash": "60e27532f009295eb18cd9b0764093326417847d070f228be55c15afa3da53aa", "id": 1}, {"created_at": 1791421074958, "hash": "738ba1b78a229c55eaf5f4bb8446d86afd6ff25feccd5277adf5ad4409cabeb5", "id": 2}, {"created_at": 1791430766220, "hash": "cd11f5db078aaf63476e339f1cff6f581433a7978160ffdb74e328687700b138", "id": 3}, {"created_at": 1791431279577, "hash": "611235fa2841a9b977a0a9c730558f64eafe3193bb9a7799794d8af9f12f8b7b", "id": 4}, {"created_at": 1791432590443, "hash": "63623386f23a6c36cbc24cad601e469a5cb67a0ba52edf660aab72893395c033", "id": 5}, {"created_at": 1791432832737, "hash": "63695e00db5f1636954ad79f396d72937402d940fdc279e0578c43a5361cf271", "id": 6}, {"created_at": 1791458463060, "hash": "33c85b39c5410bc74e5302104d0f8cd062934f4fa4c4d8ae0c22c48d442bb808", "id": 7}, {"created_at": 1791459951490, "hash": "9442071c9712fa259c9255fbeadbb73657c552fb5c4bed1ec0114304e9257b43", "id": 8}, {"created_at": 1791462253541, "hash": "dcbabda64efa476c0b1c855807cf9747822af3dba4960771e1140a1cf56c5265", "id": 9}, {"created_at": 1791462346435, "hash": "ee0ee9066eb3e0e9fabf3415da1c64d9d68484252a4371062167e8cdfd503957", "id": 10}, {"created_at": 1791463536348, "hash": "18fb3113f234e0bb7834884e1e9c89a6d79ee880d4f59519b7399d990cbfcf77", "id": 11}, {"created_at": 1791463558283, "hash": "6a558eda9c92b87d352e3849bd509ee939d6b5801afa77c6fe7d9d7b893b743e", "id": 12}, {"created_at": 1791464019517, "hash": "873e4c4d4e4df1c0864291483d3fe805f3f4a1a5738f82572a3d2e5ab71022c4", "id": 13}, {"created_at": 1791471257211, "hash": "c5807075884bdd3f8b868b9491bec4d2c61d685d55a11653cf9bf8fbe727aae1", "id": 14}, {"created_at": 1791473301327, "hash": "0165723216a1346ae1dfab78180356c5f8b8a62038390119285a2f4ac6224890", "id": 15}, {"created_at": 1791473830599, "hash": "2f12f169a12fc3acba57fc46423c51a461f407222c5272fbf142905222eea1cc", "id": 16}, {"created_at": 1791477139776, "hash": "a3f9b526698a5f682f7b7162cec45ad75833e25a4fc16abfbf02a700944f040a", "id": 17}, {"created_at": 1791479523295, "hash": "71b806abd5211fbe63227473a03e947d6a51d9fcda68c9927c62a24481ba54c6", "id": 18}, {"created_at": 1791480452755, "hash": "cb6f88b17b356c9c6189da608829566f09ad6acd0d8411c0a38c332dd573dfc2", "id": 19}, {"created_at": 1791480942211, "hash": "6ab09e206256d0b3752f8eb4e32c60be9f78cd07837398203a52a172d2029a2e", "id": 20}, {"created_at": 1791481035617, "hash": "2c60e0bbd894ae6fd63fbafe8eb1956918169e43b7385ea11cca43f64be5cb80", "id": 21}, {"created_at": 1791496432098, "hash": "a8f14f62b9c84e02e0e07a276300e7be6ef7f0f8eec221acd9981d2604eac2de", "id": 22}, {"created_at": 1792408979135, "hash": "9ee4a1ced75ee787ab8647f67775ae4bb9c0bc7fc23d51acf17416e469948e11", "id": 23}]'
 P0031 = "d33877618a9f40924d14e49b6653d7fa"
-WRAPPER = "public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean)"
+WRAPPER = "public.activate_rental_checked_tx(uuid, uuid, uuid, numeric, numeric, boolean, date, date, integer, uuid, boolean, jsonb)"
 SETTER = "public.set_rental_activation_insurance_exception(boolean)"
 GUARDFN = "private.rental_activation_setting_guard()"
 ACTIVATE = "public.activate_rental_tx(uuid,uuid,uuid,numeric,numeric,boolean,date,date,integer,uuid)"
@@ -60,7 +60,7 @@ COMMON_PRE = r"""
  -- Security 0031: the five containment policies exactly as installed on 2026-10-24. Never touched here.
  SELECT pg_catalog.md5(pg_catalog.string_agg(pg_catalog.concat_ws('|', schemaname, tablename, policyname, permissive, roles::text, cmd, qual, with_check), E'\n' ORDER BY policyname)) INTO p0031
  FROM pg_catalog.pg_policies WHERE policyname IN ('coordinator_agreement_containment','coordinator_application_containment','coordinator_document_containment','coordinator_identity_storage_containment','coordinator_review_containment');
- IF p0031 IS DISTINCT FROM '@P0031@' THEN RAISE EXCEPTION 'POLICY_0031_DRIFT'; END IF;
+ @P0031_CHECK@
  -- The existing activation transaction: present, service-role only, and never changed by this package.
  IF pg_catalog.to_regprocedure('@ACTIVATE@') IS NULL THEN RAISE EXCEPTION 'ACTIVATE_RENTAL_TX_MISSING'; END IF;
  IF pg_catalog.has_function_privilege('authenticated', '@ACTIVATE@', 'EXECUTE')
@@ -98,11 +98,14 @@ BEGIN
  IF (SELECT pg_catalog.count(*) FROM pg_catalog.pg_attribute a WHERE NOT a.attisdropped AND a.attnum > 0 AND (
       (a.attrelid = 'public.driver_screenings'::pg_catalog.regclass AND a.attname = 'insurance_verified' AND a.atttypid = 'boolean'::pg_catalog.regtype) OR
       (a.attrelid = 'public.driver_screenings'::pg_catalog.regclass AND a.attname = 'lead_id' AND a.atttypid = 'uuid'::pg_catalog.regtype) OR
+      (a.attrelid = 'public.driver_screenings'::pg_catalog.regclass AND a.attname = 'interview_completed_at') OR
+      (a.attrelid = 'public.inspections'::pg_catalog.regclass AND a.attname IN ('vehicle_id','inspection_type','status')) OR
+      (a.attrelid = 'public.user_roles'::pg_catalog.regclass AND a.attname IN ('user_id','role')) OR
       (a.attrelid = 'public.applications'::pg_catalog.regclass AND a.attname = 'insurance_expires_on' AND a.atttypid = 'date'::pg_catalog.regtype) OR
       (a.attrelid = 'public.documents'::pg_catalog.regclass AND a.attname IN ('driver_id','category','is_current','review_status','expires_at','storage_path','reviewed_at')) OR
       (a.attrelid = 'public.agreements'::pg_catalog.regclass AND a.attname IN ('application_id','source','status','signed_at','voided_at','rental_id')) OR
-      (a.attrelid = 'public.audit_log'::pg_catalog.regclass AND a.attname IN ('actor_user_id','actor_role','action','entity_type','entity_id','metadata')) OR
-      (a.attrelid = 'public.app_settings'::pg_catalog.regclass AND a.attname IN ('key','value')))) <> 24
+      (a.attrelid = 'public.audit_log'::pg_catalog.regclass AND a.attname IN ('actor_user_id','actor_role','action','entity_type','entity_id','metadata','ip','user_agent')) OR
+      (a.attrelid = 'public.app_settings'::pg_catalog.regclass AND a.attname IN ('key','value')))) <> 32
  THEN RAISE EXCEPTION 'COLUMN_SHAPE_DRIFT'; END IF;
  IF NOT pg_catalog.has_table_privilege(current_user, 'public.audit_log', 'INSERT') THEN RAISE EXCEPTION 'AUDIT_INSERT_UNAVAILABLE'; END IF;
  -- Idempotence: one install per evidence row; a re-run, or a partial install, is refused.
@@ -293,8 +296,10 @@ ORDER BY check_name;
 """
 
 
-def fill(t, inner, inner_sha, b):
+def fill(t, inner, inner_sha, b, rollback=False):
     t = t.replace("@COMMON_PRE@", COMMON_PRE.strip("\n"))
+    # Install: 0031 exactly as installed. Rollback: also allowed after a 0031 rollback (all five absent).
+    t = t.replace("@P0031_CHECK@", "IF p0031 IS DISTINCT FROM '@P0031@'" + (" AND p0031 IS NOT NULL" if rollback else "") + " THEN RAISE EXCEPTION 'POLICY_0031_DRIFT'; END IF;")
     for k, v in {"@PROFILE@": PROFILE, "@JOURNAL23@": JOURNAL23, "@P0031@": P0031, "@ACTIVATE@": ACTIVATE,
                  "@WRAPPER@": WRAPPER, "@SETTER@": SETTER, "@GUARDFN@": GUARDFN, "@INNER_SHA@": inner_sha,
                  "@WRAPPER_SHA@": b["wrapper"], "@SETTER_SHA@": b["setter"], "@GUARD_SHA@": b["guard"]}.items():
@@ -309,7 +314,7 @@ def main():
     b = bodies(inner)
     outs = {}
     outs["activation_insurance_setting_v1.sql"] = fill(INSTALL, inner, sha(inner), b)
-    outs["rollback.sql"] = fill(ROLLBACK, rb_inner, sha(rb_inner), b)
+    outs["rollback.sql"] = fill(ROLLBACK, rb_inner, sha(rb_inner), b, rollback=True)
     outs["verify-after-readonly.sql"] = fill(VERIFY, "", "", b)
     for name in list(outs):
         assert all(ord(c) < 128 for c in outs[name]), name + " must be ASCII"

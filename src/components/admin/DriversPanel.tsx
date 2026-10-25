@@ -71,6 +71,7 @@ import {
   primaryStep,
 } from "@/lib/activation-readiness";
 import { ActivationRequirementList } from "./ActivationRequirementList";
+import { withoutInsuranceDecision } from "@/lib/insurance-verification";
 import { scoreApplication } from "@/lib/scoring.functions";
 import {
   InsuranceVerificationCard,
@@ -1727,7 +1728,8 @@ function DriverDetail({
       };
       const { data, error } = await supabase
         .from("driver_screenings")
-        .upsert({ ...base, lead_id: driver.id, status: next } as any, { onConflict: "lead_id" })
+        // The insurance decision columns are never written from the browser.
+        .upsert({ ...withoutInsuranceDecision(base as Record<string, unknown>), lead_id: driver.id, status: next } as any, { onConflict: "lead_id" })
         .select("*")
         .single();
       if (error) throw error;
@@ -2603,6 +2605,7 @@ function DriverDetail({
                   leadId={driver.id}
                   screening={screening}
                   isOwner={isOwner}
+                  canDecide={isManager}
                   onScreening={(s) => {
                     setScreening(s);
                     onScreeningChange?.(s);
