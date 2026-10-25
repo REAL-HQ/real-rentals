@@ -1,0 +1,1275 @@
+{
+  "4.1": {
+    "status": "PASS",
+    "evidence": "Indicator sequence per viewport: desktop=[Saving\u2026 \u2192 Saved] db.city=Tampa; iphone=[Saving\u2026 \u2192 Saved] db.city=Tampa; android=[Saving\u2026 \u2192 Saved] db.city=Tampa",
+    "detail": {
+      "desktop": {
+        "sequence": [
+          "Saving\u2026",
+          "Saved"
+        ],
+        "dbCity": "Tampa",
+        "ok": true
+      },
+      "iphone": {
+        "sequence": [
+          "Saving\u2026",
+          "Saved"
+        ],
+        "dbCity": "Tampa",
+        "ok": true
+      },
+      "android": {
+        "sequence": [
+          "Saving\u2026",
+          "Saved"
+        ],
+        "dbCity": "Tampa",
+        "ok": true
+      }
+    },
+    "screenshots": [
+      "pr4-4.1-saved-desktop.png",
+      "pr4-4.1-saved-iphone.png",
+      "pr4-4.1-saved-android.png"
+    ],
+    "recordedAt": "2026-10-25T03:05:36.449Z"
+  },
+  "4.2": {
+    "status": "FAIL",
+    "evidence": "Behaviour OK: offline shows \"Couldn't Save \u2014 Retry\", auto-retries on reconnect, ends \"Saved\", DB updated once, 1 row per email, no new application rows. COPY MISMATCH: checklist expects \"Couldn't save.\" + \"Retrying automatically.\" \u2014 RC renders \"Couldn't Save \u2014 Retry\" (no \"Retrying automatically.\" text anywhere in src/components/site/ApplicationWizard.tsx SavedIndicator).",
+    "detail": {
+      "desktop": {
+        "sequence": [
+          "Saving\u2026",
+          "Couldn't Save\u2014Retry",
+          "Saving\u2026",
+          "Saved"
+        ],
+        "offlineText": "Couldn't Save \u2014 Retry",
+        "dbStateWhileOffline": null,
+        "dbStateAfter": "SUV",
+        "rowsForEmail": 1,
+        "totalAppsBefore": 4,
+        "totalAppsAfter": 4,
+        "retryAfterOnline": true,
+        "hasRetryingAutomaticallyText": false,
+        "ok": true,
+        "consoleErrors": [
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED"
+        ]
+      },
+      "iphone": {
+        "sequence": [
+          "Saving\u2026",
+          "Couldn't Save\u2014Retry",
+          "Saving\u2026",
+          "Saved"
+        ],
+        "offlineText": "Couldn't Save \u2014 Retry",
+        "dbStateWhileOffline": null,
+        "dbStateAfter": "SUV",
+        "rowsForEmail": 1,
+        "totalAppsBefore": 5,
+        "totalAppsAfter": 5,
+        "retryAfterOnline": true,
+        "hasRetryingAutomaticallyText": false,
+        "ok": true,
+        "consoleErrors": [
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED"
+        ]
+      },
+      "android": {
+        "sequence": [
+          "Saving\u2026",
+          "Couldn't Save\u2014Retry",
+          "Saving\u2026",
+          "Saved"
+        ],
+        "offlineText": "Couldn't Save \u2014 Retry",
+        "dbStateWhileOffline": null,
+        "dbStateAfter": "SUV",
+        "rowsForEmail": 1,
+        "totalAppsBefore": 6,
+        "totalAppsAfter": 6,
+        "retryAfterOnline": true,
+        "hasRetryingAutomaticallyText": false,
+        "ok": true,
+        "consoleErrors": [
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED"
+        ]
+      }
+    },
+    "screenshots": [
+      "pr4-4.2-offline-desktop.png",
+      "pr4-4.2-back-online-desktop.png",
+      "pr4-4.2-offline-iphone.png",
+      "pr4-4.2-offline-android.png"
+    ],
+    "recordedAt": "2026-10-25T03:05:36.450Z"
+  },
+  "4.6": {
+    "status": "BLOCKED",
+    "evidence": "Markup verified at 390x844 (iPhone UA) / 412x915 (Android UA) / 1280: phone type=tel inputmode=tel autocomplete=tel; email type=email inputmode=email autocomplete=email; name autocomplete=name; wizard city/state autocomplete=address-level2/address-level1. Actual numeric keypad + autofill suggestions need real iOS Safari / Android Chrome devices \u2014 Playwright Chromium emulation has no OS keyboard or autofill UI.",
+    "detail": {
+      "desktop": {
+        "contact": {
+          "name": {
+            "type": "text",
+            "inputmode": null,
+            "autocomplete": "name",
+            "autocapitalize": "words"
+          },
+          "email": {
+            "type": "email",
+            "inputmode": "email",
+            "autocomplete": "email",
+            "autocapitalize": "off"
+          },
+          "tel": {
+            "type": "tel",
+            "inputmode": "tel",
+            "autocomplete": "tel",
+            "autocapitalize": null
+          }
+        },
+        "wizard": {
+          "city": {
+            "type": "text",
+            "autocomplete": "address-level2"
+          },
+          "state": {
+            "type": "text",
+            "autocomplete": "address-level1"
+          }
+        }
+      },
+      "iphone": {
+        "contact": {
+          "name": {
+            "type": "text",
+            "inputmode": null,
+            "autocomplete": "name",
+            "autocapitalize": "words"
+          },
+          "email": {
+            "type": "email",
+            "inputmode": "email",
+            "autocomplete": "email",
+            "autocapitalize": "off"
+          },
+          "tel": {
+            "type": "tel",
+            "inputmode": "tel",
+            "autocomplete": "tel",
+            "autocapitalize": null
+          }
+        },
+        "wizard": {
+          "city": {
+            "type": "text",
+            "autocomplete": "address-level2"
+          },
+          "state": {
+            "type": "text",
+            "autocomplete": "address-level1"
+          }
+        }
+      },
+      "android": {
+        "contact": {
+          "name": {
+            "type": "text",
+            "inputmode": null,
+            "autocomplete": "name",
+            "autocapitalize": "words"
+          },
+          "email": {
+            "type": "email",
+            "inputmode": "email",
+            "autocomplete": "email",
+            "autocapitalize": "off"
+          },
+          "tel": {
+            "type": "tel",
+            "inputmode": "tel",
+            "autocomplete": "tel",
+            "autocapitalize": null
+          }
+        },
+        "wizard": {
+          "city": {
+            "type": "text",
+            "autocomplete": "address-level2"
+          },
+          "state": {
+            "type": "text",
+            "autocomplete": "address-level1"
+          }
+        }
+      }
+    },
+    "markupVerified": true,
+    "recordedAt": "2026-10-25T03:05:36.450Z"
+  },
+  "4.3": {
+    "status": "PASS",
+    "evidence": "Two recovery requests (1: returning-applicant submit on iPhone viewport; 2: \"Resend Link\" after the 120 s throttle) \u2192 2 distinct captured emails, DB lifetimes 1800s/1800s (30 min). R1 first open \u2192 wizard=true, row revoked_at set; second open \u2192 wizard=false (\"Get A New Secure Link This link has expired or was already used. Enter your email and, if \u2026\"). R2 shifted 31 min \u2192 wizard=false. R3 at 29 min \u2192 opens once (true), reuse refused (true). Open 14-day tab kept saving: after R1=\"Saved\", after R2=\"Saved\", after R1 consumed=\"Saved\"; session row revoked_at stays null.",
+    "detail": {
+      "sessionRow": {
+        "id": "04b13cb3-6125-4256-88fc-a0a15fe19b45",
+        "created_at": "2026-10-25T03:07:01.418Z",
+        "expires_at": "2026-11-08T03:07:01.418Z",
+        "revoked_at": null,
+        "last_used_at": "2026-10-25T03:07:01.497Z",
+        "life_s": 1209600
+      },
+      "sessionLifetimeDays": 14,
+      "save0": "Saved",
+      "r1Row": {
+        "id": "1c618507-e830-4288-aa97-65ef73bd37db",
+        "created_at": "2026-10-25T03:07:07.783Z",
+        "expires_at": "2026-10-25T03:37:07.783Z",
+        "revoked_at": null,
+        "last_used_at": null,
+        "life_s": 1800
+      },
+      "save1": "Saved",
+      "sessionAfterR1": {
+        "id": "04b13cb3-6125-4256-88fc-a0a15fe19b45",
+        "created_at": "2026-10-25T03:07:01.418Z",
+        "expires_at": "2026-11-08T03:07:01.418Z",
+        "revoked_at": null,
+        "last_used_at": "2026-10-25T03:07:09.522Z",
+        "life_s": 1209600
+      },
+      "r2Row": {
+        "id": "83ea5a7c-c298-438e-b5b0-7ffa11bd1c66",
+        "created_at": "2026-10-25T03:09:14.788Z",
+        "expires_at": "2026-10-25T03:39:14.788Z",
+        "revoked_at": null,
+        "last_used_at": null,
+        "life_s": 1800
+      },
+      "distinctLinks": true,
+      "save2": "Saved",
+      "sessionAfterR2": {
+        "id": "04b13cb3-6125-4256-88fc-a0a15fe19b45",
+        "created_at": "2026-10-25T03:07:01.418Z",
+        "expires_at": "2026-11-08T03:07:01.418Z",
+        "revoked_at": null,
+        "last_used_at": "2026-10-25T03:09:16.800Z",
+        "life_s": 1209600
+      },
+      "r1Open1": {
+        "wizard": true,
+        "text": "REAL RENTALS Quick Application A handful of questions about what you drive and what you need. No documents, no uploads. Your Info 2 Rental 3 Driving 4 Done No payment required to apply. QUICK APPLICATION \u00b7 STEP 1 OF 2 What Do You Need? Three questions. No docu"
+      },
+      "r1AfterUse": {
+        "id": "1c618507-e830-4288-aa97-65ef73bd37db",
+        "created_at": "2026-10-25T03:07:07.783Z",
+        "expires_at": "2026-10-25T03:37:07.783Z",
+        "revoked_at": "2026-10-25T03:09:20.805Z",
+        "last_used_at": "2026-10-25T03:09:20.805Z",
+        "life_s": 1800
+      },
+      "r1Open2": {
+        "wizard": false,
+        "text": "Get A New Secure Link This link has expired or was already used. Enter your email and, if it matches an application, we'll send a fresh secure link. Send Secure Link Need help? Call (888) 833-8280 or email team@drivereal.com."
+      },
+      "save3": "Saved",
+      "sessionAfterR1Consumed": {
+        "id": "04b13cb3-6125-4256-88fc-a0a15fe19b45",
+        "created_at": "2026-10-25T03:07:01.418Z",
+        "expires_at": "2026-11-08T03:07:01.418Z",
+        "revoked_at": null,
+        "last_used_at": "2026-10-25T03:09:29.186Z",
+        "life_s": 1209600
+      },
+      "r2Expired": {
+        "wizard": false,
+        "text": "Get A New Secure Link This link has expired or was already used. Enter your email and, if it matches an application, we'll send a fresh secure link. Send Secure Link Need help? Call (888) 833-8280 or email team@drivereal.com."
+      },
+      "r2AfterExpiredOpen": {
+        "id": "83ea5a7c-c298-438e-b5b0-7ffa11bd1c66",
+        "created_at": "2026-10-25T02:38:14.788Z",
+        "expires_at": "2026-10-25T03:08:14.788Z",
+        "revoked_at": null,
+        "last_used_at": null,
+        "life_s": 1800
+      },
+      "r3At29min": {
+        "wizard": true,
+        "text": "REAL RENTALS Quick Application A handful of questions about what you drive and what you need. No documents, no uploads. Your Info 2 Rental 3 Driving 4 Done No payment required to apply. QUICK APPLICATION \u00b7 STEP 1 OF 2 What Do You Need? Three questions. No docu"
+      },
+      "r3SecondUse": {
+        "wizard": false,
+        "text": "Get A New Secure Link This link has expired or was already used. Enter your email and, if it matches an application, we'll send a fresh secure link. Send Secure Link Need help? Call (888) 833-8280 or email team@drivereal.com."
+      },
+      "liveRecoveryAfterFlood": 1,
+      "sessionAfterFlood": {
+        "id": "04b13cb3-6125-4256-88fc-a0a15fe19b45",
+        "created_at": "2026-10-25T03:07:01.418Z",
+        "expires_at": "2026-11-08T03:07:01.418Z",
+        "revoked_at": null,
+        "last_used_at": "2026-10-25T03:09:29.186Z",
+        "life_s": 1209600
+      },
+      "save4": "Saved",
+      "sessionNearDay14": {
+        "id": "04b13cb3-6125-4256-88fc-a0a15fe19b45",
+        "created_at": "2026-10-11T04:07:01.418Z",
+        "expires_at": "2026-10-25T04:07:01.418Z",
+        "revoked_at": null,
+        "last_used_at": "2026-10-25T03:09:54.966Z",
+        "life_s": 1209600
+      },
+      "save5NearDay14": "Saved",
+      "sessionLinkNearDay14": {
+        "wizard": true,
+        "text": "REAL RENTALS Quick Application A handful of questions about what you drive and what you need. No documents, no uploads. Your Info 2 Rental 3 Driving 4 Done No payment required to apply. QUICK APPLICATION \u00b7 STEP 1 OF 2 What Do You Need? Three questions. No docu"
+      },
+      "sessionPastDay14": {
+        "id": "04b13cb3-6125-4256-88fc-a0a15fe19b45",
+        "created_at": "2026-10-11T02:07:01.418Z",
+        "expires_at": "2026-10-25T02:07:01.418Z",
+        "revoked_at": null,
+        "last_used_at": "2026-10-25T03:10:03.566Z",
+        "life_s": 1209600
+      },
+      "save6PastDay14": "Couldn't Save \u2014 Retry",
+      "sessionLinkPastDay14": {
+        "wizard": false,
+        "text": "Get A New Secure Link This link has expired or was already used. Enter your email and, if it matches an application, we'll send a fresh secure link. Send Secure Link Need help? Call (888) 833-8280 or email team@drivereal.com."
+      },
+      "dbCity": "Naples",
+      "consoleErrorsA": []
+    },
+    "screenshots": [
+      "tok-welcome-back-iphone.png",
+      "tok-r1-first-open.png",
+      "tok-r1-second-open.png",
+      "tok-r2-expired-31min.png",
+      "tok-r3-29min.png",
+      "tok-r3-29min-reuse.png"
+    ],
+    "recordedAt": "2026-10-25T03:10:15.259Z"
+  },
+  "ADD-14day-session": {
+    "status": "PASS",
+    "evidence": "Session token lifetime 14 days. Issued before recovery requests; still saves after 2 requests, after R1 consumed, and after a further burst (see ADD-14day-session-flood: 7 recovery mints, cap 5, session never revoked) \u2192 \"Saved\". Shifted to 13d23h old: tab save \"Saved\", link reopens wizard=true. Shifted past 14d (+1h): tab save \"Couldn't Save \u2014 Retry\", link wizard=false (\"Get A New Secure Link This link has expired or was already used. Enter your emai\u2026\").",
+    "detail": {
+      "sessionRow": {
+        "id": "04b13cb3-6125-4256-88fc-a0a15fe19b45",
+        "created_at": "2026-10-25T03:07:01.418Z",
+        "expires_at": "2026-11-08T03:07:01.418Z",
+        "revoked_at": null,
+        "last_used_at": "2026-10-25T03:07:01.497Z",
+        "life_s": 1209600
+      },
+      "nearDay14": {
+        "id": "04b13cb3-6125-4256-88fc-a0a15fe19b45",
+        "created_at": "2026-10-11T04:07:01.418Z",
+        "expires_at": "2026-10-25T04:07:01.418Z",
+        "revoked_at": null,
+        "last_used_at": "2026-10-25T03:09:54.966Z",
+        "life_s": 1209600
+      },
+      "pastDay14": {
+        "id": "04b13cb3-6125-4256-88fc-a0a15fe19b45",
+        "created_at": "2026-10-11T02:07:01.418Z",
+        "expires_at": "2026-10-25T02:07:01.418Z",
+        "revoked_at": null,
+        "last_used_at": "2026-10-25T03:10:03.566Z",
+        "life_s": 1209600
+      }
+    },
+    "screenshots": [
+      "tok-session-day13h23.png",
+      "tok-session-past-day14.png",
+      "tok-session-past-day14-tab.png"
+    ],
+    "recordedAt": "2026-10-25T03:10:15.260Z"
+  },
+  "ADD-14day-session-flood": {
+    "status": "PASS",
+    "evidence": "7 recovery emails captured, 7 recovery rows (5 live = per-kind cap 5, oldest revoked); 14-day session row revoked_at=null; open tab autosave after flood \u2192 \"Saved\".",
+    "detail": {
+      "rows": [
+        {
+          "life": 1209600,
+          "rev": false
+        },
+        {
+          "life": 1800,
+          "rev": true
+        },
+        {
+          "life": 1800,
+          "rev": true
+        },
+        {
+          "life": 1800,
+          "rev": false
+        },
+        {
+          "life": 1800,
+          "rev": false
+        },
+        {
+          "life": 1800,
+          "rev": false
+        },
+        {
+          "life": 1800,
+          "rev": false
+        },
+        {
+          "life": 1800,
+          "rev": false
+        }
+      ]
+    },
+    "recordedAt": "2026-10-25T03:11:01.420Z"
+  },
+  "4.5": {
+    "status": "FAIL",
+    "evidence": "NO reminders sent at all (so the 'nothing to excluded rows' half trivially holds, but eligible open24/open72/abandoned rows also got 0): every claim PATCH failed with 42703 'column applications.current_step does not exist' \u2014 same root cause as 4.4. Seeded 15 synthetic rows (status active omitted: DB trigger application_active_guard forbids it without a running rental); two overlapping cron runs + a third run. Emails: open24=0, open72=0, openAbandoned=0, deleted=0, purged=0, deletedAbandoned=0, status_approved=0, status_suspended=0, status_declined=0, status_closed=0, status_duplicate=0, status_complete=0, submittedNew=0. Run reports: [{\"s24\":0,\"s72\":0,\"sAb\":0,\"skipped\":0},{\"s24\":0,\"s72\":0,\"sAb\":0,\"skipped\":0},{\"s24\":0,\"s72\":0,\"sAb\":0,\"skipped\":0}]. Wrong bearer \u2192 401. Under the or=+select emulation the filters and claim-before-send behave correctly (4.5-under-orfix-emulation). Release A on the same stack sends, but duplicates and mails deleted/declined/closed rows (4.4-4.5-releaseA-baseline).",
+    "detail": {
+      "per": {
+        "open24": [],
+        "open72": [],
+        "openAbandoned": [],
+        "deleted": [],
+        "purged": [],
+        "deletedAbandoned": [],
+        "status_approved": [],
+        "status_suspended": [],
+        "status_declined": [],
+        "status_closed": [],
+        "status_duplicate": [],
+        "status_complete": [],
+        "submittedNew": []
+      },
+      "run1": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "considered_24h": 7,
+          "considered_72h": 4,
+          "considered_abandoned": 8,
+          "sent_24h": 0,
+          "sent_72h": 0,
+          "sent_abandoned": 0,
+          "skipped_claimed": 0,
+          "failed": 16
+        }
+      },
+      "run2": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "considered_24h": 7,
+          "considered_72h": 4,
+          "considered_abandoned": 8,
+          "sent_24h": 0,
+          "sent_72h": 0,
+          "sent_abandoned": 0,
+          "skipped_claimed": 0,
+          "failed": 16
+        }
+      },
+      "run3": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "considered_24h": 7,
+          "considered_72h": 4,
+          "considered_abandoned": 8,
+          "sent_24h": 0,
+          "sent_72h": 0,
+          "sent_abandoned": 0,
+          "skipped_claimed": 0,
+          "failed": 16
+        }
+      }
+    },
+    "recordedAt": "2026-10-25T03:13:15.335Z"
+  },
+  "4.4": {
+    "status": "FAIL",
+    "evidence": "NO reminder sent: every claim failed (report.failed=16/16/16). App log: \"[wizard-recovery] 24h claim failed <id> column applications.current_step does not exist\". Root cause: claimRecoverySend (src/lib/wizard-recovery.server.ts:113-133) PATCHes with .or(current_step...) + .select(\"id\"); local PostgREST 12.2.3 re-applies the or= filter to the RETURNING set, which only has id \u2192 SQLSTATE 42703. Release A's route (send-then-stamp, no or= on PATCH) does not hit this. Link-shape checks run separately under emulation (4.4-under-orfix-emulation).",
+    "recordedAt": "2026-10-25T03:13:15.336Z"
+  },
+  "ADD-cron-link-not-session": {
+    "status": "FAIL",
+    "evidence": "Cron sent no email under stock PostgREST 12.2.3 (see 4.4). See ADD-cron-link-not-session-under-orfix-emulation for link shape.",
+    "recordedAt": "2026-10-25T03:13:15.337Z"
+  },
+  "4.5-under-orfix-emulation": {
+    "status": "PASS",
+    "evidence": "Across 6 seeded batches and two overlapping cron runs + a third run: open24 rows got exactly 1 abandoned + 1 24h email (two different stages \u2014 a 25 h-old partial is inside both the 3\u201348 h abandoned window and the 24\u201326 h window), open72 got exactly one 72h email, openAbandoned exactly one; deleted, purged, deleted-abandoned, approved, suspended, declined, closed, duplicate, complete, and new+submitted rows got none; third run sent 0. No recipient/subject pair captured twice. ('active' not seedable without a running rental \u2014 DB trigger.)",
+    "recordedAt": "2026-10-25T03:14:42.544Z"
+  },
+  "4.4-under-orfix-emulation": {
+    "status": "PASS",
+    "evidence": "All 24 captured reminder emails (24h \"application is saved\", 72h \"still open\", abandoned \"Finish Your \u2026 Quote\") carry links whose DB lifetime is 1800s = 30-min recovery; one link (first open \u2192 wizard, reuse \u2192 \"Get A New Secure Link\") verified in a browser. Copy example: \"It takes about 2 minutes to complete \u2014 then our team can call you to confirm availability and get you on the road.\"",
+    "detail": {
+      "Finish Your REAL RENTALS Quote \u2014 Cars Are Moving Fast": [
+        1800
+      ],
+      "Cee, your REAL RENTALS application is saved": [
+        1800
+      ],
+      "Cee, your REAL RENTALS application is still open": [
+        1800
+      ]
+    },
+    "screenshots": [
+      "cron-link-first.png",
+      "cron-link-second.png"
+    ],
+    "recordedAt": "2026-10-25T03:14:42.542Z"
+  },
+  "ADD-cron-link-not-session-under-orfix-emulation": {
+    "status": "PASS",
+    "evidence": "Same evidence as 4.4: reminder link row lifetime 1800s; refused on reuse; the cron itself minted no 14-day session (sessions for that application before the click: 0, after the single exchange: 1).",
+    "recordedAt": "2026-10-25T03:14:15.047Z"
+  },
+  "1.1": {
+    "status": "PASS",
+    "evidence": "Resume (14-day session) link edits saved in each editable status: partial(desktop)=\"Saved\" db.city=Tampa; new(iphone)=\"Saved\" db.city=City-new; complete(android)=\"Saved\" db.city=City-complete; reviewing(desktop)=\"Saved\" db.city=City-reviewing. Statuses new/complete/reviewing set directly in the disposable DB (setup).",
+    "screenshots": [
+      "pr1-1.1-new-iphone.png",
+      "pr1-1.1-complete-android.png",
+      "pr1-1.1-reviewing-desktop.png"
+    ],
+    "recordedAt": "2026-10-25T03:17:29.923Z"
+  },
+  "1.2": {
+    "status": "PASS",
+    "evidence": "Manager (team role, real session) set status \u2192 Approved from the Drivers list menu (approveApplication); DB status=approved. Reopened resume link (iPhone viewport) shows \"This application is already being processed \u2014 contact us to make changes.\" (exact=true), heading \"Your Application Is Already Submitted\", no form inputs, no decision word on page (true).",
+    "detail": {
+      "dbStatus": "approved",
+      "toasts": [
+        "Approved"
+      ],
+      "lockedShown": true,
+      "mentionsDecision": false,
+      "inputsPresent": 0,
+      "text": "Your Application Is Already Submitted This application is already being processed \u2014 contact us to make changes. Contact Us Back To Home"
+    },
+    "screenshots": [
+      "pr1-1.2-manager-status-menu.png",
+      "pr1-1.2-manager-approved.png",
+      "pr1-1.2-locked-iphone.png"
+    ],
+    "recordedAt": "2026-10-25T03:17:29.925Z"
+  },
+  "1.3": {
+    "status": "PASS",
+    "evidence": "Wizard has no editable fields once locked. Replayed the captured updateApplicationStep request (token + city) via fetch from the locked page \u2192 HTTP 200, body contains the locked message=true; row md5 before/after identical=true (city City-reviewing, status approved).",
+    "detail": {
+      "captured": true,
+      "replay": {
+        "status": 200,
+        "text": "{\"t\":10,\"i\":0,\"p\":{\"k\":[\"result\",\"error\",\"context\"],\"v\":[{\"t\":2,\"s\":1},{\"t\":25,\"i\":1,\"s\":{\"message\":{\"t\":1,\"s\":\"This application is already being processed \u2014 contact us to make changes.\"}},\"c\":\"$TSR/Error\"},{\"t\":10,\"i\":2,\"p\":{\"k\":[],\"v\":[]},\"o\":0}]},\"o\":0}"
+      },
+      "rowUnchanged": true,
+      "before": {
+        "city": "City-reviewing",
+        "status": "approved"
+      },
+      "after": {
+        "city": "City-reviewing",
+        "status": "approved"
+      }
+    },
+    "recordedAt": "2026-10-25T03:17:29.927Z"
+  },
+  "4.7": {
+    "status": "PASS",
+    "evidence": "Tab opened before approval typed after it: exactly 1 save request in 24 s (incl. an offline\u2192online toggle), switched to the locked screen=true, no \"Couldn't Save\"=true, DB city unchanged (City-reviewing).",
+    "detail": {
+      "lockedShown": true,
+      "saveCallsAfterLockWithin3s": 1,
+      "saveCallsAfter24s": 1,
+      "couldntSave": false,
+      "dbCity": "City-reviewing"
+    },
+    "screenshots": [
+      "pr4-4.7-stale-tab-locked.png"
+    ],
+    "recordedAt": "2026-10-25T03:17:29.928Z"
+  },
+  "3.2": {
+    "status": "PASS",
+    "evidence": "Server clock faked (Date offset preload): preview at 2026-10-25T23:56:47.279Z (7:56 pm EDT), Send at 2026-10-26T00:00:40.000Z (8:00 pm EDT, past UTC midnight) \u2192 toast \"Agreement sent for signature \u00b7 Email Sent \u00b7 SMS Not Attempted\"; agreement row status=sent, metadata.preview_fingerprint starts with the previewed 6f942a4e5770 (true); execution date printed \"Oct 25, 2026\" (Eastern day, not the UTC Oct 26).",
+    "detail": {
+      "previewAt": "2026-10-25T23:56:47.279Z",
+      "sendAt": "2026-10-26T00:00:40.000Z",
+      "fpPreview": "6f942a4e5770",
+      "toast": "Agreement sent for signature \u00b7 Email Sent \u00b7 SMS Not Attempted",
+      "agreement": {
+        "id": "f7d45d67-1548-453f-a9a1-63d70bea4f2a",
+        "status": "sent",
+        "sent_at": "2026-10-26T00:00:40.228Z",
+        "fp": "6f942a4e5770a458b458c6e960e39da11f8b5a419df0b8f6207db08f88475258"
+      },
+      "execInPreview": "Oct 25, 2026",
+      "execInSent": "Oct 25, 2026",
+      "dates": [
+        "Oct 25, 2026",
+        "Oct 11, 2026",
+        "Jan 11, 2027"
+      ]
+    },
+    "screenshots": [
+      "pr3-3.2-preview-before-utc-midnight.png",
+      "pr3-3.2-sent-after-utc-midnight.png"
+    ],
+    "recordedAt": "2026-10-25T03:36:17.800Z"
+  },
+  "3.1": {
+    "status": "PASS",
+    "evidence": "Manager preview (and the sent body) print contract dates as Oct 25, 2026, Oct 11, 2026, Jan 11, 2027, May 3, 1991; execution date is the America/New_York day. Note (pre-existing, unchanged since Release A 14cbf81b): the built-in \"Current Agreement In Use\" body prints the licence expiry raw, e.g. \"expires 2029-06-01\" (ISO in preview: 2029-06-01), because merge field license_expiration is passed through unformatted (agreements.functions.ts license_expiration: app.license_expiration).",
+    "detail": {
+      "datesInPreview": [
+        "Oct 25, 2026",
+        "Oct 11, 2026",
+        "Jan 11, 2027",
+        "May 3, 1991"
+      ],
+      "isoDatesInPreview": [
+        "2029-06-01"
+      ],
+      "serverNow": "2026-10-26T00:06:07.370Z"
+    },
+    "screenshots": [
+      "pr3-3.1-manager-preview.png"
+    ],
+    "recordedAt": "2026-10-25T03:46:13.317Z"
+  },
+  "3.3": {
+    "status": "PASS",
+    "evidence": "Driver B has 1 voided + 1 signed agreement(s), none open. Portal \u2192 Documents \u2192 Rental Agreements: iphone: \"Rental Agreements Vehicle Rental Agreement Signed Oct 25, 2026 PDF View Vehicle Rental Agreement Cancelled \u00b7 N\" \u2014 Cancelled \u00b7 No Action Needed=true, Review & Sign=0, h-overflow=0px | android: \"Rental Agreements Vehicle Rental Agreement Signed Oct 25, 2026 PDF View Vehicle Rental Agreement Cancelled \u00b7 N\" \u2014 Cancelled \u00b7 No Action Needed=true, Review & Sign=0, h-overflow=0px | desktop: \"Rental Agreements Vehicle Rental Agreement Signed Oct 25, 2026 PDF View Vehicle Rental Agreement Cancelled \u00b7 N\" \u2014 Cancelled \u00b7 No Action Needed=true, Review & Sign=0, h-overflow=0px. The voided agreement's emailed link opens \"This Link Is No Longer Active\". Setup: 'driver' role granted in DB (what approval's provisionDriverAccount inserts) because the seeded application was set approved directly.",
+    "detail": {
+      "iphone": {
+        "text": "Rental Agreements Vehicle Rental Agreement Signed Oct 25, 2026 PDF View Vehicle Rental Agreement Cancelled \u00b7 No Action Needed",
+        "cancelled": true,
+        "reviewAndSign": 0,
+        "overflow": 0,
+        "errors": []
+      },
+      "android": {
+        "text": "Rental Agreements Vehicle Rental Agreement Signed Oct 25, 2026 PDF View Vehicle Rental Agreement Cancelled \u00b7 No Action Needed",
+        "cancelled": true,
+        "reviewAndSign": 0,
+        "overflow": 0,
+        "errors": []
+      },
+      "desktop": {
+        "text": "Rental Agreements Vehicle Rental Agreement Signed Oct 25, 2026 PDF View Vehicle Rental Agreement Cancelled \u00b7 No Action Needed",
+        "cancelled": true,
+        "reviewAndSign": 0,
+        "overflow": 0,
+        "errors": []
+      }
+    },
+    "screenshots": [
+      "pr3-3.3-manager-voided.png",
+      "pr3-3.3-portal-iphone.png",
+      "pr3-3.3-portal-android.png",
+      "pr3-3.3-portal-desktop.png",
+      "pr3-3.3-voided-link-iphone.png"
+    ],
+    "recordedAt": "2026-10-25T03:47:49.906Z"
+  },
+  "3.4": {
+    "status": "PASS",
+    "evidence": "After signing, reopening the same link: iphone: \"This Link Is No Longer Active\"=true, \"Sign In to Your Portal\" link=1 (href /portal), sign form=0; desktop: \"This Link Is No Longer Active\"=true, \"Sign In to Your Portal\" link=1 (href /portal), sign form=0.",
+    "detail": {
+      "iphone": {
+        "inactive": true,
+        "portalLink": 1,
+        "href": "/portal",
+        "signForm": 0
+      },
+      "desktop": {
+        "inactive": true,
+        "portalLink": 1,
+        "href": "/portal",
+        "signForm": 0
+      }
+    },
+    "screenshots": [
+      "pr3-3.4-reused-link-iphone.png",
+      "pr3-3.4-reused-link-desktop.png"
+    ],
+    "recordedAt": "2026-10-25T03:46:13.320Z"
+  },
+  "3.5": {
+    "status": "PASS",
+    "evidence": "UI: typed \"dd\" on the Android-viewport signing page \u2192 input value \"DD\", computed text-transform none, stored metadata.signature.adoption.initials.text \"DD\" (agreement B). Server: on a second agreement the outgoing signAgreement body was rewritten in flight to initials \"ee\" (lowercase, as a devtools replay would send; true) \u2192 server stored \"EE\" (status signed). The printed half is reported separately as 3.5-printed.",
+    "detail": {
+      "uiStored": "DD",
+      "serverStored": {
+        "text": "EE",
+        "style": "script1",
+        "method": "typed"
+      },
+      "files": [
+        "sign-request-original.txt",
+        "sign-request-rewritten.txt"
+      ]
+    },
+    "screenshots": [
+      "pr3-3.5-before-sign-android.png",
+      "pr3-3.5-server-normalised-desktop.png"
+    ],
+    "recordedAt": "2026-10-25T03:50:51.890Z"
+  },
+  "3.6": {
+    "status": "PASS",
+    "evidence": "Signed agreement 7e9b5980-37e5-4e63-9ba8-630a2e3e7dad: metadata.template_key=null (null = built-in \"Current Agreement In Use\", the only template Send accepts: the two library families are Owner-unapproved drafts and also need the pending agreement-number migration), template_version=1, template_label=\"Draft v1 \u2014 Legal Review Required\", template_source=built_in_default, preview_fingerprint=7f18bcd03bf5b986\u2026 (the fingerprint Send matched against the preview; equality with the on-screen preview fingerprint verified in 3.2), signature evidence merged in alongside (metadata keys: signature, template_key, template_label, template_source, template_version, preview_fingerprint). Archive as Release A (SIGNED_ARCHIVE_V1_ENABLED=false path): archive_status=archived, documents row rental-agreements/cccccccc-0000-4000-8000-00000000000b/agreement-7e9b5980-37e5-4e63-9ba8-630a2e3e7dad.pdf (kind rental_agreement), PDF 10708 bytes starting %PDF-, SHA-256 of the stored bytes == agreements.sha256: true; certificate page lists \"Initials Typed, cursive style 1\" and execution date Oct 25, 2026. (documents.content_sha256 stays NULL on this legacy path \u2014 the flag-off path never wrote it; unchanged from Release A.)",
+    "detail": {
+      "agreement": {
+        "id": "7e9b5980-37e5-4e63-9ba8-630a2e3e7dad",
+        "sha256": "fb70809406189ec18cf03a43a1ef7b53a6fd9b0a78620ad88469936baf83dfe8",
+        "body_sha256": "eca49801c82201642a9af1c8ec62618b674a1376134d21090047e160aeb560d2",
+        "archive_status": "archived",
+        "document_id": "a53bff87-2f9d-48d9-b77a-f784a001ad36",
+        "completed_document_id": "a53bff87-2f9d-48d9-b77a-f784a001ad36",
+        "metadata": {
+          "signature": {
+            "sha256": "1e864355034eca4202620820edae01432e0b0acb6a22c7bb811401236b7b8cd5",
+            "adopted_at": "2026-10-26T00:09:36.599Z"
+          },
+          "template_key": null,
+          "template_label": "Draft v1 \u2014 Legal Review Required",
+          "template_source": "built_in_default",
+          "template_version": 1,
+          "preview_fingerprint": "7f18bcd03bf5b986aa0781b9889b097d7e340e306d524ed7ccfba8b38f219ff4"
+        }
+      },
+      "pdfSha": "fb70809406189ec18cf03a43a1ef7b53a6fd9b0a78620ad88469936baf83dfe8"
+    },
+    "files": [
+      "signed-agreement-B.pdf",
+      "signed-agreement-B.txt"
+    ],
+    "recordedAt": "2026-10-25T03:48:02.781Z"
+  },
+  "ADD-touch-signature": {
+    "status": "PASS",
+    "evidence": "Android-viewport (412x915, hasTouch) signing page: signature drawn with CDP Input.dispatchTouchEvent (touchStart/31\u00d7touchMove/touchEnd) on canvas[aria-label=\"Draw Signature\"]; placeholder cleared=true; adopted and signed; stored adoption.signature.method=drawn with 31 points. No horizontal overflow on the signing page at 412 px: scrollWidth 412 / clientWidth 412.",
+    "screenshots": [
+      "pr3-touch-drawn-signature-android.png"
+    ],
+    "recordedAt": "2026-10-25T03:46:13.323Z"
+  },
+  "ADD-mobile-layout": {
+    "status": "PASS",
+    "evidence": "Horizontal overflow (documentElement.scrollWidth \u2212 clientWidth) at 320/360/390/412 px with mobile UA + touch for home, /apply, wizard, /sign, driver portal, back-office Drivers list and driver drawer: 0 px on every page/width. Screenshots at 320 and 412 px.",
+    "detail": {
+      "320-iphoneSE-ua": {
+        "home": {
+          "scrollW": 320,
+          "clientW": 320,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 13
+        },
+        "apply": {
+          "scrollW": 320,
+          "clientW": 320,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 0
+        },
+        "wizard": {
+          "scrollW": 320,
+          "clientW": 320,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 0
+        },
+        "sign": {
+          "scrollW": 320,
+          "clientW": 320,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 1
+        },
+        "portal": {
+          "scrollW": 320,
+          "clientW": 320,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 0
+        },
+        "adminDrivers": {
+          "scrollW": 320,
+          "clientW": 320,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 375
+        },
+        "adminDriverDrawer": {
+          "scrollW": 320,
+          "clientW": 320,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 14
+        }
+      },
+      "360-android-ua": {
+        "home": {
+          "scrollW": 360,
+          "clientW": 360,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 13
+        },
+        "apply": {
+          "scrollW": 360,
+          "clientW": 360,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 0
+        },
+        "wizard": {
+          "scrollW": 360,
+          "clientW": 360,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 0
+        },
+        "sign": {
+          "scrollW": 360,
+          "clientW": 360,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 1
+        },
+        "portal": {
+          "scrollW": 360,
+          "clientW": 360,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 0
+        },
+        "adminDrivers": {
+          "scrollW": 360,
+          "clientW": 360,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 375
+        },
+        "adminDriverDrawer": {
+          "scrollW": 360,
+          "clientW": 360,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 14
+        }
+      },
+      "390-iphone13": {
+        "home": {
+          "scrollW": 390,
+          "clientW": 390,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 13
+        },
+        "apply": {
+          "scrollW": 390,
+          "clientW": 390,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 0
+        },
+        "wizard": {
+          "scrollW": 390,
+          "clientW": 390,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 0
+        },
+        "sign": {
+          "scrollW": 390,
+          "clientW": 390,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 1
+        },
+        "portal": {
+          "scrollW": 390,
+          "clientW": 390,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 0
+        },
+        "adminDrivers": {
+          "scrollW": 390,
+          "clientW": 390,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 375
+        },
+        "adminDriverDrawer": {
+          "scrollW": 390,
+          "clientW": 390,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 14
+        }
+      },
+      "412-android": {
+        "home": {
+          "scrollW": 412,
+          "clientW": 412,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 13
+        },
+        "apply": {
+          "scrollW": 412,
+          "clientW": 412,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 0
+        },
+        "wizard": {
+          "scrollW": 412,
+          "clientW": 412,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 0
+        },
+        "sign": {
+          "scrollW": 412,
+          "clientW": 412,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 1
+        },
+        "portal": {
+          "scrollW": 412,
+          "clientW": 412,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 0
+        },
+        "adminDrivers": {
+          "scrollW": 412,
+          "clientW": 412,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 375
+        },
+        "adminDriverDrawer": {
+          "scrollW": 412,
+          "clientW": 412,
+          "overflowPx": 0,
+          "offenders": [],
+          "smallTapTargets": 14
+        }
+      }
+    },
+    "recordedAt": "2026-10-25T03:50:21.981Z",
+    "needsRealDevices": [
+      "iOS Safari / Android Chrome soft keyboards: numeric keypad for type=tel/inputmode=tel, email keyboard, autocapitalize behaviour (markup verified only)",
+      "OS/browser autofill suggestions for name/email/tel and address-level1/2 (autocomplete tokens verified only)",
+      "Safe-area insets / notch, iOS dynamic toolbar and 100vh behaviour, sticky Continue bar over the keyboard",
+      "Real finger drawing latency/pressure and iOS scroll-vs-draw conflicts on the signature canvas (CDP touch events through Chromium verified only)",
+      "WebKit rendering/layout differences (Playwright here ran Chromium with iPhone UA; no WebKit engine)",
+      "pagehide/visibilitychange flush when iOS backgrounds or kills the tab; real offline transitions (airplane mode) vs DevTools offline",
+      "Cursive signature fonts (fonts.googleapis.com blocked here; typed marks rendered in fallback font in the browser)",
+      "Email-client link handling (opening /thank-you?t= and /sign/ links from Gmail/Mail apps, in-app browsers)"
+    ]
+  },
+  "3.5-printed": {
+    "status": "BLOCKED",
+    "evidence": "Not observable with any template Send accepts in this build: the sendable built-in \"Current Agreement In Use\" body has no Initial cells, and its signing certificate prints only \"Initials: Typed, cursive style 1\" (describeMark), not the letters. The PDF text layer of the signed agreement contains no initials (neither \"DD\" nor \"dd\"). Templates with Initial cells (the two library families) are Owner-unapproved drafts and need the pending agreement-number migration, so they cannot be sent on Preview either.",
+    "recordedAt": "2026-10-25T03:50:51.891Z"
+  },
+  "1.4": {
+    "status": "PASS",
+    "evidence": "Owner \u2192 driver B \u2192 Documents: Signed agreement card (\"Signed agreement Uploaded signed-agreement-7e9b5980.pdf Oct 24, 2026 Verify Needs New Repl\u2026\") has 0 Delete buttons (the ordinary \"Other document\" card shows 1 once it holds a file). Doc kind=rental_agreement, category=agreement, bucket=rental-agreements.",
+    "screenshots": [
+      "pr1-1.4-signed-agreement-no-delete.png"
+    ],
+    "recordedAt": "2026-10-25T03:51:55.715Z"
+  },
+  "1.5": {
+    "status": "PASS",
+    "evidence": "Replayed the captured deleteDocument request (Owner session) with the signed agreement's document id \u2192 HTTP 200, refusal message \"Signed agreements are permanent records and can't be deleted from the document vault.\" present=true; documents row still present=true; PDF object still in storage=true; agreements.document_id still linked=true.",
+    "detail": {
+      "status": 200,
+      "text": "{\"t\":10,\"i\":0,\"p\":{\"k\":[\"result\",\"error\",\"context\"],\"v\":[{\"t\":2,\"s\":1},{\"t\":25,\"i\":1,\"s\":{\"message\":{\"t\":1,\"s\":\"Signed agreements are permanent records and can't be deleted from the document vault.\"}},\"c\":\"$TSR/Error\"},{\"t\":10,\"i\":2,\"p\":{\"k\":[],\"v\":[]},\"o\":0}]},\"o\":0}"
+    },
+    "recordedAt": "2026-10-25T03:51:55.717Z"
+  },
+  "1.6": {
+    "status": "PASS",
+    "evidence": "Owner uploaded a 1\u00d71 PNG into \"Other document\" via the vault uploader (signed-upload URL \u2192 in-memory storage), then clicked Delete and confirmed: documents row removed=true, storage object removed=true.",
+    "screenshots": [
+      "pr1-1.6-ordinary-uploaded.png",
+      "pr1-1.6-ordinary-deleted.png"
+    ],
+    "recordedAt": "2026-10-25T03:51:55.718Z"
+  },
+  "0.1": {
+    "status": "BLOCKED",
+    "evidence": "data-commit-sha is injected by Lovable hosting; a local Vite dev server has no such attribute (none in the repo source). Locally verified instead: the served worktree is detached at 348ccdf2c98aa42867a193cfd53a398cabc5e193, tree c0de36aae0577fbdac34359e4d97de3513bedccf (matches the candidate).",
+    "recordedAt": "2026-10-25T04:01:17.076Z"
+  },
+  "0.2": {
+    "status": "PASS",
+    "evidence": "Desktop loads (HTTP 200) of home, /apply, /admin (Owner), /admin Drivers (Manager), /portal and portal Documents (driver). Console errors identical to the Release A 14cbf81b baseline run against the same stack: only home's 404 for /__l5e/assets-v1/\u2026/skyline-tampa.jpg (Lovable-hosted asset path, absent locally) on both. External requests (fonts.googleapis.com, googletagmanager.com) were blocked by the harness on both. (A hydration-attribute warning seen on home only while the RC server ran with the faked evening clock disappears with the real clock \u2014 harness artefact.)",
+    "detail": {
+      "rc": {
+        "home": {
+          "status": 200,
+          "title": "Car Rentals For Uber, Lyft & Gig Apps | Unlimited Miles",
+          "consoleErrors": [
+            "Failed to load resource: the server responded with a status of 404 ()"
+          ],
+          "blockedExternal": 9,
+          "failedLocal": [
+            "404 GET /__l5e/assets-v1/d4fc0b79-f381-4c69-b7ea-9c6148e2be14/skyline-tampa.jpg"
+          ]
+        },
+        "apply": {
+          "status": 200,
+          "title": "Apply \u2014 REAL RENTALS",
+          "consoleErrors": [],
+          "blockedExternal": 2,
+          "failedLocal": []
+        },
+        "admin-owner": {
+          "status": 200,
+          "title": "Admin \u2014 REAL RENTALS",
+          "consoleErrors": [],
+          "blockedExternal": 2,
+          "failedLocal": []
+        },
+        "admin-manager-drivers": {
+          "status": 200,
+          "title": "Admin \u2014 REAL RENTALS",
+          "consoleErrors": [],
+          "blockedExternal": 2,
+          "failedLocal": []
+        },
+        "portal-driver": {
+          "status": 200,
+          "title": "Driver Portal \u2014 REAL RENTALS",
+          "consoleErrors": [],
+          "blockedExternal": 2,
+          "failedLocal": []
+        },
+        "portal-driver-documents": {
+          "status": 200,
+          "title": "Driver Portal \u2014 REAL RENTALS",
+          "consoleErrors": [],
+          "blockedExternal": 2,
+          "failedLocal": []
+        }
+      },
+      "releaseA": {
+        "home": {
+          "status": 200,
+          "title": "Car Rentals For Uber, Lyft & Gig Apps | Unlimited Miles",
+          "consoleErrors": [
+            "Failed to load resource: the server responded with a status of 404 ()"
+          ],
+          "blockedExternal": 9,
+          "failedLocal": [
+            "404 GET /__l5e/assets-v1/d4fc0b79-f381-4c69-b7ea-9c6148e2be14/skyline-tampa.jpg"
+          ]
+        },
+        "apply": {
+          "status": 200,
+          "title": "Apply \u2014 REAL RENTALS",
+          "consoleErrors": [],
+          "blockedExternal": 2,
+          "failedLocal": []
+        },
+        "admin-owner": {
+          "status": 200,
+          "title": "Admin \u2014 REAL RENTALS",
+          "consoleErrors": [],
+          "blockedExternal": 2,
+          "failedLocal": []
+        },
+        "admin-manager-drivers": {
+          "status": 200,
+          "title": "Admin \u2014 REAL RENTALS",
+          "consoleErrors": [],
+          "blockedExternal": 2,
+          "failedLocal": []
+        },
+        "portal-driver": {
+          "status": 200,
+          "title": "Driver Portal \u2014 REAL RENTALS",
+          "consoleErrors": [],
+          "blockedExternal": 2,
+          "failedLocal": []
+        },
+        "portal-driver-documents": {
+          "status": 200,
+          "title": "Driver Portal \u2014 REAL RENTALS",
+          "consoleErrors": [],
+          "blockedExternal": 2,
+          "failedLocal": []
+        }
+      }
+    },
+    "screenshots": [
+      "gate-rc-home.png",
+      "gate-rc-admin-owner.png",
+      "gate-rc-portal-driver.png",
+      "gate-releaseA-home.png"
+    ],
+    "recordedAt": "2026-10-25T04:01:17.078Z"
+  },
+  "0.3": {
+    "status": "PASS",
+    "evidence": "Source of the served RC: DOCUMENT_CONTENT_SHA256_ENABLED = false (src/lib/document-content-sha.ts:23), IDENTITY_VERIFICATION_ENABLED = false (src/lib/identity-verification.ts:9); both files unchanged from 14cbf81b; APPLICATION_RESUME_ENABLED = false and APPLICATION_RESUME_ATOMIC_ENABLED unset in the app env. Behavioural evidence: archive took the flag-off path (documents.content_sha256 not written).",
+    "recordedAt": "2026-10-25T04:01:17.080Z"
+  },
+  "4.4-4.5-releaseA-baseline": {
+    "status": "INFO",
+    "evidence": "Release A 14cbf81b on the same stack (port 5300, stock PostgREST 12.2.3): cron runs returned 200/200/200; emails per seeded row: open24=4, open72=2, openAbandoned=2, deleted=4, status_declined=2, status_closed=2; reminder link lifetimes 1209600s (Release A minted 14-day session links). Release A therefore DOES send reminders here \u2014 the RC's zero-send (4.4/4.5) is a regression in this environment, caused by PR 4's claim PATCH (or= + select).",
+    "detail": {
+      "r1": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "considered_24h": 51,
+          "considered_72h": 1,
+          "considered_abandoned": 21,
+          "sent_24h": 40,
+          "sent_72h": 1,
+          "sent_abandoned": 21
+        }
+      },
+      "r2": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "considered_24h": 51,
+          "considered_72h": 1,
+          "considered_abandoned": 21,
+          "sent_24h": 40,
+          "sent_72h": 1,
+          "sent_abandoned": 21
+        }
+      },
+      "r3": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "considered_24h": 11,
+          "considered_72h": 0,
+          "considered_abandoned": 0,
+          "sent_24h": 0,
+          "sent_72h": 0,
+          "sent_abandoned": 0
+        }
+      },
+      "per": {
+        "open24": [
+          "Finish Your REAL RENTALS Quote \u2014 Cars Are Moving Fast",
+          "Finish Your REAL RENTALS Quote \u2014 Cars Are Moving Fast",
+          "Bea, your REAL RENTALS application is saved",
+          "Bea, your REAL RENTALS application is saved"
+        ],
+        "open72": [
+          "Bea, your REAL RENTALS application is still open",
+          "Bea, your REAL RENTALS application is still open"
+        ],
+        "openAbandoned": [
+          "Finish Your REAL RENTALS Quote \u2014 Cars Are Moving Fast",
+          "Finish Your REAL RENTALS Quote \u2014 Cars Are Moving Fast"
+        ],
+        "deleted": [
+          "Finish Your REAL RENTALS Quote \u2014 Cars Are Moving Fast",
+          "Finish Your REAL RENTALS Quote \u2014 Cars Are Moving Fast",
+          "Bea, your REAL RENTALS application is saved",
+          "Bea, your REAL RENTALS application is saved"
+        ],
+        "status_declined": [
+          "Bea, your REAL RENTALS application is saved",
+          "Bea, your REAL RENTALS application is saved"
+        ],
+        "status_closed": [
+          "Bea, your REAL RENTALS application is saved",
+          "Bea, your REAL RENTALS application is saved"
+        ]
+      },
+      "lives": [
+        1209600,
+        1209600,
+        1209600,
+        1209600,
+        1209600,
+        1209600,
+        1209600,
+        1209600,
+        1209600,
+        1209600,
+        1209600,
+        1209600,
+        1209600,
+        1209600,
+        1209600,
+        1209600
+      ]
+    },
+    "recordedAt": "2026-10-25T04:01:34.753Z"
+  },
+  "3.2-releaseA-baseline": {
+    "status": "INFO",
+    "evidence": "Same steps on Release A 14cbf81b (port 5300, same fake clock: preview 23:56:18Z = 7:56 pm EDT, Send 00:00:40Z): Send REFUSED with \"The agreement changed since it was previewed \u2026 Regenerate the preview\" \u2014 the UTC roll-over fingerprint bug the RC fixes. Confirms the 3.2 test discriminates.",
+    "detail": {
+      "previewAt": "2026-10-25T23:56:18.270Z",
+      "sendAt": "2026-10-26T00:00:40.000Z",
+      "fpPreview": "620901acefb1",
+      "toast": "The agreement changed since it was previewed (driver, vehicle, dates, rate, deposit or template). Regenerate the preview and review it again before sending.",
+      "execInPreview": "Oct 25, 2026",
+      "execInSent": null,
+      "dates": []
+    },
+    "screenshots": [
+      "pr3-3.2-preview-before-utc-midnight.png",
+      "pr3-3.2-sent-after-utc-midnight.png"
+    ],
+    "recordedAt": "2026-10-25T04:07:10.066Z"
+  },
+  "_meta": {
+    "candidate": "348ccdf2c98aa42867a193cfd53a398cabc5e193 (tree c0de36aae0577fbdac34359e4d97de3513bedccf); baseline 14cbf81b",
+    "stack": "PG 17.6 (/opt/pg17) 127.0.0.1:55502 db rce2e (migrations replayed from the RC worktree; 4 historical migrations skipped on replay: 1 grant-before-column, 3 duplicate policies \u2014 same as the eSign harness); PostgREST 12.2.3 :55503; Bun gateway :55504 (scratchpad proxy.ts); RC vite dev :5299; Release A vite dev :5300",
+    "stubs": [
+      "Gateway (proxy.ts, adapted copy of scripts/esign-harness/proxy.ts): /rest/v1 \u2192 local PostgREST; in-memory /storage/v1 (upload, signed upload/read URLs, list, remove); minimal GoTrue (/token password+refresh, /user, /verify magic link, admin users/generate_link) issuing HS256 JWTs signed with a harness secret (3-day lifetime so a fake-clocked server accepts them); /__capture sinks",
+      "Email: RESEND_API_KEY is a dummy; a Node --import preload (net-guard.mjs) rewrites fetch to api.resend.com onto the local capture sink and refuses DNS/fetch to any non-loopback host (log: 182 captured, 0 refused)",
+      "Browser: Playwright context routes abort every non-127.0.0.1 request (blocked: fonts.googleapis.com, www.googletagmanager.com, upload.wikimedia.org)",
+      "Fake clock: Node --import preload shifting Date for the app server only (3.2 and baseline 3.2)",
+      "Vite config wrapper only widening server.fs.allow (worktree node_modules are symlinks; pdf.js worker otherwise 403s)",
+      "Optional, explicitly labelled runs: gateway rewrite adding or=-filter columns to select= on PATCH (emulates a PostgREST without the or+select RETURNING bug) \u2014 used only for the *-under-orfix-emulation rows",
+      "Test setup done directly in the disposable DB: seeded auth.users + user_roles (admin=Owner, team=Manager), agreement-ready synthetic applications/vehicles, driver role for the seeded portal user, statuses new/complete/reviewing for 1.1, token/created_at shifts for expiry tests, cron candidate rows, cron token"
+    ],
+    "fidelityVsLovablePreview": "Same app code and same SQL schema replayed locally, but: dev server (not the Lovable/Cloudflare build), local PostgREST 12.2.3 (hosted version unknown \u2014 matters for 4.4/4.5), emulated GoTrue/Storage, no real email/SMS, Chromium-only mobile emulation, no Lovable preview auth broker or data-commit-sha."
+  }
+}

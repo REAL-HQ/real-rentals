@@ -1,8 +1,8 @@
 # Post-S1 Preview verification: PR 1, PR 4, PR 3 (release candidate)
 
-**What this covers.** The candidate is Release A `14cbf81b`, plus `feature/resume-reliability` `3cc10e14` (which includes PR 1,
+**What this covers.** The candidate is Release A `14cbf81b`, plus `feature/resume-reliability` `733804dc` (which includes PR 1,
 `9c66abd8`), plus `feature/esign-signing-fixes` `1bcb437a`. The merged tree is
-`c0de36aae0577fbdac34359e4d97de3513bedccf`.
+`a9362dfbc9e08c8b61abc7d4825cb1b1fb514e3e` (commit `700e7bcc`).
 
 **Changes involved.** These are app-only changes: no migration, no SQL, no feature flags, and no change to Security 0031 or S1.
 
@@ -36,7 +36,7 @@ production records to satisfy a check.
 | # | Steps | Expected |
 |---|---|---|
 | 4.1 | /apply, part 1: type in fields | Indicator shows "Saving…", then "Saved" |
-| 4.2 | Switch the browser to offline (devtools), type, then go back online | Shows "Couldn't save." and "Retrying automatically.", then "Saved" once online. No duplicate application is created |
+| 4.2 | Switch the browser to offline (devtools), type, then go back online | Shows "Couldn't Save — Retry" while offline, then "Saved" once online. No duplicate application is created |
 | 4.3 | Request a recovery link twice for the same email | Each link signs in once and expires after 30 minutes; a second use is refused. An already-open applicant session is **not** signed out |
 | 4.4 | Reminder email (capture-only environment) | The link in the email is a 30-minute single-use recovery link |
 | 4.5 | Reminder candidates | Deleted, purged, closed or decided applications get no reminder; one email per stage (no duplicate send) |
