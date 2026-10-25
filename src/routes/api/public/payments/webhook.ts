@@ -200,7 +200,10 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
       let q = admin.from('payments').update({ status: 'failed', failure_reason: failure })
         .in('id', ids).neq('status', 'paid').neq('status', 'refunded');
       if (ids.length === 1) q = q.or(`stripe_payment_intent_id.is.null,stripe_payment_intent_id.eq.${pi.id}`);
-      const r = must(await q.select('id'));
+      // PostgREST 12 re-applies or= to the RETURNING rows: every column the
+      // or() names must be selected, or the write fails with 42703. This one
+      // is not changed by the patch, so the updated row still passes it.
+      const r = must(await q.select('id, stripe_payment_intent_id'));
       changed = r.data?.length ?? 0;
     }
   } else {
@@ -240,9 +243,12 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
     ? noticeIds
     : ((await admin.from('payments').select('id').eq('stripe_payment_intent_id', pi.id)).data ?? []).map((r: any) => r.id);
   if (!target.length) return;
+  // isDistinct, not or(is.null,neq): PostgREST 12 re-applies or= to the
+  // RETURNING rows after the write, so an or() on the column being claimed
+  // either fails (42703) or claims the row and returns [] — no notice sent.
   let claim = admin.from('payments').update({ notified_status: status })
     .in('id', target).eq('status', status)
-    .or(`notified_status.is.null,notified_status.neq.${status}`);
+    .isDistinct('notified_status', status);
   if (status === 'failed' && ids.length === 1) claim = claim.eq('stripe_payment_intent_id', pi.id);
   const claimed = must(await claim.select('id'));
   if (!claimed.data?.length) return; // already notified / stale — no second email
@@ -369,7 +375,7 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
       if (manualIds.length) {
         const claimed = must(await admin.from('payments').update({ notified_status: 'paid' })
           .in('id', manualIds).eq('status', 'paid')
-          .or('notified_status.is.null,notified_status.neq.paid')
+          .isDistinct('notified_status', 'paid') // not or(): see the claim above
           .select('id'));
         if (claimed.data?.length) {
           try {

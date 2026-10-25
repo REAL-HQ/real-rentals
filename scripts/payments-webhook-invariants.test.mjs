@@ -73,10 +73,43 @@ for (const s of allUpdates) {
 // deliveries of the same Stripe event cannot both win and email twice.
 const noticeWrites = statements.filter((s) => /\.update\(\{\s*notified_status:/.test(s.text));
 assert.ok(noticeWrites.length >= 2, `expected notified_status claims, found ${noticeWrites.length}`);
+// The guard is `notified_status IS DISTINCT FROM <outcome>`, written as
+// .isDistinct(). It used to be .or('notified_status.is.null,notified_status.neq.X'),
+// which PostgREST 12 re-applies to the RETURNING rows after the write: with
+// select('id') every claim failed with 42703, and selecting the column would
+// claim the row yet return [] — either way no notice was ever sent.
 for (const s of noticeWrites) {
-  assert.match(s.text, /\.or\(\s*[`'"]notified_status\.is\.null,notified_status\.neq\./,
-    `${FILE}:${s.line} sets notified_status without the is-null/neq claim guard — a replay could email twice`);
+  assert.match(s.text, /\.isDistinct\(\s*'notified_status',/,
+    `${FILE}:${s.line} sets notified_status without the isDistinct claim guard — a replay could email twice`);
+  assert.doesNotMatch(s.text, /\.or\(/,
+    `${FILE}:${s.line} guards a notice claim with or(), which PostgREST re-applies after the write`);
 }
+
+// ---- 2b. or() on a payments write must survive PostgREST's re-application --
+// PostgREST 12 applies a mutation's or= again to the RETURNING rows. So every
+// column an or() names must be in the select (else 42703), and none may be a
+// column the same update writes (else the updated row is filtered out). The
+// or() is often added on its own line (`q = q.or(...)`), so scan by line, with
+// the update a few lines above and the select a few lines below.
+let orWrites = 0;
+lines.forEach((line, i) => {
+  const m = line.match(/\.or\(\s*[`'"]([^`'"]*)[`'"]/);
+  if (!m) return;
+  const above = lines.slice(Math.max(0, i - 4), i + 1).join("\n");
+  const upd = [...above.matchAll(/\.update\(([^;]*?)\)\s*\n?\s*\./g)].pop();
+  if (!/\.update\(/.test(above)) return; // a read: PostgREST does not re-apply it
+  orWrites++;
+  const below = lines.slice(i).filter((l) => !/^\s*\/\//.test(l)).slice(0, 4).join("\n");
+  const sel = below.match(/\.select\(\s*'([^']*)'/);
+  assert.ok(sel, `${FILE}:${i + 1} uses or() on a payments update without a returning select`);
+  const selected = sel[1].split(",").map((c) => c.trim());
+  const patchKeys = [...(upd?.[1] ?? "").matchAll(/(\w+):/g)].map((k) => k[1]);
+  for (const part of m[1].split(",")) {
+    const col = part.trim().split(".")[0];
+    assert.ok(selected.includes(col), `${FILE}:${i + 1} or() names ${col} but select('${sel[1]}') omits it — PostgREST answers 42703`);
+    assert.ok(!patchKeys.includes(col), `${FILE}:${i + 1} or() filters on ${col}, which the same update writes — the row comes back empty`);
+  }
+});
 
 // ---- 3. The unmatched-invoice warnings never write a charge ----------------
 function bodyOf(name) {
@@ -115,5 +148,6 @@ assert.doesNotMatch(src, /\b[A-Z0-9_]+_ENABLED\b/,
 console.log(
   `payments webhook invariants: ${statements.length} payments statements — ` +
   `${statusWrites.length} status writes guarded, ${noticeWrites.length} notice claims guarded, ` +
+  `${orWrites} or()-guarded write(s) survive PostgREST re-application, ` +
   `warn helpers write no charge, manual paid rows preserved`,
 );
