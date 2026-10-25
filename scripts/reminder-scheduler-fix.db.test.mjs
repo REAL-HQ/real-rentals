@@ -244,6 +244,27 @@ try {
     "it posts to the same URL with the route's own token (unchanged lookup)");
   const ver = ro("verify-after-readonly.sql").reminder_scheduler_verify ?? ro("verify-after-readonly.sql");
   ok(ver.job_fixed === true && ver.ops_reminders_untouched === true && ver.evidence_rows === 1, "verify-after: fixed, ops-reminders untouched, one evidence row");
+  // A simulated first run, to show verify-after keeps the five outcomes apart:
+  // executed, HTTP answered, claimed, provider accepted, delivered.
+  psql(`INSERT INTO cron.job_run_details(jobid, start_time, status) VALUES (2, now() + interval '1 second', 'succeeded');
+    INSERT INTO net._http_response(id, status_code, content, created) VALUES (1, 200,
+      '{"ok":true,"considered_24h":1,"considered_72h":0,"considered_abandoned":1,"sent_24h":1,"sent_72h":0,"sent_abandoned":1,"skipped_claimed":0,"failed":0,"capped":0,"max_claims_per_run":10}', now() + interval '2 seconds');
+    SET session_replication_role = replica;
+    UPDATE public.applications SET recovery_email_sent_24h = now() + interval '3 seconds' WHERE email = 'h24-eligible@example.test';
+    INSERT INTO public.email_deliveries(workflow, recipient, state, accepted_at, delivered_at, created_at, updated_at) VALUES
+      ('application_recovery', 'h24-eligible@example.test', 'delivered', now(), now() + interval '9 seconds', now() + interval '4 seconds', now()),
+      ('application_recovery', 'abandoned-eligible@example.test', 'accepted', now(), NULL, now() + interval '5 seconds', now()),
+      ('application_resume', 'other@example.test', 'accepted', now(), NULL, now() + interval '6 seconds', now());`);
+  {
+    const v = ro("verify-after-readonly.sql");
+    const r = v.reminder_scheduler_verify ?? v;
+    ok(r["1_cron_executed"]?.[0]?.status === "succeeded", "verify-after 1: the cron execution is reported on its own");
+    ok(r["2_http"]?.[0]?.status === 200 && r["2_http"][0].report?.sent_24h === 1 && r["2_http"][0].report?.max_claims_per_run === 10,
+      "verify-after 2: the HTTP status and the route's own report (incl. the per-run cap)");
+    ok(r["3_claimed"].s24 === 1 && r["3_claimed"].stamped_on_closed_or_deleted === 0, "verify-after 3: claims (stamps) counted separately");
+    ok(r["4_5_email_outcomes"].attempts === 2 && r["4_5_email_outcomes"].provider_accepted === 2 && r["4_5_email_outcomes"].delivered === 1,
+      "verify-after 4/5: provider acceptance and webhook-confirmed delivery are separate; other workflows are excluded");
+  }
   ok(/CRON_FIX_EVIDENCE_REPLAY/.test(send(fix)), "a replay is refused");
 
   // 5. Rollback.

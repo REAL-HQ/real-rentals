@@ -425,5 +425,49 @@ const ok = (name) => {
   ok("24h/72h/abandoned reminders mint 30-minute single-use recovery links and say so");
 }
 
+// ------------------------------------------------------------- per-run cap
+{
+  assert.equal(cron.MAX_REMINDER_CLAIMS_PER_RUN, 10);
+  // 15 open drafts in the 24h window plus 3 abandoned partials: 18 candidates.
+  const rows = [
+    ...Array.from({ length: 3 }, (_, i) => app({ id: `ab-${i}`, created_at: hoursAgo(5), recovery_sent_at: null })),
+    ...Array.from({ length: 15 }, (_, i) => app({ id: `h24-${String(i).padStart(2, "0")}` })),
+  ];
+  const admin = createAdmin(rows);
+  const s = senders();
+  const report = await cron.runWizardRecovery(admin, s.deps);
+  assert.equal(s.sent.length, 10, `sent ${s.sent.length}`);
+  assert.equal(report.sent_abandoned + report.sent_24h + report.sent_72h, 10);
+  assert.equal(report.capped, 8);
+  assert.equal(report.max_claims_per_run, 10);
+  const stamped = rows.filter((r) => r.recovery_email_sent_24h || (r.recovery_sent_at && r.recovery_sent_at !== "already"));
+  assert.equal(stamped.length, 10, "only the sent rows are stamped");
+  // Rows past the cap were never claimed, so no claim update was issued for them.
+  const claimUpdates = admin.log.filter((l) => l.op === "update" && l.values && Object.values(l.values).some((v) => v !== null));
+  assert.equal(claimUpdates.length, 10);
+  ok("a run claims and sends at most 10 reminders; the rest stay unstamped and are reported as capped");
+
+  // The next run, still inside the window, reaches the remaining rows (again at most 10).
+  const s2 = senders();
+  const report2 = await cron.runWizardRecovery(admin, s2.deps);
+  assert.equal(s2.sent.length, 8);
+  assert.equal(report2.capped, 0);
+  assert.equal(new Set([...s.sent, ...s2.sent].map((x) => `${x.kind}:${x.applicationId}`)).size, 18, "nobody emailed twice");
+  ok("the next run sends the remainder once each; no duplicates across runs");
+}
+
+{
+  // A claim whose send is refused and released still counts toward the cap,
+  // so failures can only lower a run's emails.
+  const rows = Array.from({ length: 12 }, (_, i) => app({ id: `f-${String(i).padStart(2, "0")}` }));
+  const admin = createAdmin(rows);
+  const s = senders({ result: (a) => (a.applicationId === "f-00" ? { ok: false, error: "rejected", status: 422 } : { ok: true }) });
+  const report = await cron.runWizardRecovery(admin, s.deps);
+  assert.equal(s.sent.length, 10, "10 claims made (one of them refused by the provider)");
+  assert.equal(report.sent_24h, 9);
+  assert.equal(report.capped, 2);
+  ok("a refused send still counts as a claim toward the cap");
+}
+
 rmSync(out, { recursive: true, force: true });
 console.log(`${passed} wizard-recovery cron checks passed`);

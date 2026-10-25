@@ -30,6 +30,16 @@ import type { SendResult } from "@/lib/email.server";
 
 type Admin = typeof import("@/integrations/supabase/client.server").supabaseAdmin;
 
+/**
+ * At most this many reminder claims per run, across all three reminders. A
+ * claim is what leads to an email, so this bounds a run's emails no matter how
+ * many rows the windows hold at run time (for instance the first run after the
+ * scheduler is repaired). Rows past the cap are not stamped, so a later run can
+ * still reach them while they are in their window; a missed nudge is better
+ * than a burst. Normal volume (a few a day) never reaches it.
+ */
+export const MAX_REMINDER_CLAIMS_PER_RUN = 10;
+
 /** PostgREST `in` list for the closed statuses. Values are fixed identifiers. */
 export const CLOSED_STATUS_FILTER = `(${CLOSED_RESUME_STATUSES.join(",")})`;
 
@@ -75,6 +85,9 @@ export type WizardRecoveryReport = {
   sent_abandoned: number;
   skipped_claimed: number;
   failed: number;
+  /** Candidates left unclaimed because the run reached MAX_REMINDER_CLAIMS_PER_RUN. */
+  capped: number;
+  max_claims_per_run: number;
 };
 
 /**
@@ -227,7 +240,10 @@ export async function runWizardRecovery(
     sent_abandoned: 0,
     skipped_claimed: 0,
     failed: 0,
+    capped: 0,
+    max_claims_per_run: MAX_REMINDER_CLAIMS_PER_RUN,
   };
+  let claims = 0;
 
   /** Claim, send, and release only on a send that definitely did not happen. */
   async function claimAndSend(
@@ -238,6 +254,10 @@ export async function runWizardRecovery(
     extra?: (q: any) => any,
   ): Promise<boolean> {
     if (!isRecoveryCandidate(row)) return false;
+    if (claims >= MAX_REMINDER_CLAIMS_PER_RUN) {
+      report.capped++;
+      return false;
+    }
     const stamp = new Date().toISOString();
     const claim = await claimRecoverySend(admin, row.id, column, stamp, extra);
     if (claim.error) {
@@ -250,6 +270,9 @@ export async function runWizardRecovery(
       report.skipped_claimed++;
       return false;
     }
+    // Counted at the claim, before the send: a claim later released still
+    // counts, so the cap can only lower a run's emails.
+    claims++;
     let result: SendResult | void | undefined;
     let threw = false;
     try {

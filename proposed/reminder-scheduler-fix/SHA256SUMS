@@ -3,5 +3,5 @@
 698b62657ddb3c358fb26709f62ad602434003d5e03496e7276098171c90761e  rollback.sql
 31116862c415ae0516ec09ed8447f1d7a30f7300ad9ab39301a0ffb2fa233a31  request-rollback-wizard-recovery-cron.sql
 070444d569864f81a670ac2f79becc75e162e365cd7998262d20f9e4f9ad93af  preflight-readonly.sql
-6db1b4a6cf81faf7d2d5df2f441a2be947b513f3b98ae1e11c219cf9f713c2e3  verify-after-readonly.sql
+8d746833a0393ca777de5d96f534ce3099e17b471d8a80f77f898583e4cf9cb0  verify-after-readonly.sql
 2c8c8967cee235af6a2475044b8ad5638b7361b985f8a74c699b9655cba966f7  ../../scripts/sql-guard/gen-guard3.py

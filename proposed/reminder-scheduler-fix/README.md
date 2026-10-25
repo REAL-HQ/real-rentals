@@ -55,7 +55,23 @@ email (only if `partial`), one 24h nudge and one 72h nudge, each at most once.
 
 ## First-run safeguards
 
-1. **Released code only.** Install only after A.1 (`4a0eed9c`) is verified live.
+**Endpoint cap (app side; must be live before the SQL).** In the released A.1, `runWizardRecovery` had **no
+per-run limit**: no `.limit()` on its reads and no cap in its send loops. The package's 10-email gate is
+checked when the package is submitted, but the job runs later, so this branch adds the cap in the app.
+
+- `MAX_REMINDER_CLAIMS_PER_RUN = 10` is in `src/lib/wizard-recovery.server.ts`. It counts claims across all
+  three reminders, at the moment of the claim, before the send.
+- A claim that is later released still counts, so the cap can only lower a run's emails.
+- Candidates past the cap are left unstamped and reported as `capped`, so a later run can reach them while
+  they are still in their window.
+- The route's JSON report carries `capped` and `max_claims_per_run`.
+- Unchanged: eligibility windows, claim-before-send, release rules and 30-minute links.
+- **This is an app change.** It has to ship in an app release, then be verified live on drivereal.com,
+  before the SQL is submitted.
+
+
+1. **Released code only.** Install only after the release carrying the endpoint cap (A.1 `4a0eed9c` +
+   the cap commit) is verified live by its served `data-commit-sha`, not by the Lovable branch selector.
    - A.1 brings claim-before-send, the real closed-status list (Release A's filter named a phantom
      `rejected` status), 30-minute single-use links, and an `or=` claim that works on 14.5.
    - Release A's code would mint 14-day links and could email declined or closed applicants.
@@ -89,12 +105,13 @@ email (only if `partial`), one 24h nudge and one 72h nudge, each at most once.
 | `rollback.sql` | `698b62657ddb3c358fb26709f62ad602434003d5e03496e7276098171c90761e` |
 | `request-rollback-wizard-recovery-cron.sql` (separate approval) | `31116862c415ae0516ec09ed8447f1d7a30f7300ad9ab39301a0ffb2fa233a31` |
 | `preflight-readonly.sql` | `070444d569864f81a670ac2f79becc75e162e365cd7998262d20f9e4f9ad93af` |
-| `verify-after-readonly.sql` | `6db1b4a6cf81faf7d2d5df2f441a2be947b513f3b98ae1e11c219cf9f713c2e3` |
+| `verify-after-readonly.sql` | `8d746833a0393ca777de5d96f534ce3099e17b471d8a80f77f898583e4cf9cb0` |
 | `scripts/sql-guard/gen-guard3.py` (the reviewed guard generator) | `2c8c8967…66f7` |
 
 ## Production sequence (each step needs approval; single submission; no automatic retry)
 
-1. **Prerequisite:** A.1 is verified live (`data-commit-sha` `4a0eed9c` on drivereal.com).
+1. **Prerequisite:** the app release with the endpoint cap is verified live (`data-commit-sha` on
+   drivereal.com equals the approved commit).
 2. **Preflight:** `preflight-readonly.sql` with `SET TRANSACTION READ ONLY`.
    - Every gate must be true.
    - `first_run_eligible` (h24 + h72 + abandoned) must be at most 10.
@@ -105,12 +122,20 @@ email (only if `partial`), one 24h nudge and one 72h nudge, each at most once.
    - `job_fixed` true;
    - `ops_reminders_untouched` true;
    - `evidence_rows` 1.
-5. After the next :15 run, `verify-after-readonly.sql` again:
-   - the latest run `succeeded`;
-   - an HTTP 200 response with the route's JSON report;
-   - sends equal to stamps and at most 10;
-   - `stamped_on_closed_or_deleted` = 0;
-   - reminder links of the 30-minute kind.
+5. After the next :15 run, `verify-after-readonly.sql` again. It reports each outcome separately, and
+   **an HTTP 200 is not proof of delivery**:
+   1. **Cron executed:** `cron.job_run_details` shows `succeeded`. That only means the HTTP request was
+      queued.
+   2. **HTTP:** `net._http_response` shows status 200 and the route's report (`considered_*`, `sent_*`,
+      `failed`, `capped`, `max_claims_per_run`).
+   3. **Claimed:** reminder stamps since the fix. These must be at most 10, with
+      `stamped_on_closed_or_deleted` = 0.
+   4. **Provider accepted:** `email_deliveries` rows for workflow `application_recovery` that Resend
+      accepted. Rejected rows show as `provider_failed`.
+   5. **Delivered:** rows the signed Resend webhook marked delivered. Bounced and complained are shown.
+      These can lag the run, so check again later.
+
+   Also confirm the reminder links are the 30-minute kind.
 6. Watch the next two hourly runs the same way.
 
 ## Rollback and emergency stop
@@ -126,7 +151,8 @@ Reinstalling after a rollback needs a new package version, because the evidence 
 
 `npm run test:reminder-scheduler-fix` runs `scripts/reminder-scheduler-fix.db.test.mjs`: a disposable PG 17 on
 port 55552, with this tree's migrations replayed and stateful `cron` and `net` stand-ins. The `cron.job`
-rows are the production commands byte for byte, md5-checked. **28/28 pass.** They cover:
+rows are the production commands byte for byte, md5-checked. **32/32 pass.** That includes the five
+separated verify outcomes on a simulated first run. They cover:
 - the root cause reproduced;
 - the working mechanism;
 - preflight gates and counts;
