@@ -30,7 +30,7 @@
  * Run: node scripts/contract-licence-expiry.test.mjs   (npm run test:licence-expiry)
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const SELF = fileURLToPath(import.meta.url);
@@ -275,11 +275,28 @@ console.log("\na preview made by the old code is refused at Send by the new code
   try { await at(NOON_UTC, () => AG.issueAgreement(db, APP_ID, { fingerprint: base.fingerprint, companyAck: true, createdBy: null })); }
   catch (e) { err = String(e?.message ?? e); }
   ok(/changed since it was previewed/.test(err), `Send with the pre-deploy preview's fingerprint is refused (${err.slice(0, 60)}…)`);
+  ok(/^Nothing was sent/.test(err) && /how it prints after a system update/.test(err) && /Regenerate the preview and review it again/.test(err),
+    "  and the refusal tells staff nothing was sent, why (including a release changing how it prints), and to regenerate and review");
   ok(!db.inserted.some((x) => x.table === "agreements"), "  and nothing was inserted");
   const db2 = freshDb();
   const r = await at(NOON_UTC, () => AG.issueAgreement(db2, APP_ID, { fingerprint: ours.fingerprint, companyAck: true, createdBy: null }));
   const row = db2.inserted.find((x) => x.table === "agreements")?.row;
   ok(!!r?.url && row?.body === ours.body && row.merge_data?.license_expiration === "Jun 1, 2029", "a fresh preview sends, and the stored text is the reviewed text");
+}
+
+// Staff see the refusal until they act on it: the prepare dialog keeps it on
+// screen (not only a toast), blocks Send, and offers Regenerate Preview.
+{
+  const dlg = readFileSync("src/components/admin/PrepareAgreementDialog.tsx", "utf8");
+  const send = dlg.slice(dlg.indexOf("async function send()"), dlg.indexOf("function fix("));
+  ok(/changed since it was previewed/.test(send) && /setStaleRefusal\(msg\)/.test(send) && /setReviewedKey\(""\)/.test(send),
+    "a stale-preview refusal is kept on screen and Send is blocked until a new preview");
+  ok(/data-testid="stale-preview-refusal"/.test(dlg) && /role="alert"/.test(dlg) && /\{rendering \? "Regenerating…" : "Regenerate Preview"\}/.test(dlg),
+    "the dialog shows the refusal with a Regenerate Preview button (Title Case in the string)");
+  ok(/\[key, applicationId, regen\]/.test(dlg) && /setStaleRefusal\(null\)/.test(dlg),
+    "Regenerate Preview re-renders, and the notice clears only when a fresh preview arrives");
+  const i = dlg.indexOf("stale-preview-refusal");
+  ok(!/text-transform|uppercase/.test(dlg.slice(i - 300, i + 600)), "no CSS casing on the notice");
 }
 
 rmSync(OUT, { recursive: true, force: true });

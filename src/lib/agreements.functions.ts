@@ -12,6 +12,7 @@ import { fmtContractDate, fmtContractDateOnly, minTermEndIso, minTermWeeks } fro
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
+import { STALE_PREVIEW_REFUSAL } from "@/lib/agreement-send-refusal";
 import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
 import { SWAP_ENABLED } from "@/lib/record-numbers";
 
@@ -751,9 +752,7 @@ export async function issueAgreement(
   if (prep.numberingPending) throw new Error(NUMBERING_PENDING);
   // Staff sends must match exactly what was previewed.
   if (opts.fingerprint !== undefined && opts.fingerprint !== prep.fingerprint)
-    throw new Error(
-      "The agreement changed since it was previewed (driver, vehicle, dates, rate, deposit or template). Regenerate the preview and review it again before sending.",
-    );
+    throw new Error(STALE_PREVIEW_REFUSAL);
   if (body.includes(BLANK)) throw new Error("The agreement still contains blank fields. Regenerate the preview.");
   // Staff sends with incomplete Settings → Company details need an explicit
   // acknowledgment (not a legal approval). Auto-send keeps today's behaviour.
