@@ -1,0 +1,133 @@
+{
+ "approval": "Owner: Authorize S1 Production Security Installation (2026-10-25)",
+ "artifact": {
+  "commit": "bd86d450",
+  "file": "proposed/security-s1/request-s1.sql",
+  "sha256": "b9be95be34f2a784c7e9a124e50151a6ca7f354282e8b90cf36c638961044215",
+  "package_sha256": "b9c651b7706c14823a67e6f762bdcd4bd0bde20da2379bff1fc4efd868437a55",
+  "checksums_verified": 9,
+  "submissions": 1,
+  "response": {
+   "rows": []
+  }
+ },
+ "final_preflight": {
+  "at": "2026-10-25T02:37:20.937289+00:00",
+  "all_gates": true,
+  "gates": {
+   "audit_insert": true,
+   "column_privileges": true,
+   "column_shape": true,
+   "journal_exact_23": true,
+   "not_installed": true,
+   "policies_0031_exact": true,
+   "private_schema_create": true,
+   "table_owner_rls": true,
+   "table_privileges": true,
+   "trigger_set_pre_window2": true
+  },
+  "fingerprint_sha256": "67726740be2e6204dac8cc2b6c3ff13e025430cb729bb4f5790f49cf85ef9603",
+  "installed": {
+   "evidence_rows": 0,
+   "guard_function": 0,
+   "guard_trigger": 0
+  },
+  "policies_0031": [
+   5,
+   "d33877618a9f40924d14e49b6653d7fa"
+  ],
+  "policies_total": 170,
+  "drizzle_receipts": 23,
+  "supabase_receipts": 105,
+  "m2_window1_installed": false,
+  "m2_window2_installed": false,
+  "acl_items_md5": "176dd288c947a0deff8c7a7626d8b1df",
+  "applications_by_status": {
+   "approved": 2,
+   "closed": 21,
+   "declined": 6,
+   "duplicate": 4,
+   "new": 99,
+   "partial": 9,
+   "reviewing": 7
+  }
+ },
+ "data_before": {
+  "at": "2026-10-25T02:37:29.941795+00:00",
+  "applications": [
+   148,
+   "0b2a597ae49c755498e38d19310df510"
+  ],
+  "audit_log_rows": 891,
+  "audit_log_md5": "97b4ed27b7e0fb7ed47bb11cca5dd642",
+  "documents": 91,
+  "policies_total": 170
+ },
+ "verify_after": {
+  "at": "2026-10-25T02:40:19.217033+00:00",
+  "all_gates": true,
+  "gates": {
+   "acl_matches_evidence": true,
+   "anon_insert_unchanged": true,
+   "authenticated_insert_form_only": true,
+   "evidence_one_well_formed": true,
+   "fingerprint_matches_evidence": true,
+   "function_exact": true,
+   "journal_exact_23": true,
+   "not_rolled_back": true,
+   "policies_0031_exact": true,
+   "protected_columns_closed": true,
+   "trigger_exact": true,
+   "trigger_sorts_last": true
+  },
+  "evidence": {
+   "actor_role": "postgres",
+   "execution_at": "2026-10-25T02:39:31.713708+00:00",
+   "post_install_fingerprint_sha256": "a2b05c35cfae3b6dd15d18bd19c3b083584316297f6a4ee6fad24900e760047a",
+   "pre_install_fingerprint_sha256": "67726740be2e6204dac8cc2b6c3ff13e025430cb729bb4f5790f49cf85ef9603",
+   "rows": 1,
+   "transaction_id": "101762"
+  },
+  "facts": {
+   "acl_items": 154,
+   "audit_log_rows": 892,
+   "drizzle_receipts": 23,
+   "policies_total": 170,
+   "relacl": "{postgres=arwdDxtm/postgres,authenticated=rxtm/postgres,service_role=arwdDxtm/postgres,sandbox_exec=ar/postgres}",
+   "supabase_receipts": 105,
+   "triggers": [
+    "applications_active_guard",
+    "applications_updated_at",
+    "zz_application_write_guard"
+   ]
+  }
+ },
+ "data_after": {
+  "at": "2026-10-25T02:40:33.342843+00:00",
+  "applications": [
+   148,
+   "0b2a597ae49c755498e38d19310df510"
+  ],
+  "applications_updated_since_install": 0,
+  "audit_log_rows": 892,
+  "audit_log_md5_excluding_s1_evidence": "97b4ed27b7e0fb7ed47bb11cca5dd642",
+  "audit_rows_since_install_excluding_s1": 0,
+  "documents": 91,
+  "policies_total": 170,
+  "enforced": {
+   "anon_insert_full_name": true,
+   "anon_insert_status": false,
+   "authenticated_insert_full_name": true,
+   "authenticated_insert_status": false,
+   "authenticated_insert_user_id": false,
+   "authenticated_update_notes_still": true,
+   "authenticated_update_reviewed_by": false,
+   "authenticated_update_status": false,
+   "authenticated_update_user_id": false,
+   "guard_trigger_enabled": "O",
+   "service_role_insert": true,
+   "service_role_update_status": true
+  }
+ },
+ "result": "SUCCESS"
+}
