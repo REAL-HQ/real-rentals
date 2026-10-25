@@ -399,6 +399,31 @@ async function applicantResumeUrl(applicationId: string): Promise<string> {
 }
 
 /**
+ * The link in an automated reminder: a short-lived, single-use recovery link,
+ * the same kind requestApplicationLink sends.
+ *
+ * The hourly reminders used to mint a 14-day reusable session token per
+ * email. Those sit in inboxes, get forwarded and pass through link-scanning
+ * gateways, and nobody asked for them — so an unattended job was minting a
+ * fortnight of access to an application on a timer. A recovery link is
+ * exchanged for a session on first open and then dies; if it has expired by
+ * the time the applicant clicks, the page they land on emails a fresh link to
+ * the address on file. A recovery mint only trims older recovery links, so it
+ * never logs the applicant out of a tab they already have open.
+ */
+async function applicantRecoveryUrl(applicationId: string): Promise<string> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { issueResumeToken, resumeUrl } = await import("@/lib/resume-tokens.server");
+  return resumeUrl(await issueResumeToken(supabaseAdmin, applicationId, { recovery: true }));
+}
+
+/** One sentence under every reminder button, so an expired link is not a dead end. */
+async function recoveryLinkNote(): Promise<string> {
+  const { RECOVERY_TOKEN_MINUTES } = await import("@/lib/resume-tokens.server");
+  return `For your security this link works once and expires ${RECOVERY_TOKEN_MINUTES} minutes after this email was sent. If it has expired, open it anyway and enter your email — we'll send a fresh link to the address on your application.`;
+}
+
+/**
  * "We already have your application — here's your link."
  *
  * Sent when somebody submits the lead form and we find a recent application
@@ -446,9 +471,10 @@ type RecoveryArgs = {
   variant: "24h" | "72h";
 };
 
-export async function sendWizardRecoveryEmail({ to, firstName, applicationId, variant }: RecoveryArgs): Promise<void> {
+export async function sendWizardRecoveryEmail({ to, firstName, applicationId, variant }: RecoveryArgs): Promise<SendResult> {
   const name = (firstName || "").trim().split(" ")[0] || "there";
-  const resumeUrl = await applicantResumeUrl(applicationId);
+  const resumeUrl = await applicantRecoveryUrl(applicationId);
+  const linkNote = await recoveryLinkNote();
   const subject =
     variant === "24h"
       ? `${name}, your REAL RENTALS application is saved`
@@ -468,13 +494,14 @@ export async function sendWizardRecoveryEmail({ to, firstName, applicationId, va
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Hi ${escapeHtml(name)}, ${escapeHtml(body)}</p>
       <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Finish My Application</a>
       <p style="color:#888;font-size:12px;margin:24px 0 0;line-height:1.5">Or paste this into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>
+      <p style="color:#888;font-size:12px;margin:12px 0 0;line-height:1.5">${escapeHtml(linkNote)}</p>
       <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
       <p style="color:#999;font-size:12px;margin:0">Questions? Reply to this email or call {{company_phone}}.</p>
     </div>
   </div>
 </body></html>`;
 
-  await sendEmail({ to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
+  return sendEmail({ to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
 }
 
 // -----------------------------------------------------------------------------
@@ -670,9 +697,10 @@ type AbandonedArgs = {
   pickupDate: string | null;
 };
 
-export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<void> {
+export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
-  const resumeUrl = await applicantResumeUrl(args.applicationId);
+  const resumeUrl = await applicantRecoveryUrl(args.applicationId);
+  const linkNote = await recoveryLinkNote();
   const subject = "Finish Your REAL RENTALS Quote — Cars Are Moving Fast";
   const details: string[] = [];
   if (args.market) details.push(`in <strong>${escapeHtml(args.market)}</strong>`);
@@ -684,8 +712,9 @@ export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<v
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">You're Almost There, ${escapeHtml(name)}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">${detailLine} It only takes about 2 minutes to finish. Lock in your vehicle before it's gone.</p>
       <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pick Up Where You Left Off</a>
-      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>`);
-  await sendEmail({ to: args.to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>
+      <p style="color:#888;font-size:12px;margin:12px 0 0;line-height:1.5">${escapeHtml(linkNote)}</p>`);
+  return sendEmail({ to: args.to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
 }
 // -----------------------------------------------------------------------------
 // Rental agreements (e-signature)

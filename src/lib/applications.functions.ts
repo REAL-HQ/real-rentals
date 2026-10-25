@@ -11,6 +11,7 @@ import { DOCUMENT_CONTENT_SHA256_ENABLED } from "@/lib/document-content-sha";
 import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { applicationResumeAtomicEnabled, deliverApplicationRecovery } from "@/lib/application-recovery.server";
 import { z } from "zod";
+import { SAVE_BUSY_CODE, SAVE_BUSY_MESSAGE } from "@/lib/wizard-save";
 
 const nullableString = z.string().trim().max(255).nullable().optional();
 const nullableUuid = z.string().uuid().nullable().optional();
@@ -774,9 +775,15 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
       .in("status", [...APPLICANT_EDITABLE_STATUSES])
       .select("*")
       .maybeSingle();
-    if (error) throw new Error(error.message);
+    // A serialization conflict (SQLSTATE 40001) is "busy, try again", not a
+    // failure of this applicant's answers. Only the message survives the trip
+    // to the browser, so it carries the code; the wizard's save queue
+    // recognises it and retries with backoff. The patch is absolute values,
+    // so a replay is idempotent.
+    if (error) throw new Error(error.code === SAVE_BUSY_CODE ? SAVE_BUSY_MESSAGE : error.message);
     // No row: the application was decided after the read above. Nothing was
     // written, and the applicant gets the same answer as the early refusal.
+    // Terminal: the wizard never retries this message.
     if (!row) throw new Error(APPLICATION_LOCKED_MESSAGE);
 
     // Mirror any files the applicant uploaded into the document vault so they

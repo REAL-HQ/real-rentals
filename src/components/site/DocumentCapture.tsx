@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { FileUploader } from "@/components/FileUploader";
 import { uploadApplicantFile, type UploadKind } from "@/lib/applicant-upload";
 import { UPLOAD_PRECHECK_ENABLED } from "@/lib/upload-precheck";
+import { createUploadThenSave } from "@/lib/wizard-save";
 
 type PrecheckView = { warnings: { code: string; message: string }[]; tips: string[] };
 
@@ -40,10 +41,23 @@ export function DocumentCapture({
    * is a local object URL of the file just chosen.
    */
   onFile: boolean;
-  onChange: (path: string | null) => void;
+  /**
+   * Saves the uploaded path to the application. If it returns a promise that
+   * rejects, the file is shown as failed with the uploader's Retry, and the
+   * error message is what the applicant reads.
+   */
+  onChange: (path: string | null) => void | Promise<void>;
   optional?: boolean;
 }) {
   const [justUploaded, setJustUploaded] = useState(false);
+  // Upload, then save the path; only a saved path counts. If the save fails
+  // the file shows as failed with the uploader's Retry, and because Retry
+  // hands back the same File, the retry re-sends only the save — no second
+  // copy of the photo in storage. Kept in a ref so the remembered paths live
+  // as long as this component; onChange is read through a ref so it is fresh.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const uploadThenSave = useRef(createUploadThenSave<File>((path) => onChangeRef.current(path)));
   const done = onFile || justUploaded;
   const overrideWait = useRef<((ok: boolean) => void) | null>(null);
   const [precheck, setPrecheck] = useState<PrecheckView | null>(null);
@@ -108,21 +122,25 @@ export function DocumentCapture({
           submitLabel={done ? "Replace" : "Upload"}
           upload={async (file, { onProgress }) => {
             onProgress(20);
-            // A generous client-side ceiling; the real one is applied after
-            // optimization, since a phone photo that arrives at 9 MB usually
-            // leaves at under one. uploadApplicantFile enforces that ceiling
-            // and throws UploadTooLarge, which the queue's Retry relies on.
-            if (UPLOAD_PRECHECK_ENABLED === true) {
-              const { reviewUpload } = await import("@/lib/upload-precheck");
-              const result = await reviewUpload(file);
-              if (result.blocked) throw new Error(result.blockMessage ?? "This file can't be uploaded.");
-              if (result.warnings.length && !(await askOverride(result))) {
-                throw new Error("Choose another photo and try again.");
-              }
-            }
-            const { path } = await uploadApplicantFile({ token, kind, file });
-            onProgress(100);
-            onChange(path);
+            await uploadThenSave.current(
+              file,
+              async () => {
+                // A generous client-side ceiling; the real one is applied after
+                // optimization, since a phone photo that arrives at 9 MB usually
+                // leaves at under one. uploadApplicantFile enforces that ceiling
+                // and throws UploadTooLarge, which the queue's Retry relies on.
+                if (UPLOAD_PRECHECK_ENABLED === true) {
+                  const { reviewUpload } = await import("@/lib/upload-precheck");
+                  const result = await reviewUpload(file);
+                  if (result.blocked) throw new Error(result.blockMessage ?? "This file can't be uploaded.");
+                  if (result.warnings.length && !(await askOverride(result))) {
+                    throw new Error("Choose another photo and try again.");
+                  }
+                }
+                return uploadApplicantFile({ token, kind, file });
+              },
+              onProgress,
+            );
           }}
           onAllDone={() => setJustUploaded(true)}
         />
