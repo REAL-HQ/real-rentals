@@ -443,7 +443,9 @@ export function ApplicantDocuments({
                     disabled={!!working}
                     upload={(file, { onProgress }) => uploadCategory(key, file, onProgress)}
                   />
-                  {d && (
+                  {/* Signed agreements are permanent records: no Delete, and
+                      the server refuses it anyway (deleteDocument). */}
+                  {d && key !== "agreement" && !d.signed_agreement && (
                     <button
                       onClick={() => void drop(d)}
                       disabled={!!working}

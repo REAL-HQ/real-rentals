@@ -2,6 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { applicantPhone } from "@/lib/applicant-validation";
 import { APPROVAL_SOURCE_STATUSES, APPROVAL_STATUS_NOT_APPROVABLE } from "@/lib/approval-source-statuses";
+import {
+  APPLICANT_EDITABLE_STATUSES,
+  APPLICATION_LOCKED_MESSAGE,
+  isApplicantEditableStatus,
+} from "@/lib/application-edit-status";
 import { DOCUMENT_CONTENT_SHA256_ENABLED } from "@/lib/document-content-sha";
 import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { applicationResumeAtomicEnabled, deliverApplicationRecovery } from "@/lib/application-recovery.server";
@@ -596,6 +601,27 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     const { resolveResumeToken } = await import("@/lib/resume-tokens.server");
     const id = await resolveResumeToken(supabaseAdmin, token);
 
+    // One read of the row as it stands, before anything else happens. Four
+    // decisions need it: whether the applicant may still edit at all, whether
+    // this write may promote the status, what coverage answer is already on
+    // file, and which stored trip screenshots survive a removal.
+    const { data: before, error: beforeError } = await supabaseAdmin
+      .from("applications")
+      .select("status, full_coverage_insurance, insurance_expires_on, trip_screenshots")
+      .eq("id", id)
+      .maybeSingle();
+    if (beforeError) throw new Error(beforeError.message);
+
+    // A live token is not permission to edit a decided application. Only the
+    // status promotion used to be guarded, so an old tab could rewrite an
+    // approved or active record — the licence and insurance file pointers
+    // included — after staff had reviewed it. Refused here, before any patch
+    // is built or written; the update below repeats the condition so a
+    // decision landing between this read and that write still wins.
+    if (!isApplicantEditableStatus(before?.status)) {
+      throw new Error(APPLICATION_LOCKED_MESSAGE);
+    }
+
     // Clean undefined keys so we never overwrite with NULL by accident
     const patch: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(fields)) {
@@ -625,15 +651,6 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     // the applicant, decides what happens to a submitted application.
     const isSubmission = step === "submitted";
     patch.current_step = step;
-
-    // One read of the row as it stands. Three later decisions need it:
-    // whether this write may promote the status, what coverage answer is
-    // already on file, and which stored trip screenshots survive a removal.
-    const { data: before } = await supabaseAdmin
-      .from("applications")
-      .select("status, full_coverage_insurance, insurance_expires_on, trip_screenshots")
-      .eq("id", id)
-      .maybeSingle();
 
     // Removal resolved by filename against the stored array, plus whatever
     // the client is still claiming from this session. A name the client does
@@ -754,9 +771,13 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
       .from("applications")
       .update(patch as any)
       .eq("id", id)
+      .in("status", [...APPLICANT_EDITABLE_STATUSES])
       .select("*")
-      .single();
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    // No row: the application was decided after the read above. Nothing was
+    // written, and the applicant gets the same answer as the early refusal.
+    if (!row) throw new Error(APPLICATION_LOCKED_MESSAGE);
 
     // Mirror any files the applicant uploaded into the document vault so they
     // show up in the portal (where the renter can replace them) and in the
@@ -908,6 +929,7 @@ const RESUME_COLUMNS = [
   "current_step",
   "source",
   // Read to be reduced, never returned as-is.
+  "status",
   "insurance_policy_number",
   "license_photo_url",
   "insurance_doc_url",
@@ -965,6 +987,13 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
         | null,
       current_step: (r.current_step ?? null) as string | null,
       source: (r.source ?? null) as string | null,
+
+      // Whether the applicant may still change anything, reduced from the
+      // status. The status itself does not travel: a resume link is a bearer
+      // credential that can be forwarded, and whether the team approved or
+      // declined somebody is not the link's to tell. updateApplicationStep
+      // enforces the same rule; this only lets the wizard say so up front.
+      editable: isApplicantEditableStatus(r.status),
 
       // Masked.
       insurance_policy_on_file: Boolean(r.insurance_policy_number),
