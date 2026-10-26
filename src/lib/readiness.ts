@@ -228,9 +228,9 @@ export const FACTORS: Factor[] = [
     weight: 10,
     evaluate: (a, s) => {
       const st = s.gig_account_status;
-      if (st === "active") return positive("Gig account active (staff noted, not platform-verified)", "staff_verified");
-      if (st === "deactivated") return attention("Gig account deactivated (staff noted)", "staff_verified");
-      if (st === "pending") return positive("Gig account pending (staff noted)", "staff_verified", 0.4);
+      if (st === "active") return positive("Active gig account", "staff_verified");
+      if (st === "deactivated") return attention("Gig account deactivated", "staff_verified");
+      if (st === "pending") return positive("Gig account pending", "staff_verified", 0.4);
       const g = a.gig_status;
       if (g === "Yes, already driving" || g === "Yes")
         return positive("Already driving", "self_reported");

@@ -8,13 +8,7 @@ import {
   activateRental,
   type ActivationReadiness,
 } from "@/lib/rentals.functions";
-import {
-  insuranceExceptionWarning,
-  isHardBlocker,
-  MIN_OVERRIDE_REASON,
-} from "@/lib/activation-readiness";
 import { MicroLabel } from "./ui";
-import { ActivationRequirementList } from "./ActivationRequirementList";
 
 type VehicleLite = {
   id: string;
@@ -27,6 +21,9 @@ type VehicleLite = {
   weekly_rate?: number | null;
   deposit?: number | null;
 };
+
+/** Blockers the operator is never allowed to click past. */
+const HARD = new Set(["vehicle_busy", "no_email", "already_active", "vehicle_not_ready"]);
 
 export function ActivateRentalDialog({
   driver,
@@ -48,9 +45,6 @@ export function ActivateRentalDialog({
   const [busy, setBusy] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
-  // Separate from the soft-blocker override: only the Owner exception's
-  // insurance warning. A reason typed above never satisfies it.
-  const [insuranceAck, setInsuranceAck] = useState(false);
 
   const [weeklyRate, setWeeklyRate] = useState("");
   const [deposit, setDeposit] = useState("");
@@ -65,7 +59,6 @@ export function ActivateRentalDialog({
     let cancelled = false;
     setChecking(true);
     setAcknowledged(false);
-    setInsuranceAck(false);
     check({ data: { applicationId: driver.id, vehicleId: vehicleId || null } })
       .then((r) => {
         if (cancelled) return;
@@ -85,16 +78,13 @@ export function ActivateRentalDialog({
   }, [driver.id, vehicleId]);
 
   const hardBlockers = useMemo(
-    () => (readiness?.blockers ?? []).filter((b) => isHardBlocker(b.code)),
+    () => (readiness?.blockers ?? []).filter((b) => HARD.has(b.code)),
     [readiness],
   );
   const softBlockers = useMemo(
-    () => (readiness?.blockers ?? []).filter((b) => !isHardBlocker(b.code)),
+    () => (readiness?.blockers ?? []).filter((b) => !HARD.has(b.code)),
     [readiness],
   );
-
-  const insuranceNeedsAck =
-    !!readiness && readiness.insurance.status !== "verified" && readiness.insurance.exceptionAllowed;
 
   const rateNum = Number(weeklyRate.replace(/[^\d.]/g, ""));
   const depositNum = Number(deposit.replace(/[^\d.]/g, "")) || 0;
@@ -108,8 +98,7 @@ export function ActivateRentalDialog({
     pickupNum != null && pickupNum >= 0 &&
     !!startDate &&
     hardBlockers.length === 0 &&
-    (!insuranceNeedsAck || insuranceAck) &&
-    (softBlockers.length === 0 || (acknowledged && overrideReason.trim().length >= MIN_OVERRIDE_REASON));
+    (softBlockers.length === 0 || (acknowledged && overrideReason.trim().length >= 5));
 
   async function submit() {
     setBusy(true);
@@ -126,7 +115,6 @@ export function ActivateRentalDialog({
           pickupMileage: pickupNum,
           overrideBlockers: softBlockers.length > 0 && acknowledged,
           overrideReason: softBlockers.length > 0 && acknowledged ? overrideReason.trim() : undefined,
-          insuranceExceptionAck: insuranceNeedsAck && insuranceAck,
         },
       });
       if (!res.ok) {
@@ -137,7 +125,6 @@ export function ActivateRentalDialog({
         setReadiness(fresh);
         return;
       }
-      if (res.auditError) toast.error(res.auditError, { duration: Infinity });
       toast.success(
         res.accountCreated
           ? "Rental active — driver emailed a link to set their password"
@@ -166,7 +153,7 @@ export function ActivateRentalDialog({
               onChange={(e) => setVehicleId(e.target.value)}
               className={`${inputCls} mt-1.5`}
             >
-              <option value="">Select A Vehicle…</option>
+              <option value="">Select a vehicle…</option>
               {selectable.map((v) => (
                 <option key={v.id} value={v.id}>
                   {[v.year, v.make, v.model, v.trim].filter(Boolean).join(" ")}
@@ -183,14 +170,10 @@ export function ActivateRentalDialog({
             </div>
           ) : null}
 
-          {readiness?.requirements?.length ? (
-            <ActivationRequirementList requirements={readiness.requirements} />
-          ) : null}
-
           {hardBlockers.length > 0 ? (
             <div className="rounded-xl border border-[#F3C9C4] bg-[#FDF2F1] p-3">
               <div className="flex items-center gap-1.5 text-sm font-semibold text-[#8A1C10]">
-                <ShieldAlert className="w-4 h-4" /> Cannot Activate
+                <ShieldAlert className="w-4 h-4" /> Cannot activate
               </div>
               <ul className="mt-1.5 space-y-1 text-sm text-[#8A1C10]/90">
                 {hardBlockers.map((b) => (
@@ -200,33 +183,10 @@ export function ActivateRentalDialog({
             </div>
           ) : null}
 
-          {insuranceNeedsAck && readiness ? (
-            <div className="rounded-xl border border-[#F3C9C4] bg-[#FDF2F1] p-3" aria-label="Insurance Warning">
-              <div className="flex items-center gap-1.5 text-sm font-semibold text-[#8A1C10]">
-                <ShieldAlert className="w-4 h-4" /> Insurance Not Verified
-              </div>
-              <p className="mt-1.5 text-sm text-[#8A1C10]/90">
-                {insuranceExceptionWarning(readiness.insurance.status)}
-              </p>
-              <label className="mt-2.5 flex items-start gap-2 text-xs text-[#8A1C10]">
-                <input
-                  type="checkbox"
-                  checked={insuranceAck}
-                  onChange={(e) => setInsuranceAck(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <span>
-                  I acknowledge this insurance warning. This is recorded against my account with the
-                  insurance status and the Owner setting.
-                </span>
-              </label>
-            </div>
-          ) : null}
-
           {softBlockers.length > 0 ? (
             <div className="rounded-xl border border-[#F0DCBB] bg-[#FDF8EF] p-3">
               <div className="flex items-center gap-1.5 text-sm font-semibold text-[#8A5A00]">
-                <AlertTriangle className="w-4 h-4" /> Needs A Written Reason
+                <AlertTriangle className="w-4 h-4" /> Not ready
               </div>
               <ul className="mt-1.5 space-y-1 text-sm text-[#8A5A00]/90">
                 {softBlockers.map((b) => (
@@ -248,7 +208,7 @@ export function ActivateRentalDialog({
                 <textarea
                   value={overrideReason}
                   onChange={(e) => setOverrideReason(e.target.value)}
-                  placeholder="Reason For Override (Required)"
+                  placeholder="Reason for override (required)"
                   rows={2}
                   className="mt-2 w-full rounded-md border border-[#F6E7B8] bg-white px-2 py-1.5 text-xs text-[#111114]"
                 />
@@ -258,8 +218,8 @@ export function ActivateRentalDialog({
 
           {readiness?.warnings?.length ? (
             <div className="rounded-xl border border-[#EDEDF0] bg-[#FAFAFB] p-3">
-              <div className="text-xs font-semibold tracking-wide text-[#55555E]">
-                Worth Knowing
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#55555E]">
+                Worth knowing
               </div>
               <ul className="mt-1.5 space-y-1 text-sm text-[#55555E]">
                 {readiness.warnings.map((w) => (
@@ -271,7 +231,7 @@ export function ActivateRentalDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <MicroLabel>Weekly Rate $</MicroLabel>
+              <MicroLabel>Weekly rate $</MicroLabel>
               <input
                 value={weeklyRate}
                 onChange={(e) => setWeeklyRate(e.target.value)}
@@ -291,7 +251,7 @@ export function ActivateRentalDialog({
               />
             </div>
             <div>
-              <MicroLabel>Start Date</MicroLabel>
+              <MicroLabel>Start date</MicroLabel>
               <input
                 type="date"
                 value={startDate}
@@ -300,7 +260,7 @@ export function ActivateRentalDialog({
               />
             </div>
             <div>
-              <MicroLabel>End Date (Optional)</MicroLabel>
+              <MicroLabel>End date (optional)</MicroLabel>
               <input
                 type="date"
                 value={endDate}
@@ -335,7 +295,7 @@ export function ActivateRentalDialog({
               checked={depositHeld}
               onChange={(e) => setDepositHeld(e.target.checked)}
             />
-            Deposit Already Collected
+            Deposit already collected
           </label>
         </ModalBody>
 
