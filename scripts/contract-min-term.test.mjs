@@ -337,7 +337,12 @@ for (const forbidden of ["fmtDate", "toLocaleDateString", "match(", "supabase"])
 }
 
 // ================================================= display is untouched
-console.log("\\nwhat the contract PRINTS is unchanged by this fix");
+// Contract fields print the same "Oct 11, 2026" form as the app-wide helper
+// (the Owner's decision, and what Release A printed), but through the
+// contract formatter in agreement-dates.ts, so a dashboard format change can
+// never move contract wording or a fingerprint. contract-date-format.test.mjs
+// proves the output matches Release A's fmtDate for date-only inputs.
+console.log("\\nwhat the contract PRINTS is unchanged, through the contract formatter");
 execFileSync("npx", ["esbuild", "src/lib/date-format.ts", "--bundle", "--platform=node",
   "--format=esm", `--outfile=${OUT}/fmt.mjs`, "--alias:@=./src"],
   { stdio: ["ignore", "ignore", "inherit"] });
@@ -346,11 +351,12 @@ ok(F.fmtDate("2026-10-11") === "Oct 11, 2026",
   `the app-wide month-day-year format is intact (${F.fmtDate("2026-10-11")})`);
 ok(F.fmtDateTime("2026-10-11T12:30:00Z").startsWith("Oct 11, 2026,"),
   "and so is the date-and-time one");
-ok(/start_date: startDate \? fmtDate\(startDate\) : ""/.test(AG),
-  "the contract still prints its start date with the same formatter as everything else");
-ok(/return_date: endDate \? fmtDate\(endDate\) : ""/.test(AG), "  and its return date");
-ok(/driver_dob: app\.dob \? fmtDate\(app\.dob\) : ""/.test(AG), "  and the driver's date of birth");
-ok(/min_term_end = fmtDate\(/.test(AG), "  and the minimum-term end date it now computes correctly");
+ok(/start_date: startDate \? fmtContractDate\(startDate\) : ""/.test(AG),
+  "the contract prints its start date with the CONTRACT formatter");
+ok(/return_date: endDate \? fmtContractDate\(endDate\) : ""/.test(AG), "  and its return date");
+ok(/driver_dob: app\.dob \? fmtContractDate\(app\.dob\) : ""/.test(AG), "  and the driver's date of birth");
+ok(/min_term_end = fmtContractDate\(/.test(AG), "  and the minimum-term end date it now computes correctly");
+ok(!/\bfmtDate\(/.test(AG), "  and no contract field is left on the UI formatter");
 
 rmSync(OUT, { recursive: true, force: true });
 console.log(fail ? `\\n${fail} blocker(s)` : "\\nall contract minimum-term checks pass");
