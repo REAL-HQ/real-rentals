@@ -434,8 +434,13 @@ function ContactStep({
 
           <SmsConsentField className="mt-5" checked={form.sms_consent} onChange={(v) => update("sms_consent", v)} />
 
+          {/* Not sticky on this step: the form is short, and a sticky bar on a
+              phone covered the SMS consent disclosure above it until the page
+              was scrolled. In the flow, Continue sits right after the consent,
+              so it is read before the button is reached. */}
           <div
-            className="mt-8 sticky bottom-0 z-10 -mx-6 border-t border-border bg-white/95 px-6 pt-3 backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:px-0 md:pt-0 md:backdrop-blur-none"
+            className="mt-8"
+            data-testid="contact-continue"
             style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
           >
             <button
