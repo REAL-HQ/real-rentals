@@ -6,7 +6,7 @@
     {
       "id": "P0",
       "name": "artifacts match SHA256SUMS",
-      "actual": "11 files",
+      "actual": "14 files",
       "pass": true
     },
     {
@@ -54,7 +54,7 @@
     {
       "id": "VP0",
       "name": "IVA artifacts match SHA256SUMS",
-      "actual": "11 files",
+      "actual": "14 files",
       "pass": true
     },
     {
@@ -192,7 +192,7 @@
     {
       "id": "T6",
       "name": "Owner changes it through the setter: saved and audited (actor, old -> new, time) in the same transaction",
-      "actual": "via PostgREST: off -> on, audit 1ddafe49-9b97-4ebf-ac88-5ffc067cdc07",
+      "actual": "via PostgREST: off -> on, audit 680185ee-2a75-4c94-b2f4-b9edc7f36088",
       "pass": true
     },
     {
@@ -234,13 +234,13 @@
     {
       "id": "V4",
       "name": "Manager verifies and revokes through the setter; each decision audited with actor, time, document id/SHA, insurer, policy reference",
-      "actual": "PostgREST verify, then revoke; 2 audit rows (audit 8d47e45f-d678-415f-af73-078a2477071f)",
+      "actual": "PostgREST verify, then revoke; 2 audit rows (audit 236c0919-0c0a-48da-84ee-803025f3e246)",
       "pass": true
     },
     {
       "id": "V5",
       "name": "Owner verifies and revokes through the setter; each decision audited with actor, time, document id/SHA, insurer, policy reference",
-      "actual": "PostgREST verify, then revoke; 2 audit rows (audit 4964e271-52ff-4a5b-90cc-812c89a4e187)",
+      "actual": "PostgREST verify, then revoke; 2 audit rows (audit dd569e44-bf9d-4f90-b2d5-4923acf533b5)",
       "pass": true
     },
     {
@@ -312,7 +312,7 @@
     {
       "id": "T9f",
       "name": "via PostgREST (one transaction per request): failure leaves nothing; success writes rental + in-transaction audit",
-      "actual": "failure 400 (nothing written); success 200 (rental + audit, txid 3298)",
+      "actual": "failure 400 (nothing written); success 200 (rental + audit, txid 3799)",
       "pass": true
     },
     {
@@ -412,10 +412,10 @@
       }
     },
     "exception_audit": {
-      "actor_user_id": "d144435f-123e-40e3-92d9-17f8087a508a",
+      "actor_user_id": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
       "actor_email": "manager@test",
       "actor_role": "team",
-      "entity_id": "56b385fd-93d1-450a-9e79-ec889f81700a",
+      "entity_id": "da866fa9-c00d-47ee-909d-b369b7ccb3b8",
       "summary": "Activated 2022 Toyota Camry for Test Driver",
       "ip": "203.0.113.7",
       "user_agent": "db-test",
@@ -427,12 +427,12 @@
           "interview_completed": true
         },
         "source": "activate_rental_checked_tx",
-        "driver_id": "090577b7-d6aa-4058-a808-b273487c3fad",
+        "driver_id": "f06012ec-3640-4d65-8307-d039645508fd",
         "insurance": {
-          "at": "2026-10-25T03:32:23.147645+00:00",
+          "at": "2026-10-26T05:37:52.734848+00:00",
           "status": "unverified",
           "acknowledged": true,
-          "acting_user_id": "d144435f-123e-40e3-92d9-17f8087a508a",
+          "acting_user_id": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
           "exception_used": true,
           "setting_source": "activation_transaction",
           "setting_present": true,
@@ -440,17 +440,17 @@
           "setting_allow_without_verification": true
         },
         "overrides": null,
-        "vehicle_id": "c92729cd-4523-49fb-b098-78e3076141e9",
-        "application_id": "ca768ffa-d6f3-4c60-bc5e-cd9a29d5fe91",
-        "transaction_id": "3144",
+        "vehicle_id": "0c18bec9-7a87-4238-bb68-d0f35a159ce9",
+        "application_id": "8e87ba08-9a3c-46b5-903f-d0ed276ac439",
+        "transaction_id": "3645",
         "account_created": false
       }
     },
     "override_audit": {
-      "actor_user_id": "d144435f-123e-40e3-92d9-17f8087a508a",
+      "actor_user_id": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
       "actor_email": "manager@test",
       "actor_role": "team",
-      "entity_id": "d00c8345-bd9d-4d5d-b459-ce7b9345f3c3",
+      "entity_id": "59baa92e-3e1e-4684-80f8-bec5c6db3ef9",
       "summary": "Activated 2022 Toyota Camry for Test Driver",
       "ip": "203.0.113.7",
       "user_agent": "db-test",
@@ -462,12 +462,12 @@
           "interview_completed": true
         },
         "source": "activate_rental_checked_tx",
-        "driver_id": "841189d3-cd95-4020-a05a-50c9c2a08995",
+        "driver_id": "a973e211-e299-4378-a602-daba4a4d9509",
         "insurance": {
-          "at": "2026-10-25T03:32:23.36145+00:00",
+          "at": "2026-10-26T05:37:52.932411+00:00",
           "status": "verified",
           "acknowledged": false,
-          "acting_user_id": "d144435f-123e-40e3-92d9-17f8087a508a",
+          "acting_user_id": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
           "exception_used": false,
           "setting_source": "activation_transaction",
           "setting_present": true,
@@ -475,8 +475,8 @@
           "setting_allow_without_verification": false
         },
         "overrides": {
-          "at": "2026-10-25T03:32:23.36145+00:00",
-          "by": "d144435f-123e-40e3-92d9-17f8087a508a",
+          "at": "2026-10-26T05:37:52.932411+00:00",
+          "by": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
           "reason": "Checked at the lot by the owner",
           "blockers": [
             {
@@ -485,30 +485,30 @@
             }
           ]
         },
-        "vehicle_id": "b1972551-afd1-4518-8536-4b70753f0393",
-        "application_id": "3cab60a5-2f9a-4bd1-ace5-6822801edd3b",
-        "transaction_id": "3185",
+        "vehicle_id": "2d33df50-3600-4e0a-bf85-0fb0f04976bf",
+        "application_id": "23c1ae51-106b-4151-94f1-a4841688f19b",
+        "transaction_id": "3686",
         "account_created": false
       }
     },
     "owner_change_audit": {
-      "actor_user_id": "10bb159d-f32c-4a10-b75c-88c2883bfbab",
+      "actor_user_id": "5493412e-4ede-431a-aa9f-0a6be4588c27",
       "actor_role": "admin",
       "metadata": {
         "to": true,
         "from": false,
         "setting": "allow_activation_without_insurance_verification",
-        "changed_at": "2026-10-25T03:32:23.443435+00:00",
-        "actor_user_id": "10bb159d-f32c-4a10-b75c-88c2883bfbab",
+        "changed_at": "2026-10-26T05:37:52.991691+00:00",
+        "actor_user_id": "5493412e-4ede-431a-aa9f-0a6be4588c27",
         "from_row_present": true
       },
-      "created_at": "2026-10-25T03:32:23.443Z"
+      "created_at": "2026-10-26T05:37:52.991Z"
     },
     "verification_audit": {
       "action": "insurance.verified",
-      "actor_user_id": "d144435f-123e-40e3-92d9-17f8087a508a",
+      "actor_user_id": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
       "actor_role": "team",
-      "created_at": "2026-10-25T03:32:23.575Z",
+      "created_at": "2026-10-26T05:37:53.092Z",
       "metadata": {
         "to": true,
         "from": false,
@@ -517,15 +517,15 @@
         "insurer": "Acme Mutual",
         "decision": "verified",
         "document": {
-          "id": "34a247c5-10cb-474c-86a1-c3e53ddff58f",
+          "id": "a0efd0dd-a5ae-4520-ba62-5951f1328748",
           "expires_at": null,
-          "storage_path": "56d13aa0-85f9-4a4c-b10c-06910c18fcb7/in.jpg",
+          "storage_path": "c081edf2-0301-4c3d-b583-105207e239df/in.jpg",
           "review_status": "uploaded",
           "content_sha256": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
         },
-        "decided_at": "2026-10-25T03:32:23.575656+00:00",
-        "decided_by": "d144435f-123e-40e3-92d9-17f8087a508a",
-        "screening_id": "a68923bd-3ae1-4a8e-9568-7ae27387ea1d",
+        "decided_at": "2026-10-26T05:37:53.09203+00:00",
+        "decided_by": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
+        "screening_id": "19c91d37-10bb-4f3b-9e29-c72977d7898b",
         "policy_expires_on": null,
         "policy_number_last4": "3456",
         "policy_number_sha256": "39c78f4abdc02f1c21aecb130d5c7efbceca54fb824baf5b12618a447990be0b",
@@ -536,14 +536,14 @@
     "concurrency_a": {
       "blocked_wait_event": "Lock/transactionid",
       "blocking_pids": [
-        24852
+        4602
       ],
       "nowait_error": "55P03 could not obtain lock on row in relation \"app_settings\"",
       "owner_change_after_commit": {
         "to": false,
         "from": true,
-        "audit_id": "d19b0726-bfc8-499b-be26-6ca07e4ad533",
-        "changed_at": "2026-10-25T03:32:24.276293+00:00"
+        "audit_id": "2281a99e-ae77-4e04-8b5d-9dcdc7bc8568",
+        "changed_at": "2026-10-26T05:37:53.738931+00:00"
       }
     },
     "c1": [
