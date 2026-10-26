@@ -130,3 +130,39 @@ page source of drivereal.com. The agent cannot reach the live host.
 
 **Next:** the first scheduled run is at 00:15Z. The existing scheduled check-in was moved from 23:57Z to
 00:25Z, with its prompt extended to verify that run's five outcomes separately. No new routine was created.
+
+## Scheduler first run (00:15Z, 2026-10-26), verified read-only at 00:26Z
+
+| # | Outcome | Result |
+|---|---|---|
+| 1 | Cron executed | jobid 2 at 00:15:00.106Z: `succeeded` |
+| 2 | HTTP | 200 at 00:15:00.124Z. Route report: considered 24h 0 / 72h 0 / abandoned 1; sent 0 / 0 / 1; failed 0; skipped 0; capped 0; `max_claims_per_run` 10 |
+| 3 | Claimed | 1 abandoned stamp; 24h 0, 72h 0; **stamped on closed, declined or deleted applications: 0** |
+| 4 | Provider accepted | 1 attempt (`application_recovery`), 1 accepted, 0 failed, 0 still sending |
+| 5 | Delivered | 1 delivered (signed Resend webhook), 0 bounced, 0 complained |
+
+**Recovery tokens since the fix:** 1, of the 30-minute kind; 0 longer tokens.
+
+**Live-build evidence:** the report contains `max_claims_per_run`, which only exists in the reminder-cap code.
+The live app therefore runs `a3df8545`, consistent with the Owner's page-source check.
+
+**Unchanged:**
+
+| Item | Result |
+|---|---|
+| Job 2 | Fixed md5, active |
+| Jobs 3–6 | Identical (ops-reminders `7a659464…` untouched) |
+| Security 0031 | `d33877618a9f40924d14e49b6653d7fa` |
+| Policies / journals | 170 / 23 / 105 |
+| S1 | Guard present; `authenticated` status UPDATE revoked |
+| M2 step 2 function | Absent |
+| Audit since the fix | Only `scheduler_fix_verified` (1); total 932 |
+
+**Release A watch items:**
+
+| Item | Result |
+|---|---|
+| 11 (approvals) | **PENDING**: approvals_24h 0, so nothing to check (apps with multiple approvals 0) |
+| 12 (uploads) | **PASS**: uploads_24h 2, uploads_24h_without_object 0 |
+
+Counts: applications 155, approved 2, documents 93, storage objects 130.
