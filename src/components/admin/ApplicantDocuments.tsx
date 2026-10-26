@@ -30,6 +30,7 @@ import { FileUploader } from "@/components/FileUploader";
 import { fmtDate } from "@/lib/date-format";
 import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { verifyApprovalIdentity } from "@/lib/identity-verification.functions";
+import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
 
 // Everything an applicant sent us, in one place, grouped the way somebody
 // looking at it actually thinks.
@@ -336,6 +337,10 @@ export function ApplicantDocuments({
           const st = statusOf(d);
           const style = STATUS_STYLE[st];
           const working = busy === key || (d && busy === d.id);
+          // Signed agreements are permanent records: no Replace and no Needs
+          // New, and the server refuses both anyway. A wrong agreement is
+          // voided and re-sent through eSign.
+          const locked = signedAgreementLocked(docs, key);
           return (
             <div
               key={key}
@@ -424,7 +429,7 @@ export function ApplicantDocuments({
                       <RotateCcw className="w-3 h-3" /> Unverify
                     </button>
                   )}
-                  {d && st !== "rejected" && (
+                  {d && st !== "rejected" && !locked && (
                     <button
                       onClick={() => void decide(d, "rejected")}
                       disabled={!!working}
@@ -433,17 +438,28 @@ export function ApplicantDocuments({
                       <AlertTriangle className="w-3 h-3" /> Needs New
                     </button>
                   )}
-                  <FileUploader
-                    variant="inline"
-                    label={d ? "Replace" : "Upload"}
-                    context={`${meta.label} · Application ${applicationId.slice(0, 8)}`}
-                    accept="image/*,application/pdf"
-                    maxBytes={MAX_MB * 1024 * 1024}
-                    camera
-                    disabled={!!working}
-                    upload={(file, { onProgress }) => uploadCategory(key, file, onProgress)}
-                  />
-                  {d && (
+                  {locked ? (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E]"
+                      title="Signed agreements can't be replaced. To correct one, void it and send a new agreement through eSign."
+                    >
+                      <ShieldCheck className="w-3 h-3" /> Permanent Record
+                    </span>
+                  ) : (
+                    <FileUploader
+                      variant="inline"
+                      label={d ? "Replace" : "Upload"}
+                      context={`${meta.label} · Application ${applicationId.slice(0, 8)}`}
+                      accept="image/*,application/pdf"
+                      maxBytes={MAX_MB * 1024 * 1024}
+                      camera
+                      disabled={!!working}
+                      upload={(file, { onProgress }) => uploadCategory(key, file, onProgress)}
+                    />
+                  )}
+                  {/* Signed agreements are permanent records: no Delete, and
+                      the server refuses it anyway (deleteDocument). */}
+                  {d && key !== "agreement" && !d.signed_agreement && (
                     <button
                       onClick={() => void drop(d)}
                       disabled={!!working}

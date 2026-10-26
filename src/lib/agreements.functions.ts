@@ -8,8 +8,7 @@ import {
   renderTemplate,
   type MergeData,
 } from "@/lib/agreement-merge";
-import { fmtDate } from "@/lib/date-format";
-import { minTermEndIso, minTermWeeks } from "@/lib/agreement-dates";
+import { fmtContractDate, minTermEndIso, minTermWeeks } from "@/lib/agreement-dates";
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
@@ -305,14 +304,14 @@ async function buildMergeData(
     vehicle_vin: vehicle?.vin ? String(vehicle.vin).toUpperCase() : "",
     weekly_rate: money(weekly),
     deposit_amount: deposit != null && Number(deposit) === 0 ? "$0" : money(deposit),
-    start_date: startDate ? fmtDate(startDate) : "",
-    return_date: endDate ? fmtDate(endDate) : "",
+    start_date: startDate ? fmtContractDate(startDate) : "",
+    return_date: endDate ? fmtContractDate(endDate) : "",
     // v1.6 fields — real records only; empty values block a template that uses them.
     // RRA-000001 numbers are assigned only when the agreement record is created
     // (pending migration); previews print this placeholder so regenerating a
     // preview never consumes a number.
     agreement_number: AGREEMENT_NUMBER_PLACEHOLDER,
-    driver_dob: app.dob ? fmtDate(app.dob) : "",
+    driver_dob: app.dob ? fmtContractDate(app.dob) : "",
     license_plate: vehicle?.license_plate
       ? [String(vehicle.license_plate).toUpperCase(), vehicle.plate_state].filter(Boolean).join(" / ")
       : "",
@@ -324,7 +323,10 @@ async function buildMergeData(
     insurance_policy: String(app.insurance_policy_number ?? "").trim() || "None on file",
     min_term_end: "",
     market: marketName ?? [app.city, app.state].filter(Boolean).join(", "),
-    today: fmtDate(new Date()),
+    // The execution date is the business (Eastern) calendar day, not the
+    // server's UTC one: it is part of the preview fingerprint, so a UTC day
+    // flipping at 8pm EDT made an evening preview refuse to Send.
+    today: fmtContractDate(new Date()),
   };
   // The rendered start_date above is for the human. Calculations get the real
   // value: reading the formatted string back is what broke min_term_end and
@@ -437,6 +439,32 @@ async function agreementFingerprint(meta: TemplateMeta, body: string, merge: Mer
   return sha256Hex(JSON.stringify(meta.key ? { ...base, tk: meta.key } : base));
 }
 
+/**
+ * Template evidence persisted into agreements.metadata when an agreement is
+ * issued: the family key, the label staff saw, the version, where the wording
+ * came from, and the SHA-256 fingerprint of the preview Send matched (for an
+ * approval auto-send, the fingerprint of the text the server rendered).
+ *
+ * Exported for scripts/esign-signing-fixes.test.mjs. Not printed on the
+ * signing certificate: that renderer is pinned (esign-pdf.server.ts).
+ */
+export type TemplateEvidence = {
+  template_key: string | null;
+  template_label: string;
+  template_version: number;
+  preview_fingerprint: string;
+  template_source: "library" | "saved_template" | "built_in_default";
+};
+export function templateEvidence(meta: TemplateMeta, fingerprint: string, fromLibrary: boolean): TemplateEvidence {
+  return {
+    template_key: meta.key ?? null,
+    template_label: meta.label,
+    template_version: meta.version,
+    preview_fingerprint: fingerprint,
+    template_source: fromLibrary ? "library" : meta.id ? "saved_template" : "built_in_default",
+  };
+}
+
 /** Once versioning is active, only an Owner-approved template can be sent. */
 function templateSendRefusal(meta: TemplateMeta): string | null {
   if (meta.key && meta.approvalStatus !== "approved")
@@ -497,7 +525,7 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
     // makes the "Minimum-term end date" blocker below fire rather than a
     // contract printing a date nobody computed.
     const endIso = minTermEndIso(startIso, minTermWeeks(terms.min_term_weeks));
-    if (endIso) data.min_term_end = fmtDate(endIso);
+    if (endIso) data.min_term_end = fmtContractDate(endIso);
   }
   const pay = { tab: "payments" as const };
   const vfix = vehicle ? { vehicleId: vehicle.id as string } : { tab: "rental" as const };
@@ -704,6 +732,7 @@ export async function issueAgreement(
   const vehicleOverride = SWAP_ENABLED ? opts.vehicleId : undefined;
   const prep = await prepareAgreement(admin, applicationId, opts.prep, opts.templateKey, vehicleOverride);
   const { data: merge, app, blockers, tpl, body } = prep;
+  const lib = opts.templateKey ? libraryTemplate(opts.templateKey) : null;
   if (!app.email) throw new Error("This driver has no email on file");
   // A contract with a guessed start date or a blank address is not a contract
   // worth sending, and an applicant who signs one has signed terms nobody
@@ -741,6 +770,12 @@ export async function issueAgreement(
       application_id: applicationId,
       vehicle_id: vehicleOverride ? prep.namedVehicleId : (app.vehicle_id ?? null),
       template_id: tpl.meta.id,
+      // Which wording this is, recorded with the row. template_id is null for
+      // library families and for the in-code baseline, so without this a sent
+      // agreement could not say which template version or preview it came
+      // from. Written once, at insert; signing merges metadata.signature into
+      // this object (esign.server.ts) and never replaces it.
+      metadata: templateEvidence(tpl.meta, prep.fingerprint, Boolean(lib)),
       body,
       merge_data: SIGNED_RENTAL_TERMS_V1_ENABLED
         ? { ...merge, record_rental_terms_v1: signedRentalTermsV1(prep.startIso, prep.app.weekly_rent ?? prep.vehicle?.weekly_rate, merge.weekly_rate) }

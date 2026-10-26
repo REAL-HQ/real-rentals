@@ -96,6 +96,11 @@ export function WelcomeBack({
       <div className="mt-4 flex flex-col sm:flex-row gap-2">
         <input
           type="email"
+          name="email"
+          inputMode="email"
+          autoComplete="email"
+          autoCapitalize="off"
+          spellCheck={false}
           aria-label="Email"
           value={value}
           onChange={(e) => setValue(e.target.value)}
