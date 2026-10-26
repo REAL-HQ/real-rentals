@@ -64,8 +64,8 @@
   ],
   "lockedFiles": {
     "package.json": {
-      "sha256": "9ba9f3bd603c4f7484acfc25eb9beabfd50402a4f027580820ea5a37d97e3af4",
-      "justification": "Previous pin a161734dd7e04a7c9b18f80c0e97f255fc548aeb296738ce0b70ca173b8eb390. Scripts only; dependencies, lifecycle hooks and bun.lock are unchanged. 67b62664 adds dark-flag coverage, webhook, M2 and Record Rental unit tests to npm test; 3106b348, 98e69b63, 2351601f, 1f341899, 541042bb, 6e8c9397 and 25fef656 add the test:record-rental-*, test:m2 and test:m2-window1-drill entries (local harness only). Reviewed in the Record Rental integration branch."
+      "sha256": "cc230064699315fb5d7f0114d1fe7a66c4c5b57303eb1e6607466a6ca025fa0f",
+      "justification": "Previous pin 9ba9f3bd603c4f7484acfc25eb9beabfd50402a4f027580820ea5a37d97e3af4 (6e8b03f4). Scripts only; dependencies, lifecycle hooks and bun.lock are unchanged. Merging live production a3df8545 (release/reminder-cap) adds the live tests to npm test (application-edit-lock, vault-delete-guard, vault-replace-guard, resume-token-trim, wizard-recovery-cron, wizard-save, contract-date-format, esign-signing-fixes) and the test:resume-reliability, test:resume-tokens-pg, test:contract-dates and test:esign-fixes entries; the Record Rental test entries are unchanged. Reviewed in feature/record-rental-live."
     },
     "bun.lock": "4935d5c63f3801ae82a9a0ab2769c7c4a6a862fbb0517ab626b6f2c72f152345"
   },
