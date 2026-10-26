@@ -119,3 +119,41 @@ The Owner setting toggle works only after AIS, and only for the Owner. It is not
 >    then its read-only verify-after.
 >
 > The insurance exception stays OFF. Rollbacks R1–R3 need separate approval.
+
+---
+
+# Step C1 result: activation-insurance-setting INSTALLED (Owner-approved, 2026-10-26)
+
+| | |
+|---|---|
+| Request | `request-activation-insurance-setting.sql`, sha256 `b80babcc275bea4682bc9b69ba3ce11d5f2833ced848c9682b00979311765505` (matches the approval; `SHA256SUMS` OK; identical to `feature/driver-activation-readiness` @ `5e492a87`) |
+| Preflight (read-only, 22:42Z) | 19 of 19 rows ok. Journal md5 `5cfa7e88…`, 0031 `d3387761…`, `activate_rental_tx` md5 `dfadcc73…`, objects absent, key absent. |
+| Submission | Once, through `query_database`, no retry. Result `rows: []`: the guard (exact bytes plus trailer) and every in-transaction postcondition passed. |
+| Evidence row | `security_migration_verified` / `database_migration` / `activation_insurance_setting_v1` at **22:45:21.78Z**, txid **107299**, executor `postgres` |
+| Verify-after (read-only) | 15 of 15 ok. Wrapper, setter and guard bodies plus ACLs as reviewed. Trigger 1. Three restrictive policies. `activate_rental_tx` unchanged (`dfadcc73…`) and still service-role only. One evidence row. |
+| **Insurance exception** | `{"allow_activation_without_insurance_verification": false}` (**OFF**). 0 audited setting changes. |
+
+## Before (22:42:53Z) and after (22:46:09Z)
+
+| Item | Before | After |
+|---|---|---|
+| `app_settings` keys other than `rental_activation` | 10, md5 `dbc2b2a9…` | **identical** |
+| `rental_activation` row | absent | present, OFF |
+| `app_settings` policies | 1 (`Admins manage settings`) | that one plus 3 restrictive `rental_activation_setting_*` |
+| `app_settings` triggers | `app_settings_updated_at` | that one plus `rental_activation_setting_guard` |
+| Total policies | 170 | 173 (+3, as above) |
+| Security 0031 md5 | `d3387761…` | **unchanged** |
+| S1 (trigger, no authenticated status UPDATE, guard function) | 1 / false / true | **unchanged** |
+| Journals Drizzle / Supabase | 23 / 105 | **unchanged** (no ledger write) |
+| Scheduled jobs 2–6 (md5, schedule, active) | as before | **unchanged** |
+| Applications (count, last update) | 160, 21:43:53Z | **unchanged** |
+| Documents / storage / agreements / screenings / rentals / payments / vehicles / user_roles | 94 / 131 / 1 / 5 (2 verified) / 0 / 0 / 10 / 6 | **unchanged** |
+| audit_log | 947 | 948 (+1: the evidence row only) |
+| Insurance-authority objects | absent | absent (not installed) |
+| Live deployment | `7c20aff8` (A.2) | `7c20aff8` (A.2). PR 2 is not published. |
+
+**State now: A.2 + activation setting (state A).** A.2 behaviour is unchanged: it never reads the `rental_activation` key and still calls the unchanged `activate_rental_tx`.
+
+**Rollback, if ever needed (separate approval):** request `57498a82…4893`.
+
+**Next:** Step C2 (insurance-authority preflight, then publish `5e492a87`) waits for the Owner's separate approval.
