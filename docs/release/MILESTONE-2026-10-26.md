@@ -22,3 +22,35 @@
 - Every gate is true: job 3 is still the August definition; job 2 holds the installed fix; pg_net, the token and the checker are present; no earlier evidence row.
 - First-run eligible: 0 past-due, 0 licence-expiring, 0 agreement reminders, so **0 driver emails**.
 - Backlog 0. Team digests 0.
+
+## A.2 Preview update (Owner-approved, 2026-10-26)
+
+**Pre-checks (all passed):**
+
+| Check | Result |
+|---|---|
+| Preview HEAD before | `a3df8545…` |
+| Candidate | `5d442808730c29a8cb3021eff14c2a7316b90434` |
+| Fast-forward | Yes |
+| Diff | 12 files (the reviewed A.2 scope only; no webhook, payments, Stripe, migration or SQL files) |
+| M2 flags | Both `false` |
+| Rollback refs | Unchanged |
+
+**Update:** `a3df8545..5d442808`, with no force. Lovable `latest_commit_sha` = `5d442808730c29a8cb3021eff14c2a7316b90434`.
+
+**Production watch (read-only), before (10:24:23Z) and after (10:25:07Z), identical:**
+
+| Item | Value |
+|---|---|
+| applications / documents / storage objects | 155 / 93 / 130 |
+| audit_log | 932 |
+| Security 0031 | `d3387761…` |
+| Policies / journals | 170 / 23 / 105 |
+| S1 | Guard present; `authenticated` status UPDATE revoked |
+| Cron jobs 2–6 | Unchanged (job 2 holds the fix; job 3 is still the August definition) |
+
+**M2 helper commits:** `0520a3ff` and `b122089f` change only `scripts/vault-replace-guard.test.mjs`; `9bb74cc3` changes only
+`scripts/ci/record-rental/manifest.json`.
+- vault-replace-guard: 17/0 on both M2 branches.
+- `guard.mjs --rc`: PASS on Record Rental.
+- No application code changed.
