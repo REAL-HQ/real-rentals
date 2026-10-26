@@ -28,6 +28,7 @@ import {
   type RentalBilling,
 } from "@/lib/rental-payments.functions";
 import { getMyAgreements, signMyAgreement, getAgreementPdf } from "@/lib/agreements.functions";
+import { portalAgreementState, portalAgreementStatusLabel } from "@/lib/portal-agreement-state";
 import { saveAgreementPdf } from "@/lib/agreement-download";
 import { DocumentVault } from "@/components/admin/DocumentVault";
 import { DocumentUpdateCard } from "@/components/portal/DocumentUpdateCard";
@@ -545,7 +546,11 @@ function AgreementsView() {
   const [busy, setBusy] = useState(false);
 
   if (isLoading) return null;
-  const rows = data ?? [];
+  // Drafts are not issued agreements and never reach the driver. Voided rows
+  // stay visible, neutrally, with no signing call to action.
+  const rows = (data ?? [])
+    .map((a) => ({ ...a, state: portalAgreementState(a) }))
+    .filter((a) => a.state !== "hidden");
   if (rows.length === 0) return null;
 
   return (
@@ -558,13 +563,13 @@ function AgreementsView() {
               <div className="min-w-0">
                 <div className="text-sm font-medium truncate">{a.title}</div>
                 <div className="text-xs text-muted-foreground">
-                  {a.signed_at
+                  {a.state === "signed" && a.signed_at
                     ? `Signed ${fmtDate(a.signed_at)}`
-                    : "Awaiting your signature"}
+                    : portalAgreementStatusLabel(a.state)}
                 </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                {a.status === "signed" && a.document_id ? (
+                {a.state === "signed" && a.document_id ? (
                   <button
                     onClick={async () => {
                       try {
@@ -578,25 +583,27 @@ function AgreementsView() {
                     <Download className="w-3.5 h-3.5" /> PDF
                   </button>
                 ) : null}
-                <button
-                  onClick={() => {
-                    setOpenId(openId === a.id ? null : a.id);
-                    setName("");
-                    setAgree(false);
-                  }}
-                  className="text-xs font-semibold text-real-red"
-                >
-                  {a.status === "signed" ? "View" : openId === a.id ? "Close" : "Review & Sign"}
-                </button>
+                {a.state === "signed" || a.state === "awaiting_signature" ? (
+                  <button
+                    onClick={() => {
+                      setOpenId(openId === a.id ? null : a.id);
+                      setName("");
+                      setAgree(false);
+                    }}
+                    className="text-xs font-semibold text-real-red"
+                  >
+                    {a.state === "signed" ? "View" : openId === a.id ? "Close" : "Review & Sign"}
+                  </button>
+                ) : null}
               </div>
             </div>
 
-            {openId === a.id ? (
+            {openId === a.id && (a.state === "signed" || a.state === "awaiting_signature") ? (
               <div className="mt-3 rounded-xl border border-border bg-muted/30 p-4">
                 <pre className="whitespace-pre-wrap font-sans text-[13px] leading-6 max-h-72 overflow-y-auto">
                   {layoutToText(a.body)}
                 </pre>
-                {a.status !== "signed" ? (
+                {a.state === "awaiting_signature" ? (
                   <div className="mt-4">
                     <SigningPanel
                       body={a.body}

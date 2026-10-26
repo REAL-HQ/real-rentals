@@ -423,9 +423,13 @@ function ContactStep({
         <div className="mt-8 rounded-2xl bg-soft p-6 md:p-8">
           <input tabIndex={-1} autoComplete="off" value={hp} onChange={(e) => setHp(e.target.value)} className="hidden" aria-hidden />
           <div className="grid grid-cols-1 gap-5">
-            <In label="Full Name" v={form.full_name} e={errors.full_name} on={(v) => update("full_name", v)} />
-            <In label="Email" type="email" v={form.email} e={errors.email} on={(v) => update("email", v)} />
-            <In label="Mobile Phone" v={form.phone} e={errors.phone} on={(v) => update("phone", v)} />
+            {/* Real input types and autocomplete tokens: the phone keypad and
+                the email keyboard on mobile, and one-tap autofill. Validation
+                is unchanged (validate() still decides), and there is no form element to
+                submit, so the browser's own type checks never block Continue. */}
+            <In label="Full Name" name="name" autoComplete="name" autoCapitalize="words" v={form.full_name} e={errors.full_name} on={(v) => update("full_name", v)} />
+            <In label="Email" name="email" type="email" inputMode="email" autoComplete="email" autoCapitalize="off" v={form.email} e={errors.email} on={(v) => update("email", v)} />
+            <In label="Mobile Phone" name="tel" type="tel" inputMode="tel" autoComplete="tel" v={form.phone} e={errors.phone} on={(v) => update("phone", v)} />
           </div>
 
           <SmsConsentField className="mt-5" checked={form.sms_consent} onChange={(v) => update("sms_consent", v)} />
@@ -474,12 +478,39 @@ function ContactStep({
   );
 }
 
-function In({ label, type = "text", v, e, on }: { label: string; type?: string; v: string; e?: string; on: (v: string) => void }) {
+function In({
+  label,
+  type = "text",
+  name,
+  inputMode,
+  autoComplete,
+  autoCapitalize,
+  v,
+  e,
+  on,
+}: {
+  label: string;
+  type?: string;
+  name?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  autoComplete?: string;
+  autoCapitalize?: string;
+  v: string;
+  e?: string;
+  on: (v: string) => void;
+}) {
   return (
     <label className="block">
       <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
       <input
         type={type}
+        name={name}
+        inputMode={inputMode}
+        autoComplete={autoComplete}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={type === "email" || type === "tel" ? "off" : undefined}
+        spellCheck={type === "email" || type === "tel" ? false : undefined}
+        aria-invalid={e ? true : undefined}
         value={v}
         onChange={(ev) => on(ev.target.value)}
         className={`mt-1.5 w-full min-h-11 scroll-mb-28 bg-white border ${e ? "border-real-red" : "border-border"} rounded-lg px-3 text-base`}
