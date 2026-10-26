@@ -69,7 +69,7 @@ This is features 1–7, plus standard new rentals from feature 8, closeout from 
 | **3. Payments go-live check** | No code change. The Owner confirms the Stripe live configuration. The first real rental and first real charge are watched with read-only checks. No test charges are made. | None, or Owner settings only | — |
 | *Optional: 4. Ops reminders* | App guard on `a20f2cc7` (publish), then the job 3 SQL. This can go right after launch. | 1 publish, 1 SQL | Republish the previous build; SQL rollback included |
 
-**Remaining deployment stages to launch: 2** (A.2, then PR 2), plus the Owner's Stripe check. This means **2 publishes and 2 SQL installs**. With ops reminders, it is 3 stages.
+**Update 2026-10-26 11:17Z:** A.2 published (deployment `7c20aff8`); the live-SHA screenshot is pending. **Remaining deployment stages to launch: 1** (PR 2). Originally **2** (A.2, then PR 2), plus the Owner's Stripe check. This means **2 publishes and 2 SQL installs**. With ops reminders, it is 3 stages.
 
 ## PRs and migrations
 
