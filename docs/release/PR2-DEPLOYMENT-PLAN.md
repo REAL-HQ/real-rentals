@@ -33,7 +33,7 @@ Nothing here has run in production.
 
 ## Sequence (keeps the gap between Publish and the required SQL to minutes)
 
-**Before the window** (separate approvals, any day after Release A.1 is live):
+**Before the window** (separate approvals, any day after Release A.2 is confirmed live):
 1. Run `activation-insurance-setting`: preflight (read-only), then the request (once), then
    verify-after (read-only).
    - Release A behaviour is unchanged.
@@ -42,7 +42,7 @@ Nothing here has run in production.
 
 **Window** (one approval covering 2–5, ideally at a quiet hour with no activation in progress):
 2. Run the IVA `preflight-readonly.sql`. All gates must be true. If any gate is false, **stop** and do not publish.
-3. Publish PR 2's app (Release A.2).
+3. Publish PR 2's app (Release A.3: PR 2 merged onto live A.2 `5d442808`; commit to be approved).
 4. Confirm the new build is serving: the `data-commit-sha` on the published site equals the
    approved commit.
    - If the publish failed or the SHA does not match, **stop**.
@@ -68,9 +68,9 @@ Nothing here has run in production.
 
 | Situation | Action |
 |---|---|
-| Problem after step 5 | IVA rollback request (`69d5dcef…d082`), **then** republish Release A.1. Never republish A.1 while IVA is installed: A.1's toggle would be refused. |
+| Problem after step 5 | IVA rollback request (`69d5dcef…d082`), **then** republish Release A.2 (`5d442808`). Never republish A.2 while IVA is installed: A.2's toggle would be refused. |
 | Problem with the activation package | Its rollback request (`57498a82…3893`). PR 2's app then falls back to fail-closed. |
-| Publish failed at step 3 | Nothing to undo. The activation package is harmless to A.1. |
+| Publish failed at step 3 | Nothing to undo. The activation package is harmless to A.2. |
 
 ## Interactions with other gated work
 
@@ -80,3 +80,35 @@ Nothing here has run in production.
 | Security 0031 | Required exactly as installed. Unchanged. |
 | M2 Window 1 / Window 2 | Any order was tested (C1–C4). Recommended: both PR 2 packages before Window 2. Under the Window 2 lock, activation returns 40001 and writes nothing; a retry succeeds. |
 | Drizzle 0023 | Independent. |
+
+## Rebuilt on live A.2 (2026-10-26)
+
+Branch `feature/driver-activation-readiness`, merge of `5d442808` (Release A.2). The merge was clean, and no ledger migration was added. Both SQL packages are byte-identical:
+
+| Request | sha256 |
+|---|---|
+| Activation insurance setting | `b80babcc…5505` |
+| Activation insurance setting rollback | `57498a82…` |
+| Insurance verification authority | `eb7710d7…e950` |
+| Insurance verification authority rollback | `69d5dcef…` |
+
+Local results on the merged tree:
+
+| Check | Result |
+|---|---|
+| tsc, build, full `npm test` | Pass |
+| activation-readiness | 77/0 |
+| agreement-evidence | 11/0 |
+| activation-insurance-setting.db | 61/0, including C1–C4 (S1, 0031 and M2 orders and rollbacks) |
+| eSign harness | 50/50 |
+
+Production preflights, read-only, 2026-10-26:
+- **Activation insurance setting:** every gate ok.
+  - Drizzle first-23 md5 `5cfa7e88…`; 0031 md5 `d3387761…`.
+  - The rental activation setting key and the package objects are absent.
+  - `activate_rental_tx` is service-role-only.
+- **Insurance verification authority:** every gate ok.
+  - The screening triggers are the expected three.
+  - The activation setting package is not installed yet; M2 Window 2 is not installed.
+
+These must be run again immediately before each submission.

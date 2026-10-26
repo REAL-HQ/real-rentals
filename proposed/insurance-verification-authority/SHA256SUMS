@@ -11,4 +11,4 @@ e4fd96389116d934c976eb48b5dcb0cc59fcda237b276f3d38638db9efc43a3e  src/rollback-i
 7228b13876c9454ffac32eddc9442ff9861e7df9d224bd124d42b97031b5d09d  src/build.py
 2c8c8967cee235af6a2475044b8ad5638b7361b985f8a74c699b9655cba966f7  ../../scripts/sql-guard/gen-guard3.py
 5c4252762bce84a4ad7e905db194dccc317cd3dd767f89fd84338b05c1e02e4f  ../../scripts/activation-insurance-setting.db.test.ts
-8f37924425998292495046d24e09a1b64ee9281221966013a6e8de96a8e589fe  ../activation-insurance-setting/test-results.json
+6fdd6a9b3f3cb4032ee31a6bdbc69346444e20ba17465c0897375cd8fa7082b8  ../activation-insurance-setting/test-results.json

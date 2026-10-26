@@ -192,7 +192,7 @@
     {
       "id": "T6",
       "name": "Owner changes it through the setter: saved and audited (actor, old -> new, time) in the same transaction",
-      "actual": "via PostgREST: off -> on, audit 680185ee-2a75-4c94-b2f4-b9edc7f36088",
+      "actual": "via PostgREST: off -> on, audit 086e8bbf-bd2a-43d6-a33a-a96e71284d38",
       "pass": true
     },
     {
@@ -234,13 +234,13 @@
     {
       "id": "V4",
       "name": "Manager verifies and revokes through the setter; each decision audited with actor, time, document id/SHA, insurer, policy reference",
-      "actual": "PostgREST verify, then revoke; 2 audit rows (audit 236c0919-0c0a-48da-84ee-803025f3e246)",
+      "actual": "PostgREST verify, then revoke; 2 audit rows (audit b83d0dc1-a4d3-4cda-b46f-6e0f786c996d)",
       "pass": true
     },
     {
       "id": "V5",
       "name": "Owner verifies and revokes through the setter; each decision audited with actor, time, document id/SHA, insurer, policy reference",
-      "actual": "PostgREST verify, then revoke; 2 audit rows (audit dd569e44-bf9d-4f90-b2d5-4923acf533b5)",
+      "actual": "PostgREST verify, then revoke; 2 audit rows (audit 7046b1c6-dc4f-4d2c-a44a-df4064d07cec)",
       "pass": true
     },
     {
@@ -312,7 +312,7 @@
     {
       "id": "T9f",
       "name": "via PostgREST (one transaction per request): failure leaves nothing; success writes rental + in-transaction audit",
-      "actual": "failure 400 (nothing written); success 200 (rental + audit, txid 3799)",
+      "actual": "failure 400 (nothing written); success 200 (rental + audit, txid 4301)",
       "pass": true
     },
     {
@@ -412,10 +412,10 @@
       }
     },
     "exception_audit": {
-      "actor_user_id": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
+      "actor_user_id": "e594a146-27fe-40d7-8627-7d21ad1c5818",
       "actor_email": "manager@test",
       "actor_role": "team",
-      "entity_id": "da866fa9-c00d-47ee-909d-b369b7ccb3b8",
+      "entity_id": "70375860-1a70-43a8-9e02-584e3dfd3a49",
       "summary": "Activated 2022 Toyota Camry for Test Driver",
       "ip": "203.0.113.7",
       "user_agent": "db-test",
@@ -427,12 +427,12 @@
           "interview_completed": true
         },
         "source": "activate_rental_checked_tx",
-        "driver_id": "f06012ec-3640-4d65-8307-d039645508fd",
+        "driver_id": "8f9866ae-a0b6-44b6-9e74-18d6027744f0",
         "insurance": {
-          "at": "2026-10-26T05:37:52.734848+00:00",
+          "at": "2026-10-26T12:09:57.589532+00:00",
           "status": "unverified",
           "acknowledged": true,
-          "acting_user_id": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
+          "acting_user_id": "e594a146-27fe-40d7-8627-7d21ad1c5818",
           "exception_used": true,
           "setting_source": "activation_transaction",
           "setting_present": true,
@@ -440,17 +440,17 @@
           "setting_allow_without_verification": true
         },
         "overrides": null,
-        "vehicle_id": "0c18bec9-7a87-4238-bb68-d0f35a159ce9",
-        "application_id": "8e87ba08-9a3c-46b5-903f-d0ed276ac439",
-        "transaction_id": "3645",
+        "vehicle_id": "391248c5-b05a-4047-a2bc-4df4620b9859",
+        "application_id": "1b94a2e6-4616-4233-b5d4-982d6f2292a0",
+        "transaction_id": "4147",
         "account_created": false
       }
     },
     "override_audit": {
-      "actor_user_id": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
+      "actor_user_id": "e594a146-27fe-40d7-8627-7d21ad1c5818",
       "actor_email": "manager@test",
       "actor_role": "team",
-      "entity_id": "59baa92e-3e1e-4684-80f8-bec5c6db3ef9",
+      "entity_id": "c9069f44-818e-4e65-ad32-744c25bd85e9",
       "summary": "Activated 2022 Toyota Camry for Test Driver",
       "ip": "203.0.113.7",
       "user_agent": "db-test",
@@ -462,12 +462,12 @@
           "interview_completed": true
         },
         "source": "activate_rental_checked_tx",
-        "driver_id": "a973e211-e299-4378-a602-daba4a4d9509",
+        "driver_id": "a8f07cf2-0a8c-433e-acd2-117eef5ace00",
         "insurance": {
-          "at": "2026-10-26T05:37:52.932411+00:00",
+          "at": "2026-10-26T12:09:57.780359+00:00",
           "status": "verified",
           "acknowledged": false,
-          "acting_user_id": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
+          "acting_user_id": "e594a146-27fe-40d7-8627-7d21ad1c5818",
           "exception_used": false,
           "setting_source": "activation_transaction",
           "setting_present": true,
@@ -475,8 +475,8 @@
           "setting_allow_without_verification": false
         },
         "overrides": {
-          "at": "2026-10-26T05:37:52.932411+00:00",
-          "by": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
+          "at": "2026-10-26T12:09:57.780359+00:00",
+          "by": "e594a146-27fe-40d7-8627-7d21ad1c5818",
           "reason": "Checked at the lot by the owner",
           "blockers": [
             {
@@ -485,30 +485,30 @@
             }
           ]
         },
-        "vehicle_id": "2d33df50-3600-4e0a-bf85-0fb0f04976bf",
-        "application_id": "23c1ae51-106b-4151-94f1-a4841688f19b",
-        "transaction_id": "3686",
+        "vehicle_id": "6980171b-fa97-4410-9041-6d4267d5b9c0",
+        "application_id": "a4da9933-1f92-4b37-b1a1-e4fca6148502",
+        "transaction_id": "4188",
         "account_created": false
       }
     },
     "owner_change_audit": {
-      "actor_user_id": "5493412e-4ede-431a-aa9f-0a6be4588c27",
+      "actor_user_id": "6c16376e-1db7-4ae2-8b78-0b88701600bd",
       "actor_role": "admin",
       "metadata": {
         "to": true,
         "from": false,
         "setting": "allow_activation_without_insurance_verification",
-        "changed_at": "2026-10-26T05:37:52.991691+00:00",
-        "actor_user_id": "5493412e-4ede-431a-aa9f-0a6be4588c27",
+        "changed_at": "2026-10-26T12:09:57.850388+00:00",
+        "actor_user_id": "6c16376e-1db7-4ae2-8b78-0b88701600bd",
         "from_row_present": true
       },
-      "created_at": "2026-10-26T05:37:52.991Z"
+      "created_at": "2026-10-26T12:09:57.850Z"
     },
     "verification_audit": {
       "action": "insurance.verified",
-      "actor_user_id": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
+      "actor_user_id": "e594a146-27fe-40d7-8627-7d21ad1c5818",
       "actor_role": "team",
-      "created_at": "2026-10-26T05:37:53.092Z",
+      "created_at": "2026-10-26T12:09:57.964Z",
       "metadata": {
         "to": true,
         "from": false,
@@ -517,15 +517,15 @@
         "insurer": "Acme Mutual",
         "decision": "verified",
         "document": {
-          "id": "a0efd0dd-a5ae-4520-ba62-5951f1328748",
+          "id": "3c1124cf-d8c1-4ccd-874c-d4ed8a2e119a",
           "expires_at": null,
-          "storage_path": "c081edf2-0301-4c3d-b583-105207e239df/in.jpg",
+          "storage_path": "46d47f2a-718d-4ca1-88d2-61d3aa391cf4/in.jpg",
           "review_status": "uploaded",
           "content_sha256": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
         },
-        "decided_at": "2026-10-26T05:37:53.09203+00:00",
-        "decided_by": "3ecc6b7f-cd32-4dfb-ab3e-d825fb932248",
-        "screening_id": "19c91d37-10bb-4f3b-9e29-c72977d7898b",
+        "decided_at": "2026-10-26T12:09:57.964816+00:00",
+        "decided_by": "e594a146-27fe-40d7-8627-7d21ad1c5818",
+        "screening_id": "5f037c0d-8f96-4bca-bb62-64a18375762c",
         "policy_expires_on": null,
         "policy_number_last4": "3456",
         "policy_number_sha256": "39c78f4abdc02f1c21aecb130d5c7efbceca54fb824baf5b12618a447990be0b",
@@ -536,14 +536,14 @@
     "concurrency_a": {
       "blocked_wait_event": "Lock/transactionid",
       "blocking_pids": [
-        4602
+        744
       ],
       "nowait_error": "55P03 could not obtain lock on row in relation \"app_settings\"",
       "owner_change_after_commit": {
         "to": false,
         "from": true,
-        "audit_id": "2281a99e-ae77-4e04-8b5d-9dcdc7bc8568",
-        "changed_at": "2026-10-26T05:37:53.738931+00:00"
+        "audit_id": "8b66780f-39cf-429c-b02a-eaa1b59cfee9",
+        "changed_at": "2026-10-26T12:09:58.685135+00:00"
       }
     },
     "c1": [
