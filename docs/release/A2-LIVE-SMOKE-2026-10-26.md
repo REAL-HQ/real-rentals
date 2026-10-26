@@ -83,3 +83,25 @@ Scheduled runs since the baseline all succeeded: job 4 ran 10 times, job 5 once 
 Lovable still reports `latest_commit_sha` `5d442808`, `is_published` true and status ready. The Preview branch and every rollback ref are unchanged.
 
 **Pending:** L1, the Owner's check of the live `data-commit-sha`. It is the only proof that deployment `7c20aff8` is serving.
+
+## Live version check (2026-10-26 12:35Z, read-only)
+
+The Owner viewed the page source at about 12:09Z (8:09 AM ET) and saw `a3df8545`.
+
+**Server-side evidence.** Every scheduled job calls `https://drivereal.com/api/public/cron/*`, and pg_net keeps each response's `x-deployment-id` header in `net._http_response`:
+
+| Deployment | First seen | Last seen | Responses | Non-200 |
+|---|---|---|---|---|
+| `92c2db50…` (reminder cap, `a3df8545`) | (earlier) | **12:05:00Z** | 73 in 6 h | 0 |
+| **`7c20aff8…` (A.2)** | **12:10:00Z** | 12:35:00Z (latest) | 7 | 0 |
+
+**Finding:** deployment `7c20aff8` completed. drivereal.com switched to it between 12:05 and 12:10Z, about 50 minutes after `deploy_project` (11:17Z). The Owner's check at about 12:09Z fell inside that switch window. It saw the previous build, or HTML cached for the `?utm_source=chatgpt.com` URL.
+- There is no evidence of a failed deployment or a custom-domain misconfiguration.
+- No republish is needed.
+
+**Corrective action:** none on the server. The Owner re-checks once in a private window at `view-source:https://drivereal.com/` (no query string). Expected: `data-commit-sha="5d442808730c29a8cb3021eff14c2a7316b90434"`. If it still shows `a3df8545`, stop and report; do not republish.
+
+**Unrelated observation (pre-existing; before A.2 and on the old deployment):**
+- 5 pg_net client timeouts (5 s) between 09:15 and 11:15Z: jobs at :15 (hourly reminders) and :00/:05/:40 (automations).
+- No HTTP errors.
+- This is kept on the existing watch.
