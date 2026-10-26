@@ -166,3 +166,12 @@ The live app therefore runs `a3df8545`, consistent with the Owner's page-source 
 | 12 (uploads) | **PASS**: uploads_24h 2, uploads_24h_without_object 0 |
 
 Counts: applications 155, approved 2, documents 93, storage objects 130.
+
+## Status: DEPLOYED AND FIRST-RUN VERIFIED (Owner accepted, 2026-10-26)
+
+The hourly reminder repair is closed:
+- live app `a3df8545` carries the 10-per-hour cap;
+- job 2 is fixed;
+- the first run was verified across all five outcomes.
+
+The one-shot watch check-in has fired, and no other routine was created.
