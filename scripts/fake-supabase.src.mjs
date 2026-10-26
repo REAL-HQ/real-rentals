@@ -12,6 +12,14 @@
  * Supported: select / insert / update / delete / upsert, chained with
  * eq, neq, ilike, in, is, or, gte, lte, order, limit, range, single,
  * maybeSingle, and select(..., { count, head }). Plus storage.from().download().
+ *
+ * PostgREST 12 (checked on 12.2.3) re-applies a mutation's or= filter to the
+ * RETURNING rows, after the write. So an update/delete with .or() and a
+ * .select() that leaves out a column the or() names fails with 42703 (and
+ * writes nothing), and one that selects it returns only the rows whose NEW
+ * values still pass the or(). Plain filters (eq, is, ...) are not re-applied.
+ * The fake does the same, or a guarded write that never works in production
+ * passes here.
  */
 const S = (globalThis.__fakeSb ??= { tables: {}, files: {}, log: [], defaults: {} });
 
@@ -77,7 +85,7 @@ class Query {
   // check for an empty candidate list before they ask.
   in(f, vs) { if (!vs?.length) throw new Error(`PostgREST: empty in() list for ${f}`); this.filters.push((r) => vs.map(String).includes(String(r[f]))); return this; }
   is(f, v) { this.filters.push((r) => (v === null ? r[f] == null : r[f] === v)); return this; }
-  or(expr) { this.filters.push((r) => matchOr(r, expr)); return this; }
+  or(expr) { (this.ors ??= []).push(expr); this.filters.push((r) => matchOr(r, expr)); return this; }
   gte(f, v) { this.filters.push((r) => String(r[f]) >= String(v)); return this; }
   lte(f, v) { this.filters.push((r) => String(r[f]) <= String(v)); return this; }
   order(f, o = {}) { this.orders.push([f, o.ascending !== false]); return this; }
@@ -88,8 +96,9 @@ class Query {
    * the slice would make a paginated list claim one page was the whole fleet.
    */
   range(from, to) { this.rangeFrom = from; this.rangeTo = to; return this; }
-  select(_cols, opts = {}) {
+  select(cols, opts = {}) {
     this.selected = true;
+    this.cols = cols ?? "*";
     if (opts.count) this.count = opts.count;
     if (opts.head) this.head = true;
     return this;
@@ -139,17 +148,44 @@ class Query {
       return { data: clone(p), error: null };
     }
     if (this.kind === "update") {
+      const refused = this._returningRefused();
+      if (refused) return refused;
       const m = this._matching();
       for (const r of m) { Object.assign(r, this.payload); S.log.push({ op: "update", table: t, row: clone(r), patch: clone(this.payload) }); }
-      return { data: m.map(clone), error: null };
+      return { data: this._returning(m), error: null };
     }
     if (this.kind === "delete") {
+      const refused = this._returningRefused();
+      if (refused) return refused;
       const m = this._matching();
       S.tables[t] = rows(t).filter((r) => !m.includes(r));
       for (const r of m) S.log.push({ op: "delete", table: t, row: clone(r) });
-      return { data: m.map(clone), error: null };
+      return { data: this._returning(m), error: null };
     }
     return { data: null, error: null };
+  }
+  /** Columns an or() expression filters on: `a.is.null,and(b.gte.1,c.lt.2)` -> a, b, c. */
+  _orColumns() {
+    const cols = new Set();
+    for (const expr of this.ors ?? []) {
+      for (const m of String(expr).matchAll(/(?:^|[,(])([A-Za-z_][A-Za-z0-9_]*)\.(?:not\.)?(?:eq|neq|gt|gte|lt|lte|like|ilike|is|in|isdistinct|cs|cd|ov|fts)\./g)) cols.add(m[1]);
+    }
+    return cols;
+  }
+  /** PostgREST 12: a returning mutation whose select omits an or() column fails before writing. */
+  _returningRefused() {
+    if (!this.selected || !this.ors?.length) return null;
+    const sel = String(this.cols).split(",").map((c) => c.trim());
+    if (sel.includes("*")) return null;
+    for (const c of this._orColumns()) {
+      if (!sel.includes(c)) return { data: null, error: { code: "42703", message: `column ${this.table}.${c} does not exist` } };
+    }
+    return null;
+  }
+  /** PostgREST 12: the or() is applied again to the rows as they are AFTER the write. */
+  _returning(m) {
+    const out = this.ors?.length ? m.filter((r) => this.ors.every((e) => matchOr(r, e))) : m;
+    return out.map(clone);
   }
   /**
    * A test can hold every read of one table until it chooses to release them.

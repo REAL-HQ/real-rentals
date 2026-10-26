@@ -269,7 +269,7 @@ const drv = { name: "Sam Q Helper", licenseNumber: "h123", licenseState: "fl", l
 // ====================================== 3. merge data and rendered body
 console.log("\nthe rendered agreement body carries contract dates");
 const p1 = await at("2026-10-25T16:00:00Z", () => preview(freshDb()));
-for (const [field, want] of [["start_date", "Oct 11, 2026"], ["return_date", "Apr 11, 2027"], ["driver_dob", "Jul 2, 1991"], ["today", "Oct 25, 2026"]])
+for (const [field, want] of [["start_date", "Oct 11, 2026"], ["return_date", "Apr 11, 2027"], ["driver_dob", "Jul 2, 1991"], ["license_expiration", "Apr 30, 2030"], ["today", "Oct 25, 2026"]])
   ok(p1.merge[field] === want, `${field} = ${JSON.stringify(p1.merge[field])} (want ${want})`);
 ok(String(p1.body).includes("Starts Oct 11, 2026") && String(p1.body).includes("Executed Oct 25, 2026"), "the body prints those dates");
 ok(!/\b\d{2}-\d{2}-\d{4}\b/.test(String(p1.body) + JSON.stringify(p1.merge)),
@@ -355,14 +355,31 @@ console.log("\nthe whole rendered agreement, merge data and fingerprint equal Re
     reservation: { mode: "not_required", amount: null },
     deposit: { mode: "none", amount: null, reason: "" },
   };
-  const db = () => {
+  const db = (app = {}) => {
     const t = fixtures();
     t.agreement_templates = [{ ...TEMPLATE, body }];
+    Object.assign(t.applications[0], app);
     return (globalThis.__fx = fakeDb(t));
   };
-  for (const when of ["2026-10-25T16:00:00Z", "2026-12-15T15:00:00Z", "2027-02-03T14:00:00Z"]) {
+  // The one intended difference from Release A in merge data: the licence
+  // expiry, which Release A copied through as raw ISO ("2030-04-30") and is
+  // now a contract date ("Apr 30, 2030"; contract-licence-expiry.test.mjs).
+  // Release A passes the column through verbatim, so handing ITS run the
+  // already-formatted value isolates that change: everything else — body,
+  // every other merge field, the fingerprint — must still be byte-identical.
+  const RA_LICENCE = { license_expiration: "Apr 30, 2030" };
+  {
+    const when = "2026-10-25T16:00:00Z";
     const ours = await at(when, () => (db(), AG.previewAgreement({ data: { applicationId: APP_ID, prep }, context: { userId: "owner" } })));
     const ra = await at(when, () => (db(), RAAG.previewAgreement({ data: { applicationId: APP_ID, prep }, context: { userId: "owner" } })));
+    ok(ra.merge.license_expiration === "2030-04-30" && ours.merge.license_expiration === "Apr 30, 2030",
+      `the licence expiry is the only intended merge difference (Release A ${ra.merge.license_expiration}, now ${ours.merge.license_expiration})`);
+    ok(JSON.stringify(Object.keys(ours.merge).filter((k) => ours.merge[k] !== ra.merge[k])) === JSON.stringify(["license_expiration"]),
+      "  and no other merge field differs");
+  }
+  for (const when of ["2026-10-25T16:00:00Z", "2026-12-15T15:00:00Z", "2027-02-03T14:00:00Z"]) {
+    const ours = await at(when, () => (db(), AG.previewAgreement({ data: { applicationId: APP_ID, prep }, context: { userId: "owner" } })));
+    const ra = await at(when, () => (db(RA_LICENCE), RAAG.previewAgreement({ data: { applicationId: APP_ID, prep }, context: { userId: "owner" } })));
     ok(ours.blockers.length === 0 && ra.blockers.length === 0 && ours.body != null, `${when}: both render with no blockers`);
     ok(ours.body === ra.body, `  the rendered body is byte-identical (${String(ours.body).split(". ")[3]})`);
     ok(JSON.stringify(ours.merge) === JSON.stringify(ra.merge), "  every merge field is identical");
