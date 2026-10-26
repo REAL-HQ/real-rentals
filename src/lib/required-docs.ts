@@ -2,6 +2,14 @@
 // the Drivers list and the Waitlist so the two can never disagree.
 import { REQUIRED_DOC_TYPES, type RequiredDocType } from "@/components/admin/types";
 
+/**
+ * The four vault categories the screening pipeline treats as required: the
+ * drawer's "Documents x/4", the header's next step and activation readiness
+ * (src/lib/activation-readiness.ts) all read this one list.
+ */
+export const REQUIRED_VAULT_CATEGORIES = ["license_front", "license_back", "insurance", "gig_profile"] as const;
+export type RequiredVaultCategory = (typeof REQUIRED_VAULT_CATEGORIES)[number];
+
 /** Vault category -> the required-document name the list counts. */
 export const VAULT_TO_REQUIRED: Record<string, string> = {
   insurance: "insurance_card",

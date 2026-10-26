@@ -91,13 +91,8 @@ function isImageDoc(d: VaultDocument): boolean {
   return !/\.(pdf|mp3|wav|m4a|ogg|mp4|mov|webm|zip|docx?)$/i.test(d.file_name ?? "");
 }
 
-/** The four categories the screening pipeline treats as required. */
-export const REQUIRED_VAULT_CATEGORIES: DocCategory[] = [
-  "license_front",
-  "license_back",
-  "insurance",
-  "gig_profile",
-];
+/** The four categories the screening pipeline treats as required. One list, shared with the server. */
+export { REQUIRED_VAULT_CATEGORIES } from "@/lib/required-docs";
 
 function VerifyIdentityAction({ applicationId }: { applicationId: string }) {
   if (!IDENTITY_VERIFICATION_ENABLED) return null;
@@ -382,9 +377,19 @@ export function ApplicantDocuments({
                   <span
                     className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${style.cls}`}
                   >
-                    {style.label}
+                    {key === "gig_profile" && st === "verified" ? "Staff Reviewed" : style.label}
                   </span>
                 </div>
+                {key === "gig_profile" ? (
+                  <div className="text-[10px] text-[#9A9AA3]">
+                    Screenshot Only. Not Verified With Uber, Lyft Or Any Platform.
+                  </div>
+                ) : key === "agreement" ? (
+                  <div className="text-[10px] text-[#9A9AA3]">
+                    Verify Only A Fully Signed Agreement. Verification Is Audited And Counts As The
+                    Signed Agreement For Activation.
+                  </div>
+                ) : null}
 
                 {d && (
                   <div className="text-[11px] text-[#9A9AA3] space-y-0.5">
