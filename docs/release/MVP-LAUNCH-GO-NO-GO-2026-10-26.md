@@ -16,7 +16,7 @@ How this was checked:
 
 | # | Deployment | State | Rollback |
 |---|---|---|---|
-| 1 | **Release A.2** `5d442808` | Published as deployment `7c20aff8`. Database unchanged afterwards. **Live SHA not yet confirmed by the Owner.** | Republish `a3df8545` |
+| 1 | **Release A.2** `5d442808` | **LIVE**: deployment `7c20aff8`, confirmed by the Owner's page-source check on 2026-10-26. | Republish `a3df8545` |
 | 2a | **SQL** `activation-insurance-setting` (request `b80babcc…5505`) | Ready. Production preflight 2026-10-26: **all gates ok**. Harmless to the live app. | Request `57498a82…` |
 | 2b | **Publish PR 2** = `feature/driver-activation-readiness` @ **`5e492a87`** (PR #275, now based on A.2) | Merged onto A.2 cleanly. Tests below. | Republish `5d442808`, only *after* the 2c rollback |
 | 2c | **SQL** `insurance-verification-authority` (request `eb7710d7…e950`), within about 10 minutes of the confirmed 2b SHA | Ready. Production preflight: **all gates ok** | Request `69d5dcef…`, then republish A.2 |

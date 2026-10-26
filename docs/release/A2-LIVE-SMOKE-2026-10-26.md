@@ -105,3 +105,9 @@ The Owner viewed the page source at about 12:09Z (8:09 AM ET) and saw `a3df8545`
 - 5 pg_net client timeouts (5 s) between 09:15 and 11:15Z: jobs at :15 (hourly reminders) and :00/:05/:40 (automations).
 - No HTTP errors.
 - This is kept on the existing watch.
+
+## CLOSED: A.2 live version verified (Owner, 2026-10-26)
+
+The Owner checked the page source of `https://drivereal.com` and found `data-commit-sha="5d442808730c29a8cb3021eff14c2a7316b90434"`. That matches the server-side `x-deployment-id` `7c20aff8…`.
+
+**Release A.2 is live.** Rollback target stays `a3df8545ea411d1322e27fbddf558fc4073ba4e7`.
