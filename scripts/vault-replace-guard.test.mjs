@@ -89,7 +89,15 @@ function query(table) {
 
 const fakeAdmin = {
   from: (t) => query(t),
-  rpc: async (name) => (log.push({ op: "rpc", name }), { data: null, error: { message: "no rpc" } }),
+  // record_uploaded_content_sha answers as not installed (M2 step 2 absent,
+  // today's production): with DOCUMENT_CONTENT_SHA256_ENABLED on, the upload
+  // still confirms, with no content hash.
+  rpc: async (name) => (
+    log.push({ op: "rpc", name }),
+    name === "record_uploaded_content_sha"
+      ? { data: null, error: { code: "PGRST202", message: "Could not find the function" } }
+      : { data: null, error: { message: "no rpc" } }
+  ),
   storage: {
     from: (bucket) => ({
       createSignedUploadUrl: async (path) => (
@@ -103,6 +111,10 @@ const fakeAdmin = {
       remove: async (paths) => (log.push({ op: "storage.remove", bucket, paths }), { error: null }),
       createSignedUrl: async () => ({ data: { signedUrl: "https://signed.invalid" }, error: null }),
       list: async () => ({ data: [], error: null }),
+      // With DOCUMENT_CONTENT_SHA256_ENABLED on, a confirmed upload hashes the
+      // stored bytes: info + download, then record_uploaded_content_sha.
+      info: async () => ({ data: { id: "obj-1", version: "v1", updatedAt: "2026-10-24T00:00:00Z" }, error: null }),
+      download: async () => ({ data: { arrayBuffer: async () => new ArrayBuffer(4) }, error: null }),
     }),
   },
 };
