@@ -66,17 +66,21 @@ function fakeDb(tables) {
     };
     return q;
   }
-  return { tables, from: (t) => query(t) };
+  return { tables, from: (t) => query(t), auth: { admin: { getUserById: async () => ({ data: { user: { email: "owner@test" } } }) } } };
 }
 
 const RENTAL = "77777777-7777-4777-8777-777777777777";
 const OWNER = "55555555-5555-4555-8555-555555555555";
-const ownerCtx = { userId: OWNER, supabase: { rpc: async (n, a) => ({ data: n === "has_role" && a._user_id === OWNER, error: null }) } };
+const MANAGER = "33333333-3333-4333-8333-333333333333";
+// The Owner check is server-side (roles.server.ts reads user_roles through the service role); the
+// authenticated client is never asked, so it refuses every call.
+const ownerCtx = { userId: OWNER, supabase: { rpc: async () => ({ data: null, error: { code: "PGRST202", message: "Could not find the function public.has_role" } }) } };
 
 function install(piBehaviour) {
   globalThis.__fake = fakeDb({
     rentals: [{ id: RENTAL, application_id: "app-1", vehicle_id: "veh-1", stripe_customer_id: "cus_1", stripe_payment_method_id: "pm_1" }],
     payments: [],
+    user_roles: [{ user_id: OWNER, role: "admin" }, { user_id: MANAGER, role: "team" }],
   });
   const calls = [];
   globalThis.__stripe = {
@@ -143,6 +147,16 @@ try {
     install(() => { throw new Error("Your card was declined."); });
     const res = await charge(payments);
     assert.match(res.error, /^Your card was declined\. — recorded as failed\. Before charging again, check this payment in Stripe/);
+  });
+
+  await test("the Owner check works without public.has_role (dropped by migration 20260713042639); a Manager is refused", async () => {
+    const db = install(() => ({ id: "pi_ok", status: "succeeded" }));
+    const res = await payments.chargeCardOnRental({ data: { rentalId: RENTAL, amountCents: 32500, reason: "rent", environment: "live" }, context: { ...ownerCtx, userId: MANAGER } });
+    assert.match(res.error, /Forbidden/);
+    assert.equal(db.tables.payments.length, 0);
+    assert.equal(globalThis.__stripe.calls.length, 0);
+    for (const f of ["src/lib/rental-payments.functions.ts", "src/lib/payments.functions.ts"])
+      assert.doesNotMatch(readFileSync(f, "utf8"), /\.rpc\(\s*['"]has_role['"]/, `${f} still calls the dropped public.has_role`);
   });
 
   await test("UI: 'Paid' only for status paid; anything else is a warning saying not to charge again; no 'Charged' message", () => {

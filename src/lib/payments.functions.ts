@@ -285,11 +285,9 @@ export const removeCardOnFile = createServerFn({ method: 'POST' })
   .inputValidator((data: { applicationId: string; environment: StripeEnv }) => data)
   .handler(async ({ data, context }): Promise<{ ok: true } | { error: string }> => {
     try {
-      const { data: isAdmin } = await (context.supabase as any).rpc('has_role', {
-        _user_id: context.userId,
-        _role: 'admin',
-      });
-      if (!isAdmin) throw new Error('Forbidden');
+      // Owner only, checked server-side (public.has_role no longer exists; see roles.server.ts).
+      const { requireOwner } = await import('@/lib/roles.server');
+      await requireOwner(context.userId);
 
       const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
       const { data: app } = await supabaseAdmin
