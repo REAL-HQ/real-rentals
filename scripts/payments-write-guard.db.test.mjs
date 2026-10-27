@@ -159,9 +159,11 @@ try {
     `created_at = now() - interval '1 year'`,
   ];
   for (const [who, sub] of [["Manager", MANAGER], ["Owner", OWNER]]) {
-    test(`${who} (own session): every direct change is refused except notes and payment method (allowlist)`, () => {
+    test(`${who} (own session): every direct change is refused except notes, and payment method while still owed (allowlist)`, () => {
       for (const set of MONEY_EDITS) assert.match(fails(asUser(sub, `UPDATE public.payments SET ${set} WHERE id = '${P1}'`)) ?? "", MONEY, set);
       assert.match(fails(asUser(sub, `UPDATE public.payments SET status = 'current', paid_date = NULL WHERE id = '${P2}'`)) ?? "", MONEY, "un-pay");
+      assert.match(fails(asUser(sub, `UPDATE public.payments SET payment_method = 'Cash' WHERE id = '${P2}'`)) ?? "", MONEY, "relabel a Stripe-paid row");
+      assert.equal(fails(asUser(sub, `UPDATE public.payments SET notes = 'receipt sent' WHERE id = '${P2}'`)), null, "notes stay editable on a settled row");
       assert.equal(row(P1), "failed|325.00|325.00|-|-");
       assert.equal(fails(asUser(sub, `UPDATE public.payments SET notes = 'called driver', payment_method = 'Card' WHERE id = '${P1}'`)), null);
       assert.equal(fails(asUser(sub, `UPDATE public.payments SET status = 'failed' WHERE id = '${P1}'`)), null, "an unchanged value is not a change");

@@ -17,8 +17,8 @@ A BEFORE INSERT OR UPDATE row trigger on `public.payments`, active only when the
 
 | Change from a user's own session | Result |
 |---|---|
-| UPDATE of `notes` or `payment_method` | Allowed |
-| UPDATE of any other column (an allowlist, so columns added later are covered too): status, amount, balance, late fees, paid date, refunds, Stripe ids, attempt and notice state, failure reason, links (`driver_id`, `rental_id`, `vehicle_id`), `type`, `due_date`, `id`, `created_at` | Refused: `payments_change_only_through_audited_server` (42501) |
+| UPDATE of `notes`, or of `payment_method` while the row is still owed | Allowed |
+| UPDATE of any other column (an allowlist, so columns added later are covered too), and `payment_method` on a paid, refunded, waived or void row (the accountant export reports it): status, amount, balance, late fees, paid date, refunds, Stripe ids, attempt and notice state, failure reason, links (`driver_id`, `rental_id`, `vehicle_id`), `type`, `due_date`, `id`, `created_at` | Refused: `payments_change_only_through_audited_server` (42501) |
 | INSERT of a charge that starts owed: open status, amount ≥ 0, balance ≤ amount, and every column outside the add-a-charge set empty or zero | Allowed (Add Payment) |
 | INSERT of anything else (paid, refunded, waived, void, pending, Stripe-linked, attempt state, any other non-empty column) | Refused: `payments_new_charge_must_start_owed` |
 
@@ -40,10 +40,10 @@ confirms every file reproduces byte for byte; `SHA256SUMS` lists all of them. Sa
 
 | Artifact | SHA-256 | Bytes |
 |---|---|---|
-| `request-payments-write-guard.sql` (submit this) | `becf885762619a075ce4024aa91f8cfe47a2f35ab88559a4a70e7a4aaae4e5e7` | 14678 |
-| `request-rollback-payments-write-guard.sql` (rollback; separate approval) | `cfb827f6f412e57a2353630823b2c18c996ea525acc0ef20af11741be1fccaa8` | 10977 |
+| `request-payments-write-guard.sql` (submit this) | `91ad1504a9fdd1511f0ba0c19bdee42ed94ae8afc389c110a9f859a53f13438d` | 14924 |
+| `request-rollback-payments-write-guard.sql` (rollback; separate approval) | `2ab7d318f947d1cff6b0ba1f2d1f49b2acd442f21985d4644460223dc896a015` | 10977 |
 | `preflight-readonly.sql` | `6769c3e2ced3ea0f8631ca9001537ca6a55556ecdf1473c20579276380467fd6` | 3838 |
-| `verify-after-readonly.sql` | `2e951b2a5a75757564a7140bfe36b469ff621ae92f54902dee97931409d9fe86` | 3982 |
+| `verify-after-readonly.sql` | `e9bc5a7757178a005df6b424313b0a4e80c85d9edb06958e6fa9e99dde3d3e15` | 3982 |
 
 The install request:
 - refuses any target other than the pinned production project;
@@ -81,7 +81,7 @@ Rollback: `request-rollback-payments-write-guard.sql`, once, under its own appro
   - An injected failure rolls everything back.
   - A local copy installs, verify-after is all ok, and a replay is refused.
 - **Roles:**
-  - Manager and Owner: all 20 direct changes are refused, including un-paying a paid row and moving links, type, due date, id or created_at. Notes and payment method stay editable, and an unchanged value is allowed.
+  - Manager and Owner: all 20 direct changes are refused, including un-paying a paid row and moving links, type, due date, id or created_at. Notes stay editable, and payment method while the row is still owed; relabelling a paid row's method is refused. An unchanged value is allowed.
   - A column added later is frozen on update and must be empty on insert.
   - Add Payment: an owed charge is allowed; 9 kinds of non-owed insert are refused.
   - Coordinator and driver: RLS gives no write, so nothing changes and inserts are refused.

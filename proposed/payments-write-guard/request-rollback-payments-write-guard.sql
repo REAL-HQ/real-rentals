@@ -14,9 +14,9 @@ BEGIN
   AND pg_catalog.strpos(pg_catalog.substr(q, s OPERATOR(pg_catalog.+) 1), hdr) OPERATOR(pg_catalog.=) 1
   AND pg_catalog.strpos(pg_catalog.substr(q, s OPERATOR(pg_catalog.+) 2), hdr) OPERATOR(pg_catalog.=) 0;
  IF ok IS NOT TRUE THEN RAISE EXCEPTION 'RRGUARD_PACKAGE_MISSING'; END IF;
- ok := pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.replace(pg_catalog.left(q, s), 'e9703ed4c0391e5a5c16af30d33f27fee7527affa10cad7041a3f5e85c1dd872', pg_catalog.repeat('0', 64)), 'UTF8')), 'hex') OPERATOR(pg_catalog.=) 'e9703ed4c0391e5a5c16af30d33f27fee7527affa10cad7041a3f5e85c1dd872';
+ ok := pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.replace(pg_catalog.left(q, s), '0008667b5802433e6d97b513284ccb56a67ce34995e988c6481a744457603291', pg_catalog.repeat('0', 64)), 'UTF8')), 'hex') OPERATOR(pg_catalog.=) '0008667b5802433e6d97b513284ccb56a67ce34995e988c6481a744457603291';
  IF ok IS NOT TRUE THEN RAISE EXCEPTION 'RRGUARD_GUARD_TEXT_CHANGED'; END IF;
- ok := pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.substr(q, s OPERATOR(pg_catalog.+) 1, 8992), 'UTF8')), 'hex') OPERATOR(pg_catalog.=) 'ca8c0736cc86b1b491f0bd4ed097d914c8352ab4b7e625e2088d683921098954';
+ ok := pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.substr(q, s OPERATOR(pg_catalog.+) 1, 8992), 'UTF8')), 'hex') OPERATOR(pg_catalog.=) 'aa6e851ead862aa3c2a9f183e475e3d0404e8d5c74700b6e8176a9f8963d0c7c';
  IF ok IS NOT TRUE THEN RAISE EXCEPTION 'RRGUARD_BYTES_MISMATCH'; END IF;
  ok := pg_catalog.substr(q, s OPERATOR(pg_catalog.+) 1 OPERATOR(pg_catalog.+) 8992) OPERATOR(pg_catalog.~) '^(\n\n-- source: POST /v1/projects/:ref/database/query\n-- user: [^\r\n]*\n-- date: [^\r\n]*)?$';
  IF ok IS NOT TRUE THEN RAISE EXCEPTION 'RRGUARD_TRAILING_TEXT'; END IF;
@@ -70,7 +70,7 @@ BEGIN
  IF pg_catalog.to_regprocedure('private.payments_write_guard()') IS NULL
  OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid = 'public.payments'::pg_catalog.regclass AND tgname = 'zz_payments_write_guard')
  THEN RAISE EXCEPTION 'PWG_PARTIAL_STATE'; END IF;
- IF (SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') FROM pg_catalog.pg_proc p WHERE p.oid = 'private.payments_write_guard()'::pg_catalog.regprocedure) IS DISTINCT FROM 'ae7accbdb2fd34bd8bf683ed3b06f13f369899ac9c0b458f3abacfd50a62a84b'
+ IF (SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') FROM pg_catalog.pg_proc p WHERE p.oid = 'private.payments_write_guard()'::pg_catalog.regprocedure) IS DISTINCT FROM '48c9dc5dc16d477ff3276fae9e156b68ca9d37d2b95176f8664f40e5a4d9704e'
  THEN RAISE EXCEPTION 'PWG_OBJECTS_CHANGED_SINCE_INSTALL'; END IF;
 
  EXECUTE approved_sql;
