@@ -95,7 +95,7 @@ It must then be verified in Stripe **test mode** (needs Owner approval) before t
 | C1 | Lovable payments go-live complete for **live** mode; the published site's publishable key starts with `pk_live_` | The site picks live or sandbox from that prefix |
 | C2 | Secrets present: `STRIPE_LIVE_API_KEY`, `PAYMENTS_LIVE_WEBHOOK_SECRET`, `LOVABLE_API_KEY`; `SITE_URL` = `https://drivereal.com` | Stripe calls, signature check, card-setup return links |
 | C3 | Stripe live webhook endpoint = **`https://drivereal.com/api/public/payments/webhook?env=live`** | Without `?env=live`, every event gets a 200 response and is silently ignored |
-| C4 | Webhook events at least: `checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `charge.refunded` | Card on file, charge result, refunds |
+| C4 | Webhook events at least: `checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `charge.refunded`, `customer.subscription.deleted`, `customer.subscription.updated` | Card on file, charge result, refunds. The two subscription events let a Dashboard cancel clear any stray subscription (the End Rental guard relies on it). |
 | C5 | No sandbox webhook points at drivereal.com | Prevents sandbox events writing live rows (S3) |
 | C6 | Stripe live has no pre-existing subscriptions billing these drivers (Dashboard or back-office Stripe Collections) | App records show 0; anything there was made outside the app |
 

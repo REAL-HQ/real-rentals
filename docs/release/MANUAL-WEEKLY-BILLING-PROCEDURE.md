@@ -59,8 +59,19 @@ Never retry the same card more than once a day.
 3. Final charges (tolls, damage, cleaning) are separate Charge Card presses with the matching **Reason**, following the same rule.
 4. Refunds happen only in the Stripe Dashboard. The webhook records them through `apply_payment_refund`.
 
+## If Stripe is down when a car comes back
+
+With autopay off, End Rental makes **no Stripe call**, so a Stripe outage cannot stop staff recording a return. On 2026-10-27, **0** rentals had a subscription or autopay flag.
+
+If a rental ever shows "This rental still has a weekly Stripe subscription":
+1. Record the return inspection and odometer now. Leave the rental open; the car stays marked rented, which is safe.
+2. When Stripe is back, cancel the subscription in the Stripe Dashboard. The `customer.subscription.deleted` webhook clears it in the app.
+3. Then press End Rental, with the actual return date.
+
+Never clear the subscription field by hand.
+
 ## Never
-- Start autopay. It is switched off. If it ever shows "Autopay On", press it to stop autopay and confirm in Stripe that the subscription is canceled.
+- Start autopay. It is switched off, and the back office has no autopay control. If Stripe ever shows a subscription for a driver, cancel it in the Stripe Dashboard.
 - Charge from two tabs or two people at once.
 - Retry after an uncertain result before checking Stripe.
 - Delete payment rows. Use Waive with a note.
