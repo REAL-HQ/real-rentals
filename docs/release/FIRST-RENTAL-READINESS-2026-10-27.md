@@ -634,3 +634,47 @@ All Pay Now and Charge Card scenarios still pass with both guards installed.
    - **Add Payment** offers only owed statuses, shown as raw names: upcoming, current, overdue, past due, late, failed, unpaid, collections. No paid, refunded, waived or pending. Then **Cancel**.
 4. **Pay Now:** shown only for a driver with an active rental; production has none, so it is not visible. Covered by tests; unverified on screen.
 
+## Preview updated to direct Release 2 (Owner-approved, 2026-10-27 17:19Z)
+
+**Pre-update checks** (all passed; otherwise it would have stopped):
+- **Heads unchanged:** Preview was `4268c667`, the candidate `4fdf5a78`, the rollback ref `d42fee60`.
+- **Clean fast-forward:** 16 commits.
+- **Attribution:** 37 files, 0 unattributed to #284–#289.
+- **Autopay:** start flag false; coordination flag false; `createReservedSubscription` has no callers; `AutopayActions` is rendered nowhere.
+- **`has_role`:** 0 `.rpc('has_role')` calls; the one match is a comment.
+- **Compatibility:** 0031, S1 and insurance 61/61 on this exact commit.
+
+**Update:**
+- `git push origin 4fdf5a78…:refs/heads/integration/grok-baseline-2026-10-22` → `4268c667..4fdf5a78` (fast-forward, no force).
+- **Preview HEAD = `4fdf5a78b017aabf3b27815f4b584264387133a3`.**
+
+**Lovable:**
+- `get_project`: `latest_commit_sha` = `4fdf5a78…`, last edited 17:19:56Z, status ready, `agentFinished` true.
+- `read_file` of `src/lib/rental-autopay-flag.ts` at that commit shows `RENTAL_AUTOPAY_START_ENABLED = false`.
+
+**No publication:**
+- `net._http_response` shows live still serving deployment `psr2.4ad9e141` (PR 2) at 17:15 and 17:20, all 200.
+- The one 17:25 row is the known 5 s pg_net client timeout.
+
+**Production read-only snapshot, before (17:19:35Z) and after (17:25:14Z): identical.**
+- Policies 173; 0031 `d3387761…` (5); S1 trigger 1; journals 23 / 105.
+- Cron md5s 2 `478d975e`, 3 `7a659464`, 4 `454777d5`, 5 `269d0f4c`, 6 `cf4fedd9` (all active).
+- Insurance exception `false`; IVA setter `603cc13a`; insurance guard trigger 1; AIS/IVA evidence 1/1; late fees off.
+- Payment guards absent (triggers `payments_updated_at`); `public.has_role` absent.
+- Counts: applications 166, rentals 0, payments 0, subscription/autopay 0, agreements 1, documents 96, screenings 5, vehicles 10, audit log 1020, user_roles 7.
+- Fingerprints: vehicles `2b0b7a57`, user_roles `1a2d9611`, app_settings `b9aae8d4`.
+- No audit rows since the push. Last application/audit change at 16:32Z, before the push.
+
+**Preview visual acceptance: UNVERIFIED.** The Preview host is unreachable from the agent (connection refused through the proxy). Owner look-only checks:
+- **Drivers:** the list and a driver's details load.
+- **Charge Card:** on a driver with a card on file, open **Charge Card** and close it **without charging**.
+- **Bookings:** a booking opens.
+- **Payments:**
+  - loads empty;
+  - no Delete;
+  - **Add Payment** offers only upcoming, current, overdue, past due, late, failed, unpaid, collections — then **Cancel**.
+- **Autopay:** no autopay-start control anywhere (a driver page may show "Autopay Off · Charge Weekly" only on an active rental; there are none).
+- **Pay Now:** not visible (no active rentals).
+
+**Publication:** not authorized. Revert Preview: fast-forward to `rollback/release2-direct-to-pr2` (`d42fee60`, live tree).
+
