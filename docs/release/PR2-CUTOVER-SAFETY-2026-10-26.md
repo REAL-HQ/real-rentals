@@ -157,3 +157,42 @@ The Owner setting toggle works only after AIS, and only for the Owner. It is not
 **Rollback, if ever needed (separate approval):** request `57498a82…4893`.
 
 **Next:** Step C2 (insurance-authority preflight, then publish `5e492a87`) waits for the Owner's separate approval.
+
+---
+
+# Step C2 result: PR 2 published (Owner-approved, 2026-10-27)
+
+## Pre-publish checks (all passed, about 00:20Z)
+
+| Check | Result |
+|---|---|
+| Preview branch / PR 2 branch | Both `5e492a87` |
+| Lovable `latest_commit_sha` | `5e492a87`, status ready, agent idle, no edits since 2026-10-26 13:31:53Z |
+| Scope against A.2 | 49 files. No Stripe, payment, webhook, billing, autopay, swap, migration, M2, Record Rental or `esign.server.ts` paths. |
+| Flags | Every flag declaration identical to live A.2 |
+| Rollback commit `8ea838c2` | Tree identical to A.2 |
+| Activation-setting package | Installed: wrapper, setter and trigger present; 1 evidence row. Exception `false`, 0 changes. Other settings identical (`dbc2b2a9…`). |
+| Security 0031 / S1 / journals / scheduled jobs | `d3387761…` / intact / 23 and 105 / unchanged |
+| Insurance-authority preflight (read-only) | 13 of 13 ok (the activation package shows as installed) |
+| Live before publish | `7c20aff8` (A.2). 14 of 14 responses were 200 in the last hour. |
+
+## Publish
+
+`deploy_project` was called **once**, no retry, at about 00:21Z.
+- Response: `status: pending`, deployment **`4ad9e141-63ba-4040-bddd-ffcf0ee606ee`**.
+- URL: https://charming-maker-space.lovable.app
+
+## Read-only check right after publishing (00:21:24Z)
+
+Identical to the pre-publish baseline:
+- applications 160, last update 21:43:53Z;
+- documents 94, storage 131, agreements 1, screenings 5 (2 verified);
+- 0 insurance audit rows; rentals 0; payments 0; vehicles unchanged;
+- audit_log 948, last row is the C1 evidence;
+- exception OFF; other settings identical;
+- policies 173, 0031 unchanged, S1 intact, journals 23/105, scheduled jobs unchanged;
+- insurance-authority objects absent.
+
+drivereal.com was still serving `7c20aff8` with 0 non-200 responses. The switchover to `4ad9e141` is watched read-only through `x-deployment-id`.
+
+**Not done (waits for separate approval):** the insurance-authority SQL (C4). It needs the Owner's confirmation that `data-commit-sha` = `5e492a87` and the look-only check of the insurance panel and activation dialog.
