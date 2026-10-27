@@ -349,3 +349,39 @@ Weekly autopay stays OFF throughout. The insurance exception stays OFF.
 
 **Gap that does not block the first rental:** if Stripe actually collects a void or waived row, the webhook records it as Paid (Stripe is the evidence) but sends no staff alert. This needs a void to land in the milliseconds between a balance payment selecting its charges and charging them; a Processing charge can't be voided or waived. Follow-up: guard `collectRows` against void and waived rows, and alert staff, on a separate branch.
 
+## Release 1 (PR #284) final publication preflight (2026-10-27 ~14:21Z)
+
+| Check | Result |
+|---|---|
+| Candidate | `fix/billing-launch-safety` = `4268c6671447b7749351bafb636ac8a12c7da2c9` (unchanged) |
+| Preview branch | `integration/grok-baseline-2026-10-22` = `4268c667` |
+| Lovable sync | `get_project`: `latest_commit_sha` = `4268c667`, `agentFinished` true, last edited 06:01:59Z |
+| Scope vs live `5e492a87` | Exactly the 7 reviewed files |
+| Charge Card and Stripe code | `chargeCardOnRental`, `ChargeCardDialog`, `payment-collection.server.ts`, `stripe.server.ts`, the payments webhook, `supabase/` and `drizzle/` are all unchanged. The `rental-payments.functions.ts` hunks are in `startRentalAutopay`/`stopRentalAutopay` only. |
+| Autopay | `RENTAL_AUTOPAY_START_ENABLED = false`. `AutopayActions` is not rendered anywhere. |
+| Rollback | `rollback/billing-to-pr2` = `9271787f`, a fast-forward of `4268c667`, tree identical to live `5e492a87` |
+| Production (read-only, aggregates) | Live deployment `4ad9e141` (77 responses, 0 HTTP errors in 6 h). Policies 173; 0031 `d3387761…` (5); S1 trigger 1; journals 23/105; cron md5s 2 `478d975e`, 3 `7a659464`, 4 `454777d5`, 5 `269d0f4c`, 6 `cf4fedd9` (all active); insurance exception `false`; IVA setter `603cc13a`; AIS/IVA evidence 1/1; late fees off; delete guard absent; 0 rentals, 0 payments, 0 subscription/autopay rentals; 166 applications; audit log 980; staff admin 1, team 2. |
+| pg_net | 8 client timeouts (5 s), no HTTP errors. Already known and on the watch; not release-related. |
+| Hosted visual checks (Drivers, Payments, Bookings, Charge Card) | **UNVERIFIED.** Preview and drivereal.com are unreachable from the agent. From source, Payments, Bookings and Charge Card are byte-identical to live; Drivers differs only in the unrendered `AutopayActions`. |
+
+**Result: GO for Release 1 publication, pending the Owner's look-only Preview check and explicit authorization.**
+
+## Release 2: issues the manual procedure cannot adequately mitigate
+
+1. **Driver Pay Now during an unconfirmed charge.**
+   - The portal shows Pay Now whenever pending, failed or past_due rows exist.
+   - `payRentalBalance` collects every outstanding row, including `pending`, with a new attempt key.
+   - So if the Owner's Charge Card is still processing, or timed out (recorded as `failed`) but succeeded in Stripe, the driver can be charged twice.
+   - The procedure binds staff, not drivers.
+   - **Smallest fix** (separate branch, about 3 files, no SQL):
+     - Pay Now and the portal balance skip `pending` rows.
+     - A non-decline Stripe error leaves the row `pending` ("unconfirmed") until the webhook settles it.
+     - An Owner-only "No Charge in Stripe" action releases a pending row back to `failed` after checking Stripe.
+   - Interim mitigation for the first controlled rental: tell the driver not to use Pay Now; the Owner charges and checks Stripe.
+2. **Direct database status changes by a Manager.**
+   - RLS "Managers manage payments" (ALL) lets the Owner or either Manager change status, amount or balance through the API with their own session. That bypasses Release 2's server checks and audit.
+   - Drivers and partners have read-only access.
+   - The procedure can only detect this (a weekly reconciliation of Stripe against Payments), not prevent it.
+   - **Smallest fix** (separate SQL package and approval, built like the delete guard): a BEFORE UPDATE trigger refusing changes to `status`, `amount`, `balance_due`, `paid_date` and `refunded_amount` from `authenticated`. Staff changes would then go only through `changePaymentStatus` (service role, audited); the webhook and collection are unaffected.
+3. **No alert on a Stripe success for a void or waived row** (a millisecond race). Low likelihood; fix it with item 1's branch.
+
