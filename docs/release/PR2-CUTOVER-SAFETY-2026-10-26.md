@@ -196,3 +196,30 @@ Identical to the pre-publish baseline:
 drivereal.com was still serving `7c20aff8` with 0 non-200 responses. The switchover to `4ad9e141` is watched read-only through `x-deployment-id`.
 
 **Not done (waits for separate approval):** the insurance-authority SQL (C4). It needs the Owner's confirmation that `data-commit-sha` = `5e492a87` and the look-only check of the insurance panel and activation dialog.
+
+## Switchover (read-only, `net._http_response` `x-deployment-id` from drivereal.com scheduled calls)
+
+| Deployment | First seen | Last seen | Non-200 |
+|---|---|---|---|
+| `7c20aff8` (A.2) | — | 00:20:00Z | 0 |
+| (no header) | 00:25:00Z | 00:25:00Z | 1: a pg_net 5 s client timeout on the automations job. Same pattern as before A.2. Not an HTTP error. |
+| **`4ad9e141` (PR 2)** | **00:30:00Z** | — | 0. The automations job returned `{"ok":true,…,"errors":0}`. |
+
+The switch took about **9 minutes** this time; A.2 took about 50.
+
+**Invariants at 00:31:54Z:** identical to the baseline.
+- exception OFF, 0 changes; other settings identical;
+- applications 160 (no updates), documents 94, storage 131, agreements 1;
+- screenings 5 (2 verified, unchanged), insurance audit 0, rentals 0, payments 0;
+- audit 948;
+- policies 173, 0031 unchanged, S1 intact, journals 23/105, scheduled jobs unchanged;
+- insurance-authority SQL absent.
+
+**State B:** PR 2 serving, activation setting installed, insurance-authority SQL not installed. This is fail-closed and safe to hold.
+
+**Waiting for the Owner:**
+1. `data-commit-sha` = `5e492a87` on drivereal.com.
+2. Look-only check: the insurance panel and the activation dialog render.
+3. Separate approval for the insurance-authority SQL (C4).
+
+Staff should reload any open back-office tabs.
