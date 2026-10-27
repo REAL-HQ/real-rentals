@@ -58,12 +58,6 @@ const STATUS_LABEL: Record<string, string> = {
   late: "Late",
 };
 const TYPES = ["rent", "deposit", "late_fee", "toll", "damage", "fee", "other"] as const;
-/**
- * Statuses a charge entered in error may be voided from. Not paid/refunded (correct those with a
- * Stripe refund), not waived/void (already settled), and not pending: a pending card charge may
- * still be collected by Stripe.
- */
-const VOIDABLE_STATUSES = new Set(["upcoming", "current", "failed", "unpaid", "overdue", "past_due", "late", "collections"]);
 
 function fmtDate(iso?: string | null) {
   if (!iso) return "—";
@@ -106,32 +100,11 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
     if (error) return toast.error(error.message);
     setPayments((p) => p.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   }
-  // Payment rows are financial history: a charge entered in error is voided (kept, with the
-  // reason in its notes), never deleted. A paid or refunded charge is corrected by a refund in
-  // Stripe, which the webhook records. A void removes the charge from what the driver owes, so
-  // the amount is stated before anything changes.
-  async function voidPayment(p: Payment, driverName: string) {
-    const owed = Number(p.balance_due) > 0 ? Number(p.balance_due) : Number(p.amount ?? 0);
-    if (
-      !window.confirm(
-        `Voiding removes $${owed.toLocaleString()} from what ${driverName} owes. Only void a charge entered in error or replaced by another charge. Continue?`,
-      )
-    )
-      return;
-    const reason = window.prompt("Why is this charge being voided? This is saved on the payment.")?.trim();
-    if (!reason) return;
-    const notes = [p.notes, `Voided: ${reason}`].filter(Boolean).join("\n");
-    // Void only if the row is still voidable now: the list may be stale (Stripe may have
-    // collected it since it loaded), and a paid row must never be voided.
-    const { data, error } = await supabase
-      .from("payments")
-      .update({ status: "void", notes })
-      .eq("id", p.id)
-      .in("status", [...VOIDABLE_STATUSES])
-      .select("id");
+  async function remove(id: string) {
+    if (!confirm("Delete payment?")) return;
+    const { error } = await supabase.from("payments").delete().eq("id", id);
     if (error) return toast.error(error.message);
-    if (!data?.length) return toast.error("This charge changed since the list loaded, so it was not voided. Reload Payments and check it.");
-    setPayments((list) => list.map((x) => (x.id === p.id ? { ...x, status: "void", notes } : x)));
+    setPayments((p) => p.filter((x) => x.id !== id));
   }
   async function add(p: Partial<Payment>) {
     const { data, error } = await supabase
@@ -312,14 +285,12 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
                         <DropdownMenuItem onClick={() => update(p.id, { status: "waived" })}>
                           Waive
                         </DropdownMenuItem>
-                        {VOIDABLE_STATUSES.has(String(p.status)) && (
-                          <DropdownMenuItem
-                            className="text-[#D03020] focus:text-[#D03020]"
-                            onClick={() => voidPayment(p, driverName)}
-                          >
-                            Void (Entered In Error)
-                          </DropdownMenuItem>
-                        )}
+                        <DropdownMenuItem
+                          className="text-[#D03020] focus:text-[#D03020]"
+                          onClick={() => remove(p.id)}
+                        >
+                          Delete
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </td>
