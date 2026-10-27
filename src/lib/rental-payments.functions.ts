@@ -139,10 +139,14 @@ export const chargeCardOnRental = createServerFn({ method: 'POST' })
         // later charge) also collects. Next week's rent is not blocked by an older unpaid week.
         if (data.reason === 'rent') {
           const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
-          const { data: openRent } = await supabaseAdmin.from('payments').select('id, amount, due_date')
-            .or(`rental_id.eq.${data.rentalId}${rental.application_id ? `,driver_id.eq.${rental.application_id}` : ''}`)
-            .eq('type', 'rent').in('status', [...CLAIMABLE_STATUSES]).gte('due_date', weekAgo).limit(1);
-          if ((openRent ?? []).length)
+          const thisWeek = (col: string, value: string) => supabaseAdmin.from('payments').select('id, amount, due_date')
+            .eq(col, value).eq('type', 'rent').in('status', [...CLAIMABLE_STATUSES]).gte('due_date', weekAgo).limit(1);
+          const [byRental, byDriver] = await Promise.all([
+            thisWeek('rental_id', data.rentalId),
+            rental.application_id ? thisWeek('driver_id', rental.application_id as string) : Promise.resolve({ data: [] as any[] }),
+          ]);
+          const openRent = [...(byRental.data ?? []), ...(byDriver.data ?? [])];
+          if (openRent.length)
             return { error: `This week's rent is already charged and still owed ($${Number(openRent![0].amount).toFixed(2)}, due ${openRent![0].due_date}). Charge that one from Payments (Charge Card for This Charge), or void it first if it was replaced.` };
         }
         const amount = data.amountCents / 100;

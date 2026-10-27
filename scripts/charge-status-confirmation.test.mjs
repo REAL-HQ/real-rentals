@@ -54,7 +54,6 @@ function fakeDb(tables) {
       in: (c, vs) => (filters.push((r) => vs.includes(r[c])), q),
       lt: (c, v) => (filters.push((r) => r[c] < v), q),
       gte: (c, v) => (filters.push((r) => r[c] >= v), q),
-      or: (expr) => (filters.push((r) => expr.split(",").some((cl) => { const [c, op, ...v] = cl.split("."); return op === "eq" && String(r[c]) === v.join("."); })), q),
       order: () => q,
       limit: () => q,
       maybeSingle: async () => ({ data: rows()[0] ?? null, error: null }),
