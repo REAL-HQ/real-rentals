@@ -40,7 +40,7 @@ const stubPlugin = {
   },
 };
 
-/** Supports the chains chargeCardOnRental and collectRows use: select/eq/in/neq/maybeSingle, update, insert().select().single(). */
+/** Supports the chains chargeCardOnRental and collectRows use: select/eq/in/neq/lt/limit/maybeSingle, update().select(), insert().select().single(). */
 function fakeDb(tables) {
   let seq = 0;
   function query(table) {
@@ -52,11 +52,16 @@ function fakeDb(tables) {
       eq: (c, v) => (filters.push((r) => r[c] === v), q),
       neq: (c, v) => (filters.push((r) => r[c] !== v), q),
       in: (c, vs) => (filters.push((r) => vs.includes(r[c])), q),
+      lt: (c, v) => (filters.push((r) => r[c] < v), q),
+      gte: (c, v) => (filters.push((r) => r[c] >= v), q),
+      order: () => q,
+      limit: () => q,
       maybeSingle: async () => ({ data: rows()[0] ?? null, error: null }),
       update: (p) => ((patch = p), q),
       then: (res, rej) => Promise.resolve((() => {
-        if (patch) for (const r of rows()) Object.assign(r, patch);
-        return { data: patch ? null : rows(), error: null };
+        const hit = rows();
+        if (patch) for (const r of hit) Object.assign(r, patch);
+        return { data: patch ? hit.map((r) => ({ id: r.id })) : hit, error: null };
       })()).then(res, rej),
       insert: (row) => {
         const saved = { id: `pay-${++seq}`, attempt_count: 0, ...row };
@@ -70,6 +75,7 @@ function fakeDb(tables) {
 }
 
 const RENTAL = "77777777-7777-4777-8777-777777777777";
+const OPEN_RENT = "88888888-8888-4888-8888-888888888888";
 const OWNER = "55555555-5555-4555-8555-555555555555";
 const MANAGER = "33333333-3333-4333-8333-333333333333";
 // The Owner check is server-side (roles.server.ts reads user_roles through the service role); the
@@ -101,6 +107,7 @@ const charge = (payments) =>
 try {
   await build({ entryPoints: ["src/lib/rental-payments.functions.ts"], bundle: true, platform: "node", format: "esm", outfile: join(out, "payments.mjs"), alias: { "@": resolve("src") }, plugins: [stubPlugin], logLevel: "warning" });
   const payments = await import(join(out, "payments.mjs"));
+  await build({ entryPoints: ["src/lib/payment-collection.server.ts"], bundle: true, platform: "node", format: "esm", outfile: join(out, "collect.mjs"), alias: { "@": resolve("src") }, plugins: [stubPlugin], logLevel: "warning" });
   const ui = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
   const dialog = ui.slice(ui.indexOf("function ChargeCardDialog"), ui.indexOf("function AutopayActions"));
 
@@ -134,19 +141,96 @@ try {
     assert.match(globalThis.__stripe.calls[0].opts.idempotencyKey, /^payments:pay-1:attempt:1$/);
   });
 
-  await test("a connection error is recorded as failed and the message says to check Stripe, never 'can be retried'", async () => {
-    const db = install(() => { throw new Error("An error occurred with our connection to Stripe."); });
+  await test("a connection error is an unconfirmed outcome: the row stays Processing (pending), never failed, and the message says not to charge again", async () => {
+    const err = Object.assign(new Error("An error occurred with our connection to Stripe."), { type: "StripeConnectionError" });
+    const db = install(() => { throw err; });
     const res = await charge(payments);
     assert.ok("error" in res);
-    assert.match(res.error, /check this payment in Stripe: unless the card was declined, it may still have gone through/);
-    assert.doesNotMatch(res.error, /can be retried/);
+    assert.match(res.error, /Stripe has not confirmed this charge, so it may have gone through\. It stays Processing until Stripe confirms it\. Don't charge again/);
+    assert.doesNotMatch(res.error, /can be retried|recorded as failed/);
+    assert.equal(db.tables.payments[0].status, "pending");
+  });
+
+  await test("an error with no Stripe type (unknown) is also unconfirmed, never failed", async () => {
+    const db = install(() => { throw new Error("socket hang up"); });
+    await charge(payments);
+    assert.equal(db.tables.payments[0].status, "pending");
+  });
+
+  await test("a card decline (Stripe card_error) is a definite failure: failed, still owed, nothing collected", async () => {
+    const err = Object.assign(new Error("Your card was declined."), { type: "StripeCardError", statusCode: 402 });
+    const db = install(() => { throw err; });
+    const res = await charge(payments);
+    assert.match(res.error, /^Your card was declined\. — Stripe declined or refused it, so nothing was collected\. It is recorded as failed and still owed\./);
     assert.equal(db.tables.payments[0].status, "failed");
   });
 
-  await test("a card decline gets the same never-retry-blind wording", async () => {
-    install(() => { throw new Error("Your card was declined."); });
+  await test("a 5xx or idempotency conflict from Stripe is unconfirmed even when typed as a Stripe error", async () => {
+    for (const e of [
+      { type: "StripeAPIError", statusCode: 500 },
+      { type: "StripeInvalidRequestError", statusCode: 409 },
+      { type: "StripeIdempotencyError", statusCode: 400 },
+      // Through the gateway and the client's own retries, a 4xx can follow a first try that charged.
+      { type: "StripeInvalidRequestError", statusCode: 400 },
+      { type: "StripeAuthenticationError", statusCode: 401 },
+      { type: "StripePermissionError", statusCode: 403 },
+      { type: "StripeRateLimitError", statusCode: 429 },
+      { type: "StripeCardError" }, // a card error without Stripe's 402 is not trusted either
+    ]) {
+      const db = install(() => { throw Object.assign(new Error("x"), e); });
+      await charge(payments);
+      assert.equal(db.tables.payments[0].status, "pending", JSON.stringify(e));
+    }
+  });
+
+  await test("while a charge on the rental is Processing, Charge Card refuses before Stripe is called", async () => {
+    const db = install(() => ({ id: "pi_ok", status: "succeeded" }));
+    db.tables.payments.push({ id: "pay-x", rental_id: RENTAL, status: "pending", amount: 325, balance_due: 325, attempt_count: 1 });
     const res = await charge(payments);
-    assert.match(res.error, /^Your card was declined\. — recorded as failed\. Before charging again, check this payment in Stripe/);
+    assert.match(res.error, /still Processing/);
+    assert.equal(globalThis.__stripe.calls.length, 0);
+    assert.equal(db.tables.payments.length, 1, "no new charge row");
+  });
+
+  await test("one week's rent, one row: Charge Card refuses rent while this week's rent (by rental or by driver) is still owed; an older unpaid week, other reasons and retries of the row itself are not blocked", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+    let db = install(() => ({ id: "pi_ok", status: "succeeded" }));
+    db.tables.payments.push({ id: OPEN_RENT, rental_id: RENTAL, driver_id: "app-1", type: "rent", status: "failed", amount: 325, balance_due: 325, attempt_count: 1, due_date: today });
+    const res = await charge(payments);
+    assert.match(res.error, new RegExp(`This week's rent is already charged and still owed \\(\\$325\\.00, due ${today}\\)`));
+    assert.equal(globalThis.__stripe.calls.length, 0);
+    const toll = await payments.chargeCardOnRental({ data: { rentalId: RENTAL, amountCents: 1500, reason: "toll", environment: "live" }, context: ownerCtx });
+    assert.equal(toll.ok, true);
+    const retry = await payments.chargeCardOnRental({ data: { rentalId: RENTAL, amountCents: 32500, reason: "rent", paymentId: OPEN_RENT, environment: "live" }, context: ownerCtx });
+    assert.equal(retry.ok, true, "the existing rent charge can be charged (same row, next attempt)");
+    assert.equal(db.tables.payments.find((r) => r.id === OPEN_RENT).status, "paid");
+    // An Add Payment rent row (driver only, no rental link) for this week also counts.
+    db = install(() => ({ id: "pi_ok", status: "succeeded" }));
+    db.tables.payments.push({ id: OPEN_RENT, rental_id: null, driver_id: "app-1", type: "rent", status: "current", amount: 325, balance_due: 0, attempt_count: 0, due_date: daysAgo(2) });
+    assert.match((await charge(payments)).error, /This week's rent is already charged/);
+    // Last week's rent still unpaid does not stop this week's rent being charged.
+    db = install(() => ({ id: "pi_ok", status: "succeeded" }));
+    db.tables.payments.push({ id: OPEN_RENT, rental_id: RENTAL, driver_id: "app-1", type: "rent", status: "failed", amount: 325, balance_due: 325, attempt_count: 1, due_date: daysAgo(7) });
+    assert.equal((await charge(payments)).ok, true);
+  });
+
+  await test("a charge tied to a Stripe invoice is not collected here (Stripe retries the invoice itself)", async () => {
+    const db = install(() => ({ id: "pi_ok", status: "succeeded" }));
+    db.tables.payments.push({ id: OPEN_RENT, rental_id: RENTAL, type: "rent", status: "failed", amount: 325, balance_due: 325, attempt_count: 1, stripe_invoice_id: "in_1" });
+    const res = await payments.chargeCardOnRental({ data: { rentalId: RENTAL, amountCents: 32500, reason: "rent", paymentId: OPEN_RENT, environment: "live" }, context: ownerCtx });
+    assert.match(res.error, /Stripe invoice/);
+    assert.equal(globalThis.__stripe.calls.length, 0);
+  });
+
+  await test("a combined charge's idempotency key stays within Stripe's 255 characters (hash of the sorted ids)", async () => {
+    const { attemptKey } = await import(join(out, "collect.mjs"));
+    const ids = Array.from({ length: 12 }, (_, i) => `${String(i).padStart(8, "0")}-0000-4000-8000-000000000000`);
+    const k = await attemptKey(ids, 3);
+    assert.ok(k.length <= 255, String(k.length));
+    assert.equal(k, await attemptKey([...ids].reverse(), 3), "order does not matter");
+    assert.notEqual(k, await attemptKey(ids, 4));
+    assert.equal(await attemptKey(["abc"], 2), "payments:abc:attempt:2");
   });
 
   await test("the Owner check works without public.has_role (dropped by migration 20260713042639); a Manager is refused", async () => {
