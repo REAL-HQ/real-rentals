@@ -329,3 +329,23 @@ Weekly autopay stays OFF throughout. The insurance exception stays OFF.
 | The database owner (`postgres`): approved SQL, Lovable `query_database`, the Supabase dashboard table editor / SQL editor | **Yes, by design.** Anyone with project SQL or dashboard access can still delete. Keep that access to the Owner. |
 | UPDATE instead of DELETE (status → void/waived, amount → 0) by a Manager via the API | Not a delete. Covered in the app by `fix/payment-status-controls`; at the database level it needs the RLS change above. |
 
+## Release 2 final (Owner-approved for inclusion; non-production)
+
+| Item | Value |
+|---|---|
+| PRs | [#285](https://github.com/REAL-HQ/real-rentals/pull/285) `2c2c3014`, [#286](https://github.com/REAL-HQ/real-rentals/pull/286) `08d7968f`, [#287](https://github.com/REAL-HQ/real-rentals/pull/287) `63ed49ca` (base `release/financial-integrity` @ `a90d8d94`) |
+| Release 2 commit | `release/financial-integrity-2` @ **`78bb94af`** = `a90d8d94` + #287 (no conflicts). The tree equals `63ed49ca`. |
+| Rollback | `rollback/release2-to-billing` @ `f8380725`: tree identical to `4268c667` (PR #284), parent `78bb94af` |
+| Scope | 25 files. No migrations, RLS, insurance code or Supabase config. The webhook change only narrows failure updates. `proposed/payments-delete-guard/` is not executed by the app. |
+| Tests on `78bb94af` | tsc, build and the full `npm test` pass (including `charge-status-confirmation` 7/7, `payment-delete-ui` 6/6, `payment-status-controls` 11/11, `payments-webhook-events` 11/11, `agreement-evidence` 11/11). `payments-delete-guard.db` 17/17. `build.py --check` reproduces every file byte for byte. |
+| DB delete guard | Separate package, unchanged. Install `f2001646…057c`, rollback `9759df5d…7929`. |
+
+**Release 2 publish procedure (separate approval, after PR #284 is live):**
+1. Owner merges #285, #286 and #287.
+2. Fast-forward Preview to `78bb94af`.
+3. Owner does the look-only check.
+4. Publish once.
+5. Owner confirms `data-commit-sha`.
+
+**Gap that does not block the first rental:** if Stripe actually collects a void or waived row, the webhook records it as Paid (Stripe is the evidence) but sends no staff alert. This needs a void to land in the milliseconds between a balance payment selecting its charges and charging them; a Processing charge can't be voided or waived. Follow-up: guard `collectRows` against void and waived rows, and alert staff, on a separate branch.
+
