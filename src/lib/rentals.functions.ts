@@ -649,17 +649,11 @@ export const endRental = createServerFn({ method: "POST" })
 
     const { data: rental } = await supabaseAdmin
       .from("rentals")
-      .select("id,vehicle_id,driver_id,application_id,status,stripe_subscription_id,autopay_active")
+      .select("id,vehicle_id,driver_id,application_id,status")
       .eq("id", data.rentalId)
       .maybeSingle();
     if (!rental) throw new Error("Rental not found");
     if (rental.status !== "active") return { ok: true, alreadyClosed: true };
-    // Ending a rental never touches Stripe (end_rental_tx only clears autopay_active), so a
-    // weekly subscription would keep charging the driver after return. The subscription is
-    // cancelled in the Stripe Dashboard; the customer.subscription.deleted webhook then
-    // clears it here. The back office has no Stop Autopay control.
-    if (rental.stripe_subscription_id || rental.autopay_active)
-      return { ok: false as const, error: "This rental still has a weekly Stripe subscription, so ending it now would keep charging the driver. Cancel the subscription in the Stripe Dashboard (the app clears it once Stripe confirms), then end the rental. Record the return inspection now if the car is back." };
 
     const endDate = data.endDate ?? new Date().toISOString().slice(0, 10);
 
