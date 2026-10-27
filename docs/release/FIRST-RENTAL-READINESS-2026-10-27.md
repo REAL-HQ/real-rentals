@@ -631,6 +631,6 @@ All Pay Now and Charge Card scenarios still pass with both guards installed.
 3. **Payments:**
    - the page loads (empty);
    - no Delete action;
-   - **Add Payment** offers only owed statuses (Upcoming, Due, Overdue, Past Due, Late, Failed, Unpaid, In Collections) — then **Cancel**.
+   - **Add Payment** offers only owed statuses, shown as raw names: upcoming, current, overdue, past due, late, failed, unpaid, collections. No paid, refunded, waived or pending. Then **Cancel**.
 4. **Pay Now:** shown only for a driver with an active rental; production has none, so it is not visible. Covered by tests; unverified on screen.
 
