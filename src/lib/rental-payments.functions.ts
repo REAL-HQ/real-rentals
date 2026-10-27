@@ -2,6 +2,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { requireSupabaseAuth } from '@/integrations/supabase/auth-middleware';
 import { createStripeClient, getStripeErrorMessage, type StripeEnv } from '@/lib/stripe.server';
 import { RENTAL_SUBSCRIPTION_COORDINATION_ENABLED } from '@/lib/record-rental-live-path';
+import { AUTOPAY_START_OFF_MESSAGE, RENTAL_AUTOPAY_START_ENABLED } from '@/lib/rental-autopay-flag';
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -209,6 +210,8 @@ export const startRentalAutopay = createServerFn({ method: 'POST' })
   .inputValidator((data: { rentalId: string; environment: StripeEnv }) => data)
   .handler(async ({ data, context }): Promise<{ ok: true; subscriptionId: string } | { error: string }> => {
     try {
+      // Off for launch (see rental-autopay-flag.ts). Checked before any Stripe call, on both paths.
+      if (!RENTAL_AUTOPAY_START_ENABLED) return { error: AUTOPAY_START_OFF_MESSAGE };
       // rental_subscription_begin_v1 / finish_v1 do not exist until
       // subscription-coordination-v1.sql. The flag-off path is today's Stripe call.
       if (RENTAL_SUBSCRIPTION_COORDINATION_ENABLED) return await coordinatedAutopay(context, data, 'start');
@@ -216,10 +219,11 @@ export const startRentalAutopay = createServerFn({ method: 'POST' })
       const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
       const { data: rental } = await supabaseAdmin
         .from('rentals')
-        .select('id, application_id, weekly_rate, start_date, stripe_customer_id, stripe_payment_method_id, stripe_subscription_id')
+        .select('id, application_id, status, weekly_rate, start_date, stripe_customer_id, stripe_payment_method_id, stripe_subscription_id')
         .eq('id', data.rentalId)
         .maybeSingle();
       if (!rental) throw new Error('Rental not found');
+      if (rental.status !== 'active') throw new Error('Autopay can only start on an active rental');
       if (rental.stripe_subscription_id) throw new Error('Autopay already active');
       if (!rental.weekly_rate) throw new Error('Weekly rate not set');
 
@@ -285,8 +289,13 @@ export const stopRentalAutopay = createServerFn({ method: 'POST' })
       const { data: rental } = await supabaseAdmin
         .from('rentals').select('stripe_subscription_id').eq('id', data.rentalId).maybeSingle();
       if (rental?.stripe_subscription_id) {
+        // The subscription id is cleared only once Stripe confirms the subscription is over.
+        // A failed or unconfirmed cancel leaves autopay on here, so it can be retried and the
+        // driver is never charged by a subscription the app no longer knows about.
         const stripe = createStripeClient(data.environment);
-        try { await stripe.subscriptions.cancel(rental.stripe_subscription_id as string); } catch { /* ignore */ }
+        const { subscriptionEnded } = await import('@/lib/subscription-cancel.server');
+        const problem = await subscriptionEnded(stripe, rental.stripe_subscription_id as string);
+        if (problem) return { error: `${problem} Autopay is still on; nothing was changed. Check the subscription in Stripe.` };
       }
       await supabaseAdmin.from('rentals').update({
         stripe_subscription_id: null,
