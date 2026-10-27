@@ -1,5 +1,9 @@
 # MVP launch: GO / NO-GO checklist (2026-10-26)
 
+> **Update 2026-10-27:**
+> - **PR 2 is DEPLOYED and installation-verified.** App `5e492a87` (deployment `4ad9e141`), activation setting (txid 107299) and insurance authority (txid 107840). Evidence is in `PR2-CUTOVER-SAFETY-2026-10-26.md`.
+> - The current launch status is in **`FIRST-RENTAL-READINESS-2026-10-27.md`**.
+
 **Verdict: CONDITIONAL GO.** Rental operations can launch with *manual* weekly charges, under all of these conditions:
 - PR 2 is deployed;
 - Stripe's live configuration is confirmed;
