@@ -563,3 +563,74 @@ All Pay Now and Charge Card scenarios still pass with both guards installed.
    - Watch the first live charge's webhook delivery in the Stripe Dashboard.
 5. The DB guards are recommended but not blockers: install them, or have the Owner explicitly defer them (gate G-3).
 
+## Direct Release 2 deployment review (non-production; Owner prefers Release 2 directly instead of Release 1 first)
+
+**Candidate:** `release/financial-integrity-3` @ **`4fdf5a78b017aabf3b27815f4b584264387133a3`**.
+
+**Compared with live `5e492a87`:**
+- It contains every reviewed commit:
+  - live `5e492a87`;
+  - PR #284 `4268c667`;
+  - #285 `2c2c3014`, #286 `08d7968f`, #287 `63ed49ca`;
+  - #288 `a23f73eb`, #289 `c64bc2c6`;
+  - and the tested Release 2 `78bb94af`.
+- **37 files changed, all attributed to those PRs; no unreviewed change.** That is 25 app and test files, plus 12 `proposed/payments-delete-guard` files the app never executes.
+- The only merge-resolved change is the `package.json` test line.
+- No dependency changes, no migrations.
+
+**Release 1 protections still present** (`billing-launch-safety` 19/19 on the candidate):
+- Autopay start is off before any Stripe call.
+- Stop reports failures.
+- End Rental refuses while a subscription exists.
+- The Stripe Dashboard is named as the place to stop autopay.
+
+**Weekly autopay creation paths, all unreachable:**
+1. `startRentalAutopay` returns `AUTOPAY_START_OFF_MESSAGE` before anything else (`RENTAL_AUTOPAY_START_ENABLED=false`).
+2. `coordinateRentalSubscription` is only reachable behind `RENTAL_SUBSCRIPTION_COORDINATION_ENABLED=false`, after the same check.
+3. `createReservedSubscription` (`stripe-operations.server.ts`) has no callers.
+
+`AutopayActions` is rendered nowhere.
+
+**Manual payments without `public.has_role`:**
+- No `rpc('has_role')` remains in `src`.
+- Charge Card, Charge Card for This Charge, Pay Now and Owner release all reached collection in the concurrency test, against the production-order baseline that has no `public.has_role` (as production doesn't).
+- Mark as Paid and Void through the audited server path pass with both guards installed.
+
+**Direct rollback:** `rollback/release2-direct-to-pr2` @ **`d42fee60bf69732c88471bd7570e03aac1c1b32c`**.
+- Tree identical to live `5e492a87`, parent `4fdf5a78`: a fast-forward, so no force-push.
+- It is a new ref; existing rollback refs are unchanged.
+- **Tested:** full check pass; insurance / 0031 / S1 / M2 compatibility 61/61.
+- **Compatible with the installed activation-setting and insurance-authority SQL:** it is exactly the application running with them today.
+- Rolling back brings D7 back (Charge Card refused). If the payments write guard is ever installed, roll it back before rolling the app back.
+
+**Test results on `4fdf5a78`:**
+
+| Suite | Result |
+|---|---|
+| Full check (tsc, build, full `npm test`) | Pass |
+| `pay-now-concurrency.db` | 12/12 |
+| Guard compatibility | 13/13 |
+| Webhook invariants | Pass |
+| Webhook events | 11/11 |
+| Charge Card | 14/14 |
+| Billing safety | 19/19 |
+| Payment status controls | 11/11 |
+| Void UI | 6/6 |
+| Delete guard | 17/17 |
+| Write guard | 17/17 |
+| **Insurance setting + authority + Security 0031 + S1 + M2 compatibility** (`activation-insurance-setting.db`) | **61/61** (all four orders C1–C4, rollbacks, PostgREST role checks) |
+
+**Preview plan (not moved):**
+- Fast-forward `integration/grok-baseline-2026-10-22` from `4268c667` to `4fdf5a78`: 16 commits, `git push origin 4fdf5a78…:refs/heads/integration/grok-baseline-2026-10-22`, no force.
+- Then confirm the Lovable sync (`latest_commit_sha` = `4fdf5a78`, about 5 minutes).
+- **Revert Preview:** fast-forward to `rollback/release2-direct-to-pr2` (`d42fee60`, the live tree).
+
+**Owner look-only checks on Preview** (no charging, no changes):
+1. **Drivers:** the list loads. Open a driver. On a driver with a card on file, open **Charge Card** and close it **without charging**.
+2. **Bookings:** open a booking; it loads.
+3. **Payments:**
+   - the page loads (empty);
+   - no Delete action;
+   - **Add Payment** offers only owed statuses (Upcoming, Due, Overdue, Past Due, Late, Failed, Unpaid, In Collections) — then **Cancel**.
+4. **Pay Now:** shown only for a driver with an active rental; production has none, so it is not visible. Covered by tests; unverified on screen.
+
