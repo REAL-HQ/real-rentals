@@ -977,7 +977,7 @@ function Admin() {
             )}
             {tab === "fleet_inbox" && <FleetInboxPanel isManager={tierAllows(tier, "manager")} />}
             {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
-            {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} />}
+            {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} tier={tier} />}
             {tab === "maintenance" && <MaintenancePanel autoOpenAdd={urlAdd} />}
             {tab === "shops" && <ShopsPanel />}
             {tab === "vendors" && <VendorsPanel />}

@@ -42,34 +42,39 @@ test("webhook: every failure write skips void and waived rows, so a late Stripe 
   assert.match(inv, /if \(status !== 'paid'\) q = q\.neq\('status', 'void'\)\.neq\('status', 'waived'\);/);
 });
 
+const rules = readFileSync("src/lib/payment-status-rules.ts", "utf8");
+const server = readFileSync("src/lib/payment-status.functions.ts", "utf8");
+const changeFn = panel.slice(panel.indexOf("async function changeStatus"), panel.indexOf("async function add("));
+
 test("Payments: Delete is replaced by Void (Entered In Error), which records a required reason in notes", () => {
   assert.doesNotMatch(panel, />\s*Delete\s*</);
   assert.match(panel, /Void \(Entered In Error\)/);
-  assert.match(panel, /if \(!reason\) return;/);
-  assert.match(panel, /\.update\(\{ status: "void", notes \}\)/);
+  assert.match(panel, /changeStatus\(p, driverName, "void"\)/);
+  assert.match(changeFn, /if \(!reason \|\| reason\.length < 3\) return/);
+  assert.match(server, /reason: z\.string\(\)\.trim\(\)\.min\(3\)/, "the server refuses a change without a reason");
+  assert.match(server, /notes: \[row\.notes, `\$\{label\}: \$\{data\.reason\}`\]/);
 });
 
-test("Payments: the void is conditional on the row still being voidable (a stale list never voids a paid row)", () => {
-  const fn = panel.slice(panel.indexOf("async function voidPayment"), panel.indexOf("async function add("));
-  assert.match(fn, /\.update\(\{ status: "void", notes \}\)\s*\.eq\("id", p\.id\)\s*\.in\("status", \[\.\.\.VOIDABLE_STATUSES\]\)\s*\.select\("id"\)/);
-  assert.match(fn, /if \(!data\?\.length\) return toast\.error\(/, "zero rows updated is reported, not shown as voided");
-  assert.ok(fn.indexOf("if (!data?.length)") < fn.indexOf("setPayments("), "the list changes only after the database confirms");
+test("Payments: the void is conditional on the row still having the status shown (a stale list never voids a paid row)", () => {
+  assert.match(changeFn, /expectedStatus: String\(p\.status\)/);
+  assert.match(server, /if \(row\.status !== data\.expectedStatus\)/);
+  assert.match(server, /\.update\(patch\)\s*\.eq\("id", row\.id\)\s*\.eq\("status", row\.status\)\s*\.select\("id"\)/);
 });
 
 test("Payments: Void is offered only on unpaid, settled-nowhere statuses: never paid, refunded, waived, void or pending", () => {
-  const m = panel.match(/const VOIDABLE_STATUSES = new Set\((\[[^\]]*\])\);/);
-  assert.ok(m, "VOIDABLE_STATUSES missing");
-  const voidable = JSON.parse(m[1]);
-  for (const s of ["paid", "refunded", "waived", "void", "pending"]) assert.ok(!voidable.includes(s), s);
-  for (const s of ["failed", "unpaid", "current", "past_due"]) assert.ok(voidable.includes(s), s);
-  assert.match(panel, /\{VOIDABLE_STATUSES\.has\(String\(p\.status\)\) && \(/);
+  const m = rules.match(/export const OPEN_STATUSES = (\[[^\]]*\]) as const;/);
+  assert.ok(m, "OPEN_STATUSES missing");
+  const open = JSON.parse(m[1]);
+  for (const s of ["paid", "refunded", "waived", "void", "pending"]) assert.ok(!open.includes(s), s);
+  for (const s of ["failed", "unpaid", "current", "past_due"]) assert.ok(open.includes(s), s);
+  assert.match(rules, /case "void":\s*return isOpen\(from\) \? "manager" : null;/);
+  assert.match(panel, /\{canTake\(tier, "void", String\(p\.status\)\) && \(/);
 });
 
 test("Payments: before voiding, staff are told exactly how much is removed from what the driver owes", () => {
-  assert.match(panel, /Voiding removes \$\$\{owed\.toLocaleString\(\)\} from what \$\{driverName\} owes\./);
-  const fn = panel.slice(panel.indexOf("async function voidPayment"), panel.indexOf("async function add("));
-  assert.ok(fn.indexOf("window.confirm(") < fn.indexOf("window.prompt(") && fn.indexOf("window.prompt(") < fn.indexOf(".update({ status: \"void\""), "confirm, then reason, then update");
-  assert.doesNotMatch(fn, /balance_due:|amount:/, "a void never rewrites the amount or balance");
+  assert.match(changeFn, /void: `Voiding removes \$\{money\} from what \$\{driverName\} owes\./);
+  assert.ok(changeFn.indexOf("window.confirm(") < changeFn.indexOf("window.prompt(") && changeFn.indexOf("window.prompt(") < changeFn.indexOf("changePaymentStatus("), "confirm, then reason, then the server call");
+  assert.match(server, /\.\.\.\(action === "mark_paid" \? \{ paid_date: today, balance_due: 0, payment_method: data\.method \} : \{\}\)/, "only Mark as Paid rewrites the balance; a void never does");
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
