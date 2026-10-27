@@ -58,6 +58,12 @@ const STATUS_LABEL: Record<string, string> = {
   late: "Late",
 };
 const TYPES = ["rent", "deposit", "late_fee", "toll", "damage", "fee", "other"] as const;
+/**
+ * Statuses a charge entered in error may be voided from. Not paid/refunded (correct those with a
+ * Stripe refund), not waived/void (already settled), and not pending: a pending card charge may
+ * still be collected by Stripe.
+ */
+const VOIDABLE_STATUSES = new Set(["upcoming", "current", "failed", "unpaid", "overdue", "past_due", "late", "collections"]);
 
 function fmtDate(iso?: string | null) {
   if (!iso) return "—";
@@ -102,8 +108,16 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
   }
   // Payment rows are financial history: a charge entered in error is voided (kept, with the
   // reason in its notes), never deleted. A paid or refunded charge is corrected by a refund in
-  // Stripe, which the webhook records.
-  async function voidPayment(p: Payment) {
+  // Stripe, which the webhook records. A void removes the charge from what the driver owes, so
+  // the amount is stated before anything changes.
+  async function voidPayment(p: Payment, driverName: string) {
+    const owed = Number(p.balance_due) > 0 ? Number(p.balance_due) : Number(p.amount ?? 0);
+    if (
+      !window.confirm(
+        `Voiding removes $${owed.toLocaleString()} from what ${driverName} owes. Only void a charge entered in error or replaced by another charge. Continue?`,
+      )
+    )
+      return;
     const reason = window.prompt("Why is this charge being voided? This is saved on the payment.")?.trim();
     if (!reason) return;
     const notes = [p.notes, `Voided: ${reason}`].filter(Boolean).join("\n");
@@ -288,10 +302,10 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
                         <DropdownMenuItem onClick={() => update(p.id, { status: "waived" })}>
                           Waive
                         </DropdownMenuItem>
-                        {!["paid", "refunded", "void"].includes(String(p.status)) && (
+                        {VOIDABLE_STATUSES.has(String(p.status)) && (
                           <DropdownMenuItem
                             className="text-[#D03020] focus:text-[#D03020]"
-                            onClick={() => voidPayment(p)}
+                            onClick={() => voidPayment(p, driverName)}
                           >
                             Void (Entered In Error)
                           </DropdownMenuItem>

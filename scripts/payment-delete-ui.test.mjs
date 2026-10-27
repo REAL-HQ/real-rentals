@@ -42,8 +42,20 @@ test("Payments: Delete is replaced by Void (Entered In Error), which records a r
   assert.match(panel, /update\(p\.id, \{ status: "void", notes \}\)/);
 });
 
-test("Payments: Void is not offered on paid, refunded or already-void rows (those are refunded in Stripe)", () => {
-  assert.match(panel, /\{!\["paid", "refunded", "void"\]\.includes\(String\(p\.status\)\) && \(/);
+test("Payments: Void is offered only on unpaid, settled-nowhere statuses: never paid, refunded, waived, void or pending", () => {
+  const m = panel.match(/const VOIDABLE_STATUSES = new Set\((\[[^\]]*\])\);/);
+  assert.ok(m, "VOIDABLE_STATUSES missing");
+  const voidable = JSON.parse(m[1]);
+  for (const s of ["paid", "refunded", "waived", "void", "pending"]) assert.ok(!voidable.includes(s), s);
+  for (const s of ["failed", "unpaid", "current", "past_due"]) assert.ok(voidable.includes(s), s);
+  assert.match(panel, /\{VOIDABLE_STATUSES\.has\(String\(p\.status\)\) && \(/);
+});
+
+test("Payments: before voiding, staff are told exactly how much is removed from what the driver owes", () => {
+  assert.match(panel, /Voiding removes \$\$\{owed\.toLocaleString\(\)\} from what \$\{driverName\} owes\./);
+  const fn = panel.slice(panel.indexOf("async function voidPayment"), panel.indexOf("async function add("));
+  assert.ok(fn.indexOf("window.confirm(") < fn.indexOf("window.prompt(") && fn.indexOf("window.prompt(") < fn.indexOf("await update("), "confirm, then reason, then update");
+  assert.doesNotMatch(fn, /balance_due:|amount:/, "a void never rewrites the amount or balance");
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
