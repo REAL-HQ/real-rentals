@@ -55,6 +55,29 @@ export type CollectResult =
   | { ok: true; paymentIntentId: string; status: "paid" | "pending"; paymentIds: string[] }
   | { error: string; paymentIds: string[]; outcome: "failed" | "unconfirmed" | "busy" };
 
+/**
+ * What the driver portal shows and what Pay Now collects, computed once so the two always agree.
+ * Rows tied to a Stripe invoice are left to Stripe (it retries the invoice itself). Any pending
+ * row on the rental means a payment is in flight or unconfirmed: nothing new may start.
+ */
+export async function rentalBalance(client: any, rentalId: string) {
+  const { data, error } = await client
+    .from("payments")
+    .select("id, status, amount, balance_due, attempt_count, stripe_invoice_id, due_date")
+    .eq("rental_id", rentalId)
+    .in("status", [...OUTSTANDING_STATUSES])
+    .order("due_date", { ascending: true, nullsFirst: true })
+    .limit(100);
+  if (error) throw new Error("Could not read the balance.");
+  const all = (data ?? []) as any[];
+  const rows = all.filter((r) => r.status !== "pending" && !r.stripe_invoice_id).slice(0, 12);
+  return {
+    processing: all.some((r) => r.status === "pending"),
+    rows,
+    cents: Math.round(rows.reduce((s, r) => s + owedOn(r), 0) * 100),
+  };
+}
+
 /** Statuses a new attempt may start from: owed, and no attempt in flight (`pending`). */
 export const CLAIMABLE_STATUSES = OUTSTANDING_STATUSES.filter((s) => s !== "pending");
 

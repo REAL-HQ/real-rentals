@@ -339,7 +339,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                             <Check className="w-4 h-4 mr-2" /> Mark as Paid (Received Outside Stripe)
                           </DropdownMenuItem>
                         )}
-                        {tier === "owner" && p.rental_id && OPEN_STATUSES.includes(p.status as any) && (
+                        {tier === "owner" && p.rental_id && !p.stripe_invoice_id && p.status !== "upcoming" && OPEN_STATUSES.includes(p.status as any) && (
                           <DropdownMenuItem onClick={() => chargeExisting(p, driverName)}>
                             Charge Card for This Charge
                           </DropdownMenuItem>

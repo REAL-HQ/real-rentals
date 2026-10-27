@@ -271,7 +271,7 @@ try {
       // The rental's Stripe customer changes after the attempt (new card set up): still found.
       psql(`SET session_replication_role = replica; UPDATE public.rentals SET stripe_customer_id = 'cus_new' WHERE id = '${RENTAL}'`);
       const res = await rel.releaseUnconfirmedPayment({ data: { paymentId: id, reason: "check" }, context: { userId: OWNER } });
-      assert.match(res.error, outcome === "processing" ? /still processing/ : /Stripe collected this charge/, outcome);
+      assert.match(res.error, outcome === "processing" ? /still has this charge open/ : /Stripe collected this charge/, outcome);
       assert.deepEqual(rows().map((r) => r.status), ["pending"], outcome);
       psql(`SET session_replication_role = replica; UPDATE public.rentals SET stripe_customer_id = 'cus_syn' WHERE id = '${RENTAL}'`);
     }
@@ -376,6 +376,21 @@ try {
     const after = JSON.parse(psql(`SELECT json_agg(json_build_object('id', id, 's', status, 'b', balance_due) ORDER BY amount DESC) FROM public.payments WHERE rental_id = '${RENTAL}'`));
     assert.deepEqual([after[0].s, Number(after[0].b)], ["pending", 325], "the Processing charge is untouched");
     assert.deepEqual([after[1].s, Number(after[1].b)], ["overdue", 150], "the owed charge gets its late fee");
+  });
+
+  await test("the portal balance (driver's own session, RLS) is exactly what Pay Now collects: a rebilled toll counts, an invoice row is left to Stripe", async () => {
+    const stripe = (globalThis.__stripe = fakeStripe());
+    stripe.setPlan(() => ({ delay: 0, outcome: "succeeded" }));
+    reset("failed", 1);
+    psql(`SET session_replication_role = replica;
+      INSERT INTO public.payments (rental_id, driver_id, amount, balance_due, type, status, due_date) VALUES ('${RENTAL}', '${APP}', 40, 40, 'toll', 'current', current_date);
+      INSERT INTO public.payments (rental_id, driver_id, amount, balance_due, type, status, due_date, stripe_invoice_id) VALUES ('${RENTAL}', '${APP}', 325, 325, 'rent', 'failed', current_date - 3, 'in_open');`);
+    const billing = await pay.getRentalBilling({ data: {}, context: ctx(DRIVER) });
+    assert.deepEqual([billing.outstandingCents, billing.processing], [36500, false]);
+    const res = await pay.payRentalBalance({ data: { rentalId: RENTAL, amountCents: billing.outstandingCents, environment: "live" }, context: ctx(DRIVER) });
+    assert.ok(res.ok, JSON.stringify(res));
+    assert.equal(stripe.calls[0].params.amount, 36500);
+    assert.deepEqual(rows().map((r) => r.status).sort(), ["failed", "paid", "paid"], "the invoice row is untouched");
   });
 } finally {
   if (pgrst) pgrst.kill();

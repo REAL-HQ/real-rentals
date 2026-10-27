@@ -121,7 +121,7 @@ export const chargeCardOnRental = createServerFn({ method: 'POST' })
       if (data.paymentId) {
         const { data: existing } = await supabaseAdmin
           .from('payments')
-          .select('id, status, amount, balance_due, attempt_count, rental_id')
+          .select('id, status, amount, balance_due, attempt_count, rental_id, stripe_invoice_id')
           .eq('id', data.paymentId)
           .eq('rental_id', data.rentalId)
           .maybeSingle();
@@ -130,15 +130,20 @@ export const chargeCardOnRental = createServerFn({ method: 'POST' })
           return { error: `This charge is ${existing.status} and cannot be collected again`, paymentId: existing.id as string };
         if (existing.status === 'pending')
           return { error: 'This charge is still Processing in Stripe and cannot be charged again until Stripe confirms it.', paymentId: existing.id as string };
+        if (existing.stripe_invoice_id)
+          return { error: 'This charge belongs to a Stripe invoice, which Stripe retries itself. Collect it in Stripe, not here.', paymentId: existing.id as string };
         row = existing;
       } else {
-        // One rent debt, one row: while a rent charge on this rental is still owed, charging rent
-        // again would create a second debt that Pay Now (or a later charge) also collects.
+        // One week's rent, one row: a rent charge for this driver still owed from the last 6 days
+        // is this week's rent. Charging rent again would create a second debt that Pay Now (or a
+        // later charge) also collects. Next week's rent is not blocked by an older unpaid week.
         if (data.reason === 'rent') {
+          const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
           const { data: openRent } = await supabaseAdmin.from('payments').select('id, amount, due_date')
-            .eq('rental_id', data.rentalId).eq('type', 'rent').in('status', [...CLAIMABLE_STATUSES]).limit(1);
+            .or(`rental_id.eq.${data.rentalId}${rental.application_id ? `,driver_id.eq.${rental.application_id}` : ''}`)
+            .eq('type', 'rent').in('status', [...CLAIMABLE_STATUSES]).gte('due_date', weekAgo).limit(1);
           if ((openRent ?? []).length)
-            return { error: `This rental already has an unpaid rent charge ($${Number(openRent![0].amount).toFixed(2)}, due ${openRent![0].due_date}). Charge that one from Payments (Charge Card for This Charge), or void it first if it was replaced.` };
+            return { error: `This week's rent is already charged and still owed ($${Number(openRent![0].amount).toFixed(2)}, due ${openRent![0].due_date}). Charge that one from Payments (Charge Card for This Charge), or void it first if it was replaced.` };
         }
         const amount = data.amountCents / 100;
         const { data: inserted, error: insErr } = await supabaseAdmin
@@ -377,21 +382,14 @@ export const payRentalBalance = createServerFn({ method: 'POST' })
       if (!rental.stripe_customer_id || !rental.stripe_payment_method_id) throw new Error('No card on file');
 
       const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
-      const { collectRows, owedOn, OUTSTANDING_STATUSES } = await import('@/lib/payment-collection.server');
-      const { data: owed } = await supabaseAdmin
-        .from('payments')
-        .select('id, status, amount, balance_due, attempt_count')
-        .eq('rental_id', data.rentalId)
-        .in('status', [...OUTSTANDING_STATUSES])
-        .order('due_date', { ascending: true, nullsFirst: true })
-        .limit(12);
-      const rows = (owed ?? []) as any[];
-      if (!rows.length) return { error: 'Nothing is owed on this rental.' };
+      const { collectRows, rentalBalance } = await import('@/lib/payment-collection.server');
+      // Same computation as the portal's balance (getRentalBilling).
+      const { processing, rows, cents } = await rentalBalance(supabaseAdmin, data.rentalId);
       // A payment still Processing (in flight, or not yet confirmed by Stripe) blocks a new one,
       // so the same charges are never collected twice. collectRows enforces this atomically too.
-      if (rows.some((r) => r.status === 'pending'))
+      if (processing)
         return { error: 'A payment is still being confirmed by Stripe. Please don\'t pay again; your balance updates once it is confirmed.' };
-      const cents = Math.round(rows.reduce((s, r) => s + owedOn(r), 0) * 100);
+      if (!rows.length) return { error: 'Nothing is owed on this rental.' };
       if (cents !== Math.round(data.amountCents)) return { error: 'Your balance changed. Refresh and try again.' };
 
       const stripe = createStripeClient(data.environment);
@@ -483,13 +481,9 @@ export const getRentalBilling = createServerFn({ method: 'GET' })
     if (!rental) {
       return { rentalId: null, weeklyRate: 0, autopayActive: false, paymentStatus: 'current', card: null, nextChargeDate: null, outstandingCents: 0, processing: false };
     }
-    const { data: unpaid } = await (supabase as any)
-      .from('payments')
-      .select('amount, status')
-      .eq('rental_id', rental.id)
-      .in('status', ['pending', 'failed', 'past_due']);
-    const processing = ((unpaid ?? []) as any[]).some((p) => p.status === 'pending');
-    const outstandingCents = Math.round(((unpaid ?? []) as any[]).filter((p) => p.status !== 'pending').reduce((s, p) => s + Number(p.amount ?? 0), 0) * 100);
+    // Same computation as Pay Now collects (payRentalBalance), so the two always agree.
+    const { rentalBalance } = await import('@/lib/payment-collection.server');
+    const { processing, cents: outstandingCents } = await rentalBalance(supabase, rental.id);
     return {
       rentalId: rental.id,
       weeklyRate: Number(rental.weekly_rate ?? 0),

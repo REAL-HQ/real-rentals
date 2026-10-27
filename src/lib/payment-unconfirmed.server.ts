@@ -85,7 +85,8 @@ export async function releaseUnconfirmedCharge(
   if (collected.length)
     return { error: `Stripe collected this charge (${collected.map((pi) => pi.id).join(", ")}). Not released. The webhook records it as Paid; if it is still Processing after 30 minutes, Mark as Paid naming that PaymentIntent.` };
   const inFlight = matches.filter((pi) => IN_FLIGHT.includes(pi.status));
-  if (inFlight.length) return { error: `Stripe is still processing this charge (${inFlight.map((pi) => `${pi.id} ${pi.status}`).join(", ")}). Not released.` };
+  if (inFlight.length)
+    return { error: `Stripe still has this charge open (${inFlight.map((pi) => `${pi.id} ${pi.status}`).join(", ")}). Not released. Wait for it to settle, or cancel that PaymentIntent in the Stripe Dashboard, then check again.` };
 
   const audit = (action: string, summary: string, extra: Record<string, unknown> = {}) =>
     admin.from("audit_log").insert({

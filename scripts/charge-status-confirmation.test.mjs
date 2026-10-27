@@ -53,6 +53,9 @@ function fakeDb(tables) {
       neq: (c, v) => (filters.push((r) => r[c] !== v), q),
       in: (c, vs) => (filters.push((r) => vs.includes(r[c])), q),
       lt: (c, v) => (filters.push((r) => r[c] < v), q),
+      gte: (c, v) => (filters.push((r) => r[c] >= v), q),
+      or: (expr) => (filters.push((r) => expr.split(",").some((cl) => { const [c, op, ...v] = cl.split("."); return op === "eq" && String(r[c]) === v.join("."); })), q),
+      order: () => q,
       limit: () => q,
       maybeSingle: async () => ({ data: rows()[0] ?? null, error: null }),
       update: (p) => ((patch = p), q),
@@ -190,17 +193,35 @@ try {
     assert.equal(db.tables.payments.length, 1, "no new charge row");
   });
 
-  await test("one rent debt, one row: Charge Card refuses new rent while a rent charge on the rental is still owed; other reasons are not blocked", async () => {
-    const db = install(() => ({ id: "pi_ok", status: "succeeded" }));
-    db.tables.payments.push({ id: OPEN_RENT, rental_id: RENTAL, type: "rent", status: "failed", amount: 325, balance_due: 325, attempt_count: 1, due_date: "2026-10-20" });
+  await test("one week's rent, one row: Charge Card refuses rent while this week's rent (by rental or by driver) is still owed; an older unpaid week, other reasons and retries of the row itself are not blocked", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+    let db = install(() => ({ id: "pi_ok", status: "succeeded" }));
+    db.tables.payments.push({ id: OPEN_RENT, rental_id: RENTAL, driver_id: "app-1", type: "rent", status: "failed", amount: 325, balance_due: 325, attempt_count: 1, due_date: today });
     const res = await charge(payments);
-    assert.match(res.error, /already has an unpaid rent charge \(\$325\.00, due 2026-10-20\)/);
+    assert.match(res.error, new RegExp(`This week's rent is already charged and still owed \\(\\$325\\.00, due ${today}\\)`));
     assert.equal(globalThis.__stripe.calls.length, 0);
     const toll = await payments.chargeCardOnRental({ data: { rentalId: RENTAL, amountCents: 1500, reason: "toll", environment: "live" }, context: ownerCtx });
     assert.equal(toll.ok, true);
     const retry = await payments.chargeCardOnRental({ data: { rentalId: RENTAL, amountCents: 32500, reason: "rent", paymentId: OPEN_RENT, environment: "live" }, context: ownerCtx });
     assert.equal(retry.ok, true, "the existing rent charge can be charged (same row, next attempt)");
     assert.equal(db.tables.payments.find((r) => r.id === OPEN_RENT).status, "paid");
+    // An Add Payment rent row (driver only, no rental link) for this week also counts.
+    db = install(() => ({ id: "pi_ok", status: "succeeded" }));
+    db.tables.payments.push({ id: OPEN_RENT, rental_id: null, driver_id: "app-1", type: "rent", status: "current", amount: 325, balance_due: 0, attempt_count: 0, due_date: daysAgo(2) });
+    assert.match((await charge(payments)).error, /This week's rent is already charged/);
+    // Last week's rent still unpaid does not stop this week's rent being charged.
+    db = install(() => ({ id: "pi_ok", status: "succeeded" }));
+    db.tables.payments.push({ id: OPEN_RENT, rental_id: RENTAL, driver_id: "app-1", type: "rent", status: "failed", amount: 325, balance_due: 325, attempt_count: 1, due_date: daysAgo(7) });
+    assert.equal((await charge(payments)).ok, true);
+  });
+
+  await test("a charge tied to a Stripe invoice is not collected here (Stripe retries the invoice itself)", async () => {
+    const db = install(() => ({ id: "pi_ok", status: "succeeded" }));
+    db.tables.payments.push({ id: OPEN_RENT, rental_id: RENTAL, type: "rent", status: "failed", amount: 325, balance_due: 325, attempt_count: 1, stripe_invoice_id: "in_1" });
+    const res = await payments.chargeCardOnRental({ data: { rentalId: RENTAL, amountCents: 32500, reason: "rent", paymentId: OPEN_RENT, environment: "live" }, context: ownerCtx });
+    assert.match(res.error, /Stripe invoice/);
+    assert.equal(globalThis.__stripe.calls.length, 0);
   });
 
   await test("a combined charge's idempotency key stays within Stripe's 255 characters (hash of the sorted ids)", async () => {

@@ -188,7 +188,7 @@ export async function applyLateFees(today?: string): Promise<LateFeeRun> {
       const newFees = round2(Number(p.late_fees ?? 0) + result.addition);
       const newBalance = round2(Number(p.balance_due ?? p.amount ?? 0) + result.addition);
 
-      const { error } = await supabaseAdmin
+      const { data: updated, error } = await supabaseAdmin
         .from("payments")
         .update({
           late_fees: newFees,
@@ -197,8 +197,13 @@ export async function applyLateFees(today?: string): Promise<LateFeeRun> {
           late_fee_applied_through: result.appliedThrough,
         })
         .eq("id", p.id)
-        .eq("status", p.status);
+        .eq("status", p.status)
+        .select("id");
       if (error) throw new Error(error.message);
+      if (!updated?.length) {
+        run.skipped++;
+        continue;
+      }
 
       run.charged++;
       run.totalAdded = round2(run.totalAdded + result.addition);

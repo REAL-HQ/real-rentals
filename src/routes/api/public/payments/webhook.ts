@@ -359,7 +359,9 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
 
   const patch = status === 'paid'
     ? { status: 'paid', paid_date: today(), balance_due: 0, amount, failure_reason: null }
-    : { status: 'failed', failure_reason: failure, attempt_count: Number(invoice.attempt_count ?? 1) };
+    // attempt_count is ours (collectRows' idempotency keys); Stripe's invoice retry count never
+    // overwrites it, or a later attempt could reuse an old key.
+    : { status: 'failed', failure_reason: failure };
   let q = admin.from('payments').update(patch)
     .eq('stripe_invoice_id', invoice.id)
     .neq('status', 'paid').neq('status', 'refunded');

@@ -41,6 +41,7 @@ test("webhook: every failure write skips void and waived rows, so a late Stripe 
   const inv = hook.slice(hook.indexOf("async function upsertPaymentFromInvoice"));
   assert.match(inv, /if \(status !== 'paid'\) q = q\.neq\('status', 'void'\)\.neq\('status', 'waived'\)[.;]/);
   assert.match(inv, /\.or\('status\.neq\.pending,last_attempt_at\.is\.null'\)/, "an invoice failure never fails a row our own collection has claimed");
+  assert.doesNotMatch(inv.slice(0, inv.indexOf("const r = must(")), /attempt_count:/, "Stripe's invoice retry count never overwrites our attempt_count (idempotency keys)");
 });
 
 const rules = readFileSync("src/lib/payment-status-rules.ts", "utf8");
