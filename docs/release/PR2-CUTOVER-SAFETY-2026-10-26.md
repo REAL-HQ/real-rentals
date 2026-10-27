@@ -265,3 +265,65 @@ Staff should reload any open back-office tabs.
 |---|---|
 | Request | sha256 **`eb7710d7fc3ff58adc0c1d0424245b205dda98f9f319ad29f24adf5363e68950`**. Matches the approval. `SHA256SUMS` OK. Same as the pushed branch. 26,159 bytes, ASCII only. |
 | Preflight (00:5xZ) | **13 of 13 ok, unchanged** since before the publish. Target identity ok; journal `5cfa7e88…`; 0031 `d3387761…`; helpers present; no evidence yet; objects absent; screening triggers are the expected three. Activation package installed; M2 Window 2 not installed. |
+
+---
+
+# Step C4 result: insurance-verification-authority INSTALLED. PR 2 rollout complete (2026-10-27, Owner-approved)
+
+**Owner visual checks (live `5e492a87`), done before approving:**
+- the Insurance Verification Call panel renders;
+- the Activate Rental dialog shows missing licence documents, the missing signed agreement and unverified insurance as blockers;
+- "Cannot Activate" is shown;
+- the interview override is separate from insurance;
+- no insurance acknowledgement box appears;
+- Activate is disabled.
+
+| | |
+|---|---|
+| Request | sha256 `eb7710d7fc3ff58adc0c1d0424245b205dda98f9f319ad29f24adf5363e68950`. Matches the approval. `SHA256SUMS` OK. Same as the pushed branch. |
+| Preflight (read-only) | 13 of 13 ok |
+| Pre-state (03:25:34Z) | Activation package intact: wrapper, setter, trigger, 3 policies, evidence. Exception OFF, 0 changes. 0031 `d3387761…`. S1 intact. Journals 23/105. Scheduled jobs unchanged. Live `4ad9e141`. |
+| Submission | Once, no retry. `rows: []`, so the guard and every in-transaction postcondition passed: setter and guard bodies plus ACLs, trigger, `applications` fingerprint unchanged, screenings fingerprint unchanged apart from the new trigger, 0031 and journals unchanged. |
+| Evidence | `security_migration_verified` / `insurance_verification_authority_v1` at **03:27:22.30Z**, txid **107840** |
+| Verify-after (read-only) | **8 of 8 ok.** Setter definition and ACL; guard definition with no API execute; 1 trigger on `driver_screenings`; no trigger on `applications`; `applications` fingerprint `a2f79b93…` equals the evidence; 1 evidence row; 0031 `d3387761…`. Audited decisions so far: 0. |
+
+## Authority and restrictions (confirmed from the installed objects)
+
+- **`set_insurance_verification(uuid, boolean, text)`:**
+  - SECURITY DEFINER, `search_path=''`;
+  - EXECUTE for `authenticated` only (anon false, service_role false);
+  - checks `private.is_manager()` (Owner `admin` or Manager `team`) for the caller's own session;
+  - writes the decision **and** the `insurance.verified` / `insurance.verification_revoked` audit row in one transaction. An audit failure refuses the decision.
+- **`zz_insurance_decision_guard`** on `driver_screenings` (BEFORE INSERT OR UPDATE): refuses any change to `insurance_verified` / `_at` / `_by` from `authenticated`, `anon` or `service_role`. Every other screening column stays writable. `driver_screenings` policies unchanged (1 policy, same md5).
+- **PR 2 app:** now takes the atomic path (`atomic: true`). The audit-first fallback is no longer used.
+
+## Before (03:25:34Z) and after (03:28:02Z)
+
+| Item | Result |
+|---|---|
+| Customer data | Identical. Applications 160 (last update 21:43:53Z), documents 94, storage 131, agreements 1, rentals 0, payments 0, vehicles md5, user_roles 6. Screenings 5 with 2 verified, and the decision-column fingerprint `8b4ba306…` is identical: no stored screening value changed. |
+| Audit log | 948 → 949 (+1: the evidence row only) |
+| Exception | `false` (OFF), 0 changes. Other settings identical (`dbc2b2a9…`). |
+| Activation package | Intact |
+| Security 0031 / S1 | Unchanged / intact |
+| Policies / journals / scheduled jobs / `activate_rental_tx` | 173 / 23 and 105 / unchanged / `dfadcc73…` |
+| Live deployment | `4ad9e141` (`5e492a87`) |
+
+## Status
+
+**The PR 2 insurance rollout is COMPLETE** (state C): app live, activation setting installed (OFF), insurance authority installed.
+
+**Open watch items (natural use only, no test actions):**
+1. The first real Verify by a Manager or Owner should produce one `insurance.verified` audit row and no error.
+2. The first real activation should produce `rental.activated` with `checked_in_transaction: true` from `activate_rental_checked_tx`.
+3. Staff reload any open back-office tabs. A tab still running an older build gets a refusal on the insurance toggle, and nothing changes.
+
+**Rollback (separate approval only):**
+1. IVA `69d5dcef…d082`.
+2. Then, if needed, Preview to `8ea838c2` and republish.
+3. AIS `57498a82…` last.
+
+**Launch blockers outside PR 2 (unchanged):**
+- Stripe autopay;
+- End Rental not cancelling subscriptions;
+- Stripe live configuration (see `MVP-LAUNCH-GO-NO-GO-2026-10-26.md`).
