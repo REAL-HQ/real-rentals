@@ -5,7 +5,7 @@
 // endRental (src/lib/rentals.functions.ts), bundled with esbuild, against an in-memory fake of the
 // Supabase clients and a fake Stripe client that records every call. Nothing reaches a network.
 import { build } from "esbuild";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import assert from "node:assert/strict";
@@ -51,6 +51,7 @@ function fakeDb(tables, rpcs = {}) {
     const rows = () => (tables[table] ?? []).filter((row) => filters.every((f) => f(row)));
     const run = () => {
       if (patch) {
+        if (globalThis.__failUpdate === table) return { data: null, error: { message: "denied" } };
         const hit = rows();
         for (const row of hit) Object.assign(row, patch);
         calls.updates.push({ table, patch, n: hit.length });
@@ -124,6 +125,7 @@ function install(rental, { stripe, rpcs } = {}) {
   globalThis.__stripe = stripe ?? fakeStripe();
   globalThis.__stripeEnv = [];
   globalThis.__audit = [];
+  globalThis.__failUpdate = undefined;
   return globalThis.__fake;
 }
 
@@ -224,6 +226,31 @@ try {
     assert.equal(db.tables.rentals[0].autopay_active, true);
   });
 
+  await test("stop autopay: cancel fails and Stripe still reports it active, so the id is kept", async () => {
+    const stripe = fakeStripe({ cancel: () => { throw new Error("rate limited"); }, retrieve: () => ({ id: "sub_1", status: "active" }) });
+    const db = install(withSub(), { stripe });
+    const res = await payments.stopRentalAutopay({ data: { rentalId: RENTAL, environment: "live" }, context: ownerCtx });
+    assert.ok("error" in res && /rate limited/.test(res.error));
+    assert.equal(db.tables.rentals[0].stripe_subscription_id, "sub_1");
+    assert.equal(db.calls.updates.length, 0);
+  });
+
+  await test("stop autopay: incomplete_expired counts as ended", async () => {
+    const stripe = fakeStripe({ cancel: () => ({ id: "sub_1", status: "incomplete_expired" }) });
+    const db = install(withSub(), { stripe });
+    const res = await payments.stopRentalAutopay({ data: { rentalId: RENTAL, environment: "live" }, context: ownerCtx });
+    assert.deepEqual(res, { ok: true });
+    assert.equal(db.tables.rentals[0].stripe_subscription_id, null);
+  });
+
+  await test("stop autopay: a failed database write after Stripe cancels is reported, not shown as success", async () => {
+    const db = install(withSub());
+    globalThis.__failUpdate = "rentals";
+    const res = await payments.stopRentalAutopay({ data: { rentalId: RENTAL, environment: "live" }, context: ownerCtx });
+    assert.ok("error" in res && /Press Stop again/.test(res.error), JSON.stringify(res));
+    assert.equal(db.tables.rentals[0].stripe_subscription_id, "sub_1");
+  });
+
   await test("stop autopay still requires the Owner", async () => {
     install(withSub());
     const res = await payments.stopRentalAutopay({ data: { rentalId: RENTAL, environment: "live" }, context: { userId: MANAGER, supabase: { rpc: async () => ({ data: false, error: null }) } } });
@@ -236,7 +263,8 @@ try {
     const db = install(withSub());
     const res = await rentals.endRental({ data: { rentalId: RENTAL }, context: managerCtx });
     assert.equal(res.ok, false);
-    assert.match(res.error, /Stop weekly autopay before ending this rental/);
+    assert.match(res.error, /Cancel the subscription in the Stripe Dashboard/);
+    assert.match(res.error, /Record the return inspection now/);
     assert.equal(db.calls.rpc.length, 0);
     assert.equal(db.tables.rentals[0].status, "active");
     assert.equal(globalThis.__audit.length, 0);
@@ -275,6 +303,16 @@ try {
     assert.match(block, /if \(!active && !RENTAL_AUTOPAY_START_ENABLED\)/);
     assert.match(block, /Autopay Off · Charge Weekly/);
     assert.doesNotMatch(block, /text-transform|uppercase/);
+  });
+
+  await test("UI: no screen renders an autopay control, so nothing in the back office can start a subscription", () => {
+    const files = [];
+    const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (/\.tsx?$/.test(f)) files.push(p); } };
+    walk("src");
+    const mounts = files.filter((f) => /<AutopayActions\b/.test(readFileSync(f, "utf8")));
+    assert.deepEqual(mounts, []);
+    const callers = files.filter((f) => !f.endsWith("rental-payments.functions.ts") && /\bstartRentalAutopay\s*\(|startRentalAutopay\s*:/.test(readFileSync(f, "utf8")));
+    assert.deepEqual(callers, []);
   });
 } finally {
   rmSync(out, { recursive: true, force: true });

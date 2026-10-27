@@ -297,10 +297,11 @@ export const stopRentalAutopay = createServerFn({ method: 'POST' })
         const problem = await subscriptionEnded(stripe, rental.stripe_subscription_id as string);
         if (problem) return { error: `${problem} Autopay is still on; nothing was changed. Check the subscription in Stripe.` };
       }
-      await supabaseAdmin.from('rentals').update({
+      const { error: clearError } = await supabaseAdmin.from('rentals').update({
         stripe_subscription_id: null,
         autopay_active: false,
       }).eq('id', data.rentalId);
+      if (clearError) return { error: 'The subscription is cancelled in Stripe, but the rental still shows autopay on. Press Stop again to clear it.' };
       return { ok: true };
     } catch (error) {
       return { error: getStripeErrorMessage(error) };
