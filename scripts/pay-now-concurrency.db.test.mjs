@@ -97,8 +97,17 @@ function fakeStripe() {
         byKey.set(opts.idempotencyKey, result);
         return result();
       },
-      list: async ({ customer, created }) => ({ data: intents.filter((pi) => pi.customer === customer && pi.created >= created.gte).map((pi) => ({ ...pi })), has_more: false }),
-      retrieve: async (id) => ({ ...intents.find((pi) => pi.id === id) }),
+      // Account-wide, newest first, paginated like Stripe's list (the release must not rely on a customer filter).
+      list: async ({ customer, created, limit = 10, starting_after }) => {
+        let all = intents.filter((pi) => (!customer || pi.customer === customer) && pi.created >= created.gte && (created.lte == null || pi.created <= created.lte)).reverse();
+        if (starting_after) all = all.slice(all.findIndex((pi) => pi.id === starting_after) + 1);
+        return { data: all.slice(0, limit).map((pi) => ({ ...pi })), has_more: all.length > limit };
+      },
+      retrieve: async (id) => {
+        const pi = intents.find((x) => x.id === id);
+        if (!pi) throw Object.assign(new Error("No such payment_intent"), { statusCode: 404 });
+        return { ...pi };
+      },
     },
   };
   return self;
@@ -191,10 +200,13 @@ try {
       const stripe = (globalThis.__stripe = fakeStripe());
       stripe.setPlan(() => ({ delay: 150, outcome: "succeeded" }));
       reset("failed", 1);
-      const res = await Promise.all([payNow(), chargeCard(), payNow(), chargeCard(), payNow(), chargeCard(), payNow(), payNow()]);
-      const cc = [res[1], res[3], res[5]];
+      const id = rows()[0].id;
+      // A separate toll charge triple-clicked, and the Owner retrying the same rent row, racing Pay Now.
+      const toll = () => chargeCard({ reason: "toll", amountCents: 1500 });
+      const res = await Promise.all([payNow(), toll(), payNow(), toll(), chargeCard({ paymentId: id }), toll(), payNow(), payNow()]);
+      const cc = [res[1], res[3], res[4], res[5]];
       assert.ok(cc.every((r) => !/Forbidden/.test(r.error ?? "")), "Charge Card must pass the Owner check");
-      chargeCardsReachedCollection += cc.filter((r) => r.ok || /already in progress/.test(r.error ?? "")).length;
+      chargeCardsReachedCollection += cc.filter((r) => r.ok || /already in progress|picked up this new charge|still Processing/.test(r.error ?? "")).length;
       assert.ok(stripe.calls.length <= 1, `round ${round}: Stripe calls ${stripe.calls.length}`);
       const after = rows();
       assert.equal(after.filter((r) => r.status === "current" || r.status === "pending").length, 0, JSON.stringify(after));
@@ -231,7 +243,7 @@ try {
     const id = reset("failed", 1);
     await payNow();
     assert.deepEqual(rows().map((r) => r.status), ["pending"]);
-    const relArgs = (who) => ({ data: { paymentId: id, reason: "timed out, never settled", environment: "live" }, context: { userId: who } });
+    const relArgs = (who) => ({ data: { paymentId: id, reason: "timed out, never settled" }, context: { userId: who } });
     assert.match((await rel.releaseUnconfirmedPayment(relArgs(MANAGER))).error, /Only the Owner/);
     assert.match((await rel.releaseUnconfirmedPayment(relArgs(OWNER))).error, /Wait until/);
     psql(`UPDATE public.payments SET last_attempt_at = now() - interval '11 minutes' WHERE id = '${id}'`);
@@ -240,7 +252,7 @@ try {
     assert.deepEqual(rows().map((r) => [r.status, r.attempt]), [["failed", 2]]);
     const audit = JSON.parse(psql(`SELECT json_build_object('a', actor_user_id, 'm', metadata) FROM public.audit_log WHERE action = 'payment.unconfirmed_released' AND entity_id = '${id}'`));
     assert.equal(audit.a, OWNER);
-    assert.equal(audit.m.stripe_customer, "cus_syn");
+    assert.deepEqual(audit.m.accounts_checked, ["live", "sandbox"]);
     assert.deepEqual(audit.m.matching_intents, []);
     stripe.setPlan(() => ({ delay: 0, outcome: "succeeded" }));
     assert.ok((await payNow()).ok);
@@ -256,9 +268,12 @@ try {
       const id = reset("failed", 1);
       await payNow();
       psql(`UPDATE public.payments SET last_attempt_at = now() - interval '11 minutes' WHERE id = '${id}'`);
-      const res = await rel.releaseUnconfirmedPayment({ data: { paymentId: id, reason: "check", environment: "live" }, context: { userId: OWNER } });
+      // The rental's Stripe customer changes after the attempt (new card set up): still found.
+      psql(`SET session_replication_role = replica; UPDATE public.rentals SET stripe_customer_id = 'cus_new' WHERE id = '${RENTAL}'`);
+      const res = await rel.releaseUnconfirmedPayment({ data: { paymentId: id, reason: "check" }, context: { userId: OWNER } });
       assert.match(res.error, outcome === "processing" ? /still processing/ : /Stripe collected this charge/, outcome);
       assert.deepEqual(rows().map((r) => r.status), ["pending"], outcome);
+      psql(`SET session_replication_role = replica; UPDATE public.rentals SET stripe_customer_id = 'cus_syn' WHERE id = '${RENTAL}'`);
     }
     const stripe = (globalThis.__stripe = fakeStripe());
     stripe.setPlan(() => ({ delay: 0, outcome: "lost" }));
@@ -266,11 +281,11 @@ try {
     await payNow();
     psql(`UPDATE public.payments SET last_attempt_at = now() - interval '11 minutes' WHERE id = '${id}'`);
     stripe.paymentIntents.list = async () => { throw new Error("network down"); };
-    assert.match((await rel.releaseUnconfirmedPayment({ data: { paymentId: id, reason: "check", environment: "live" }, context: { userId: OWNER } })).error, /Could not reach Stripe/);
+    assert.match((await rel.releaseUnconfirmedPayment({ data: { paymentId: id, reason: "check" }, context: { userId: OWNER } })).error, /Could not reach Stripe/);
     assert.deepEqual(rows().map((r) => r.status), ["pending"]);
   });
 
-  await test("if the audit row can't be written, the Owner release is undone (row back to Processing)", async () => {
+  await test("the Owner release writes its audit row first: if that fails, nothing is released (row stays Processing)", async () => {
     const stripe = (globalThis.__stripe = fakeStripe());
     stripe.setPlan(() => ({ delay: 0, outcome: "lost" }));
     const id = reset("failed", 1);
@@ -278,8 +293,8 @@ try {
     psql(`UPDATE public.payments SET last_attempt_at = now() - interval '11 minutes' WHERE id = '${id}'`);
     psql("REVOKE INSERT ON public.audit_log FROM service_role");
     try {
-      const res = await rel.releaseUnconfirmedPayment({ data: { paymentId: id, reason: "check", environment: "live" }, context: { userId: OWNER } });
-      assert.match(res.error, /audit log, so it was undone/);
+      const res = await rel.releaseUnconfirmedPayment({ data: { paymentId: id, reason: "check" }, context: { userId: OWNER } });
+      assert.match(res.error, /Could not record the release in the audit log\. Nothing was changed\./);
     } finally {
       psql("GRANT INSERT ON public.audit_log TO service_role");
     }
@@ -331,6 +346,36 @@ try {
     assert.equal(res.filter((r) => r.ok).length, 1);
     assert.equal(stripe.calls.length, 2);
     assert.notEqual(stripe.calls[0].key, stripe.calls[1].key);
+  });
+
+  await test("a legacy pending row that never had an attempt (no attempt time) blocks new attempts until the Owner's Stripe check releases it (created_at fallback)", async () => {
+    const stripe = (globalThis.__stripe = fakeStripe());
+    const id = reset("pending", 0);
+    psql(`UPDATE public.payments SET last_attempt_at = NULL, created_at = now() WHERE id = '${id}'`);
+    assert.match((await payNow()).error, /still being confirmed/);
+    assert.match((await rel.releaseUnconfirmedPayment({ data: { paymentId: id, reason: "old rebill row" }, context: { userId: OWNER } })).error, /Wait until/);
+    psql(`UPDATE public.payments SET created_at = now() - interval '11 minutes' WHERE id = '${id}'`);
+    assert.ok((await rel.releaseUnconfirmedPayment({ data: { paymentId: id, reason: "old rebill row" }, context: { userId: OWNER } })).ok);
+    stripe.setPlan(() => ({ delay: 0, outcome: "succeeded" }));
+    assert.ok((await payNow()).ok);
+    assert.equal(stripe.calls.length, 1);
+  });
+
+  await test("the late-fee cron never touches a Processing charge (it can't reopen it as owed), and still charges an owed one", async () => {
+    const fees = await bundle("src/lib/late-fees.server.ts", "fees.mjs");
+    globalThis.__stripe = fakeStripe();
+    const pend = reset("failed", 1);
+    psql(`SET session_replication_role = replica; UPDATE public.payments SET status = 'pending', attempt_count = 2, last_attempt_at = now(), due_date = current_date - 10 WHERE id = '${pend}';
+      INSERT INTO public.payments (rental_id, driver_id, amount, balance_due, type, status, due_date) VALUES ('${RENTAL}', '${APP}', 100, 100, 'toll', 'failed', current_date - 10);
+      INSERT INTO public.app_settings (key, value) VALUES ('late_fee_policy', '{"enabled": true, "grace_days": 0, "flat_fee": 50, "daily_fee": 0, "max_fee": 50}') ON CONFLICT (key) DO UPDATE SET value = excluded.value;`);
+    try {
+      await fees.applyLateFees();
+    } finally {
+      psql("DELETE FROM public.app_settings WHERE key = 'late_fee_policy'");
+    }
+    const after = JSON.parse(psql(`SELECT json_agg(json_build_object('id', id, 's', status, 'b', balance_due) ORDER BY amount DESC) FROM public.payments WHERE rental_id = '${RENTAL}'`));
+    assert.deepEqual([after[0].s, Number(after[0].b)], ["pending", 325], "the Processing charge is untouched");
+    assert.deepEqual([after[1].s, Number(after[1].b)], ["overdue", 150], "the owed charge gets its late fee");
   });
 } finally {
   if (pgrst) pgrst.kill();

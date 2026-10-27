@@ -150,7 +150,9 @@ export async function applyLateFees(today?: string): Promise<LateFeeRun> {
     .from("payments")
     .select("id,driver_id,amount,balance_due,late_fees,due_date,status,late_fee_applied_through")
     .lt("due_date", todayStr)
-    .in("status", ["pending", "failed", "overdue", "past_due", "unpaid", "late", "current"])
+    // Not "pending": a charge Stripe is still processing (or has not confirmed) must not be
+    // reopened as owed, or a second attempt could start while the first may have collected.
+    .in("status", ["failed", "overdue", "past_due", "unpaid", "late", "current"])
     .limit(500);
 
   for (const p of overdue ?? []) {
@@ -194,7 +196,8 @@ export async function applyLateFees(today?: string): Promise<LateFeeRun> {
           status: "overdue",
           late_fee_applied_through: result.appliedThrough,
         })
-        .eq("id", p.id);
+        .eq("id", p.id)
+        .eq("status", p.status);
       if (error) throw new Error(error.message);
 
       run.charged++;

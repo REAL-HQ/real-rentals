@@ -3,7 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
 // Owner only: release a Processing charge whose outcome Stripe never confirmed, after checking
-// Stripe itself (payment-unconfirmed.server.ts). Audited.
+// every configured Stripe account (payment-unconfirmed.server.ts). Audited.
 export const releaseUnconfirmedPayment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
@@ -11,7 +11,6 @@ export const releaseUnconfirmedPayment = createServerFn({ method: "POST" })
       .object({
         paymentId: z.string().uuid(),
         reason: z.string().trim().min(3).max(500),
-        environment: z.enum(["live", "sandbox"]),
       })
       .strict()
       .parse(d),
@@ -27,7 +26,17 @@ export const releaseUnconfirmedPayment = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { createStripeClient } = await import("@/lib/stripe.server");
     const { releaseUnconfirmedCharge } = await import("@/lib/payment-unconfirmed.server");
-    return releaseUnconfirmedCharge(supabaseAdmin, createStripeClient(data.environment), {
+    // Not chosen by the browser: every account with keys configured is checked. One without
+    // keys cannot have taken the charge either.
+    const accounts = [];
+    for (const env of ["live", "sandbox"] as const) {
+      try {
+        accounts.push({ env, stripe: createStripeClient(env) });
+      } catch {
+        // not configured
+      }
+    }
+    return releaseUnconfirmedCharge(supabaseAdmin, accounts, {
       paymentId: data.paymentId,
       reason: data.reason,
       actor: { userId: actor.userId, email: actor.email, role: actor.role },

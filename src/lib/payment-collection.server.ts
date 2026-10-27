@@ -40,6 +40,17 @@ export const REASON_TO_TYPE: Record<string, string> = {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+/**
+ * Stripe idempotency key for one attempt on a set of rows. One row keeps the readable form; a set
+ * uses a hash of its sorted ids, because the joined ids pass Stripe's 255-character limit at 7 rows.
+ */
+export async function attemptKey(ids: string[], attempt: number): Promise<string> {
+  if (ids.length === 1) return `payments:${ids[0]}:attempt:${attempt}`;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode([...ids].sort().join(",")));
+  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  return `payments:set-${hex}:attempt:${attempt}`;
+}
+
 export type CollectResult =
   | { ok: true; paymentIntentId: string; status: "paid" | "pending"; paymentIds: string[] }
   | { error: string; paymentIds: string[]; outcome: "failed" | "unconfirmed" | "busy" };
@@ -48,19 +59,15 @@ export type CollectResult =
 export const CLAIMABLE_STATUSES = OUTSTANDING_STATUSES.filter((s) => s !== "pending");
 
 /**
- * True only when Stripe definitely did not take money for this request: a card decline, or a
- * request Stripe rejected before acting on it. Timeouts, connection errors, 5xx and idempotency
- * conflicts are unknown outcomes: the charge may have gone through.
+ * True only for a card decline Stripe itself reported (card_error, HTTP 402): the attempt was made
+ * and failed, so nothing was collected. Everything else is an unknown outcome — timeouts, 5xx,
+ * 409, and also 4xx such as 400/401/403/429: requests pass through a gateway and the client
+ * retries, so a 4xx on a retry can follow a first try that did charge.
  */
 export function stripeDefinitelyNotCharged(e: any): boolean {
-  const type = String(e?.type ?? "");
-  const rawType = String(e?.rawType ?? e?.raw?.type ?? "");
+  const cardError = e?.type === "StripeCardError" || (e?.rawType ?? e?.raw?.type) === "card_error";
   const status = Number(e?.statusCode ?? e?.raw?.statusCode ?? 0);
-  if (status === 409 || status >= 500) return false;
-  return (
-    ["StripeCardError", "StripeInvalidRequestError", "StripeAuthenticationError", "StripePermissionError", "StripeRateLimitError"].includes(type) ||
-    ["card_error", "invalid_request_error", "authentication_error", "rate_limit_error"].includes(rawType)
-  );
+  return cardError && status === 402;
 }
 
 /**
@@ -116,8 +123,8 @@ export async function collectRows(
     await release();
     return busy;
   }
-  const { data: inFlight } = await admin.from("payments").select("id").eq("rental_id", opts.rentalId).eq("status", "pending");
-  if ((inFlight ?? []).some((r: any) => !ids.includes(r.id))) {
+  const { data: inFlight, error: inFlightErr } = await admin.from("payments").select("id").eq("rental_id", opts.rentalId).eq("status", "pending");
+  if (inFlightErr || (inFlight ?? []).some((r: any) => !ids.includes(r.id))) {
     await release();
     return busy;
   }
@@ -137,7 +144,7 @@ export async function collectRows(
         description: opts.description,
         metadata: { ...opts.metadata, paymentIds: ids.join(","), attempt: String(attempt) },
       },
-      { idempotencyKey: `payments:${ids.join(",")}:attempt:${attempt}` },
+      { idempotencyKey: await attemptKey(ids, attempt) },
     );
     const paid = pi.status === "succeeded";
     // A row staff already marked paid is skipped by the update below. Leave

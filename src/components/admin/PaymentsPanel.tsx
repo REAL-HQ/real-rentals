@@ -30,6 +30,7 @@ import type { StaffTier } from "@/lib/roles";
 import { OPEN_STATUSES, canTake, type PaymentStatusAction } from "@/lib/payment-status-rules";
 import { changePaymentStatus } from "@/lib/payment-status.functions";
 import { releaseUnconfirmedPayment } from "@/lib/payment-unconfirmed.functions";
+import { chargeCardOnRental } from "@/lib/rental-payments.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 
 const STATUSES = [
@@ -141,7 +142,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
     const reason = window.prompt("Why? (e.g. the charge timed out and never settled). Saved in the audit log.")?.trim();
     if (!reason || reason.length < 3) return void (reason != null && toast.error("A reason of at least 3 characters is required."));
     try {
-      const res = await releaseUnconfirmedPayment({ data: { paymentId: p.id, reason, environment: getStripeEnvironment() } });
+      const res = await releaseUnconfirmedPayment({ data: { paymentId: p.id, reason } });
       if ("error" in res) return toast.error(res.error);
       const { data } = await supabase.from("payments").select("*").eq("id", p.id).maybeSingle();
       if (data) setPayments((list) => list.map((x) => (x.id === p.id ? (data as Payment) : x)));
@@ -149,6 +150,24 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
     } catch {
       toast.error("Could not reach the server. Nothing was changed.");
     }
+  }
+  // Owner: collect this existing charge with the card on file (a retry on the same row, never a
+  // second charge). The server refuses while any charge on the rental is still Processing.
+  async function chargeExisting(p: Payment, driverName: string) {
+    const owed = Number(p.balance_due) > 0 ? Number(p.balance_due) : Number(p.amount ?? 0);
+    if (!p.rental_id) return toast.error("This charge isn't linked to a rental, so it can't be charged to a card.");
+    if (!window.confirm(`Charge $${owed.toLocaleString()} to ${driverName}'s card on file for this charge? Press once.`)) return;
+    const reason = ({ rent: "rent", late_fee: "late_fee", toll: "toll", damage: "damage" } as Record<string, string>)[String(p.type)] ?? "other";
+    try {
+      const res = await chargeCardOnRental({ data: { rentalId: p.rental_id, amountCents: Math.round(owed * 100), reason: reason as any, paymentId: p.id, environment: getStripeEnvironment() } });
+      if ("error" in res) toast.error(res.error);
+      else if (res.status === "paid") toast.success(`Paid: $${owed.toFixed(2)} collected`);
+      else toast.warning(`Charge of $${owed.toFixed(2)} submitted but not confirmed; Payments shows it as Processing. Don't charge again: check the payment in Stripe.`);
+    } catch {
+      toast.error("Could not reach the server. Check Payments before trying again.");
+    }
+    const { data } = await supabase.from("payments").select("*").eq("id", p.id).maybeSingle();
+    if (data) setPayments((list) => list.map((x) => (x.id === p.id ? (data as Payment) : x)));
   }
   async function add(p: Partial<Payment>) {
     const { data, error } = await supabase
@@ -318,6 +337,11 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                         {canTake(tier, "mark_paid", String(p.status)) && (
                           <DropdownMenuItem onClick={() => changeStatus(p, driverName, "mark_paid")}>
                             <Check className="w-4 h-4 mr-2" /> Mark as Paid (Received Outside Stripe)
+                          </DropdownMenuItem>
+                        )}
+                        {tier === "owner" && p.rental_id && OPEN_STATUSES.includes(p.status as any) && (
+                          <DropdownMenuItem onClick={() => chargeExisting(p, driverName)}>
+                            Charge Card for This Charge
                           </DropdownMenuItem>
                         )}
                         {canTake(tier, "waive", String(p.status)) && (

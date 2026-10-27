@@ -20,7 +20,7 @@ export type ChargeReason = (typeof REASONS)[number];
 // (it is private.has_role now, not exposed), so every call answered Forbidden.
 async function assertAdmin(context: any) {
   const { requireOwner } = await import('@/lib/roles.server');
-  await requireOwner(context.userId);
+  return requireOwner(context.userId);
 }
 
 async function findOrCreateStripeCustomer(
@@ -99,9 +99,9 @@ export const chargeCardOnRental = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }): Promise<{ ok: true; paymentIntentId: string; paymentId: string; status: string } | { error: string; paymentId?: string }> => {
     let paymentId: string | undefined;
     try {
-      await assertAdmin(context);
+      const actor = await assertAdmin(context);
       const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
-      const { collectRows, markUncollectable, REASON_TO_TYPE } = await import('@/lib/payment-collection.server');
+      const { collectRows, markUncollectable, REASON_TO_TYPE, CLAIMABLE_STATUSES } = await import('@/lib/payment-collection.server');
       const { data: rental } = await supabaseAdmin
         .from('rentals')
         .select('id, application_id, vehicle_id, stripe_customer_id, stripe_payment_method_id')
@@ -132,6 +132,14 @@ export const chargeCardOnRental = createServerFn({ method: 'POST' })
           return { error: 'This charge is still Processing in Stripe and cannot be charged again until Stripe confirms it.', paymentId: existing.id as string };
         row = existing;
       } else {
+        // One rent debt, one row: while a rent charge on this rental is still owed, charging rent
+        // again would create a second debt that Pay Now (or a later charge) also collects.
+        if (data.reason === 'rent') {
+          const { data: openRent } = await supabaseAdmin.from('payments').select('id, amount, due_date')
+            .eq('rental_id', data.rentalId).eq('type', 'rent').in('status', [...CLAIMABLE_STATUSES]).limit(1);
+          if ((openRent ?? []).length)
+            return { error: `This rental already has an unpaid rent charge ($${Number(openRent![0].amount).toFixed(2)}, due ${openRent![0].due_date}). Charge that one from Payments (Charge Card for This Charge), or void it first if it was replaced.` };
+        }
         const amount = data.amountCents / 100;
         const { data: inserted, error: insErr } = await supabaseAdmin
           .from('payments')
@@ -194,12 +202,13 @@ export const chargeCardOnRental = createServerFn({ method: 'POST' })
           // owed twice: void it, unless that other payment has already taken it over.
           if (created) {
             const { data: voided } = await supabaseAdmin.from('payments').update({ status: 'void', notes: [data.note, 'Voided automatically: not charged, another payment on this rental was in progress.'].filter(Boolean).join('\n') } as any).eq('id', paymentId).eq('status', 'current').select('id');
-            if (voided?.length)
-              await (supabaseAdmin as any).from('audit_log').insert({
-                actor_user_id: context.userId, actor_email: null, actor_role: 'admin', action: 'payment.void',
-                entity_type: 'payment', entity_id: paymentId, summary: `Voided automatically (not charged): $${(data.amountCents / 100).toFixed(2)}`,
-                metadata: { from: 'current', to: 'void', reason: 'Charge Card request not charged: another payment on this rental was in progress', rental_id: data.rentalId, automatic: true },
-              });
+            if (!voided?.length)
+              return { error: 'Another payment on this rental picked up this new charge and is collecting it. Check Payments before doing anything else.', paymentId };
+            await (supabaseAdmin as any).from('audit_log').insert({
+              actor_user_id: actor.userId, actor_email: actor.email, actor_role: actor.role, action: 'payment.void',
+              entity_type: 'payment', entity_id: paymentId, summary: `Voided automatically (not charged): $${(data.amountCents / 100).toFixed(2)}`,
+              metadata: { from: 'current', to: 'void', reason: 'Charge Card request not charged: another payment on this rental was in progress', rental_id: data.rentalId, automatic: true },
+            });
           }
           return { error: res.error, paymentId };
         }

@@ -73,6 +73,7 @@ function fakeDb(tables) {
 }
 
 const RENTAL = "77777777-7777-4777-8777-777777777777";
+const OPEN_RENT = "88888888-8888-4888-8888-888888888888";
 const OWNER = "55555555-5555-4555-8555-555555555555";
 const MANAGER = "33333333-3333-4333-8333-333333333333";
 // The Owner check is server-side (roles.server.ts reads user_roles through the service role); the
@@ -104,6 +105,7 @@ const charge = (payments) =>
 try {
   await build({ entryPoints: ["src/lib/rental-payments.functions.ts"], bundle: true, platform: "node", format: "esm", outfile: join(out, "payments.mjs"), alias: { "@": resolve("src") }, plugins: [stubPlugin], logLevel: "warning" });
   const payments = await import(join(out, "payments.mjs"));
+  await build({ entryPoints: ["src/lib/payment-collection.server.ts"], bundle: true, platform: "node", format: "esm", outfile: join(out, "collect.mjs"), alias: { "@": resolve("src") }, plugins: [stubPlugin], logLevel: "warning" });
   const ui = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
   const dialog = ui.slice(ui.indexOf("function ChargeCardDialog"), ui.indexOf("function AutopayActions"));
 
@@ -162,7 +164,17 @@ try {
   });
 
   await test("a 5xx or idempotency conflict from Stripe is unconfirmed even when typed as a Stripe error", async () => {
-    for (const e of [{ type: "StripeAPIError", statusCode: 500 }, { type: "StripeInvalidRequestError", statusCode: 409 }, { type: "StripeIdempotencyError", statusCode: 400 }]) {
+    for (const e of [
+      { type: "StripeAPIError", statusCode: 500 },
+      { type: "StripeInvalidRequestError", statusCode: 409 },
+      { type: "StripeIdempotencyError", statusCode: 400 },
+      // Through the gateway and the client's own retries, a 4xx can follow a first try that charged.
+      { type: "StripeInvalidRequestError", statusCode: 400 },
+      { type: "StripeAuthenticationError", statusCode: 401 },
+      { type: "StripePermissionError", statusCode: 403 },
+      { type: "StripeRateLimitError", statusCode: 429 },
+      { type: "StripeCardError" }, // a card error without Stripe's 402 is not trusted either
+    ]) {
       const db = install(() => { throw Object.assign(new Error("x"), e); });
       await charge(payments);
       assert.equal(db.tables.payments[0].status, "pending", JSON.stringify(e));
@@ -176,6 +188,29 @@ try {
     assert.match(res.error, /still Processing/);
     assert.equal(globalThis.__stripe.calls.length, 0);
     assert.equal(db.tables.payments.length, 1, "no new charge row");
+  });
+
+  await test("one rent debt, one row: Charge Card refuses new rent while a rent charge on the rental is still owed; other reasons are not blocked", async () => {
+    const db = install(() => ({ id: "pi_ok", status: "succeeded" }));
+    db.tables.payments.push({ id: OPEN_RENT, rental_id: RENTAL, type: "rent", status: "failed", amount: 325, balance_due: 325, attempt_count: 1, due_date: "2026-10-20" });
+    const res = await charge(payments);
+    assert.match(res.error, /already has an unpaid rent charge \(\$325\.00, due 2026-10-20\)/);
+    assert.equal(globalThis.__stripe.calls.length, 0);
+    const toll = await payments.chargeCardOnRental({ data: { rentalId: RENTAL, amountCents: 1500, reason: "toll", environment: "live" }, context: ownerCtx });
+    assert.equal(toll.ok, true);
+    const retry = await payments.chargeCardOnRental({ data: { rentalId: RENTAL, amountCents: 32500, reason: "rent", paymentId: OPEN_RENT, environment: "live" }, context: ownerCtx });
+    assert.equal(retry.ok, true, "the existing rent charge can be charged (same row, next attempt)");
+    assert.equal(db.tables.payments.find((r) => r.id === OPEN_RENT).status, "paid");
+  });
+
+  await test("a combined charge's idempotency key stays within Stripe's 255 characters (hash of the sorted ids)", async () => {
+    const { attemptKey } = await import(join(out, "collect.mjs"));
+    const ids = Array.from({ length: 12 }, (_, i) => `${String(i).padStart(8, "0")}-0000-4000-8000-000000000000`);
+    const k = await attemptKey(ids, 3);
+    assert.ok(k.length <= 255, String(k.length));
+    assert.equal(k, await attemptKey([...ids].reverse(), 3), "order does not matter");
+    assert.notEqual(k, await attemptKey(ids, 4));
+    assert.equal(await attemptKey(["abc"], 2), "payments:abc:attempt:2");
   });
 
   await test("the Owner check works without public.has_role (dropped by migration 20260713042639); a Manager is refused", async () => {

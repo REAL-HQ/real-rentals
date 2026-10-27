@@ -363,8 +363,9 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
   let q = admin.from('payments').update(patch)
     .eq('stripe_invoice_id', invoice.id)
     .neq('status', 'paid').neq('status', 'refunded');
-  // A failed retry never reopens a charge staff voided or waived.
-  if (status !== 'paid') q = q.neq('status', 'void').neq('status', 'waived');
+  // A failed retry never reopens a charge staff voided or waived, and never fails a row that
+  // our own collection has claimed (pending with an attempt time): that attempt is still unsettled.
+  if (status !== 'paid') q = q.neq('status', 'void').neq('status', 'waived').or('status.neq.pending,last_attempt_at.is.null');
   const r = must(await q.select('id'));
   if (!(r.data?.length)) {
     // The row was already paid, usually because staff marked a failed invoice
