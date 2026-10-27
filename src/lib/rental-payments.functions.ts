@@ -175,7 +175,9 @@ export const chargeCardOnRental = createServerFn({ method: 'POST' })
           ...(data.note && { note: data.note.slice(0, 450) }),
         },
       });
-      if ('error' in res) return { error: `${res.error} — the charge is recorded as failed and can be retried.`, paymentId };
+      // Never invite a blind retry: a retry is a new charge with a new idempotency key, and an
+      // error that is not a card decline (timeout, connection) may still have been charged.
+      if ('error' in res) return { error: `${res.error} — recorded as failed. Before charging again, check this payment in Stripe: unless the card was declined, it may still have gone through.`, paymentId };
       return { ok: true, paymentIntentId: res.paymentIntentId, paymentId, status: res.status };
     } catch (error) {
       return { error: getStripeErrorMessage(error), paymentId };
