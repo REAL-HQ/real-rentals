@@ -3793,7 +3793,13 @@ function ChargeCardDialog({ driver, onClose }: { driver: any; onClose: () => voi
         },
       });
       if ("error" in res) throw new Error(res.error);
-      toast.success(`Charged $${(cents / 100).toFixed(2)} to card`);
+      // Only a charge Stripe reports as succeeded is Paid. Anything else (for example the card
+      // needs the driver's authentication) stays Pending until the webhook settles it.
+      if (res.status === "paid") toast.success(`Paid: $${(cents / 100).toFixed(2)} collected`);
+      else
+        toast.warning(
+          `Charge of $${(cents / 100).toFixed(2)} submitted but not confirmed; it shows Pending. Don't charge again: check the payment in Stripe.`,
+        );
       onClose();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Charge failed");
