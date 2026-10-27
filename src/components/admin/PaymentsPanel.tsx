@@ -121,7 +121,17 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
     const reason = window.prompt("Why is this charge being voided? This is saved on the payment.")?.trim();
     if (!reason) return;
     const notes = [p.notes, `Voided: ${reason}`].filter(Boolean).join("\n");
-    await update(p.id, { status: "void", notes });
+    // Void only if the row is still voidable now: the list may be stale (Stripe may have
+    // collected it since it loaded), and a paid row must never be voided.
+    const { data, error } = await supabase
+      .from("payments")
+      .update({ status: "void", notes })
+      .eq("id", p.id)
+      .in("status", [...VOIDABLE_STATUSES])
+      .select("id");
+    if (error) return toast.error(error.message);
+    if (!data?.length) return toast.error("This charge changed since the list loaded, so it was not voided. Reload Payments and check it.");
+    setPayments((list) => list.map((x) => (x.id === p.id ? { ...x, status: "void", notes } : x)));
   }
   async function add(p: Partial<Payment>) {
     const { data, error } = await supabase

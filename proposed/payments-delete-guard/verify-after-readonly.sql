@@ -1,5 +1,6 @@
 -- READ-ONLY. Payments delete guard v1 verify-after. One SELECT; names, flags, hashes and ACL text only.
--- Run after the request commits. Every row must have ok = true.
+-- Run after the request commits. Every row must have ok = true. Catalog checks only: it does not
+-- attempt a DELETE (the refusal itself is proven by scripts/payments-delete-guard.db.test.mjs).
 WITH c AS (
  SELECT
   (SELECT (NOT p.prosecdef AND p.proconfig = ARRAY['search_path=""'] AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') = 'dc651bb223b0d59f4b091921477063f2e514113e7d23ed164a1b6e06232d93b7'

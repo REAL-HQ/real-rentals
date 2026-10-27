@@ -173,7 +173,9 @@ WITH c AS (
    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid = 'public.payments'::pg_catalog.regclass AND tgname = '@TRIGGER@'))::text AS objects_absent,
   (SELECT pg_catalog.string_agg(t.tgname, ',' ORDER BY t.tgname COLLATE "C") FROM pg_catalog.pg_trigger t WHERE t.tgrelid = 'public.payments'::pg_catalog.regclass AND NOT t.tgisinternal) AS payment_triggers,
   (SELECT pg_catalog.string_agg(pg_catalog.concat(con.conname, ':', con.confdeltype), ',' ORDER BY con.conname COLLATE "C") FROM pg_catalog.pg_constraint con WHERE con.conrelid = 'public.payments'::pg_catalog.regclass AND con.contype = 'f') AS payment_fks,
-  (SELECT pg_catalog.count(*) FROM public.payments)::text AS payment_rows
+  (SELECT pg_catalog.count(*) FROM public.payments)::text AS payment_rows,
+  (SELECT pg_catalog.string_agg(r, ',' ORDER BY r) FROM pg_catalog.unnest(ARRAY['anon', 'authenticated', 'service_role']) r
+    WHERE pg_catalog.has_table_privilege(r, 'public.payments', 'TRUNCATE')) AS truncate_grantees
 )
 SELECT check_name, expected, actual, CASE WHEN expected = '*' THEN true ELSE actual IS NOT DISTINCT FROM expected END AS ok FROM c, LATERAL (VALUES
  ('target.system_identifier', '7642734024280108049', system_identifier),
@@ -187,13 +189,15 @@ SELECT check_name, expected, actual, CASE WHEN expected = '*' THEN true ELSE act
  ('objects.absent', 'true', objects_absent),
  ('payments.triggers', 'payments_updated_at', payment_triggers),
  ('payments.fks_set_null_only', 'payments_driver_id_fkey:n,payments_rental_id_fkey:n,payments_vehicle_id_fkey:n', payment_fks),
- ('payments.rows (informational)', '*', payment_rows)
+ ('payments.rows (informational)', '*', payment_rows),
+ ('payments.truncate_api_roles (informational; not reachable via PostgREST)', '*', truncate_grantees)
 ) v(check_name, expected, actual)
 ORDER BY check_name;
 """
 
 VERIFY = r"""-- READ-ONLY. Payments delete guard v1 verify-after. One SELECT; names, flags, hashes and ACL text only.
--- Run after the request commits. Every row must have ok = true.
+-- Run after the request commits. Every row must have ok = true. Catalog checks only: it does not
+-- attempt a DELETE (the refusal itself is proven by scripts/payments-delete-guard.db.test.mjs).
 WITH c AS (
  SELECT
   (SELECT (NOT p.prosecdef AND p.proconfig = ARRAY['search_path=""'] AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') = '@GUARD_SHA@'
