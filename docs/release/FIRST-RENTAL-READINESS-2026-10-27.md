@@ -409,7 +409,7 @@ Weekly autopay stays OFF throughout. The insurance exception stays OFF.
 - Charge Card, autopay start/stop and Remove Card now check the Owner server-side (`requireOwner` reading `user_roles`), as the other money functions do.
 - The authority is unchanged: Owner only.
 
-**2. `fix/pay-now-duplicate-protection` @ `a05211a0` (on top of 1; P1–P8).**
+**2. `fix/pay-now-duplicate-protection` @ `c64bc2c6` (on top of 1; P1–P8).**
 - **Atomic claim.** One conditional update moves a charge to `pending` only if it is owed, not in flight, and its `attempt_count` is below the new attempt. The attempt then backs out if any other row on the rental is pending. So at most one attempt per rental reaches Stripe, whatever the concurrency.
 - **Unconfirmed outcomes stay Processing.** Only a Stripe `card_error` with HTTP 402 counts as definitely not charged. Everything else stays `pending`: timeouts, 5xx, 409, and gateway or retry 4xx.
 - **Webhook ordering.**
@@ -452,13 +452,13 @@ Weekly autopay stays OFF throughout. The insurance exception stays OFF.
 | `payments-webhook-events` | 11/11 |
 | `payments-webhook-invariants` | Pass |
 | `payments-write-guard.db` | **17/17**: Manager and Owner (20 refused changes), a column added later, Add Payment allowed and 9 bad inserts refused, Coordinator, driver, anon, `service_role`, refunds, parent deletes, both install orders with the delete guard, rollback |
-| Full check (tsc, build, full `npm test`) | `a23f73eb` pass; `a05211a0` and `ed2ed072` running at the time of writing (earlier heads `ea899e20` and `8d7d876d` passed) |
+| Full check (tsc, build, full `npm test`, incl. applicant-security) | Pass on `a23f73eb`, `c64bc2c6` and `ed2ed072` |
 
 **Harness limit:** the local PostgREST 12.2.3 re-applies a mutation's `or=` filter to the returned rows. The concurrency test requests `select=*` on those PATCHes, a documented test-only shim. Production's PostgREST 14.5 behaviour for the webhook's `.or()` + `select('id')` queries is unverified.
 
 ### Recommended integration
 
-- **Release 2 candidate = `a05211a0`.** It is linear on `78bb94af`: + role check + Pay Now protection.
+- **Release 2 candidate = `c64bc2c6`.** It is linear on `78bb94af`: + role check + Pay Now protection.
   - Open it as PRs (role check, Pay Now) after your review.
   - Rebuild Release 2 from `78bb94af` plus both, with no conflicts, and re-run the full regression on the final commit.
 - **The role check is required before the first rental**, if production matches its migrations: without it, Charge Card can't be used.
