@@ -3798,7 +3798,7 @@ function ChargeCardDialog({ driver, onClose }: { driver: any; onClose: () => voi
       if (res.status === "paid") toast.success(`Paid: $${(cents / 100).toFixed(2)} collected`);
       else
         toast.warning(
-          `Charge of $${(cents / 100).toFixed(2)} submitted but not confirmed; it shows Pending. Don't charge again: check the payment in Stripe.`,
+          `Charge of $${(cents / 100).toFixed(2)} submitted but not confirmed; Payments shows it as Processing. Don't charge again: check the payment in Stripe.`,
         );
       onClose();
     } catch (e) {

@@ -116,6 +116,14 @@ try {
     assert.equal(db.tables.payments[0].status, "pending");
   });
 
+  await test("a charge Stripe reports processing returns status pending and the row stays Pending (not Paid)", async () => {
+    const db = install(() => ({ id: "pi_proc", status: "processing" }));
+    const res = await charge(payments);
+    assert.equal(res.status, "pending");
+    assert.equal(db.tables.payments[0].status, "pending");
+    assert.equal(db.tables.payments[0].stripe_payment_intent_id, "pi_proc");
+  });
+
   await test("each attempt carries a Stripe idempotency key tied to the row and attempt", async () => {
     install(() => ({ id: "pi_ok", status: "succeeded" }));
     await charge(payments);
@@ -139,7 +147,7 @@ try {
 
   await test("UI: 'Paid' only for status paid; anything else is a warning saying not to charge again; no 'Charged' message", () => {
     assert.match(dialog, /if \(res\.status === "paid"\) toast\.success\(`Paid: \$\$\{\(cents \/ 100\)\.toFixed\(2\)\} collected`\);/);
-    assert.match(dialog, /toast\.warning\(\s*`Charge of \$\$\{\(cents \/ 100\)\.toFixed\(2\)\} submitted but not confirmed; it shows Pending\. Don't charge again: check the payment in Stripe\.`/);
+    assert.match(dialog, /toast\.warning\(\s*`Charge of \$\$\{\(cents \/ 100\)\.toFixed\(2\)\} submitted but not confirmed; Payments shows it as Processing\. Don't charge again: check the payment in Stripe\.`/);
     assert.doesNotMatch(dialog, /Charged \$/);
   });
 } finally {
