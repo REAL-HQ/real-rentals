@@ -100,11 +100,14 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
     if (error) return toast.error(error.message);
     setPayments((p) => p.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   }
-  async function remove(id: string) {
-    if (!confirm("Delete payment?")) return;
-    const { error } = await supabase.from("payments").delete().eq("id", id);
-    if (error) return toast.error(error.message);
-    setPayments((p) => p.filter((x) => x.id !== id));
+  // Payment rows are financial history: a charge entered in error is voided (kept, with the
+  // reason in its notes), never deleted. A paid or refunded charge is corrected by a refund in
+  // Stripe, which the webhook records.
+  async function voidPayment(p: Payment) {
+    const reason = window.prompt("Why is this charge being voided? This is saved on the payment.")?.trim();
+    if (!reason) return;
+    const notes = [p.notes, `Voided: ${reason}`].filter(Boolean).join("\n");
+    await update(p.id, { status: "void", notes });
   }
   async function add(p: Partial<Payment>) {
     const { data, error } = await supabase
@@ -285,12 +288,14 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
                         <DropdownMenuItem onClick={() => update(p.id, { status: "waived" })}>
                           Waive
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-[#D03020] focus:text-[#D03020]"
-                          onClick={() => remove(p.id)}
-                        >
-                          Delete
-                        </DropdownMenuItem>
+                        {!["paid", "refunded", "void"].includes(String(p.status)) && (
+                          <DropdownMenuItem
+                            className="text-[#D03020] focus:text-[#D03020]"
+                            onClick={() => voidPayment(p)}
+                          >
+                            Void (Entered In Error)
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </td>
