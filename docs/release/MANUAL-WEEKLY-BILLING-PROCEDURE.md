@@ -14,6 +14,15 @@
 
 The rules below are unchanged.
 
+**Prerequisite (found 2026-10-27):** Charge Card answers "Forbidden" for the Owner while the app checks `public.has_role`, which the migrations dropped. If production matches its migrations, **this procedure can't start until the role-check fix (`fix/charge-card-role-check`) is live.** Confirming production needs one read-only check, which needs approval.
+
+**With the payment-safety fixes (`fix/pay-now-duplicate-protection`, proposed for Release 2):**
+- An unconfirmed charge stays **Processing**. Charge Card and the driver's Pay Now refuse while anything on the rental is Processing.
+- To retry a declined charge, use **Charge Card for This Charge** on that row in Payments. A second rent charge for the same week is refused.
+- If a charge stays Processing more than 10 minutes and Stripe shows nothing, the Owner uses **Check Stripe and Release (Not Collected)** on that row. The server checks Stripe itself, and the release is audited.
+
+Until those fixes are live, the rules below apply as written.
+
 ## The one rule
 
 **Never press Charge Card again for a week that already has an attempt, until Stripe shows that week's charge did not go through.**

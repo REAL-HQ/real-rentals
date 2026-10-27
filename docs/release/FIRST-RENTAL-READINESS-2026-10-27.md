@@ -385,3 +385,95 @@ Weekly autopay stays OFF throughout. The insurance exception stays OFF.
    - **Smallest fix** (separate SQL package and approval, built like the delete guard): a BEFORE UPDATE trigger refusing changes to `status`, `amount`, `balance_due`, `paid_date` and `refunded_amount` from `authenticated`. Staff changes would then go only through `changePaymentStatus` (service role, audited); the webhook and collection are unaffected.
 3. **No alert on a Stripe success for a void or waived row** (a millisecond race). Low likelihood; fix it with item 1's branch.
 
+## Payment safety corrections (non-production; separate branches, independently reviewed twice)
+
+`release/financial-integrity-2` stays at `78bb94af`. Nothing below is merged into it, Preview or production.
+
+### Confirmed duplicate-charge and billing-blocking paths
+
+| # | Path | Evidence |
+|---|---|---|
+| D7 | **Charge Card, autopay start/stop and Remove Card refuse the Owner ("Forbidden").** They call `rpc('has_role')`. Migration `20260713042639` dropped `public.has_role` (it is `private.has_role` now, which PostgREST does not expose). | The production-order baseline has no `public.has_role`; a local PostgREST returns PGRST202. If production matches its migrations, **manual weekly billing cannot run**, with or without Release 1. Production is unverified: that needs a read-only catalog query, which needs approval. |
+| P1 | Concurrent Pay Now presses on the same charge | Old code, real Postgres + PostgREST: 10 concurrent presses → **2 real charges** (3/3 runs). |
+| P2 | A timeout or ambiguous Stripe error is recorded as `failed`, so Pay Now or Charge Card retries with a new idempotency key | Old code: the timed-out row became Failed and a second attempt was allowed |
+| P3 | Pay Now during an Owner charge that is still processing | `payRentalBalance` collected `pending` rows |
+| P4 | A late or duplicate `payment_failed` for an earlier attempt marks a newer in-flight attempt failed | No attempt match in the webhook |
+| P5 | The late-fee cron reopens an unconfirmed (`pending`) charge as `overdue` (only when late fees are on) | Code |
+| P6 | Charge Card always creates a new row: retrying a declined week's rent creates a second debt that Pay Now also collects | Code (UI never passes `paymentId`) |
+| P7 | `invoice.payment_failed` fails a row Pay Now claimed, and rewrites `attempt_count` (idempotency key reuse) | Code; autopay is off, so there are no invoices today |
+| P8 | Pay Now and Charge Card could collect a row Stripe is retrying as an invoice | Code; autopay is off |
+
+### Corrections
+
+**1. `fix/charge-card-role-check` @ `a23f73eb` (D7).**
+- Charge Card, autopay start/stop and Remove Card now check the Owner server-side (`requireOwner` reading `user_roles`), as the other money functions do.
+- The authority is unchanged: Owner only.
+
+**2. `fix/pay-now-duplicate-protection` @ `a05211a0` (on top of 1; P1–P8).**
+- **Atomic claim.** One conditional update moves a charge to `pending` only if it is owed, not in flight, and its `attempt_count` is below the new attempt. The attempt then backs out if any other row on the rental is pending. So at most one attempt per rental reaches Stripe, whatever the concurrency.
+- **Unconfirmed outcomes stay Processing.** Only a Stripe `card_error` with HTTP 402 counts as definitely not charged. Everything else stays `pending`: timeouts, 5xx, 409, and gateway or retry 4xx.
+- **Webhook ordering.**
+  - A `payment_failed` only applies to the attempt it belongs to (`metadata.attempt`).
+  - Invoice failures skip claimed rows and never write `attempt_count`.
+  - Post-call updates only touch rows still on this attempt, so a fast webhook wins.
+- **Portal and Pay Now.**
+  - One shared balance computation (`rentalBalance`).
+  - Pay Now is hidden and refused while anything is Processing; the portal says a payment is being confirmed.
+  - Rows tied to a Stripe invoice are left to Stripe.
+- **Charge Card.**
+  - Refuses while a charge on the rental is Processing.
+  - Refuses a second charge for this week's rent, matched by rental or by driver; an older unpaid week does not block.
+  - Payments gets an Owner **Charge Card for This Charge** action that retries the existing row.
+  - A request that loses a race voids its own new row, and the void is audited.
+- **Owner recovery: Check Stripe and Release (Not Collected).**
+  - Owner only, reason required, at least 10 minutes after the attempt.
+  - The server lists every PaymentIntent in each configured Stripe account (live and sandbox) within an hour either side of the attempt, whatever the customer.
+  - It refuses if any intent for the charge succeeded or is still open, or if Stripe can't be reached.
+  - The audit row is written before the release.
+- **Other fixes.**
+  - Toll rebill creates owed (`current`) rows, not `pending`.
+  - The late-fee cron skips `pending` and updates conditionally.
+  - Combined-charge idempotency keys hash the sorted ids; the joined ids passed Stripe's 255-character limit at 7+ rows.
+
+**3. `fix/payments-write-guard-sql` @ `ed2ed072`: proposed SQL, not installed.**
+- **What it refuses.** A BEFORE INSERT OR UPDATE row trigger refuses direct changes from `authenticated` and `anon` sessions. It is an allowlist: only `notes`, and `payment_method` while the row is still owed, may change. New charges must start owed.
+- **What it leaves alone.** `service_role` (audited server paths, webhook, crons), `apply_payment_refund`, FK actions and the database owner.
+- **Requests.** Install request `91ad1504a9fdd1511f0ba0c19bdee42ed94ae8afc389c110a9f859a53f13438d`. Rollback `2ab7d318f947d1cff6b0ba1f2d1f49b2acd442f21985d4644460223dc896a015`. Preflight 13 rows, verify-after 6 rows.
+
+### Test results
+
+| Test | Result |
+|---|---|
+| `pay-now-concurrency.db` (real Postgres 17 + PostgREST 12.2.3, fake Stripe with idempotency and 409 semantics) | **12/12**: 10 concurrent presses → 1 charge; Pay Now racing Owner Charge Cards over 10 rounds; timeout-after-charge with a delayed and duplicated webhook; a never-reached request released by the Owner and retried once; release refusals (collected, open, Stripe unreachable, a customer change); audit-first; a stale failure webhook during a newer attempt; a fast webhook; decline then one retry; a legacy pending row; late-fee cron; portal = Pay Now through the driver's RLS session |
+| `charge-status-confirmation` | 14/14 |
+| `payment-delete-ui` | 6/6 |
+| `payment-status-controls` | 11/11 |
+| `billing-launch-safety` | 19/19 |
+| `payments-webhook-events` | 11/11 |
+| `payments-webhook-invariants` | Pass |
+| `payments-write-guard.db` | **17/17**: Manager and Owner (20 refused changes), a column added later, Add Payment allowed and 9 bad inserts refused, Coordinator, driver, anon, `service_role`, refunds, parent deletes, both install orders with the delete guard, rollback |
+| Full check (tsc, build, full `npm test`) | `a23f73eb` pass; `a05211a0` and `ed2ed072` running at the time of writing (earlier heads `ea899e20` and `8d7d876d` passed) |
+
+**Harness limit:** the local PostgREST 12.2.3 re-applies a mutation's `or=` filter to the returned rows. The concurrency test requests `select=*` on those PATCHes, a documented test-only shim. Production's PostgREST 14.5 behaviour for the webhook's `.or()` + `select('id')` queries is unverified.
+
+### Recommended integration
+
+- **Release 2 candidate = `a05211a0`.** It is linear on `78bb94af`: + role check + Pay Now protection.
+  - Open it as PRs (role check, Pay Now) after your review.
+  - Rebuild Release 2 from `78bb94af` plus both, with no conflicts, and re-run the full regression on the final commit.
+- **The role check is required before the first rental**, if production matches its migrations: without it, Charge Card can't be used.
+- **DB guards** come only after Release 2 is live, in this order: delete guard (unchanged), then write guard. Each has its own approval.
+
+### Production approvals still needed
+
+1. Read-only check: is `public.has_role(uuid, app_role)` absent, and how many payments are `pending`? Confirms D7 and the pre-deploy state.
+2. Release 1 (PR #284) publication, after the look-only Preview check.
+3. Release 2 publication (rebuilt candidate).
+4. Payments DELETE guard SQL.
+5. Payments write guard SQL (after Release 2 is live).
+6. Owner: Stripe live configuration C1–C6, the manual weekly billing procedure, and the first-rental checklist.
+
+**Not in scope, noted by review:**
+- `scripts/agreement-template-library.proposed.sql` and `scripts/driver-issues/staff-note.proposed.sql` still reference `public.has_role`.
+- These RPCs are called by the app but are in neither the migrations nor the baseline; they need read-only confirmation in production: `close_recorded_rental_v2`, `list_assignment_history_v1`, `resolve_application_identity_review`, `link_replacement_agreement_checked`.
+
