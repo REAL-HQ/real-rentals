@@ -29,6 +29,8 @@ import { BillingControls } from "./BillingControls";
 import type { StaffTier } from "@/lib/roles";
 import { OPEN_STATUSES, canTake, type PaymentStatusAction } from "@/lib/payment-status-rules";
 import { changePaymentStatus } from "@/lib/payment-status.functions";
+import { releaseUnconfirmedPayment } from "@/lib/payment-unconfirmed.functions";
+import { getStripeEnvironment } from "@/lib/stripe";
 
 const STATUSES = [
   "upcoming",
@@ -129,6 +131,23 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
       toast.success(`${STATUS_LABEL[res.status] ?? res.status}: saved`);
     } catch {
       toast.error("Could not reach the server. Reload Payments before trying again.");
+    }
+  }
+  // A Processing charge Stripe never confirmed: the server checks Stripe and releases it to Failed
+  // only if Stripe shows nothing collected and nothing in flight. Owner only; audited.
+  async function releaseUnconfirmed(p: Payment, driverName: string) {
+    const money = `$${Number(p.amount ?? 0).toLocaleString()}`;
+    if (!window.confirm(`Check Stripe for this ${money} charge to ${driverName}? If Stripe shows it was not collected and is not processing, it becomes Failed (still owed) and can be charged again. If Stripe collected it, nothing changes.`)) return;
+    const reason = window.prompt("Why? (e.g. the charge timed out and never settled). Saved in the audit log.")?.trim();
+    if (!reason || reason.length < 3) return void (reason != null && toast.error("A reason of at least 3 characters is required."));
+    try {
+      const res = await releaseUnconfirmedPayment({ data: { paymentId: p.id, reason, environment: getStripeEnvironment() } });
+      if ("error" in res) return toast.error(res.error);
+      const { data } = await supabase.from("payments").select("*").eq("id", p.id).maybeSingle();
+      if (data) setPayments((list) => list.map((x) => (x.id === p.id ? (data as Payment) : x)));
+      toast.success(`Stripe shows it was not collected (${res.checked} payments checked). It is now Failed and still owed.`);
+    } catch {
+      toast.error("Could not reach the server. Nothing was changed.");
     }
   }
   async function add(p: Partial<Payment>) {
@@ -319,6 +338,11 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                         )}
                         {(p.status === "pending") && (
                           <DropdownMenuItem disabled>Processing in Stripe: Check Stripe Before Any Change</DropdownMenuItem>
+                        )}
+                        {p.status === "pending" && tier === "owner" && (
+                          <DropdownMenuItem onClick={() => releaseUnconfirmed(p, driverName)}>
+                            Check Stripe and Release (Not Collected)
+                          </DropdownMenuItem>
                         )}
                       </DropdownMenuContent>
                     </DropdownMenu>

@@ -172,6 +172,8 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
   const amount = Number(pi.amount ?? 0) / 100;
   const failure = (pi.last_payment_error?.message as string | undefined)?.slice(0, 500) ?? 'Payment failed';
   const ids = String(pi.metadata?.paymentIds ?? '').split(',').map((s) => s.trim()).filter((s) => /^[0-9a-f-]{36}$/i.test(s));
+  // Which collection attempt this intent was (set by collectRows). Older intents have none.
+  const attemptNo = Number(pi.metadata?.attempt);
 
   let changed = 0;
   let noticeIds = ids;
@@ -201,6 +203,9 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
       let q = admin.from('payments').update({ status: 'failed', failure_reason: failure })
         .in('id', ids).neq('status', 'paid').neq('status', 'refunded').neq('status', 'void').neq('status', 'waived');
       if (ids.length === 1) q = q.or(`stripe_payment_intent_id.is.null,stripe_payment_intent_id.eq.${pi.id}`);
+      // A late or repeated failure for an earlier attempt must not mark rows failed while a newer
+      // attempt is in flight on them: that would let a further attempt start (a double charge).
+      if (Number.isInteger(attemptNo) && attemptNo > 0) q = q.eq('attempt_count', attemptNo);
       const r = must(await q.select('id'));
       changed = r.data?.length ?? 0;
     }

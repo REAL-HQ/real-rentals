@@ -8,6 +8,8 @@
 //   pending  → paid      money received (the only state counted as revenue)
 //   pending  → failed    attempt failed; still owed; failure_reason recorded
 //   failed   → pending   retry on the SAME row — never a second charge
+//   pending stays pending while Stripe has not confirmed the outcome; no new
+//   attempt starts on a rental while any of its rows is pending
 //   paid     → refunded  money returned (charge.refunded webhook)
 //
 // Retries are idempotent per attempt (Stripe idempotency key = row + attempt
@@ -40,34 +42,89 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export type CollectResult =
   | { ok: true; paymentIntentId: string; status: "paid" | "pending"; paymentIds: string[] }
-  | { error: string; paymentIds: string[] };
+  | { error: string; paymentIds: string[]; outcome: "failed" | "unconfirmed" | "busy" };
+
+/** Statuses a new attempt may start from: owed, and no attempt in flight (`pending`). */
+export const CLAIMABLE_STATUSES = OUTSTANDING_STATUSES.filter((s) => s !== "pending");
+
+/**
+ * True only when Stripe definitely did not take money for this request: a card decline, or a
+ * request Stripe rejected before acting on it. Timeouts, connection errors, 5xx and idempotency
+ * conflicts are unknown outcomes: the charge may have gone through.
+ */
+export function stripeDefinitelyNotCharged(e: any): boolean {
+  const type = String(e?.type ?? "");
+  const rawType = String(e?.rawType ?? e?.raw?.type ?? "");
+  const status = Number(e?.statusCode ?? e?.raw?.statusCode ?? 0);
+  if (status === 409 || status >= 500) return false;
+  return (
+    ["StripeCardError", "StripeInvalidRequestError", "StripeAuthenticationError", "StripePermissionError", "StripeRateLimitError"].includes(type) ||
+    ["card_error", "invalid_request_error", "authentication_error", "rate_limit_error"].includes(rawType)
+  );
+}
 
 /**
  * Attempt to collect `rows` with one off-session card charge.
  * The rows must already exist. They are updated, never inserted.
+ *
+ * One attempt at a time, enforced in the database rather than by hiding buttons:
+ * 1. Claim: one conditional update moves every row to `pending` only if it is still owed, not
+ *    already in flight, and its attempt_count is below this attempt (so a stale read can't
+ *    claim). Concurrent requests for the same rows can't both claim them.
+ * 2. Per rental: after claiming, any other `pending` row on the rental means another payment is
+ *    in flight (or unconfirmed); this attempt backs out without calling Stripe. Each request
+ *    claims before it checks, so of two concurrent requests at most one proceeds.
+ * 3. An outcome Stripe has not confirmed stays `pending`, never `failed`: the webhook settles it,
+ *    or the Owner releases it after Stripe shows nothing was collected (payment-unconfirmed).
  */
 export async function collectRows(
   admin: any,
   stripe: Stripe,
-  rows: { id: string; amount: unknown; balance_due: unknown; attempt_count: number | null }[],
-  opts: { customerId: string; paymentMethodId: string; description: string; metadata: Record<string, string> },
+  rows: { id: string; amount: unknown; balance_due: unknown; attempt_count: number | null; status?: string | null }[],
+  opts: { rentalId: string; customerId: string; paymentMethodId: string; description: string; metadata: Record<string, string> },
 ): Promise<CollectResult> {
   const ids = rows.map((r) => r.id);
   const cents = Math.round(rows.reduce((s, r) => s + owedOn(r), 0) * 100);
-  if (cents < 50) return { error: "Nothing collectable on these charges", paymentIds: ids };
+  if (cents < 50) return { error: "Nothing collectable on these charges", paymentIds: ids, outcome: "busy" };
   const attempt = Math.max(0, ...rows.map((r) => r.attempt_count ?? 0)) + 1;
   const single = ids.length === 1;
+  const busy = { error: "Another payment for this rental is already in progress or waiting for Stripe to confirm it. Nothing was charged.", paymentIds: ids, outcome: "busy" as const };
 
   // Leave failure_reason in place until the charge succeeds. An unresolved
   // combined charge does not store a payment intent, and Mark as Paid does
   // not write one, so clearing the reason here would drop that cash payment
   // from the non-Stripe total.
-  await admin
+  const { data: claimed, error: claimErr } = await admin
     .from("payments")
     .update({ attempt_count: attempt, last_attempt_at: new Date().toISOString(), status: "pending" })
     .in("id", ids)
-    .neq("status", "paid");
+    .in("status", [...CLAIMABLE_STATUSES])
+    .lt("attempt_count", attempt)
+    .select("id");
+  const claimedIds: string[] = (claimed ?? []).map((r: any) => r.id);
+  const release = async () => {
+    for (const r of rows.filter((x) => claimedIds.includes(x.id))) {
+      await admin
+        .from("payments")
+        .update({ status: r.status ?? "failed", attempt_count: r.attempt_count ?? 0 })
+        .eq("id", r.id)
+        .eq("status", "pending")
+        .eq("attempt_count", attempt);
+    }
+  };
+  if (claimErr || claimedIds.length !== ids.length) {
+    await release();
+    return busy;
+  }
+  const { data: inFlight } = await admin.from("payments").select("id").eq("rental_id", opts.rentalId).eq("status", "pending");
+  if ((inFlight ?? []).some((r: any) => !ids.includes(r.id))) {
+    await release();
+    return busy;
+  }
 
+  // Only rows this attempt claimed, and only while they are still on this attempt: a webhook
+  // that already settled them wins.
+  const mine = () => admin.from("payments");
   try {
     const pi = await stripe.paymentIntents.create(
       {
@@ -78,7 +135,7 @@ export async function collectRows(
         off_session: true,
         confirm: true,
         description: opts.description,
-        metadata: { ...opts.metadata, paymentIds: ids.join(",") },
+        metadata: { ...opts.metadata, paymentIds: ids.join(","), attempt: String(attempt) },
       },
       { idempotencyKey: `payments:${ids.join(",")}:attempt:${attempt}` },
     );
@@ -87,8 +144,7 @@ export async function collectRows(
     // its failure reason, status, and paid_date alone so the manual receipt
     // stays visible. The webhook sends one Payment Received notice and one
     // staff alert when Stripe collects.
-    await admin
-      .from("payments")
+    await mine()
       .update({
         status: paid ? "paid" : "pending",
         ...(paid ? { paid_date: today(), balance_due: 0, failure_reason: null } : {}),
@@ -97,21 +153,27 @@ export async function collectRows(
         ...(single ? { stripe_payment_intent_id: pi.id } : {}),
       })
       .in("id", ids)
-      .neq("status", "paid");
+      .eq("status", "pending")
+      .eq("attempt_count", attempt);
     return { ok: true, paymentIntentId: pi.id, status: paid ? "paid" : "pending", paymentIds: ids };
   } catch (e: any) {
     const message = getStripeErrorMessage(e);
     const piId: string | null = e?.raw?.payment_intent?.id ?? e?.payment_intent?.id ?? null;
-    await admin
-      .from("payments")
+    if (!stripeDefinitelyNotCharged(e)) {
+      // Unknown outcome: stays pending (Processing). Never failed, so nothing offers a new attempt.
+      if (single && piId) await mine().update({ stripe_payment_intent_id: piId }).eq("id", ids[0]).eq("status", "pending").eq("attempt_count", attempt);
+      return { error: message, paymentIds: ids, outcome: "unconfirmed" };
+    }
+    await mine()
       .update({
         status: "failed",
         failure_reason: message.slice(0, 500),
         ...(single && piId ? { stripe_payment_intent_id: piId } : {}),
       })
       .in("id", ids)
-      .neq("status", "paid");
-    return { error: message, paymentIds: ids };
+      .eq("status", "pending")
+      .eq("attempt_count", attempt);
+    return { error: message, paymentIds: ids, outcome: "failed" };
   }
 }
 
@@ -121,5 +183,5 @@ export async function markUncollectable(admin: any, ids: string[], reason: strin
     .from("payments")
     .update({ status: "unpaid", failure_reason: reason.slice(0, 500), last_attempt_at: new Date().toISOString() })
     .in("id", ids)
-    .neq("status", "paid");
+    .in("status", [...CLAIMABLE_STATUSES]);
 }
