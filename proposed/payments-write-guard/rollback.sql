@@ -47,7 +47,7 @@ BEGIN
  IF pg_catalog.to_regprocedure('private.payments_write_guard()') IS NULL
  OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid = 'public.payments'::pg_catalog.regclass AND tgname = 'zz_payments_write_guard')
  THEN RAISE EXCEPTION 'PWG_PARTIAL_STATE'; END IF;
- IF (SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') FROM pg_catalog.pg_proc p WHERE p.oid = 'private.payments_write_guard()'::pg_catalog.regprocedure) IS DISTINCT FROM '11d6ad5ab436af7e35cfb01068b13b6a430e0bc7f4fa2268e4bf8be5558e0b84'
+ IF (SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') FROM pg_catalog.pg_proc p WHERE p.oid = 'private.payments_write_guard()'::pg_catalog.regprocedure) IS DISTINCT FROM 'ae7accbdb2fd34bd8bf683ed3b06f13f369899ac9c0b458f3abacfd50a62a84b'
  THEN RAISE EXCEPTION 'PWG_OBJECTS_CHANGED_SINCE_INSTALL'; END IF;
 
  EXECUTE approved_sql;

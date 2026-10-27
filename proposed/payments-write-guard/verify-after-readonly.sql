@@ -3,7 +3,7 @@
 -- attempt a write (the refusals themselves are proven by scripts/payments-write-guard.db.test.mjs).
 WITH c AS (
  SELECT
-  (SELECT (NOT p.prosecdef AND p.proconfig = ARRAY['search_path=""'] AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') = '11d6ad5ab436af7e35cfb01068b13b6a430e0bc7f4fa2268e4bf8be5558e0b84'
+  (SELECT (NOT p.prosecdef AND p.proconfig = ARRAY['search_path=""'] AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') = 'ae7accbdb2fd34bd8bf683ed3b06f13f369899ac9c0b458f3abacfd50a62a84b'
      AND NOT pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE') AND NOT pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
      AND NOT pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE'))::text
      FROM pg_catalog.pg_proc p WHERE p.oid = pg_catalog.to_regprocedure('private.payments_write_guard()')) AS guard,

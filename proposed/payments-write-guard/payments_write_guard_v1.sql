@@ -7,14 +7,22 @@ DO $rrpwg$
 DECLARE
  profile jsonb := '{"project_ref": "yuyzdsnrbfhkmfzpvhwx", "lovable_project_id": "8cf1f99e-71ad-4a93-a47c-bfbe833616d6", "database": "postgres", "system_identifier": "7642734024280108049", "execution_role": "postgres"}'::jsonb;
  approved_sql text := $approvedpwg$-- Payments write guard v1 inner DDL. Runner owns the transaction.
--- The money fields of a payment row change only through audited server code (service_role: the
--- staff status actions, Charge Card / Pay Now collection, the Stripe webhook) or approved SQL.
--- A signed-in user's own session (authenticated) and anon may not change them directly, whatever
--- RLS allows: a Manager can still edit notes, due date, method, type and links, and can still add
--- a charge, but only one that starts owed. No policy, grant or row changes.
+-- A payment row changes only through audited server code (service_role: the staff status actions,
+-- Charge Card / Pay Now collection, the Stripe webhook, the crons) or approved SQL. A signed-in
+-- user's own session (authenticated) and anon may, whatever RLS allows, only:
+--   * edit notes and payment_method on an existing row (an allowlist: every other column, present
+--     or added later, is frozen, including amounts, balances, statuses, dates, links and type);
+--   * add a charge that starts owed: an open status, no paid date, refund, Stripe link or attempt
+--     state, and a balance no larger than the amount; any column outside the add-a-charge set
+--     must be empty or zero.
+-- No policy, grant or row changes.
 
 CREATE FUNCTION private.payments_write_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $pwgfn$
+DECLARE
+ editable pg_catalog.text[] := ARRAY['notes', 'payment_method', 'updated_at', 'net_collected'];
+ insertable pg_catalog.text[] := ARRAY['id', 'created_at', 'updated_at', 'net_collected', 'driver_id', 'vehicle_id', 'rental_id',
+   'type', 'reason', 'amount', 'balance_due', 'due_date', 'status', 'payment_method', 'notes'];
 BEGIN
  IF current_user OPERATOR(pg_catalog.<>) ALL (ARRAY['authenticated', 'anon']::pg_catalog.name[]) THEN
   RETURN NEW;
@@ -24,24 +32,15 @@ BEGIN
   OR NOT (NEW.status OPERATOR(pg_catalog.=) ANY (ARRAY['upcoming', 'current', 'overdue', 'past_due', 'late', 'failed', 'unpaid', 'collections']::pg_catalog.text[]))
   OR NEW.amount IS NULL OR NEW.amount OPERATOR(pg_catalog.<) 0
   OR COALESCE(NEW.balance_due, 0) OPERATOR(pg_catalog.<) 0 OR COALESCE(NEW.balance_due, 0) OPERATOR(pg_catalog.>) NEW.amount
-  OR COALESCE(NEW.late_fees, 0) OPERATOR(pg_catalog.<>) 0 OR NEW.late_fee_applied_through IS NOT NULL
-  OR NEW.paid_date IS NOT NULL OR COALESCE(NEW.refunded_amount, 0) OPERATOR(pg_catalog.<>) 0 OR NEW.refunded_at IS NOT NULL
-  OR NEW.stripe_payment_intent_id IS NOT NULL OR NEW.stripe_invoice_id IS NOT NULL OR NEW.stripe_subscription_id IS NOT NULL
-  OR COALESCE(NEW.attempt_count, 0) OPERATOR(pg_catalog.<>) 0 OR NEW.last_attempt_at IS NOT NULL
-  OR NEW.notified_status IS NOT NULL OR NEW.failure_reason IS NOT NULL
+  OR EXISTS (SELECT 1 FROM pg_catalog.jsonb_each(pg_catalog.to_jsonb(NEW) OPERATOR(pg_catalog.-) insertable) e
+              WHERE e.value OPERATOR(pg_catalog.<>) ALL (ARRAY['null', '0']::pg_catalog.jsonb[]))
   THEN
    RAISE EXCEPTION 'payments_new_charge_must_start_owed' USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
  END IF;
- IF ROW(NEW.status, NEW.amount, NEW.balance_due, NEW.late_fees, NEW.late_fee_applied_through, NEW.paid_date,
-        NEW.refunded_amount, NEW.refunded_at, NEW.stripe_payment_intent_id, NEW.stripe_invoice_id, NEW.stripe_subscription_id,
-        NEW.attempt_count, NEW.last_attempt_at, NEW.notified_status, NEW.failure_reason)
-    IS DISTINCT FROM
-    ROW(OLD.status, OLD.amount, OLD.balance_due, OLD.late_fees, OLD.late_fee_applied_through, OLD.paid_date,
-        OLD.refunded_amount, OLD.refunded_at, OLD.stripe_payment_intent_id, OLD.stripe_invoice_id, OLD.stripe_subscription_id,
-        OLD.attempt_count, OLD.last_attempt_at, OLD.notified_status, OLD.failure_reason) THEN
-  RAISE EXCEPTION 'payments_money_fields_change_only_through_audited_server' USING ERRCODE = '42501';
+ IF (pg_catalog.to_jsonb(NEW) OPERATOR(pg_catalog.-) editable) IS DISTINCT FROM (pg_catalog.to_jsonb(OLD) OPERATOR(pg_catalog.-) editable) THEN
+  RAISE EXCEPTION 'payments_change_only_through_audited_server' USING ERRCODE = '42501';
  END IF;
  RETURN NEW;
 END $pwgfn$;
@@ -60,7 +59,7 @@ BEGIN
  OR pg_catalog.current_database() IS DISTINCT FROM profile->>'database'
  OR current_user IS DISTINCT FROM profile->>'execution_role'
  THEN RAISE EXCEPTION 'TARGET_MISMATCH'; END IF;
- IF pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(approved_sql, 'UTF8')), 'hex') IS DISTINCT FROM '88fc635b01567e9146a0d770e11ce5cd03c3f111ac8632e5a349e882134f2809'
+ IF pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(approved_sql, 'UTF8')), 'hex') IS DISTINCT FROM '7a96f9c396f37901f80fbb0e58023b11914b2a2c9135cdd44cfa7a1dcd342867'
  THEN RAISE EXCEPTION 'SQL_CHECKSUM_MISMATCH'; END IF;
  PERFORM pg_catalog.set_config('search_path', '', true);
  PERFORM pg_catalog.set_config('lock_timeout', '5s', true);
@@ -92,7 +91,7 @@ BEGIN
  -- TEST_FAILURE_POINT (only disposable test copies may inject failure here)
 
  IF (SELECT NOT p.prosecdef AND l.lanname = 'plpgsql' AND p.proconfig = ARRAY['search_path=""'] AND p.prorettype = 'trigger'::pg_catalog.regtype
-      AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') = '11d6ad5ab436af7e35cfb01068b13b6a430e0bc7f4fa2268e4bf8be5558e0b84'
+      AND pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(p.prosrc, 'UTF8')), 'hex') = 'ae7accbdb2fd34bd8bf683ed3b06f13f369899ac9c0b458f3abacfd50a62a84b'
       AND NOT pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE') AND NOT pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
       AND NOT pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')
      FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_language l ON l.oid = p.prolang WHERE p.oid = 'private.payments_write_guard()'::pg_catalog.regprocedure) IS NOT TRUE
@@ -117,7 +116,7 @@ BEGIN
   'Payments write guard v1 postconditions verified by database migration executor',
   pg_catalog.jsonb_build_object('project_ref', profile->>'project_ref', 'package', 'payments-write-guard v1',
    'execution_at', pg_catalog.clock_timestamp(), 'transaction_id', pg_catalog.txid_current()::text, 'database_executor', current_user,
-   'session_executor', session_user, 'inner_sql_sha256', '88fc635b01567e9146a0d770e11ce5cd03c3f111ac8632e5a349e882134f2809', 'guard_prosrc_sha256', '11d6ad5ab436af7e35cfb01068b13b6a430e0bc7f4fa2268e4bf8be5558e0b84',
+   'session_executor', session_user, 'inner_sql_sha256', '7a96f9c396f37901f80fbb0e58023b11914b2a2c9135cdd44cfa7a1dcd342867', 'guard_prosrc_sha256', 'ae7accbdb2fd34bd8bf683ed3b06f13f369899ac9c0b458f3abacfd50a62a84b',
    'payments_fingerprint_sha256', pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pay_before::text, 'UTF8')), 'hex'),
    'payment_rows', rows_before, 'policies_0031_md5', p0031, 'drizzle_receipts', receipts),
   pg_catalog.clock_timestamp());

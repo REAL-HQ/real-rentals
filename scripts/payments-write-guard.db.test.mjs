@@ -68,7 +68,7 @@ const as = (role, sub, sql) =>
   `BEGIN; SELECT set_config('request.jwt.claims', '${JSON.stringify({ sub: sub ?? null, role })}', true), set_config('request.jwt.claim.sub', '${sub ?? ""}', true); SET LOCAL ROLE ${role}; ${sql}; COMMIT;`;
 const asUser = (sub, sql) => as("authenticated", sub, sql);
 const row = (id) => q(`SELECT status || '|' || amount || '|' || balance_due || '|' || coalesce(paid_date::text, '-') || '|' || coalesce(notes, '-') FROM public.payments WHERE id = '${id}'`);
-const MONEY = /payments_money_fields_change_only_through_audited_server/;
+const MONEY = /payments_change_only_through_audited_server/;
 
 function freshDb(name) {
   DBNAME = name;
@@ -149,15 +149,23 @@ try {
     `attempt_count = 9`,
     `failure_reason = 'forged'`,
     `notified_status = 'paid'`,
+    // links, type and due date decide whose rental collects it, which vehicle/partner earns it, and late fees
+    `rental_id = gen_random_uuid()`,
+    `vehicle_id = gen_random_uuid()`,
+    `driver_id = NULL`,
+    `type = 'deposit'`,
+    `due_date = '2026-01-01'`,
+    `id = gen_random_uuid()`,
+    `created_at = now() - interval '1 year'`,
   ];
   for (const [who, sub] of [["Manager", MANAGER], ["Owner", OWNER]]) {
-    test(`${who} (own session): every direct money-field change is refused; notes, due date, method and type still editable`, () => {
+    test(`${who} (own session): every direct change is refused except notes and payment method (allowlist)`, () => {
       for (const set of MONEY_EDITS) assert.match(fails(asUser(sub, `UPDATE public.payments SET ${set} WHERE id = '${P1}'`)) ?? "", MONEY, set);
       assert.match(fails(asUser(sub, `UPDATE public.payments SET status = 'current', paid_date = NULL WHERE id = '${P2}'`)) ?? "", MONEY, "un-pay");
       assert.equal(row(P1), "failed|325.00|325.00|-|-");
-      assert.equal(fails(asUser(sub, `UPDATE public.payments SET notes = 'called driver', due_date = '2026-10-28', payment_method = 'Card', type = 'rent' WHERE id = '${P1}'`)), null);
+      assert.equal(fails(asUser(sub, `UPDATE public.payments SET notes = 'called driver', payment_method = 'Card' WHERE id = '${P1}'`)), null);
       assert.equal(fails(asUser(sub, `UPDATE public.payments SET status = 'failed' WHERE id = '${P1}'`)), null, "an unchanged value is not a change");
-      q(`UPDATE public.payments SET notes = NULL, due_date = '2026-10-27' WHERE id = '${P1}'`);
+      q(`UPDATE public.payments SET notes = NULL, payment_method = NULL WHERE id = '${P1}'`);
     });
   }
 
@@ -176,6 +184,17 @@ try {
       ["amount, status, stripe_payment_intent_id", "100, 'current', 'pi_forged'"],
       ["amount, status, refunded_amount", "100, 'current', 5"],
     ]) assert.match(fails(ins(cols, vals)) ?? "", /payments_new_charge_must_start_owed/, vals);
+  });
+
+  test("allowlist covers columns added later: a new column is frozen on update and must be empty on insert", () => {
+    q("ALTER TABLE public.payments ADD COLUMN zz_future_amount numeric");
+    try {
+      assert.match(fails(asUser(MANAGER, `UPDATE public.payments SET zz_future_amount = 5 WHERE id = '${P1}'`)) ?? "", MONEY);
+      assert.match(fails(asUser(MANAGER, `INSERT INTO public.payments (driver_id, type, due_date, amount, status, zz_future_amount) VALUES ('${APP}', 'rent', current_date, 1, 'current', 5)`)) ?? "", /payments_new_charge_must_start_owed/);
+      assert.equal(fails(asUser(MANAGER, `INSERT INTO public.payments (driver_id, type, due_date, amount, status) VALUES ('${APP}', 'rent', current_date, 1, 'current')`)), null);
+    } finally {
+      q("ALTER TABLE public.payments DROP COLUMN zz_future_amount");
+    }
   });
 
   test("Coordinator and driver: RLS already gives no write; nothing changes, and inserts are refused", () => {
