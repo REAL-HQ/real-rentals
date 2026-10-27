@@ -4,6 +4,18 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { notReadyMessage } from "@/lib/vehicle-readiness";
+import {
+  decideActivation,
+  driverRequirementBlockers,
+  activationRequirements,
+  businessToday,
+  checkedTxBlocker,
+  insuranceStatus,
+  type ActivationBlocker,
+  type ActivationReadiness,
+  type DriverReadinessFacts,
+  type InsuranceReadiness,
+} from "@/lib/activation-readiness";
 
 // Turning an approved applicant into a live renter.
 //
@@ -30,36 +42,14 @@ async function assertStaff(_supabase: any, userId: string) {
   return requireManager(userId);
 }
 
-export type ActivationBlocker = {
-  code:
-    | "no_vehicle"
-    | "vehicle_busy"
-    | "no_passed_inspection"
-    | "no_email"
-    | "not_approved"
-    | "already_active"
-    | "invalid_dates"
-    /** Vehicle fails Rental Ready (or rate missing). Never overridable. */
-    | "vehicle_not_ready"
-    /** The application's login belongs to a different identity. Never overridable. */
-    | "account_conflict"
-    /** Pickup mileage is materially below the vehicle's mileage history. */
-    | "mileage_invalid";
-  message: string;
-};
-
-export type ActivationReadiness = {
-  ready: boolean;
-  blockers: ActivationBlocker[];
-  warnings: string[];
-  vehicleId: string | null;
-  suggestedWeeklyRate: number | null;
-  suggestedDeposit: number | null;
-  /** Odometer from the latest passed pre-delivery inspection — prefills Pickup Mileage (same observation, never duplicated). */
-  inspectionMileage: number | null;
-  /** Newest valid reading in mileage history, for the "at least" hint. */
-  currentMileage: number | null;
-};
+// The readiness rules themselves (which blockers are hard, which need a
+// written reason, the requirement checklist) live in activation-readiness.ts
+// so the dialog and the Rental tab render exactly what this file enforces.
+export type {
+  ActivationBlocker,
+  ActivationReadiness,
+  ActivationRequirement,
+} from "@/lib/activation-readiness";
 
 /**
  * Everything that would stop this applicant being activated on this vehicle.
@@ -81,7 +71,7 @@ async function evaluateReadiness(
   const { data: app } = await admin
     .from("applications")
     .select(
-      "id,full_name,email,phone,status,vehicle_id,weekly_rent,user_id,insurance_status,sms_consent",
+      "id,full_name,email,phone,status,vehicle_id,weekly_rent,user_id,insurance_status,insurance_expires_on,sms_consent",
     )
     .eq("id", applicationId)
     .maybeSingle();
@@ -95,12 +85,67 @@ async function evaluateReadiness(
       message: "No email on file — needed to create their portal login.",
     });
   }
-  if (!["approved", "active"].includes(String(app.status))) {
-    blockers.push({
-      code: "not_approved",
-      message: `Application is "${app.status}". Approve it before activating.`,
-    });
-  }
+
+  // Driver-side readiness, enforced here rather than only in the drawer:
+  // approval, licence front/back, a signed agreement and verified insurance
+  // (all hard; insurance may instead need the Owner-exception acknowledgement)
+  // and the interview (soft). Same sources the drawer reads: the Document Vault
+  // (documents.driver_id = application id), driver_screenings, agreements and
+  // the audited paper-agreement verifications in audit_log.
+  const [docsRead, screeningRead, agreementsRead, auditsRead] = await Promise.all([
+    admin
+      .from("documents")
+      .select("id,category,is_current,review_status,expires_at,reviewed_at,storage_path")
+      .eq("driver_id", applicationId)
+      .eq("is_current", true),
+    admin
+      .from("driver_screenings")
+      .select("interview_completed_at,insurance_verified")
+      .eq("lead_id", applicationId)
+      .maybeSingle(),
+    admin
+      .from("agreements")
+      .select("source,status,signed_at,voided_at,rental_id")
+      .eq("application_id", applicationId)
+      .eq("status", "signed"),
+    admin
+      .from("audit_log")
+      .select("action,actor_role,metadata")
+      .eq("action", "document.verified")
+      .eq("entity_type", "application")
+      .eq("entity_id", applicationId),
+  ]);
+  // A failed read must never read as "complete": refuse instead of guessing.
+  const readError = docsRead.error ?? screeningRead.error ?? agreementsRead.error ?? auditsRead.error;
+  if (readError) throw new Error("Could not check activation readiness. Try again.");
+  const docs = (docsRead.data ?? []) as DriverReadinessFacts["documents"];
+  const screening = screeningRead.data;
+  const agreements = agreementsRead.data;
+  // The Owner exception. Missing or unreadable reads OFF; the activation
+  // transaction re-reads it under a lock and decides for itself.
+  const { loadRentalActivationSettings } = await import("@/lib/rental-activation-settings.server");
+  const setting = await loadRentalActivationSettings(admin);
+  const insurance: InsuranceReadiness = {
+    status: insuranceStatus({
+      verified: ((screening as any)?.insurance_verified as boolean | null) ?? null,
+      documents: docs,
+      applicationExpiresOn: ((app as any).insurance_expires_on as string | null) ?? null,
+      today: businessToday(),
+    }),
+    exceptionAllowed: setting.allowWithoutInsuranceVerification,
+    settingPresent: setting.present,
+    settingReadable: setting.readable,
+  };
+  const facts: DriverReadinessFacts = {
+    status: (app.status as string | null) ?? null,
+    agreements: (agreements ?? []) as DriverReadinessFacts["agreements"],
+    documents: docs,
+    paperAudits: (auditsRead.data ?? []) as DriverReadinessFacts["paperAudits"],
+    interviewCompletedAt: ((screening as any)?.interview_completed_at as string | null) ?? null,
+    insurance,
+    hasPassedInspection: null,
+  };
+  blockers.push(...driverRequirementBlockers(facts));
 
   // An applicant already on an active rental should be edited, not re-activated.
   if (app.user_id) {
@@ -170,6 +215,7 @@ async function evaluateReadiness(
         .maybeSingle();
       inspectionMileage = (inspection as any)?.odometer != null ? Number((inspection as any).odometer) : null;
       currentMileage = (v as any).current_odometer != null ? Number((v as any).current_odometer) : null;
+      facts.hasPassedInspection = !!inspection;
       if (!inspection) {
         blockers.push({
           code: "no_passed_inspection",
@@ -199,6 +245,8 @@ async function evaluateReadiness(
     ready: blockers.length === 0,
     blockers,
     warnings,
+    requirements: activationRequirements(facts),
+    insurance,
     vehicleId: vehicleId ?? null,
     suggestedWeeklyRate:
       app.weekly_rent != null
@@ -234,6 +282,8 @@ export type ActivateResult = {
   blockers?: ActivationBlocker[];
   accountCreated?: boolean;
   inviteUrl?: string | null;
+  /** Only on the non-atomic fallback (wrapper not installed): the required audit write failed. */
+  auditError?: string;
 };
 
 export const activateRental = createServerFn({ method: "POST" })
@@ -258,6 +308,12 @@ export const activateRental = createServerFn({ method: "POST" })
         overrideReason: z.string().trim().max(500).optional(),
         /** Odometer at handover → one canonical mileage observation (source Rental Pickup). */
         pickupMileage: z.number().int().min(0).max(2_000_000).nullable().optional(),
+        /**
+         * The operator ticked the insurance warning. Only meaningful while the Owner
+         * setting "Allow Activation Without Insurance Verification" is ON; separate
+         * from overrideBlockers/overrideReason, which never satisfy insurance.
+         */
+        insuranceExceptionAck: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -267,23 +323,20 @@ export const activateRental = createServerFn({ method: "POST" })
 
     const readiness = await evaluateReadiness(supabaseAdmin, data.applicationId, data.vehicleId);
 
-    // Double-booking and missing-email are never overridable: the first would
-    // hand one car to two drivers, the second cannot produce a working login.
-    const hardBlockers = readiness.blockers.filter(
-      // account_conflict is not in this list on purpose: evaluateReadiness
-      // cannot know about it, so it is returned directly from the handler
-      // below rather than filtered out of a readiness result.
-      (b) => b.code === "vehicle_busy" || b.code === "no_email" || b.code === "already_active" || b.code === "vehicle_not_ready",
-    );
-    if (hardBlockers.length) return { ok: false, blockers: hardBlockers };
-    if (!readiness.ready && !data.overrideBlockers) {
-      return { ok: false, blockers: readiness.blockers };
-    }
-    // An override is deliberate and attributable: it needs a written reason.
-    const overridden = readiness.ready ? [] : readiness.blockers;
-    if (overridden.length && (data.overrideReason ?? "").length < 5) {
-      return { ok: false, blockers: [{ code: "override_reason_required" as any, message: "Enter a reason for the override." }] };
-    }
+    // Hard blockers (double-booking, no email, already active, vehicle not
+    // Rental Ready, not approved, missing licence, no signed agreement, and
+    // any code not explicitly listed as soft) refuse even with an override and
+    // a reason. Only the soft ones (no passed inspection, interview not
+    // complete) may be overridden, and only with a written reason that goes
+    // into the immutable audit log below. The identity check that needs the
+    // provisioned login is returned directly from the handler further down.
+    const decision = decideActivation(readiness, {
+      overrideBlockers: data.overrideBlockers,
+      overrideReason: data.overrideReason,
+      insuranceExceptionAck: data.insuranceExceptionAck,
+    });
+    if (!decision.ok) return { ok: false, blockers: decision.blockers };
+    const overridden = decision.overridden;
 
     const { data: app } = await supabaseAdmin
       .from("applications")
@@ -328,7 +381,44 @@ export const activateRental = createServerFn({ method: "POST" })
     //      active + vehicle, agreement → rental link. It row-locks the vehicle,
     //      so of two simultaneous activations exactly one wins; any failure
     //      rolls every write back. Never re-split this into separate updates.
-    const { data: rentalId, error: txErr } = await (supabaseAdmin as any).rpc("activate_rental_tx", {
+    //
+    //      It is called through activate_rental_checked_tx (proposed SQL,
+    //      proposed/activation-insurance-setting), which in the SAME transaction
+    //      checks the actor is a Manager/Owner, locks and re-reads the Owner
+    //      setting, the insurance state, the licence documents, the signed
+    //      agreement, the interview and the passed inspection (only those two
+    //      may be overridden, with a reason), then calls activate_rental_tx
+    //      unchanged and writes the required rental.activated audit entry, so
+    //      the activation and its audit evidence commit together or not at all.
+    const { data: vehicle } = await supabaseAdmin
+      .from("vehicles")
+      .select("year,make,model,license_plate")
+      .eq("id", data.vehicleId)
+      .maybeSingle();
+    const vehicleLabel =
+      [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(" ") || "your vehicle";
+    const summary = `Activated ${vehicleLabel} for ${app.full_name ?? app.email}`;
+    const overridePayload = overridden.length
+      ? {
+          blockers: overridden.map((b) => ({ code: b.code, message: b.message })),
+          reason: data.overrideReason ?? null,
+          by: actor.userId,
+          at: new Date().toISOString(),
+        }
+      : null;
+    const requestMeta = await (async () => {
+      try {
+        const { getRequest } = await import("@tanstack/react-start/server");
+        const req = getRequest();
+        return {
+          ip: req?.headers?.get("cf-connecting-ip") ?? req?.headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+          user_agent: req?.headers?.get("user-agent") ?? null,
+        };
+      } catch {
+        return { ip: null, user_agent: null };
+      }
+    })();
+    const txArgs = {
       _application_id: data.applicationId,
       _vehicle_id: data.vehicleId,
       _driver_id: userId,
@@ -339,13 +429,106 @@ export const activateRental = createServerFn({ method: "POST" })
       _end: data.endDate ?? null,
       _pickup_miles: data.pickupMileage ?? null,
       _actor: actor.userId,
+    };
+    const ackSent = decision.insuranceExceptionUsed && data.insuranceExceptionAck === true;
+    let rentalId: string | null = null;
+    let auditError: string | null = null;
+    const first = await (supabaseAdmin as any).rpc("activate_rental_checked_tx", {
+      ...txArgs,
+      _insurance_exception_ack: ackSent,
+      _audit: {
+        actor_email: actor.email ?? null,
+        actor_role: actor.role,
+        summary,
+        account_created: created,
+        overrides: overridePayload,
+        ...requestMeta,
+      },
     });
-    if (txErr) {
-      const blocker = activationTxBlocker(String(txErr.message));
-      if (blocker) return { ok: false, blockers: [blocker] };
-      throw new Error(txErr.message);
+    let txErr = first.error as { code?: string; message?: string } | null;
+    if (txErr?.code === "PGRST202") {
+      // The wrapper is not installed yet. Fail closed: insurance must be
+      // verified (no Owner exception without the in-transaction re-check), and
+      // overrides are refused (their audit must commit with the rental). Only
+      // then is the existing transaction used directly, and its audit entry is
+      // written right after it — not atomically. A failed audit write is
+      // returned to the operator (auditError), never swallowed.
+      if (readiness.insurance.status !== "verified") {
+        return {
+          ok: false,
+          blockers: [
+            {
+              code: "insurance_not_verified",
+              message:
+                "Insurance must be verified before activation. The Owner exception is unavailable until the activation database update is installed.",
+            },
+          ],
+        };
+      }
+      if (overridden.length) {
+        return {
+          ok: false,
+          blockers: [
+            {
+              code: "override_reason_required",
+              message:
+                "Overrides need the activation database update, so the override and its reason are recorded together with the rental. Resolve the item instead, or wait for the update.",
+            },
+          ],
+        };
+      }
+      const legacy = await (supabaseAdmin as any).rpc("activate_rental_tx", txArgs);
+      txErr = legacy.error;
+      rentalId = (legacy.data as string | null) ?? null;
+      if (!txErr && rentalId) {
+        const { error: auditErr } = await (supabaseAdmin as any).from("audit_log").insert({
+          actor_user_id: actor.userId,
+          actor_email: actor.email ?? null,
+          actor_role: actor.role,
+          action: "rental.activated",
+          entity_type: "rental",
+          entity_id: rentalId,
+          summary,
+          ip: requestMeta.ip,
+          user_agent: requestMeta.user_agent,
+          metadata: {
+            vehicle_id: data.vehicleId,
+            application_id: data.applicationId,
+            account_created: created,
+            driver_id: userId,
+            overrides: null,
+            insurance: {
+              acting_user_id: actor.userId,
+              at: new Date().toISOString(),
+              status: readiness.insurance.status,
+              exception_used: false,
+              setting_allow_without_verification: false,
+              setting_present: readiness.insurance.settingPresent,
+              setting_source: "wrapper_not_installed_treated_as_off",
+              acknowledged: false,
+              checked_in_transaction: false,
+            },
+            source: "server_fallback_non_atomic",
+          },
+        });
+        if (auditErr) {
+          auditError =
+            "The rental started, but its audit entry could not be written. Tell the Owner so it can be recorded.";
+          console.error("[activate] REQUIRED AUDIT WRITE FAILED", { rentalId, error: auditErr });
+        }
+      }
+    } else if (!txErr) {
+      rentalId = ((first.data ?? {}) as { rental_id?: string }).rental_id ?? null;
     }
-    const rental = { id: rentalId as string };
+    if (txErr) {
+      const msg = String(txErr.message);
+      if (/actor_not_manager/.test(msg)) throw new Error("Forbidden");
+      const blocker = checkedTxBlocker(msg) ?? activationTxBlocker(msg);
+      if (blocker) return { ok: false, blockers: [blocker] };
+      throw new Error(msg);
+    }
+    if (!rentalId) throw new Error("The rental could not be confirmed. Check Bookings before retrying.");
+    const rental = { id: rentalId };
     if (process.env.RENTER_LIFECYCLE_NOTICES_ENABLED === "true") await import("@/lib/renter-lifecycle-notices.server").then((m) => m.enrollRenterLifecycleNotice({ event: "rental_started", applicationId: data.applicationId, rentalId: rental.id })).catch((e) => console.error("[renter-lifecycle] rental_started", e));
 
     // 7. Welcome the driver. A brand-new account gets the set-password link
@@ -354,13 +537,6 @@ export const activateRental = createServerFn({ method: "POST" })
     //    portal URL, since they already have a password.
     const inviteUrl = freshInviteUrl;
 
-    const { data: vehicle } = await supabaseAdmin
-      .from("vehicles")
-      .select("year,make,model,license_plate")
-      .eq("id", data.vehicleId)
-      .maybeSingle();
-    const vehicleLabel =
-      [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(" ") || "your vehicle";
     const firstName =
       String(app.full_name ?? "there")
         .trim()
@@ -410,29 +586,9 @@ export const activateRental = createServerFn({ method: "POST" })
       channels: ["in_app", "email"],
     });
 
-    const { logAudit } = await import("@/lib/audit.server");
-    await logAudit(actor, {
-      action: "rental.activated",
-      summary: `Activated ${vehicleLabel} for ${app.full_name ?? app.email}`,
-      entityType: "rental",
-      entityId: rental.id as string,
-      metadata: {
-        vehicle_id: data.vehicleId,
-        application_id: data.applicationId,
-        account_created: created,
-        driver_id: userId,
-        overrides: overridden.length
-          ? {
-              blockers: overridden.map((b) => ({ code: b.code, message: b.message })),
-              reason: data.overrideReason ?? null,
-              by: actor.userId,
-              at: new Date().toISOString(),
-            }
-          : null,
-      },
-    });
-
-    return { ok: true, rentalId: rental.id as string, accountCreated: created, inviteUrl };
+    // rental.activated was written inside activate_rental_checked_tx (or, without
+    // the wrapper, immediately after activate_rental_tx with any failure returned).
+    return { ok: true, rentalId: rental.id as string, accountCreated: created, inviteUrl, ...(auditError ? { auditError } : {}) };
   });
 
 export const endRental = createServerFn({ method: "POST" })
@@ -493,11 +649,17 @@ export const endRental = createServerFn({ method: "POST" })
 
     const { data: rental } = await supabaseAdmin
       .from("rentals")
-      .select("id,vehicle_id,driver_id,application_id,status")
+      .select("id,vehicle_id,driver_id,application_id,status,stripe_subscription_id,autopay_active")
       .eq("id", data.rentalId)
       .maybeSingle();
     if (!rental) throw new Error("Rental not found");
     if (rental.status !== "active") return { ok: true, alreadyClosed: true };
+    // Ending a rental never touches Stripe (end_rental_tx only clears autopay_active), so a
+    // weekly subscription would keep charging the driver after return. The subscription is
+    // cancelled in the Stripe Dashboard; the customer.subscription.deleted webhook then
+    // clears it here. The back office has no Stop Autopay control.
+    if (rental.stripe_subscription_id || rental.autopay_active)
+      return { ok: false as const, error: "This rental still has a weekly Stripe subscription, so ending it now would keep charging the driver. Cancel the subscription in the Stripe Dashboard (the app clears it once Stripe confirms), then end the rental. Record the return inspection now if the car is back." };
 
     const endDate = data.endDate ?? new Date().toISOString().slice(0, 10);
 
@@ -573,6 +735,11 @@ export const endRental = createServerFn({ method: "POST" })
 
 /** Truthful messages for the reasons activate_rental_tx refuses. */
 export function activationTxBlocker(msg: string): ActivationBlocker | null {
+  // M2 approval_serialize (proposed) raises SQLSTATE 40001 when another
+  // approval write holds its lock. The whole activate_rental_tx rolled back,
+  // so nothing was written and pressing Activate Rental again is safe.
+  if (msg.includes("approval_write_busy_retry"))
+    return { code: "write_busy_retry", message: "Another approval was being saved at the same moment. Nothing was changed — try Activate Rental again." };
   if (msg.includes("vehicle_busy"))
     return { code: "vehicle_busy", message: "That vehicle was just activated on another rental. Pick a different one." };
   if (msg.includes("already_active"))

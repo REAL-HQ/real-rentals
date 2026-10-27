@@ -2,9 +2,13 @@ import { createFileRoute } from '@tanstack/react-router';
 import { createClient } from '@supabase/supabase-js';
 import { type StripeEnv, verifyWebhook, createStripeClient } from '@/lib/stripe.server';
 import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail } from '@/lib/email.server';
+import { doubleCollectionMessage } from '@/lib/payment-overlap';
+import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatched';
 
 let _supabase: ReturnType<typeof createClient> | null = null;
+let webhookAdmin: any = null;
 function getSupabase() {
+  if (webhookAdmin) return webhookAdmin;
   if (!_supabase) {
     _supabase = createClient(
       process.env.SUPABASE_URL!,
@@ -106,6 +110,61 @@ function must<T extends { error: any }>(res: T): T {
   return res;
 }
 
+function failureReasonStillSet(value: unknown): boolean {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+async function customerLinked(admin: any, customerId: string | null): Promise<boolean> {
+  if (!customerId) return false;
+  const rental = await admin.from('rentals').select('id').eq('stripe_customer_id', customerId).limit(1);
+  if (rental.error) throw new Error(rental.error.message);
+  if (rental.data?.length) return true;
+  const application = await admin.from('applications').select('id').eq('stripe_customer_id', customerId).limit(1);
+  if (application.error) throw new Error(application.error.message);
+  return !!application.data?.length;
+}
+
+/** A log line must not turn a delivered event into a retry. */
+async function warnUnmatchedInvoice(admin: any, invoice: any, status: 'paid' | 'failed', subscriptionId: string | null) {
+  try {
+    const customerId = customerIdOf(invoice);
+    if (await customerLinked(admin, customerId)) return;
+    const raw = status === 'paid'
+      ? Number(invoice?.amount_paid ?? invoice?.amount_due ?? 0)
+      : Number(invoice?.amount_due ?? invoice?.amount_paid ?? 0);
+    console.warn(formatUnmatchedWarn({
+      invoiceId: stripeId(invoice?.id),
+      subscriptionId,
+      customerId,
+      amountCents: Number.isFinite(raw) ? Math.round(raw) : null,
+      status,
+    }));
+  } catch {
+    // Logging reads the directory. A down database, or a console that throws,
+    // still leaves the event delivered.
+  }
+}
+
+/**
+ * Kept so a payment-intent log cannot fail the request. The payment-intent
+ * handler does not call it: that extra warning is not part of the base flow.
+ */
+export async function warnUnmatchedPayment(admin: any, pi: any, status: 'paid' | 'failed') {
+  try {
+    const customerId = customerIdOf(pi);
+    if (await customerLinked(admin, customerId)) return;
+    const raw = Number(pi?.amount ?? 0);
+    console.warn(formatUnmatchedWarn({
+      paymentIntentId: stripeId(pi?.id),
+      customerId,
+      amountCents: Number.isFinite(raw) ? Math.round(raw) : null,
+      status,
+    }));
+  } catch {
+    // Same rule as the invoice log.
+  }
+}
+
 async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed') {
   const admin: any = getSupabase();
   const rentalId = pi.metadata?.rentalId as string | undefined;
@@ -113,21 +172,40 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
   const amount = Number(pi.amount ?? 0) / 100;
   const failure = (pi.last_payment_error?.message as string | undefined)?.slice(0, 500) ?? 'Payment failed';
   const ids = String(pi.metadata?.paymentIds ?? '').split(',').map((s) => s.trim()).filter((s) => /^[0-9a-f-]{36}$/i.test(s));
+  // Which collection attempt this intent was (set by collectRows). Older intents have none.
+  const attemptNo = Number(pi.metadata?.attempt);
 
   let changed = 0;
+  let noticeIds = ids;
+  let manualIds: string[] = [];
   if (ids.length) {
     // Charges created by our own collection flow. The rows already exist.
     if (status === 'paid') {
-      const r = must(await admin.from('payments')
-        .update({ status: 'paid', paid_date: today(), balance_due: 0, failure_reason: null, ...(ids.length === 1 ? { stripe_payment_intent_id: pi.id } : {}) })
-        .in('id', ids).neq('status', 'paid').neq('status', 'refunded').select('id'));
-      changed = r.data?.length ?? 0;
+      const prior = must(await admin.from('payments').select('id, status, failure_reason').in('id', ids));
+      const alreadyPaid = (prior.data ?? []).filter((row: any) => row.status === 'paid');
+      const alreadyPaidIds = alreadyPaid.map((row: any) => row.id as string);
+      // Staff marked these paid while the failure reason was still set.
+      // Keep that manual record. Status, paid_date, and failure_reason stay.
+      // The receipt claim below still includes them, once.
+      manualIds = alreadyPaid.filter((row: any) => failureReasonStillSet(row.failure_reason)).map((row: any) => row.id as string);
+      const openIds = ids.filter((id) => !alreadyPaidIds.includes(id));
+      if (openIds.length) {
+        const r = must(await admin.from('payments')
+          .update({ status: 'paid', paid_date: today(), balance_due: 0, failure_reason: null, ...(ids.length === 1 ? { stripe_payment_intent_id: pi.id } : {}) })
+          .in('id', openIds).neq('status', 'paid').neq('status', 'refunded').select('id'));
+        changed = r.data?.length ?? 0;
+      }
+      noticeIds = ids;
     } else {
       // Stale guard: a single charge that has since been retried points at a
       // newer intent; a late failure for the old one must not touch it.
+      // A failure never reopens a charge staff voided or waived.
       let q = admin.from('payments').update({ status: 'failed', failure_reason: failure })
-        .in('id', ids).neq('status', 'paid').neq('status', 'refunded');
+        .in('id', ids).neq('status', 'paid').neq('status', 'refunded').neq('status', 'void').neq('status', 'waived');
       if (ids.length === 1) q = q.or(`stripe_payment_intent_id.is.null,stripe_payment_intent_id.eq.${pi.id}`);
+      // A late or repeated failure for an earlier attempt must not mark rows failed while a newer
+      // attempt is in flight on them: that would let a further attempt start (a double charge).
+      if (Number.isInteger(attemptNo) && attemptNo > 0) q = q.eq('attempt_count', attemptNo);
       const r = must(await q.select('id'));
       changed = r.data?.length ?? 0;
     }
@@ -138,6 +216,7 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
       let q = admin.from('payments').update(status === 'paid'
         ? { status: 'paid', paid_date: today(), balance_due: 0, failure_reason: null }
         : { status: 'failed', failure_reason: failure }).eq('id', existing.id).neq('status', 'paid').neq('status', 'refunded');
+      if (status !== 'paid') q = q.neq('status', 'void').neq('status', 'waived');
       const r = must(await q.select('id'));
       changed = r.data?.length ?? 0;
     } else if (rentalId) {
@@ -165,7 +244,7 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
   // rows currently IN this outcome, and not already notified for it, qualify.
   // A duplicate event, or a stale failure for a charge now paid, claims none.
   const target = ids.length
-    ? ids
+    ? noticeIds
     : ((await admin.from('payments').select('id').eq('stripe_payment_intent_id', pi.id)).data ?? []).map((r: any) => r.id);
   if (!target.length) return;
   let claim = admin.from('payments').update({ notified_status: status })
@@ -174,6 +253,8 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
   if (status === 'failed' && ids.length === 1) claim = claim.eq('stripe_payment_intent_id', pi.id);
   const claimed = must(await claim.select('id'));
   if (!claimed.data?.length) return; // already notified / stale — no second email
+  const claimedIds = new Set((claimed.data ?? []).map((row: any) => row.id as string));
+  const overlapHit = manualIds.some((id) => claimedIds.has(id));
   void changed;
 
   if (status === 'failed' && rentalId) {
@@ -190,10 +271,18 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
   const driver = await driverForRental(rentalId);
   if (driver) {
     if (status === 'paid') {
-      await sendPaymentReceiptEmail({
+      const sendReceipt = () => sendPaymentReceiptEmail({
         to: driver.email, firstName: driver.name, amount, reason,
         brand: driver.brand, last4: driver.last4,
       });
+      // A manual row that Stripe also collected used to return 200 with no
+      // mail. Keep that status if the receipt send fails. A replay claims
+      // nothing, so it cannot send a second notice.
+      if (overlapHit && changed === 0) {
+        try { await sendReceipt(); } catch (err) { console.error('[payments] overlap receipt failed', err); }
+      } else {
+        await sendReceipt();
+      }
       if (cardExpiresSoon(driver.expMonth, driver.expYear)) {
         await sendCardExpiringEmail({
           to: driver.email, firstName: driver.name,
@@ -208,19 +297,45 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
       });
     }
   }
+  if (overlapHit) await alertPossibleDoubleCollection(amount);
+}
+
+async function alertPossibleDoubleCollection(amount: number): Promise<void> {
+  const message = doubleCollectionMessage(amount);
+  try {
+    const { getLeadAlertPrefs, sendEmail } = await import('@/lib/email.server');
+    const prefs = await getLeadAlertPrefs();
+    if (!prefs.recipients.length) return;
+    await sendEmail({
+      to: prefs.recipients,
+      subject: message,
+      html: `<p>${message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`,
+      track: { workflow: 'payment_overlap' },
+    });
+  } catch (err) {
+    console.error('[payments] double-collection alert failed', err);
+  }
 }
 
 async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed') {
   const admin: any = getSupabase();
-  const subId = typeof invoice.subscription === 'string' ? invoice.subscription
+  const rawSub = typeof invoice.subscription === 'string' ? invoice.subscription
     : invoice.subscription?.id ?? invoice.parent?.subscription_details?.subscription;
-  if (!subId) return;
-  const { data: rental } = await admin
+  const subscriptionId = typeof rawSub === 'string' ? rawSub : null;
+  if (!subscriptionId) {
+    await warnUnmatchedInvoice(admin, invoice, status, null);
+    return;
+  }
+  const rentalResult = await admin
     .from('rentals')
     .select('id, application_id, vehicle_id')
-    .eq('stripe_subscription_id', subId)
+    .eq('stripe_subscription_id', subscriptionId)
     .maybeSingle();
-  if (!rental) return;
+  if (rentalResult.error || !rentalResult.data) {
+    if (!rentalResult.error) await warnUnmatchedInvoice(admin, invoice, status, subscriptionId);
+    return;
+  }
+  const rental = rentalResult.data;
 
   // The week's rent is owed whether or not the card worked.
   const owed = Number(invoice.amount_due ?? invoice.amount_paid ?? 0) / 100;
@@ -239,17 +354,59 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     status: 'pending',
     due_date: invoice.period_start ? new Date(invoice.period_start * 1000).toISOString().slice(0, 10) : today(),
     stripe_invoice_id: invoice.id,
-    stripe_subscription_id: subId,
+    stripe_subscription_id: subscriptionId,
   }));
 
   const patch = status === 'paid'
     ? { status: 'paid', paid_date: today(), balance_due: 0, amount, failure_reason: null }
-    : { status: 'failed', failure_reason: failure, attempt_count: Number(invoice.attempt_count ?? 1) };
-  const r = must(await admin.from('payments').update(patch)
+    // attempt_count is ours (collectRows' idempotency keys); Stripe's invoice retry count never
+    // overwrites it, or a later attempt could reuse an old key.
+    : { status: 'failed', failure_reason: failure };
+  let q = admin.from('payments').update(patch)
     .eq('stripe_invoice_id', invoice.id)
-    .neq('status', 'paid').neq('status', 'refunded')
-    .select('id'));
-  if (!(r.data?.length)) return; // duplicate / out-of-order event
+    .neq('status', 'paid').neq('status', 'refunded');
+  // A failed retry never reopens a charge staff voided or waived, and never fails a row that
+  // our own collection has claimed (pending with an attempt time): that attempt is still unsettled.
+  if (status !== 'paid') q = q.neq('status', 'void').neq('status', 'waived').or('status.neq.pending,last_attempt_at.is.null');
+  const r = must(await q.select('id'));
+  if (!(r.data?.length)) {
+    // The row was already paid, usually because staff marked a failed invoice
+    // paid in cash. Keep that manual record: do not clear failure_reason, do
+    // not change status or paid_date, and do not store a payment intent.
+    // Claim the notice once, then send one Payment Received email and one
+    // staff alert. A replay claims nothing.
+    if (status === 'paid') {
+      const prior = must(await admin.from('payments').select('id, failure_reason').eq('stripe_invoice_id', invoice.id).eq('status', 'paid'));
+      const manualIds = (prior.data ?? []).filter((row: any) => failureReasonStillSet(row.failure_reason)).map((row: any) => row.id as string);
+      if (manualIds.length) {
+        const claimed = must(await admin.from('payments').update({ notified_status: 'paid' })
+          .in('id', manualIds).eq('status', 'paid')
+          .or('notified_status.is.null,notified_status.neq.paid')
+          .select('id'));
+        if (claimed.data?.length) {
+          try {
+            await admin.from('notifications').insert({
+              title: 'Payment Received',
+              body: `$${amount.toFixed(2)} — rent`,
+              kind: 'payment',
+              read: false,
+            });
+            const driver = await driverForRental(rental.id);
+            if (driver) {
+              await sendPaymentReceiptEmail({
+                to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
+                brand: driver.brand, last4: driver.last4,
+              });
+            }
+            await alertPossibleDoubleCollection(amount);
+          } catch (err) {
+            console.error('[payments] overlap notice failed', err);
+          }
+        }
+      }
+    }
+    return;
+  }
 
   must(await admin.from('rentals').update({
     payment_status: status === 'paid' ? 'current' : 'past_due',
@@ -324,6 +481,59 @@ async function handleSubscriptionUpdated(sub: any) {
   }).eq('stripe_subscription_id', sub.id);
 }
 
+async function handleVerifiedPaymentEvent(event: { type: string; data: { object: any } }, env: StripeEnv) {
+  switch (event.type) {
+    case 'checkout.session.completed':
+      await handleCheckoutCompleted(event.data.object, env);
+      break;
+    case 'payment_intent.succeeded':
+      await upsertPaymentFromPaymentIntent(event.data.object, 'paid');
+      break;
+    case 'payment_intent.payment_failed':
+      await upsertPaymentFromPaymentIntent(event.data.object, 'failed');
+      break;
+    case 'invoice.paid':
+    case 'invoice.payment_succeeded':
+      await upsertPaymentFromInvoice(event.data.object, 'paid');
+      break;
+    case 'invoice.payment_failed':
+      await upsertPaymentFromInvoice(event.data.object, 'failed');
+      break;
+    case 'charge.refunded':
+      await handleChargeRefunded(event.data.object);
+      break;
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted':
+      await handleSubscriptionUpdated(event.data.object);
+      break;
+    default:
+      break;
+  }
+}
+
+/**
+ * One dispatch for a verified event. Tests pass a mocked database; the route
+ * passes null and uses the service client. Throws become 400, matching the
+ * route. A caught unmatched log stays 200.
+ */
+export async function postVerifiedPaymentWebhook(
+  event: { type: string; data: { object: any } },
+  admin: any,
+  env: StripeEnv = 'live',
+): Promise<Response> {
+  const previous = webhookAdmin;
+  webhookAdmin = admin;
+  try {
+    await handleVerifiedPaymentEvent(event, env);
+    return Response.json({ received: true });
+  } catch (e) {
+    console.error('Webhook error:', e);
+    return new Response('Webhook error', { status: 400 });
+  } finally {
+    webhookAdmin = previous;
+  }
+}
+
 export const Route = createFileRoute('/api/public/payments/webhook')({
   server: {
     handlers: {
@@ -335,35 +545,7 @@ export const Route = createFileRoute('/api/public/payments/webhook')({
         const env: StripeEnv = rawEnv;
         try {
           const event = await verifyWebhook(request, env);
-          switch (event.type) {
-            case 'checkout.session.completed':
-              await handleCheckoutCompleted(event.data.object, env);
-              break;
-            case 'payment_intent.succeeded':
-              await upsertPaymentFromPaymentIntent(event.data.object, 'paid');
-              break;
-            case 'payment_intent.payment_failed':
-              await upsertPaymentFromPaymentIntent(event.data.object, 'failed');
-              break;
-            case 'invoice.paid':
-            case 'invoice.payment_succeeded':
-              await upsertPaymentFromInvoice(event.data.object, 'paid');
-              break;
-            case 'invoice.payment_failed':
-              await upsertPaymentFromInvoice(event.data.object, 'failed');
-              break;
-            case 'charge.refunded':
-              await handleChargeRefunded(event.data.object);
-              break;
-            case 'customer.subscription.updated':
-            case 'customer.subscription.deleted':
-              await handleSubscriptionUpdated(event.data.object);
-              break;
-            default:
-              // ignored
-              break;
-          }
-          return Response.json({ received: true });
+          return await postVerifiedPaymentWebhook(event, null, env);
         } catch (e) {
           console.error('Webhook error:', e);
           return new Response('Webhook error', { status: 400 });

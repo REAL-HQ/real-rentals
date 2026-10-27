@@ -28,6 +28,9 @@ import { DocumentViewer, type ViewerDoc } from "./DocumentViewer";
 import { MicroLabel } from "./ui";
 import { FileUploader } from "@/components/FileUploader";
 import { fmtDate } from "@/lib/date-format";
+import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
+import { verifyApprovalIdentity } from "@/lib/identity-verification.functions";
+import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
 
 // Everything an applicant sent us, in one place, grouped the way somebody
 // looking at it actually thinks.
@@ -88,13 +91,51 @@ function isImageDoc(d: VaultDocument): boolean {
   return !/\.(pdf|mp3|wav|m4a|ogg|mp4|mov|webm|zip|docx?)$/i.test(d.file_name ?? "");
 }
 
-/** The four categories the screening pipeline treats as required. */
-export const REQUIRED_VAULT_CATEGORIES: DocCategory[] = [
-  "license_front",
-  "license_back",
-  "insurance",
-  "gig_profile",
-];
+/** The four categories the screening pipeline treats as required. One list, shared with the server. */
+export { REQUIRED_VAULT_CATEGORIES } from "@/lib/required-docs";
+
+function VerifyIdentityAction({ applicationId }: { applicationId: string }) {
+  if (!IDENTITY_VERIFICATION_ENABLED) return null;
+  return <VerifyIdentityForm applicationId={applicationId} />;
+}
+
+function VerifyIdentityForm({ applicationId }: { applicationId: string }) {
+  const verify = useServerFn(verifyApprovalIdentity);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const note = window.prompt("What did you check? The note is stored with the decision.")?.trim() ?? "";
+    if (!note) return;
+    if (note.length < 3) {
+      toast.error("The note needs at least 3 characters");
+      return;
+    }
+    setBusy(true);
+    try {
+      await verify({ data: { applicationId, note } });
+      toast.success("Identity verified");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not verify identity");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-[#EDEDF0] bg-white px-3 py-2">
+      <span className="text-[12px] text-[#55555E]">Record the identity decision for this application.</span>
+      <button
+        type="button"
+        onClick={() => void submit()}
+        disabled={busy}
+        className="inline-flex items-center gap-1 rounded-md bg-[#111114] text-white px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50"
+      >
+        {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+        Verify Identity
+      </button>
+    </div>
+  );
+}
 
 export function ApplicantDocuments({
   applicationId,
@@ -282,6 +323,8 @@ export function ApplicantDocuments({
         )}
       </div>
 
+      <VerifyIdentityAction applicationId={applicationId} />
+
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
         {ORDER.map((key) => {
           const meta = DOC_CATEGORIES.find((c) => c.key === key)!;
@@ -289,6 +332,10 @@ export function ApplicantDocuments({
           const st = statusOf(d);
           const style = STATUS_STYLE[st];
           const working = busy === key || (d && busy === d.id);
+          // Signed agreements are permanent records: no Replace and no Needs
+          // New, and the server refuses both anyway. A wrong agreement is
+          // voided and re-sent through eSign.
+          const locked = signedAgreementLocked(docs, key);
           return (
             <div
               key={key}
@@ -330,9 +377,19 @@ export function ApplicantDocuments({
                   <span
                     className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${style.cls}`}
                   >
-                    {style.label}
+                    {key === "gig_profile" && st === "verified" ? "Staff Reviewed" : style.label}
                   </span>
                 </div>
+                {key === "gig_profile" ? (
+                  <div className="text-[10px] text-[#9A9AA3]">
+                    Screenshot Only. Not Verified With Uber, Lyft Or Any Platform.
+                  </div>
+                ) : key === "agreement" ? (
+                  <div className="text-[10px] text-[#9A9AA3]">
+                    Verify Only A Fully Signed Agreement. Verification Is Audited And Counts As The
+                    Signed Agreement For Activation.
+                  </div>
+                ) : null}
 
                 {d && (
                   <div className="text-[11px] text-[#9A9AA3] space-y-0.5">
@@ -377,7 +434,7 @@ export function ApplicantDocuments({
                       <RotateCcw className="w-3 h-3" /> Unverify
                     </button>
                   )}
-                  {d && st !== "rejected" && (
+                  {d && st !== "rejected" && !locked && (
                     <button
                       onClick={() => void decide(d, "rejected")}
                       disabled={!!working}
@@ -386,17 +443,28 @@ export function ApplicantDocuments({
                       <AlertTriangle className="w-3 h-3" /> Needs New
                     </button>
                   )}
-                  <FileUploader
-                    variant="inline"
-                    label={d ? "Replace" : "Upload"}
-                    context={`${meta.label} · Application ${applicationId.slice(0, 8)}`}
-                    accept="image/*,application/pdf"
-                    maxBytes={MAX_MB * 1024 * 1024}
-                    camera
-                    disabled={!!working}
-                    upload={(file, { onProgress }) => uploadCategory(key, file, onProgress)}
-                  />
-                  {d && (
+                  {locked ? (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E]"
+                      title="Signed agreements can't be replaced. To correct one, void it and send a new agreement through eSign."
+                    >
+                      <ShieldCheck className="w-3 h-3" /> Permanent Record
+                    </span>
+                  ) : (
+                    <FileUploader
+                      variant="inline"
+                      label={d ? "Replace" : "Upload"}
+                      context={`${meta.label} · Application ${applicationId.slice(0, 8)}`}
+                      accept="image/*,application/pdf"
+                      maxBytes={MAX_MB * 1024 * 1024}
+                      camera
+                      disabled={!!working}
+                      upload={(file, { onProgress }) => uploadCategory(key, file, onProgress)}
+                    />
+                  )}
+                  {/* Signed agreements are permanent records: no Delete, and
+                      the server refuses it anyway (deleteDocument). */}
+                  {d && key !== "agreement" && !d.signed_agreement && (
                     <button
                       onClick={() => void drop(d)}
                       disabled={!!working}

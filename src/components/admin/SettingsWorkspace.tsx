@@ -12,6 +12,9 @@ import { PhotoEnhancePanel } from "@/components/admin/PhotoEnhancePanel";
 import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
 import { ActivityPanel } from "@/components/admin/ActivityPanel";
 import { AgreementTemplatesPanel } from "@/components/admin/AgreementTemplatesPanel";
+import { RentalActivationSettingsPanel } from "@/components/admin/RentalActivationSettingsPanel";
+import { PendingSignatures } from "@/components/admin/PendingSignatures";
+import { AGREEMENT_PENDING_SIGNATURE_ENABLED } from "@/lib/agreement-pending-signatures-flag";
 import { visibleSettingsSections } from "@/components/admin/nav-config";
 import type { StaffTier } from "@/lib/roles";
 
@@ -24,7 +27,7 @@ const DESCRIPTIONS: Record<string, string> = {
   safe_autofill: "Owner-only. Automatically fill blank, non-sensitive vehicle details from trusted documents. Off by default.",
   photo_enhancement: "Owner-only. Free on-device lighting and studio backgrounds for listing photos. Off by default.",
   photo_reading: "Owner-only. Reads details off a vehicle photograph — the one feature here that costs money. Off by default, with a daily limit enforced on the server.",
-  rental_terms: "Minimum term, return notice and the terms text.",
+  rental_terms: "Minimum term, return notice, the terms text and rental activation rules.",
   deposits: "Default deposit and refund window.",
   applications: "Who qualifies to apply.",
   agreement_templates: "Owner-only. Rental agreement wording, versions and approval. Drafts never change what drivers receive.",
@@ -130,6 +133,8 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
         ) : (
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-5">
             <SettingsPanel only={SECTION_KEY[current.id]} />
+            {current.id === "esign" && AGREEMENT_PENDING_SIGNATURE_ENABLED === true ? <PendingSignatures /> : null}
+            {current.id === "rental_terms" ? <RentalActivationSettingsPanel /> : null}
           </div>
         )}
       </section>

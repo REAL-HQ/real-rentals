@@ -28,8 +28,9 @@ ok(ids(visibleCreateActions("manager")).length === 5, "Manager Create: all five 
 ok(visibleTabs("coordinator").some((t) => t.id === "fleet_inbox" && t.group === "FLEET"), "Fleet Inbox under FLEET for Coordinator+");
 ok(navOwner("shops") === "partners" && navOwner("vendors") === "partners" && navOwner("charges") === "payments" && navOwner("inspections") === "maintenance", "Child tabs highlight their workspace");
 const rail = (t: any) => railEntries(t).map((e) => e.label).join(",");
-ok(rail("owner") === "Overview,Drivers,Payments,Vehicles,Fleet Inbox,Service,Incidents,Expenses,Partners", "Owner rail matches target: " + rail("owner"));
-ok(rail("coordinator") === "Overview,Drivers,Vehicles,Fleet Inbox,Service,Partners", "Coordinator rail: " + rail("coordinator"));
+ok(rail("owner") === "Overview,Drivers,Bookings,Active Rentals,Payments,Vehicles,Fleet Inbox,Service,Incidents,Driver Issues,Expenses,Partners", "Owner rail matches target: " + rail("owner"));
+ok(rail("coordinator") === "Overview,Drivers,Bookings,Vehicles,Fleet Inbox,Service,Partners", "Coordinator rail: " + rail("coordinator"));
+ok(!coord.includes("active_rentals"), "Coordinator: no Active Rentals");
 ok(JSON.stringify(visibleWorkspaceTabs("maintenance", "coordinator").map((k) => k.id)) === '["inspections"]', "Coordinator Service: Inspections only");
 ok(JSON.stringify(visibleWorkspaceTabs("partners", "coordinator").map((k) => k.id)) === '["vendors"]', "Coordinator Partners: Vendors only");
 ok(railEntries("coordinator").find((e) => e.id === "maintenance")!.href === "inspections", "Coordinator Service link opens Inspections");

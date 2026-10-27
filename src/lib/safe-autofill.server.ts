@@ -55,9 +55,16 @@ export async function runSafeAutofillForItem(sb: any, itemId: string): Promise<A
       for (const c of fill) {
         if (budget <= 0) break;
         // Conditional write: only if still blank at this instant (no overwrite race).
-        let q = sb.from("vehicles").update({ [c.field]: c.value }).eq("id", vehicle.id);
-        q = c.field === "seats" ? q.is(c.field, null) : q.or(`${c.field}.is.null,${c.field}.eq.`);
-        const { data: upd, error } = await q.select("id");
+        // Plain filters, never .or(): PostgREST 12 re-applies a PATCH's or= to the
+        // RETURNING row after the write, so an or()-guarded write either fails
+        // (42703 unless the column is selected) or succeeds yet returns [] — a
+        // silent write with no history row. Null first, then "" (text fields).
+        const write = (blank: null | "") => {
+          const q = sb.from("vehicles").update({ [c.field]: c.value }).eq("id", vehicle.id);
+          return (blank === null ? q.is(c.field, null) : q.eq(c.field, "")).select("id");
+        };
+        let { data: upd, error } = await write(null);
+        if (!error && !upd?.length && c.field !== "seats") ({ data: upd, error } = await write(""));
         if (error) throw new Error(`Could not write ${c.field}.`);
         if (!upd?.length) { skipped++; continue; }
         const { error: evErr } = await sb.from("vehicle_autofill_events").insert({

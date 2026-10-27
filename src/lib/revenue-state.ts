@@ -1,11 +1,24 @@
 /** Pure reader validation and session lifecycle; no provider or mutation capabilities. */
-export function paymentRevenue(result: { data: Array<{ net_collected: unknown; stripe_payment_intent_id?: string | null }> | null; error: unknown; count: number | null }) {
+function settledOutsideStripe(row: { stripe_payment_intent_id?: string | null; stripe_invoice_id?: string | null; failure_reason?: string | null }) {
+ // Mark as Paid writes only status and paid_date. A failed autopay invoice
+ // keeps stripe_invoice_id and failure_reason. A later Stripe success leaves
+ // that manual record in place: status, paid_date, and failure_reason stay.
+ // The row remains in the non-Stripe sum, so the cash is not dropped, and
+ // the same row is still one amount in the total. Overview shows the overlap
+ // separately. Only a paid invoice that still has a failure reason was
+ // settled outside Stripe.
+ const reason = row.failure_reason;
+ return !row.stripe_payment_intent_id && !!row.stripe_invoice_id && typeof reason === "string" && reason.trim() !== "";
+}
+export function paymentRevenue(result: { data: Array<{ net_collected: unknown; stripe_payment_intent_id?: string | null; stripe_invoice_id?: string | null; failure_reason?: string | null }> | null; error: unknown; count: number | null }) {
  if (result.error || !Array.isArray(result.data) || result.count !== result.data.length) return null;
  let total=0, nonStripe=0;
  for (const row of result.data) {
   if (row.net_collected === null || row.net_collected === undefined || row.net_collected === "") return null;
   const amount=Number(row.net_collected); if(!Number.isFinite(amount)) return null;
-  total+=amount; if(!row.stripe_payment_intent_id) nonStripe+=amount;
+  // A payment intent or an invoice Stripe settled is already inside Stripe
+  // collections. Deposit rows are not filtered here.
+  total+=amount; if((!row.stripe_payment_intent_id && !row.stripe_invoice_id) || settledOutsideStripe(row)) nonStripe+=amount;
  }
  return {total,nonStripe};
 }

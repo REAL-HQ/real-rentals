@@ -199,6 +199,14 @@
     padding-inline: 1.5rem;
   }
 
+  /* The homepage call bar is fixed. Without this the legal links at the
+     bottom of the page sit underneath it on a phone. */
+  @media (max-width: 639px) {
+    body:has(.mobile-call-bar) {
+      padding-bottom: calc(4.75rem + env(safe-area-inset-bottom));
+    }
+  }
+
   /* Apple-like fade-up-on-scroll */
   .fade-up {
     opacity: 0;

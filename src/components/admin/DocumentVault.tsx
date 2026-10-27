@@ -16,6 +16,8 @@ import {
   type DocCategory,
 } from "@/lib/documents.functions";
 import { fmtDate } from "@/lib/date-format";
+import { documentExpiryTone } from "@/lib/document-expiry";
+import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
 
 const MAX_MB = 15;
 
@@ -27,11 +29,7 @@ function fmtSize(n: number | null) {
 }
 
 function expiryTone(d: VaultDocument): "expired" | "soon" | null {
-  if (!d.expires_at) return null;
-  const days = (new Date(d.expires_at).getTime() - Date.now()) / 86400000;
-  if (days < 0) return "expired";
-  if (days < 30) return "soon";
-  return null;
+  return documentExpiryTone(d.expires_at);
 }
 
 /**
@@ -196,7 +194,9 @@ export function DocumentVault({
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 ) : null}
-                {cat.key !== "agreement" ? (
+                {/* No Replace over signed-agreement evidence, in any category;
+                    the server refuses it anyway (createDocumentUploadUrl). */}
+                {cat.key !== "agreement" && !signedAgreementLocked(current, cat.key) ? (
                   <FileUploader
                     variant="inline"
                     label={doc ? "Replace" : "Upload"}
@@ -205,7 +205,9 @@ export function DocumentVault({
                     upload={(file) => uploadDoc(cat.key as DocCategory, false, file)}
                   />
                 ) : null}
-                {mode === "admin" && doc ? (
+                {/* Signed agreements are permanent records: no Delete, and the
+                    server refuses it anyway (deleteDocument). */}
+                {mode === "admin" && doc && cat.key !== "agreement" && !doc.signed_agreement ? (
                   <button
                     onClick={async () => {
                       if (!confirm("Delete this document permanently?")) return;
@@ -213,8 +215,8 @@ export function DocumentVault({
                         await removeDoc({ data: { documentId: doc.id } });
                         toast.success("Document deleted");
                         await refresh();
-                      } catch {
-                        toast.error("Could not delete");
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : "Could not delete");
                       }
                     }}
                     className="p-1.5 rounded-md hover:bg-[#FDECEA] text-[#B3261E]"

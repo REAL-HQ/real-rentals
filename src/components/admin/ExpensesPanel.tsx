@@ -25,6 +25,14 @@ import {
   type VehiclePL,
 } from "@/lib/expenses.functions";
 import { fmtDate } from "@/lib/date-format";
+import { EXPENSE_RECEIPT_GAPS_ENABLED } from "@/lib/expense-receipt-gaps-flag";
+import { listExpenseReceiptGaps, type ExpenseReceiptGapsResult } from "@/lib/expense-receipt-gaps.functions";
+import {
+  MISSING_RECEIPTS_UNREAD,
+  easternGapWindow,
+  easternLedgerRange,
+  monthLabel,
+} from "@/lib/expense-receipt-gaps";
 
 // Expenses and per-vehicle P&L.
 //
@@ -41,7 +49,12 @@ function money2(n: number): string {
 
 type VehicleOption = { id: string; label: string };
 
-/** First and last day of the month, N months back from now. */
+/**
+ * Browser-local first and last day, then UTC dates via toISOString.
+ * P&L and the ledger use this while receipt gaps are off.
+ * The receipt-gap ledger uses easternLedgerRange instead, because a local
+ * Date near midnight can shift a day when it is written as UTC.
+ */
 function monthRange(monthsBack: number): { from: string; to: string } {
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
@@ -86,19 +99,19 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
   }, []);
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
+    <div className="space-y-5 max-lg:min-w-0">
+      <div className="flex items-start justify-between gap-3 flex-wrap max-lg:flex-col">
+        <div className="max-lg:min-w-0">
           <h2 className="text-lg font-semibold">Expenses & Profitability</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
             Every cost against every car, and what each one actually earns.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 max-lg:w-full max-lg:flex-wrap">
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
-            className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
+            className="rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:w-full max-lg:min-w-0"
           >
             {PERIODS.map((p) => (
               <option key={p.id} value={p.id}>
@@ -106,7 +119,7 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
               </option>
             ))}
           </select>
-          <div className="inline-flex rounded-lg border border-border overflow-hidden">
+          <div className="inline-flex rounded-lg border border-border overflow-hidden max-lg:shrink-0">
             {(["pl", "ledger"] as const).map((v) => (
               <button
                 key={v}
@@ -123,7 +136,14 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
       {view === "pl" ? (
         <ProfitAndLoss from={range.from} to={range.to} />
       ) : (
-        <Ledger vehicles={vehicles} from={range.from} to={range.to} autoOpenAdd={autoOpenAdd} />
+        <Ledger
+          vehicles={vehicles}
+          period={period}
+          from={range.from}
+          to={range.to}
+          autoOpenAdd={autoOpenAdd}
+          receiptGaps={EXPENSE_RECEIPT_GAPS_ENABLED}
+        />
       )}
     </div>
   );
@@ -168,8 +188,8 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
   const totalCost = totals.expenses + totals.maintenance;
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+    <div className="space-y-4 max-lg:min-w-0">
+      <div className="grid gap-3 grid-cols-1 lg:grid-cols-3">
         <Stat label="Revenue Collected" value={money(totals.revenue)} tone="good" />
         <Stat label="Costs" value={money(totalCost)} tone="bad" />
         <Stat
@@ -180,8 +200,8 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
         />
       </div>
 
-      <AdminTableScroll className="rounded-xl border border-border">
-        <table className="w-full text-sm">
+      <AdminTableScroll className="max-lg:min-w-0 rounded-xl border border-border">
+        <table className="w-full text-sm max-lg:min-w-[48rem]">
           <thead className="bg-[#FAFAFB] text-left">
             <tr>
               <th className="px-4 py-2.5 font-medium">Vehicle</th>
@@ -195,7 +215,7 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
           <tbody>
             {rows.map((r) => (
               <tr key={r.vehicle_id} className="border-t border-border">
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 max-lg:whitespace-nowrap">
                   <span className="font-medium">{r.label}</span>
                   {r.status && (
                     <span className="block text-xs text-muted-foreground capitalize">{r.status}</span>
@@ -247,10 +267,10 @@ function Stat({
   emphasis?: boolean;
 }) {
   return (
-    <div className={`rounded-xl border p-4 ${emphasis ? "border-[#D03020]" : "border-border"}`}>
+    <div className={`rounded-xl border p-4 max-lg:min-w-0 ${emphasis ? "border-[#D03020]" : "border-border"}`}>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p
-        className={`mt-1 text-2xl font-semibold tabular-nums ${
+        className={`mt-1 text-2xl font-semibold tabular-nums max-lg:break-words ${
           tone === "good" ? "text-[#16A34A]" : "text-[#D03020]"
         }`}
       >
@@ -264,41 +284,111 @@ function Stat({
 
 function Ledger({
   vehicles,
+  period,
   from,
   to,
   autoOpenAdd,
+  receiptGaps,
 }: {
   vehicles: VehicleOption[];
+  period: string;
   from: string | null;
   to: string | null;
   autoOpenAdd?: boolean;
+  receiptGaps: boolean;
 }) {
   const load = useServerFn(listExpenses);
+  const loadGaps = useServerFn(listExpenseReceiptGaps);
   const del = useServerFn(deleteExpense);
   const [rows, setRows] = useState<Expense[]>([]);
+  const [gaps, setGaps] = useState<ExpenseReceiptGapsResult | null>(null);
+  const [gapError, setGapError] = useState<string | null>(null);
+  const [ledgerError, setLedgerError] = useState<string | null>(null);
+  const [missingOnly, setMissingOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(!!autoOpenAdd);
   const [vehicleFilter, setVehicleFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const showGaps = receiptGaps && missingOnly;
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await load({
-        data: {
-          vehicleId: vehicleFilter === "all" ? undefined : vehicleFilter,
-          category: categoryFilter,
-          from: from ?? undefined,
-          to: to ?? undefined,
-        },
-      });
-      setRows(res);
+      if (showGaps) {
+        const window = easternGapWindow(gapPeriod(period), new Date());
+        if (!window) {
+          setGapError(MISSING_RECEIPTS_UNREAD);
+          setLedgerError(null);
+          setGaps(null);
+          setRows([]);
+          toast.error(MISSING_RECEIPTS_UNREAD);
+          return;
+        }
+        const res = await loadGaps({
+          data: {
+            category: categoryFilter,
+            vehicleId: vehicleFilter === "all" ? undefined : vehicleFilter,
+            from: window.from ?? undefined,
+            to: window.to ?? undefined,
+          },
+        });
+        setGapError(null);
+        setLedgerError(null);
+        setGaps(res);
+        setRows([]);
+      } else if (receiptGaps) {
+        const bounds = easternLedgerRange(gapPeriod(period), new Date());
+        if (!bounds) {
+          setLedgerError("Could not load expenses.");
+          setGapError(null);
+          setGaps(null);
+          setRows([]);
+          toast.error("Could not load expenses.");
+          return;
+        }
+        const res = await load({
+          data: {
+            vehicleId: vehicleFilter === "all" ? undefined : vehicleFilter,
+            category: categoryFilter,
+            from: bounds.from ?? undefined,
+            to: bounds.to ?? undefined,
+          },
+        });
+        setLedgerError(null);
+        setGapError(null);
+        setGaps(null);
+        setRows(res);
+      } else {
+        const res = await load({
+          data: {
+            vehicleId: vehicleFilter === "all" ? undefined : vehicleFilter,
+            category: categoryFilter,
+            from: from ?? undefined,
+            to: to ?? undefined,
+          },
+        });
+        setRows(res);
+      }
     } catch {
-      toast.error("Could not load expenses.");
+      if (showGaps) {
+        setGapError(MISSING_RECEIPTS_UNREAD);
+        setLedgerError(null);
+        setGaps(null);
+        setRows([]);
+        toast.error(MISSING_RECEIPTS_UNREAD);
+      } else if (receiptGaps) {
+        setLedgerError("Could not load expenses.");
+        setGapError(null);
+        setGaps(null);
+        setRows([]);
+        toast.error("Could not load expenses.");
+      } else {
+        toast.error("Could not load expenses.");
+      }
     } finally {
       setLoading(false);
     }
-  }, [load, vehicleFilter, categoryFilter, from, to]);
+  }, [load, loadGaps, showGaps, receiptGaps, period, vehicleFilter, categoryFilter, from, to]);
 
   useEffect(() => {
     void refresh();
@@ -314,12 +404,12 @@ function Ledger({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 flex-wrap">
+    <div className="space-y-4 max-lg:min-w-0">
+      <div className="flex items-center gap-2 flex-wrap max-lg:flex-col max-lg:items-stretch">
         <select
           value={vehicleFilter}
           onChange={(e) => setVehicleFilter(e.target.value)}
-          className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
+          className="rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:w-full max-lg:min-w-0"
         >
           <option value="all">All Vehicles</option>
           {vehicles.map((v) => (
@@ -331,7 +421,7 @@ function Ledger({
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
+          className="rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:w-full max-lg:min-w-0"
         >
           <option value="all">All Categories</option>
           {EXPENSE_CATEGORIES.map((c) => (
@@ -340,21 +430,89 @@ function Ledger({
             </option>
           ))}
         </select>
-        <span className="text-sm text-muted-foreground">
-          {rows.length} item(s) · {money2(total)}
-        </span>
+        {receiptGaps && (
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={missingOnly}
+              onChange={(event) => setMissingOnly(event.target.checked)}
+            />
+            Missing Receipt
+          </label>
+        )}
+        {gapError || ledgerError ? null : (
+          <span className="text-sm text-muted-foreground">
+            {showGaps && gaps?.status === "ready"
+              ? `${gaps.total} Missing ${gaps.total === 1 ? "Receipt" : "Receipts"}`
+              : `${rows.length} item(s) · ${money2(total)}`}
+          </span>
+        )}
         <button
           onClick={() => setShowForm(true)}
           disabled={vehicles.length === 0}
           title={vehicles.length === 0 ? "Add a vehicle first" : undefined}
-          className="ml-auto inline-flex items-center gap-2 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+          className="ml-auto inline-flex items-center gap-2 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium disabled:opacity-50 max-lg:ml-0 max-lg:w-full max-lg:justify-center"
         >
           <Plus className="w-4 h-4" /> Record Expense
         </button>
       </div>
 
+      {showGaps && gaps?.status === "ready" && gaps.counts.length > 0 && (
+        <ul className="text-sm text-muted-foreground">
+          {gaps.counts.map((count) => (
+            <li key={`${count.month}-${count.category}`}>
+              {monthLabel(count.month)} · {categoryLabel(count.category)} · {count.count}
+            </li>
+          ))}
+        </ul>
+      )}
+      {showGaps && gaps?.status === "capped" && (
+        <p className="text-sm text-muted-foreground">{gaps.reason}</p>
+      )}
+
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : showGaps && gapError ? (
+        <p className="text-sm text-muted-foreground">{gapError}</p>
+      ) : showGaps && gaps?.status === "ready" && gaps.rows.length > 0 ? (
+        <AdminTableScroll className="rounded-xl border border-border">
+          <table className="w-full text-sm">
+            <thead className="bg-[#FAFAFB] text-left">
+              <tr>
+                <th className="px-4 py-2.5 font-medium">Date</th>
+                <th className="px-4 py-2.5 font-medium">Vehicle</th>
+                <th className="px-4 py-2.5 font-medium">Category</th>
+                <th className="px-4 py-2.5 font-medium">Description</th>
+                <th className="px-4 py-2.5 font-medium text-right">Amount</th>
+                <th className="px-4 py-2.5 font-medium">Receipt</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gaps.rows.map((row) => (
+                <tr key={row.id} className="border-t border-border">
+                  <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                    {/^\d{4}-\d{2}-\d{2}$/.test(row.incurredOn) ? fmtDate(row.incurredOn + "T00:00:00") : "Unknown"}
+                  </td>
+                  <td className="px-4 py-3">{row.vehicleLabel}</td>
+                  <td className="px-4 py-3">{categoryLabel(row.category)}</td>
+                  <td className="px-4 py-3">{row.description}</td>
+                  <td className="px-4 py-3 text-right tabular-nums font-medium">{row.amountText}</td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">Missing</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </AdminTableScroll>
+      ) : showGaps && gaps?.status === "capped" ? null : showGaps && gaps?.status === "ready" && gaps.rows.length === 0 ? (
+        <EmptyState
+          icon={<Receipt className="w-6 h-6" strokeWidth={1.75} />}
+          title="No Missing Receipts"
+          hint="Every expense in this period has a receipt on file."
+        />
+      ) : showGaps ? (
+        <p className="text-sm text-muted-foreground">{MISSING_RECEIPTS_UNREAD}</p>
+      ) : ledgerError ? (
+        <p className="text-sm text-muted-foreground">{ledgerError}</p>
       ) : rows.length === 0 ? (
         <EmptyState
           icon={<Receipt className="w-6 h-6" strokeWidth={1.75} />}
@@ -362,8 +520,8 @@ function Ledger({
           hint="Log registration, insurance, repairs, cleaning and anything else a car costs — attach the receipt while you have it."
         />
       ) : (
-        <AdminTableScroll className="rounded-xl border border-border">
-          <table className="w-full text-sm">
+        <AdminTableScroll className="max-lg:min-w-0 rounded-xl border border-border">
+          <table className="w-full text-sm max-lg:min-w-[56rem]">
             <thead className="bg-[#FAFAFB] text-left">
               <tr>
                 <th className="px-4 py-2.5 font-medium">Date</th>
@@ -381,8 +539,8 @@ function Ledger({
                   <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
                     {fmtDate(r.incurred_on + "T00:00:00")}
                   </td>
-                  <td className="px-4 py-3">{r.vehicle_label}</td>
-                  <td className="px-4 py-3 capitalize">
+                  <td className="px-4 py-3 max-lg:whitespace-nowrap">{r.vehicle_label}</td>
+                  <td className="px-4 py-3 capitalize max-lg:whitespace-nowrap">
                     {EXPENSE_CATEGORIES.find((c) => c.value === r.category)?.label ?? r.category}
                   </td>
                   <td className="px-4 py-3">
@@ -430,6 +588,18 @@ function Ledger({
       )}
     </div>
   );
+}
+
+
+function gapPeriod(id: string): "this_month" | "last_3" | "last_12" | "all" {
+  if (id === "1") return "this_month";
+  if (id === "12") return "last_12";
+  if (id === "all") return "all";
+  return "last_3";
+}
+
+function categoryLabel(value: string): string {
+  return EXPENSE_CATEGORIES.find((item) => item.value === value)?.label ?? (value === "unknown" ? "Unknown" : value);
 }
 
 // ------------------------------------------------------------------ form
@@ -519,7 +689,7 @@ function ExpenseForm({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <form onSubmit={submit} className="bg-white rounded-xl p-6 max-w-lg w-full space-y-3 my-8">
+      <form onSubmit={submit} className="bg-white rounded-xl p-6 max-w-lg w-full space-y-3 my-8 max-lg:min-w-0">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">Record an Expense</h3>
           <button type="button" onClick={onClose} aria-label="Close">
@@ -527,12 +697,12 @@ function ExpenseForm({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 max-lg:min-w-0">
           <Field label="Vehicle" full>
             <select
               value={vehicleId}
               onChange={(e) => setVehicleId(e.target.value)}
-              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:min-w-0"
             >
               {vehicles.map((v) => (
                 <option key={v.id} value={v.id}>
@@ -546,7 +716,7 @@ function ExpenseForm({
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:min-w-0"
             >
               {EXPENSE_CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -564,7 +734,7 @@ function ExpenseForm({
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm max-lg:min-w-0"
             />
           </Field>
 
@@ -573,7 +743,7 @@ function ExpenseForm({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g. Annual tag renewal"
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm max-lg:min-w-0"
             />
           </Field>
 
@@ -582,7 +752,7 @@ function ExpenseForm({
               type="date"
               value={incurredOn}
               onChange={(e) => setIncurredOn(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm max-lg:min-w-0"
             />
           </Field>
 
@@ -590,7 +760,7 @@ function ExpenseForm({
             <input
               value={reference}
               onChange={(e) => setReference(e.target.value)}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm max-lg:min-w-0"
             />
           </Field>
 
@@ -599,7 +769,7 @@ function ExpenseForm({
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}
               placeholder="Card, ACH, cash…"
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm max-lg:min-w-0"
             />
           </Field>
 
@@ -608,7 +778,7 @@ function ExpenseForm({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm max-lg:min-w-0"
             />
           </Field>
         </div>
@@ -648,7 +818,7 @@ function ExpenseForm({
 
 function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
   return (
-    <div className={full ? "col-span-2" : ""}>
+    <div className={full ? "lg:col-span-2 max-lg:min-w-0" : "max-lg:min-w-0"}>
       <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
       {children}
     </div>
