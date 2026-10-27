@@ -15,12 +15,12 @@ const previewInput = (d: unknown): { previewDriverId?: string } => {
 const REASONS = ['rent', 'late_fee', 'toll', 'damage', 'cleaning', 'fuel', 'other'] as const;
 export type ChargeReason = (typeof REASONS)[number];
 
+// Owner only. Checked server-side from user_roles (roles.server.ts). The former
+// rpc('has_role') call named public.has_role, which migration 20260713042639 dropped
+// (it is private.has_role now, not exposed), so every call answered Forbidden.
 async function assertAdmin(context: any) {
-  const { data } = await (context.supabase as any).rpc('has_role', {
-    _user_id: context.userId,
-    _role: 'admin',
-  });
-  if (!data) throw new Error('Forbidden');
+  const { requireOwner } = await import('@/lib/roles.server');
+  await requireOwner(context.userId);
 }
 
 async function findOrCreateStripeCustomer(
