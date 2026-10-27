@@ -240,30 +240,4 @@ describe("payments webhook — simulated Stripe events", () => {
     assert.equal(a.stripe_payment_intent_id, undefined);
     assert.equal(b.stripe_payment_intent_id, undefined);
   });
-
-  it("a late failure never reopens a charge staff voided or waived (single and combined)", async () => {
-    const db = fakeDb({ payments: [
-      { id: P1, status: "void", balance_due: 350, failure_reason: null, notes: "Voided: entered twice" },
-      { id: P2, status: "waived", balance_due: 350, failure_reason: null },
-    ] });
-    for (const paymentIds of [P1, P2, `${P1},${P2}`]) {
-      await ok(await postVerifiedPaymentWebhook({ type: "payment_intent.payment_failed", data: { object: pi({
-        metadata: { rentalId: RENTAL, reason: "rent", paymentIds },
-        last_payment_error: { message: "Late failure." },
-      }) } }, db, "live"));
-    }
-    const [a, b] = db._state.payments;
-    assert.equal(a.status, "void", "a late failure reopened a voided charge (it would be owed and collected again)");
-    assert.equal(b.status, "waived", "a late failure reopened a waived charge");
-    assert.equal(a.failure_reason, null);
-    assert.equal(b.failure_reason, null);
-  });
-
-  it("a legacy intent's late failure never reopens a voided charge", async () => {
-    const db = fakeDb({ payments: [{ id: P1, status: "void", balance_due: 350, failure_reason: null, stripe_payment_intent_id: "pi_legacy" }] });
-    await ok(await postVerifiedPaymentWebhook({ type: "payment_intent.payment_failed", data: { object: pi({
-      id: "pi_legacy", metadata: {}, last_payment_error: { message: "Late failure." },
-    }) } }, db, "live"));
-    assert.equal(db._state.payments[0].status, "void");
-  });
 });

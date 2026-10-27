@@ -172,8 +172,6 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
   const amount = Number(pi.amount ?? 0) / 100;
   const failure = (pi.last_payment_error?.message as string | undefined)?.slice(0, 500) ?? 'Payment failed';
   const ids = String(pi.metadata?.paymentIds ?? '').split(',').map((s) => s.trim()).filter((s) => /^[0-9a-f-]{36}$/i.test(s));
-  // Which collection attempt this intent was (set by collectRows). Older intents have none.
-  const attemptNo = Number(pi.metadata?.attempt);
 
   let changed = 0;
   let noticeIds = ids;
@@ -199,13 +197,9 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
     } else {
       // Stale guard: a single charge that has since been retried points at a
       // newer intent; a late failure for the old one must not touch it.
-      // A failure never reopens a charge staff voided or waived.
       let q = admin.from('payments').update({ status: 'failed', failure_reason: failure })
-        .in('id', ids).neq('status', 'paid').neq('status', 'refunded').neq('status', 'void').neq('status', 'waived');
+        .in('id', ids).neq('status', 'paid').neq('status', 'refunded');
       if (ids.length === 1) q = q.or(`stripe_payment_intent_id.is.null,stripe_payment_intent_id.eq.${pi.id}`);
-      // A late or repeated failure for an earlier attempt must not mark rows failed while a newer
-      // attempt is in flight on them: that would let a further attempt start (a double charge).
-      if (Number.isInteger(attemptNo) && attemptNo > 0) q = q.eq('attempt_count', attemptNo);
       const r = must(await q.select('id'));
       changed = r.data?.length ?? 0;
     }
@@ -216,7 +210,6 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
       let q = admin.from('payments').update(status === 'paid'
         ? { status: 'paid', paid_date: today(), balance_due: 0, failure_reason: null }
         : { status: 'failed', failure_reason: failure }).eq('id', existing.id).neq('status', 'paid').neq('status', 'refunded');
-      if (status !== 'paid') q = q.neq('status', 'void').neq('status', 'waived');
       const r = must(await q.select('id'));
       changed = r.data?.length ?? 0;
     } else if (rentalId) {
@@ -359,16 +352,11 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
 
   const patch = status === 'paid'
     ? { status: 'paid', paid_date: today(), balance_due: 0, amount, failure_reason: null }
-    // attempt_count is ours (collectRows' idempotency keys); Stripe's invoice retry count never
-    // overwrites it, or a later attempt could reuse an old key.
-    : { status: 'failed', failure_reason: failure };
-  let q = admin.from('payments').update(patch)
+    : { status: 'failed', failure_reason: failure, attempt_count: Number(invoice.attempt_count ?? 1) };
+  const r = must(await admin.from('payments').update(patch)
     .eq('stripe_invoice_id', invoice.id)
-    .neq('status', 'paid').neq('status', 'refunded');
-  // A failed retry never reopens a charge staff voided or waived, and never fails a row that
-  // our own collection has claimed (pending with an attempt time): that attempt is still unsettled.
-  if (status !== 'paid') q = q.neq('status', 'void').neq('status', 'waived').or('status.neq.pending,last_attempt_at.is.null');
-  const r = must(await q.select('id'));
+    .neq('status', 'paid').neq('status', 'refunded')
+    .select('id'));
   if (!(r.data?.length)) {
     // The row was already paid, usually because staff marked a failed invoice
     // paid in cash. Keep that manual record: do not clear failure_reason, do

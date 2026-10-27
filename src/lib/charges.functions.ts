@@ -447,8 +447,7 @@ export const rebillCharges = createServerFn({ method: "POST" })
           balance_due: total,
           type: "toll",
           reason: `${list.length} ${kinds.join("/")} charge${list.length === 1 ? "" : "s"}`,
-          // Owed, not "pending": pending means a Stripe attempt is in flight (payment-collection).
-          status: "current",
+          status: "pending",
           due_date: due,
         })
         .select("id")

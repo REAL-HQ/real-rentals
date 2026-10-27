@@ -2127,7 +2127,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
 
   async function payNow() {
     if (previewId) { toast.error("Driver Preview is read-only."); return; }
-    if (!billing?.rentalId || billing.processing || billing.outstandingCents < 50) return;
+    if (!billing?.rentalId || billing.outstandingCents < 50) return;
     setBusy(true);
     try {
       const res = await payRentalBalance({
@@ -2196,13 +2196,8 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
               Your rent payment is past due. Update your card or pay the balance below.
             </div>
           )}
-          {billing.processing && (
-            <div className="mt-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm p-3">
-              A payment is being confirmed by the card processor. Please don't pay again; your balance updates once it is confirmed.
-            </div>
-          )}
           <div className="mt-4 flex flex-wrap gap-2">
-            {!billing.processing && billing.outstandingCents >= 50 && (
+            {billing.outstandingCents >= 50 && (
               <button
                 onClick={payNow}
                 disabled={busy}

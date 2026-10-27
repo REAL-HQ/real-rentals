@@ -152,7 +152,6 @@ import {
   stopRentalAutopay,
   type ChargeReason,
 } from "@/lib/rental-payments.functions";
-import { AUTOPAY_START_OFF_MESSAGE, RENTAL_AUTOPAY_START_ENABLED } from "@/lib/rental-autopay-flag";
 import { requestApplicationDocuments } from "@/lib/admin-communications.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { SourceBadge } from "./SourceBadge";
@@ -3793,13 +3792,7 @@ function ChargeCardDialog({ driver, onClose }: { driver: any; onClose: () => voi
         },
       });
       if ("error" in res) throw new Error(res.error);
-      // Only a charge Stripe reports as succeeded is Paid. Anything else (for example the card
-      // needs the driver's authentication) stays Pending until the webhook settles it.
-      if (res.status === "paid") toast.success(`Paid: $${(cents / 100).toFixed(2)} collected`);
-      else
-        toast.warning(
-          `Charge of $${(cents / 100).toFixed(2)} submitted but not confirmed; Payments shows it as Processing. Don't charge again: check the payment in Stripe.`,
-        );
+      toast.success(`Charged $${(cents / 100).toFixed(2)} to card`);
       onClose();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Charge failed");
@@ -3884,9 +3877,7 @@ function ChargeCardDialog({ driver, onClose }: { driver: any; onClose: () => voi
 function AutopayActions({ driver }: { driver: any }) {
   const [rental, setRental] = useState<{
     id: string;
-    status: string | null;
     autopay_active: boolean;
-    stripe_subscription_id: string | null;
     weekly_rate: number | null;
   } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -3894,7 +3885,7 @@ function AutopayActions({ driver }: { driver: any }) {
   async function refresh() {
     const { data } = await supabase
       .from("rentals")
-      .select("id, status, autopay_active, stripe_subscription_id, weekly_rate")
+      .select("id, autopay_active, weekly_rate")
       .eq("application_id", driver.id)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -3906,20 +3897,7 @@ function AutopayActions({ driver }: { driver: any }) {
   }, [driver.id]);
 
   if (!rental) return null;
-  // Stop is always offered while a subscription exists, even on a closed rental.
-  const active = rental.autopay_active || !!rental.stripe_subscription_id;
-  if (!active && rental.status !== "active") return null;
-  if (!active && !RENTAL_AUTOPAY_START_ENABLED) {
-    return (
-      <span
-        title={AUTOPAY_START_OFF_MESSAGE}
-        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-soft px-3 py-1.5 text-xs font-medium text-muted-foreground"
-      >
-        <Wallet className="w-3.5 h-3.5" />
-        Autopay Off · Charge Weekly
-      </span>
-    );
-  }
+  const active = rental.autopay_active;
 
   async function toggle() {
     setBusy(true);
