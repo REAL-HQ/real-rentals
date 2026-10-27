@@ -111,3 +111,37 @@ It must then be verified in Stripe **test mode** (needs Owner approval) before t
 | 6 | First rental attended with the §3 checklist; read-only checks after each step | Operations | — |
 
 Rollback for item 2: Preview to `5e492a87` (the current live code; republish needs approval).
+
+## Update: PR #284 reviewed, Preview plan (2026-10-27)
+
+**Draft PR:** https://github.com/REAL-HQ/real-rentals/pull/284. Head **`4268c667`** (tree `2018f3c9`); base `release/pr2-live` = `5e492a87`. Same 7 files.
+
+**Independent review:**
+- All subscription-creation paths are blocked or unreachable.
+- Cancellation state is accurate in every outcome.
+- Manual charges are untouched.
+- No Stripe call on End Rental without a subscription. Production has 0 rentals with a subscription or autopay flag.
+
+Review fixes are in `4268c667`:
+- End Rental now points to the Stripe Dashboard, because the back office renders **no** autopay control;
+- Stop reports a failed database clear;
+- tests grew to 19 (11 fail on live).
+
+tsc, build, full `npm test` and agreement-evidence 11/0 pass.
+
+**Remaining gaps (not blockers; handled by `MANUAL-WEEKLY-BILLING-PROCEDURE.md`):**
+
+| # | Gap | Handling now |
+|---|---|---|
+| G1 | Charge Card always creates a new row, so a retry after a decline leaves the declined row owed | Preferred: driver Pay Now. Otherwise charge once more and Waive the declined row with a note. |
+| G2 | Charge Card says "Charged" even when Stripe returns the payment as pending | Staff confirm the row shows **Paid**. A one-line UI fix can follow on approval. |
+| G3 | The `closeoutV2` path skips the subscription guard | Unreachable (flag off, SQL absent). Move the guard before enabling it. |
+| G4 | No working autopay | Off. A corrected start needs Stripe test-mode verification and approval. |
+| G5 | The payments screen allows deleting payment rows | Pre-existing. Procedure: never delete; Waive with a note. |
+
+**Preview and publish plan** (each step needs its own approval):
+1. Read-only watch (0031, S1, journals, scheduled jobs, rentals with a subscription = 0).
+2. Fast-forward Preview `integration/grok-baseline-2026-10-22` from `5e492a87` to `4268c667`. One push, no force. Confirm Lovable `latest_commit_sha`, then run the read-only watch again.
+3. Owner look-only check on Preview: Charge Card dialog opens. Do not charge.
+4. Publish once. The switch is watched through `x-deployment-id`. Owner confirms the live `data-commit-sha` = `4268c667…`.
+5. Rollback: fast-forward Preview to **`rollback/billing-to-pr2` = `9271787f`** (tree identical to `5e492a87`) and republish. No SQL involved.
