@@ -26,6 +26,9 @@ import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
 import { UnmatchedStripePayments } from "./UnmatchedStripePayments";
 import { BILLING_DAY_CHANGE_ENABLED, BILLING_ONE_TIME_EXTENSION_ENABLED, BILLING_PM_UPDATE_LINK_ENABLED } from "@/lib/billing-controls-flag";
 import { BillingControls } from "./BillingControls";
+import type { StaffTier } from "@/lib/roles";
+import { OPEN_STATUSES, canTake, type PaymentStatusAction } from "@/lib/payment-status-rules";
+import { changePaymentStatus } from "@/lib/payment-status.functions";
 
 const STATUSES = [
   "upcoming",
@@ -58,12 +61,6 @@ const STATUS_LABEL: Record<string, string> = {
   late: "Late",
 };
 const TYPES = ["rent", "deposit", "late_fee", "toll", "damage", "fee", "other"] as const;
-/**
- * Statuses a charge entered in error may be voided from. Not paid/refunded (correct those with a
- * Stripe refund), not waived/void (already settled), and not pending: a pending card charge may
- * still be collected by Stripe.
- */
-const VOIDABLE_STATUSES = new Set(["upcoming", "current", "failed", "unpaid", "overdue", "past_due", "late", "collections"]);
 
 function fmtDate(iso?: string | null) {
   if (!iso) return "—";
@@ -72,7 +69,7 @@ function fmtDate(iso?: string | null) {
   return formatDate(d);
 }
 
-export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: string; autoOpenAdd?: boolean } = {}) {
+export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { initialFilter?: string; autoOpenAdd?: boolean; tier?: StaffTier | null } = {}) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -101,37 +98,38 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
   const driverMap = useMemo(() => Object.fromEntries(drivers.map((d) => [d.id, d])), [drivers]);
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v])), [vehicles]);
 
-  async function update(id: string, patch: Partial<Payment>) {
-    const { error } = await supabase.from("payments").update(patch).eq("id", id);
-    if (error) return toast.error(error.message);
-    setPayments((p) => p.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-  }
-  // Payment rows are financial history: a charge entered in error is voided (kept, with the
-  // reason in its notes), never deleted. A paid or refunded charge is corrected by a refund in
-  // Stripe, which the webhook records. A void removes the charge from what the driver owes, so
-  // the amount is stated before anything changes.
-  async function voidPayment(p: Payment, driverName: string) {
-    const owed = Number(p.balance_due) > 0 ? Number(p.balance_due) : Number(p.amount ?? 0);
-    if (
-      !window.confirm(
-        `Voiding removes $${owed.toLocaleString()} from what ${driverName} owes. Only void a charge entered in error or replaced by another charge. Continue?`,
-      )
-    )
-      return;
-    const reason = window.prompt("Why is this charge being voided? This is saved on the payment.")?.trim();
-    if (!reason) return;
-    const notes = [p.notes, `Voided: ${reason}`].filter(Boolean).join("\n");
-    // Void only if the row is still voidable now: the list may be stale (Stripe may have
-    // collected it since it loaded), and a paid row must never be voided.
-    const { data, error } = await supabase
-      .from("payments")
-      .update({ status: "void", notes })
-      .eq("id", p.id)
-      .in("status", [...VOIDABLE_STATUSES])
-      .select("id");
-    if (error) return toast.error(error.message);
-    if (!data?.length) return toast.error("This charge changed since the list loaded, so it was not voided. Reload Payments and check it.");
-    setPayments((list) => list.map((x) => (x.id === p.id ? { ...x, status: "void", notes } : x)));
+  // Payment rows are financial history. Every status change goes through changePaymentStatus,
+  // which checks who may make it, applies it only if the row still has the status shown here,
+  // and records actor, before/after and reason in the audit log. Paid, refunded, waived and void
+  // rows are settled and never change here: a refund happens in the Stripe Dashboard.
+  async function changeStatus(p: Payment, driverName: string, action: PaymentStatusAction, to?: string) {
+    const amount = Number(p.balance_due) > 0 ? Number(p.balance_due) : Number(p.amount ?? 0);
+    const money = `$${amount.toLocaleString()}`;
+    const confirmText: Record<PaymentStatusAction, string> = {
+      set_open_status: `Change this ${money} charge for ${driverName} to ${STATUS_LABEL[to ?? ""] ?? to}?`,
+      mark_paid: `Record ${money} from ${driverName} as received outside Stripe (cash, Zelle, check)? This counts as revenue. Never use it for a card charge: Stripe charges are marked paid automatically.`,
+      waive: `Waiving forgives ${money} that ${driverName} legitimately owes. It is no longer owed or collected. Continue?`,
+      void: `Voiding removes ${money} from what ${driverName} owes. Only void a charge entered in error or replaced by another charge. Continue?`,
+    };
+    if (!window.confirm(confirmText[action])) return;
+    let method: string | null = null;
+    if (action === "mark_paid") {
+      method = window.prompt("How was it received? (Cash, Zelle, Check...)")?.trim() || null;
+      if (!method) return;
+    }
+    const reason = window.prompt(
+      action === "mark_paid" ? "Reference (receipt, Zelle confirmation, who received it). Saved with the payment and in the audit log." : "Why? Saved with the payment and in the audit log.",
+    )?.trim();
+    if (!reason || reason.length < 3) return void (reason != null && toast.error("A reason of at least 3 characters is required."));
+    try {
+      const res = await changePaymentStatus({ data: { paymentId: p.id, action, expectedStatus: String(p.status), toStatus: to ?? null, reason, method } });
+      if ("error" in res) return toast.error(res.error);
+      const { data } = await supabase.from("payments").select("*").eq("id", p.id).maybeSingle();
+      if (data) setPayments((list) => list.map((x) => (x.id === p.id ? (data as Payment) : x)));
+      toast.success(`${STATUS_LABEL[res.status] ?? res.status}: saved`);
+    } catch {
+      toast.error("Could not reach the server. Reload Payments before trying again.");
+    }
   }
   async function add(p: Partial<Payment>) {
     const { data, error } = await supabase
@@ -258,14 +256,12 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
                     {fmtDate(p.due_date)}
                   </td>
                   <td className="px-3">
+                    {!canTake(tier, "set_open_status", String(p.status)) ? (
+                      <StatusPill status={p.status}>{STATUS_LABEL[p.status] ?? p.status.replace(/_/g, " ")}</StatusPill>
+                    ) : (
                     <Select
                       value={p.status}
-                      onValueChange={(s) =>
-                        update(p.id, {
-                          status: s,
-                          paid_date: s === "paid" ? new Date().toISOString().slice(0, 10) : null,
-                        })
-                      }
+                      onValueChange={(s) => changeStatus(p, driverName, "set_open_status", s)}
                     >
                       <SelectTrigger className="h-7 w-auto border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden">
                         <span className="inline-flex items-center gap-1">
@@ -276,13 +272,14 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
                         </span>
                       </SelectTrigger>
                       <SelectContent align="start" className="min-w-[11rem]">
-                        {STATUSES.map((s) => (
+                        {OPEN_STATUSES.map((s) => (
                           <SelectItem key={s} value={s} className="text-[13px]">
                             {STATUS_LABEL[s]}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    )}
                   </td>
                   <td className="px-3 text-[13px]">{p.payment_method || "—"}</td>
                   <td
@@ -299,26 +296,29 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd }: { initialFilter?: 
                         <MoreVertical className="w-4 h-4" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() =>
-                            update(p.id, {
-                              status: "paid",
-                              paid_date: new Date().toISOString().slice(0, 10),
-                            })
-                          }
-                        >
-                          <Check className="w-4 h-4 mr-2" /> Mark as Paid
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => update(p.id, { status: "waived" })}>
-                          Waive
-                        </DropdownMenuItem>
-                        {VOIDABLE_STATUSES.has(String(p.status)) && (
+                        {canTake(tier, "mark_paid", String(p.status)) && (
+                          <DropdownMenuItem onClick={() => changeStatus(p, driverName, "mark_paid")}>
+                            <Check className="w-4 h-4 mr-2" /> Mark as Paid (Received Outside Stripe)
+                          </DropdownMenuItem>
+                        )}
+                        {canTake(tier, "waive", String(p.status)) && (
+                          <DropdownMenuItem onClick={() => changeStatus(p, driverName, "waive")}>
+                            Waive (Forgive Debt)
+                          </DropdownMenuItem>
+                        )}
+                        {canTake(tier, "void", String(p.status)) && (
                           <DropdownMenuItem
                             className="text-[#D03020] focus:text-[#D03020]"
-                            onClick={() => voidPayment(p, driverName)}
+                            onClick={() => changeStatus(p, driverName, "void")}
                           >
                             Void (Entered In Error)
                           </DropdownMenuItem>
+                        )}
+                        {(p.status === "paid" || p.status === "refunded") && (
+                          <DropdownMenuItem disabled>Refunds Happen in the Stripe Dashboard</DropdownMenuItem>
+                        )}
+                        {(p.status === "pending") && (
+                          <DropdownMenuItem disabled>Processing in Stripe: Check Stripe Before Any Change</DropdownMenuItem>
                         )}
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -432,7 +432,8 @@ function AddPayment({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {STATUSES.map((s) => (
+                {/* A new charge starts owed. Money received is recorded with Mark as Paid, which is audited. */}
+                {OPEN_STATUSES.map((s) => (
                   <SelectItem key={s} value={s}>
                     {s.replace(/_/g, " ")}
                   </SelectItem>
