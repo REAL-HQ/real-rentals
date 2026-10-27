@@ -187,3 +187,43 @@ tsc, build, full `npm test` and agreement-evidence 11/0 pass.
 **Hosted page loads (Drivers, Payments, rental pages): UNVERIFIED.** The Preview host is unreachable from the agent (proxy 403). The build and full test suite pass for `4268c667`. Owner look-only check: open Drivers → a driver, Payments, and a booking; open the Charge Card dialog and close it **without charging**.
 
 **Publish is frozen** until a separate approval. Revert Preview: fast-forward to `9271787f` (tree identical to `5e492a87`).
+
+## PR #284 final release review: GO to publish (pending the Owner's explicit authorization)
+
+**Preview review (hosted pages UNVERIFIED; the agent cannot reach the Preview host).** From source at `4268c667`, the release changes **no rendered screen**:
+- `DriversPanel.tsx` changes only one import and the never-rendered `AutopayActions`.
+- `PaymentsPanel.tsx`, `BookingActions.tsx`, `ManualPaymentsWorkspace.tsx` and every route are byte-identical to live.
+- No screen renders an autopay control, and no UI calls `startRentalAutopay`; a test asserts both.
+
+The Owner's look-only check is still open: Drivers, a driver, a booking, Payments, and the Charge Card dialog opened and closed **without charging**.
+
+**Scope:**
+- Exactly the 7 files.
+- Charge Card, Stripe client, webhook, payment collection and migrations unchanged.
+- 0031, S1, insurance authority and exception OFF verified unchanged at 06:07Z.
+
+**Publish approval wording:**
+> I approve publishing Lovable project `8cf1f99e-71ad-4a93-a47c-bfbe833616d6` once at commit `4268c6671447b7749351bafb636ac8a12c7da2c9` (PR #284, billing launch safety). Rollback: fast-forward Preview to `9271787f` (tree identical to the current live `5e492a87`) and republish. No SQL, no Stripe changes.
+
+**Publish procedure:**
+1. Read-only watch before publishing.
+2. `deploy_project` once, no retry.
+3. Watch `x-deployment-id` until the new deployment serves.
+4. Read-only watch after.
+5. The Owner confirms `data-commit-sha` = `4268c667…`.
+
+**Rollback** (separate approval; app only, no SQL):
+1. Fast-forward `integration/grok-baseline-2026-10-22` to `rollback/billing-to-pr2` = `9271787f`.
+2. Publish once.
+3. The Owner confirms `data-commit-sha` = `9271787f…`. Its tree is identical to `5e492a87`.
+
+## Post-release financial-safety fixes (separate review branches, not in PR #284)
+
+| Branch | Head | Change | Tests |
+|---|---|---|---|
+| `fix/charge-status-confirmation` | `639204e3` (base `4268c667`) | Charge Card shows **"Paid: $X collected"** only when Stripe returns `succeeded`. Otherwise a warning: Pending, don't charge again, check Stripe. The failure text no longer says "can be retried"; it says to check Stripe first. Server behaviour unchanged. | `charge-status-confirmation` 6/6 (3 fail on `4268c667`). Full check passes. |
+| `fix/payment-delete-protection` | `492e645f` (base `4268c667`) | Payments: **Delete → "Void (Entered In Error)"** with a required reason in `notes`; not offered on paid, refunded or void rows. Proposed, not installed: `proposed/payments-delete-guard` trigger refusing DELETE from authenticated, anon and service_role, with rollback. | `payment-delete-ui` 3/3 (all 3 fail on `4268c667`). `payments-delete-guard.db` 9/9 on a disposable Postgres. Full check passes. |
+
+**Notes:**
+- Both edit the same `package.json` test line, so merging the second one means joining the two test commands on that line.
+- The database guard still needs its guarded request, preflight and verify-after, and its own SQL approval.
