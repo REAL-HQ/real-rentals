@@ -477,3 +477,89 @@ Weekly autopay stays OFF throughout. The insurance exception stays OFF.
 - `scripts/agreement-template-library.proposed.sql` and `scripts/driver-issues/staff-note.proposed.sql` still reference `public.has_role`.
 - These RPCs are called by the app but are in neither the migrations nor the baseline; they need read-only confirmation in production: `close_recorded_rental_v2`, `list_assignment_history_v1`, `resolve_application_identity_review`, `link_replacement_agreement_checked`.
 
+## Production diagnosis (read-only, Owner-approved, 2026-10-27)
+
+One `SET TRANSACTION READ ONLY` query; names, existence and counts only.
+
+| Check | Result |
+|---|---|
+| Target | System identifier `7642734024280108049`, read-only on |
+| `public.has_role` | **Absent.** Only `private.has_role(uuid, app_role)` (SECURITY DEFINER) exists. **D7 confirmed:** Owner Charge Card, autopay start/stop and Remove Card answer "Forbidden" in production today. |
+| `close_recorded_rental_v2`, `list_assignment_history_v1`, `resolve_application_identity_review`, `link_replacement_agreement_checked` | All **absent**. Not first-rental blockers: closeout v2 is gated by `RECORD_RENTAL_CONTRACT_ENABLED=false`; vehicle history returns an empty list when the function is missing; the replacement agreement is gated by `SWAP_ENABLED=false`; identity review uses the RPC only when env `APPLICATION_RESUME_ATOMIC_ENABLED=true`, otherwise the existing server path (env value not visible from SQL). |
+| `apply_payment_refund` | Present; SECURITY DEFINER; `service_role` only |
+| Payments | 0 total; 0 Processing; 0 Processing that never had an attempt |
+| Columns the fixes use | All present |
+| Payments RLS | On. "Managers manage payments" (ALL, `private.is_manager()`), "Drivers can view their own payments" (SELECT), "Partners can view their payments" (SELECT). Matches the app's assumptions. |
+| Role helpers | `private.has_role`, `is_manager`, `is_owner`, `is_staff` all present |
+| `user_roles` | admin 1, team 2, driver 4 |
+| `audit_log` insert | `service_role` yes; `authenticated` no (audits must be written server-side, as the fixes do) |
+| Triggers on `payments` | `payments_updated_at` only; neither guard installed |
+| Grants on `payments` | **`anon`, `authenticated` and `service_role` all hold SELECT/INSERT/UPDATE/DELETE/TRUNCATE.** The local baseline differs. With RLS, anon matches no rows, and TRUNCATE is not reachable through PostgREST, so this is not exploitable through the app. Revoking TRUNCATE (and anon's write grants) is a separate grant change needing its own approval. |
+
+## Release 2 rebuild (non-production)
+
+| Item | Value |
+|---|---|
+| Draft PRs | [#288](https://github.com/REAL-HQ/real-rentals/pull/288) `fix/charge-card-role-check` @ `a23f73eb` (base `release/financial-integrity-2`); [#289](https://github.com/REAL-HQ/real-rentals/pull/289) `fix/pay-now-duplicate-protection` @ `c64bc2c6` (stacked on #288) |
+| **Release 2 candidate** | `release/financial-integrity-3` @ **`4fdf5a78`** = `78bb94af` + #288 + #289 (merge commits, no conflicts; tree = `c64bc2c6`; no migrations). `release/financial-integrity-2` is unchanged at `78bb94af`. |
+| Rollback | `rollback/release2b-to-billing` @ `71eea6a7`: tree identical to Release 1 `4268c667`, parent `4fdf5a78` |
+
+**Results on `4fdf5a78`:**
+
+| Suite | Result |
+|---|---|
+| Full check (tsc, build, full `npm test` incl. `applicant-security`, `agreement-evidence` 11/11) | Pass |
+| `pay-now-concurrency.db` | 12/12 |
+| Guard compatibility (one-off, not committed): the concurrency suite with both proposed guards installed, plus manual-payment checks through PostgREST | 13/13 |
+| `payments-delete-guard.db` | 17/17 |
+| `payments-write-guard.db` (`ed2ed072`) | 17/17 |
+| `payments-webhook-invariants` | Pass |
+| `payments-webhook-events` | 11/11 |
+| `billing-launch-safety` | 19/19 |
+| `charge-status-confirmation` | 14/14 |
+| `payment-status-controls` | 11/11 |
+| `payment-delete-ui` | 6/6 |
+
+The guard-compatibility checks through PostgREST were:
+- A Manager's direct status change is refused by the write guard, and a direct delete by the delete guard.
+- Add Payment (an owed charge) works.
+- Mark as Paid (cash, with a reference) and Void through the audited server function work and are audited.
+
+All Pay Now and Charge Card scenarios still pass with both guards installed.
+
+**Legitimate manual payments remain possible:**
+- Charge Card (new charge and retry on the same row);
+- Pay Now;
+- Mark as Paid (received outside Stripe), Void and Waive through the audited path;
+- Add Payment.
+
+**Refused:**
+- a second attempt while one is Processing;
+- an ambiguous outcome being retried;
+- a second rent charge for the same week;
+- a stale or duplicate failure webhook against a newer attempt.
+
+## Database guard installation order and rollback dependencies
+
+1. **Release 2 (`4fdf5a78`) live and Owner-confirmed first.** The write guard makes Release 1's direct Payments edits fail closed (an error, no change).
+2. **Delete guard:** preflight (expects only `payments_updated_at`, as production has now) → request `f2001646…057c` → verify-after.
+3. **Write guard:** preflight (accepts the delete guard present) → request `91ad1504…438d` → verify-after, right after install.
+
+**Rollback:**
+- **Independent.** Each guard's rollback removes only its own trigger and function and keeps the evidence rows. Both orders are tested.
+- **App rollback.** To roll the app back from Release 2 to Release 1, roll back the write guard first; otherwise Release 1's Mark as Paid, Waive and status menu fail closed. The delete guard does not depend on the app version.
+- **Reinstall.** Neither v1 can be reinstalled after its rollback without a v2.
+
+## Remaining first-rental blockers (updated)
+
+1. **D7: Charge Card is unusable in production.**
+   - Release 1 does not fix it. Release 2 (`4fdf5a78`) does.
+   - The manual weekly billing model cannot start until Release 2 is live.
+2. Release 1 publication, then Release 2 publication (each a separate approval).
+3. Owner: Stripe live configuration C1–C6, acceptance of the updated manual billing procedure, and the look-only Preview checks (unverified from the agent).
+4. **Unverified:** production PostgREST 14.5's handling of the webhook's `.or()` + `select('id')` updates (the local 12.2.3 differs).
+   - If it fails, the webhook answers 400 and Stripe retries.
+   - Rows stay Processing, so this fails closed with no duplicate charge.
+   - Watch the first live charge's webhook delivery in the Stripe Dashboard.
+5. The DB guards are recommended but not blockers: install them, or have the Owner explicitly defer them (gate G-3).
+
