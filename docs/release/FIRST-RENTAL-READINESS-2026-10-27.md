@@ -145,3 +145,45 @@ tsc, build, full `npm test` and agreement-evidence 11/0 pass.
 3. Owner look-only check on Preview: Charge Card dialog opens. Do not charge.
 4. Publish once. The switch is watched through `x-deployment-id`. Owner confirms the live `data-commit-sha` = `4268c667…`.
 5. Rollback: fast-forward Preview to **`rollback/billing-to-pr2` = `9271787f`** (tree identical to `5e492a87`) and republish. No SQL involved.
+
+## Preview updated to PR #284 (Owner-approved, 2026-10-27)
+
+**Pre-checks (all passed):**
+- `5e492a87` → `4268c667` is a fast-forward; exactly the 7 reviewed files differ.
+- `payment-collection.server.ts`, `webhook.ts`, `payments.functions.ts` and `stripe(.server).ts` are byte-identical. In `rental-payments.functions.ts` only the import and the start/stop functions change; `chargeCardOnRental` is untouched.
+- The only flag difference is the new `RENTAL_AUTOPAY_START_ENABLED = false`. No SQL, migration, insurance or activation files.
+- Every `subscriptions.create` site is unreachable:
+  - `rental-payments.functions.ts` start returns at line 214;
+  - the coordination path sits after line 214, and its flag is false;
+  - `stripe-operations.server.ts` is imported nowhere.
+- End Rental guard at `rentals.functions.ts:661`.
+- `billing-launch-safety` 19/19.
+- Rollback refs intact, including `rollback/billing-to-pr2` = `9271787f` and `rollback/pr2-to-a2` = `8ea838c2`.
+
+**Push:** one fast-forward, no force: `5e492a87..4268c667` on `integration/grok-baseline-2026-10-22`.
+
+**Lovable:**
+- `latest_commit_sha` = `4268c667`, `last_edited_at` 06:01:59Z, status ready.
+- `read_file` at `4268c667` returns the new `rental-autopay-flag.ts` (hard `false`).
+- A new home-page screenshot was rendered from the new build.
+
+**Production, read-only, before 06:01:44Z and after 06:07:26Z: identical.**
+
+| Item | Value |
+|---|---|
+| Security 0031 | `d3387761…` |
+| S1 | Intact |
+| Insurance authority | Setter md5 `603cc13a…`; trigger; 1 evidence row |
+| Activation setting | Installed; exception OFF |
+| Policies | 173 |
+| Journals | 23 / 105 |
+| Scheduled jobs | Unchanged |
+| Rentals | 0 (0 with a subscription or autopay) |
+| Payments | 0 |
+| Applications | 160 (no updates) |
+| Audit log | 949 (no new rows) |
+| Live | Still `4ad9e141` (PR 2); 0 non-200 since the push |
+
+**Hosted page loads (Drivers, Payments, rental pages): UNVERIFIED.** The Preview host is unreachable from the agent (proxy 403). The build and full test suite pass for `4268c667`. Owner look-only check: open Drivers → a driver, Payments, and a booking; open the Charge Card dialog and close it **without charging**.
+
+**Publish is frozen** until a separate approval. Revert Preview: fast-forward to `9271787f` (tree identical to `5e492a87`).
