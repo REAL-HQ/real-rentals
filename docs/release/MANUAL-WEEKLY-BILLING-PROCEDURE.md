@@ -6,6 +6,14 @@
 **Where:** Drivers → driver → Charge Card.
 **Stripe:** the Stripe Dashboard in **live** mode.
 
+**After the financial-integrity release (#285, #286):**
+- A confirmed charge shows **"Paid: $X collected"**.
+- An unconfirmed one shows a warning ("submitted but not confirmed; Payments shows it as Processing. Don't charge again").
+- A failure says to check Stripe before charging again.
+- Payments has **Void (Entered In Error)** instead of Delete.
+
+The rules below are unchanged.
+
 ## The one rule
 
 **Never press Charge Card again for a week that already has an attempt, until Stripe shows that week's charge did not go through.**
@@ -74,4 +82,4 @@ Never clear the subscription field by hand.
 - Start autopay. It is switched off, and the back office has no autopay control. If Stripe ever shows a subscription for a driver, cancel it in the Stripe Dashboard.
 - Charge from two tabs or two people at once.
 - Retry after an uncertain result before checking Stripe.
-- Delete payment rows. Use Waive with a note.
+- Delete payment rows. Before the financial-integrity release, use Waive with a note. After it, use **Void (Entered In Error)**, which asks for a reason; never void a row that may still be collected by Stripe.

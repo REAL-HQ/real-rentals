@@ -217,13 +217,60 @@ The Owner's look-only check is still open: Drivers, a driver, a booking, Payment
 2. Publish once.
 3. The Owner confirms `data-commit-sha` = `9271787f…`. Its tree is identical to `5e492a87`.
 
-## Post-release financial-safety fixes (separate review branches, not in PR #284)
+## Financial-integrity release (draft PRs, non-production)
 
-| Branch | Head | Change | Tests |
+Both are based on PR #284 (`fix/billing-launch-safety` @ `4268c667`) and kept separate. Neither modifies PR #284 or Preview.
+
+| PR | Branch @ head | Change | Tests |
 |---|---|---|---|
-| `fix/charge-status-confirmation` | `639204e3` (base `4268c667`) | Charge Card shows **"Paid: $X collected"** only when Stripe returns `succeeded`. Otherwise a warning: Pending, don't charge again, check Stripe. The failure text no longer says "can be retried"; it says to check Stripe first. Server behaviour unchanged. | `charge-status-confirmation` 6/6 (3 fail on `4268c667`). Full check passes. |
-| `fix/payment-delete-protection` | `492e645f` (base `4268c667`) | Payments: **Delete → "Void (Entered In Error)"** with a required reason in `notes`; not offered on paid, refunded or void rows. Proposed, not installed: `proposed/payments-delete-guard` trigger refusing DELETE from authenticated, anon and service_role, with rollback. | `payment-delete-ui` 3/3 (all 3 fail on `4268c667`). `payments-delete-guard.db` 9/9 on a disposable Postgres. Full check passes. |
+| [#285](https://github.com/REAL-HQ/real-rentals/pull/285) | `fix/charge-status-confirmation` @ `2c2c3014` | Charge Card shows **"Paid: $X collected"** only when Stripe returns `succeeded`. Otherwise a warning: not confirmed, Payments shows it as Processing, don't charge again, check Stripe. A failure says to check Stripe before charging again, never "can be retried". Server and idempotency unchanged. | `charge-status-confirmation` 7/7 (3 of the original 6 fail on `4268c667`). |
+| [#286](https://github.com/REAL-HQ/real-rentals/pull/286) | `fix/payment-delete-protection` @ `08d7968f` | Delete → **Void (Entered In Error)**: only unpaid, not-in-flight statuses; confirmation shows the amount removed from what is owed; required reason; amount and balance kept; applied only if the row is still voidable. Webhook failure updates skip void and waived rows. Proposed DB guard package (not installed). | `payment-delete-ui` 6/6; `payments-webhook-events` 11/11 (2 new, fail without the fix); `payments-delete-guard.db` 17/17 on a disposable Postgres. |
 
-**Notes:**
-- Both edit the same `package.json` test line, so merging the second one means joining the two test commands on that line.
-- The database guard still needs its guarded request, preflight and verify-after, and its own SQL approval.
+**Combined branch:** `release/financial-integrity` @ `a90d8d94` = `4268c667` + #285 + #286. The only conflict was the `package.json` test line; it now runs both new tests.
+
+**Independent review (read-only subagent), outcome:**
+
+| # | Finding | Outcome |
+|---|---|---|
+| 1 | A late `payment_failed` / `invoice.payment_failed` moved a void (or waived) row back to failed, so it was owed and collectable again | **Fixed in #286** (+2 behavioural tests) |
+| 2 | Void had no server-side precondition; a stale list could void a row Stripe had since collected | **Fixed in #286** (conditional update, reports 0 rows) |
+| 3 | Waive, Mark as Paid and the status selector change status with no reason or eligibility (existing controls) | **Open**, not changed (outside this scope) |
+| 4 | Void reason lives in `notes`, not the immutable `audit_log` | **Open**; needs a `void_payment` RPC (SQL) |
+| 5 | An ambiguous Stripe error is stored as `failed`; a driver's Pay Now could start a new attempt before the webhook settles the first | **Open**; mitigated by the procedure; needs its own change to `payment-collection.server.ts` |
+| 6 | `collectRows` guards only `paid` between selecting rows and charging them (race with a simultaneous void) | **Open**; narrow window |
+| 7 | Voiding the last open row lets a driver be deleted (as Delete did before) | Note |
+| 8–9 | Trigger is a deny-list; TRUNCATE; verify-after is catalog-only; v1 cannot be reinstalled after rollback | Documented; informational TRUNCATE row added to the preflight (request bytes unchanged) |
+| 10 | Toast said "Pending" while Payments labels it "Processing"; `processing` case untested | **Fixed in #285** |
+
+**Delete-guard SQL package** (`proposed/payments-delete-guard/`, not installed, separate approval):
+- Install request sha256 `f200164664f9da85c23ca6ceb16498e97276a1da66706c357aa3fdc5c865057c`.
+- Rollback request sha256 `9759df5d56cdb8d405b4d09ed881444322386c569ec3cd8f069f61bd81907929`.
+- Preflight 13 rows, verify-after 6 rows.
+
+## Minimum release sequence (each step needs its own explicit approval)
+
+1. **PR #284** (billing launch safety): publish `4268c667` once. Wording above. Owner confirms `data-commit-sha`.
+2. **Financial-integrity app release** (#285 + #286 = `release/financial-integrity`):
+   1. Owner merges the two PRs after review.
+   2. Preview fast-forward to the combined head; look-only check of Payments (Void menu) and the Charge Card dialog without charging.
+   3. Publish once. Rollback: fast-forward Preview to `rollback/financial-integrity-to-billing` = `85eea646` (tree identical to `4268c667`; parent `a90d8d94`) and republish. If the merged head differs from `a90d8d94`, regenerate it on the new head the same way.
+   - No SQL, no Stripe changes.
+3. **DB delete guard** (separate SQL approval, only after step 2 is live):
+   1. Preflight read-only, all ok.
+   2. Submit `request-payments-delete-guard.sql` once.
+   3. Verify-after read-only, all ok.
+   - Rollback is its own request.
+   - The app does not depend on it, so it can wait.
+
+Weekly autopay stays OFF throughout. The insurance exception stays OFF.
+
+## First-rental gate (all must be true)
+
+| # | Condition | Status |
+|---|---|---|
+| G-1 | Billing-safety release live (PR #284) | Pending publish approval |
+| G-2 | Accurate payment-status messaging live (#285) | Pending step 2 |
+| G-3 | Financial-record deletion protection live: app Void (#286); DB guard installed or explicitly deferred by the Owner | Pending steps 2–3 |
+| G-4 | Stripe live configuration verified by the Owner (C1–C6: live keys in Lovable secrets, webhook URL `https://drivereal.com/api/public/payments/webhook?env=live`, the six events, signing secret) | Pending Owner |
+| G-5 | Manual weekly billing procedure accepted by the Owner (`MANUAL-WEEKLY-BILLING-PROCEDURE.md`) | Pending Owner |
+| G-6 | Controlled first-rental acceptance checklist: one real driver; first `insurance.verified` and first `rental.activated` observed read-only; first Charge Card read against Stripe before any second press | Pending; at the first rental |
