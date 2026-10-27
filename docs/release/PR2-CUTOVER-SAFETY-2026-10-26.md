@@ -223,3 +223,45 @@ The switch took about **9 minutes** this time; A.2 took about 50.
 3. Separate approval for the insurance-authority SQL (C4).
 
 Staff should reload any open back-office tabs.
+
+---
+
+# PR 2 live verification and final insurance-authority gate (2026-10-27)
+
+**Live SHA:** the Owner confirmed `data-commit-sha="5e492a87b723bc838b962ec2c1bb4a0c347aeceb"` on drivereal.com. Server side, all 6 calls since 00:30Z came from `4ad9e141`, with 0 errors.
+
+## 1–2. The two screens: visual checks UNVERIFIED (agent cannot reach drivereal.com; proxy 403)
+
+**Deployed-source inspection** at `5e492a87`, identical to the Lovable head:
+
+| Item | Source evidence |
+|---|---|
+| Insurance panel: Owner and Manager controls | `InsuranceVerificationCard` receives `canDecide={isManager}` (`DriversPanel.tsx:2608`). Others see "Yes/No", "Request Verification" and "Only A Manager Or Owner Can Verify Or Revoke." The decision is never written from the browser (`withoutInsuranceDecision`). |
+| Insurance status and expiry | Readiness status is one of `verified`, `unverified`, `missing` or `expired`. Expired means the application or current insurance document date is before today. Shown as the "Insurance Verified" requirement detail. "Verified By" and "Verified At" fields shown. |
+| Activation dialog: insurance blocks | The "Insurance Verified" requirement is `enforcement: "hard"` unless the exception is allowed (`activation-readiness.ts:332-336`). Hard blockers render under "Cannot Activate". Only `no_interview` and `no_passed_inspection` can be overridden; everything else, including future codes, is hard (`isHardBlocker`). |
+| Exception OFF | The acknowledgement box ("Insurance Not Verified") appears only when `exceptionAllowed`. The production value is `false`. |
+| Permanent Record | Unchanged from #278 (vault-replace-guard 17/0). The signed agreement's document is still current. |
+
+**What the Owner should see** (production aggregates, no personal data):
+- Both approved drivers have insurance status **missing** and **no** unused signed agreement.
+- Their dialog should therefore show "Cannot Activate", with both the insurance and signed-agreement requirements unmet, and no insurance acknowledgement box.
+
+## 3. Production safety (read-only, 00:51:52Z)
+
+| Item | Result |
+|---|---|
+| Security 0031 | 5 policies, `d3387761…` |
+| S1 | Trigger 1, authenticated status UPDATE false, guard function present |
+| Activation-setting SQL | Installed: wrapper, trigger, 1 evidence row |
+| Insurance exception | `false` (OFF), 0 changes. Other settings identical. |
+| Insurance-authority SQL | Not installed |
+| Journals / scheduled jobs / `activate_rental_tx` | 23 and 105 / all 5 unchanged / `dfadcc73…` unchanged |
+| Customer data | Applications 160 (last update 21:43:53Z), documents 94, storage 131, agreements 1, screenings 5 (2 verified), rentals 0, payments 0, vehicles unchanged |
+| Audit since the C1 evidence row | 0 rows (no insurance, rental or setting actions) |
+
+## 4. Insurance-authority request and preflight (not submitted)
+
+| Item | Result |
+|---|---|
+| Request | sha256 **`eb7710d7fc3ff58adc0c1d0424245b205dda98f9f319ad29f24adf5363e68950`**. Matches the approval. `SHA256SUMS` OK. Same as the pushed branch. 26,159 bytes, ASCII only. |
+| Preflight (00:5xZ) | **13 of 13 ok, unchanged** since before the publish. Target identity ok; journal `5cfa7e88…`; 0031 `d3387761…`; helpers present; no evidence yet; objects absent; screening triggers are the expected three. Activation package installed; M2 Window 2 not installed. |
