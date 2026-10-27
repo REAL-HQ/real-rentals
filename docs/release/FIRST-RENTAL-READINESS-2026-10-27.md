@@ -274,3 +274,58 @@ Weekly autopay stays OFF throughout. The insurance exception stays OFF.
 | G-4 | Stripe live configuration verified by the Owner (C1–C6: live keys in Lovable secrets, webhook URL `https://drivereal.com/api/public/payments/webhook?env=live`, the six events, signing secret) | Pending Owner |
 | G-5 | Manual weekly billing procedure accepted by the Owner (`MANUAL-WEEKLY-BILLING-PROCEDURE.md`) | Pending Owner |
 | G-6 | Controlled first-rental acceptance checklist: one real driver; first `insurance.verified` and first `rental.activated` observed read-only; first Charge Card read against Stripe before any second press | Pending; at the first rental |
+
+## Financial controls final review (2026-10-27)
+
+`release/financial-integrity` stays at `a90d8d94` (tested baseline, unchanged).
+
+**Controls on `a90d8d94`, as reviewed:**
+
+| Control | Who | Behaviour on `a90d8d94` | Risk |
+|---|---|---|---|
+| Status dropdown | Manager+ | Any row to any status, one click, no confirmation, reason or audit. `paid → current/failed` clears `paid_date`. | **Blocker.** A misclick un-pays a Stripe-collected charge. It drops out of revenue (`net_collected` counts only paid/refunded) and becomes chargeable again (Pay Now / Charge Card), so the driver can be charged twice. It can also set `refunded` with no money moving, or `waived`. |
+| Mark as Paid | Manager+ | Any row, including void, refunded, Processing. One click; no method, reason or audit; `balance_due` not zeroed. | **Blocker.** Records revenue with no money received. Marking a Processing row paid hides a charge Stripe may still fail. |
+| Waive | Manager+ | Any row, including paid. One click; no confirmation, reason or audit. | **Blocker.** Silently forgives a legitimate debt, or removes collected revenue from a paid row. |
+| Add Payment | Manager+ | Status choice includes paid, refunded, waived. | Same false-revenue risk as Mark as Paid. |
+| Void (Entered In Error) | Manager+ | Open rows only; confirmation shows the amount; reason in notes; conditional on the status at the time. | Acceptable. The reason is in `notes` only, not the audit log. |
+| Refund | — | Not in the app. Stripe Dashboard → webhook → `apply_payment_refund`. | Correct. |
+
+**Smallest correction:** `fix/payment-status-controls` @ `63ed49ca` (separate review branch on `a90d8d94`; app only, no SQL).
+- All four status actions go through one server function, `changePaymentStatus`:
+  - authorises the action on the server;
+  - requires a reason;
+  - applies only if the row still has the status the screen showed;
+  - writes actor, before/after, reason and method to the immutable `audit_log`, and undoes the change if the audit insert fails.
+- Rules (`src/lib/payment-status-rules.ts`):
+
+| Action | Who | From |
+|---|---|---|
+| Change Status | Manager+ | Open → open only |
+| Void (Entered In Error) | Manager+ | Open |
+| Waive (Forgive Debt) | **Owner** | Open |
+| Mark as Paid (Received Outside Stripe) | Manager+, with the method | Open |
+| Mark as Paid (Received Outside Stripe) | **Owner** | Processing, after checking Stripe |
+| Refund | Stripe Dashboard only | — |
+
+  - Paid, refunded, waived and void rows never change in the app.
+  - Add Payment creates only owed charges.
+- The webhook protections (never un-pay; failures skip void and waived) are unchanged.
+- Tests:
+  - `payment-status-controls` 11/11: the real server function against a fake DB, covering roles, settled rows, stale screen, audit-failure undo and reason required.
+  - `payment-delete-ui` 6/6.
+  - Full check: tsc, build and the full `npm test` pass.
+
+**Remaining limit (needs SQL, separate approval):** RLS "Managers manage payments" (ALL) still lets a Manager change a row's status directly through the API with their own session. The app controls stop accidental and casual changes; only an RLS or trigger change stops a deliberate one.
+
+## Delete guard: bypass analysis (repo and local baseline only; no production SQL)
+
+| Path | Bypasses the guard? |
+|---|---|
+| Manager / driver / anon via PostgREST or supabase-js DELETE | No: refused (`payments_are_financial_history_void_instead`) |
+| Server code (`service_role`) DELETE | No: refused |
+| TRUNCATE | No practical path. PostgREST and supabase-js cannot issue TRUNCATE. `anon`, `authenticated` and `service_role` are NOLOGIN. TRUNCATE of `payments` also fails without CASCADE because `toll_charges` (and two other tables) reference it. No migration revokes TRUNCATE on `payments`, so production grants are unknown; the preflight's informational row reports them at install time. |
+| Parent deletes (`ON DELETE SET NULL`) | No: an UPDATE, rows kept |
+| Disabling or dropping the trigger, `session_replication_role` | Needs the table owner or a superuser |
+| The database owner (`postgres`): approved SQL, Lovable `query_database`, the Supabase dashboard table editor / SQL editor | **Yes, by design.** Anyone with project SQL or dashboard access can still delete. Keep that access to the Owner. |
+| UPDATE instead of DELETE (status → void/waived, amount → 0) by a Manager via the API | Not a delete. Covered in the app by `fix/payment-status-controls`; at the database level it needs the RLS change above. |
+
