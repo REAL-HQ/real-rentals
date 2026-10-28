@@ -678,3 +678,39 @@ All Pay Now and Charge Card scenarios still pass with both guards installed.
 
 **Publication:** not authorized. Revert Preview: fast-forward to `rollback/release2-direct-to-pr2` (`d42fee60`, live tree).
 
+## Direct Release 2 published (Owner-approved, 2026-10-28)
+
+**Pre-publish checks (01:28Z), all matching:**
+- Preview = `4fdf5a78`.
+- Lovable `latest_commit_sha` = `4fdf5a78`; ready; agent finished.
+- Scope: 37 files, 0 unattributed.
+- Autopay start and coordination flags false.
+- 0 `has_role` RPC calls.
+- Rollback `d42fee60` tree = live `5e492a87`.
+- Production baseline identical to the Preview snapshot; the only non-200s were 5 pg_net timeouts.
+
+**Publish:** `deploy_project` called once at about 01:29Z → status **pending**, **deployment `7f1b6a2b-c04e-47cb-bdb0-8f073ddf9719`**. No retry.
+
+**Switch (from `net._http_response` `x-deployment-id`):**
+
+| Deployment | Last / first seen | Responses |
+|---|---|---|
+| `psr2.4ad9e141` (PR 2) | Last seen 01:25:00Z | — |
+| (none: the known 5 s pg_net timeout) | 01:30:00Z | 1 |
+| **`psr2.7f1b6a2b` (Release 2)** | **First seen 01:35:00Z**, 01:40:00Z | 2, all 200 |
+
+The switch took about 6 minutes.
+
+**Post-publish production snapshot (01:40:37Z): identical to before.**
+- Policies 173; 0031 `d3387761…` (5); S1 1; journals 23/105.
+- Cron md5s 2 `478d975e`, 3 `7a659464`, 4 `454777d5`, 5 `269d0f4c`, 6 `cf4fedd9` (all active).
+- Insurance exception false; IVA setter `603cc13a`; insurance guard 1; AIS/IVA evidence 1/1; late fees off.
+- Payment guards not installed.
+- Counts: applications 166, rentals 0, payments 0, subscription/autopay 0, agreements 1, documents 96, screenings 5, vehicles 10, audit 1020, user_roles 7.
+- Fingerprints: vehicles `2b0b7a57`, user_roles `1a2d9611`, app_settings `b9aae8d4`.
+- No audit rows since publishing. Last data change 2026-10-27 16:32Z.
+
+**Awaiting the Owner's live check:** `view-source:https://drivereal.com/` (private window, no query string) → expected `data-commit-sha="4fdf5a78b017aabf3b27815f4b584264387133a3"`. If it differs, stop and report; do not republish.
+
+**Rollback** (separate approval): fast-forward Preview to `d42fee60` (live PR 2 tree) and publish once.
+
