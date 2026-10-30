@@ -23,6 +23,8 @@ The rules below are unchanged.
 
 Until those fixes are live, the rules below apply as written.
 
+**Existing renters billed outside the app (e.g. through Stripe invoices, subscriptions or payment links):** their payments do not appear on the Payments page; the Overview → Stripe Collections card shows them. **Never use Charge Card for such a renter while their Stripe billing is still active: it double-bills them.** Stop the external billing in Stripe first, at a week boundary, then record the rental and bill in the app.
+
 ## The one rule
 
 **Never press Charge Card again for a week that already has an attempt, until Stripe shows that week's charge did not go through.**

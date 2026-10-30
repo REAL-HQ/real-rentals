@@ -714,3 +714,52 @@ The switch took about 6 minutes.
 
 **Rollback** (separate approval): fast-forward Preview to `d42fee60` (live PR 2 tree) and publish once.
 
+## Release 2 COMPLETE (2026-10-30)
+
+The Owner (independently verified) confirms drivereal.com serves `data-commit-sha="4fdf5a78b017aabf3b27815f4b584264387133a3"`. The home page, back office, Drivers and Payments render. **Release 2 publication and live-version verification are complete.** PR #284 (Release 1) is superseded: it is contained in Release 2.
+
+## Payment reconciliation investigation: the empty Payments page (read-only, code + prior aggregates; no new SQL)
+
+**Finding: by design, not a defect.** The Payments page is the app's own charge ledger. Regina's and Damon's weekly Stripe payments were made outside the app and are never written into it.
+
+**How the app's payment data flows** (Release 2, `4fdf5a78`):
+
+| Path | Reads/writes | Effect on external Stripe payments |
+|---|---|---|
+| Payments page (`PaymentsPanel`) | `supabase.from("payments").select("*")`, local table only, under RLS | Shows only rows that exist in `payments` |
+| Rows are created by | Charge Card, Pay Now, Add Payment, toll rebill, the late-fee cron, the webhook | All app-originated |
+| Webhook `payment_intent.*` | Updates rows named in `metadata.paymentIds`, or a row already holding the intent id. Inserts a row **only** if `metadata.rentalId` is present. | A payment link, invoice or dashboard charge has no app metadata → only a `console.warn` (`warnUnmatchedPayment`); **no row** |
+| Webhook `invoice.*` | Looks up `rentals.stripe_subscription_id`. Without a linked rental → `warnUnmatchedInvoice` (log only). | An external subscription is not linked to any app rental (production has **0 rentals**) → **no row** |
+| Overview → **Stripe Collections** (`STRIPE_COLLECTIONS_ENABLED = true`, Manager+) | Reads the **Stripe account itself**, read-only: invoices, charges (with balance transactions) and payouts in a date range | **This is where external Stripe payments are visible in the app** |
+| Unmatched Stripe Payments (`STRIPE_UNMATCHED_PAYMENTS_ENABLED = false`) | Read-only list of paid Stripe invoices not linked to an app rental | Dormant |
+| Stripe reconciliation (`stripe-reconciliation.functions.ts`: link a subscription to a rental, preview/apply history) | Needs proposed SQL `scripts/stripe-reconciliation/0033_…proposed.sql` (not installed); no screen uses it | Dormant, not installable today |
+
+Prior read-only production aggregates (2026-10-27): payments 0, rentals 0, subscription/autopay rentals 0. With no rental records, no app path could have produced or linked a payment for them.
+
+**Not verified (no Stripe access from the agent; no live key requested):**
+- Stripe-side counts, and whether Regina's and Damon's billing is a Stripe subscription, an invoice or a payment link.
+- Whether the live webhook endpoint (C1–C6) receives those events. If it does, they are logged as unmatched only: no row.
+
+The Owner can check read-only in the Stripe Dashboard, or Overview → Stripe Collections (live, last 8 weeks).
+
+**First-rental risk:** charging an existing externally billed renter with Charge Card while their external Stripe billing continues **double-bills them**. Before the app bills Regina or Damon, their external Stripe billing must be stopped in Stripe, effective from a week boundary.
+
+**Options for financial accuracy:**
+1. **Now, no development:**
+   - Stripe stays the system of record for externally billed renters.
+   - Use Stripe Collections (or the Stripe Dashboard) for their cash.
+   - The app ledger covers app-billed rentals only.
+   - App revenue reports (vehicle P&L, partner statements) exclude external payments until migrated.
+2. **Per-renter cutover:**
+   - Record the rental in the app.
+   - Cancel the external Stripe billing at a week boundary (Owner, in Stripe).
+   - Then bill weekly with Charge Card.
+   - No historical import: history stays in Stripe.
+3. **Later:** the proposed 0033 reconciliation (link the subscription and import history) after its own review, tests and SQL approval.
+
+**Compatibility with the proposed payment guards:**
+- **Both guards act only on `authenticated` and `anon` sessions.** Every legitimate import or reconciliation path runs as `service_role` (webhook, server functions) or inside SECURITY DEFINER functions owned by the database owner (0033's `stripe_ingest` / `stripe_link`), so it is not blocked.
+- **Install order.** 0033 adds its own trigger on `payments`. The delete guard's reviewed preflight expects `payments_updated_at` only, and the write guard's accepts that plus the delete guard. So install the guards **before** 0033, or regenerate their preflights if 0033 goes first.
+- **Corrections.** With the delete guard, a wrongly imported row can't be deleted from the app. It needs void/refund semantics or approved SQL.
+- **Write guard and 0033 columns.** The write guard's allowlist also freezes 0033's new `payments` columns for user sessions, as intended.
+
