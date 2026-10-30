@@ -763,3 +763,6 @@ The Owner can check read-only in the Stripe Dashboard, or Overview → Stripe Co
 - **Corrections.** With the delete guard, a wrongly imported row can't be deleted from the app. It needs void/refund semantics or approved SQL.
 - **Write guard and 0033 columns.** The write guard's allowlist also freezes 0033's new `payments` columns for user sessions, as intended.
 
+## Payment guards: installation packets prepared (2026-10-30; nothing installed)
+
+See [`PAYMENT-GUARDS-INSTALL-PACKET.md`](PAYMENT-GUARDS-INSTALL-PACKET.md): Packet 1 (payments DELETE guard) first, Packet 2 (write guard) second, each under its own approval. No SQL was run, nothing was published, and Stripe and customer data were not touched.
