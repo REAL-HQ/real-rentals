@@ -167,3 +167,53 @@ Minimum checks, in **live mode**, read-only. Change nothing.
   - If their rental is recorded in REAL RENTALS, do not Charge Card them or add rent charges.
   - Stop their Stripe billing (at a week boundary, Owner-approved) before the app bills them.
 '''
+
+---
+
+## Packet 1 installed (Owner-approved, 2026-10-31)
+
+**Result: INSTALLED AND VERIFIED.** One submission, no retry. The write guard was not installed.
+
+| Step | Time (UTC) | Result |
+|---|---|---|
+| Package bytes | before | `request-payments-delete-guard.sql` sha256 `f2001646…057c` (13005 bytes, ASCII) = approved; `SHA256SUMS` OK; `build.py --check` byte for byte; tree `4fdf5a78` clean |
+| Preflight (read-only) | 02:16 | 12/12 required rows ok. `payments.fks_set_null_only` read in production for the first time: `payments_driver_id_fkey:n,payments_rental_id_fkey:n,payments_vehicle_id_fkey:n` (ok). Informational: 0 payment rows; TRUNCATE held by `anon,authenticated,service_role` (unchanged, separate grant review) |
+| S1 verify-after (read-only) | 02:18 | `all_gates: true` (12 gates); fingerprint `a2b05c35…` = evidence |
+| Insurance-setting verify-after (read-only) | 02:17 | 15/15 ok; exception `false`, 0 audited changes |
+| Insurance-authority verify-after (read-only) | 02:17 | 8/8 ok |
+| Before snapshot (read-only) | 02:17:08 | see below |
+| **Submission** | 02:19:40 | `{"rows":[]}`; evidence txid 120057 |
+| Verify-after (read-only) | 02:20 | 6/6 ok: function body sha256 `dc651bb2…`, SECURITY INVOKER, `search_path=""`, ACL `{postgres=X/postgres}` (no API execute); trigger `zz_payments_delete_guard` tgtype 11, enabled; `payments` fingerprint `20b00031…` = evidence; 1 evidence row; 0031 `d3387761…` |
+| After snapshot (read-only) | 02:20:33 | see below |
+
+**Fingerprint comparison, before → after:**
+
+| Item | Before | After |
+|---|---|---|
+| Catalog excluding the payment guards: functions (public + private) | 94 / `d52cdfa24515` | 94 / `d52cdfa24515` |
+| Triggers | 78 / `f096de5ed1e2` | 78 / `f096de5ed1e2` |
+| All policies | 173, `66a01e279796` | 173, `66a01e279796` |
+| Table ACLs (public, private, storage) | 90 / `a8d6cb061416` | 90 / `a8d6cb061416` |
+| Column ACLs | `ad5992e11508` | `ad5992e11508` |
+| Relations | 84 / `13c2b947afcd` | 84 / `13c2b947afcd` |
+| `payments` columns, ACL, RLS, policies, constraints, FKs | `73063cfb`, unchanged, `true/false`, `873fd273`, `d5a4db9a`, set-null | identical |
+| `apply_payment_refund` | `4b515ba5`, SECURITY DEFINER | identical |
+| `payments` triggers | `payments_updated_at` | `payments_updated_at,zz_payments_delete_guard` (**expected**) |
+| `private.payments_delete_guard()` | absent | present (**expected**) |
+| Payment-guard evidence | none | `payments_delete_guard_v1`: 1 (**expected**) |
+| Write guard | absent | absent |
+| 0031 / S1 trigger / AIS + IVA evidence / IVA setter / insurance trigger | `d3387761…` / 1 / 1 + 1 / `603cc13a` / 1 | identical |
+| Insurance exception / late fees | false / false | false / false |
+| Journals: drizzle 23 (`5cfa7e88…`), supabase 105 (`c092289b`) | | identical |
+| Cron jobs 2–6 (active, schedule, command md5) | `478d975e`, `7a659464`, `454777d5`, `269d0f4c`, `cf4fedd9` | identical |
+| Counts: applications 187, rentals 0, payments 0, autopay/subscription rentals 0, agreements 1, documents 115, screenings 5, vehicles 10, user_roles 7, storage objects 152 | | identical |
+| Fingerprints: vehicles `2b0b7a57`, user_roles `1a2d9611`, app_settings `b9aae8d4`, applications `3eab79ac` | | identical |
+| audit_log | 1125 | 1126 (+1 = the evidence row, `security_migration_verified`, actor `postgres`) |
+
+**Live app:** Release 2, deployment `psr2.7f1b6a2b`, serving HTTP 200 throughout. The two null-deployment cron responses (02:05 before, 02:20 after) are the known 5-second pg_net timeouts; the same pattern appears at 00:30.
+
+**Delete refusal:** proven by the catalog checks above (exact reviewed function body and trigger) and by the local suites (`payments-delete-guard.db` 17/17; production-like preservation 15/15). No delete was attempted in production: payments has 0 rows and production writes beyond the approved request were not authorized.
+
+**`sandbox_exec`:** the `payments` ACL includes `sandbox_exec=ar` (SELECT and INSERT only). This is the platform role investigated on 2026-10-25 (`docs/security/s1-preflight-2026-10-25/SANDBOX-EXEC-FINDINGS.md`). It has no DELETE privilege anywhere, and it is unchanged by this install.
+
+**Rollback** stays available under separate approval only: `request-rollback-payments-delete-guard.sql` sha256 `9759df5d56cdb8d405b4d09ed881444322386c569ec3cd8f069f61bd81907929` (unchanged in the live tree).
