@@ -766,3 +766,7 @@ The Owner can check read-only in the Stripe Dashboard, or Overview → Stripe Co
 ## Payment guards: installation packets prepared (2026-10-30; nothing installed)
 
 See [`PAYMENT-GUARDS-INSTALL-PACKET.md`](PAYMENT-GUARDS-INSTALL-PACKET.md): Packet 1 (payments DELETE guard) first, Packet 2 (write guard) second, each under its own approval. No SQL was run, nothing was published, and Stripe and customer data were not touched.
+
+## Payment guards installation-complete; first-rental acceptance (2026-10-31)
+
+Both payment guards are installed and verified ([`PAYMENT-GUARDS-INSTALL-PACKET.md`](PAYMENT-GUARDS-INSTALL-PACKET.md)). The security baseline, Stripe checks and first-rental checklist are in [`FIRST-RENTAL-ACCEPTANCE-2026-10-31.md`](FIRST-RENTAL-ACCEPTANCE-2026-10-31.md).
