@@ -217,3 +217,51 @@ Minimum checks, in **live mode**, read-only. Change nothing.
 **`sandbox_exec`:** the `payments` ACL includes `sandbox_exec=ar` (SELECT and INSERT only). This is the platform role investigated on 2026-10-25 (`docs/security/s1-preflight-2026-10-25/SANDBOX-EXEC-FINDINGS.md`). It has no DELETE privilege anywhere, and it is unchanged by this install.
 
 **Rollback** stays available under separate approval only: `request-rollback-payments-delete-guard.sql` sha256 `9759df5d56cdb8d405b4d09ed881444322386c569ec3cd8f069f61bd81907929` (unchanged in the live tree).
+
+---
+
+## Packet 2 installed (Owner-approved, 2026-10-31)
+
+**Result: INSTALLED AND VERIFIED.** One submission, no retry. The DELETE guard was not altered.
+
+| Step | Time (UTC) | Result |
+|---|---|---|
+| Package bytes | before | Branch `fix/payments-write-guard-sql` at `ed2ed072` (local = origin, clean); `request-payments-write-guard.sql` sha256 `91ad1504…438d` (14924 bytes, ASCII) = approved; `SHA256SUMS` OK; `build.py --check` byte for byte |
+| Preflight (read-only) | 02:24 | 13/13 rows ok (12 required + 1 informational): target, journal `5cfa7e88…`, 0031, audit insert, private schema, no evidence, objects absent, triggers `payments_updated_at,zz_payments_delete_guard`, **no SECURITY INVOKER function writes payments**, FKs set-null only; 0 payment rows |
+| DELETE guard verify-after (read-only) | 02:25 | 6/6 ok (fingerprint `20b00031…` = evidence) |
+| Insurance-authority verify-after (read-only) | 02:25 | 8/8 ok |
+| Before snapshot (read-only) | 02:25:08 | Identical to the post-Packet-1 snapshot (02:20:33). The catalog fingerprints match the 02:17–02:18 state, when S1 passed all gates and the insurance setting passed 15/15. |
+| **Submission** | 02:26:29 | `{"rows":[]}`; evidence txid 120077 |
+| Write guard verify-after (read-only) | 02:27 | 6/6 ok: function body sha256 `48c9dc5d…`, SECURITY INVOKER, `search_path=""`, ACL `{postgres=X/postgres}` (no API execute); trigger `zz_payments_write_guard` tgtype 23 (BEFORE INSERT OR UPDATE, row), enabled; `payments` fingerprint `358805d7…` = evidence; 1 evidence row; 0031 |
+| DELETE guard integrity (read-only) | 02:27 | Function body `dc651bb2…` and ACL unchanged; trigger tgtype 11 enabled; `payments` fingerprint recomputed with both guard triggers excluded = `20b00031…` = its install evidence. The DELETE guard's own verify-after row `payments.fingerprint_unchanged_since_install` now differs **by design**, because that fingerprint only excludes its own trigger. |
+| After snapshot (read-only) | 02:27:29 | see below |
+
+**Fingerprint comparison, before (02:25:08) → after (02:27:29):**
+- **Unchanged:**
+  - The catalog excluding the payment guards: functions 94 / `d52cdfa24515`, triggers 78 / `f096de5ed1e2`, policies 173 / `66a01e279796`, table ACLs 90 / `a8d6cb061416`, column ACLs `ad5992e11508`, relations 84 / `13c2b947afcd`.
+  - `payments`: columns `73063cfb`, ACL, RLS, policies `873fd273`, constraints `d5a4db9a`, set-null FKs.
+  - `apply_payment_refund`: `4b515ba5`, SECURITY DEFINER.
+  - Protections: 0031 `d3387761…`, the S1 trigger, AIS and IVA evidence, the IVA setter `603cc13a`, the insurance trigger.
+  - Settings: insurance exception false, late fees false.
+  - Journals: drizzle 23 `5cfa7e88…`, supabase 105 `c092289b`.
+  - Cron jobs 2–6: identical.
+  - Counts: applications 187, rentals 0, payments 0, autopay/subscription rentals 0, agreements 1, documents 115, screenings 5, vehicles 10, user_roles 7, storage objects 152.
+  - Fingerprints: vehicles `2b0b7a57`, user_roles `1a2d9611`, app_settings `b9aae8d4`, applications `3eab79ac`.
+- **Expected changes only:**
+  - `payments` triggers gain `zz_payments_write_guard`.
+  - `private.payments_write_guard()` is added.
+  - Evidence `payments_write_guard_v1`: 1.
+  - audit_log 1126 → 1127 (+1 evidence row, `security_migration_verified`, actor `postgres`).
+
+**Live app:** Release 2 `psr2.7f1b6a2b` served HTTP 200 throughout. The only non-200 responses were the known 5-second pg_net timeouts at 02:05 and 02:20.
+
+**Refusals:**
+- Direct changes from a signed-in or anonymous session to status, amounts, balances, links, Stripe fields and every other non-allowlisted column are refused.
+- Non-owed inserts are refused.
+- Server-side `service_role` writes and `apply_payment_refund` are unaffected.
+
+The proof is the exact reviewed function body and trigger verified above, plus the local suites: `payments-write-guard.db` 17/17, production-like preservation 15/15, Pay Now concurrency with both guards 13/13. No test payment or write was attempted in production.
+
+**Limit (unchanged, documented 2026-10-25):** the guards act on the API roles. The platform role `sandbox_exec` (BYPASSRLS, SELECT/INSERT on `payments`, no UPDATE/DELETE) and the database owner remain outside them. Keep Lovable workspace edit access limited to trusted staff.
+
+**Rollback** stays available only under separate approval: `request-rollback-payments-write-guard.sql` sha256 `2ab7d318f947d1cff6b0ba1f2d1f49b2acd442f21985d4644460223dc896a015` (branch `fix/payments-write-guard-sql` @ `ed2ed072`, unchanged). If the app is ever rolled back to before Release 2, roll back the write guard first.
