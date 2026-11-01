@@ -18,7 +18,7 @@ Source: the read-only production snapshot of 2026-10-31 02:27:29 UTC, taken afte
 | Weekly autopay | **Disabled** | `RENTAL_AUTOPAY_START_ENABLED = false` and `RENTAL_SUBSCRIPTION_COORDINATION_ENABLED = false` in `4fdf5a78`; 0 rentals with a subscription or autopay flag |
 | Migration journals | Unchanged | drizzle 23 (`5cfa7e88…`); supabase 105 (`c092289b`) |
 | Scheduled jobs | Unchanged | Cron 2–6 active, command md5s `478d975e`, `7a659464`, `454777d5`, `269d0f4c`, `cf4fedd9` |
-| Customer data | Unchanged by the guard work | applications 187, rentals 0, payments 0; vehicles `2b0b7a57`, user_roles `1a2d9611`, app_settings `b9aae8d4`, applications `3eab79ac` |
+| Customer data | Unchanged by the guard work | applications 187 at baseline (190 at the 0023 preflight, ~8:20 PM ET 2026-10-31), rentals 0, payments 0; vehicles `2b0b7a57`, user_roles `1a2d9611`, app_settings `b9aae8d4`, applications `3eab79ac` |
 
 ## 2. Stripe live configuration
 
@@ -51,9 +51,9 @@ Source: the read-only production snapshot of 2026-10-31 02:27:29 UTC, taken afte
 
 | # | Where (Stripe, **Live** mode unless noted) | Pass |
 |---|---|---|
-| D1 | Developers → Webhooks | One enabled endpoint `https://drivereal.com/api/public/payments/webhook?env=live` subscribed to at least `checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.payment_failed` and `charge.refunded` |
+| D1 | Developers → Webhooks | The enabled live endpoint `we_1TwE5mGsNNO50lXb8MDauwW3` (the Lovable project's `lovable.app` URL + `/api/public/payments/webhook?env=live`; exact URL not recorded in the docs). There is **no** drivereal.com endpoint. On 2026-10-31 (~4:04 PM ET), with Owner approval, `payment_intent.succeeded`, `payment_intent.payment_failed` and `charge.refunded` were added to it; the Owner saw it Active with a 0% error rate. Pass condition: subscribed to at least `checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.payment_failed` and `charge.refunded` |
 | D2 | That endpoint → Event deliveries, last 7 days | No 4xx or 5xx responses. Regina's and Damon's events return 200 and are ignored by design. A 400 means a signing-secret mismatch: stop and report. |
-| D3 | Developers → Webhooks in **Test** mode | No endpoint points at `drivereal.com` (sandbox events must never reach production) |
+| D3 | Developers → Webhooks in **Test** mode | No endpoint points at production (drivereal.com or the Lovable project URL); sandbox events must never reach production. **UNVERIFIED** as of 2026-10-31. |
 | D4 | drivereal.com → Overview → Stripe Collections → **Live**, last 30 days | Loads without an error, and gross collections match Dashboard → Payments for the same range. This proves the live key works. |
 | D5 | Customers → Regina, Damon | Note only how each is billed (subscription, invoice or payment link) and their next charge date |
 
