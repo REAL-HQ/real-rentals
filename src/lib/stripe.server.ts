@@ -16,7 +16,17 @@ export function getConnectionApiKey(env: StripeEnv): string {
     : getEnv('STRIPE_LIVE_API_KEY');
 }
 
+// STAGING-ONLY (feature/staging-rehearsal; never merge): talk to api.stripe.com directly with a Stripe
+// TEST key when STAGING_DIRECT_STRIPE_TEST=1. Refuses live mode and any key that is not sk_test_.
+function createDirectTestClient(env: StripeEnv, options?: { timeout?: number }): Stripe {
+  if (env !== 'sandbox') throw new Error('Staging direct Stripe: live mode refused');
+  const key = getEnv('STRIPE_SANDBOX_API_KEY');
+  if (!key.startsWith('sk_test_')) throw new Error('Staging direct Stripe: only sk_test_ keys are accepted');
+  return new Stripe(key, { apiVersion: '2026-03-25.dahlia', ...(options?.timeout ? { timeout: options.timeout } : {}) });
+}
+
 export function createStripeClient(env: StripeEnv, options?: { timeout?: number }): Stripe {
+  if (process.env.STAGING_DIRECT_STRIPE_TEST === '1') return createDirectTestClient(env, options);
   const connectionApiKey = getConnectionApiKey(env);
   const lovableApiKey = getEnv('LOVABLE_API_KEY');
 
