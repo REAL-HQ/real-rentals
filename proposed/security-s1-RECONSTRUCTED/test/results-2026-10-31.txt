@@ -1,0 +1,53 @@
+PASS request applies once
+PASS replay refused
+PASS functiondef md5 = production
+PASS prosrc sha256 = 34ce374b…
+PASS trigger def applications_active_guard = production
+PASS trigger def applications_updated_at = production
+PASS trigger def zz_application_write_guard = production
+PASS trigger enabled/type/order = production
+PASS owner/proacl/EXECUTE = production (postgres, {postgres=X/postgres}, no anon/auth/service_role, invoker)
+PASS snapshot core.owner = production
+PASS snapshot core.rls = production
+PASS snapshot core.force_rls = production
+PASS snapshot core.columns = production
+PASS snapshot core.triggers = production
+PASS snapshot core.guard_functions = production
+PASS policy names/cmd/permissive/roles = production
+INFO policy node trees differ beyond OIDs (expected: rebuilt from readable text)
+PASS snapshot acl (relacl + every column attacl) = production
+INFO full fingerprint differs only via policy node trees (OIDs) -> not reproducible on a fresh DB
+GATE-FALSE verify-after gate acl_matches_evidence
+PASS verify-after gate anon_insert_unchanged
+PASS verify-after gate authenticated_insert_form_only
+GATE-FALSE verify-after gate evidence_one_well_formed
+GATE-FALSE verify-after gate fingerprint_matches_evidence
+PASS verify-after gate function_exact
+GATE-FALSE verify-after gate journal_exact_23
+PASS verify-after gate not_rolled_back
+GATE-FALSE verify-after gate policies_0031_exact
+PASS verify-after gate protected_columns_closed
+PASS verify-after gate trigger_exact
+PASS verify-after gate trigger_sorts_last
+PASS exploded ACL (154 items) = production evidence post_install_acl
+PASS anon may submit a new application (form columns only; status defaults to new)
+PASS anon may NOT set status on insert (column privilege)
+PASS anon may NOT set a protected column on insert (weekly_rent)
+PASS authenticated may insert form columns only
+PASS authenticated may NOT set status on insert
+PASS staff (authenticated) may NOT change status (refused: column privilege; trigger is second layer)
+PASS S1 trigger refuses status change even if a column grant were added (defense in depth)
+PASS staff (authenticated) may NOT change protected column weekly_rent
+PASS manager (authenticated) may still edit an allowed column (notes), 1 row
+PASS non-staff authenticated cannot update (RLS: 0 rows, no error)
+PASS server (service_role) may approve, 1 row
+PASS server (service_role) may set protected payment columns
+PASS server (postgres owner) may update status
+PASS active guard still enforced for server (no running rental)
+PASS server may activate with a running rental
+PASS updated_at trigger still fires
+PASS anon cannot delete
+PASS sandbox_exec keeps SELECT+INSERT only (no UPDATE)
+PASS guard function not executable by authenticated
+PASS end state: server approved, set rent/deposit, activated with rental (active|350.00|paid|true)
+TOTAL pass=29 fail=0
