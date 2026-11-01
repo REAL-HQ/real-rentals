@@ -59,6 +59,18 @@ Source: the read-only production snapshot of 2026-10-31 02:27:29 UTC, taken afte
 
 D2 passing also proves that the webhook signing secret matches, so the secret names do not need checking separately.
 
+**Results: 2026-10-31 ~9:35 PM ET. Source: VIBE read-only via Stripe connector (live account `acct_1TwBPNGsNNO50lXb`; the connector reaches live mode only). Nothing was changed; no secrets read.**
+
+| # | Result | Evidence |
+|---|---|---|
+| D1 | **PASS** | `we_1TwE5mGsNNO50lXb8MDauwW3`, status `enabled`, URL `https://project--8cf1f99e-71ad-4a93-a47c-bfbe833616d6.lovable.app/api/public/payments/webhook?env=live`, API `2025-03-31.basil`. Events: `checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `charge.refunded`, `customer.subscription.created/updated/deleted`, `invoice.payment_failed`. Second endpoint `we_1TwE5mGsNNO50lXbrbvfIcgN` (api.lovable.dev relay, 11 events) untouched. No drivereal.com endpoint exists. |
+| D2 | **PASS** | No live events with a failed delivery since 2026-07-25 (`delivery_success=false` returns 0). The latest 100 live events (last 7 days) all have `pending_webhooks = 0`. Owner saw a 0% error rate on the Dashboard (signing secret matches). |
+| D3 | **UNVERIFIED** | Test mode is not reachable through the connector. Owner to check Developers → Webhooks in Test mode. |
+| D4 | **UNVERIFIED** | Needs a signed-in back-office session on drivereal.com; not checked. |
+| D5 | **Recorded** | All existing customers are billed by Stripe subscriptions, $350/week, `charge_automatically`, no app metadata. Regina: 1 customer, subscription `active`, next charge 2026-11-02. Damon: 4 Stripe customers; subscriptions: 1 `trialing` (next 2026-11-05), 1 `past_due` (customer delinquent; next period end 2026-11-05), 1 `canceled` 2026-10-31. Also Adam: 1 subscription `canceled` 2026-10-30. Last 7 days: 8 `payment_intent.payment_failed`. **Owner decision needed on Damon** (see below). |
+
+**Open for the Owner (Damon):** Damon has both a `past_due` and a `trialing` subscription on two different Stripe customers. If they are the same person, he may be double-billed once the trial ends on 2026-11-05. Nothing was changed. Review in the Stripe Dashboard.
+
 ## 3. Existing external billing (Regina, Damon)
 
 Their Stripe billing is not touched. The app cannot bill them on its own: no job creates rent charges, autopay is off, and their payments are ignored by the webhook.
