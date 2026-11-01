@@ -30,4 +30,5 @@ for f in "$R"/drizzle/migrations/00{0,1}*.sql "$R"/drizzle/migrations/002[0-2]*.
 done
 $P -d $DB -f "$R/scripts/staging/local-rehearsal/prod-drizzle-ledger.sql" >/dev/null
 echo "drizzle applied: $($P -d $DB -c 'select count(*) from drizzle.__drizzle_migrations')"
+$P -d $DB -f "$R/scripts/staging/local-rehearsal/PRODDEF-3-functions.sql" >/dev/null && echo "production definitions applied (3 functions)"
 $P -d $DB -f "$R/scripts/staging/local-rehearsal/exclusions.sql" && echo "exclusions removed"

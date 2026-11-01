@@ -1,0 +1,39 @@
+{
+ "rows": [
+  {
+   "body": "CREATE OR REPLACE FUNCTION public.enforce_screening_pipeline()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nDECLARE doc_count int; rec_count int;\nBEGIN\n  IF NEW.status IS NOT DISTINCT FROM OLD.status THEN RETURN NEW; END IF;\n  IF NEW.status IN ('docs_pending','insurance_verified','approved','pickup_scheduled','active_renter') THEN\n    IF NEW.interview_completed_at IS NULL THEN RAISE EXCEPTION 'Cannot advance to %: interview must be completed first', NEW.status; END IF;\n    IF NEW.disqualified THEN RAISE EXCEPTION 'Cannot advance to %: driver is disqualified', NEW.status; END IF;\n  END IF;\n  IF NEW.status IN ('insurance_verified','approved','pickup_scheduled','active_renter') THEN\n    SELECT count(DISTINCT category) INTO doc_count FROM public.documents\n      WHERE driver_id = NEW.lead_id AND is_current\n        AND coalesce(review_status,'uploaded') <> 'rejected'\n        AND category IN ('license_front','license_back','insurance','gig_profile');\n    IF doc_count < 4 THEN RAISE EXCEPTION 'Cannot advance to %: all four driver documents required (have %)', NEW.status, doc_count; END IF;\n    IF NEW.insurance_verified IS NOT TRUE THEN RAISE EXCEPTION 'Cannot advance to %: insurance not yet verified', NEW.status; END IF;\n    SELECT count(*) INTO rec_count FROM public.documents\n      WHERE driver_id = NEW.lead_id AND is_current\n        AND coalesce(review_status,'uploaded') <> 'rejected'\n        AND category = 'verification_recording';\n    IF rec_count < 1 THEN RAISE EXCEPTION 'Cannot advance to %: verification call recording required', NEW.status; END IF;\n  END IF;\n  RETURN NEW;\nEND $function$\n",
+   "kind": "function",
+   "name": "enforce_screening_pipeline"
+  },
+  {
+   "body": "CREATE OR REPLACE FUNCTION public.vehicle_media_enhanced_unpublished()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nBEGIN\n  IF NEW.kind = 'ai_enhanced' THEN\n    NEW.published := false;\n    NEW.provenance := 'ai_enhanced';\n  END IF;\n  RETURN NEW;\nEND $function$\n",
+   "kind": "function",
+   "name": "vehicle_media_enhanced_unpublished"
+  },
+  {
+   "body": "CREATE OR REPLACE FUNCTION public.vehicle_media_sync_trigger()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\nBEGIN\n  IF TG_OP = 'DELETE' THEN\n    PERFORM public.sync_vehicle_photos(OLD.vehicle_id);\n    RETURN OLD;\n  END IF;\n  PERFORM public.sync_vehicle_photos(NEW.vehicle_id);\n  IF TG_OP = 'UPDATE' AND OLD.vehicle_id IS DISTINCT FROM NEW.vehicle_id THEN\n    PERFORM public.sync_vehicle_photos(OLD.vehicle_id);\n  END IF;\n  RETURN NEW;\nEND $function$\n",
+   "kind": "function",
+   "name": "vehicle_media_sync_trigger"
+  },
+  {
+   "body": null,
+   "kind": "migration",
+   "name": "20260925160000"
+  },
+  {
+   "body": null,
+   "kind": "migration",
+   "name": "20260925161000"
+  },
+  {
+   "body": null,
+   "kind": "migration",
+   "name": "20260925170000"
+  },
+  {
+   "body": "Installed by supabase/install/20261011180000_contact_status.install.sql from main 31ed33055614705c978f638728d06f0931dee3c1; body sha256 400e1071856e7c4e62fc2a13822afd14ee98b31525b1ebf999f6bf486d6c710e",
+   "kind": "migration",
+   "name": "20261011180000"
+  }
+ ]
+}

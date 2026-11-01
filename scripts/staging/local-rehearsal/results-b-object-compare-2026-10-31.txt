@@ -1,4 +1,4 @@
-objects compared 197 identical (incl. both-absent) 194
+objects compared 197 identical (incl. both-absent) 197
 present in prod, missing locally 0 []
 present locally, absent in prod 0 []
-definition differs 3 ['functions:public.enforce_screening_pipeline', 'functions:public.vehicle_media_enhanced_unpublished', 'functions:public.vehicle_media_sync_trigger']
+definition differs 0 []

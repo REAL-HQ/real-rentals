@@ -65,3 +65,27 @@ Query needed (NOT run; requires Owner approval):
 | 20261011180000_contact_status | `61ccff32…` (repo raw `478627cf…`, stripped `a2b13d41…`, no statement-split variant matched) | text differs in an unknown way | All 5 contact_* columns exist in production (S1 production evidence and column grants). CHECK and index text unverified. Medium until the text is read |
 Recommendation: none of the 4 is shown to introduce an unapproved production difference. For staging, apply the repo files (effects match the evidence).
 If the receipt text read later shows any statement not in the repo file, refuse that migration for staging and record it.
+
+## 6. Update 2026-11-01 — Owner-approved read-only query (t31u), run once at ~12:15 AM ET
+One query (`SET TRANSACTION READ ONLY;`), via Lovable query_database, no retry. It returned only 3 function definitions and 4 receipt statement fields.
+Saved: `scripts/staging/local-rehearsal/production-evidence-t31u-2026-11-01.json`.
+
+**3 functions.** Production vs repo differ **only in comments and whitespace**; they are token-identical after removing both.
+- `enforce_screening_pipeline`: production puts DECLARE/IF…END IF on single lines; same logic, messages, conditions.
+- `vehicle_media_enhanced_unpublished`: the repo adds a 3-line comment and a blank line.
+- `vehicle_media_sync_trigger`: the repo adds a 1-line comment and a blank line.
+Impact: none on schema, security, triggers, permissions or data. The baseline now applies the production text
+(`PRODDEF-3-functions.sql`, labelled), so `pg_get_functiondef` matches byte-for-byte.
+
+**4 receipts (exact).**
+| Migration | Production `statements` | Diff vs repo | Impact |
+|---|---|---|---|
+| 20260925160000 | **NULL** (no statements recorded) | whole repo file vs nothing | Objects identical to production (B comparison). None |
+| 20260925161000 | **NULL** | same | Objects identical. None |
+| 20260925170000 | **NULL** | same | audit_log ACL equals this file's effect (0031 pin). None |
+| 20261011180000 | one note: `Installed by supabase/install/20261011180000_contact_status.install.sql from main 31ed3305…; body sha256 400e1071…` | the repo file sha256 is **exactly `400e1071…`**; the receipt is a provenance note, not SQL | Same body as the repo. None |
+No unapproved production difference was found, so nothing was refused.
+
+**Rerun (all from scratch):** baseline 118 files, 0 failures; 197/197 B objects identical (was 194). Same 197/197 after all packages.
+All 7 packages installed in order; preflights ok; verify-afters 15/15, 8/8, 6/6, 6/6, 7/7. Functional 24/24. S1 29/29.
+Normalized fingerprint `5f8a7d0f…`. The 0031 whole-catalog hash is still local-only (`dbb3fe8e…` ≠ production `c753236e…`, because of the stubbed platform schemas); the package was adapted for it as before.
