@@ -86,3 +86,28 @@ Old staging `bhpdppyxnkokzhlkgcsc` was not touched.
 3. Verify: inventory script, 0031 md5, S1 `all_gates`, 0023 7/7, guard verify-afters, drizzle first-23 md5 (staging timestamps differ, so compare the hash list, not the md5).
 4. Approval D: synthetic seed; then Stripe test keys (masked) and the code patch.
 5. Rollback: delete the new project only.
+
+---
+
+## Update 2026-10-31 ~11:45 PM ET (Owner t24u)
+
+Owner restrictions (t24u): "No production writes, staging migrations, synthetic-data seeding, Stripe configuration or application deployment are authorized in this phase." "Do not install it anywhere yet." "If exact equivalence cannot be demonstrated, report the differences and stop."
+
+### A. New staging project: CREATED
+- `real-rentals-staging-2026-11`, ref **`jcjsdribajbfracrmnkm`**, org REAL HQ, us-east-1, created 2026-11-01 02:33 UTC (10:33 PM ET Oct 31). Cost quoted and confirmed **$0/month** (free plan); no payment or upgrade requested.
+- System id **`7702070854497379551`** (≠ prod `7642734024280108049`, ≠ old staging `7692130048193495360`), PG 17.11, 0 public tables. Recorded in `scripts/staging/env.staging.template` and `scripts/staging/db-guard.sql`.
+- Guard run first: `guard.sh … --db-only` → OK; full mode refuses (no Stripe test keys yet), as intended. The only operation on it was one read-only system-id query that refuses on prod/old staging ids.
+- Old staging `bhpdppyxnkokzhlkgcsc`: untouched (still active).
+
+### B. Production migration investigation (one bounded read-only query, run once)
+Query: `scripts/staging/prod-migration-investigation-readonly.sql`. Results: `staging-prod-migration-investigation-2026-10-31.txt`. Object presence ≠ execution.
+- **`20260628200526`:** 1 statement, statements md5 `af9822778df0c9069e3c7cf6c8c597a7`; creates no table/function/policy/trigger/index/view (by pattern); matches no repo file. **Execution confirmed (journal receipt); content unknown.**
+- **18 Sept files:**
+  - **Migration confirmed executed (exact text = a receipt):** `20260925093000_fix_applicant_uploads` = receipt `20260925132035` (identical to repo file `20260925132035_f19ae6b6…`, i.e. a duplicate).
+  - **Not confirmed executed** (no receipt text match): the other 17.
+  - **Objects present:** tables 19/19, functions 12/12, triggers 14/14, indexes 38/38, view 1/1, columns 67/71, policies 32/42. Missing: 10 policies (e.g. "Staff manage automation workflows/steps", "Staff manage toll charges/incidents/deposit deductions", "Staff manage vehicle media", "Managers manage vehicle finance", 2 storage upload policies, 1 vehicle-doc objects policy) and 4 `vehicles` columns (`lienholder`, `purchase_date`, `purchase_price`, `ownership_type`), which may have been renamed or dropped later.
+  - Definition hashes are recorded per object for later comparison against staging.
+- **Overall:** 101 of 122 repo files have text identical to a production receipt.
+
+### C. S1 reconstruction: BLOCKED (stopped as instructed)
+See `proposed/security-s1-RECONSTRUCTED/README.md`. The guard function body exists only as a sha256 (`34ce374b…`), and the fingerprint/ACL evidence needs a production-identical `applications` catalog. Exact equivalence cannot be demonstrated with current evidence, so no install SQL was written. A local Postgres 17.11 (embedded binaries, `/tmp/pgs1`, port 55499) was started on the box and is ready for the proof once the inputs exist.

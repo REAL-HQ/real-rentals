@@ -1,0 +1,30 @@
+sysid 7642734024280108049
+receipt 20260628200526: {"created_objects": null, "n_statements": 1, "name": "", "statements_md5": "af9822778df0c9069e3c7cf6c8c597a7"}
+20260921120000_fleet_ops_foundation: objects present 89/95; statements-md5 match receipt: none; missing: ['policy:automation_workflows|Staff manage automation workflows', 'policy:automation_steps|Staff manage automation steps', 'policy:objects|Staff manage vehicle doc objects', 'column:vehicles.lienholder', 'column:vehicles.purchase_date', 'column:vehicles.purchase_price']
+20260921180000_rental_activation_guards: objects present 2/2; statements-md5 match receipt: none; missing: []
+20260921200000_charges_incidents_deposits: objects present 23/26; statements-md5 match receipt: none; missing: ['policy:toll_charges|Staff manage toll charges', 'policy:incidents|Staff manage incidents', 'policy:deposit_deductions|Staff manage deposit deductions']
+20260921220000_inspection_signature: objects present 4/4; statements-md5 match receipt: none; missing: []
+20260921234500_followup_email_steps: objects present 0/0; statements-md5 match receipt: none; missing: []
+20260925093000_fix_applicant_uploads: objects present 3/5; statements-md5 match receipt: [['20260925132035']]; missing: ['policy:objects|Scoped upload license photos', 'policy:objects|Scoped upload profile screenshots']
+20260926090000_vehicle_records_phase1: objects present 24/26; statements-md5 match receipt: none; missing: ['policy:vehicle_media|Staff manage vehicle media', 'column:vehicles.ownership_type']
+20260926120000_vehicle_finance_and_public_projection: objects present 4/5; statements-md5 match receipt: none; missing: ['policy:vehicle_finance|Managers manage vehicle finance']
+20260926140000_vehicle_photos_and_import: objects present 16/16; statements-md5 match receipt: none; missing: []
+20260926160000_insurance_effective_date: objects present 1/1; statements-md5 match receipt: none; missing: []
+20260926180000_application_reviewed_at: objects present 3/3; statements-md5 match receipt: none; missing: []
+20260926200000_document_review_status: objects present 5/5; statements-md5 match receipt: none; missing: []
+20260926210000_retire_lead_documents: objects present 3/3; statements-md5 match receipt: none; missing: []
+20260926220000_resume_tokens_and_duration: objects present 3/3; statements-md5 match receipt: none; missing: []
+20260926234500_part1_part2_onboarding: objects present 4/4; statements-md5 match receipt: none; missing: []
+20260927010000_ai_columns_service_role_only: objects present 0/0; statements-md5 match receipt: none; missing: []
+20260927020000_applicant_upload_limits: objects present 2/2; statements-md5 match receipt: none; missing: []
+20260927190000_duration_months_and_trip_history: objects present 0/0; statements-md5 match receipt: none; missing: []
+tables present 19 / 19
+functions present 12 / 12
+policies present 32 / 42
+triggers present 14 / 14
+columns present 67 / 71
+indexes present 38 / 38
+views present 1 / 1
+repo files whose exact text equals a production receipt: 101 of 122
+20260628200526 md5 equals any repo file: False
+files equal to 20260925132035: ['20260925093000_fix_applicant_uploads.sql', '20260925132035_f19ae6b6-92cc-4df9-834d-f7f03682c009.sql']
