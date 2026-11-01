@@ -147,7 +147,7 @@ Minimum checks, in **live mode**, read-only. Change nothing.
 
 | # | Where | Check |
 |---|---|---|
-| S1 | Developers → Webhooks | Enabled live endpoint `we_1TwE5mGsNNO50lXb8MDauwW3` (the Lovable project's `lovable.app` URL + `/api/public/payments/webhook?env=live`; exact URL not recorded in the docs). There is **no** drivereal.com endpoint. On 2026-10-31 (~4:04 PM ET), with Owner approval, `payment_intent.succeeded`, `payment_intent.payment_failed` and `charge.refunded` were added to it; the Owner saw it Active with a 0% error rate. |
+| S1 | Developers → Webhooks | Enabled live endpoint `we_1TwE5mGsNNO50lXb8MDauwW3` (`https://project--8cf1f99e-71ad-4a93-a47c-bfbe833616d6.lovable.app/api/public/payments/webhook?env=live`). There is **no** drivereal.com endpoint. On 2026-10-31 (~4:04 PM ET), with Owner approval, `payment_intent.succeeded`, `payment_intent.payment_failed` and `charge.refunded` were added to it; the Owner saw it Active with a 0% error rate. |
 | S2 | That endpoint → events | It includes `payment_intent.succeeded`, `payment_intent.payment_failed`, `charge.refunded`, `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, and (optional while autopay is off) `invoice.paid`, `invoice.payment_failed` |
 | S3 | That endpoint → recent deliveries | Mostly 2xx. External payments (Regina's, Damon's) are acknowledged 200 and recorded nowhere, by design. 400s mean a signing-secret or handler problem: report them. |
 | S4 | Lovable → project → Secrets (names only) | `PAYMENTS_LIVE_WEBHOOK_SECRET`, `STRIPE_LIVE_API_KEY` and `LOVABLE_API_KEY` exist. Confirm the webhook secret matches the endpoint's signing secret without sharing either value. |
