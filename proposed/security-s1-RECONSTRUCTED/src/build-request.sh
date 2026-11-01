@@ -17,8 +17,8 @@ DO \$v\$ DECLARE f oid := 'private.application_write_guard()'::regprocedure; BEG
  IF pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to((SELECT prosrc FROM pg_proc WHERE oid=f),'UTF8')),'hex') <> '34ce374b15e106597e7c6f9bd8bbb03607c3b7b68ab30e1aad75f4597fa6a292' THEN RAISE EXCEPTION 'function body mismatch'; END IF;
  IF (SELECT pol FROM s1_pre) IS DISTINCT FROM (SELECT pg_catalog.md5(pg_catalog.string_agg(pg_catalog.concat_ws('|',schemaname,tablename,policyname,permissive,roles::text,cmd,qual,with_check),E'\n' ORDER BY policyname)) FROM pg_catalog.pg_policies) THEN RAISE EXCEPTION 'policies changed'; END IF;
 END \$v\$;
-INSERT INTO public.audit_log(entity_type, entity_id, action, actor_role, metadata)
-VALUES ('database_migration','s1_application_write_guard_reconstructed','security_migration_verified', current_user,
+INSERT INTO public.audit_log(entity_type, entity_id, action, actor_role, summary, metadata)
+VALUES ('database_migration','s1_application_write_guard_reconstructed','security_migration_verified', current_user, 'RECONSTRUCTED S1 application write guard installed and verified (staging-only candidate)',
  pg_catalog.jsonb_build_object('package','security-s1 RECONSTRUCTED','reconstructed_from','production catalog 2026-10-31; original bd86d450 unavailable','inner_sql_sha256','$SHA','guard_function_prosrc_sha256','34ce374b15e106597e7c6f9bd8bbb03607c3b7b68ab30e1aad75f4597fa6a292'));
 COMMIT;
 SQL

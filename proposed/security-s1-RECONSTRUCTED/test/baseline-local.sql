@@ -179,7 +179,7 @@ CREATE POLICY "coordinator_application_containment" ON public.applications AS RE
 -- Pre-S1 ACL (Supabase default grants; the exact pre-install ACL was not retrieved)
 GRANT ALL ON public.applications TO anon, authenticated, service_role;
 GRANT SELECT, INSERT ON public.applications TO sandbox_exec;
-CREATE TABLE public.audit_log (id bigserial PRIMARY KEY, entity_type text, entity_id text, action text, actor_role text, metadata jsonb, created_at timestamptz DEFAULT now());
+CREATE TABLE public.audit_log (id bigserial PRIMARY KEY, entity_type text, entity_id text, action text NOT NULL, actor_role text, summary text NOT NULL, metadata jsonb, created_at timestamptz DEFAULT now());
 -- Journal tables (empty locally; journal gates are expected to be false in this rehearsal)
 CREATE SCHEMA drizzle; CREATE TABLE drizzle.__drizzle_migrations (id serial PRIMARY KEY, hash text, created_at bigint);
 CREATE SCHEMA supabase_migrations; CREATE TABLE supabase_migrations.schema_migrations (version text PRIMARY KEY, statements text[], name text);

@@ -1,0 +1,41 @@
+== 0031 v2
+  adapted 0031_guarded_coordinator_containment_v2.sql: 2 line(s) changed
+  INSTALL OK
+== RECONSTRUCTED S1
+  INSTALL OK
+== insurance activation setting
+  adapted preflight-readonly.sql: 1 line(s) changed
+  preflight ok
+  adapted activation_insurance_setting_v1.sql: 1 line(s) changed
+  INSTALL OK
+  adapted verify-after-readonly.sql: 0 line(s) changed
+  verify-after ok (15 rows)
+== insurance verification authority
+  adapted preflight-readonly.sql: 1 line(s) changed
+  preflight ok
+  adapted insurance_verification_authority_v1.sql: 1 line(s) changed
+  INSTALL OK
+  adapted verify-after-readonly.sql: 0 line(s) changed
+  verify-after ok (8 rows)
+== payments DELETE guard
+  adapted preflight-readonly.sql: 1 line(s) changed
+  preflight ok
+  adapted payments_delete_guard_v1.sql: 1 line(s) changed
+  INSTALL OK
+  adapted verify-after-readonly.sql: 0 line(s) changed
+  verify-after ok (6 rows)
+== payments write guard
+  adapted preflight-readonly.sql: 1 line(s) changed
+  preflight ok
+  adapted payments_write_guard_v1.sql: 1 line(s) changed
+  INSTALL OK
+  adapted verify-after-readonly.sql: 0 line(s) changed
+  verify-after ok (6 rows)
+== 0023
+  adapted preflight-readonly.sql: 1 line(s) changed
+  preflight ok
+  adapted application_resume_0023_v1.sql: 1 line(s) changed
+  INSTALL OK
+  adapted verify-after-readonly.sql: 0 line(s) changed
+  verify-after ok (7 rows)
+== installed in order; snapshot saved as db rr_secured_tpl

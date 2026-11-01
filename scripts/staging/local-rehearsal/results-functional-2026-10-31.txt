@@ -1,0 +1,26 @@
+PASS [refused] coordinator cannot approve application
+PASS [refused] manager browser session cannot approve directly
+PASS [refused] driver cannot change own application status
+PASS [allowed] server (service_role) approves application
+PASS [refused] coordinator cannot set insurance verification
+PASS [refused(0 rows)] driver cannot write insurance_verified directly
+PASS [refused] service_role cannot write insurance_verified directly
+PASS [refused] activation refused while insurance unverified (exception OFF)
+PASS [refused] activation refused with ack while exception OFF
+PASS [refused] browser session cannot call checked activation
+PASS [refused] manager cannot flip insurance exception setting
+PASS [refused] service_role cannot write rental_activation setting directly
+PASS [allowed] owner setter callable (sets exception to false; stays OFF)
+PASS [allowed] manager sets insurance verification via setter
+PASS [allowed] server activation succeeds once verified
+PASS [refused] manager browser cannot mark payment paid
+PASS [allowed] server records a payment (paid)
+PASS [refused] manager browser cannot void payment
+PASS [allowed] manager can add an owed charge
+PASS [refused] manager cannot insert a paid row
+PASS [allowed] server voids payment with reason
+PASS [refused] manager cannot delete payment
+PASS [refused] service_role cannot delete payment
+PASS [refused] anon cannot read payments
+end state: active|1|void|2
+TOTAL pass=24 fail=0
