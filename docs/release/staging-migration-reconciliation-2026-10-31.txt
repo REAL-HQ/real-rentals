@@ -1,0 +1,22 @@
+matched 104 prod unmatched [('20260628200526', '')]
+repo files never recorded in prod 18
+   20260921120000_fleet_ops_foundation
+   20260921180000_rental_activation_guards
+   20260921200000_charges_incidents_deposits
+   20260921220000_inspection_signature
+   20260921234500_followup_email_steps
+   20260925093000_fix_applicant_uploads
+   20260926090000_vehicle_records_phase1
+   20260926120000_vehicle_finance_and_public_projection
+   20260926140000_vehicle_photos_and_import
+   20260926160000_insurance_effective_date
+   20260926180000_application_reviewed_at
+   20260926200000_document_review_status
+   20260926210000_retire_lead_documents
+   20260926220000_resume_tokens_and_duration
+   20260926234500_part1_part2_onboarding
+   20260927010000_ai_columns_service_role_only
+   20260927020000_applicant_upload_limits
+   20260927190000_duration_months_and_trip_history
+order consistent with filename order: True
+version differs from filename (Lovable re-stamp): 56
