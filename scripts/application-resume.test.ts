@@ -75,9 +75,9 @@ const filled: ResumeSnapshot = {
 };
 
 describe("application resume flag", () => {
-  it("is a hard false, declared once, and / and /apply do not load the resume module", () => {
-    assert.equal(APPLICATION_RESUME_ENABLED, false);
-    assert.equal(flagValue(flagFile), "false");
+  it("is on, declared once, and / and /apply do not load the resume module", () => {
+    assert.equal(APPLICATION_RESUME_ENABLED, true);
+    assert.equal(flagValue(flagFile), "true");
     const declarations = walkSources("src").filter((path) =>
       /const APPLICATION_RESUME_ENABLED\b/.test(readFileSync(path, "utf8")),
     );
@@ -219,7 +219,7 @@ describe("application resume progress", () => {
 describe("waitlist promotion resume", () => {
   it("shows the minted link in admin and does not email it", () => {
     assert.equal(flagValue(panel), null);
-    assert.equal(APPLICATION_RESUME_ENABLED, false);
+    assert.equal(APPLICATION_RESUME_ENABLED, true);
     assert.doesNotMatch(panel, /from ["']@\/lib\/application-resume["']/);
     assert.doesNotMatch(panel, /sendEmail|sendApplication|sendSms/);
     const load = panel.indexOf('import("@/lib/application-resume")');

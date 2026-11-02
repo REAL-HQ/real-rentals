@@ -4,7 +4,7 @@
  * This file has no database, email, or wizard code, so a flag-off page can
  * import it without loading the resume feature.
  */
-export const APPLICATION_RESUME_ENABLED: boolean = false as boolean;
+export const APPLICATION_RESUME_ENABLED: boolean = true as boolean;
 
 /** Statuses that are no longer an open draft. A resume token is not minted for these. */
 export const CLOSED_RESUME_STATUSES = [

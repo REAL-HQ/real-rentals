@@ -51,7 +51,6 @@ const GATE_BEFORE_AUTH = new Set([
 //    approval fallback's status refusal, and whether an upload is hashed —
 //    and neither flag can stop a live call.
 const MIXED_LIVE = new Set([
-  "portal-access.functions.ts",
   "waitlist.functions.ts",
   "applications.functions.ts",
   "documents.functions.ts",
