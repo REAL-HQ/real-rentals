@@ -37,6 +37,7 @@ const GATE_BEFORE_AUTH = new Set([
   "agreement-pending-signatures.functions.ts",
   "overview-today.functions.ts",
   "portal-payment-history.functions.ts",
+  "application-resume-reminders.functions.ts",
 ]);
 
 // 4. Live features that merely REFERENCE a dark flag for one sub-path. These
