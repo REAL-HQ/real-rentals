@@ -8,7 +8,7 @@ No production, Lovable, old staging or Stripe access; no deploy; no key requeste
 - b000: Lovable `sandbox_exec` role + its default grant (Supabase already has the anon/authenticated/service_role defaults); drizzle ledger table.
 - b001–b012: 118 supabase files (labelled sms_consent GAPFILL included) + drizzle 0000–0022, each batch in one transaction.
 - b013: 23 production ledger rows → first-23 md5 `5cfa7e88…` (= production). b014: production definitions of the 3 functions. b015: exclusions (no-ops).
-- **t35 safeguard**: in the same transaction as each cron-scheduling file (6 supabase + drizzle 0000/0001), every drizzle.com job is unscheduled and its absence asserted.
+- **t35 safeguard**: in the same transaction as each cron-scheduling file (6 supabase + drizzle 0000/0001), every drivereal.com job is unscheduled and its absence asserted.
   Drizzle 0000 itself inserts a 'fleet-inbox' token, so the safeguard deletes it in the same transaction (it never commits) and asserts it is absent.
   This was found by the local replay of the exact submissions, which caught it before staging.
 - Local replay of the exact submissions (`local-replay.sh`, recording pg_cron emulation): 197/197, 0 drivereal jobs, 0 fleet token.
