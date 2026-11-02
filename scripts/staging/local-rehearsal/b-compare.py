@@ -2,7 +2,7 @@
 # Compares local b-objects-readonly.sql output against production's recorded result (JSON file arg 2). LOCAL ONLY.
 import json,subprocess,sys
 db=sys.argv[1]; prodf=sys.argv[2]
-q=open(__file__.rsplit('/',1)[0]+'/b-objects-readonly.sql').read().replace('SET TRANSACTION READ ONLY;','')
+q=open(__file__.rsplit('/',1)[0]+'/b-objects-only-readonly.sql').read().replace('SET TRANSACTION READ ONLY;','')
 loc=subprocess.run(['psql','-h','/tmp','-p','55499','-U','postgres','-qAtX','-d',db,'-c','BEGIN READ ONLY','-c',q,'-c','ROLLBACK'],capture_output=True,text=True).stdout
 loc=json.loads([l for l in loc.splitlines() if l.startswith('{')][0])
 t=open(prodf).read(); prod=None

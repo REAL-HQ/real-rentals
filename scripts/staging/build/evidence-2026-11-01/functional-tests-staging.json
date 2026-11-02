@@ -1,0 +1,180 @@
+{
+ "fail": 0,
+ "pass": 24,
+ "tests": [
+  {
+   "n": 1,
+   "err": "permission denied for table applications",
+   "got": "refused",
+   "name": "coordinator cannot approve application",
+   "expect": "refused"
+  },
+  {
+   "n": 2,
+   "err": "permission denied for table applications",
+   "got": "refused",
+   "name": "manager browser session cannot approve directly",
+   "expect": "refused"
+  },
+  {
+   "n": 3,
+   "err": "permission denied for table applications",
+   "got": "refused",
+   "name": "driver cannot change own application status",
+   "expect": "refused"
+  },
+  {
+   "n": 4,
+   "err": null,
+   "got": "allowed",
+   "name": "server (service_role) approves application",
+   "expect": "allowed"
+  },
+  {
+   "n": 5,
+   "err": "manager_required",
+   "got": "refused",
+   "name": "coordinator cannot set insurance verification",
+   "expect": "refused"
+  },
+  {
+   "n": 6,
+   "err": null,
+   "got": "refused(0 rows)",
+   "name": "driver cannot write insurance_verified directly",
+   "expect": "refused"
+  },
+  {
+   "n": 7,
+   "err": "insurance_decision_manager_rpc_only",
+   "got": "refused",
+   "name": "service_role cannot write insurance_verified directly",
+   "expect": "refused"
+  },
+  {
+   "n": 8,
+   "err": "insurance_not_verified:unverified",
+   "got": "refused",
+   "name": "activation refused while insurance unverified (exception OFF)",
+   "expect": "refused"
+  },
+  {
+   "n": 9,
+   "err": "insurance_not_verified:unverified",
+   "got": "refused",
+   "name": "activation refused with ack while exception OFF",
+   "expect": "refused"
+  },
+  {
+   "n": 10,
+   "err": "permission denied for function activate_rental_checked_tx",
+   "got": "refused",
+   "name": "browser session cannot call checked activation",
+   "expect": "refused"
+  },
+  {
+   "n": 11,
+   "err": "owner_required",
+   "got": "refused",
+   "name": "manager cannot flip insurance exception setting",
+   "expect": "refused"
+  },
+  {
+   "n": 12,
+   "err": "rental_activation_setting_owner_rpc_only",
+   "got": "refused",
+   "name": "service_role cannot write rental_activation setting directly",
+   "expect": "refused"
+  },
+  {
+   "n": 13,
+   "err": null,
+   "got": "allowed",
+   "name": "owner setter callable (sets exception to false; stays OFF)",
+   "expect": "allowed"
+  },
+  {
+   "n": 14,
+   "err": null,
+   "got": "allowed",
+   "name": "manager sets insurance verification via setter",
+   "expect": "allowed"
+  },
+  {
+   "n": 15,
+   "err": null,
+   "got": "allowed",
+   "name": "server activation succeeds once verified",
+   "expect": "allowed"
+  },
+  {
+   "n": 16,
+   "err": "payments_change_only_through_audited_server",
+   "got": "refused",
+   "name": "manager browser cannot mark payment paid",
+   "expect": "refused"
+  },
+  {
+   "n": 17,
+   "err": null,
+   "got": "allowed",
+   "name": "server records a payment (paid)",
+   "expect": "allowed"
+  },
+  {
+   "n": 18,
+   "err": "payments_change_only_through_audited_server",
+   "got": "refused",
+   "name": "manager browser cannot void payment",
+   "expect": "refused"
+  },
+  {
+   "n": 19,
+   "err": null,
+   "got": "allowed",
+   "name": "manager can add an owed charge",
+   "expect": "allowed"
+  },
+  {
+   "n": 20,
+   "err": "payments_new_charge_must_start_owed",
+   "got": "refused",
+   "name": "manager cannot insert a paid row",
+   "expect": "refused"
+  },
+  {
+   "n": 21,
+   "err": null,
+   "got": "allowed",
+   "name": "server voids payment with reason",
+   "expect": "allowed"
+  },
+  {
+   "n": 22,
+   "err": "payments_are_financial_history_void_instead",
+   "got": "refused",
+   "name": "manager cannot delete payment",
+   "expect": "refused"
+  },
+  {
+   "n": 23,
+   "err": "payments_are_financial_history_void_instead",
+   "got": "refused",
+   "name": "service_role cannot delete payment",
+   "expect": "refused"
+  },
+  {
+   "n": 24,
+   "err": "division by zero",
+   "got": "refused",
+   "name": "anon cannot read payments",
+   "expect": "refused"
+  }
+ ],
+ "end_state": "active|1|void|2",
+ "exception_setting": {
+  "updated_at": "2026-11-02T01:27:51.456983+00:00",
+  "updated_by": "00000000-0000-0000-0000-0000000000a1",
+  "allow_activation_without_insurance_verification": false
+ }
+}
