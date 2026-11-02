@@ -26,6 +26,8 @@ import {
   APPLICATION_DOC_GAPS_ROW_CAP,
   type ApplicationDocGapsResult,
 } from "@/lib/application-doc-gaps";
+import { ApplicationResumeReminders } from "./ApplicationResumeReminders";
+import { APPLICATION_RESUME_REMINDERS_ENABLED } from "@/lib/application-resume-reminders-flag";
 import { RecordedRentalCloseout } from "./RecordedRentalCloseout";
 import { RecordRentalDialog } from "./RecordRentalDialog";
 import { RECORD_RENTAL_CONTRACT_ENABLED } from "@/lib/record-rental-contract";
@@ -1321,6 +1323,7 @@ setDocCounts(requiredDocCounts(rows));
       {DOCUMENT_REVIEW_AGING_ENABLED === true ? (
         <DocumentReviewAging canView={canSeeSensitive} result={reviewAging} />
       ) : null}
+      {APPLICATION_RESUME_REMINDERS_ENABLED === true ? <ApplicationResumeReminders /> : null}
       <AdminTableScroll className="max-lg:min-w-0 rounded-lg border border-border bg-white">
           <table className="w-full text-sm max-lg:min-w-[56rem]">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
