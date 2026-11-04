@@ -113,8 +113,6 @@ export function Nav() {
       <div className="flex min-h-14 items-center justify-between gap-2 px-3">
         <div className="flex items-center gap-4">
           {location.pathname !== "/admin" && <Logo />}
-        </div>
-        <div className="flex items-center gap-3">
           {!session && !isCityPage && (
             <PhoneLink
               placement="header"
@@ -128,6 +126,8 @@ export function Nav() {
               )}
             </PhoneLink>
           )}
+        </div>
+        <div className="flex items-center gap-3">
           {authReady && session ? (
             <>
               {(isPartner || isDriver) && (
