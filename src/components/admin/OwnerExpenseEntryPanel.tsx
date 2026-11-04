@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { FileUploader } from "@/components/FileUploader";
 import { createOwnerExpense, listOwnerExpenseChoices } from "@/lib/owner-expense-entry.functions";
 import { EXPENSE_CATEGORIES, todayEastern, type ExpenseCategory } from "@/lib/owner-expense-entry";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { formatVehicleLabel } from "@/lib/vehicle-label";
 
 /**
  * Owner form for one new vehicle expense. Mounted only while
@@ -17,7 +19,7 @@ type Receipt = { path: string; name: string; mime: string };
 export function OwnerExpenseEntryPanel() {
   const load = useServerFn(listOwnerExpenseChoices);
   const save = useServerFn(createOwnerExpense);
-  const [vehicles, setVehicles] = useState<{ id: string; label: string }[]>([]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [vehicleId, setVehicleId] = useState("");
   const [vendorId, setVendorId] = useState("");
@@ -95,7 +97,7 @@ export function OwnerExpenseEntryPanel() {
     }
   }
 
-  const vehicleLabel = vehicles.find((vehicle) => vehicle.id === vehicleId)?.label ?? "Expense";
+  const vehicleLabel = (() => { const v = vehicles.find((vehicle) => vehicle.id === vehicleId); return v ? (v.label || formatVehicleLabel(v)) : "Expense"; })();
 
   return (
     <form onSubmit={submit} className="max-w-xl space-y-4">
@@ -108,9 +110,15 @@ export function OwnerExpenseEntryPanel() {
       {problem && <p className="text-sm text-[#D03020]">{problem}</p>}
       <label className="block text-sm">
         <span className="font-medium">Vehicle</span>
-        <select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2">
-          {vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.label}</option>)}
-        </select>
+        <div className="mt-1">
+          <VehicleCombobox
+            vehicles={vehicles}
+            value={vehicleId || null}
+            onChange={(id) => setVehicleId(id ?? "")}
+            allowNone={false}
+            aria-label="Vehicle"
+          />
+        </div>
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-sm">

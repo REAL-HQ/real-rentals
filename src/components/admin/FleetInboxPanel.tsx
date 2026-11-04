@@ -15,6 +15,8 @@ import { DOC_GROUPS, docClassLabel, FIELD_LABELS, HIGH_RISK, type Change } from 
 import { EmptyState, StatusPill } from "@/components/admin/ui";
 import { FileUploader } from "@/components/FileUploader";
 import { ServiceTransactionReview } from "@/components/admin/ServiceTransactionReview";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { formatVehicleLabel } from "@/lib/vehicle-label";
 import { fmtDateTime } from "@/lib/date-format";
 
 const BATCH_LABEL: Record<string, string> = {
@@ -266,7 +268,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
     docs: new Set(d.items.filter((i: any) => i.status !== "duplicate").map((i: any) => i.document_id)).size,
   };
   const itemById = Object.fromEntries(d.items.map((i: any) => [i.id, i]));
-  const vehLabel = (id: string) => { const v = d.vehicles.find((x: any) => x.id === id); return v ? `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}${v.unit_number ? ` · ${v.unit_number}` : ""}${v.vin ? ` · …${String(v.vin).slice(-6)}` : ""}` : "—"; };
+  const vehLabel = (id: string) => { const v = d.vehicles.find((x: any) => x.id === id); return v ? formatVehicleLabel(v) : "—"; };
   const creates = selected.filter((p: any) => dec[p.id].action === "create");
   const matches = selected.filter((p: any) => dec[p.id].action === "match");
   const ignores = selected.filter((p: any) => dec[p.id].action === "ignore");
@@ -367,11 +369,21 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
                 </select>
               )}
               {it.document_id && it.status !== "duplicate" && d.vehicles.length > 0 && (
-                <select aria-label="Attach to vehicle" value="" onChange={async (e) => { if (!e.target.value) return; const r = await attach({ data: { itemId: it.id, vehicleId: e.target.value } }); r.ok ? toast.success("Attached") : toast.error(r.error); }}
-                  className="min-h-[36px] rounded-md border border-[#EDEDF0] bg-white text-xs px-2 max-w-[180px]">
-                  <option value="">Attach to vehicle…</option>
-                  {d.vehicles.map((v: any) => <option key={v.id} value={v.id}>{vehLabel(v.id)}</option>)}
-                </select>
+                <div className="min-w-[12rem] max-w-[16rem]">
+                  <VehicleCombobox
+                    vehicles={d.vehicles as any}
+                    value={null}
+                    onChange={async (id) => {
+                      if (!id) return;
+                      const r = await attach({ data: { itemId: it.id, vehicleId: id } });
+                      r.ok ? toast.success("Attached") : toast.error(r.error);
+                    }}
+                    placeholder="Attach to vehicle…"
+                    allowNone={false}
+                    aria-label="Attach to vehicle"
+                    triggerClassName="h-9 text-xs"
+                  />
+                </div>
               )}
             </div>
           ))}
@@ -554,9 +566,16 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isMan
             </ActionBtn>
           )}
           {isManager && dec.action === "match" && (
-            <select value={dec.vehicleId ?? ""} onChange={(e) => setOne({ vehicleId: e.target.value })} className="min-h-[44px] rounded-md border border-[#EDEDF0] bg-white text-xs px-2 max-w-full">
-              {vehicles.map((v) => <option key={v.id} value={v.id}>{vehLabel(v.id)}</option>)}
-            </select>
+            <div className="min-w-[14rem] max-w-full">
+              <VehicleCombobox
+                vehicles={vehicles as any}
+                value={dec.vehicleId ?? null}
+                onChange={(id) => setOne({ vehicleId: id ?? undefined })}
+                allowNone={false}
+                aria-label="Match vehicle"
+                triggerClassName="min-h-[44px] text-xs"
+              />
+            </div>
           )}
           <ActionBtn active={dec.action === "ignore"} onClick={() => setOne({ action: dec.action === "ignore" ? null : "ignore" })}>Ignore</ActionBtn>
           {isManager && p.kind !== "new" && changes.some((c) => c.safe) && (

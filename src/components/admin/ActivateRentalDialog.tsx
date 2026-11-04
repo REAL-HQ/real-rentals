@@ -15,6 +15,7 @@ import {
 } from "@/lib/activation-readiness";
 import { MicroLabel } from "./ui";
 import { ActivationRequirementList } from "./ActivationRequirementList";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
 
 type VehicleLite = {
   id: string;
@@ -22,7 +23,9 @@ type VehicleLite = {
   make: string | null;
   model: string | null;
   trim?: string | null;
+  unit_number?: string | null;
   license_plate?: string | null;
+  vin?: string | null;
   status?: string | null;
   weekly_rate?: number | null;
   deposit?: number | null;
@@ -161,20 +164,16 @@ export function ActivateRentalDialog({
         <ModalBody className="space-y-5">
           <div>
             <MicroLabel>Vehicle</MicroLabel>
-            <select
-              value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
-              className={`${inputCls} mt-1.5`}
-            >
-              <option value="">Select A Vehicle…</option>
-              {selectable.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {[v.year, v.make, v.model, v.trim].filter(Boolean).join(" ")}
-                  {v.license_plate ? ` · ${v.license_plate}` : ""}
-                  {v.status === "onboarding" ? " (Needs Setup)" : v.status && v.status !== "available" ? ` (${v.status})` : ""}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1.5">
+              <VehicleCombobox
+                vehicles={selectable as any}
+                value={vehicleId || null}
+                onChange={(id) => setVehicleId(id ?? "")}
+                placeholder="Select A Vehicle…"
+                allowNone={false}
+                aria-label="Vehicle"
+              />
+            </div>
           </div>
 
           {checking ? (

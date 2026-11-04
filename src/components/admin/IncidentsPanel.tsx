@@ -20,13 +20,18 @@ import { listIncidentAging } from "@/lib/incident-aging.functions";
 import { INCIDENT_CHARGE_PREP_ENABLED } from "@/lib/incident-charge-prep-flag";
 import { listIncidentChargePrep } from "@/lib/incident-charge-prep.functions";
 import type { IncidentChargePrepRow } from "@/lib/incident-charge-prep";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { VEHICLE_COMBOBOX_SELECT } from "@/lib/vehicle-label";
 
 type VehicleLite = {
   id: string;
   year: number | null;
   make: string | null;
   model: string | null;
+  unit_number?: string | null;
   license_plate: string | null;
+  vin?: string | null;
+  status?: string | null;
 };
 type Vendor = { id: string; name: string };
 
@@ -61,7 +66,7 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
     try {
       const [list, v, vd] = await Promise.all([
         fetchList({ data: { status: filter } }),
-        supabase.from("vehicles").select("id,year,make,model,license_plate").order("make"),
+        supabase.from("vehicles").select(VEHICLE_COMBOBOX_SELECT).order("make"),
         supabase.from("vendors").select("id,name").eq("is_active", true).order("name"),
       ]);
       setRows(list);
@@ -524,18 +529,15 @@ function IncidentForm({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <MicroLabel>Vehicle</MicroLabel>
-              <select
-                value={f.vehicleId}
-                onChange={(e) => set("vehicleId", e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
-              >
-                {vehicles.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {[v.year, v.make, v.model].filter(Boolean).join(" ")}
-                    {v.license_plate ? ` · ${v.license_plate}` : ""}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-1.5">
+                <VehicleCombobox
+                  vehicles={vehicles as any}
+                  value={f.vehicleId || null}
+                  onChange={(id) => set("vehicleId", id ?? "")}
+                  allowNone={false}
+                  aria-label="Vehicle"
+                />
+              </div>
             </div>
             <div>
               <MicroLabel>When</MicroLabel>

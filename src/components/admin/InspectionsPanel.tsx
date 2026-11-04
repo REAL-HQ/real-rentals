@@ -28,6 +28,8 @@ import {
   type InspectionDetail,
 } from "@/lib/inspections.functions";
 import { fmtDateTime } from "@/lib/date-format";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { VEHICLE_COMBOBOX_SELECT, formatVehicleLabel } from "@/lib/vehicle-label";
 
 type Row = {
   id: string;
@@ -45,7 +47,10 @@ type VehicleLite = {
   year: number | null;
   make: string | null;
   model: string | null;
+  unit_number?: string | null;
   license_plate: string | null;
+  vin?: string | null;
+  status?: string | null;
 };
 type Template = { id: string; name: string; inspection_type: string; is_active: boolean };
 
@@ -84,7 +89,7 @@ export function InspectionsPanel() {
         )
         .order("started_at", { ascending: false })
         .limit(100),
-      supabase.from("vehicles").select("id,year,make,model,license_plate").order("make"),
+      supabase.from("vehicles").select(VEHICLE_COMBOBOX_SELECT).order("make"),
       supabase
         .from("inspection_templates")
         .select("id,name,inspection_type,is_active")
@@ -113,7 +118,7 @@ export function InspectionsPanel() {
     const v = vehicles.find((x) => x.id === id);
     if (!v) return id.slice(0, 8);
     const base = [v.year, v.make, v.model].filter(Boolean).join(" ").trim();
-    return v.license_plate ? `${base} · ${v.license_plate}` : base || id.slice(0, 8);
+    return formatVehicleLabel(v) || id.slice(0, 8);
   };
 
   if (openId) {
@@ -261,19 +266,17 @@ function StartForm({
         <div className="p-4 space-y-4">
           <div>
             <MicroLabel>Vehicle</MicroLabel>
-            <select
-              value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
-              className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
-            >
-              {vehicles.length === 0 ? <option value="">No vehicles</option> : null}
-              {vehicles.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {[v.year, v.make, v.model].filter(Boolean).join(" ")}
-                  {v.license_plate ? ` · ${v.license_plate}` : ""}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1.5">
+              <VehicleCombobox
+                vehicles={vehicles}
+                value={vehicleId || null}
+                onChange={(id) => setVehicleId(id ?? "")}
+                allowNone={false}
+                placeholder={vehicles.length ? "Select vehicle…" : "No vehicles"}
+                disabled={vehicles.length === 0}
+                aria-label="Vehicle"
+              />
+            </div>
           </div>
           <div>
             <MicroLabel>Checklist</MicroLabel>

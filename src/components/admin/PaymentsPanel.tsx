@@ -32,6 +32,7 @@ import { changePaymentStatus } from "@/lib/payment-status.functions";
 import { releaseUnconfirmedPayment } from "@/lib/payment-unconfirmed.functions";
 import { chargeCardOnRental } from "@/lib/rental-payments.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
 
 const STATUSES = [
   "upcoming",
@@ -446,22 +447,13 @@ function AddPayment({
               ))}
             </SelectContent>
           </Select>
-          <Select
-            value={form.vehicle_id || "none"}
-            onValueChange={(v) => setForm({ ...form, vehicle_id: v === "none" ? null : v })}
-          >
-            <SelectTrigger className="bg-white text-foreground">
-              <SelectValue placeholder="Vehicle" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">— None —</SelectItem>
-              {vehicles.map((v) => (
-                <SelectItem key={v.id} value={v.id}>
-                  {v.year} {v.make} {v.model}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <VehicleCombobox
+            vehicles={vehicles as any}
+            value={form.vehicle_id}
+            onChange={(id) => setForm({ ...form, vehicle_id: id })}
+            placeholder="Vehicle"
+            aria-label="Vehicle"
+          />
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
               <SelectTrigger className="bg-white text-foreground">
