@@ -213,7 +213,7 @@ export function Nav() {
           ) : !session && !isCityPage ? (
             <Link
               to="/admin"
-              className="hidden sm:inline-flex items-center text-[13px] font-medium text-muted-foreground hover:text-foreground transition"
+              className="hidden sm:inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-white px-4 text-[13px] font-medium text-foreground hover:bg-soft transition active:scale-95"
             >
               Log In
             </Link>
