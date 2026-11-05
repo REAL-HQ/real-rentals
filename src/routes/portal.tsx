@@ -75,6 +75,7 @@ import {
   CheckCircle2,
   XCircle,
   RefreshCw,
+  Store,
 } from "lucide-react";
 import { ApplicantHome } from "@/components/portal/ApplicantHome";
 import { APPLICATION_TIMELINE_ENABLED } from "@/lib/application-timeline";
@@ -92,6 +93,9 @@ import { getDriverReceipts } from "@/lib/driver-receipts.functions";
 import { DriverHelpLink } from "@/components/portal/DriverHelp";
 import { DRIVER_HELP_ENABLED } from "@/lib/driver-help";
 import { MyCarCard } from "@/components/portal/MyCarCard";
+import { RenterPortalCard } from "@/components/portal/RenterPortalCard";
+import { RenterVendors } from "@/components/portal/RenterVendors";
+import { RENTER_PORTAL_ENABLED } from "@/lib/renter-portal";
 import { MY_CAR_CARD_ENABLED } from "@/lib/my-car-card";
 import { getMyCar } from "@/lib/my-car-card.functions";
 import { tierFromRoles, type StaffTier } from "@/lib/roles";
@@ -117,6 +121,7 @@ const TABS = [
   { id: "deposit", label: "Deposit", icon: Wallet },
   { id: "maintenance", label: "Maintenance", icon: Wrench },
   { id: "issue", label: "Report Issue", icon: AlertTriangle },
+  { id: "vendors", label: "Vendors", icon: Store },
   { id: "referrals", label: "Referrals", icon: Users },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ] as const;
@@ -352,6 +357,7 @@ function Portal() {
 }
 
 function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => void }) {
+  const previewId = usePreviewDriver();
   const fetchDashboard = usePortalRead(getDriverDashboard);
   const { data, isLoading, error } = useQuery({
     queryKey: ["driver-dashboard"],
@@ -381,7 +387,23 @@ function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => voi
     ) : tab === "referrals" ? (
       <ReferralsView />
     ) : tab === "vehicle" ? (
-      <VehicleView data={data} />
+      <div className="space-y-6">
+        {RENTER_PORTAL_ENABLED ? (
+          <RenterPortalCard
+            onOpenDocuments={() => onNavigate("documents")}
+            onOpenSettings={() => onNavigate("settings")}
+            previewDriverId={previewId}
+            readOnly={!!previewId}
+          />
+        ) : null}
+        <VehicleView data={data} />
+      </div>
+    ) : tab === "vendors" ? (
+      RENTER_PORTAL_ENABLED ? (
+        <RenterVendors previewDriverId={previewId} readOnly={!!previewId} />
+      ) : (
+        <Stub label="Vendors" />
+      )
     ) : tab === "payments" ? (
       <PaymentsView data={data} />
     ) : tab === "deposit" ? (

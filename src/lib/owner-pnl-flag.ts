@@ -8,6 +8,7 @@
  * a browser CSV.
  *
  * No environment variable can open it. Activation is changing this constant
- * and rebuilding. Leave it false until an owner does that.
+ * and rebuilding. Enabled so Overview / Owner P&L show live Eastern Time month figures.
  */
-export const OWNER_PNL_ENABLED = false;
+
+export const OWNER_PNL_ENABLED = true;

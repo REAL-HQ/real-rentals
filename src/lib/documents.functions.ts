@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { HOLD_VERIFIED_CATEGORIES, holdsVerifiedUntilReview, reviewFollowUp, supersedeQuery } from "@/lib/insurance-review-hold";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import {
@@ -273,13 +274,17 @@ export async function registerDocument(
 
   // Single-slot categories only. See MULTI_FILE_CATEGORIES.
   if (!MULTI_FILE_CATEGORIES.includes(args.category)) {
-    await admin
-      .from("documents")
-      .update({ is_current: false, superseded_by: row.id })
-      .eq("driver_id", args.applicationId)
-      .eq("category", args.category)
-      .eq("is_current", true)
-      .neq("id", row.id);
+    // Renter insurance: a verified card stays current until this upload is reviewed.
+    await supersedeQuery(
+      admin
+        .from("documents")
+        .update({ is_current: false, superseded_by: row.id })
+        .eq("driver_id", args.applicationId)
+        .eq("category", args.category)
+        .eq("is_current", true)
+        .neq("id", row.id),
+      holdsVerifiedUntilReview(args.category, args.uploadedByRole ?? "driver"),
+    );
   }
 
   return { id: row.id as string };
@@ -721,13 +726,17 @@ export async function persistConfirmedDocument(
       throw new Error(stamped.error.message || "Could not record the content hash");
     }
   }
-  await admin
-    .from("documents")
-    .update({ is_current: false, superseded_by: row.id })
-    .eq("driver_id", fields.driver_id)
-    .eq("category", fields.category)
-    .eq("is_current", true)
-    .neq("id", row.id);
+  // Renter insurance: a verified card stays current until this upload is reviewed.
+  await supersedeQuery(
+    admin
+      .from("documents")
+      .update({ is_current: false, superseded_by: row.id })
+      .eq("driver_id", fields.driver_id)
+      .eq("category", fields.category)
+      .eq("is_current", true)
+      .neq("id", row.id),
+    holdsVerifiedUntilReview(fields.category, fields.uploaded_by_role),
+  );
   return { id: row.id as string };
 }
 
@@ -1044,6 +1053,33 @@ export const setDocumentReview = createServerFn({ method: "POST" })
       })
       .eq("id", data.documentId);
     if (error) throw new Error(error.message);
+
+    // Renter insurance held for review: finish the swap now that the team decided.
+    if (doc.driver_id && (HOLD_VERIFIED_CATEGORIES as readonly string[]).includes(doc.category)) {
+      const others = await supabaseAdmin
+        .from("documents")
+        .select("id")
+        .eq("driver_id", doc.driver_id)
+        .eq("category", doc.category)
+        .eq("is_current", true)
+        .eq("review_status", "verified")
+        .neq("id", doc.id)
+        .limit(1);
+      const follow = reviewFollowUp(doc.category, data.status, { is_current: doc.is_current !== false }, (others.data ?? []).length > 0);
+      if (follow === "supersede_others") {
+        const { error: supErr } = await supabaseAdmin
+          .from("documents")
+          .update({ is_current: false, superseded_by: doc.id })
+          .eq("driver_id", doc.driver_id)
+          .eq("category", doc.category)
+          .eq("is_current", true)
+          .neq("id", doc.id);
+        if (supErr) throw new Error(supErr.message);
+      } else if (follow === "demote_rejected") {
+        const { error: demErr } = await supabaseAdmin.from("documents").update({ is_current: false }).eq("id", doc.id);
+        if (demErr) throw new Error(demErr.message);
+      }
+    }
 
     await logAudit(actor, {
       action: `document.${data.status === "uploaded" ? "review_cleared" : data.status}`,

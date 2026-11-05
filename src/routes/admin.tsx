@@ -68,6 +68,8 @@ import { BillingHealthPanel } from "@/components/admin/BillingHealthPanel";
 import { BILLING_HEALTH_ENABLED } from "@/lib/billing-health-flag";
 import { FinanceDataQualityPanel } from "@/components/admin/FinanceDataQualityPanel";
 import { ExpenseCategoriesPanel } from "@/components/admin/ExpenseCategoriesPanel";
+import { RenterVendorsPanel } from "@/components/admin/RenterVendorsPanel";
+import { RENTER_PORTAL_ENABLED } from "@/lib/renter-portal";
 import { FINANCE_DATA_QUALITY_ENABLED } from "@/lib/finance-data-quality-flag";
 import { FINANCE_EXPENSE_CATEGORIES_ENABLED } from "@/lib/expense-categories-flag";
 import { RentAgingPanel } from "@/components/admin/RentAgingPanel";
@@ -983,6 +985,7 @@ function Admin() {
             {tab === "maintenance" && <MaintenancePanel autoOpenAdd={urlAdd} />}
             {tab === "shops" && <ShopsPanel />}
             {tab === "vendors" && <VendorsPanel />}
+            {RENTER_PORTAL_ENABLED && tab === "vendors" && <RenterVendorsPanel />}
             {tab === "inspections" && <InspectionsPanel />}
             {tab === "charges" && <ChargesPanel />}
             {tab === "stripe_match" && <StripeMatchPanel />}

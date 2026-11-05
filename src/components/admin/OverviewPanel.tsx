@@ -194,6 +194,8 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const [overdueCount, setOverdueCount] = useState(0);
   const [overdueRenters, setOverdueRenters] = useState(0);
   const [overdueAmt, setOverdueAmt] = useState(0);
+  const [activeRentalCount, setActiveRentalCount] = useState<number | null>(null);
+  const [opsRefreshKey, setOpsRefreshKey] = useState(0);
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
   const [rangeKey, setRangeKey] = useState<RangeKey>("last_7");
   const [customRange, setCustomRange] = useState<Partial<DayRange>>({});
@@ -219,6 +221,12 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   }, []);
 
   useEffect(() => {
+    const onFocus = () => setOpsRefreshKey((n) => n + 1);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  useEffect(() => {
     (async () => {
       const now = new Date();
       const d84 = new Date(now.getTime() - 84 * 864e5).toISOString();
@@ -238,6 +246,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         billed12wQ,
         nextReturnQ,
         allVehiclesQ,
+        activeRentalsQ,
       ] = await Promise.all([
         // Collections: due and not received. `current` is issued-but-not-yet-due
         // and is deliberately absent.
@@ -265,9 +274,15 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           .select(
             "id, status, archived_at, current_odometer, last_oil_change_miles, oil_interval_miles, last_tire_date, last_brake_inspection_date",
           ),
+        // Live active rentals (not vehicle.status), so the board and Overview agree.
+        supabase
+          .from("rentals")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "active"),
       ]);
 
       setFleet(summarizeFleet((allVehiclesQ.data ?? []) as { status: string | null; archived_at: string | null }[]));
+      setActiveRentalCount(typeof activeRentalsQ.count === "number" ? activeRentalsQ.count : null);
 
       // Hot Prospect is not a column you can filter on — it is derived from
       // the application, the screening and the documents. That derivation
@@ -330,7 +345,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       setNextReturn((nextReturnQ.data?.[0]?.end_date as string | undefined) ?? null);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [opsRefreshKey]);
 
   const { total, rentable, rented, reserved, needsSetup } = fleet;
   const vehiclesAvail = fleet.available;
@@ -375,7 +390,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
     return () => {
       live = false;
     };
-  }, [range, compare, canSeeCollections]);
+  }, [range, compare, canSeeCollections, opsRefreshKey]);
 
   const revenueDelta = useMemo(() => {
     // No prior revenue is not a 100% rise; it is a comparison that cannot be
@@ -659,10 +674,19 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
             <div className="grid grid-cols-3 gap-2">
               <OpStat label="Available Now" value={String(vehiclesAvail)} />
               <OpStat
-                label="In Service"
-                value={String(rented)}
+                label="Active Rentals"
+                value={activeRentalCount === null ? "—" : String(activeRentalCount)}
               />
               <OpStat label="Next Return" value={shortDate(nextReturn)} />
+            </div>
+            <div className="mt-3">
+              <Link
+                to="/admin"
+                search={{ tab: "active_rentals" }}
+                className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]"
+              >
+                Open Active Rentals <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
           </div>
         </SectionCard>
