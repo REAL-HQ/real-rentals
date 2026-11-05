@@ -6,6 +6,7 @@ import { Wrench, Plus, X, AlertTriangle, Clock, Gauge, Check } from "lucide-reac
 import { AdminTableScroll } from "./AdminTableScroll";
 import { StatusPill, EmptyState } from "./ui";
 import { fmtDate } from "@/lib/date-format";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
 
 type Row = {
   id: string;
@@ -80,7 +81,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
       supabase
         .from("vehicles")
         .select(
-          "id, year, make, model, status, current_odometer, last_oil_change_miles, oil_interval_miles, last_tire_date, last_brake_inspection_date",
+          "id, unit_number, year, make, model, license_plate, vin, status, current_odometer, last_oil_change_miles, oil_interval_miles, last_tire_date, last_brake_inspection_date",
         )
         .order("created_at", { ascending: false }),
     ]);
@@ -438,17 +439,13 @@ function NewMaintenanceForm({
             <X className="w-4 h-4" />
           </button>
         </div>
-        <select
-          value={vehicleId}
-          onChange={(e) => setVehicleId(e.target.value)}
-          className="w-full rounded border border-border bg-white px-3 py-2 text-sm"
-        >
-          {vehicles.map((v) => (
-            <option key={v.id} value={v.id}>
-              {`${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim()}
-            </option>
-          ))}
-        </select>
+        <VehicleCombobox
+          vehicles={vehicles as any}
+          value={vehicleId || null}
+          onChange={(id) => setVehicleId(id ?? "")}
+          allowNone={false}
+          aria-label="Vehicle"
+        />
         <input
           value={item}
           onChange={(e) => setItem(e.target.value)}

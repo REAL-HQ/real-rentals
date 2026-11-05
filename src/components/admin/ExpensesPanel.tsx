@@ -33,6 +33,8 @@ import {
   easternLedgerRange,
   monthLabel,
 } from "@/lib/expense-receipt-gaps";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { VEHICLE_COMBOBOX_SELECT, formatVehicleLabel } from "@/lib/vehicle-label";
 
 // Expenses and per-vehicle P&L.
 //
@@ -84,17 +86,10 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
   useEffect(() => {
     supabase
       .from("vehicles")
-      .select("id,year,make,model,license_plate")
+      .select(VEHICLE_COMBOBOX_SELECT)
       .order("make")
       .then(({ data }) => {
-        setVehicles(
-          (data ?? []).map((v: any) => ({
-            id: v.id,
-            label:
-              `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim() +
-              (v.license_plate ? ` · ${v.license_plate}` : ""),
-          })),
-        );
+        setVehicles((data as any) ?? []);
       });
   }, []);
 
@@ -406,18 +401,16 @@ function Ledger({
   return (
     <div className="space-y-4 max-lg:min-w-0">
       <div className="flex items-center gap-2 flex-wrap max-lg:flex-col max-lg:items-stretch">
-        <select
-          value={vehicleFilter}
-          onChange={(e) => setVehicleFilter(e.target.value)}
-          className="rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:w-full max-lg:min-w-0"
-        >
-          <option value="all">All Vehicles</option>
-          {vehicles.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.label}
-            </option>
-          ))}
-        </select>
+        <div className="min-w-[14rem] max-lg:w-full">
+          <VehicleCombobox
+            vehicles={vehicles}
+            value={vehicleFilter === "all" ? null : vehicleFilter}
+            onChange={(id) => setVehicleFilter(id ?? "all")}
+            placeholder="All Vehicles"
+            noneLabel="All Vehicles"
+            aria-label="Filter by vehicle"
+          />
+        </div>
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
@@ -699,17 +692,13 @@ function ExpenseForm({
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 max-lg:min-w-0">
           <Field label="Vehicle" full>
-            <select
-              value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
-              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:min-w-0"
-            >
-              {vehicles.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
+            <VehicleCombobox
+              vehicles={vehicles}
+              value={vehicleId || null}
+              onChange={(id) => setVehicleId(id ?? "")}
+              allowNone={false}
+              aria-label="Vehicle"
+            />
           </Field>
 
           <Field label="Category">

@@ -13,19 +13,26 @@ import type { OwnerExpenseDraft } from "./owner-expense-entry";
 export const listOwnerExpenseChoices = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => d)
-  .handler(async ({ context }): Promise<{ vehicles: { id: string; label: string }[]; vendors: { id: string; name: string }[] }> => {
+  .handler(async ({ context }): Promise<{ vehicles: { id: string; unit_number: string | null; year: number | null; make: string | null; model: string | null; license_plate: string | null; vin: string | null; status: string | null; label: string }[]; vendors: { id: string; name: string }[] }> => {
     if (!OWNER_EXPENSE_ENTRY_ENABLED) throw new Error("Owner expense entry is off");
     const { data: roleRows, error: roleError } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
     if (roleError || !tierAllows(tierFromRoles((roleRows ?? []).map((row) => String(row.role))), "owner")) throw new Error("Forbidden");
     const [vehicles, vendors] = await Promise.all([
-      context.supabase.from("vehicles").select("id,year,make,model,license_plate").order("make", { ascending: true }).limit(1000),
+      context.supabase.from("vehicles").select("id,unit_number,year,make,model,license_plate,vin,status").order("make", { ascending: true }).limit(1000),
       context.supabase.from("vendors").select("id,name").order("name", { ascending: true }).limit(1000),
     ]);
     if (vehicles.error || vendors.error) throw new Error(vehicles.error?.message ?? vendors.error?.message ?? "Could not load expenses");
     return {
-      vehicles: (vehicles.data ?? []).map((vehicle) => ({
+      vehicles: (vehicles.data ?? []).map((vehicle: any) => ({
         id: vehicle.id,
-        label: [vehicle.year, vehicle.make, vehicle.model, vehicle.license_plate].filter((part) => part !== null && String(part).trim() !== "").join(" "),
+        unit_number: vehicle.unit_number ?? null,
+        year: vehicle.year ?? null,
+        make: vehicle.make ?? null,
+        model: vehicle.model ?? null,
+        license_plate: vehicle.license_plate ?? null,
+        vin: vehicle.vin ?? null,
+        status: vehicle.status ?? null,
+        label: [vehicle.unit_number, vehicle.year, vehicle.make, vehicle.model, vehicle.license_plate].filter(Boolean).join(" · "),
       })),
       vendors: (vendors.data ?? []).map((vendor) => ({ id: vendor.id, name: vendor.name })),
     };

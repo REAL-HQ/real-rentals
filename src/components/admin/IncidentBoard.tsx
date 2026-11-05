@@ -18,6 +18,8 @@ import {
   type IncidentStatus,
   type IncidentType,
 } from "@/lib/incident-board";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { VEHICLE_COMBOBOX_SELECT } from "@/lib/vehicle-label";
 
 type VehicleChoice = { id: string; label: string };
 
@@ -76,7 +78,7 @@ export function IncidentBoard() {
     if (!logging) return;
     void supabase
       .from("vehicles")
-      .select("id,unit_number,year,make,model,license_plate")
+      .select(VEHICLE_COMBOBOX_SELECT)
       .is("archived_at", null)
       .order("unit_number")
       .then(({ data, error }) => {
@@ -84,13 +86,7 @@ export function IncidentBoard() {
           toast.error(error.message);
           return;
         }
-        setVehicles(
-          (data ?? []).map((row) => {
-            const name = [row.year, row.make, row.model].filter(Boolean).join(" ");
-            const label = [row.unit_number ? `Unit ${row.unit_number}` : null, name || null, row.license_plate || null].filter(Boolean).join(" · ");
-            return { id: row.id, label: label || "Vehicle" };
-          }),
-        );
+        setVehicles((data as any) ?? []);
       });
   }, [logging]);
 
@@ -160,12 +156,14 @@ export function IncidentBoard() {
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm">
               <span className="mb-1 block text-xs text-muted-foreground">Vehicle</span>
-              <select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm" required>
-                <option value="">Choose a Vehicle</option>
-                {vehicles.map((vehicle) => (
-                  <option key={vehicle.id} value={vehicle.id}>{vehicle.label}</option>
-                ))}
-              </select>
+              <VehicleCombobox
+                vehicles={vehicles}
+                value={vehicleId || null}
+                onChange={(id) => setVehicleId(id ?? "")}
+                placeholder="Choose a Vehicle"
+                allowNone={false}
+                aria-label="Vehicle"
+              />
             </label>
             <label className="text-sm">
               <span className="mb-1 block text-xs text-muted-foreground">Type</span>
