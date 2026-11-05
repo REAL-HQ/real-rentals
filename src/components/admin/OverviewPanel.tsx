@@ -1,7 +1,6 @@
 import { paymentOverlap } from "@/lib/payment-overlap";
 import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/lib/revenue-state";
 import { tierFromRoles, tierAllows } from "@/lib/roles";
-import { StripeCollections } from "./StripeCollections";
 import { OVERVIEW_TODAY_ENABLED } from "@/lib/overview-today-flag";
 import LeadPriorities from "./LeadPriorities";
 import OverviewToday from "./OverviewToday";
@@ -9,19 +8,17 @@ import { BookingFollowupSlot } from "./BookingFollowupSlot";
 import { BookingConversion } from "./BookingConversion";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
+import { displayPersonName } from "@/lib/display-normalize";
 import {
   Car,
   CreditCard,
   Wrench,
   ArrowUpRight,
   Plus,
-  Flame,
   CheckCircle2,
   ChevronDown,
   TrendingUp,
   Receipt,
-  CalendarDays,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -35,9 +32,16 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill, ReadinessMetrics } from "./ui";
-import { isHotProspect, compareReadiness, type ReadinessResult } from "@/lib/readiness";
-import { summarizeFleet, type FleetSummary } from "@/lib/fleet-summary";
+import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill } from "./ui";
+import { compareReadiness, type ReadinessResult } from "@/lib/readiness";
+import {
+  summarizeFleet,
+  summarizeFleetOccupancy,
+  activeRentalVehicleIds,
+  type FleetSummary,
+  type FleetStatusMismatch,
+} from "@/lib/fleet-summary";
+import { buildWeeklyBilledCollected, OVERVIEW_REVENUE_TYPES } from "@/lib/overview-weekly-revenue";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
 import { MaintenanceDueTile } from "./MaintenanceLog";
 import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
@@ -91,9 +95,9 @@ type WeekPoint = { label: string; iso: string; collected: number; billed: number
  * deposits. A deposit is the renter's money held against damage — it is on the
  * balance sheet, not the income statement, and counting it made a good week
  * look better than it was. The old Weekly Revenue figure summed every paid
- * row regardless of type, deposits included.
+ * row regardless of type, deposits included. Shared with Billed vs Collected.
  */
-const REVENUE_TYPES = ["rent", "late_fee", "other"] as const;
+const REVENUE_TYPES = OVERVIEW_REVENUE_TYPES;
 
 /**
  * What counts as collections.
@@ -129,37 +133,6 @@ function shortDate(iso?: string | null) {
   if (!iso) return "—";
   return fmtDate(iso);
 }
-/**
- * How long ago the person applied, counted in whole calendar days so an
- * application filed at 11pm still reads "Today" a few minutes later and
- * "Yesterday" the next morning.
- */
-function appliedAgo(iso?: string | null) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const now = new Date();
-  const days = Math.floor(
-    (new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() -
-      new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) /
-      86_400_000,
-  );
-  if (days <= 0) return "Today";
-  if (days === 1) return "Yesterday";
-  return `${days} Days Ago`;
-}
-/**
- * The "Applied Oct 1, 2026 · 6 days ago" line on a Hot Prospect card. Built
- * from the application's own created_at — never reviewed_at or last contact —
- * and says so plainly when that date is missing instead of guessing.
- */
-function appliedLine(iso?: string | null) {
-  const rel = appliedAgo(iso);
-  if (!rel) return "Date Unknown";
-  const d = new Date(iso as string);
-  return `Applied ${fmtDate(d)} · ${rel}`;
-}
-
 export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
   const client=useQueryClient();
   const [boundary,setBoundary]=useState<RevenueSession>({epoch:0,ready:false,collections:false});
@@ -188,6 +161,8 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
 
 function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
   const [fleet, setFleet] = useState<FleetSummary>(() => summarizeFleet([]));
+  const [fleetMismatches, setFleetMismatches] = useState<FleetStatusMismatch[]>([]);
+  const [opsUpdatedAt, setOpsUpdatedAt] = useState<Date | null>(null);
   // Null, not 0, until the read lands. A rendered 0 reads as "nobody
   // applied"; the truth before the answer arrives is "we do not know yet",
   // and after a failure it is "we could not find out".
@@ -259,11 +234,15 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           .in("status", [...COLLECTIONS_WATCH_STATUSES]),
         supabase
           .from("payments")
-          .select("net_collected, paid_date")
+          .select("net_collected, paid_date, type")
           .in("status", ["paid", "refunded"])
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", d84),
-        supabase.from("payments").select("amount, due_date").gte("due_date", d84),
+        supabase
+          .from("payments")
+          .select("amount, due_date, type")
+          .in("type", REVENUE_TYPES as unknown as string[])
+          .gte("due_date", d84),
         supabase
           .from("rentals")
           .select("end_date")
@@ -277,15 +256,24 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           .select(
             "id, status, archived_at, current_odometer, last_oil_change_miles, oil_interval_miles, last_tire_date, last_brake_inspection_date",
           ),
-        // Live active rentals (not vehicle.status), so the board and Overview agree.
+        // Live active rentals drive occupancy; vehicle.status alone can lag.
         supabase
           .from("rentals")
-          .select("id", { count: "exact", head: true })
+          .select("id, vehicle_id", { count: "exact" })
           .eq("status", "active"),
       ]);
 
-      setFleet(summarizeFleet((allVehiclesQ.data ?? []) as { status: string | null; archived_at: string | null }[]));
-      setActiveRentalCount(typeof activeRentalsQ.count === "number" ? activeRentalsQ.count : null);
+      const vehicleRows = (allVehiclesQ.data ?? []) as {
+        id: string;
+        status: string | null;
+        archived_at: string | null;
+      }[];
+      const activeRows = (activeRentalsQ.data ?? []) as { id: string; vehicle_id: string | null }[];
+      const occupancy = summarizeFleetOccupancy(vehicleRows, activeRentalVehicleIds(activeRows));
+      const { mismatches, ...fleetSummary } = occupancy;
+      setFleet(fleetSummary);
+      setFleetMismatches(mismatches);
+      setActiveRentalCount(typeof activeRentalsQ.count === "number" ? activeRentalsQ.count : activeRows.length);
 
       // Hot Prospect is not a column you can filter on — it is derived from
       // the application, the screening and the documents. That derivation
@@ -318,38 +306,18 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       setOverdueRenters(new Set(overdueRows.map((r) => r.driver_id).filter(Boolean)).size);
 
 
-      // 12-week weekly buckets
-      const bucketStart = (d: Date) => {
-        const c = new Date(d);
-        c.setHours(0, 0, 0, 0);
-        c.setDate(c.getDate() - c.getDay());
-        return c;
-      };
-      const start = bucketStart(new Date(now.getTime() - 11 * 7 * 864e5));
-      const series: WeekPoint[] = [];
-      for (let i = 0; i < 12; i++) {
-        const d = new Date(start.getTime() + i * 7 * 864e5);
-        series.push({
-          label: fmtDate(d),
-          iso: d.toISOString(),
-          collected: 0,
-          billed: 0,
-        });
-      }
-      for (const p of (pay12wQ.data ?? []) as any[]) {
-        if (!p.paid_date) continue;
-        const w = bucketStart(new Date(p.paid_date));
-        const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
-        if (idx >= 0 && idx < 12) series[idx].collected += Number(p.net_collected ?? 0);
-      }
-      for (const p of (billed12wQ.data ?? []) as any[]) {
-        if (!p.due_date) continue;
-        const w = bucketStart(new Date(p.due_date));
-        const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
-        if (idx >= 0 && idx < 12) series[idx].billed += Number(p.amount ?? 0);
-      }
-      setWeekly(series);
+      // 12-week weekly buckets — same revenue types as the Revenue card
+      // (multi-method collected; deposits excluded from billed and collected).
+      setWeekly(
+        buildWeeklyBilledCollected({
+          now,
+          collected: (pay12wQ.data ?? []) as { paid_date: string | null; net_collected: number | null; type: string | null }[],
+          billed: (billed12wQ.data ?? []) as { due_date: string | null; amount: number | null; type: string | null }[],
+          label: (d) => fmtDate(d),
+        }),
+      );
       setNextReturn((nextReturnQ.data?.[0]?.end_date as string | undefined) ?? null);
+      setOpsUpdatedAt(new Date());
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opsRefreshKey]);
@@ -442,23 +410,6 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
     [readiness],
   );
 
-  /**
-   * Hot Prospect: worth prioritising for follow-up. Not approved, not decision
-   * ready, not verified, not rental ready. The rule lives in the readiness
-   * module — qualification, coverage and no critical concern — and this strip
-   * only renders what it returns.
-   */
-  const hot = useMemo(() => {
-    if (!canSeeReadiness) return [];
-    return recentApps
-      .flatMap((a) => {
-        const r = readinessIndex.get(a.id);
-        return r && isHotProspect(r) ? [{ app: a, readiness: r }] : [];
-      })
-      .sort((x, y) => compareReadiness(x.readiness, y.readiness))
-      .slice(0, 5);
-  }, [recentApps, readinessIndex, canSeeReadiness]);
-
   const sortedApps = useMemo(() => {
     const rows = [...recentApps];
     const t = (a: ApplicantRow) => new Date(a.created_at ?? 0).getTime();
@@ -495,76 +446,14 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
 
       {OVERVIEW_TODAY_ENABLED && canSeeCollections && <OverviewToday />}
 
-      <LeadPriorities isManager={canSeeCollections} />
+      <LeadPriorities
+        isManager={canSeeCollections}
+        refreshKey={opsRefreshKey}
+        readiness={readiness}
+        canSeeReadiness={canSeeReadiness}
+      />
       <BookingFollowupSlot />
       <BookingConversion canView={canSeeCollections} />
-
-      {/* Priority strip — who is worth calling first, above everything else.
-          Absent entirely when there is nobody, rather than an empty module.
-
-          Hot Prospect means "worth prioritising for follow-up" and nothing
-          more. It is not approval, not Decision Ready, not verification. So
-          the strip carries the readiness state alongside the name: a hot
-          prospect who is still 55% known says so on its face. */}
-      {hot.length > 0 && (
-        <div className="rounded-2xl border border-[#D03020]/25 bg-[rgba(208,48,32,0.03)] px-4 py-3">
-          <div className="flex items-center lg:gap-2 max-lg:flex-wrap max-lg:gap-x-2 max-lg:gap-y-1">
-            <Flame className="w-4 h-4 text-[#D03020] max-lg:shrink-0" strokeWidth={2} />
-            <span className="text-[12px] font-semibold text-[#111114]">Hot Prospects</span>
-            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#D03020] text-white text-[10px] font-semibold">
-              {hot.length}
-            </span>
-            <span className="text-[11px] text-[#9A9AA3]">Worth Following Up First</span>
-            <Link
-              to="/admin"
-              search={{ tab: "drivers" }}
-              className="ml-auto shrink-0 inline-flex items-center gap-1 text-[12px] font-medium text-[#D03020] hover:opacity-80"
-            >
-              {hot.length === 1 ? "View" : "View All"} <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-          {/* One card per person, and the whole card is the link. The previous
-              version was a wrapped row of text links, so the click target was
-              the name itself — a few pixels tall, on the busiest strip on the
-              page. */}
-          <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
-            {hot.map(({ app, readiness }) => (
-              <li key={app.id} className="min-w-0">
-                <Link
-                  to="/admin"
-                  search={{ tab: "drivers", id: app.id }}
-                  className="group flex h-full flex-col gap-2 rounded-xl border border-[#EDEDF0] bg-white p-3 hover:border-[#D03020]/40 hover:shadow-sm transition"
-                >
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="flex items-center justify-between gap-2 min-w-0">
-                      <span className="text-[14px] font-semibold text-[#111114] truncate group-hover:text-[#D03020] transition-colors">
-                        {app.full_name ? displayPersonName(app.full_name) : "Unnamed"}
-                      </span>
-                      <ReadinessStatePill state={readiness.state} short />
-                    </span>
-                    {/* Full width of the card: at phone width the badge and the
-                        name share the row above, so this line gets the room it
-                        needs instead of ending in an ellipsis. */}
-                    <span className="flex min-w-0 items-center gap-1 text-[11px] text-[#9A9AA3]">
-                      <CalendarDays className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{appliedLine(app.created_at)}</span>
-                    </span>
-                  </span>
-                  <ReadinessMetrics result={readiness} />
-                  {readiness.positives.length > 0 && (
-                    <span className="text-[11px] text-[#9A9AA3] line-clamp-2">
-                      {readiness.positives
-                        .slice(0, 2)
-                        .map((f) => displayTitleCase(f.detail))
-                        .join(" · ")}
-                    </span>
-                  )}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       {/* Four cards. Each control matches what the card is for — a plus only
           where something gets created. */}
@@ -644,15 +533,33 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         <SectionCard
           className="lg:col-span-3"
           title="Fleet Snapshot"
-          subtitle="Utilization And Current Inventory"
+          subtitle={
+            fleetMismatches.length
+              ? `Utilization From Active Rentals · ${fleetMismatches.length} status ${fleetMismatches.length === 1 ? "mismatch" : "mismatches"}`
+              : "Utilization From Active Rentals"
+          }
           right={
-            <Link
-              to="/admin"
-              search={{ tab: "vehicles" }}
-              className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]"
-            >
-              Open Fleet <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
+            <div className="flex items-center gap-3">
+              {opsUpdatedAt && (
+                <span className="text-[11px] text-[#9A9AA3]">
+                  Updated {opsUpdatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setOpsRefreshKey((n) => n + 1)}
+                className="text-[12px] text-[#55555E] hover:text-[#D03020]"
+              >
+                Refresh
+              </button>
+              <Link
+                to="/admin"
+                search={{ tab: "vehicles" }}
+                className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]"
+              >
+                Open Fleet <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
           }
         >
           <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-6 lg:grid-cols-[auto_1fr]">
@@ -713,7 +620,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
               />
               <OpStat label="Next Return" value={shortDate(nextReturn)} />
             </div>
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
               <Link
                 to="/admin"
                 search={{ tab: "active_rentals" }}
@@ -721,6 +628,11 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
               >
                 Open Active Rentals <ArrowUpRight className="w-3.5 h-3.5" />
               </Link>
+              {fleetMismatches.length > 0 && (
+                <span className="text-[11px] text-[#8A5A00]">
+                  {fleetMismatches.length} vehicle {fleetMismatches.length === 1 ? "status does" : "statuses do"} not match active rentals
+                </span>
+              )}
             </div>
           </div>
         </SectionCard>
@@ -874,8 +786,8 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
             title="Billed vs Collected"
             subtitle={
               collectionRate == null
-                ? "Last 12 Weeks · No Invoices Yet"
-                : `Last 12 Weeks · ${collectionRate}% Collection Rate${worst ? ` · Worst Week ${shortDate(worst.iso)}` : ""}`
+                ? "Last 12 Weeks · Rent / Fees · Multi-Method Collected"
+                : `Last 12 Weeks · ${collectionRate}% Collection Rate · Multi-Method${worst ? ` · Worst Week ${shortDate(worst.iso)}` : ""}`
             }
             right={
               <div className="flex max-w-[11rem] flex-wrap justify-end max-lg:gap-x-3 max-lg:gap-y-0.5 sm:max-w-none lg:max-w-none lg:flex-nowrap lg:items-baseline lg:justify-start lg:gap-3">
@@ -949,7 +861,6 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           </SectionCard>
         );
       })()}
-      {canSeeCollections && <StripeCollections />}
     </div>
   );
 }

@@ -3,7 +3,7 @@
  *
  * The unit suite (admin-reads-access.test.mjs) proves the server sends the
  * right thing. This proves the screens RENDER it: that a Manager still gets
- * counts, Hot Prospects and readiness, that a Coordinator gets a working
+ * counts, Lead Priorities and readiness, that a Coordinator gets a working
  * dashboard with none of the evidence on it, and — the one that matters
  * most — that a failed read says so instead of drawing a confident zero.
  *
@@ -146,8 +146,8 @@ console.log("\n================= a Manager, with applications refused in the bro
   ok(!/Counts Unavailable/.test(body), "  and are not reported unavailable");
   ok(!/Could Not Load Applications/.test(body), "the list does not claim it failed");
   ok(await page.locator('option[value="readiness"]').count() > 0, "the Readiness sort is offered");
-  ok(/Hot Prospects/.test(body), "the Hot Prospect strip renders from the server's verdict");
-  ok(/Worth Following Up First/.test(body), "  with its heading intact");
+  ok(/Lead Priorities/.test(body), "Lead Priorities renders on Overview");
+  ok(/Who needs attention/.test(body), "  with its heading intact");
   ok(restReads.filter((t) => t === "applications").length === 0,
     "the browser made NO direct applications request at all");
   ok(errors.length === 0, `no page errors${errors.length ? ": " + errors[0] : ""}`);
@@ -161,7 +161,8 @@ console.log("\n================= a Coordinator");
   const body = await page.locator("body").innerText();
   ok(/Dana Reyes/.test(body), "a Coordinator still sees the recent applicants");
   ok(/1 New/.test(body) && /1 Pending/.test(body), "and the operational counts");
-  ok(!/Hot Prospect/i.test(body), "the Hot Prospect strip is withheld");
+  // Readiness badges on Lead Priorities cards are manager-only; Coordinators still see the queue.
+  ok(/Lead Priorities/.test(body), "a Coordinator still sees Lead Priorities");
   ok(await page.locator('option[value="readiness"]').count() === 0,
     "the Readiness sort is not offered to a tier with no readiness");
   for (const s of ["R123-456-78-901-0", "1991-07-02", "4242", "1200 N Ashley", "licences/"])

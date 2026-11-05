@@ -160,7 +160,7 @@ const list = readFileSync("src/components/admin/LeadPriorities.tsx", "utf8");
 check(list.includes("<LeadResponseReport isManager={isManager} />"), "Lead Priorities hosts the report for a manager");
 check(list.includes("open-messages") && list.includes("Lead Priorities"), "the existing lead list stays in place");
 const overview = readFileSync("src/components/admin/OverviewPanel.tsx", "utf8");
-check(overview.includes("<LeadPriorities isManager={canSeeCollections} />") && !overview.includes("LeadResponseReport"), "Overview passes the manager bit and does not gain a second lead screen");
+check(overview.includes("LeadPriorities") && overview.includes("isManager={canSeeCollections}") && overview.includes("refreshKey={opsRefreshKey}") && !overview.includes("LeadResponseReport"), "Overview passes the manager bit, shared refresh, and does not gain a second lead screen");
 const admin = readFileSync("src/routes/admin.tsx", "utf8");
 check(!admin.includes("LeadResponseReport"), "the report does not add a navigation entry");
 const leads = readFileSync("src/components/admin/LeadsPanel.tsx", "utf8");

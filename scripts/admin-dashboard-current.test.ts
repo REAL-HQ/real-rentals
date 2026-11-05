@@ -14,5 +14,8 @@ describe("admin dashboard currency", () => {
     expect(src).toMatch(/opsRefreshKey/);
     expect(src).toMatch(/Open Active Rentals/);
     expect(src).toMatch(/window\.addEventListener\("focus"/);
+    expect(src).toMatch(/summarizeFleetOccupancy/);
+    expect(src).not.toMatch(/Hot Prospects/);
+    expect(src).not.toMatch(/<StripeCollections/);
   });
 });

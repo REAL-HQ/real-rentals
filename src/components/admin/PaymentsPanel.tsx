@@ -33,6 +33,7 @@ import { releaseUnconfirmedPayment } from "@/lib/payment-unconfirmed.functions";
 import { chargeCardOnRental } from "@/lib/rental-payments.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { StripeCollections } from "./StripeCollections";
 
 const STATUSES = [
   "upcoming",
@@ -83,6 +84,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
   const [sort, setSort] = useState<"due_asc" | "due_desc" | "amount_desc">("due_asc");
   const [showAdd, setShowAdd] = useState(!!autoOpenAdd);
   const [showManual, setShowManual] = useState(false);
+  const [paymentsSection, setPaymentsSection] = useState<"ledger" | "stripe">("ledger");
 
   useEffect(() => {
     supabase
@@ -205,6 +207,36 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
 
   return (
     <div className="max-lg:min-w-0">
+      <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Payments sections">
+        {(
+          [
+            ["ledger", "Payments"],
+            ["stripe", "Stripe Collections"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={paymentsSection === key}
+            onClick={() => setPaymentsSection(key)}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+              paymentsSection === key
+                ? "bg-[#111114] text-white"
+                : "border border-border bg-white text-[#55555E] hover:border-[#D03020]"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {paymentsSection === "stripe" ? (
+        <div className="rounded-2xl border border-[#EDEDF0] bg-white p-4 sm:p-5">
+          <StripeCollections />
+        </div>
+      ) : (
+      <>
       {STRIPE_UNMATCHED_PAYMENTS_ENABLED ? <UnmatchedStripePayments /> : null}
       {(BILLING_PM_UPDATE_LINK_ENABLED || BILLING_DAY_CHANGE_ENABLED || BILLING_ONE_TIME_EXTENSION_ENABLED) ? <BillingControls /> : null}
       <div className="admin-sticky-bar mb-4 flex flex-col gap-2 pb-2 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2">
@@ -396,6 +428,8 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
           onClose={() => setShowAdd(false)}
           onSave={add}
         />
+      )}
+      </>
       )}
     </div>
   );

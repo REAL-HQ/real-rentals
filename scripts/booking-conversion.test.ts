@@ -219,9 +219,11 @@ describe("screens", () => {
     const nav = readFileSync(new URL("../src/components/admin/nav-config.ts", import.meta.url), "utf8");
     const view = readFileSync(new URL("../src/components/admin/BookingConversion.tsx", import.meta.url), "utf8");
     assert.match(bookings, /<BookingConversion canView=\{canViewConversion\} \/>/);
+    assert.match(overview, /<LeadPriorities[\s\S]*?isManager=\{canSeeCollections\}/);
+    assert.match(overview, /refreshKey=\{opsRefreshKey\}/);
     assert.match(
       overview,
-      /<LeadPriorities isManager=\{canSeeCollections\} \/>\s*<BookingFollowupSlot \/>\s*<BookingConversion canView=\{canSeeCollections\} \/>/,
+      /<BookingFollowupSlot \/>\s*<BookingConversion canView=\{canSeeCollections\} \/>/,
     );
     assert.match(admin, /canViewConversion=\{tierAllows\(tier, "manager"\)\}/);
     assert.equal(nav.includes("booking_conversion"), false);
