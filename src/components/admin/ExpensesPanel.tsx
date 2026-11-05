@@ -35,6 +35,7 @@ import {
 } from "@/lib/expense-receipt-gaps";
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
 import { VEHICLE_COMBOBOX_SELECT, formatVehicleLabel } from "@/lib/vehicle-label";
+import { BulkReceiptUpload } from "@/components/admin/BulkReceiptUpload";
 
 // Expenses and per-vehicle P&L.
 //
@@ -127,6 +128,8 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
           </div>
         </div>
       </div>
+
+      <BulkReceiptUpload vehicles={vehicles as any} />
 
       {view === "pl" ? (
         <ProfitAndLoss from={range.from} to={range.to} />
