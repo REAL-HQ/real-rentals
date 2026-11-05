@@ -2910,6 +2910,7 @@ function DriverDetail({
         <ActivateRentalDialog
           driver={driver}
           vehicles={vehicles}
+          isOwner={isOwner}
           onClose={() => setActivateOpen(false)}
           onActivated={() => {
             setActivateOpen(false);

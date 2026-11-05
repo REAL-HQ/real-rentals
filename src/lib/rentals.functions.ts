@@ -6,6 +6,8 @@ import { z } from "zod";
 import { notReadyMessage } from "@/lib/vehicle-readiness";
 import {
   decideActivation,
+  OWNER_APPROVED_RENTAL_REASON,
+  isOwnerApprovedRentalPreset,
   driverRequirementBlockers,
   activationRequirements,
   businessToday,
@@ -334,6 +336,7 @@ export const activateRental = createServerFn({ method: "POST" })
       overrideBlockers: data.overrideBlockers,
       overrideReason: data.overrideReason,
       insuranceExceptionAck: data.insuranceExceptionAck,
+      actorIsOwner: actor.tier === "owner",
     });
     if (!decision.ok) return { ok: false, blockers: decision.blockers };
     const overridden = decision.overridden;
@@ -398,10 +401,13 @@ export const activateRental = createServerFn({ method: "POST" })
     const vehicleLabel =
       [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(" ") || "your vehicle";
     const summary = `Activated ${vehicleLabel} for ${app.full_name ?? app.email}`;
+    const auditReason = isOwnerApprovedRentalPreset(data.overrideReason)
+      ? OWNER_APPROVED_RENTAL_REASON
+      : (data.overrideReason ?? null);
     const overridePayload = overridden.length
       ? {
           blockers: overridden.map((b) => ({ code: b.code, message: b.message })),
-          reason: data.overrideReason ?? null,
+          reason: auditReason,
           by: actor.userId,
           at: new Date().toISOString(),
         }
