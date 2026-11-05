@@ -340,6 +340,9 @@ function Admin() {
       phone: string | null;
       created_at: string | null;
       status: string | null;
+      type?: "application" | "payment";
+      title?: string | null;
+      body?: string | null;
     }>
   >([]);
   const [notifsFailed, setNotifsFailed] = useState(false);
@@ -843,15 +846,17 @@ function Admin() {
                       return (
                         <DropdownMenuItem
                           key={n.id}
-                          onSelect={() => void navigate({ to: "/admin", search: { tab: "drivers", id: n.id } })}
+                          onSelect={() => void navigate(n.type === "payment"
+                            ? { to: "/admin", search: { tab: "payments" } }
+                            : { to: "/admin", search: { tab: "drivers", id: n.id } })}
                           className="block px-3 py-2.5 rounded-none border-b border-[#F4F4F6] last:border-0"
                         >
                           <div className="flex items-center gap-2">
                             {isNew && <span className="w-1.5 h-1.5 rounded-full bg-[#D03020]" />}
-                            <div className="text-[13px] font-medium text-[#111114] truncate flex-1">New Lead: {n.full_name || n.email || "Unnamed"}</div>
+                            <div className="text-[13px] font-medium text-[#111114] truncate flex-1">{n.type === "payment" ? n.title : `New Lead: ${n.full_name || n.email || "Unnamed"}`}</div>
                           </div>
                           <div className="text-[11px] text-[#55555E] mt-0.5 truncate">
-                            {n.email || n.phone || "—"} ·{" "}
+                            {(n.type === "payment" ? n.body : n.email || n.phone) || "—"} ·{" "}
                             {created ? fmtDateTime(created) : ""}
                           </div>
                         </DropdownMenuItem>

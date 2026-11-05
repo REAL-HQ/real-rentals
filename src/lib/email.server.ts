@@ -172,7 +172,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
   }
 }
 
-const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_ops", "staff_invite", "test_email", "driver_issue"]);
+const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_ops", "staff_invite", "test_email", "driver_issue", "payment_team_alert"]);
 
 /** Why this recipient got this email — accurate per workflow, never promotional. */
 export function emailReason(workflow: string | undefined): string {
@@ -602,6 +602,57 @@ export async function sendPastDueReminderEmail(args: PastDueArgs): Promise<void>
       <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay Balance</a>`);
   await sendEmail({ to: args.to, subject: `Past Due — ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_past_due" } });
 }
+
+type DueTomorrowArgs = { to: string; firstName: string | null; amount: number; dueDate: string; autopay?: boolean };
+
+export async function sendPaymentDueTomorrowEmail(args: DueTomorrowArgs): Promise<void> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const how = args.autopay
+    ? "Your card on file will be charged automatically. Make sure it is up to date."
+    : "Pay from your driver portal, or reply to this email if you need help.";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Payment Due Tomorrow</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, a friendly reminder that <strong>${money(args.amount)}</strong> is due ${escapeHtml(fmtDate(args.dueDate))}. ${escapeHtml(how)}</p>
+      <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Open Driver Portal</a>`);
+  await sendEmail({ to: args.to, subject: `Reminder: ${money(args.amount)} Due Tomorrow`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_due_tomorrow" } });
+}
+
+type TeamPaymentAlertArgs = {
+  event: "failed" | "past_due";
+  driverName: string | null;
+  amount: number;
+  applicationId?: string | null;
+  rentalId?: string | null;
+  plate?: string | null;
+  reason?: string | null;
+  daysLate?: number;
+  dueDate?: string | null;
+};
+
+/** Short internal alert to team@ for a failed charge or a first-time past-due balance. */
+export async function sendTeamPaymentAlertEmail(args: TeamPaymentAlertArgs): Promise<void> {
+  const who = args.driverName || "Unknown renter";
+  const headline = args.event === "failed" ? "Payment Failed" : "Payment Past Due";
+  const lines = [
+    `<strong>Renter:</strong> ${escapeHtml(who)}`,
+    `<strong>Amount:</strong> ${money(args.amount)}`,
+    args.plate ? `<strong>Plate:</strong> ${escapeHtml(args.plate)}` : "",
+    args.rentalId ? `<strong>Rental:</strong> ${escapeHtml(args.rentalId)}` : "",
+    args.reason ? `<strong>Reason:</strong> ${escapeHtml(args.reason.replace(/_/g, " "))}` : "",
+    args.dueDate ? `<strong>Due:</strong> ${escapeHtml(fmtDate(args.dueDate))}` : "",
+    args.daysLate ? `<strong>Days overdue:</strong> ${args.daysLate}` : "",
+  ].filter(Boolean).join("<br>");
+  const link = args.applicationId
+    ? `https://drivereal.com/admin?tab=drivers&id=${encodeURIComponent(args.applicationId)}`
+    : "https://drivereal.com/admin?tab=payments";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:20px;color:#D03020;line-height:1.3">${headline}</h1>
+      <p style="color:#444;font-size:14px;line-height:1.6;margin:0 0 16px">${lines}</p>
+      <a href="${link}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open In Admin</a>`);
+  await sendEmail({ to: TEAM_ALERT_INBOX, subject: `${headline}: ${who} — ${money(args.amount)}`, html, track: { workflow: "payment_team_alert" } });
+}
+
+export const TEAM_ALERT_INBOX = "team@drivereal.com";
 
 type LicenseExpiryArgs = {
   to: string;
