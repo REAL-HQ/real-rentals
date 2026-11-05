@@ -142,6 +142,10 @@ export type OverviewApplicantRow = {
 
 export type NotificationRow = {
   id: string;
+  /** "application" (new lead) or "payment" (failed / past due). */
+  type?: "application" | "payment";
+  title?: string | null;
+  body?: string | null;
   full_name: string | null;
   email: string | null;
   phone: string | null;
@@ -184,7 +188,35 @@ export function projectNotification(row: RawRow): NotificationRow | null {
     phone: str(row.phone),
     created_at: str(row.created_at),
     status: str(row.status),
+    type: "application",
   };
+}
+
+/** Staff payment alerts written by the Stripe webhook and ops-reminders cron. */
+export const PAYMENT_ALERT_TITLES = ["Payment Failed", "Weekly Rent Failed", "Payment Past Due"] as const;
+
+export function projectPaymentAlert(row: RawRow): NotificationRow | null {
+  const id = str(row.id);
+  const title = str(row.title);
+  if (!id || !title || !(PAYMENT_ALERT_TITLES as readonly string[]).includes(title)) return null;
+  return {
+    id: `pay:${id}`,
+    type: "payment",
+    title,
+    body: str(row.body),
+    full_name: null,
+    email: null,
+    phone: null,
+    created_at: str(row.created_at),
+    status: null,
+  };
+}
+
+/** Newest first, applications and payment alerts together. */
+export function mergeAdminNotifications(a: NotificationRow[], b: NotificationRow[], limit = 20): NotificationRow[] {
+  return [...a, ...b]
+    .sort((x, y) => (y.created_at ?? "").localeCompare(x.created_at ?? ""))
+    .slice(0, limit);
 }
 
 /** True when a projected row carries nothing from the withheld set. */

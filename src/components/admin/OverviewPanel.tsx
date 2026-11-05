@@ -252,7 +252,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         // and is deliberately absent.
         supabase
           .from("payments")
-          .select("amount, driver_id")
+          .select("amount, balance_due, driver_id")
           .in("status", [...COLLECTIONS_WATCH_STATUSES]),
         supabase
           .from("payments")
@@ -305,8 +305,12 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       }
       const sumAmt = (rows?: any[] | null) =>
         (rows ?? []).reduce((a, r) => a + Number(r.net_collected ?? 0), 0);
+      // Outstanding = balance still due (falls back to the billed amount). The
+      // collections query has no net_collected, so summing it was always $0.
+      const sumOutstanding = (rows?: any[] | null) =>
+        (rows ?? []).reduce((a, r) => a + (Number(r.balance_due ?? 0) || Number(r.amount ?? 0)), 0);
       const overdueRows = (overdueQ.data ?? []) as any[];
-      setOverdueAmt(sumAmt(overdueRows));
+      setOverdueAmt(sumOutstanding(overdueRows));
       setOverdueCount(overdueRows.length);
       setOverdueRenters(new Set(overdueRows.map((r) => r.driver_id).filter(Boolean)).size);
 

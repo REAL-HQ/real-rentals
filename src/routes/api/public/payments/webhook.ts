@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { createClient } from '@supabase/supabase-js';
 import { type StripeEnv, verifyWebhook, createStripeClient } from '@/lib/stripe.server';
-import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail } from '@/lib/email.server';
+import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail, sendTeamPaymentAlertEmail } from '@/lib/email.server';
 import { doubleCollectionMessage } from '@/lib/payment-overlap';
 import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatched';
 
@@ -23,12 +23,14 @@ async function driverForRental(rentalId: string | undefined) {
   const admin: any = getSupabase();
   const { data } = await admin
     .from('rentals')
-    .select('application_id, applications:application_id(email, full_name, card_brand, card_last4, card_exp_month, card_exp_year)')
+    .select('application_id, vehicles:vehicle_id(license_plate), applications:application_id(email, full_name, card_brand, card_last4, card_exp_month, card_exp_year)')
     .eq('id', rentalId)
     .maybeSingle();
   if (!data?.applications?.email) return null;
   return {
     email: data.applications.email as string,
+    applicationId: (data.application_id as string | null) ?? null,
+    plate: (data.vehicles?.license_plate as string | null) ?? null,
     name: (data.applications.full_name as string | null) ?? null,
     brand: data.applications.card_brand as string | null,
     last4: data.applications.card_last4 as string | null,
@@ -297,6 +299,7 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
       });
     }
   }
+  if (status !== 'paid') await alertTeamPaymentFailed(driver, amount, reason, rentalId);
   if (overlapHit) await alertPossibleDoubleCollection(amount);
 }
 
@@ -442,6 +445,25 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
         brand: driver.brand, last4: driver.last4,
       });
     }
+  }
+  if (status !== 'paid') await alertTeamPaymentFailed(driver, amount, 'weekly rent', rental.id);
+}
+
+// Staff copy of a failed charge. Runs only after the notice claim above, so a
+// replayed event never re-alerts. A send failure never fails the webhook.
+async function alertTeamPaymentFailed(
+  driver: { name: string | null; applicationId?: string | null; plate?: string | null } | null,
+  amount: number,
+  reason: string,
+  rentalId: string | undefined,
+) {
+  try {
+    await sendTeamPaymentAlertEmail({
+      event: 'failed', driverName: driver?.name ?? null, amount, reason,
+      applicationId: driver?.applicationId ?? null, plate: driver?.plate ?? null, rentalId: rentalId ?? null,
+    });
+  } catch (err) {
+    console.error('[payments] team failure alert failed', err);
   }
 }
 
