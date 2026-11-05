@@ -20,22 +20,48 @@ const nyToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "Americ
  * receipts once active; photos/receipts for 1 year after return. Every value
  * here comes from public.renter_portal_summary, which already enforces this.
  */
-export function RenterPortalCard({ onOpenDocuments, onOpenSettings }: { onOpenDocuments: () => void; onOpenSettings: () => void }) {
+export function RenterPortalCard({
+  onOpenDocuments,
+  onOpenSettings,
+  previewDriverId = null,
+  readOnly = false,
+}: {
+  onOpenDocuments: () => void;
+  onOpenSettings: () => void;
+  /** Staff preview: load this driver's portal (server re-checks Manager/Owner). */
+  previewDriverId?: string | null;
+  readOnly?: boolean;
+}) {
   const read = useServerFn(getRenterPortal);
-  const { data, isLoading, error } = useQuery({ queryKey: ["renter-portal"], queryFn: () => read() });
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["renter-portal", previewDriverId ?? "self"],
+    queryFn: () => read({ data: previewDriverId ? { previewDriverId } : {} }),
+  });
   if (isLoading) return <div className="text-sm text-muted-foreground">Loading your rental…</div>;
   if (error || !data) return null;
-  return <RenterPortalView data={data} onOpenDocuments={onOpenDocuments} onOpenSettings={onOpenSettings} />;
+  return (
+    <RenterPortalView
+      data={data}
+      onOpenDocuments={onOpenDocuments}
+      onOpenSettings={onOpenSettings}
+      previewDriverId={previewDriverId}
+      readOnly={readOnly || !!previewDriverId}
+    />
+  );
 }
 
 export function RenterPortalView({
   data,
   onOpenDocuments,
   onOpenSettings,
+  previewDriverId = null,
+  readOnly = false,
 }: {
   data: RenterPortalSummary;
   onOpenDocuments: () => void;
   onOpenSettings: () => void;
+  previewDriverId?: string | null;
+  readOnly?: boolean;
 }) {
   const sections = renterSections(data.stage, {
     recordsVisible: recordsVisible(data.stage, data.returnedOn ?? null, nyToday()),
@@ -68,7 +94,7 @@ export function RenterPortalView({
             <Item label="Number" value={data.registration.number || "—"} />
             <Item label="Expires" value={data.registration.expiresOn ? fmtDate(data.registration.expiresOn) : "—"} />
           </div>
-          <FileList kind="registration" files={data.registration.files} empty="Registration copy not uploaded yet." />
+          <FileList kind="registration" files={data.registration.files} empty="Registration copy not uploaded yet." previewDriverId={previewDriverId} />
         </Card>
       ) : null}
 
@@ -80,18 +106,22 @@ export function RenterPortalView({
           <div className="mt-3 space-y-2 text-sm">
             {ins.verified ? (
               <FileRow kind="insurance" id={ins.verified.id} label={`On file: ${ins.verified.label}`}
-                sub={ins.verified.expiresOn ? `Expires ${fmtDate(ins.verified.expiresOn)}` : "Verified"} />
+                sub={ins.verified.expiresOn ? `Expires ${fmtDate(ins.verified.expiresOn)}` : "Verified"} previewDriverId={previewDriverId} />
             ) : (
               <div className="text-muted-foreground">No verified insurance on file.</div>
             )}
             {ins.pending ? (
-              <FileRow kind="insurance" id={ins.pending.id} label={`Under review: ${ins.pending.label}`} sub="Waiting on our team" />
+              <FileRow kind="insurance" id={ins.pending.id} label={`Under review: ${ins.pending.label}`} sub="Waiting on our team" previewDriverId={previewDriverId} />
             ) : null}
           </div>
-          <div className="mt-3 flex gap-3 text-sm">
-            <button type="button" className="text-real-red hover:underline" onClick={onOpenDocuments}>Upload new insurance</button>
-            <button type="button" className="text-real-red hover:underline" onClick={onOpenSettings}>Update contact details</button>
-          </div>
+          {readOnly ? (
+            <p className="mt-3 text-xs text-muted-foreground">Uploads and contact edits are disabled in Driver Preview.</p>
+          ) : (
+            <div className="mt-3 flex gap-3 text-sm">
+              <button type="button" className="text-real-red hover:underline" onClick={onOpenDocuments}>Upload new insurance</button>
+              <button type="button" className="text-real-red hover:underline" onClick={onOpenSettings}>Update contact details</button>
+            </div>
+          )}
         </Card>
       ) : null}
 
@@ -109,7 +139,7 @@ export function RenterPortalView({
               {(data.photos ?? []).map((p) => (
                 <FileRow key={p.id} kind="photo" id={p.id}
                   label={[p.phase?.replace(/_/g, " "), p.angle?.replace(/_/g, " ")].filter(Boolean).join(" · ") || "Photo"}
-                  sub={fmtDate(p.takenAt)} />
+                  sub={fmtDate(p.takenAt)} previewDriverId={previewDriverId} />
               ))}
             </ul>
           )}
@@ -154,18 +184,47 @@ function Item({ label, value, mono }: { label: string; value: string; mono?: boo
   );
 }
 
-function FileList({ kind, files, empty }: { kind: "registration"; files: { id: string; label: string; expiresOn: string | null }[]; empty: string }) {
+function FileList({
+  kind,
+  files,
+  empty,
+  previewDriverId = null,
+}: {
+  kind: "registration";
+  files: { id: string; label: string; expiresOn: string | null }[];
+  empty: string;
+  previewDriverId?: string | null;
+}) {
   if (files.length === 0) return <p className="mt-3 text-sm text-muted-foreground">{empty}</p>;
   return (
     <ul className="mt-3 divide-y divide-border">
       {files.map((f) => (
-        <FileRow key={f.id} kind={kind} id={f.id} label={f.label} sub={f.expiresOn ? `Expires ${fmtDate(f.expiresOn)}` : ""} />
+        <FileRow
+          key={f.id}
+          kind={kind}
+          id={f.id}
+          label={f.label}
+          sub={f.expiresOn ? `Expires ${fmtDate(f.expiresOn)}` : ""}
+          previewDriverId={previewDriverId}
+        />
       ))}
     </ul>
   );
 }
 
-function FileRow({ kind, id, label, sub }: { kind: "photo" | "registration" | "insurance"; id: string; label: string; sub: string }) {
+function FileRow({
+  kind,
+  id,
+  label,
+  sub,
+  previewDriverId = null,
+}: {
+  kind: "photo" | "registration" | "insurance";
+  id: string;
+  label: string;
+  sub: string;
+  previewDriverId?: string | null;
+}) {
   const open = useServerFn(getRenterPortalFileUrl);
   const [busy, setBusy] = useState(false);
   return (
@@ -181,7 +240,9 @@ function FileRow({ kind, id, label, sub }: { kind: "photo" | "registration" | "i
         onClick={async () => {
           setBusy(true);
           try {
-            const { url } = await open({ data: { kind, id } });
+            const { url } = await open({
+              data: previewDriverId ? { kind, id, previewDriverId } : { kind, id },
+            });
             window.open(url, "_blank", "noopener,noreferrer");
           } catch (e) {
             toast.error((e as Error).message);

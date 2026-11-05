@@ -388,13 +388,22 @@ function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => voi
       <ReferralsView />
     ) : tab === "vehicle" ? (
       <div className="space-y-6">
-        {RENTER_PORTAL_ENABLED && !previewId ? (
-          <RenterPortalCard onOpenDocuments={() => onNavigate("documents")} onOpenSettings={() => onNavigate("settings")} />
+        {RENTER_PORTAL_ENABLED ? (
+          <RenterPortalCard
+            onOpenDocuments={() => onNavigate("documents")}
+            onOpenSettings={() => onNavigate("settings")}
+            previewDriverId={previewId}
+            readOnly={!!previewId}
+          />
         ) : null}
         <VehicleView data={data} />
       </div>
     ) : tab === "vendors" ? (
-      RENTER_PORTAL_ENABLED && !previewId ? <RenterVendors /> : <Stub label="Vendors" />
+      RENTER_PORTAL_ENABLED ? (
+        <RenterVendors previewDriverId={previewId} readOnly={!!previewId} />
+      ) : (
+        <Stub label="Vendors" />
+      )
     ) : tab === "payments" ? (
       <PaymentsView data={data} />
     ) : tab === "deposit" ? (

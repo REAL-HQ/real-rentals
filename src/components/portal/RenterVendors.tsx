@@ -29,11 +29,21 @@ export function VendorLogo({ vendor, size = 48 }: { vendor: Pick<RenterVendor, "
 }
 
 /** Recommended vendors. View is saved on the renter's profile, with localStorage as a fallback. */
-export function RenterVendors() {
+export function RenterVendors({
+  previewDriverId = null,
+  readOnly = false,
+}: {
+  previewDriverId?: string | null;
+  readOnly?: boolean;
+} = {}) {
   const read = useServerFn(getRenterVendors);
   const save = useServerFn(setRenterVendorView);
-  const { data, isLoading } = useQuery({ queryKey: ["renter-vendors"], queryFn: () => read() });
+  const { data, isLoading } = useQuery({
+    queryKey: ["renter-vendors", previewDriverId ?? "self"],
+    queryFn: () => read({ data: previewDriverId ? { previewDriverId } : {} }),
+  });
   const [view, setView] = useState<VendorView>("grid");
+  const locked = readOnly || !!previewDriverId;
 
   useEffect(() => {
     const local = typeof window !== "undefined" ? parseVendorView(window.localStorage.getItem(VENDOR_VIEW_STORAGE_KEY)) : null;
@@ -48,6 +58,7 @@ export function RenterVendors() {
     } catch {
       /* private mode */
     }
+    if (locked) return;
     void save({ data: { view: v } }).catch(() => undefined);
   };
 

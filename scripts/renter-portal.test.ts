@@ -150,7 +150,10 @@ describe("server functions", () => {
   const src = readFileSync("src/lib/renter-portal.functions.ts", "utf8");
   test("renter reads use caller client and clamp", () => {
     expect(src).toMatch(/rpc\("renter_portal_summary"\)/);
-    expect(src).toMatch(/clampSummary\(data\)/);
+    expect(src).toMatch(/clampSummary\(raw\)/);
+    expect(src).toMatch(/portalScope/);
+    expect(src).toMatch(/loadRenterPortalSummaryForDriver/);
+    expect(src).toMatch(/refuseStaffPortalWrite/);
   });
   test("signing happens only after renter_portal_file authorizes", () => {
     const i = src.indexOf('rpc("renter_portal_file"');
@@ -165,5 +168,32 @@ describe("server functions", () => {
   });
   test("no toll or ticket disputes", () => {
     expect(src + readFileSync("src/components/portal/RenterPortalCard.tsx", "utf8")).not.toMatch(/dispute/i);
+  });
+});
+
+describe("staff preview contract", () => {
+  test("clampSummary still strips leaky keys for every stage staff may preview", () => {
+    for (const stage of ["assigned", "active", "returned", "none"] as const) {
+      const raw = {
+        stage,
+        plate: "ABC",
+        vin: "1",
+        registration: { state: "FL", number: "x", expiresOn: null, files: [] },
+        insurance: [],
+        photos: [],
+        receipts: [],
+        secret: "nope",
+      };
+      const out = clampSummary(raw) as Record<string, unknown>;
+      expect("secret" in out).toBe(false);
+      if (stage === "assigned") {
+        expect("registration" in out).toBe(false);
+        expect("insurance" in out).toBe(false);
+      }
+      if (stage === "returned") {
+        expect(out.plate).toBeNull();
+        expect(out.vin).toBeNull();
+      }
+    }
   });
 });

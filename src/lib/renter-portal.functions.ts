@@ -22,53 +22,85 @@ const uuid = (v: unknown, what = "id"): string => {
   return v;
 };
 
+const previewId = (input: unknown): string | null => {
+  const id = (input as { previewDriverId?: unknown } | null)?.previewDriverId;
+  if (id == null || id === "") return null;
+  return uuid(id, "driver");
+};
+
 /**
- * The signed-in renter's portal. Runs on the caller's own client, so
- * auth.uid() inside renter_portal_summary is the renter. Staff preview is
- * not supported here (the preview client has no auth.uid()).
+ * The signed-in renter's portal, or a staff read-only preview of one driver.
+ * Renters use the SECURITY DEFINER RPC (auth.uid()). Staff preview rebuilds
+ * the same payload with the service role for that driver only.
  */
 export const getRenterPortal = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<RenterPortalSummary> => {
+  .inputValidator((input: unknown) => ({ previewDriverId: previewId(input) }))
+  .handler(async ({ data, context }): Promise<RenterPortalSummary> => {
     assertEnabled();
-    const { data, error } = await (context.supabase as any).rpc("renter_portal_summary");
-    if (error) throw new Error(error.message);
-    return clampSummary(data);
+    const { portalScope } = await import("@/lib/driver-preview.server");
+    const scope = await portalScope(context, data, "renter-portal");
+    if (!scope.preview) {
+      const { data: raw, error } = await (context.supabase as any).rpc("renter_portal_summary");
+      if (error) throw new Error(error.message);
+      return clampSummary(raw);
+    }
+    const { loadRenterPortalSummaryForDriver } = await import("@/lib/renter-portal.server");
+    return loadRenterPortalSummaryForDriver(scope.supabase, scope.userId);
   });
 
-/** 10-minute link for one file, only after the database says the caller may see it. */
+/** 10-minute link for one file, only after the database (or staff preview check) says the caller may see it. */
 export const getRenterPortalFileUrl = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => {
-    const o = (input ?? {}) as { kind?: unknown; id?: unknown };
+    const o = (input ?? {}) as { kind?: unknown; id?: unknown; previewDriverId?: unknown };
     if (o.kind !== "photo" && o.kind !== "registration" && o.kind !== "insurance") throw new Error("Invalid file");
-    return { kind: o.kind as "photo" | "registration" | "insurance", id: uuid(o.id, "file") };
+    return {
+      kind: o.kind as "photo" | "registration" | "insurance",
+      id: uuid(o.id, "file"),
+      previewDriverId: previewId(o),
+    };
   })
   .handler(async ({ data, context }): Promise<{ url: string }> => {
     assertEnabled();
-    const { data: rows, error } = await (context.supabase as any).rpc("renter_portal_file", { _kind: data.kind, _id: data.id });
-    if (error) throw new Error(error.message);
-    const row = (rows as { storage_bucket: string; storage_path: string }[] | null)?.[0];
-    if (!row?.storage_bucket || !row.storage_path) throw new Error("File not available");
+    const { portalScope } = await import("@/lib/driver-preview.server");
+    const scope = await portalScope(context, data, "renter-portal-file");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    let row: { storage_bucket: string; storage_path: string } | null = null;
+    if (!scope.preview) {
+      const { data: rows, error } = await (context.supabase as any).rpc("renter_portal_file", {
+        _kind: data.kind,
+        _id: data.id,
+      });
+      if (error) throw new Error(error.message);
+      row = (rows as { storage_bucket: string; storage_path: string }[] | null)?.[0] ?? null;
+    } else {
+      const { authorizeRenterPortalFileForDriver } = await import("@/lib/renter-portal.server");
+      row = await authorizeRenterPortalFileForDriver(scope.supabase, scope.userId, data.kind, data.id);
+    }
+    if (!row?.storage_bucket || !row.storage_path) throw new Error("File not available");
     const signed = await supabaseAdmin.storage.from(row.storage_bucket).createSignedUrl(row.storage_path, 600);
     if (signed.error || !signed.data?.signedUrl) throw new Error("Could not open file");
     return { url: signed.data.signedUrl };
   });
 
-/** Vendors for renters (RLS: active rows, caller has a rental) plus their saved view. */
+/** Vendors for renters (or staff preview of a renter). Prefs are the driver's; writes refuse in preview. */
 export const getRenterVendors = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ vendors: RenterVendor[]; view: VendorView | null }> => {
+  .inputValidator((input: unknown) => ({ previewDriverId: previewId(input) }))
+  .handler(async ({ data, context }): Promise<{ vendors: RenterVendor[]; view: VendorView | null }> => {
     assertEnabled();
+    const { portalScope } = await import("@/lib/driver-preview.server");
+    const scope = await portalScope(context, data, "renter-vendors");
+    const sb = scope.preview ? scope.supabase : (context.supabase as any);
     const [v, p] = await Promise.all([
-      (context.supabase as any)
+      sb
         .from("renter_vendors")
         .select("id,category,name,phone,website,address,notes,logo_url,sort_order,is_active")
         .eq("is_active", true)
         .order("sort_order")
         .order("name"),
-      (context.supabase as any).from("renter_portal_prefs").select("vendor_view").eq("user_id", context.userId).maybeSingle(),
+      sb.from("renter_portal_prefs").select("vendor_view").eq("user_id", scope.userId).maybeSingle(),
     ]);
     if (v.error) throw new Error(v.error.message);
     return { vendors: (v.data ?? []) as RenterVendor[], view: parseVendorView(p.data?.vendor_view) };
@@ -83,6 +115,8 @@ export const setRenterVendorView = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) => {
     assertEnabled();
+    const { refuseStaffPortalWrite } = await import("@/lib/driver-preview.server");
+    await refuseStaffPortalWrite(context.userId);
     const { error } = await (context.supabase as any)
       .from("renter_portal_prefs")
       .upsert({ user_id: context.userId, vendor_view: data.view, updated_at: new Date().toISOString() });
