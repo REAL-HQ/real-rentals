@@ -37,6 +37,7 @@ import {
 } from "@/lib/photo-enhance.functions";
 import { ENHANCE_MODES, localProcessingBlocker, runEnhance, type EnhanceMode } from "@/lib/photo-enhance.browser";
 import { SectionCard, MicroLabel, EmptyState } from "./ui";
+import { PhotoStudioPanel } from "./PhotoStudioPanel";
 
 // The gallery.
 //
@@ -359,6 +360,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
 
   return (
     <div className="space-y-5">
+      <PhotoStudioPanel vehicleId={vehicleId} canEdit={canEdit} />
       <SectionCard
         title="Photos"
         subtitle={
