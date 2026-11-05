@@ -9,6 +9,7 @@ import { MaintenanceDefaultsPanel } from "@/components/admin/MaintenanceDefaults
 import { SafeAutofillPanel } from "@/components/admin/SafeAutofillPanel";
 import { PhotoReadingPanel } from "@/components/admin/PhotoReadingPanel";
 import { PhotoEnhancePanel } from "@/components/admin/PhotoEnhancePanel";
+import { PhotoStudioSettingsCard } from "@/components/admin/PhotoStudioSettingsCard";
 import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
 import { ActivityPanel } from "@/components/admin/ActivityPanel";
 import { AgreementTemplatesPanel } from "@/components/admin/AgreementTemplatesPanel";
@@ -117,7 +118,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
         ) : current.id === "safe_autofill" ? (
           <SafeAutofillPanel />
         ) : current.id === "photo_enhancement" ? (
-          <PhotoEnhancePanel />
+          <div className="space-y-5"><PhotoEnhancePanel /><PhotoStudioSettingsCard /></div>
         ) : current.id === "photo_reading" ? (
           <PhotoReadingPanel />
         ) : current.id === "maintenance" ? (
