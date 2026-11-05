@@ -73,6 +73,9 @@ import { fmtDate } from "@/lib/date-format";
 import type React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getStripeCollections } from "@/lib/stripe-collections.functions";
+import { getProjectedRevenueSummary } from "@/lib/projected-revenue.functions";
+import type { ProjectedRevenueSummary } from "@/lib/projected-revenue";
+import { centsToDollars } from "@/lib/projected-revenue";
 import { consolidatedRevenue } from "@/lib/stripe-collections";
 import { useNavigate } from "@tanstack/react-router";
 import { DocumentsExpiringChip } from "./DocumentsExpiring";
@@ -403,6 +406,31 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
     return Math.round(((revenue - priorRevenue) / priorRevenue) * 100);
   }, [revenue, priorRevenue]);
 
+  // Projected vs collected rent for the current ET week and month. Separate
+  // from the range picker total above — this is the active-renter schedule
+  // against rent already recorded, deposits excluded from both.
+  const loadProjected = useServerFn(getProjectedRevenueSummary);
+  const [projected, setProjected] = useState<ProjectedRevenueSummary | null>(null);
+  const [projectedLoading, setProjectedLoading] = useState(false);
+  useEffect(() => {
+    if (!canSeeCollections) { setProjected(null); setProjectedLoading(false); return; }
+    let live = true;
+    setProjectedLoading(true);
+    loadProjected()
+      .then((res) => {
+        if (!live) return;
+        setProjected(res.status === "ready" ? res.summary : null);
+        setProjectedLoading(false);
+      })
+      .catch(() => {
+        if (!live) return;
+        setProjected(null);
+        setProjectedLoading(false);
+      });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSeeCollections, opsRefreshKey]);
+
   const serviceAttention = svc.overdue + svc.due + svc.open + svc.conflict;
 
   // Readiness for every applicant in the window, computed on the server and
@@ -563,6 +591,8 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           onCustom={setCustomRange}
           consolidated={canSeeCollections ? { internalNonStripe } : null}
           overlapOwed={overlapOwed}
+          projected={projected}
+          projectedLoading={projectedLoading}
         />
 
         <ActionCard
@@ -1017,6 +1047,8 @@ function RevenueCard({
   onCustom,
   consolidated,
   overlapOwed,
+  projected,
+  projectedLoading,
 }: {
   amount: number | null;
   delta: number | null;
@@ -1029,6 +1061,8 @@ function RevenueCard({
   onCustom: (c: Partial<DayRange>) => void;
   consolidated?: { internalNonStripe: number | null } | null;
   overlapOwed?: number | null;
+  projected?: ProjectedRevenueSummary | null;
+  projectedLoading?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -1110,6 +1144,32 @@ function RevenueCard({
           </>
         )}
       </div>
+
+      {(projected || projectedLoading) && (
+        <div
+          className="mt-3 space-y-1 border-t border-[#EDEDF0] pt-2"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
+            Active Renters · Projected / Collected
+          </div>
+          {(["week", "month"] as const).map((key) => {
+            const row = projected?.[key];
+            const label = key === "week" ? "This Week" : "This Month";
+            return (
+              <div key={key} className="flex items-baseline justify-between gap-2 text-[11px] text-[#55555E]">
+                <span>{label}</span>
+                <span className="tabular-nums text-[#111114]">
+                  {projectedLoading || !row
+                    ? "—"
+                    : `${usd(centsToDollars(row.projectedCents))} / ${usd(centsToDollars(row.collectedCents))}`}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {open && (
         <>

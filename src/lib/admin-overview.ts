@@ -193,7 +193,7 @@ export function projectNotification(row: RawRow): NotificationRow | null {
 }
 
 /** Staff payment alerts written by the Stripe webhook and ops-reminders cron. */
-export const PAYMENT_ALERT_TITLES = ["Payment Failed", "Weekly Rent Failed", "Payment Past Due"] as const;
+export const PAYMENT_ALERT_TITLES = ["Payment Failed", "Weekly Rent Failed", "Payment Past Due", "Collections Plan"] as const;
 
 export function projectPaymentAlert(row: RawRow): NotificationRow | null {
   const id = str(row.id);

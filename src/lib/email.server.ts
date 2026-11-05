@@ -172,7 +172,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
   }
 }
 
-const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_ops", "staff_invite", "test_email", "driver_issue", "payment_team_alert"]);
+const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_ops", "staff_invite", "test_email", "driver_issue", "payment_team_alert", "collections_plan"]);
 
 /** Why this recipient got this email — accurate per workflow, never promotional. */
 export function emailReason(workflow: string | undefined): string {
@@ -653,6 +653,66 @@ export async function sendTeamPaymentAlertEmail(args: TeamPaymentAlertArgs): Pro
 }
 
 export const TEAM_ALERT_INBOX = "team@drivereal.com";
+
+type CollectionsPlanEmailItem = {
+  renterName: string;
+  vehicleLabel: string;
+  plate?: string | null;
+  amount: number;
+  dueDate: string;
+  method: string;
+  autopay: boolean;
+  adminPath: string;
+};
+
+type CollectionsPlanEmailArgs = {
+  today: string;
+  tomorrow: string;
+  dueToday: CollectionsPlanEmailItem[];
+  dueTomorrow: CollectionsPlanEmailItem[];
+};
+
+/** One daily digest so the team can prep collections across every payment method. */
+export async function sendTeamCollectionsPlanEmail(args: CollectionsPlanEmailArgs): Promise<void> {
+  const section = (title: string, rows: CollectionsPlanEmailItem[]) => {
+    if (!rows.length) {
+      return `<h2 style="margin:18px 0 6px;font-size:15px;color:#111">${escapeHtml(title)}</h2>
+        <p style="color:#888;font-size:13px;margin:0 0 8px">None</p>`;
+    }
+    const body = rows.map((row) => {
+      const vehicle = row.plate ? `${row.vehicleLabel} · ${row.plate}` : row.vehicleLabel;
+      const link = row.adminPath.startsWith("http") ? row.adminPath : `https://drivereal.com${row.adminPath}`;
+      return `<tr>
+        <td style="padding:8px 0;border-bottom:1px solid #eee;font-size:13px;color:#111;vertical-align:top">
+          <strong>${escapeHtml(row.renterName)}</strong><br>
+          <span style="color:#666">${escapeHtml(vehicle)}</span>
+        </td>
+        <td style="padding:8px 0;border-bottom:1px solid #eee;font-size:13px;color:#111;text-align:right;vertical-align:top;white-space:nowrap">
+          ${money(row.amount)}<br>
+          <span style="color:#666">${escapeHtml(row.method)}${row.autopay ? " · Autopay" : ""}</span><br>
+          <a href="${link}" style="color:#D03020;text-decoration:none;font-size:12px">Open</a>
+        </td>
+      </tr>`;
+    }).join("");
+    return `<h2 style="margin:18px 0 6px;font-size:15px;color:#111">${escapeHtml(title)} · ${rows.length}</h2>
+      <table style="width:100%;border-collapse:collapse">${body}</table>`;
+  };
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:20px;color:#111;line-height:1.3">Collections Plan — Due Today / Due Tomorrow</h1>
+      <p style="color:#444;font-size:14px;line-height:1.55;margin:0 0 8px">Prep list for ${escapeHtml(fmtDate(args.today))} (ET). Method is taken from autopay/Stripe when linked, otherwise the last recorded method — never assumed.</p>
+      ${section("Due Today", args.dueToday)}
+      ${section("Due Tomorrow", args.dueTomorrow)}
+      <a href="https://drivereal.com/admin?tab=payments" style="display:inline-block;margin-top:18px;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open Payments</a>`);
+  const n = args.dueToday.length + args.dueTomorrow.length;
+  await sendEmail({
+    to: TEAM_ALERT_INBOX,
+    subject: `Collections Plan — Due Today / Due Tomorrow (${n})`,
+    html,
+    track: { workflow: "collections_plan" },
+  });
+}
+
+
 
 type LicenseExpiryArgs = {
   to: string;
