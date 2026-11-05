@@ -122,6 +122,62 @@ export const HIGH_RISK = new Set<string>([
 ]);
 /** Identity fields: a differing existing value is a conflict, never an update. */
 const IDENTITY = new Set(["vin", "year", "make", "model", "license_plate", "plate_state", "title_number"]);
+/** Year/make/model/VIN must never be written from a plate/unit/title-only match. */
+export const IDENTITY_CORE = new Set(["vin", "year", "make", "model"]);
+/** Match bases that identify a car without a trustworthy exact VIN. */
+export const NON_VIN_MATCH_BASES = new Set([
+  "plate", "unit_number", "title_number", "registration_number", "vin_near",
+]);
+
+/** OCR-confused character pairs (cost 0.5 instead of 1 in near-VIN distance). */
+const OCR_PAIRS: Array<[string, string]> = [
+  ["B", "8"], ["8", "B"], ["0", "O"], ["O", "0"], ["1", "I"], ["I", "1"],
+  ["1", "L"], ["L", "1"], ["I", "L"], ["L", "I"], ["5", "S"], ["S", "5"],
+  ["2", "Z"], ["Z", "2"], ["9", "8"], ["8", "9"],
+];
+const OCR_COST = new Map<string, number>(OCR_PAIRS.map(([a, b]) => [`${a}${b}`, 0.5]));
+
+/** Edit distance with OCR confusions cheaper. Returns Infinity if lengths differ. */
+export function vinEditDistance(a: string, b: string): number {
+  const x = a.toUpperCase();
+  const y = b.toUpperCase();
+  if (x.length !== y.length) return Number.POSITIVE_INFINITY;
+  let d = 0;
+  for (let i = 0; i < x.length; i++) {
+    if (x[i] === y[i]) continue;
+    d += OCR_COST.get(`${x[i]}${y[i]}`) ?? 1;
+  }
+  return d;
+}
+
+/**
+ * Closest existing VIN within edit distance ≤ 2 (OCR-aware).
+ * Never invents a car — returns null when no candidate is close enough.
+ */
+export function findNearVinMatch(
+  vin: string,
+  vehicles: ExistingVehicle[],
+  maxDistance = 2,
+): { vehicle: ExistingVehicle; distance: number } | null {
+  const needle = normalizeVin(vin);
+  if (needle.length !== 17) return null;
+  let best: { vehicle: ExistingVehicle; distance: number } | null = null;
+  for (const v of vehicles) {
+    const cand = normalizeVin(String(v.vin ?? ""));
+    if (cand.length !== 17) continue;
+    if (cand === needle) continue; // exact is handled elsewhere
+    const d = vinEditDistance(needle, cand);
+    if (d > maxDistance) continue;
+    if (!best || d < best.distance) best = { vehicle: v, distance: d };
+  }
+  return best;
+}
+
+/** Server + client: refuse identity mutation when the match was not an exact VIN. */
+export function identityMutationBlocked(matchBasis: string | null | undefined, field: string): boolean {
+  if (!matchBasis || !NON_VIN_MATCH_BASES.has(matchBasis)) return false;
+  return IDENTITY_CORE.has(field);
+}
 
 // Source authority: higher wins. Unlisted class for a field = 10 (context only).
 const A = (m: Record<string, number>) => m;
@@ -210,12 +266,14 @@ function same(field: string, a: unknown, b: unknown) {
 }
 
 /**
- * Deterministic identity hierarchy: VIN → unit number → plate (+state) →
- * title / registration number. Year/make/model are never sufficient on their own.
+ * Deterministic identity hierarchy: exact VIN → unit number → plate (+state) →
+ * title / registration number → near VIN (edit distance ≤ 2). Year/make/model
+ * are never sufficient on their own.
  */
 export function matchVehicle(
   f: Record<string, ExtractedField>, vehicles: ExistingVehicle[],
-): { vehicle: ExistingVehicle | null; basis: string | null; vinConflict: ExistingVehicle | null } {
+  opts?: { allowNearVin?: boolean },
+): { vehicle: ExistingVehicle | null; basis: string | null; vinConflict: ExistingVehicle | null; nearDistance?: number } {
   const vin = f.vin?.value ? normalizeVin(f.vin.value) : "";
   if (vin.length === 17) {
     const v = vehicles.find((x) => up(x.vin) === vin);
@@ -238,6 +296,18 @@ export function matchVehicle(
     const conflict = vin && hit.v.vin && up(hit.v.vin) !== vin ? hit.v : null;
     return { vehicle: hit.v, basis: hit.basis, vinConflict: conflict };
   }
+  if (opts?.allowNearVin !== false && vin.length === 17) {
+    const near = findNearVinMatch(vin, vehicles);
+    if (near) {
+      return {
+        vehicle: near.vehicle,
+        basis: "vin_near",
+        // Differing VIN is always a conflict — human must approve; never auto-create.
+        vinConflict: near.vehicle.vin && up(near.vehicle.vin) !== vin ? near.vehicle : near.vehicle,
+        nearDistance: near.distance,
+      };
+    }
+  }
   return { vehicle: null, basis: null, vinConflict: null };
 }
 
@@ -249,21 +319,40 @@ export function buildProposal(
   const vinRaw = f.vin?.raw ?? f.vin?.value ?? null;
   const vin = f.vin?.value ? normalizeVin(f.vin.value) : null;
   let vinCheck: ProposalDraft["vinCheck"] = null;
-  let vinUsable = false;
+  // Fleet Inbox: only a 17-char VIN with a valid check digit is trusted for
+  // exact match / create. Garbage OCR (e.g. a 7-char date fragment) is ignored.
+  let vinExact = false;
+  let vinNearCandidate = false;
   if (vin) {
     const c = checkVin(vin);
     vinCheck = { formatValid: c.formatValid, checkDigitValid: c.checkDigitValid, problem: c.problem };
-    if (!c.formatValid) issues.push(`VIN "${vinRaw}" is not valid: ${c.problem}`);
-    else if (c.checkDigitValid === false) issues.push("VIN check digit does not match — verify against the document.");
-    vinUsable = c.formatValid;
+    if (!c.formatValid) {
+      issues.push(`VIN "${vinRaw}" is not valid: ${c.problem}`);
+    } else if (c.checkDigitValid !== true) {
+      issues.push("VIN check digit does not match — will near-match an existing car if close, never create from it.");
+      vinNearCandidate = true;
+    } else {
+      vinExact = true;
+    }
   }
   const identity = { year: f.year?.value, make: f.make?.value, model: f.model?.value, unit: f.unit_number?.value };
 
-  const { vehicle, basis, vinConflict } = matchVehicle(vinUsable ? f : { ...f, vin: undefined as any }, vehicles);
+  // Exact VIN only when check digit is valid. Near-VIN still sees the raw VIN.
+  const forExact = vinExact ? f : { ...f, vin: undefined as any };
+  let { vehicle, basis, vinConflict, nearDistance } = matchVehicle(forExact, vehicles, { allowNearVin: false });
+  if (!vehicle && vin && vin.length === 17 && !vinExact) {
+    const near = matchVehicle({ ...f, vin: { value: vin, confidence: f.vin?.confidence ?? "medium" } }, vehicles, { allowNearVin: true });
+    if (near.basis === "vin_near" && near.vehicle) {
+      vehicle = near.vehicle;
+      basis = near.basis;
+      vinConflict = near.vinConflict;
+      nearDistance = near.nearDistance;
+    }
+  }
   const changes: Change[] = [];
 
   if (!vehicle) {
-    if (!vinUsable) {
+    if (!vinExact) {
       issues.push(vin ? "Cannot identify the vehicle: the VIN is unreadable or invalid." : "No VIN or other identifier found.");
       return { kind: "unidentified", vin, vinRaw, vinCheck, matchVehicleId: null, matchBasis: null, identity, changes: proposedFills(f, docClass, null, prov), issues };
     }
@@ -272,17 +361,45 @@ export function buildProposal(
   }
 
   changes.push(...proposedFills(f, docClass, vehicle, prov[vehicle.id] ? { [vehicle.id]: prov[vehicle.id] } : {}));
+  const gated = gateIdentityChanges(changes, basis, issues);
+  if (basis === "vin_near") {
+    issues.push(
+      `Near-VIN match${nearDistance != null ? ` (distance ${nearDistance})` : ""}: confirm this is the right car — never auto-created.`,
+    );
+  }
   if (vinConflict) {
     issues.push(`VIN conflict: vehicle on file has ${vinConflict.vin}, document says ${vin}.`);
   }
-  const conflict = !!vinConflict || changes.some((c) => c.kind === "conflict");
-  if (changes.some((c) => c.field === "current_odometer" && Number(c.proposed) < Number(c.current ?? 0))) {
+  const conflict = !!vinConflict || basis === "vin_near" || gated.some((c) => c.kind === "conflict");
+  if (gated.some((c) => c.field === "current_odometer" && Number(c.proposed) < Number(c.current ?? 0))) {
     issues.push("Mileage is lower than the value on file — it will be checked against the reading dates.");
   }
   return {
     kind: conflict ? "conflict" : "match", vin, vinRaw, vinCheck,
-    matchVehicleId: vehicle.id, matchBasis: basis, identity, changes, issues,
+    matchVehicleId: vehicle.id, matchBasis: basis, identity, changes: gated, issues,
   };
+}
+
+/** Plate/unit/title/near-VIN matches never propose year/make/model/VIN writes. */
+function gateIdentityChanges(changes: Change[], basis: string | null, issues: string[]): Change[] {
+  if (!basis || !NON_VIN_MATCH_BASES.has(basis)) return changes;
+  let blocked = false;
+  const out = changes.map((c) => {
+    if (!IDENTITY_CORE.has(c.field)) return c;
+    blocked = true;
+    return {
+      ...c,
+      kind: "conflict" as const,
+      safe: false,
+      note: c.note
+        ? `${c.note} Blocked: identity cannot change from a ${basis} match.`
+        : `Blocked: identity cannot change from a ${basis} match — confirm manually.`,
+    };
+  });
+  if (blocked) {
+    issues.push(`Identity fields (year/make/model/VIN) were not proposed for write — match was by ${basis}, not an exact VIN.`);
+  }
+  return out;
 }
 
 function proposedFills(
@@ -327,4 +444,16 @@ export function defaultWeeklyRate(bodyType: string | null | undefined): number {
   if (b === "suv") return 375;
   if (b === "minivan" || b === "xl" || b === "van") return 400;
   return 350;
+}
+
+/**
+ * Soft suggestion: when a condition photo in a batch has no identifier, prefer
+ * the batch's already-matched vehicle if every matched item in the batch
+ * points at the same car. Never auto-applies.
+ */
+export function suggestBatchVehicle(
+  matchedVehicleIds: Array<string | null | undefined>,
+): string | null {
+  const ids = [...new Set(matchedVehicleIds.filter((x): x is string => !!x))];
+  return ids.length === 1 ? ids[0] : null;
 }
