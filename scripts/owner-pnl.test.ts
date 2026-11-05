@@ -125,7 +125,7 @@ describe("monthly owner p&l", () => {
     expect(loaded).toBe(0);
     expect(reads).toBe(0);
     expect(feeReads).toBe(0);
-    expect(OWNER_PNL_ENABLED).toBe(false);
+    expect(OWNER_PNL_ENABLED).toBe(true);
   });
 
   it("refuses a manager before reading, and asks the existing charge reader for both months", async () => {
@@ -166,8 +166,8 @@ describe("monthly owner p&l", () => {
   });
 
   it("keeps the screen, the owner check, and Stripe behind the constant", () => {
-    expect(visibleTabs("owner").some((tab) => tab.id === "owner_pnl")).toBe(false);
-    expect(railEntries("owner").some((tab) => tab.id === "owner_pnl")).toBe(false);
+    expect(visibleTabs("owner").some((tab) => tab.id === "owner_pnl")).toBe(true);
+    expect(railEntries("owner").some((tab) => tab.id === "owner_pnl")).toBe(true);
     expect(visibleTabs("manager").some((tab) => tab.id === "owner_pnl")).toBe(false);
     const handler = readFileSync(new URL("../src/lib/owner-pnl.functions.ts", import.meta.url), "utf8");
     const flagAt = handler.indexOf("if (!OWNER_PNL_ENABLED) return DISABLED");

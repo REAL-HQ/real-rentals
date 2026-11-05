@@ -358,7 +358,7 @@ describe("owner p&l and the payment-ledger month", () => {
   });
 
   it("keeps one owner screen, the existing flag, print, and the page cap", () => {
-    expect(OWNER_PNL_ENABLED).toBe(false);
+    expect(OWNER_PNL_ENABLED).toBe(true);
     expect(OWNER_DIRECTORY_PAGE).toBe(1000);
     expect(OWNER_DIRECTORY_MAX_PAGES).toBe(100);
     const server = readFileSync(new URL("../src/lib/owner-pnl.server.ts", import.meta.url), "utf8");
