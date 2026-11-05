@@ -14,7 +14,7 @@ export interface StudioProvider {
 
 const b64 = (u: Uint8Array) => Buffer.from(u).toString("base64");
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
-const READ_MODEL = "gemini-2.5-flash";
+export const READ_MODEL = "gemini-3.5-flash";
 
 export function geminiProvider(apiKey: string, fetchImpl: typeof fetch = fetch): StudioProvider {
   const call = async (model: string, parts: unknown[], extra: Record<string, unknown> = {}) => {
