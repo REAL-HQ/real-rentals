@@ -131,7 +131,7 @@ export async function loadRenterPortalSummaryForDriver(
     const [{ data: media }, { data: pays }] = await Promise.all([
       admin
         .from("condition_media")
-        .select("id,phase,angle,media_type,created_at")
+        .select("id,phase,angle,media_type,captured_by_role,created_at,taken_at,taken_at_source")
         .eq("rental_id", r.id)
         .order("created_at", { ascending: true }),
       admin
@@ -146,7 +146,9 @@ export async function loadRenterPortalSummaryForDriver(
       phase: m.phase,
       angle: m.angle,
       mediaType: m.media_type,
-      takenAt: m.created_at,
+      capturedByRole: m.captured_by_role ?? null,
+      takenAt: m.taken_at ?? m.created_at,
+      takenAtSource: m.taken_at_source ?? (m.taken_at ? "exif" : "upload"),
     }));
     receipts = (pays ?? []).map((p: any) => ({
       id: p.id,

@@ -28,6 +28,7 @@ import {
   type InspectionDetail,
 } from "@/lib/inspections.functions";
 import { fmtDateTime } from "@/lib/date-format";
+import { roleLabel } from "@/lib/condition-photos";
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
 import { VEHICLE_COMBOBOX_SELECT, formatVehicleLabel } from "@/lib/vehicle-label";
 
@@ -661,6 +662,8 @@ export function ConditionUploader({
   readOnly,
   onChanged,
   title = "Condition Photos",
+  hint,
+  defaultAngle,
 }: {
   vehicleId: string;
   inspectionId?: string | null;
@@ -674,14 +677,20 @@ export function ConditionUploader({
     media_type: string;
     captured_by_role: string;
     created_at: string;
+    taken_at?: string | null;
+    taken_at_source?: string | null;
+    missing_exif_time?: boolean;
   }>;
   readOnly?: boolean;
   onChanged: () => void;
   title?: string;
+  /** Optional one-line help under the title. */
+  hint?: string;
+  defaultAngle?: string;
 }) {
   const startUpload = useServerFn(createConditionUploadUrl);
   const confirm = useServerFn(confirmConditionUpload);
-  const [angle, setAngle] = useState("front");
+  const [angle, setAngle] = useState(defaultAngle ?? (phase === "damage" ? "damage" : "front"));
 
   async function uploadOne(file: File, onProgress: (pct: number) => void) {
     onProgress(10);
@@ -689,12 +698,13 @@ export function ConditionUploader({
       data: { vehicleId, fileName: file.name, mimeType: file.type || "image/jpeg" },
     });
     onProgress(40);
+    // Upload original bytes — EXIF is parsed server-side on these bytes.
     const { error } = await supabase.storage
       .from(bucket)
       .uploadToSignedUrl(path, token, file, { contentType: file.type || undefined });
     if (error) throw error;
     onProgress(80);
-    await confirm({
+    const res = await confirm({
       data: {
         vehicleId,
         rentalId: rentalId ?? null,
@@ -707,6 +717,9 @@ export function ConditionUploader({
         sizeBytes: file.size,
       },
     });
+    if (res && typeof res === "object" && "missingExifTime" in res && (res as any).missingExifTime) {
+      toast.message("Saved — no camera date on this file. Time shown is when you uploaded.");
+    }
     onProgress(100);
   }
 
@@ -727,8 +740,8 @@ export function ConditionUploader({
     <div className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm p-4">
       <h3 className="font-semibold text-sm">{title}</h3>
       <p className="mt-1 text-xs text-muted-foreground">
-        Photos and video are timestamped proof of condition. Capture the same angles at pickup and
-        return.
+        {hint ??
+          "Photos and video are timestamped proof of condition. Prefer the camera so date and time stay on the file."}
       </p>
 
       {!readOnly ? (
@@ -767,31 +780,39 @@ export function ConditionUploader({
         <p className="mt-4 text-sm text-muted-foreground">No photos yet.</p>
       ) : (
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {media.map((m) => (
-            <a
-              key={m.id}
-              href={m.url ?? "#"}
-              target="_blank"
-              rel="noreferrer"
-              className="group block overflow-hidden rounded-xl border border-[#EDEDF0]"
-            >
-              {m.media_type === "video" ? (
-                <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center text-xs text-muted-foreground">
-                  Video
+          {media.map((m) => {
+            const when = m.taken_at ?? m.created_at;
+            const missing = m.missing_exif_time ?? m.taken_at_source !== "exif";
+            return (
+              <a
+                key={m.id}
+                href={m.url ?? "#"}
+                target="_blank"
+                rel="noreferrer"
+                className="group block overflow-hidden rounded-xl border border-[#EDEDF0]"
+              >
+                {m.media_type === "video" ? (
+                  <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center text-xs text-muted-foreground">
+                    Video
+                  </div>
+                ) : (
+                  <img
+                    src={m.url ?? ""}
+                    alt={m.angle ?? "condition photo"}
+                    loading="lazy"
+                    className="h-28 w-full object-cover transition-transform group-hover:scale-[1.03]"
+                  />
+                )}
+                <div className="px-2 py-1.5 text-[11px] text-muted-foreground truncate">
+                  {(m.angle ?? "photo").replace(/_/g, " ")} · {roleLabel(m.captured_by_role)}
                 </div>
-              ) : (
-                <img
-                  src={m.url ?? ""}
-                  alt={m.angle ?? "condition photo"}
-                  loading="lazy"
-                  className="h-28 w-full object-cover transition-transform group-hover:scale-[1.03]"
-                />
-              )}
-              <div className="px-2 py-1.5 text-[11px] text-muted-foreground truncate">
-                {(m.angle ?? "photo").replace(/_/g, " ")} · {m.captured_by_role}
-              </div>
-            </a>
-          ))}
+                <div className="px-2 pb-1.5 text-[10px] text-muted-foreground truncate">
+                  {fmtDateTime(when)}
+                  {missing ? " · upload time" : ""}
+                </div>
+              </a>
+            );
+          })}
         </div>
       )}
     </div>

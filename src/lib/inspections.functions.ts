@@ -3,6 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { tierAllows, tierFromRoles, type StaffTier } from "@/lib/roles";
+import { parseConditionExif } from "@/lib/condition-exif";
 
 export const CONDITION_BUCKET = "condition-media";
 
@@ -56,6 +57,13 @@ export type ConditionMedia = {
   caption: string | null;
   captured_by_role: string;
   created_at: string;
+  taken_at: string | null;
+  taken_at_source: string | null;
+  /** Present for staff listings only; never returned to renters. */
+  gps_lat: number | null;
+  gps_lng: number | null;
+  /** True when EXIF datetime was missing at upload (or unknown for legacy rows). */
+  missing_exif_time: boolean;
   url: string | null;
 };
 
@@ -164,12 +172,18 @@ function safeExt(fileName: string, mime: string): string {
   return map[mime] || "bin";
 }
 
-async function signMedia(admin: any, rows: any[]): Promise<ConditionMedia[]> {
+async function signMedia(
+  admin: any,
+  rows: any[],
+  opts: { includeGps: boolean },
+): Promise<ConditionMedia[]> {
   return Promise.all(
     rows.map(async (m) => {
       const { data: signed } = await admin.storage
         .from(m.storage_bucket)
         .createSignedUrl(m.storage_path, 60 * 30);
+      const takenAt = (m.taken_at as string | null) ?? (m.created_at as string);
+      const source = (m.taken_at_source as string | null) ?? (m.taken_at ? "exif" : "upload");
       return {
         id: m.id,
         vehicle_id: m.vehicle_id,
@@ -180,6 +194,11 @@ async function signMedia(admin: any, rows: any[]): Promise<ConditionMedia[]> {
         caption: m.caption ?? null,
         captured_by_role: m.captured_by_role ?? "staff",
         created_at: m.created_at,
+        taken_at: takenAt,
+        taken_at_source: source,
+        gps_lat: opts.includeGps && m.gps_lat != null ? Number(m.gps_lat) : null,
+        gps_lng: opts.includeGps && m.gps_lng != null ? Number(m.gps_lng) : null,
+        missing_exif_time: source !== "exif",
         url: signed?.signedUrl ?? null,
       };
     }),
@@ -270,6 +289,26 @@ export const confirmConditionUpload = createServerFn({ method: "POST" })
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const isVideo = (data.mimeType ?? "").startsWith("video/");
+
+    // Read original bytes from storage and parse EXIF BEFORE any re-encode.
+    const uploadNow = new Date();
+    let exif: Awaited<ReturnType<typeof parseConditionExif>> = {
+      takenAt: uploadNow,
+      takenAtSource: "upload",
+      gpsLat: null,
+      gpsLng: null,
+      missingExifTime: true,
+    };
+    if (!isVideo) {
+      const { data: blob, error: dlErr } = await supabaseAdmin.storage
+        .from(CONDITION_BUCKET)
+        .download(data.path);
+      if (!dlErr && blob) {
+        const buf = new Uint8Array(await blob.arrayBuffer());
+        exif = await parseConditionExif(buf, uploadNow);
+      }
+    }
+
     const { error } = await supabaseAdmin.from("condition_media").insert({
       vehicle_id: data.vehicleId,
       rental_id: rentalId,
@@ -285,9 +324,13 @@ export const confirmConditionUpload = createServerFn({ method: "POST" })
       captured_by: context.userId,
       captured_by_role: operator ? "staff" : "driver",
       caption: data.caption ?? null,
+      taken_at: (exif.takenAt ?? uploadNow).toISOString(),
+      taken_at_source: exif.takenAtSource,
+      gps_lat: exif.gpsLat,
+      gps_lng: exif.gpsLng,
     });
     if (error) throw new Error(error.message);
-    return { ok: true };
+    return { ok: true, missingExifTime: exif.missingExifTime };
   });
 
 export const listConditionMedia = createServerFn({ method: "POST" })
@@ -318,7 +361,8 @@ export const listConditionMedia = createServerFn({ method: "POST" })
     if (data.rentalId) q = q.eq("rental_id", data.rentalId);
 
     const { data: rows } = await q;
-    return signMedia(supabaseAdmin, rows ?? []);
+    // Precise GPS is staff-only; renters see time but not coordinates.
+    return signMedia(supabaseAdmin, rows ?? [], { includeGps: !!operator });
   });
 
 export const deleteConditionMedia = createServerFn({ method: "POST" })
@@ -499,7 +543,7 @@ export const getInspection = createServerFn({ method: "POST" })
       driver_signed_at: inspection.driver_signed_at ?? null,
       driver_notes: inspection.driver_notes ?? null,
       items: (items ?? []) as InspectionItem[],
-      media: await signMedia(supabaseAdmin, media ?? []),
+      media: await signMedia(supabaseAdmin, media ?? [], { includeGps: true }),
     };
   });
 
@@ -706,7 +750,7 @@ export const getMyCheckoutInspection = createServerFn({ method: "GET" })
       signatureName: (inspection.driver_signature_name as string | null) ?? null,
       driverNotes: (inspection.driver_notes as string | null) ?? null,
       items: (items ?? []) as InspectionToSign["items"],
-      media: await signMedia(supabaseAdmin, media ?? []),
+      media: await signMedia(supabaseAdmin, media ?? [], { includeGps: false }),
     };
   });
 

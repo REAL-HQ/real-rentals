@@ -95,7 +95,15 @@ export type RenterPortalSummary = {
     files: { id: string; label: string; expiresOn: string | null }[];
   };
   insurance?: InsuranceDoc[];
-  photos?: { id: string; phase: string | null; angle: string | null; mediaType: string | null; takenAt: string }[];
+  photos?: {
+    id: string;
+    phase: string | null;
+    angle: string | null;
+    mediaType: string | null;
+    capturedByRole: string | null;
+    takenAt: string;
+    takenAtSource?: string | null;
+  }[];
   receipts?: { id: string; type: string | null; amount: number; paidDate: string | null; method: string | null }[];
 };
 

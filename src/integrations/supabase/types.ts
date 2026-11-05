@@ -1072,6 +1072,8 @@ export type Database = {
           captured_by_role: string
           created_at: string
           file_name: string | null
+          gps_lat: number | null
+          gps_lng: number | null
           id: string
           incident_id: string | null
           inspection_id: string | null
@@ -1082,6 +1084,8 @@ export type Database = {
           size_bytes: number | null
           storage_bucket: string
           storage_path: string
+          taken_at: string | null
+          taken_at_source: string | null
           vehicle_id: string
         }
         Insert: {
@@ -1092,6 +1096,8 @@ export type Database = {
           captured_by_role?: string
           created_at?: string
           file_name?: string | null
+          gps_lat?: number | null
+          gps_lng?: number | null
           id?: string
           incident_id?: string | null
           inspection_id?: string | null
@@ -1102,6 +1108,8 @@ export type Database = {
           size_bytes?: number | null
           storage_bucket?: string
           storage_path: string
+          taken_at?: string | null
+          taken_at_source?: string | null
           vehicle_id: string
         }
         Update: {
@@ -1112,6 +1120,8 @@ export type Database = {
           captured_by_role?: string
           created_at?: string
           file_name?: string | null
+          gps_lat?: number | null
+          gps_lng?: number | null
           id?: string
           incident_id?: string | null
           inspection_id?: string | null
@@ -1122,6 +1132,8 @@ export type Database = {
           size_bytes?: number | null
           storage_bucket?: string
           storage_path?: string
+          taken_at?: string | null
+          taken_at_source?: string | null
           vehicle_id?: string
         }
         Relationships: [
