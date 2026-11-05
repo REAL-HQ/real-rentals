@@ -12,7 +12,7 @@ import { normalizeBodyType } from "@/lib/safe-autofill";
 import { tierAllows } from "@/lib/roles";
 import { logAudit } from "@/lib/audit";
 import {
-  DOC_CLASSES, FIELD_LABELS, FINANCE_FIELDS, HIGH_RISK, VEHICLE_FIELDS, buildProposal, authorityOf, defaultWeeklyRate,
+  DOC_CLASSES, FIELD_LABELS, FINANCE_FIELDS, HIGH_RISK, VEHICLE_FIELDS, buildProposal, identityMutationBlocked, NON_VIN_MATCH_BASES, authorityOf, defaultWeeklyRate,
   isFinanceField, isPhotoClass, docGroupOf, type ExistingVehicle, type ExtractedEntry, type ExtractedField, type ProvenanceIndex, type Change,
 } from "@/lib/fleet-inbox";
 import { documentExpiryFrom } from "@/lib/vehicle-doc-upload";
@@ -431,7 +431,7 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
         const prov = await loadProvenance(sb, target ? [target.id] : []);
         const fresh = target ? buildProposal(entry, docClass, [target], prov) : buildProposal(entry, docClass, vehicles, prov);
         if (dec.action === "create") {
-          if (!fresh.vin || !fresh.vinCheck?.formatValid) throw new Error("A valid VIN is required to create a vehicle.");
+          if (!fresh.vin || !fresh.vinCheck?.formatValid || fresh.vinCheck?.checkDigitValid !== true) throw new Error("A valid VIN (17 characters with a matching check digit) is required to create a vehicle.");
           if (fresh.kind !== "new") throw new Error("A vehicle with this VIN or identifier now exists — choose Match instead.");
           if (!entry.fields.year?.value || !entry.fields.make?.value || !entry.fields.model?.value) throw new Error("Year, make and model are required to create a vehicle.");
         }
@@ -453,6 +453,21 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
             refused.push({ field: f, label: labelOf(f), reason: "Owner only." });
           }
         }
+        // Server guard: plate/unit/title/near-VIN matches cannot mutate year/make/model/VIN
+        // even if the UI ticked them. Exact-VIN matches are unchanged.
+        const basisForGuard = (fresh.matchBasis ?? p.match_basis ?? null) as string | null;
+        if (dec.action === "match" && basisForGuard && NON_VIN_MATCH_BASES.has(basisForGuard)) {
+          for (const f of [...accept]) {
+            if (!identityMutationBlocked(basisForGuard, f)) continue;
+            accept.delete(f);
+            refused.push({
+              field: f,
+              label: labelOf(f),
+              reason: `Identity cannot change from a ${basisForGuard} match — exact VIN required.`,
+            });
+          }
+        }
+
         const toWrite: Record<string, unknown> = {};
         const written: Change[] = [];
         for (const f of accept) {

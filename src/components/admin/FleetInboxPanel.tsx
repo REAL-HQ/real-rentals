@@ -11,7 +11,7 @@ import {
   applyImportDecisions, classifyInboxItem, attachInboxItem, getFleetDocumentFile,
 } from "@/lib/fleet-inbox.functions";
 import { FinancialDocumentReview } from "@/components/admin/FinancialDocumentReview";
-import { DOC_GROUPS, docClassLabel, FIELD_LABELS, HIGH_RISK, type Change } from "@/lib/fleet-inbox";
+import { DOC_GROUPS, docClassLabel, FIELD_LABELS, HIGH_RISK, suggestBatchVehicle, type Change } from "@/lib/fleet-inbox";
 import { EmptyState, StatusPill } from "@/components/admin/ui";
 import { FileUploader } from "@/components/FileUploader";
 import { ServiceTransactionReview } from "@/components/admin/ServiceTransactionReview";
@@ -267,6 +267,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
   };
   const itemById = Object.fromEntries(d.items.map((i: any) => [i.id, i]));
   const vehLabel = (id: string) => { const v = d.vehicles.find((x: any) => x.id === id); return v ? `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}${v.unit_number ? ` · ${v.unit_number}` : ""}${v.vin ? ` · …${String(v.vin).slice(-6)}` : ""}` : "—"; };
+  const batchVehicleHint = suggestBatchVehicle(props.map((x: any) => x.match_vehicle_id));
   const creates = selected.filter((p: any) => dec[p.id].action === "create");
   const matches = selected.filter((p: any) => dec[p.id].action === "match");
   const ignores = selected.filter((p: any) => dec[p.id].action === "ignore");
@@ -414,7 +415,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
       <div className="space-y-3">
         {props.map((p) => (
           <ProposalCard key={p.id} p={p} item={itemById[p.item_id]} dec={dec[p.id]} setOne={(patch) => setOne(p.id, patch)}
-            vehicles={d.vehicles} vehLabel={vehLabel} finance={d.finance.filter((f: any) => f.proposal_id === p.id)} isManager={isManager} />
+            vehicles={d.vehicles} vehLabel={vehLabel} batchVehicleHint={batchVehicleHint} finance={d.finance.filter((f: any) => f.proposal_id === p.id)} isManager={isManager} />
         ))}
       </div>
 
@@ -445,9 +446,9 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
   );
 }
 
-function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isManager }: {
+function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, batchVehicleHint, finance, isManager }: {
   p: any; item: any; dec?: Decision; setOne: (patch: Partial<Decision>) => void; vehicles: any[];
-  vehLabel: (id: string) => string; finance: any[]; isManager: boolean;
+  vehLabel: (id: string) => string; batchVehicleHint?: string | null; finance: any[]; isManager: boolean;
 }) {
   if (!dec) return null;
   const done = p.status === "applied" || p.status === "ignored";
@@ -546,7 +547,10 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isMan
           {isManager && (
             <ActionBtn
               active={dec.action === "match"}
-              onClick={() => setOne({ action: dec.action === "match" ? null : "match", vehicleId: dec.vehicleId ?? p.match_vehicle_id ?? vehicles[0]?.id })}
+              onClick={() => setOne({
+                action: dec.action === "match" ? null : "match",
+                vehicleId: dec.vehicleId ?? p.match_vehicle_id ?? batchVehicleHint ?? vehicles[0]?.id,
+              })}
               disabled={!vehicles.length}
             >
               <Link2 className="w-3.5 h-3.5" />
