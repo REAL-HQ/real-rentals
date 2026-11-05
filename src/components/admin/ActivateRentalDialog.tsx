@@ -12,6 +12,8 @@ import {
   insuranceExceptionWarning,
   isHardBlocker,
   MIN_OVERRIDE_REASON,
+  OWNER_APPROVED_RENTAL_REASON,
+  canUseOwnerActivatePreset,
 } from "@/lib/activation-readiness";
 import { MicroLabel } from "./ui";
 import { ActivationRequirementList } from "./ActivationRequirementList";
@@ -36,11 +38,14 @@ export function ActivateRentalDialog({
   vehicles,
   onClose,
   onActivated,
+  isOwner = false,
 }: {
   driver: { id: string; full_name?: string | null; vehicle_id?: string | null };
   vehicles: VehicleLite[];
   onClose: () => void;
   onActivated: () => void;
+  /** Owner/Admin may apply the preset override reason without typing. */
+  isOwner?: boolean;
 }) {
   const check = useServerFn(getActivationReadiness);
   const activate = useServerFn(activateRental);
@@ -244,13 +249,28 @@ export function ActivateRentalDialog({
                 </span>
               </label>
               {acknowledged && (
-                <textarea
-                  value={overrideReason}
-                  onChange={(e) => setOverrideReason(e.target.value)}
-                  placeholder="Reason For Override (Required)"
-                  rows={2}
-                  className="mt-2 w-full rounded-md border border-[#F6E7B8] bg-white px-2 py-1.5 text-xs text-[#111114]"
-                />
+                <div className="mt-2 space-y-2">
+                  {canUseOwnerActivatePreset(isOwner) ? (
+                    <button
+                      type="button"
+                      onClick={() => setOverrideReason(OWNER_APPROVED_RENTAL_REASON)}
+                      className="rounded-md border border-[#F0DCBB] bg-white px-2.5 py-1.5 text-xs font-medium text-[#8A5A00] hover:bg-[#FDF8EF]"
+                    >
+                      Use “owner approved rental”
+                    </button>
+                  ) : (
+                    <p className="text-[11px] text-[#8A5A00]/80">
+                      Owners can apply a preset reason. Enter your own reason below.
+                    </p>
+                  )}
+                  <textarea
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                    placeholder="Reason For Override (Required)"
+                    rows={2}
+                    className="w-full rounded-md border border-[#F6E7B8] bg-white px-2 py-1.5 text-xs text-[#111114]"
+                  />
+                </div>
               )}
             </div>
           ) : null}

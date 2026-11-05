@@ -116,6 +116,21 @@ export const SOFT_ACTIVATION_BLOCKERS: ReadonlySet<ActivationBlockerCode> =
 
 export const MIN_OVERRIDE_REASON = 5;
 
+/**
+ * One-click override reason for Owner/Admin. Exact phrase stored in the audit
+ * log. Managers and Coordinators cannot use this preset; they type their own.
+ */
+export const OWNER_APPROVED_RENTAL_REASON = "owner approved rental";
+
+export function isOwnerApprovedRentalPreset(reason: string | null | undefined): boolean {
+  return (reason ?? "").trim().toLowerCase() === OWNER_APPROVED_RENTAL_REASON;
+}
+
+/** Owner tier (database role `admin`) may apply the preset without typing. */
+export function canUseOwnerActivatePreset(isOwner: boolean): boolean {
+  return isOwner === true;
+}
+
 export function isHardBlocker(code: string): boolean {
   return !SOFT_ACTIVATION_BLOCKERS.has(code as ActivationBlockerCode);
 }
@@ -432,6 +447,8 @@ export function decideActivation(
     overrideBlockers?: boolean;
     overrideReason?: string | null;
     insuranceExceptionAck?: boolean;
+    /** True when the actor is Owner/Admin (tier owner). Required for the preset reason. */
+    actorIsOwner?: boolean;
   },
 ): ActivationDecision {
   const { blockers, insurance } = readiness;
@@ -462,7 +479,20 @@ export function decideActivation(
   }
   if (blockers.length === 0) return { ok: true, overridden: [], insuranceExceptionUsed };
   if (!input.overrideBlockers) return { ok: false, blockers: [...blockers] };
-  if ((input.overrideReason ?? "").trim().length < MIN_OVERRIDE_REASON) {
+  const reason = (input.overrideReason ?? "").trim();
+  if (isOwnerApprovedRentalPreset(reason)) {
+    if (!canUseOwnerActivatePreset(input.actorIsOwner === true)) {
+      return {
+        ok: false,
+        blockers: [
+          {
+            code: "override_reason_required",
+            message: "Only an Owner or Admin can use \"owner approved rental\". Enter your own reason.",
+          },
+        ],
+      };
+    }
+  } else if (reason.length < MIN_OVERRIDE_REASON) {
     return {
       ok: false,
       blockers: [{ code: "override_reason_required", message: "Enter a reason for the override." }],
