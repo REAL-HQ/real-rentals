@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Lead Priorities: aligned readiness and priority badges, added title fire icon, and used a red box background; verified desktop/tablet/phone and existing tests (preview only).
 - [x] Release repair 1: Owner-only finance documents (server guard, UI hide, storage write policy 0013)
 - [x] Release repair 2: broken uploader thumbnail
 - [x] Release repair 3: hand-test Retry/Remove with simulated network failure
