@@ -6147,6 +6147,7 @@ export type Database = {
         Args: { _at: string; _vehicle_id: string }
         Returns: string
       }
+      renter_portal_summary: { Args: never; Returns: Json }
       reserve_application_recovery: {
         Args: { _application_id: string; _token_hash: string }
         Returns: Json
