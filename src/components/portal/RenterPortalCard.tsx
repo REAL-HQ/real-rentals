@@ -11,6 +11,12 @@ import {
   renterSections,
   type RenterPortalSummary,
 } from "@/lib/renter-portal";
+import {
+  CONDITION_SECTIONS,
+  ROLE_SUBSECTION,
+  groupConditionPhotos,
+} from "@/lib/condition-photos";
+import { fmtDateTime } from "@/lib/date-format";
 
 const money = (n: number) => Number(n).toLocaleString("en-US", { style: "currency", currency: "USD" });
 const nyToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
@@ -23,11 +29,14 @@ const nyToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "Americ
 export function RenterPortalCard({
   onOpenDocuments,
   onOpenSettings,
+  onOpenPictures,
   previewDriverId = null,
   readOnly = false,
 }: {
   onOpenDocuments: () => void;
   onOpenSettings: () => void;
+  /** Jump to the Pictures tab for full upload UI. */
+  onOpenPictures?: () => void;
   /** Staff preview: load this driver's portal (server re-checks Manager/Owner). */
   previewDriverId?: string | null;
   readOnly?: boolean;
@@ -44,6 +53,7 @@ export function RenterPortalCard({
       data={data}
       onOpenDocuments={onOpenDocuments}
       onOpenSettings={onOpenSettings}
+      onOpenPictures={onOpenPictures}
       previewDriverId={previewDriverId}
       readOnly={readOnly || !!previewDriverId}
     />
@@ -54,12 +64,14 @@ export function RenterPortalView({
   data,
   onOpenDocuments,
   onOpenSettings,
+  onOpenPictures,
   previewDriverId = null,
   readOnly = false,
 }: {
   data: RenterPortalSummary;
   onOpenDocuments: () => void;
   onOpenSettings: () => void;
+  onOpenPictures?: () => void;
   previewDriverId?: string | null;
   readOnly?: boolean;
 }) {
@@ -70,6 +82,17 @@ export function RenterPortalView({
   if (sections.length === 0) return null;
   const has = (s: (typeof sections)[number]) => sections.includes(s);
   const ins = insuranceOnFile(data.insurance ?? []);
+  const photoGroups = groupConditionPhotos(
+    (data.photos ?? []).map((p) => ({
+      id: p.id,
+      phase: p.phase,
+      capturedByRole: p.capturedByRole,
+      angle: p.angle,
+      mediaType: p.mediaType,
+      takenAt: p.takenAt,
+      takenAtSource: p.takenAtSource,
+    })),
+  );
 
   return (
     <div className="space-y-4" data-testid="renter-portal">
@@ -128,20 +151,51 @@ export function RenterPortalView({
       {has("companyInsurance") ? <Card title="Company Insurance"><p className="text-sm">Coming soon.</p></Card> : null}
 
       {has("photos") ? (
-        <Card title="Check-in / Check-out Photos">
+        <Card title="Photos">
           {data.stage === "returned" && data.returnedOn ? (
             <p className="text-xs text-muted-foreground mb-2">Available for one year after your return on {fmtDate(data.returnedOn)}.</p>
+          ) : null}
+          {onOpenPictures ? (
+            <p className="text-xs text-muted-foreground mb-3">
+              <button type="button" className="text-real-red hover:underline" onClick={onOpenPictures}>
+                Open Pictures
+              </button>{" "}
+              to upload or review Pickup, Return, and Issues.
+            </p>
           ) : null}
           {(data.photos ?? []).length === 0 ? (
             <p className="text-sm text-muted-foreground">No photos yet.</p>
           ) : (
-            <ul className="divide-y divide-border">
-              {(data.photos ?? []).map((p) => (
-                <FileRow key={p.id} kind="photo" id={p.id}
-                  label={[p.phase?.replace(/_/g, " "), p.angle?.replace(/_/g, " ")].filter(Boolean).join(" · ") || "Photo"}
-                  sub={fmtDate(p.takenAt)} previewDriverId={previewDriverId} />
-              ))}
-            </ul>
+            <div className="space-y-4">
+              {CONDITION_SECTIONS.map((section) => {
+                const grouped = photoGroups;
+                const bucket = grouped[section.key];
+                const rows = [
+                  ...bucket.staff.map((p) => ({ ...p, _role: "staff" as const })),
+                  ...bucket.driver.map((p) => ({ ...p, _role: "driver" as const })),
+                ];
+                if (rows.length === 0) return null;
+                return (
+                  <div key={section.key}>
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                      {section.title}
+                    </div>
+                    <ul className="divide-y divide-border">
+                      {rows.map((p) => (
+                        <FileRow
+                          key={p.id}
+                          kind="photo"
+                          id={p.id}
+                          label={[ROLE_SUBSECTION[p._role], (p as any).angle?.replace(/_/g, " ")].filter(Boolean).join(" · ") || ROLE_SUBSECTION[p._role]}
+                          sub={`${fmtDateTime((p as any).takenAt)}${(p as any).takenAtSource === "exif" ? "" : " · upload time"}`}
+                          previewDriverId={previewDriverId}
+                        />
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </Card>
       ) : null}

@@ -42,6 +42,7 @@ import { PORTAL_PAYMENT_HISTORY_ENABLED } from "@/lib/portal-payment-history";
 import { DRIVER_DOC_EXPIRY_CARD_ENABLED } from "@/lib/driver-doc-expiry";
 import { DRIVER_AGREEMENT_VIEW_ENABLED } from "@/lib/driver-agreement-view";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
+import { CONDITION_SECTIONS, ROLE_SUBSECTION, groupConditionPhotos } from "@/lib/condition-photos";
 import {
   listConditionMedia,
   getMyCheckoutInspection,
@@ -392,6 +393,7 @@ function PortalBody({ tab, onNavigate }: { tab: Tab; onNavigate: (t: Tab) => voi
           <RenterPortalCard
             onOpenDocuments={() => onNavigate("documents")}
             onOpenSettings={() => onNavigate("settings")}
+            onOpenPictures={() => onNavigate("pictures")}
             previewDriverId={previewId}
             readOnly={!!previewId}
           />
@@ -1127,8 +1129,15 @@ function PicturesView() {
   const vehicleId = dash?.vehicle?.id ?? null;
   const rentalId = dash?.rental?.id ?? null;
   const media = condition ?? [];
-  const before = media.filter((m) => m.phase === "checkout");
-  const after = media.filter((m) => m.phase !== "checkout");
+  const grouped = useMemo(() => {
+    return groupConditionPhotos(
+      media.map((m: any) => ({
+        ...m,
+        phase: m.phase ?? null,
+        capturedByRole: m.captured_by_role ?? null,
+      })),
+    );
+  }, [media]);
 
   return (
     <div className="space-y-5 max-w-3xl">
@@ -1139,31 +1148,50 @@ function PicturesView() {
           <div className="rounded-2xl border border-border bg-white p-5">
             <h3 className="font-semibold">Proof of Condition</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Photograph the car when you pick it up and again when you bring it back. These
-              timestamped photos protect you if there is ever a question about damage — and you can
-              see the ones our team took too.
+              Photograph the car at pickup and return — and if something happens mid-rental. Prefer the
+              camera so date and time stay on the file. You can see ours too.
             </p>
           </div>
 
-          {picsPreviewId ? <ReadOnlyNote what="Condition photo uploads" /> : (<>
-          <ConditionUploader
-            title="Before — at Pickup"
-            vehicleId={vehicleId}
-            rentalId={rentalId}
-            phase="checkout"
-            media={before}
-            onChanged={() => refetchCondition()}
-          />
+          {CONDITION_SECTIONS.map((section) => {
+            const bucket = grouped[section.key];
+            const ours = bucket.staff;
+            const yours = bucket.driver;
+            return (
+              <div key={section.key} className="space-y-3">
+                <div className="rounded-2xl border border-border bg-white p-5 pb-3">
+                  <h3 className="font-semibold">{section.title}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{section.blurb}</p>
+                </div>
 
-          <ConditionUploader
-            title="After — at Return"
-            vehicleId={vehicleId}
-            rentalId={rentalId}
-            phase="checkin"
-            media={after}
-            onChanged={() => refetchCondition()}
-          />
-          </>)}
+                <ConditionUploader
+                  title={ROLE_SUBSECTION.staff}
+                  hint="Taken by our team."
+                  vehicleId={vehicleId}
+                  rentalId={rentalId}
+                  phase={section.uploadPhase}
+                  media={ours}
+                  readOnly
+                  onChanged={() => refetchCondition()}
+                />
+
+                {picsPreviewId ? (
+                  <ReadOnlyNote what={`${section.title} · ${ROLE_SUBSECTION.driver}`} />
+                ) : (
+                  <ConditionUploader
+                    title={ROLE_SUBSECTION.driver}
+                    hint="Prefer the camera so date and time stay on the file."
+                    vehicleId={vehicleId}
+                    rentalId={rentalId}
+                    phase={section.uploadPhase}
+                    media={yours}
+                    defaultAngle={section.key === "during" ? "damage" : "front"}
+                    onChanged={() => refetchCondition()}
+                  />
+                )}
+              </div>
+            );
+          })}
         </>
       ) : (
         <div className="rounded-2xl border border-border bg-white p-5">
