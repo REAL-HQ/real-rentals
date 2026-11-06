@@ -196,6 +196,9 @@ describe("wiring", () => {
     expect(panel).toContain("This Week");
     expect(panel).toContain("This Month");
     expect(panel).toContain("Projected / Collected");
+    // Dense 2-col layout so the KPI row is not stretched by a tall Revenue card.
+    expect(panel).toContain("grid grid-cols-2 gap-x-3");
+    expect(panel).toContain("items-start");
   });
 
   it("admin bell accepts Collections Plan title", () => {

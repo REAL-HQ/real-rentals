@@ -107,9 +107,23 @@ describe("Overview wiring", () => {
     expect(overview).toMatch(/refreshKey=\{opsRefreshKey\}/);
     expect(payments).toContain("<StripeCollections");
     expect(payments).toContain("Stripe Collections");
-    expect(leads).toContain("Follow-up Due");
+    expect(leads).toContain("Follow-Up Due");
     expect(leads).toContain("ReadinessStatePill");
     expect(leads).toContain("Applied");
     expect(leads).toContain("Last contact");
+  });
+});
+
+describe("Overview KPI tile refresh and Revenue density", () => {
+  it("refreshes Service and Stripe collections with opsRefreshKey; denser Revenue row", () => {
+    const overview = readFileSync("src/components/admin/OverviewPanel.tsx", "utf8");
+    // Service counts used to load once ([]); they must follow the shared refresh key.
+    expect(overview).toMatch(/fleetMaint\(\)[\s\S]*?\}, \[opsRefreshKey\]\);/);
+    expect(overview).toContain('invalidateQueries({ queryKey: ["stripe-collections"] })');
+    expect(overview).toContain("items-start");
+    expect(overview).toContain("grid grid-cols-2 gap-x-3");
+    expect(overview).toContain("Projected / Collected");
+    expect(overview).toContain('? "Loading"');
+    expect(overview).toContain("${vehiclesTotal} In Fleet · ${activeRentalCount} Active");
   });
 });
