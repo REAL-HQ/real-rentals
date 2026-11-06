@@ -7,6 +7,7 @@ import {
   overdueAge,
   LEAD_FILTERS,
   LEAD_FILTER_LABELS,
+  LEAD_PREVIEW_LIMIT,
   type LeadFilter,
   type LeadPrioritiesResult,
 } from "@/lib/lead-priorities";
@@ -64,7 +65,7 @@ export default function LeadPriorities({
     let current = true;
     setLoading(true);
     setError(false);
-    load({ data: { offset, limit: expanded ? 25 : 5, filter } })
+    load({ data: { offset, limit: expanded ? 25 : LEAD_PREVIEW_LIMIT, filter } })
       .then((r) => {
         if (
           !r ||
@@ -322,7 +323,7 @@ export default function LeadPriorities({
                   ? `${offset + 1}–${offset + result.rows.length} of ${result.total}`
                   : "0 applicants"}
               </span>
-              {!expanded && result.total > 5 ? (
+              {!expanded && result.total > LEAD_PREVIEW_LIMIT ? (
                 <button
                   className="font-medium text-brand-foreground"
                   onClick={() => {

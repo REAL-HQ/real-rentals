@@ -1,6 +1,7 @@
 import { contactStatusLabel } from "./contact-status";
 
 export const LEAD_TIME_ZONE = "America/New_York";
+export const LEAD_PREVIEW_LIMIT = 6;
 export const LEAD_BUCKETS = [
   "overdue",
   "new",

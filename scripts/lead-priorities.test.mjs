@@ -64,7 +64,7 @@ const pure = await build({
   platform: "node",
   format: "esm",
 });
-const { leadToday, leadBucket, projectLead, overdueAge, leadFilterBuckets, LEAD_ALL_PAGE_ORDER } = await import(
+const { leadToday, leadBucket, projectLead, overdueAge, leadFilterBuckets, LEAD_ALL_PAGE_ORDER, LEAD_PREVIEW_LIMIT } = await import(
   "data:text/javascript;base64," + Buffer.from(pure.outputFiles[0].text).toString("base64")
 );
 let checks = 0;
@@ -160,6 +160,16 @@ for (const role of ["admin", "team", "coordinator"]) {
 check(LEAD_ALL_PAGE_ORDER[0] === "new" && LEAD_ALL_PAGE_ORDER[1] === "interested", "All page order surfaces pipeline first");
 check(leadFilterBuckets("follow_up_due").join(",") === "overdue,today", "follow-up due filter");
 state.roles = [{ user_id: "staff", role: "admin" }];
+const preview = await getLeadPriorities({
+  context: { userId: "staff" },
+  data: { limit: LEAD_PREVIEW_LIMIT, offset: 0 },
+});
+assert.deepEqual(
+  { limit: LEAD_PREVIEW_LIMIT, ids: preview.rows.map((lead) => lead.id), nextOffset: preview.nextOffset },
+  { limit: 6, ids: ["b", "c", "a", "d", "e", "f"], nextOffset: null },
+  "Overview preview includes six eligible leads without truncating the sixth",
+);
+checks++;
 state.reads = [];
 const interested = await getLeadPriorities({
   context: { userId: "staff" },
