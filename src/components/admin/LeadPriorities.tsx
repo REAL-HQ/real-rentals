@@ -109,26 +109,26 @@ export default function LeadPriorities({
   return (
     <section
       aria-labelledby="lead-priorities-title"
-      className="rounded-2xl border border-brand bg-brand p-4 text-brand-foreground sm:p-5"
+      className="rounded-2xl border border-brand-soft-border bg-brand-soft p-4 text-foreground sm:p-5"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 id="lead-priorities-title" className="flex items-center gap-2 text-lg font-semibold">
-            <Flame aria-hidden="true" className="h-5 w-5 shrink-0" />
+            <Flame aria-hidden="true" className="h-5 w-5 shrink-0 text-brand" />
             Lead Priorities
           </h2>
-          <p className="text-sm text-brand-foreground/80">Who needs attention and what to do next</p>
+          <p className="text-sm text-muted-foreground">Who needs attention and what to do next</p>
         </div>
         <div className="flex flex-col items-end gap-1">
           <button
             onClick={refresh}
             disabled={loading}
-            className="text-sm text-brand-foreground disabled:opacity-50"
+            className="text-sm text-primary disabled:opacity-50"
           >
             Refresh
           </button>
           {updatedAt && (
-            <span className="text-[11px] text-brand-foreground/80" role="status">
+            <span className="text-[11px] text-muted-foreground" role="status">
               Updated {updatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
             </span>
           )}
@@ -138,11 +138,11 @@ export default function LeadPriorities({
         <LeadResponseReport isManager={isManager} />
       </div>
       {loading ? (
-        <p role="status" className="py-6 text-sm text-brand-foreground/80">
+        <p role="status" className="py-6 text-sm text-muted-foreground">
           Loading lead priorities…
         </p>
       ) : error ? (
-        <p role="alert" className="py-6 text-sm text-brand-foreground">
+        <p role="alert" className="py-6 text-sm text-destructive">
           Lead priorities could not be loaded.{" "}
           <button className="underline" onClick={refresh}>
             Retry
@@ -164,7 +164,7 @@ export default function LeadPriorities({
                   type="button"
                   onClick={() => setLeadFilter(next)}
                   className={`rounded-xl bg-secondary p-3 text-left text-secondary-foreground transition hover:bg-secondary/90 ${
-                    filter === next ? "ring-1 ring-brand-foreground" : ""
+                    filter === next ? "ring-1 ring-brand/40" : ""
                   }`}
                 >
                   <div className="text-xs text-muted-foreground">{label}</div>
@@ -192,13 +192,13 @@ export default function LeadPriorities({
               ))}
             </div>
 
-            <p className="mb-3 text-xs text-brand-foreground/80">
+            <p className="mb-3 text-xs text-muted-foreground">
               Converted and closed applicants are excluded. All surfaces New and Interested before
               the overdue backlog; use Follow-Up Due for urgent overdue work. Hot means marked
               Interested, not rental-ready. Dates use Eastern Time.
             </p>
             {result.rows.length === 0 ? (
-              <p className="py-4 text-sm text-brand-foreground/80">
+              <p className="py-4 text-sm text-muted-foreground">
                 No leads need attention in this view.
               </p>
             ) : (
@@ -317,15 +317,15 @@ export default function LeadPriorities({
                 })}
               </ul>
             )}
-            <div className="mt-3 flex items-center justify-between border-t border-brand-foreground/25 pt-3 text-sm">
-              <span className="text-brand-foreground/80">
+            <div className="mt-3 flex items-center justify-between border-t border-brand-soft-border pt-3 text-sm">
+              <span className="text-muted-foreground">
                 {result.total
                   ? `${offset + 1}–${offset + result.rows.length} of ${result.total}`
                   : "0 applicants"}
               </span>
               {!expanded && result.total > LEAD_PREVIEW_LIMIT ? (
                 <button
-                  className="font-medium text-brand-foreground"
+                  className="font-medium text-primary"
                   onClick={() => {
                     setExpanded(true);
                     setOffset(0);
@@ -338,14 +338,14 @@ export default function LeadPriorities({
                   <div className="flex gap-4">
                     <button
                       disabled={offset === 0}
-                      className="text-brand-foreground disabled:opacity-40"
+                      className="text-primary disabled:opacity-40"
                       onClick={() => setOffset(Math.max(0, offset - 25))}
                     >
                       Previous
                     </button>
                     <button
                       disabled={result.nextOffset === null}
-                      className="text-brand-foreground disabled:opacity-40"
+                      className="text-primary disabled:opacity-40"
                       onClick={() => setOffset(result.nextOffset!)}
                     >
                       Next
