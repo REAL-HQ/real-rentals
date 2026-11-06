@@ -129,6 +129,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { fmtDateTime } from "@/lib/date-format";
+import { displayPersonName, personInitials } from "@/lib/display-normalize";
 
 /** Deep-link parameters the Overview cards and applicant rows send. */
 type AdminSearch = {
@@ -660,9 +661,8 @@ function Admin() {
     emailName.split("@")[0] ||
     "Admin"
   ).toString();
-  const firstName = rawName.split(/[.\s]/)[0] || "Admin";
-  const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
-  const initials = displayName.slice(0, 2).toUpperCase();
+  const displayName = displayPersonName(rawName);
+  const initials = personInitials(rawName);
 
   // Display-only tier: Owner in Admin view sees the Manager layout. Servers/RLS still use the real role.
   const navTier = navTierFor(tier, experience === "driver" ? null : experience);
