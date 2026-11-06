@@ -762,7 +762,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
                   <TrendingUp className="w-4 h-4" strokeWidth={1.75} />
                 </div>
                 <div className="mt-3 text-[13px] font-medium text-[#111114]">
-                  No payment activity yet
+                  No Payment Activity Yet
                 </div>
                 <p className="mt-1 text-[12px] text-[#9A9AA3] max-w-[380px] mx-auto leading-relaxed">
                   Revenue and collections will appear here after your first rental begins.
