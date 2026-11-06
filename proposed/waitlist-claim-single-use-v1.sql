@@ -1,0 +1,7 @@
+-- PROPOSED ONLY. This file is not a migration and must not be run.
+-- The single-use column is proposed/waitlist-claim-token-v1.sql
+-- (claim_token_hash). This note only points at that file so an older
+-- name is not mistaken for a second design.
+--
+-- Do not add claim_nonce or claimed_at. The stored value is the hash of
+-- the nonce, and the first open clears it.

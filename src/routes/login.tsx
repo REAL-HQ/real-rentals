@@ -131,10 +131,10 @@ function LoginPage() {
     navigate({ to: "/portal" });
   }
 
-  const input = "w-full bg-soft rounded-lg px-5 py-3 text-sm";
+  const input = "w-full min-h-11 bg-soft rounded-lg px-5 text-base";
   const primary =
-    "w-full min-h-11 rounded-lg bg-real-red text-primary-foreground py-3 text-sm font-medium hover:opacity-90 transition disabled:opacity-50 inline-flex items-center justify-center gap-2";
-  const quiet = "text-sm text-muted-foreground hover:text-foreground hover:underline";
+    "w-full min-h-11 rounded-lg bg-real-red text-primary-foreground text-sm font-medium hover:opacity-90 transition disabled:opacity-50 inline-flex items-center justify-center gap-2";
+  const quiet = "inline-flex min-h-11 items-center justify-center px-2 text-sm text-muted-foreground hover:text-foreground hover:underline";
 
   if (signin && loading) {
     return (
@@ -153,7 +153,7 @@ function LoginPage() {
         <p className="mt-3 text-sm text-muted-foreground">
           If an account exists for <span className="font-medium text-foreground">{email}</span>, we've sent a link to set a new password.
         </p>
-        <button type="button" onClick={() => setMode("password")} className="mt-6 text-sm text-real-red hover:underline font-medium">
+        <button type="button" onClick={() => setMode("password")} className="mt-6 inline-flex min-h-11 items-center text-sm text-real-red hover:underline font-medium">
           Back To Sign In
         </button>
       </Shell>
@@ -227,7 +227,7 @@ function LoginPage() {
               aria-label="Password"
               className={`${input} pr-12`}
             />
-            <button type="button" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? "Hide password" : "Show password"} className="absolute inset-y-0 right-3 flex items-center text-muted-foreground hover:text-foreground">
+            <button type="button" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? "Hide password" : "Show password"} className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground hover:text-foreground">
               {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
@@ -246,7 +246,7 @@ function LoginPage() {
           </button>
         ) : (
           <>
-            <button type="button" onClick={() => { setMode("code"); setErr(null); }} className="text-sm text-real-red hover:underline font-medium">
+            <button type="button" onClick={() => { setMode("code"); setErr(null); }} className="inline-flex min-h-11 items-center text-sm text-real-red hover:underline font-medium">
               Email Me A Code Instead
             </button>
             <button type="button" onClick={() => { setMode(mode === "forgot" ? "password" : "forgot"); setErr(null); }} className={quiet}>
@@ -258,7 +258,7 @@ function LoginPage() {
 
       <p className="mt-6 text-xs text-muted-foreground">
         Haven't applied yet?{" "}
-        <Link to="/apply" className="text-real-red hover:underline font-medium">
+        <Link to="/apply" className="inline-flex min-h-11 items-center text-real-red hover:underline font-medium">
           Start An Application
         </Link>
         .

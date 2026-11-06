@@ -41,3 +41,8 @@ package-lock.json
 demo-data-backup-*.json
 .readiness-build
 .docfn-build
+.onboarding-build
+.doc-expiry-build
+.doc-gaps-build
+.document-review-build
+.waitlist-aging-build

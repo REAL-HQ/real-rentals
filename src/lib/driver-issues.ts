@@ -25,8 +25,86 @@ const KIND_LABEL: Record<string, string> = {
   theft: "Theft",
   vandalism: "Vandalism",
   breakdown: "Breakdown",
-  tow: "Tow",
+  flat: "Flat",
+  lockout: "Lockout",
+  tow: "Tow Needed",
 };
+
+/** Stored in public.issues.kind. Urgency uses the existing severity value "urgent". */
+export const ROADSIDE_TYPES = [
+  { kind: "breakdown", label: "Breakdown" },
+  { kind: "flat", label: "Flat" },
+  { kind: "lockout", label: "Lockout" },
+  { kind: "accident", label: "Accident" },
+  { kind: "tow", label: "Tow Needed" },
+] as const;
+
+export type RoadsideKind = (typeof ROADSIDE_TYPES)[number]["kind"];
+
+const ROADSIDE_KINDS = new Set<string>(ROADSIDE_TYPES.map((t) => t.kind));
+
+export function isPinnedIssue(issue: { kind?: string | null; severity?: string | null }): boolean {
+  const kind = String(issue.kind ?? "").trim().toLowerCase();
+  const severity = String(issue.severity ?? "").trim().toLowerCase();
+  return severity === "urgent" || ROADSIDE_KINDS.has(kind);
+}
+
+export function issueAlertBadge(issue: { kind?: string | null; severity?: string | null }): "Roadside" | "Urgent" | null {
+  if (!isPinnedIssue(issue)) return null;
+  return ROADSIDE_KINDS.has(String(issue.kind ?? "").trim().toLowerCase()) ? "Roadside" : "Urgent";
+}
+
+/** Roadside and urgent rows first, newest first inside each group. */
+export function pinIssues<T extends { kind: string; severity: string; createdAt: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => {
+    const pin = Number(isPinnedIssue(b)) - Number(isPinnedIssue(a));
+    if (pin !== 0) return pin;
+    if (a.createdAt === b.createdAt) return 0;
+    return a.createdAt < b.createdAt ? 1 : -1;
+  });
+}
+
+export function issueAgeLabel(createdAt: string, now = Date.now()): string {
+  const t = new Date(createdAt).getTime();
+  if (Number.isNaN(t)) return "";
+  const minutes = Math.max(0, Math.floor((now - t) / 60000));
+  if (minutes < 1) return "Just Now";
+  if (minutes < 60) return minutes === 1 ? "1 Minute" : `${minutes} Minutes`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  if (hours < 48) {
+    const h = hours === 1 ? "1 Hour" : `${hours} Hours`;
+    return rem === 0 ? h : `${h} ${rem === 1 ? "1 Minute" : `${rem} Minutes`}`;
+  }
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "1 Day" : `${days} Days`;
+}
+
+/** A roadside report uses kind + severity only. Location and drivable go in the existing body text. */
+export function buildRoadsideIssue(input: {
+  kind: string;
+  location?: string | null;
+  drivable: boolean;
+  note?: string | null;
+}): { title: string; body: string; kind: RoadsideKind; severity: "urgent" } {
+  const type = ROADSIDE_TYPES.find((t) => t.kind === input.kind) ?? ROADSIDE_TYPES[0];
+  const location = (input.location ?? "").trim();
+  const note = (input.note ?? "").trim();
+  const lines = [`Location: ${location || "Not Given"}`, `Drivable: ${input.drivable ? "Yes" : "No"}`];
+  if (note) lines.push(note);
+  return { title: type.label, body: lines.join("\n").slice(0, 2000), kind: type.kind, severity: "urgent" };
+}
+
+/** What the staff alert may send. Both flags default off, so a normal call sends nothing. */
+export function driverIssueAlertPlan(
+  flags: { emailEnabled: boolean; smsEnabled: boolean },
+  issue: { kind?: string | null; severity?: string | null },
+): { email: boolean; sms: boolean } {
+  return {
+    email: flags.emailEnabled,
+    sms: flags.smsEnabled && isPinnedIssue(issue) && ROADSIDE_KINDS.has(String(issue.kind ?? "").trim().toLowerCase()),
+  };
+}
 
 export function issueKindLabel(kind: string | null | undefined): string {
   const raw = String(kind ?? "").trim().toLowerCase();

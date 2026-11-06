@@ -28,7 +28,7 @@ export function StripeCollections() {
     : "—";
   if (!featureVisible) return null;
   return (
-    <section aria-label="Stripe Collections" className="space-y-4 border-t border-border pt-6">
+    <section aria-label="Stripe Collections" className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-foreground">Stripe Collections</h2>

@@ -318,6 +318,44 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
       shops: (shops ?? []) as any,
     };
   });
+
+/**
+ * The signed-in driver's own next payment, for the read-only portal banner.
+ *
+ * Same portal scope as the dashboard: a driver reads their row, and a staff
+ * preview reads only the driver they were allowed to open. Nothing else on
+ * the rental is selected. While the flag is off this refuses before that read.
+ */
+export type MyPaymentBanner = {
+  active: boolean;
+  weeklyRate: number | null;
+  nextPaymentDue: string | null;
+};
+
+export const getMyPaymentBanner = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(previewInput)
+  .handler(async ({ context, data: input }): Promise<MyPaymentBanner> => {
+    const { assertRenterPaymentBannerEnabled } = await import("@/lib/renter-payment-banner");
+    assertRenterPaymentBannerEnabled();
+    const { supabase, userId } = await scope(context, input, "payment_banner");
+    const { data: rental } = await supabase
+      .from("rentals")
+      .select("weekly_rate,next_payment_due")
+      .eq("driver_id", userId)
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!rental) return { active: false, weeklyRate: null, nextPaymentDue: null };
+    const rate = rental.weekly_rate;
+    return {
+      active: true,
+      weeklyRate: rate == null || Number.isNaN(Number(rate)) ? null : Number(rate),
+      nextPaymentDue: rental.next_payment_due ?? null,
+    };
+  });
+
 export const getDriverDocuments = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator(previewInput)
@@ -414,7 +452,8 @@ export const createDriverIssue = createServerFn({ method: "POST" })
       .select("id")
       .single();
     if (error) return { error: error.message };
-    // Staff email only. The driver still gets { ok: true } and the same portal list.
+    // Staff notice only after the row exists. Email and roadside SMS stay inside
+    // driver-issue-alert.server and both default off. The driver still gets { ok: true }.
     // Isolated from the dashboard deposit fields (PR #62 edits those, not this insert).
     void import("@/lib/driver-issue-alert.server")
       .then(({ notifyManagersOfDriverIssue }) =>

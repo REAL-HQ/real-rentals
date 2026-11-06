@@ -8,6 +8,7 @@ import { Loader2, RotateCw, Eye, AlertTriangle, ChevronDown, ChevronRight, Wrenc
 import { reprocessServiceItem, rebuildBatchServiceTransactions, applyServiceTransaction, ignoreServiceTransaction } from "@/lib/fleet-inbox.functions";
 import { categoryLabel } from "@/lib/maintenance-rules";
 import { StatusPill } from "@/components/admin/ui";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
 
 const usd = (n: number | null | undefined) => (n == null ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD" }));
 const CHARGE: Record<string, string> = { paid: "Paid", recall: "Recall", warranty: "Warranty", no_charge: "No Charge", unknown: "Unknown" };
@@ -126,10 +127,14 @@ function TxCard({ t, d, isManager, reload, openFile }: { t: any; d: any; isManag
               {!matched && pending && (
                 <div className="mt-2">
                   <div className="text-[12px] text-[#55555E] mb-1">Possible vehicles (choose one; nothing is selected automatically):</div>
-                  <select className="w-full border border-[#EDEDF0] rounded-lg px-2 py-2 text-[13px] bg-white text-[#111114]" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
-                    <option value="">Select Vehicle…</option>
-                    {(op.candidates ?? []).map((v: any) => <option key={v.id} value={v.id}>{v.unit_number} · {v.year} {v.make} {v.model}{v.color ? ` · ${v.color}` : ""}{v.license_plate ? ` · ${v.license_plate}` : ""}{v.vin ? ` · VIN …${String(v.vin).slice(-6)}` : ""}</option>)}
-                  </select>
+                  <VehicleCombobox
+                    vehicles={(op.candidates ?? []) as any}
+                    value={vehicleId || null}
+                    onChange={(id) => setVehicleId(id ?? "")}
+                    placeholder="Select Vehicle…"
+                    allowNone={false}
+                    aria-label="Vehicle"
+                  />
                 </div>
               )}
             </div>

@@ -25,6 +25,13 @@ type SendArgs = {
   track?: { workflow: string };
   /** Stable key for a reserved recovery attempt. Omitted by every other sender. */
   idempotencyKey?: string;
+  /**
+   * Driver notices set this. Live sends omit it, so the Resend fetch is the
+   * same request it was before: no abort signal is created.
+   */
+  noticeTimeout?: boolean;
+  /** Combined with the 5s notice abort. Live sends omit noticeTimeout, so this is ignored. */
+  signal?: AbortSignal;
 };
 
 export type SendResult = {
@@ -93,7 +100,13 @@ async function finishEmailDelivery(
  * Send one email. Returns a result rather than throwing, so a failed send can
  * never take down the operation that triggered it.
  */
-export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey }: SendArgs): Promise<SendResult> {
+function noticeFetchSignal(noticeTimeout: boolean | undefined, signal: AbortSignal | undefined): AbortSignal | undefined {
+  if (noticeTimeout !== true) return undefined;
+  const timeout = AbortSignal.timeout(5000);
+  return signal ? AbortSignal.any([timeout, signal]) : timeout;
+}
+
+export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey, noticeTimeout, signal }: SendArgs): Promise<SendResult> {
   // Company phone in templates resolves from Settings → Business Phone.
   let html = rawHtml;
   if (html.includes("{{company_phone}}")) {
@@ -119,6 +132,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
     }
     return result;
   };
+  const noticeSignal = noticeFetchSignal(noticeTimeout, signal);
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -135,6 +149,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
         text,
         reply_to: replyTo ?? EMAIL_REPLY_TO,
       }),
+      ...(noticeSignal ? { signal: noticeSignal } : {}),
     });
     if (!res.ok) {
       const body = await res.text();
@@ -157,7 +172,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
   }
 }
 
-const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_ops", "staff_invite", "test_email", "driver_issue"]);
+const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_ops", "staff_invite", "test_email", "driver_issue", "payment_team_alert", "collections_plan"]);
 
 /** Why this recipient got this email — accurate per workflow, never promotional. */
 export function emailReason(workflow: string | undefined): string {
@@ -384,6 +399,31 @@ async function applicantResumeUrl(applicationId: string): Promise<string> {
 }
 
 /**
+ * The link in an automated reminder: a short-lived, single-use recovery link,
+ * the same kind requestApplicationLink sends.
+ *
+ * The hourly reminders used to mint a 14-day reusable session token per
+ * email. Those sit in inboxes, get forwarded and pass through link-scanning
+ * gateways, and nobody asked for them — so an unattended job was minting a
+ * fortnight of access to an application on a timer. A recovery link is
+ * exchanged for a session on first open and then dies; if it has expired by
+ * the time the applicant clicks, the page they land on emails a fresh link to
+ * the address on file. A recovery mint only trims older recovery links, so it
+ * never logs the applicant out of a tab they already have open.
+ */
+async function applicantRecoveryUrl(applicationId: string): Promise<string> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { issueResumeToken, resumeUrl } = await import("@/lib/resume-tokens.server");
+  return resumeUrl(await issueResumeToken(supabaseAdmin, applicationId, { recovery: true }));
+}
+
+/** One sentence under every reminder button, so an expired link is not a dead end. */
+async function recoveryLinkNote(): Promise<string> {
+  const { RECOVERY_TOKEN_MINUTES } = await import("@/lib/resume-tokens.server");
+  return `For your security this link works once and expires ${RECOVERY_TOKEN_MINUTES} minutes after this email was sent. If it has expired, open it anyway and enter your email — we'll send a fresh link to the address on your application.`;
+}
+
+/**
  * "We already have your application — here's your link."
  *
  * Sent when somebody submits the lead form and we find a recent application
@@ -431,9 +471,10 @@ type RecoveryArgs = {
   variant: "24h" | "72h";
 };
 
-export async function sendWizardRecoveryEmail({ to, firstName, applicationId, variant }: RecoveryArgs): Promise<void> {
+export async function sendWizardRecoveryEmail({ to, firstName, applicationId, variant }: RecoveryArgs): Promise<SendResult> {
   const name = (firstName || "").trim().split(" ")[0] || "there";
-  const resumeUrl = await applicantResumeUrl(applicationId);
+  const resumeUrl = await applicantRecoveryUrl(applicationId);
+  const linkNote = await recoveryLinkNote();
   const subject =
     variant === "24h"
       ? `${name}, your REAL RENTALS application is saved`
@@ -453,13 +494,14 @@ export async function sendWizardRecoveryEmail({ to, firstName, applicationId, va
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Hi ${escapeHtml(name)}, ${escapeHtml(body)}</p>
       <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Finish My Application</a>
       <p style="color:#888;font-size:12px;margin:24px 0 0;line-height:1.5">Or paste this into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>
+      <p style="color:#888;font-size:12px;margin:12px 0 0;line-height:1.5">${escapeHtml(linkNote)}</p>
       <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
       <p style="color:#999;font-size:12px;margin:0">Questions? Reply to this email or call {{company_phone}}.</p>
     </div>
   </div>
 </body></html>`;
 
-  await sendEmail({ to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
+  return sendEmail({ to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
 }
 
 // -----------------------------------------------------------------------------
@@ -561,6 +603,117 @@ export async function sendPastDueReminderEmail(args: PastDueArgs): Promise<void>
   await sendEmail({ to: args.to, subject: `Past Due — ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_past_due" } });
 }
 
+type DueTomorrowArgs = { to: string; firstName: string | null; amount: number; dueDate: string; autopay?: boolean };
+
+export async function sendPaymentDueTomorrowEmail(args: DueTomorrowArgs): Promise<void> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const how = args.autopay
+    ? "Your card on file will be charged automatically. Make sure it is up to date."
+    : "Pay from your driver portal, or reply to this email if you need help.";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Payment Due Tomorrow</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, a friendly reminder that <strong>${money(args.amount)}</strong> is due ${escapeHtml(fmtDate(args.dueDate))}. ${escapeHtml(how)}</p>
+      <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Open Driver Portal</a>`);
+  await sendEmail({ to: args.to, subject: `Reminder: ${money(args.amount)} Due Tomorrow`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_due_tomorrow" } });
+}
+
+type TeamPaymentAlertArgs = {
+  event: "failed" | "past_due";
+  driverName: string | null;
+  amount: number;
+  applicationId?: string | null;
+  rentalId?: string | null;
+  plate?: string | null;
+  reason?: string | null;
+  daysLate?: number;
+  dueDate?: string | null;
+};
+
+/** Short internal alert to team@ for a failed charge or a first-time past-due balance. */
+export async function sendTeamPaymentAlertEmail(args: TeamPaymentAlertArgs): Promise<void> {
+  const who = args.driverName || "Unknown renter";
+  const headline = args.event === "failed" ? "Payment Failed" : "Payment Past Due";
+  const lines = [
+    `<strong>Renter:</strong> ${escapeHtml(who)}`,
+    `<strong>Amount:</strong> ${money(args.amount)}`,
+    args.plate ? `<strong>Plate:</strong> ${escapeHtml(args.plate)}` : "",
+    args.rentalId ? `<strong>Rental:</strong> ${escapeHtml(args.rentalId)}` : "",
+    args.reason ? `<strong>Reason:</strong> ${escapeHtml(args.reason.replace(/_/g, " "))}` : "",
+    args.dueDate ? `<strong>Due:</strong> ${escapeHtml(fmtDate(args.dueDate))}` : "",
+    args.daysLate ? `<strong>Days overdue:</strong> ${args.daysLate}` : "",
+  ].filter(Boolean).join("<br>");
+  const link = args.applicationId
+    ? `https://drivereal.com/admin?tab=drivers&id=${encodeURIComponent(args.applicationId)}`
+    : "https://drivereal.com/admin?tab=payments";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:20px;color:#D03020;line-height:1.3">${headline}</h1>
+      <p style="color:#444;font-size:14px;line-height:1.6;margin:0 0 16px">${lines}</p>
+      <a href="${link}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open In Admin</a>`);
+  await sendEmail({ to: TEAM_ALERT_INBOX, subject: `${headline}: ${who} — ${money(args.amount)}`, html, track: { workflow: "payment_team_alert" } });
+}
+
+export const TEAM_ALERT_INBOX = "team@drivereal.com";
+
+type CollectionsPlanEmailItem = {
+  renterName: string;
+  vehicleLabel: string;
+  plate?: string | null;
+  amount: number;
+  dueDate: string;
+  method: string;
+  autopay: boolean;
+  adminPath: string;
+};
+
+type CollectionsPlanEmailArgs = {
+  today: string;
+  tomorrow: string;
+  dueToday: CollectionsPlanEmailItem[];
+  dueTomorrow: CollectionsPlanEmailItem[];
+};
+
+/** One daily digest so the team can prep collections across every payment method. */
+export async function sendTeamCollectionsPlanEmail(args: CollectionsPlanEmailArgs): Promise<void> {
+  const section = (title: string, rows: CollectionsPlanEmailItem[]) => {
+    if (!rows.length) {
+      return `<h2 style="margin:18px 0 6px;font-size:15px;color:#111">${escapeHtml(title)}</h2>
+        <p style="color:#888;font-size:13px;margin:0 0 8px">None</p>`;
+    }
+    const body = rows.map((row) => {
+      const vehicle = row.plate ? `${row.vehicleLabel} · ${row.plate}` : row.vehicleLabel;
+      const link = row.adminPath.startsWith("http") ? row.adminPath : `https://drivereal.com${row.adminPath}`;
+      return `<tr>
+        <td style="padding:8px 0;border-bottom:1px solid #eee;font-size:13px;color:#111;vertical-align:top">
+          <strong>${escapeHtml(row.renterName)}</strong><br>
+          <span style="color:#666">${escapeHtml(vehicle)}</span>
+        </td>
+        <td style="padding:8px 0;border-bottom:1px solid #eee;font-size:13px;color:#111;text-align:right;vertical-align:top;white-space:nowrap">
+          ${money(row.amount)}<br>
+          <span style="color:#666">${escapeHtml(row.method)}${row.autopay ? " · Autopay" : ""}</span><br>
+          <a href="${link}" style="color:#D03020;text-decoration:none;font-size:12px">Open</a>
+        </td>
+      </tr>`;
+    }).join("");
+    return `<h2 style="margin:18px 0 6px;font-size:15px;color:#111">${escapeHtml(title)} · ${rows.length}</h2>
+      <table style="width:100%;border-collapse:collapse">${body}</table>`;
+  };
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:20px;color:#111;line-height:1.3">Collections Plan — Due Today / Due Tomorrow</h1>
+      <p style="color:#444;font-size:14px;line-height:1.55;margin:0 0 8px">Prep list for ${escapeHtml(fmtDate(args.today))} (ET). Method is taken from autopay/Stripe when linked, otherwise the last recorded method — never assumed.</p>
+      ${section("Due Today", args.dueToday)}
+      ${section("Due Tomorrow", args.dueTomorrow)}
+      <a href="https://drivereal.com/admin?tab=payments" style="display:inline-block;margin-top:18px;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open Payments</a>`);
+  const n = args.dueToday.length + args.dueTomorrow.length;
+  await sendEmail({
+    to: TEAM_ALERT_INBOX,
+    subject: `Collections Plan — Due Today / Due Tomorrow (${n})`,
+    html,
+    track: { workflow: "collections_plan" },
+  });
+}
+
+
+
 type LicenseExpiryArgs = {
   to: string;
   firstName: string | null;
@@ -655,9 +808,10 @@ type AbandonedArgs = {
   pickupDate: string | null;
 };
 
-export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<void> {
+export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
-  const resumeUrl = await applicantResumeUrl(args.applicationId);
+  const resumeUrl = await applicantRecoveryUrl(args.applicationId);
+  const linkNote = await recoveryLinkNote();
   const subject = "Finish Your REAL RENTALS Quote — Cars Are Moving Fast";
   const details: string[] = [];
   if (args.market) details.push(`in <strong>${escapeHtml(args.market)}</strong>`);
@@ -669,8 +823,9 @@ export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<v
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">You're Almost There, ${escapeHtml(name)}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">${detailLine} It only takes about 2 minutes to finish. Lock in your vehicle before it's gone.</p>
       <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pick Up Where You Left Off</a>
-      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>`);
-  await sendEmail({ to: args.to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>
+      <p style="color:#888;font-size:12px;margin:12px 0 0;line-height:1.5">${escapeHtml(linkNote)}</p>`);
+  return sendEmail({ to: args.to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
 }
 // -----------------------------------------------------------------------------
 // Rental agreements (e-signature)

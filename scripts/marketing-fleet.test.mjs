@@ -40,6 +40,7 @@ const home = read(HOME);
 const fleet = read(FLEET);
 const detail = read(DETAIL);
 const apply = read(APPLY);
+const claimKeys = read("src/lib/waitlist-claim.ts");
 
 /* ---------------------------------------------------------------- shape -- */
 console.log("\ncatalog shape");
@@ -297,7 +298,7 @@ ok(
   "a catalog CTA passes a category, not a fabricated vehicle id",
 );
 ok(
-  /"vehicle_type"/.test(apply) && /\bvehicle\b[\s\S]{0,40}vehicle_type/.test(apply),
+  /"vehicle_type"/.test(claimKeys) && /\bvehicle\b[\s\S]{0,40}vehicle_type/.test(claimKeys) && /applySearchKeys\(WAITLIST_CLAIM_ENABLED\)/.test(apply),
   "/apply accepts vehicle_type as a key distinct from vehicle",
 );
 ok(!/\bany\b(?!\w)/.test(catalog.replace(/\/\*[\s\S]*?\*\//g, "")), "catalog uses no `any`");

@@ -47,6 +47,8 @@ import { VehicleDocuments } from "./VehicleDocuments";
 import { ApplyTemplateDialog } from "./ApplyTemplateDialog";
 import { VehiclePhotos } from "./VehiclePhotos";
 import { VehicleService } from "./VehicleService";
+import { MaintenanceLogHistory } from "./MaintenanceLog";
+import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
 import { VehicleTimeline } from "./VehicleTimeline";
 import { BookingVehicleHistory } from "./BookingVehicleHistory";
 import { rentalReadyItems, listingReadyItems, profileItems, percent, vehicleReadinessChecks, listingPhotoCheck, overallReadiness, readinessByCategory, vehicleAvailability, type ReadinessCheck, type FixTarget } from "@/lib/vehicle-readiness";
@@ -327,7 +329,12 @@ export function VehicleProfile({
                   onReviewDetails={() => setOpenSuggest((n) => n + 1)}
                 />
               )}
-              {tab === "service" && <VehicleService vehicleId={vehicleId} />}
+              {tab === "service" && (
+                <>
+                  {MAINTENANCE_LOG_ENABLED ? <MaintenanceLogHistory vehicleId={vehicleId} /> : null}
+                  <VehicleService vehicleId={vehicleId} />
+                </>
+              )}
               {tab === "timeline" && <VehicleTimeline vehicleId={vehicleId} />}
               {tab === "photos" && <VehiclePhotos vehicleId={vehicleId} canEdit={p.canEdit} />}
               {tab === "documents" && (

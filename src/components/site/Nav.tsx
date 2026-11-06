@@ -110,15 +110,13 @@ export function Nav() {
           : "bg-white border-b border-transparent"
       }`}
     >
-      <div className="flex h-12 items-center justify-between px-[3%]">
+      <div className="flex min-h-14 items-center justify-between gap-2 px-3">
         <div className="flex items-center gap-4">
           {location.pathname !== "/admin" && <Logo />}
-        </div>
-        <div className="flex items-center gap-3">
           {!session && !isCityPage && (
             <PhoneLink
               placement="header"
-              className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground transition"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center text-[13px] font-medium text-muted-foreground hover:text-foreground transition"
             >
               {(d) => (
                 <>
@@ -128,6 +126,8 @@ export function Nav() {
               )}
             </PhoneLink>
           )}
+        </div>
+        <div className="flex items-center gap-3">
           {authReady && session ? (
             <>
               {(isPartner || isDriver) && (
@@ -213,7 +213,7 @@ export function Nav() {
           ) : !session && !isCityPage ? (
             <Link
               to="/admin"
-              className="hidden sm:inline-flex items-center text-[13px] font-medium text-muted-foreground hover:text-foreground transition"
+              className="hidden sm:inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-white px-4 text-[13px] font-medium text-foreground hover:bg-soft transition active:scale-95"
             >
               Log In
             </Link>
@@ -221,14 +221,14 @@ export function Nav() {
           {!session && (
             <Link
               to="/apply"
-              className="inline-flex items-center rounded-lg bg-real-red px-4 py-2 text-[13px] font-medium text-white hover:bg-red-700 transition active:scale-95"
+              className="inline-flex min-h-11 items-center rounded-lg bg-real-red px-4 text-[13px] font-medium text-white hover:bg-red-700 transition active:scale-95"
             >
               Book Now
             </Link>
           )}
           {!session && !isCityPage && (
             <button
-              className="p-2 -mr-2"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center"
               onClick={() => setOpen((o) => !o)}
               aria-label="Menu"
             >

@@ -7,6 +7,9 @@ import {
   NOTIFICATION_SELECT,
   OVERVIEW_APPLICANT_SELECT,
   projectNotification,
+  projectPaymentAlert,
+  mergeAdminNotifications,
+  PAYMENT_ALERT_TITLES,
   projectOverviewApplicant,
   type NotificationsResult,
   type OverviewApplicantsResult,
@@ -61,11 +64,26 @@ export const getAdminNotifications = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     if (!data) throw new Error("Notification data unavailable");
 
-    return {
-      rows: ((data ?? []) as unknown as RawRow[])
-        .map(projectNotification)
-        .filter((r): r is NonNullable<typeof r> => r !== null),
-    };
+    // Staff-wide payment alerts (no driver/user/partner owner).
+    const pay = await supabaseAdmin
+      .from("notifications")
+      .select("id,title,body,created_at")
+      .is("driver_id", null)
+      .is("user_id", null)
+      .is("partner_id", null)
+      .in("title", [...PAYMENT_ALERT_TITLES])
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(15);
+    if (pay.error) throw new Error(pay.error.message);
+
+    const apps = ((data ?? []) as unknown as RawRow[])
+      .map(projectNotification)
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    const payments = ((pay.data ?? []) as unknown as RawRow[])
+      .map(projectPaymentAlert)
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    return { rows: mergeAdminNotifications(apps, payments) };
   });
 
 export const getOverviewApplicants = createServerFn({ method: "POST" })

@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { endRental } from "@/lib/rentals.functions";
+import { RETURN_CHECKLIST_ENABLED, emptyReturnChecklist, type ReturnChecklistDraft } from "@/lib/return-checklist";
+import { ReturnCloseoutFields } from "@/components/admin/ReturnCloseoutFields";
 import { startInspection } from "@/lib/inspections.functions";
 import { InspectionRunner } from "@/components/admin/InspectionsPanel";
 import { DepositDialog } from "@/components/admin/DepositDialog";
@@ -264,6 +266,7 @@ function EndRentalDialog({
     return ret?.odometer ?? null;
   }, [d.inspections]);
   const [mileage, setMileage] = useState(suggested == null ? "" : String(suggested));
+  const [checklist, setChecklist] = useState<ReturnChecklistDraft>(() => emptyReturnChecklist());
 
   const failedCheckIn = d.inspections.some((i) => i.type === "return" && i.status === "failed");
   const depositOutstanding = !!d.money && d.money.deposit.held === true;
@@ -273,6 +276,14 @@ function EndRentalDialog({
     setBusy(true);
     try {
       const digits = mileage.replace(/[^\d]/g, "");
+      if (RETURN_CHECKLIST_ENABLED) {
+        const vehicleId = d.vehicle?.id;
+        if (!vehicleId) throw new Error("This rental has no vehicle.");
+        const { saveReturnChecklist } = await import("@/lib/return-checklist.functions");
+        await saveReturnChecklist({
+          data: { rentalId: d.booking.id, vehicleId, ...checklist },
+        });
+      }
       const res = (await close({
         data: {
           rentalId: d.booking.id,
@@ -376,6 +387,14 @@ function EndRentalDialog({
             can only be added later as a new reading.
           </p>
         )}
+        {RETURN_CHECKLIST_ENABLED && d.vehicle?.id ? (
+          <ReturnCloseoutFields
+            vehicleId={d.vehicle.id}
+            rentalId={d.booking.id}
+            value={checklist}
+            onChange={setChecklist}
+          />
+        ) : null}
         {depositOutstanding && (
           <p className="flex items-start gap-1.5 text-[12px] text-[#55555E]">
             <PiggyBank className="w-3 h-3 mt-0.5 shrink-0" />A deposit is still held. Settling it

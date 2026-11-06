@@ -54,6 +54,10 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const [companyAck, setCompanyAck] = useState(false);
   const [busy, setBusy] = useState(false);
   const [templateKey, setTemplateKey] = useState<string>("");
+  // Send refused because the preview went stale: kept on screen (a toast can
+  // be missed) until staff regenerate the preview and review it again.
+  const [staleRefusal, setStaleRefusal] = useState<string | null>(null);
+  const [regen, setRegen] = useState(0);
   const key = useMemo(() => JSON.stringify({ prep, templateKey }), [prep, templateKey]);
   function chooseTemplate(k: string) {
     // Switching templates invalidates the previous preview and its fingerprint.
@@ -66,14 +70,14 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
       setRendering(true);
       try {
         const r = (await doPreview({ data: { applicationId, prep, templateKey: (templateKey || undefined) as any } })) as Res;
-        if (!stale) { setRes(r); setReviewedKey(key); }
+        if (!stale) { setRes(r); setReviewedKey(key); setStaleRefusal(null); }
       } catch (e: any) {
         if (!stale) toast.error(e?.message ?? "Could not build the agreement");
       } finally { if (!stale) setRendering(false); }
     }, 600);
     return () => { stale = true; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, applicationId]);
+  }, [key, applicationId, regen]);
 
   const m = res?.merge ?? {};
   const terms = res?.terms ?? {};
@@ -91,7 +95,15 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
     try {
       const r = await doSend({ data: { applicationId, fingerprint: res.fingerprint, companyAck: companyAck || undefined, prep, templateKey: (templateKey || undefined) as any } });
       onSent(r);
-    } catch (e: any) { toast.error(e?.message ?? "Could not send the agreement"); } finally { setBusy(false); }
+    } catch (e: any) {
+      const msg = e?.message ?? "Could not send the agreement";
+      if (/changed since it was previewed/.test(msg)) {
+        // The reviewed preview is no longer what Send would deliver: block
+        // Send until a fresh preview has been generated and looked at.
+        setReviewedKey("");
+        setStaleRefusal(msg);
+      } else toast.error(msg);
+    } finally { setBusy(false); }
   }
 
   function fix(b: Blocker) {
@@ -214,6 +226,14 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
           </Button>
         </div>
       </header>
+      {staleRefusal && (
+        <div className="flex shrink-0 flex-col gap-2 border-b border-warning/40 bg-warning/10 px-3 py-2 text-[12px] sm:flex-row sm:items-center" role="alert" data-testid="stale-preview-refusal">
+          <p className="min-w-0 flex-1">{staleRefusal}</p>
+          <Button size="sm" variant="outline" disabled={rendering} onClick={() => { setTab("preview"); setRegen((n) => n + 1); }}>
+            {rendering ? "Regenerating…" : "Regenerate Preview"}
+          </Button>
+        </div>
+      )}
       <div className="flex shrink-0 border-b md:hidden" role="tablist">
         {(["details", "preview"] as const).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`flex-1 py-2 text-[13px] ${tab === t ? "border-b-2 border-primary font-medium" : "text-muted-foreground"}`}>{t === "details" ? "Details" : "Preview"}</button>

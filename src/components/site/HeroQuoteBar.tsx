@@ -102,7 +102,7 @@ export function HeroQuoteBar({
           </p>
           <p className="mt-2 text-center text-xs text-muted-foreground">
             Questions? Call{" "}
-            <PhoneLink placement="hero" className="font-medium text-foreground/80 underline-offset-4 hover:text-foreground hover:underline" />
+            <PhoneLink placement="hero" className="inline-flex min-h-11 items-center font-medium text-foreground/80 underline-offset-4 hover:text-foreground hover:underline" />
           </p>
         </div>
       </FadeUp>

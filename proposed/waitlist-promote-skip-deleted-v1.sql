@@ -1,0 +1,24 @@
+-- PROPOSED ONLY. This file is not a migration and must not be run.
+-- Do not copy it into drizzle/migrations or supabase/migrations.
+-- No function is created or replaced here.
+--
+-- Option 5. promote_waitlist_entry in
+-- drizzle/migrations/0015_waitlist_promotion_identity_review.sql
+-- matches applications without excluding soft-deleted rows.
+-- The email match is around lines 17-20. The phone match is around lines 22-26.
+-- resolve_waitlist_phone_conflict in drizzle/migrations/0022_waitlist_resolve_phone_conflict.sql
+-- already returns application_unavailable when a.deleted_at IS NOT NULL.
+-- This note does not change that conflict function.
+--
+-- When an owner adopts this as a real migration, both lookups should add:
+--   AND a.deleted_at IS NULL
+--
+-- Email match, proposed predicate only:
+--   WHERE a.status <> 'duplicate'
+--     AND a.deleted_at IS NULL
+--     AND lower(a.email) = lower(w.email)
+--
+-- Phone match, proposed predicate only:
+--   WHERE a.status <> 'duplicate'
+--     AND a.deleted_at IS NULL
+--     AND right(regexp_replace(coalesce(a.phone, ''), '\D', '', 'g'), 10) = digits

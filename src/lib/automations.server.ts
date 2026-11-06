@@ -22,7 +22,8 @@ export type TriggerEvent =
   | "rental_started"
   | "rental_ended"
   | "incident_logged"
-  | "payment_past_due";
+  | "payment_past_due"
+  | "document_expiring";
 
 /** Business timezone used for quiet-hours math. */
 const BUSINESS_TZ = "America/New_York";

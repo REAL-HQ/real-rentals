@@ -89,6 +89,15 @@ export function displayPersonName(value: string): string {
     .join(" ");
 }
 
+/** Display-only avatar initials: first and last names, never the first two letters. */
+export function personInitials(value: string): string {
+  const parts = value.trim().split(/[.\s]+/).filter(Boolean);
+  const first = parts[0];
+  if (!first) return "A";
+  const last = parts.length > 1 ? parts[parts.length - 1] : undefined;
+  return `${first.charAt(0)}${last?.charAt(0) ?? ""}`.toUpperCase();
+}
+
 /** Display-only Title Case for UI phrases: every word capitalized ("Ready to start, not yet driving" → "Ready To Start, Not Yet Driving"). Acronyms/mixed case after the first letter are preserved. */
 export function displayTitleCase(value: string): string {
   const s = value.trim().replace(/\s+/g, " ");

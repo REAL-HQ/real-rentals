@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useBusinessPhone } from "@/lib/company.functions";
 import { getAttribution } from "@/lib/attribution";
+import { trackingPagePath } from "@/lib/tracking-url";
 
 export type CallPlacement = "header" | "hero" | "application_help" | "contact" | "footer" | "paid_landing";
 
@@ -14,7 +15,7 @@ export function trackCallClick(placement: CallPlacement, phoneE164: string) {
   const gtag = (window as any).gtag;
   if (typeof gtag !== "function") return;
   const a = getAttribution();
-  const path = window.location.pathname;
+  const path = trackingPagePath(window.location.href);
   gtag("event", "click_to_call", {
     page_path: path,
     page_type: path === "/" ? "home" : path.startsWith("/apply") ? "application" : ["contact", "faq", "fleet", "how-it-works", "partners", "investors", "terms", "privacy"].includes(path.split("/")[1]) ? path.split("/")[1] : "city",

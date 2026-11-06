@@ -1,4 +1,5 @@
-import { loadStripe, type Stripe } from '@stripe/stripe-js';
+// The default entry injects https://js.stripe.com on import. This one waits for loadStripe.
+import { loadStripe } from '@stripe/stripe-js/pure';
 
 type StripeEnv = 'sandbox' | 'live';
 
@@ -12,9 +13,9 @@ function paymentsEnvironment(): StripeEnv {
   );
 }
 
-let stripePromise: Promise<Stripe | null> | null = null;
+let stripePromise: ReturnType<typeof loadStripe> | null = null;
 
-export function getStripe(): Promise<Stripe | null> {
+export function getStripe(): ReturnType<typeof loadStripe> {
   if (!stripePromise) {
     paymentsEnvironment();
     stripePromise = loadStripe(clientToken as string);

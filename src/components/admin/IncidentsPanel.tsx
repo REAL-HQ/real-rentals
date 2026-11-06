@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState, createContext, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -14,13 +15,23 @@ import {
 import { incidentSeedForIssue } from "@/lib/driver-issues.functions";
 import type { IssueIncidentSeed } from "@/lib/driver-issues";
 import { fmtDateTime } from "@/lib/date-format";
+import { INCIDENT_AGING_ENABLED } from "@/lib/incident-aging-flag";
+import { listIncidentAging } from "@/lib/incident-aging.functions";
+import { INCIDENT_CHARGE_PREP_ENABLED } from "@/lib/incident-charge-prep-flag";
+import { listIncidentChargePrep } from "@/lib/incident-charge-prep.functions";
+import type { IncidentChargePrepRow } from "@/lib/incident-charge-prep";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { VEHICLE_COMBOBOX_SELECT } from "@/lib/vehicle-label";
 
 type VehicleLite = {
   id: string;
   year: number | null;
   make: string | null;
   model: string | null;
+  unit_number?: string | null;
   license_plate: string | null;
+  vin?: string | null;
+  status?: string | null;
 };
 type Vendor = { id: string; name: string };
 
@@ -42,15 +53,20 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [remainingOnly, setRemainingOnly] = useState(false);
+  const [prepRows, setPrepRows] = useState<IncidentChargePrepRow[]>([]);
+  const [prepTruncated, setPrepTruncated] = useState(false);
+  const [prepError, setPrepError] = useState(false);
   const [editing, setEditing] = useState<Incident | "new" | null>(null);
   const [seed, setSeed] = useState<IssueIncidentSeed | null>(null);
+  const prepById = new Map(prepRows.map((row) => [row.incidentId, row.proposedAmount]));
 
   async function load() {
     setLoading(true);
     try {
       const [list, v, vd] = await Promise.all([
         fetchList({ data: { status: filter } }),
-        supabase.from("vehicles").select("id,year,make,model,license_plate").order("make"),
+        supabase.from("vehicles").select(VEHICLE_COMBOBOX_SELECT).order("make"),
         supabase.from("vendors").select("id,name").eq("is_active", true).order("name"),
       ]);
       setRows(list);
@@ -86,8 +102,13 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
   }, [seedIssueId]);
 
   const openCount = rows.filter((r) => r.status !== "closed" && r.status !== "written_off").length;
+  const shown =
+    INCIDENT_CHARGE_PREP_ENABLED && remainingOnly
+      ? rows.filter((r) => (prepById.get(r.id) ?? 0) > 0)
+      : rows;
 
   return (
+    <IncidentAgingGate incidentIds={rows.map((row) => row.id)}>
     <div className="space-y-4">
       <div className="admin-sticky-bar flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -105,6 +126,14 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
         </button>
       </div>
 
+      <RemainingToChargeLoader onRows={setPrepRows} onTruncated={setPrepTruncated} onError={setPrepError} />
+      {INCIDENT_CHARGE_PREP_ENABLED && prepError ? (
+        <p className="text-[12px] text-[#D03020]">Could Not Load Remaining To Charge</p>
+      ) : null}
+      {INCIDENT_CHARGE_PREP_ENABLED && prepTruncated ? (
+        <p className="text-[12px] text-[#55555E]">Remaining To Charge Is Capped</p>
+      ) : null}
+
       <div className="flex flex-wrap gap-1.5">
         {["all", ...STATUSES].map((s) => (
           <button
@@ -119,11 +148,26 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
             {s.replace(/_/g, " ")}
           </button>
         ))}
+        {INCIDENT_CHARGE_PREP_ENABLED ? (
+          <button
+            type="button"
+            onClick={() => setRemainingOnly((on) => !on)}
+            className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+              remainingOnly
+                ? "border-[#D03020] bg-[#D03020] text-white"
+                : "border-[#EDEDF0] text-[#55555E] hover:border-[#D6D6DB]"
+            }`}
+          >
+            Remaining to Charge
+          </button>
+        ) : null}
       </div>
+
+      <IncidentAgingNotice />
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : rows.length === 0 ? (
+      ) : shown.length === 0 ? (
         <EmptyState
           icon={<ShieldAlert className="w-6 h-6" strokeWidth={1.75} />}
           title="No Incidents"
@@ -131,7 +175,7 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
         />
       ) : (
         <div className="space-y-3">
-          {rows.map((r) => {
+          {shown.map((r) => {
             const net = r.actual_cost - r.insurance_payout - r.driver_responsible_amount;
             return (
               <div
@@ -171,6 +215,7 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
                     {r.description ? (
                       <p className="mt-1.5 text-sm text-[#55555E]">{r.description}</p>
                     ) : null}
+                    <IncidentAgingLine incidentId={r.id} />
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button
@@ -210,6 +255,12 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
                     ) : null}
                   </div>
                 ) : null}
+                {INCIDENT_CHARGE_PREP_ENABLED ? (
+                  <div className="mt-3 pt-3 border-t border-[#EDEDF0] text-xs" title="This Does Not Create a Charge.">
+                    <div className="text-[10px] tracking-wide text-[#9A9AA3]">Remaining to Charge</div>
+                    <div>{prepById.get(r.id) == null ? "" : money(prepById.get(r.id) as number)}</div>
+                  </div>
+                ) : null}
               </div>
             );
           })}
@@ -231,7 +282,114 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
         />
       ) : null}
     </div>
+    </IncidentAgingGate>
   );
+}
+
+type AgingView = {
+  status: "off" | "loading" | "error" | "ready";
+  byId: Map<string, { daysOpen: string; lastUpdate: string; unresolvedDeduction: "unresolved" | "resolved" | "unknown" }>;
+};
+
+const INCIDENT_AGING_OFF: AgingView = { status: "off", byId: new Map() };
+const IncidentAgingContext = createContext<AgingView>(INCIDENT_AGING_OFF);
+
+function IncidentAgingGate({ incidentIds, children }: { incidentIds: string[]; children: ReactNode }) {
+  if (!INCIDENT_AGING_ENABLED) return (
+    <IncidentAgingContext.Provider value={INCIDENT_AGING_OFF}>{children}</IncidentAgingContext.Provider>
+  );
+  return <IncidentAgingLive incidentIds={incidentIds}>{children}</IncidentAgingLive>;
+}
+
+function IncidentAgingLive({ incidentIds, children }: { incidentIds: string[]; children: ReactNode }) {
+  const load = useServerFn(listIncidentAging);
+  const result = useQuery({
+    queryKey: ["incident-aging", incidentIds],
+    queryFn: () => load({ data: { incidentIds } }),
+    enabled: incidentIds.length > 0,
+  });
+  const value: AgingView = incidentIds.length === 0
+    ? { status: "ready", byId: new Map() }
+    : result.isError
+      ? { status: "error", byId: new Map() }
+      : result.isLoading || !result.data
+        ? { status: "loading", byId: new Map() }
+        : {
+            status: "ready",
+            byId: new Map(result.data.rows.map((row) => [row.incidentId, row])),
+          };
+  return <IncidentAgingContext.Provider value={value}>{children}</IncidentAgingContext.Provider>;
+}
+
+function IncidentAgingNotice() {
+  const aging = useContext(IncidentAgingContext);
+  if (INCIDENT_AGING_ENABLED && aging.status === "error") {
+    return <p className="text-[12px] text-[#D03020]">Could Not Load Incident Aging</p>;
+  }
+  return null;
+}
+
+function IncidentAgingLine({ incidentId }: { incidentId: string }) {
+  const aging = useContext(IncidentAgingContext);
+  if (!(INCIDENT_AGING_ENABLED && aging.status === "ready")) return null;
+  const row = aging.byId.get(incidentId);
+  const days = row?.daysOpen ?? "Unknown";
+  const updated = row?.lastUpdate ?? "Unknown";
+  return (
+    <p className="mt-1 text-xs text-muted-foreground">
+      {INCIDENT_AGING_ENABLED ? days : null}
+      {INCIDENT_AGING_ENABLED && updated === "Unknown" ? " · Last Update Unknown" : INCIDENT_AGING_ENABLED ? <> · Last Update {updated}</> : null}
+      {INCIDENT_AGING_ENABLED && row?.unresolvedDeduction === "unresolved" ? " · Unresolved Deduction" : null}
+      {INCIDENT_AGING_ENABLED && row?.unresolvedDeduction === "unknown" ? " · Deduction Unknown" : null}
+    </p>
+  );
+}
+
+function RemainingToChargeLoader({
+  onRows,
+  onTruncated,
+  onError,
+}: {
+  onRows: (rows: IncidentChargePrepRow[]) => void;
+  onTruncated: (truncated: boolean) => void;
+  onError: (failed: boolean) => void;
+}) {
+  if (!INCIDENT_CHARGE_PREP_ENABLED) return null;
+  return <RemainingToChargeFetch onRows={onRows} onTruncated={onTruncated} onError={onError} />;
+}
+
+function RemainingToChargeFetch({
+  onRows,
+  onTruncated,
+  onError,
+}: {
+  onRows: (rows: IncidentChargePrepRow[]) => void;
+  onTruncated: (truncated: boolean) => void;
+  onError: (failed: boolean) => void;
+}) {
+  const load = useServerFn(listIncidentChargePrep);
+  useEffect(() => {
+    let cancelled = false;
+    void load({ data: {} })
+      .then((next) => {
+        if (!cancelled) {
+          onError(false);
+          onRows(next.rows);
+          onTruncated(next.truncated);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          onError(true);
+          onRows([]);
+          onTruncated(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [load, onRows, onTruncated, onError]);
+  return null;
 }
 
 function Fig({ label, text, strong }: { label: string; text: string; strong?: boolean }) {
@@ -371,18 +529,15 @@ function IncidentForm({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <MicroLabel>Vehicle</MicroLabel>
-              <select
-                value={f.vehicleId}
-                onChange={(e) => set("vehicleId", e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
-              >
-                {vehicles.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {[v.year, v.make, v.model].filter(Boolean).join(" ")}
-                    {v.license_plate ? ` · ${v.license_plate}` : ""}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-1.5">
+                <VehicleCombobox
+                  vehicles={vehicles as any}
+                  value={f.vehicleId || null}
+                  onChange={(id) => set("vehicleId", id ?? "")}
+                  allowNone={false}
+                  aria-label="Vehicle"
+                />
+              </div>
             </div>
             <div>
               <MicroLabel>When</MicroLabel>

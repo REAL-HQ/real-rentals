@@ -61,6 +61,8 @@
   --color-sidebar-ring: var(--sidebar-ring);
   --color-brand: var(--real-red);
   --color-brand-foreground: var(--accent-foreground);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-soft-border: var(--brand-soft-border);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
@@ -91,6 +93,8 @@
   --input: oklch(0.92 0 0);
   --ring: oklch(0 0 0);
   --real-red: oklch(0.553 0.232 27.5);         /* #D03020 */
+  --brand-soft: color-mix(in oklch, var(--real-red) 7%, var(--card));
+  --brand-soft-border: color-mix(in oklch, var(--real-red) 18%, var(--card));
   --caption: oklch(0.62 0 0);                  /* #888888 */
   --success: oklch(0.55 0.14 155);
   --success-soft: oklch(0.96 0.04 155);
@@ -127,6 +131,8 @@
   --muted-foreground: oklch(0.704 0.04 256.788);
   --accent: oklch(0.279 0.041 260.031);
   --accent-foreground: oklch(0.984 0.003 247.858);
+  --brand-soft: color-mix(in oklch, var(--real-red) 10%, var(--card));
+  --brand-soft-border: color-mix(in oklch, var(--real-red) 25%, var(--card));
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.984 0.003 247.858);
   --border: oklch(1 0 0 / 10%);
@@ -197,6 +203,14 @@
     max-width: 1200px;
     margin-inline: auto;
     padding-inline: 1.5rem;
+  }
+
+  /* The homepage call bar is fixed. Without this the legal links at the
+     bottom of the page sit underneath it on a phone. */
+  @media (max-width: 639px) {
+    body:has(.mobile-call-bar) {
+      padding-bottom: calc(4.75rem + env(safe-area-inset-bottom));
+    }
   }
 
   /* Apple-like fade-up-on-scroll */

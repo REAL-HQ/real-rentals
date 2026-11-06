@@ -4,17 +4,19 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  FileText, Loader2, ChevronLeft, AlertTriangle, CheckCircle2, RotateCw, Eye, Car, Copy, Link2,
+  FileText, Loader2, ChevronLeft, AlertTriangle, CheckCircle2, RotateCw, Eye, Car, Copy, Link2, Upload,
 } from "lucide-react";
 import {
   createImportBatch, listImportBatches, registerInboxFile, analyzeInboxItem, getImportBatch,
   applyImportDecisions, classifyInboxItem, attachInboxItem, getFleetDocumentFile,
 } from "@/lib/fleet-inbox.functions";
 import { FinancialDocumentReview } from "@/components/admin/FinancialDocumentReview";
-import { DOC_GROUPS, docClassLabel, FIELD_LABELS, HIGH_RISK, type Change } from "@/lib/fleet-inbox";
+import { DOC_GROUPS, docClassLabel, FIELD_LABELS, HIGH_RISK, suggestBatchVehicle, type Change } from "@/lib/fleet-inbox";
 import { EmptyState, StatusPill } from "@/components/admin/ui";
 import { FileUploader } from "@/components/FileUploader";
 import { ServiceTransactionReview } from "@/components/admin/ServiceTransactionReview";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { formatVehicleLabel } from "@/lib/vehicle-label";
 import { fmtDateTime } from "@/lib/date-format";
 
 const BATCH_LABEL: Record<string, string> = {
@@ -49,6 +51,7 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const busyRef = useRef(false);
   const [rows, setRows] = useState<{ key: string; name: string; status: "queued" | "uploading" | "done" | "duplicate" | "rejected" | "failed"; note?: string; file?: File }[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [lastBatch, setLastBatch] = useState<string | null>(null);
 
   const refresh = useCallback(async () => setBatches(await list()), [list]);
@@ -106,10 +109,18 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
   }
   const failedFiles = rows.filter((r) => r.status === "failed" && r.file).map((r) => r.file!);
 
+  function startPendingUpload() {
+    if (!pendingFiles.length || busyRef.current) return;
+    const files = pendingFiles;
+    setPendingFiles([]);
+    void ingest(files);
+  }
+
   return (
     <div className="space-y-6">
       <FileUploader
-        onFiles={(f) => { if (busyRef.current) { toast.message("Upload in progress — drop again when it finishes."); return; } void ingest(f); }}
+        value={pendingFiles}
+        onChange={setPendingFiles}
         accept="image/*,application/pdf"
         multiple
         maxBytes={MAX}
@@ -117,8 +128,24 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
         disabled={!!busy}
         busy={!!busy}
         title="Drop Fleet Files Here"
-        hint="Titles, registrations, insurance, receipts, photos — one file or a whole stack. REAL RENTALS sorts each document, matches the vehicles and prepares updates for your review. Nothing changes until you approve."
+        hint="Add files in as many drops as you need. Nothing uploads until you click Upload Files. REAL RENTALS then sorts each document and prepares updates for your review."
       />
+
+      {pendingFiles.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+          <span className="text-sm text-muted-foreground">
+            {pendingFiles.length} File{pendingFiles.length === 1 ? "" : "s"} Ready · Not Uploaded Yet
+          </span>
+          <button
+            type="button"
+            onClick={startPendingUpload}
+            disabled={!!busy}
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md bg-brand px-5 text-sm font-medium text-brand-foreground hover:bg-brand/90 disabled:opacity-50"
+          >
+            <Upload className="h-4 w-4" /> Upload {pendingFiles.length} File{pendingFiles.length === 1 ? "" : "s"}
+          </button>
+        </div>
+      )}
 
       {rows.length > 0 && (
         <div className="rounded-xl border border-[#EDEDF0] bg-white divide-y divide-[#EDEDF0]" aria-live="polite">
@@ -266,7 +293,8 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
     docs: new Set(d.items.filter((i: any) => i.status !== "duplicate").map((i: any) => i.document_id)).size,
   };
   const itemById = Object.fromEntries(d.items.map((i: any) => [i.id, i]));
-  const vehLabel = (id: string) => { const v = d.vehicles.find((x: any) => x.id === id); return v ? `${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}${v.unit_number ? ` · ${v.unit_number}` : ""}${v.vin ? ` · …${String(v.vin).slice(-6)}` : ""}` : "—"; };
+  const vehLabel = (id: string) => { const v = d.vehicles.find((x: any) => x.id === id); return v ? formatVehicleLabel(v) : "—"; };
+  const batchVehicleHint = suggestBatchVehicle(props.map((x: any) => x.match_vehicle_id));
   const creates = selected.filter((p: any) => dec[p.id].action === "create");
   const matches = selected.filter((p: any) => dec[p.id].action === "match");
   const ignores = selected.filter((p: any) => dec[p.id].action === "ignore");
@@ -367,11 +395,21 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
                 </select>
               )}
               {it.document_id && it.status !== "duplicate" && d.vehicles.length > 0 && (
-                <select aria-label="Attach to vehicle" value="" onChange={async (e) => { if (!e.target.value) return; const r = await attach({ data: { itemId: it.id, vehicleId: e.target.value } }); r.ok ? toast.success("Attached") : toast.error(r.error); }}
-                  className="min-h-[36px] rounded-md border border-[#EDEDF0] bg-white text-xs px-2 max-w-[180px]">
-                  <option value="">Attach to vehicle…</option>
-                  {d.vehicles.map((v: any) => <option key={v.id} value={v.id}>{vehLabel(v.id)}</option>)}
-                </select>
+                <div className="min-w-[12rem] max-w-[16rem]">
+                  <VehicleCombobox
+                    vehicles={d.vehicles as any}
+                    value={null}
+                    onChange={async (id) => {
+                      if (!id) return;
+                      const r = await attach({ data: { itemId: it.id, vehicleId: id } });
+                      r.ok ? toast.success("Attached") : toast.error(r.error);
+                    }}
+                    placeholder="Attach to vehicle…"
+                    allowNone={false}
+                    aria-label="Attach to vehicle"
+                    triggerClassName="h-9 text-xs"
+                  />
+                </div>
               )}
             </div>
           ))}
@@ -414,7 +452,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
       <div className="space-y-3">
         {props.map((p) => (
           <ProposalCard key={p.id} p={p} item={itemById[p.item_id]} dec={dec[p.id]} setOne={(patch) => setOne(p.id, patch)}
-            vehicles={d.vehicles} vehLabel={vehLabel} finance={d.finance.filter((f: any) => f.proposal_id === p.id)} isManager={isManager} />
+            vehicles={d.vehicles} vehLabel={vehLabel} batchVehicleHint={batchVehicleHint} finance={d.finance.filter((f: any) => f.proposal_id === p.id)} isManager={isManager} />
         ))}
       </div>
 
@@ -445,9 +483,9 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
   );
 }
 
-function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isManager }: {
+function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, batchVehicleHint, finance, isManager }: {
   p: any; item: any; dec?: Decision; setOne: (patch: Partial<Decision>) => void; vehicles: any[];
-  vehLabel: (id: string) => string; finance: any[]; isManager: boolean;
+  vehLabel: (id: string) => string; batchVehicleHint?: string | null; finance: any[]; isManager: boolean;
 }) {
   if (!dec) return null;
   const done = p.status === "applied" || p.status === "ignored";
@@ -546,7 +584,10 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isMan
           {isManager && (
             <ActionBtn
               active={dec.action === "match"}
-              onClick={() => setOne({ action: dec.action === "match" ? null : "match", vehicleId: dec.vehicleId ?? p.match_vehicle_id ?? vehicles[0]?.id })}
+              onClick={() => setOne({
+                action: dec.action === "match" ? null : "match",
+                vehicleId: dec.vehicleId ?? p.match_vehicle_id ?? batchVehicleHint ?? vehicles[0]?.id,
+              })}
               disabled={!vehicles.length}
             >
               <Link2 className="w-3.5 h-3.5" />
@@ -554,9 +595,16 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, finance, isMan
             </ActionBtn>
           )}
           {isManager && dec.action === "match" && (
-            <select value={dec.vehicleId ?? ""} onChange={(e) => setOne({ vehicleId: e.target.value })} className="min-h-[44px] rounded-md border border-[#EDEDF0] bg-white text-xs px-2 max-w-full">
-              {vehicles.map((v) => <option key={v.id} value={v.id}>{vehLabel(v.id)}</option>)}
-            </select>
+            <div className="min-w-[14rem] max-w-full">
+              <VehicleCombobox
+                vehicles={vehicles as any}
+                value={dec.vehicleId ?? null}
+                onChange={(id) => setOne({ vehicleId: id ?? undefined })}
+                allowNone={false}
+                aria-label="Match vehicle"
+                triggerClassName="min-h-[44px] text-xs"
+              />
+            </div>
           )}
           <ActionBtn active={dec.action === "ignore"} onClick={() => setOne({ action: dec.action === "ignore" ? null : "ignore" })}>Ignore</ActionBtn>
           {isManager && p.kind !== "new" && changes.some((c) => c.safe) && (

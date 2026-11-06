@@ -4,7 +4,26 @@ import {
   sendPastDueReminderEmail,
   sendLicenseExpiringEmail,
   sendServiceDigestEmail,
+  sendPaymentDueTomorrowEmail,
+  sendTeamPaymentAlertEmail,
+  sendTeamCollectionsPlanEmail,
 } from "@/lib/email.server";
+import {
+  UNPAID_STATUSES,
+  UPCOMING_STATUSES,
+  TEAM_INBOX,
+  addDays,
+  daysBetween,
+  followUpStage,
+  reminderKind,
+} from "@/lib/payment-reminders";
+import {
+  buildCollectionsPlan,
+  collectionsPlanBellBody,
+  collectionsPlanKind,
+  type CollectionsPlanPayment,
+  type CollectionsPlanRental,
+} from "@/lib/collections-plan";
 
 export const Route = createFileRoute("/api/public/cron/ops-reminders")({
   server: {
@@ -28,18 +47,25 @@ async function handle(request: Request): Promise<Response> {
 
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
-  const since = new Date(today.getTime() - 6 * 24 * 3600 * 1000).toISOString(); // 1 reminder per driver per 6 days
+  const since = new Date(today.getTime() - 6 * 24 * 3600 * 1000).toISOString(); // license / agreement reminders: 1 per 6 days
 
   let pastDue = 0;
+  let teamPastDue = 0;
+  let dueTomorrow = 0;
   let licenses = 0;
+  let collectionsPlanSent = 0;
 
-  // ---- 1. Past-due balances -------------------------------------------------
+  // ---- 1. Past-due follow-ups (day 1 / 3 / 7 / weekly) ----------------------
+  // Cadence + dedupe live in payment-reminders.ts. Each stage is sent once per
+  // application + earliest unpaid due date; paid / waived / void rows are not
+  // in UNPAID_STATUSES, so the sequence stops the run after payment clears or
+  // staff marks the charge handled.
   const { data: duePayments } = await supabaseAdmin
     .from("payments")
     .select("id,driver_id,amount,balance_due,due_date,status")
     .lt("due_date", todayStr)
     .not("driver_id", "is", null)
-    .in("status", ["pending", "failed", "overdue", "past_due", "unpaid", "late"])
+    .in("status", [...UNPAID_STATUSES])
     .limit(200);
 
   const byDriver = new Map<string, { amount: number; dueDate: string | null }>();
@@ -55,17 +81,19 @@ async function handle(request: Request): Promise<Response> {
 
   for (const [appId, info] of byDriver) {
     try {
+      if (!info.dueDate) continue;
+      const daysLate = daysBetween(info.dueDate, today);
+      const stage = followUpStage(daysLate);
+      if (!stage) continue;
+      const kind = reminderKind(stage, info.dueDate);
       const { data: app } = await supabaseAdmin
         .from("applications")
         .select("id,full_name,email,user_id")
         .eq("id", appId)
         .maybeSingle();
       if (!app?.email) continue;
-      if (await recentlyNotified(supabaseAdmin, app.id, "past_due", since)) continue;
+      if (await alreadySent(supabaseAdmin, app.id, kind)) continue;
 
-      const daysLate = info.dueDate
-        ? Math.max(1, Math.round((today.getTime() - new Date(info.dueDate).getTime()) / 86400000))
-        : 1;
       await sendPastDueReminderEmail({
         to: app.email,
         firstName: app.full_name,
@@ -75,12 +103,258 @@ async function handle(request: Request): Promise<Response> {
       });
       await logNotification(
         supabaseAdmin, app.id, app.user_id, app.email,
-        "past_due", "Balance Past Due", `$${info.amount.toFixed(2)} is past due.`,
+        kind, "Balance Past Due", `$${info.amount.toFixed(2)} is past due.`,
       );
       pastDue++;
+
+      // First time this balance shows up past due: tell the team once.
+      const teamKind = `payment_team_past_due:${info.dueDate}`;
+      if (!(await alreadySent(supabaseAdmin, app.id, teamKind))) {
+        await sendTeamPaymentAlertEmail({
+          event: "past_due", driverName: app.full_name, amount: info.amount,
+          applicationId: app.id, dueDate: info.dueDate, daysLate,
+        });
+        await logNotification(supabaseAdmin, app.id, null, TEAM_INBOX, teamKind, "Team: Payment Past Due", app.full_name ?? app.id);
+        await supabaseAdmin.from("notifications").insert({
+          kind: "payment_past_due",
+          title: "Payment Past Due",
+          body: `${app.full_name || "Renter"} — $${info.amount.toFixed(2)}, ${daysLate} day${daysLate === 1 ? "" : "s"} late`,
+          read: false,
+        });
+        teamPastDue++;
+      }
     } catch (err) {
       console.error("[ops-reminders] past-due send failed", appId, err);
     }
+  }
+
+  // ---- 1b. Day-before-due reminders ----------------------------------------
+  const tomorrowStr = addDays(today, 1);
+  const { data: upcoming } = await supabaseAdmin
+    .from("payments")
+    .select("id,driver_id,amount,balance_due,due_date,status")
+    .eq("due_date", tomorrowStr)
+    .not("driver_id", "is", null)
+    .in("status", [...UPCOMING_STATUSES])
+    .limit(200);
+  const upcomingByDriver = new Map<string, number>();
+  for (const p of upcoming ?? []) {
+    const owed = Number(p.balance_due ?? 0) || Number(p.amount ?? 0);
+    if (owed <= 0) continue;
+    upcomingByDriver.set(p.driver_id as string, (upcomingByDriver.get(p.driver_id as string) ?? 0) + owed);
+  }
+  for (const [appId, amount] of upcomingByDriver) {
+    try {
+      const kind = reminderKind("due_tomorrow", tomorrowStr);
+      const { data: app } = await supabaseAdmin
+        .from("applications")
+        .select("id,full_name,email,user_id")
+        .eq("id", appId)
+        .maybeSingle();
+      if (!app?.email) continue;
+      if (await alreadySent(supabaseAdmin, app.id, kind)) continue;
+      const { data: rental } = await supabaseAdmin
+        .from("rentals")
+        .select("autopay_active")
+        .eq("application_id", app.id)
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle();
+      await sendPaymentDueTomorrowEmail({
+        to: app.email, firstName: app.full_name, amount, dueDate: tomorrowStr,
+        autopay: !!(rental as { autopay_active?: boolean } | null)?.autopay_active,
+      });
+      await logNotification(
+        supabaseAdmin, app.id, app.user_id, app.email,
+        kind, "Payment Due Tomorrow", `$${amount.toFixed(2)} is due ${tomorrowStr}.`,
+      );
+      dueTomorrow++;
+    } catch (err) {
+      console.error("[ops-reminders] day-before send failed", appId, err);
+    }
+  }
+
+  // ---- 1c. Team Collections Plan (due today / due tomorrow) -----------------
+  // Independent of renter emails. Reconciles active rental next_payment_due
+  // with unpaid/upcoming payment rows so a charge is listed once. Method is
+  // autopay/Stripe when linked, else last recorded payment_method, else
+  // "Not specified" — never assumed to be Zelle.
+  try {
+    const planKind = collectionsPlanKind(todayStr);
+    const alreadyPlan = await teamDigestAlreadySent(supabaseAdmin, planKind);
+    if (!alreadyPlan) {
+      const { data: dueRentals } = await supabaseAdmin
+        .from("rentals")
+        .select("id,application_id,status,next_payment_due,weekly_rate,autopay_active,stripe_subscription_id,stripe_payment_method_id,vehicle_id,driver_id")
+        .eq("status", "active")
+        .in("next_payment_due", [todayStr, tomorrowStr])
+        .limit(300);
+
+      const rentalRows = (dueRentals ?? []) as Array<Record<string, unknown>>;
+      const vehicleIds = [...new Set(rentalRows.map((r) => r.vehicle_id).filter(Boolean))] as string[];
+      const appIds = [...new Set(rentalRows.map((r) => r.application_id || r.driver_id).filter(Boolean))] as string[];
+
+      const vehicleById = new Map<string, { label: string; plate: string | null }>();
+      if (vehicleIds.length) {
+        const { data: vehicles } = await supabaseAdmin
+          .from("vehicles")
+          .select("id,year,make,model,license_plate,unit_number")
+          .in("id", vehicleIds)
+          .limit(300);
+        for (const v of vehicles ?? []) {
+          const title = [v.year, v.make, v.model].filter(Boolean).join(" ");
+          const unit = v.unit_number ? `Unit ${v.unit_number}` : null;
+          const label = [unit, title || null].filter(Boolean).join(" · ") || "Vehicle";
+          vehicleById.set(v.id as string, { label, plate: (v.license_plate as string | null) ?? null });
+        }
+      }
+      const appById = new Map<string, string | null>();
+      if (appIds.length) {
+        const { data: apps } = await supabaseAdmin
+          .from("applications")
+          .select("id,full_name")
+          .in("id", appIds)
+          .limit(300);
+        for (const a of apps ?? []) appById.set(a.id as string, (a.full_name as string | null) ?? null);
+      }
+
+      const planRentals: CollectionsPlanRental[] = rentalRows.map((r) => {
+        const appId = (r.application_id as string | null) || (r.driver_id as string | null);
+        const vehicle = r.vehicle_id ? vehicleById.get(r.vehicle_id as string) : undefined;
+        return {
+          id: r.id as string,
+          applicationId: appId,
+          status: String(r.status ?? ""),
+          nextPaymentDue: (r.next_payment_due as string | null) ?? null,
+          weeklyRate: r.weekly_rate == null ? null : Number(r.weekly_rate),
+          autopayActive: !!r.autopay_active,
+          stripeSubscriptionId: (r.stripe_subscription_id as string | null) ?? null,
+          stripePaymentMethodId: (r.stripe_payment_method_id as string | null) ?? null,
+          driverName: appId ? appById.get(appId) ?? null : null,
+          vehicleLabel: vehicle?.label ?? null,
+          plate: vehicle?.plate ?? null,
+        };
+      });
+
+      const { data: duePayRows } = await supabaseAdmin
+        .from("payments")
+        .select("id,rental_id,driver_id,due_date,amount,balance_due,status,payment_method,type")
+        .in("due_date", [todayStr, tomorrowStr])
+        .in("status", [...UNPAID_STATUSES, ...UPCOMING_STATUSES])
+        .limit(400);
+
+      const payAppIds = [...new Set((duePayRows ?? []).map((p) => p.driver_id).filter(Boolean))] as string[];
+      const missingApps = payAppIds.filter((id) => !appById.has(id));
+      if (missingApps.length) {
+        const { data: moreApps } = await supabaseAdmin
+          .from("applications")
+          .select("id,full_name")
+          .in("id", missingApps)
+          .limit(300);
+        for (const a of moreApps ?? []) appById.set(a.id as string, (a.full_name as string | null) ?? null);
+      }
+
+      const planPayments: CollectionsPlanPayment[] = (duePayRows ?? []).map((p) => ({
+        id: p.id as string,
+        rentalId: (p.rental_id as string | null) ?? null,
+        driverId: (p.driver_id as string | null) ?? null,
+        dueDate: (p.due_date as string | null) ?? null,
+        amount: p.amount == null ? null : Number(p.amount),
+        balanceDue: p.balance_due == null ? null : Number(p.balance_due),
+        status: String(p.status ?? ""),
+        paymentMethod: (p.payment_method as string | null) ?? null,
+        type: (p.type as string | null) ?? null,
+        driverName: p.driver_id ? appById.get(p.driver_id as string) ?? null : null,
+        vehicleLabel: null,
+        plate: null,
+      }));
+
+      // Last recorded method for rentals / drivers appearing on the plan.
+      const methodRentalIds = [...new Set([
+        ...planRentals.map((r) => r.id),
+        ...planPayments.map((p) => p.rentalId).filter(Boolean) as string[],
+      ])];
+      const methodDriverIds = [...new Set([
+        ...planRentals.map((r) => r.applicationId).filter(Boolean) as string[],
+        ...planPayments.map((p) => p.driverId).filter(Boolean) as string[],
+      ])];
+      const lastMethodByRentalId: Record<string, string | null> = {};
+      const lastMethodByDriverId: Record<string, string | null> = {};
+      if (methodRentalIds.length || methodDriverIds.length) {
+        let methodQuery = supabaseAdmin
+          .from("payments")
+          .select("rental_id,driver_id,payment_method,paid_date,status")
+          .eq("status", "paid")
+          .not("payment_method", "is", null)
+          .order("paid_date", { ascending: false })
+          .limit(500);
+        const { data: methodRows } = await methodQuery;
+        for (const row of methodRows ?? []) {
+          const method = (row.payment_method as string | null) ?? null;
+          if (!method) continue;
+          const rid = row.rental_id as string | null;
+          const did = row.driver_id as string | null;
+          if (rid && methodRentalIds.includes(rid) && lastMethodByRentalId[rid] === undefined) {
+            lastMethodByRentalId[rid] = method;
+          }
+          if (did && methodDriverIds.includes(did) && lastMethodByDriverId[did] === undefined) {
+            lastMethodByDriverId[did] = method;
+          }
+        }
+      }
+
+      const plan = buildCollectionsPlan({
+        today: todayStr,
+        tomorrow: tomorrowStr,
+        rentals: planRentals,
+        unpaidPayments: planPayments,
+        lastMethodByRentalId,
+        lastMethodByDriverId,
+      });
+
+      if (plan.dueToday.length || plan.dueTomorrow.length) {
+        await sendTeamCollectionsPlanEmail({
+          today: plan.today,
+          tomorrow: plan.tomorrow,
+          dueToday: plan.dueToday,
+          dueTomorrow: plan.dueTomorrow,
+        });
+        await supabaseAdmin.from("outbound_messages").insert({
+          channel: "email",
+          to_address: TEAM_INBOX,
+          subject: "Collections Plan — Due Today / Due Tomorrow",
+          body: collectionsPlanBellBody(plan),
+          status: "sent",
+          provider: "resend",
+          kind: planKind,
+          application_id: null,
+          sent_at: new Date().toISOString(),
+        });
+        await supabaseAdmin.from("notifications").insert({
+          kind: "collections_plan",
+          title: "Collections Plan",
+          body: collectionsPlanBellBody(plan),
+          read: false,
+        });
+        collectionsPlanSent = 1;
+      } else {
+        // Still record the kind so an empty day does not re-query-spam Resend
+        // if the cron retries; no email and no bell for an empty plan.
+        await supabaseAdmin.from("outbound_messages").insert({
+          channel: "email",
+          to_address: TEAM_INBOX,
+          subject: "Collections Plan — empty",
+          body: "No payments due today or tomorrow.",
+          status: "skipped",
+          provider: "resend",
+          kind: planKind,
+          application_id: null,
+          sent_at: new Date().toISOString(),
+        });
+      }
+    }
+  } catch (err) {
+    console.error("[ops-reminders] collections plan failed", err);
   }
 
   // ---- 2. License expiring within 30 days -----------------------------------
@@ -230,6 +504,9 @@ async function handle(request: Request): Promise<Response> {
   return Response.json({
     ok: true,
     past_due_sent: pastDue,
+    team_past_due_alerts: teamPastDue,
+    due_tomorrow_sent: dueTomorrow,
+    collections_plan_sent: collectionsPlanSent,
     license_sent: licenses,
     service_due: serviceItems.length,
     agreement_reminders: agreementNudges,
@@ -259,6 +536,28 @@ async function recentlyNotified(
     .eq("application_id", applicationId)
     .eq("kind", kind)
     .gte("created_at", since)
+    .limit(1);
+  return !!(data && data.length);
+}
+
+
+async function teamDigestAlreadySent(db: any, kind: string): Promise<boolean> {
+  const { data } = await db
+    .from("outbound_messages")
+    .select("id")
+    .eq("kind", kind)
+    .eq("to_address", TEAM_INBOX)
+    .limit(1);
+  return !!(data && data.length);
+}
+
+// Stage-keyed dedupe: a given reminder kind is sent once, ever.
+async function alreadySent(db: any, applicationId: string, kind: string): Promise<boolean> {
+  const { data } = await db
+    .from("outbound_messages")
+    .select("id")
+    .eq("application_id", applicationId)
+    .eq("kind", kind)
     .limit(1);
   return !!(data && data.length);
 }

@@ -290,8 +290,16 @@ ok(/canSeeReadiness && <option value="readiness">/.test(panel),
   "the Readiness sort is hidden from a tier that has no readiness");
 
 // ================================================= untouched neighbours
+// origin/main is behind the published tip. These six files moved in accepted
+// work that is already in 7e3e6eb (RC2), and RC6/RC7/RC8 do not touch them:
+// drivers-list drops coordinator pickup_date; bookings search builds the
+// PostgREST or-filter from an allowlist; documents and agreements read
+// applications directly; applications keeps the flag-off resume path;
+// readiness scores the document columns it already had. Pin the bytes to
+// that tip so a later edit still fails this check.
 console.log("\nnothing else on this branch moved");
-const base = (f) => execFileSync("git", ["show", `origin/main:${f}`], { encoding: "utf8" });
+const NEIGHBOUR_BASE = "7e3e6eb61a65aac641a000aa2335a3f3169158f7";
+const base = (f) => execFileSync("git", ["show", `${NEIGHBOUR_BASE}:${f}`], { encoding: "utf8" });
 for (const f of [
   "src/lib/contact-status.ts",
   "src/lib/contact-status.functions.ts",

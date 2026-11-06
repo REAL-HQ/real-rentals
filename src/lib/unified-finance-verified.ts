@@ -205,7 +205,7 @@ function derived(parts: Array<[Measure, 1 | -1]>): Measure {
   return Number.isSafeInteger(value) ? { value, complete: true } : unknown();
 }
 
-/** Headline cards that this evidence can stand behind. Ledger, expenses, and disputes stay blank. */
+/** Collection cards this Stripe evidence can stand behind. Operating expenses are applied separately. Ledger and disputes stay blank. */
 export function verifiedCollectionReport(input: {
   period: { from: string; to: string }; basis: "cash" | "accrual"; events: FinanceEvent[]; complete: boolean;
 }): FinanceReport {

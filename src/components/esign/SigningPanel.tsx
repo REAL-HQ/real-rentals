@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  SIGNATURE_STYLES, SIGNATURE_FONTS_HREF, ackRows, defaultInitials,
+  SIGNATURE_STYLES, SIGNATURE_FONTS_HREF, ackRows, defaultInitials, normalizeInitialsText,
   type Adoption, type Mark, type SignatureStyle,
 } from "@/lib/signature-adoption";
 import { isStructured } from "@/lib/agreement-layout";
@@ -183,8 +183,11 @@ export function SigningPanel({ body, defaultName, companySigner, busy, error, on
           </div>
         ) : (
           <div className="mt-3 space-y-3">
-            <input value={initialsText} maxLength={8} onChange={(e) => setInitialsText(e.target.value.replace(/[^A-Za-z.\- ]/g, ""))} aria-label="Initials"
-              className="min-h-12 w-32 rounded-lg border border-[#DEDEE3] px-3 text-[16px] uppercase" />
+            {/* The VALUE is put in capitals, not just its look: the adopted mark is
+                what is stored and drawn on the PDF, so it must equal what the
+                driver sees here. The server normalises it the same way. */}
+            <input value={initialsText} maxLength={8} onChange={(e) => setInitialsText(normalizeInitialsText(e.target.value.replace(/[^A-Za-z.\- ]/g, "")))} aria-label="Initials"
+              autoCapitalize="characters" className="min-h-12 w-32 rounded-lg border border-[#DEDEE3] px-3 text-[16px]" />
             <MarkPicker kind="initials" text={initialsText} onAdopt={setIni} />
           </div>
         )}
