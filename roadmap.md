@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Fleet Inbox: dropped/browsed files accumulate locally across selections and upload only after an explicit button click; synthetic browser coverage verifies zero pre-click writes and existing retry/private-document pipeline is unchanged.
 - [x] Waitlist: city/state is visible on every entry; tag editor/filter, Manager+ server mutation, audit and synthetic tests are built.
 - [ ] Waitlist tag storage: apply proposed/waitlist-tags-v1.sql after Codex's older drizzle/migrations/0023_application_resume_atomic_security.sql history is reconciled. The approved attempt stopped on relation application_recovery_attempts already exists; no tags column or customer tags were created.
 - [x] Fleet Inbox: found all four Nov 6 rental agreements in two imports, stored privately and processed successfully. They were misclassified as purchase_agreement and are not linked to renters; originals unchanged.

@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  FileText, Loader2, ChevronLeft, AlertTriangle, CheckCircle2, RotateCw, Eye, Car, Copy, Link2,
+  FileText, Loader2, ChevronLeft, AlertTriangle, CheckCircle2, RotateCw, Eye, Car, Copy, Link2, Upload,
 } from "lucide-react";
 import {
   createImportBatch, listImportBatches, registerInboxFile, analyzeInboxItem, getImportBatch,
@@ -51,6 +51,7 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const busyRef = useRef(false);
   const [rows, setRows] = useState<{ key: string; name: string; status: "queued" | "uploading" | "done" | "duplicate" | "rejected" | "failed"; note?: string; file?: File }[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [lastBatch, setLastBatch] = useState<string | null>(null);
 
   const refresh = useCallback(async () => setBatches(await list()), [list]);
@@ -108,10 +109,18 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
   }
   const failedFiles = rows.filter((r) => r.status === "failed" && r.file).map((r) => r.file!);
 
+  function startPendingUpload() {
+    if (!pendingFiles.length || busyRef.current) return;
+    const files = pendingFiles;
+    setPendingFiles([]);
+    void ingest(files);
+  }
+
   return (
     <div className="space-y-6">
       <FileUploader
-        onFiles={(f) => { if (busyRef.current) { toast.message("Upload in progress — drop again when it finishes."); return; } void ingest(f); }}
+        value={pendingFiles}
+        onChange={setPendingFiles}
         accept="image/*,application/pdf"
         multiple
         maxBytes={MAX}
@@ -119,8 +128,24 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
         disabled={!!busy}
         busy={!!busy}
         title="Drop Fleet Files Here"
-        hint="Titles, registrations, insurance, receipts, photos — one file or a whole stack. REAL RENTALS sorts each document, matches the vehicles and prepares updates for your review. Nothing changes until you approve."
+        hint="Add files in as many drops as you need. Nothing uploads until you click Upload Files. REAL RENTALS then sorts each document and prepares updates for your review."
       />
+
+      {pendingFiles.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+          <span className="text-sm text-muted-foreground">
+            {pendingFiles.length} File{pendingFiles.length === 1 ? "" : "s"} Ready · Not Uploaded Yet
+          </span>
+          <button
+            type="button"
+            onClick={startPendingUpload}
+            disabled={!!busy}
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md bg-brand px-5 text-sm font-medium text-brand-foreground hover:bg-brand/90 disabled:opacity-50"
+          >
+            <Upload className="h-4 w-4" /> Upload {pendingFiles.length} File{pendingFiles.length === 1 ? "" : "s"}
+          </button>
+        </div>
+      )}
 
       {rows.length > 0 && (
         <div className="rounded-xl border border-[#EDEDF0] bg-white divide-y divide-[#EDEDF0]" aria-live="polite">
