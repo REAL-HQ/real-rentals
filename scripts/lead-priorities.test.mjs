@@ -64,7 +64,7 @@ const pure = await build({
   platform: "node",
   format: "esm",
 });
-const { leadToday, leadBucket, projectLead, overdueAge } = await import(
+const { leadToday, leadBucket, projectLead, overdueAge, leadFilterBuckets, LEAD_ALL_PAGE_ORDER } = await import(
   "data:text/javascript;base64," + Buffer.from(pure.outputFiles[0].text).toString("base64")
 );
 let checks = 0;
@@ -126,13 +126,14 @@ for (const role of ["admin", "team", "coordinator"]) {
     JSON.stringify(first.counts) === JSON.stringify({ overdue: 1, new: 1, hot: 1 }),
     role + " disjoint counters",
   );
-  check(first.rows.map((r) => r.id).join(",") === "a,b,c,d,e", role + " deterministic priorities");
+  check(first.rows.map((r) => r.id).join(",") === "b,c,a,d,e", role + " deterministic priorities");
+  check(first.filter === "all", role + " echoes all filter");
   check(
     !JSON.stringify(first).includes("MUST_NOT_LEAK"),
     role + " projection excludes sensitive fields even with overbroad adapter",
   );
   check(
-    first.rows[2].action.includes("does not establish rental readiness"),
+    first.rows[1].action.includes("does not establish rental readiness"),
     role + " interested is not ready",
   );
   check(
@@ -156,6 +157,19 @@ for (const role of ["admin", "team", "coordinator"]) {
     role + " bounded next page",
   );
 }
+check(LEAD_ALL_PAGE_ORDER[0] === "new" && LEAD_ALL_PAGE_ORDER[1] === "interested", "All page order surfaces pipeline first");
+check(leadFilterBuckets("follow_up_due").join(",") === "overdue,today", "follow-up due filter");
+state.roles = [{ user_id: "staff", role: "admin" }];
+state.reads = [];
+const interested = await getLeadPriorities({
+  context: { userId: "staff" },
+  data: { limit: 5, offset: 0, filter: "interested" },
+});
+// a is overdue+interested and c is interested — both surface under Interested filter
+check(interested.filter === "interested", "interested filter echoed");
+check(interested.rows.map((r) => r.id).sort().join(",") === "a,c", "interested includes overdue interested");
+check(interested.total === 2, "interested total");
+
 for (const role of ["driver", null]) {
   state.roles = role ? [{ user_id: "denied", role }] : [];
   state.reads = [];

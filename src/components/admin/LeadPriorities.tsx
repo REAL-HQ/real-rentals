@@ -1,27 +1,70 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
-import { Phone, MessageSquare, ArrowUpRight } from "lucide-react";
+import { Phone, MessageSquare, ArrowUpRight, CalendarDays, Flame } from "lucide-react";
 import { getLeadPriorities } from "@/lib/lead-priorities.functions";
-import { overdueAge, type LeadPrioritiesResult } from "@/lib/lead-priorities";
+import {
+  overdueAge,
+  LEAD_FILTERS,
+  LEAD_FILTER_LABELS,
+  type LeadFilter,
+  type LeadPrioritiesResult,
+} from "@/lib/lead-priorities";
 import { fmtDate } from "@/lib/date-format";
 import { ContactStatusCell } from "./ContactStatusCell";
 import { LeadFollowUpDraft } from "./LeadFollowUpDraft";
 import { LeadResponseReport } from "./LeadResponseReport";
+import { ReadinessStatePill, ReadinessMetrics } from "./ui";
+import type { ReadinessByApplicant } from "@/lib/admin-overview";
+import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
 
-export default function LeadPriorities({ isManager = false }: { isManager?: boolean }) {
+function appliedLine(iso?: string | null) {
+  if (!iso) return "Date Unknown";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "Date Unknown";
+  const now = new Date();
+  const days = Math.floor(
+    (new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() -
+      new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) /
+      86_400_000,
+  );
+  const rel = days <= 0 ? "Today" : days === 1 ? "Yesterday" : `${days} Days Ago`;
+  return `Applied ${fmtDate(d)} · ${rel}`;
+}
+
+function lastContactLine(iso?: string | null) {
+  if (!iso) return "No contact logged";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "No contact logged";
+  return `Last contact ${fmtDate(d)}`;
+}
+
+export default function LeadPriorities({
+  isManager = false,
+  refreshKey = 0,
+  readiness = {},
+  canSeeReadiness = false,
+}: {
+  isManager?: boolean;
+  refreshKey?: number;
+  readiness?: ReadinessByApplicant;
+  canSeeReadiness?: boolean;
+}) {
   const load = useServerFn(getLeadPriorities);
   const [result, setResult] = useState<LeadPrioritiesResult | null>(null);
   const [offset, setOffset] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [filter, setFilter] = useState<LeadFilter>("all");
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+
   useEffect(() => {
     let current = true;
     setLoading(true);
     setError(false);
-    load({ data: { offset, limit: expanded ? 25 : 5 } })
+    load({ data: { offset, limit: expanded ? 25 : 5, filter } })
       .then((r) => {
         if (
           !r ||
@@ -32,7 +75,10 @@ export default function LeadPriorities({ isManager = false }: { isManager?: bool
         ) {
           throw new Error("Lead priorities response unavailable");
         }
-        if (current) setResult(r);
+        if (current) {
+          setResult(r);
+          setUpdatedAt(new Date());
+        }
       })
       .catch(() => {
         if (current) {
@@ -46,11 +92,19 @@ export default function LeadPriorities({ isManager = false }: { isManager?: bool
     return () => {
       current = false;
     };
-  }, [load, offset, expanded, revision]);
+  }, [load, offset, expanded, revision, filter, refreshKey]);
+
   const refresh = () => {
     setOffset(0);
     setRevision((r) => r + 1);
   };
+
+  const setLeadFilter = (next: LeadFilter) => {
+    setFilter(next);
+    setOffset(0);
+    setExpanded(false);
+  };
+
   return (
     <section
       aria-labelledby="lead-priorities-title"
@@ -63,13 +117,20 @@ export default function LeadPriorities({ isManager = false }: { isManager?: bool
           </h2>
           <p className="text-sm text-muted-foreground">Who needs attention and what to do next</p>
         </div>
-        <button
-          onClick={refresh}
-          disabled={loading}
-          className="text-sm text-primary disabled:opacity-50"
-        >
-          Refresh
-        </button>
+        <div className="flex flex-col items-end gap-1">
+          <button
+            onClick={refresh}
+            disabled={loading}
+            className="text-sm text-primary disabled:opacity-50"
+          >
+            Refresh
+          </button>
+          {updatedAt && (
+            <span className="text-[11px] text-muted-foreground" role="status">
+              Updated {updatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </span>
+          )}
+        </div>
       </div>
       <LeadResponseReport isManager={isManager} />
       {loading ? (
@@ -89,95 +150,167 @@ export default function LeadPriorities({ isManager = false }: { isManager?: bool
             <div className="my-4 grid grid-cols-3 gap-3">
               {(
                 [
-                  ["New Leads", result.counts.new],
-                  ["Overdue", result.counts.overdue],
-                  ["Hot Leads", result.counts.hot],
+                  ["New Leads", result.counts.new, "new" as LeadFilter],
+                  ["Overdue", result.counts.overdue, "follow_up_due" as LeadFilter],
+                  ["Hot Leads", result.counts.hot, "interested" as LeadFilter],
                 ] as const
-              ).map(([label, value]) => (
-                <div key={label} className="rounded-xl bg-[#F7F7F8] p-3">
+              ).map(([label, value, next]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setLeadFilter(next)}
+                  className={`rounded-xl bg-[#F7F7F8] p-3 text-left transition hover:bg-[#F0F0F2] ${
+                    filter === next ? "ring-1 ring-[#D03020]/40" : ""
+                  }`}
+                >
                   <div className="text-xs text-muted-foreground">{label}</div>
                   <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
-                </div>
+                </button>
               ))}
             </div>
+
+            <div className="mb-3 flex flex-wrap gap-2" role="tablist" aria-label="Lead filters">
+              {LEAD_FILTERS.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={filter === key}
+                  onClick={() => setLeadFilter(key)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                    filter === key
+                      ? "bg-[#111114] text-white"
+                      : "border border-border bg-white text-[#55555E] hover:border-[#D03020]"
+                  }`}
+                >
+                  {LEAD_FILTER_LABELS[key]}
+                </button>
+              ))}
+            </div>
+
             <p className="mb-3 text-xs text-muted-foreground">
-              Each applicant counts once: overdue takes precedence. Hot means marked Interested, not
-              rental-ready. Dates use Eastern Time.
+              Converted and closed applicants are excluded. All surfaces New and Interested before
+              the overdue backlog; use Follow-up Due for urgent overdue work. Hot means marked
+              Interested, not rental-ready. Dates use Eastern Time.
             </p>
             {result.rows.length === 0 ? (
               <p className="py-4 text-sm text-muted-foreground">
                 No leads need attention in this view.
               </p>
             ) : (
-              <ul className="divide-y divide-border">
-                {result.rows.map((lead) => (
-                  <li key={lead.id} className="py-4" data-lead-priority={lead.bucket}>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        to="/admin"
-                        search={{ tab: "drivers", id: lead.id }}
-                        className="font-semibold hover:underline"
-                      >
-                        {lead.full_name || "Unnamed Applicant"}
-                      </Link>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${lead.priority === "Urgent" ? "bg-red-50 text-red-700" : lead.priority === "High" ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-600"}`}
-                      >
-                        {lead.priority}
-                      </span>
-                      <ContactStatusCell applicationId={lead.id} row={lead} onSaved={refresh} />
-                      {lead.contact_follow_up_on && (
-                        <span className="text-xs text-muted-foreground">
-                          Due {fmtDate(lead.contact_follow_up_on)}
-                          {lead.bucket === "overdue" &&
-                            ` · ${overdueAge(lead.contact_follow_up_on, result.today)}`}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-2 text-sm font-medium">{lead.reason}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{lead.action}</p>
-                    <LeadFollowUpDraft applicationId={lead.id} bucket={lead.bucket} />
-                    {lead.contact_status_note && (
-                      <p className="mt-2 break-words text-xs text-muted-foreground">
-                        Latest contact note: “{lead.contact_status_note.slice(0, 240)}
-                        {lead.contact_status_note.length > 240 ? "…" : ""}”
-                      </p>
-                    )}
-                    <div className="mt-3 flex flex-wrap gap-4 text-xs font-medium text-primary">
-                      {lead.phone && (
-                        <a
-                          href={`tel:${lead.phone.replace(/[^+\d]/g, "")}`}
-                          className="inline-flex items-center gap-1"
-                        >
-                          <Phone className="h-3.5 w-3.5" />
-                          Call
-                        </a>
-                      )}
-                      <button
-                        title="Open Messages, then choose Text. Sending permissions and consent are checked there."
-                        onClick={() =>
-                          window.dispatchEvent(
-                            new CustomEvent("open-messages", {
-                              detail: { applicationId: lead.id },
-                            }),
-                          )
-                        }
-                        className="inline-flex items-center gap-1"
-                      >
-                        <MessageSquare className="h-3.5 w-3.5" />
-                        Text
-                      </button>
-                      <Link
-                        to="/admin"
-                        search={{ tab: "drivers", id: lead.id }}
-                        className="inline-flex items-center gap-1"
-                      >
-                        View Applicant
-                        <ArrowUpRight className="h-3.5 w-3.5" />
-                      </Link>
-                    </div>
-                  </li>
-                ))}
+              <ul className="mt-1 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+                {result.rows.map((lead) => {
+                  const readinessResult = canSeeReadiness ? readiness[lead.id] : undefined;
+                  return (
+                    <li key={lead.id} data-lead-priority={lead.bucket} className="min-w-0">
+                      <div className="group flex h-full flex-col gap-2 rounded-xl border border-[#EDEDF0] bg-white p-3 hover:border-[#D03020]/40 hover:shadow-sm transition">
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <Link
+                            to="/admin"
+                            search={{ tab: "drivers", id: lead.id }}
+                            className="min-w-0 truncate text-[14px] font-semibold text-[#111114] hover:text-[#D03020]"
+                          >
+                            {lead.full_name
+                              ? displayPersonName(lead.full_name)
+                              : "Unnamed Applicant"}
+                          </Link>
+                          <div className="flex shrink-0 flex-col items-end gap-1">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                lead.priority === "Urgent"
+                                  ? "bg-red-50 text-red-700"
+                                  : lead.priority === "High"
+                                    ? "bg-amber-50 text-amber-800"
+                                    : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {lead.priority}
+                            </span>
+                            {readinessResult ? (
+                              <ReadinessStatePill state={readinessResult.state} short />
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="flex min-w-0 flex-col gap-0.5 text-[11px] text-[#9A9AA3]">
+                          <span className="inline-flex min-w-0 items-center gap-1">
+                            <CalendarDays className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{appliedLine(lead.created_at)}</span>
+                          </span>
+                          <span className="truncate">{lastContactLine(lead.contact_status_at)}</span>
+                          {lead.contact_follow_up_on && (
+                            <span className="truncate">
+                              Due {fmtDate(lead.contact_follow_up_on)}
+                              {lead.bucket === "overdue" &&
+                                ` · ${overdueAge(lead.contact_follow_up_on, result.today)}`}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <ContactStatusCell applicationId={lead.id} row={lead} onSaved={refresh} />
+                          {lead.bucket === "interested" && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#D03020]">
+                              <Flame className="h-3 w-3" /> Interested
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-sm font-medium text-[#111114]">{lead.reason}</p>
+                        <p className="text-sm text-muted-foreground">{lead.action}</p>
+                        {readinessResult ? <ReadinessMetrics result={readinessResult} /> : null}
+                        {readinessResult && readinessResult.positives.length > 0 && (
+                          <span className="text-[11px] text-[#9A9AA3] line-clamp-2">
+                            {readinessResult.positives
+                              .slice(0, 2)
+                              .map((f) => displayTitleCase(f.detail))
+                              .join(" · ")}
+                          </span>
+                        )}
+                        <LeadFollowUpDraft applicationId={lead.id} bucket={lead.bucket} />
+                        {lead.contact_status_note && (
+                          <p className="break-words text-xs text-muted-foreground">
+                            Latest contact note: “{lead.contact_status_note.slice(0, 240)}
+                            {lead.contact_status_note.length > 240 ? "…" : ""}”
+                          </p>
+                        )}
+                        <div className="mt-auto flex flex-wrap gap-4 pt-1 text-xs font-medium text-primary">
+                          {lead.phone && (
+                            <a
+                              href={`tel:${lead.phone.replace(/[^+\d]/g, "")}`}
+                              className="inline-flex items-center gap-1"
+                            >
+                              <Phone className="h-3.5 w-3.5" />
+                              Call
+                            </a>
+                          )}
+                          <button
+                            title="Open Messages, then choose Text. Sending permissions and consent are checked there."
+                            onClick={() =>
+                              window.dispatchEvent(
+                                new CustomEvent("open-messages", {
+                                  detail: { applicationId: lead.id },
+                                }),
+                              )
+                            }
+                            className="inline-flex items-center gap-1"
+                          >
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            Text
+                          </button>
+                          <Link
+                            to="/admin"
+                            search={{ tab: "drivers", id: lead.id }}
+                            className="inline-flex items-center gap-1"
+                          >
+                            View Applicant
+                            <ArrowUpRight className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
             <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-sm">

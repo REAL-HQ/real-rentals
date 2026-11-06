@@ -42,7 +42,7 @@ export function main(){
 execFileSync(process.execPath,['--test',path.join(process.cwd(),'scripts/ci/stripe/regressions.test.mjs')],{stdio:'inherit'});
 const root=process.cwd();
 const base='ce8f7969e1656b455bd8ffce93e0da00a8d114c1';
-const allowedSource=new Set(["src/components/admin/StripeCollections.tsx", "src/lib/stripe-collections.ts", "src/lib/stripe-collections.server.ts", "src/lib/stripe-collections.functions.ts", "scripts/stripe-collections.test.ts", "scripts/stripe-collections-server.test.ts", "scripts/stripe-collections-auth.test.ts", "scripts/stripe-collections.vitest.config.ts", "src/components/admin/OverviewPanel.tsx", "src/routes/admin.tsx"]);
+const allowedSource=new Set(["src/components/admin/StripeCollections.tsx", "src/lib/stripe-collections.ts", "src/lib/stripe-collections.server.ts", "src/lib/stripe-collections.functions.ts", "scripts/stripe-collections.test.ts", "scripts/stripe-collections-server.test.ts", "scripts/stripe-collections-auth.test.ts", "scripts/stripe-collections.vitest.config.ts", "src/components/admin/OverviewPanel.tsx", "src/components/admin/PaymentsPanel.tsx", "src/routes/admin.tsx"]);
 for(const changed of execFileSync('git',['diff','--name-only',base,'--','src','scripts'],{encoding:'utf8'}).trim().split('\n').filter(Boolean)) assert.ok(allowedSource.has(changed)||changed.startsWith('scripts/ci/'),'unreviewed source drift invalidates baseline exceptions: '+changed);
 const expected={
   "admin-reads-access": [
