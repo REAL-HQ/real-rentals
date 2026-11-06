@@ -28,7 +28,7 @@ try {
       if(stubs[args.path])return {path:args.path,namespace:'stub'};
       if(args.path==='@/components/admin/types')return {path:resolve('src/components/admin/types.ts')};
       if(args.path.startsWith('@/')){
-        const allowed=['roles.server','roles','readiness-index','readiness','required-docs','fleet-summary','waitlist-reads.server'];
+        const allowed=['roles.server','roles','readiness-index','readiness','required-docs','fleet-summary','waitlist-reads.server','waitlist-tags','waitlist-claim'];
         if(allowed.some(x=>args.path==='@/lib/'+x))return {path:resolve('src',args.path.slice(2)+'.ts')};
         return {path:args.path,external:true};
       }
@@ -58,6 +58,8 @@ try {
   await test('changing page count fails closed',async()=>{reset(50);changeCount=true;await assert.rejects(call)});
   await test('partial page with missing count is rejected',async()=>{reset(50);const original=globalThis.fixture.from;globalThis.fixture.from=(table)=>{const q=original(table);if(table==='vehicles'){const then=q.then;q.then=(ok,bad)=>then(r=>ok({...r,count:null}),bad)}return q};try{await assert.rejects(call)}finally{globalThis.fixture.from=original}});
   await test('duplicate page identity is rejected',async()=>{reset(50);data.vehicles[1].id=data.vehicles[0].id;await assert.rejects(call)});
+  await test('missing tags column falls back without changing queue positions',async()=>{reset();const original=globalThis.fixture.from;globalThis.fixture.from=(table)=>{const q=original(table);if(table==='waitlist'){const select=q.select;const order=q.order;q.select=(s,opt)=>{const result=select(s,opt);q.order=s.endsWith(',tags')?()=>Promise.resolve({data:null,error:{code:'PGRST204'}}):order;return result;};}return q;};try{const r=await call();assert.equal(r.tagsAvailable,false);assert.deepEqual(r.entries.map(e=>e.position),[1,2]);assert.deepEqual(r.entries.map(e=>e.tags),[[],[]]);}finally{globalThis.fixture.from=original}});
+  await test('stored tags are returned when the additive column exists',async()=>{reset();data.waitlist[0].tags=['Hot','Needs Callback'];const r=await call();assert.equal(r.tagsAvailable,true);assert.deepEqual(r.entries[0].tags,['Hot','Needs Callback']);});
   await test('empty fleet is a verified zero',async()=>{reset(0);assert.deepEqual((await call()).fleet,{fleetAvailable:0,rentalReady:0})});
   console.log(`${passed} real-handler synthetic checks passed; no hosted calls.`);
 }finally{delete globalThis.fixture;rmSync(out,{recursive:true,force:true})}

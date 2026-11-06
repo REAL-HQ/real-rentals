@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit";
 import { completeRead, readInBatches } from "@/lib/waitlist-reads.server";
 import { WAITLIST_CLAIM_ENABLED, deliverOpeningEmails } from "@/lib/waitlist-claim";
 import type { ReadinessResult } from "@/lib/readiness";
+import { validateWaitlistTags } from "@/lib/waitlist-tags";
 
 // Cars Available + waitlist.
 //
@@ -156,6 +157,7 @@ export type WaitlistEntry = {
   source: string | null;
   created_at: string;
   position: number | null;
+  tags: string[];
   /** null = no linked application: the list shows "Not Started". */
   readiness: { result: Pick<ReadinessResult, "state" | "coverage"> | null; docCount: number } | null;
 };
@@ -175,6 +177,8 @@ export const listWaitlist = createServerFn({ method: "POST" })
     carsAvailable: number | null;
     waitingCount: number;
     fleet: FleetAvailability;
+    /** False only during the additive schema rollout, before waitlist.tags exists. */
+    tagsAvailable: boolean;
   }> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -195,13 +199,19 @@ export const listWaitlist = createServerFn({ method: "POST" })
 
     // Oldest first: that is the queue. Position is computed on read —
     // renumbering rows on every promotion is state we would only get wrong.
-    const { data: rows, error: waitlistError } = await supabaseAdmin
+    // The fallback keeps the deployed list readable during the additive tags
+    // rollout; every other read failure still fails closed.
+    const baseColumns = "id,full_name,email,phone,city,state,market_id,pickup_date,status,notified_at,promoted_application_id,promoted_at,source,created_at,review_reason";
+    const readEntries = (withTags: boolean) => (supabaseAdmin as any)
       .from("waitlist")
-      .select(
-        "id,full_name,email,phone,city,state,market_id,pickup_date,status,notified_at,promoted_application_id,promoted_at,source,created_at,review_reason",
-      )
+      .select(withTags ? `${baseColumns},tags` : baseColumns)
       .order("created_at", { ascending: true });
-
+    let { data: rows, error: waitlistError } = await readEntries(true);
+    let tagsAvailable = true;
+    if (waitlistError && (waitlistError.code === "42703" || waitlistError.code === "PGRST204")) {
+      tagsAvailable = false;
+      ({ data: rows, error: waitlistError } = await readEntries(false));
+    }
     if (waitlistError) throw new Error("Waitlist data unavailable. Please retry.");
 
     // Readiness only for entries linked to a real application (promotion
@@ -285,6 +295,7 @@ export const listWaitlist = createServerFn({ method: "POST" })
         source: r.source,
         created_at: r.created_at,
         position,
+        tags: Array.isArray(r.tags) ? r.tags : [],
         readiness: r.promoted_application_id && readinessIndex.has(r.promoted_application_id)
           ? { result: { state: readinessIndex.get(r.promoted_application_id)!.state, coverage: readinessIndex.get(r.promoted_application_id)!.coverage }, docCount: docCounts[r.promoted_application_id] ?? 0 }
           : null,
@@ -296,7 +307,45 @@ export const listWaitlist = createServerFn({ method: "POST" })
       carsAvailable,
       waitingCount: entries.filter((e) => e.status === "waiting").length,
       fleet,
+      tagsAvailable,
     };
+  });
+
+export const setWaitlistTags = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => {
+    const parsed = z.object({
+      entryId: z.string().uuid(),
+      tags: z.array(z.string().max(200)).max(50),
+    }).parse(d);
+    return { ...parsed, tags: validateWaitlistTags(parsed.tags) };
+  })
+  .handler(async ({ data, context }) => {
+    const actor = await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: updated, error } = await (supabaseAdmin as any)
+      .from("waitlist")
+      .update({ tags: data.tags })
+      .eq("id", data.entryId)
+      .select("id,tags")
+      .maybeSingle();
+    if (error) {
+      const unavailable = error.code === "42703" || error.code === "PGRST204";
+      return {
+        ok: false as const,
+        error: unavailable ? "Tag storage is not connected yet. No changes were made." : "Could not save tags. Please try again.",
+      };
+    }
+    if (!updated) return { ok: false as const, error: "Waitlist entry not found. No changes were made." };
+
+    await logAudit(actor, {
+      action: "waitlist.tags_updated",
+      summary: "Updated staff tags on a waitlist entry",
+      entityType: "waitlist",
+      entityId: data.entryId,
+      metadata: { tags: data.tags },
+    });
+    return { ok: true as const, tags: data.tags };
   });
 
 export const setCarsAvailable = createServerFn({ method: "POST" })

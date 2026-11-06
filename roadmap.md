@@ -1,6 +1,8 @@
 # Roadmap
-- [ ] Waitlist: show each person's city/state and add authorized staff tags with filtering.
-- [ ] Fleet Inbox: trace the Nov 6 rental-agreement uploads and correct any confirmed intake/display issue without altering private originals.
+- [x] Waitlist: city/state is visible on every entry; tag editor/filter, Manager+ server mutation, audit and synthetic tests are built.
+- [ ] Waitlist tag storage: apply proposed/waitlist-tags-v1.sql after Codex's older drizzle/migrations/0023_application_resume_atomic_security.sql history is reconciled. The approved attempt stopped on relation application_recovery_attempts already exists; no tags column or customer tags were created.
+- [x] Fleet Inbox: found all four Nov 6 rental agreements in two imports, stored privately and processed successfully. They were misclassified as purchase_agreement and are not linked to renters; originals unchanged.
+- [ ] Fleet Inbox renter agreements: separate approval needed to route them into the existing Paper Agreement workflow and block vehicle/service proposals; do not Apply the two Nov 6 batches meanwhile.
 - [x] Lead Priorities redesign: white/neutral section and compact KPI cards, consistent applicant hierarchy and aligned actions; six-card preview, filters, refresh, contact menu, Text, pagination and applicant navigation verified at desktop/tablet/phone sizes. Review only; not published.
 - [x] Release repair 1: Owner-only finance documents (server guard, UI hide, storage write policy 0013)
 - [x] Release repair 2: broken uploader thumbnail

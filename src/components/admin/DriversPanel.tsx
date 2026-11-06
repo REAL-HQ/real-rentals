@@ -1659,6 +1659,7 @@ setDocCounts(requiredDocCounts(rows));
             <p className="text-[12px] text-[#55555E] mt-0.5">People Who Joined The Waitlist Before Applying</p>
           </div>
           <WaitlistPanel
+            canManage={canManageWaitlist}
             onEntriesChange={(n) => setWaitlistCount(n)}
             onPromoted={() => refreshDrivers()}
           />

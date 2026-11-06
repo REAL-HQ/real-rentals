@@ -30,7 +30,7 @@ describe("waitlist write gate", () => {
 
   it("every waitlist write action is gated by requireManager", () => {
     const src = readFileSync("src/lib/waitlist.functions.ts", "utf8");
-    for (const fn of ["setWaitlistHold", "promoteToApplicant", "notifyWaitlistTop", "setCarsAvailable"]) {
+    for (const fn of ["setWaitlistHold", "promoteToApplicant", "notifyWaitlistTop", "setCarsAvailable", "setWaitlistTags"]) {
       const body = src.slice(src.indexOf(`export const ${fn}`)).split("export const ")[1];
       expect(body, fn).toMatch(/await requireManager\(context\.userId\)/);
       expect(body, fn).not.toMatch(/requireStaff\(/);
