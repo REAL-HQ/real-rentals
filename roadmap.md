@@ -1,4 +1,6 @@
 # Roadmap
+- [ ] Waitlist: show each person's city/state and add authorized staff tags with filtering.
+- [ ] Fleet Inbox: trace the Nov 6 rental-agreement uploads and correct any confirmed intake/display issue without altering private originals.
 - [x] Lead Priorities redesign: white/neutral section and compact KPI cards, consistent applicant hierarchy and aligned actions; six-card preview, filters, refresh, contact menu, Text, pagination and applicant navigation verified at desktop/tablet/phone sizes. Review only; not published.
 - [x] Release repair 1: Owner-only finance documents (server guard, UI hide, storage write policy 0013)
 - [x] Release repair 2: broken uploader thumbnail
