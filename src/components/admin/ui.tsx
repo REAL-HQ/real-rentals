@@ -444,16 +444,24 @@ export function ReadinessStatePill({
   state,
   short = false,
   label,
+  appearance = "semantic",
 }: {
   state: ReadinessState;
   short?: boolean;
   label?: string;
+  appearance?: "semantic" | "neutral";
 }) {
   const t = TONE[READINESS_TONE[state]];
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap"
-      style={{ backgroundColor: t.bg, color: t.fg }}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap ${
+        appearance === "neutral"
+          ? READINESS_TONE[state] === "red"
+            ? "bg-brand/10 text-brand"
+            : "bg-secondary text-muted-foreground"
+          : ""
+      }`}
+      style={appearance === "semantic" ? { backgroundColor: t.bg, color: t.fg } : undefined}
     >
       {STATE_TONE[state] === "critical" && (
         <AlertTriangle className="w-3 h-3 shrink-0" strokeWidth={2.5} />
@@ -472,27 +480,29 @@ export function ReadinessStatePill({
 export function ReadinessMetrics({
   result,
   compact = false,
+  appearance = "semantic",
 }: {
   result: Pick<ReadinessResult, "qualification" | "coverage" | "verifiedCoverage">;
   compact?: boolean;
+  appearance?: "semantic" | "neutral";
 }) {
   if (result.qualification === null) {
-    return <span className="text-[11px] text-[#9A9AA3]">Nothing recorded yet</span>;
+    return <span className={`text-[11px] ${appearance === "neutral" ? "text-muted-foreground" : "text-[#9A9AA3]"}`}>Nothing recorded yet</span>;
   }
   if (compact) {
     return (
-      <span className="text-[11px] text-[#55555E] tabular-nums whitespace-nowrap">
+      <span className={`text-[11px] tabular-nums whitespace-nowrap ${appearance === "neutral" ? "text-muted-foreground" : "text-[#55555E]"}`}>
         Qual {result.qualification} · {result.coverage}% known
       </span>
     );
   }
   return (
     <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-      <span className="text-[13px] font-semibold text-[#111114] tabular-nums">
+      <span className={`text-[13px] font-semibold tabular-nums ${appearance === "neutral" ? "text-foreground" : "text-[#111114]"}`}>
         Qualification {result.qualification}
       </span>
-      <span className="text-[12px] text-[#55555E] tabular-nums">{result.coverage}% Known</span>
-      <span className="text-[12px] text-[#55555E] tabular-nums">
+      <span className={`text-[12px] tabular-nums ${appearance === "neutral" ? "text-muted-foreground" : "text-[#55555E]"}`}>{result.coverage}% Known</span>
+      <span className={`text-[12px] tabular-nums ${appearance === "neutral" ? "text-muted-foreground" : "text-[#55555E]"}`}>
         {result.verifiedCoverage}% Verified
       </span>
     </div>

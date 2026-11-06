@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
-import { Phone, MessageSquare, ArrowUpRight, CalendarDays, Flame } from "lucide-react";
+import { Phone, MessageSquare, ArrowUpRight, CalendarDays, Flame, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { getLeadPriorities } from "@/lib/lead-priorities.functions";
 import {
   overdueAge,
@@ -109,24 +111,27 @@ export default function LeadPriorities({
   return (
     <section
       aria-labelledby="lead-priorities-title"
-      className="rounded-2xl border border-brand-soft-border bg-brand-soft p-4 text-foreground sm:p-5"
+      className="rounded-2xl border border-border bg-card p-4 text-card-foreground sm:p-5"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 id="lead-priorities-title" className="flex items-center gap-2 text-lg font-semibold">
-            <Flame aria-hidden="true" className="h-5 w-5 shrink-0 text-brand" />
+            <Flame aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
             Lead Priorities
           </h2>
           <p className="text-sm text-muted-foreground">Who needs attention and what to do next</p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={refresh}
             disabled={loading}
-            className="text-sm text-primary disabled:opacity-50"
+            className="border-border bg-card text-card-foreground shadow-none hover:bg-secondary hover:text-foreground"
           >
+            <RefreshCw aria-hidden="true" />
             Refresh
-          </button>
+          </Button>
           {updatedAt && (
             <span className="text-[11px] text-muted-foreground" role="status">
               Updated {updatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
@@ -144,14 +149,14 @@ export default function LeadPriorities({
       ) : error ? (
         <p role="alert" className="py-6 text-sm text-destructive">
           Lead priorities could not be loaded.{" "}
-          <button className="underline" onClick={refresh}>
+          <Button variant="link" size="sm" className="h-auto p-0 text-destructive" onClick={refresh}>
             Retry
-          </button>
+          </Button>
         </p>
       ) : (
         result && (
           <>
-            <div className="my-4 grid grid-cols-3 gap-3">
+            <div className="my-4 grid grid-cols-3 gap-2 sm:gap-3">
               {(
                 [
                   ["New Leads", result.counts.new, "new" as LeadFilter],
@@ -159,112 +164,97 @@ export default function LeadPriorities({
                   ["Hot Leads", result.counts.hot, "interested" as LeadFilter],
                 ] as const
               ).map(([label, value, next]) => (
-                <button
+                <Button
                   key={label}
                   type="button"
+                  variant="outline"
+                  aria-pressed={filter === next}
                   onClick={() => setLeadFilter(next)}
-                  className={`rounded-xl bg-secondary p-3 text-left text-secondary-foreground transition hover:bg-secondary/90 ${
-                    filter === next ? "ring-1 ring-brand/40" : ""
+                  className={`h-16 min-w-0 flex-col items-start justify-center gap-1 whitespace-normal rounded-lg bg-card px-3 py-2 text-left text-card-foreground shadow-none hover:bg-secondary hover:text-foreground ${
+                    filter === next ? "border-brand ring-1 ring-brand" : "border-border"
                   }`}
                 >
-                  <div className="text-xs text-muted-foreground">{label}</div>
-                  <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
-                </button>
+                  <span className="text-xs font-normal text-muted-foreground">{label}</span>
+                  <span className={`text-xl font-semibold leading-none tabular-nums ${next === "follow_up_due" && value > 0 ? "text-brand" : "text-card-foreground"}`}>{value}</span>
+                </Button>
               ))}
             </div>
 
             <div className="mb-3 flex flex-wrap gap-2" role="tablist" aria-label="Lead filters">
               {LEAD_FILTERS.map((key) => (
-                <button
+                <Button
                   key={key}
                   type="button"
+                  variant="outline"
+                  size="sm"
                   role="tab"
                   aria-selected={filter === key}
                   onClick={() => setLeadFilter(key)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                  className={`h-8 rounded-lg px-3 text-xs font-medium shadow-none ${
                     filter === key
-                      ? "bg-primary text-primary-foreground"
-                      : "border border-border bg-card text-muted-foreground hover:border-brand"
+                      ? "border-brand bg-brand text-brand-foreground hover:bg-brand/90 hover:text-brand-foreground"
+                      : "border-border bg-card text-muted-foreground hover:bg-secondary hover:text-foreground"
                   }`}
                 >
                   {LEAD_FILTER_LABELS[key]}
-                </button>
+                </Button>
               ))}
             </div>
 
-            <p className="mb-3 text-xs text-muted-foreground">
-              Converted and closed applicants are excluded. All surfaces New and Interested before
-              the overdue backlog; use Follow-Up Due for urgent overdue work. Hot means marked
-              Interested, not rental-ready. Dates use Eastern Time.
-            </p>
             {result.rows.length === 0 ? (
               <p className="py-4 text-sm text-muted-foreground">
                 No leads need attention in this view.
               </p>
             ) : (
-              <ul className="mt-1 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+              <ul className="mt-1 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {result.rows.map((lead) => {
                   const readinessResult = canSeeReadiness ? readiness[lead.id] : undefined;
                   return (
                     <li key={lead.id} data-lead-priority={lead.bucket} className="min-w-0">
-                      <div className="group flex h-full flex-col gap-2 rounded-xl border border-border bg-card p-3 text-card-foreground hover:border-brand/40 hover:shadow-sm transition">
+                      <div className={`flex h-full flex-col gap-3 rounded-lg border bg-card p-4 text-card-foreground ${lead.priority === "Urgent" ? "border-brand/40" : "border-border"}`}>
                         <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
                           <Link
                             to="/admin"
                             search={{ tab: "drivers", id: lead.id }}
-                            className="min-w-0 flex-1 basis-32 truncate text-[14px] font-semibold text-card-foreground hover:text-brand"
+                            className="min-w-0 flex-1 basis-32 break-words text-sm font-semibold leading-5 text-card-foreground hover:underline"
                           >
                             {lead.full_name
                               ? displayPersonName(lead.full_name)
                               : "Unnamed Applicant"}
                           </Link>
                           <div className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                            <Badge
+                              variant="secondary"
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-medium hover:bg-secondary ${
                                 lead.priority === "Urgent"
-                                  ? "bg-red-50 text-red-700"
-                                  : lead.priority === "High"
-                                    ? "bg-amber-50 text-amber-800"
-                                    : "bg-slate-100 text-slate-600"
+                                  ? "bg-brand/10 text-brand hover:bg-brand/10"
+                                  : "bg-secondary text-muted-foreground"
                               }`}
                             >
                               {lead.priority}
-                            </span>
+                            </Badge>
                             {readinessResult ? (
-                              <ReadinessStatePill state={readinessResult.state} short />
+                              <ReadinessStatePill state={readinessResult.state} short appearance="neutral" />
                             ) : null}
                           </div>
                         </div>
 
-                        <div className="flex min-w-0 flex-col gap-0.5 text-[11px] text-[#9A9AA3]">
-                          <span className="inline-flex min-w-0 items-center gap-1">
-                            <CalendarDays className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{appliedLine(lead.created_at)}</span>
-                          </span>
-                          <span className="truncate">{lastContactLine(lead.contact_status_at)}</span>
-                          {lead.contact_follow_up_on && (
-                            <span className="truncate">
-                              Due {fmtDate(lead.contact_follow_up_on)}
-                              {lead.bucket === "overdue" &&
-                                ` · ${overdueAge(lead.contact_follow_up_on, result.today)}`}
-                            </span>
-                          )}
-                        </div>
-
                         <div className="flex flex-wrap items-center gap-2">
-                          <ContactStatusCell applicationId={lead.id} row={lead} onSaved={refresh} />
+                          <ContactStatusCell applicationId={lead.id} row={lead} onSaved={refresh} appearance="neutral" />
                           {lead.bucket === "interested" && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#D03020]">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
                               <Flame className="h-3 w-3" /> Interested
                             </span>
                           )}
                         </div>
 
-                        <p className="text-sm font-medium text-[#111114]">{lead.reason}</p>
-                        <p className="text-sm text-muted-foreground">{lead.action}</p>
-                        {readinessResult ? <ReadinessMetrics result={readinessResult} /> : null}
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium text-card-foreground">{lead.reason}</p>
+                          <p className="text-xs leading-5 text-muted-foreground">{lead.action}</p>
+                        </div>
+                        {readinessResult ? <div className="min-w-0"><ReadinessMetrics result={readinessResult} appearance="neutral" /></div> : null}
                         {readinessResult && readinessResult.positives.length > 0 && (
-                          <span className="text-[11px] text-[#9A9AA3] line-clamp-2">
+                          <span className="text-[11px] text-muted-foreground line-clamp-2">
                             {readinessResult.positives
                               .slice(0, 2)
                               .map((f) => displayTitleCase(f.detail))
@@ -272,23 +262,38 @@ export default function LeadPriorities({
                           </span>
                         )}
                         <LeadFollowUpDraft applicationId={lead.id} bucket={lead.bucket} />
+                        <div className="flex min-w-0 flex-col gap-1 text-[11px] leading-4 text-muted-foreground">
+                          <span className="inline-flex min-w-0 items-start gap-1">
+                            <CalendarDays aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
+                            <span>{appliedLine(lead.created_at)}</span>
+                          </span>
+                          <span>{lastContactLine(lead.contact_status_at)}</span>
+                          {lead.contact_follow_up_on && (
+                            <span>
+                              Due {fmtDate(lead.contact_follow_up_on)}
+                              {lead.bucket === "overdue" &&
+                                ` · ${overdueAge(lead.contact_follow_up_on, result.today)}`}
+                            </span>
+                          )}
+                        </div>
                         {lead.contact_status_note && (
                           <p className="break-words text-xs text-muted-foreground">
                             Latest contact note: “{lead.contact_status_note.slice(0, 240)}
                             {lead.contact_status_note.length > 240 ? "…" : ""}”
                           </p>
                         )}
-                        <div className="mt-auto flex flex-wrap gap-4 pt-1 text-xs font-medium text-primary">
+                        <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3 text-xs font-medium">
                           {lead.phone && (
-                            <a
-                              href={`tel:${lead.phone.replace(/[^+\d]/g, "")}`}
-                              className="inline-flex items-center gap-1"
-                            >
-                              <Phone className="h-3.5 w-3.5" />
-                              Call
-                            </a>
+                            <Button asChild variant="link" size="sm" className="h-7 gap-1 p-0 text-xs text-muted-foreground">
+                              <a href={`tel:${lead.phone.replace(/[^+\d]/g, "")}`}>
+                                <Phone aria-hidden="true" />
+                                Call
+                              </a>
+                            </Button>
                           )}
-                          <button
+                          <Button
+                            variant="link"
+                            size="sm"
                             title="Open Messages, then choose Text. Sending permissions and consent are checked there."
                             onClick={() =>
                               window.dispatchEvent(
@@ -297,19 +302,17 @@ export default function LeadPriorities({
                                 }),
                               )
                             }
-                            className="inline-flex items-center gap-1"
+                            className="h-7 gap-1 p-0 text-xs text-muted-foreground"
                           >
-                            <MessageSquare className="h-3.5 w-3.5" />
+                            <MessageSquare aria-hidden="true" />
                             Text
-                          </button>
-                          <Link
-                            to="/admin"
-                            search={{ tab: "drivers", id: lead.id }}
-                            className="inline-flex items-center gap-1"
-                          >
-                            View Applicant
-                            <ArrowUpRight className="h-3.5 w-3.5" />
-                          </Link>
+                          </Button>
+                          <Button asChild variant="link" size="sm" className="ml-auto h-7 gap-1 p-0 text-xs text-card-foreground">
+                            <Link to="/admin" search={{ tab: "drivers", id: lead.id }}>
+                              View Applicant
+                              <ArrowUpRight aria-hidden="true" />
+                            </Link>
+                          </Button>
                         </div>
                       </div>
                     </li>
@@ -317,39 +320,47 @@ export default function LeadPriorities({
                 })}
               </ul>
             )}
-            <div className="mt-3 flex items-center justify-between border-t border-brand-soft-border pt-3 text-sm">
+            <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-sm">
               <span className="text-muted-foreground">
                 {result.total
                   ? `${offset + 1}–${offset + result.rows.length} of ${result.total}`
                   : "0 applicants"}
               </span>
               {!expanded && result.total > LEAD_PREVIEW_LIMIT ? (
-                <button
-                  className="font-medium text-primary"
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="text-brand"
                   onClick={() => {
                     setExpanded(true);
                     setOffset(0);
                   }}
                 >
                   View All
-                </button>
+                </Button>
               ) : (
                 expanded && (
                   <div className="flex gap-4">
-                    <button
+                    <Button
+                      variant="link"
+                      size="sm"
                       disabled={offset === 0}
                       className="text-primary disabled:opacity-40"
                       onClick={() => setOffset(Math.max(0, offset - 25))}
                     >
                       Previous
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="link"
+                      size="sm"
                       disabled={result.nextOffset === null}
                       className="text-primary disabled:opacity-40"
-                      onClick={() => setOffset(result.nextOffset!)}
+                      onClick={() => {
+                        if (result.nextOffset !== null) setOffset(result.nextOffset);
+                      }}
                     >
                       Next
-                    </button>
+                    </Button>
                   </div>
                 )
               )}

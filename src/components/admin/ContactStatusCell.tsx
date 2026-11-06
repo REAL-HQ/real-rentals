@@ -38,6 +38,7 @@ export function ContactStatusCell({
   row,
   onSaved,
   showMarkContacted = false,
+  appearance = "semantic",
 }: {
   applicationId: string;
   /** The applications row, read for its contact_* fields. */
@@ -49,6 +50,8 @@ export function ContactStatusCell({
    * already stored so a blank form cannot clear them.
    */
   showMarkContacted?: boolean;
+  /** Presentation only; status options, validation and saves stay unchanged. */
+  appearance?: "semantic" | "neutral";
 }) {
   const { supported, state } = useMemo(() => readContactStatus(row), [row]);
   const [open, setOpen] = useState(false);
@@ -129,7 +132,9 @@ export function ContactStatusCell({
     await persist(next);
   }
 
-  const tone = CONTACT_STATUS_TONE[state.status] ?? CONTACT_STATUS_TONE.new;
+  const tone = appearance === "neutral"
+    ? "bg-secondary text-muted-foreground"
+    : CONTACT_STATUS_TONE[state.status] ?? CONTACT_STATUS_TONE.new;
 
   // Without the migration there is nothing to read and nowhere to save, and
   // saying so beats showing every lead as New.
@@ -179,7 +184,7 @@ export function ContactStatusCell({
                 >
                   <span className="inline-flex items-center gap-2">
                     <span
-                      className={`h-2 w-2 rounded-full ${CONTACT_STATUS_TONE[s.key].split(" ")[0]}`}
+                      className={`h-2 w-2 rounded-full ${appearance === "neutral" ? "bg-muted-foreground" : CONTACT_STATUS_TONE[s.key].split(" ")[0]}`}
                     />
                     {s.label}
                   </span>

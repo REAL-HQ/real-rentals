@@ -1,5 +1,5 @@
 # Roadmap
-- [x] Lead Priorities: aligned readiness and priority badges, added title fire icon, showed six preview cards, and softened the background to pastel red (preview only).
+- [x] Lead Priorities redesign: white/neutral section and compact KPI cards, consistent applicant hierarchy and aligned actions; six-card preview, filters, refresh, contact menu, Text, pagination and applicant navigation verified at desktop/tablet/phone sizes. Review only; not published.
 - [x] Release repair 1: Owner-only finance documents (server guard, UI hide, storage write policy 0013)
 - [x] Release repair 2: broken uploader thumbnail
 - [x] Release repair 3: hand-test Retry/Remove with simulated network failure
