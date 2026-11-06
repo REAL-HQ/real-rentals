@@ -194,7 +194,7 @@ export default function LeadPriorities({
 
             <p className="mb-3 text-xs text-brand-foreground/80">
               Converted and closed applicants are excluded. All surfaces New and Interested before
-              the overdue backlog; use Follow-up Due for urgent overdue work. Hot means marked
+              the overdue backlog; use Follow-Up Due for urgent overdue work. Hot means marked
               Interested, not rental-ready. Dates use Eastern Time.
             </p>
             {result.rows.length === 0 ? (

@@ -23,7 +23,7 @@ export type LeadFilter = (typeof LEAD_FILTERS)[number];
 export const LEAD_FILTER_LABELS: Record<LeadFilter, string> = {
   all: "All",
   new: "New",
-  follow_up_due: "Follow-up Due",
+  follow_up_due: "Follow-Up Due",
   interested: "Interested",
 };
 
