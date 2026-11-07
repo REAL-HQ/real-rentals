@@ -6,5 +6,5 @@ assert.match(s, /else if \(dups === ok\.length\) \{/, "all-duplicate upload neve
 assert.match(s, /catch \(e\) \{\s*setLoadError\(/, "batch load failures are caught");
 assert.match(s, /if \(!d && loadError\) return \(/, "load error state renders");
 const loadingBlocks = s.split("Loading…").length - 1;
-assert.ok(/Back To Imports[\s\S]{0,200}Loading…/.test(s), "batch Loading state offers Back");
+assert.ok(/>Back<\/button>[\s\S]{0,200}Loading…/.test(s), "batch Loading state offers Back");
 console.log("fleet-inbox-duplicate-loading: PASS (" + loadingBlocks + " loading states)");

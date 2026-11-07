@@ -73,7 +73,7 @@ const FLAG_FIRST_IN_HANDLER = new Set([
   "finance-data-quality.functions.ts", "finance-deposit-ledger.functions.ts",
   "fleet-calendar.functions.ts", "incident-aging.functions.ts",
   "maintenance-log.functions.ts", "owner-expense-entry.functions.ts",
-  "owner-finance-snapshot.functions.ts", "owner-pnl.functions.ts",
+  "owner-finance-snapshot.functions.ts",
   "partner-statement.functions.ts", "payout-breakdown.functions.ts",
   "photo-enhance.functions.ts", "receivables-aging.functions.ts",
   "record-rental.functions.ts", "renewals-due.functions.ts",

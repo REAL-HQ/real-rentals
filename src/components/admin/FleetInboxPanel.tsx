@@ -275,14 +275,14 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
 
   if (!d && loadError) return (
     <div className="space-y-3">
-      <button onClick={onBack} className="inline-flex items-center gap-1 text-[13px] text-[#55555E] hover:text-[#111114] min-h-[44px]">Back To Imports</button>
+      <button onClick={onBack} className="inline-flex items-center gap-1 text-[13px] text-[#55555E] hover:text-[#111114] min-h-[44px]">Back</button>
       <p role="alert" className="text-sm text-[#D03020]">Could Not Load This Import. {loadError}</p>
       <button onClick={() => void load()} className="min-h-[36px] rounded-md border border-[#EDEDF0] px-4 text-sm font-medium">Retry</button>
     </div>
   );
   if (!d) return (
     <div className="space-y-3">
-      <button onClick={onBack} className="inline-flex items-center gap-1 text-[13px] text-[#55555E] hover:text-[#111114] min-h-[44px]">Back To Imports</button>
+      <button onClick={onBack} className="inline-flex items-center gap-1 text-[13px] text-[#55555E] hover:text-[#111114] min-h-[44px]">Back</button>
       <p className="text-sm text-[#9A9AA3]">Loading…</p>
     </div>
   );
