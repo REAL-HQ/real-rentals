@@ -95,6 +95,14 @@ describe("dedup never strands the uploader", () => {
     expect(ui).toMatch(/if \(existingBatches\.size === 1\) onOpen\(\[\.\.\.existingBatches\]\[0\]\)/);
     expect(ui).toContain("<AgreementFilingPanel />");
   });
+  test("filing menus open as white in-page lists, never the browser's dark system popup", () => {
+    const ui = src("components/admin/AgreementFilingPanel.tsx");
+    expect(ui).not.toMatch(/<select[\s>]/);
+    expect(ui).toContain('from "@/components/ui/select"');
+    expect(ui).toMatch(/<SelectTrigger aria-label="Renter" className="[^"]*bg-white/);
+    expect(ui).toMatch(/<SelectTrigger aria-label="Agreement Type" className="[^"]*bg-white/);
+    expect(ui).toMatch(/<SelectTrigger aria-label="Follows" className="[^"]*bg-white/);
+  });
 });
 
 describe("activation welcome suppression", () => {

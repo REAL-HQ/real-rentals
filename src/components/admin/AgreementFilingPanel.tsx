@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { fileInboxAgreement, listFiledAgreements, listFileableRenters, listUnfiledInboxAgreements } from "@/lib/inbox-agreement.functions";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Row = { documentId: string; fileName: string | null; category: string; createdAt: string; batchId: string | null };
 type Renter = { id: string; name: string; email: string };
@@ -59,19 +60,34 @@ function FileRow({ row, people, filed, file, onDone }: { row: Row; people: Rente
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <span className="min-w-0 flex-1 truncate font-medium text-[#111114]">{row.fileName ?? "Agreement"}</span>
-      <select aria-label="Renter" value={app} onChange={(e) => setApp(e.target.value)} className="min-h-[36px] rounded-md border border-[#EDEDF0] px-2">
-        <option value="">Renter</option>
-        {people.map((p) => <option key={p.id} value={p.id}>{p.name || p.email}</option>)}
-      </select>
-      <select aria-label="Agreement Type" value={role} onChange={(e) => setRole(e.target.value as any)} className="min-h-[36px] rounded-md border border-[#EDEDF0] px-2">
-        <option value="original">Original</option>
-        <option value="swap" disabled={!originals.length}>Swap</option>
-      </select>
+      {/* Shared Select: its panel is a white in-page list, so the opened menu
+          never falls back to the browser's dark system popup. */}
+      <Select value={app} onValueChange={setApp}>
+        <SelectTrigger aria-label="Renter" className="w-auto min-w-[9rem] rounded-md border-[#EDEDF0] bg-white text-foreground">
+          <SelectValue placeholder="Renter" />
+        </SelectTrigger>
+        <SelectContent>
+          {people.map((p) => <SelectItem key={p.id} value={p.id}>{p.name || p.email}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <Select value={role} onValueChange={(v) => setRole(v as "original" | "swap")}>
+        <SelectTrigger aria-label="Agreement Type" className="w-auto min-w-[8rem] rounded-md border-[#EDEDF0] bg-white text-foreground">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="original">Original</SelectItem>
+          <SelectItem value="swap" disabled={!originals.length}>Swap</SelectItem>
+        </SelectContent>
+      </Select>
       {role === "swap" && (
-        <select aria-label="Follows" value={related} onChange={(e) => setRelated(e.target.value)} className="min-h-[36px] rounded-md border border-[#EDEDF0] px-2">
-          <option value="">Follows</option>
-          {originals.map((o) => <option key={o.id} value={o.id}>{o.fileName ?? o.label ?? o.id.slice(0, 8)}</option>)}
-        </select>
+        <Select value={related} onValueChange={setRelated}>
+          <SelectTrigger aria-label="Follows" className="w-auto min-w-[12rem] rounded-md border-[#EDEDF0] bg-white text-foreground">
+            <SelectValue placeholder="Follows" />
+          </SelectTrigger>
+          <SelectContent>
+            {originals.map((o) => <SelectItem key={o.id} value={o.id}>{o.fileName ?? o.label ?? o.id.slice(0, 8)}</SelectItem>)}
+          </SelectContent>
+        </Select>
       )}
       <button type="button" disabled={!app || busy || (role === "swap" && !related)} onClick={() => void submit()} className="min-h-[36px] rounded-md bg-[#D03020] text-white px-4 font-medium disabled:opacity-50">File</button>
     </div>
