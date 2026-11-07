@@ -79,6 +79,17 @@ export const fileInboxAgreement = createServerFn({ method: "POST" })
       await sb.from("fleet_import_items").update({ doc_class: "rental_agreement", classified_manually: true, status: "applied" }).in("id", itemIds).neq("status", "duplicate");
     }
     const { refreshBatchStatus } = await import("@/lib/fleet-inbox-core.server");
-    for (const b of new Set((itemRows ?? []).map((r: any) => r.batch_id as string))) await refreshBatchStatus(b);
+    for (const b of new Set<string>((itemRows ?? []).map((r: any) => String(r.batch_id)))) await refreshBatchStatus(b);
     return { ok: true as const, documentId: data.documentId, nextStep: "Review and Verify it on the renter's Documents tab (Owner or Manager)." };
+  });
+
+/** Renters an agreement may be filed to: approved or active, not deleted. */
+export const listFileableRenters = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { requireManager } = await import("@/lib/roles.server");
+    await requireManager(context.userId);
+    const sb: any = await admin();
+    const { data } = await sb.from("applications").select("id,full_name,email,status").in("status", ["approved", "active"]).is("deleted_at", null).order("full_name").limit(500);
+    return (data ?? []).map((a: any) => ({ id: a.id as string, name: (a.full_name ?? "") as string, email: (a.email ?? "") as string }));
   });

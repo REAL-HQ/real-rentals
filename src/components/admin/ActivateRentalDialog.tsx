@@ -66,6 +66,7 @@ export function ActivateRentalDialog({
   const [endDate, setEndDate] = useState("");
   const [depositHeld, setDepositHeld] = useState(false);
   const [pickupMiles, setPickupMiles] = useState("");
+  const [suppressWelcome, setSuppressWelcome] = useState(false);
 
   // Re-check whenever the chosen vehicle changes — the blockers are per
   // vehicle, so showing stale ones would be worse than showing none.
@@ -135,6 +136,7 @@ export function ActivateRentalDialog({
           overrideBlockers: softBlockers.length > 0 && acknowledged,
           overrideReason: softBlockers.length > 0 && acknowledged ? overrideReason.trim() : undefined,
           insuranceExceptionAck: insuranceNeedsAck && insuranceAck,
+          suppressWelcome: isOwner && suppressWelcome,
         },
       });
       if (!res.ok) {
@@ -328,6 +330,13 @@ export function ActivateRentalDialog({
               />
             </div>
           </div>
+
+          {isOwner && (
+            <label className="flex items-start gap-2 text-[13px] text-[#111114]">
+              <input type="checkbox" checked={suppressWelcome} onChange={(e) => setSuppressWelcome(e.target.checked)} aria-label="Don't Send Welcome" className="mt-0.5" />
+              <span>Don't Send Welcome Email Or Text <span className="block text-[11px] text-[#55555E]">For A Rental Already Underway. Recorded In The Audit Log.</span></span>
+            </label>
+          )}
 
           <div>
             <MicroLabel>Pickup Mileage</MicroLabel>
