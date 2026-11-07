@@ -27,7 +27,7 @@ export function AgreementFilingPanel() {
   return (
     <div className="rounded-xl border border-[#F3D9A4] bg-[#FFFBF2] p-4 space-y-3">
       <div>
-        <h3 className="text-[13px] font-semibold text-[#111114]">Rental Agreements To File</h3>
+        <h3 className="text-[13px] font-semibold text-[#111114]">Agreements</h3>
         <p className="text-xs text-[#55555E]">These Are Renter Agreements, Not Vehicle Documents. File Each To Its Renter, Then Verify It On The Renter's Documents Tab.</p>
       </div>
       {rows.map((r) => <FileRow key={r.documentId} row={r} people={people} filed={filed} file={file} onDone={load} />)}
@@ -60,7 +60,7 @@ function FileRow({ row, people, filed, file, onDone }: { row: Row; people: Rente
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <span className="min-w-0 flex-1 truncate font-medium text-[#111114]">{row.fileName ?? "Agreement"}</span>
       <select aria-label="Renter" value={app} onChange={(e) => setApp(e.target.value)} className="min-h-[36px] rounded-md border border-[#EDEDF0] px-2">
-        <option value="">Choose Renter</option>
+        <option value="">Renter</option>
         {people.map((p) => <option key={p.id} value={p.id}>{p.name || p.email}</option>)}
       </select>
       <select aria-label="Agreement Type" value={role} onChange={(e) => setRole(e.target.value as any)} className="min-h-[36px] rounded-md border border-[#EDEDF0] px-2">
@@ -69,7 +69,7 @@ function FileRow({ row, people, filed, file, onDone }: { row: Row; people: Rente
       </select>
       {role === "swap" && (
         <select aria-label="Follows" value={related} onChange={(e) => setRelated(e.target.value)} className="min-h-[36px] rounded-md border border-[#EDEDF0] px-2">
-          <option value="">Follows…</option>
+          <option value="">Follows</option>
           {originals.map((o) => <option key={o.id} value={o.id}>{o.fileName ?? o.label ?? o.id.slice(0, 8)}</option>)}
         </select>
       )}

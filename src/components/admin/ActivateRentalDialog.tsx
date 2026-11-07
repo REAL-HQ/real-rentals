@@ -334,7 +334,7 @@ export function ActivateRentalDialog({
           {isOwner && (
             <label className="flex items-start gap-2 text-[13px] text-[#111114]">
               <input type="checkbox" checked={suppressWelcome} onChange={(e) => setSuppressWelcome(e.target.checked)} aria-label="Don't Send Welcome" className="mt-0.5" />
-              <span>Don't Send Welcome Email Or Text <span className="block text-[11px] text-[#55555E]">For A Rental Already Underway. Recorded In The Audit Log.</span></span>
+              <span>No Welcome <span className="block text-[11px] text-[#55555E]">Skips The Welcome Email And Text For A Rental Already Underway. Recorded In The Audit Log.</span></span>
             </label>
           )}
 
