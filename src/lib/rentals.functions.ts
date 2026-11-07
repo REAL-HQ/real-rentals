@@ -316,6 +316,12 @@ export const activateRental = createServerFn({ method: "POST" })
          * from overrideBlockers/overrideReason, which never satisfy insurance.
          */
         insuranceExceptionAck: z.boolean().optional(),
+        /**
+         * Owner only: record a rental that already started in the real world
+         * without the welcome email/SMS. Changes nothing else (no billing, no
+         * access change); recorded in the activation audit.
+         */
+        suppressWelcome: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -339,6 +345,10 @@ export const activateRental = createServerFn({ method: "POST" })
       actorIsOwner: actor.tier === "owner",
     });
     if (!decision.ok) return { ok: false, blockers: decision.blockers };
+    if (data.suppressWelcome === true && actor.tier !== "owner") {
+      return { ok: false, blockers: [{ code: "override_reason_required", message: "Only an Owner can activate without the welcome email and text." } as any] };
+    }
+    const sendWelcome = data.suppressWelcome !== true;
     const overridden = decision.overridden;
 
     const { data: app } = await supabaseAdmin
@@ -447,6 +457,7 @@ export const activateRental = createServerFn({ method: "POST" })
         actor_role: actor.role,
         summary,
         account_created: created,
+        welcome_suppressed: !sendWelcome,
         overrides: overridePayload,
         ...requestMeta,
       },
@@ -549,7 +560,7 @@ export const activateRental = createServerFn({ method: "POST" })
         .split(/\s+/)[0] || "there";
     const portalUrl = `${SITE_URL()}/portal`;
 
-    try {
+    if (sendWelcome) try {
       const { sendEmail } = await import("@/lib/email.server");
       await sendEmail({
         to: app.email as string,
@@ -570,7 +581,7 @@ export const activateRental = createServerFn({ method: "POST" })
       console.error("[activate] welcome email failed", e);
     }
 
-    try {
+    if (sendWelcome) try {
       const { sendSms } = await import("@/lib/sms.server");
       await sendSms({
         to: (app.phone as string) ?? "",
