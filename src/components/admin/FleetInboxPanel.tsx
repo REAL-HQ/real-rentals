@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AgreementFilingPanel } from "@/components/admin/AgreementFilingPanel";
 import { ConfirmDialog } from "./modal";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -80,6 +81,7 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
       const id = reuseBatch ?? (await create({ data: {} })).id;
       setLastBatch(id);
       let dups = 0, failed = 0;
+      const existingBatches = new Set<string>();
       for (let i = 0; i < ok.length; i++) {
         const { file: f, key } = ok[i];
         setBusy(`Uploading ${i + 1} of ${ok.length}…`);
@@ -91,12 +93,17 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
         try {
           // Server hashes the stored bytes; identical content is never stored twice (safe on retry).
           const r = await register({ data: { batchId: id, path, fileName: f.name, mimeType: f.type || null, sizeBytes: f.size } });
-          if (r.duplicate) { dups++; patch(key, { status: "duplicate", note: "Already uploaded — not stored again" }); }
+          if (r.duplicate) { dups++; if (r.existingBatchId) existingBatches.add(r.existingBatchId); patch(key, { status: "duplicate", note: "Already uploaded — not stored again" }); }
           else patch(key, { status: "done", note: "Queued for analysis" });
         } catch { failed++; patch(key, { status: "failed", note: "Could not register — retry" }); }
       }
-      if (dups) toast.message(`${dups} file(s) were already uploaded and were not stored again.`);
+      if (dups) toast.message(`${dups} file(s) were already uploaded and were not stored again. Open the earlier import to see them.`);
       if (failed) { toast.error(`${failed} file(s) failed. Use Retry Failed.`); void refresh(); }
+      else if (dups === ok.length) {
+        // Nothing new to review: open the import that already holds the original, or stay on the list.
+        if (existingBatches.size === 1) onOpen([...existingBatches][0]);
+        else void refresh();
+      }
       else onOpen(id);
       // Analysis is queued server-side at registration; the worker processes it without this page open.
     } catch {
@@ -166,6 +173,8 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
         </div>
       )}
 
+      <AgreementFilingPanel />
+
       <div>
         <h3 className="text-[13px] font-semibold text-[#111114] mb-2">Imports</h3>
         {batches === null ? (
@@ -207,8 +216,16 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
   const [applying, setApplying] = useState(false);
   const [results, setResults] = useState<any[] | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
   const load = useCallback(async () => {
-    const r = await get({ data: { batchId } });
+    let r: any;
+    try {
+      r = await get({ data: { batchId } });
+    } catch (e) {
+      setLoadError(e instanceof Error && e.message ? e.message : "Could not load this import.");
+      return;
+    }
+    setLoadError(null);
     setD(r);
     setDec((prev) => {
       const next = { ...prev };
@@ -281,7 +298,19 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
     finally { setApplying(false); }
   }
 
-  if (!d) return <p className="text-sm text-[#9A9AA3]">Loading…</p>;
+  if (!d && loadError) return (
+    <div className="space-y-3">
+      <button onClick={onBack} className="inline-flex items-center gap-1 text-[13px] text-[#55555E] hover:text-[#111114] min-h-[44px]">Back</button>
+      <p role="alert" className="text-sm text-[#D03020]">Could Not Load This Import. {loadError}</p>
+      <button onClick={() => void load()} className="min-h-[36px] rounded-md border border-[#EDEDF0] px-4 text-sm font-medium">Retry</button>
+    </div>
+  );
+  if (!d) return (
+    <div className="space-y-3">
+      <button onClick={onBack} className="inline-flex items-center gap-1 text-[13px] text-[#55555E] hover:text-[#111114] min-h-[44px]">Back</button>
+      <p className="text-sm text-[#9A9AA3]">Loading…</p>
+    </div>
+  );
   const props = d.proposals as any[];
   const counts = {
     files: d.items.length,

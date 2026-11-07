@@ -13,6 +13,8 @@ export const DOC_GROUPS = [
   { group: "Payments / Receipts", classes: ["payment_confirmation", "bank_transfer", "vendor_invoice", "expense_receipt", "purchase_payment", "prep_cost_receipt", "registration_fee_receipt", "refund_confirmation", "deposit_receipt"] },
   { group: "Incidents", classes: ["accident_report", "damage_document", "police_report", "tow_receipt"] },
   { group: "Photos / Evidence", classes: ["odometer_photo", "vin_photo", "acquisition_photo", "condition_photo", "repair_photo", "damage_photo"] },
+  // Signed renter paperwork: filed to the renter's application, never applied to a vehicle.
+  { group: "Renters", classes: ["rental_agreement"] },
   { group: "Other", classes: ["gps_document", "warranty", "other", "unknown"] },
 ] as const;
 

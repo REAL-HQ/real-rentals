@@ -6,6 +6,7 @@ import { isFinanceField, isPhotoClass, isStaffReviewChannel, DOC_CLASSES, FINANC
 const BUCKET = "vehicle-docs";
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
 
+export const RENTAL_AGREEMENT_WARNING = "Rental agreement — file it to the renter for Owner review.";
 const SYSTEM = `You read fleet paperwork for a car rental company: titles, registrations, insurance cards and policies, bills of sale, purchase agreements, loan/payoff statements, maintenance and repair invoices, inspection reports, tow receipts, accident reports, and photos (odometer, VIN plate, vehicle condition, damage).
 
 Transcribe. Never infer, complete or correct. If a value is not printed, omit it. Unknown is better than invented. Never guess a VIN character; if any VIN character is uncertain, give confidence "low" and explain in note. Put the exact text as printed in "raw".
@@ -13,6 +14,7 @@ Transcribe. Never infer, complete or correct. If a value is not printed, omit it
 A single document may describe MANY vehicles (e.g. a PDF of several insurance cards, one per page). Return one entry per distinct vehicle, with the page number (1-based) where it appears. Values that apply to every vehicle (insurer, policy number, policy dates, named insured, shop name) go in "shared" once.
 
 documentClass: one of ${DOC_CLASSES.join(", ")}. Use "unknown" if not confident.
+A vehicle RENTAL agreement between the rental company and a renter (renter name, weekly rate, rental start/end) is "rental_agreement", never "purchase_agreement"; purchase_agreement is only for buying or selling a vehicle.
 Field names (only these): vin, year, make, model, trim, color, body_type, license_plate, plate_state, unit_number, title_number, title_status, registration_number, registration_state, registration_expires_on, insurance_carrier, insurance_policy_number, insurance_effective_on, insurance_expires_on, named_insured, current_odometer, service_date, vendor, invoice_number, service_description, parts_total, labor_total, tax_total, total, legal_owner, lienholder, purchase_price, purchase_date, payoff_amount, loan_reference, monthly_payment.
 body_type: sedan, suv, minivan, truck, van, coupe, hatchback, wagon, convertible, other. Dates YYYY-MM-DD. Money and mileage digits only (decimal point allowed for money).
 confidence: high (clear), medium (legible but imperfect), low (unclear).
@@ -227,6 +229,13 @@ export async function analyzeItemCore(itemId: string, opts: { allowStuck?: boole
     if (!r.ok) return fail(r.error, { retryable: r.status == null ? undefined : r.status === 429 || r.status >= 500, providerStatus: r.status });
     await buildFinancialReview(sb, data.itemId);
     await sb.from("fleet_import_items").update({ status: "needs_attention" }).eq("id", data.itemId);
+    await refreshBatchStatus(claimed.batch_id);
+    return { ok: true as const };
+  }
+  if (docClass === "rental_agreement") {
+    // Renter paperwork: no vehicle proposals. Staff file it to the renter (inbox-agreement.functions.ts).
+    await sb.from("fleet_import_proposals").update({ status: "superseded" }).eq("item_id", data.itemId).in("status", ["pending", "failed"]);
+    await sb.from("fleet_import_items").update({ status: "needs_attention", warnings: [RENTAL_AGREEMENT_WARNING, ...warnings].slice(0, 10) }).eq("id", data.itemId);
     await refreshBatchStatus(claimed.batch_id);
     return { ok: true as const };
   }

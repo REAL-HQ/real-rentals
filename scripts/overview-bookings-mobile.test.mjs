@@ -114,8 +114,6 @@ const details = readFileSync("src/components/admin/BookingDetails.tsx", "utf8");
 
 const pairs = [
   ["space-y-6", "max-lg:min-w-0 space-y-6", "overview root at lg"],
-  ["flex items-center gap-2", "flex items-center lg:gap-2 max-lg:flex-wrap max-lg:gap-x-2 max-lg:gap-y-1", "hot prospects row at lg"],
-  ["w-4 h-4 text-[#D03020]", "w-4 h-4 text-[#D03020] max-lg:shrink-0", "hot prospects icon at lg"],
   [
     "grid grid-cols-[auto_1fr] gap-6 items-center",
     "grid grid-cols-1 items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-6 lg:grid-cols-[auto_1fr]",
@@ -233,6 +231,8 @@ for (const cls of contents) {
 check(overview.includes('className="max-lg:min-w-0 space-y-6"'), "the overview root can shrink inside the admin column");
 check(overview.includes("grid-cols-1 items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)]"), "the fleet chart stacks under the donut on a phone");
 check(overview.includes("getOverviewApplicants"), "overview still reads applicants through the server function");
+// The Hot Prospects card moved off Overview in the Overview cleanup (094e0f67); its row classes are gone with it.
+check(!/>\s*Hot Prospects\s*</.test(overview), "overview no longer renders the Hot Prospects card");
 check(!overview.includes("text-transform"), "overview does not add a text-transform");
 check(bookings.includes('aria-label="Search bookings"'), "the bookings search stays");
 check(bookings.includes("max-lg:w-full") && !bookings.includes("flex w-full max-lg:min-w-0"), "the bookings filter group is full width only below lg");
