@@ -19,8 +19,10 @@ export function AgreementFilingPanel() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [people, setPeople] = useState<Renter[]>([]);
   const [hidden, setHidden] = useState(false);
+  // Bumped after every list reload so each row re-reads the renter's filed agreements (a just-filed Original enables Swap).
+  const [version, setVersion] = useState(0);
   const load = useCallback(async () => {
-    try { setRows(await list()); setPeople(await renters()); } catch { setHidden(true); } // non-Managers: panel hidden
+    try { setRows(await list()); setPeople(await renters()); setVersion((v) => v + 1); } catch { setHidden(true); } // non-Managers: panel hidden
   }, [list, renters]);
   useEffect(() => { void load(); }, [load]);
   if (hidden || !rows || rows.length === 0) return null;
@@ -30,12 +32,12 @@ export function AgreementFilingPanel() {
         <h3 className="text-[13px] font-semibold text-[#111114]">Agreements</h3>
         <p className="text-xs text-[#55555E]">These Are Renter Agreements, Not Vehicle Documents. File Each To Its Renter, Then Verify It On The Renter's Documents Tab.</p>
       </div>
-      {rows.map((r) => <FileRow key={r.documentId} row={r} people={people} filed={filed} file={file} onDone={load} />)}
+      {rows.map((r) => <FileRow key={r.documentId} row={r} people={people} filed={filed} file={file} onDone={load} version={version} />)}
     </div>
   );
 }
 
-function FileRow({ row, people, filed, file, onDone }: { row: Row; people: Renter[]; filed: any; file: any; onDone: () => void }) {
+function FileRow({ row, people, filed, file, onDone, version }: { row: Row; people: Renter[]; filed: any; file: any; onDone: () => void; version: number }) {
   const [app, setApp] = useState("");
   const [role, setRole] = useState<"original" | "swap">("original");
   const [prior, setPrior] = useState<Filed[]>([]);
@@ -44,7 +46,7 @@ function FileRow({ row, people, filed, file, onDone }: { row: Row; people: Rente
   useEffect(() => {
     if (!app) { setPrior([]); return; }
     void (async () => { try { setPrior(await filed({ data: { applicationId: app } })); } catch { setPrior([]); } })();
-  }, [app, filed]);
+  }, [app, filed, version]);
   const originals = prior.filter((p) => p.role !== "swap");
   async function submit() {
     if (!app) return;
