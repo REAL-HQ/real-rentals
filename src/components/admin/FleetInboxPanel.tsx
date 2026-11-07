@@ -94,8 +94,9 @@ function InboxHome({ onOpen }: { onOpen: (id: string) => void }) {
           else patch(key, { status: "done", note: "Queued for analysis" });
         } catch { failed++; patch(key, { status: "failed", note: "Could not register — retry" }); }
       }
-      if (dups) toast.message(`${dups} file(s) were already uploaded and were not stored again.`);
+      if (dups) toast.message(`${dups} file(s) were already uploaded and were not stored again. Open the earlier import to see them.`);
       if (failed) { toast.error(`${failed} file(s) failed. Use Retry Failed.`); void refresh(); }
+      else if (dups === ok.length) void refresh(); // nothing new to review: stay on the list instead of opening an empty import
       else onOpen(id);
       // Analysis is queued server-side at registration; the worker processes it without this page open.
     } catch {
@@ -182,8 +183,16 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
   const [applying, setApplying] = useState(false);
   const [results, setResults] = useState<any[] | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
   const load = useCallback(async () => {
-    const r = await get({ data: { batchId } });
+    let r: any;
+    try {
+      r = await get({ data: { batchId } });
+    } catch (e) {
+      setLoadError(e instanceof Error && e.message ? e.message : "Could not load this import.");
+      return;
+    }
+    setLoadError(null);
     setD(r);
     setDec((prev) => {
       const next = { ...prev };
@@ -256,7 +265,19 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
     finally { setApplying(false); }
   }
 
-  if (!d) return <p className="text-sm text-[#9A9AA3]">Loading…</p>;
+  if (!d && loadError) return (
+    <div className="space-y-3">
+      <button onClick={onBack} className="inline-flex items-center gap-1 text-[13px] text-[#55555E] hover:text-[#111114] min-h-[44px]">Back To Imports</button>
+      <p role="alert" className="text-sm text-[#D03020]">Could Not Load This Import. {loadError}</p>
+      <button onClick={() => void load()} className="min-h-[36px] rounded-md border border-[#EDEDF0] px-4 text-sm font-medium">Retry</button>
+    </div>
+  );
+  if (!d) return (
+    <div className="space-y-3">
+      <button onClick={onBack} className="inline-flex items-center gap-1 text-[13px] text-[#55555E] hover:text-[#111114] min-h-[44px]">Back To Imports</button>
+      <p className="text-sm text-[#9A9AA3]">Loading…</p>
+    </div>
+  );
   const props = d.proposals as any[];
   const counts = {
     files: d.items.length,
