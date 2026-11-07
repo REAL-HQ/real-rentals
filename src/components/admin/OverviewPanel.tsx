@@ -174,6 +174,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const [overdueAmt, setOverdueAmt] = useState(0);
   const [activeRentalCount, setActiveRentalCount] = useState<number | null>(null);
   const [opsRefreshKey, setOpsRefreshKey] = useState(0);
+  const queryClient = useQueryClient();
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
   const [rangeKey, setRangeKey] = useState<RangeKey>("last_7");
   const [customRange, setCustomRange] = useState<Partial<DayRange>>({});
@@ -194,15 +195,24 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const [svc, setSvc] = useState({ overdue: 0, due: 0, dueSoon: 0, open: 0, conflict: 0 });
   useEffect(() => {
     // Canonical maintenance-due engine (same as the Service page) — never a local re-derivation.
+    // Same opsRefreshKey as Fleet / Revenue / Collections so focus + Refresh update Service too.
     fleetMaint().then((r) => setSvc(r.counts)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [opsRefreshKey]);
 
   useEffect(() => {
     const onFocus = () => setOpsRefreshKey((n) => n + 1);
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
+
+  useEffect(() => {
+    // RevenueCard's Stripe read is react-query with a 60s staleTime and
+    // refetchOnWindowFocus off — bumping opsRefreshKey alone would not
+    // refresh the consolidated total. Invalidate so Refresh / focus reloads it.
+    if (opsRefreshKey === 0) return;
+    void queryClient.invalidateQueries({ queryKey: ["stripe-collections"] });
+  }, [opsRefreshKey, queryClient]);
 
   useEffect(() => {
     (async () => {
@@ -457,12 +467,16 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
 
       {/* Four cards. Each control matches what the card is for — a plus only
           where something gets created. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 items-start">
         <ActionCard
           icon={Car}
           eyebrow="Fleet"
           title="Add Vehicle"
-          hint={`${vehiclesTotal} In Fleet`}
+          hint={
+            activeRentalCount === null
+              ? `${vehiclesTotal} In Fleet`
+              : `${vehiclesTotal} In Fleet · ${activeRentalCount} Active`
+          }
           href="/admin"
           search={{ tab: "vehicles", add: "1" }}
           control="add"
@@ -905,11 +919,11 @@ function ActionCard({
     <Link
       to={href}
       search={search}
-      className={`group relative rounded-2xl border bg-white text-[#111114] shadow-sm px-5 py-4 transition-colors ${border}`}
+      className={`group relative rounded-2xl border bg-white text-[#111114] shadow-sm px-4 py-3 transition-colors ${border}`}
     >
       <div className="flex items-center justify-between">
-        <div className="h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] text-[#55555E]">
-          <Icon className="w-4 h-4" strokeWidth={1.75} />
+        <div className="h-8 w-8 rounded-full grid place-items-center bg-[#F4F4F6] text-[#55555E]">
+          <Icon className="w-3.5 h-3.5" strokeWidth={1.75} />
         </div>
         {control === "add" ? (
           <span className="h-7 w-7 rounded-full grid place-items-center bg-[#111114] text-white group-hover:bg-[#CC0000] transition-colors">
@@ -921,11 +935,11 @@ function ActionCard({
           </span>
         )}
       </div>
-      <div className="mt-4 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+      <div className="mt-2.5 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
         {eyebrow}
       </div>
-      <div className="mt-1 flex items-baseline gap-2">
-        <div className="text-[18px] font-semibold tracking-tight">{title}</div>
+      <div className="mt-0.5 flex items-baseline gap-2">
+        <div className="text-[17px] font-semibold tracking-tight">{title}</div>
         {badge != null && (
           <span
             className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold ${badgeBg}`}
@@ -987,8 +1001,18 @@ function RevenueCard({
     : null;
   const shownLoading = consolidated ? loading || (sq.isFetching && !sq.data) : loading;
   const shownAmount = c ? c.amount : amount;
-  const coverage = c ? c.coverage : amount === null ? "Unavailable" : "Partial";
-  const coverageHint = coverage === "Unavailable"
+  // While the internal payments read or Stripe report is still in flight, do not
+  // stamp Unavailable — that badge made the tile look broken before numbers landed.
+  const coverage = shownLoading
+    ? "Loading"
+    : c
+      ? c.coverage
+      : amount === null
+        ? "Unavailable"
+        : "Partial";
+  const coverageHint = coverage === "Loading"
+    ? "Revenue for this range is still loading."
+    : coverage === "Unavailable"
     ? "A required revenue source could not be verified for this period, so no consolidated total is shown. Verified Stripe collections remain available in Collections."
     : c
       ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. A manual receipt Stripe later collected is not added on top of that Stripe net. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
@@ -1003,11 +1027,11 @@ function RevenueCard({
       aria-label="Revenue — Open Payments"
       onClick={goPayments}
       onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); goPayments(); } }}
-      className="relative cursor-pointer rounded-2xl border border-[#EDEDF0] bg-white shadow-sm px-5 py-4 hover:border-[#D03020] transition-colors"
+      className="relative cursor-pointer rounded-2xl border border-[#EDEDF0] bg-white shadow-sm px-4 py-3 hover:border-[#D03020] transition-colors"
     >
       <div className="flex items-center justify-between">
-        <div className="h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] text-[#55555E]">
-          <Receipt className="w-4 h-4" strokeWidth={1.75} />
+        <div className="h-8 w-8 rounded-full grid place-items-center bg-[#F4F4F6] text-[#55555E]">
+          <Receipt className="w-3.5 h-3.5" strokeWidth={1.75} />
         </div>
         <button
           type="button"
@@ -1019,7 +1043,7 @@ function RevenueCard({
         </button>
       </div>
 
-      <div className="mt-4 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+      <div className="mt-2.5 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
         Revenue
         <span
           title={coverageHint}
@@ -1029,7 +1053,7 @@ function RevenueCard({
           {coverage}
         </span>
       </div>
-      <div className="mt-1 text-[22px] font-semibold tracking-tight tabular-nums leading-none">
+      <div className="mt-0.5 text-[20px] font-semibold tracking-tight tabular-nums leading-none">
         {shownLoading || shownAmount == null ? <span className="text-[#C7C7CC]">—</span> : usd(shownAmount)}
       </div>
       {overlapOwed != null && overlapOwed > 0 && (
@@ -1058,24 +1082,24 @@ function RevenueCard({
 
       {(projected || projectedLoading) && (
         <div
-          className="mt-3 space-y-1 border-t border-[#EDEDF0] pt-2"
+          className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-[#EDEDF0] pt-1.5"
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
         >
-          <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
-            Active Renters · Projected / Collected
+          <div className="col-span-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
+            Projected / Collected
           </div>
           {(["week", "month"] as const).map((key) => {
             const row = projected?.[key];
             const label = key === "week" ? "This Week" : "This Month";
             return (
-              <div key={key} className="flex items-baseline justify-between gap-2 text-[11px] text-[#55555E]">
-                <span>{label}</span>
-                <span className="tabular-nums text-[#111114]">
+              <div key={key} className="min-w-0 text-[10px] leading-tight text-[#55555E]">
+                <div className="truncate">{label}</div>
+                <div className="tabular-nums text-[11px] font-medium text-[#111114]">
                   {projectedLoading || !row
                     ? "—"
                     : `${usd(centsToDollars(row.projectedCents))} / ${usd(centsToDollars(row.collectedCents))}`}
-                </span>
+                </div>
               </div>
             );
           })}
