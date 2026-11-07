@@ -118,3 +118,13 @@ describe("activation welcome suppression", () => {
     expect(r.indexOf("if (!decision.ok) return")).toBeLessThan(r.indexOf("data.suppressWelcome === true"));
   });
 });
+
+describe("swap option refresh", () => {
+  const ui = src("components/admin/AgreementFilingPanel.tsx");
+  test("rows re-read filed agreements after every reload, so a just-filed Original enables Swap", () => {
+    expect(ui).toContain("setVersion((v) => v + 1)");
+    expect(ui).toContain("}, [app, filed, version]);");
+    expect(ui).toMatch(/<FileRow [^>]*version=\{version\}/);
+    expect(ui).toMatch(/disabled=\{!originals\.length\}/);
+  });
+});
