@@ -74,7 +74,10 @@ for (const s of allUpdates) {
 const noticeWrites = statements.filter((s) => /\.update\(\{\s*notified_status:/.test(s.text));
 assert.ok(noticeWrites.length >= 2, `expected notified_status claims, found ${noticeWrites.length}`);
 for (const s of noticeWrites) {
-  assert.match(s.text, /\.or\(\s*[`'"]notified_status\.is\.null,notified_status\.neq\./,
+  // neq: one claim per status. lt: monotonic per-attempt claim (zero-padded key),
+  // so a replay or an older attempt claims nothing. Both are conditional.
+  if (/notified_status\.lt\./.test(s.text)) assert.match(readFileSync(FILE, 'utf8'), /`failed:a\$\{String\(attempt\)\.padStart\(4, '0'\)\}`/, `${FILE}:${s.line} lt claim without an ordered key`);
+  assert.match(s.text, /\.or\(\s*[`'"]notified_status\.is\.null,notified_status\.(neq|lt)\./,
     `${FILE}:${s.line} sets notified_status without the is-null/neq claim guard — a replay could email twice`);
 }
 
