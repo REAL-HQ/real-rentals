@@ -11,6 +11,7 @@ import {
   History,
   ShieldCheck,
   Clock,
+  Lock,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -27,6 +28,7 @@ import {
 import { DocumentViewer, type ViewerDoc } from "./DocumentViewer";
 import { MicroLabel } from "./ui";
 import { FileUploader } from "@/components/FileUploader";
+import { DocumentBatchUpload } from "./DocumentBatchUpload";
 import { fmtDate } from "@/lib/date-format";
 import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { verifyApprovalIdentity } from "@/lib/identity-verification.functions";
@@ -481,6 +483,8 @@ export function ApplicantDocuments({
         })}
       </div>
 
+      <DocumentBatchUpload applicationId={applicationId} docs={docs} onDone={refresh} />
+
       {extras.length > 0 && (
         <div>
           <MicroLabel className="mb-2">Additional files</MicroLabel>
@@ -500,6 +504,15 @@ export function ApplicantDocuments({
                 ) : (
                   <span className="absolute inset-0 grid place-items-center text-[#9A9AA3]">
                     <FileText className="w-6 h-6" />
+                  </span>
+                )}
+                {!(d.visibility ?? []).includes("driver") && (
+                  <span
+                    className="absolute top-1 left-1 rounded-full bg-[#111114] text-white p-0.5"
+                    title="Team only"
+                    aria-label="Team only"
+                  >
+                    <Lock className="w-2.5 h-2.5" />
                   </span>
                 )}
                 {statusOf(d) === "verified" && (

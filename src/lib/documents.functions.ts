@@ -540,6 +540,7 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
         category: CategoryEnum,
         fileName: z.string().min(1).max(200),
         mimeType: z.string().min(3).max(120),
+        internal: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -586,13 +587,52 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
       category: data.category,
       staff,
     });
-    const path = `${applicationId}/${data.category}-${crypto.randomUUID()}.${safeExt(data.fileName, data.mimeType)}`;
+    // Team only is decided HERE, at reservation, not only at confirm: the
+    // path carries it, and confirm refuses to share anything reserved as
+    // team only. Only staff may reserve one; a driver asking is refused
+    // rather than silently given a shared upload.
+    if (data.internal && !staff) throw new Error(TEAM_ONLY_STAFF_ONLY);
+    const path = uploadPath(applicationId as string, data.category, !!data.internal, data.fileName, data.mimeType);
     const { data: signed, error } = await supabaseAdmin.storage
       .from(DOC_BUCKET)
       .createSignedUploadUrl(path);
     if (error || !signed) throw new Error(error?.message || "Could not start upload");
-    return { path: signed.path, token: signed.token, bucket: DOC_BUCKET, applicationId };
+    return { path: signed.path, token: signed.token, bucket: DOC_BUCKET, applicationId, internal: !!data.internal };
   });
+
+export const TEAM_ONLY_STAFF_ONLY = "Only team members can upload team-only documents.";
+export const TEAM_ONLY_MISMATCH =
+  "This upload was reserved as team only and can't be confirmed as shared. Nothing was saved.";
+export const DUPLICATE_CONFIRM = "This upload was already saved. Nothing was added.";
+
+/** Storage path for a vault upload. Team-only uploads live under `<app>/internal/`. */
+export function uploadPath(applicationId: string, category: string, internal: boolean, fileName: string, mimeType: string): string {
+  const folder = internal ? `${applicationId}/internal` : applicationId;
+  return `${folder}/${category}-${crypto.randomUUID()}.${safeExt(fileName, mimeType)}`;
+}
+
+/** True when the path was reserved as team only. */
+export function reservedTeamOnly(applicationId: string, path: string): boolean {
+  return path.startsWith(`${applicationId}/internal/`);
+}
+
+/**
+ * Who may see a confirmed upload. Restricted categories and team-only
+ * reservations are admin-only no matter what the confirm asks; a driver can
+ * never make anything team only; a team-only reservation confirmed as
+ * shared is refused rather than downgraded.
+ */
+export function confirmVisibility(args: {
+  restricted: boolean;
+  staff: boolean;
+  internal: boolean | undefined;
+  reservedInternal: boolean;
+}): string[] {
+  if (args.reservedInternal && !args.staff) throw new Error(TEAM_ONLY_STAFF_ONLY);
+  if (args.reservedInternal && args.internal === false) throw new Error(TEAM_ONLY_MISMATCH);
+  if (args.restricted || args.reservedInternal || (args.staff && args.internal)) return ["admin"];
+  return ["driver", "admin"];
+}
 
 /**
  * Refuse to act on a restricted document unless the caller is an Owner.
@@ -726,6 +766,8 @@ export async function persistConfirmedDocument(
       throw new Error(stamped.error.message || "Could not record the content hash");
     }
   }
+  // Multi-file categories keep every file current; see MULTI_FILE_CATEGORIES.
+  if (MULTI_FILE_CATEGORIES.includes(fields.category)) return { id: row.id as string };
   // Renter insurance: a verified card stays current until this upload is reviewed.
   await supersedeQuery(
     admin
@@ -803,7 +845,23 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
     });
     // A recording is never shared with the applicant, whatever the caller
     // asked for.
-    const visibility = restricted || (staff && data.internal) ? ["admin"] : ["driver", "admin"];
+    const visibility = confirmVisibility({
+      restricted,
+      staff,
+      internal: data.internal,
+      reservedInternal: reservedTeamOnly(data.applicationId, data.path),
+    });
+    // One reservation, one row. A retried confirm must not add a second copy.
+    {
+      const { data: existing, error: dupError } = await supabaseAdmin
+        .from("documents")
+        .select("id")
+        .eq("storage_bucket", DOC_BUCKET)
+        .eq("storage_path", data.path)
+        .limit(1);
+      if (dupError) throw new Error("Could not check for an existing copy. Nothing was saved.");
+      if ((existing ?? []).length > 0) throw new Error(DUPLICATE_CONFIRM);
+    }
     const saved = await persistConfirmedDocument(supabaseAdmin, {
       driver_id: data.applicationId,
       kind: data.category,
