@@ -801,7 +801,7 @@ export function ConditionUploader({
                   </div>
                 ) : !m.url ? (
                   <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center px-2 text-center text-xs text-muted-foreground">
-                    {m.media_type === "video" ? "Video saved" : "Photo saved"} · no private-safe preview
+                    {m.media_type === "video" ? "Video saved" : "Photo saved"} · team can view; no location-safe preview for this type
                   </div>
                 ) : (
                   <img

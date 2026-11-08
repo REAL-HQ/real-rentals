@@ -268,22 +268,38 @@ export const listTripMedia = createServerFn({ method: "POST" })
 export const backfillShareCopies = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
-    z.object({ limit: z.number().int().min(1).max(20).default(10) }).parse(d ?? {}),
+    z
+      .object({
+        limit: z.number().int().min(1).max(20).default(10),
+        // Cursor: pass back `next` so rows that can't get a copy aren't retried forever.
+        before: z.string().max(40).nullable().optional(),
+      })
+      .parse(d ?? {}),
   )
   .handler(async ({ data, context }) => {
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { backfillOne } = await import("@/lib/trip-media.server");
-    const { data: rows, error } = await supabaseAdmin
+    // Only photo types that can get a renter copy; HEIC/video stay team-only.
+    let q = supabaseAdmin
       .from("condition_media")
-      .select("id,storage_bucket,storage_path,mime_type")
+      .select("id,storage_bucket,storage_path,mime_type,created_at")
       .is("share_path", null)
+      .eq("media_type", "photo")
+      .or("mime_type.is.null,mime_type.in.(image/jpeg,image/png,image/webp)")
       .order("created_at", { ascending: false })
       .limit(data.limit);
+    if (data.before) q = q.lt("created_at", data.before);
+    const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
-    const out = { made: 0, skipped: 0 };
-    for (const r of rows ?? []) {
+    const list = (rows ?? []) as any[];
+    const out = {
+      made: 0,
+      skipped: 0,
+      next: list.length === data.limit ? (list[list.length - 1].created_at as string) : null,
+    };
+    for (const r of list) {
       if (await backfillOne(supabaseAdmin, r as any)) out.made += 1;
       else out.skipped += 1;
     }

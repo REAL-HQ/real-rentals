@@ -23,6 +23,8 @@ import {
   stripWebpMetadata,
   verifyMagic,
   videoHasMetadataBoxes,
+  neutralizeVideoMetadata,
+  hasMetadataRemnants,
 } from "../src/lib/trip-media";
 import { storeConditionMedia, DUPLICATE_MEDIA } from "../src/lib/trip-media.server";
 
@@ -129,6 +131,22 @@ function pngChunk(type: string, text: string): number[] {
   return [...len, ...Buffer.from(type), ...d, 0, 0, 0, 0];
 }
 
+// Signed-URL Range reads used by the server's head check, served from memory.
+const mockObjects = new Map<string, Uint8Array>();
+const realFetch = globalThis.fetch;
+globalThis.fetch = (async (url: any, init?: any) => {
+  const u = String(url);
+  if (!u.startsWith("mock://")) return realFetch(url, init);
+  const bytes = mockObjects.get(u);
+  if (!bytes) return new Response("nf", { status: 404 });
+  const m = /bytes=(\d+)-(\d+)/.exec(init?.headers?.Range ?? "");
+  const end = m ? Math.min(Number(m[2]) + 1, bytes.length) : bytes.length;
+  return new Response(bytes.slice(0, end), {
+    status: m ? 206 : 200,
+    headers: m ? { "content-range": `bytes 0-${end - 1}/${bytes.length}` } : {},
+  });
+}) as any;
+
 function fakeAdmin(opts: {
   existing?: boolean;
   objectBytes?: Uint8Array | null;
@@ -139,6 +157,11 @@ function fakeAdmin(opts: {
     log,
     storage: {
       from: (bucket: string) => ({
+        createSignedUrl: async (path: string) => {
+          const url = `mock://${bucket}/${path}#${Math.random()}`;
+          if (opts.objectBytes) mockObjects.set(url, opts.objectBytes);
+          return { data: { signedUrl: url }, error: null };
+        },
         download: async (path: string) => {
           log.push({ op: "download", bucket, path });
           return opts.objectBytes
@@ -398,29 +421,23 @@ describe("magic bytes", () => {
   });
 });
 
-describe("video share copy", () => {
+describe("video and HEIC: fail closed (no renter copy)", () => {
   for (const moovFirst of [true, false]) {
-    test(`location/device boxes neutralized, same length, media bytes intact (moov ${moovFirst ? "first" : "last"})`, () => {
+    test(`video never gets a renter copy, even after box neutralizing (moov ${moovFirst ? "first" : "last"})`, () => {
       const orig = synthVideo("qt  ", moovFirst);
-      const work = orig.slice();
       expect(videoHasMetadataBoxes(orig)).toBe(true);
-      const copy = buildShareCopy("video/quicktime", work)!;
-      expect(copy).not.toBeNull();
-      expect(copy.length).toBe(orig.length);
-      expect(videoHasMetadataBoxes(copy)).toBe(false);
-      const mdatAt = Buffer.from(orig).indexOf("mdat");
-      expect(
-        Buffer.from(copy.subarray(mdatAt, mdatAt + 12)).equals(
-          Buffer.from(orig.subarray(mdatAt, mdatAt + 12)),
-        ),
-      ).toBe(true);
-      // ©xyz now sits inside a `free` box, which players skip.
-      expect(Buffer.from(copy).indexOf("udta")).toBe(-1);
+      expect(buildShareCopy("video/quicktime", orig.slice())).toBeNull();
+      expect(buildShareCopy("video/mp4", synthVideo("isom", moovFirst))).toBeNull();
     });
   }
-  test("truncated video gets no share copy", () => {
-    const v = synthVideo("isom");
-    expect(buildShareCopy("video/mp4", v.slice(0, v.length - 3))).toBeNull();
+  test("box renaming alone leaves location readable as raw bytes — why video fails closed", () => {
+    const work = synthVideo("qt  ");
+    neutralizeVideoMetadata(work);
+    expect(Buffer.from(work).indexOf("+40.7-073.9")).toBeGreaterThan(-1);
+    expect(hasMetadataRemnants(work)).toBe(true);
+  });
+  test("HEIC gets no renter copy", () => {
+    expect(buildShareCopy("image/heic", synthHeic().file)).toBeNull();
   });
 });
 
@@ -462,21 +479,33 @@ describe("WebP share copy", () => {
 });
 
 describe("store: trusted server copy", () => {
-  test("video gets a metadata-free share copy made on the server", async () => {
+  test("video: stored for staff, no renter copy, never downloaded whole", async () => {
     const v = synthVideo("qt  ");
     const a = fakeAdmin({ objectBytes: v });
-    await storeConditionMedia(a, {
+    const r = await storeConditionMedia(a, {
       ...base,
       mimeType: "video/quicktime",
       path: `${VEH}/trip/${APP}/pre/checkin-2.mov`,
     });
-    const up = a.log.find((x) => x.op === "upload");
-    expect(up).toBeTruthy();
-    expect(videoHasMetadataBoxes(up.body)).toBe(false);
+    expect(a.log.some((x) => x.op === "upload")).toBe(false);
+    expect(a.log.some((x) => x.op === "download")).toBe(false);
     const ins = a.log.find((x) => x.op === "insert").row;
-    expect(ins.share_path).toContain(".share");
+    expect(ins.share_path).toBeNull();
     expect(ins.mime_type).toBe("video/quicktime");
-    expect(ins.taken_at).toBeNull();
+    expect(ins.size_bytes).toBe(v.length);
+    expect(r.sharePreview).toBe(false);
+  });
+  test("photo over the in-memory cap: staff original kept, GPS read from the head, no full download, no renter copy", async () => {
+    const big = new Uint8Array(21 * 1024 * 1024);
+    big.set(jpg.subarray(0, jpg.length - 2));
+    big.set([0xff, 0xd9], big.length - 2);
+    const a = fakeAdmin({ objectBytes: big });
+    await storeConditionMedia(a, base);
+    expect(a.log.some((x) => x.op === "download")).toBe(false);
+    const ins = a.log.find((x) => x.op === "insert").row;
+    expect(ins.share_path).toBeNull();
+    expect(ins.gps_lat).toBeGreaterThan(40);
+    expect(ins.size_bytes).toBe(big.length);
   });
   test("contents that lie about their type are removed and refused", async () => {
     const a = fakeAdmin({
@@ -504,5 +533,111 @@ describe("picker/drop validation (same function for both)", () => {
       { accept: TRIP_MEDIA_ACCEPT, maxBytes: TRIP_MEDIA_MAX_BYTES, multiple: true },
     );
     expect(ok.map((x) => x.name)).toEqual(["a.jpg", "IMG_1.HEIC", "walk.MOV"]);
+  });
+});
+
+// ------------------------------------------------------------ adversarial
+
+const jpegSeg = (marker: number, body: number[]) => [
+  0xff,
+  marker,
+  ((body.length + 2) >> 8) & 255,
+  (body.length + 2) & 255,
+  ...body,
+];
+const exifApp1 = jpg.subarray(20, 20 + 2 + 218); // the fixture's APP1 EXIF (with GPS)
+
+describe("adversarial JPEG", () => {
+  test("a second JPEG with GPS EXIF appended after EOI (MPF / trailer) is not copied", () => {
+    const evil = new Uint8Array([...jpg, ...jpg]);
+    const out = buildShareCopy("image/jpeg", evil)!;
+    expect(out).not.toBeNull();
+    expect(Buffer.from(out).indexOf("Exif")).toBe(-1);
+    expect(out.length).toBeLessThan(jpg.length);
+  });
+  test("APP1 hidden between progressive scans is dropped", () => {
+    const eoi = jpg.length - 2;
+    const evil = new Uint8Array([
+      ...jpg.subarray(0, eoi),
+      ...exifApp1,
+      ...jpg.subarray(jpg.indexOf(0xda, 2) - 1, eoi), // a second SOS + scan
+      0xff,
+      0xd9,
+    ]);
+    const out = buildShareCopy("image/jpeg", evil);
+    if (out) expect(Buffer.from(out).indexOf("Exif")).toBe(-1);
+  });
+  test("JFXX thumbnail / non-JFIF APP0 and COM text are dropped", () => {
+    const app0x = jpegSeg(0xe0, [...txt("JFXX"), 0, 0x10, ...txt("GPS 40.7,-73.9 thumbnail")]);
+    const com = jpegSeg(0xfe, txt("lat=40.7 lon=-73.9"));
+    const evil = new Uint8Array([0xff, 0xd8, ...app0x, ...com, ...jpg.subarray(2)]);
+    const out = buildShareCopy("image/jpeg", evil)!;
+    expect(out).not.toBeNull();
+    expect(Buffer.from(out).indexOf("40.7")).toBe(-1);
+  });
+  test("unknown markers, truncation, missing EOI and garbage fail closed", () => {
+    const unknown = new Uint8Array([0xff, 0xd8, ...jpegSeg(0xc8, [1, 2, 3]), ...jpg.subarray(2)]);
+    expect(buildShareCopy("image/jpeg", unknown)).toBeNull();
+    expect(buildShareCopy("image/jpeg", jpg.slice(0, jpg.length - 2))).toBeNull();
+    expect(buildShareCopy("image/jpeg", jpg.slice(0, 100))).toBeNull();
+    const badLen = jpg.slice();
+    badLen[4] = 0xff;
+    expect(buildShareCopy("image/jpeg", badLen)).toBeNull();
+    for (let k = 0; k < 50; k++) {
+      const r = new Uint8Array(2000).map(() => (Math.random() * 256) | 0);
+      r.set([0xff, 0xd8]);
+      const out = buildShareCopy("image/jpeg", r);
+      if (out) expect(hasMetadataRemnants(out)).toBe(false);
+    }
+  });
+});
+
+describe("adversarial PNG / WebP", () => {
+  test("PNG: iTXt XMP, zTXt, eXIf, iCCP, C2PA and private chunks all dropped (allowlist)", () => {
+    const evil = new Uint8Array([
+      ...png.subarray(0, 33),
+      ...pngChunk("iTXt", "XML:com.adobe.xmp\u0000\u0000\u0000\u0000\u0000<x:xmpmeta GPS/>"),
+      ...pngChunk("eXIf", "MM\u0000*GPS"),
+      ...pngChunk("caBX", "c2pa location"),
+      ...pngChunk("gpSs", "40.7,-73.9"),
+      ...png.subarray(33),
+      ...pngChunk("tEXt", "after IEND 40.7"),
+    ]);
+    const out = buildShareCopy("image/png", evil)!;
+    expect(Buffer.from(out).equals(Buffer.from(png))).toBe(true);
+  });
+  test("PNG not starting with IHDR, or truncated, fails closed", () => {
+    expect(buildShareCopy("image/png", png.slice(0, png.length - 4))).toBeNull();
+    const bad = new Uint8Array([
+      ...png.subarray(0, 8),
+      ...pngChunk("tEXt", "x"),
+      ...png.subarray(8),
+    ]);
+    expect(buildShareCopy("image/png", bad)).toBeNull();
+  });
+  test("WebP: unknown chunk carrying XMP is dropped; no image chunk fails closed", () => {
+    const le = (n: number) => [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255];
+    const chunk = (t: string, d: number[]) => [
+      ...txt(t),
+      ...le(d.length),
+      ...d,
+      ...(d.length & 1 ? [0] : []),
+    ];
+    const mk = (body: number[]) =>
+      new Uint8Array([...txt("RIFF"), ...le(4 + body.length), ...txt("WEBP"), ...body]);
+    const evil = mk([
+      ...chunk("VP8X", [0x2c, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+      ...chunk("ICCP", txt("icc")),
+      ...chunk("VP8L", [0x2f, 2, 3, 4]),
+      ...chunk("XYZW", txt("<x:xmpmeta>40.7</x:xmpmeta>")),
+    ]);
+    const out = buildShareCopy("image/webp", evil)!;
+    expect(out).not.toBeNull();
+    expect(Buffer.from(out).indexOf("xmpmeta")).toBe(-1);
+    expect(Buffer.from(out).indexOf("ICCP")).toBe(-1);
+    expect(out[20] & 0x2c).toBe(0);
+    expect(
+      buildShareCopy("image/webp", mk([...chunk("EXIF", txt("Exif\u0000\u0000"))])),
+    ).toBeNull();
   });
 });

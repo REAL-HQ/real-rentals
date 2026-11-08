@@ -240,6 +240,15 @@ function Grid({
               preload="metadata"
               className="h-32 w-full bg-black object-contain"
             />
+          ) : m.url && m.mime_type === "image/heic" ? (
+            <a
+              href={m.url}
+              target="_blank"
+              rel="noreferrer"
+              className="h-32 grid place-items-center text-center px-2 text-[11px] text-[#55555E]"
+            >
+              HEIC photo · opens in Safari or download (most browsers can&apos;t preview HEIC)
+            </a>
           ) : m.url ? (
             <a href={m.url} target="_blank" rel="noreferrer">
               <img src={m.url} alt={m.file_name ?? "Photo"} className="h-32 w-full object-cover" />

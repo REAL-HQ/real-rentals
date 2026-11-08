@@ -2,10 +2,10 @@
  * Trip media (Pickup / Return / Issues, each Ours / Yours). Pure — no I/O.
  *
  * Originals are stored byte-for-byte and only ever signed for staff. A renter
- * is shown a "share copy": the same image with its metadata segments removed
- * (no re-encode, so the pixels are untouched). Formats we cannot strip
- * honestly (HEIC, WebP, video) get no share copy — the renter sees the entry
- * and its time, and the team plays the original.
+ * is shown a "share copy": JPEG/PNG/WebP rebuilt from an allowlist of image
+ * chunks (no re-encode, pixels untouched), then checked for metadata remnants.
+ * HEIC and video get no share copy (fail closed) — the renter sees the entry
+ * and its time, and the team views the original.
  */
 
 export const TRIP_PHASES = ["checkout", "checkin", "damage", "other"] as const;
@@ -83,49 +83,116 @@ export function resolveBinding(
 
 // ------------------------------------------------------------- share copies
 
-const JPEG_STRIP = new Set([
-  0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xec, 0xed, 0xef, 0xfe,
-]);
-
 /**
- * Remove every APPn segment except APP0 (JFIF) and APP14 (Adobe colour), and
- * comments. That takes EXIF (incl. GPS), XMP, IPTC, ICC and MPF out. Scan data
- * is copied untouched. Returns null if the file is not a well-formed JPEG.
+ * JPEG renter copy, allowlist only. Kept: SOFn, DHT, DQT, DRI, DNL, SOS + scan
+ * data, APP0 only when it is plain JFIF, APP14 only when it is "Adobe". Dropped:
+ * every other APPn (EXIF/GPS, XMP, IPTC, ICC, MPF, maker blocks), COM, and
+ * anything unknown. Progressive files are walked marker-by-marker between
+ * scans, and output stops at the first EOI so data appended after the image
+ * (MPF secondary images with their own EXIF, Samsung SEFT trailers, etc.) is
+ * never copied. Any malformed structure returns null (no copy).
  */
 export function stripJpegMetadata(input: Uint8Array): Uint8Array | null {
-  if (input.length < 4 || input[0] !== 0xff || input[1] !== 0xd8) return null;
+  const n = input.length;
+  if (n < 4 || input[0] !== 0xff || input[1] !== 0xd8) return null;
   const parts: Uint8Array[] = [input.subarray(0, 2)];
   let i = 2;
-  while (i + 4 <= input.length) {
+  let sawSof = false;
+  let sawSos = false;
+  const keepSeg = (m: number, s: number, len: number): boolean | null => {
+    if ((m >= 0xc0 && m <= 0xcf && m !== 0xc8) || m === 0xdb || m === 0xdd || m === 0xdc) {
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xcc) sawSof = true;
+      return true;
+    }
+    if (m === 0xe0) {
+      // Plain JFIF header only (no JFXX thumbnail extension, no trailing junk).
+      return len === 16 && fourcc(input, s + 4) === "JFIF" && input[s + 8] === 0;
+    }
+    if (m === 0xee) return len === 14 && input[s + 4] === 0x41 && fourcc(input, s + 5) === "dobe";
+    if (m >= 0xe1 && m <= 0xef) return false;
+    if (m === 0xfe) return false;
+    return null; // unknown marker: refuse
+  };
+  while (i + 2 <= n) {
     if (input[i] !== 0xff) return null;
-    const marker = input[i + 1];
-    if (marker === 0xda) {
-      parts.push(input.subarray(i));
+    let m = input[i + 1];
+    while (m === 0xff && i + 2 < n) {
+      i++; // fill bytes
+      m = input[i + 1];
+    }
+    if (m === 0xd9) {
+      if (!sawSof || !sawSos) return null;
+      parts.push(input.subarray(i, i + 2));
       return concat(parts);
     }
+    if (i + 4 > n) return null;
     const len = (input[i + 2] << 8) | input[i + 3];
-    if (len < 2 || i + 2 + len > input.length) return null;
-    if (!JPEG_STRIP.has(marker)) parts.push(input.subarray(i, i + 2 + len));
+    if (len < 2 || i + 2 + len > n) return null;
+    const keep = keepSeg(m, i, len);
+    if (keep === null && m !== 0xda) return null;
+    if (m === 0xda) {
+      if (!sawSof) return null;
+      sawSos = true;
+      // Scan data runs until a marker that is not stuffing (FF00) or RSTn.
+      let j = i + 2 + len;
+      while (j + 1 < n) {
+        if (input[j] === 0xff) {
+          const x = input[j + 1];
+          if (x === 0x00 || (x >= 0xd0 && x <= 0xd7) || x === 0xff) {
+            j += x === 0xff ? 1 : 2;
+            continue;
+          }
+          break;
+        }
+        j++;
+      }
+      if (j + 1 >= n) return null; // no EOI
+      parts.push(input.subarray(i, j));
+      i = j;
+      continue;
+    }
+    if (keep) parts.push(input.subarray(i, i + 2 + len));
     i += 2 + len;
   }
   return null;
 }
 
 const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-const PNG_STRIP = new Set(["eXIf", "tEXt", "iTXt", "zTXt", "tIME"]);
+/** Image-defining chunks only. Text, eXIf, tIME, iCCP, C2PA and private chunks are dropped. */
+const PNG_KEEP = new Set([
+  "IHDR",
+  "PLTE",
+  "IDAT",
+  "IEND",
+  "tRNS",
+  "cHRM",
+  "gAMA",
+  "sBIT",
+  "sRGB",
+  "bKGD",
+  "pHYs",
+  "hIST",
+  "cICP",
+  "acTL",
+  "fcTL",
+  "fdAT",
+]);
 
-/** Drop eXIf and text chunks. Returns null if not a well-formed PNG. */
+/** PNG renter copy, allowlist only; stops at IEND. Null if malformed. */
 export function stripPngMetadata(input: Uint8Array): Uint8Array | null {
   if (input.length < 8 || PNG_SIG.some((b, k) => input[k] !== b)) return null;
   const parts: Uint8Array[] = [input.subarray(0, 8)];
   let i = 8;
+  let first = true;
   while (i + 12 <= input.length) {
     const len =
       ((input[i] << 24) | (input[i + 1] << 16) | (input[i + 2] << 8) | input[i + 3]) >>> 0;
     const type = String.fromCharCode(input[i + 4], input[i + 5], input[i + 6], input[i + 7]);
     const end = i + 12 + len;
-    if (end > input.length) return null;
-    if (!PNG_STRIP.has(type)) parts.push(input.subarray(i, end));
+    if (len > 0x7fffffff || end > input.length) return null;
+    if (first && type !== "IHDR") return null;
+    first = false;
+    if (PNG_KEEP.has(type)) parts.push(input.subarray(i, end));
     i = end;
     if (type === "IEND") return concat(parts);
   }
@@ -134,9 +201,7 @@ export function stripPngMetadata(input: Uint8Array): Uint8Array | null {
 
 /** A metadata-free copy for renters, or null when the format can't be stripped safely. */
 export function makeShareCopy(mime: string, bytes: Uint8Array): Uint8Array | null {
-  if (mime === "image/jpeg") return stripJpegMetadata(bytes);
-  if (mime === "image/png") return stripPngMetadata(bytes);
-  return null;
+  return buildShareCopy(mime, bytes);
 }
 
 export function shareCopyPath(path: string): string {
@@ -398,26 +463,35 @@ export function neutralizeHeicMetadata(b: Uint8Array): boolean {
   return true;
 }
 
-const WEBP_STRIP = new Set(["EXIF", "XMP "]);
+/** Image-defining WebP chunks only; EXIF, XMP, ICCP and unknown chunks are dropped. */
+const WEBP_KEEP = new Set(["VP8 ", "VP8L", "VP8X", "ALPH", "ANIM", "ANMF"]);
 
-/** WebP: drop EXIF and XMP chunks, clear their VP8X flags, fix the RIFF size. */
+/** WebP renter copy, allowlist only; clears VP8X ICC/EXIF/XMP flags, fixes RIFF size. */
 export function stripWebpMetadata(input: Uint8Array): Uint8Array | null {
-  if (input.length < 12 || fourcc(input, 0) !== "RIFF" || fourcc(input, 8) !== "WEBP") return null;
+  if (input.length < 20 || fourcc(input, 0) !== "RIFF" || fourcc(input, 8) !== "WEBP") return null;
+  const riffEnd = 8 + ((input[4] | (input[5] << 8) | (input[6] << 16) | (input[7] << 24)) >>> 0);
+  if (riffEnd > input.length) return null;
   const parts: Uint8Array[] = [];
   let i = 12;
-  while (i + 8 <= input.length) {
+  let image = false;
+  while (i + 8 <= riffEnd) {
     const type = fourcc(input, i);
     const len =
       (input[i + 4] | (input[i + 5] << 8) | (input[i + 6] << 16) | (input[i + 7] << 24)) >>> 0;
     const end = i + 8 + len + (len & 1);
-    if (i + 8 + len > input.length) return null;
-    if (!WEBP_STRIP.has(type)) {
-      const chunk = input.slice(i, Math.min(end, input.length));
-      if (type === "VP8X") chunk[8] &= ~(0x08 | 0x04);
+    if (i + 8 + len > riffEnd) return null;
+    if (WEBP_KEEP.has(type)) {
+      const chunk = input.slice(i, Math.min(end, riffEnd));
+      if (type === "VP8X") {
+        if (len < 10) return null;
+        chunk[8] &= ~(0x20 | 0x08 | 0x04); // ICC, EXIF, XMP
+      }
+      if (type === "VP8 " || type === "VP8L" || type === "ANMF") image = true;
       parts.push(chunk);
     }
     i = end;
   }
+  if (!image) return null;
   const body = concat(parts);
   const out = new Uint8Array(12 + body.length);
   out.set(input.subarray(0, 12));
@@ -430,18 +504,45 @@ export function stripWebpMetadata(input: Uint8Array): Uint8Array | null {
   return out;
 }
 
+/** Byte patterns that must never appear in a renter copy, whatever the container. */
+const LEAK_MARKERS = [
+  "Exif\0\0",
+  "x:xmpmeta",
+  "http://ns.adobe.com/",
+  "ISO6709",
+  "com.apple.quicktime.location",
+];
+
+/** Raw-bytes backstop: true if any known metadata signature survives anywhere in the copy. */
+export function hasMetadataRemnants(b: Uint8Array): boolean {
+  for (const m of LEAK_MARKERS) {
+    const c0 = m.charCodeAt(0);
+    outer: for (
+      let i = b.indexOf(c0);
+      i >= 0 && i + m.length <= b.length;
+      i = b.indexOf(c0, i + 1)
+    ) {
+      for (let k = 1; k < m.length; k++) if (b[i + k] !== m.charCodeAt(k)) continue outer;
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
- * Server-side renter copy for any supported type. `bytes` is the server's own
- * download and may be modified in place (video/HEIC). Null = no safe copy.
+ * Server-side renter copy. Only JPEG, PNG and WebP are supported, by rebuilding
+ * the file from an allowlist of image chunks (no re-encode). HEIC and MP4/MOV
+ * return null — fail closed: the in-place box neutralizers below rename/zero
+ * known boxes but cannot prove there is no location elsewhere (timed metadata
+ * tracks such as Apple mebx or GoPro GPMF inside mdat, uuid boxes, thumbnail
+ * items with their own EXIF), so renters see the entry and its time only.
  */
 export function buildShareCopy(mime: string, bytes: Uint8Array): Uint8Array | null {
-  if (mime === "image/jpeg") return stripJpegMetadata(bytes);
-  if (mime === "image/png") return stripPngMetadata(bytes);
-  if (mime === "image/webp") return stripWebpMetadata(bytes);
-  if (mime === "image/heic") return neutralizeHeicMetadata(bytes) ? bytes : null;
-  if (mime === "video/mp4" || mime === "video/quicktime") {
-    if (!neutralizeVideoMetadata(bytes)) return null;
-    return videoHasMetadataBoxes(bytes) ? null : bytes;
-  }
-  return null;
+  let out: Uint8Array | null = null;
+  if (mime === "image/jpeg") out = stripJpegMetadata(bytes);
+  else if (mime === "image/png") out = stripPngMetadata(bytes);
+  else if (mime === "image/webp") out = stripWebpMetadata(bytes);
+  if (!out || hasMetadataRemnants(out)) return null;
+  if (sniffMediaType(out) !== mime) return null;
+  return out;
 }
