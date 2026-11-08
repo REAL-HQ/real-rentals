@@ -2544,7 +2544,16 @@ function DriverDetail({
               </button>
             </div>
           </div>
-          {/* Primary record navigation: one button per tab, below the identity box */}
+          <div className="mt-3">
+            <LifecycleRail
+              stages={lifecycle}
+              percent={percentComplete}
+              timeInStage={timeInStage}
+              blocker={readiness.disqualifiers[0]}
+              onStageClick={stageTargets}
+            />
+          </div>
+          {/* Primary record navigation: below identity and lifecycle progress */}
           <div className="mt-3 overflow-x-auto [scrollbar-width:none]">
 
             <TabsList className="h-auto bg-transparent p-0 gap-2 rounded-none flex w-max">
@@ -2580,13 +2589,6 @@ function DriverDetail({
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
-                />
-                <LifecycleRail
-                  stages={lifecycle}
-                  percent={percentComplete}
-                  timeInStage={timeInStage}
-                  blocker={readiness.disqualifiers[0]}
-                  onStageClick={stageTargets}
                 />
                 {phase === "screening" ? (
                   <>
