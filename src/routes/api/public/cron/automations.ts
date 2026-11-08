@@ -38,5 +38,15 @@ async function handle(request: Request): Promise<Response> {
   }
 
   const result = await runDueAutomations();
-  return Response.json({ ok: true, ...result });
+
+  // Renter payment notices held while the Automations switches were unreadable.
+  let heldNotices: unknown = null;
+  try {
+    const { retryHeldPaymentNotices } = await import("@/lib/held-payment-notices.server");
+    const { sendPaymentReceiptEmail, sendPaymentFailedEmail } = await import("@/lib/email.server");
+    heldNotices = await retryHeldPaymentNotices(supabaseAdmin, { sendReceipt: sendPaymentReceiptEmail, sendFailed: sendPaymentFailedEmail });
+  } catch (err) {
+    console.error("[held-notices] retry failed", err);
+  }
+  return Response.json({ ok: true, ...result, heldNotices });
 }

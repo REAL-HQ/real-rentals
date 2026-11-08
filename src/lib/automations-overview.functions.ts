@@ -42,6 +42,8 @@ export type AutomationsOverview = {
   rows: AutomationRow[];
   emailReady: boolean;
   smsReady: boolean;
+  /** Which SMS settings are present on the server (never their values). */
+  smsSetup: { account: boolean; authToken: boolean; sender: "number" | "messaging_service" | "none" };
   cronKnown: boolean;
   smsSentEver: number;
   isOwner: boolean;
@@ -151,7 +153,12 @@ export const getAutomationsOverview = createServerFn({ method: "POST" })
         workflowId, smsSteps, emailSteps, blockers,
       });
     }
-    return { rows, emailReady, smsReady, cronKnown: cron !== null, smsSentEver: smsSentEver ?? 0, isOwner: actor.tier === "owner", controlsStatus: controls.status };
+    const smsSetup = {
+      account: Boolean(process.env.TWILIO_ACCOUNT_SID),
+      authToken: Boolean(process.env.TWILIO_AUTH_TOKEN),
+      sender: process.env.TWILIO_MESSAGING_SERVICE_SID ? "messaging_service" as const : process.env.TWILIO_FROM_NUMBER ? "number" as const : "none" as const,
+    };
+    return { rows, emailReady, smsReady, smsSetup, cronKnown: cron !== null, smsSentEver: smsSentEver ?? 0, isOwner: actor.tier === "owner", controlsStatus: controls.status };
   });
 
 export const setAutomationOn = createServerFn({ method: "POST" })
@@ -221,4 +228,20 @@ export const previewAutomationTemplate = createServerFn({ method: "POST" })
     await requireManager(context.userId);
     const { renderAutomationPreview } = await import("@/lib/automation-preview.server");
     return renderAutomationPreview(data.id);
+  });
+
+export type SmsCheck = { status: "ok" | "not_set_up" | "rejected" | "sender_missing" | "unreachable"; detail: string };
+
+/**
+ * Owner-only, read-only check of the SMS provider settings: asks Twilio for
+ * the account and the sender (GET requests). Sends nothing and returns no
+ * credential, account id or number — only a status word and one sentence.
+ */
+export const checkSmsSetup = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<SmsCheck> => {
+    const { requireOwner } = await import("@/lib/roles.server");
+    await requireOwner(context.userId);
+    const { runSmsSetupCheck } = await import("@/lib/sms-setup-check.server");
+    return runSmsSetupCheck(process.env, fetch);
   });

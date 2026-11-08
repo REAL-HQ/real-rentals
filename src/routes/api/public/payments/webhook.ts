@@ -39,6 +39,20 @@ async function driverForRental(rentalId: string | undefined) {
   };
 }
 
+/**
+ * A driver notice HELD because the Automations switches could not be read
+ * (not one the Owner switched off) is parked as notified_status
+ * 'held:<outcome>' so retryHeldPaymentNotices can send it later, once.
+ * Single-row charges only: a multi-row charge has one receipt for several
+ * rows, so it stays recorded as a failed "Held" delivery for staff instead.
+ */
+async function markNoticeHeld(admin: any, ids: string[], status: 'paid' | 'failed', blocked: 'off' | 'held' | undefined) {
+  if (blocked !== 'held' || ids.length !== 1) return;
+  const { error } = await admin.from('payments').update({ notified_status: `held:${status}` })
+    .eq('id', ids[0]).eq('status', status).eq('notified_status', status);
+  if (error) console.error('[payments] could not park held notice', ids[0], error);
+}
+
 function cardExpiresSoon(m: number | null, y: number | null): boolean {
   if (!m || !y) return false;
   const now = new Date();
@@ -280,11 +294,13 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
       // A manual row that Stripe also collected used to return 200 with no
       // mail. Keep that status if the receipt send fails. A replay claims
       // nothing, so it cannot send a second notice.
+      let receipt: Awaited<ReturnType<typeof sendReceipt>> | undefined;
       if (overlapHit && changed === 0) {
-        try { await sendReceipt(); } catch (err) { console.error('[payments] overlap receipt failed', err); }
+        try { receipt = await sendReceipt(); } catch (err) { console.error('[payments] overlap receipt failed', err); }
       } else {
-        await sendReceipt();
+        receipt = await sendReceipt();
       }
+      await markNoticeHeld(admin, [...claimedIds] as string[], status, receipt?.blocked);
       if (cardExpiresSoon(driver.expMonth, driver.expYear)) {
         await sendCardExpiringEmail({
           to: driver.email, firstName: driver.name,
@@ -293,10 +309,11 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
         });
       }
     } else {
-      await sendPaymentFailedEmail({
+      const failedNotice = await sendPaymentFailedEmail({
         to: driver.email, firstName: driver.name, amount, reason,
         brand: driver.brand, last4: driver.last4,
       });
+      await markNoticeHeld(admin, [...claimedIds] as string[], status, failedNotice?.blocked);
     }
   }
   if (status !== 'paid') await alertTeamPaymentFailed(driver, amount, reason, rentalId);
