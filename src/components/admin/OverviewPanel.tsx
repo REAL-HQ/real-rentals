@@ -496,6 +496,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           href="/admin"
           search={{ tab: "payments", filter: "overdue" }}
           control="view"
+          surface="yellow"
           tint={overdueAmt > 0 ? "red" : undefined}
           badge={overdueAmt > 0 ? overdueCount : undefined}
         />
@@ -521,6 +522,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           href="/admin"
           search={{ tab: "maintenance" }}
           control="view"
+          surface="red"
           tint={svc.overdue > 0 ? "red" : svc.due + svc.open + svc.conflict > 0 ? "amber" : undefined}
           badge={serviceAttention > 0 ? serviceAttention : undefined}
         />
@@ -882,6 +884,7 @@ function ActionCard({
   control,
   badge,
   tint,
+  surface = "white",
 }: {
   icon: any;
   eyebrow: string;
@@ -892,20 +895,26 @@ function ActionCard({
   control: "add" | "view";
   badge?: number;
   tint?: "red" | "amber";
+  surface?: "white" | "yellow" | "red";
 }) {
   const border =
-    tint === "red"
-      ? "border-[#CC0000]/40 hover:border-[#CC0000]"
-      : tint === "amber"
-        ? "border-[#B77900]/40 hover:border-[#B77900]"
-        : "border-[#EDEDF0] hover:border-[#D03020]";
+    surface === "yellow"
+      ? "border-warning/40 hover:border-warning"
+      : surface === "red"
+        ? "border-destructive/30 hover:border-destructive"
+        : tint === "red"
+          ? "border-[#CC0000]/40 hover:border-[#CC0000]"
+          : tint === "amber"
+            ? "border-[#B77900]/40 hover:border-[#B77900]"
+            : "border-[#EDEDF0] hover:border-[#D03020]";
+  const surfaceBg = surface === "yellow" ? "bg-warning-soft" : surface === "red" ? "bg-danger-soft" : "bg-card";
   const badgeBg = tint === "amber" ? "bg-[#B77900] text-white" : "bg-[#CC0000] text-white";
 
   return (
     <Link
       to={href}
       search={search}
-      className={`group relative rounded-2xl border bg-white text-[#111114] shadow-sm px-5 py-4 transition-colors ${border}`}
+      className={`group relative rounded-2xl border ${surfaceBg} text-[#111114] shadow-sm px-5 py-4 transition-colors ${border}`}
     >
       <div className="flex items-center justify-between">
         <div className="h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] text-[#55555E]">
@@ -1003,7 +1012,7 @@ function RevenueCard({
       aria-label="Revenue — Open Payments"
       onClick={goPayments}
       onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); goPayments(); } }}
-      className="relative cursor-pointer rounded-2xl border border-[#EDEDF0] bg-white shadow-sm px-5 py-4 hover:border-[#D03020] transition-colors"
+      className="relative cursor-pointer rounded-2xl border border-success/30 bg-success-soft shadow-sm px-5 py-4 hover:border-success transition-colors"
     >
       <div className="flex items-center justify-between">
         <div className="h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] text-[#55555E]">

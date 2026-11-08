@@ -66,7 +66,9 @@
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
   --color-warning-foreground: var(--warning-foreground);
+  --color-danger-soft: var(--danger-soft);
   --color-overlay: var(--overlay);
 }
 
@@ -99,7 +101,9 @@
   --success: oklch(0.55 0.14 155);
   --success-soft: oklch(0.96 0.04 155);
   --warning: oklch(0.8 0.15 85);
+  --warning-soft: oklch(0.97 0.04 95);
   --warning-foreground: oklch(0.42 0.1 70);
+  --danger-soft: oklch(0.96 0.035 27.5);
   --overlay: oklch(0.15 0.005 286 / 0.5);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -133,6 +137,9 @@
   --accent-foreground: oklch(0.984 0.003 247.858);
   --brand-soft: color-mix(in oklch, var(--real-red) 10%, var(--card));
   --brand-soft-border: color-mix(in oklch, var(--real-red) 25%, var(--card));
+  --success-soft: oklch(0.28 0.05 155);
+  --warning-soft: oklch(0.3 0.05 85);
+  --danger-soft: oklch(0.3 0.06 27.5);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.984 0.003 247.858);
   --border: oklch(1 0 0 / 10%);
