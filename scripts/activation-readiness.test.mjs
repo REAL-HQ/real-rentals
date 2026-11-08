@@ -757,8 +757,10 @@ try {
 
   await test("UI wiring: one dialog; separate insurance acknowledgement; Owner-only setting in Rental Terms; Title Case", async () => {
     const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
-    assert.match(panel, /<StartRentalCard[\s\S]{0,300}onActivate=\{\(\) => setActivateOpen\(true\)\}/);
-    assert.match(panel, /A driver becomes Active only when a rental starts\./);
+    // Overview and Rental share one Next Step card; its Activate Rental opens this same dialog.
+    assert.equal((panel.match(/<NextStepCard/g) ?? []).length, 2);
+    assert.match(panel, /else if \(t\.kind === "activate"\) \{ if \(!activateOpen\) setActivateOpen\(true\); \}/);
+    assert.match(readFileSync("src/lib/next-step.ts", "utf8"), /A driver becomes Active only when a rental starts/);
     assert.equal((panel.match(/<ActivateRentalDialog/g) ?? []).length, 1, "one dialog, not a second activation path");
     const dialog = readFileSync("src/components/admin/ActivateRentalDialog.tsx", "utf8");
     assert.match(dialog, /isHardBlocker\(b\.code\)/);
