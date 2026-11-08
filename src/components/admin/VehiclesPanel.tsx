@@ -366,12 +366,13 @@ function FleetVehicles({
           {result && hasActiveFilters && !listQuery.isPlaceholderData && <span> · {total} matching</span>}
         </p>
       )}
-      <AdminToolbar
+      <AdminToolbar compact
         search={
           <input
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search unit, VIN, plate, year, make, model…"
+            placeholder="Search Vehicles…"
+            title="Search Unit, VIN, Plate, Year, Make, Or Model"
             aria-label="Search vehicles"
             className={TOOLBAR.search}
           />
@@ -381,21 +382,21 @@ function FleetVehicles({
           <Select value={statusFilter} onValueChange={(v) => setList({ status: v })}>
             <SelectTrigger className={TOOLBAR.select} aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="all">Status: All</SelectItem>
               {(result?.statuses ?? []).map((s) => <SelectItem key={s} value={s}>{availabilityLabel({ on_rent: false, status: s })}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={bodyFilter} onValueChange={(v) => setList({ body: v })}>
             <SelectTrigger className={TOOLBAR.select} aria-label="Body Type"><SelectValue placeholder="Body Type" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Body Types</SelectItem>
+              <SelectItem value="all">Body: All</SelectItem>
               {(result?.bodyTypes ?? []).map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={partnerFilter} onValueChange={(v) => setList({ partner: v })}>
             <SelectTrigger className={TOOLBAR.select} aria-label="Partner"><SelectValue placeholder="Partner" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Partners</SelectItem>
+              <SelectItem value="all">Partner: All</SelectItem>
               <SelectItem value="__none__">Unassigned</SelectItem>
               {partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
             </SelectContent>
@@ -496,34 +497,34 @@ function FleetVehicles({
 
       {view !== "due" && view === "list" && rows.length > 0 && (
         <div role="region" aria-label="Vehicles table" tabIndex={0} className="relative hidden md:block mt-4 w-full min-w-0 overflow-x-auto rounded-xl border border-border bg-white">
-          <table className="w-full min-w-[64rem] text-sm">
+          <table className="w-full min-w-[56rem] text-sm">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
-                <th scope="col" className="w-10 px-3 py-2 font-medium" aria-label="Row number">#</th>
-                <th className="px-3 py-2 font-medium">Unit</th>
-                <th className="px-3 py-2 font-medium">Vehicle</th>
-                <th className="px-3 py-2 font-medium">Plate</th>
-                <th className="px-3 py-2 font-medium">VIN</th>
-                <th className="px-3 py-2 font-medium">Availability</th>
-                <th className="px-3 py-2 font-medium">Readiness</th>
-                <th className="px-3 py-2 font-medium">Weekly Rate</th>
-                <th className="px-3 py-2 font-medium">Partner</th>
-                <th className="px-3 py-2 font-medium"><span className="sr-only">Open</span></th>
+                <th scope="col" className="w-8 px-2 py-2 font-medium" aria-label="Row number">#</th>
+                <th className="px-2 py-2 font-medium">Unit</th>
+                <th className="px-2 py-2 font-medium">Vehicle</th>
+                <th className="px-2 py-2 font-medium">Plate</th>
+                <th className="px-2 py-2 font-medium">VIN</th>
+                <th className="px-2 py-2 font-medium">Availability</th>
+                <th className="px-2 py-2 font-medium">Readiness</th>
+                <th className="px-2 py-2 font-medium">Weekly Rate</th>
+                <th className="px-2 py-2 font-medium">Partner</th>
+                <th className="px-2 py-2 font-medium"><span className="sr-only">Open</span></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((v, index) => (
                 <tr key={v.id} onClick={() => setViewing(v.id)} className="border-t border-border cursor-pointer hover:bg-[#FAFAFB]">
-                  <td className="w-10 px-3 py-2 tabular-nums text-muted-foreground">{rowNumber(index)}</td>
-                  <td className="px-3 py-2 font-medium whitespace-nowrap">{v.unit_number ?? <span className="text-muted-foreground">—</span>}</td>
-                  <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</td>
-                  <td className="px-3 py-2 font-mono whitespace-nowrap">{v.license_plate || <span className="text-muted-foreground">—</span>}</td>
-                  <td className="px-3 py-2"><CopyVin vin={v.vin} /></td>
-                  <td className="px-3 py-2 whitespace-nowrap"><Availability v={v} /></td>
-                  <td className="px-3 py-2 whitespace-nowrap"><ReadinessPill v={v} /></td>
-                  <td className="px-3 py-2 whitespace-nowrap"><Rate v={v} /></td>
-                  <td className="px-3 py-2 max-w-[160px] truncate">{partnerName(v.partner_id)}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="w-8 px-2 py-2 tabular-nums text-muted-foreground">{rowNumber(index)}</td>
+                  <td className="px-2 py-2 font-medium whitespace-nowrap">{v.unit_number ?? <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-2 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</td>
+                  <td className="px-2 py-2 font-mono whitespace-nowrap">{v.license_plate || <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-2 py-2"><CopyVin vin={v.vin} /></td>
+                  <td className="px-2 py-2 whitespace-nowrap"><Availability v={v} /></td>
+                  <td className="px-2 py-2 whitespace-nowrap"><ReadinessPill v={v} /></td>
+                  <td className="px-2 py-2 whitespace-nowrap"><Rate v={v} /></td>
+                  <td className="px-2 py-2 max-w-[160px] truncate">{partnerName(v.partner_id)}</td>
+                  <td className="px-2 py-2 text-right">
                     <button onClick={(e) => { e.stopPropagation(); setViewing(v.id); }} className="inline-flex items-center gap-1 rounded-md bg-black text-white px-2.5 py-1 text-xs">
                       Open <ArrowRight className="w-3 h-3" />
                     </button>

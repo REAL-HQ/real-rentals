@@ -13,6 +13,7 @@ const stubs = {
   "@tanstack/react-query": `export const keepPreviousData = x => x; export const useQuery = () => ({data: globalThis.__toolbarFixture, isPending:false, isPlaceholderData:false, refetch() {}});`,
   "@tanstack/react-start": `export const useServerFn = () => () => {};`,
   "@tanstack/react-router": `export const useNavigate = () => () => {};`,
+  "@/lib/maintenance-due": `export const MAINTENANCE_DUE_ENABLED = true;`,
   "@/lib/vehicles-list.functions": `export const listVehicles = () => {};`,
   "@/integrations/supabase/client": `export const supabase = {from: () => ({select: () => ({order: () => Promise.resolve({data: []})})})};`,
   "./VehicleProfile": `export const VehicleProfile = () => null;`,
