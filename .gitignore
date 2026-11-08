@@ -53,3 +53,7 @@ demo-data-backup-*.json
 # Synthetic local UI audits and blocked-network browser candidates
 .ui-label-audit/
 .ui-label-browser/
+
+# Synthetic upload regression outputs (no service transports)
+.upload-drop-audit/
+.upload-drop-browser/

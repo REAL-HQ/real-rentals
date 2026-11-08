@@ -1,0 +1,387 @@
+{
+  "baseline": "7f3d2ce865d985e9b581aa9e01de28dc55506151",
+  "uploaderSourceSites": 22,
+  "uploaderFiles": 21,
+  "rawInputSites": 4,
+  "rawInputFiles": 2,
+  "surfaces": [
+    {
+      "file": "src/components/admin/ApplicantDocuments.tsx",
+      "line": 456,
+      "props": {
+        "variant": "\"inline\"",
+        "label": "{d ? \"Replace\" : \"Upload\"}",
+        "context": "{`${meta.label} · Application ${applicationId.slice(0, 8)}`}",
+        "accept": "\"image/*,application/pdf\"",
+        "maxBytes": "{MAX_MB * 1024 * 1024}",
+        "camera": true,
+        "disabled": "{!!working}",
+        "upload": "{(file, { onProgress }) => uploadCategory(key, file, onProgress)}"
+      }
+    },
+    {
+      "file": "src/components/admin/BulkReceiptUpload.tsx",
+      "line": 125,
+      "props": {
+        "variant": "\"zone\"",
+        "multiple": true,
+        "accept": "{BULK_RECEIPT_ACCEPT}",
+        "maxBytes": "{BULK_RECEIPT_MAX_BYTES}",
+        "maxFiles": "{BULK_RECEIPT_MAX_FILES}",
+        "title": "\"Drop Receipts Or Invoices Here\"",
+        "hint": "\"PDF or photos, many at once. Matched to a car by VIN, plate or car number. Team-only; renters never see these.\"",
+        "onFiles": "{(files) => void add(files)}"
+      }
+    },
+    {
+      "file": "src/components/admin/DocumentBatchUpload.tsx",
+      "line": 123,
+      "props": {
+        "variant": "\"inline\"",
+        "label": "\"Add Files\"",
+        "context": "{`Other · Application ${applicationId.slice(0, 8)}`}",
+        "accept": "\"image/*,application/pdf\"",
+        "multiple": true,
+        "disabled": "{running}",
+        "onFiles": "{(files) => setQueue((q) => planBatch(q, files, docs))}"
+      }
+    },
+    {
+      "file": "src/components/admin/DocumentVault.tsx",
+      "line": 201,
+      "props": {
+        "variant": "\"inline\"",
+        "label": "{doc ? \"Replace\" : \"Upload\"}",
+        "accept": "\"image/*,application/pdf\"",
+        "context": "{cat.label}",
+        "upload": "{(file) => uploadDoc(cat.key as DocCategory, false, file)}"
+      }
+    },
+    {
+      "file": "src/components/admin/DocumentVault.tsx",
+      "line": 236,
+      "props": {
+        "variant": "\"inline\"",
+        "label": "\"Upload Team-only Document\"",
+        "accept": "\"image/*,application/pdf\"",
+        "context": "\"Team-only Document\"",
+        "upload": "{(file) => uploadDoc(\"other\", true, file)}",
+        "className": "\"text-[#55555E]\""
+      }
+    },
+    {
+      "file": "src/components/admin/ExpensesPanel.tsx",
+      "line": 787,
+      "props": {
+        "className": "\"mt-1\"",
+        "variant": "\"zone\"",
+        "title": "\"Drop The Receipt Here\"",
+        "label": "{receipt ? \"Replace Receipt\" : \"Attach Receipt\"}",
+        "hint": "\"Photo or PDF, up to 10 MB\"",
+        "context": "{`${vehicles.find((v) => v.id === vehicleId)?.label ?? \"Expense\"} · Receipt`}",
+        "accept": "\"image/*,application/pdf\"",
+        "maxBytes": "{10 * 1024 * 1024}",
+        "camera": true,
+        "disabled": "{saving}",
+        "upload": "{(file, { onProgress }) => handleReceipt(file, onProgress)}"
+      }
+    },
+    {
+      "file": "src/components/admin/FleetInboxPanel.tsx",
+      "line": 131,
+      "props": {
+        "value": "{pendingFiles}",
+        "onChange": "{setPendingFiles}",
+        "accept": "\"image/*,application/pdf\"",
+        "multiple": true,
+        "maxBytes": "{MAX}",
+        "camera": true,
+        "disabled": "{!!busy}",
+        "busy": "{!!busy}",
+        "title": "\"Drop Fleet Files Here\"",
+        "hint": "\"Add files in as many drops as you need. Nothing uploads until you click Upload Files. REAL RENTALS then sorts each document and prepares updates for your review.\""
+      }
+    },
+    {
+      "file": "src/components/admin/ImportVehiclesStep.tsx",
+      "line": 119,
+      "props": {
+        "onFiles": "{(files) => files[0] && read(files[0])}",
+        "accept": "\".csv,text/csv\"",
+        "title": "\"Choose A CSV File\"",
+        "hint": "{`Any column order. You will map the columns and see exactly what will happen to each row before anything is created. Up to ${MAX_ROWS} rows at a time.`}"
+      }
+    },
+    {
+      "file": "src/components/admin/InspectionsPanel.tsx",
+      "line": 766,
+      "props": {
+        "variant": "\"zone\"",
+        "title": "{`Drop ${ANGLES.find((a) => a[0] === angle)?.[1]} Photos Or Video Here`}",
+        "label": "{`Add ${ANGLES.find((a) => a[0] === angle)?.[1]} Photo Or Video`}",
+        "context": "{`${phase} · ${ANGLES.find((a) => a[0] === angle)?.[1]}`}",
+        "accept": "\"image/*,video/mp4,video/quicktime\"",
+        "maxBytes": "{50 * 1024 * 1024}",
+        "multiple": true,
+        "camera": true,
+        "upload": "{(file, { onProgress }) => uploadOne(file, onProgress)}",
+        "onAllDone": "{onChanged}"
+      }
+    },
+    {
+      "file": "src/components/admin/ManualPaymentsWorkspace.tsx",
+      "line": 233,
+      "props": {
+        "value": "{files}",
+        "onChange": "{setFiles}",
+        "accept": "\"image/*,application/pdf\"",
+        "multiple": "{false}"
+      }
+    },
+    {
+      "file": "src/components/admin/OwnerExpenseEntryPanel.tsx",
+      "line": 157,
+      "props": {
+        "className": "\"mt-1\"",
+        "variant": "\"zone\"",
+        "title": "\"Drop The Receipt Here\"",
+        "label": "{receipt ? \"Replace Receipt\" : \"Attach Receipt\"}",
+        "hint": "\"Optional. Photo or PDF, up to 10 MB.\"",
+        "context": "{`${vehicleLabel} · Receipt`}",
+        "accept": "\"image/*,application/pdf\"",
+        "maxBytes": "{10 * 1024 * 1024}",
+        "camera": true,
+        "disabled": "{saving}",
+        "upload": "{(file, { onProgress }) => uploadReceipt(file, onProgress)}"
+      }
+    },
+    {
+      "file": "src/components/admin/PaperAgreements.tsx",
+      "line": 185,
+      "props": {
+        "variant": "\"zone\"",
+        "accept": "\"application/pdf,.pdf\"",
+        "maxBytes": "{PAPER_MAX_BYTES}",
+        "value": "{file ? [file] : []}",
+        "onChange": "{(files) => setFile(files[0] ?? null)}",
+        "title": "\"Signed PDF\"",
+        "context": "\"Paper Agreement\"",
+        "disabled": "{busy || !!operation || !PAPER_RELEASE.registration}"
+      }
+    },
+    {
+      "file": "src/components/admin/ReturnCloseoutFields.tsx",
+      "line": 199,
+      "props": {
+        "variant": "\"zone\"",
+        "title": "\"Drop Return Photos Here\"",
+        "label": "\"Add Return Photo\"",
+        "accept": "\"image/*,video/mp4,video/quicktime\"",
+        "maxBytes": "{50 * 1024 * 1024}",
+        "multiple": true,
+        "camera": true,
+        "upload": "{(file, { onProgress }) => uploadOne(file, onProgress)}"
+      }
+    },
+    {
+      "file": "src/components/admin/TemplateUploadDialog.tsx",
+      "line": 164,
+      "props": {
+        "variant": "\"zone\"",
+        "accept": "{TEMPLATE_ACCEPT}",
+        "maxBytes": "{MAX_TEMPLATE_BYTES}",
+        "multiple": "{false}",
+        "onFiles": "{onFiles}",
+        "label": "{busy ? \"Reading Agreement…\" : \"Drop A PDF Or Word Agreement\"}",
+        "hint": "\"PDF or .docx, up to 10 MB. The original is kept privately and is never sent.\""
+      }
+    },
+    {
+      "file": "src/components/admin/TitleScanStep.tsx",
+      "line": 105,
+      "props": {
+        "onFiles": "{(files) => files[0] && run(files[0])}",
+        "accept": "{ACCEPT}",
+        "maxBytes": "{MAX_BYTES}",
+        "camera": true,
+        "disabled": "{busy}",
+        "busy": "{busy}",
+        "title": "{busy ? \"Reading the Document…\" : \"Photograph the Title or Registration\"}",
+        "hint": "\"Lay it flat, fill the frame, avoid glare. JPG, PNG or PDF up to 5MB. Nothing is saved until you confirm what was read.\""
+      }
+    },
+    {
+      "file": "src/components/admin/VehicleDocUploadDialog.tsx",
+      "line": 496,
+      "props": {
+        "multiple": "{read}",
+        "accept": "\"image/*,application/pdf\"",
+        "maxBytes": "{MAX_BYTES}",
+        "context": "{`${vehicleLabel} · ${type?.label ?? \"Document\"}`}",
+        "upload": "{async (file, { onProgress }) => {\n            if (read) await uploadRead(file, onProgress);\n            else {\n              onProgress(30);\n              await onSaveDirect(kind, file, type?.expires ? expires || null : null);\n              setSavedDirect((n) => n + 1);\n              onProgress(100);\n            }\n          }}",
+        "onAllDone": "{() => {\n            if (read) refreshBatch();\n          }}"
+      }
+    },
+    {
+      "file": "src/components/admin/VehiclePhotos.tsx",
+      "line": 376,
+      "props": {
+        "variant": "\"inline\"",
+        "label": "\"Add Photos\"",
+        "accept": "{ACCEPT}",
+        "multiple": true,
+        "camera": true,
+        "maxBytes": "{MAX_BYTES}",
+        "context": "{`Vehicle ${vehicleId} · Photos`}",
+        "upload": "{uploadOne}",
+        "onAllDone": "{afterUpload}"
+      }
+    },
+    {
+      "file": "src/components/admin/VerificationRecording.tsx",
+      "line": 136,
+      "props": {
+        "variant": "\"inline\"",
+        "label": "{current ? \"Replace\" : \"Upload\"}",
+        "context": "\"Verification Call Recording\"",
+        "accept": "\"audio/*,video/*\"",
+        "maxBytes": "{MAX_MB * 1024 * 1024}",
+        "upload": "{(file, { onProgress }) => uploadRecording(file, onProgress)}",
+        "className": "\"shrink-0\""
+      }
+    },
+    {
+      "file": "src/components/admin/modal.tsx",
+      "line": 134,
+      "props": {
+        "value": "{file ? [file] : []}",
+        "onChange": "{(files) => onFile(files[0] ?? null)}",
+        "accept": "{accept}",
+        "multiple": "{false}",
+        "camera": "{camera}",
+        "title": "{title}",
+        "hint": "{note ? `${hint} · ${note}` : hint}",
+        "context": "{context}",
+        "label": "\"Browse Files\""
+      }
+    },
+    {
+      "file": "src/components/portal/DocumentUpdateCard.tsx",
+      "line": 94,
+      "props": {
+        "variant": "\"inline\"",
+        "label": "\"Upload\"",
+        "accept": "\"image/*,application/pdf\"",
+        "maxBytes": "{MAX_BYTES}",
+        "context": "{item.label}",
+        "upload": "{(file) => uploadDoc(item.category, file)}"
+      }
+    },
+    {
+      "file": "src/components/site/DocumentCapture.tsx",
+      "line": 115,
+      "props": {
+        "camera": true,
+        "accept": "\"image/*,application/pdf\"",
+        "maxBytes": "{60 * 1024 * 1024}",
+        "context": "{title}",
+        "title": "{done ? \"Retake Or Replace\" : \"Take A Photo Or Upload\"}",
+        "label": "{done ? \"Replace\" : \"Upload\"}",
+        "submitLabel": "{done ? \"Replace\" : \"Upload\"}",
+        "upload": "{async (file, { onProgress }) => {\n            onProgress(20);\n            await uploadThenSave.current(\n              file,\n              async () => {\n                // A generous client-side ceiling; the real one is applied after\n                // optimization, since a phone photo that arrives at 9 MB usually\n                // leaves at under one. uploadApplicantFile enforces that ceiling\n                // and throws UploadTooLarge, which the queue's Retry relies on.\n                if (UPLOAD_PRECHECK_ENABLED === true) {\n                  const { reviewUpload } = await import(\"@/lib/upload-precheck\");\n                  const result = await reviewUpload(file);\n                  if (result.blocked) throw new Error(result.blockMessage ?? \"This file can't be uploaded.\");\n                  if (result.warnings.length && !(await askOverride(result))) {\n                    throw new Error(\"Choose another photo and try again.\");\n                  }\n                }\n                return uploadApplicantFile({ token, kind, file });\n              },\n              onProgress,\n            );\n          }}",
+        "onAllDone": "{() => setJustUploaded(true)}"
+      }
+    },
+    {
+      "file": "src/routes/partners.tsx",
+      "line": 269,
+      "props": {
+        "value": "{photos}",
+        "onChange": "{setPhotos}",
+        "accept": "\"image/*\"",
+        "multiple": true,
+        "maxFiles": "{6}",
+        "title": "\"Drop Vehicle Photos Here\"",
+        "label": "\"Browse Photos\"",
+        "hint": "{`${photos.length}/6 selected`}"
+      }
+    }
+  ],
+  "rawInputs": [
+    {
+      "file": "src/components/FileUploader.tsx",
+      "line": 214,
+      "props": {
+        "ref": "{fileRef}",
+        "type": "\"file\"",
+        "accept": "{accept || undefined}",
+        "multiple": "{multiple}",
+        "className": "\"hidden\"",
+        "data-file-drop": "\"primary\"",
+        "onChange": "{(e) => { const l = Array.from(e.target.files ?? []); e.target.value = \"\"; deliver(l); }}"
+      }
+    },
+    {
+      "file": "src/components/FileUploader.tsx",
+      "line": 216,
+      "props": {
+        "ref": "{camRef}",
+        "type": "\"file\"",
+        "accept": "\"image/*\"",
+        "capture": "\"environment\"",
+        "className": "\"hidden\"",
+        "data-file-drop": "\"ignore\"",
+        "onChange": "{(e) => { const l = Array.from(e.target.files ?? []); e.target.value = \"\"; deliver(l); }}"
+      }
+    },
+    {
+      "file": "src/components/site/ApplicationWizard.tsx",
+      "line": 2149,
+      "props": {
+        "ref": "{cameraInput}",
+        "type": "\"file\"",
+        "accept": "\"image/*\"",
+        "capture": "\"environment\"",
+        "multiple": true,
+        "className": "\"hidden\"",
+        "onChange": "{(e) => {\n          if (e.target.files?.length) void receive(e.target.files);\n          e.target.value = \"\";\n        }}"
+      }
+    },
+    {
+      "file": "src/components/site/ApplicationWizard.tsx",
+      "line": 2161,
+      "props": {
+        "ref": "{fileInput}",
+        "type": "\"file\"",
+        "accept": "\"image/*,application/pdf\"",
+        "multiple": true,
+        "className": "\"hidden\"",
+        "onChange": "{(e) => {\n          if (e.target.files?.length) void receive(e.target.files);\n          e.target.value = \"\";\n        }}"
+      }
+    }
+  ],
+  "delegatingWrapperCallsites": [
+    {
+      "file": "src/components/admin/QuickAddVehicle.tsx",
+      "line": 139,
+      "props": {
+        "file": "{photo}",
+        "onFile": "{setPhoto}",
+        "title": "\"Add Vehicle Photo\"",
+        "note": "\"Private until published\""
+      }
+    },
+    {
+      "file": "src/components/admin/VehicleService.tsx",
+      "line": 333,
+      "props": {
+        "file": "{file}",
+        "onFile": "{setFile}",
+        "accept": "\"image/*,application/pdf\"",
+        "title": "\"Add Receipt\"",
+        "hint": "\"Drag & drop or browse — stored privately\""
+      }
+    }
+  ],
+  "customWizardSurface": "src/components/site/ApplicationWizard.tsx: MultiFileUpload"
+}

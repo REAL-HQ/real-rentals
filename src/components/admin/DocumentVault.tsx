@@ -202,6 +202,7 @@ export function DocumentVault({
                     variant="inline"
                     label={doc ? "Replace" : "Upload"}
                     accept="image/*,application/pdf"
+                    maxBytes={MAX_MB * 1024 * 1024}
                     context={cat.label}
                     upload={(file) => uploadDoc(cat.key as DocCategory, false, file)}
                   />
@@ -237,6 +238,7 @@ export function DocumentVault({
           variant="inline"
           label="Upload Team-only Document"
           accept="image/*,application/pdf"
+          maxBytes={MAX_MB * 1024 * 1024}
           context="Team-only Document"
           upload={(file) => uploadDoc("other", true, file)}
           className="text-[#55555E]"

@@ -268,6 +268,7 @@ function Partners() {
                 <div className="mt-1">
                   <FileUploader
                     value={photos}
+                    disabled={submitting}
                     onChange={setPhotos}
                     accept="image/*"
                     multiple

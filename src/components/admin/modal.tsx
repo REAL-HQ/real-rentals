@@ -127,8 +127,8 @@ export function ModalButton({ variant = "secondary", className = "", ...p }: Rea
     className={`inline-flex h-11 items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-medium transition disabled:cursor-not-allowed ${v} ${className}`} />;
 }
 
-export function UploadDropzone({ file, onFile, accept = "image/*", title = "Add Photo", hint = "Drag & drop or browse", note, context, camera }: {
-  file: File | null; onFile: (f: File | null) => void; accept?: string; title?: string; hint?: string; note?: string; context?: string; camera?: boolean;
+export function UploadDropzone({ file, onFile, accept = "image/*", title = "Add Photo", hint = "Drag & drop or browse", note, context, camera, disabled = false }: {
+  file: File | null; onFile: (f: File | null) => void; accept?: string; title?: string; hint?: string; note?: string; context?: string; camera?: boolean; disabled?: boolean;
 }) {
   return (
     <FileUploader
@@ -137,6 +137,7 @@ export function UploadDropzone({ file, onFile, accept = "image/*", title = "Add 
       accept={accept}
       multiple={false}
       camera={camera}
+      disabled={disabled}
       title={title}
       hint={note ? `${hint} · ${note}` : hint}
       context={context}

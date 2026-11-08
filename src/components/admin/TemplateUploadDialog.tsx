@@ -161,7 +161,7 @@ export function TemplateUploadDialog({ onClose }: { onClose: () => void }) {
       </header>
       {!analysis ? (
         <div className="mx-auto w-full max-w-xl space-y-3 p-4">
-          <FileUploader variant="zone" accept={TEMPLATE_ACCEPT} maxBytes={MAX_TEMPLATE_BYTES} multiple={false} onFiles={onFiles}
+          <FileUploader variant="zone" accept={TEMPLATE_ACCEPT} maxBytes={MAX_TEMPLATE_BYTES} multiple={false} disabled={busy} onFiles={onFiles}
             label={busy ? "Reading Agreement…" : "Drop A PDF Or Word Agreement"} hint="PDF or .docx, up to 10 MB. The original is kept privately and is never sent." />
           <p className="text-[12px] text-muted-foreground">The agreement is read for its text, tables, fields, initials and signature lines. Scanned or image-only files are flagged for manual review — nothing is guessed. Uploaded agreements are never approved or used automatically.</p>
         </div>

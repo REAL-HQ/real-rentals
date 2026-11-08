@@ -136,7 +136,7 @@ export function QuickAddForm({ onCreated, onMore, onClose }: { onCreated: (id: s
           <p className="-mt-2 text-[12px] text-muted-foreground">Pre-filled from the {bodyTypeLabel(prefill.appliedFrom)} company default — change any value before saving.</p>
         )}
         <ModalSection label="Photo">
-          <UploadDropzone file={photo} onFile={setPhoto} title="Add Vehicle Photo" note="Private until published" />
+          <UploadDropzone disabled={!!saving} file={photo} onFile={setPhoto} title="Add Vehicle Photo" note="Private until published" />
         </ModalSection>
 
         <ModalSection label="Readiness">
