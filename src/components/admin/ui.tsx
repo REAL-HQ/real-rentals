@@ -1,3 +1,4 @@
+import { enumDisplayLabel } from "@/lib/ui-display-labels";
 import type { ReactNode } from "react";
 import { Check, ArrowRight, ArrowUp, ArrowDown, AlertTriangle, HelpCircle, ChevronDown } from "lucide-react";
 import {
@@ -12,7 +13,7 @@ import { fmtDate as formatDate } from "@/lib/date-format";
 // ---- Design tokens (shared across admin) --------------------------------
 // Canvas #FAFAFB · Card #FFFFFF · Border #EDEDF0 · Ink #111114 · Sub #55555E
 // Muted #9A9AA3 · Accent #D03020 · Semantic: green #50C060 · amber #C68A12
-// · red #D03020 · neutral gray. Type: DM Sans. Micro-label 10px uppercase
+// · red #D03020 · neutral gray. Type: DM Sans. Micro-label 10px Title Case
 // tracking-[0.12em] #9A9AA3 semibold. Icons Lucide 18px stroke 1.75.
 
 type Tone = "green" | "amber" | "red" | "neutral";
@@ -118,10 +119,10 @@ export function StatusPill({
   caret?: boolean;
 }) {
   const t = TONE[tone ?? toneFor(status)];
-  const label = children ?? (status === "onboarding" ? "Needs Setup" : status ? String(status).replace(/_/g, " ") : "—");
+  const label = children ?? (status === "onboarding" ? "Needs Setup" : status ? enumDisplayLabel(String(status)) : "—");
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-[11px] font-medium capitalize ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-[11px] font-medium ${className}`}
       style={{ backgroundColor: t.bg, color: t.fg }}
     >
       {label}
@@ -139,7 +140,7 @@ export function MicroLabel({
 }) {
   return (
     <div
-      className={`text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3] ${className}`}
+      className={`text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3] ${className}`}
     >
       {children}
     </div>
@@ -770,7 +771,7 @@ export function buildDriverTimeline(driver: any, screening?: any): TimelineStep[
     { label: "Screening Complete", state: states[1], timestamp: fmtDate(screening?.updated_at) },
     { label: "Approved", state: states[2], timestamp: fmtDate(driver.approved_at) },
     { label: "Agreement Signed", state: states[3], timestamp: fmtDate(driver.agreement_signed_at) },
-    { label: "Card on File", state: states[4], timestamp: cardOnFile ? "Saved" : null },
+    { label: "Card On File", state: states[4], timestamp: cardOnFile ? "Saved" : null },
     { label: "Vehicle Picked Up", state: states[5], timestamp: fmtDate(driver.pickup_at) },
     { label: "Active", state: states[6], hint: active ? "Weekly autopay running" : undefined },
     { label: "Returned", state: states[7], timestamp: fmtDate(driver.return_at) },

@@ -487,7 +487,7 @@ export function ApplicantDocuments({
 
       {extras.length > 0 && (
         <div>
-          <MicroLabel className="mb-2">Additional files</MicroLabel>
+          <MicroLabel className="mb-2">Additional Files</MicroLabel>
           <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-6 gap-2">
             {extras.map((d) => (
               <button
@@ -510,7 +510,7 @@ export function ApplicantDocuments({
                   <span
                     className="absolute top-1 left-1 rounded-full bg-[#111114] text-white p-0.5"
                     title="Team only"
-                    aria-label="Team only"
+                    aria-label="Team Only"
                   >
                     <Lock className="w-2.5 h-2.5" />
                   </span>
@@ -528,7 +528,7 @@ export function ApplicantDocuments({
 
       {showHistory && history.length > 0 && (
         <div>
-          <MicroLabel className="mb-2">Replaced versions</MicroLabel>
+          <MicroLabel className="mb-2">Replaced Versions</MicroLabel>
           <ul className="rounded-xl border border-[#EDEDF0] bg-white divide-y divide-[#F4F4F6]">
             {history.map((d) => (
               <li key={d.id} className="flex items-center gap-3 px-3 py-2 text-[12px]">

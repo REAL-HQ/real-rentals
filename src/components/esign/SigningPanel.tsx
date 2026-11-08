@@ -23,7 +23,7 @@ export function MarkView({ mark, height = 44 }: { mark: Mark; height?: number })
   }
   const w = height * mark.aspect;
   return (
-    <svg width={w} height={height} viewBox={`0 0 ${mark.aspect} 1`} className="max-w-full" aria-label="Drawn mark">
+    <svg width={w} height={height} viewBox={`0 0 ${mark.aspect} 1`} className="max-w-full" aria-label="Drawn Mark">
       {mark.strokes.map((s, i) =>
         s.length === 1
           ? <circle key={i} cx={s[0][0] * mark.aspect} cy={s[0][1]} r={0.02} fill="#0D1A59" />

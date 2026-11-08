@@ -56,7 +56,7 @@ export function TrustedByDrivers({ siteId }: { siteId?: string }) {
     <section className="bg-white py-14 md:py-20">
       <div className="container-real">
         <FadeUp className="text-center max-w-2xl mx-auto">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Trusted By Drivers</div>
+          <div className="text-[11px] font-semibold tracking-[0.25em] text-real-red">Trusted By Drivers</div>
           <h2 className="mt-3 text-3xl md:text-5xl">Real Drivers. Real Reviews.</h2>
         </FadeUp>
 

@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -186,7 +187,7 @@ export function VehicleService({ vehicleId, openAdd = false }: { vehicleId: stri
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: string }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
+      <div className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground">{label}</div>
       <div className="mt-1 truncate text-[15px] font-semibold">{value}</div>
       {sub && <div className={`mt-0.5 truncate text-[12px] ${tone === "overdue" || tone === "due" ? "text-brand" : "text-muted-foreground"}`}>{sub}</div>}
     </div>
@@ -298,20 +299,20 @@ function AddServiceDialog({ vehicleId, canCost, onClose, onSaved }: { vehicleId:
       <ModalHeader title="Add Service" subtitle="Leave anything you don't know blank — unknown stays unknown." onClose={onClose} />
       <ModalBody>
         <FormGrid cols={3}>
-          <Field label="Status"><select className={inputCls} value={f.status} onChange={set("status")}><option value="completed">Completed</option><option value="open">Open Work</option></select></Field>
+          <Field label="Status"><AppSelect aria-label="Status" className={inputCls} value={f.status} onChange={set("status")}><option value="completed">Completed</option><option value="open">Open Work</option></AppSelect></Field>
           <Field label="Service Date" required={f.status === "completed"}><input type="date" max={todayIso()} className={inputCls} value={f.date} onChange={set("date")} /></Field>
           <Field label="Mileage"><input inputMode="numeric" className={inputCls} value={f.mileage} onChange={set("mileage")} placeholder="e.g. 92150" /></Field>
           <Field label="Vendor / Shop"><input className={inputCls} value={f.vendor} onChange={set("vendor")} /></Field>
           <Field label="Invoice Number"><input className={inputCls} value={f.invoice} onChange={set("invoice")} /></Field>
-          {f.status === "open" && <Field label="Priority"><select className={inputCls} value={f.priority} onChange={set("priority")}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></Field>}
+          {f.status === "open" && <Field label="Priority"><AppSelect aria-label="Priority" className={inputCls} value={f.priority} onChange={set("priority")}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></AppSelect></Field>}
         </FormGrid>
         <ModalSection label="Services Performed" aside={<button className="text-[12px] hover:underline" onClick={() => setItems([...items, { description: "", category: "", amount: "" }])}>+ Add Line</button>}>
           {items.map((it, n) => (
             <div key={n} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_180px_120px]">
               <input className={inputCls} placeholder="e.g. Front Brake Pads" value={it.description} onChange={(e) => setItems(items.map((x, i) => i === n ? { ...x, description: e.target.value } : x))} />
-              <select className={inputCls} value={it.category} onChange={(e) => setItems(items.map((x, i) => i === n ? { ...x, category: e.target.value } : x))}>
+              <AppSelect aria-label="Service Category" className={inputCls} value={it.category} onChange={(e) => setItems(items.map((x, i) => i === n ? { ...x, category: e.target.value } : x))}>
                 <option value="">Auto Category</option>{SERVICE_CATEGORIES.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}
-              </select>
+              </AppSelect>
               {canCost && <input inputMode="decimal" className={inputCls} placeholder="Amount" value={it.amount} onChange={(e) => setItems(items.map((x, i) => i === n ? { ...x, amount: e.target.value } : x))} />}
             </div>
           ))}
@@ -323,7 +324,7 @@ function AddServiceDialog({ vehicleId, canCost, onClose, onSaved }: { vehicleId:
               <Field label="Parts"><input inputMode="decimal" className={inputCls} value={f.parts} onChange={set("parts")} /></Field>
               <Field label="Tax"><input inputMode="decimal" className={inputCls} value={f.tax} onChange={set("tax")} /></Field>
               <Field label="Total"><input inputMode="decimal" className={inputCls} value={f.total} onChange={set("total")} placeholder="Blank = sum of known" /></Field>
-              <Field label="Paid By"><select className={inputCls} value={f.method} onChange={set("method")}><option value="">Unknown</option>{PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>)}</select></Field>
+              <Field label="Paid By"><AppSelect aria-label="Paid By" className={inputCls} value={f.method} onChange={set("method")}><option value="">Unknown</option>{PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>)}</AppSelect></Field>
             </FormGrid>
             <div className="text-[12px] text-muted-foreground">A completed service with a cost is added to Expenses once, linked to this record.</div>
           </ModalSection>

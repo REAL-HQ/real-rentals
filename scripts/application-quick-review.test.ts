@@ -269,7 +269,7 @@ describe("application quick review flag", () => {
     assert.match(card, /Application Quick Review/);
     assert.match(card, /Still Needed/);
     assert.match(card, /documents\.find\(\(item\) => item\.id === doc\.id\)\?\.url/);
-    assert.match(card, /Link expired, open in Documents/);
+    assert.match(card, /Link Expired, Open In Documents/);
     assert.match(card, /onRefreshDocuments/);
     assert.doesNotMatch(card, /createSignedUrl|getPublicUrl|license_photo_url|stripe|approveApplication|supabaseAdmin/);
     const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");

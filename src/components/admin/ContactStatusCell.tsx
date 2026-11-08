@@ -172,7 +172,7 @@ export function ContactStatusCell({
         {!picked ? (
           <div className="flex flex-col sm:flex-row" data-contact-status-list>
             <div className="py-1 sm:w-[15rem] sm:shrink-0">
-              <div className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <div className="px-3 py-1.5 text-[10px] font-medium tracking-wider text-muted-foreground">
                 Contact Status
               </div>
               {CONTACT_STATUSES.map((s) => (
@@ -196,7 +196,7 @@ export function ContactStatusCell({
               className="min-w-0 flex-1 border-t border-border px-3 py-2 sm:border-l sm:border-t-0"
               data-contact-status-details
             >
-              <div className="py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <div className="py-0.5 text-[10px] font-medium tracking-wider text-muted-foreground">
                 Follow-Up
               </div>
               <div className="mt-1 text-[12px] text-foreground">
@@ -209,7 +209,7 @@ export function ContactStatusCell({
                   <span className="text-muted-foreground">Not Set</span>
                 )}
               </div>
-              <div className="mt-4 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <div className="mt-4 text-[10px] font-medium tracking-wider text-muted-foreground">
                 Latest Note
               </div>
               <NotePreview note={state.note} />

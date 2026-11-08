@@ -44,7 +44,7 @@ export function AvailableCarsBoard({ canAssign }: { canAssign: boolean }) {
         <Input placeholder="Search plate, VIN last 6, unit, make, model, color" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-md" />
         <span className="text-sm text-muted-foreground">{shown.length} available</span>
       </div>
-      {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : shown.length === 0 ? <EmptyState title="No available cars" /> : (
+      {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : shown.length === 0 ? <EmptyState title="No Available Cars" /> : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {shown.map((c) => (
             <div key={c.id} className="rounded-lg border bg-white overflow-hidden">
@@ -59,7 +59,7 @@ export function AvailableCarsBoard({ canAssign }: { canAssign: boolean }) {
               <div className="p-3 space-y-1">
                 <div className="flex items-center justify-between">
                   <div className="font-semibold">{[c.year, c.make, c.model, c.trim].filter(Boolean).join(" ")}</div>
-                  {c.aiGenerated && <Badge variant="secondary" title="Photos are AI-generated from this car's own photos and approved by the team">AI photos</Badge>}
+                  {c.aiGenerated && <Badge variant="secondary" title="Photos Are AI-generated From This Car's Own Photos And Approved By The Team">AI photos</Badge>}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {[c.unit && `Unit ${c.unit}`, c.color, c.plate && `Plate ${c.plate}${c.plateState ? ` (${c.plateState})` : ""}`, c.vinLast6 && `VIN …${c.vinLast6}`, c.mileage != null && `${Number(c.mileage).toLocaleString()} mi`].filter(Boolean).join(" · ")}

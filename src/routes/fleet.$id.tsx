@@ -176,7 +176,7 @@ function VehicleDetail() {
     <SiteLayout>
       <section className="container-real pt-12 md:pt-20">
         <FadeUp>
-          <Link to="/fleet" className="text-sm text-muted-foreground hover:text-foreground">← Back to fleet</Link>
+          <Link to="/fleet" className="text-sm text-muted-foreground hover:text-foreground">← Back To Fleet</Link>
         </FadeUp>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mt-8">
           <FadeUp>
@@ -187,7 +187,7 @@ function VehicleDetail() {
             </div>
           </FadeUp>
           <FadeUp delay={80}>
-            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">{v.year}</div>
+            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">{v.year}</div>
             <h1 className="mt-3 text-4xl md:text-5xl font-semibold">{v.make} {v.model}</h1>
             {PUBLIC_AVAILABILITY_ENABLED ? (
               <div className="mt-4">
@@ -201,7 +201,7 @@ function VehicleDetail() {
                 <button
                   key={t}
                   onClick={() => setTerm(t)}
-                  className={`px-5 py-2 rounded-lg capitalize transition ${term === t ? "bg-white shadow text-foreground" : "text-muted-foreground"}`}
+                  className={`px-5 py-2 rounded-lg transition ${term === t ? "bg-white shadow text-foreground" : "text-muted-foreground"}`}
                 >
                   {t}
                 </button>
@@ -223,8 +223,8 @@ function VehicleDetail() {
                 <div key={s.l} className="flex items-center gap-3 rounded-xl bg-soft p-4">
                   <s.I className="w-5 h-5 text-real-red" strokeWidth={1.75} />
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{s.l}</div>
-                    <div className="font-medium capitalize">{String(s.v)}</div>
+                    <div className="text-[10px] tracking-wider text-muted-foreground">{s.l}</div>
+                    <div className="font-medium ">{String(s.v)}</div>
                   </div>
                 </div>
               ))}

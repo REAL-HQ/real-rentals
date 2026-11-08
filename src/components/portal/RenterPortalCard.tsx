@@ -1,3 +1,4 @@
+import { enumDisplayLabel } from "@/lib/ui-display-labels";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -141,8 +142,8 @@ export function RenterPortalView({
             <p className="mt-3 text-xs text-muted-foreground">Uploads and contact edits are disabled in Driver Preview.</p>
           ) : (
             <div className="mt-3 flex gap-3 text-sm">
-              <button type="button" className="text-real-red hover:underline" onClick={onOpenDocuments}>Upload new insurance</button>
-              <button type="button" className="text-real-red hover:underline" onClick={onOpenSettings}>Update contact details</button>
+              <button type="button" className="text-real-red hover:underline" onClick={onOpenDocuments}>Upload New Insurance</button>
+              <button type="button" className="text-real-red hover:underline" onClick={onOpenSettings}>Update Contact Details</button>
             </div>
           )}
         </Card>
@@ -177,7 +178,7 @@ export function RenterPortalView({
                 if (rows.length === 0) return null;
                 return (
                   <div key={section.key}>
-                    <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">
+                    <div className="text-xs tracking-wider text-muted-foreground font-semibold mb-1">
                       {section.title}
                     </div>
                     <ul className="divide-y divide-border">
@@ -208,7 +209,7 @@ export function RenterPortalView({
             <ul className="divide-y divide-border text-sm">
               {(data.receipts ?? []).map((r) => (
                 <li key={r.id} className="py-2 flex justify-between gap-4">
-                  <span className="capitalize">{(r.type ?? "payment").replace(/_/g, " ")} · {r.paidDate ? fmtDate(r.paidDate) : "—"}</span>
+                  <span className="">{enumDisplayLabel((r.type ?? "payment"))} · {r.paidDate ? fmtDate(r.paidDate) : "—"}</span>
                   <span className="font-medium">{money(r.amount)}</span>
                 </li>
               ))}
@@ -232,7 +233,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 function Item({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-xs tracking-wider text-muted-foreground">{label}</div>
       <div className={`mt-1 font-medium break-all ${mono ? "font-mono" : ""}`}>{value}</div>
     </div>
   );
@@ -284,7 +285,7 @@ function FileRow({
   return (
     <li className="py-2 flex items-center justify-between gap-4 list-none">
       <div className="min-w-0">
-        <div className="text-sm font-medium capitalize truncate">{label}</div>
+        <div className="text-sm font-medium truncate">{label}</div>
         {sub ? <div className="text-xs text-muted-foreground">{sub}</div> : null}
       </div>
       <button

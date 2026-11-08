@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -118,7 +119,7 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
         <FileUploader
           onFiles={(files) => files[0] && read(files[0])}
           accept=".csv,text/csv"
-          title="Choose a CSV File"
+          title="Choose A CSV File"
           hint={`Any column order. You will map the columns and see exactly what will happen to each row before anything is created. Up to ${MAX_ROWS} rows at a time.`}
         />
         <button
@@ -139,7 +140,7 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
           }}
           className="inline-flex items-center gap-1.5 text-[12px] text-[#55555E] hover:text-[#D03020] transition-colors"
         >
-          <Download className="w-3.5 h-3.5" /> Download a Template
+          <Download className="w-3.5 h-3.5" /> Download A Template
         </button>
       </div>
     );
@@ -183,7 +184,7 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
   return (
     <div className="p-6 space-y-4">
       <div>
-        <MicroLabel className="mb-2">Match your columns</MicroLabel>
+        <MicroLabel className="mb-2">Match Your Columns</MicroLabel>
         <div className="rounded-xl border border-[#EDEDF0] divide-y divide-[#F4F4F6] max-h-64 overflow-y-auto">
           {headers.map((h, i) => (
             <div key={i} className="flex items-center gap-3 px-3.5 py-2">
@@ -194,7 +195,7 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
                 <div className="text-[11px] text-[#9A9AA3] truncate">{body[0]?.[i] || "—"}</div>
               </div>
               <ArrowRight className="w-3.5 h-3.5 text-[#C4C4CB] shrink-0" />
-              <select
+              <AppSelect aria-label="Column Mapping"
                 value={mapping[i] ?? ""}
                 onChange={(e) => {
                   const v = e.target.value || null;
@@ -203,13 +204,13 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
                 }}
                 className="flex-1 h-8 rounded-md border border-[#EDEDF0] bg-white px-2 text-[12px] outline-none focus:border-[#D03020]"
               >
-                <option value="">Ignore this column</option>
+                <option value="">Ignore This Column</option>
                 {IMPORT_COLUMNS.map((c) => (
                   <option key={c.key} value={c.key}>
                     {c.label}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </div>
           ))}
         </div>
@@ -297,7 +298,7 @@ function VerdictTable({ rows, emptyLabel }: { rows: RowVerdict[]; emptyLabel: st
             ))}
           </div>
           <span
-            className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium capitalize"
+            className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium "
             style={
               r.action === "create"
                 ? { backgroundColor: "rgba(80,192,96,0.10)", color: "#3E9A4C" }

@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
@@ -76,10 +77,10 @@ function PickVehicle({ onClose, onPick }: { onClose: () => void; onPick: (id: st
       <ModalHeader title="Add Service" subtitle="Choose the vehicle." onClose={onClose} />
       <ModalBody>
         <Field label="Vehicle" required>
-          <select className={inputCls} value={id} onChange={(e) => setId(e.target.value)}>
+          <AppSelect aria-label="Vehicle" className={inputCls} value={id} onChange={(e) => setId(e.target.value)}>
             <option value="">Select A Vehicle</option>
             {list.map((v) => <option key={v.id} value={v.id}>{v.unit_number} · {v.year} {v.make} {v.model}</option>)}
-          </select>
+          </AppSelect>
         </Field>
       </ModalBody>
       <ModalFooter><ModalButton onClick={onClose}>Cancel</ModalButton><ModalButton variant="primary" disabled={!id} onClick={() => onPick(id)}>Continue</ModalButton></ModalFooter>

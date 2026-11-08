@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -113,10 +114,10 @@ export function QuickAddForm({ onCreated, onMore, onClose }: { onCreated: (id: s
                 className={`${inputCls} font-mono tracking-wide ${vinError ? "border-brand" : ""}`} />
             </Field>
             <Field label="Body Type">
-              <select value={f.body} onChange={(e) => set("body", e.target.value)} className={inputCls} aria-label="Body Type">
+              <AppSelect value={f.body} onChange={(e) => set("body", e.target.value)} className={inputCls} aria-label="Body Type">
                 <option value="">Not Set</option>
                 {BODY_TYPES.map((b) => <option key={b} value={b}>{bodyTypeLabel(b)}</option>)}
-              </select>
+              </AppSelect>
             </Field>
           </FormGrid>
           <FormGrid cols={3}>

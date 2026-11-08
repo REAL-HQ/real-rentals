@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -329,7 +330,7 @@ function EndRentalDialog({
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              aria-label="End date"
+              aria-label="End Date"
               className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
             />
           </div>
@@ -340,7 +341,7 @@ function EndRentalDialog({
               onChange={(e) => setMileage(e.target.value)}
               inputMode="numeric"
               placeholder="Odometer now"
-              aria-label="Return mileage"
+              aria-label="Return Mileage"
               data-testid="end-rental-mileage"
               className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm"
             />
@@ -529,7 +530,7 @@ function HandoffDialog({
               recording a handoff here.
             </p>
           ) : (
-            <select
+            <AppSelect
               value={templateId}
               onChange={(e) => setTemplateId(e.target.value)}
               aria-label="Checklist"
@@ -540,7 +541,7 @@ function HandoffDialog({
                   {t.name}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           )}
         </div>
         <div>
@@ -597,7 +598,7 @@ function Modal({
 }) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

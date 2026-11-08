@@ -1,3 +1,5 @@
+import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
 import { useSearch } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -176,7 +178,7 @@ export function InspectionsPanel() {
                     </StatusPill>
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {r.inspection_type.replace(/_/g, " ")}
+                    {enumDisplayLabel(r.inspection_type)}
                     {r.odometer ? ` · ${r.odometer.toLocaleString()} mi` : ""}
                     {r.inspector_name ? ` · ${r.inspector_name}` : ""} ·{" "}
                     {fmtDateTime(r.completed_at ?? r.started_at)}
@@ -281,21 +283,21 @@ function StartForm({
           </div>
           <div>
             <MicroLabel>Checklist</MicroLabel>
-            <select
+            <AppSelect aria-label="Checklist"
               value={templateId}
               onChange={(e) => setTemplateId(e.target.value)}
               className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
             >
-              {templates.length === 0 ? <option value="">No checklists</option> : null}
+              {templates.length === 0 ? <option value="">No Checklists</option> : null}
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </div>
           <div>
-            <MicroLabel>Odometer (optional)</MicroLabel>
+            <MicroLabel>Odometer (Optional)</MicroLabel>
             <input
               value={odometer}
               onChange={(e) => setOdometer(e.target.value)}
@@ -443,7 +445,7 @@ export function InspectionRunner({
               </StatusPill>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              {data.inspection_type.replace(/_/g, " ")} · started{" "}
+              {enumDisplayLabel(data.inspection_type)} · started{" "}
               {fmtDateTime(data.started_at)}
             </p>
           </div>
@@ -473,7 +475,7 @@ export function InspectionRunner({
             />
           </div>
           <div className="col-span-2">
-            <MicroLabel>Fuel level</MicroLabel>
+            <MicroLabel>Fuel Level</MicroLabel>
             <div className="mt-1.5 flex gap-1">
               {FUEL_LEVELS.map((fl) => (
                 <button
@@ -519,7 +521,7 @@ export function InspectionRunner({
           className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm overflow-hidden"
         >
           <div className="px-4 py-2.5 border-b border-[#EDEDF0] bg-[#FAFAFB]">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-[#55555E]">
+            <h3 className="text-xs font-semibold tracking-wide text-[#55555E]">
               {section}
             </h3>
           </div>
@@ -530,7 +532,7 @@ export function InspectionRunner({
                   <div className="text-sm">
                     {it.label}
                     {it.is_critical ? (
-                      <span className="ml-1.5 text-[10px] font-semibold uppercase text-[#D03020]">
+                      <span className="ml-1.5 text-[10px] font-semibold text-[#D03020]">
                         critical
                       </span>
                     ) : null}

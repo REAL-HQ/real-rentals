@@ -200,7 +200,7 @@ export function ScreeningPipeline({
       )}
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
+          <div className="text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3]">
             Stage {isDq ? "—" : `${activeIdx + 1} of ${PIPELINE.length}`}
           </div>
           <div className="text-[13px] font-semibold text-[#111114] truncate">
@@ -365,7 +365,7 @@ export function InterviewTab({
       {stepped && (
         <div className="sticky top-0 z-10 -mx-6 mb-1 border-b border-[#EDEDF0] bg-white/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center justify-between">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9A9AA3]">
+            <div className="text-[11px] font-semibold tracking-wider text-[#9A9AA3]">
               Step {step} Of {total}
             </div>
             <div className="text-[13px] font-semibold text-[#111114]">
@@ -439,7 +439,7 @@ export function InterviewTab({
                 ]}
               />
             </Field>
-            <Field label="Months on Platform">
+            <Field label="Months On Platform">
               <NumInput
                 value={s.months_on_platform}
                 onChange={(v) => up("months_on_platform" as any, v as any)}
@@ -483,7 +483,7 @@ export function InterviewTab({
                 onChange={(v) => up("has_current_vehicle" as any, v as any)}
               />
             </Field>
-            <Field label="Needed by Date">
+            <Field label="Needed By Date">
               <input
                 type="date"
                 value={s.needed_by_date ?? ""}
@@ -497,7 +497,7 @@ export function InterviewTab({
                 onChange={(v) => up("rate_confirmed" as any, v as any)}
               />
             </Field>
-            <Field label="Card in Own Name">
+            <Field label="Card In Own Name">
               <BoolToggle
                 value={s.card_in_own_name}
                 onChange={(v) => up("card_in_own_name" as any, v as any)}
@@ -520,7 +520,7 @@ export function InterviewTab({
                 onChange={(e) =>
                   up("license_state" as any, (e.target.value.toUpperCase() || null) as any)
                 }
-                className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm uppercase"
+                className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm "
               />
             </Field>
             <Field label="License Active">
@@ -945,7 +945,7 @@ function Script({ children }: { children: React.ReactNode }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="mb-1 text-[10px] font-semibold tracking-wider text-muted-foreground">
         {label}
       </div>
       {children}

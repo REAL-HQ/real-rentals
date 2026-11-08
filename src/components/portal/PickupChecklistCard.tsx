@@ -7,7 +7,7 @@ export function PickupChecklistCard({ items }: { items: PickupChecklistItem[] })
   const businessPhone = useBusinessPhone();
   return (
     <section className="rounded-2xl border border-border bg-white p-5">
-      <div className="text-[11px] uppercase tracking-[0.25em] font-semibold text-real-red">You're Approved</div>
+      <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red">You're Approved</div>
       <h2 className="mt-3 text-lg font-semibold">Get Ready For Pickup</h2>
       {items.length > 0 ? (
         <ul className="mt-4 divide-y divide-border">

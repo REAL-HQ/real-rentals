@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useRef, useState } from "react";
 import { areaConfigFrom, composeAreaConfig, type ServiceAreaConfig, composeMileage, parseMileage, PERIOD_LABEL, type Mileage, type MileagePeriod } from "@/lib/service-area";
 
@@ -28,13 +29,13 @@ export function ServiceAreaField({ value, config, onChange, onConfig, missing }:
   const radiusIncomplete = c.mode === "radius" && (!(c.radius.miles > 0) || !c.radius.center.trim());
   return (
     <div className={`space-y-1.5 rounded-md border p-2 text-[12px] ${missing ? "border-destructive" : ""}`} data-testid="service-area-field">
-      <select aria-label="Service Area Type" className={input} value={c.mode} onChange={(e) => setC({ ...c, mode: e.target.value as ServiceAreaConfig["mode"] })}>
+      <AppSelect aria-label="Service Area Type" className={input} value={c.mode} onChange={(e) => setC({ ...c, mode: e.target.value as ServiceAreaConfig["mode"] })}>
         <option value="unset">Not Set — Choose One</option>
         <option value="radius">Geographic Radius</option>
         <option value="region">Permitted States / Regions</option>
         <option value="custom">Custom Geographic Restriction</option>
         <option value="none">No Geographic Restriction</option>
-      </select>
+      </AppSelect>
       {c.mode === "radius" && (
         <div className="grid grid-cols-[90px_1fr] gap-1.5">
           <label className="block">Radius (Miles)<input className={input} type="number" min={1} aria-label="Radius Miles" value={c.radius.miles || ""} onChange={(e) => setC({ ...c, radius: { ...c.radius, miles: Number(e.target.value) } })} /></label>
@@ -68,20 +69,20 @@ export function MileageField({ value, fee, onChange, onFee, missing }: {
   }, [JSON.stringify(m)]);
   return (
     <div className={`space-y-1.5 rounded-md border p-2 text-[12px] ${missing ? "border-destructive" : ""}`}>
-      <select aria-label="Mileage Allowance Type" className={input} value={m.mode} onChange={(e) => setM(
+      <AppSelect aria-label="Mileage Allowance Type" className={input} value={m.mode} onChange={(e) => setM(
         e.target.value === "unlimited" ? { mode: "unlimited" } : e.target.value === "limited" ? { mode: "limited", miles: 0, period: "week" } : e.target.value === "custom" ? { mode: "custom", text: value } : { mode: "unset" })}>
         <option value="unset">Not Set — Choose One</option>
         <option value="unlimited">Unlimited Miles</option>
         <option value="limited">Limited Miles</option>
         <option value="custom">Custom Wording</option>
-      </select>
+      </AppSelect>
       {m.mode === "limited" && (
         <>
           <div className="grid grid-cols-[1fr_120px] gap-1.5">
             <input className={input} type="number" min={1} placeholder="Allowed miles" aria-label="Allowed Miles" value={m.miles || ""} onChange={(e) => setM({ ...m, miles: Number(e.target.value) })} />
-            <select aria-label="Mileage Period" className={input} value={m.period} onChange={(e) => setM({ ...m, period: e.target.value as MileagePeriod })}>
+            <AppSelect aria-label="Mileage Period" className={input} value={m.period} onChange={(e) => setM({ ...m, period: e.target.value as MileagePeriod })}>
               {(Object.keys(PERIOD_LABEL) as MileagePeriod[]).map((p) => <option key={p} value={p}>{PERIOD_LABEL[p]}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <label className="block">Excess-Mileage Fee
             <input className={input} placeholder="e.g. $0.25 per mile over the allowance" aria-label="Excess-Mileage Fee" value={fee} onChange={(e) => onFee(e.target.value)} />

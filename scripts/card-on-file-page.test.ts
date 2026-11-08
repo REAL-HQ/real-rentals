@@ -75,10 +75,10 @@ describe("card page expired state", () => {
     const expiredAt = route.indexOf("screen.kind === 'expired'");
     const formAt = route.indexOf("screen.kind === 'form'");
     const stripeAt = route.indexOf("getStripe()");
-    const headingAt = route.indexOf("Save Your Card on File");
+    const headingAt = route.indexOf("Save Your Card On File");
     assert.ok(expiredAt > 0 && formAt > expiredAt && stripeAt > formAt && headingAt > formAt);
     assert.equal(route.split("getStripe()").length, 2);
-    assert.equal(route.split("Save Your Card on File").length, 2);
+    assert.equal(route.split("Save Your Card On File").length, 2);
     assert.match(route, /\{screen\.title\}/);
     assert.match(route, /\{screen\.copy\}/);
     assert.ok(route.indexOf("<EmbeddedCheckoutProvider") > formAt);

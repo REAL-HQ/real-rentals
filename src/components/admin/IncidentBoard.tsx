@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -167,11 +168,11 @@ export function IncidentBoard() {
             </label>
             <label className="text-sm">
               <span className="mb-1 block text-xs text-muted-foreground">Type</span>
-              <select value={incidentType} onChange={(event) => setIncidentType(event.target.value as IncidentType)} className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm">
+              <AppSelect aria-label="Type" value={incidentType} onChange={(event) => setIncidentType(event.target.value as IncidentType)} className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm">
                 {INCIDENT_TYPES.map((type) => (
                   <option key={type} value={type}>{incidentTypeLabel(type)}</option>
                 ))}
-              </select>
+              </AppSelect>
             </label>
             <label className="text-sm">
               <span className="mb-1 block text-xs text-muted-foreground">When</span>
@@ -272,7 +273,7 @@ export function IncidentBoard() {
           )}
           <label className="block text-sm max-w-xs">
             <span className="mb-1 block text-xs text-muted-foreground">Status</span>
-            <select
+            <AppSelect aria-label="Status"
               value={open.status}
               disabled={busy}
               onChange={(event) => void changeStatus(open, event.target.value as IncidentStatus)}
@@ -281,7 +282,7 @@ export function IncidentBoard() {
               {INCIDENT_STATUSES.map((status) => (
                 <option key={status} value={status}>{incidentStatusLabel(status)}</option>
               ))}
-            </select>
+            </AppSelect>
           </label>
         </section>
       )}

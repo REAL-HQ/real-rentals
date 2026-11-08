@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useState, useCallback } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -127,7 +128,7 @@ export function BulkReceiptUpload({ vehicles }: { vehicles: VehicleComboboxVehic
         accept={BULK_RECEIPT_ACCEPT}
         maxBytes={BULK_RECEIPT_MAX_BYTES}
         maxFiles={BULK_RECEIPT_MAX_FILES}
-        title="Drop receipts or invoices here"
+        title="Drop Receipts Or Invoices Here"
         hint="PDF or photos, many at once. Matched to a car by VIN, plate or car number. Team-only; renters never see these."
         onFiles={(files) => void add(files)}
       />
@@ -147,16 +148,16 @@ export function BulkReceiptUpload({ vehicles }: { vehicles: VehicleComboboxVehic
                   {it.state === "error" && <span className="text-real-red">{it.error}</span>}
                 </div>
               </div>
-              <select className="border rounded px-1 py-0.5 text-xs" value={it.kind} disabled={it.state === "done" || it.state === "uploading"}
+              <AppSelect aria-label="Document Type" className="border rounded px-1 py-0.5 text-xs" value={it.kind} disabled={it.state === "done" || it.state === "uploading"}
                 onChange={(e) => update(it.key, { kind: e.target.value as Item["kind"] })}>
                 <option value="receipt">Receipt</option>
                 <option value="invoice">Invoice</option>
-              </select>
+              </AppSelect>
               {it.state === "needs_car" || it.state === "error" ? (
-                <button type="button" className="text-xs text-real-red hover:underline" onClick={() => openPicker(it)}>Assign car</button>
+                <button type="button" className="text-xs text-real-red hover:underline" onClick={() => openPicker(it)}>Assign Car</button>
               ) : null}
               {it.state !== "uploading" ? (
-                <button type="button" aria-label="Remove from list" onClick={() => setItems((xs) => xs.filter((x) => x.key !== it.key))}><X className="w-4 h-4" /></button>
+                <button type="button" aria-label="Remove From List" onClick={() => setItems((xs) => xs.filter((x) => x.key !== it.key))}><X className="w-4 h-4" /></button>
               ) : null}
             </li>
           ))}
@@ -177,11 +178,11 @@ export function BulkReceiptUpload({ vehicles }: { vehicles: VehicleComboboxVehic
                 <VehicleCombobox vehicles={vehicles} value={id} allowNone={false} aria-label={`Car ${i + 1}`}
                   onChange={(v) => setPicked((p) => p.map((x, j) => (j === i ? v : x)))} className="flex-1" />
                 {picked.length > 1 ? (
-                  <button type="button" aria-label="Remove car" onClick={() => setPicked((p) => p.filter((_, j) => j !== i))}><X className="w-4 h-4" /></button>
+                  <button type="button" aria-label="Remove Car" onClick={() => setPicked((p) => p.filter((_, j) => j !== i))}><X className="w-4 h-4" /></button>
                 ) : null}
               </div>
             ))}
-            <button type="button" className="text-xs text-real-red hover:underline" onClick={() => setPicked((p) => [...p, null])}>+ Add another car</button>
+            <button type="button" className="text-xs text-real-red hover:underline" onClick={() => setPicked((p) => [...p, null])}>+ Add Another Car</button>
           </div>
           <DialogFooter>
             <button type="button" className="px-3 py-1 border rounded" onClick={() => setPicking(null)}>Cancel</button>
@@ -193,7 +194,7 @@ export function BulkReceiptUpload({ vehicles }: { vehicles: VehicleComboboxVehic
                 setPicking(null);
                 void upload(it, ids, "manual");
               }}>
-              File to {Array.from(new Set(picked.filter(Boolean))).length || ""} car(s)
+              File To {Array.from(new Set(picked.filter(Boolean))).length || ""} car(s)
             </button>
           </DialogFooter>
         </DialogContent>

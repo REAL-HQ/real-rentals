@@ -25,7 +25,7 @@ function HowItWorks() {
       <section className="relative isolate w-full px-6 md:px-12 pt-24 md:pt-36 pb-14 md:pb-20 text-center overflow-hidden bg-black">
         <div aria-hidden className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(220,38,38,0.25),transparent_60%)]" />
         <FadeUp>
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">How It Works</div>
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">How It Works</div>
           <h1 className="mt-5 text-[40px] md:text-[64px] leading-[1.05] font-semibold text-white">From Apply To Earning.<br />In Days, Not Weeks.</h1>
           <p className="mt-6 text-lg md:text-xl text-white/75 max-w-2xl mx-auto leading-relaxed">
             Four Simple Steps. No Credit Check. No Long Wait. Get Behind The Wheel And Start Earning This Week.
@@ -44,7 +44,7 @@ function HowItWorks() {
       {/* Steps */}
       <section className="container-real py-14 md:py-24">
         <FadeUp className="text-center mb-14 max-w-3xl mx-auto">
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">The Process</div>
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">The Process</div>
           <h2 className="mt-3 text-3xl md:text-5xl">From Booking To Paycheck.</h2>
         </FadeUp>
         <div className="relative">
@@ -78,7 +78,7 @@ function HowItWorks() {
       <section className="bg-soft py-14 md:py-24">
         <div className="container-real">
           <FadeUp className="text-center mb-12 max-w-3xl mx-auto">
-            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Requirements</div>
+            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">Requirements</div>
             <h2 className="mt-3 text-3xl md:text-5xl">What You Need To Get Started.</h2>
             <p className="mt-4 text-muted-foreground leading-relaxed">Simple, Driver-Friendly Requirements. No Credit Check, No Surprises.</p>
           </FadeUp>
@@ -108,7 +108,7 @@ function HowItWorks() {
       {/* Included vs Responsibilities */}
       <section className="container-real py-14 md:py-24">
         <FadeUp className="text-center mb-12 max-w-3xl mx-auto">
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">What's Covered</div>
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">What's Covered</div>
           <h2 className="mt-3 text-3xl md:text-5xl">We Handle The Heavy Lifting.</h2>
         </FadeUp>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -171,7 +171,7 @@ function HowItWorks() {
       <section className="bg-soft py-14 md:py-24">
         <div className="container-real">
           <FadeUp className="text-center mb-12 max-w-3xl mx-auto">
-            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Your Timeline</div>
+            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">Your Timeline</div>
             <h2 className="mt-3 text-3xl md:text-5xl">From Click To Cash. Fast.</h2>
           </FadeUp>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
@@ -206,7 +206,7 @@ function HowItWorks() {
                 Get My Quote <ArrowRight className="w-4 h-4" />
               </Link>
               <Link to="/contact" className="inline-flex items-center rounded-lg border border-white/30 px-8 py-4 text-sm font-medium text-white hover:bg-white/10 transition active:scale-95">
-                Talk to a Human
+                Talk To A Human
               </Link>
             </div>
           </FadeUp>

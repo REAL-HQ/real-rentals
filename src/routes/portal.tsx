@@ -1,3 +1,4 @@
+import { enumDisplayLabel } from "@/lib/ui-display-labels";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { initialPortalTab, rememberPayIntent, wantsPay } from "@/lib/portal-pay-link";
 import { SigningPanel } from "@/components/esign/SigningPanel";
@@ -529,12 +530,12 @@ function DocumentsView() {
 
       {!isLoading && shared.length > 0 ? (
         <div className="rounded-2xl border border-border bg-white p-5">
-          <h3 className="font-semibold">Shared by Our Team</h3>
+          <h3 className="font-semibold">Shared By Our Team</h3>
           <ul className="mt-3 divide-y divide-border">
             {shared.map((d) => (
               <li key={d.id} className="py-3 flex items-center justify-between gap-4">
                 <div className="min-w-0">
-                  <div className="text-sm font-medium capitalize">{d.kind.replace(/_/g, " ")}</div>
+                  <div className="text-sm font-medium ">{enumDisplayLabel(d.kind)}</div>
                   <div className="text-xs text-muted-foreground">
                     Added {fmtDate(d.created_at)}
                     {d.notes ? ` · ${d.notes}` : ""}
@@ -821,7 +822,7 @@ function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }
 
   const field = (key: keyof typeof f, label: string, type = "text") => (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <div className="text-[10px] tracking-wider text-muted-foreground font-semibold">
         {label}
       </div>
       <input
@@ -847,7 +848,7 @@ function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }
             the request box below rather than in place. */}
         <div className="sm:col-span-2">
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <span className="text-[10px] tracking-wider text-muted-foreground font-semibold">
               Email
             </span>
             <div className="mt-1 w-full rounded-lg bg-soft px-4 py-2.5 text-sm text-muted-foreground">
@@ -936,7 +937,7 @@ function CheckoutSignOffCard() {
     >
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h3 className="font-semibold">Vehicle Condition at Pickup</h3>
+          <h3 className="font-semibold">Vehicle Condition At Pickup</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {signed
               ? `You signed this on ${fmtDate(data.signedAt as string)}.`
@@ -983,7 +984,7 @@ function CheckoutSignOffCard() {
 
       {data.media.length > 0 ? (
         <div className="mt-4">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <div className="text-[10px] tracking-wider text-muted-foreground font-semibold">
             Photos taken at handover
           </div>
           <div className="mt-2 grid grid-cols-3 sm:grid-cols-5 gap-2">
@@ -1032,20 +1033,20 @@ function CheckoutSignOffCard() {
             <div className="space-y-3 rounded-xl border border-border bg-soft p-4">
               <details className="text-sm">
                 <summary className="cursor-pointer font-medium">
-                  See the full {data.items.length}-point checklist
+                  See The Full {data.items.length}-Point Checklist
                 </summary>
                 <ul className="mt-2 space-y-1">
                   {data.items.map((i) => (
                     <li key={`${i.section}-${i.label}`} className="flex justify-between gap-3">
                       <span className="text-muted-foreground">{i.label}</span>
-                      <span className="capitalize shrink-0">{i.result}</span>
+                      <span className="shrink-0">{i.result}</span>
                     </li>
                   ))}
                 </ul>
               </details>
 
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <div className="text-[10px] tracking-wider text-muted-foreground font-semibold">
                   Anything you disagree with or want noted?
                 </div>
                 <textarea
@@ -1101,10 +1102,10 @@ function CheckoutSignOffCard() {
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <dt className="text-[10px] tracking-wider text-muted-foreground font-semibold">
         {label}
       </dt>
-      <dd className="mt-0.5 capitalize">{value}</dd>
+      <dd className="mt-0.5 ">{value}</dd>
     </div>
   );
 }
@@ -1149,7 +1150,7 @@ function PicturesView() {
       {vehicleId ? (
         <>
           <div className="rounded-2xl border border-border bg-white p-5">
-            <h3 className="font-semibold">Proof of Condition</h3>
+            <h3 className="font-semibold">Proof Of Condition</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               Photograph the car at pickup and return — and if something happens mid-rental. Prefer the
               camera so date and time stay on the file. You can see ours too.
@@ -1198,7 +1199,7 @@ function PicturesView() {
         </>
       ) : (
         <div className="rounded-2xl border border-border bg-white p-5">
-          <h3 className="font-semibold">Proof of Condition</h3>
+          <h3 className="font-semibold">Proof Of Condition</h3>
           <div className="mt-6 rounded-xl border border-dashed border-border p-8 text-center">
             <ImageIcon className="w-6 h-6 mx-auto text-muted-foreground" strokeWidth={1.75} />
             <div className="mt-3 text-sm font-medium">No Vehicle Assigned Yet</div>
@@ -1291,8 +1292,8 @@ function SettingsView() {
         <dl className="mt-4 divide-y divide-border">
           <div className="py-2.5 flex items-center justify-between gap-4">
             <dt className="text-sm text-muted-foreground">Status</dt>
-            <dd className="text-sm font-medium capitalize text-right">
-              {data?.status ? data.status.replace(/_/g, " ") : "—"}
+            <dd className="text-sm font-medium text-right">
+              {data?.status ? enumDisplayLabel(data.status) : "—"}
             </dd>
           </div>
           <div className="py-2.5 flex items-center justify-between gap-4">
@@ -1309,7 +1310,7 @@ function SettingsView() {
       </div>
 
       <form onSubmit={requestChange} className="rounded-2xl border border-border bg-white p-5">
-        <h3 className="font-semibold">Request a Change</h3>
+        <h3 className="font-semibold">Request A Change</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Anything else you need updated — our team will take care of it.
         </p>
@@ -1386,11 +1387,11 @@ function IssuesViewInner() {
       <RoadsideHelpForm onReported={() => refetch()} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
-        <h3 className="font-semibold">Report an Issue</h3>
+        <h3 className="font-semibold">Report An Issue</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Mechanical problems, accidents, or anything else we should know about.
         </p>
-        <label className="block mt-4 text-xs uppercase tracking-wider text-muted-foreground">
+        <label className="block mt-4 text-xs tracking-wider text-muted-foreground">
           What's Wrong?
         </label>
         <input
@@ -1400,7 +1401,7 @@ function IssuesViewInner() {
           className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-white outline-none focus:border-real-red"
           required
         />
-        <label className="block mt-4 text-xs uppercase tracking-wider text-muted-foreground">
+        <label className="block mt-4 text-xs tracking-wider text-muted-foreground">
           Details
         </label>
         <textarea
@@ -1410,7 +1411,7 @@ function IssuesViewInner() {
           placeholder="When it started, any noises, whether the car is drivable…"
           className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm bg-white outline-none focus:border-real-red"
         />
-        <label className="block mt-4 text-xs uppercase tracking-wider text-muted-foreground">
+        <label className="block mt-4 text-xs tracking-wider text-muted-foreground">
           Urgency
         </label>
         <div className="mt-1 flex gap-2">
@@ -1468,7 +1469,7 @@ function IssuesViewInner() {
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm font-medium">{i.title}</div>
                   <span
-                    className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                    className={`text-[10px] tracking-wider px-2 py-0.5 rounded-full ${
                       i.status === "resolved"
                         ? "bg-emerald-100 text-emerald-800"
                         : i.status === "open"
@@ -1535,7 +1536,7 @@ function ReferralsView() {
       </div>
 
       <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
-        <h3 className="font-semibold">Refer a Driver</h3>
+        <h3 className="font-semibold">Refer A Driver</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Send us their email and we'll take it from there. You earn once they start renting.
         </p>
@@ -1583,7 +1584,7 @@ function ReferralsView() {
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="text-sm font-medium">{fmt(r.reward_amount)}</span>
                   <span
-                    className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                    className={`text-[10px] tracking-wider px-2 py-0.5 rounded-full ${
                       r.status === "paid"
                         ? "bg-emerald-100 text-emerald-800"
                         : "bg-gray-100 text-gray-700"
@@ -1627,7 +1628,7 @@ function PreRentalPanel({
   const approved = status === "approved" || status === "active";
   return (
     <div className="rounded-2xl border border-border bg-white p-6 md:p-8">
-      <div className="text-[11px] uppercase tracking-[0.25em] font-semibold text-real-red">
+      <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red">
         {approved ? "You're Approved" : "Your Application"}
       </div>
       <h2 className="mt-3 text-2xl font-semibold">
@@ -1834,7 +1835,7 @@ function DashboardView({
             </div>
             <div className="p-5 flex items-center justify-between gap-4 flex-wrap">
               <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                <div className="text-xs tracking-wider text-muted-foreground">
                   Your Rental
                 </div>
                 <div className="mt-1 text-xl font-semibold">
@@ -1856,7 +1857,7 @@ function DashboardView({
           </div>
 
           <div className="rounded-2xl border border-border p-5 bg-white flex flex-col">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">
+            <div className="text-xs tracking-wider text-muted-foreground">
               Next Payment Due
             </div>
             <div className="mt-2 text-3xl font-semibold">{fmt(rental.weekly_rate)}</div>
@@ -1925,7 +1926,7 @@ function DashboardView({
                     <div className="text-sm">
                       {p.paid_date ? fmtDate(p.paid_date) : "Pending"}
                     </div>
-                    <div className="text-xs text-muted-foreground capitalize">
+                    <div className="text-xs text-muted-foreground ">
                       {p.type} · {p.status}
                     </div>
                   </div>
@@ -2041,7 +2042,7 @@ function MetricTile({
 }) {
   return (
     <div className="rounded-2xl border border-border bg-white p-5">
-      <div className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+      <div className="text-xs tracking-wider text-muted-foreground flex items-center gap-1.5">
         {label}
         {tooltip && (
           <TooltipProvider>
@@ -2091,7 +2092,7 @@ function VehicleView({ data }: { data: DriverDashboard }) {
 function Field({ label, value }: { label: string; value: any }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-xs tracking-wider text-muted-foreground">{label}</div>
       <div className="mt-0.5">{value ?? "—"}</div>
     </div>
   );
@@ -2134,8 +2135,8 @@ function MyChargesCard() {
         {rows.map((c) => (
           <li key={c.id} className="py-2.5 flex items-center justify-between gap-4">
             <div className="min-w-0">
-              <div className="text-sm font-medium capitalize">
-                {c.charge_type.replace(/_/g, " ")}
+              <div className="text-sm font-medium ">
+                {enumDisplayLabel(c.charge_type)}
               </div>
               <div className="text-xs text-muted-foreground">
                 {fmtDate(c.occurred_at)}
@@ -2147,7 +2148,7 @@ function MyChargesCard() {
               <div className="text-sm font-semibold tabular-nums">
                 {fmt(c.amount + c.admin_fee)}
               </div>
-              <div className="text-[11px] text-muted-foreground capitalize">
+              <div className="text-[11px] text-muted-foreground ">
                 {c.status === "rebilled" ? "due" : c.status}
               </div>
             </div>
@@ -2222,13 +2223,13 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
           </div>
           <div className="grid sm:grid-cols-3 gap-4 text-sm">
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              <div className="text-[10px] tracking-wider text-muted-foreground">
                 Weekly Rate
               </div>
               <div className="mt-1 font-medium">{fmt(billing.weeklyRate)}</div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              <div className="text-[10px] tracking-wider text-muted-foreground">
                 Next Charge
               </div>
               <div className="mt-1 font-medium">
@@ -2238,8 +2239,8 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
               </div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Card</div>
-              <div className="mt-1 font-medium capitalize">
+              <div className="text-[10px] tracking-wider text-muted-foreground">Card</div>
+              <div className="mt-1 font-medium ">
                 {billing.card ? `${billing.card.brand} ····${billing.card.last4}` : "None"}
               </div>
             </div>
@@ -2278,7 +2279,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
           <p className="mt-3 text-sm text-muted-foreground">No payments on file yet.</p>
         ) : (
           <table className="mt-4 w-full text-sm">
-            <thead className="text-xs uppercase tracking-wider text-muted-foreground text-left">
+            <thead className="text-xs tracking-wider text-muted-foreground text-left">
               <tr>
                 <th className="py-2">Date</th>
                 <th>Type</th>
@@ -2292,8 +2293,8 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
                   <td className="py-2">
                     {p.paid_date ? fmtDate(p.paid_date) : "—"}
                   </td>
-                  <td className="capitalize">{p.type}</td>
-                  <td className="capitalize">
+                  <td className="">{p.type}</td>
+                  <td className="">
                     <span
                       className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
                         p.status === "paid"
@@ -2352,7 +2353,7 @@ function MaintenanceView({ data }: { data: DriverDashboard }) {
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-border bg-white p-5">
-        <h3 className="font-semibold">Upcoming for Your Vehicle</h3>
+        <h3 className="font-semibold">Upcoming For Your Vehicle</h3>
         {data.maintenance.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">
             Nothing scheduled. We'll notify you when routine service is due.
@@ -2363,7 +2364,7 @@ function MaintenanceView({ data }: { data: DriverDashboard }) {
               <li key={m.id} className="py-3 flex items-center justify-between gap-4">
                 <div>
                   <div className="text-sm font-medium">{m.item}</div>
-                  <div className="text-xs text-muted-foreground capitalize">
+                  <div className="text-xs text-muted-foreground ">
                     {m.category} · {m.status}
                   </div>
                 </div>
@@ -2376,7 +2377,7 @@ function MaintenanceView({ data }: { data: DriverDashboard }) {
         )}
       </div>
       <div className="rounded-2xl border border-border bg-white p-5">
-        <h3 className="font-semibold">Preferred Shops in Your Market</h3>
+        <h3 className="font-semibold">Preferred Shops In Your Market</h3>
         {data.shops.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">No shops listed for your market yet.</p>
         ) : (

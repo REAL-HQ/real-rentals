@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { paymentOverlap } from "@/lib/payment-overlap";
 import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/lib/revenue-state";
 import { tierFromRoles, tierAllows } from "@/lib/roles";
@@ -662,17 +663,17 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           padded={false}
           right={
             <div className="flex items-center gap-2">
-              <select
+              <AppSelect
                 value={appSort}
                 onChange={(e) => setAppSort(e.target.value as typeof appSort)}
-                aria-label="Sort applications"
+                aria-label="Sort Applications"
                 className="h-7 rounded-md border border-[#EDEDF0] bg-white px-1.5 text-[11px] text-[#55555E] outline-none focus:border-[#D03020]"
               >
                 <option value="newest">Newest</option>
                 <option value="oldest">Oldest</option>
                 {canSeeReadiness && <option value="readiness">Readiness</option>}
                 <option value="attention">Needs Attention</option>
-              </select>
+              </AppSelect>
               <Link
                 to="/admin"
                 search={{ tab: "drivers" }}
@@ -756,7 +757,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         // thing that would. Until money moves, say so in one line.
         if (!hasActivity) {
           return (
-            <SectionCard title="Billed vs Collected">
+            <SectionCard title="Billed Vs Collected">
               <div className="py-6 text-center">
                 <div className="mx-auto h-9 w-9 rounded-full bg-[#F4F4F6] grid place-items-center text-[#9A9AA3]">
                   <TrendingUp className="w-4 h-4" strokeWidth={1.75} />
@@ -783,7 +784,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         }
         return (
           <SectionCard
-            title="Billed vs Collected"
+            title="Billed Vs Collected"
             subtitle={
               collectionRate == null
                 ? "Last 12 Weeks · Rent / Fees · Multi-Method Collected"
@@ -921,7 +922,7 @@ function ActionCard({
           </span>
         )}
       </div>
-      <div className="mt-4 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+      <div className="mt-4 text-[10px] tracking-[0.12em] font-semibold text-[#9A9AA3]">
         {eyebrow}
       </div>
       <div className="mt-1 flex items-baseline gap-2">
@@ -1019,7 +1020,7 @@ function RevenueCard({
         </button>
       </div>
 
-      <div className="mt-4 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+      <div className="mt-4 flex items-center gap-2 text-[10px] tracking-[0.12em] font-semibold text-[#9A9AA3]">
         Revenue
         <span
           title={coverageHint}
@@ -1062,7 +1063,7 @@ function RevenueCard({
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
         >
-          <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
+          <div className="text-[9px] font-semibold tracking-[0.12em] text-[#9A9AA3]">
             Active Renters · Projected / Collected
           </div>
           {(["week", "month"] as const).map((key) => {
@@ -1104,7 +1105,7 @@ function RevenueCard({
             {rangeKey === "custom" && (
               <div className="px-3 py-2 border-t border-[#EDEDF0] space-y-1.5">
                 <label className="block">
-                  <span className="text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+                  <span className="text-[10px] tracking-[0.12em] font-semibold text-[#9A9AA3]">
                     From
                   </span>
                   <input
@@ -1115,7 +1116,7 @@ function RevenueCard({
                   />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+                  <span className="text-[10px] tracking-[0.12em] font-semibold text-[#9A9AA3]">
                     To
                   </span>
                   <input
@@ -1145,7 +1146,7 @@ function RevenueCard({
 function OpStat({ label, value, tone }: { label: string; value: string; tone?: "red" }) {
   return (
     <div className="min-w-0 rounded-xl border border-[#EDEDF0] bg-white px-2 py-2.5 sm:px-3 lg:min-w-[auto] lg:px-3">
-      <div className="text-[9px] font-semibold uppercase leading-tight tracking-normal text-[#9A9AA3] sm:text-[10px] sm:tracking-[0.12em] lg:text-[10px] lg:leading-normal lg:tracking-[0.12em]">
+      <div className="text-[9px] font-semibold leading-tight tracking-normal text-[#9A9AA3] sm:text-[10px] sm:tracking-[0.12em] lg:text-[10px] lg:leading-normal lg:tracking-[0.12em]">
         {label}
       </div>
       <div
@@ -1209,7 +1210,7 @@ function SegmentedDonut({
           <div className="text-[26px] font-semibold text-[#111114] tabular-nums leading-none">
             {total}
           </div>
-          <div className="text-[10px] text-[#9A9AA3] mt-1 uppercase tracking-[0.12em] font-semibold">
+          <div className="text-[10px] text-[#9A9AA3] mt-1 tracking-[0.12em] font-semibold">
             Total Vehicles
           </div>
         </div>

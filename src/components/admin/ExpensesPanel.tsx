@@ -1,3 +1,5 @@
+import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -104,7 +106,7 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
           </p>
         </div>
         <div className="flex items-center gap-2 max-lg:w-full max-lg:flex-wrap">
-          <select
+          <AppSelect aria-label="Period"
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
             className="rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:w-full max-lg:min-w-0"
@@ -114,7 +116,7 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
                 {p.label}
               </option>
             ))}
-          </select>
+          </AppSelect>
           <div className="inline-flex rounded-lg border border-border overflow-hidden max-lg:shrink-0">
             {(["pl", "ledger"] as const).map((v) => (
               <button
@@ -207,7 +209,7 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
               <th className="px-4 py-2.5 font-medium text-right">Expenses</th>
               <th className="px-4 py-2.5 font-medium text-right">Maintenance</th>
               <th className="px-4 py-2.5 font-medium text-right">Net</th>
-              <th className="px-4 py-2.5 font-medium text-right">Days rented</th>
+              <th className="px-4 py-2.5 font-medium text-right">Days Rented</th>
             </tr>
           </thead>
           <tbody>
@@ -216,7 +218,7 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
                 <td className="px-4 py-3 max-lg:whitespace-nowrap">
                   <span className="font-medium">{r.label}</span>
                   {r.status && (
-                    <span className="block text-xs text-muted-foreground capitalize">{r.status}</span>
+                    <span className="block text-xs text-muted-foreground ">{enumDisplayLabel(r.status)}</span>
                   )}
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">{money2(r.revenue)}</td>
@@ -411,10 +413,10 @@ function Ledger({
             onChange={(id) => setVehicleFilter(id ?? "all")}
             placeholder="All Vehicles"
             noneLabel="All Vehicles"
-            aria-label="Filter by vehicle"
+            aria-label="Filter By Vehicle"
           />
         </div>
-        <select
+        <AppSelect aria-label="Category Filter"
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
           className="rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:w-full max-lg:min-w-0"
@@ -425,7 +427,7 @@ function Ledger({
               {c.label}
             </option>
           ))}
-        </select>
+        </AppSelect>
         {receiptGaps && (
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -536,7 +538,7 @@ function Ledger({
                     {fmtDate(r.incurred_on + "T00:00:00")}
                   </td>
                   <td className="px-4 py-3 max-lg:whitespace-nowrap">{r.vehicle_label}</td>
-                  <td className="px-4 py-3 capitalize max-lg:whitespace-nowrap">
+                  <td className="px-4 py-3 max-lg:whitespace-nowrap">
                     {EXPENSE_CATEGORIES.find((c) => c.value === r.category)?.label ?? r.category}
                   </td>
                   <td className="px-4 py-3">
@@ -687,7 +689,7 @@ function ExpenseForm({
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <form onSubmit={submit} className="bg-white rounded-xl p-6 max-w-lg w-full space-y-3 my-8 max-lg:min-w-0">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Record an Expense</h3>
+          <h3 className="font-semibold">Record An Expense</h3>
           <button type="button" onClick={onClose} aria-label="Close">
             <X className="w-4 h-4" />
           </button>
@@ -705,7 +707,7 @@ function ExpenseForm({
           </Field>
 
           <Field label="Category">
-            <select
+            <AppSelect aria-label="Category"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm max-lg:min-w-0"
@@ -715,7 +717,7 @@ function ExpenseForm({
                   {c.label}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </Field>
 
           <Field label="Amount ($)">
@@ -777,7 +779,7 @@ function ExpenseForm({
 
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} />
-          This repeats (insurance, finance payment)
+          This Repeats (Insurance, Finance Payment)
         </label>
 
         <div>

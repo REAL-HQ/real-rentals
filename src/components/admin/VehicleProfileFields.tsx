@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import type { ReactNode } from "react";
 import { MicroLabel } from "./ui";
 
@@ -200,7 +201,8 @@ export function Choice({
 }) {
   return (
     <Field label={label} hint={hint} error={error}>
-      <select
+      <AppSelect
+        aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={`${inputCls} ${error ? "border-[#D03020]" : ""}`}
@@ -210,7 +212,7 @@ export function Choice({
             {o.label}
           </option>
         ))}
-      </select>
+      </AppSelect>
     </Field>
   );
 }

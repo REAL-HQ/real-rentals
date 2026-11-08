@@ -583,7 +583,7 @@ export function VehicleEditorDrawer({
               </>)}
             </Grid>
             <DocLink
-              label="Title and Registration Documents"
+              label="Title And Registration Documents"
               hint="Files, expiry dates and version history live in the document vault."
               onOpen={() => leaveFor("documents")}
             />
@@ -675,7 +675,7 @@ export function VehicleEditorDrawer({
               <>
                 <div className="flex items-center gap-2 mt-4 mb-2">
                   <Lock className="w-3.5 h-3.5 text-[#55555E]" />
-                  <MicroLabel>Acquisition &amp; financing</MicroLabel>
+                  <MicroLabel>Acquisition &amp; Financing</MicroLabel>
                   <span className="rounded-full bg-[#F4F4F6] px-2 py-0.5 text-[10px] font-medium text-[#55555E]">
                     Owners and managers
                   </span>
@@ -857,7 +857,7 @@ export function VehicleEditorDrawer({
           <Group id="keys" title="Keys" icon={KeyRound}>
             <Grid>
               <NumberField
-                label="Number of Keys"
+                label="Number Of Keys"
                 value={num("key_count")}
                 onChange={(x) => set("keys", "key_count", x)}
               />
@@ -867,7 +867,7 @@ export function VehicleEditorDrawer({
                 onChange={(x) => set("keys", "spare_key", x === "" ? null : x === "true")}
                 options={[
                   { value: "", label: "Not Recorded" },
-                  { value: "true", label: "Yes — a Spare Exists" },
+                  { value: "true", label: "Yes — A Spare Exists" },
                   { value: "false", label: "No Spare" },
                 ]}
               />

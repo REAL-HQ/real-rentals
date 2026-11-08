@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -67,6 +68,7 @@ export function AgreementBuilder({
   const [pdf, setPdf] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
   const [zoom, setZoom] = useState(100);
+  const [pageOptions, setPageOptions] = useState(0);
   const [compare, setCompare] = useState(false);
   const [busy, setBusy] = useState(false);
   const previewHost = useRef<HTMLDivElement>(null);
@@ -205,10 +207,11 @@ export function AgreementBuilder({
           <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Zoom Out" onClick={() => setZoom((z) => Math.max(50, z - 10))}><Minus className="h-3.5 w-3.5" /></Button>
           <span className="w-10 text-center tabular-nums">{zoom}%</span>
           <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Zoom In" onClick={() => setZoom((z) => Math.min(200, z + 10))}><Plus className="h-3.5 w-3.5" /></Button>
-          <select aria-label="Go To Page" className="h-7 rounded border bg-background px-1" value="" onChange={(e) => goToPage(Number(e.target.value))}
-            onFocus={(e) => { const n = pageCount(); e.currentTarget.innerHTML = `<option value="">Page</option>` + Array.from({ length: n }, (_, i) => `<option value="${i + 1}">Page ${i + 1}</option>`).join(""); }}>
+          <AppSelect aria-label="Go To Page" className="h-7 rounded border bg-background px-1" value="" onChange={(e) => goToPage(Number(e.target.value))}
+            onFocus={() => setPageOptions(pageCount())} onPointerDown={() => setPageOptions(pageCount())} onKeyDown={() => setPageOptions(pageCount())}>
             <option value="">Page</option>
-          </select>
+            {Array.from({ length: pageOptions }, (_, i) => <option key={i + 1} value={i + 1}>Page {i + 1}</option>)}
+          </AppSelect>
           <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Full Screen" onClick={() => previewHost.current?.requestFullscreen?.()}><Maximize2 className="h-3.5 w-3.5" /></Button>
         </span>
       </div>

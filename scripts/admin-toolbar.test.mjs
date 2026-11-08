@@ -55,7 +55,7 @@ check(vehicles.includes("Add Vehicle") && vehicles.includes("fleet_inbox") && ve
 // 5. Top search is visible and clearable.
 check(renderToStaticMarkup(h(TopSearchChip, { value: "  ", onClear() {} })) === "", "no chip when the top search is empty");
 const chip = renderToStaticMarkup(h(TopSearchChip, { value: " sch ", onClear() {} }));
-check(chip.includes("Top search:") && chip.includes("“sch”") && chip.includes('aria-label="Clear top search"'), "chip names the applied top search and offers Clear");
+check(chip.includes("Top search:") && chip.includes("“sch”") && chip.includes('aria-label="Clear Top Search"'), "chip names the applied top search and offers Clear");
 check(/const effectiveQ = \(externalSearch \|\| q\)\.trim\(\);/.test(vehicles), "top search still applies to Vehicles (shared search kept)");
 check(vehicles.includes("<TopSearchChip value={externalSearch}"), "Vehicles shows the top-search chip");
 check(/const hasActiveFilters = topSearch !== "" \|\|/.test(vehicles), "top search counts as an active filter (Clear shows)");
@@ -66,7 +66,7 @@ check(admin.includes('<VehiclesPanel externalSearch={globalSearch} onClearExtern
 
 
 // Ordinal is a separate first column; mobile/cards retain the same number.
-check(/aria-label="Row number">#<\/th>\s*<th[^>]*>Unit/.test(vehicles), "narrow # column precedes Unit");
+check(/aria-label="Row Number">#<\/th>\s*<th[^>]*>Unit/.test(vehicles), "narrow # column precedes Unit");
 check(vehicles.includes('{v.unit_number ?? <span') && vehicles.includes('{v.unit_number ?? ""}'), "unit identifiers stay unchanged in table and cards");
 check((vehicles.match(/rows\.map\(\(v, index\)/g) ?? []).length === 2 && (vehicles.match(/rowNumber\(index\)/g) ?? []).length === 2, "table and cards use the same visible ordinal");
 check(vehicles.includes('vehicleRowNumber(result?.page ?? page, result?.pageSize ?? VEHICLE_LIST_PAGE_SIZE, index)'), "placeholder rows retain their returned page numbers while fetching");

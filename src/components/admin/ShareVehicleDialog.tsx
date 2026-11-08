@@ -62,7 +62,7 @@ export function ShareVehicleDialog({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -155,7 +155,7 @@ export function ShareVehicleDialog({
               <article className={loading ? "opacity-50 transition-opacity" : "transition-opacity"}>
                 <div className="flex items-baseline justify-between gap-4 border-b-2 border-[#111114] pb-3">
                   <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#D03020]">
+                    <div className="text-[10px] font-semibold tracking-[0.2em] text-[#D03020]">
                       Real Rentals
                     </div>
                     <h1 className="text-[22px] font-semibold text-[#111114] mt-1">{data.title}</h1>
@@ -187,7 +187,7 @@ export function ShareVehicleDialog({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-6 mt-6">
                   {data.sections.map((s) => (
                     <section key={s.heading} className="break-inside-avoid">
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3] pb-1.5 border-b border-[#EDEDF0]">
+                      <div className="text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3] pb-1.5 border-b border-[#EDEDF0]">
                         {s.heading}
                       </div>
                       <dl className="mt-1.5">
@@ -231,7 +231,7 @@ export function ShareVehicleDialog({
             ) : (
               <Copy className="w-3.5 h-3.5" />
             )}
-            {copied ? "Copied" : "Copy as Text"}
+            {copied ? "Copied" : "Copy As Text"}
           </button>
           <button
             onClick={() => window.print()}

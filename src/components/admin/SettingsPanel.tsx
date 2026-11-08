@@ -25,7 +25,7 @@ const SECTIONS: {
   ]},
   { key: "rental_terms", title: "Rental Terms", fields: [
     { key: "min_term_weeks", label: "Minimum Term (Weeks)", type: "number" },
-    { key: "notice_days", label: "Notice to Return (Days)", type: "number" },
+    { key: "notice_days", label: "Notice To Return (Days)", type: "number" },
     { key: "terms_text", label: "Terms Text", type: "textarea" },
   ]},
   { key: "deposit_defaults", title: "Deposit Defaults", fields: [
@@ -41,8 +41,8 @@ const SECTIONS: {
     hint: "Where applicant alerts are sent. Leave the email blank to fall back to the address configured in the environment.",
     fields: [
     { key: "admin_email", label: "Applicant Alert Email", type: "emails" },
-    { key: "alert_on_new", label: "Email me when someone starts or returns to an application", type: "boolean" },
-    { key: "alert_on_complete", label: "Email me when someone completes an application", type: "boolean" },
+    { key: "alert_on_new", label: "Email Me When Someone Starts Or Returns To An Application", type: "boolean" },
+    { key: "alert_on_complete", label: "Email Me When Someone Completes An Application", type: "boolean" },
     { key: "sms_number", label: "Admin SMS Number", type: "text" },
   ]},
   { key: "application_settings", title: "Application Settings", fields: [
@@ -165,7 +165,7 @@ function SectionForm({ sec, saved, framed, onSaved }: {
               </label>
             ) : (
               <>
-                <label htmlFor={`set-${sec.key}-${f.key}`} className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <label htmlFor={`set-${sec.key}-${f.key}`} className="flex items-center gap-1 text-[10px] tracking-wider text-muted-foreground">
                   {f.label}
                   {f.usedIn && (
                     <Tooltip>
@@ -420,7 +420,7 @@ function EmailList({
 
   return (
     <div>
-      <label className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</label>
+      <label className="text-[10px] tracking-wider text-muted-foreground">{label}</label>
       <div className="mt-1 space-y-2">
         {rows.map((r, i) => {
           const invalid = r.trim().length > 0 && !r.includes("@");

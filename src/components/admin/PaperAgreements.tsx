@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -193,13 +194,13 @@ function PaperPanel({ applicationId }: { applicationId: string }) {
         />
         <label>
           Type
-          <select value={type} onChange={(e) => setType(e.target.value as PaperType)}>
+          <AppSelect aria-label="Agreement Type" value={type} onChange={(e) => setType(e.target.value as PaperType)}>
             {PAPER_TYPES.map((t) => (
               <option key={t} value={t}>
                 {PAPER_TYPE_LABEL[t]}
               </option>
             ))}
-          </select>
+          </AppSelect>
         </label>
         <label>
           Signed Date
@@ -230,17 +231,17 @@ function PaperPanel({ applicationId }: { applicationId: string }) {
           </p>
         )}
         <Button disabled={notesTooLong} onClick={() => run("upload")}>
-          Upload and Register
+          Upload And Register
         </Button>
       </fieldset>
       {operation && (
         <div>
           <p>Unresolved operation: {operation}</p>
           <Button disabled={busy || !PAPER_RELEASE.registration} onClick={() => run("recover")}>
-            Recover result
+            Recover Result
           </Button>
           <Button disabled={busy || !PAPER_RELEASE.registration} onClick={() => run("cancel")}>
-            Cancel registration
+            Cancel Registration
           </Button>
         </div>
       )}
@@ -258,7 +259,7 @@ function PaperPanel({ applicationId }: { applicationId: string }) {
           }
         }}
       >
-        Inspect candidates
+        Inspect Candidates
       </Button>
       <p role="status">{message}</p>
       {rows.map((r) => (

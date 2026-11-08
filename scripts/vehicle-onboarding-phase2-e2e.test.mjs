@@ -224,7 +224,7 @@ async function readiness(label, viewport) {
     "the chip shows as the active filter");
   ok(/Needs Setup\s*1/.test(await bar.innerText()), "and the chips still count the fleet, not the filtered page");
 
-  await page.getByRole("button", { name: /^Show all$/ }).click();
+  await page.getByRole("button", { name: /^Show All$/ }).click();
   await page.waitForTimeout(1500);
   ok(!page.url().includes("ready="), "Show all clears it from the URL");
   ok(await page.locator("tbody tr").count() === 3, "  and the whole fleet is back");

@@ -191,7 +191,7 @@ function CityPage() {
 
       <section className="bg-white py-8 md:py-10">
         <div className="container-real text-center">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Eligible To Drive For</div>
+          <div className="text-[11px] font-semibold tracking-[0.25em] text-real-red">Eligible To Drive For</div>
         </div>
         <GigLogoMarquee items={gigItems} />
         <div className="container-real text-center">
@@ -204,7 +204,7 @@ function CityPage() {
 
       <section className="container-real py-14 md:py-24">
         <FadeUp className="text-center mb-14 max-w-5xl mx-auto">
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">How It Works</div>
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">How It Works</div>
           <h2 className="mt-3 text-3xl md:text-5xl">From Quote To Keys.</h2>
           <p className="mt-4 text-muted-foreground leading-relaxed">{localIntro}</p>
         </FadeUp>
@@ -237,7 +237,7 @@ function CityPage() {
       <section className="bg-white py-14 md:py-20">
         <div className="container-real">
           <FadeUp className="text-center">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Vehicle Types</div>
+            <div className="text-[11px] font-semibold tracking-[0.25em] text-real-red">Vehicle Types</div>
             <h2 className="mt-4 text-3xl md:text-5xl">Matched For Your Work.</h2>
           </FadeUp>
           <div className="mt-10 grid gap-6 md:grid-cols-3">
@@ -363,7 +363,7 @@ function WhatYouNeedSection() {
     <section className="bg-white py-14 md:py-20">
       <div className="px-6 md:px-12 lg:px-20 xl:px-28">
         <FadeUp className="text-center">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">What You'll Need To Apply</div>
+          <div className="text-[11px] font-semibold tracking-[0.25em] text-real-red">What You'll Need To Apply</div>
           <h2 className="mt-3 text-3xl md:text-5xl">Quick Checklist Before You Apply.</h2>
           <p className="mt-4 text-muted-foreground">Have these ready and most drivers are approved the same day.</p>
         </FadeUp>
@@ -397,7 +397,7 @@ function ServiceAreaSection({ cityLabel, city }: { cityLabel: string; city: stri
           </div>
         </FadeUp>
         <FadeUp>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Service Area</div>
+          <div className="text-[11px] font-semibold tracking-[0.25em] text-real-red">Service Area</div>
           <h2 className="mt-2 text-2xl md:text-3xl font-semibold">Serving {cityLabel} And Surrounding Cities.</h2>
           <p className="mt-3 text-muted-foreground max-w-2xl leading-relaxed">
             Pickup and support based in Tampa. We rent to gig drivers across the wider metro area.
@@ -426,7 +426,7 @@ function CityFAQSection({ cityLabel, content }: { cityLabel: string; content: Co
     <section className="bg-white py-14 md:py-20">
       <div className="container-real max-w-3xl">
         <FadeUp className="text-center">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Common Questions</div>
+          <div className="text-[11px] font-semibold tracking-[0.25em] text-real-red">Common Questions</div>
           <h2 className="mt-3 text-3xl md:text-5xl">Common Questions From {cityLabel} Drivers.</h2>
         </FadeUp>
         <div className="mt-10 divide-y divide-border rounded-2xl border border-border bg-white">

@@ -112,7 +112,7 @@ function InvitePage() {
               to="/admin"
               className="mt-6 inline-block rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium"
             >
-              Open the Back Office
+              Open The Back Office
             </Link>
           </div>
         )}
@@ -131,7 +131,7 @@ function InvitePage() {
                 }}
                 className="mt-6 text-sm underline text-muted-foreground"
               >
-                Sign In as Somebody Else
+                Sign In As Somebody Else
               </button>
             )}
           </div>
@@ -231,7 +231,7 @@ function AuthStep() {
         }}
         className="mt-4 w-full text-sm text-muted-foreground underline"
       >
-        {mode === "signup" ? "I Already Have an Account" : "I Need to Create an Account"}
+        {mode === "signup" ? "I Already Have An Account" : "I Need To Create An Account"}
       </button>
     </div>
   );

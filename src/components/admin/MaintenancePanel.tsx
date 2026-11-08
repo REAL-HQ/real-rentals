@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { FleetServiceCenter } from "./FleetServiceCenter";
 import { supabase } from "@/integrations/supabase/client";
@@ -342,7 +343,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
       ) : (
         <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
           <table className="w-full text-sm">
-            <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3] text-left">
+            <thead className="bg-[#FAFAFB] text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3] text-left">
               <tr>
                 <th className="px-4 py-2">Vehicle</th>
                 <th>Status</th>
@@ -358,7 +359,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
                 <tr key={r.id}>
                   <td className="px-4 py-2">{vName(r.vehicle_id)}</td>
                   <td>
-                    <select
+                    <AppSelect aria-label="Maintenance Status"
                       value={r.status}
                       onChange={(e) => updateStatus(r.id, e.target.value)}
                       className="rounded border border-border bg-white px-2 py-1 text-xs"
@@ -366,10 +367,10 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
                       <option value="scheduled">Scheduled</option>
                       <option value="in_progress">In Progress</option>
                       <option value="completed">Completed</option>
-                    </select>
+                    </AppSelect>
                   </td>
                   <td>{r.item}</td>
-                  <td className="capitalize">{r.category ?? "—"}</td>
+                  <td className="">{r.category ?? "—"}</td>
                   <td>{r.due_date ? fmtDate(r.due_date) : "—"}</td>
                   <td>{r.total_cost ? `$${r.total_cost}` : "—"}</td>
                   <td className="px-4 py-2 text-xs text-muted-foreground">{r.notes}</td>
@@ -452,7 +453,7 @@ function NewMaintenanceForm({
           placeholder="Item (e.g. Oil change)"
           className="w-full rounded border border-border px-3 py-2 text-sm"
         />
-        <select
+        <AppSelect aria-label="Category"
           value={category}
           onChange={(e) => setCategory(e.target.value)}
           className="w-full rounded border border-border bg-white px-3 py-2 text-sm"
@@ -461,7 +462,7 @@ function NewMaintenanceForm({
           <option value="repair">Repair</option>
           <option value="recall">Recall</option>
           <option value="inspection">Inspection</option>
-        </select>
+        </AppSelect>
         <input
           type="date"
           value={dueDate}

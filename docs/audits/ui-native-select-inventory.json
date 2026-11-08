@@ -1,0 +1,567 @@
+{
+  "base": "42c88b669b8d45502a5cbd22fffb6cbbea07b508",
+  "sourceSites": 69,
+  "callsiteFiles": 46,
+  "controls": [
+    {
+      "file": "src/components/admin/ActivityPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{filter}",
+        "onChange": "{(e) => setFilter(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/AddVehicleDialog.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{f.body_type}",
+        "onChange": "{(e) => set(\"body_type\", e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/AddVehicleDialog.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{f.plate_state}",
+        "onChange": "{(e) => set(\"plate_state\", e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/AddVehicleDialog.tsx",
+      "ordinal": 3,
+      "props": {
+        "value": "{f.status}",
+        "onChange": "{(e) => set(\"status\", e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/AddVehicleDialog.tsx",
+      "ordinal": 4,
+      "props": {
+        "value": "{f.ownership_type}",
+        "onChange": "{(e) => set(\"ownership_type\", e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/AgreementBuilder.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "\"\"",
+        "onChange": "{(e) => goToPage(Number(e.target.value))}"
+      }
+    },
+    {
+      "file": "src/components/admin/AgreementTemplatesPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{cmp ?? \"\"}",
+        "onChange": "{(e) => setCmp(Number(e.target.value))}"
+      }
+    },
+    {
+      "file": "src/components/admin/AutomationsPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{trigger}",
+        "onChange": "{(e) => setTrigger(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/AutomationsPanel.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{unit}",
+        "onChange": "{(e) => setUnit(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/AutomationsPanel.tsx",
+      "ordinal": 3,
+      "props": {
+        "value": "{value}",
+        "onChange": "{(e) => onChange(Number(e.target.value))}"
+      }
+    },
+    {
+      "file": "src/components/admin/BillingControls.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{weekday}",
+        "onChange": "{(event) => setWeekday(event.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/BookingActions.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{templateId}",
+        "onChange": "{(e) => setTemplateId(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/BookingVehicleHistory.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{reason}",
+        "onChange": "{(e) => setReason(e.target.value as (typeof SWAP_REASONS)[number])}"
+      }
+    },
+    {
+      "file": "src/components/admin/BulkReceiptUpload.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{it.kind}",
+        "disabled": "{it.state === \"done\" || it.state === \"uploading\"}",
+        "onChange": "{(e) => update(it.key, { kind: e.target.value as Item[\"kind\"] })}"
+      }
+    },
+    {
+      "file": "src/components/admin/ChargesPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{chargeType}",
+        "onChange": "{(e) => setChargeType(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/ChargesPanel.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{chargeType}",
+        "onChange": "{(e) => setChargeType(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/CloseApplicationDialog.tsx",
+      "ordinal": 1,
+      "props": {
+        "required": true,
+        "value": "{reason}",
+        "onChange": "{(event) => setReason(event.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/DriverDocExpiry.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{value}",
+        "onChange": "{(event) => onChange(event.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/DriverIssuesPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{ISSUE_STATUSES.includes(row.status as IssueStatus) ? row.status : \"open\"}",
+        "disabled": "{busyId === row.id}",
+        "onChange": "{(e) => changeStatus(row, e.target.value as IssueStatus)}"
+      }
+    },
+    {
+      "file": "src/components/admin/DriversPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{contactFilter}",
+        "onChange": "{(e) => setContactFilter(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/ExpensesPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{period}",
+        "onChange": "{(e) => setPeriod(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/ExpensesPanel.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{categoryFilter}",
+        "onChange": "{(e) => setCategoryFilter(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/ExpensesPanel.tsx",
+      "ordinal": 3,
+      "props": {
+        "value": "{category}",
+        "onChange": "{(e) => setCategory(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/FleetInboxPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "\"\"",
+        "onChange": "{async (e) => { if (!e.target.value) return; await classify({ data: { itemId: it.id, docClass: e.target.value } }); void load(); }}"
+      }
+    },
+    {
+      "file": "src/components/admin/FleetServiceCenter.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{id}",
+        "onChange": "{(e) => setId(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/ImportVehiclesStep.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{mapping[i] ?? \"\"}",
+        "onChange": "{(e) => { const v = e.target.value || null; setMapping((prev) => prev.map((x, j) => (j === i ? v : v && x === v ? null : x))); setVerdicts(null); }}"
+      }
+    },
+    {
+      "file": "src/components/admin/IncidentBoard.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{incidentType}",
+        "onChange": "{(event) => setIncidentType(event.target.value as IncidentType)}"
+      }
+    },
+    {
+      "file": "src/components/admin/IncidentBoard.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{open.status}",
+        "disabled": "{busy}",
+        "onChange": "{(event) => void changeStatus(open, event.target.value as IncidentStatus)}"
+      }
+    },
+    {
+      "file": "src/components/admin/IncidentsPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{f.vendorId}",
+        "onChange": "{(e) => set(\"vendorId\", e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/IncidentsPanel.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{value}",
+        "onChange": "{(e) => onChange(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/InspectionsPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{templateId}",
+        "onChange": "{(e) => setTemplateId(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/MaintenancePanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{r.status}",
+        "onChange": "{(e) => updateStatus(r.id, e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/MaintenancePanel.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{category}",
+        "onChange": "{(e) => setCategory(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/MaintenanceSchedules.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{category}",
+        "onChange": "{(e) => setCategory(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/MaintenanceSchedules.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{vendorId}",
+        "onChange": "{(e) => setVendorId(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/ManualPaymentsWorkspace.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{method}",
+        "onChange": "{(e) => setMethod(e.target.value as Method)}"
+      }
+    },
+    {
+      "file": "src/components/admin/MessagesOverlay.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{filter}",
+        "onChange": "{(e) => setFilter(e.target.value as Filter)}",
+        "style": "{{ colorScheme: \"light\" }}"
+      }
+    },
+    {
+      "file": "src/components/admin/MessagesOverlay.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{chFilter}",
+        "onChange": "{(e) => setChFilter(e.target.value as typeof chFilter)}",
+        "style": "{{ colorScheme: \"light\" }}"
+      }
+    },
+    {
+      "file": "src/components/admin/OverviewPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{appSort}",
+        "onChange": "{(e) => setAppSort(e.target.value as typeof appSort)}"
+      }
+    },
+    {
+      "file": "src/components/admin/OwnerExpenseEntryPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{category}",
+        "onChange": "{(event) => setCategory(event.target.value as ExpenseCategory)}"
+      }
+    },
+    {
+      "file": "src/components/admin/OwnerExpenseEntryPanel.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{vendorId}",
+        "onChange": "{(event) => setVendorId(event.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/PaperAgreements.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{type}",
+        "onChange": "{(e) => setType(e.target.value as PaperType)}"
+      }
+    },
+    {
+      "file": "src/components/admin/PartnerStatementPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{partnerId}",
+        "onChange": "{(event) => setPartnerId(event.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/QuickAddVehicle.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{f.body}",
+        "onChange": "{(e) => set(\"body\", e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/RecordedRentalCloseout.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{status}",
+        "onChange": "{e=>setStatus(e.target.value as typeof status)}"
+      }
+    },
+    {
+      "file": "src/components/admin/RenterVendorsPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{draft.category}",
+        "onChange": "{(e) => set(\"category\", e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/ServiceAreaField.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{c.mode}",
+        "onChange": "{(e) => setC({ ...c, mode: e.target.value as ServiceAreaConfig[\"mode\"] })}"
+      }
+    },
+    {
+      "file": "src/components/admin/ServiceAreaField.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{m.mode}",
+        "onChange": "{(e) => setM( e.target.value === \"unlimited\" ? { mode: \"unlimited\" } : e.target.value === \"limited\" ? { mode: \"limited\", miles: 0, period: \"week\" } : e.target.value === \"custom\" ? { mode: \"custom\", text: value } : { mode: \"unset\" })}"
+      }
+    },
+    {
+      "file": "src/components/admin/ServiceAreaField.tsx",
+      "ordinal": 3,
+      "props": {
+        "value": "{m.period}",
+        "onChange": "{(e) => setM({ ...m, period: e.target.value as MileagePeriod })}"
+      }
+    },
+    {
+      "file": "src/components/admin/ShopsPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{marketId}",
+        "onChange": "{(e) => setMarketId(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/TemplateUploadDialog.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{targetId(value)}",
+        "onChange": "{(e) => onChange(JSON.parse(e.target.value))}"
+      }
+    },
+    {
+      "file": "src/components/admin/UnifiedFinancePanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{periodId}",
+        "onChange": "{(event) => setPeriodId(event.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/VehicleDefaultsPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{draft.body_type}",
+        "onChange": "{(e) => setDraft({ ...draft, body_type: e.target.value })}"
+      }
+    },
+    {
+      "file": "src/components/admin/VehicleDocUploadDialog.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{kind}",
+        "disabled": "{!!batchId}",
+        "onChange": "{(e) => setKind(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/VehiclePhotos.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{shotKind}",
+        "onChange": "{(e) => setShotKind(e.target.value as typeof shotKind)}"
+      }
+    },
+    {
+      "file": "src/components/admin/VehicleProfileFields.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{value}",
+        "onChange": "{(e) => onChange(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/VehicleService.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{f.status}",
+        "onChange": "{set(\"status\")}"
+      }
+    },
+    {
+      "file": "src/components/admin/VehicleService.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{f.priority}",
+        "onChange": "{set(\"priority\")}"
+      }
+    },
+    {
+      "file": "src/components/admin/VehicleService.tsx",
+      "ordinal": 3,
+      "props": {
+        "value": "{it.category}",
+        "onChange": "{(e) => setItems(items.map((x, i) => i === n ? { ...x, category: e.target.value } : x))}"
+      }
+    },
+    {
+      "file": "src/components/admin/VehicleService.tsx",
+      "ordinal": 4,
+      "props": {
+        "value": "{f.method}",
+        "onChange": "{set(\"method\")}"
+      }
+    },
+    {
+      "file": "src/components/admin/VendorsPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{f.vendor_type}",
+        "onChange": "{(e) => set(\"vendor_type\", e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/admin/VendorsPanel.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{f.market_id ?? \"\"}",
+        "onChange": "{(e) => set(\"market_id\", e.target.value || null)}"
+      }
+    },
+    {
+      "file": "src/components/admin/VendorsPanel.tsx",
+      "ordinal": 3,
+      "props": {
+        "value": "{f.rating ?? \"\"}",
+        "onChange": "{(e) => set(\"rating\", e.target.value ? Number(e.target.value) : null)}"
+      }
+    },
+    {
+      "file": "src/components/admin/WaitlistPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{tagFilter}",
+        "onChange": "{(event) => setTagFilter(event.target.value)}",
+        "disabled": "{!tagsAvailable || availableTags.length === 0}"
+      }
+    },
+    {
+      "file": "src/components/admin/WebsitesPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{s.status}",
+        "onChange": "{(e) => updateSite(s.id, { status: e.target.value })}"
+      }
+    },
+    {
+      "file": "src/components/admin/WebsitesPanel.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{marketId}",
+        "onChange": "{(e) => setMarketId(e.target.value)}"
+      }
+    },
+    {
+      "file": "src/components/site/FleetFiltersBar.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{value.make}",
+        "onChange": "{(event) => onChange({ ...value, make: event.target.value })}"
+      }
+    },
+    {
+      "file": "src/components/site/FleetFiltersBar.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{value.sort}",
+        "onChange": "{(event) => { const sort = event.target.value; if (sort !== \"price_asc\" && sort !== \"price_desc\" && sort !== \"newest\") return; onChange({ ...value, sort }); }}"
+      }
+    },
+    {
+      "file": "src/components/site/HeroQuoteBar.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{value}",
+        "onChange": "{(e) => onChange(e.target.value)}"
+      }
+    }
+  ]
+}

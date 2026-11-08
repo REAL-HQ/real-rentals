@@ -206,7 +206,7 @@ console.log("\n2. a signed link shows the safe message, and leaks nothing");
   ok(nullBranch.length > 100, "found the page's no-agreement state");
   ok(/This agreement has already been signed, or the link has expired or been replaced\./.test(nullBranch), "it says the agreement may already be signed or the link expired");
   ok(/sign in to your driver portal to view your signed copy/.test(nullBranch) && /href="\/portal"/.test(nullBranch), "  and points to the portal sign-in");
-  ok(/>\s*Sign In to Your Portal\s*</.test(nullBranch) && />This Link Is No Longer Active</.test(nullBranch), "  with Title Case heading and button text");
+  ok(/>\s*Sign In To Your Portal\s*</.test(nullBranch) && />This Link Is No Longer Active</.test(nullBranch), "  with Title Case heading and button text");
   ok(!/Isn't Valid/.test(page), "the old \"Link Isn't Valid\" dead end is gone");
   ok(!/agreement\.|token/.test(strip(nullBranch).replace(") : !agreement ? (", "")), "  and the message uses no server detail, only the fact that nothing opened");
 }

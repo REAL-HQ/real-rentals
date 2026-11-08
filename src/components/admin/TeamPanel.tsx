@@ -114,7 +114,7 @@ export function TeamPanel() {
       ) : (
         <>
           <section>
-            <MicroLabel>People with access ({members.length})</MicroLabel>
+            <MicroLabel>People With Access ({members.length})</MicroLabel>
             {members.length === 0 ? (
               <EmptyState
                 icon={<Users className="w-6 h-6" strokeWidth={1.75} />}
@@ -176,7 +176,7 @@ export function TeamPanel() {
 
           {canManage && invites.length > 0 && (
             <section>
-              <MicroLabel>Invitations awaiting acceptance ({invites.length})</MicroLabel>
+              <MicroLabel>Invitations Awaiting Acceptance ({invites.length})</MicroLabel>
               <div className="mt-2 space-y-2">
                 {invites.map((i) => (
                   <div
@@ -276,14 +276,14 @@ function InviteForm({
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <form onSubmit={submit} className="bg-white rounded-xl p-6 max-w-md w-full space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Invite a Teammate</h3>
+          <h3 className="font-semibold">Invite A Teammate</h3>
           <button type="button" onClick={onClose} aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Email address</label>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">Email Address</label>
           <input
             type="email"
             value={email}

@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -157,7 +158,7 @@ export function DriverIssuesPanel() {
                 <label className="text-[12px] text-[#55555E]" htmlFor={`issue-status-${row.id}`}>
                   Status
                 </label>
-                <select
+                <AppSelect
                   id={`issue-status-${row.id}`}
                   value={ISSUE_STATUSES.includes(row.status as IssueStatus) ? row.status : "open"}
                   disabled={busyId === row.id}
@@ -169,7 +170,7 @@ export function DriverIssuesPanel() {
                       {issueStatusLabel(s)}
                     </option>
                   ))}
-                </select>
+                </AppSelect>
                 {row.applicationId ? (
                   <Link
                     to="/admin"

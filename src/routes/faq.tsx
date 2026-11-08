@@ -52,7 +52,7 @@ function FAQ() {
     <SiteLayout>
       <section className="container-real pt-16 md:pt-24 pb-12 text-center">
         <FadeUp>
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">FAQ</div>
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">FAQ</div>
           <h1 className="mt-4 text-4xl md:text-6xl font-semibold">Questions, Answered.</h1>
         </FadeUp>
       </section>

@@ -315,7 +315,7 @@ function FleetVehicles({
               {img ? <img src={img} alt="" loading="lazy" className="w-full h-full object-cover" /> : <span className="text-xs text-muted-foreground">No photo</span>}
             </div>
             <div className="p-4">
-              <div className="h-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><span className="mr-2 tabular-nums">#{rowNumber(index)}</span>{v.unit_number ?? ""}</div>
+              <div className="h-4 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground"><span className="mr-2 tabular-nums">#{rowNumber(index)}</span>{v.unit_number ?? ""}</div>
               <div className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</div>
               <dl className="mt-2.5 grid grid-cols-[44px_1fr] items-center gap-y-0.5 text-[13px] leading-6">
                 <dt className="text-muted-foreground">Plate</dt>
@@ -328,7 +328,7 @@ function FleetVehicles({
               </div>
               <div className="mt-2"><ReadinessPill v={v} /></div>
               <div className="mt-3" onClick={(e) => e.stopPropagation()}>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Partner</div>
+                <div className="text-[10px] tracking-wider text-muted-foreground mb-1">Partner</div>
                 <PartnerAssignSelect value={v.partner_id} partners={partners} onChange={(pid) => assignPartner(v, pid)} />
               </div>
               <div className="mt-3 flex gap-2 max-lg:flex-wrap" onClick={(e) => e.stopPropagation()}>
@@ -337,15 +337,15 @@ function FleetVehicles({
                 </button>
                 {v.status === "archived" ? (
                   <>
-                    <button onClick={() => setLifecycle({ v, mode: "restore" })} aria-label="Restore vehicle" title="Restore Vehicle" className="rounded-md border border-border px-3 py-1.5 text-sm">
+                    <button onClick={() => setLifecycle({ v, mode: "restore" })} aria-label="Restore Vehicle" title="Restore Vehicle" className="rounded-md border border-border px-3 py-1.5 text-sm">
                       <RotateCcw className="w-3.5 h-3.5 text-muted-foreground" />
                     </button>
-                    <button onClick={() => setLifecycle({ v, mode: "delete" })} aria-label="Delete permanently" title="Delete Permanently" className="group rounded-md border border-border px-3 py-1.5 text-sm hover:border-real-red">
+                    <button onClick={() => setLifecycle({ v, mode: "delete" })} aria-label="Delete Permanently" title="Delete Permanently" className="group rounded-md border border-border px-3 py-1.5 text-sm hover:border-real-red">
                       <Trash2 className="w-3.5 h-3.5 text-muted-foreground group-hover:text-real-red" />
                     </button>
                   </>
                 ) : (
-                  <button onClick={() => setLifecycle({ v, mode: "archive" })} aria-label="Archive vehicle" title="Archive Vehicle" className="rounded-md border border-border px-3 py-1.5 text-sm">
+                  <button onClick={() => setLifecycle({ v, mode: "archive" })} aria-label="Archive Vehicle" title="Archive Vehicle" className="rounded-md border border-border px-3 py-1.5 text-sm">
                     <Archive className="w-3.5 h-3.5 text-muted-foreground" />
                   </button>
                 )}
@@ -373,7 +373,7 @@ function FleetVehicles({
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search Vehicles…"
             title="Search Unit, VIN, Plate, Year, Make, Or Model"
-            aria-label="Search vehicles"
+            aria-label="Search Vehicles"
             className={TOOLBAR.search}
           />
         }
@@ -474,7 +474,7 @@ function FleetVehicles({
                   onClick={() => setList({ ready: "all" })}
                   className="whitespace-nowrap px-1 text-xs text-muted-foreground hover:text-foreground"
                 >
-                  Show all
+                  Show All
                 </button>
               )}
               {result.readinessPartial && (
@@ -496,11 +496,11 @@ function FleetVehicles({
       )}
 
       {view !== "due" && view === "list" && rows.length > 0 && (
-        <div role="region" aria-label="Vehicles table" tabIndex={0} className="relative hidden md:block mt-4 w-full min-w-0 overflow-x-auto rounded-xl border border-border bg-white">
+        <div role="region" aria-label="Vehicles Table" tabIndex={0} className="relative hidden md:block mt-4 w-full min-w-0 overflow-x-auto rounded-xl border border-border bg-white">
           <table className="w-full min-w-[56rem] text-sm">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
-                <th scope="col" className="w-8 px-2 py-2 font-medium" aria-label="Row number">#</th>
+                <th scope="col" className="w-8 px-2 py-2 font-medium" aria-label="Row Number">#</th>
                 <th className="px-2 py-2 font-medium">Unit</th>
                 <th className="px-2 py-2 font-medium">Vehicle</th>
                 <th className="px-2 py-2 font-medium">Plate</th>
@@ -541,9 +541,9 @@ function FleetVehicles({
         <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground max-lg:flex-wrap max-lg:gap-y-2">
           <span>Showing {firstShown}–{lastShown} of {total}</span>
           <div className="flex items-center gap-2">
-            <button disabled={page <= 1} onClick={() => setList({ page: String(page - 1) })} aria-label="Previous page" className="rounded-md border border-border bg-white p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+            <button disabled={page <= 1} onClick={() => setList({ page: String(page - 1) })} aria-label="Previous Page" className="rounded-md border border-border bg-white p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
             <span>Page {page} of {pages}</span>
-            <button disabled={page >= pages} onClick={() => setList({ page: String(page + 1) })} aria-label="Next page" className="rounded-md border border-border bg-white p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+            <button disabled={page >= pages} onClick={() => setList({ page: String(page + 1) })} aria-label="Next Page" className="rounded-md border border-border bg-white p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
           </div>
         </div>
       )}
