@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Vehicle Photos: full drag/drop field remains available after photos exist; clarified that Listing Ready still requires an explicitly website-published photo and preserved the publish/profile/list refresh path.
 - [x] Vehicle activation refresh: resolved requirements now refresh vehicle profiles/lists and open activation details; correct-driver events and focus recheck verified without changing records.
 - [x] Lead Priorities: removed the rejected blue card styling, neutralized card surfaces, paired priority with the status row, and reduced visual noise without changing ranking, filters, data, or actions.
 - [x] Fleet Inbox: dropped/browsed files accumulate locally across selections and upload only after an explicit button click; synthetic browser coverage verifies zero pre-click writes and existing retry/private-document pipeline is unchanged.

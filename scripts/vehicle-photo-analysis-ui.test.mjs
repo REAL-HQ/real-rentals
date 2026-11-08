@@ -93,6 +93,10 @@ ok(/max-h-\[90vh\] max-w-full object-contain/.test(panel),
 
 console.log("\nthe tab still does its original job");
 ok(/label="Add Photos"/.test(photos), "uploading photos is untouched");
+const uploader = /<FileUploader[\s\S]*?\/>/.exec(photos)?.[0] ?? "";
+ok(/variant="zone"/.test(uploader), "a full drag/drop field is visible, not only a small button");
+ok(photos.indexOf(uploader) >= 0 && photos.indexOf(uploader) < photos.indexOf("{loading && !data"),
+  "the drop field stays mounted when a vehicle already has photos");
 ok(/No photos are on the website yet/.test(photos), "so is the Listing Ready warning");
 ok(/onPublish=\{\(v\) => patch\(m, \{ id: m\.id, published: v \}\)\}/.test(photos), "so is publishing");
 

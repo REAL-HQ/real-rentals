@@ -373,7 +373,9 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
       >
         {canEdit && (
           <FileUploader
-            variant="inline"
+            variant="zone"
+            title="Drop Photos Here"
+            hint="Up to 15 MB each. Photos stay private until you show them on the website."
             label="Add Photos"
             accept={ACCEPT}
             multiple
@@ -383,7 +385,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
             upload={uploadOne}
             onAllDone={afterUpload}
             listLayout="grid"
-            className="mb-4 w-full items-end"
+            className="mb-4 w-full"
           />
         )}
         {loading && !data ? (
@@ -396,7 +398,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
             title="No Photos Yet"
             hint={
               canEdit
-                ? "Drag photos here or tap Add Photos. The first one becomes the photo the website leads with."
+                ? "Drag photos here or tap Add Photos. Then use the eye button to show a photo on the website."
                 : "Nobody has added photos for this vehicle."
             }
           />
