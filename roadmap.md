@@ -1,4 +1,5 @@
 # Roadmap
+- [ ] Vehicle sharing: Manager/Owner-only insurance package (lead + website photos, VIN/registration details) and manual selection of originals/approved retouches; reviewed email/SMS or copyable 72-hour private link, with audited token-based access and no public photo exposure.
 - [x] Vehicle list thumbnails: Managers/Owners explicitly confirm an original shows the car before using it as the staff Vehicles-list thumbnail; only confirmed car photos are automatic fallbacks or appear in the table slideshow. Unclassified images and paperwork never become thumbnails; public lead/publish controls stay separate.
 - [x] Vehicles density: matched the 90% reference at 100% desktop zoom with one-row compact filters/actions and tighter table type, thumbnails and rows; shared admin toolbars/tables remain unchanged.
 - [x] Vehicles list: replaced the table's Unit display with staff-only car thumbnails; clicking a thumbnail opens the existing original-photo slideshow without opening the vehicle record or exposing private photos.

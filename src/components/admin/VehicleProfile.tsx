@@ -243,6 +243,7 @@ export function VehicleProfile({
               <button
                 onClick={() => setSharing(true)}
                 disabled={!p}
+                aria-label="Share"
                 className="inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-3 py-1.5 text-[12px] font-medium text-[#111114] hover:bg-[#FAFAFB] transition-colors disabled:opacity-50"
               >
                 <Share2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Share</span>
@@ -382,7 +383,7 @@ export function VehicleProfile({
       {editing === "finance" && p && (
         <FinanceDrawer vehicleId={vehicleId} onClose={() => setEditing(null)} onSaved={afterSave} />
       )}
-      {sharing && <ShareVehicleDialog vehicleId={vehicleId} onClose={() => setSharing(false)} />}
+      {sharing && <ShareVehicleDialog vehicleId={vehicleId} canSend={!!p?.canEdit} onClose={() => setSharing(false)} />}
       {editorOpen && p && (
         <VehicleEditorDrawer
           profile={{ ...p, id: vehicleId }}

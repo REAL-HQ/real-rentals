@@ -6,6 +6,7 @@ import { getVehicleShare, type VehicleShare } from "@/lib/vehicles.functions";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { MicroLabel } from "./ui";
 import { fmtDate } from "@/lib/date-format";
+import { VehicleShareSendPanel } from "./VehicleShareSendPanel";
 
 // Hand someone the details on a car without retyping them.
 //
@@ -34,9 +35,11 @@ const DEFAULTS: Opts = {
 
 export function ShareVehicleDialog({
   vehicleId,
+  canSend,
   onClose,
 }: {
   vehicleId: string;
+  canSend: boolean;
   onClose: () => void;
 }) {
   const build = useServerFn(getVehicleShare);
@@ -44,6 +47,7 @@ export function ShareVehicleDialog({
   const [data, setData] = useState<VehicleShare | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [tab, setTab] = useState<"summary" | "send">("summary");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -114,34 +118,30 @@ export function ShareVehicleDialog({
 
         <div className="flex-1 overflow-y-auto print:overflow-visible">
           <div className="border-b border-[#EDEDF0] bg-[#FAFAFB] px-5 py-3.5 print:hidden">
-            <MicroLabel className="mb-2">Include</MicroLabel>
-            <div className="flex flex-wrap gap-x-5 gap-y-2">
-              <Opt label="VIN" on={opts.includeVin} onChange={(v) => set("includeVin", v)} />
-              <Opt
-                label="Registration & Plate"
-                on={opts.includeRegistration}
-                onChange={(v) => set("includeRegistration", v)}
-              />
-              <Opt
-                label="Insurance"
-                on={opts.includeInsurance}
-                onChange={(v) => set("includeInsurance", v)}
-              />
-              <Opt
-                label="Policy Number"
-                on={opts.includePolicyNumber}
-                disabled={!opts.includeInsurance}
-                onChange={(v) => set("includePolicyNumber", v)}
-              />
-              <Opt label="Rates" on={opts.includeRates} onChange={(v) => set("includeRates", v)} />
-              <Opt
-                label="Photos"
-                on={opts.includePhotos}
-                onChange={(v) => set("includePhotos", v)}
-              />
-            </div>
+            {canSend && (
+              <div className="mb-3 grid grid-cols-2 gap-2 rounded-lg bg-white p-1">
+                <button type="button" onClick={() => setTab("summary")} aria-pressed={tab === "summary"} className={`rounded-md px-3 py-2 text-[12px] font-medium ${tab === "summary" ? "bg-[#111114] text-white" : "text-[#55555E]"}`}>Summary / Print</button>
+                <button type="button" onClick={() => setTab("send")} aria-pressed={tab === "send"} className={`rounded-md px-3 py-2 text-[12px] font-medium ${tab === "send" ? "bg-[#111114] text-white" : "text-[#55555E]"}`}>Email / Text</button>
+              </div>
+            )}
+            {tab === "summary" && (
+              <>
+                <MicroLabel className="mb-2">Include</MicroLabel>
+                <div className="flex flex-wrap gap-x-5 gap-y-2">
+                  <Opt label="VIN" on={opts.includeVin} onChange={(v) => set("includeVin", v)} />
+                  <Opt label="Registration & Plate" on={opts.includeRegistration} onChange={(v) => set("includeRegistration", v)} />
+                  <Opt label="Insurance" on={opts.includeInsurance} onChange={(v) => set("includeInsurance", v)} />
+                  <Opt label="Policy Number" on={opts.includePolicyNumber} disabled={!opts.includeInsurance} onChange={(v) => set("includePolicyNumber", v)} />
+                  <Opt label="Rates" on={opts.includeRates} onChange={(v) => set("includeRates", v)} />
+                  <Opt label="Photos" on={opts.includePhotos} onChange={(v) => set("includePhotos", v)} />
+                </div>
+              </>
+            )}
           </div>
 
+          {tab === "send" ? (
+            <VehicleShareSendPanel vehicleId={vehicleId} />
+          ) : (
           <div className="px-6 py-6 print:px-0">
             {loading && !data ? (
               <div className="flex items-center gap-2 text-[13px] text-[#9A9AA3] py-10 justify-center">
@@ -214,8 +214,10 @@ export function ShareVehicleDialog({
               </article>
             )}
           </div>
+          )}
         </div>
 
+        {tab === "summary" && (
         <footer className="flex items-center gap-2 border-t border-[#EDEDF0] px-5 py-3.5 print:hidden">
           <div className="flex items-center gap-1.5 text-[11px] text-[#9A9AA3] flex-1 min-w-0">
             <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-[#50C060]" />
@@ -241,6 +243,7 @@ export function ShareVehicleDialog({
             <Printer className="w-3.5 h-3.5" /> Print / PDF
           </button>
         </footer>
+        )}
       </div>
     </div>
   );

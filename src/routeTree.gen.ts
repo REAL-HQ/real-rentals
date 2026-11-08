@@ -36,6 +36,7 @@ import { Route as PortalHelpRouteImport } from './routes/portal_.help'
 import { Route as PortalRoadsideRouteImport } from './routes/portal_.roadside'
 import { Route as SignTokenRouteImport } from './routes/sign.$token'
 import { Route as VehiclesIdRouteImport } from './routes/vehicles.$id'
+import { Route as ShareVehicleTokenRouteImport } from './routes/share/vehicle/$token'
 import { Route as ApiPublicCronAutomationsRouteImport } from './routes/api/public/cron/automations'
 import { Route as ApiPublicCronEsignArchiveRetryRouteImport } from './routes/api/public/cron/esign-archive-retry'
 import { Route as ApiPublicCronFleetInboxRouteImport } from './routes/api/public/cron/fleet-inbox'
@@ -47,6 +48,7 @@ import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/publi
 import { Route as ApiPublicResendWebhookRouteImport } from './routes/api/public/resend/webhook'
 import { Route as ApiPublicSmsInboundRouteImport } from './routes/api/public/sms/inbound'
 import { Route as ApiPublicVehiclePhotosSplatRouteImport } from './routes/api/public/vehicle-photos/$'
+import { Route as ShareVehiclePhotoTokenMediaIdRouteImport } from './routes/share/vehicle-photo/$token/$mediaId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -183,6 +185,11 @@ const VehiclesIdRoute = VehiclesIdRouteImport.update({
   path: '/vehicles/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShareVehicleTokenRoute = ShareVehicleTokenRouteImport.update({
+  id: '/share/vehicle/$token',
+  path: '/share/vehicle/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicCronAutomationsRoute =
   ApiPublicCronAutomationsRouteImport.update({
     id: '/api/public/cron/automations',
@@ -244,6 +251,12 @@ const ApiPublicVehiclePhotosSplatRoute =
     path: '/api/public/vehicle-photos/$',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ShareVehiclePhotoTokenMediaIdRoute =
+  ShareVehiclePhotoTokenMediaIdRouteImport.update({
+    id: '/share/vehicle-photo/$token/$mediaId',
+    path: '/share/vehicle-photo/$token/$mediaId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -273,6 +286,7 @@ export interface FileRoutesByFullPath {
   '/sign/$token': typeof SignTokenRoute
   '/vehicles/$id': typeof VehiclesIdRoute
   '/fleet/': typeof FleetIndexRoute
+  '/share/vehicle/$token': typeof ShareVehicleTokenRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
   '/api/public/cron/esign-archive-retry': typeof ApiPublicCronEsignArchiveRetryRoute
   '/api/public/cron/fleet-inbox': typeof ApiPublicCronFleetInboxRoute
@@ -284,6 +298,7 @@ export interface FileRoutesByFullPath {
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
   '/api/public/vehicle-photos/$': typeof ApiPublicVehiclePhotosSplatRoute
+  '/share/vehicle-photo/$token/$mediaId': typeof ShareVehiclePhotoTokenMediaIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -313,6 +328,7 @@ export interface FileRoutesByTo {
   '/sign/$token': typeof SignTokenRoute
   '/vehicles/$id': typeof VehiclesIdRoute
   '/fleet': typeof FleetIndexRoute
+  '/share/vehicle/$token': typeof ShareVehicleTokenRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
   '/api/public/cron/esign-archive-retry': typeof ApiPublicCronEsignArchiveRetryRoute
   '/api/public/cron/fleet-inbox': typeof ApiPublicCronFleetInboxRoute
@@ -324,6 +340,7 @@ export interface FileRoutesByTo {
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
   '/api/public/vehicle-photos/$': typeof ApiPublicVehiclePhotosSplatRoute
+  '/share/vehicle-photo/$token/$mediaId': typeof ShareVehiclePhotoTokenMediaIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -354,6 +371,7 @@ export interface FileRoutesById {
   '/sign/$token': typeof SignTokenRoute
   '/vehicles/$id': typeof VehiclesIdRoute
   '/fleet/': typeof FleetIndexRoute
+  '/share/vehicle/$token': typeof ShareVehicleTokenRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
   '/api/public/cron/esign-archive-retry': typeof ApiPublicCronEsignArchiveRetryRoute
   '/api/public/cron/fleet-inbox': typeof ApiPublicCronFleetInboxRoute
@@ -365,6 +383,7 @@ export interface FileRoutesById {
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
   '/api/public/vehicle-photos/$': typeof ApiPublicVehiclePhotosSplatRoute
+  '/share/vehicle-photo/$token/$mediaId': typeof ShareVehiclePhotoTokenMediaIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -396,6 +415,7 @@ export interface FileRouteTypes {
     | '/sign/$token'
     | '/vehicles/$id'
     | '/fleet/'
+    | '/share/vehicle/$token'
     | '/api/public/cron/automations'
     | '/api/public/cron/esign-archive-retry'
     | '/api/public/cron/fleet-inbox'
@@ -407,6 +427,7 @@ export interface FileRouteTypes {
     | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
     | '/api/public/vehicle-photos/$'
+    | '/share/vehicle-photo/$token/$mediaId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -436,6 +457,7 @@ export interface FileRouteTypes {
     | '/sign/$token'
     | '/vehicles/$id'
     | '/fleet'
+    | '/share/vehicle/$token'
     | '/api/public/cron/automations'
     | '/api/public/cron/esign-archive-retry'
     | '/api/public/cron/fleet-inbox'
@@ -447,6 +469,7 @@ export interface FileRouteTypes {
     | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
     | '/api/public/vehicle-photos/$'
+    | '/share/vehicle-photo/$token/$mediaId'
   id:
     | '__root__'
     | '/'
@@ -476,6 +499,7 @@ export interface FileRouteTypes {
     | '/sign/$token'
     | '/vehicles/$id'
     | '/fleet/'
+    | '/share/vehicle/$token'
     | '/api/public/cron/automations'
     | '/api/public/cron/esign-archive-retry'
     | '/api/public/cron/fleet-inbox'
@@ -487,6 +511,7 @@ export interface FileRouteTypes {
     | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
     | '/api/public/vehicle-photos/$'
+    | '/share/vehicle-photo/$token/$mediaId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -517,6 +542,7 @@ export interface RootRouteChildren {
   SignTokenRoute: typeof SignTokenRoute
   VehiclesIdRoute: typeof VehiclesIdRoute
   FleetIndexRoute: typeof FleetIndexRoute
+  ShareVehicleTokenRoute: typeof ShareVehicleTokenRoute
   ApiPublicCronAutomationsRoute: typeof ApiPublicCronAutomationsRoute
   ApiPublicCronEsignArchiveRetryRoute: typeof ApiPublicCronEsignArchiveRetryRoute
   ApiPublicCronFleetInboxRoute: typeof ApiPublicCronFleetInboxRoute
@@ -528,6 +554,7 @@ export interface RootRouteChildren {
   ApiPublicResendWebhookRoute: typeof ApiPublicResendWebhookRoute
   ApiPublicSmsInboundRoute: typeof ApiPublicSmsInboundRoute
   ApiPublicVehiclePhotosSplatRoute: typeof ApiPublicVehiclePhotosSplatRoute
+  ShareVehiclePhotoTokenMediaIdRoute: typeof ShareVehiclePhotoTokenMediaIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -721,6 +748,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VehiclesIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/share/vehicle/$token': {
+      id: '/share/vehicle/$token'
+      path: '/share/vehicle/$token'
+      fullPath: '/share/vehicle/$token'
+      preLoaderRoute: typeof ShareVehicleTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/cron/automations': {
       id: '/api/public/cron/automations'
       path: '/api/public/cron/automations'
@@ -798,6 +832,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicVehiclePhotosSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/share/vehicle-photo/$token/$mediaId': {
+      id: '/share/vehicle-photo/$token/$mediaId'
+      path: '/share/vehicle-photo/$token/$mediaId'
+      fullPath: '/share/vehicle-photo/$token/$mediaId'
+      preLoaderRoute: typeof ShareVehiclePhotoTokenMediaIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -829,6 +870,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignTokenRoute: SignTokenRoute,
   VehiclesIdRoute: VehiclesIdRoute,
   FleetIndexRoute: FleetIndexRoute,
+  ShareVehicleTokenRoute: ShareVehicleTokenRoute,
   ApiPublicCronAutomationsRoute: ApiPublicCronAutomationsRoute,
   ApiPublicCronEsignArchiveRetryRoute: ApiPublicCronEsignArchiveRetryRoute,
   ApiPublicCronFleetInboxRoute: ApiPublicCronFleetInboxRoute,
@@ -840,6 +882,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicResendWebhookRoute: ApiPublicResendWebhookRoute,
   ApiPublicSmsInboundRoute: ApiPublicSmsInboundRoute,
   ApiPublicVehiclePhotosSplatRoute: ApiPublicVehiclePhotosSplatRoute,
+  ShareVehiclePhotoTokenMediaIdRoute: ShareVehiclePhotoTokenMediaIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
