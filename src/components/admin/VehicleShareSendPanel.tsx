@@ -112,9 +112,9 @@ export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
   return (
     <div className="space-y-5 px-6 py-5">
       <div className="grid grid-cols-3 gap-2 rounded-lg bg-soft p-1">
-        <button type="button" onClick={() => changeMode("enhanced")} aria-pressed={mode === "enhanced"} className={`rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${mode === "enhanced" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>AI Enhanced</button>
-        <button type="button" onClick={() => changeMode("insurance")} aria-pressed={mode === "insurance"} className={`rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${mode === "insurance" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>Insurance</button>
-        <button type="button" onClick={() => changeMode("custom")} aria-pressed={mode === "custom"} className={`rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${mode === "custom" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>Choose Photos</button>
+        <button type="button" onClick={() => changeMode("enhanced")} aria-pressed={mode === "enhanced"} className={`whitespace-nowrap rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${mode === "enhanced" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>AI Enhanced</button>
+        <button type="button" onClick={() => changeMode("insurance")} aria-pressed={mode === "insurance"} className={`whitespace-nowrap rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${mode === "insurance" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>Insurance</button>
+        <button type="button" onClick={() => changeMode("custom")} aria-pressed={mode === "custom"} className={`whitespace-nowrap rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${mode === "custom" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>Choose Photos</button>
       </div>
 
       <section>
@@ -138,8 +138,8 @@ export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
         )}
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
-        <div className="grid grid-cols-2 gap-2 rounded-lg bg-soft p-1 sm:self-start">
+      <section className="grid items-end gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+        <div className="grid grid-cols-2 gap-2 rounded-lg bg-soft p-1">
           <button type="button" onClick={() => changeChannel("email")} aria-pressed={channel === "email"} className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium ${channel === "email" ? "bg-card shadow-sm" : "text-muted-foreground"}`}><Mail className="h-3.5 w-3.5" /> Email</button>
           <button type="button" onClick={() => changeChannel("sms")} aria-pressed={channel === "sms"} className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium ${channel === "sms" ? "bg-card shadow-sm" : "text-muted-foreground"}`}><MessageSquare className="h-3.5 w-3.5" /> Text</button>
         </div>
@@ -163,10 +163,10 @@ export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
       )}
 
       <div className="sticky bottom-0 z-10 -mx-6 -mb-5 flex flex-col-reverse gap-2 border-t border-border bg-card px-6 pb-5 pt-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs leading-5 text-muted-foreground">Review before sending. The recipient sees only this package for 72 hours.</p>
-        <div className="flex flex-col-reverse gap-2 sm:flex-row">
-          <button type="button" onClick={copyLink} disabled={!!busy || !selected.size} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-sm font-medium disabled:opacity-50"><Copy className="h-4 w-4" />{busy === "link" ? "Creating…" : "Copy Secure Link"}</button>
-          <button type="button" onClick={sendPackage} disabled={!!busy || !selected.size || !available} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-medium text-brand-foreground disabled:opacity-50">{busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : channel === "email" ? <Mail className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}{busy === "send" ? "Sending…" : channel === "email" ? "Send Email" : "Send Text"}</button>
+        <p className="min-w-0 text-xs leading-5 text-muted-foreground">Review before sending. The recipient sees only this package for 72 hours.</p>
+        <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
+          <button type="button" onClick={copyLink} disabled={!!busy || !selected.size} className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-card px-3 text-sm font-medium disabled:opacity-50"><Copy className="h-4 w-4" />{busy === "link" ? "Creating…" : "Copy Secure Link"}</button>
+          <button type="button" onClick={sendPackage} disabled={!!busy || !selected.size || !available} className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-brand px-4 text-sm font-medium text-brand-foreground disabled:opacity-50">{busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : channel === "email" ? <Mail className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}{busy === "send" ? "Sending…" : channel === "email" ? "Send Email" : "Send Text"}</button>
         </div>
       </div>
     </div>

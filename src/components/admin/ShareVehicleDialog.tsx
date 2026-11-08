@@ -99,7 +99,7 @@ export function ShareVehicleDialog({
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 print:static print:p-0">
       <div className="absolute inset-0 bg-black/40 print:hidden" onClick={onClose} />
-      <div className="relative w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden print:max-h-none print:rounded-none print:shadow-none print:max-w-none">
+      <div className="relative w-full max-w-5xl max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden print:max-h-none print:rounded-none print:shadow-none print:max-w-none">
         <header className="flex items-center gap-3 border-b border-[#EDEDF0] px-5 py-4 print:hidden">
           <div className="min-w-0 flex-1">
             <h2 className="text-[15px] font-semibold text-[#111114]">Share Vehicle Info</h2>
