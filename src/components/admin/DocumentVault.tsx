@@ -87,6 +87,7 @@ export function DocumentVault({
           category,
           fileName: file.name,
           mimeType: file.type || "application/octet-stream",
+          internal: internal || undefined,
         },
       });
       const { error } = await supabase.storage
