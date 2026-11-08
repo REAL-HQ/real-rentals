@@ -45,6 +45,20 @@ async function handle(request: Request): Promise<Response> {
   if (tokenErr || !expectedToken) return new Response("token config missing", { status: 500 });
   if (!provided || provided !== expectedToken) return new Response("unauthorized", { status: 401 });
 
+  // Back Office → Automations switches, read fresh for this run. A switched-off
+  // reminder is skipped before its dedupe row or bell notification is written,
+  // so turning it back on sends only what is owed that day — never a replay.
+  const { loadAutomationControls } = await import("@/lib/automation-controls.server");
+  const { isAutomationOn } = await import("@/lib/automation-catalog");
+  const controls = await loadAutomationControls(supabaseAdmin, true);
+  // Unreadable or malformed switches: send nothing and fail the run, so an
+  // Owner's Off can never leak and the failure is visible. Retried next run.
+  if (controls.status === "error") {
+    console.error("[ops-reminders] automation settings unreadable; nothing sent");
+    return new Response("automation settings unreadable; nothing sent", { status: 503 });
+  }
+  const on = (key: string) => isAutomationOn(controls.value, key);
+
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
   const since = new Date(today.getTime() - 6 * 24 * 3600 * 1000).toISOString(); // license / agreement reminders: 1 per 6 days
@@ -94,26 +108,31 @@ async function handle(request: Request): Promise<Response> {
       if (!app?.email) continue;
       if (await alreadySent(supabaseAdmin, app.id, kind)) continue;
 
-      await sendPastDueReminderEmail({
+      if (on("payment_past_due")) {
+      const sentPastDue = await sendPastDueReminderEmail({
         to: app.email,
         firstName: app.full_name,
         amount: info.amount,
         dueDate: info.dueDate,
         daysLate,
       });
+      // Stopped by a switch at send time: record nothing, so it is not logged as sent.
+      if (sentPastDue.blocked) continue;
       await logNotification(
         supabaseAdmin, app.id, app.user_id, app.email,
         kind, "Balance Past Due", `$${info.amount.toFixed(2)} is past due.`,
       );
       pastDue++;
+      }
 
       // First time this balance shows up past due: tell the team once.
       const teamKind = `payment_team_past_due:${info.dueDate}`;
-      if (!(await alreadySent(supabaseAdmin, app.id, teamKind))) {
-        await sendTeamPaymentAlertEmail({
+      if (on("payment_team_alert") && !(await alreadySent(supabaseAdmin, app.id, teamKind))) {
+        const sentTeam = await sendTeamPaymentAlertEmail({
           event: "past_due", driverName: app.full_name, amount: info.amount,
           applicationId: app.id, dueDate: info.dueDate, daysLate,
         });
+        if (sentTeam.blocked) continue;
         await logNotification(supabaseAdmin, app.id, null, TEAM_INBOX, teamKind, "Team: Payment Past Due", app.full_name ?? app.id);
         await supabaseAdmin.from("notifications").insert({
           kind: "payment_past_due",
@@ -144,6 +163,7 @@ async function handle(request: Request): Promise<Response> {
     upcomingByDriver.set(p.driver_id as string, (upcomingByDriver.get(p.driver_id as string) ?? 0) + owed);
   }
   for (const [appId, amount] of upcomingByDriver) {
+    if (!on("payment_due_tomorrow")) break;
     try {
       const kind = reminderKind("due_tomorrow", tomorrowStr);
       const { data: app } = await supabaseAdmin
@@ -160,10 +180,11 @@ async function handle(request: Request): Promise<Response> {
         .eq("status", "active")
         .limit(1)
         .maybeSingle();
-      await sendPaymentDueTomorrowEmail({
+      const sentDue = await sendPaymentDueTomorrowEmail({
         to: app.email, firstName: app.full_name, amount, dueDate: tomorrowStr,
         autopay: !!(rental as { autopay_active?: boolean } | null)?.autopay_active,
       });
+      if (sentDue.blocked) continue;
       await logNotification(
         supabaseAdmin, app.id, app.user_id, app.email,
         kind, "Payment Due Tomorrow", `$${amount.toFixed(2)} is due ${tomorrowStr}.`,
@@ -181,7 +202,7 @@ async function handle(request: Request): Promise<Response> {
   // "Not specified" — never assumed to be Zelle.
   try {
     const planKind = collectionsPlanKind(todayStr);
-    const alreadyPlan = await teamDigestAlreadySent(supabaseAdmin, planKind);
+    const alreadyPlan = on("collections_plan") ? await teamDigestAlreadySent(supabaseAdmin, planKind) : true;
     if (!alreadyPlan) {
       const { data: dueRentals } = await supabaseAdmin
         .from("rentals")
@@ -313,12 +334,13 @@ async function handle(request: Request): Promise<Response> {
       });
 
       if (plan.dueToday.length || plan.dueTomorrow.length) {
-        await sendTeamCollectionsPlanEmail({
+        const sentPlan = await sendTeamCollectionsPlanEmail({
           today: plan.today,
           tomorrow: plan.tomorrow,
           dueToday: plan.dueToday,
           dueTomorrow: plan.dueTomorrow,
         });
+        if (sentPlan.blocked) throw new Error("collections plan stopped by automation switch; not recorded");
         await supabaseAdmin.from("outbound_messages").insert({
           channel: "email",
           to_address: TEAM_INBOX,
@@ -368,18 +390,20 @@ async function handle(request: Request): Promise<Response> {
     .limit(200);
 
   for (const app of expiring ?? []) {
+    if (!on("license_expiring")) break;
     try {
       if (!app.email) continue;
       if (await recentlyNotified(supabaseAdmin, app.id, "license_expiring", since)) continue;
       const daysLeft = Math.round(
         (new Date(app.license_expiration as string).getTime() - today.getTime()) / 86400000,
       );
-      await sendLicenseExpiringEmail({
+      const sentLicense = await sendLicenseExpiringEmail({
         to: app.email,
         firstName: app.full_name,
         expiration: app.license_expiration as string,
         daysLeft,
       });
+      if (sentLicense.blocked) continue;
       await logNotification(
         supabaseAdmin, app.id, app.user_id, app.email,
         "license_expiring", "License Expiring", `Expires ${app.license_expiration}.`,

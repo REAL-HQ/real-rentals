@@ -30,6 +30,16 @@ async function handle(request: Request): Promise<Response> {
   // Filtering (open drafts only: not deleted, purged or decided) and
   // claim-before-send (no double emails from overlapping runs) live in
   // runWizardRecovery, where they are unit-tested.
+  // Back Office → Automations: switched off means no claims and no sends this run.
+  const { loadAutomationControls } = await import("@/lib/automation-controls.server");
+  const { isAutomationOn } = await import("@/lib/automation-catalog");
+  const controls = await loadAutomationControls(supabaseAdmin, true);
+  if (controls.status === "error") {
+    return new Response("automation settings unreadable; nothing claimed or sent", { status: 503 });
+  }
+  if (!isAutomationOn(controls.value, "application_recovery")) {
+    return Response.json({ skipped: "turned_off" });
+  }
   const report = await runWizardRecovery(supabaseAdmin, {
     sendWizardRecoveryEmail,
     sendAbandonedRecoveryEmail,
