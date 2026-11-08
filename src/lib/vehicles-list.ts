@@ -80,7 +80,14 @@ export function isReadinessFilter(v: unknown): v is (typeof READINESS_FILTERS)[n
 /** Fleet-wide tally, for the chips above the list. */
 export type ReadinessCounts = Record<ReadinessBand, number>;
 
+/** Position in the returned (sorted/filtered) list, not the vehicle unit ID. */
+export function vehicleRowNumber(page: number, pageSize: number, index: number) {
+  return (page - 1) * pageSize + index + 1;
+}
+
 export type VehicleListResult = {
+  /** Exact whole-table count, including archived vehicles; null if unavailable. */
+  fleetTotal?: number | null;
   rows: VehicleListRow[];
   total: number;
   page: number;

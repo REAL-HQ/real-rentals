@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { listVehicles } from "@/lib/vehicles-list.functions";
 import {
   availabilityLabel,
+  vehicleRowNumber,
   isReadinessFilter,
   READINESS_BANDS,
   READINESS_HINT,
@@ -299,12 +300,14 @@ function FleetVehicles({
     setList({ q: "", status: "all", body: "all", partner: "all", ready: "all" });
     if (topSearch) onClearExternalSearch?.();
   }
-  const firstShown = total === 0 ? 0 : (page - 1) * VEHICLE_LIST_PAGE_SIZE + 1;
-  const lastShown = Math.min(total, page * VEHICLE_LIST_PAGE_SIZE);
+  // Use the returned page while keepPreviousData is showing the prior page.
+  const rowNumber = (index: number) => vehicleRowNumber(result?.page ?? page, result?.pageSize ?? VEHICLE_LIST_PAGE_SIZE, index);
+  const firstShown = rows.length === 0 ? 0 : rowNumber(0);
+  const lastShown = rows.length === 0 ? 0 : rowNumber(rows.length - 1);
 
   const cardsGrid = (
     <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-lg:min-w-0 ${view === "list" ? "md:hidden" : ""}`}>
-      {rows.map((v) => {
+      {rows.map((v, index) => {
         const img = resolvePhotoUrl(v.photo ?? undefined);
         return (
           <div key={v.id} onClick={() => setViewing(v.id)} className="rounded-2xl bg-soft overflow-hidden cursor-pointer transition-shadow hover:shadow-md max-lg:min-w-0">
@@ -312,7 +315,7 @@ function FleetVehicles({
               {img ? <img src={img} alt="" loading="lazy" className="w-full h-full object-cover" /> : <span className="text-xs text-muted-foreground">No photo</span>}
             </div>
             <div className="p-4">
-              <div className="h-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{v.unit_number ?? ""}</div>
+              <div className="h-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><span className="mr-2 tabular-nums">#{rowNumber(index)}</span>{v.unit_number ?? ""}</div>
               <div className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</div>
               <dl className="mt-2.5 grid grid-cols-[44px_1fr] items-center gap-y-0.5 text-[13px] leading-6">
                 <dt className="text-muted-foreground">Plate</dt>
@@ -357,6 +360,12 @@ function FleetVehicles({
   return (
     <div className="max-lg:min-w-0">
       {remindersFailed ? <p className="mb-3 text-sm text-[#D03020]" data-testid="maintenance-log-error">Could not load maintenance reminders.</p> : null}
+      {view !== "due" && (
+        <p className="mb-3 text-sm text-muted-foreground" data-testid="vehicle-count">
+          {result?.fleetTotal != null ? `${result.fleetTotal} vehicles total (including archived)` : listQuery.isPending ? "Loading vehicle total…" : "Vehicle total unavailable"}
+          {result && hasActiveFilters && !listQuery.isPlaceholderData && <span> · {total} matching</span>}
+        </p>
+      )}
       <AdminToolbar
         filters={
           <>
@@ -486,6 +495,7 @@ function FleetVehicles({
           <table className="w-full text-sm max-lg:min-w-[64rem]">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
+                <th scope="col" className="w-10 px-3 py-2 font-medium" aria-label="Row number">#</th>
                 <th className="px-3 py-2 font-medium">Unit</th>
                 <th className="px-3 py-2 font-medium">Vehicle</th>
                 <th className="px-3 py-2 font-medium">Plate</th>
@@ -498,8 +508,9 @@ function FleetVehicles({
               </tr>
             </thead>
             <tbody>
-              {rows.map((v) => (
+              {rows.map((v, index) => (
                 <tr key={v.id} onClick={() => setViewing(v.id)} className="border-t border-border cursor-pointer hover:bg-[#FAFAFB]">
+                  <td className="w-10 px-3 py-2 tabular-nums text-muted-foreground">{rowNumber(index)}</td>
                   <td className="px-3 py-2 font-medium whitespace-nowrap">{v.unit_number ?? <span className="text-muted-foreground">—</span>}</td>
                   <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</td>
                   <td className="px-3 py-2 font-mono whitespace-nowrap">{v.license_plate || <span className="text-muted-foreground">—</span>}</td>

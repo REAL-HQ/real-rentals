@@ -63,4 +63,14 @@ check(vehicles.includes("No Vehicles Match “${topSearch}”") && vehicles.incl
 check(/action=\{hasActiveFilters \? <button onClick=\{clearAll\}/.test(vehicles), "empty state offers Clear Filters");
 check(admin.includes('<VehiclesPanel externalSearch={globalSearch} onClearExternalSearch={() => setGlobalSearch("")}'), "admin wires the clear back to the top search box");
 
+
+// Ordinal is a separate first column; mobile/cards retain the same number.
+check(/aria-label="Row number">#<\/th>\s*<th[^>]*>Unit/.test(vehicles), "narrow # column precedes Unit");
+check(vehicles.includes('{v.unit_number ?? <span') && vehicles.includes('{v.unit_number ?? ""}'), "unit identifiers stay unchanged in table and cards");
+check((vehicles.match(/rows\.map\(\(v, index\)/g) ?? []).length === 2 && (vehicles.match(/rowNumber\(index\)/g) ?? []).length === 2, "table and cards use the same visible ordinal");
+check(vehicles.includes('vehicleRowNumber(result?.page ?? page, result?.pageSize ?? VEHICLE_LIST_PAGE_SIZE, index)'), "placeholder rows retain their returned page numbers while fetching");
+check(vehicles.includes('vehicles total (including archived)') && vehicles.includes('{total} matching'), "fleet scope and filtered counts are explicitly labeled");
+check(vehicles.includes('Loading vehicle total…') && vehicles.includes('Vehicle total unavailable'), "loading and missing counts never invent a zero");
+check(!vehicles.includes('colSpan='), "empty and loading states are outside the table, so no stale colspans");
+
 console.log(`${checks} admin toolbar checks passed`);
