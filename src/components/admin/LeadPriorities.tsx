@@ -94,7 +94,7 @@ export default function LeadPriorities({
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 id="lead-priorities-title" className="flex items-center gap-2 text-lg font-semibold">
-            <Flame aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
+            <Flame aria-hidden="true" className="h-5 w-5 shrink-0 text-destructive" />
             Lead Priorities
           </h2>
           <p className="text-sm text-muted-foreground">Who needs attention and what to do next</p>
