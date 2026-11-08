@@ -1,9 +1,10 @@
-import { AlertCircle, Car, Loader2, RotateCw } from "lucide-react";
+import { AlertCircle, Car, ClipboardList, Loader2, RotateCw } from "lucide-react";
 import type { ActivationReadiness } from "@/lib/activation-readiness";
 import type { NextStep } from "@/lib/next-step";
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import type { ActivationRequirementKey } from "@/lib/activation-readiness";
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 
 /**
  * The profile's one "what now" card. It shows the server's blockers with a
@@ -61,6 +62,9 @@ export function NextStepCard({
               <Car className="h-3.5 w-3.5" /> Activate Rental
             </button>
           ) : null}
+          <Button type="button" variant="outline" title="Optional Interview Script" className="h-9 shrink-0 gap-1.5 px-3 text-[12px]" onClick={() => onRun({ kind: "interview" })}>
+            <ClipboardList className="h-3.5 w-3.5" /> Interview Script
+          </Button>
           {model.target.kind !== "none" ? (
             <button
               type="button"

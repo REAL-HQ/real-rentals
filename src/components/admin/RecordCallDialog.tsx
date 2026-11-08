@@ -35,22 +35,22 @@ export function RecordCallDialog({ applicationId, name, onClose, onSaved, onInte
       const result = await save({ data: { applicationId, occurredAt: date.toISOString(), note: note.trim(), completed: true } });
       onSaved(result.screening);
       if (result.auditWarning) toast.warning(result.auditWarning);
-      else toast.success(result.alreadyComplete ? "Interview Already Complete" : "Phone Call Recorded");
+      else toast.success(result.alreadyComplete ? "Call Already Complete" : "Call Completion Saved");
       onClose();
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Could Not Record The Call"); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Could Not Save Call Completion"); }
     finally { setBusy(false); }
   }
 
-  return <ModalShell label="Record Call" size="sm" onClose={close} closeOnBackdrop={!busy}>
-    <ModalHeader title={<span className="flex items-center gap-2"><PhoneCall className="h-4 w-4 text-brand" />Record Call</span>} subtitle={name} onClose={busy ? undefined : close} />
+  return <ModalShell label="Call Complete" size="sm" onClose={close} closeOnBackdrop={!busy}>
+    <ModalHeader title={<span className="flex items-center gap-2"><PhoneCall className="h-4 w-4 text-brand" />Call Complete</span>} subtitle={name} onClose={busy ? undefined : close} />
     <ModalBody className="space-y-4">
       <Field label="Call Completed At" required><input type="datetime-local" className={inputCls} aria-label="Call Completed At" value={occurredAt} max={localNow()} disabled={busy} onChange={(e) => setOccurredAt(e.target.value)} /></Field>
       <Field label="Call Notes" required><textarea className={`${inputCls} h-auto py-2`} aria-label="Call Notes" rows={3} maxLength={1000} value={note} disabled={busy} onChange={(e) => setNote(e.target.value)} /></Field>
       <label className="flex items-start gap-2 text-sm"><Checkbox checked={completed} disabled={busy} onCheckedChange={(value) => setCompleted(value === true)} /><span>I Completed This Driver’s Qualification Call</span></label>
     </ModalBody>
-    <ModalFooter left={<ModalButton variant="ghost" disabled={busy} onClick={onInterview}>Full Interview</ModalButton>}>
+    <ModalFooter left={<ModalButton variant="ghost" disabled={busy} onClick={onInterview}>Interview Script</ModalButton>}>
       <ModalButton disabled={busy} onClick={close}>Cancel</ModalButton>
-      <ModalButton variant="primary" disabled={busy || !valid} onClick={() => void submit()}>{busy ? "Saving…" : "Record Call"}</ModalButton>
+      <ModalButton variant="primary" disabled={busy || !valid} onClick={() => void submit()}>{busy ? "Saving…" : "Save Completion"}</ModalButton>
     </ModalFooter>
   </ModalShell>;
 }

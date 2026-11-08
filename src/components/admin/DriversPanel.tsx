@@ -2523,8 +2523,8 @@ function DriverDetail({
                   <DropdownMenuItem title="Open In Messages" aria-label="Open In Messages" onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: driver.id } }))}>
                     <MessageSquare className="w-4 h-4 mr-2" /> Messages
                   </DropdownMenuItem>
-                  <DropdownMenuItem title="Edit Interview" aria-label="Edit Interview" onClick={() => setInterviewOpen(true)}>
-                    <ClipboardList className="w-4 h-4 mr-2" /> Interview
+                  <DropdownMenuItem title="Optional Interview Script" aria-label="Interview Script" onClick={() => setInterviewOpen(true)}>
+                    <ClipboardList className="w-4 h-4 mr-2" /> Interview Script
                   </DropdownMenuItem>
                   <RequestDocumentsAction driver={driver} onUpdate={onSaved} />
                   <ReissueLinkAction applicationId={driver.id} />

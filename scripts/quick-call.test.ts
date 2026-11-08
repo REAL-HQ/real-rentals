@@ -43,6 +43,17 @@ describe("Quick phone call recording", () => {
     expect(patch.interview_notes).toBe(`Preserve original\n\nPhone Call Completed · ${input.occurredAt}\n${input.note}`);
     expect(patch.interviewed_by).toBe("staff@example.invalid");
   });
+  it("accepts a completed phone call without using the optional interview script or inventing answers", async () => {
+    const { ctx, writes } = context({ current: { id: "screening", lead_id: id, status: "new_lead", updated_at: "version", interview_completed_at: null, interview_notes: null, license_active: null, has_dui: null, gig_apps: [] } });
+    const result = await recordQuickCall(input, ctx);
+    expect(result.screening.interview_completed_at).toBe(input.occurredAt);
+    expect(result.screening.status).toBe("new_lead");
+    expect(result.screening.license_active).toBeNull();
+    expect(result.screening.has_dui).toBeNull();
+    expect(result.screening.gig_apps).toEqual([]);
+    expect(Object.keys(writes[0].patch).sort()).toEqual(["interview_completed_at", "interview_notes", "interviewed_by"]);
+    expect(writes.map((write) => write.table)).toEqual(["driver_screenings"]);
+  });
   for (const role of ["admin", "team", "coordinator"]) it(`${role} records a call without changing stage, negative findings or answers`, async () => {
     const { ctx, writes } = context({ role });
     const result = await recordQuickCall(input, ctx);

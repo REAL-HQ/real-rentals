@@ -30,16 +30,16 @@ export function InterviewDrawer({
         <SheetHeader className="px-6 py-4 border-b border-[#EDEDF0] bg-white shrink-0">
           <SheetTitle className="flex items-center gap-2 text-[15px]">
             <ClipboardList className="w-4 h-4 text-[#D03020]" strokeWidth={1.75} />
-            Interview · {driver.full_name ?? "Driver"}
+            Interview Script · {driver.full_name ?? "Driver"}
           </SheetTitle>
           <p className="text-[12px] text-[#55555E] mt-1">
-            Step-by-step qualification workflow. Answers save when you click Complete Interview on the last step.
+            Optional Interview Script
           </p>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {screening?.interview_completed_at ? <div className="mb-4 space-y-1 rounded-lg border border-border bg-card p-3 text-sm" aria-label="Recorded Call">
+          {screening?.interview_completed_at ? <div className="mb-4 space-y-1 rounded-lg border border-border bg-card p-3 text-sm" aria-label="Call Completion">
             <div className="font-semibold text-foreground">Interview Complete · {fmtDateTime(screening.interview_completed_at)}</div>
-            {screening.interviewed_by ? <div className="text-xs text-muted-foreground">Recorded By: {screening.interviewed_by}</div> : null}
+            {screening.interviewed_by ? <div className="text-xs text-muted-foreground">Completed By: {screening.interviewed_by}</div> : null}
             {screening.interview_notes ? <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">{screening.interview_notes}</p> : null}
           </div> : null}
           <InterviewTab
