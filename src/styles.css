@@ -121,8 +121,8 @@
   --foreground: oklch(0.984 0.003 247.858);
   --card: oklch(0.208 0.042 265.755);
   --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0 0);
   --primary: oklch(0.929 0.013 255.508);
   --primary-foreground: oklch(0.208 0.042 265.755);
   --secondary: oklch(0.279 0.041 260.031);
@@ -184,6 +184,15 @@
   .border-real-red { border-color: #D03020; }
   .bg-soft { background-color: #F5F5F7; }
 
+  /* Dropdowns stay light even when the browser or surrounding chrome is dark.
+     Native popup rendering varies by OS, so set the control and its options
+     explicitly instead of relying on a utility class on the closed select. */
+  select {
+    color-scheme: only light;
+    background-color: var(--popover) !important;
+    color: var(--popover-foreground) !important;
+  }
+
   /* Shared dropdown caret: every native select gets the same custom caret,
      12px from the right border, with reserved space so text never overlaps. */
   select:not([multiple]):not([size]),
@@ -191,13 +200,16 @@
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
-    color-scheme: light;
+    color-scheme: only light;
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1L6 6L11 1' stroke='%23111' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
     background-repeat: no-repeat;
     background-position: right 0.75rem center;
     padding-right: 2rem !important;
   }
-  select option, .select-soft option { background-color: #ffffff; color: #111111; }
+  select option, select optgroup, .select-soft option, .select-soft optgroup {
+    background-color: var(--popover) !important;
+    color: var(--popover-foreground) !important;
+  }
 
   .container-real {
     max-width: 1200px;

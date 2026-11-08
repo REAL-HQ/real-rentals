@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Dropdowns: native selects, shared Select controls, action menus, and popovers use white panels with dark text across light and dark chrome; options and behavior unchanged.
 - [x] Vehicle Photos: full drag/drop field remains available after photos exist; clarified that Listing Ready still requires an explicitly website-published photo and preserved the publish/profile/list refresh path.
 - [x] Vehicle activation refresh: resolved requirements now refresh vehicle profiles/lists and open activation details; correct-driver events and focus recheck verified without changing records.
 - [x] Lead Priorities: removed the rejected blue card styling, neutralized card surfaces, paired priority with the status row, and reduced visual noise without changing ranking, filters, data, or actions.
