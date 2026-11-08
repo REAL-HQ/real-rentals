@@ -61,6 +61,8 @@ import {
   reissueApplicantLink,
 } from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
+import { NextStepCard } from "./NextStepCard";
+import { nextStep, type FixTarget } from "@/lib/next-step";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { DepositDialog } from "./DepositDialog";
 import { DriverStatement } from "./DriverStatement";
@@ -1895,8 +1897,11 @@ function DriverDetail({
   const [rentalTabReadiness, setRentalTabReadiness] = useState<ActivationReadiness | null>(null);
   const [rentalTabReadinessLoading, setRentalTabReadinessLoading] = useState(false);
   const [rentalTabReadinessFailed, setRentalTabReadinessFailed] = useState(false);
+  const [readinessNonce, setReadinessNonce] = useState(0);
   useEffect(() => {
-    if (tab !== "rental" || activationEntry !== "enabled" || activateOpen) return;
+    // The header's next step comes from the server's answer on every tab
+    // (re-checked on tab change so a fix made in a section shows up).
+    if (activationEntry !== "enabled" || activateOpen) return;
     let cancelled = false;
     setRentalTabReadinessLoading(true);
     setRentalTabReadinessFailed(false);
@@ -1916,7 +1921,7 @@ function DriverDetail({
     return () => {
       cancelled = true;
     };
-  }, [tab, activationEntry, activateOpen, driver.id, driver.vehicle_id, driver.status, checkActivation]);
+  }, [tab, activationEntry, activateOpen, driver.id, driver.vehicle_id, driver.status, checkActivation, readinessNonce]);
   const [recordOpen, setRecordOpen] = useState(false);
   const [recordCloseOpen, setRecordCloseOpen] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -1979,6 +1984,7 @@ function DriverDetail({
   // Approving and sending the contract used to be two separate manual steps,
   // so an approved driver could sit waiting on a contract nobody sent.
   async function approveAndSend() {
+    if (approving) return; // a double click must not approve twice
     setApproving(true);
     try {
       const res = await approve({ data: { id: driver.id } });
@@ -2014,34 +2020,39 @@ function DriverDetail({
   // The header's single next step (order unchanged). A Coordinator is sent to
   // the Rental tab instead of Activate Rental: the server refuses them.
   const step = primaryStep({ screeningDone, docsComplete, insuranceOk, approved, rentalActive, isManager });
-  const primaryAction =
-    step === "interview"
-      ? { label: "Continue Interview", onClick: () => setInterviewOpen(true), icon: ClipboardList }
-      : step === "documents"
-        ? {
-            label: "Review Documents",
-            onClick: () => setTab("documents"),
-            icon: FileText,
-          }
-        : step === "insurance"
-          ? {
-              label: "Verify Insurance",
-              onClick: () => setTab("screening"),
-              icon: ShieldCheck,
-            }
-          : step === "approve"
-            ? {
-                label: approving ? "Approving…" : "Approve & Send Contract",
-                onClick: approveAndSend,
-                icon: Check,
-              }
-            : step === "activate"
-              ? { label: "Activate Rental", onClick: () => setActivateOpen(true), icon: Car }
-              : {
-                  label: "View Rental",
-                  onClick: () => setTab("rental"),
-                  icon: Car,
-                };
+  // One next step for the header and the Overview card, from the server's
+  // readiness when it is loaded (see src/lib/next-step.ts).
+  const next = nextStep({
+    step,
+    entry: activationEntry,
+    readiness: rentalTabReadiness,
+    loading: rentalTabReadinessLoading,
+    failed: rentalTabReadinessFailed,
+  });
+  function openSection(tabValue: string, anchor: string) {
+    setTab(tabValue);
+    // Let the tab render, then bring the exact card into view.
+    window.setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  }
+  function runTarget(t: FixTarget | { kind: "rental" } | { kind: "none" }) {
+    if (t.kind === "section") openSection(t.tab, t.anchor);
+    else if (t.kind === "interview") setInterviewOpen(true);
+    else if (t.kind === "approve") void approveAndSend();
+    else if (t.kind === "activate") { if (!activateOpen) setActivateOpen(true); }
+    else if (t.kind === "rental") setTab("rental");
+  }
+  const nextIcon =
+    next.target.kind === "interview" ? ClipboardList
+      : next.target.kind === "approve" ? Check
+        : next.target.kind === "section" && next.target.tab === "documents" ? FileText
+          : next.target.kind === "section" && next.target.tab === "screening" ? ShieldCheck
+            : Car;
+  const primaryAction = {
+    label: next.target.kind === "approve" && approving ? "Approving…" : next.label,
+    onClick: () => runTarget(next.target),
+    icon: nextIcon,
+    disabled: next.busy || (next.target.kind === "approve" && approving),
+  };
   const PrimaryIcon = primaryAction.icon;
 
   // What to collect next, ordered by how much coverage each action unlocks.
@@ -2306,19 +2317,11 @@ function DriverDetail({
     </SectionCard>
   );
 
-  // Secondary actions not already the header CTA or a Next Steps button.
+  // Secondary actions. Documents, insurance and vehicle are reached from the
+  // Next Step card's fix buttons and the tabs, so they are not repeated here.
   const moreActions = (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9A9AA3] mr-1">Actions</span>
-      <button className={btnSecondary} onClick={() => setTab("documents")}>
-        <FileText className="w-3.5 h-3.5" /> Request Documents
-      </button>
-      <button className={btnSecondary} onClick={() => setTab("screening")}>
-        <ShieldCheck className="w-3.5 h-3.5" /> Verify Insurance
-      </button>
-      <button className={btnSecondary} onClick={() => setTab("rental")}>
-        <Car className="w-3.5 h-3.5" /> Assign Vehicle
-      </button>
       <button className={btnSecondary} onClick={() => setTab("notes")}>
         <FileText className="w-3.5 h-3.5" /> Add Note
       </button>
@@ -2439,7 +2442,9 @@ function DriverDetail({
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               <button
                 onClick={primaryAction.onClick}
-                className="hidden sm:inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
+                disabled={primaryAction.disabled}
+                data-testid="profile-primary"
+                className="disabled:opacity-50 disabled:cursor-not-allowed hidden sm:inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
               >
                 <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
               </button>
@@ -2511,7 +2516,8 @@ function DriverDetail({
             <div className="pt-3 sm:hidden">
               <button
                 onClick={primaryAction.onClick}
-                className="w-full inline-flex items-center justify-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-2 text-[13px] font-semibold"
+                disabled={primaryAction.disabled}
+                className="disabled:opacity-50 w-full inline-flex items-center justify-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-2 text-[13px] font-semibold"
               >
                 <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
               </button>
@@ -2546,6 +2552,13 @@ function DriverDetail({
                     onOpenDocuments={() => setTab("documents")}
                   />
                 ) : null}
+                <NextStepCard
+                  model={next}
+                  readiness={rentalTabReadiness}
+                  onRun={runTarget}
+                  onActivate={() => runTarget({ kind: "activate" })}
+                  onRetry={() => setReadinessNonce((n) => n + 1)}
+                />
                 <LifecycleRail
                   stages={lifecycle}
                   percent={percentComplete}
@@ -2574,13 +2587,13 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="documents" className="mt-0 space-y-4">
-                <AgreementsCard applicationId={driver.id} onOpenTab={(t) => setTab(t)} />
+                <div id="profile-agreements" className="scroll-mt-48"><AgreementsCard applicationId={driver.id} onOpenTab={(t) => setTab(t)} /></div>
                 <SectionCard
                   title="Documents"
                   subtitle="Everything this applicant sent us. Shared with the driver unless marked team only."
                   padded={false}
                 >
-                  <div className="p-5">
+                  <div className="p-5 scroll-mt-48" id="profile-documents">
                     {/* One view over the document vault. It used to be three
                         stacked surfaces — the vault as a text list, a card
                         backed by a different table, and two one-off cards
@@ -2608,6 +2621,7 @@ function DriverDetail({
                   hasActiveRental={hasActiveRental}
                   onAdvance={advanceStatus}
                 />
+                <div id="profile-insurance" className="scroll-mt-48">
                 <InsuranceVerificationCard
                   leadId={driver.id}
                   screening={screening}
@@ -2620,6 +2634,7 @@ function DriverDetail({
                   }}
                   onRecordingChange={setHasRecording}
                 />
+                </div>
                 <IdentityReviewCard applicationId={driver.id} />
                 <AISnapshotCard driver={driver} />
               </TabsContent>
@@ -2712,15 +2727,16 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="rental" className="mt-0">
-                <StartRentalCard
-                  entry={activationEntry}
+                <div className="mb-4"><NextStepCard
+                  model={next}
                   readiness={rentalTabReadiness}
-                  loading={rentalTabReadinessLoading}
-                  failed={rentalTabReadinessFailed}
-                  onActivate={() => setActivateOpen(true)}
-                />
+                  onRun={runTarget}
+                  onActivate={() => runTarget({ kind: "activate" })}
+                  onRetry={() => setReadinessNonce((n) => n + 1)}
+                /></div>
                 <button className={btnSecondary} disabled={!RECORD_RENTAL_CONTRACT_ENABLED} onClick={()=>setRecordOpen(true)}>Record Rental — pending acceptance</button>
                 {activeRentalId ? <button className={btnSecondary} disabled={!RECORD_RENTAL_CONTRACT_ENABLED} onClick={()=>setRecordCloseOpen(true)}>Close recorded rental — pending acceptance</button> : null}
+                <div id="profile-vehicle" className="scroll-mt-48">
                 <Card title="Assigned Vehicle" icon={<Car className="w-4 h-4" />}>
                   <div className="rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] p-4 mb-3">
                     {veh ? (
@@ -2745,6 +2761,7 @@ function DriverDetail({
                     onChange={(id) => onUpdate({ vehicle_id: id })}
                   />
                 </Card>
+                </div>
               </TabsContent>
 
               <TabsContent value="payments" className="mt-0 space-y-4">
@@ -2997,70 +3014,6 @@ function ReqRow({ ok, label }: { ok: boolean; label: string }) {
       </span>
       {label}
     </li>
-  );
-}
-
-/**
- * The Rental tab's Activate Rental entry. A driver is Active only while a
- * rental runs, so this says so and opens the same ActivateRentalDialog the
- * header uses. The checklist is the server's readiness result, not a local
- * guess; activateRental re-checks every item when the rental is started.
- */
-function StartRentalCard({
-  entry,
-  readiness,
-  loading,
-  failed,
-  onActivate,
-}: {
-  entry: "enabled" | "manager_only" | "rental_active";
-  readiness: ActivationReadiness | null;
-  loading: boolean;
-  failed: boolean;
-  onActivate: () => void;
-}) {
-  if (entry === "rental_active") return null;
-  return (
-    <div className="mb-4">
-      <Card title="Start Rental" icon={<Car className="w-4 h-4" />}>
-        <p className="text-[13px] text-[#55555E]">
-          A driver becomes Active only when a rental starts. Activate Rental starts the rental,
-          assigns the vehicle and sets the driver to Active in one step.
-        </p>
-        {entry === "manager_only" ? (
-          <div className="mt-3">
-            <button
-              type="button"
-              disabled
-              title="Only A Manager Or Owner Can Start A Rental"
-              className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold opacity-50 cursor-not-allowed"
-            >
-              <Car className="w-3.5 h-3.5" strokeWidth={2} /> Activate Rental
-            </button>
-            <p className="mt-1.5 text-[11px] text-[#9A9AA3]">Only A Manager Or Owner Can Start A Rental.</p>
-          </div>
-        ) : (
-          <div className="mt-3 space-y-3">
-            {loading && !readiness ? (
-              <div className="flex items-center gap-2 text-[12px] text-[#55555E]">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking Readiness…
-              </div>
-            ) : failed ? (
-              <p className="text-[12px] text-[#8A1C10]">Could Not Check Readiness. Open Activate Rental To Retry.</p>
-            ) : readiness ? (
-              <ActivationRequirementList requirements={readiness.requirements} />
-            ) : null}
-            <button
-              type="button"
-              onClick={onActivate}
-              className="inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
-            >
-              <Car className="w-3.5 h-3.5" strokeWidth={2} /> Activate Rental
-            </button>
-          </div>
-        )}
-      </Card>
-    </div>
   );
 }
 
