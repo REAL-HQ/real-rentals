@@ -1081,6 +1081,7 @@ export type Database = {
           mime_type: string | null
           phase: string
           rental_id: string | null
+          share_path: string | null
           size_bytes: number | null
           storage_bucket: string
           storage_path: string
@@ -1105,6 +1106,7 @@ export type Database = {
           mime_type?: string | null
           phase?: string
           rental_id?: string | null
+          share_path?: string | null
           size_bytes?: number | null
           storage_bucket?: string
           storage_path: string
@@ -1129,6 +1131,7 @@ export type Database = {
           mime_type?: string | null
           phase?: string
           rental_id?: string | null
+          share_path?: string | null
           size_bytes?: number | null
           storage_bucket?: string
           storage_path?: string

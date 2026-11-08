@@ -52,7 +52,9 @@ export async function parseConditionExif(
         "latitude",
         "longitude",
       ],
-      translateKeys: false,
+      // Keys must be translated: `pick` and the reads below use tag NAMES.
+      // With translateKeys:false exifr returns numeric keys, and every photo
+      // was filed as "no camera time" with no GPS.
       reviveValues: true,
       gps: true,
     });

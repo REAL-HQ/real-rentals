@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearch } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { TRIP_MEDIA_ACCEPT, TRIP_MEDIA_MAX_BYTES, tripMediaType } from "@/lib/trip-media";
 import { toast } from "sonner";
 import {
   Plus,
@@ -695,13 +696,13 @@ export function ConditionUploader({
   async function uploadOne(file: File, onProgress: (pct: number) => void) {
     onProgress(10);
     const { path, token, bucket } = await startUpload({
-      data: { vehicleId, fileName: file.name, mimeType: file.type || "image/jpeg" },
+      data: { vehicleId, fileName: file.name, mimeType: file.type || "application/octet-stream" },
     });
     onProgress(40);
     // Upload original bytes — EXIF is parsed server-side on these bytes.
     const { error } = await supabase.storage
       .from(bucket)
-      .uploadToSignedUrl(path, token, file, { contentType: file.type || undefined });
+      .uploadToSignedUrl(path, token, file, { contentType: tripMediaType(file.name, file.type) ?? undefined });
     if (error) throw error;
     onProgress(80);
     const res = await confirm({
@@ -713,7 +714,7 @@ export function ConditionUploader({
         angle: angle as any,
         path,
         fileName: file.name,
-        mimeType: file.type || undefined,
+        mimeType: tripMediaType(file.name, file.type) ?? undefined,
         sizeBytes: file.size,
       },
     });
@@ -766,8 +767,9 @@ export function ConditionUploader({
             title={`Drop ${ANGLES.find((a) => a[0] === angle)?.[1]} Photos Or Video Here`}
             label={`Add ${ANGLES.find((a) => a[0] === angle)?.[1]} Photo Or Video`}
             context={`${phase} · ${ANGLES.find((a) => a[0] === angle)?.[1]}`}
-            accept="image/*,video/mp4,video/quicktime"
-            maxBytes={50 * 1024 * 1024}
+            accept={TRIP_MEDIA_ACCEPT}
+            maxBytes={TRIP_MEDIA_MAX_BYTES}
+            hint="Drop several at once. JPEG, PNG, WebP, HEIC, MP4 or MOV · up to 50 MB each"
             multiple
             camera
             upload={(file, { onProgress }) => uploadOne(file, onProgress)}
@@ -791,9 +793,15 @@ export function ConditionUploader({
                 rel="noreferrer"
                 className="group block overflow-hidden rounded-xl border border-[#EDEDF0]"
               >
-                {m.media_type === "video" ? (
-                  <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center text-xs text-muted-foreground">
-                    Video
+                {m.media_type === "video" && m.url ? (
+                  <video src={m.url} controls preload="metadata" className="h-28 w-full bg-black object-contain" />
+                ) : m.url && (m as { mime_type?: string | null }).mime_type === "image/heic" ? (
+                  <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center px-2 text-center text-xs text-muted-foreground">
+                    HEIC photo · tap to open
+                  </div>
+                ) : !m.url ? (
+                  <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center px-2 text-center text-xs text-muted-foreground">
+                    {m.media_type === "video" ? "Video saved" : "Photo saved"} · team can view; no location-safe preview for this type
                   </div>
                 ) : (
                   <img

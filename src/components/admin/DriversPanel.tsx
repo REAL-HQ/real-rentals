@@ -190,6 +190,7 @@ import { getDocumentReviewAging } from "@/lib/document-review-aging.functions";
 import { DocumentReviewAging } from "./DocumentReviewAging";
 import { buildReadinessIndex } from "@/lib/readiness-index";
 import { ApplicantDocuments, REQUIRED_VAULT_CATEGORIES } from "./ApplicantDocuments";
+import { TripMediaPanel } from "./TripMediaPanel";
 import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
 import { InterviewDrawer } from "./InterviewDrawer";
 import { acknowledgeApplication } from "@/lib/applications.functions";
@@ -2365,6 +2366,7 @@ function DriverDetail({
     ["documents", "Documents"],
     ["screening", "Screening"],
     ["rental", "Rental"],
+    ["pictures", "Pictures"],
     ["payments", "Payments"],
     ["notes", "Notes"],
   ] as const;
@@ -2745,6 +2747,10 @@ function DriverDetail({
                     onChange={(id) => onUpdate({ vehicle_id: id })}
                   />
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="pictures" className="mt-0 space-y-4">
+                <TripMediaPanel applicationId={driver.id} />
               </TabsContent>
 
               <TabsContent value="payments" className="mt-0 space-y-4">
