@@ -184,10 +184,11 @@ export async function authorizeRenterPortalFileForDriver(
   if (kind === "photo") {
     const { data: m } = await admin
       .from("condition_media")
-      .select("id,storage_bucket,storage_path,rental_id")
+      .select("id,storage_bucket,share_path,rental_id")
       .eq("id", id)
       .maybeSingle();
-    if (!m?.storage_bucket || !m.storage_path) return null;
+    // Renters get the metadata-free share copy, never the original.
+    if (!m?.storage_bucket || !m.share_path) return null;
     const { data: rental } = await admin
       .from("rentals")
       .select("id,status,end_date,updated_at,driver_id")
@@ -200,7 +201,7 @@ export async function authorizeRenterPortalFileForDriver(
         ? rental.end_date ?? (rental.updated_at ? String(rental.updated_at).slice(0, 10) : null)
         : null;
     if (!recordsVisible(stage, returnedOn, today)) return null;
-    return { storage_bucket: m.storage_bucket, storage_path: m.storage_path };
+    return { storage_bucket: m.storage_bucket, storage_path: m.share_path };
   }
 
   if (kind === "registration") {
