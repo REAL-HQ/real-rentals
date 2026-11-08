@@ -107,3 +107,14 @@ export class PreviewStore {
     this.listeners.clear();
   }
 }
+
+/**
+ * Lightbox fetch rule: fetch when nothing is cached; retry an error at most
+ * once per opening (tracked in `retried`); never re-request restricted files.
+ */
+export function lightboxShouldRequest(p: PreviewState | undefined, retried: Set<string>, documentId: string): boolean {
+  if (!p) return true;
+  if (p.state !== "error" || retried.has(documentId)) return false;
+  retried.add(documentId);
+  return true;
+}
