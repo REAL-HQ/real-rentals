@@ -316,6 +316,12 @@
   }
   .admin-sticky-bar > * { flex-shrink: 0; }
   .admin-sticky-bar.flex-col > * { flex-shrink: 1; }
+  /* AdminToolbar wraps by the space it has; the phone side-scroll rule above
+     would turn its row into a hidden horizontal strip. */
+  .admin-sticky-bar[data-admin-toolbar] > .flex-wrap {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
 }
 
 /* Layer 3: sticky list-table column headers (via AdminTableScroll). */
