@@ -908,7 +908,8 @@ function ActionCard({
             ? "border-[#B77900]/40 hover:border-[#B77900]"
             : "border-[#EDEDF0] hover:border-[#D03020]";
   const surfaceBg = surface === "yellow" ? "bg-warning-soft" : surface === "red" ? "bg-danger-soft" : "bg-card";
-  const badgeBg = tint === "amber" ? "bg-[#B77900] text-white" : "bg-[#CC0000] text-white";
+  const iconTone = surface === "yellow" ? "text-warning-foreground" : surface === "red" ? "text-destructive" : "text-[#55555E]";
+  const badgeBg = surface === "red" || tint !== "amber" ? "bg-destructive text-destructive-foreground" : "bg-[#B77900] text-white";
 
   return (
     <Link
@@ -917,7 +918,7 @@ function ActionCard({
       className={`group relative rounded-2xl border ${surfaceBg} text-[#111114] shadow-sm px-5 py-4 transition-colors ${border}`}
     >
       <div className="flex items-center justify-between">
-        <div className="h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] text-[#55555E]">
+        <div className={`h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] ${iconTone}`}>
           <Icon className="w-4 h-4" strokeWidth={1.75} />
         </div>
         {control === "add" ? (
@@ -1015,7 +1016,7 @@ function RevenueCard({
       className="relative cursor-pointer rounded-2xl border border-success/30 bg-success-soft shadow-sm px-5 py-4 hover:border-success transition-colors"
     >
       <div className="flex items-center justify-between">
-        <div className="h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] text-[#55555E]">
+        <div className="h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] text-success">
           <Receipt className="w-4 h-4" strokeWidth={1.75} />
         </div>
         <button
