@@ -1,5 +1,18 @@
 import type { ActivationRequirement } from "@/lib/activation-readiness";
 import type { FixTarget } from "@/lib/next-step";
+import type { ActivationRequirementKey } from "@/lib/activation-readiness";
+
+/** Only file-backed requirements; never infer a review or completion from a file. */
+export function checklistDocumentCategories(key: ActivationRequirementKey): ("license_front" | "license_back" | "insurance" | "agreement" | "gig_profile")[] {
+  switch (key) {
+    case "license_documents": return ["license_front", "license_back"];
+    case "signed_agreement": return ["agreement"];
+    case "insurance_verified":
+    case "insurance_document": return ["insurance"];
+    case "gig_profile": return ["gig_profile"];
+    default: return [];
+  }
+}
 
 type ChecklistAction = { label: string; target: FixTarget };
 

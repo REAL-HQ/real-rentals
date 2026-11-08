@@ -765,7 +765,8 @@ try {
     const dialog = readFileSync("src/components/admin/ActivateRentalDialog.tsx", "utf8");
     assert.match(dialog, /isHardBlocker\(b\.code\)/);
     assert.match(dialog, /insuranceExceptionAck: insuranceNeedsAck && insuranceAck/);
-    assert.match(dialog, /\(!insuranceNeedsAck \|\| insuranceAck\)/);
+    assert.match(dialog, /insuranceAcknowledged: insuranceAck/);
+    assert.match(dialog, /!busy && submitIssues.length === 0/);
     assert.doesNotMatch(dialog, /\buppercase\b/);
     const ws = readFileSync("src/components/admin/SettingsWorkspace.tsx", "utf8");
     assert.match(ws, /current\.id === "rental_terms" \? <RentalActivationSettingsPanel \/>/);

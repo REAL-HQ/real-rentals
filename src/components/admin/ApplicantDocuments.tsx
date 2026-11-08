@@ -13,12 +13,9 @@ import {
   Clock,
   Lock,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import {
   DOC_CATEGORIES,
   adminListDriverDocuments,
-  createDocumentUploadUrl,
-  confirmDocumentUpload,
   updateDocumentMeta,
   deleteDocument,
   setDocumentReview,
@@ -33,6 +30,8 @@ import { fmtDate } from "@/lib/date-format";
 import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { verifyApprovalIdentity } from "@/lib/identity-verification.functions";
 import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
+import { useDriverDocumentUpload } from "./use-driver-document-upload";
+import { displayTitleCase } from "@/lib/display-normalize";
 
 // Everything an applicant sent us, in one place, grouped the way somebody
 // looking at it actually thinks.
@@ -160,8 +159,6 @@ export function ApplicantDocuments({
   /** Re-read the vault after this component changes it. */
   onRefresh: () => Promise<void> | void;
 }) {
-  const startUpload = useServerFn(createDocumentUploadUrl);
-  const confirmUpload = useServerFn(confirmDocumentUpload);
   const patchMeta = useServerFn(updateDocumentMeta);
   const removeDoc = useServerFn(deleteDocument);
   const review = useServerFn(setDocumentReview);
@@ -173,6 +170,7 @@ export function ApplicantDocuments({
   const refresh = useCallback(async () => {
     await onRefresh();
   }, [onRefresh]);
+  const uploadDocument = useDriverDocumentUpload(applicationId, refresh);
 
   // One pass, not one find() per category.
   const { current, history } = useMemo(() => {
@@ -199,34 +197,8 @@ export function ApplicantDocuments({
   async function uploadCategory(category: DocCategory, file: File, onProgress: (pct: number) => void) {
     setBusy(category);
     try {
-      onProgress(10);
-      const signed = await startUpload({
-        data: {
-          applicationId,
-          category,
-          fileName: file.name,
-          mimeType: file.type || "application/octet-stream",
-        },
-      });
-      onProgress(40);
-      const { error } = await supabase.storage
-        .from(signed.bucket)
-        .uploadToSignedUrl(signed.path, signed.token, file);
-      if (error) throw new Error(error.message);
-      onProgress(80);
-      await confirmUpload({
-        data: {
-          applicationId: signed.applicationId!,
-          category,
-          path: signed.path,
-          fileName: file.name,
-          mimeType: file.type || null,
-          sizeBytes: file.size,
-        },
-      });
-      onProgress(100);
+      await uploadDocument(category, file, onProgress);
       toast.success("Document uploaded");
-      await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
       throw err;
@@ -452,18 +424,7 @@ export function ApplicantDocuments({
                     >
                       <ShieldCheck className="w-3 h-3" /> Permanent Record
                     </span>
-                  ) : (
-                    <FileUploader
-                      variant="inline"
-                      label={d ? "Replace" : "Upload"}
-                      context={`${meta.label} · Application ${applicationId.slice(0, 8)}`}
-                      accept="image/*,application/pdf"
-                      maxBytes={MAX_MB * 1024 * 1024}
-                      camera
-                      disabled={!!working}
-                      upload={(file, { onProgress }) => uploadCategory(key, file, onProgress)}
-                    />
-                  )}
+                  ) : null}
                   {/* Signed agreements are permanent records: no Delete, and
                       the server refuses it anyway (deleteDocument). */}
                   {d && key !== "agreement" && !d.signed_agreement && (
@@ -477,6 +438,20 @@ export function ApplicantDocuments({
                     </button>
                   )}
                 </div>
+                {!locked ? <FileUploader
+                  variant="zone"
+                  title={`Drop ${displayTitleCase(meta.label).replace("(front)", "(Front)").replace("(back)", "(Back)")} Here`}
+                  label={d ? "Browse Replacement" : "Browse Files"}
+                  hint="Images Or PDF · 15 MB Max"
+                  accept="image/*,application/pdf"
+                  maxBytes={MAX_MB * 1024 * 1024}
+                  camera
+                  autoStart={false}
+                  submitLabel={d ? "Upload Replacement" : "Upload File"}
+                  disabled={busy != null}
+                  upload={(file, { onProgress }) => uploadCategory(key, file, onProgress)}
+                  className="mt-2 min-w-0 [&>div:first-child]:rounded-lg [&>div:first-child]:p-3 [&_svg.mx-auto]:h-4 [&_svg.mx-auto]:w-4 [&_div.mt-4]:mt-2 [&_button]:text-xs"
+                /> : null}
               </div>
             </div>
           );

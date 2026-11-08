@@ -1,5 +1,6 @@
 import { Check, Circle, Minus } from "lucide-react";
-import type { ActivationRequirement, RequirementEnforcement } from "@/lib/activation-readiness";
+import type { ActivationRequirement, ActivationRequirementKey, RequirementEnforcement } from "@/lib/activation-readiness";
+import type { ReactNode } from "react";
 import type { FixTarget } from "@/lib/next-step";
 import { Button } from "@/components/ui/button";
 import { checklistAction } from "./checklist-actions";
@@ -18,9 +19,11 @@ const ENFORCEMENT_LABEL: Record<RequirementEnforcement, string> = {
 export function ActivationRequirementList({
   requirements,
   onRun,
+  renderEvidence,
 }: {
   requirements: ActivationRequirement[];
   onRun?: (target: FixTarget) => void;
+  renderEvidence?: (key: ActivationRequirementKey) => ReactNode;
 }) {
   // Advisory items (insurance card, gig profile, gig platform) never block, so
   // they are not counted as outstanding.
@@ -58,6 +61,7 @@ export function ActivationRequirementList({
               <span className="text-right text-[10px] text-muted-foreground">{status}</span>
               {action && onRun ? <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => onRun(action.target)}>{action.label}</Button> : r.key === "gig_platform" ? <span className="text-right text-[10px] text-muted-foreground">No Platform Verification Connected</span> : null}
             </div>
+            {renderEvidence ? <div className="col-span-2 min-w-0 empty:hidden">{renderEvidence(r.key)}</div> : null}
           </li>
           );
         })}

@@ -76,6 +76,9 @@ import {
   primaryStep,
 } from "@/lib/activation-readiness";
 import { ActivationRequirementList } from "./ActivationRequirementList";
+import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
+import { checklistDocumentCategories } from "./checklist-actions";
+import type { ActivationRequirementKey } from "@/lib/activation-readiness";
 import { withoutInsuranceDecision } from "@/lib/insurance-verification";
 import { scoreApplication } from "@/lib/scoring.functions";
 import {
@@ -1905,6 +1908,16 @@ function DriverDetail({
     notifyActivationReadinessRefresh({ applicationId: driver.id });
     onSharedReadinessRefresh?.();
   }
+  const refreshEvidence = useCallback(async () => {
+    await refreshVault();
+    readinessChanged();
+  }, [refreshVault]);
+  function renderChecklistEvidence(key: ActivationRequirementKey) {
+    if (!isManager || vaultLoading || key === "insurance_document") return null;
+    const categories = checklistDocumentCategories(key);
+    if (!categories.length) return null;
+    return <div className="grid min-w-0 gap-2 sm:grid-cols-2">{categories.map((category) => <DriverEvidenceUpload key={`${driver.id}:${category}`} applicationId={driver.id} category={category} documents={vaultDocs} onUploaded={refreshEvidence} />)}</div>;
+  }
 
   useEffect(() => {
     // The header's next step comes from the server's answer on every tab
@@ -2563,6 +2576,7 @@ function DriverDetail({
                 <NextStepCard
                   model={next}
                   readiness={rentalTabReadiness}
+                  renderEvidence={renderChecklistEvidence}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
@@ -2738,6 +2752,7 @@ function DriverDetail({
                 <div className="mb-4"><NextStepCard
                   model={next}
                   readiness={rentalTabReadiness}
+                  renderEvidence={renderChecklistEvidence}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
@@ -2937,6 +2952,8 @@ function DriverDetail({
           driver={driver}
           vehicles={vehicles}
           isOwner={isOwner}
+          renderEvidence={renderChecklistEvidence}
+          onRun={(target) => { setActivateOpen(false); runTarget(target); }}
           onClose={() => setActivateOpen(false)}
           onActivated={() => {
             setActivateOpen(false);

@@ -2,6 +2,8 @@ import { AlertCircle, Car, Loader2, RotateCw } from "lucide-react";
 import type { ActivationReadiness } from "@/lib/activation-readiness";
 import type { NextStep } from "@/lib/next-step";
 import { ActivationRequirementList } from "./ActivationRequirementList";
+import type { ActivationRequirementKey } from "@/lib/activation-readiness";
+import type { ReactNode } from "react";
 
 /**
  * The profile's one "what now" card. It shows the server's blockers with a
@@ -15,12 +17,14 @@ export function NextStepCard({
   onRun,
   onActivate,
   onRetry,
+  renderEvidence,
 }: {
   model: NextStep;
   readiness: ActivationReadiness | null;
   onRun: (b: NextStep["blockers"][number]["target"]) => void;
   onActivate: () => void;
   onRetry: () => void;
+  renderEvidence?: (key: ActivationRequirementKey) => ReactNode;
 }) {
   const { activation } = model;
   if (activation === "rental_active") return null;
@@ -85,6 +89,7 @@ export function NextStepCard({
               <button type="button" onClick={() => onRun(b.target)} className={`${secondary} h-8`}>
                 {b.fix}
               </button>
+              {b.key !== "local" && renderEvidence ? <div className="w-full min-w-0 empty:hidden">{renderEvidence(b.key)}</div> : null}
             </li>
           ))}
         </ul>
@@ -93,7 +98,7 @@ export function NextStepCard({
         <details className="mt-3 text-[12px]">
           <summary className="cursor-pointer text-[#55555E] hover:text-[#111114]">Full Checklist</summary>
           <div className="mt-2">
-            <ActivationRequirementList requirements={readiness.requirements} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} />
+            <ActivationRequirementList requirements={readiness.requirements} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} renderEvidence={renderEvidence} />
           </div>
         </details>
       ) : null}

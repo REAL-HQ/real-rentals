@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from "./modal";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -12,13 +12,16 @@ import {
   ACTIVATION_READINESS_REFRESH_EVENT,
   insuranceExceptionWarning,
   isHardBlocker,
-  MIN_OVERRIDE_REASON,
   OWNER_APPROVED_RENTAL_REASON,
   canUseOwnerActivatePreset,
+  type ActivationRequirementKey,
 } from "@/lib/activation-readiness";
 import { MicroLabel } from "./ui";
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { activationSubmitIssues } from "./activation-submit-issues";
+import type { FixTarget } from "@/lib/next-step";
+import { Button } from "@/components/ui/button";
 
 type VehicleLite = {
   id: string;
@@ -40,6 +43,8 @@ export function ActivateRentalDialog({
   onClose,
   onActivated,
   isOwner = false,
+  onRun,
+  renderEvidence,
 }: {
   driver: { id: string; full_name?: string | null; vehicle_id?: string | null };
   vehicles: VehicleLite[];
@@ -47,6 +52,8 @@ export function ActivateRentalDialog({
   onActivated: () => void;
   /** Owner/Admin may apply the preset override reason without typing. */
   isOwner?: boolean;
+  onRun?: (target: FixTarget) => void;
+  renderEvidence?: (key: ActivationRequirementKey) => ReactNode;
 }) {
   const check = useServerFn(getActivationReadiness);
   const activate = useServerFn(activateRental);
@@ -125,19 +132,11 @@ export function ActivateRentalDialog({
   const depositNum = Number(deposit.replace(/[^\d.]/g, "")) || 0;
   const pickupNum = pickupMiles.trim() ? Number(pickupMiles.replace(/[^\d]/g, "")) : null;
 
-  const canSubmit =
-    !busy &&
-    !checking &&
-    !!vehicleId &&
-    rateNum > 0 &&
-    pickupNum != null && pickupNum >= 0 &&
-    !!startDate &&
-    hardBlockers.length === 0 &&
-    (!insuranceNeedsAck || insuranceAck) &&
-    (softBlockers.length === 0 || (acknowledged && overrideReason.trim().length >= MIN_OVERRIDE_REASON));
+  const submitIssues = activationSubmitIssues({ readiness, checking, vehicleId, rate: rateNum, pickupMileage: pickupNum, startDate, acknowledged, overrideReason, insuranceAcknowledged: insuranceAck });
+  const canSubmit = !busy && submitIssues.length === 0;
 
   async function submit() {
-    if (busy) return; // double click: one activation request only
+    if (!canSubmit) return; // disabled and programmatic paths use the same visible gates
     setBusy(true);
     try {
       const res = await activate({
@@ -207,7 +206,7 @@ export function ActivateRentalDialog({
           ) : null}
 
           {readiness?.requirements?.length ? (
-            <ActivationRequirementList requirements={readiness.requirements} />
+            <ActivationRequirementList requirements={readiness.requirements} onRun={onRun} renderEvidence={renderEvidence} />
           ) : null}
 
           {hardBlockers.length > 0 ? (
@@ -256,6 +255,7 @@ export function ActivateRentalDialog({
                   <li key={b.code}>• {b.message}</li>
                 ))}
               </ul>
+              <p className="mt-2 text-xs text-warning-foreground">A Written Reason Covers Only The Interview And Pre-Delivery Inspection. Required License Files, Signed Agreement Review, And Insurance Requirements Still Apply.</p>
               <label className="mt-2.5 flex items-start gap-2 text-xs text-[#8A5A00]">
                 <input
                   type="checkbox"
@@ -270,13 +270,15 @@ export function ActivateRentalDialog({
               {acknowledged && (
                 <div className="mt-2 space-y-2">
                   {canUseOwnerActivatePreset(isOwner) ? (
-                    <button
+                    <Button
+                      variant="outline"
+                      size="sm"
                       type="button"
                       onClick={() => setOverrideReason(OWNER_APPROVED_RENTAL_REASON)}
-                      className="rounded-md border border-[#F0DCBB] bg-white px-2.5 py-1.5 text-xs font-medium text-[#8A5A00] hover:bg-[#FDF8EF]"
+                      className="text-xs"
                     >
                       Use “owner approved rental”
-                    </button>
+                    </Button>
                   ) : (
                     <p className="text-[11px] text-[#8A5A00]/80">
                       Owners can apply a preset reason. Enter your own reason below.
@@ -287,6 +289,7 @@ export function ActivateRentalDialog({
                     onChange={(e) => setOverrideReason(e.target.value)}
                     placeholder="Reason For Override (Required)"
                     rows={2}
+                    aria-label="Reason For Override"
                     className="w-full rounded-md border border-[#F6E7B8] bg-white px-2 py-1.5 text-xs text-[#111114]"
                   />
                 </div>
@@ -384,7 +387,10 @@ export function ActivateRentalDialog({
           </label>
         </ModalBody>
 
-        <ModalFooter>
+        <ModalFooter left={submitIssues.length ? <div className="min-w-0 max-w-sm text-xs text-muted-foreground" role="status" aria-label="Activation Still Blocked">
+          <span className="font-semibold text-destructive">Activation Still Blocked</span>
+          <p className="mt-1">{hardBlockers.length > 0 ? `${hardBlockers.length} Required Item${hardBlockers.length === 1 ? "" : "s"} Still Incomplete. Review The Checklist Above.` : submitIssues[0]?.message}</p>
+        </div> : null}>
           <ModalButton onClick={onClose}>Cancel</ModalButton>
           <ModalButton variant="primary" onClick={submit} disabled={!canSubmit}>
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
