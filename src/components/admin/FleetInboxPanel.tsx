@@ -5,7 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  FileText, Loader2, ChevronLeft, AlertTriangle, CheckCircle2, RotateCw, Eye, Car, Copy, Link2, Upload,
+  Loader2, ChevronLeft, AlertTriangle, CheckCircle2, RotateCw, Eye, Car, Copy, Link2, Upload,
 } from "lucide-react";
 import {
   createImportBatch, listImportBatches, registerInboxFile, analyzeInboxItem, getImportBatch,
@@ -19,6 +19,8 @@ import { ServiceTransactionReview } from "@/components/admin/ServiceTransactionR
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
 import { formatVehicleLabel } from "@/lib/vehicle-label";
 import { fmtDateTime } from "@/lib/date-format";
+import { FleetFileLightbox, FleetFileThumb } from "@/components/admin/FleetFilePreview";
+import { PreviewStore } from "@/lib/fleet-file-preview";
 
 const BATCH_LABEL: Record<string, string> = {
   uploading: "Uploading", processing: "Processing", ready: "Ready for Review", needs_attention: "Needs Attention",
@@ -215,6 +217,14 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
   const [confirming, setConfirming] = useState(false);
   const [applying, setApplying] = useState(false);
   const [results, setResults] = useState<any[] | null>(null);
+  // One bounded preview cache per open batch; object URLs are revoked when it closes.
+  const [previews, setPreviews] = useState<PreviewStore | null>(null);
+  useEffect(() => {
+    const st = new PreviewStore((documentId) => fileFn({ data: { documentId } }));
+    setPreviews(st);
+    return () => st.dispose();
+  }, [fileFn, batchId]);
+  const [lightbox, setLightbox] = useState<number | null>(null);
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const load = useCallback(async () => {
@@ -384,11 +394,12 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
 
       {/* Files */}
       <section className="rounded-xl border border-[#EDEDF0] bg-white">
+        <FleetFileLightbox items={d.items} index={lightbox} store={previews} onIndex={setLightbox} onClose={() => setLightbox(null)} openOriginal={openFile} />
         <header className="px-4 py-3 border-b border-[#EDEDF0] text-[13px] font-semibold">Files</header>
         <div className="divide-y divide-[#EDEDF0]">
           {d.items.map((it: any) => (
-            <div key={it.id} className="px-4 py-3 flex flex-wrap items-center gap-2">
-              <FileText className="w-4 h-4 text-[#9A9AA3] shrink-0" />
+            <div key={it.id} data-item-row={it.id} className="px-4 py-3 flex flex-wrap items-center gap-2">
+              <FleetFileThumb item={it} store={previews} onOpen={() => setLightbox(d.items.indexOf(it))} />
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium truncate">{it.file_name}</div>
                 <div className="text-xs text-[#9A9AA3]">
