@@ -122,7 +122,7 @@ const STUBS = {
   "@/integrations/supabase/client.server": `export const supabaseAdmin = new Proxy({}, { get: (_t, k) => globalThis.__admin[k] });`,
   "@/lib/stripe.server": `export const createStripeClient = () => globalThis.__stripe; export const verifyWebhook = async () => { throw new Error("not used"); }; export const getStripeErrorMessage = (e) => (e && (e.raw?.message ?? e.message)) || "Stripe request failed";`,
   "@/lib/driver-preview.server": `export const refuseStaffPortalWrite = async () => {}; export const portalScope = async (c) => ({ supabase: c.supabase, userId: c.userId });`,
-  "@/lib/email.server": `export const sendPaymentReceiptEmail = async () => {}; export const sendPaymentFailedEmail = async () => {}; export const sendCardExpiringEmail = async () => {};`,
+  "@/lib/email.server": `export const sendPaymentReceiptEmail = async () => {}; export const sendPaymentFailedEmail = async () => {}; export const sendCardExpiringEmail = async () => {}; export const sendTeamPaymentAlertEmail = async () => {};`,
 };
 const stubPlugin = {
   name: "stubs",

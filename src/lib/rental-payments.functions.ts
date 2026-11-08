@@ -371,48 +371,19 @@ export const payRentalBalance = createServerFn({ method: 'POST' })
     return data;
   })
   .handler(async ({ data, context }): Promise<{ ok: true; paymentIntentId: string } | { error: string }> => {
-    // Driver-only: staff (including Driver Preview) are refused before any lookup.
-    await (await import('@/lib/driver-preview.server')).refuseStaffPortalWrite(context.userId);
-    try {
-      // Verify driver owns rental via authenticated supabase (RLS)
-      const { data: rental } = await (context.supabase as any)
-        .from('rentals')
-        .select('id, driver_id, application_id, stripe_customer_id, stripe_payment_method_id')
-        .eq('id', data.rentalId)
-        .maybeSingle();
-      // Staff can READ every rental, so RLS alone would let a Coordinator push
-      // a charge through the driver's own pay button. Only the renter pays here.
-      if (!rental || rental.driver_id !== context.userId) throw new Error('Rental not found');
-      if (!rental.stripe_customer_id || !rental.stripe_payment_method_id) throw new Error('No card on file');
-
-      const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
-      const { collectRows, rentalBalance } = await import('@/lib/payment-collection.server');
-      // Same computation as the portal's balance (getRentalBilling).
-      const { processing, rows, cents } = await rentalBalance(supabaseAdmin, data.rentalId);
-      // A payment still Processing (in flight, or not yet confirmed by Stripe) blocks a new one,
-      // so the same charges are never collected twice. collectRows enforces this atomically too.
-      if (processing)
-        return { error: 'A payment is still being confirmed by Stripe. Please don\'t pay again; your balance updates once it is confirmed.' };
-      if (!rows.length) return { error: 'Nothing is owed on this rental.' };
-      if (cents !== Math.round(data.amountCents)) return { error: 'Your balance changed. Refresh and try again.' };
-
-      const stripe = createStripeClient(data.environment);
-      const res = await collectRows(supabaseAdmin, stripe, rows, {
-        rentalId: data.rentalId,
-        customerId: rental.stripe_customer_id,
-        paymentMethodId: rental.stripe_payment_method_id,
-        description: 'Rent balance payment',
-        metadata: { rentalId: data.rentalId, reason: 'rent', source: 'driver_portal' },
-      });
-      if ('error' in res) {
-        if (res.outcome === 'unconfirmed')
-          return { error: 'We could not confirm your payment with the card processor. It may have gone through, so please don\'t pay again; your balance updates once it is confirmed.' };
-        return { error: res.error };
-      }
-      return { ok: true, paymentIntentId: res.paymentIntentId };
-    } catch (error) {
-      return { error: getStripeErrorMessage(error) };
-    }
+    const { payRentalBalanceCore } = await import('@/lib/pay-rental-balance.server');
+    const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
+    const { collectRows, rentalBalance } = await import('@/lib/payment-collection.server');
+    const { refuseStaffPortalWrite } = await import('@/lib/driver-preview.server');
+    return payRentalBalanceCore(data, context.userId, {
+      refuseStaff: refuseStaffPortalWrite,
+      userDb: context.supabase,
+      admin: supabaseAdmin,
+      rentalBalance: rentalBalance as any,
+      collectRows: collectRows as any,
+      stripe: () => createStripeClient(data.environment),
+      errorMessage: getStripeErrorMessage,
+    });
   });
 
 // ─── Driver Portal: update card (new SetupIntent) ─────────────────────────

@@ -4,6 +4,7 @@ import { type StripeEnv, verifyWebhook, createStripeClient } from '@/lib/stripe.
 import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail, sendTeamPaymentAlertEmail } from '@/lib/email.server';
 import { doubleCollectionMessage } from '@/lib/payment-overlap';
 import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatched';
+import { holdIfHeld, type HeldNoticeInput } from '@/lib/held-payment-notices.server';
 
 let _supabase: ReturnType<typeof createClient> | null = null;
 let webhookAdmin: any = null;
@@ -37,20 +38,6 @@ async function driverForRental(rentalId: string | undefined) {
     expMonth: data.applications.card_exp_month as number | null,
     expYear: data.applications.card_exp_year as number | null,
   };
-}
-
-/**
- * A driver notice HELD because the Automations switches could not be read
- * (not one the Owner switched off) is parked as notified_status
- * 'held:<outcome>' so retryHeldPaymentNotices can send it later, once.
- * Single-row charges only: a multi-row charge has one receipt for several
- * rows, so it stays recorded as a failed "Held" delivery for staff instead.
- */
-async function markNoticeHeld(admin: any, ids: string[], status: 'paid' | 'failed', blocked: 'off' | 'held' | undefined) {
-  if (blocked !== 'held' || ids.length !== 1) return;
-  const { error } = await admin.from('payments').update({ notified_status: `held:${status}` })
-    .eq('id', ids[0]).eq('status', status).eq('notified_status', status);
-  if (error) console.error('[payments] could not park held notice', ids[0], error);
 }
 
 function cardExpiresSoon(m: number | null, y: number | null): boolean {
@@ -270,6 +257,11 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
   const claimed = must(await claim.select('id'));
   if (!claimed.data?.length) return; // already notified / stale — no second email
   const claimedIds = new Set((claimed.data ?? []).map((row: any) => row.id as string));
+  // What a held notice needs to be retried later: references only.
+  const notice = (kind: HeldNoticeInput['kind']): HeldNoticeInput => ({
+    kind, sourceRef: String(pi.id), rentalId: rentalId ?? null, paymentIds: [...claimedIds] as string[],
+    outcome: status, amount, reason,
+  });
   const overlapHit = manualIds.some((id) => claimedIds.has(id));
   void changed;
 
@@ -300,23 +292,24 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
       } else {
         receipt = await sendReceipt();
       }
-      await markNoticeHeld(admin, [...claimedIds] as string[], status, receipt?.blocked);
+      await holdIfHeld(admin, receipt, notice('payment_receipt'));
       if (cardExpiresSoon(driver.expMonth, driver.expYear)) {
-        await sendCardExpiringEmail({
+        const card = await sendCardExpiringEmail({
           to: driver.email, firstName: driver.name,
           brand: driver.brand, last4: driver.last4,
           expMonth: driver.expMonth!, expYear: driver.expYear!,
         });
+        await holdIfHeld(admin, card, notice('card_expiring'));
       }
     } else {
       const failedNotice = await sendPaymentFailedEmail({
         to: driver.email, firstName: driver.name, amount, reason,
         brand: driver.brand, last4: driver.last4,
       });
-      await markNoticeHeld(admin, [...claimedIds] as string[], status, failedNotice?.blocked);
+      await holdIfHeld(admin, failedNotice, notice('payment_failed'));
     }
   }
-  if (status !== 'paid') await alertTeamPaymentFailed(driver, amount, reason, rentalId);
+  if (status !== 'paid') await alertTeamPaymentFailed(driver, amount, reason, rentalId, notice('payment_team_alert'));
   if (overlapHit) await alertPossibleDoubleCollection(amount);
 }
 
@@ -413,10 +406,11 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
             });
             const driver = await driverForRental(rental.id);
             if (driver) {
-              await sendPaymentReceiptEmail({
+              const res = await sendPaymentReceiptEmail({
                 to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
                 brand: driver.brand, last4: driver.last4,
               });
+              await holdIfHeld(admin, res, { kind: 'payment_receipt', sourceRef: String(invoice.id), rentalId: rental.id, paymentIds: (claimed.data ?? []).map((x: any) => x.id), outcome: 'paid', amount, reason: 'weekly rent' });
             }
             await alertPossibleDoubleCollection(amount);
           } catch (err) {
@@ -442,28 +436,35 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     read: false,
   }).then(() => {}, () => {});
 
+  const invNotice = (kind: HeldNoticeInput['kind']): HeldNoticeInput => ({
+    kind, sourceRef: String(invoice.id), rentalId: rental.id, paymentIds: (r.data ?? []).map((x: any) => x.id),
+    outcome: status, amount, reason: 'weekly rent',
+  });
   const driver = await driverForRental(rental.id);
   if (driver) {
     if (status === 'paid') {
-      await sendPaymentReceiptEmail({
+      const receipt = await sendPaymentReceiptEmail({
         to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
         brand: driver.brand, last4: driver.last4,
       });
+      await holdIfHeld(admin, receipt, invNotice('payment_receipt'));
       if (cardExpiresSoon(driver.expMonth, driver.expYear)) {
-        await sendCardExpiringEmail({
+        const card = await sendCardExpiringEmail({
           to: driver.email, firstName: driver.name,
           brand: driver.brand, last4: driver.last4,
           expMonth: driver.expMonth!, expYear: driver.expYear!,
         });
+        await holdIfHeld(admin, card, invNotice('card_expiring'));
       }
     } else {
-      await sendPaymentFailedEmail({
+      const failed = await sendPaymentFailedEmail({
         to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
         brand: driver.brand, last4: driver.last4,
       });
+      await holdIfHeld(admin, failed, invNotice('payment_failed'));
     }
   }
-  if (status !== 'paid') await alertTeamPaymentFailed(driver, amount, 'weekly rent', rental.id);
+  if (status !== 'paid') await alertTeamPaymentFailed(driver, amount, 'weekly rent', rental.id, invNotice('payment_team_alert'));
 }
 
 // Staff copy of a failed charge. Runs only after the notice claim above, so a
@@ -473,12 +474,14 @@ async function alertTeamPaymentFailed(
   amount: number,
   reason: string,
   rentalId: string | undefined,
+  held?: HeldNoticeInput,
 ) {
   try {
-    await sendTeamPaymentAlertEmail({
+    const res = await sendTeamPaymentAlertEmail({
       event: 'failed', driverName: driver?.name ?? null, amount, reason,
       applicationId: driver?.applicationId ?? null, plate: driver?.plate ?? null, rentalId: rentalId ?? null,
     });
+    if (held) await holdIfHeld(getSupabase(), res, held);
   } catch (err) {
     console.error('[payments] team failure alert failed', err);
   }

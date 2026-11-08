@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { initialPortalTab } from "@/lib/portal-pay-link";
+import { initialPortalTab, rememberPayIntent, wantsPay } from "@/lib/portal-pay-link";
 import { SigningPanel } from "@/components/esign/SigningPanel";
 import { layoutToText } from "@/lib/agreement-layout";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -214,7 +214,7 @@ function Portal() {
   const [isDriver, setIsDriver] = useState(false);
   const [staffTier, setStaffTier] = useState<StaffTier | null>(null);
   const wantsPreview = typeof window !== "undefined" && /^"?1"?$/.test(new URLSearchParams(window.location.search).get("preview") ?? "");
-  const [tab, setTab] = useState<Tab>(() => initialPortalTab<Tab>(typeof window === "undefined" ? "" : window.location.search, "dashboard") as Tab);
+  const [tab, setTab] = useState<Tab>(() => initialPortalTab<Tab>(typeof window === "undefined" ? "" : window.location.search, "dashboard", typeof window === "undefined" ? null : window.localStorage) as Tab);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -280,6 +280,8 @@ function Portal() {
           </p>
           <Link
             to="/login"
+            search={(typeof window !== "undefined" && wantsPay(window.location.search) ? { pay: "balance" } : {}) as any}
+            onClick={() => { if (typeof window !== "undefined" && wantsPay(window.location.search)) rememberPayIntent(window.localStorage); }}
             className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium"
           >
             Sign In
@@ -2422,7 +2424,7 @@ function MaintenanceView({ data }: { data: DriverDashboard }) {
  * another driver's data (no impersonation, no new access path).
  */
 function DriverPreview({ tier }: { tier: StaffTier | null }) {
-  const [tab, setTab] = useState<Tab>(() => initialPortalTab<Tab>(typeof window === "undefined" ? "" : window.location.search, "dashboard") as Tab);
+  const [tab, setTab] = useState<Tab>(() => initialPortalTab<Tab>(typeof window === "undefined" ? "" : window.location.search, "dashboard", typeof window === "undefined" ? null : window.localStorage) as Tab);
   const [picking, setPicking] = useState(false);
   const [driverName, setDriverName] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);

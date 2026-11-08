@@ -440,7 +440,7 @@ async function handle(request: Request): Promise<Response> {
     if (reasons.length) serviceItems.push({ vehicle: label, reason: reasons.join(" · ") });
   }
 
-  if (serviceItems.length) {
+  if (serviceItems.length && on("service_digest")) {
     try {
       await sendServiceDigestEmail({ to: "team@drivereal.com", items: serviceItems });
     } catch (err) {
@@ -460,6 +460,7 @@ async function handle(request: Request): Promise<Response> {
     .limit(100);
 
   for (const a of openAgreements ?? []) {
+    if (!on("agreement_reminder")) break;
     try {
       const { data: app } = await supabaseAdmin
         .from("applications")
@@ -470,8 +471,9 @@ async function handle(request: Request): Promise<Response> {
       if (!to) continue;
       if (await recentlyNotified(supabaseAdmin, app?.id ?? null, "agreement_reminder", since)) continue;
 
-      await sendEmail({
+      const sentAgreement = await sendEmail({
         to,
+        track: { workflow: "agreement_reminder" },
         subject: "Reminder: Sign Your REAL RENTALS Rental Agreement",
         html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px">
           <h1 style="font-size:20px;color:#111">Your rental agreement is still waiting</h1>
@@ -480,6 +482,7 @@ async function handle(request: Request): Promise<Response> {
           <p style="color:#888;font-size:12px;margin-top:20px">Need a fresh link? Reply to this email and our team will send one.</p>
         </div>`,
       });
+      if (sentAgreement.blocked) continue;
       await logNotification(
         supabaseAdmin,
         app?.id ?? null,
@@ -517,7 +520,7 @@ async function handle(request: Request): Promise<Response> {
       reason: `${String(d.label || d.category).replace(/_/g, " ")} expires ${d.expires_at}`,
     });
   }
-  if (docItems.length) {
+  if (docItems.length && on("service_digest")) {
     try {
       await sendServiceDigestEmail({ to: "team@drivereal.com", items: docItems });
     } catch (err) {
