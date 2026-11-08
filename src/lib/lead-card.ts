@@ -2,19 +2,19 @@ import { fmtDate } from "./date-format";
 import { overdueAge, type LeadBucket } from "./lead-priorities";
 
 /**
- * Compact Lead Priorities card copy and solid semantic colors (no gradients).
- * Every tone pairs color with a text label so meaning never relies on color.
+ * Compact Lead Priorities card copy. Cards stay neutral; only an overdue
+ * priority uses the brand red. Meaning is always written, never color-only.
  */
 export const LEAD_TONES: Record<
   LeadBucket,
-  { key: string; label: string; accent: string; badge: string }
+  { label: string; badge: string }
 > = {
-  overdue: { key: "red", label: "Overdue", accent: "border-l-red-600", badge: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200" },
-  new: { key: "blue", label: "New", accent: "border-l-blue-600", badge: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200" },
-  interested: { key: "green", label: "Interested", accent: "border-l-emerald-600", badge: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" },
-  today: { key: "amber", label: "Due Today", accent: "border-l-amber-500", badge: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" },
-  information: { key: "violet", label: "Waiting on Info", accent: "border-l-violet-600", badge: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200" },
-  future: { key: "slate", label: "Scheduled", accent: "border-l-slate-400", badge: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200" },
+  overdue: { label: "Overdue", badge: "text-brand" },
+  new: { label: "New", badge: "text-muted-foreground" },
+  interested: { label: "Interested", badge: "text-muted-foreground" },
+  today: { label: "Due Today", badge: "text-muted-foreground" },
+  information: { label: "Waiting on Info", badge: "text-muted-foreground" },
+  future: { label: "Scheduled", badge: "text-muted-foreground" },
 };
 
 /** One short, actionable next step per bucket. */
