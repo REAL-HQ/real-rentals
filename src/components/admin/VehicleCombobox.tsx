@@ -35,7 +35,7 @@ type Props = {
   disabled?: boolean;
   className?: string;
   triggerClassName?: string;
-  /** Thumbnail-first, aligned columns; opt in without changing other pickers. */
+  /** Staff vehicle choices use the same thumbnail-first columns by default. */
   photoColumns?: boolean;
   "aria-label"?: string;
 };
@@ -48,13 +48,13 @@ export function VehicleCombobox({
   vehicles,
   value,
   onChange,
-  placeholder = "Select vehicle…",
+  placeholder = "Select Vehicle…",
   allowNone = true,
   noneLabel = "— None —",
   disabled,
   className,
   triggerClassName,
-  photoColumns = false,
+  photoColumns = true,
   "aria-label": ariaLabel = "Vehicle",
 }: Props) {
   const [open, setOpen] = React.useState(false);
@@ -109,7 +109,7 @@ export function VehicleCombobox({
           <CommandInput
             value={q}
             onValueChange={setQ}
-            placeholder="Search plate, VIN, unit, make…"
+            placeholder="Search Plate, VIN, Unit, Make…"
             aria-label="Search Vehicles"
           />
           {photoColumns ? <div aria-hidden="true" className="mx-1 grid grid-cols-[1rem_3rem_minmax(0,1fr)_5.5rem] items-center gap-2 border-b border-border px-2 py-2 text-[10px] font-semibold text-muted-foreground sm:grid-cols-[1rem_3rem_minmax(0,1fr)_5rem_5rem_6rem]">
