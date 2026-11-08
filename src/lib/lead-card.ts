@@ -39,7 +39,10 @@ function relDays(iso: string): string | null {
   return days <= 0 ? "Today" : days === 1 ? "Yesterday" : `${days}d ago`;
 }
 
-/** Key timing only: due date first when one exists, then applied, then last contact if logged. */
+/**
+ * Key timing only, at most two items: the due date when one exists (else when
+ * they applied), then last contact (or "No contact logged" past the New stage).
+ */
 export function leadTiming(
   lead: {
     bucket: LeadBucket;
@@ -54,10 +57,23 @@ export function leadTiming(
     const age = lead.bucket === "overdue" ? overdueAge(lead.contact_follow_up_on, today) : null;
     out.push(age ? `Due ${fmtDate(lead.contact_follow_up_on)} (${age})` : `Due ${fmtDate(lead.contact_follow_up_on)}`);
   }
-  const applied = lead.created_at ? relDays(lead.created_at) : null;
-  out.push(applied ? `Applied ${applied}` : "Applied date unknown");
+  else {
+    const applied = lead.created_at ? relDays(lead.created_at) : null;
+    out.push(applied ? `Applied ${applied}` : "Applied date unknown");
+  }
   const contacted = lead.contact_status_at ? relDays(lead.contact_status_at) : null;
   if (contacted) out.push(`Last contact ${contacted}`);
   else if (lead.bucket !== "new") out.push("No contact logged");
   return out;
+}
+
+/**
+ * Badge text. The stage (queue bucket) and the editable Contact Status are
+ * different fields; when they read the same (New / New, Interested /
+ * Interested) the stage word is dropped so the card does not say it twice.
+ * Where they differ (Overdue while Contacted), both stay visible.
+ */
+export function leadBadgeLabel(bucket: LeadBucket, contactLabel: string, priority: string): string {
+  const stage = LEAD_TONES[bucket].label;
+  return stage.toLowerCase() === contactLabel.trim().toLowerCase() ? priority : `${stage} · ${priority}`;
 }

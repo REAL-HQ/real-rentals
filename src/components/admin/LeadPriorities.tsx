@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
-import { Phone, MessageSquare, ArrowUpRight, CalendarDays, Flame, RefreshCw } from "lucide-react";
+import { Phone, MessageSquare, ArrowUpRight, Flame, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getLeadPriorities } from "@/lib/lead-priorities.functions";
@@ -18,7 +18,7 @@ import { LeadResponseReport } from "./LeadResponseReport";
 import { ReadinessStatePill } from "./ui";
 import type { ReadinessByApplicant } from "@/lib/admin-overview";
 import { displayPersonName } from "@/lib/display-normalize";
-import { LEAD_TONES, LEAD_NEXT_STEP, leadTiming } from "@/lib/lead-card";
+import { LeadCardBody } from "./LeadCardBody";
 
 export default function LeadPriorities({
   isManager = false,
@@ -187,56 +187,28 @@ export default function LeadPriorities({
               <ul className="mt-1 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {result.rows.map((lead) => {
                   const readinessResult = canSeeReadiness ? readiness[lead.id] : undefined;
-                  const tone = LEAD_TONES[lead.bucket];
-                  const nextStep = LEAD_NEXT_STEP[lead.bucket];
-                  const timing = leadTiming(lead, result.today);
                   return (
                     <li key={lead.id} data-lead-priority={lead.bucket} className="min-w-0">
-                      <div
-                        data-lead-tone={tone.key}
-                        className={`flex h-full flex-col gap-2.5 rounded-lg border border-l-4 border-border bg-card p-4 text-card-foreground ${tone.accent}`}
-                      >
-                        <div className="flex min-w-0 items-start justify-between gap-2">
+                      <LeadCardBody
+                        lead={lead}
+                        today={result.today}
+                        name={
                           <Link
                             to="/admin"
                             search={{ tab: "drivers", id: lead.id }}
-                            className="min-w-0 flex-1 break-words text-base font-semibold leading-5 text-card-foreground hover:underline"
+                            className="text-card-foreground hover:underline"
                           >
-                            {lead.full_name
-                              ? displayPersonName(lead.full_name)
-                              : "Unnamed Applicant"}
+                            {lead.full_name ? displayPersonName(lead.full_name) : "Unnamed Applicant"}
                           </Link>
-                          <span
-                            className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone.badge}`}
-                          >
-                            {tone.label} · {lead.priority}
-                          </span>
-                        </div>
-
-                        <p className="text-sm font-medium text-card-foreground">{nextStep}</p>
-
-                        <div className="flex flex-wrap items-center gap-2">
-                          <ContactStatusCell applicationId={lead.id} row={lead} onSaved={refresh} appearance="neutral" />
-                          {readinessResult ? (
-                            <ReadinessStatePill state={readinessResult.state} short />
-                          ) : null}
-                        </div>
-
-                        <LeadFollowUpDraft applicationId={lead.id} bucket={lead.bucket} />
-                        <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs leading-4 text-muted-foreground">
-                          <CalendarDays aria-hidden="true" className="h-3 w-3 shrink-0" />
-                          {timing.map((t, i) => (
-                            <span key={t} className={i === 0 && lead.bucket === "overdue" ? "font-semibold text-red-700 dark:text-red-400" : undefined}>
-                              {i > 0 ? "· " : ""}
-                              {t}
-                            </span>
-                          ))}
-                        </p>
-                        {lead.contact_status_note && (
-                          <p className="line-clamp-2 break-words text-xs text-muted-foreground" title={lead.contact_status_note}>
-                            Note: {lead.contact_status_note.slice(0, 240)}
-                          </p>
-                        )}
+                        }
+                        status={
+                          <>
+                            <ContactStatusCell applicationId={lead.id} row={lead} onSaved={refresh} appearance="neutral" />
+                            {readinessResult ? <ReadinessStatePill state={readinessResult.state} short /> : null}
+                          </>
+                        }
+                        draft={<LeadFollowUpDraft applicationId={lead.id} bucket={lead.bucket} />}
+                        actions={
                         <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3 text-xs font-medium">
                           {lead.phone && (
                             <Button asChild variant="link" size="sm" className="h-7 gap-1 p-0 text-xs text-muted-foreground">
@@ -269,7 +241,8 @@ export default function LeadPriorities({
                             </Link>
                           </Button>
                         </div>
-                      </div>
+                        }
+                      />
                     </li>
                   );
                 })}
