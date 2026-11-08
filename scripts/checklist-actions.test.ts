@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { checklistAction } from "../src/components/admin/checklist-actions";
+import { checklistAction, checklistDocumentCategories } from "../src/components/admin/checklist-actions";
 import type { ActivationRequirement, ActivationRequirementKey } from "../src/lib/activation-readiness";
 
 const requirement = (key: ActivationRequirementKey, met: boolean | null = false): ActivationRequirement => ({ key, met, label: key, enforcement: "hard" });
 
 describe("Driver checklist actions", () => {
+  it("routes each Add field to its own document category, never a different evidence slot", () => {
+    expect(checklistDocumentCategories("license_documents")).toEqual(["license_front", "license_back"]);
+    expect(checklistDocumentCategories("signed_agreement")).toEqual(["agreement"]);
+    expect(checklistDocumentCategories("insurance_verified")).toEqual(["insurance"]);
+    expect(checklistDocumentCategories("gig_profile")).toEqual(["gig_profile"]);
+    expect(checklistDocumentCategories("approved")).toEqual([]);
+    expect(checklistDocumentCategories("gig_platform")).toEqual([]);
+  });
   it("files and paper agreements open the existing document vault rather than completing readiness", () => {
     for (const key of ["license_documents", "insurance_document", "gig_profile", "signed_agreement"] as const) {
       const before = requirement(key);
