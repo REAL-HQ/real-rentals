@@ -17,25 +17,42 @@ const SIZES = {
 export type ModalSize = keyof typeof SIZES;
 
 export function ModalShell({
-  onClose, size = "md", label, children, closeOnBackdrop = true, z = "z-50",
+  onClose, size = "md", label, children, closeOnBackdrop = true, z = "z-50", manageFocus = false,
 }: {
   onClose: () => void; size?: ModalSize; label: string; children: ReactNode;
-  closeOnBackdrop?: boolean; z?: string;
+  closeOnBackdrop?: boolean; z?: string; manageFocus?: boolean;
 }) {
+  const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close.current(); };
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const tabbable = () => Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]') ?? []).filter((el) => el.offsetParent !== null);
+    const frame = manageFocus ? requestAnimationFrame(() => tabbable()[0]?.focus()) : null;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      if (e.key === "Escape") close.current();
+      if (manageFocus && e.key === "Tab" && panel.current?.contains(document.activeElement)) {
+        const items = tabbable();
+        if (!items.length) return;
+        if (e.shiftKey && document.activeElement === items[0]) { e.preventDefault(); items.at(-1)?.focus(); }
+        else if (!e.shiftKey && document.activeElement === items.at(-1)) { e.preventDefault(); items[0].focus(); }
+      }
+    };
     document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
-  }, []);
+    return () => {
+      if (frame != null) cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", onKey); document.body.style.overflow = prev;
+      if (manageFocus && previous?.isConnected) previous.focus();
+    };
+  }, [manageFocus]);
   return (
     <div role="dialog" aria-modal="true" aria-label={label}
       className={`fixed inset-0 ${z} flex items-end sm:items-center justify-center bg-overlay sm:p-6`}
       onMouseDown={(e) => { if (closeOnBackdrop && e.target === e.currentTarget) onClose(); }}>
-      <div className={`flex w-full ${SIZES[size]} max-h-[94dvh] sm:max-h-[90dvh] flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl bg-card text-card-foreground shadow-xl`}>
+      <div ref={panel} className={`flex w-full ${SIZES[size]} max-h-[94dvh] sm:max-h-[90dvh] flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl bg-card text-card-foreground shadow-xl`}>
         {children}
       </div>
     </div>

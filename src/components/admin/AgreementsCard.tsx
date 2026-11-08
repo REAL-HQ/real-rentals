@@ -44,7 +44,10 @@ type PreviewRes = {
   generatedAt: string;
 };
 
-export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: string; onOpenTab?: (tab: string) => void }) {
+export function AgreementsCard({ applicationId, onOpenTab, inlinePreparation = false, onFixVehicle }: {
+  applicationId: string; onOpenTab?: (tab: string) => void;
+  inlinePreparation?: boolean; onFixVehicle?: (id: string) => void;
+}) {
   const load = useServerFn(listAgreements);
   const doPreview = useServerFn(previewAgreement);
   const doSend = useServerFn(sendAgreement);
@@ -119,6 +122,10 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
 
   function fixLink(b: Blocker) {
     if (!b.fix) return null;
+    if ("vehicleId" in b.fix && onFixVehicle) {
+      const id = b.fix.vehicleId;
+      return <button className="ml-1 font-semibold underline" onClick={() => onFixVehicle(id)}>Edit Vehicle Details</button>;
+    }
     if ("vehicleId" in b.fix)
       return (
         <a href={`/admin?tab=vehicles&id=${b.fix.vehicleId}`} target="_blank" rel="noreferrer" className="ml-1 font-semibold underline">
@@ -152,6 +159,8 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
     >
       {prepOpen && (
         <PrepareAgreementDialog
+          inline={inlinePreparation}
+          onFixVehicle={onFixVehicle}
           applicationId={applicationId}
           onOpenTab={onOpenTab}
           onClose={() => setPrepOpen(false)}

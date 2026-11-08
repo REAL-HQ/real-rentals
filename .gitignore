@@ -49,3 +49,6 @@ demo-data-backup-*.json
 
 # Synthetic save regression fixture
 .vehicle-save-build/
+
+.inline-activation-test/
+.inline-activation-browser/

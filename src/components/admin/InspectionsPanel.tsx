@@ -334,7 +334,9 @@ export function InspectionRunner({
   id,
   vehicleLabel,
   onBack,
+  backLabel = "All Inspections",
 }: {
+  backLabel?: string;
   id: string;
   vehicleLabel: (vehicleId: string) => string;
   onBack: () => void;
@@ -421,7 +423,7 @@ export function InspectionRunner({
         onClick={onBack}
         className="inline-flex items-center gap-1.5 text-sm text-[#55555E] hover:text-[#111114]"
       >
-        <ArrowLeft className="w-4 h-4" /> All Inspections
+        <ArrowLeft className="w-4 h-4" /> {backLabel}
       </button>
 
       <div className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm p-4">

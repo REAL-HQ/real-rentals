@@ -801,7 +801,19 @@ const SECTION_META: Record<VehicleSection, { title: string; subtitle: string; ic
   service: { title: "Edit Service & Tolls", subtitle: "Intervals and toll accounts", icon: Wrench },
 };
 
-function SectionDrawer({
+// The same validated editor, without a second drawer or navigation, for an inline task.
+function InlineVehicleEditFrame({ title, children, saving, onSave, onClose }: Parameters<typeof VehicleEditDrawer>[0]) {
+  return <section className="space-y-4" aria-label={title}>
+    <h3 className="font-semibold">{title}</h3>
+    {children}
+    <div className="flex flex-wrap gap-2">
+      <button type="button" className="rounded-md border px-3 py-2 text-sm" onClick={onClose} disabled={saving}>Back To Activation</button>
+      <button type="button" className="rounded-md bg-[#D03020] px-3 py-2 text-sm text-white" onClick={onSave} disabled={saving}>{saving ? "Saving…" : "Save Vehicle Details"}</button>
+    </div>
+  </section>;
+}
+
+export function SectionDrawer({
   section,
   vehicleId,
   vehicle,
@@ -810,7 +822,9 @@ function SectionDrawer({
   onSaved,
   onRefresh,
   onOpenSection,
+  inline = false,
 }: {
+  inline?: boolean;
   section: VehicleSection;
   vehicleId: string;
   vehicle: Record<string, any>;
@@ -904,8 +918,9 @@ function SectionDrawer({
     }
   }
 
+  const Frame = inline ? InlineVehicleEditFrame : VehicleEditDrawer;
   return (
-    <VehicleEditDrawer
+    <Frame
       title={meta.title}
       subtitle={meta.subtitle}
       icon={<meta.icon className="w-4 h-4" strokeWidth={1.75} />}
@@ -1270,7 +1285,7 @@ function SectionDrawer({
           />
         </>
       )}
-    </VehicleEditDrawer>
+    </Frame>
   );
 }
 
