@@ -13,13 +13,14 @@ import { loadStaffPhoto } from "@/lib/photoUrl";
 import { fmtDateTime } from "@/lib/date-format";
 
 const input = "h-10 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground outline-none focus:border-brand";
+type PackageMode = "enhanced" | "insurance" | "custom";
 
 export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
   const load = useServerFn(getVehicleShareOptions);
   const create = useServerFn(createVehicleSharePackage);
   const send = useServerFn(sendVehicleSharePackage);
   const [options, setOptions] = useState<VehicleShareOptions | null>(null);
-  const [mode, setMode] = useState<"insurance" | "custom">("insurance");
+  const [mode, setMode] = useState<PackageMode>("enhanced");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [channel, setChannel] = useState<"email" | "sms">("email");
   const [email, setEmail] = useState("");
@@ -34,15 +35,19 @@ export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
     void load({ data: { vehicleId } }).then((result) => {
       if (!live) return;
       setOptions(result);
-      setSelected(new Set(result.insurancePhotoIds));
+      setSelected(new Set(result.enhancedPhotoIds));
     }).catch(() => { if (live) setError("Could not load this vehicle's photos."); });
     return () => { live = false; };
   }, [load, vehicleId]);
 
   function resetPackage() { setCreated(null); setError(""); }
-  function changeMode(next: "insurance" | "custom") {
+  function changeMode(next: PackageMode) {
     setMode(next);
-    setSelected(new Set(next === "insurance" ? options?.insurancePhotoIds ?? [] : []));
+    setSelected(new Set(
+      next === "enhanced" ? options?.enhancedPhotoIds ?? []
+        : next === "insurance" ? options?.insurancePhotoIds ?? []
+          : [],
+    ));
     resetPackage();
   }
   function toggle(id: string) {
@@ -93,27 +98,36 @@ export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
 
   if (!options && !error) return <div className="flex justify-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading Photos…</div>;
   if (!options) return <p role="alert" className="py-10 text-center text-sm text-destructive">{error}</p>;
-  const shown = mode === "insurance"
-    ? options.insurancePhotoIds.map((id) => options.photos.find((photo) => photo.id === id)).filter((photo): photo is VehicleShareOptions["photos"][number] => !!photo)
-    : options.photos;
+  const automaticIds = mode === "enhanced" ? options.enhancedPhotoIds : options.insurancePhotoIds;
+  const shown = mode === "custom"
+    ? options.photos
+    : automaticIds.map((id) => options.photos.find((photo) => photo.id === id)).filter((photo): photo is VehicleShareOptions["photos"][number] => !!photo);
+  const heading = mode === "enhanced" ? "Approved AI Enhanced Photos" : mode === "insurance" ? "Best Website Photos" : "Select Any Vehicle Photo";
+  const explanation = mode === "enhanced"
+    ? "Every approved AI enhancement is ready to send in advance. Originals and vehicle details are not included."
+    : mode === "insurance" ? "Lead photo first, then website photos in listing order. VIN, plate and registration details are included."
+      : "Choose originals, website photos or approved retouches. Only your selections are shared.";
   const available = channel === "email" ? options.emailAvailable : options.smsAvailable;
 
   return (
     <div className="space-y-5 px-6 py-5">
-      <div className="grid grid-cols-2 gap-2 rounded-lg bg-soft p-1">
-        <button type="button" onClick={() => changeMode("insurance")} aria-pressed={mode === "insurance"} className={`rounded-md px-3 py-2 text-sm font-medium ${mode === "insurance" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>Insurance Package</button>
-        <button type="button" onClick={() => changeMode("custom")} aria-pressed={mode === "custom"} className={`rounded-md px-3 py-2 text-sm font-medium ${mode === "custom" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>Choose Photos</button>
+      <div className="grid grid-cols-3 gap-2 rounded-lg bg-soft p-1">
+        <button type="button" onClick={() => changeMode("enhanced")} aria-pressed={mode === "enhanced"} className={`rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${mode === "enhanced" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>AI Enhanced</button>
+        <button type="button" onClick={() => changeMode("insurance")} aria-pressed={mode === "insurance"} className={`rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${mode === "insurance" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>Insurance</button>
+        <button type="button" onClick={() => changeMode("custom")} aria-pressed={mode === "custom"} className={`rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${mode === "custom" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>Choose Photos</button>
       </div>
 
       <section>
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold">{mode === "insurance" ? "Best Website Photos" : "Select Any Vehicle Photo"}</h3>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">{mode === "insurance" ? "Lead photo first, then website photos in listing order. VIN, plate and registration details are included." : "Choose originals, website photos or approved retouches. Only your selections are shared."}</p>
+            <h3 className="text-sm font-semibold">{heading}</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{explanation}</p>
           </div>
           <span className="shrink-0 rounded-full bg-soft px-2 py-1 text-xs text-muted-foreground">{selected.size} Selected</span>
         </div>
-        {mode === "insurance" && shown.length === 0 ? (
+        {mode === "enhanced" && shown.length === 0 ? (
+          <div className="rounded-xl border border-border bg-soft p-4 text-sm leading-6 text-muted-foreground">No approved AI-enhanced photos are available yet. Approve enhancements in Photo Studio, or <button type="button" className="font-medium text-brand" onClick={() => changeMode("insurance")}>Use Insurance Package</button>.</div>
+        ) : mode === "insurance" && shown.length === 0 ? (
           <div className="rounded-xl border border-border bg-soft p-4 text-sm text-muted-foreground">No website photos are available. <button type="button" className="font-medium text-brand" onClick={() => changeMode("custom")}>Choose Photos</button> instead.</div>
         ) : shown.length === 0 ? (
           <p className="rounded-xl border border-border bg-soft p-4 text-sm text-muted-foreground">No photos are available for this vehicle.</p>
@@ -148,7 +162,7 @@ export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
         </section>
       )}
 
-      <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="sticky bottom-0 z-10 -mx-6 -mb-5 flex flex-col-reverse gap-2 border-t border-border bg-card px-6 pb-5 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs leading-5 text-muted-foreground">Review before sending. The recipient sees only this package for 72 hours.</p>
         <div className="flex flex-col-reverse gap-2 sm:flex-row">
           <button type="button" onClick={copyLink} disabled={!!busy || !selected.size} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-sm font-medium disabled:opacity-50"><Copy className="h-4 w-4" />{busy === "link" ? "Creating…" : "Copy Secure Link"}</button>
@@ -190,7 +204,7 @@ function SharePhoto({ photo, selectable, selected, onToggle }: {
       {url ? <img src={url} alt={photo.file_name || "Vehicle photo"} className="h-full w-full object-cover" /> : failed ? <div className="grid h-full place-items-center px-2 text-center text-[11px] text-muted-foreground">Photo Unavailable</div> : <div className="grid h-full place-items-center">{nearby && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}</div>}
       {selected && <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-brand text-brand-foreground"><Check className="h-4 w-4" /></span>}
     </div>
-    <span className="mt-1.5 block truncate text-left text-[11px] text-muted-foreground">{photo.file_name || (photo.kind === "original" ? "Original" : "Approved Retouch")}{photo.published ? " · On Website" : ""}</span>
+    <span className="mt-1.5 block truncate text-left text-[11px] text-muted-foreground">{photo.kind === "ai_enhanced" ? "AI Enhanced · " : ""}{photo.file_name || (photo.kind === "original" ? "Original" : "Approved Retouch")}{photo.published ? " · On Website" : ""}</span>
   </>;
   return selectable ? <button type="button" aria-label={`${selected ? "Remove" : "Select"} ${photo.file_name || "Vehicle Photo"}`} aria-pressed={selected} onClick={onToggle} className={`rounded-xl border p-1.5 ${selected ? "border-brand" : "border-border"}`}>{content}</button> : <figure className="rounded-xl border border-border p-1.5">{content}</figure>;
 }

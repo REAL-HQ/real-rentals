@@ -96,6 +96,7 @@ const ok = (condition, label) => { assert.equal(condition, true, label); checks+
 
 reset();
 const options = await mod.getVehicleShareOptions({ data: { vehicleId: V }, context });
+ok(options.enhancedPhotoIds.join(",") === D, "the first package selects only approved AI enhancements");
 ok(options.insurancePhotoIds.join(",") === `${A},${B}`, "automatic package selects only lead and published listing photos");
 ok(options.photos.length === 4 && !options.photos.some((p) => p.id === E), "manual choices include originals and approved retouches but exclude pending derivatives");
 
@@ -112,6 +113,14 @@ const custom = await mod.createVehicleSharePackage({ data: { vehicleId: V, mode:
 ok(custom.ok && custom.package.photoCount === 2 && !custom.package.includeDetails, "manual package deduplicates any originals/approved retouches and contains no insurance details");
 const refused = await mod.createVehicleSharePackage({ data: { vehicleId: V, mode: "custom", mediaIds: [E] }, context });
 ok(!refused.ok, "an unapproved retouch cannot be shared manually");
+const enhanced = await mod.createVehicleSharePackage({ data: { vehicleId: V, mode: "enhanced", mediaIds: [A, B, E] }, context });
+ok(enhanced.ok && enhanced.package.photoCount === 1 && !enhanced.package.includeDetails, "one-click AI package ignores client ids and contains only approved enhancements without vehicle details");
+ok(S.settings[2].value.mediaIds.join(",") === D && S.settings[2].value.details === null, "the stored AI package excludes originals, pending enhancements and insurance data");
+const approved = S.media;
+S.media = S.media.filter((row) => row.id !== D);
+const noEnhanced = await mod.createVehicleSharePackage({ data: { vehicleId: V, mode: "enhanced", mediaIds: [A] }, context });
+ok(!noEnhanced.ok && S.settings.length === 3, "the AI package fails closed when no approved enhancement exists");
+S.media = approved;
 
 const publicView = await mod.getSharedVehiclePackage({ data: { token: created.token } });
 ok(publicView?.photoIds.join(",") === `${A},${B}` && publicView.details.sections.length === 2, "a valid token returns only its reviewed photos and insurance snapshot");

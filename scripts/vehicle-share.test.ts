@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   VEHICLE_SHARE_TTL_MS,
+  automaticEnhancedPhotoIds,
   automaticInsurancePhotoIds,
   buildInsuranceDetails,
   isShareMediaEligible,
@@ -19,6 +20,17 @@ const photo = (id: string, values: Partial<VehicleShareMedia> = {}): VehicleShar
 });
 
 describe("vehicle insurance photo package", () => {
+  test("the first package includes only approved AI enhancements, with the lead enhancement first", () => {
+    const ids = automaticEnhancedPhotoIds([
+      photo("00000000-0000-4000-8000-00000000000a", { kind: "ai_enhanced", review_status: "approved", sort_order: 2 }),
+      photo("00000000-0000-4000-8000-00000000000b", { kind: "ai_enhanced", review_status: "approved", is_primary: true, sort_order: 9 }),
+      photo("00000000-0000-4000-8000-00000000000c", { kind: "ai_enhanced", review_status: "pending" }),
+      photo("00000000-0000-4000-8000-00000000000d", { kind: "marketing", studio_review_status: "approved" }),
+      photo("00000000-0000-4000-8000-00000000000e", { published: true }),
+    ]);
+    expect(ids).toEqual(["00000000-0000-4000-8000-00000000000b", "00000000-0000-4000-8000-00000000000a"]);
+  });
+
   test("best photos are the published lead and listing order, never unapproved or private fallbacks", () => {
     const ids = automaticInsurancePhotoIds([
       photo("00000000-0000-4000-8000-00000000000a", { sort_order: 2, published: true }),

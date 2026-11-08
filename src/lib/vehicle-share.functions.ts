@@ -7,6 +7,7 @@ import { fmtDate } from "@/lib/date-format";
 import {
   VEHICLE_SHARE_PHOTO_LIMIT,
   VEHICLE_SHARE_TTL_MS,
+  automaticEnhancedPhotoIds,
   automaticInsurancePhotoIds,
   buildInsuranceDetails,
   escapeVehicleShareHtml,
@@ -22,6 +23,7 @@ const rawToken = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
 export type VehicleShareOptions = {
   photos: VehicleShareMedia[];
+  enhancedPhotoIds: string[];
   insurancePhotoIds: string[];
   emailAvailable: boolean;
   smsAvailable: boolean;
@@ -62,6 +64,7 @@ export const getVehicleShareOptions = createServerFn({ method: "POST" })
       .filter(isShareMediaEligible);
     return {
       photos,
+      enhancedPhotoIds: automaticEnhancedPhotoIds(photos),
       insurancePhotoIds: automaticInsurancePhotoIds(photos),
       emailAvailable: !!process.env.RESEND_API_KEY,
       smsAvailable: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && (process.env.TWILIO_FROM_NUMBER || process.env.TWILIO_MESSAGING_SERVICE_SID)),
@@ -82,7 +85,7 @@ export const createVehicleSharePackage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({
     vehicleId: uuid,
-    mode: z.enum(["insurance", "custom"]),
+    mode: z.enum(["enhanced", "insurance", "custom"]),
     mediaIds: z.array(uuid).max(VEHICLE_SHARE_PHOTO_LIMIT).default([]),
   }).parse(d))
   .handler(async ({ data, context }): Promise<{ ok: true; package: CreatedVehicleShare } | { ok: false; error: string }> => {
@@ -97,11 +100,16 @@ export const createVehicleSharePackage = createServerFn({ method: "POST" })
     if (!vehicle) return { ok: false, error: "That vehicle no longer exists." };
     const media = ((mediaRows ?? []) as Array<Record<string, any>>).map(mediaView).filter(isShareMediaEligible);
     const byId = new Map(media.map((photo) => [photo.id, photo]));
-    const mediaIds = data.mode === "insurance"
-      ? automaticInsurancePhotoIds(media)
-      : [...new Set(data.mediaIds)];
+    const mediaIds = data.mode === "enhanced"
+      ? automaticEnhancedPhotoIds(media)
+      : data.mode === "insurance"
+        ? automaticInsurancePhotoIds(media)
+        : [...new Set(data.mediaIds)];
     if (!mediaIds.length) {
-      return { ok: false, error: data.mode === "insurance" ? "No website photos are available. Choose photos manually instead." : "Select at least one photo." };
+      const error = data.mode === "enhanced"
+        ? "No approved AI-enhanced photos are available. Choose another package or select photos manually."
+        : data.mode === "insurance" ? "No website photos are available. Choose photos manually instead." : "Select at least one photo.";
+      return { ok: false, error };
     }
     if (mediaIds.length > VEHICLE_SHARE_PHOTO_LIMIT || mediaIds.some((id) => !byId.has(id))) {
       return { ok: false, error: "One or more photos cannot be shared. Refresh and review the selection." };
@@ -134,7 +142,7 @@ export const createVehicleSharePackage = createServerFn({ method: "POST" })
 
     await logAudit(actor, {
       action: "vehicle.share.package_created",
-      summary: `Created ${includeDetails ? "an insurance" : "a photo"} sharing package for ${fullDetails.unitLabel}`,
+      summary: `Created ${data.mode === "enhanced" ? "an AI-enhanced photo" : includeDetails ? "an insurance" : "a photo"} sharing package for ${fullDetails.unitLabel}`,
       entityType: "vehicle", entityId: data.vehicleId,
       metadata: { packageId: id, mode: data.mode, photoCount: mediaIds.length, includeDetails, expiresAt: stored.expiresAt },
     });

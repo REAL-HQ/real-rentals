@@ -77,6 +77,15 @@ export function isShareMediaEligible(photo: Pick<VehicleShareMedia, "kind" | "re
   return false;
 }
 
+/** The first quick-share package: every human-approved AI enhancement, best listing order first. */
+export function automaticEnhancedPhotoIds(media: VehicleShareMedia[]): string[] {
+  return media
+    .filter((photo) => photo.kind === "ai_enhanced" && isShareMediaEligible(photo))
+    .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.sort_order - b.sort_order || b.created_at.localeCompare(a.created_at))
+    .slice(0, VEHICLE_SHARE_PHOTO_LIMIT)
+    .map((photo) => photo.id);
+}
+
 /** Best means the existing human-approved listing order, lead photo first. */
 export function automaticInsurancePhotoIds(media: VehicleShareMedia[]): string[] {
   return media
