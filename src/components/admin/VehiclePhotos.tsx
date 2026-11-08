@@ -370,22 +370,22 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
               (enhanced.length ? ` · ${enhanced.length} retouched` : "") +
               ` · ${publishedCount} on the website`
         }
-        right={
-          canEdit ? (
-            <FileUploader
-              variant="inline"
-              label="Add Photos"
-              accept={ACCEPT}
-              multiple
-              camera
-              maxBytes={MAX_BYTES}
-              context={`Vehicle ${vehicleId} · Photos`}
-              upload={uploadOne}
-              onAllDone={afterUpload}
-            />
-          ) : null
-        }
       >
+        {canEdit && (
+          <FileUploader
+            variant="inline"
+            label="Add Photos"
+            accept={ACCEPT}
+            multiple
+            camera
+            maxBytes={MAX_BYTES}
+            context={`Vehicle ${vehicleId} · Photos`}
+            upload={uploadOne}
+            onAllDone={afterUpload}
+            listLayout="grid"
+            className="mb-4 w-full items-end"
+          />
+        )}
         {loading && !data ? (
           <div className="flex items-center gap-2 text-[13px] text-[#9A9AA3] py-6 justify-center">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading photos…
@@ -514,7 +514,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 )}
               </div>
             )}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 mx-auto w-full">
             {items.map((m) => (
               <div key={m.id} className="relative">
               {picking && m.kind === "original" && (

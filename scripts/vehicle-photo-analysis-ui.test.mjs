@@ -79,8 +79,8 @@ ok(/onOpen=\{setViewing\}/.test(panel) && /src=\{viewing\}/.test(panel),
 ok(/Read From A Photo/.test(panel), "the row says the value came from a photograph");
 
 console.log("\nit works on a phone as well as a desktop");
-ok(/grid-cols-2 sm:grid-cols-3 lg:grid-cols-4/.test(photos),
-  "the photo grid reflows from two columns to four");
+ok(/grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5/.test(photos),
+  "the photo grid reflows from two columns to five");
 ok(/<div className="mb-3 rounded-xl border border-\[#EDEDF0\] bg-\[#FAFAFB\] p-3">[\s\S]{0,200}?flex flex-wrap items-center gap-2/.test(photos),
   "the Read Photos bar wraps rather than overflowing a narrow screen");
 ok(/basis-full sm:basis-auto/.test(photos),
