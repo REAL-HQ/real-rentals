@@ -89,7 +89,7 @@ export default function LeadPriorities({
   return (
     <section
       aria-labelledby="lead-priorities-title"
-      className="rounded-2xl border border-border bg-card p-4 text-card-foreground sm:p-5"
+      className="rounded-2xl border border-border bg-secondary p-4 text-card-foreground sm:p-5"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
