@@ -12,6 +12,7 @@ export function AdminToolbar({
   actions,
   footer,
   className = "",
+  compact = false,
 }: {
   search: ReactNode;
   filters: ReactNode;
@@ -19,9 +20,18 @@ export function AdminToolbar({
   /** A full-width line under the controls, inside the same sticky bar. */
   footer?: ReactNode;
   className?: string;
+  /** Natural-fit search / filters / actions, in the same visual and keyboard order. */
+  compact?: boolean;
 }) {
   return (
     <div className={`admin-sticky-bar admin-list-toolbar mb-4 pb-2 min-w-0 ${className}`} data-admin-toolbar>
+      {compact ? (
+        <div className="admin-toolbar-compact" data-toolbar-primary data-toolbar-compact>
+          <div className="admin-toolbar-compact-search" data-toolbar-search>{search}</div>
+          <div className="admin-toolbar-compact-filters" data-toolbar-filters>{filters}</div>
+          {actions ? <div className="admin-toolbar-compact-actions" data-toolbar-actions>{actions}</div> : null}
+        </div>
+      ) : <>
       <div className="admin-toolbar-primary" data-toolbar-primary>
         <div className="min-w-0" data-toolbar-search>{search}</div>
         {actions ? (
@@ -29,6 +39,7 @@ export function AdminToolbar({
         ) : null}
       </div>
       <div className="admin-toolbar-filters" data-toolbar-filters>{filters}</div>
+      </>}
       {footer ? <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2" data-toolbar-context>{footer}</div> : null}
     </div>
   );

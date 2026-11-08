@@ -39,6 +39,12 @@ check(TOOLBAR.search.includes('w-full') && TOOLBAR.select.includes('w-full'), "s
 check(!TOOLBAR.search.includes('max-w-') && !TOOLBAR.select.includes('w-['), "no fixed control widths fight the grid");
 check(/\bwhitespace-nowrap\b/.test(TOOLBAR.button) && /\bshrink-0\b/.test(TOOLBAR.button), "action labels do not squash or wrap");
 
+const compact = renderToStaticMarkup(h(AdminToolbar, { compact: true, search: h("input", { "aria-label": "q" }), filters: h("button", null, "Status"), actions: h("button", null, "Add Vehicle") }));
+check(compact.includes('data-toolbar-compact'), "compact variant is explicit, leaving default shared behavior intact");
+check(compact.indexOf('data-toolbar-search') < compact.indexOf('data-toolbar-filters') && compact.indexOf('data-toolbar-filters') < compact.indexOf('data-toolbar-actions'), "compact source order matches visual and keyboard order");
+check(css.includes('flex: 4 0 28rem') && css.includes('flex-wrap: wrap'), "content groups wrap on available space, not a viewport pin");
+check(vehicles.includes('<AdminToolbar compact'), "Vehicles requests its natural-fit compact layout");
+
 // 4. Vehicles uses it and has no leftover viewport-switched toolbar.
 check(vehicles.includes("<AdminToolbar"), "Vehicles uses AdminToolbar");
 check(!vehicles.includes("admin-sticky-bar flex flex-col lg:flex-row"), "the old lg:flex-row toolbar is gone");
