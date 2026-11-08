@@ -139,7 +139,7 @@ export default function LeadPriorities({
                 [
                   ["New Leads", result.counts.new, "new" as LeadFilter, "border-success/20 bg-success-soft hover:bg-success-soft", "text-success"],
                   ["Overdue", result.counts.overdue, "follow_up_due" as LeadFilter, "border-destructive/20 bg-destructive/10 hover:bg-destructive/15", "text-destructive"],
-                  ["Hot Leads", result.counts.hot, "interested" as LeadFilter, "border-brand/25 bg-brand/15 hover:bg-brand/20", "text-brand"],
+                  ["Hot Leads", result.counts.hot, "interested" as LeadFilter, "border-border bg-card hover:bg-secondary", "text-card-foreground"],
                 ] as const
               ).map(([label, value, next, cardTone, textTone]) => (
                 <Button
