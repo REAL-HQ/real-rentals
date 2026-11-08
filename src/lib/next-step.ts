@@ -13,6 +13,7 @@ import type {
 export type FixTarget =
   | { kind: "section"; tab: "documents" | "screening" | "application" | "rental"; anchor: string }
   | { kind: "interview" }
+  | { kind: "record_call" }
   | { kind: "approve" }
   | { kind: "activate" };
 
@@ -32,7 +33,7 @@ export type NextStep = {
 };
 
 const FIX: Partial<Record<ActivationRequirementKey, { fix: string; target: FixTarget }>> = {
-  interview: { fix: "Continue Interview", target: { kind: "interview" } },
+  interview: { fix: "Record Call", target: { kind: "record_call" } },
   license_documents: { fix: "Review Documents", target: { kind: "section", tab: "documents", anchor: "profile-documents" } },
   insurance_verified: { fix: "Verify Insurance", target: { kind: "section", tab: "screening", anchor: "profile-insurance" } },
   insurance_document: { fix: "Open Insurance", target: { kind: "section", tab: "screening", anchor: "profile-insurance" } },

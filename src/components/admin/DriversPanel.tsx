@@ -198,6 +198,7 @@ import { buildReadinessIndex } from "@/lib/readiness-index";
 import { ApplicantDocuments, REQUIRED_VAULT_CATEGORIES } from "./ApplicantDocuments";
 import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
 import { InterviewDrawer } from "./InterviewDrawer";
+import { RecordCallDialog } from "./RecordCallDialog";
 import { acknowledgeApplication } from "@/lib/applications.functions";
 import { ClipboardList, Clock as ClockIcon, ExternalLink } from "lucide-react";
 import { WaitlistPanel } from "./WaitlistPanel";
@@ -1757,6 +1758,7 @@ function DriverDetail({
   }
 
   const [interviewOpen, setInterviewOpen] = useState(false);
+  const [recordCallOpen, setRecordCallOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [closeBusy, setCloseBusy] = useState(false);
   const loadStatusHistory = useServerFn(getApplicationStatusHistory);
@@ -2061,12 +2063,13 @@ function DriverDetail({
   function runTarget(t: FixTarget | { kind: "rental" } | { kind: "none" }) {
     if (t.kind === "section") openSection(t.tab, t.anchor);
     else if (t.kind === "interview") setInterviewOpen(true);
+    else if (t.kind === "record_call") setRecordCallOpen(true);
     else if (t.kind === "approve") void approveAndSend();
     else if (t.kind === "activate") { if (!activateOpen) setActivateOpen(true); }
     else if (t.kind === "rental") setTab("rental");
   }
   const nextIcon =
-    next.target.kind === "interview" ? ClipboardList
+    next.target.kind === "interview" || next.target.kind === "record_call" ? ClipboardList
       : next.target.kind === "approve" ? Check
         : next.target.kind === "section" && next.target.tab === "documents" ? FileText
           : next.target.kind === "section" && next.target.tab === "screening" ? ShieldCheck
@@ -2931,6 +2934,12 @@ function DriverDetail({
           readinessChanged();
         }}
       />
+
+      {recordCallOpen ? <RecordCallDialog applicationId={driver.id} name={driver.full_name ?? "Driver"}
+        onClose={() => setRecordCallOpen(false)}
+        onInterview={() => { setRecordCallOpen(false); setInterviewOpen(true); }}
+        onSaved={(saved) => { setScreening(saved); onScreeningChange?.(saved); readinessChanged(); }}
+      /> : null}
 
       {depositRentalId ? (
         <DepositDialog rentalId={depositRentalId} onClose={() => setDepositRentalId(null)} />

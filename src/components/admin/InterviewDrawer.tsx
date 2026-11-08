@@ -2,6 +2,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { InterviewTab } from "./DriverScreening";
 import type { Application, DriverScreening } from "./types";
 import { ClipboardList } from "lucide-react";
+import { fmtDateTime } from "@/lib/date-format";
 
 /**
  * Right-side drawer that hosts the full interview workflow so it never
@@ -36,6 +37,11 @@ export function InterviewDrawer({
           </p>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto px-6 py-5">
+          {screening?.interview_completed_at ? <div className="mb-4 space-y-1 rounded-lg border border-border bg-card p-3 text-sm" aria-label="Recorded Call">
+            <div className="font-semibold text-foreground">Interview Complete · {fmtDateTime(screening.interview_completed_at)}</div>
+            {screening.interviewed_by ? <div className="text-xs text-muted-foreground">Recorded By: {screening.interviewed_by}</div> : null}
+            {screening.interview_notes ? <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">{screening.interview_notes}</p> : null}
+          </div> : null}
           <InterviewTab
             stepped
             driver={driver}

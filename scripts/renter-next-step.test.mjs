@@ -52,7 +52,7 @@ t("ready: Activate Rental is the one primary; no duplicate secondary", () => {
 });
 t("interview unfinished still comes first", () => {
   const m = nextStep({ ...base, step: "interview", readiness: noInsurance });
-  assert.equal(m.label, "Continue Interview");
+  assert.deepEqual(m.target, { kind: "record_call" });
   assert.equal(m.blockers[1].key, "insurance_verified");
 });
 t("loading: primary disabled, Activate Rental disabled, no fake checklist", () => {

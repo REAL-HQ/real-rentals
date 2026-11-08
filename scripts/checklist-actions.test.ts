@@ -22,7 +22,8 @@ describe("Driver checklist actions", () => {
   });
   it("insurance review and interview open the established workflows", () => {
     expect(checklistAction(requirement("insurance_verified"))?.target).toEqual({ kind: "section", tab: "screening", anchor: "profile-insurance" });
-    expect(checklistAction(requirement("interview"))?.target).toEqual({ kind: "interview" });
+    expect(checklistAction(requirement("interview"))?.target).toEqual({ kind: "record_call" });
+    expect(checklistAction(requirement("interview", true))?.target).toEqual({ kind: "interview" });
   });
   it("approval and inspection never offer a direct approval or activation override", () => {
     expect(checklistAction(requirement("approved"))?.target).toEqual({ kind: "section", tab: "application", anchor: "" });
