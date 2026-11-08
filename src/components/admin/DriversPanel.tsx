@@ -3362,6 +3362,7 @@ function VehiclePicker({
       placeholder="Assign Vehicle"
       noneLabel="— None —"
       aria-label="Assign Vehicle"
+      photoColumns
     />
   );
 }
