@@ -1,7 +1,7 @@
 /**
  * Vehicles toolbar regression guard. No browser, no database.
  *
- * Why it kept breaking: the row switched layouts on VIEWPORT breakpoints
+ * Historical failure: the row switched layouts on VIEWPORT breakpoints
  * (lg = 1024px window) while the admin column is the window minus the
  * sidebar, so "desktop" kicked in with ~830px and the actions misaligned;
  * control heights differed (py-2 vs h-9 vs a ~28px toggle); and a phone CSS
@@ -26,23 +26,18 @@ const css = readFileSync("src/styles.css", "utf8");
 
 const { AdminToolbar, TOOLBAR, TopSearchChip } = await import("../src/components/admin/AdminToolbar.tsx");
 
-// 1. No viewport breakpoints decide the toolbar layout.
-const allToolbarClasses = [toolbarSrc.match(/className="[^"]*"|className=\{`[^`]*`\}/g).join(" "), ...Object.values(TOOLBAR)].join(" ");
-check(!/(?<![\w-])(sm|md|lg|xl):/.test(allToolbarClasses), "AdminToolbar layout uses no sm:/md:/lg:/xl: viewport switches");
-check(!/\bmax-(md|lg|xl):/.test(allToolbarClasses), "AdminToolbar uses only max-sm: (phone full-width), nothing at tablet/desktop widths");
-
-// 2. Every control is the same height.
+// Deliberate row membership: render the actual component, not a copied layout.
+const html = renderToStaticMarkup(h(AdminToolbar, { search: h("input", { "aria-label": "q" }), filters: h("button", null, "Status"), actions: h("button", null, "Add Vehicle"), footer: h("span", null, "Fleet readiness") }));
+check(html.includes('data-admin-toolbar'), "renders as the sticky filter bar");
+check(/data-toolbar-primary[^]*data-toolbar-search[^]*aria-label="q"[^]*data-toolbar-actions/.test(html), "search and actions belong to one intentional row");
+check(html.indexOf('data-toolbar-filters') > html.indexOf('Add Vehicle'), "filters are a separate row, not a wrapping sibling of actions");
+check(html.indexOf('Fleet readiness') > html.indexOf('data-toolbar-filters'), "readiness stays below controls within sticky bar");
+check(css.includes('container-type: inline-size') && css.includes('@container (max-width: 40rem)'), "adaptive layout uses available admin width");
+check(css.includes('grid-template-columns: repeat(4, minmax(0, 1fr))') && css.includes('grid-template-columns: repeat(2, minmax(0, 1fr))'), "filters use balanced four/two-column grids instead of orphan wrapping");
 for (const k of ["search", "select", "button", "primary", "segmented"]) check(/\bh-9\b/.test(TOOLBAR[k]), `TOOLBAR.${k} is h-9`);
-check(!/\bpy-[12]\b/.test(Object.values(TOOLBAR).join(" ")), "no control sizes itself by vertical padding");
-check(/\bwhitespace-nowrap\b/.test(TOOLBAR.button) && /\bshrink-0\b/.test(TOOLBAR.button) && /\bshrink-0\b/.test(TOOLBAR.primary), "action buttons never wrap their label or get squashed");
-
-// 3. Structure: filters wrap, actions stay together at the right.
-const html = renderToStaticMarkup(h(AdminToolbar, { filters: h("input", { "aria-label": "q" }), actions: h("button", null, "Add Vehicle"), footer: h("span", null, "Fleet readiness") }));
-check(html.includes('class="admin-sticky-bar') && html.includes("data-admin-toolbar"), "renders as the sticky filter bar");
-check(/data-toolbar-filters[^>]*|class="[^"]*flex-wrap[^"]*"[^>]*data-toolbar-filters/.test(html) && /flex-wrap[^"]*"\s+data-toolbar-filters/.test(html), "filter group wraps by available width");
-check(/class="[^"]*ml-auto[^"]*shrink-0[^"]*"\s+data-toolbar-actions/.test(html), "actions are one ml-auto, shrink-0 group");
-check(html.indexOf("Fleet readiness") > html.indexOf("Add Vehicle") && html.includes("Fleet readiness") && html.lastIndexOf("</div>") > html.indexOf("Fleet readiness"), "readiness footer stays inside the sticky bar");
-check(css.includes(".admin-sticky-bar[data-admin-toolbar] > .flex-wrap") && /\[data-admin-toolbar\] > \.flex-wrap \{\s*flex-wrap: wrap;\s*overflow-x: visible;/.test(css), "phone side-scroll rule is overridden for AdminToolbar");
+check(TOOLBAR.search.includes('w-full') && TOOLBAR.select.includes('w-full'), "search and filters fill their assigned grid cells");
+check(!TOOLBAR.search.includes('max-w-') && !TOOLBAR.select.includes('w-['), "no fixed control widths fight the grid");
+check(/\bwhitespace-nowrap\b/.test(TOOLBAR.button) && /\bshrink-0\b/.test(TOOLBAR.button), "action labels do not squash or wrap");
 
 // 4. Vehicles uses it and has no leftover viewport-switched toolbar.
 check(vehicles.includes("<AdminToolbar"), "Vehicles uses AdminToolbar");

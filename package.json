@@ -16,6 +16,7 @@
     "test:resume-reliability": "node scripts/resume-token-trim.test.mjs && node scripts/wizard-recovery-cron.test.mjs && node scripts/wizard-save.test.mjs",
     "test:resume-tokens-pg": "node scripts/resume-token-postgres.test.mjs",
     "test:grants": "node scripts/grants.test.mjs",
+    "test:toolbar-layout": "node scripts/toolbar-layout.test.mjs",
     "test:toolbar": "npx tsx scripts/admin-toolbar.test.mjs",
     "test:nav": "node scripts/admin-navigation.test.mjs",
     "test:fleet": "node scripts/marketing-fleet.test.mjs",

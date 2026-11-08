@@ -1,3 +1,4 @@
+import { VehicleBodyTypeSelect } from "./VehicleBodyTypeSelect";
 import { setUnsaved } from "@/lib/unsaved-changes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -22,7 +23,6 @@ import {
 import {
   updateVehicleSections,
   VEHICLE_STATUSES,
-  BODY_TYPES,
   OWNERSHIP_TYPES,
   type VehicleProfile as Profile,
 } from "@/lib/vehicles.functions";
@@ -156,7 +156,7 @@ export function VehicleEditorDrawer({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") attemptClose();
+      if (e.key === "Escape" && !e.defaultPrevented) attemptClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -436,15 +436,7 @@ export function VehicleEditorDrawer({
 
             <Sub>Specifications</Sub>
             <Grid>
-              <Choice
-                label="Body Type"
-                value={str("body_type")}
-                onChange={(x) => set("identity", "body_type", x)}
-                options={[
-                  { value: "", label: "—" },
-                  ...BODY_TYPES.map((b) => ({ value: b, label: b })),
-                ]}
-              />
+              <VehicleBodyTypeSelect value={str("body_type")} onChange={(x) => set("identity", "body_type", x)} />
               <NumberField
                 label="Seats"
                 value={num("seats")}

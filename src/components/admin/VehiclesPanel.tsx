@@ -358,7 +358,7 @@ function FleetVehicles({
   );
 
   return (
-    <div className="max-lg:min-w-0">
+    <div className="min-w-0">
       {remindersFailed ? <p className="mb-3 text-sm text-[#D03020]" data-testid="maintenance-log-error">Could not load maintenance reminders.</p> : null}
       {view !== "due" && (
         <p className="mb-3 text-sm text-muted-foreground" data-testid="vehicle-count">
@@ -367,8 +367,7 @@ function FleetVehicles({
         </p>
       )}
       <AdminToolbar
-        filters={
-          <>
+        search={
           <input
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
@@ -376,6 +375,9 @@ function FleetVehicles({
             aria-label="Search vehicles"
             className={TOOLBAR.search}
           />
+        }
+        filters={
+          <>
           <Select value={statusFilter} onValueChange={(v) => setList({ status: v })}>
             <SelectTrigger className={TOOLBAR.select} aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
@@ -407,12 +409,6 @@ function FleetVehicles({
               <SelectItem value="newest">Sort: Newest</SelectItem>
             </SelectContent>
           </Select>
-          <TopSearchChip value={externalSearch} onClear={() => onClearExternalSearch?.()} />
-          {hasActiveFilters && (
-            <button onClick={clearAll} className="inline-flex h-9 shrink-0 items-center px-2 text-sm text-muted-foreground hover:text-foreground">
-              Clear
-            </button>
-          )}
           </>
         }
         actions={
@@ -432,14 +428,21 @@ function FleetVehicles({
           </button>
           </>
         }
-        footer={result ? (
+        footer={
           <>
+          <TopSearchChip value={externalSearch} onClear={() => onClearExternalSearch?.()} />
+          {hasActiveFilters && (
+            <button onClick={clearAll} className="inline-flex h-9 shrink-0 items-center px-2 text-sm text-muted-foreground hover:text-foreground">
+              Clear
+            </button>
+          )}
           {/* Fleet-wide readiness lives IN the one sticky filter row: the bar
               publishes its own height and overlaps the 16px below it, so a
               second row OUTSIDE the bar is covered and unclickable (the toolbar
               footer is inside it). Counts cover
               everything the current search and filters match, not the page,
               and each chip is the filter for its own band. */}
+          {result && (
             <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-2" data-testid="fleet-readiness">
               <span className="whitespace-nowrap text-xs text-muted-foreground">Fleet readiness</span>
               {READINESS_BANDS.map((band) => {
@@ -482,8 +485,9 @@ function FleetVehicles({
                 </span>
               )}
             </span>
+          )}
           </>
-        ) : null}
+        }
       />
 
       {view === "due" && dueAllowed && (
@@ -491,8 +495,8 @@ function FleetVehicles({
       )}
 
       {view !== "due" && view === "list" && rows.length > 0 && (
-        <div className="hidden md:block mt-4 max-lg:min-w-0 max-lg:overflow-x-auto rounded-xl border border-border bg-white lg:overflow-hidden">
-          <table className="w-full text-sm max-lg:min-w-[64rem]">
+        <div role="region" aria-label="Vehicles table" tabIndex={0} className="relative hidden md:block mt-4 w-full min-w-0 overflow-x-auto rounded-xl border border-border bg-white">
+          <table className="w-full min-w-[64rem] text-sm">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
                 <th scope="col" className="w-10 px-3 py-2 font-medium" aria-label="Row number">#</th>
@@ -504,7 +508,7 @@ function FleetVehicles({
                 <th className="px-3 py-2 font-medium">Readiness</th>
                 <th className="px-3 py-2 font-medium">Weekly Rate</th>
                 <th className="px-3 py-2 font-medium">Partner</th>
-                <th className="px-3 py-2 font-medium sr-only">Open</th>
+                <th className="px-3 py-2 font-medium"><span className="sr-only">Open</span></th>
               </tr>
             </thead>
             <tbody>
