@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { PreviewStore, canThumb, previewKind, typeLabel, THUMB_MAX_BYTES } from "../src/lib/fleet-file-preview";
+import { PreviewStore, canThumb, lightboxShouldRequest, previewKind, typeLabel, THUMB_MAX_BYTES } from "../src/lib/fleet-file-preview";
 import { FleetFileThumb, FleetFileLightbox } from "../src/components/admin/FleetFilePreview";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -120,5 +120,34 @@ describe("security wiring", () => {
   });
   test("row controls stay: View, Retry Analysis, Classify, Attach", () => {
     for (const s of ["<Eye", "Retry Analysis", "Classify…", "Attach to vehicle…", "<FleetFileThumb item={it}", "data-item-row={it.id}"]) expect(panel).toContain(s);
+  });
+});
+
+describe("lightbox retry is bounded", () => {
+  test("persistent failure: one retry per opening, not a loop", async () => {
+    let calls = 0;
+    const st = new PreviewStore(() => { calls++; return Promise.reject(new Error("File unavailable")); }, () => "u", () => {}, 2);
+    const retried = new Set<string>();
+    for (let i = 0; i < 10; i++) {
+      if (lightboxShouldRequest(st.get("d"), retried, "d")) st.request("d");
+      await tick();
+    }
+    expect(calls).toBe(2);
+    retried.clear();
+    if (lightboxShouldRequest(st.get("d"), retried, "d")) st.request("d");
+    await tick();
+    expect(calls).toBe(3);
+  });
+  test("restricted and loading/ready never re-request", () => {
+    const r = new Set<string>();
+    expect(lightboxShouldRequest({ state: "restricted", message: "Restricted" }, r, "d")).toBe(false);
+    expect(lightboxShouldRequest({ state: "loading" }, r, "d")).toBe(false);
+    expect(lightboxShouldRequest({ state: "ready", url: "u" }, r, "d")).toBe(false);
+    expect(lightboxShouldRequest(undefined, r, "d")).toBe(true);
+  });
+  test("lightbox uses the bounded rule", () => {
+    const ui = readFileSync("src/components/admin/FleetFilePreview.tsx", "utf8");
+    expect(ui).toContain("lightboxShouldRequest(p, retried.current, it.document_id)");
+    expect(ui).not.toContain('p.state === "error")) store.request');
   });
 });

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { ChevronLeft, ChevronRight, ExternalLink, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { canThumb, previewKind, typeLabel, type PreviewState, type PreviewStore } from "@/lib/fleet-file-preview";
+import { canThumb, lightboxShouldRequest, previewKind, typeLabel, type PreviewState, type PreviewStore } from "@/lib/fleet-file-preview";
 
 type Item = { id: string; document_id?: string | null; mime_type?: string | null; file_name?: string | null; size_bytes?: number | null };
 
@@ -65,7 +65,13 @@ export function FleetFileLightbox({
 }) {
   const it = index === null ? null : items[index] ?? null;
   const p = usePreview(store, it?.document_id);
-  useEffect(() => { if (it && canThumb(it) && store && it.document_id && (!p || p.state === "error")) store.request(it.document_id); }, [it, store, p]);
+  // A failed preview is retried once per opening, never in a loop.
+  const retried = useRef(new Set<string>());
+  useEffect(() => { if (index === null) retried.current.clear(); }, [index]);
+  useEffect(() => {
+    if (!it || !store || !it.document_id || !canThumb(it)) return;
+    if (lightboxShouldRequest(p, retried.current, it.document_id)) store.request(it.document_id);
+  }, [it, store, p]);
   const go = (d: number) => { if (index !== null && items.length > 1) onIndex((index + d + items.length) % items.length); };
   const kind = it ? previewKind(it.mime_type, it.file_name) : "other";
   return (
