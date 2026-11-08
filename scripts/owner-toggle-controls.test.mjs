@@ -44,6 +44,17 @@ ok(
   "its off-state track stays neutral so off still reads as off",
 );
 
+console.log("\nother Settings on/off controls");
+for (const [file, name] of [
+  ["src/components/admin/SafeAutofillPanel.tsx", "Safe Autofill"],
+  ["src/components/admin/SettingsPanel.tsx", "Business Settings yes/no fields"],
+  ["src/components/admin/WebsitesPanel.tsx", "Websites Homepage column"],
+]) {
+  const src = read(file);
+  ok(/<Switch\b/.test(src) && !/type="checkbox"/.test(src), `${name} uses the shared switch, not a checkbox`);
+}
+ok(/s\.enabled \? "Turn Off" : "Turn On"/.test(read("src/components/admin/SafeAutofillPanel.tsx")), "Safe Autofill offers Turn On / Turn Off");
+
 for (const p of PANELS) {
   const src = read(p.file);
   console.log(`\n${p.name}`);
