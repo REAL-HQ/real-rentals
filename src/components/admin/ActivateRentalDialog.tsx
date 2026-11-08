@@ -121,6 +121,7 @@ export function ActivateRentalDialog({
     (softBlockers.length === 0 || (acknowledged && overrideReason.trim().length >= MIN_OVERRIDE_REASON));
 
   async function submit() {
+    if (busy) return; // double click: one activation request only
     setBusy(true);
     try {
       const res = await activate({
