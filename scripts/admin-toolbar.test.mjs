@@ -64,9 +64,12 @@ check(/action=\{hasActiveFilters \? <button onClick=\{clearAll\}/.test(vehicles)
 check(admin.includes('<VehiclesPanel externalSearch={globalSearch} onClearExternalSearch={() => setGlobalSearch("")}'), "admin wires the clear back to the top search box");
 
 
-// Ordinal is a separate first column; mobile/cards retain the same number.
-check(/aria-label="Row number">#<\/th>\s*<th[^>]*>Unit/.test(vehicles), "narrow # column precedes Unit");
-check(vehicles.includes('{v.unit_number ?? <span') && vehicles.includes('{v.unit_number ?? ""}'), "unit identifiers stay unchanged in table and cards");
+// Ordinal is a separate first column; the table's old Unit cell is now a
+// private staff thumbnail/slideshow, while cards retain their unit identifier.
+check(/aria-label="Row number">#<\/th>\s*<th[^>]*>Photo/.test(vehicles), "narrow # column precedes Photo");
+check(vehicles.includes("<VehicleListThumbnail vehicle={v} />"), "table unit cells are replaced by the vehicle thumbnail");
+check(vehicles.includes('{v.unit_number ?? ""}'), "unit identifiers stay unchanged in cards");
+check(vehicles.includes("async function openPhotos") && vehicles.includes("event.stopPropagation();") && vehicles.includes("<VehiclePhotoViewer"), "thumbnail clicks stop row navigation and open the shared slideshow");
 check((vehicles.match(/rows\.map\(\(v, index\)/g) ?? []).length === 2 && (vehicles.match(/rowNumber\(index\)/g) ?? []).length === 2, "table and cards use the same visible ordinal");
 check(vehicles.includes('vehicleRowNumber(result?.page ?? page, result?.pageSize ?? VEHICLE_LIST_PAGE_SIZE, index)'), "placeholder rows retain their returned page numbers while fetching");
 check(vehicles.includes('vehicles total (including archived)') && vehicles.includes('{total} matching'), "fleet scope and filtered counts are explicitly labeled");

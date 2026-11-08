@@ -172,14 +172,33 @@ export const listVehicles = createServerFn({ method: "POST" })
 
     const ids = (rows ?? []).map((r: any) => r.id);
     const onRent = new Set<string>();
+    const thumbnailFor = new Map<string, string>();
     if (ids.length) {
-      // On Rent = an actual running rental, never inferred from vehicle status.
-      const { data: running } = await supabaseAdmin
-        .from("rentals")
-        .select("vehicle_id")
-        .eq("status", "active")
-        .in("vehicle_id", ids);
+      const [{ data: running }, { data: media }] = await Promise.all([
+        // On Rent = an actual running rental, never inferred from vehicle status.
+        supabaseAdmin
+          .from("rentals")
+          .select("vehicle_id")
+          .eq("status", "active")
+          .in("vehicle_id", ids),
+        // One staff-only read for the page's lead ORIGINAL photos. Only paths
+        // cross the RPC boundary; the browser downloads bytes through the
+        // existing private storage policy, never through a public photo route.
+        supabaseAdmin
+          .from("vehicle_media")
+          .select("vehicle_id,storage_path")
+          .in("vehicle_id", ids)
+          .eq("kind", "original")
+          .order("is_primary", { ascending: false })
+          .order("sort_order", { ascending: true })
+          .order("created_at", { ascending: true }),
+      ]);
       for (const r of running ?? []) if ((r as any).vehicle_id) onRent.add((r as any).vehicle_id);
+      for (const m of (media ?? []) as Array<{ vehicle_id: string; storage_path: string }>) {
+        if (m.vehicle_id && m.storage_path && !thumbnailFor.has(m.vehicle_id)) {
+          thumbnailFor.set(m.vehicle_id, m.storage_path);
+        }
+      }
     }
 
     return {
@@ -198,6 +217,7 @@ export const listVehicles = createServerFn({ method: "POST" })
         weekly_rate: r.weekly_rate == null ? null : Number(r.weekly_rate),
         partner_id: r.partner_id,
         photo: Array.isArray(r.photos) && r.photos.length ? r.photos[0] : null,
+        thumbnailPath: thumbnailFor.get(r.id) ?? null,
         on_rent: onRent.has(r.id),
         readiness: bandOf.get(r.id) ?? readinessBand(r, publishedFor.has(r.id)),
         readinessGaps: readinessGaps(r, publishedFor.has(r.id)),

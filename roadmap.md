@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Vehicles list: replaced the table's Unit display with staff-only car thumbnails; clicking a thumbnail opens the existing original-photo slideshow without opening the vehicle record or exposing private photos.
 - [x] Dropdowns: native selects, shared Select controls, action menus, and popovers use white panels with dark text across light and dark chrome; options and behavior unchanged.
 - [x] Vehicle Photos: full drag/drop field remains available after photos exist; clarified that Listing Ready still requires an explicitly website-published photo and preserved the publish/profile/list refresh path.
 - [x] Vehicle activation refresh: resolved requirements now refresh vehicle profiles/lists and open activation details; correct-driver events and focus recheck verified without changing records.

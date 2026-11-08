@@ -16,8 +16,10 @@ import {
 } from "@/lib/vehicles-list";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
-import { resolvePhotoUrl } from "@/lib/photoUrl";
+import { loadStaffPhoto, resolvePhotoUrl } from "@/lib/photoUrl";
+import { listVehicleMedia, type VehicleMedia } from "@/lib/vehicle-media.functions";
 import { VehicleProfile } from "./VehicleProfile";
+import { VehiclePhotoViewer } from "./VehiclePhotos";
 import { AddVehicleDialog } from "./AddVehicleDialog";
 import { VehicleLifecycleDialog, type LifecycleMode } from "./VehicleLifecycleDialog";
 import { toast } from "sonner";
@@ -93,6 +95,81 @@ const VIEW_KEY = "rr.vehicles.view";
 
 function vehicleName(v: VehicleListRow) {
   return [v.year, displayVehicleWord(v.make ?? ""), displayVehicleWord(v.model ?? "")].filter(Boolean).join(" ");
+}
+
+/** The table's lead thumbnail and its on-demand, staff-only original gallery. */
+function VehicleListThumbnail({ vehicle }: { vehicle: VehicleListRow }) {
+  const loadMedia = useServerFn(listVehicleMedia);
+  const staffPath = vehicle.thumbnailPath ?? null;
+  const publicUrl = resolvePhotoUrl(vehicle.photo ?? undefined);
+  const [url, setUrl] = useState<string | null>(publicUrl);
+  const [opening, setOpening] = useState(false);
+  const [viewer, setViewer] = useState<{ items: VehicleMedia[]; index: number } | null>(null);
+  const name = vehicleName(vehicle);
+
+  useEffect(() => {
+    let live = true;
+    setUrl(publicUrl);
+    if (staffPath) {
+      void loadStaffPhoto(staffPath).then((next) => {
+        if (live) setUrl(next ?? publicUrl);
+      });
+    }
+    return () => { live = false; };
+  }, [staffPath, publicUrl]);
+
+  async function openPhotos(event: React.MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+    if (opening) return;
+    setOpening(true);
+    try {
+      const result = await loadMedia({ data: { vehicleId: vehicle.id } });
+      const items = result.items.filter((item) => item.kind === "original");
+      if (!items.length) {
+        toast.error("No photos are available for this vehicle.");
+        return;
+      }
+      const lead = items.findIndex((item) => item.storage_path === staffPath);
+      setViewer({ items, index: Math.max(0, lead) });
+    } catch {
+      toast.error("Could not load this vehicle's photos.");
+    } finally {
+      setOpening(false);
+    }
+  }
+
+  if (!staffPath && !publicUrl) {
+    return (
+      <span className="grid h-10 w-14 place-items-center rounded-md border border-border bg-soft text-muted-foreground" title="No Vehicle Photo">
+        <Car className="h-4 w-4" aria-label="No Vehicle Photo" />
+      </span>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        disabled={opening}
+        onClick={openPhotos}
+        aria-label={`View Photos: ${name}`}
+        title={opening ? "Loading Photos…" : `View ${name} Photos`}
+        className="block h-10 w-14 overflow-hidden rounded-md border border-border bg-soft text-muted-foreground transition-colors hover:border-real-red disabled:cursor-wait"
+      >
+        {url
+          ? <img src={url} alt={name} loading="lazy" className="h-full w-full object-cover" />
+          : <Car className="mx-auto h-4 w-4" aria-hidden />}
+      </button>
+      {viewer && (
+        <VehiclePhotoViewer
+          items={viewer.items}
+          index={viewer.index}
+          onIndex={(index) => setViewer((current) => current ? { ...current, index } : null)}
+          onClose={() => setViewer(null)}
+        />
+      )}
+    </>
+  );
 }
 
 function CopyVin({ vin }: { vin: string | null }) {
@@ -496,7 +573,7 @@ function FleetVehicles({
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
                 <th scope="col" className="w-10 px-3 py-2 font-medium" aria-label="Row number">#</th>
-                <th className="px-3 py-2 font-medium">Unit</th>
+                <th className="px-3 py-2 font-medium">Photo</th>
                 <th className="px-3 py-2 font-medium">Vehicle</th>
                 <th className="px-3 py-2 font-medium">Plate</th>
                 <th className="px-3 py-2 font-medium">VIN</th>
@@ -511,7 +588,7 @@ function FleetVehicles({
               {rows.map((v, index) => (
                 <tr key={v.id} onClick={() => setViewing(v.id)} className="border-t border-border cursor-pointer hover:bg-[#FAFAFB]">
                   <td className="w-10 px-3 py-2 tabular-nums text-muted-foreground">{rowNumber(index)}</td>
-                  <td className="px-3 py-2 font-medium whitespace-nowrap">{v.unit_number ?? <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-3 py-2 whitespace-nowrap"><VehicleListThumbnail vehicle={v} /></td>
                   <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</td>
                   <td className="px-3 py-2 font-mono whitespace-nowrap">{v.license_plate || <span className="text-muted-foreground">—</span>}</td>
                   <td className="px-3 py-2"><CopyVin vin={v.vin} /></td>

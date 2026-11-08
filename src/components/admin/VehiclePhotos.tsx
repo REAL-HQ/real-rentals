@@ -596,7 +596,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
         </SectionCard>
       )}
       {viewIdx != null && items[viewIdx] && (
-        <PhotoViewer items={items} index={viewIdx} onIndex={setViewIdx} onClose={() => setViewIdx(null)} />
+        <VehiclePhotoViewer items={items} index={viewIdx} onIndex={setViewIdx} onClose={() => setViewIdx(null)} />
       )}
       {compare && (
         <CompareModal
@@ -947,7 +947,7 @@ function Tag({ children, tone }: { children: React.ReactNode; tone: "dark" | "vi
 }
 
 /** Full-size viewer for any gallery photo; bytes come from the same staff-only loader. */
-function PhotoViewer({ items, index, onIndex, onClose }: {
+export function VehiclePhotoViewer({ items, index, onIndex, onClose }: {
   items: VehicleMedia[]; index: number; onIndex: (i: number) => void; onClose: () => void;
 }) {
   const m = items[index];

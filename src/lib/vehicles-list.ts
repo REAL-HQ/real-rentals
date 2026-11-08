@@ -20,6 +20,8 @@ export type VehicleListRow = {
   weekly_rate: number | null;
   partner_id: string | null;
   photo: string | null;
+  /** Lead original in the private staff gallery; never a public photo URL. */
+  thumbnailPath?: string | null;
   on_rent: boolean;
   /** Where this car sits on the two gates the fleet is actually judged by. */
   readiness: ReadinessBand;
