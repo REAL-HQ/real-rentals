@@ -3,7 +3,7 @@
 - [x] Vehicles density: matched the 90% reference at 100% desktop zoom with one-row compact filters/actions and tighter table type, thumbnails and rows; shared admin toolbars/tables remain unchanged.
 - [x] Vehicles list: replaced the table's Unit display with staff-only car thumbnails; clicking a thumbnail opens the existing original-photo slideshow without opening the vehicle record or exposing private photos.
 - [x] Dropdowns: native selects, shared Select controls, action menus, and popovers use white panels with dark text across light and dark chrome; options and behavior unchanged.
-- [x] Vehicle Photos: full drag/drop field remains available after photos exist; clarified that Listing Ready still requires an explicitly website-published photo and preserved the publish/profile/list refresh path.
+- [x] Vehicle Photos: one persistent drag/drop field with the red Add Photos button remains before and after uploads; removed the duplicate empty-photo panel. Listing Ready still requires an explicitly website-published photo; publish/profile/list refresh is unchanged.
 - [x] Vehicle activation refresh: resolved requirements now refresh vehicle profiles/lists and open activation details; correct-driver events and focus recheck verified without changing records.
 - [x] Lead Priorities: removed the rejected blue card styling, neutralized card surfaces, paired priority with the status row, and reduced visual noise without changing ranking, filters, data, or actions.
 - [x] Fleet Inbox: dropped/browsed files accumulate locally across selections and upload only after an explicit button click; synthetic browser coverage verifies zero pre-click writes and existing retry/private-document pipeline is unchanged.

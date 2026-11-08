@@ -37,7 +37,7 @@ import {
   reviewPhotoEnhance,
 } from "@/lib/photo-enhance.functions";
 import { ENHANCE_MODES, localProcessingBlocker, runEnhance, type EnhanceMode } from "@/lib/photo-enhance.browser";
-import { SectionCard, MicroLabel, EmptyState } from "./ui";
+import { SectionCard, MicroLabel } from "./ui";
 import { PhotoStudioPanel } from "./PhotoStudioPanel";
 
 // The gallery.
@@ -412,17 +412,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
           <div className="flex items-center gap-2 text-[13px] text-[#9A9AA3] py-6 justify-center">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading photos…
           </div>
-        ) : items.length === 0 ? (
-          <EmptyState
-            icon={<ImageOff className="w-6 h-6" strokeWidth={1.75} />}
-            title="No Photos Yet"
-            hint={
-              canEdit
-                ? "Drag photos here or tap Add Photos. Then use the eye button to show a photo on the website."
-                : "Nobody has added photos for this vehicle."
-            }
-          />
-        ) : (
+        ) : items.length > 0 ? (
           <>
             {/* A car with photos and none of them on the website is the state
                 this screen was worst at explaining: every tile said "Not on
@@ -588,7 +578,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
             ))}
             </div>
           </>
-        )}
+        ) : null}
       </SectionCard>
 
       {data && (
