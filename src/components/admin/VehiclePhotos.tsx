@@ -86,6 +86,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   useEffect(() => { void refreshEnh(); }, [refreshEnh]);
 
   const [data, setData] = useState<VehicleMediaList | null>(null);
+  const [uploadRevision, setUploadRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -135,6 +136,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   }
 
   function afterUpload() {
+    setUploadRevision((v) => v + 1);
     void refresh();
     window.dispatchEvent(new Event("vehicle-profile-refresh"));
   }
@@ -373,6 +375,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
       >
         {canEdit && (
           <FileUploader
+            key={uploadRevision}
             variant="zone"
             title="Drop Photos Here"
             hint="Up to 15 MB each. Photos stay private until you show them on the website."

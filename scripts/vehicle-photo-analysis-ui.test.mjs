@@ -95,6 +95,9 @@ console.log("\nthe tab still does its original job");
 ok(/label="Add Photos"/.test(photos), "uploading photos is untouched");
 const uploader = /<FileUploader[\s\S]*?\/>/.exec(photos)?.[0] ?? "";
 ok(/variant="zone"/.test(uploader), "a full drag/drop field is visible, not only a small button");
+ok(/key=\{uploadRevision\}/.test(uploader), "the temporary upload queue can reset after completion");
+ok(/function afterUpload\(\) \{[\s\S]{0,160}?setUploadRevision\(\(v\) => v \+ 1\)/.test(photos),
+  "successful uploads clear their temporary cards before the saved gallery is shown");
 ok(photos.indexOf(uploader) >= 0 && photos.indexOf(uploader) < photos.indexOf("{loading && !data"),
   "the drop field stays mounted when a vehicle already has photos");
 ok(/No photos are on the website yet/.test(photos), "so is the Listing Ready warning");
