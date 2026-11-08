@@ -2,8 +2,8 @@ import { fmtDate } from "./date-format";
 import { overdueAge, type LeadBucket } from "./lead-priorities";
 
 /**
- * Compact Lead Priorities card copy. Cards stay neutral; only an overdue
- * priority uses the brand red. Meaning is always written, never color-only.
+ * Compact Lead Priorities card copy. Applicant cards stay neutral; overdue
+ * and High priorities use red. Meaning is always written, never color-only.
  */
 export const LEAD_TONES: Record<
   LeadBucket,

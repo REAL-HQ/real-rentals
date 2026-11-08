@@ -137,23 +137,23 @@ export default function LeadPriorities({
             <div className="my-4 grid grid-cols-3 gap-2 sm:gap-3">
               {(
                 [
-                  ["New Leads", result.counts.new, "new" as LeadFilter],
-                  ["Overdue", result.counts.overdue, "follow_up_due" as LeadFilter],
-                  ["Hot Leads", result.counts.hot, "interested" as LeadFilter],
+                  ["New Leads", result.counts.new, "new" as LeadFilter, "border-success/20 bg-success-soft hover:bg-success-soft", "text-success"],
+                  ["Overdue", result.counts.overdue, "follow_up_due" as LeadFilter, "border-destructive/20 bg-destructive/10 hover:bg-destructive/15", "text-destructive"],
+                  ["Hot Leads", result.counts.hot, "interested" as LeadFilter, "border-brand/25 bg-brand/15 hover:bg-brand/20", "text-brand"],
                 ] as const
-              ).map(([label, value, next]) => (
+              ).map(([label, value, next, cardTone, textTone]) => (
                 <Button
                   key={label}
                   type="button"
                   variant="outline"
                   aria-pressed={filter === next}
                   onClick={() => setLeadFilter(next)}
-                  className={`h-16 min-w-0 flex-col items-start justify-center gap-1 whitespace-normal rounded-lg bg-card px-3 py-2 text-left text-card-foreground shadow-none hover:bg-secondary hover:text-foreground ${
-                    filter === next ? "border-brand ring-1 ring-brand" : "border-border"
+                  className={`h-16 min-w-0 flex-col items-start justify-center gap-1 whitespace-normal rounded-lg px-3 py-2 text-left text-card-foreground shadow-none hover:text-foreground ${cardTone} ${
+                    filter === next ? "border-brand ring-1 ring-brand" : ""
                   }`}
                 >
-                  <span className="text-xs font-normal text-muted-foreground">{label}</span>
-                  <span className={`text-xl font-semibold leading-none tabular-nums ${next === "follow_up_due" && value > 0 ? "text-brand" : "text-card-foreground"}`}>{value}</span>
+                  <span className={`text-xs font-normal ${textTone}`}>{label}</span>
+                  <span className={`text-xl font-semibold leading-none tabular-nums ${textTone}`}>{value}</span>
                 </Button>
               ))}
             </div>

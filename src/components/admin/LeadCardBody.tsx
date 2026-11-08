@@ -23,6 +23,7 @@ export function LeadCardBody({
 }) {
   const tone = LEAD_TONES[lead.bucket];
   const timing = leadTiming(lead, today);
+  const isHighPriority = lead.priority === "High";
   return (
     <div className="flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4 text-card-foreground">
       <div className="min-w-0 break-words text-base font-semibold leading-5">{name}</div>
@@ -31,8 +32,13 @@ export function LeadCardBody({
       </p>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         {status}
-        <span data-lead-badge className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] font-medium ${tone.badge}`}>
-          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${lead.bucket === "overdue" ? "bg-brand" : "bg-muted-foreground/40"}`} />
+        <span
+          data-lead-badge
+          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${
+            isHighPriority ? "bg-destructive/10 text-destructive" : tone.badge
+          }`}
+        >
+          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${lead.bucket === "overdue" || isHighPriority ? "bg-brand" : "bg-muted-foreground/40"}`} />
           {leadBadgeLabel(lead.bucket, lead.contactLabel, lead.priority)}
         </span>
       </div>
