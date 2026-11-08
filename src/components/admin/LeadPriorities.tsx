@@ -6,41 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getLeadPriorities } from "@/lib/lead-priorities.functions";
 import {
-  overdueAge,
   LEAD_FILTERS,
   LEAD_FILTER_LABELS,
   LEAD_PREVIEW_LIMIT,
   type LeadFilter,
   type LeadPrioritiesResult,
 } from "@/lib/lead-priorities";
-import { fmtDate } from "@/lib/date-format";
 import { ContactStatusCell } from "./ContactStatusCell";
 import { LeadFollowUpDraft } from "./LeadFollowUpDraft";
 import { LeadResponseReport } from "./LeadResponseReport";
-import { ReadinessStatePill, ReadinessMetrics } from "./ui";
+import { ReadinessStatePill } from "./ui";
 import type { ReadinessByApplicant } from "@/lib/admin-overview";
-import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
-
-function appliedLine(iso?: string | null) {
-  if (!iso) return "Date Unknown";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "Date Unknown";
-  const now = new Date();
-  const days = Math.floor(
-    (new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() -
-      new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) /
-      86_400_000,
-  );
-  const rel = days <= 0 ? "Today" : days === 1 ? "Yesterday" : `${days} Days Ago`;
-  return `Applied ${fmtDate(d)} · ${rel}`;
-}
-
-function lastContactLine(iso?: string | null) {
-  if (!iso) return "No contact logged";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "No contact logged";
-  return `Last contact ${fmtDate(d)}`;
-}
+import { displayPersonName } from "@/lib/display-normalize";
+import { LEAD_TONES, LEAD_NEXT_STEP, leadTiming } from "@/lib/lead-card";
 
 export default function LeadPriorities({
   isManager = false,
@@ -209,77 +187,54 @@ export default function LeadPriorities({
               <ul className="mt-1 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {result.rows.map((lead) => {
                   const readinessResult = canSeeReadiness ? readiness[lead.id] : undefined;
+                  const tone = LEAD_TONES[lead.bucket];
+                  const nextStep = LEAD_NEXT_STEP[lead.bucket];
+                  const timing = leadTiming(lead, result.today);
                   return (
                     <li key={lead.id} data-lead-priority={lead.bucket} className="min-w-0">
-                      <div className={`flex h-full flex-col gap-3 rounded-lg border bg-card p-4 text-card-foreground ${lead.priority === "Urgent" ? "border-brand/40" : "border-border"}`}>
-                        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+                      <div
+                        data-lead-tone={tone.key}
+                        className={`flex h-full flex-col gap-2.5 rounded-lg border border-l-4 border-border bg-card p-4 text-card-foreground ${tone.accent}`}
+                      >
+                        <div className="flex min-w-0 items-start justify-between gap-2">
                           <Link
                             to="/admin"
                             search={{ tab: "drivers", id: lead.id }}
-                            className="min-w-0 flex-1 basis-32 break-words text-sm font-semibold leading-5 text-card-foreground hover:underline"
+                            className="min-w-0 flex-1 break-words text-base font-semibold leading-5 text-card-foreground hover:underline"
                           >
                             {lead.full_name
                               ? displayPersonName(lead.full_name)
                               : "Unnamed Applicant"}
                           </Link>
-                          <div className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-                            <Badge
-                              variant="secondary"
-                              className={`rounded-full px-2 py-0.5 text-[11px] font-medium hover:bg-secondary ${
-                                lead.priority === "Urgent"
-                                  ? "bg-brand/10 text-brand hover:bg-brand/10"
-                                  : "bg-secondary text-muted-foreground"
-                              }`}
-                            >
-                              {lead.priority}
-                            </Badge>
-                            {readinessResult ? (
-                              <ReadinessStatePill state={readinessResult.state} short appearance="neutral" />
-                            ) : null}
-                          </div>
+                          <span
+                            className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone.badge}`}
+                          >
+                            {tone.label} · {lead.priority}
+                          </span>
                         </div>
+
+                        <p className="text-sm font-medium text-card-foreground">{nextStep}</p>
 
                         <div className="flex flex-wrap items-center gap-2">
                           <ContactStatusCell applicationId={lead.id} row={lead} onSaved={refresh} appearance="neutral" />
-                          {lead.bucket === "interested" && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
-                              <Flame className="h-3 w-3" /> Interested
-                            </span>
-                          )}
+                          {readinessResult ? (
+                            <ReadinessStatePill state={readinessResult.state} short />
+                          ) : null}
                         </div>
 
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium text-card-foreground">{lead.reason}</p>
-                          <p className="text-xs leading-5 text-muted-foreground">{lead.action}</p>
-                        </div>
-                        {readinessResult ? <div className="min-w-0"><ReadinessMetrics result={readinessResult} appearance="neutral" /></div> : null}
-                        {readinessResult && readinessResult.positives.length > 0 && (
-                          <span className="text-[11px] text-muted-foreground line-clamp-2">
-                            {readinessResult.positives
-                              .slice(0, 2)
-                              .map((f) => displayTitleCase(f.detail))
-                              .join(" · ")}
-                          </span>
-                        )}
                         <LeadFollowUpDraft applicationId={lead.id} bucket={lead.bucket} />
-                        <div className="flex min-w-0 flex-col gap-1 text-[11px] leading-4 text-muted-foreground">
-                          <span className="inline-flex min-w-0 items-start gap-1">
-                            <CalendarDays aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
-                            <span>{appliedLine(lead.created_at)}</span>
-                          </span>
-                          <span>{lastContactLine(lead.contact_status_at)}</span>
-                          {lead.contact_follow_up_on && (
-                            <span>
-                              Due {fmtDate(lead.contact_follow_up_on)}
-                              {lead.bucket === "overdue" &&
-                                ` · ${overdueAge(lead.contact_follow_up_on, result.today)}`}
+                        <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs leading-4 text-muted-foreground">
+                          <CalendarDays aria-hidden="true" className="h-3 w-3 shrink-0" />
+                          {timing.map((t, i) => (
+                            <span key={t} className={i === 0 && lead.bucket === "overdue" ? "font-semibold text-red-700 dark:text-red-400" : undefined}>
+                              {i > 0 ? "· " : ""}
+                              {t}
                             </span>
-                          )}
-                        </div>
+                          ))}
+                        </p>
                         {lead.contact_status_note && (
-                          <p className="break-words text-xs text-muted-foreground">
-                            Latest contact note: “{lead.contact_status_note.slice(0, 240)}
-                            {lead.contact_status_note.length > 240 ? "…" : ""}”
+                          <p className="line-clamp-2 break-words text-xs text-muted-foreground" title={lead.contact_status_note}>
+                            Note: {lead.contact_status_note.slice(0, 240)}
                           </p>
                         )}
                         <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3 text-xs font-medium">
