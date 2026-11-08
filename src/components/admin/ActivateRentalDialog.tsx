@@ -9,6 +9,7 @@ import {
   type ActivationReadiness,
 } from "@/lib/rentals.functions";
 import {
+  ACTIVATION_READINESS_REFRESH_EVENT,
   insuranceExceptionWarning,
   isHardBlocker,
   MIN_OVERRIDE_REASON,
@@ -67,9 +68,24 @@ export function ActivateRentalDialog({
   const [depositHeld, setDepositHeld] = useState(false);
   const [pickupMiles, setPickupMiles] = useState("");
   const [suppressWelcome, setSuppressWelcome] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
-  // Re-check whenever the chosen vehicle changes — the blockers are per
-  // vehicle, so showing stale ones would be worse than showing none.
+  useEffect(() => {
+    const onReadinessChanged = (event: Event) => {
+      const changedId = (event as CustomEvent<{ applicationId?: string }>).detail?.applicationId;
+      if (changedId === driver.id) setRefreshNonce((n) => n + 1);
+    };
+    const onFocus = () => setRefreshNonce((n) => n + 1);
+    window.addEventListener(ACTIVATION_READINESS_REFRESH_EVENT, onReadinessChanged);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener(ACTIVATION_READINESS_REFRESH_EVENT, onReadinessChanged);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [driver.id]);
+
+  // Re-check for a new vehicle, a committed requirement change, or a return
+  // to this tab — showing stale blockers would be worse than showing none.
   useEffect(() => {
     let cancelled = false;
     setChecking(true);
@@ -91,7 +107,7 @@ export function ActivateRentalDialog({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [driver.id, vehicleId]);
+  }, [driver.id, vehicleId, refreshNonce]);
 
   const hardBlockers = useMemo(
     () => (readiness?.blockers ?? []).filter((b) => isHardBlocker(b.code)),

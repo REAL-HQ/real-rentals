@@ -23,6 +23,16 @@
 
 import { REQUIRED_VAULT_CATEGORIES } from "@/lib/required-docs";
 
+/** Same-tab presentation refresh after a committed readiness-related change. */
+export const ACTIVATION_READINESS_REFRESH_EVENT = "rr:activation-readiness-refresh";
+
+export function notifyActivationReadinessRefresh({ applicationId }: { applicationId: string }) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(ACTIVATION_READINESS_REFRESH_EVENT, { detail: { applicationId } }),
+  );
+}
+
 export type ActivationBlockerCode =
   | "no_vehicle"
   | "vehicle_busy"

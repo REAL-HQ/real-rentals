@@ -72,6 +72,7 @@ import { endRental, getActivationReadiness, type ActivationReadiness } from "@/l
 import {
   activationEntryState,
   missingRequiredCategories,
+  notifyActivationReadinessRefresh,
   primaryStep,
 } from "@/lib/activation-readiness";
 import { ActivationRequirementList } from "./ActivationRequirementList";
@@ -1745,7 +1746,7 @@ function DriverDetail({
       const row = data as DriverScreeningRow;
       setScreening(row);
       onScreeningChange?.(row);
-      onSharedReadinessRefresh?.();
+      readinessChanged();
       toast.success(`Status: ${next.replace(/_/g, " ")}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to advance status");
@@ -1898,6 +1899,13 @@ function DriverDetail({
   const [rentalTabReadinessLoading, setRentalTabReadinessLoading] = useState(false);
   const [rentalTabReadinessFailed, setRentalTabReadinessFailed] = useState(false);
   const [readinessNonce, setReadinessNonce] = useState(0);
+
+  function readinessChanged() {
+    setReadinessNonce((n) => n + 1);
+    notifyActivationReadinessRefresh({ applicationId: driver.id });
+    onSharedReadinessRefresh?.();
+  }
+
   useEffect(() => {
     // The header's next step comes from the server's answer on every tab
     // (re-checked on tab change so a fix made in a section shows up).
@@ -2606,7 +2614,7 @@ function DriverDetail({
                       loading={vaultLoading}
                       onRefresh={async () => {
                         await refreshVault();
-                        onSharedReadinessRefresh?.();
+                        readinessChanged();
                       }}
                     />
                   </div>
@@ -2630,7 +2638,7 @@ function DriverDetail({
                   onScreening={(s) => {
                     setScreening(s);
                     onScreeningChange?.(s);
-                    onSharedReadinessRefresh?.();
+                    readinessChanged();
                   }}
                   onRecordingChange={setHasRecording}
                 />
@@ -2900,7 +2908,7 @@ function DriverDetail({
         onSaved={(next) => {
           setScreening(next);
           onScreeningChange?.(next);
-          onSharedReadinessRefresh?.();
+          readinessChanged();
         }}
       />
 

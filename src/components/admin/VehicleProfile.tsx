@@ -223,7 +223,7 @@ export function VehicleProfile({
                   <VehicleSuggestions
                     vehicleId={vehicleId}
                     canEdit={!!p?.canEdit}
-                    onApplied={refresh}
+                    onApplied={afterSave}
                     onCount={setPendingDetails}
                     openSignal={openSuggest}
                   />
@@ -351,7 +351,7 @@ export function VehicleProfile({
                     // fields, so the profile — and the Readiness checklist it
                     // feeds — has to be re-read. Same refresh the header's
                     // suggestion pill already uses.
-                    onVehicleChanged={refresh}
+                    onVehicleChanged={afterSave}
                   />
                 </SectionCard>
               )}
