@@ -3,6 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireStaff, requireManager } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
+import { readVehicleListThumbnailMediaId, vehicleListThumbnailKey } from "@/lib/vehicle-thumbnail";
 
 // Vehicle photography.
 //
@@ -47,6 +48,8 @@ export type VehicleMediaList = {
   items: VehicleMedia[];
   canDelete: boolean;
   enhancement: { available: boolean; provider: string | null; reason: string };
+  /** Staff list choice only; unrelated to the public lead/published flags. */
+  listThumbnailId: string | null;
 };
 
 export const listVehicleMedia = createServerFn({ method: "POST" })
@@ -57,21 +60,68 @@ export const listVehicleMedia = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { enhancementAvailability } = await import("@/lib/vehicle-enhance.server");
 
-    const { data: rows } = await supabaseAdmin
-      .from("vehicle_media")
-      .select("*")
-      .eq("vehicle_id", data.vehicleId)
-      .order("is_primary", { ascending: false })
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: true });
+    const [{ data: rows }, { data: thumbnailSetting }] = await Promise.all([
+      supabaseAdmin
+        .from("vehicle_media")
+        .select("*")
+        .eq("vehicle_id", data.vehicleId)
+        .order("is_primary", { ascending: false })
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true }),
+      supabaseAdmin
+        .from("app_settings")
+        .select("value")
+        .eq("key", vehicleListThumbnailKey(data.vehicleId))
+        .maybeSingle(),
+    ]);
+    const items = (rows as VehicleMedia[] | null) ?? [];
+    const selectedId = readVehicleListThumbnailMediaId(thumbnailSetting?.value);
 
     return {
-      items: (rows as VehicleMedia[] | null) ?? [],
+      items,
       // Deleting the only copy of a photograph is Manager-only at the policy
       // layer; the UI is told so it can say why rather than fail on click.
       canDelete: actor.tier === "manager" || actor.tier === "owner",
       enhancement: enhancementAvailability(),
+      listThumbnailId: selectedId && items.some((item) => item.id === selectedId && item.kind === "original")
+        ? selectedId
+        : null,
     };
+  });
+
+export const setVehicleListThumbnail = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ vehicleId: z.string().uuid(), mediaId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }): Promise<{ ok: boolean; error?: string }> => {
+    const actor = await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: photo } = await supabaseAdmin
+      .from("vehicle_media")
+      .select("id,vehicle_id,kind")
+      .eq("id", data.mediaId)
+      .eq("vehicle_id", data.vehicleId)
+      .maybeSingle();
+    if (!photo || photo.kind !== "original") {
+      return { ok: false, error: "Choose an original photo from this vehicle." };
+    }
+
+    // One atomic settings upsert per vehicle. This never touches published,
+    // is_primary or vehicles.photos, so staff presentation cannot publish a
+    // private original or change Listing Ready.
+    const { error } = await supabaseAdmin
+      .from("app_settings")
+      .upsert({ key: vehicleListThumbnailKey(data.vehicleId), value: { mediaId: data.mediaId } }, { onConflict: "key" });
+    if (error) return { ok: false, error: "Could not save the Vehicles-list thumbnail." };
+
+    await logAudit(actor, {
+      action: "vehicle.photo.list_thumbnail_selected",
+      summary: "Selected the staff Vehicles-list thumbnail",
+      entityType: "vehicle",
+      entityId: data.vehicleId,
+      metadata: { mediaId: data.mediaId },
+    });
+    return { ok: true };
   });
 
 export const registerVehicleMedia = createServerFn({ method: "POST" })

@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Vehicle list thumbnails: Managers/Owners can choose any original photo as the staff Vehicles-list thumbnail; the choice is separate from public lead/publish controls and refreshes the open profile/list.
 - [x] Vehicles density: matched the 90% reference at 100% desktop zoom with one-row compact filters/actions and tighter table type, thumbnails and rows; shared admin toolbars/tables remain unchanged.
 - [x] Vehicles list: replaced the table's Unit display with staff-only car thumbnails; clicking a thumbnail opens the existing original-photo slideshow without opening the vehicle record or exposing private photos.
 - [x] Dropdowns: native selects, shared Select controls, action menus, and popovers use white panels with dark text across light and dark chrome; options and behavior unchanged.

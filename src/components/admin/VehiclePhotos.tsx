@@ -20,6 +20,7 @@ import {
   listVehicleMedia,
   registerVehicleMedia,
   updateVehicleMedia,
+  setVehicleListThumbnail,
   deleteVehicleMedia,
   type VehicleMedia,
   type VehicleMediaList,
@@ -57,6 +58,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   const load = useServerFn(listVehicleMedia);
   const register = useServerFn(registerVehicleMedia);
   const update = useServerFn(updateVehicleMedia);
+  const chooseListThumbnail = useServerFn(setVehicleListThumbnail);
   const remove = useServerFn(deleteVehicleMedia);
   const enhStatusFn = useServerFn(getPhotoEnhanceStatus);
   const startFn = useServerFn(startPhotoEnhance);
@@ -261,6 +263,21 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
       window.dispatchEvent(new Event("vehicle-profile-refresh"));
     } catch {
       toast.error("Could not update that photo.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function selectListThumbnail(m: VehicleMedia) {
+    setBusyId(m.id);
+    try {
+      const res = await chooseListThumbnail({ data: { vehicleId, mediaId: m.id } });
+      if (!res.ok) return toast.error(res.error ?? "Could not save the Vehicles-list thumbnail.");
+      toast.success("Vehicles-List Thumbnail Updated");
+      await refresh();
+      window.dispatchEvent(new Event("vehicle-profile-refresh"));
+    } catch {
+      toast.error("Could not save the Vehicles-list thumbnail.");
     } finally {
       setBusyId(null);
     }
@@ -558,6 +575,8 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 onView={() => setViewIdx(items.indexOf(m))}
                 onCompare={() => setCompare(m)}
                 onReview={(d) => review(m, d)}
+                isListThumbnail={data?.listThumbnailId === m.id}
+                onListThumbnail={() => selectListThumbnail(m)}
                 onPrimary={() => patch(m, { id: m.id, makePrimary: true })}
                 onPublish={(v) => patch(m, { id: m.id, published: v })}
                 onCaption={(c) => patch(m, { id: m.id, caption: c })}
@@ -678,6 +697,8 @@ function PhotoTile({
   canDelete,
   busy,
   enhancement,
+  isListThumbnail,
+  onListThumbnail,
   onPrimary,
   onPublish,
   onCaption,
@@ -699,6 +720,8 @@ function PhotoTile({
   canDelete: boolean;
   busy: boolean;
   enhancement: { available: boolean; reason: string };
+  isListThumbnail: boolean;
+  onListThumbnail: () => void;
   onPrimary: () => void;
   onPublish: (v: boolean) => void;
   onCaption: (c: string) => void;
@@ -745,6 +768,7 @@ function PhotoTile({
         )}
 
         <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1">
+          {isListThumbnail && <Tag tone="dark">List Thumbnail</Tag>}
           {m.is_primary && m.published && (
             <Tag tone="dark">
               <Star className="w-2.5 h-2.5 fill-current" /> Lead
@@ -809,6 +833,23 @@ function PhotoTile({
         ) : m.caption ? (
           <div className="text-[11px] text-[#55555E] truncate">{m.caption}</div>
         ) : null}
+
+        {canEdit && !isEnhanced && (
+          <button
+            type="button"
+            aria-pressed={isListThumbnail}
+            disabled={busy || isListThumbnail}
+            onClick={onListThumbnail}
+            title={isListThumbnail ? "This photo is the Vehicles-list thumbnail." : "Use this photo for the Vehicles-list thumbnail. This does not publish it."}
+            className={`h-7 w-full rounded-md border px-2 text-[11px] font-medium disabled:cursor-default ${
+              isListThumbnail
+                ? "border-real-red/40 bg-real-red/5 text-real-red"
+                : "border-border bg-white text-foreground hover:bg-soft"
+            }`}
+          >
+            {isListThumbnail ? "Current Thumbnail" : "Use As Thumbnail"}
+          </button>
+        )}
 
         {canEdit && (
           <div className="flex items-center gap-1">

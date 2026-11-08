@@ -14,6 +14,7 @@ import {
   type VehicleListRow,
   type VehicleListResult,
 } from "@/lib/vehicles-list";
+import { chooseVehicleThumbnailPaths, vehicleListThumbnailKey, type VehicleThumbnailMedia } from "@/lib/vehicle-thumbnail";
 
 // Vehicles List 1: one page of list columns, server-searched/filtered/sorted.
 // Only list columns are selected — never finance, title or acquisition data.
@@ -172,33 +173,35 @@ export const listVehicles = createServerFn({ method: "POST" })
 
     const ids = (rows ?? []).map((r: any) => r.id);
     const onRent = new Set<string>();
-    const thumbnailFor = new Map<string, string>();
+    let thumbnailFor = new Map<string, string>();
     if (ids.length) {
-      const [{ data: running }, { data: media }] = await Promise.all([
+      const [{ data: running }, { data: media }, { data: thumbnailSettings }] = await Promise.all([
         // On Rent = an actual running rental, never inferred from vehicle status.
         supabaseAdmin
           .from("rentals")
           .select("vehicle_id")
           .eq("status", "active")
           .in("vehicle_id", ids),
-        // One staff-only read for the page's lead ORIGINAL photos. Only paths
-        // cross the RPC boundary; the browser downloads bytes through the
-        // existing private storage policy, never through a public photo route.
+        // One staff-only read for the page's ORIGINAL photos. Only paths cross
+        // the RPC boundary; private bytes still require staff storage access.
         supabaseAdmin
           .from("vehicle_media")
-          .select("vehicle_id,storage_path")
+          .select("id,vehicle_id,storage_path")
           .in("vehicle_id", ids)
           .eq("kind", "original")
           .order("is_primary", { ascending: false })
           .order("sort_order", { ascending: true })
           .order("created_at", { ascending: true }),
+        supabaseAdmin
+          .from("app_settings")
+          .select("key,value")
+          .in("key", ids.map((id: string) => vehicleListThumbnailKey(id))),
       ]);
       for (const r of running ?? []) if ((r as any).vehicle_id) onRent.add((r as any).vehicle_id);
-      for (const m of (media ?? []) as Array<{ vehicle_id: string; storage_path: string }>) {
-        if (m.vehicle_id && m.storage_path && !thumbnailFor.has(m.vehicle_id)) {
-          thumbnailFor.set(m.vehicle_id, m.storage_path);
-        }
-      }
+      thumbnailFor = chooseVehicleThumbnailPaths(
+        (media ?? []) as VehicleThumbnailMedia[],
+        (thumbnailSettings ?? []) as Array<{ key: string; value: unknown }>,
+      );
     }
 
     return {
