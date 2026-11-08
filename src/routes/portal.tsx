@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { initialPortalTab } from "@/lib/portal-pay-link";
 import { SigningPanel } from "@/components/esign/SigningPanel";
 import { layoutToText } from "@/lib/agreement-layout";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -213,7 +214,7 @@ function Portal() {
   const [isDriver, setIsDriver] = useState(false);
   const [staffTier, setStaffTier] = useState<StaffTier | null>(null);
   const wantsPreview = typeof window !== "undefined" && /^"?1"?$/.test(new URLSearchParams(window.location.search).get("preview") ?? "");
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const [tab, setTab] = useState<Tab>(() => initialPortalTab<Tab>(typeof window === "undefined" ? "" : window.location.search, "dashboard") as Tab);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -2421,7 +2422,7 @@ function MaintenanceView({ data }: { data: DriverDashboard }) {
  * another driver's data (no impersonation, no new access path).
  */
 function DriverPreview({ tier }: { tier: StaffTier | null }) {
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const [tab, setTab] = useState<Tab>(() => initialPortalTab<Tab>(typeof window === "undefined" ? "" : window.location.search, "dashboard") as Tab);
   const [picking, setPicking] = useState(false);
   const [driverName, setDriverName] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);

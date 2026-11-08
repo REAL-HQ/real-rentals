@@ -5,6 +5,8 @@ import { fmtDate } from "@/lib/date-format";
 // Workers bind env at request time).
 
 /** Canonical renter-facing sender identity. The only place it is defined. */
+import { PORTAL_PAY_URL } from "@/lib/portal-pay-link";
+
 export const EMAIL_FROM = "REAL RENTALS <team@drivereal.com>";
 /** Canonical Reply-To for every renter/customer email. Never hello@ or go@. */
 export const EMAIL_REPLY_TO = "team@drivereal.com";
@@ -621,7 +623,8 @@ export async function sendPaymentFailedEmail(args: FailedArgs): Promise<SendResu
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Payment Failed</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, we tried to charge your ${escapeHtml(method)} <strong>${money(args.amount)}</strong> for ${escapeHtml(label)} and it was declined. Please update your card to avoid interruption.</p>
-      <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
+      <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>
+      <p style="color:#444;font-size:14px;margin:16px 0 0;line-height:1.5">Already updated it? <a href="${PORTAL_PAY_URL}" style="color:#D03020;font-weight:600">Pay Now</a> from your driver portal.</p>`);
   return sendEmail({ to: args.to, subject: `Your REAL RENTALS Payment Of ${money(args.amount)} Did Not Go Through`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
 }
 
@@ -649,7 +652,8 @@ export async function sendPastDueReminderEmail(args: PastDueArgs): Promise<SendR
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Balance Past Due</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your balance of <strong>${money(args.amount)}</strong> was due ${escapeHtml(when)} — that's ${args.daysLate} day${args.daysLate === 1 ? "" : "s"} ago. Please pay now to keep your rental active and avoid late fees.</p>
-      <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay Balance</a>`);
+      <a href="${PORTAL_PAY_URL}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay Now</a>
+      <p style="color:#888;font-size:12px;margin:16px 0 0;line-height:1.5">Sign in to your driver portal to pay. We'll show your current balance before you confirm.</p>`);
   return sendEmail({ to: args.to, subject: `Past Due — ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_past_due" } });
 }
 
@@ -663,7 +667,7 @@ export async function sendPaymentDueTomorrowEmail(args: DueTomorrowArgs): Promis
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Payment Due Tomorrow</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, a friendly reminder that <strong>${money(args.amount)}</strong> is due ${escapeHtml(fmtDate(args.dueDate))}. ${escapeHtml(how)}</p>
-      <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Open Driver Portal</a>`);
+      <a href="${PORTAL_PAY_URL}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">${args.autopay ? "View Payment" : "Pay Now"}</a>`);
   return sendEmail({ to: args.to, subject: `Reminder: ${money(args.amount)} Due Tomorrow`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_due_tomorrow" } });
 }
 

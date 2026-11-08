@@ -136,7 +136,7 @@ export const AUTOMATIONS: AutomationDef[] = [
     cronJob: "ops-reminders-daily",
     control: { kind: "setting" },
     previews: ["past_due"],
-    note: "The button opens the driver portal. It is not a Stripe payment link.",
+    note: "Pay Now opens the renter's Payments tab. They sign in and pay their current balance with the card on file. The link carries no amount or token.",
   },
   {
     key: "payment_team_alert",
