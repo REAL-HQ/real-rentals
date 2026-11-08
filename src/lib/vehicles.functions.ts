@@ -46,7 +46,7 @@ export const VEHICLE_STATUSES = [
   { value: "onboarding", label: "Needs Setup" },
   { value: "available", label: "Available" },
   { value: "rented", label: "Rented" },
-  { value: "maintenance", label: "In maintenance" },
+  { value: "maintenance", label: "Maintenance" },
   { value: "reserved", label: "Reserved" },
   { value: "archived", label: "Archived" },
   { value: "sold", label: "Sold" },
