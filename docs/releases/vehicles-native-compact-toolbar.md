@@ -24,3 +24,7 @@ Passed full `PG_BIN=/tmp/pgbin npm test`, `npx tsc --noEmit`, `npm run build` an
 Candidate: `.toolbar-layout-build/default.html`; screenshots `vehicles-390.png`, `vehicles-1024.png`, `vehicles-1280.png`, `vehicles-1440.png` alongside it. Real VehiclesPanel/AdminToolbar and production CSS, synthetic rows, inactive server/actions, no network. Human-browser review remains pending.
 
 No merge/publish, migrations, production records or customer actions. App-wide labels/menus and existing-upload drag/drop remain separate preserved workstreams.
+
+## Review Follow-Up
+
+List/Cards segment text is explicitly 14px (`text-sm`), matching the rest of the toolbar rather than the previous 12px. The native-width real-component regression also reads both computed segment font sizes. No scaling or page-fit shortcut.
