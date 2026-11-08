@@ -205,7 +205,7 @@ console.log("\nTHE SOURCE AGREES WITH THE PROTOCOL TESTED HERE");
   const multi = wiz.slice(wiz.indexOf("function MultiFileUpload"));
   ok((multi.match(/uploadApplicantFile\(/g) ?? []).length === 1,
      "there is exactly one upload call — a retake reuses it rather than adding a second path");
-  ok(/async function receive\(files: FileList\)/.test(multi) && /return handleFiles\(files\)/.test(multi),
+  ok(/async function receive\(files: FileList \| File\[\]\)/.test(multi) && /return await handleFiles\(selection.files\)/.test(multi) && /useFileDrop\(receive, off\)/.test(multi),
      "  both inputs and both modes funnel through one handler");
 }
 

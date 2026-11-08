@@ -130,7 +130,7 @@ export function BulkReceiptUpload({ vehicles }: { vehicles: VehicleComboboxVehic
         maxFiles={BULK_RECEIPT_MAX_FILES}
         title="Drop Receipts Or Invoices Here"
         hint="PDF or photos, many at once. Matched to a car by VIN, plate or car number. Team-only; renters never see these."
-        onFiles={(files) => void add(files)}
+        onFiles={add}
       />
 
       {items.length > 0 ? (

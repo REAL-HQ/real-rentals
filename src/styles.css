@@ -268,7 +268,7 @@
   }
 }
 
-/* Drag-and-drop target highlight (FileDropBridge) */
+/* Explicit upload-surface drag highlight (useFileDrop) */
 [data-drop-active] {
   outline: 2px dashed var(--primary);
   outline-offset: -4px;

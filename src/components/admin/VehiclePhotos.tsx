@@ -382,7 +382,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
               maxBytes={MAX_BYTES}
               context={`Vehicle ${vehicleId} · Photos`}
               upload={uploadOne}
-              onAllDone={afterUpload}
+              onSettled={afterUpload}
             />
           ) : null
         }
