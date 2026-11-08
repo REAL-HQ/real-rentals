@@ -795,9 +795,13 @@ export function ConditionUploader({
               >
                 {m.media_type === "video" && m.url ? (
                   <video src={m.url} controls preload="metadata" className="h-28 w-full bg-black object-contain" />
+                ) : m.url && (m as { mime_type?: string | null }).mime_type === "image/heic" ? (
+                  <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center px-2 text-center text-xs text-muted-foreground">
+                    HEIC photo · tap to open
+                  </div>
                 ) : !m.url ? (
                   <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center px-2 text-center text-xs text-muted-foreground">
-                    {m.media_type === "video" ? "Video saved" : "Photo saved"} · preview kept private
+                    {m.media_type === "video" ? "Video saved" : "Photo saved"} · no private-safe preview
                   </div>
                 ) : (
                   <img

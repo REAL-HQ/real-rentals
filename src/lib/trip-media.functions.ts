@@ -258,3 +258,34 @@ export const listTripMedia = createServerFn({ method: "POST" })
       }),
     );
   });
+
+/**
+ * Make renter share copies for files uploaded before share copies existed.
+ * Manager or above. Processes a small batch per call; never touches the
+ * original object or any column other than share_path. STAGED: not run by
+ * this PR — it is step 3 of the release sequence.
+ */
+export const backfillShareCopies = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ limit: z.number().int().min(1).max(20).default(10) }).parse(d ?? {}),
+  )
+  .handler(async ({ data, context }) => {
+    const { requireManager } = await import("@/lib/roles.server");
+    await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { backfillOne } = await import("@/lib/trip-media.server");
+    const { data: rows, error } = await supabaseAdmin
+      .from("condition_media")
+      .select("id,storage_bucket,storage_path,mime_type")
+      .is("share_path", null)
+      .order("created_at", { ascending: false })
+      .limit(data.limit);
+    if (error) throw new Error(error.message);
+    const out = { made: 0, skipped: 0 };
+    for (const r of rows ?? []) {
+      if (await backfillOne(supabaseAdmin, r as any)) out.made += 1;
+      else out.skipped += 1;
+    }
+    return out;
+  });

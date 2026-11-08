@@ -16,6 +16,14 @@ import {
   tripMediaPrefix,
   tripMediaType,
 } from "../src/lib/trip-media";
+import {
+  buildShareCopy,
+  neutralizeHeicMetadata,
+  sniffMediaType,
+  stripWebpMetadata,
+  verifyMagic,
+  videoHasMetadataBoxes,
+} from "../src/lib/trip-media";
 import { storeConditionMedia, DUPLICATE_MEDIA } from "../src/lib/trip-media.server";
 
 const APP = "40000000-0000-4000-8000-000000000001";
@@ -210,22 +218,6 @@ describe("storeConditionMedia", () => {
     expect(ins.taken_at).toBeNull();
     expect(ins.taken_at_source).toBe("upload");
   });
-  test("video: must exist, no capture time claimed, no renter copy", async () => {
-    const p = `${VEH}/trip/${APP}/pre/checkin-1.mov`;
-    const a = fakeAdmin({ listed: ["checkin-1.mov"] });
-    await storeConditionMedia(a, { ...base, mimeType: "video/quicktime", path: p });
-    const ins = a.log.find((x) => x.op === "insert").row;
-    expect(ins.media_type).toBe("video");
-    expect(ins.share_path).toBeNull();
-    expect(ins.taken_at).toBeNull();
-    await expect(
-      storeConditionMedia(fakeAdmin({ listed: [] }), {
-        ...base,
-        mimeType: "video/quicktime",
-        path: p,
-      }),
-    ).rejects.toThrow("didn't arrive");
-  });
   test("replayed confirm adds nothing", async () => {
     await expect(
       storeConditionMedia(fakeAdmin({ existing: true, objectBytes: jpg }), base),
@@ -257,12 +249,21 @@ describe("source guarantees", () => {
     new URL("../supabase/migrations/20261108030000_trip_media.sql", import.meta.url),
     "utf8",
   );
+  const sql2 = readFileSync(
+    new URL("../supabase/migrations/20261108030100_trip_media_portal_file.sql", import.meta.url),
+    "utf8",
+  );
+  const fns = readFileSync(
+    new URL("../src/lib/renter-portal.functions.ts", import.meta.url),
+    "utf8",
+  );
   test("renters are signed share copies only", () => {
     expect(insp).toContain("opts.renter ? ((m.share_path as string | null) ?? null)");
     expect(insp).toContain("renter: !operator");
     expect(insp).toContain("{ includeGps: false, renter: true }");
     expect(portal).toContain("storage_path: m.share_path");
-    expect(sql).toContain("SELECT m.storage_bucket, m.share_path FROM public.condition_media m");
+    expect(sql2).toContain("SELECT m.storage_bucket, m.share_path FROM public.condition_media m");
+    expect(fns).toContain('.select("storage_bucket,share_path")');
   });
   test("renter lists are pinned to their own rental", () => {
     expect(insp).toContain('if (renterRental) q = q.eq("rental_id", renterRental);');
@@ -293,5 +294,215 @@ describe("source guarantees", () => {
     expect(grant).not.toContain("share_path");
     expect(sql).toContain('DROP POLICY IF EXISTS "Drivers add condition media on their vehicle"');
     expect(sql).toContain("rental_id IN (SELECT private.renter_visible_rental_ids())");
+  });
+});
+
+// ------------------------------------------------------------- containers
+
+const be32 = (n: number) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+const box = (type: string, body: number[]) => [
+  ...be32(8 + body.length),
+  ...Buffer.from(type, "latin1"),
+  ...body,
+];
+const full = (type: string, v: number, body: number[]) => box(type, [v, 0, 0, 0, ...body]);
+const txt = (s: string) => [...Buffer.from(s, "latin1")];
+
+function synthVideo(brand: string, moovFirst = true): Uint8Array {
+  const loc = box("udta", box("\u00a9xyz", [0, 12, 0x15, 0xc7, ...txt("+40.7-073.9/")]));
+  const keys = box("meta", [
+    ...full("hdlr", 0, [0, 0, 0, 0, ...txt("mdta"), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+    ...box("keys", txt("com.apple.quicktime.location.ISO6709")),
+  ]);
+  const trak = box("trak", [
+    ...full("tkhd", 0, new Array(80).fill(0)),
+    ...box("udta", txt("device")),
+  ]);
+  const moov = box("moov", [...full("mvhd", 0, new Array(96).fill(0)), ...trak, ...loc, ...keys]);
+  const mdat = box("mdat", [1, 2, 3, 4, 5, 6, 7, 8]);
+  const ftyp = box("ftyp", [...txt(brand), 0, 0, 0, 0, ...txt(brand)]);
+  return new Uint8Array(moovFirst ? [...ftyp, ...moov, ...mdat] : [...ftyp, ...mdat, ...moov]);
+}
+
+function synthHeic(): { file: Uint8Array; exifAt: number; imageAt: number } {
+  const exifPayload = [
+    0,
+    0,
+    0,
+    6,
+    ...txt("Exif"),
+    0,
+    0,
+    ...txt("MM"),
+    0,
+    42,
+    ...txt("GPSDATA-40.7-73.9"),
+  ];
+  const image = [9, 9, 9, 9, 9, 9];
+  const ftyp = box("ftyp", [...txt("heic"), 0, 0, 0, 0, ...txt("mif1"), ...txt("heic")]);
+  const infe = (id: number, t: string) => full("infe", 2, [0, id, 0, 0, ...txt(t), 0]);
+  const iinf = full("iinf", 0, [0, 2, ...infe(1, "hvc1"), ...infe(2, "Exif")]);
+  const ilocLen = 12 + 2 + 2 * (2 + 2 + 2 + 4 + 4) + 2 + 0; // computed below
+  void ilocLen;
+  const mkIloc = (o1: number, o2: number) =>
+    full("iloc", 0, [
+      0x44,
+      0x00,
+      0,
+      2,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      ...be32(o1),
+      ...be32(image.length),
+      0,
+      2,
+      0,
+      0,
+      0,
+      1,
+      ...be32(o2),
+      ...be32(exifPayload.length),
+    ]);
+  const hdlr = full("hdlr", 0, [0, 0, 0, 0, ...txt("pict"), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const metaLen = (o1: number, o2: number) =>
+    full("meta", 0, [...hdlr, ...iinf, ...mkIloc(o1, o2)]).length;
+  const head = ftyp.length + metaLen(0, 0) + 8;
+  const meta = full("meta", 0, [...hdlr, ...iinf, ...mkIloc(head, head + image.length)]);
+  const mdat = box("mdat", [...image, ...exifPayload]);
+  return {
+    file: new Uint8Array([...ftyp, ...meta, ...mdat]),
+    imageAt: head,
+    exifAt: head + image.length,
+  };
+}
+
+describe("magic bytes", () => {
+  test("sniffs real headers", () => {
+    expect(sniffMediaType(jpg)).toBe("image/jpeg");
+    expect(sniffMediaType(png)).toBe("image/png");
+    expect(sniffMediaType(synthVideo("qt  "))).toBe("video/quicktime");
+    expect(sniffMediaType(synthVideo("isom"))).toBe("video/mp4");
+    expect(sniffMediaType(synthHeic().file)).toBe("image/heic");
+    expect(sniffMediaType(new Uint8Array(Buffer.from("<html><body>hi</body></html>")))).toBeNull();
+  });
+  test("a renamed file is refused", () => {
+    expect(() => verifyMagic("image/jpeg", synthVideo("qt  "))).toThrow("don't match");
+    expect(() =>
+      verifyMagic("video/mp4", new Uint8Array(Buffer.from("<html>not a video...."))),
+    ).toThrow("aren't a supported");
+    expect(verifyMagic("video/mp4", synthVideo("qt  "))).toBe("video/quicktime");
+  });
+});
+
+describe("video share copy", () => {
+  for (const moovFirst of [true, false]) {
+    test(`location/device boxes neutralized, same length, media bytes intact (moov ${moovFirst ? "first" : "last"})`, () => {
+      const orig = synthVideo("qt  ", moovFirst);
+      const work = orig.slice();
+      expect(videoHasMetadataBoxes(orig)).toBe(true);
+      const copy = buildShareCopy("video/quicktime", work)!;
+      expect(copy).not.toBeNull();
+      expect(copy.length).toBe(orig.length);
+      expect(videoHasMetadataBoxes(copy)).toBe(false);
+      const mdatAt = Buffer.from(orig).indexOf("mdat");
+      expect(
+        Buffer.from(copy.subarray(mdatAt, mdatAt + 12)).equals(
+          Buffer.from(orig.subarray(mdatAt, mdatAt + 12)),
+        ),
+      ).toBe(true);
+      // ©xyz now sits inside a `free` box, which players skip.
+      expect(Buffer.from(copy).indexOf("udta")).toBe(-1);
+    });
+  }
+  test("truncated video gets no share copy", () => {
+    const v = synthVideo("isom");
+    expect(buildShareCopy("video/mp4", v.slice(0, v.length - 3))).toBeNull();
+  });
+});
+
+describe("HEIC share copy", () => {
+  test("Exif item zeroed in place, image item untouched", () => {
+    const { file, exifAt, imageAt } = synthHeic();
+    const work = file.slice();
+    expect(neutralizeHeicMetadata(work)).toBe(true);
+    expect(work.length).toBe(file.length);
+    expect(Buffer.from(work).indexOf("GPSDATA")).toBe(-1);
+    expect([...work.subarray(imageAt, imageAt + 6)]).toEqual([9, 9, 9, 9, 9, 9]);
+    expect(work[exifAt + 4]).toBe(0);
+  });
+});
+
+describe("WebP share copy", () => {
+  test("EXIF/XMP chunks removed, flags and RIFF size fixed", () => {
+    const le = (n: number) => [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255];
+    const chunk = (t: string, d: number[]) => [
+      ...txt(t),
+      ...le(d.length),
+      ...d,
+      ...(d.length & 1 ? [0] : []),
+    ];
+    const body = [
+      ...chunk("VP8X", [0x0c, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+      ...chunk("VP8L", [1, 2, 3, 4]),
+      ...chunk("EXIF", txt("GPS40.7")),
+      ...chunk("XMP ", txt("<x/>")),
+    ];
+    const webp = new Uint8Array([...txt("RIFF"), ...le(4 + body.length), ...txt("WEBP"), ...body]);
+    expect(sniffMediaType(webp)).toBe("image/webp");
+    const out = stripWebpMetadata(webp)!;
+    expect(Buffer.from(out).indexOf("EXIF")).toBe(-1);
+    expect(Buffer.from(out).indexOf("XMP ")).toBe(-1);
+    expect(out[20] & 0x0c).toBe(0);
+    expect(out[4] | (out[5] << 8)).toBe(out.length - 8);
+  });
+});
+
+describe("store: trusted server copy", () => {
+  test("video gets a metadata-free share copy made on the server", async () => {
+    const v = synthVideo("qt  ");
+    const a = fakeAdmin({ objectBytes: v });
+    await storeConditionMedia(a, {
+      ...base,
+      mimeType: "video/quicktime",
+      path: `${VEH}/trip/${APP}/pre/checkin-2.mov`,
+    });
+    const up = a.log.find((x) => x.op === "upload");
+    expect(up).toBeTruthy();
+    expect(videoHasMetadataBoxes(up.body)).toBe(false);
+    const ins = a.log.find((x) => x.op === "insert").row;
+    expect(ins.share_path).toContain(".share");
+    expect(ins.mime_type).toBe("video/quicktime");
+    expect(ins.taken_at).toBeNull();
+  });
+  test("contents that lie about their type are removed and refused", async () => {
+    const a = fakeAdmin({
+      objectBytes: new Uint8Array(Buffer.from("<html>pretending to be a jpeg</html>")),
+    });
+    await expect(storeConditionMedia(a, base)).rejects.toThrow();
+    expect(a.log.some((x) => x.op === "remove")).toBe(true);
+    expect(a.log.some((x) => x.op === "insert")).toBe(false);
+  });
+});
+
+describe("picker/drop validation (same function for both)", () => {
+  test("mixed batch: valid kept, invalid named, HEIC with blank type accepted by extension", async () => {
+    const { validateFiles } = await import("../src/components/FileUploader");
+    const { TRIP_MEDIA_ACCEPT, TRIP_MEDIA_MAX_BYTES } = await import("../src/lib/trip-media");
+    const f = (n: string, t: string, size = 10) => new File([new Uint8Array(size)], n, { type: t });
+    const ok = validateFiles(
+      [
+        f("a.jpg", "image/jpeg"),
+        f("IMG_1.HEIC", ""),
+        f("walk.MOV", "video/quicktime"),
+        f("x.gif", "image/gif"),
+        f("e.mp4", "video/mp4", 0),
+      ],
+      { accept: TRIP_MEDIA_ACCEPT, maxBytes: TRIP_MEDIA_MAX_BYTES, multiple: true },
+    );
+    expect(ok.map((x) => x.name)).toEqual(["a.jpg", "IMG_1.HEIC", "walk.MOV"]);
   });
 });
