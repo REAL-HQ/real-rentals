@@ -4,9 +4,11 @@
 //
 // How a switch works (see automation-controls.server.ts):
 //   * Stored in public.app_settings under AUTOMATION_CONTROLS_KEY as
-//     { off: { <key>: { at, by } } }. A key that is absent is ON — that is
+//     { off: { <key>: { at, by } } }. No row, or a key not listed, is ON —
 //     today's behaviour, so installing this changes nothing until an Owner
 //     turns something off.
+//   * If the row cannot be read or is malformed, catalogued sends are HELD
+//     (not sent, recorded as failed "Held: ..."), never sent as if on.
 //   * The switch is checked at dispatch time inside sendEmail (by the
 //     email's tracked workflow name) and again by the cron routes before they
 //     record a reminder, so OFF means nothing is sent or logged as sent.
@@ -240,12 +242,17 @@ export function settingKeyForEmailWorkflow(workflow: string | undefined | null):
 
 export type AutomationControlsValue = { off: Record<string, { at: string; by: string | null }> };
 
-/** Parse the stored value. Anything unreadable means "nothing turned off" (today's behaviour). */
-export function readAutomationControls(value: unknown): AutomationControlsValue {
-  const out: AutomationControlsValue = { off: {} };
-  if (!value || typeof value !== "object" || Array.isArray(value)) return out;
+/**
+ * Parse the stored value. Returns null when a row exists but is malformed —
+ * that is a failure, not "nothing turned off", so callers must hold sends.
+ * Unknown keys inside a well-formed value are ignored.
+ */
+export function readAutomationControls(value: unknown): AutomationControlsValue | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const off = (value as Record<string, unknown>).off;
-  if (!off || typeof off !== "object" || Array.isArray(off)) return out;
+  if (off === undefined) return { off: {} };
+  if (!off || typeof off !== "object" || Array.isArray(off)) return null;
+  const out: AutomationControlsValue = { off: {} };
   for (const [k, v] of Object.entries(off as Record<string, unknown>)) {
     if (!AUTOMATION_KEYS.includes(k)) continue;
     const rec = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
@@ -253,6 +260,11 @@ export function readAutomationControls(value: unknown): AutomationControlsValue 
   }
   return out;
 }
+
+/** "absent" = no row yet (legacy default: everything on). "error" = could not read or parse: hold. */
+export type AutomationControlsState =
+  | { status: "ok" | "absent"; value: AutomationControlsValue }
+  | { status: "error"; value: null };
 
 export function isAutomationOn(controls: AutomationControlsValue, key: string): boolean {
   return !controls.off[key];

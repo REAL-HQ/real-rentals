@@ -6,20 +6,21 @@
 // loadAutomationControls up front so a switched-off reminder is skipped
 // before its dedupe row or bell notification is written.
 //
-// Read errors fail OPEN (send as before): this setting only ever turns things
-// off, and a database blip must not silently stop receipts or alerts that ran
-// before this existed. The switch's state is shown in the back office.
+// A missing row means nothing has been turned off (legacy default: on). A
+// read error or malformed row is different: it HOLDS every catalogued send
+// (fail closed) so an Owner's Off can never leak. Held emails are recorded as
+// failed with a "Held:" reason and reported as retriable — never as sent.
 
 import {
   AUTOMATION_CONTROLS_KEY,
   isAutomationOn,
   readAutomationControls,
   settingKeyForEmailWorkflow,
-  type AutomationControlsValue,
+  type AutomationControlsState,
 } from "@/lib/automation-catalog";
 
 const CACHE_MS = 30_000;
-let cache: { at: number; value: AutomationControlsValue } | null = null;
+let cache: { at: number; state: AutomationControlsState } | null = null;
 
 type Reader = {
   from: (t: string) => {
@@ -27,19 +28,25 @@ type Reader = {
   };
 };
 
-/** The stored switches. `fresh` skips the 30s cache (the settings screen and cron runs use it). */
-export async function loadAutomationControls(admin?: unknown, fresh = false): Promise<AutomationControlsValue> {
-  if (!fresh && cache && Date.now() - cache.at < CACHE_MS) return cache.value;
+/** The stored switches. `fresh` skips the 30s cache. Failures are never cached. */
+export async function loadAutomationControls(admin?: unknown, fresh = false): Promise<AutomationControlsState> {
+  if (!fresh && cache && Date.now() - cache.at < CACHE_MS) return cache.state;
+  let state: AutomationControlsState;
   try {
     const sb = (admin ?? (await import("@/integrations/supabase/client.server")).supabaseAdmin) as unknown as Reader;
     const { data, error } = await sb.from("app_settings").select("value").eq("key", AUTOMATION_CONTROLS_KEY).maybeSingle();
-    if (error) return { off: {} };
-    const value = readAutomationControls(data?.value);
-    cache = { at: Date.now(), value };
-    return value;
+    if (error) state = { status: "error", value: null };
+    else if (!data) state = { status: "absent", value: { off: {} } };
+    else {
+      const value = readAutomationControls(data.value);
+      state = value ? { status: "ok", value } : { status: "error", value: null };
+    }
   } catch {
-    return { off: {} };
+    state = { status: "error", value: null };
   }
+  if (state.status === "error") { cache = null; return state; }
+  cache = { at: Date.now(), state };
+  return state;
 }
 
 /** Forget the cached switches (after a change in this isolate). */
@@ -47,12 +54,27 @@ export function clearAutomationControlsCache(): void {
   cache = null;
 }
 
-/** May an email tracked as `workflow` go out right now? Untracked and uncatalogued mail is never blocked. */
-export async function automationAllowsEmail(workflow: string | undefined | null): Promise<boolean> {
-  const key = settingKeyForEmailWorkflow(workflow);
-  if (!key) return true;
-  return isAutomationOn(await loadAutomationControls(), key);
+/** "send" | "off" (Owner switched it off) | "held" (settings unreadable; retry later). */
+export type GateDecision = "send" | "off" | "held";
+
+export function gateFor(state: AutomationControlsState, key: string): GateDecision {
+  if (state.status === "error") return "held";
+  return isAutomationOn(state.value, key) ? "send" : "off";
 }
+
+/** Decision for an email tracked as `workflow`. Untracked and uncatalogued mail is never gated. */
+export async function emailGate(workflow: string | undefined | null): Promise<GateDecision> {
+  const key = settingKeyForEmailWorkflow(workflow);
+  if (!key) return "send";
+  return gateFor(await loadAutomationControls(), key);
+}
+
+/** Kept for callers that only need a yes/no. */
+export async function automationAllowsEmail(workflow: string | undefined | null): Promise<boolean> {
+  return (await emailGate(workflow)) === "send";
+}
+
+export const HELD_REASON = "Held: automation settings could not be read. Not sent.";
 
 // ---- Template previews ------------------------------------------------------
 // previewCapture() runs a real template function with sample data; sendEmail

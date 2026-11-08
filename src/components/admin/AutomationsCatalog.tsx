@@ -42,6 +42,7 @@ function delayLabel(min: number): string {
 /** The status words shown next to the switch. "On" never hides "can't run". */
 export function statusWords(row: Pick<AutomationRow, "on" | "health" | "blockers" | "canToggle">): { label: string; tone: "ok" | "warn" | "off" } {
   if (row.on === false) return { label: "Off", tone: "off" };
+  if (row.on === null && row.blockers.some((b) => b.includes("could not be read"))) return { label: "Held", tone: "warn" };
   if (row.on === null && !row.canToggle) return { label: "Not Built On", tone: "off" };
   if (row.blockers.length) return { label: "On, Not Running", tone: "warn" };
   if (row.health === "Health Unknown") return { label: "On", tone: "ok" };
@@ -92,6 +93,8 @@ export function AutomationsCatalog() {
           {data.cronKnown ? "" : " · Schedule health isn't available yet."}
         </p>
         {!data.isOwner && <p>Only the Owner can change switches.</p>}
+        {data.controlsStatus === "error" && <p className="text-[#B45309]">Switches could not be read. Every automated email listed here is held (not sent) until they can. Refresh to try again.</p>}
+        <p>New Applicant Follow-Up has one switch for all its texts and emails. Turn single steps on or off in Workflows below.</p>
       </div>
       {groups.map((g) => (
         <section key={g} className="space-y-2">
@@ -130,6 +133,7 @@ function AutomationCard({ def, row, isOwner, busy, onFlip, preview }: { def: Aut
           <p className="text-[13px] text-[#55555E]">{def.trigger} {def.cadence}</p>
           <p className="text-[12px] text-[#8A8A93]">
             {row.lastSentAt ? `Last Sent ${fmtDateTime(row.lastSentAt)} (${row.lastState ?? "unknown"}) · ${row.sent30d} in 30 days` : "Never Sent"}
+            {row.held30d ? ` · ${row.held30d} Held` : ""}
             {row.lastRunAt ? ` · Last Run ${fmtDateTime(row.lastRunAt)}${row.lastRunFailed ? " Failed" : ""}` : ""}
           </p>
           {row.blockers.map((b) => <p key={b} className="text-[12px] text-[#B45309]">{b}</p>)}

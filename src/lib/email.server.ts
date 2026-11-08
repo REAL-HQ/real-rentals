@@ -41,7 +41,26 @@ export type SendResult = {
   deliveryId?: string;
   /** Provider outcome could not be classified. Absent when the secret is missing. */
   uncertain?: boolean;
+  /**
+   * Back Office → Automations stopped this send before the provider.
+   * "off": the Owner switched it off. "held": the switches could not be read,
+   * so it was held (recorded as failed "Held: ...") and may be retried.
+   */
+  blocked?: "off" | "held";
+  retriable?: boolean;
 };
+
+/** A held send leaves an honest trail: a failed delivery row, never "sent". */
+async function recordHeldDelivery(workflow: string, recipient: string): Promise<void> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { HELD_REASON } = await import("@/lib/automation-controls.server");
+    const now = new Date().toISOString();
+    await (supabaseAdmin as any).from("email_deliveries").insert({ workflow, recipient, state: "failed", failed_at: now, provider_reason: HELD_REASON });
+  } catch (err) {
+    console.error("[email] could not record held delivery", { workflow }, err);
+  }
+}
 
 /**
  * Record one send attempt in email_deliveries. Never throws, never delays the
@@ -120,13 +139,19 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
   // Back Office → Automations: a template preview never sends, and a switched-off
   // automation is skipped before any delivery row or provider call.
   {
-    const { capturePreviewEmail, automationAllowsEmail } = await import("@/lib/automation-controls.server");
+    const { capturePreviewEmail, emailGate } = await import("@/lib/automation-controls.server");
     if (capturePreviewEmail({ to: Array.isArray(to) ? to : [to], subject, html, workflow: track?.workflow ?? null })) {
       return { ok: false, error: "Preview only. Nothing was sent." };
     }
-    if (!(await automationAllowsEmail(track?.workflow))) {
+    const gate = await emailGate(track?.workflow);
+    if (gate === "off") {
       console.info("[email] automation turned off; skipping send", { workflow: track?.workflow });
-      return { ok: false, error: "This automation is turned off in Back Office → Automations." };
+      return { ok: false, blocked: "off", error: "This automation is turned off in Back Office → Automations." };
+    }
+    if (gate === "held") {
+      console.error("[email] automation settings unreadable; holding send", { workflow: track?.workflow });
+      await recordHeldDelivery(track!.workflow, Array.isArray(to) ? (to[0] ?? "") : to);
+      return { ok: false, blocked: "held", retriable: true, error: "Held: automation settings could not be read. Not sent." };
     }
   }
   const text = htmlToText(html);
@@ -268,6 +293,8 @@ export type LeadAlertPrefs = {
   recipients: string[];
   onNew: boolean;
   onComplete: boolean;
+  /** The setting could not be read; alerts are held, not sent. */
+  unreadable?: boolean;
 };
 
 const DEFAULT_OPS_INBOX = "team@drivereal.com";
@@ -291,11 +318,14 @@ export async function getLeadAlertPrefs(): Promise<LeadAlertPrefs> {
 
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from("app_settings")
       .select("value")
       .eq("key", "notifications")
       .maybeSingle();
+    // A read error is not "never configured": hold rather than override an Off.
+    if (error) throw error;
+    if (data && (!data.value || typeof data.value !== "object" || Array.isArray(data.value))) throw new Error("notifications setting malformed");
 
     const v = (data?.value ?? {}) as Record<string, unknown>;
     const configured = parseRecipients(v.admin_email);
@@ -308,8 +338,8 @@ export async function getLeadAlertPrefs(): Promise<LeadAlertPrefs> {
       onComplete: v.alert_on_complete !== false,
     };
   } catch (err) {
-    console.error("[email] could not read alert settings; using fallback", err);
-    return { recipients: fallback, onNew: true, onComplete: true };
+    console.error("[email] could not read alert settings; holding lead alerts", err);
+    return { recipients: fallback, onNew: false, onComplete: false, unreadable: true };
   }
 }
 
@@ -387,7 +417,12 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
   const prefs = await getLeadAlertPrefs();
   const wanted = event === "complete" ? prefs.onComplete : prefs.onNew;
   // A Back Office preview renders the alert even while it is switched off.
-  if (!wanted && !(await import("@/lib/automation-controls.server")).inPreview()) return;
+  const previewing = (await import("@/lib/automation-controls.server")).inPreview();
+  if (prefs.unreadable && !previewing) {
+    await recordHeldDelivery("lead_alert", prefs.recipients[0] ?? "");
+    return;
+  }
+  if (!wanted && !previewing) return;
   if (!prefs.recipients.length) {
     console.error("[email] lead alert has no recipient; check Settings -> Notifications");
     return;
@@ -551,7 +586,7 @@ type ReceiptArgs = {
   portalUrl?: string;
 };
 
-export async function sendPaymentReceiptEmail(args: ReceiptArgs): Promise<void> {
+export async function sendPaymentReceiptEmail(args: ReceiptArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
   const label = args.reason.replace(/_/g, " ");
@@ -566,7 +601,7 @@ export async function sendPaymentReceiptEmail(args: ReceiptArgs): Promise<void> 
       <div style="margin-top:20px">
         <a href="${args.portalUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View Payment History</a>
       </div>`);
-  await sendEmail({ to: args.to, subject: `Payment Received — ${money(args.amount)}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_receipt" } });
+  return sendEmail({ to: args.to, subject: `Payment Received — ${money(args.amount)}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_receipt" } });
 }
 
 type FailedArgs = {
@@ -579,7 +614,7 @@ type FailedArgs = {
   updateCardUrl?: string;
 };
 
-export async function sendPaymentFailedEmail(args: FailedArgs): Promise<void> {
+export async function sendPaymentFailedEmail(args: FailedArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
   const label = args.reason.replace(/_/g, " ");
@@ -587,7 +622,7 @@ export async function sendPaymentFailedEmail(args: FailedArgs): Promise<void> {
       <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Payment Failed</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, we tried to charge your ${escapeHtml(method)} <strong>${money(args.amount)}</strong> for ${escapeHtml(label)} and it was declined. Please update your card to avoid interruption.</p>
       <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
-  await sendEmail({ to: args.to, subject: `Your REAL RENTALS Payment Of ${money(args.amount)} Did Not Go Through`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
+  return sendEmail({ to: args.to, subject: `Your REAL RENTALS Payment Of ${money(args.amount)} Did Not Go Through`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
 }
 
 type CardExpiringArgs = {
@@ -608,19 +643,19 @@ type PastDueArgs = {
   daysLate: number;
 };
 
-export async function sendPastDueReminderEmail(args: PastDueArgs): Promise<void> {
+export async function sendPastDueReminderEmail(args: PastDueArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const when = args.dueDate ? fmtDate(args.dueDate) : "recently";
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Balance Past Due</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your balance of <strong>${money(args.amount)}</strong> was due ${escapeHtml(when)} — that's ${args.daysLate} day${args.daysLate === 1 ? "" : "s"} ago. Please pay now to keep your rental active and avoid late fees.</p>
       <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay Balance</a>`);
-  await sendEmail({ to: args.to, subject: `Past Due — ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_past_due" } });
+  return sendEmail({ to: args.to, subject: `Past Due — ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_past_due" } });
 }
 
 type DueTomorrowArgs = { to: string; firstName: string | null; amount: number; dueDate: string; autopay?: boolean };
 
-export async function sendPaymentDueTomorrowEmail(args: DueTomorrowArgs): Promise<void> {
+export async function sendPaymentDueTomorrowEmail(args: DueTomorrowArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const how = args.autopay
     ? "Your card on file will be charged automatically. Make sure it is up to date."
@@ -629,7 +664,7 @@ export async function sendPaymentDueTomorrowEmail(args: DueTomorrowArgs): Promis
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Payment Due Tomorrow</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, a friendly reminder that <strong>${money(args.amount)}</strong> is due ${escapeHtml(fmtDate(args.dueDate))}. ${escapeHtml(how)}</p>
       <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Open Driver Portal</a>`);
-  await sendEmail({ to: args.to, subject: `Reminder: ${money(args.amount)} Due Tomorrow`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_due_tomorrow" } });
+  return sendEmail({ to: args.to, subject: `Reminder: ${money(args.amount)} Due Tomorrow`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_due_tomorrow" } });
 }
 
 type TeamPaymentAlertArgs = {
@@ -645,7 +680,7 @@ type TeamPaymentAlertArgs = {
 };
 
 /** Short internal alert to team@ for a failed charge or a first-time past-due balance. */
-export async function sendTeamPaymentAlertEmail(args: TeamPaymentAlertArgs): Promise<void> {
+export async function sendTeamPaymentAlertEmail(args: TeamPaymentAlertArgs): Promise<SendResult> {
   const who = args.driverName || "Unknown renter";
   const headline = args.event === "failed" ? "Payment Failed" : "Payment Past Due";
   const lines = [
@@ -664,7 +699,7 @@ export async function sendTeamPaymentAlertEmail(args: TeamPaymentAlertArgs): Pro
       <h1 style="margin:12px 0 8px;font-size:20px;color:#D03020;line-height:1.3">${headline}</h1>
       <p style="color:#444;font-size:14px;line-height:1.6;margin:0 0 16px">${lines}</p>
       <a href="${link}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open In Admin</a>`);
-  await sendEmail({ to: TEAM_ALERT_INBOX, subject: `${headline}: ${who} — ${money(args.amount)}`, html, track: { workflow: "payment_team_alert" } });
+  return sendEmail({ to: TEAM_ALERT_INBOX, subject: `${headline}: ${who} — ${money(args.amount)}`, html, track: { workflow: "payment_team_alert" } });
 }
 
 export const TEAM_ALERT_INBOX = "team@drivereal.com";
@@ -688,7 +723,7 @@ type CollectionsPlanEmailArgs = {
 };
 
 /** One daily digest so the team can prep collections across every payment method. */
-export async function sendTeamCollectionsPlanEmail(args: CollectionsPlanEmailArgs): Promise<void> {
+export async function sendTeamCollectionsPlanEmail(args: CollectionsPlanEmailArgs): Promise<SendResult> {
   const section = (title: string, rows: CollectionsPlanEmailItem[]) => {
     if (!rows.length) {
       return `<h2 style="margin:18px 0 6px;font-size:15px;color:#111">${escapeHtml(title)}</h2>
@@ -719,7 +754,7 @@ export async function sendTeamCollectionsPlanEmail(args: CollectionsPlanEmailArg
       ${section("Due Tomorrow", args.dueTomorrow)}
       <a href="https://drivereal.com/admin?tab=payments" style="display:inline-block;margin-top:18px;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open Payments</a>`);
   const n = args.dueToday.length + args.dueTomorrow.length;
-  await sendEmail({
+  return sendEmail({
     to: TEAM_ALERT_INBOX,
     subject: `Collections Plan — Due Today / Due Tomorrow (${n})`,
     html,
@@ -736,7 +771,7 @@ type LicenseExpiryArgs = {
   daysLeft: number;
 };
 
-export async function sendLicenseExpiringEmail(args: LicenseExpiryArgs): Promise<void> {
+export async function sendLicenseExpiringEmail(args: LicenseExpiryArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const when = fmtDate(args.expiration);
   const expired = args.daysLeft <= 0;
@@ -744,7 +779,7 @@ export async function sendLicenseExpiringEmail(args: LicenseExpiryArgs): Promise
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${expired ? "Your License Has Expired" : "Your License Is Expiring Soon"}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, our records show your driver's license ${expired ? "expired" : "expires"} on <strong>${escapeHtml(when)}</strong>. Send us an updated photo so your rental stays in good standing.</p>
       <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Upload New License</a>`);
-  await sendEmail({ to: args.to, subject: expired ? "Your driver's license on file has expired" : `Your driver's license expires ${when}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "license_expiring" } });
+  return sendEmail({ to: args.to, subject: expired ? "Your driver's license on file has expired" : `Your driver's license expires ${when}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "license_expiring" } });
 }
 
 type ServiceDigestArgs = {
@@ -766,7 +801,7 @@ export async function sendServiceDigestEmail(args: ServiceDigestArgs): Promise<v
   await sendEmail({ to: args.to, subject: `Service Due — ${args.items.length} vehicle${args.items.length === 1 ? "" : "s"} need attention`, html, track: { workflow: "service_digest" } });
 }
 
-export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<void> {
+export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
   const mm = String(args.expMonth).padStart(2, "0");
@@ -774,7 +809,7 @@ export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<voi
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Card Is Expiring</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your ${escapeHtml(method)} on file expires <strong>${mm}/${args.expYear}</strong>. Update it now so your weekly rent doesn't miss a beat.</p>
       <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
-  await sendEmail({ to: args.to, subject: `Your card ending in ${args.last4 ?? "••••"} is expiring`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "card_expiring" } });
+  return sendEmail({ to: args.to, subject: `Your card ending in ${args.last4 ?? "••••"} is expiring`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "card_expiring" } });
 }
 
 // -----------------------------------------------------------------------------

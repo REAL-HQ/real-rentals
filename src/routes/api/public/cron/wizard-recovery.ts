@@ -33,7 +33,11 @@ async function handle(request: Request): Promise<Response> {
   // Back Office → Automations: switched off means no claims and no sends this run.
   const { loadAutomationControls } = await import("@/lib/automation-controls.server");
   const { isAutomationOn } = await import("@/lib/automation-catalog");
-  if (!isAutomationOn(await loadAutomationControls(supabaseAdmin, true), "application_recovery")) {
+  const controls = await loadAutomationControls(supabaseAdmin, true);
+  if (controls.status === "error") {
+    return new Response("automation settings unreadable; nothing claimed or sent", { status: 503 });
+  }
+  if (!isAutomationOn(controls.value, "application_recovery")) {
     return Response.json({ skipped: "turned_off" });
   }
   const report = await runWizardRecovery(supabaseAdmin, {
