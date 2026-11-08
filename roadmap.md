@@ -1,6 +1,8 @@
 # Roadmap
 - [x] Vehicle sharing: Manager/Owner-only AI Enhanced Photos first package (approved enhancements only), insurance package (lead + website photos, VIN/registration details), and manual selection of originals/approved retouches; reviewed one-click email/SMS or copyable 72-hour private link, with audited token-based access and no public photo exposure. Synthetic security/provider tests and real desktop/mobile UI checks passed without creating packages or sending messages.
 - [ ] Vehicle sharing live delivery: no real email/SMS was sent; run one controlled recipient test after explicit approval and provider/email-domain readiness.
+- [ ] Vehicle sharing email: investigate the reported package-delivery failure from existing send/domain/provider evidence; do not resend or change recipient records during diagnosis.
+- [ ] Vehicle sharing text: Send Text is disabled because no text-service connection is configured; establish an approved connection before any live send.
 - [x] Vehicle list thumbnails: Managers/Owners explicitly confirm an original shows the car before using it as the staff Vehicles-list thumbnail; only confirmed car photos are automatic fallbacks or appear in the table slideshow. Unclassified images and paperwork never become thumbnails; public lead/publish controls stay separate.
 - [x] Vehicles density: matched the 90% reference at 100% desktop zoom with one-row compact filters/actions and tighter table type, thumbnails and rows; shared admin toolbars/tables remain unchanged.
 - [x] Vehicles list: replaced the table's Unit display with staff-only car thumbnails; clicking a thumbnail opens the existing original-photo slideshow without opening the vehicle record or exposing private photos.

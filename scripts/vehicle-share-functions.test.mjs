@@ -24,7 +24,7 @@ export const requireManager = async (userId) => {
 `);
 write("audit", `export const logAudit = async (actor, entry) => { globalThis.__vshare.audit.push(entry); };`);
 write("server", `
-export const getRequest = () => ({ url: 'https://drivereal.com/_serverFn/test' });
+export const getRequest = () => ({ url: 'http://localhost:8080/_serverFn/test' });
 export const setResponseHeader = () => {};
 `);
 write("email", `export const sendEmail = async (args) => { globalThis.__vshare.emails.push(args); return { ok: true, id: 'email-test' }; };`);
@@ -104,6 +104,7 @@ const insurance = await mod.createVehicleSharePackage({ data: { vehicleId: V, mo
 ok(insurance.ok, "Owner creates the insurance package");
 const created = insurance.package;
 ok(created.photoCount === 2 && created.includeDetails, "server ignores client ids and enforces the reviewed insurance selection/details");
+ok(created.url.startsWith("https://drivereal.com/share/vehicle/") && !created.url.includes("localhost"), "packages created in Preview still receive a public recipient link");
 ok(Date.parse(created.expiresAt) - Date.parse(S.settings[0].value.createdAt) === 72 * 60 * 60 * 1000, "the private link expires exactly 72 hours after creation");
 ok(!JSON.stringify(S.settings[0].value).includes(created.token), "the raw share token is never stored");
 ok(S.settings[0].value.details.sections.flatMap((s) => s.rows).some((r) => r.value === "1HGCM82633A004352"), "the package snapshots the real VIN");
@@ -129,6 +130,7 @@ ok(await mod.getSharedVehiclePackage({ data: { token: "x".repeat(43) } }) === nu
 const sentEmail = await mod.sendVehicleSharePackage({ data: { packageId: created.id, token: created.token, channel: "email", recipient: "renter@example.com", message: "For your insurance" }, context });
 ok(sentEmail.ok && S.emails.length === 1 && S.emails[0].track.workflow === "vehicle_share", "email uses the canonical sender and the reviewed package");
 ok(S.emails[0].html.includes(created.url) && S.emails[0].html.includes("For your insurance"), "the email contains the secure link and staff note");
+ok(!S.emails[0].html.includes("localhost"), "an email sent from Preview never contains a localhost recipient link");
 const sentSms = await mod.sendVehicleSharePackage({ data: { packageId: created.id, token: created.token, channel: "sms", recipient: "(555) 555-1234" }, context });
 ok(sentSms.ok && S.sms.length === 1 && S.sms[0].requireConsent === false && S.sms[0].vehicleId === V, "transactional text uses the canonical sender, vehicle attribution and opt-out enforcement");
 ok(S.sms[0].body.includes(created.url) && S.sms[0].body.includes("STOP"), "the text contains the private link and opt-out wording");

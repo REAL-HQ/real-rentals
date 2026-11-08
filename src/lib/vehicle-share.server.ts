@@ -53,8 +53,9 @@ export function vehicleShareUrl(origin: string, token: string): string {
   let url: URL;
   try { url = new URL(origin); } catch { url = new URL("https://drivereal.com"); }
   const host = url.hostname;
-  const allowed = host === "localhost" || host === "127.0.0.1" || host === "drivereal.com" || host === "www.drivereal.com" || host.endsWith(".lovable.app") || host.endsWith(".lovable.dev");
-  if (!allowed || (url.protocol !== "https:" && host !== "localhost" && host !== "127.0.0.1")) {
+  const publicHost = host === "drivereal.com" || host === "www.drivereal.com";
+  // Recipient links must never point at a staff-only local or Preview host.
+  if (!publicHost || url.protocol !== "https:") {
     url = new URL("https://drivereal.com");
   }
   return `${url.origin}/share/vehicle/${token}`;

@@ -82,11 +82,14 @@ describe("private share token and stored package", () => {
     expect(vehicleShareStorageKey(first.tokenHash)).toBe(`vehicle_share_package:${first.tokenHash}`);
   });
 
-  test("links use approved same-origin hosts and fall back to the production site", async () => {
+  test("recipient links always use the public site, never a staff-only preview or unknown host", async () => {
     const { token } = await newVehicleShareToken();
-    expect(vehicleShareUrl("https://drivereal.com", token)).toBe(`https://drivereal.com/share/vehicle/${token}`);
-    expect(vehicleShareUrl("http://localhost:8080", token)).toBe(`http://localhost:8080/share/vehicle/${token}`);
-    expect(vehicleShareUrl("https://attacker.example", token)).toBe(`https://drivereal.com/share/vehicle/${token}`);
+    const publicUrl = `https://drivereal.com/share/vehicle/${token}`;
+    expect(vehicleShareUrl("https://drivereal.com", token)).toBe(publicUrl);
+    expect(vehicleShareUrl("http://localhost:8080", token)).toBe(publicUrl);
+    expect(vehicleShareUrl("http://127.0.0.1:8080", token)).toBe(publicUrl);
+    expect(vehicleShareUrl("https://id-preview--example.lovable.app", token)).toBe(publicUrl);
+    expect(vehicleShareUrl("https://attacker.example", token)).toBe(publicUrl);
   });
 
   test("expired and revoked packages fail closed", () => {
