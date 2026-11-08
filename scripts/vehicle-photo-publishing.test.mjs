@@ -318,6 +318,7 @@ console.log("\nTHE STAFF LIST THUMBNAIL NEVER PUBLISHES OR REORDERS A PHOTO");
   ok(result.ok, "an Owner can choose an original list thumbnail");
   ok(JSON.stringify(after) === JSON.stringify(before), "public lead, publication and gallery order are byte-for-byte unchanged");
   ok(S.settings.length === 1 && S.settings[0].value.mediaId === byPath(2).id, "the choice is stored independently for this vehicle");
+  ok(S.settings[0].value.carMediaIds.includes(byPath(2).id), "selection explicitly confirms the original shows the car");
   ok(S.entries.some((e) => e.action === "vehicle.photo.list_thumbnail_selected"), "the staff choice is audited");
 }
 

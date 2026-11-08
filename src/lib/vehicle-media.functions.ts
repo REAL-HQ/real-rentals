@@ -3,7 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireStaff, requireManager } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
-import { readVehicleListThumbnailMediaId, vehicleListThumbnailKey } from "@/lib/vehicle-thumbnail";
+import { readConfirmedCarMediaIds, readVehicleListThumbnailMediaId, vehicleListThumbnailKey } from "@/lib/vehicle-thumbnail";
 
 // Vehicle photography.
 //
@@ -50,6 +50,8 @@ export type VehicleMediaList = {
   enhancement: { available: boolean; provider: string | null; reason: string };
   /** Staff list choice only; unrelated to the public lead/published flags. */
   listThumbnailId: string | null;
+  /** Originals staff explicitly confirmed show the car, not a document. */
+  confirmedCarPhotoIds: string[];
 };
 
 export const listVehicleMedia = createServerFn({ method: "POST" })
@@ -76,6 +78,8 @@ export const listVehicleMedia = createServerFn({ method: "POST" })
     ]);
     const items = (rows as VehicleMedia[] | null) ?? [];
     const selectedId = readVehicleListThumbnailMediaId(thumbnailSetting?.value);
+    const originalIds = new Set(items.filter((item) => item.kind === "original").map((item) => item.id));
+    const confirmedCarPhotoIds = readConfirmedCarMediaIds(thumbnailSetting?.value).filter((id) => originalIds.has(id));
 
     return {
       items,
@@ -83,9 +87,8 @@ export const listVehicleMedia = createServerFn({ method: "POST" })
       // layer; the UI is told so it can say why rather than fail on click.
       canDelete: actor.tier === "manager" || actor.tier === "owner",
       enhancement: enhancementAvailability(),
-      listThumbnailId: selectedId && items.some((item) => item.id === selectedId && item.kind === "original")
-        ? selectedId
-        : null,
+      listThumbnailId: selectedId && confirmedCarPhotoIds.includes(selectedId) ? selectedId : null,
+      confirmedCarPhotoIds,
     };
   });
 
@@ -106,12 +109,15 @@ export const setVehicleListThumbnail = createServerFn({ method: "POST" })
       return { ok: false, error: "Choose an original photo from this vehicle." };
     }
 
-    // One atomic settings upsert per vehicle. This never touches published,
-    // is_primary or vehicles.photos, so staff presentation cannot publish a
-    // private original or change Listing Ready.
+    // Selecting also records the operator's explicit confirmation that this
+    // original shows the car. Only confirmed originals are eligible for later
+    // automatic fallback; unclassified images and paperwork are never chosen.
+    const key = vehicleListThumbnailKey(data.vehicleId);
+    const { data: current } = await supabaseAdmin.from("app_settings").select("value").eq("key", key).maybeSingle();
+    const carMediaIds = [...new Set([...readConfirmedCarMediaIds(current?.value), data.mediaId])];
     const { error } = await supabaseAdmin
       .from("app_settings")
-      .upsert({ key: vehicleListThumbnailKey(data.vehicleId), value: { mediaId: data.mediaId } }, { onConflict: "key" });
+      .upsert({ key, value: { mediaId: data.mediaId, carMediaIds } }, { onConflict: "key" });
     if (error) return { ok: false, error: "Could not save the Vehicles-list thumbnail." };
 
     await logAudit(actor, {

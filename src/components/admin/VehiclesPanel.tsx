@@ -111,22 +111,21 @@ function vehicleName(v: VehicleListRow) {
 function VehicleListThumbnail({ vehicle }: { vehicle: VehicleListRow }) {
   const loadMedia = useServerFn(listVehicleMedia);
   const staffPath = vehicle.thumbnailPath ?? null;
-  const publicUrl = resolvePhotoUrl(vehicle.photo ?? undefined);
-  const [url, setUrl] = useState<string | null>(publicUrl);
+  const [url, setUrl] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
   const [viewer, setViewer] = useState<{ items: VehicleMedia[]; index: number } | null>(null);
   const name = vehicleName(vehicle);
 
   useEffect(() => {
     let live = true;
-    setUrl(publicUrl);
+    setUrl(null);
     if (staffPath) {
       void loadStaffPhoto(staffPath).then((next) => {
-        if (live) setUrl(next ?? publicUrl);
+        if (live) setUrl(next);
       });
     }
     return () => { live = false; };
-  }, [staffPath, publicUrl]);
+  }, [staffPath]);
 
   async function openPhotos(event: React.MouseEvent<HTMLButtonElement>) {
     event.stopPropagation();
@@ -134,9 +133,10 @@ function VehicleListThumbnail({ vehicle }: { vehicle: VehicleListRow }) {
     setOpening(true);
     try {
       const result = await loadMedia({ data: { vehicleId: vehicle.id } });
-      const items = result.items.filter((item) => item.kind === "original");
+      const confirmed = new Set(result.confirmedCarPhotoIds ?? []);
+      const items = result.items.filter((item) => item.kind === "original" && confirmed.has(item.id));
       if (!items.length) {
-        toast.error("No photos are available for this vehicle.");
+        toast.error("No confirmed car photos are available for this vehicle.");
         return;
       }
       const lead = items.findIndex((item) => item.storage_path === staffPath);
@@ -148,7 +148,7 @@ function VehicleListThumbnail({ vehicle }: { vehicle: VehicleListRow }) {
     }
   }
 
-  if (!staffPath && !publicUrl) {
+  if (!staffPath) {
     return (
       <span className="grid h-9 w-12 place-items-center rounded-md border border-border bg-soft text-muted-foreground" title="No Vehicle Photo">
         <Car className="h-4 w-4" aria-label="No Vehicle Photo" />

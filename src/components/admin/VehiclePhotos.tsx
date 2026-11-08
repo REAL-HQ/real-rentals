@@ -576,6 +576,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 onCompare={() => setCompare(m)}
                 onReview={(d) => review(m, d)}
                 isListThumbnail={data?.listThumbnailId === m.id}
+                isConfirmedCarPhoto={data?.confirmedCarPhotoIds.includes(m.id) ?? false}
                 onListThumbnail={() => selectListThumbnail(m)}
                 onPrimary={() => patch(m, { id: m.id, makePrimary: true })}
                 onPublish={(v) => patch(m, { id: m.id, published: v })}
@@ -698,6 +699,7 @@ function PhotoTile({
   busy,
   enhancement,
   isListThumbnail,
+  isConfirmedCarPhoto,
   onListThumbnail,
   onPrimary,
   onPublish,
@@ -721,6 +723,7 @@ function PhotoTile({
   busy: boolean;
   enhancement: { available: boolean; reason: string };
   isListThumbnail: boolean;
+  isConfirmedCarPhoto: boolean;
   onListThumbnail: () => void;
   onPrimary: () => void;
   onPublish: (v: boolean) => void;
@@ -840,14 +843,18 @@ function PhotoTile({
             aria-pressed={isListThumbnail}
             disabled={busy || isListThumbnail}
             onClick={onListThumbnail}
-            title={isListThumbnail ? "This photo is the Vehicles-list thumbnail." : "Use this photo for the Vehicles-list thumbnail. This does not publish it."}
+            title={isListThumbnail
+              ? "This confirmed car photo is the Vehicles-list thumbnail."
+              : isConfirmedCarPhoto
+                ? "Use this confirmed car photo for the Vehicles-list thumbnail. This does not publish it."
+                : "Confirm this original shows the car, not a document, and use it for the Vehicles-list thumbnail. This does not publish it."}
             className={`h-7 w-full rounded-md border px-2 text-[11px] font-medium disabled:cursor-default ${
               isListThumbnail
                 ? "border-real-red/40 bg-real-red/5 text-real-red"
                 : "border-border bg-white text-foreground hover:bg-soft"
             }`}
           >
-            {isListThumbnail ? "Current Thumbnail" : "Use As Thumbnail"}
+            {isListThumbnail ? "Current Thumbnail" : isConfirmedCarPhoto ? "Use As Thumbnail" : "Confirm Car & Use"}
           </button>
         )}
 
