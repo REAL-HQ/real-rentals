@@ -42,21 +42,23 @@ const READINESS_SWEEP_MAX = 2000;
 type FacetRow = { status?: string | null; body_type?: string | null };
 type FacetReader = {
   from: (t: string) => {
-    select: (c: string) => { limit: (n: number) => PromiseLike<{ data: FacetRow[] | null }> };
+    select: (c: string, options: { count: "exact" }) => { limit: (n: number) => PromiseLike<{ data: FacetRow[] | null; count: number | null }> };
   };
 };
 
 async function filterOptions(
   supabaseAdmin: FacetReader,
-): Promise<{ statuses: string[]; bodyTypes: string[] }> {
-  const facets = await supabaseAdmin.from("vehicles").select("status,body_type").limit(10000);
+): Promise<{ statuses: string[]; bodyTypes: string[]; fleetTotal: number | null }> {
+  const facets = await supabaseAdmin.from("vehicles").select("status,body_type", { count: "exact" }).limit(10000);
   const statuses = new Set<string>(["archived"]);
   const bodies = new Set<string>();
   for (const f of facets.data ?? []) {
     if (f.status) statuses.add(f.status);
     if (f.body_type) bodies.add(f.body_type);
   }
-  return { statuses: [...statuses].sort(), bodyTypes: [...bodies].sort() };
+  // Exact table count is independent of filters and the capped facet rows.
+  // Includes archived records; the UI labels that scope explicitly.
+  return { statuses: [...statuses].sort(), bodyTypes: [...bodies].sort(), fleetTotal: facets.count ?? null };
 }
 
 export const listVehicles = createServerFn({ method: "POST" })
