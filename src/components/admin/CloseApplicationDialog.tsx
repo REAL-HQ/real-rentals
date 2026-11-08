@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CLOSURE_REASONS, type ClosureReason } from "@/lib/application-status";
@@ -22,20 +23,20 @@ export function CloseApplicationDialog({
         </DialogHeader>
         <label className="block text-sm text-[#111114]">
           Closure Reason
-          <select
+          <AppSelect
             aria-label="Closure Reason"
             required
             value={reason}
             onChange={(event) => setReason(event.target.value)}
             className="mt-1 h-9 w-full rounded-md border border-border bg-white px-2 text-sm"
           >
-            <option value="">Select a Reason</option>
+            <option value="">Select A Reason</option>
             {CLOSURE_REASONS.map((item) => (
               <option key={item.key} value={item.key}>
                 {item.label}
               </option>
             ))}
-          </select>
+          </AppSelect>
         </label>
         <label className="mt-3 block text-sm text-[#111114]">
           Notes

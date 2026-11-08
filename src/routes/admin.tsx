@@ -705,7 +705,7 @@ function Admin() {
       if (!items.length) return null;
       return (
         <div key={group} className="mb-4 last:mb-0">
-          <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#55555E]">{group}</div>
+          <div className="px-3 mb-1 text-[10px] font-semibold tracking-[0.12em] text-[#55555E]">{group}</div>
           <div className="space-y-0.5">{items.map((t) => navLink(t, onClick))}</div>
         </div>
       );
@@ -715,7 +715,7 @@ function Admin() {
     <>
       <div className="min-h-screen flex bg-[#FAFAFB] text-[#111114]">
         {/* Single business navigation rail */}
-        <aside aria-label="Main navigation" className="hidden md:flex w-[220px] shrink-0 flex-col bg-[#141416] sticky top-0 h-screen">
+        <aside aria-label="Main Navigation" className="hidden md:flex w-[220px] shrink-0 flex-col bg-[#141416] sticky top-0 h-screen">
           <div className="flex justify-center pt-6 pb-4">
             <Logo offset={false} />
           </div>
@@ -738,7 +738,7 @@ function Admin() {
                   if (!items.length) return null;
                   return (
                     <div key={group} className="mb-4">
-                      <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#55555E]">{group}</div>
+                      <div className="px-3 mb-1 text-[10px] font-semibold tracking-[0.12em] text-[#55555E]">{group}</div>
                       <div className="space-y-0.5">{items.map((t) => navLink(t, () => setMobileNav(false)))}</div>
                     </div>
                   );
@@ -757,7 +757,7 @@ function Admin() {
           <header className="sticky top-0 z-20 md:static bg-[#FAFAFB] px-3 md:px-8 py-3 flex items-center justify-between gap-3 border-b border-[#EDEDF0] md:border-0">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <button
-                aria-label="Open navigation"
+                aria-label="Open Navigation"
                 onClick={() => setMobileNav(true)}
                 className="md:hidden w-11 h-11 -ml-1 grid place-items-center rounded-lg text-[#111114] hover:bg-[#F4F4F6]"
               >
@@ -767,7 +767,7 @@ function Admin() {
                 <Search className="w-[17px] h-[17px] text-[#9A9AA3] absolute left-3 top-1/2 -translate-y-1/2" strokeWidth={1.75} />
                 <input
                   type="search"
-                  aria-label="Search drivers, vehicles and partners"
+                  aria-label="Search Drivers, Vehicles And Partners"
                   placeholder="Search Drivers, Vehicles, Partners…"
                   value={globalSearch}
                   onChange={(e) => {
@@ -879,7 +879,7 @@ function Admin() {
                       <div className="text-[15px] font-semibold text-[#111114] truncate">{displayName}</div>
                       <div className="text-[13px] text-[#55555E] truncate">{session?.user?.email}</div>
                       {tier && (
-                        <div className="mt-1 inline-flex text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#F4F4F6] text-[#55555E]">
+                        <div className="mt-1 inline-flex text-[10px] font-semibold tracking-wider px-1.5 py-0.5 rounded bg-[#F4F4F6] text-[#55555E]">
                           {TIER_LABELS[tier]}
                         </div>
                       )}

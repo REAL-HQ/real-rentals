@@ -110,7 +110,7 @@ function PartnerDashboard() {
           <div className="flex items-center gap-2 mb-3">
             {(["week","month"] as const).map(p => (
               <button key={p} onClick={() => setPeriod(p)}
-                className={`px-3 py-1.5 rounded-lg text-xs capitalize ${period === p ? "bg-real-red text-white" : "bg-white border border-border"}`}>
+                className={`px-3 py-1.5 rounded-lg text-xs ${period === p ? "bg-real-red text-white" : "bg-white border border-border"}`}>
                 This {p}
               </button>
             ))}
@@ -130,7 +130,7 @@ function Sidebar({ partnerName }: { partnerName?: string }) {
         <Logo offset={false} />
       </div>
       <div className="px-4 py-3 border-t border-white/10">
-        <div className="text-[11px] uppercase tracking-wider text-white/50">Partner</div>
+        <div className="text-[11px] tracking-wider text-white/50">Partner</div>
         <div className="text-sm mt-0.5 truncate">{partnerName ?? ""}</div>
       </div>
       <div className="mt-auto p-4">
@@ -176,7 +176,7 @@ function VehicleCard({ v }: { v: PartnerVehicle }) {
         <div className="text-xs text-muted-foreground">{v.color || "—"} · VIN {v.vin || "—"}</div>
 
         <div className="mt-4 pt-4 border-t border-border">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">Current Renter</div>
+          <div className="text-[11px] tracking-wider text-muted-foreground mb-2">Current Renter</div>
           {v.renter ? (
             <>
               <div className="text-sm font-medium">{v.renter.full_name}</div>
@@ -192,7 +192,7 @@ function VehicleCard({ v }: { v: PartnerVehicle }) {
         </div>
 
         <div className="mt-4 pt-4 border-t border-border">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">Renter Documents</div>
+          <div className="text-[11px] tracking-wider text-muted-foreground mb-2">Renter Documents</div>
           <DocButtons docs={v.documents} />
         </div>
       </div>
@@ -248,7 +248,7 @@ function EarningsTable({ rows, total, loading }: { rows: EarningsRow[]; total?: 
   return (
     <div className="rounded-xl bg-soft overflow-hidden">
       <table className="w-full text-sm">
-        <thead className="bg-white/50 text-[11px] uppercase tracking-wider text-muted-foreground">
+        <thead className="bg-white/50 text-[11px] tracking-wider text-muted-foreground">
           <tr>
             <th className="text-left p-3">Vehicle</th>
             <th className="text-right p-3">Gross Rent</th>

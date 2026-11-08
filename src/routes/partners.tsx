@@ -1,5 +1,6 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,7 +31,7 @@ const BENEFITS = [
 ];
 
 const TRUST = [
-  { Icon: KeySquare, label: "You Keep the Title" },
+  { Icon: KeySquare, label: "You Keep The Title" },
   { Icon: Cog, label: "Fully Managed" },
   { Icon: Satellite, label: "GPS Tracked" },
   { Icon: FileText, label: "Monthly Statements" },
@@ -161,7 +162,7 @@ function Partners() {
       {/* Hero */}
       <section className="container-real pt-20 md:pt-28 pb-12 text-center">
         <FadeUp>
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Partner Program</div>
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">Partner Program</div>
           <h1 className="mt-4 text-4xl md:text-6xl font-semibold max-w-3xl mx-auto leading-[1.05]">
             You Own The Car.
             <br />
@@ -200,7 +201,7 @@ function Partners() {
       <section className="bg-white py-12 md:py-16">
         <div className="container-real">
           <FadeUp className="mx-auto max-w-3xl rounded-2xl border border-border bg-soft p-8 md:p-10 text-center">
-            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Operator Track Record</div>
+            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">Operator Track Record</div>
             <h2 className="mt-3 text-2xl md:text-3xl font-semibold leading-tight">
               700+ Five-Star Rentals.
             </h2>
@@ -263,7 +264,7 @@ function Partners() {
               <Select label="Vehicle Condition" value={form.condition} onChange={(v) => set("condition", v)} options={CONDITIONS} />
 
               <div className="md:col-span-2">
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Vehicle Photos (4–6)</label>
+                <label className="text-[10px] tracking-wider text-muted-foreground">Vehicle Photos (4–6)</label>
                 <div className="mt-1">
                   <FileUploader
                     value={photos}
@@ -279,7 +280,7 @@ function Partners() {
               </div>
 
               <div className="md:col-span-2">
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Message (optional)</label>
+                <label className="text-[10px] tracking-wider text-muted-foreground">Message (Optional)</label>
                 <textarea
                   value={form.message}
                   onChange={(e) => set("message", e.target.value)}
@@ -312,7 +313,7 @@ function Partners() {
       <section id="faq" className="container-real pb-24">
         <FadeUp>
           <div className="text-center mb-10">
-            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Owner FAQ</div>
+            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">Owner FAQ</div>
             <h2 className="mt-3 text-3xl md:text-5xl font-semibold">Common Questions</h2>
           </div>
         </FadeUp>
@@ -353,7 +354,7 @@ function Partners() {
 function Field({ label, value, onChange, type = "text", error }: { label: string; value: string; onChange: (v: string) => void; type?: string; error?: string }) {
   return (
     <div>
-      <label className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</label>
+      <label className="text-[10px] tracking-wider text-muted-foreground">{label}</label>
       <input
         type={type}
         value={value}
@@ -365,73 +366,20 @@ function Field({ label, value, onChange, type = "text", error }: { label: string
   );
 }
 
+// Owned option labels only; submitted strings and state abbreviations stay exact.
+const PARTNER_OPTION_LABELS: Readonly<Record<string, string>> = {
+  "Not sure": "Not Sure",
+  "Owned free and clear": "Owned Free And Clear",
+  "Financed — still making payments": "Financed — Still Making Payments",
+};
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: string[] }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-  const formatOption = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s);
-
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(event: PointerEvent) {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false);
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
   return (
-    <div ref={ref}>
-      <label className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</label>
-      <div className="relative mt-1">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="w-full bg-soft text-foreground rounded-lg pl-5 pr-12 py-3 text-left text-sm focus:outline-none focus:ring-2 focus:ring-black/10"
-          aria-haspopup="listbox"
-          aria-expanded={open}
-        >
-          {value ? formatOption(value) : "Select…"}
-        </button>
-        <svg className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        {open && (
-          <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-lg border border-border bg-white shadow-xl" role="listbox">
-            <button
-              type="button"
-              onClick={() => {
-                onChange("");
-                setOpen(false);
-              }}
-              className="block w-full bg-white px-5 py-3 text-left text-sm text-foreground hover:bg-soft focus:bg-soft focus:outline-none"
-              role="option"
-              aria-selected={value === ""}
-            >
-              Select…
-            </button>
-            {options.map((o) => (
-              <button
-                key={o}
-                type="button"
-                onClick={() => {
-                  onChange(o);
-                  setOpen(false);
-                }}
-                className="block w-full bg-white px-5 py-3 text-left text-sm text-foreground hover:bg-soft focus:bg-soft focus:outline-none"
-                role="option"
-                aria-selected={value === o}
-              >
-                {formatOption(o)}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+    <label className="block">
+      <span className="text-[10px] tracking-wider text-muted-foreground">{label}</span>
+      <AppSelect aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 h-auto w-full rounded-lg border-border bg-soft px-5 py-3 text-sm text-foreground">
+        <option value="">Select…</option>
+        {options.map((option) => <option key={option} value={option}>{PARTNER_OPTION_LABELS[option] ?? option}</option>)}
+      </AppSelect>
+    </label>
   );
 }

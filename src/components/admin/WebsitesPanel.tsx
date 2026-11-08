@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -65,7 +66,7 @@ export function WebsitesPanel() {
       </div>
 
       <div className="rounded-xl border border-border p-4 bg-soft">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">Waitlist Demand (Coming Soon Cities)</div>
+        <div className="text-xs tracking-wider text-muted-foreground font-semibold mb-3">Waitlist Demand (Coming Soon Cities)</div>
         <div className="flex flex-wrap gap-2">
           {sites
             .filter((s) => s.status === "coming_soon")
@@ -88,7 +89,7 @@ export function WebsitesPanel() {
       ) : (
         <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
            <table className="w-full text-sm">
-            <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3] text-left">
+            <thead className="bg-[#FAFAFB] text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3] text-left">
               <tr>
                 <th className="px-3 py-2.5">Title</th>
                 <th>Slug</th>
@@ -110,7 +111,7 @@ export function WebsitesPanel() {
                   <td>
                     <div className="flex items-center gap-2">
                       <StatusPill status={s.status} />
-                      <select
+                      <AppSelect aria-label="Website Status"
                         value={s.status}
                         onChange={(e) => updateSite(s.id, { status: e.target.value })}
                         className="text-xs rounded border border-[#EDEDF0] bg-white px-1.5 py-1"
@@ -118,7 +119,7 @@ export function WebsitesPanel() {
                         <option value="live">Live</option>
                         <option value="coming_soon">Coming Soon</option>
                         <option value="hidden">Hidden</option>
-                      </select>
+                      </AppSelect>
                     </div>
                   </td>
                   <td>
@@ -191,10 +192,10 @@ function NewSiteForm({ markets, onClose, onCreated }: { markets: { id: string; n
         <div className="flex items-center justify-between"><h3 className="font-semibold">New Site</h3><button type="button" onClick={onClose}><X className="w-4 h-4" /></button></div>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="w-full rounded border border-border px-3 py-2 text-sm" />
         <input value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} placeholder="slug" className="w-full rounded border border-border px-3 py-2 text-sm" />
-        <select value={marketId} onChange={(e) => setMarketId(e.target.value)} className="w-full rounded border border-border bg-white px-3 py-2 text-sm">
-          <option value="">No market</option>
+        <AppSelect aria-label="Market" value={marketId} onChange={(e) => setMarketId(e.target.value)} className="w-full rounded border border-border bg-white px-3 py-2 text-sm">
+          <option value="">No Market</option>
           {markets.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
+        </AppSelect>
         <button disabled={saving} className="w-full rounded-lg bg-real-red text-white py-2 text-sm font-medium">{saving ? "Saving…" : "Create"}</button>
       </form>
     </div>

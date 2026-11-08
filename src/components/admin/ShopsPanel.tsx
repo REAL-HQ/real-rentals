@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -123,10 +124,10 @@ function NewShopForm({ markets, onClose, onCreated }: { markets: { id: string; n
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Shop name" className="w-full rounded border border-border px-3 py-2 text-sm" />
         <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" className="w-full rounded border border-border px-3 py-2 text-sm" />
         <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className="w-full rounded border border-border px-3 py-2 text-sm" />
-        <select value={marketId} onChange={(e) => setMarketId(e.target.value)} className="w-full rounded border border-border bg-white px-3 py-2 text-sm">
-          <option value="">No market</option>
+        <AppSelect aria-label="Market" value={marketId} onChange={(e) => setMarketId(e.target.value)} className="w-full rounded border border-border bg-white px-3 py-2 text-sm">
+          <option value="">No Market</option>
           {markets.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
+        </AppSelect>
         <input value={services} onChange={(e) => setServices(e.target.value)} placeholder="Services (comma-separated)" className="w-full rounded border border-border px-3 py-2 text-sm" />
         <button disabled={saving} className="w-full rounded-lg bg-real-red text-white py-2 text-sm font-medium">{saving ? "Saving…" : "Create"}</button>
       </form>

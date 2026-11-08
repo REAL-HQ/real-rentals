@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -438,7 +439,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                   ) : (
                     <div className="flex flex-wrap items-center gap-2">
                       <label className="sr-only" htmlFor="shot-kind">What Are These Photos Of</label>
-                      <select
+                      <AppSelect
                         id="shot-kind"
                         value={shotKind}
                         onChange={(e) => setShotKind(e.target.value as typeof shotKind)}
@@ -447,7 +448,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                         <option value="condition_photo">The Car</option>
                         <option value="odometer_photo">The Odometer</option>
                         <option value="vin_photo">The VIN Plate</option>
-                      </select>
+                      </AppSelect>
                       <button
                         onClick={() => { setPicking(false); setChosen(new Set()); }}
                         disabled={reading}
@@ -613,14 +614,14 @@ function CompareModal({ m, source, busy, canReview, onClose, onReview }: {
     loadStaffPhoto(m.storage_path).then(setB);
   }, [m.storage_path, source?.storage_path]);
   useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const k = (e: KeyboardEvent) => e.key === "Escape" && !e.defaultPrevented && onClose();
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [onClose]);
   const flags = m.quality_flags ?? [];
   return (
     <div className="fixed inset-0 z-50 bg-black/50 grid place-items-center p-3" onClick={onClose}>
-      <div role="dialog" aria-label="Before and After" className="bg-white rounded-xl w-full max-w-5xl max-h-[92vh] overflow-auto p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-label="Before And After" className="bg-white rounded-xl w-full max-w-5xl max-h-[92vh] overflow-auto p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="text-[15px] font-semibold text-[#111114]">Before / After · {m.enhancement_mode === "studio" ? "Studio" : "Enhanced"}</h3>
           <button type="button" onClick={onClose} className="text-[13px] text-[#55555E] px-2 py-1 rounded hover:bg-[#F4F4F6]">Close</button>
@@ -924,7 +925,7 @@ function Tag({ children, tone }: { children: React.ReactNode; tone: "dark" | "vi
         : "bg-white/90 text-[#55555E] border border-[#EDEDF0]";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide ${cls}`}
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-medium tracking-wide ${cls}`}
     >
       {children}
     </span>
@@ -946,7 +947,7 @@ function PhotoViewer({ items, index, onIndex, onClose }: {
   const go = (d: number) => onIndex((index + d + items.length) % items.length);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
       else if (e.key === "ArrowRight") go(1);
       else if (e.key === "ArrowLeft") go(-1);
     };

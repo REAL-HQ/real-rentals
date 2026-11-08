@@ -23,7 +23,7 @@ try {
     const primary = document.querySelector('[data-toolbar-primary]');
     const filters = document.querySelector('[data-toolbar-filters]');
     const actions = document.querySelector('[data-toolbar-actions]');
-    const table = document.querySelector('[aria-label="Vehicles table"]');
+    const table = document.querySelector('[aria-label="Vehicles Table"]');
     return { viewFonts:[...actions.querySelectorAll("button")].filter(el=>["List","Cards"].includes(el.textContent.trim())).map(el=>parseFloat(getComputedStyle(el).fontSize)), zoom:visualViewport.scale, font:parseFloat(getComputedStyle(document.querySelector('[data-toolbar-search] input')).fontSize), tableFont:parseFloat(getComputedStyle(document.querySelector('table')).fontSize), page:document.documentElement.scrollWidth, window:innerWidth, primary:rect(primary), filters:rect(filters), search:rect(document.querySelector('[data-toolbar-search] input')), selects:[...filters.querySelectorAll('[role="combobox"]')].map(rect), actions:[...actions.children].filter(visible).map(rect), controls:[...actions.querySelectorAll('button')].filter(visible).map(rect), actionBox:rect(actions), table:table && { ...rect(table), scrollWidth:table.scrollWidth, clientWidth:table.clientWidth, overflow:getComputedStyle(table).overflowX }, context:rect(document.querySelector('[data-toolbar-context]')) };
    });
    const label = `${variant} at ${width}px`;
@@ -55,7 +55,7 @@ try {
    }
    if (width >= 768) {
     assert.equal(layout.table.overflow,"auto", `${label}: scoped table scrolling, not clipping`);
-    await page.locator('[aria-label="Vehicles table"]').evaluate(el => { el.scrollLeft=el.scrollWidth; });
+    await page.locator('[aria-label="Vehicles Table"]').evaluate(el => { el.scrollLeft=el.scrollWidth; });
     const open = page.locator('table button').last();
     const box = await open.boundingBox();
     assert(box.x >= layout.table.x && box.x + box.width <= layout.table.right+1, `${label}: Open reachable after table scroll`);
@@ -74,7 +74,7 @@ try {
        assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()), name, `${label}: keyboard follows visual action order`);
      }
    }
-   if (width >= 768) await page.locator('[aria-label="Vehicles table"]').evaluate(el => { el.scrollLeft=0; });
+   if (width >= 768) await page.locator('[aria-label="Vehicles Table"]').evaluate(el => { el.scrollLeft=0; });
    if (variant === "default" && [390,1024,1280,1440].includes(width)) await page.screenshot({ path: `.toolbar-layout-build/vehicles-${width}.png`, fullPage:true });
    checks++;
    console.log(`PASS ${label}`);

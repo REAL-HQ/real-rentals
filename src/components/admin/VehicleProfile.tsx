@@ -151,7 +151,7 @@ export function VehicleProfile({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !editing && !sharing && !editorOpen) onClose();
+      if (e.key === "Escape" && !e.defaultPrevented && !editing && !sharing && !editorOpen) onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -314,7 +314,7 @@ export function VehicleProfile({
           ) : failed || !p ? (
             <EmptyState
               icon={<Car className="w-6 h-6" strokeWidth={1.75} />}
-              title="This vehicle could not be loaded"
+              title="This Vehicle Could Not Be Loaded"
               hint="It may have been removed, or your account may not have access to the fleet."
             />
           ) : (
@@ -570,7 +570,7 @@ function Overview({
           {p.counts.openMaintenance > 0 && <Row label="Open Maintenance" value={p.counts.openMaintenance} />}
           <Row label="Service" value={<button onClick={() => onOpenTab("service")} className="text-[13px] font-medium underline-offset-2 hover:underline">View Service</button>} />
           <Row label="Inspections" value={<Elsewhere tab="inspections" count={p.counts.inspections} label="View Inspections" />} />
-          <Row label="Rentals to Date" value={<Elsewhere tab="drivers" count={p.counts.rentals} label="View Rental History" />} />
+          <Row label="Rentals To Date" value={<Elsewhere tab="drivers" count={p.counts.rentals} label="View Rental History" />} />
         </SectionCard>
 
         <SectionCard title="Vehicles" subtitle="Booking History" icon={<Wrench className="w-4 h-4" strokeWidth={1.75} />}>
@@ -583,7 +583,7 @@ function Overview({
             <Row label="Expenses" value={money(p.financials.expenses)} />
             <Row label="Maintenance" value={money(p.financials.maintenance)} />
             <Row label="Net" value={<span className={p.financials.net >= 0 ? "text-[#1E7B3C] font-medium" : "text-[#D03020] font-medium"}>{money(p.financials.net)}</span>} />
-            <Row label="Days on Rent" value={p.financials.days_on_rent || null} />
+            <Row label="Days On Rent" value={p.financials.days_on_rent || null} />
           </SectionCard>
         )}
       </div>
@@ -719,7 +719,7 @@ function Gps({ p, onEdit }: { p: Profile; onEdit: () => void }) {
         />
         {v.gps_install_notes && (
           <div className="mt-3 pt-3 border-t border-[#F4F4F6]">
-            <MicroLabel className="mb-1.5">Install notes</MicroLabel>
+            <MicroLabel className="mb-1.5">Install Notes</MicroLabel>
             <p className="text-[13px] text-[#55555E] whitespace-pre-wrap">
               {String(v.gps_install_notes)}
             </p>
@@ -954,7 +954,7 @@ function SectionDrawer({
             <Text label="Fuel" value={str("fuel_type")} onChange={(v) => set("fuel_type", v)} />
             <NumberField label="MPG" value={num("mpg")} onChange={(v) => set("mpg", v)} />
             <NumberField
-              label="Range per Tank"
+              label="Range Per Tank"
               value={num("miles_per_tank")}
               onChange={(v) => set("miles_per_tank", v)}
               suffix="mi"
@@ -1240,7 +1240,7 @@ function SectionDrawer({
             onChange={(v) => set("spare_key", v === "" ? null : v === "true")}
             options={[
               { value: "", label: "Not Recorded" },
-              { value: "true", label: "Yes — a Spare Exists" },
+              { value: "true", label: "Yes — A Spare Exists" },
               { value: "false", label: "No Spare" },
             ]}
             hint="Left unrecorded until someone actually checks."

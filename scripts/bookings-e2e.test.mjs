@@ -309,7 +309,7 @@ async function run(label, viewport) {
   const { ctx, page, errors } = await open(viewport, "team");
 
   // ---------------------------------------------- the rail
-  const nav = page.locator('aside[aria-label="Main navigation"]');
+  const nav = page.locator('aside[aria-label="Main Navigation"]');
   const railVisible = await nav.isVisible().catch(() => false);
   if (railVisible) {
     const labels = (await nav.innerText()).split("\n").map((s) => s.trim()).filter(Boolean);
@@ -362,15 +362,15 @@ async function run(label, viewport) {
   ok(!new URL(page.url()).searchParams.get("phase"), "clicking the pressed chip clears the filter from the URL");
 
   // ---------------------------------------------- search
-  await page.getByLabel("Search bookings").fill("RR-002");
+  await page.getByLabel("Search Bookings").fill("RR-002");
   await page.waitForTimeout(1600);
   ok(new URL(page.url()).searchParams.get("q") === "RR-002", "the search lands in the URL after the pause");
   ok(await shown(page) === 2, "  and narrows the list to that unit's two rentals");
-  await page.getByLabel("Search bookings").fill("nobody-by-this-name");
+  await page.getByLabel("Search Bookings").fill("nobody-by-this-name");
   await page.waitForTimeout(1600);
   ok(await page.getByText("No Matching Bookings").count() === 1,
     "a search with no match says so, and does not show the empty-fleet message");
-  await page.getByLabel("Search bookings").fill("");
+  await page.getByLabel("Search Bookings").fill("");
   await page.waitForTimeout(1600);
 
   // ---------------------------------------------- the drawer

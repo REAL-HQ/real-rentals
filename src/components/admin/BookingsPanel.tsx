@@ -174,7 +174,7 @@ export function BookingsPanel({
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           placeholder="Search driver, email, unit, plate, VIN…"
-          aria-label="Search bookings"
+          aria-label="Search Bookings"
           className="w-full min-w-0 rounded-md border border-border bg-white px-3 py-2 text-sm lg:w-auto lg:min-w-[200px] lg:flex-1"
         />
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1 lg:contents">
@@ -350,7 +350,7 @@ export function BookingsPanel({
             <button
               disabled={page <= 1}
               onClick={() => setList({ page: String(page - 1) })}
-              aria-label="Previous page"
+              aria-label="Previous Page"
               className="rounded-md border border-border bg-white p-1.5 disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -361,7 +361,7 @@ export function BookingsPanel({
             <button
               disabled={page >= pages}
               onClick={() => setList({ page: String(page + 1) })}
-              aria-label="Next page"
+              aria-label="Next Page"
               className="rounded-md border border-border bg-white p-1.5 disabled:opacity-40"
             >
               <ChevronRight className="h-4 w-4" />

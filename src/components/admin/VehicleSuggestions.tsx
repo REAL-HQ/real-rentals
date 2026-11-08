@@ -38,7 +38,7 @@ function EvidencePhoto({ path, onOpen }: { path: string; onOpen: (url: string) =
       type="button"
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpen(url); }}
       className="shrink-0 rounded-lg overflow-hidden border border-[#EDEDF0]"
-      aria-label="View the photograph this was read from"
+      aria-label="View The Photograph This Was Read From"
     >
       <img src={url} alt="" className="w-14 h-14 object-cover" />
     </button>

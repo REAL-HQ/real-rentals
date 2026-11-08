@@ -1,3 +1,4 @@
+import { enumDisplayLabel } from "@/lib/ui-display-labels";
 import { useEffect, useMemo, useState } from "react";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from "./modal";
 import { supabase } from "@/integrations/supabase/client";
@@ -207,7 +208,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
 
   return (
     <div className="max-lg:min-w-0">
-      <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Payments sections">
+      <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Payments Sections">
         {(
           [
             ["ledger", "Payments"],
@@ -245,9 +246,9 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1.5 rounded-md capitalize max-lg:shrink-0 max-lg:whitespace-nowrap ${statusFilter === s ? "bg-black text-white" : "bg-white border border-border"}`}
+              className={`px-3 py-1.5 rounded-md max-lg:shrink-0 max-lg:whitespace-nowrap ${statusFilter === s ? "bg-black text-white" : "bg-white border border-border"}`}
             >
-              {s.replace(/_/g, " ")}{" "}
+              {enumDisplayLabel(s)}{" "}
               {s !== "all" &&
                 `(${
                   s === "overdue"
@@ -262,8 +263,8 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="due_asc">Due date ↑</SelectItem>
-            <SelectItem value="due_desc">Due date ↓</SelectItem>
+            <SelectItem value="due_asc">Due Date ↑</SelectItem>
+            <SelectItem value="due_desc">Due Date ↓</SelectItem>
             <SelectItem value="amount_desc">Amount ↓</SelectItem>
           </SelectContent>
         </Select>
@@ -290,7 +291,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
       {showManual && <ManualPaymentsWorkspace payments={payments} driverMap={driverMap} onClose={() => setShowManual(false)} />}
       <AdminTableScroll className="max-lg:min-w-0 rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
         <table className="w-full text-sm max-lg:min-w-[52rem]">
-          <thead className="bg-[#FAFAFB] text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
+          <thead className="bg-[#FAFAFB] text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3]">
             <tr>
               <th className="text-left px-3 py-2.5">Driver</th>
               <th className="text-left px-3 py-2.5">Vehicle</th>
@@ -319,7 +320,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                   <td className="px-3 text-xs text-[#55555E] max-lg:whitespace-nowrap">
                     {v ? `${v.year} ${v.make} ${v.model}` : "—"}
                   </td>
-                  <td className="px-3 capitalize text-[13px]">{p.type.replace(/_/g, " ")}</td>
+                  <td className="px-3 text-[13px]">{enumDisplayLabel(p.type)}</td>
                   <td className="px-3 text-right tabular-nums text-[13px]">
                     ${Number(p.amount).toLocaleString()}
                   </td>
@@ -328,7 +329,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                   </td>
                   <td className="px-3">
                     {!canTake(tier, "set_open_status", String(p.status)) ? (
-                      <StatusPill status={p.status}>{STATUS_LABEL[p.status] ?? p.status.replace(/_/g, " ")}</StatusPill>
+                      <StatusPill status={p.status}>{STATUS_LABEL[p.status] ?? enumDisplayLabel(p.status)}</StatusPill>
                     ) : (
                     <Select
                       value={p.status}
@@ -337,7 +338,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                       <SelectTrigger className="h-7 w-auto border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden">
                         <span className="inline-flex items-center gap-1">
                           <StatusPill status={p.status}>
-                            {STATUS_LABEL[p.status] ?? p.status.replace(/_/g, " ")}
+                            {STATUS_LABEL[p.status] ?? enumDisplayLabel(p.status)}
                           </StatusPill>
                           <ChevronDown className="w-3 h-3 text-[#9A9AA3]" />
                         </span>
@@ -369,12 +370,12 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                       <DropdownMenuContent align="end">
                         {canTake(tier, "mark_paid", String(p.status)) && (
                           <DropdownMenuItem onClick={() => changeStatus(p, driverName, "mark_paid")}>
-                            <Check className="w-4 h-4 mr-2" /> Mark as Paid (Received Outside Stripe)
+                            <Check className="w-4 h-4 mr-2" /> Mark As Paid (Received Outside Stripe)
                           </DropdownMenuItem>
                         )}
                         {tier === "owner" && p.rental_id && !p.stripe_invoice_id && p.status !== "upcoming" && OPEN_STATUSES.includes(p.status as any) && (
                           <DropdownMenuItem onClick={() => chargeExisting(p, driverName)}>
-                            Charge Card for This Charge
+                            Charge Card For This Charge
                           </DropdownMenuItem>
                         )}
                         {canTake(tier, "waive", String(p.status)) && (
@@ -391,14 +392,14 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                           </DropdownMenuItem>
                         )}
                         {(p.status === "paid" || p.status === "refunded") && (
-                          <DropdownMenuItem disabled>Refunds Happen in the Stripe Dashboard</DropdownMenuItem>
+                          <DropdownMenuItem disabled>Refunds Happen In The Stripe Dashboard</DropdownMenuItem>
                         )}
                         {(p.status === "pending") && (
-                          <DropdownMenuItem disabled>Processing in Stripe: Check Stripe Before Any Change</DropdownMenuItem>
+                          <DropdownMenuItem disabled>Processing In Stripe: Check Stripe Before Any Change</DropdownMenuItem>
                         )}
                         {p.status === "pending" && tier === "owner" && (
                           <DropdownMenuItem onClick={() => releaseUnconfirmed(p, driverName)}>
-                            Check Stripe and Release (Not Collected)
+                            Check Stripe And Release (Not Collected)
                           </DropdownMenuItem>
                         )}
                       </DropdownMenuContent>
@@ -496,7 +497,7 @@ function AddPayment({
               <SelectContent>
                 {TYPES.map((t) => (
                   <SelectItem key={t} value={t}>
-                    {t.replace(/_/g, " ")}
+                    {enumDisplayLabel(t)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -509,7 +510,7 @@ function AddPayment({
                 {/* A new charge starts owed. Money received is recorded with Mark as Paid, which is audited. */}
                 {OPEN_STATUSES.map((s) => (
                   <SelectItem key={s} value={s}>
-                    {s.replace(/_/g, " ")}
+                    {enumDisplayLabel(s)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -526,7 +527,7 @@ function AddPayment({
               />
             </label>
             <label className="text-xs">
-              Due date
+              Due Date
               <input
                 type="date"
                 value={form.due_date || ""}

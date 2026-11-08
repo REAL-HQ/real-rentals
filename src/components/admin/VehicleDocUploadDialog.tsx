@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 // Vehicle Profile → Documents upload, as three visible steps.
 //
 // One pipeline: files go through Fleet Inbox (private vehicle-docs bucket,
@@ -116,7 +117,7 @@ export function VehicleDocUploadDialog({
   } | null>(null);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !e.defaultPrevented && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -436,7 +437,7 @@ export function VehicleDocUploadDialog({
         <div className="grid sm:grid-cols-2 gap-3">
           <label className="block text-[12px] text-[#55555E]">
             Document Type
-            <select
+            <AppSelect aria-label="Document Type"
               value={kind}
               disabled={!!batchId}
               onChange={(e) => setKind(e.target.value)}
@@ -447,7 +448,7 @@ export function VehicleDocUploadDialog({
                   {t.label}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </label>
           {type?.expires && (
             <label className="block text-[12px] text-[#55555E]">

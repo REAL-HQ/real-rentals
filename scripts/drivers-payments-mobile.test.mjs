@@ -152,8 +152,8 @@ const pairs = [
     "payments status chips at lg",
   ],
   [
-    "px-3 py-1.5 rounded-md capitalize",
-    "px-3 py-1.5 rounded-md capitalize max-lg:shrink-0 max-lg:whitespace-nowrap",
+    "px-3 py-1.5 rounded-md",
+    "px-3 py-1.5 rounded-md max-lg:shrink-0 max-lg:whitespace-nowrap",
     "payments status chip at lg",
   ],
   [
@@ -221,7 +221,7 @@ for (const [src, needle, label] of present) check(src.includes(needle), label);
 check(!drivers.includes("admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto"), "the old drivers bar class is gone");
 check(!payments.includes("admin-sticky-bar flex flex-wrap items-center gap-2 mb-4 pb-2"), "the old payments bar class is gone");
 check(!drivers.includes("text-transform") && !payments.includes("text-transform"), "neither screen adds a text-transform");
-check(payments.includes("rounded-md capitalize max-lg:shrink-0"), "the existing capitalize on status chips stays");
+check(payments.includes("enumDisplayLabel(s)") && !payments.includes("capitalize"), "status chips use explicit labels without casing customer content");
 check(!drivers.includes("max-lg:uppercase") && !payments.includes("max-lg:uppercase") && !drivers.includes("max-lg:capitalize") && !payments.includes("max-lg:capitalize"), "phone classes do not add a case transform");
 
 const contents = [

@@ -166,7 +166,7 @@ export function VehicleDocuments({
   return (
     <div className={bare ? "space-y-3" : "rounded-xl border border-[#EDEDF0] p-4 space-y-3"}>
       {!bare && (
-        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <div className="text-xs font-semibold tracking-wider text-muted-foreground">
           Documents
         </div>
       )}
@@ -216,7 +216,7 @@ export function VehicleDocuments({
 
       {linked.filter((l) => l.source === "fleet_inbox" || l.relatedVehicles > 1).length > 0 && (
         <div className="pt-2 space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Related Evidence — From Fleet Inbox</div>
+          <div className="text-xs font-semibold tracking-wider text-muted-foreground">Related Evidence — From Fleet Inbox</div>
           {[...DOC_GROUPS.map((g) => g.group)].map((group) => {
             const rows = linked.filter((l) => (l.source === "fleet_inbox" || l.relatedVehicles > 1) && docGroupOf(l.kind) === group);
             if (!rows.length) return null;
@@ -358,7 +358,7 @@ function DocRow({
           type="button"
           onClick={onDelete}
           className="text-muted-foreground hover:text-[#D03020]"
-          aria-label="Delete document"
+          aria-label="Delete Document"
         >
           <Trash2 className="w-4 h-4" />
         </button>

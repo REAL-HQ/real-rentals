@@ -1,3 +1,5 @@
+import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { AppSelect } from "@/components/ui/app-select";
 import { useContext, useEffect, useState, createContext, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -139,13 +141,13 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
           <button
             key={s}
             onClick={() => setFilter(s)}
-            className={`rounded-full px-3 py-1 text-xs font-medium border capitalize transition-colors ${
+            className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
               filter === s
                 ? "border-[#D03020] bg-[#D03020] text-white"
                 : "border-[#EDEDF0] text-[#55555E] hover:border-[#D6D6DB]"
             }`}
           >
-            {s.replace(/_/g, " ")}
+            {enumDisplayLabel(s)}
           </button>
         ))}
         {INCIDENT_CHARGE_PREP_ENABLED ? (
@@ -158,7 +160,7 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
                 : "border-[#EDEDF0] text-[#55555E] hover:border-[#D6D6DB]"
             }`}
           >
-            Remaining to Charge
+            Remaining To Charge
           </button>
         ) : null}
       </div>
@@ -185,8 +187,8 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold capitalize">
-                        {r.incident_type.replace(/_/g, " ")}
+                      <span className="font-semibold ">
+                        {enumDisplayLabel(r.incident_type)}
                       </span>
                       <StatusPill
                         status={
@@ -197,11 +199,11 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
                               : "pending"
                         }
                       >
-                        {r.status.replace(/_/g, " ")}
+                        {enumDisplayLabel(r.status)}
                       </StatusPill>
                       {r.severity !== "minor" ? (
                         <StatusPill tone={r.severity === "total_loss" ? "red" : "amber"}>
-                          {r.severity.replace(/_/g, " ")}
+                          {enumDisplayLabel(r.severity)}
                         </StatusPill>
                       ) : null}
                       {r.injuries ? <StatusPill tone="red">injuries</StatusPill> : null}
@@ -239,7 +241,7 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
 
                 {r.estimated_cost > 0 || r.actual_cost > 0 || r.claim_number ? (
                   <div className="mt-3 pt-3 border-t border-[#EDEDF0] grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-                    <Fig label="Fault" text={r.at_fault.replace(/_/g, " ")} />
+                    <Fig label="Fault" text={enumDisplayLabel(r.at_fault)} />
                     <Fig label="Estimate" text={money(r.estimated_cost)} />
                     <Fig label="Actual" text={money(r.actual_cost)} />
                     <Fig label="Insurance Paid" text={money(r.insurance_payout)} />
@@ -251,7 +253,7 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
                       />
                     ) : null}
                     {r.actual_cost > 0 ? (
-                      <Fig label="Net to Company" text={money(net)} strong />
+                      <Fig label="Net To Company" text={money(net)} strong />
                     ) : null}
                   </div>
                 ) : null}
@@ -395,8 +397,8 @@ function RemainingToChargeFetch({
 function Fig({ label, text, strong }: { label: string; text: string; strong?: boolean }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-[#9A9AA3]">{label}</div>
-      <div className={`capitalize ${strong ? "font-semibold" : ""}`}>{text}</div>
+      <div className="text-[10px] tracking-wide text-[#9A9AA3]">{label}</div>
+      <div className={`${strong ? "font-semibold" : ""}`}>{text}</div>
     </div>
   );
 }
@@ -558,26 +560,26 @@ function IncidentForm({
               label="Severity"
               value={f.severity}
               onChange={(v) => set("severity", v)}
-              options={SEVERITIES.map((s) => [s, s.replace(/_/g, " ")])}
+              options={SEVERITIES.map((s) => [s, enumDisplayLabel(s)])}
             />
             <Sel
               label="At Fault"
               value={f.atFault}
               onChange={(v) => set("atFault", v)}
-              options={FAULTS.map((s) => [s, s.replace(/_/g, " ")])}
+              options={FAULTS.map((s) => [s, enumDisplayLabel(s)])}
             />
             <Sel
               label="Status"
               value={f.status}
               onChange={(v) => set("status", v)}
-              options={STATUSES.map((s) => [s, s.replace(/_/g, " ")])}
+              options={STATUSES.map((s) => [s, enumDisplayLabel(s)])}
             />
             {Txt("Location", "location")}
             {Txt("Police report #", "policeReportNumber")}
           </div>
 
           <div>
-            <MicroLabel>What happened</MicroLabel>
+            <MicroLabel>What Happened</MicroLabel>
             <textarea
               value={f.description}
               onChange={(e) => set("description", e.target.value)}
@@ -594,7 +596,7 @@ function IncidentForm({
                 checked={f.injuries}
                 onChange={(e) => set("injuries", e.target.checked)}
               />
-              Injuries reported
+              Injuries Reported
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -602,7 +604,7 @@ function IncidentForm({
                 checked={f.drivable === true}
                 onChange={(e) => set("drivable", e.target.checked ? true : false)}
               />
-              Still drivable
+              Still Drivable
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -610,31 +612,31 @@ function IncidentForm({
                 checked={f.markVehicleDown}
                 onChange={(e) => set("markVehicleDown", e.target.checked)}
               />
-              Take vehicle off the road
+              Take Vehicle Off The Road
             </label>
           </div>
 
           <div className="rounded-xl border border-[#EDEDF0] p-3 space-y-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-[#55555E]">
+            <div className="text-xs font-semibold tracking-wide text-[#55555E]">
               Claim &amp; costs
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {Txt("Claim #", "claimNumber")}
               {Txt("Carrier", "insuranceCarrier")}
               <div>
-                <MicroLabel>Repair vendor</MicroLabel>
-                <select
+                <MicroLabel>Repair Vendor</MicroLabel>
+                <AppSelect aria-label="Repair Vendor"
                   value={f.vendorId}
                   onChange={(e) => set("vendorId", e.target.value)}
                   className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
                 >
-                  <option value="">Not assigned</option>
+                  <option value="">Not Assigned</option>
                   {vendors.map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.name}
                     </option>
                   ))}
-                </select>
+                </AppSelect>
               </div>
               {Txt("Deductible $", "deductible")}
               {Txt("Estimate $", "estimatedCost")}
@@ -648,7 +650,7 @@ function IncidentForm({
           </div>
 
           <div>
-            <MicroLabel>Internal notes</MicroLabel>
+            <MicroLabel>Internal Notes</MicroLabel>
             <textarea
               value={f.notes}
               onChange={(e) => set("notes", e.target.value)}
@@ -692,17 +694,17 @@ function Sel({
   return (
     <div>
       <MicroLabel>{label}</MicroLabel>
-      <select
+      <AppSelect aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white capitalize"
+        className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white "
       >
         {options.map(([v, l]) => (
           <option key={v} value={v}>
             {l}
           </option>
         ))}
-      </select>
+      </AppSelect>
     </div>
   );
 }

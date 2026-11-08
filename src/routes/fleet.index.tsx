@@ -353,7 +353,7 @@ function FleetPage() {
           ) : (
           <div className="rounded-2xl bg-soft p-5 flex flex-wrap items-center gap-5">
             <div className="flex flex-col">
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Make</label>
+              <label className="text-[10px] tracking-wider text-muted-foreground mb-1">Make</label>
               <Select value={make} onValueChange={setMake}>
                 <SelectTrigger className="h-9 w-36 rounded-lg bg-white text-foreground">
                   <SelectValue />
@@ -365,7 +365,7 @@ function FleetPage() {
               </Select>
             </div>
             <div className="flex flex-col flex-1 min-w-[260px]">
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Category</label>
+              <label className="text-[10px] tracking-wider text-muted-foreground mb-2">Category</label>
               <div className="flex flex-wrap gap-2">
                 {[
                   { k: "sedan", label: CATEGORY_LABEL.sedan, tagline: "Great MPG · Uber & Lyft" },

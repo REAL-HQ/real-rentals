@@ -1,0 +1,1633 @@
+[
+  {
+    "file": "src/components/admin/AddVehicleDialog.tsx",
+    "line": 187,
+    "kind": "attribute",
+    "before": "Start from a VIN",
+    "after": "Start From A VIN"
+  },
+  {
+    "file": "src/components/admin/AddVehicleDialog.tsx",
+    "line": 193,
+    "kind": "attribute",
+    "before": "Scan the Title",
+    "after": "Scan The Title"
+  },
+  {
+    "file": "src/components/admin/AddVehicleDialog.tsx",
+    "line": 199,
+    "kind": "attribute",
+    "before": "Import a Spreadsheet",
+    "after": "Import A Spreadsheet"
+  },
+  {
+    "file": "src/components/admin/AddVehicleDialog.tsx",
+    "line": 455,
+    "kind": "text",
+    "before": "Use These for Anything Still Blank",
+    "after": "Use These For Anything Still Blank"
+  },
+  {
+    "file": "src/components/admin/AdminToolbar.tsx",
+    "line": 79,
+    "kind": "attribute",
+    "before": "Clear top search",
+    "after": "Clear Top Search"
+  },
+  {
+    "file": "src/components/admin/AgreementTemplatesPanel.tsx",
+    "line": 276,
+    "kind": "text",
+    "before": "Type APPROVE to confirm",
+    "after": "Type APPROVE To Confirm"
+  },
+  {
+    "file": "src/components/admin/ApplicantDocuments.tsx",
+    "line": 490,
+    "kind": "text",
+    "before": "Additional files",
+    "after": "Additional Files"
+  },
+  {
+    "file": "src/components/admin/ApplicantDocuments.tsx",
+    "line": 513,
+    "kind": "attribute",
+    "before": "Team only",
+    "after": "Team Only"
+  },
+  {
+    "file": "src/components/admin/ApplicantDocuments.tsx",
+    "line": 531,
+    "kind": "text",
+    "before": "Replaced versions",
+    "after": "Replaced Versions"
+  },
+  {
+    "file": "src/components/admin/ApplicationQuickReview.tsx",
+    "line": 118,
+    "kind": "text",
+    "before": "Link expired, open in Documents",
+    "after": "Link Expired, Open In Documents"
+  },
+  {
+    "file": "src/components/admin/AutomationsPanel.tsx",
+    "line": 44,
+    "kind": "property",
+    "before": "Someone Completes an Application",
+    "after": "Someone Completes An Application"
+  },
+  {
+    "file": "src/components/admin/AutomationsPanel.tsx",
+    "line": 45,
+    "kind": "property",
+    "before": "Someone Abandons the Application",
+    "after": "Someone Abandons The Application"
+  },
+  {
+    "file": "src/components/admin/AutomationsPanel.tsx",
+    "line": 399,
+    "kind": "attribute",
+    "before": "When should it start?",
+    "after": "When Should It Start?"
+  },
+  {
+    "file": "src/components/admin/AutomationsPanel.tsx",
+    "line": 430,
+    "kind": "text",
+    "before": "Stop the sequence when they reply",
+    "after": "Stop The Sequence When They Reply"
+  },
+  {
+    "file": "src/components/admin/AutomationsPanel.tsx",
+    "line": 540,
+    "kind": "attribute",
+    "before": "Send this long after the trigger",
+    "after": "Send This Long After The Trigger"
+  },
+  {
+    "file": "src/components/admin/AutomationsPanel.tsx",
+    "line": 554,
+    "kind": "text",
+    "before": "minutes",
+    "after": "Minutes"
+  },
+  {
+    "file": "src/components/admin/AutomationsPanel.tsx",
+    "line": 555,
+    "kind": "text",
+    "before": "hours",
+    "after": "Hours"
+  },
+  {
+    "file": "src/components/admin/AutomationsPanel.tsx",
+    "line": 556,
+    "kind": "text",
+    "before": "days",
+    "after": "Days"
+  },
+  {
+    "file": "src/components/admin/AvailableCarsBoard.tsx",
+    "line": 47,
+    "kind": "attribute",
+    "before": "No available cars",
+    "after": "No Available Cars"
+  },
+  {
+    "file": "src/components/admin/AvailableCarsBoard.tsx",
+    "line": 62,
+    "kind": "attribute",
+    "before": "Photos are AI-generated from this car's own photos and approved by the team",
+    "after": "Photos Are AI-generated From This Car's Own Photos And Approved By The Team"
+  },
+  {
+    "file": "src/components/admin/BookingActions.tsx",
+    "line": 333,
+    "kind": "attribute",
+    "before": "End date",
+    "after": "End Date"
+  },
+  {
+    "file": "src/components/admin/BookingActions.tsx",
+    "line": 344,
+    "kind": "attribute",
+    "before": "Return mileage",
+    "after": "Return Mileage"
+  },
+  {
+    "file": "src/components/admin/BookingDetails.tsx",
+    "line": 213,
+    "kind": "attribute",
+    "before": "This booking could not be loaded",
+    "after": "This Booking Could Not Be Loaded"
+  },
+  {
+    "file": "src/components/admin/BookingsPanel.tsx",
+    "line": 177,
+    "kind": "attribute",
+    "before": "Search bookings",
+    "after": "Search Bookings"
+  },
+  {
+    "file": "src/components/admin/BookingsPanel.tsx",
+    "line": 353,
+    "kind": "attribute",
+    "before": "Previous page",
+    "after": "Previous Page"
+  },
+  {
+    "file": "src/components/admin/BookingsPanel.tsx",
+    "line": 364,
+    "kind": "attribute",
+    "before": "Next page",
+    "after": "Next Page"
+  },
+  {
+    "file": "src/components/admin/BulkReceiptUpload.tsx",
+    "line": 131,
+    "kind": "attribute",
+    "before": "Drop receipts or invoices here",
+    "after": "Drop Receipts Or Invoices Here"
+  },
+  {
+    "file": "src/components/admin/BulkReceiptUpload.tsx",
+    "line": 157,
+    "kind": "text",
+    "before": "Assign car",
+    "after": "Assign Car"
+  },
+  {
+    "file": "src/components/admin/BulkReceiptUpload.tsx",
+    "line": 160,
+    "kind": "attribute",
+    "before": "Remove from list",
+    "after": "Remove From List"
+  },
+  {
+    "file": "src/components/admin/BulkReceiptUpload.tsx",
+    "line": 181,
+    "kind": "attribute",
+    "before": "Remove car",
+    "after": "Remove Car"
+  },
+  {
+    "file": "src/components/admin/BulkReceiptUpload.tsx",
+    "line": 185,
+    "kind": "text",
+    "before": "+ Add another car",
+    "after": "+ Add Another Car"
+  },
+  {
+    "file": "src/components/admin/BulkReceiptUpload.tsx",
+    "line": 197,
+    "kind": "text",
+    "before": "File to",
+    "after": "File To"
+  },
+  {
+    "file": "src/components/admin/ChargesPanel.tsx",
+    "line": 38,
+    "kind": "property",
+    "before": "Ready to Bill",
+    "after": "Ready To Bill"
+  },
+  {
+    "file": "src/components/admin/ChargesPanel.tsx",
+    "line": 193,
+    "kind": "text",
+    "before": "Bill to Renters",
+    "after": "Bill To Renters"
+  },
+  {
+    "file": "src/components/admin/ChargesPanel.tsx",
+    "line": 468,
+    "kind": "text",
+    "before": "When it happened",
+    "after": "When It Happened"
+  },
+  {
+    "file": "src/components/admin/ChargesPanel.tsx",
+    "line": 486,
+    "kind": "text",
+    "before": "Admin fee $",
+    "after": "Admin Fee $"
+  },
+  {
+    "file": "src/components/admin/ChargesPanel.tsx",
+    "line": 648,
+    "kind": "text",
+    "before": "Charge type",
+    "after": "Charge Type"
+  },
+  {
+    "file": "src/components/admin/ChargesPanel.tsx",
+    "line": 662,
+    "kind": "text",
+    "before": "Agency (fallback)",
+    "after": "Agency (Fallback)"
+  },
+  {
+    "file": "src/components/admin/ChargesPanel.tsx",
+    "line": 671,
+    "kind": "text",
+    "before": "Admin fee each $",
+    "after": "Admin Fee Each $"
+  },
+  {
+    "file": "src/components/admin/CloseApplicationDialog.tsx",
+    "line": 33,
+    "kind": "text",
+    "before": "Select a Reason",
+    "after": "Select A Reason"
+  },
+  {
+    "file": "src/components/admin/DepositDialog.tsx",
+    "line": 163,
+    "kind": "text",
+    "before": "Outstanding on this rental",
+    "after": "Outstanding On This Rental"
+  },
+  {
+    "file": "src/components/admin/DepositDialog.tsx",
+    "line": 227,
+    "kind": "text",
+    "before": "Other deduction",
+    "after": "Other Deduction"
+  },
+  {
+    "file": "src/components/admin/DepositDialog.tsx",
+    "line": 257,
+    "kind": "text",
+    "before": "Note to the renter (optional)",
+    "after": "Note To The Renter (Optional)"
+  },
+  {
+    "file": "src/components/admin/DepositDialog.tsx",
+    "line": 284,
+    "kind": "text",
+    "before": "Settle &amp; refund",
+    "after": "Settle &amp; Refund"
+  },
+  {
+    "file": "src/components/admin/DocumentViewer.tsx",
+    "line": 169,
+    "kind": "text",
+    "before": "Open it in a new tab",
+    "after": "Open It In A New Tab"
+  },
+  {
+    "file": "src/components/admin/DocumentViewer.tsx",
+    "line": 197,
+    "kind": "text",
+    "before": "Download to open",
+    "after": "Download To Open"
+  },
+  {
+    "file": "src/components/admin/DriverScreening.tsx",
+    "line": 442,
+    "kind": "attribute",
+    "before": "Months on Platform",
+    "after": "Months On Platform"
+  },
+  {
+    "file": "src/components/admin/DriverScreening.tsx",
+    "line": 486,
+    "kind": "attribute",
+    "before": "Needed by Date",
+    "after": "Needed By Date"
+  },
+  {
+    "file": "src/components/admin/DriverScreening.tsx",
+    "line": 500,
+    "kind": "attribute",
+    "before": "Card in Own Name",
+    "after": "Card In Own Name"
+  },
+  {
+    "file": "src/components/admin/DriversPanel.tsx",
+    "line": 1574,
+    "kind": "text",
+    "before": "Open in Messages",
+    "after": "Open In Messages"
+  },
+  {
+    "file": "src/components/admin/DriversPanel.tsx",
+    "line": 2483,
+    "kind": "attribute",
+    "before": "More actions",
+    "after": "More Actions"
+  },
+  {
+    "file": "src/components/admin/DriversPanel.tsx",
+    "line": 2649,
+    "kind": "attribute",
+    "before": "License exp.",
+    "after": "License Exp."
+  },
+  {
+    "file": "src/components/admin/DriversPanel.tsx",
+    "line": 2738,
+    "kind": "text",
+    "before": "Record Rental \u2014 pending acceptance",
+    "after": "Record Rental \u2014 Pending Acceptance"
+  },
+  {
+    "file": "src/components/admin/DriversPanel.tsx",
+    "line": 2739,
+    "kind": "text",
+    "before": "Close recorded rental \u2014 pending acceptance",
+    "after": "Close Recorded Rental \u2014 Pending Acceptance"
+  },
+  {
+    "file": "src/components/admin/DriversPanel.tsx",
+    "line": 3368,
+    "kind": "attribute",
+    "before": "Copy a fresh application link (older links are revoked)",
+    "after": "Copy A Fresh Application Link (Older Links Are Revoked)"
+  },
+  {
+    "file": "src/components/admin/DriversPanel.tsx",
+    "line": 3369,
+    "kind": "attribute",
+    "before": "Copy a fresh application link",
+    "after": "Copy A Fresh Application Link"
+  },
+  {
+    "file": "src/components/admin/DriversPanel.tsx",
+    "line": 3566,
+    "kind": "text",
+    "before": "Text Link to Driver",
+    "after": "Text Link To Driver"
+  },
+  {
+    "file": "src/components/admin/DriversPanel.tsx",
+    "line": 3571,
+    "kind": "text",
+    "before": "Email Link to Driver",
+    "after": "Email Link To Driver"
+  },
+  {
+    "file": "src/components/admin/DriversPanel.tsx",
+    "line": 3648,
+    "kind": "text",
+    "before": "Charge Card on File",
+    "after": "Charge Card On File"
+  },
+  {
+    "file": "src/components/admin/DriversPanel.tsx",
+    "line": 3686,
+    "kind": "text",
+    "before": "Note (optional)",
+    "after": "Note (Optional)"
+  },
+  {
+    "file": "src/components/admin/DriversPanel.tsx",
+    "line": 3862,
+    "kind": "property",
+    "before": "Driving Profile Screenshot (Uber, Lyft, DoorDash, etc.)",
+    "after": "Driving Profile Screenshot (Uber, Lyft, DoorDash, Etc.)"
+  },
+  {
+    "file": "src/components/admin/ExpensesPanel.tsx",
+    "line": 211,
+    "kind": "text",
+    "before": "Days rented",
+    "after": "Days Rented"
+  },
+  {
+    "file": "src/components/admin/ExpensesPanel.tsx",
+    "line": 415,
+    "kind": "attribute",
+    "before": "Filter by vehicle",
+    "after": "Filter By Vehicle"
+  },
+  {
+    "file": "src/components/admin/ExpensesPanel.tsx",
+    "line": 691,
+    "kind": "text",
+    "before": "Record an Expense",
+    "after": "Record An Expense"
+  },
+  {
+    "file": "src/components/admin/ExpensesPanel.tsx",
+    "line": 781,
+    "kind": "text",
+    "before": "This repeats (insurance, finance payment)",
+    "after": "This Repeats (Insurance, Finance Payment)"
+  },
+  {
+    "file": "src/components/admin/FleetFilePreview.tsx",
+    "line": 104,
+    "kind": "attribute",
+    "before": "Previous file",
+    "after": "Previous File"
+  },
+  {
+    "file": "src/components/admin/FleetFilePreview.tsx",
+    "line": 105,
+    "kind": "attribute",
+    "before": "Next file",
+    "after": "Next File"
+  },
+  {
+    "file": "src/components/admin/FleetInboxPanel.tsx",
+    "line": 430,
+    "kind": "attribute",
+    "before": "Classify manually",
+    "after": "Classify Manually"
+  },
+  {
+    "file": "src/components/admin/FleetInboxPanel.tsx",
+    "line": 450,
+    "kind": "attribute",
+    "before": "Attach to vehicle",
+    "after": "Attach To Vehicle"
+  },
+  {
+    "file": "src/components/admin/FleetInboxPanel.tsx",
+    "line": 645,
+    "kind": "attribute",
+    "before": "Match vehicle",
+    "after": "Match Vehicle"
+  },
+  {
+    "file": "src/components/admin/ImportVehiclesStep.tsx",
+    "line": 122,
+    "kind": "attribute",
+    "before": "Choose a CSV File",
+    "after": "Choose A CSV File"
+  },
+  {
+    "file": "src/components/admin/ImportVehiclesStep.tsx",
+    "line": 143,
+    "kind": "text",
+    "before": "Download a Template",
+    "after": "Download A Template"
+  },
+  {
+    "file": "src/components/admin/ImportVehiclesStep.tsx",
+    "line": 187,
+    "kind": "text",
+    "before": "Match your columns",
+    "after": "Match Your Columns"
+  },
+  {
+    "file": "src/components/admin/ImportVehiclesStep.tsx",
+    "line": 207,
+    "kind": "text",
+    "before": "Ignore this column",
+    "after": "Ignore This Column"
+  },
+  {
+    "file": "src/components/admin/IncidentsPanel.tsx",
+    "line": 162,
+    "kind": "text",
+    "before": "Remaining to Charge",
+    "after": "Remaining To Charge"
+  },
+  {
+    "file": "src/components/admin/IncidentsPanel.tsx",
+    "line": 255,
+    "kind": "attribute",
+    "before": "Net to Company",
+    "after": "Net To Company"
+  },
+  {
+    "file": "src/components/admin/IncidentsPanel.tsx",
+    "line": 581,
+    "kind": "text",
+    "before": "What happened",
+    "after": "What Happened"
+  },
+  {
+    "file": "src/components/admin/IncidentsPanel.tsx",
+    "line": 598,
+    "kind": "text",
+    "before": "Injuries reported",
+    "after": "Injuries Reported"
+  },
+  {
+    "file": "src/components/admin/IncidentsPanel.tsx",
+    "line": 606,
+    "kind": "text",
+    "before": "Still drivable",
+    "after": "Still Drivable"
+  },
+  {
+    "file": "src/components/admin/IncidentsPanel.tsx",
+    "line": 614,
+    "kind": "text",
+    "before": "Take vehicle off the road",
+    "after": "Take Vehicle Off The Road"
+  },
+  {
+    "file": "src/components/admin/IncidentsPanel.tsx",
+    "line": 626,
+    "kind": "text",
+    "before": "Repair vendor",
+    "after": "Repair Vendor"
+  },
+  {
+    "file": "src/components/admin/IncidentsPanel.tsx",
+    "line": 632,
+    "kind": "text",
+    "before": "Not assigned",
+    "after": "Not Assigned"
+  },
+  {
+    "file": "src/components/admin/IncidentsPanel.tsx",
+    "line": 652,
+    "kind": "text",
+    "before": "Internal notes",
+    "after": "Internal Notes"
+  },
+  {
+    "file": "src/components/admin/InspectionsPanel.tsx",
+    "line": 290,
+    "kind": "text",
+    "before": "No checklists",
+    "after": "No Checklists"
+  },
+  {
+    "file": "src/components/admin/InspectionsPanel.tsx",
+    "line": 299,
+    "kind": "text",
+    "before": "Odometer (optional)",
+    "after": "Odometer (Optional)"
+  },
+  {
+    "file": "src/components/admin/InspectionsPanel.tsx",
+    "line": 477,
+    "kind": "text",
+    "before": "Fuel level",
+    "after": "Fuel Level"
+  },
+  {
+    "file": "src/components/admin/LeadPriorities.tsx",
+    "line": 161,
+    "kind": "attribute",
+    "before": "Lead filters",
+    "after": "Lead Filters"
+  },
+  {
+    "file": "src/components/admin/MaintenanceSchedules.tsx",
+    "line": 442,
+    "kind": "text",
+    "before": "Every (miles)",
+    "after": "Every (Miles)"
+  },
+  {
+    "file": "src/components/admin/MaintenanceSchedules.tsx",
+    "line": 452,
+    "kind": "text",
+    "before": "Every (days)",
+    "after": "Every (Days)"
+  },
+  {
+    "file": "src/components/admin/MaintenanceSchedules.tsx",
+    "line": 557,
+    "kind": "text",
+    "before": "Date performed",
+    "after": "Date Performed"
+  },
+  {
+    "file": "src/components/admin/MaintenanceSchedules.tsx",
+    "line": 582,
+    "kind": "text",
+    "before": "Not recorded",
+    "after": "Not Recorded"
+  },
+  {
+    "file": "src/components/admin/MessagesOverlay.tsx",
+    "line": 177,
+    "kind": "attribute",
+    "before": "Search conversations",
+    "after": "Search Conversations"
+  },
+  {
+    "file": "src/components/admin/MessagesOverlay.tsx",
+    "line": 179,
+    "kind": "attribute",
+    "before": "Mark all as read",
+    "after": "Mark All As Read"
+  },
+  {
+    "file": "src/components/admin/MessagesOverlay.tsx",
+    "line": 189,
+    "kind": "attribute",
+    "before": "Search conversations text",
+    "after": "Search Conversations Text"
+  },
+  {
+    "file": "src/components/admin/MessagesOverlay.tsx",
+    "line": 194,
+    "kind": "attribute",
+    "before": "Filter conversations",
+    "after": "Filter Conversations"
+  },
+  {
+    "file": "src/components/admin/MessagesOverlay.tsx",
+    "line": 291,
+    "kind": "attribute",
+    "before": "Back to conversations",
+    "after": "Back To Conversations"
+  },
+  {
+    "file": "src/components/admin/MessagesOverlay.tsx",
+    "line": 297,
+    "kind": "attribute",
+    "before": "Conversation info",
+    "after": "Conversation Info"
+  },
+  {
+    "file": "src/components/admin/MessagesOverlay.tsx",
+    "line": 389,
+    "kind": "attribute",
+    "before": "Back to conversation",
+    "after": "Back To Conversation"
+  },
+  {
+    "file": "src/components/admin/MessagesOverlay.tsx",
+    "line": 444,
+    "kind": "attribute",
+    "before": "Close messages",
+    "after": "Close Messages"
+  },
+  {
+    "file": "src/components/admin/OverviewPanel.tsx",
+    "line": 669,
+    "kind": "attribute",
+    "before": "Sort applications",
+    "after": "Sort Applications"
+  },
+  {
+    "file": "src/components/admin/OverviewPanel.tsx",
+    "line": 760,
+    "kind": "attribute",
+    "before": "Billed vs Collected",
+    "after": "Billed Vs Collected"
+  },
+  {
+    "file": "src/components/admin/OverviewPanel.tsx",
+    "line": 787,
+    "kind": "attribute",
+    "before": "Billed vs Collected",
+    "after": "Billed Vs Collected"
+  },
+  {
+    "file": "src/components/admin/PaperAgreements.tsx",
+    "line": 234,
+    "kind": "text",
+    "before": "Upload and Register",
+    "after": "Upload And Register"
+  },
+  {
+    "file": "src/components/admin/PaperAgreements.tsx",
+    "line": 241,
+    "kind": "text",
+    "before": "Recover result",
+    "after": "Recover Result"
+  },
+  {
+    "file": "src/components/admin/PaperAgreements.tsx",
+    "line": 244,
+    "kind": "text",
+    "before": "Cancel registration",
+    "after": "Cancel Registration"
+  },
+  {
+    "file": "src/components/admin/PaperAgreements.tsx",
+    "line": 262,
+    "kind": "text",
+    "before": "Inspect candidates",
+    "after": "Inspect Candidates"
+  },
+  {
+    "file": "src/components/admin/PartnerStatementPanel.tsx",
+    "line": 91,
+    "kind": "text",
+    "before": "Choose a Partner",
+    "after": "Choose A Partner"
+  },
+  {
+    "file": "src/components/admin/PartnersPanel.tsx",
+    "line": 124,
+    "kind": "text",
+    "before": "Convert to Partner",
+    "after": "Convert To Partner"
+  },
+  {
+    "file": "src/components/admin/PartnersPanel.tsx",
+    "line": 133,
+    "kind": "text",
+    "before": "Convert to Partner",
+    "after": "Convert To Partner"
+  },
+  {
+    "file": "src/components/admin/PaymentsPanel.tsx",
+    "line": 210,
+    "kind": "attribute",
+    "before": "Payments sections",
+    "after": "Payments Sections"
+  },
+  {
+    "file": "src/components/admin/PaymentsPanel.tsx",
+    "line": 265,
+    "kind": "text",
+    "before": "Due date \u2191",
+    "after": "Due Date \u2191"
+  },
+  {
+    "file": "src/components/admin/PaymentsPanel.tsx",
+    "line": 266,
+    "kind": "text",
+    "before": "Due date \u2193",
+    "after": "Due Date \u2193"
+  },
+  {
+    "file": "src/components/admin/PaymentsPanel.tsx",
+    "line": 372,
+    "kind": "text",
+    "before": "Mark as Paid (Received Outside Stripe)",
+    "after": "Mark As Paid (Received Outside Stripe)"
+  },
+  {
+    "file": "src/components/admin/PaymentsPanel.tsx",
+    "line": 377,
+    "kind": "text",
+    "before": "Charge Card for This Charge",
+    "after": "Charge Card For This Charge"
+  },
+  {
+    "file": "src/components/admin/PaymentsPanel.tsx",
+    "line": 394,
+    "kind": "text",
+    "before": "Refunds Happen in the Stripe Dashboard",
+    "after": "Refunds Happen In The Stripe Dashboard"
+  },
+  {
+    "file": "src/components/admin/PaymentsPanel.tsx",
+    "line": 397,
+    "kind": "text",
+    "before": "Processing in Stripe: Check Stripe Before Any Change",
+    "after": "Processing In Stripe: Check Stripe Before Any Change"
+  },
+  {
+    "file": "src/components/admin/PaymentsPanel.tsx",
+    "line": 401,
+    "kind": "text",
+    "before": "Check Stripe and Release (Not Collected)",
+    "after": "Check Stripe And Release (Not Collected)"
+  },
+  {
+    "file": "src/components/admin/PaymentsPanel.tsx",
+    "line": 529,
+    "kind": "text",
+    "before": "Due date",
+    "after": "Due Date"
+  },
+  {
+    "file": "src/components/admin/PhotoReadingPanel.tsx",
+    "line": 53,
+    "kind": "attribute",
+    "before": "Photo Reading enabled",
+    "after": "Photo Reading Enabled"
+  },
+  {
+    "file": "src/components/admin/PhotoStudioPanel.tsx",
+    "line": 56,
+    "kind": "attribute",
+    "before": "Marketing photos (AI Studio)",
+    "after": "Marketing Photos (AI Studio)"
+  },
+  {
+    "file": "src/components/admin/PhotoStudioPanel.tsx",
+    "line": 96,
+    "kind": "text",
+    "before": "Originals (team only)",
+    "after": "Originals (Team Only)"
+  },
+  {
+    "file": "src/components/admin/PhotoStudioPanel.tsx",
+    "line": 97,
+    "kind": "attribute",
+    "before": "No originals yet",
+    "after": "No Originals Yet"
+  },
+  {
+    "file": "src/components/admin/PhotoStudioSettingsCard.tsx",
+    "line": 26,
+    "kind": "text",
+    "before": "Monthly cap $",
+    "after": "Monthly Cap $"
+  },
+  {
+    "file": "src/components/admin/PrepareAgreementDialog.tsx",
+    "line": 161,
+    "kind": "attribute",
+    "before": "No Additional Drivers (prints None Authorized)",
+    "after": "No Additional Drivers (Prints None Authorized)"
+  },
+  {
+    "file": "src/components/admin/PrepareAgreementDialog.tsx",
+    "line": 198,
+    "kind": "text",
+    "before": "Reason (internal, not printed)",
+    "after": "Reason (Internal, Not Printed)"
+  },
+  {
+    "file": "src/components/admin/PrepareAgreementDialog.tsx",
+    "line": 222,
+    "kind": "text",
+    "before": "Send with incomplete company details",
+    "after": "Send With Incomplete Company Details"
+  },
+  {
+    "file": "src/components/admin/RecordRentalDialog.tsx",
+    "line": 48,
+    "kind": "text",
+    "before": "Verified pickup timestamp with UTC offset",
+    "after": "Verified Pickup Timestamp With UTC Offset"
+  },
+  {
+    "file": "src/components/admin/RecordRentalDialog.tsx",
+    "line": 50,
+    "kind": "text",
+    "before": "Pickup mileage",
+    "after": "Pickup Mileage"
+  },
+  {
+    "file": "src/components/admin/RecordRentalDialog.tsx",
+    "line": 51,
+    "kind": "text",
+    "before": "Weekly rate",
+    "after": "Weekly Rate"
+  },
+  {
+    "file": "src/components/admin/RecordRentalDialog.tsx",
+    "line": 52,
+    "kind": "text",
+    "before": "Deposit collected",
+    "after": "Deposit Collected"
+  },
+  {
+    "file": "src/components/admin/RecordRentalDialog.tsx",
+    "line": 54,
+    "kind": "text",
+    "before": "Verified subscription evidence reference (optional)",
+    "after": "Verified Subscription Evidence Reference (Optional)"
+  },
+  {
+    "file": "src/components/admin/RecordRentalDialog.tsx",
+    "line": 59,
+    "kind": "text",
+    "before": "Type RECORD RENTAL to confirm",
+    "after": "Type RECORD RENTAL To Confirm"
+  },
+  {
+    "file": "src/components/admin/RecordedRentalCloseout.tsx",
+    "line": 26,
+    "kind": "attribute",
+    "before": "Close recorded rental",
+    "after": "Close Recorded Rental"
+  },
+  {
+    "file": "src/components/admin/RecordedRentalCloseout.tsx",
+    "line": 26,
+    "kind": "attribute",
+    "before": "Close recorded rental",
+    "after": "Close Recorded Rental"
+  },
+  {
+    "file": "src/components/admin/RecordedRentalCloseout.tsx",
+    "line": 28,
+    "kind": "text",
+    "before": "Verified return timestamp with offset",
+    "after": "Verified Return Timestamp With Offset"
+  },
+  {
+    "file": "src/components/admin/RecordedRentalCloseout.tsx",
+    "line": 28,
+    "kind": "text",
+    "before": "Return mileage",
+    "after": "Return Mileage"
+  },
+  {
+    "file": "src/components/admin/RecordedRentalCloseout.tsx",
+    "line": 28,
+    "kind": "text",
+    "before": "Requested disposition",
+    "after": "Requested Disposition"
+  },
+  {
+    "file": "src/components/admin/RecordedRentalCloseout.tsx",
+    "line": 28,
+    "kind": "text",
+    "before": "Available only if safety checks allow",
+    "after": "Available Only If Safety Checks Allow"
+  },
+  {
+    "file": "src/components/admin/RenterVendorsPanel.tsx",
+    "line": 56,
+    "kind": "text",
+    "before": "Add vendor",
+    "after": "Add Vendor"
+  },
+  {
+    "file": "src/components/admin/RenterVendorsPanel.tsx",
+    "line": 75,
+    "kind": "text",
+    "before": "Visible to renters",
+    "after": "Visible To Renters"
+  },
+  {
+    "file": "src/components/admin/RenterVendorsPanel.tsx",
+    "line": 91,
+    "kind": "text",
+    "before": "Get logo from website",
+    "after": "Get Logo From Website"
+  },
+  {
+    "file": "src/components/admin/RenterVendorsPanel.tsx",
+    "line": 113,
+    "kind": "attribute",
+    "before": "Move up",
+    "after": "Move Up"
+  },
+  {
+    "file": "src/components/admin/RenterVendorsPanel.tsx",
+    "line": 115,
+    "kind": "attribute",
+    "before": "Move down",
+    "after": "Move Down"
+  },
+  {
+    "file": "src/components/admin/SettingsPanel.tsx",
+    "line": 28,
+    "kind": "property",
+    "before": "Notice to Return (Days)",
+    "after": "Notice To Return (Days)"
+  },
+  {
+    "file": "src/components/admin/SettingsWorkspace.tsx",
+    "line": 70,
+    "kind": "attribute",
+    "before": "Settings sections",
+    "after": "Settings Sections"
+  },
+  {
+    "file": "src/components/admin/ShopsPanel.tsx",
+    "line": 128,
+    "kind": "text",
+    "before": "No market",
+    "after": "No Market"
+  },
+  {
+    "file": "src/components/admin/TeamPanel.tsx",
+    "line": 117,
+    "kind": "text",
+    "before": "People with access (",
+    "after": "People With Access ("
+  },
+  {
+    "file": "src/components/admin/TeamPanel.tsx",
+    "line": 179,
+    "kind": "text",
+    "before": "Invitations awaiting acceptance (",
+    "after": "Invitations Awaiting Acceptance ("
+  },
+  {
+    "file": "src/components/admin/TeamPanel.tsx",
+    "line": 279,
+    "kind": "text",
+    "before": "Invite a Teammate",
+    "after": "Invite A Teammate"
+  },
+  {
+    "file": "src/components/admin/TeamPanel.tsx",
+    "line": 286,
+    "kind": "text",
+    "before": "Email address",
+    "after": "Email Address"
+  },
+  {
+    "file": "src/components/admin/VehicleDocuments.tsx",
+    "line": 361,
+    "kind": "attribute",
+    "before": "Delete document",
+    "after": "Delete Document"
+  },
+  {
+    "file": "src/components/admin/VehicleEditorDrawer.tsx",
+    "line": 586,
+    "kind": "attribute",
+    "before": "Title and Registration Documents",
+    "after": "Title And Registration Documents"
+  },
+  {
+    "file": "src/components/admin/VehicleEditorDrawer.tsx",
+    "line": 678,
+    "kind": "text",
+    "before": "Acquisition &amp; financing",
+    "after": "Acquisition &amp; Financing"
+  },
+  {
+    "file": "src/components/admin/VehicleEditorDrawer.tsx",
+    "line": 860,
+    "kind": "attribute",
+    "before": "Number of Keys",
+    "after": "Number Of Keys"
+  },
+  {
+    "file": "src/components/admin/VehicleEditorDrawer.tsx",
+    "line": 870,
+    "kind": "property",
+    "before": "Yes \u2014 a Spare Exists",
+    "after": "Yes \u2014 A Spare Exists"
+  },
+  {
+    "file": "src/components/admin/VehiclePhotos.tsx",
+    "line": 624,
+    "kind": "attribute",
+    "before": "Before and After",
+    "after": "Before And After"
+  },
+  {
+    "file": "src/components/admin/VehicleProfile.tsx",
+    "line": 317,
+    "kind": "attribute",
+    "before": "This vehicle could not be loaded",
+    "after": "This Vehicle Could Not Be Loaded"
+  },
+  {
+    "file": "src/components/admin/VehicleProfile.tsx",
+    "line": 573,
+    "kind": "attribute",
+    "before": "Rentals to Date",
+    "after": "Rentals To Date"
+  },
+  {
+    "file": "src/components/admin/VehicleProfile.tsx",
+    "line": 586,
+    "kind": "attribute",
+    "before": "Days on Rent",
+    "after": "Days On Rent"
+  },
+  {
+    "file": "src/components/admin/VehicleProfile.tsx",
+    "line": 722,
+    "kind": "text",
+    "before": "Install notes",
+    "after": "Install Notes"
+  },
+  {
+    "file": "src/components/admin/VehicleProfile.tsx",
+    "line": 957,
+    "kind": "attribute",
+    "before": "Range per Tank",
+    "after": "Range Per Tank"
+  },
+  {
+    "file": "src/components/admin/VehicleProfile.tsx",
+    "line": 1243,
+    "kind": "property",
+    "before": "Yes \u2014 a Spare Exists",
+    "after": "Yes \u2014 A Spare Exists"
+  },
+  {
+    "file": "src/components/admin/VehicleSuggestions.tsx",
+    "line": 41,
+    "kind": "attribute",
+    "before": "View the photograph this was read from",
+    "after": "View The Photograph This Was Read From"
+  },
+  {
+    "file": "src/components/admin/VehiclesPanel.tsx",
+    "line": 340,
+    "kind": "attribute",
+    "before": "Restore vehicle",
+    "after": "Restore Vehicle"
+  },
+  {
+    "file": "src/components/admin/VehiclesPanel.tsx",
+    "line": 343,
+    "kind": "attribute",
+    "before": "Delete permanently",
+    "after": "Delete Permanently"
+  },
+  {
+    "file": "src/components/admin/VehiclesPanel.tsx",
+    "line": 348,
+    "kind": "attribute",
+    "before": "Archive vehicle",
+    "after": "Archive Vehicle"
+  },
+  {
+    "file": "src/components/admin/VehiclesPanel.tsx",
+    "line": 376,
+    "kind": "attribute",
+    "before": "Search vehicles",
+    "after": "Search Vehicles"
+  },
+  {
+    "file": "src/components/admin/VehiclesPanel.tsx",
+    "line": 477,
+    "kind": "text",
+    "before": "Show all",
+    "after": "Show All"
+  },
+  {
+    "file": "src/components/admin/VehiclesPanel.tsx",
+    "line": 499,
+    "kind": "attribute",
+    "before": "Vehicles table",
+    "after": "Vehicles Table"
+  },
+  {
+    "file": "src/components/admin/VehiclesPanel.tsx",
+    "line": 503,
+    "kind": "attribute",
+    "before": "Row number",
+    "after": "Row Number"
+  },
+  {
+    "file": "src/components/admin/VehiclesPanel.tsx",
+    "line": 544,
+    "kind": "attribute",
+    "before": "Previous page",
+    "after": "Previous Page"
+  },
+  {
+    "file": "src/components/admin/VehiclesPanel.tsx",
+    "line": 546,
+    "kind": "attribute",
+    "before": "Next page",
+    "after": "Next Page"
+  },
+  {
+    "file": "src/components/admin/VendorsPanel.tsx",
+    "line": 415,
+    "kind": "text",
+    "before": "Not rated",
+    "after": "Not Rated"
+  },
+  {
+    "file": "src/components/admin/VendorsPanel.tsx",
+    "line": 456,
+    "kind": "text",
+    "before": "Preferred vendor",
+    "after": "Preferred Vendor"
+  },
+  {
+    "file": "src/components/admin/VerificationRecording.tsx",
+    "line": 175,
+    "kind": "text",
+    "before": "earlier recordings (",
+    "after": "Earlier Recordings ("
+  },
+  {
+    "file": "src/components/admin/WaitlistPanel.tsx",
+    "line": 353,
+    "kind": "attribute",
+    "before": "No Drivers on the Waitlist",
+    "after": "No Drivers On The Waitlist"
+  },
+  {
+    "file": "src/components/admin/WaitlistPanel.tsx",
+    "line": 510,
+    "kind": "text",
+    "before": "How many",
+    "after": "How Many"
+  },
+  {
+    "file": "src/components/admin/WebsitesPanel.tsx",
+    "line": 196,
+    "kind": "text",
+    "before": "No market",
+    "after": "No Market"
+  },
+  {
+    "file": "src/components/admin/ui.tsx",
+    "line": 773,
+    "kind": "property",
+    "before": "Card on File",
+    "after": "Card On File"
+  },
+  {
+    "file": "src/components/esign/SigningPanel.tsx",
+    "line": 26,
+    "kind": "attribute",
+    "before": "Drawn mark",
+    "after": "Drawn Mark"
+  },
+  {
+    "file": "src/components/portal/RenterPortalCard.tsx",
+    "line": 144,
+    "kind": "text",
+    "before": "Upload new insurance",
+    "after": "Upload New Insurance"
+  },
+  {
+    "file": "src/components/portal/RenterPortalCard.tsx",
+    "line": 145,
+    "kind": "text",
+    "before": "Update contact details",
+    "after": "Update Contact Details"
+  },
+  {
+    "file": "src/components/site/CityHeroLeadForm.tsx",
+    "line": 189,
+    "kind": "text",
+    "before": "You're on the List",
+    "after": "You're On The List"
+  },
+  {
+    "file": "src/components/site/Footer.tsx",
+    "line": 75,
+    "kind": "text",
+    "before": "Become a Partner",
+    "after": "Become A Partner"
+  },
+  {
+    "file": "src/components/site/Footer.tsx",
+    "line": 131,
+    "kind": "text",
+    "before": "Terms of Service",
+    "after": "Terms Of Service"
+  },
+  {
+    "file": "src/components/site/LocationsSection.tsx",
+    "line": 67,
+    "kind": "attribute",
+    "before": "Scroll left",
+    "after": "Scroll Left"
+  },
+  {
+    "file": "src/components/site/LocationsSection.tsx",
+    "line": 70,
+    "kind": "attribute",
+    "before": "Scroll right",
+    "after": "Scroll Right"
+  },
+  {
+    "file": "src/components/site/LocationsSection.tsx",
+    "line": 178,
+    "kind": "text",
+    "before": "You're on the List",
+    "after": "You're On The List"
+  },
+  {
+    "file": "src/components/ui/breadcrumb.tsx",
+    "line": 12,
+    "kind": "attribute",
+    "before": "breadcrumb",
+    "after": "Breadcrumb"
+  },
+  {
+    "file": "src/components/ui/pagination.tsx",
+    "line": 10,
+    "kind": "attribute",
+    "before": "pagination",
+    "after": "Pagination"
+  },
+  {
+    "file": "src/components/ui/pagination.tsx",
+    "line": 54,
+    "kind": "attribute",
+    "before": "Go to previous page",
+    "after": "Go To Previous Page"
+  },
+  {
+    "file": "src/components/ui/pagination.tsx",
+    "line": 67,
+    "kind": "attribute",
+    "before": "Go to next page",
+    "after": "Go To Next Page"
+  },
+  {
+    "file": "src/routes/__root.tsx",
+    "line": 74,
+    "kind": "text",
+    "before": "Go home",
+    "after": "Go Home"
+  },
+  {
+    "file": "src/routes/admin.tsx",
+    "line": 718,
+    "kind": "attribute",
+    "before": "Main navigation",
+    "after": "Main Navigation"
+  },
+  {
+    "file": "src/routes/admin.tsx",
+    "line": 760,
+    "kind": "attribute",
+    "before": "Open navigation",
+    "after": "Open Navigation"
+  },
+  {
+    "file": "src/routes/admin.tsx",
+    "line": 770,
+    "kind": "attribute",
+    "before": "Search drivers, vehicles and partners",
+    "after": "Search Drivers, Vehicles And Partners"
+  },
+  {
+    "file": "src/routes/card.$applicationId.tsx",
+    "line": 133,
+    "kind": "text",
+    "before": "Save Your Card on File",
+    "after": "Save Your Card On File"
+  },
+  {
+    "file": "src/routes/fleet.$id.tsx",
+    "line": 179,
+    "kind": "text",
+    "before": "\u2190 Back to fleet",
+    "after": "\u2190 Back To Fleet"
+  },
+  {
+    "file": "src/routes/how-it-works.tsx",
+    "line": 209,
+    "kind": "text",
+    "before": "Talk to a Human",
+    "after": "Talk To A Human"
+  },
+  {
+    "file": "src/routes/index.tsx",
+    "line": 305,
+    "kind": "text",
+    "before": "Learn About the Partner Program",
+    "after": "Learn About The Partner Program"
+  },
+  {
+    "file": "src/routes/invite.tsx",
+    "line": 115,
+    "kind": "text",
+    "before": "Open the Back Office",
+    "after": "Open The Back Office"
+  },
+  {
+    "file": "src/routes/invite.tsx",
+    "line": 134,
+    "kind": "text",
+    "before": "Sign In as Somebody Else",
+    "after": "Sign In As Somebody Else"
+  },
+  {
+    "file": "src/routes/login.tsx",
+    "line": 185,
+    "kind": "attribute",
+    "before": "6-digit code",
+    "after": "6-Digit Code"
+  },
+  {
+    "file": "src/routes/partners.tsx",
+    "line": 33,
+    "kind": "property",
+    "before": "You Keep the Title",
+    "after": "You Keep The Title"
+  },
+  {
+    "file": "src/routes/partners.tsx",
+    "line": 282,
+    "kind": "text",
+    "before": "Message (optional)",
+    "after": "Message (Optional)"
+  },
+  {
+    "file": "src/routes/portal.tsx",
+    "line": 532,
+    "kind": "text",
+    "before": "Shared by Our Team",
+    "after": "Shared By Our Team"
+  },
+  {
+    "file": "src/routes/portal.tsx",
+    "line": 939,
+    "kind": "text",
+    "before": "Vehicle Condition at Pickup",
+    "after": "Vehicle Condition At Pickup"
+  },
+  {
+    "file": "src/routes/portal.tsx",
+    "line": 1029,
+    "kind": "text",
+    "before": "Review &amp; Sign",
+    "after": "Review &amp; Sign"
+  },
+  {
+    "file": "src/routes/portal.tsx",
+    "line": 1152,
+    "kind": "text",
+    "before": "Proof of Condition",
+    "after": "Proof Of Condition"
+  },
+  {
+    "file": "src/routes/portal.tsx",
+    "line": 1201,
+    "kind": "text",
+    "before": "Proof of Condition",
+    "after": "Proof Of Condition"
+  },
+  {
+    "file": "src/routes/portal.tsx",
+    "line": 1312,
+    "kind": "text",
+    "before": "Request a Change",
+    "after": "Request A Change"
+  },
+  {
+    "file": "src/routes/portal.tsx",
+    "line": 1389,
+    "kind": "text",
+    "before": "Report an Issue",
+    "after": "Report An Issue"
+  },
+  {
+    "file": "src/routes/portal.tsx",
+    "line": 1538,
+    "kind": "text",
+    "before": "Refer a Driver",
+    "after": "Refer A Driver"
+  },
+  {
+    "file": "src/routes/portal.tsx",
+    "line": 2123,
+    "kind": "text",
+    "before": "Tolls &amp; Citations",
+    "after": "Tolls &amp; Citations"
+  },
+  {
+    "file": "src/routes/portal.tsx",
+    "line": 2355,
+    "kind": "text",
+    "before": "Upcoming for Your Vehicle",
+    "after": "Upcoming For Your Vehicle"
+  },
+  {
+    "file": "src/routes/portal.tsx",
+    "line": 2379,
+    "kind": "text",
+    "before": "Preferred Shops in Your Market",
+    "after": "Preferred Shops In Your Market"
+  },
+  {
+    "file": "src/routes/set-password.tsx",
+    "line": 100,
+    "kind": "text",
+    "before": "Get a New Link",
+    "after": "Get A New Link"
+  },
+  {
+    "file": "src/routes/sign.$token.tsx",
+    "line": 107,
+    "kind": "text",
+    "before": "Sign In to Your Portal",
+    "after": "Sign In To Your Portal"
+  },
+  {
+    "file": "src/routes/sign.$token.tsx",
+    "line": 135,
+    "kind": "text",
+    "before": "Go to Your Portal",
+    "after": "Go To Your Portal"
+  },
+  {
+    "file": "src/routes/terms.tsx",
+    "line": 26,
+    "kind": "text",
+    "before": "Terms of Service",
+    "after": "Terms Of Service"
+  },
+  {
+    "file": "src/routes/terms.tsx",
+    "line": 38,
+    "kind": "text",
+    "before": "Quotes and Applications",
+    "after": "Quotes And Applications"
+  },
+  {
+    "file": "src/components/admin/AddVehicleDialog.tsx",
+    "line": 503,
+    "kind": "text",
+    "before": "Status &amp; ownership",
+    "after": "Status &amp; Ownership"
+  },
+  {
+    "file": "src/components/admin/PhotoStudioPanel.tsx",
+    "line": 63,
+    "kind": "expression",
+    "before": "Regenerate all",
+    "after": "Regenerate All"
+  },
+  {
+    "file": "src/components/admin/PhotoStudioPanel.tsx",
+    "line": 63,
+    "kind": "expression",
+    "before": "Generate shots",
+    "after": "Generate Shots"
+  },
+  {
+    "file": "src/components/admin/PhotoStudioPanel.tsx",
+    "line": 66,
+    "kind": "expression",
+    "before": "Take off website",
+    "after": "Take Off Website"
+  },
+  {
+    "file": "src/components/admin/PhotoStudioPanel.tsx",
+    "line": 66,
+    "kind": "expression",
+    "before": "Publish to website",
+    "after": "Publish To Website"
+  },
+  {
+    "file": "src/components/admin/ShareVehicleDialog.tsx",
+    "line": 234,
+    "kind": "expression",
+    "before": "Copy as Text",
+    "after": "Copy As Text"
+  },
+  {
+    "file": "src/routes/invite.tsx",
+    "line": 234,
+    "kind": "expression",
+    "before": "I Already Have an Account",
+    "after": "I Already Have An Account"
+  },
+  {
+    "file": "src/routes/invite.tsx",
+    "line": 234,
+    "kind": "expression",
+    "before": "I Need to Create an Account",
+    "after": "I Need To Create An Account"
+  },
+  {
+    "file": "src/components/admin/SettingsPanel.tsx",
+    "line": 44,
+    "kind": "property",
+    "before": "Email me when someone starts or returns to an application",
+    "after": "Email Me When Someone Starts Or Returns To An Application"
+  },
+  {
+    "file": "src/components/admin/SettingsPanel.tsx",
+    "line": 45,
+    "kind": "property",
+    "before": "Email me when someone completes an application",
+    "after": "Email Me When Someone Completes An Application"
+  },
+  {
+    "file": "src/routes/portal.tsx",
+    "line": 1036,
+    "kind": "text",
+    "before": "See the full",
+    "after": "See The Full"
+  },
+  {
+    "file": "src/routes/portal.tsx",
+    "line": 1036,
+    "kind": "text",
+    "before": "-point checklist",
+    "after": "-Point Checklist"
+  }
+]

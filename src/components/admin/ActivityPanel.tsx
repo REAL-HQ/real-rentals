@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -110,7 +111,7 @@ export function ActivityPanel() {
 
       <section>
         <div className="flex items-center gap-2 mb-3">
-          <select
+          <AppSelect aria-label="Activity Type"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
@@ -120,7 +121,7 @@ export function ActivityPanel() {
                 {g.label}
               </option>
             ))}
-          </select>
+          </AppSelect>
           <span className="text-sm text-muted-foreground">{rows.length} entries</span>
         </div>
 

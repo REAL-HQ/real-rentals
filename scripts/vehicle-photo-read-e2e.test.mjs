@@ -372,7 +372,7 @@ async function runViewport(label, viewport) {
   ok(!(await safeBtn.count()) || await safeBtn.isDisabled(), "  so Approve Safe Fields is dead");
 
   // --------------------------------------------------- the source photograph
-  const thumb = page.locator('button[aria-label="View the photograph this was read from"]').first();
+  const thumb = page.locator('button[aria-label="View The Photograph This Was Read From"]').first();
   ok(await thumb.count() > 0, "every row shows the photograph it was read from");
   // The bytes arrive through an async staff download and become a blob URL, so
   // the <img> is in the DOM before it has decoded. Wait for the decode itself.

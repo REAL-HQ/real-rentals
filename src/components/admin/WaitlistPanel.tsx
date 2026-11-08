@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -349,7 +350,7 @@ export function WaitlistPanel({
           <div className="p-5">
             <EmptyState
               icon={<Hourglass className="w-6 h-6" strokeWidth={1.75} />}
-              title="No Drivers on the Waitlist"
+              title="No Drivers On The Waitlist"
               hint="When Cars Available is set to zero, the site collects waitlist signups here instead of applications."
             />
           </div>
@@ -358,7 +359,7 @@ export function WaitlistPanel({
           <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
             <TagIcon className="h-4 w-4 text-muted-foreground" strokeWidth={1.75} />
             <label htmlFor="waitlist-tag-filter" className="text-xs font-medium text-foreground">Filter By Tag</label>
-            <select
+            <AppSelect
               id="waitlist-tag-filter"
               value={tagFilter}
               onChange={(event) => setTagFilter(event.target.value)}
@@ -367,7 +368,7 @@ export function WaitlistPanel({
             >
               <option value="">All Tags</option>
               {availableTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
-            </select>
+            </AppSelect>
             <span className="ml-auto text-xs text-muted-foreground">Showing {visibleEntries.length} Of {entries.length}</span>
             {!tagsAvailable ? (
               <p className="w-full text-xs text-amber-700">Tag storage is not connected yet. City display is available; no tags have been changed.</p>
@@ -506,7 +507,7 @@ export function WaitlistPanel({
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-3 py-2">
-            <label className="text-[13px] text-[#55555E]">How many</label>
+            <label className="text-[13px] text-[#55555E]">How Many</label>
             <input
               type="number"
               min={1}

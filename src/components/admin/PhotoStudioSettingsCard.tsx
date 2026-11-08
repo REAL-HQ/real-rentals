@@ -23,7 +23,7 @@ export function PhotoStudioSettingsCard() {
       <div className="flex flex-wrap items-center gap-4">
         <label className="flex items-center gap-2 text-sm"><Switch checked={enabled} disabled={!st.canConfigure} onCheckedChange={setEnabled} /> On</label>
         <label className="text-sm">Images/day <Input type="number" className="w-24 inline-block" value={daily} disabled={!st.canConfigure} onChange={(e) => setDaily(Number(e.target.value))} /></label>
-        <label className="text-sm">Monthly cap $ <Input type="number" className="w-24 inline-block" value={capDollars} disabled={!st.canConfigure} onChange={(e) => setCap(Number(e.target.value))} /></label>
+        <label className="text-sm">Monthly Cap $ <Input type="number" className="w-24 inline-block" value={capDollars} disabled={!st.canConfigure} onChange={(e) => setCap(Number(e.target.value))} /></label>
         {st.canConfigure && <Button size="sm" onClick={async () => {
           const r = await save({ data: { enabled, dailyImageLimit: Math.round(daily), monthlyCapCents: Math.round(capDollars * 100) } });
           r.ok ? toast.success("Saved.") : toast.error(r.error);

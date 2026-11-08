@@ -296,7 +296,7 @@ export function ProgressBar({
               className={`h-1.5 rounded-full transition-colors ${done || active ? "bg-real-red" : "bg-border"}`}
             />
             <div
-              className={`mt-1.5 text-xs uppercase tracking-wide text-center ${active ? "text-real-red font-semibold" : "text-muted-foreground"}`}
+              className={`mt-1.5 text-xs tracking-wide text-center ${active ? "text-real-red font-semibold" : "text-muted-foreground"}`}
             >
               {s.label}
             </div>
@@ -847,7 +847,7 @@ function SideRail({ phase, source }: { phase: Phase; source: string | null | und
 function StepHeader({ eyebrow, title, sub }: { eyebrow: string; title: string; sub?: string }) {
   return (
     <div className="mb-5">
-      <div className="text-xs uppercase tracking-wide font-semibold text-real-red">
+      <div className="text-xs tracking-wide font-semibold text-real-red">
         {eyebrow}
       </div>
       <h2 className="mt-1.5 text-xl md:text-2xl font-semibold">{title}</h2>
@@ -871,7 +871,7 @@ function Choice<T extends string>({
 }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
+      <div className="text-xs tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
       {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
@@ -909,7 +909,7 @@ function YesNo({
 }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
+      <div className="text-xs tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
       <div className="mt-2 flex gap-2">
@@ -1054,7 +1054,7 @@ function TextField({
 }) {
   return (
     <label className="block">
-      <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
+      <span className="text-xs tracking-wide text-muted-foreground font-semibold">
         {label}
       </span>
       <input
@@ -1106,7 +1106,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
             <div className="flex items-center gap-2.5 min-w-0">
               <MapPin className="h-4 w-4 text-real-red shrink-0" />
               <div className="min-w-0">
-                <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
+                <div className="text-xs tracking-wide text-muted-foreground font-semibold">
                   Picking Up In
                 </div>
                 <div className="text-sm font-medium truncate">{place}</div>
@@ -1148,7 +1148,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
         />
 
         <label className="block max-w-xs">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
+          <span className="text-xs tracking-wide text-muted-foreground font-semibold">
             When Do You Need The Vehicle?
           </span>
           <input
@@ -1213,7 +1213,7 @@ function DrivingStep({
       />
       <div className="space-y-5">
         <div>
-          <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
+          <div className="text-xs tracking-wide text-muted-foreground font-semibold">
             Which Gig Apps Do You Use?
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -1242,7 +1242,7 @@ function DrivingStep({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
+            <span className="text-xs tracking-wide text-muted-foreground font-semibold">
               Roughly How Many Trips Have You Completed?
             </span>
             <input
@@ -1259,7 +1259,7 @@ function DrivingStep({
             </span>
           </label>
           <label className="block">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
+            <span className="text-xs tracking-wide text-muted-foreground font-semibold">
               Driver Rating, If You Know It
             </span>
             <input
@@ -1410,7 +1410,7 @@ function ApplicationReceived({
       </div>
 
       <div className="mt-6 rounded-xl bg-white border border-border p-4">
-        <div className="text-xs uppercase tracking-wide font-semibold text-muted-foreground mb-2">
+        <div className="text-xs tracking-wide font-semibold text-muted-foreground mb-2">
           Questions Now?
         </div>
         {/*
@@ -1934,7 +1934,7 @@ function InsuranceSection({
                 have ever handed over. */}
             {state.insurance_policy_on_file && !replacingPolicy ? (
               <div className="block">
-                <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
+                <span className="text-xs tracking-wide text-muted-foreground font-semibold">
                   Policy Number
                 </span>
                 <div className="mt-1.5 flex items-center justify-between gap-3 rounded-lg border border-border bg-white px-3 py-2.5">
@@ -1961,7 +1961,7 @@ function InsuranceSection({
             )}
           </div>
           <label className="block">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
+            <span className="text-xs tracking-wide text-muted-foreground font-semibold">
               Policy Expiration Date
             </span>
             <input
@@ -2134,7 +2134,7 @@ function MultiFileUpload({
 
   return (
     <div>
-      <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
+      <div className="text-xs tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
       {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}

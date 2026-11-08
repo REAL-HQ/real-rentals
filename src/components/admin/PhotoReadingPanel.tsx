@@ -50,7 +50,7 @@ export function PhotoReadingPanel() {
         <label className="flex items-center gap-2 text-[14px] font-medium cursor-pointer">
           <input
             type="checkbox"
-            aria-label="Photo Reading enabled"
+            aria-label="Photo Reading Enabled"
             checked={data.enabled}
             disabled={busy || !owner}
             onChange={(e) => update({ enabled: e.target.checked })}

@@ -67,7 +67,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
 
   return (
     <div className="flex flex-col md:flex-row gap-4 md:gap-8">
-      <nav aria-label="Settings sections" className="md:w-[220px] shrink-0">
+      <nav aria-label="Settings Sections" className="md:w-[220px] shrink-0">
         {/* Mobile: compact select-like horizontal list */}
         <div className="md:hidden -mx-4 px-4 overflow-x-auto">
           <div className="flex gap-1.5 w-max pb-1">
@@ -86,7 +86,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
             return (
             <div key={g}>
               <button type="button" onClick={() => toggleGroup(g)} aria-expanded={open}
-                className="w-full flex items-center justify-between px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3] hover:text-[#55555E]">
+                className="w-full flex items-center justify-between px-3 mb-1 text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3] hover:text-[#55555E]">
                 {g}
                 {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
               </button>

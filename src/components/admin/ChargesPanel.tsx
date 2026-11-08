@@ -1,3 +1,5 @@
+import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,7 +36,7 @@ type VehicleLite = {
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
   { value: "new", label: "Unassigned" },
-  { value: "assigned", label: "Ready to Bill" },
+  { value: "assigned", label: "Ready To Bill" },
   { value: "rebilled", label: "Billed" },
   { value: "paid", label: "Paid" },
   { value: "disputed", label: "Disputed" },
@@ -189,7 +191,7 @@ export function ChargesPanel() {
               ) : (
                 <Send className="w-3.5 h-3.5" />
               )}
-              Bill to Renters
+              Bill To Renters
             </button>
           </div>
         </div>
@@ -221,8 +223,8 @@ export function ChargesPanel() {
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm capitalize">
-                        {r.charge_type.replace(/_/g, " ")}
+                      <span className="font-medium text-sm ">
+                        {enumDisplayLabel(r.charge_type)}
                       </span>
                       <StatusPill
                         status={
@@ -235,10 +237,10 @@ export function ChargesPanel() {
                                 : "pending"
                         }
                       >
-                        {r.status === "new" ? "unassigned" : r.status.replace(/_/g, " ")}
+                        {r.status === "new" ? "unassigned" : enumDisplayLabel(r.status)}
                       </StatusPill>
                       {r.source === "import" ? (
-                        <span className="text-[10px] uppercase tracking-wide text-[#9A9AA3]">
+                        <span className="text-[10px] tracking-wide text-[#9A9AA3]">
                           imported
                         </span>
                       ) : null}
@@ -451,7 +453,7 @@ function AddChargeForm({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <MicroLabel>Type</MicroLabel>
-          <select
+          <AppSelect aria-label="Type"
             value={chargeType}
             onChange={(e) => setChargeType(e.target.value)}
             className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
@@ -461,10 +463,10 @@ function AddChargeForm({
                 {t.label}
               </option>
             ))}
-          </select>
+          </AppSelect>
         </div>
         <div>
-          <MicroLabel>When it happened</MicroLabel>
+          <MicroLabel>When It Happened</MicroLabel>
           <input
             type="datetime-local"
             value={occurredAt}
@@ -482,7 +484,7 @@ function AddChargeForm({
           />
         </div>
         <div>
-          <MicroLabel>Admin fee $</MicroLabel>
+          <MicroLabel>Admin Fee $</MicroLabel>
           <input
             value={adminFee}
             onChange={(e) => setAdminFee(e.target.value)}
@@ -604,7 +606,7 @@ function ImportForm({ onClose, onDone }: { onClose: () => void; onDone: () => vo
           ) : null}
           {result.failed.length ? (
             <div className="rounded-xl border border-[#EDEDF0] p-3 max-h-40 overflow-y-auto">
-              <div className="text-xs font-semibold uppercase tracking-wide text-[#55555E]">
+              <div className="text-xs font-semibold tracking-wide text-[#55555E]">
                 Rows not imported
               </div>
               <ul className="mt-1.5 space-y-0.5 text-xs text-[#55555E]">
@@ -644,8 +646,8 @@ function ImportForm({ onClose, onDone }: { onClose: () => void; onDone: () => vo
           </p>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <MicroLabel>Charge type</MicroLabel>
-              <select
+              <MicroLabel>Charge Type</MicroLabel>
+              <AppSelect aria-label="Charge Type"
                 value={chargeType}
                 onChange={(e) => setChargeType(e.target.value)}
                 className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
@@ -655,10 +657,10 @@ function ImportForm({ onClose, onDone }: { onClose: () => void; onDone: () => vo
                     {t.label}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </div>
             <div>
-              <MicroLabel>Agency (fallback)</MicroLabel>
+              <MicroLabel>Agency (Fallback)</MicroLabel>
               <input
                 value={agency}
                 onChange={(e) => setAgency(e.target.value)}
@@ -667,7 +669,7 @@ function ImportForm({ onClose, onDone }: { onClose: () => void; onDone: () => vo
               />
             </div>
             <div>
-              <MicroLabel>Admin fee each $</MicroLabel>
+              <MicroLabel>Admin Fee Each $</MicroLabel>
               <input
                 value={adminFee}
                 onChange={(e) => setAdminFee(e.target.value)}

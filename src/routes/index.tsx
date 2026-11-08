@@ -171,7 +171,7 @@ function Index() {
 
       <section className="bg-white py-8 md:py-10">
         <div className="container-real text-center">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Eligible To Drive For</div>
+          <div className="text-[11px] font-semibold tracking-[0.25em] text-real-red">Eligible To Drive For</div>
         </div>
         <GigLogoMarquee items={["Uber", "Lyft", "DoorDash", "Instacart", "Amazon Flex", "UberEats", "Grubhub"]} />
         <div className="container-real text-center">
@@ -189,7 +189,7 @@ function Index() {
         <div className="container-real">
           <FadeUp className="mb-6 flex items-end justify-between flex-wrap gap-4">
             <div>
-              <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Featured Fleet</div>
+              <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">Featured Fleet</div>
               <h2 className="mt-3 text-3xl md:text-5xl">Vehicles Built For Gig Work.</h2>
               <p className="mt-3 text-muted-foreground leading-relaxed max-w-xl">
                 Browse the types of vehicles we regularly offer. Availability changes daily.
@@ -214,7 +214,7 @@ function Index() {
 
       <section className="container-real py-14 md:py-24">
         <FadeUp className="text-center mb-14 max-w-5xl mx-auto">
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">How It Works</div>
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">How It Works</div>
           <h2 className="mt-3 text-3xl md:text-5xl">From Booking To Paycheck.</h2>
           <p className="mt-4 text-muted-foreground leading-relaxed md:whitespace-nowrap">Four simple steps. No credit check. No long wait. Get behind the wheel and start earning this week.</p>
         </FadeUp>
@@ -292,7 +292,7 @@ function Index() {
         <div className="container-real py-16 md:py-24 grid grid-cols-1 lg:grid-cols-5 gap-10 items-center">
           <div className="lg:col-span-3">
             <FadeUp>
-              <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Partner Program</div>
+              <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">Partner Program</div>
               <h2 className="mt-3 text-3xl md:text-5xl leading-tight">Turn Your Vehicle Into<br />Monthly Cash Flow.</h2>
               <p className="mt-5 text-white/80 leading-relaxed max-w-xl">
                 <span className="font-semibold text-white">Own a vehicle?</span> Join the Real Rentals Partner Program and earn passive income by placing vehicles into our rideshare fleet.
@@ -302,7 +302,7 @@ function Index() {
                   Become A Partner <ArrowRight className="w-4 h-4 ml-2" />
                 </Link>
                 <Link to="/investors" className="inline-flex items-center justify-center rounded-lg border border-white/30 text-white px-8 py-4 text-sm font-medium hover:bg-white/10 transition active:scale-95">
-                  Learn About the Partner Program
+                  Learn About The Partner Program
                 </Link>
               </div>
             </FadeUp>
@@ -310,7 +310,7 @@ function Index() {
           <div className="lg:col-span-2">
             <FadeUp delay={80}>
               <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-6">
-                <div className="text-[11px] uppercase tracking-wider text-white/60 font-semibold">We Handle Everything</div>
+                <div className="text-[11px] tracking-wider text-white/60 font-semibold">We Handle Everything</div>
                 <ul className="mt-4 grid grid-cols-1 gap-3 text-sm">
                   {[
                     { I: Users, t: "Driver Acquisition" },

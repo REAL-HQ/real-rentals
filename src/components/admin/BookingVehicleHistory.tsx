@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Car, Repeat } from "lucide-react";
@@ -233,13 +234,13 @@ function SwapForm({
       </label>
       <label className="text-[12px] text-[#55555E]">
         Reason
-        <select className={field} value={reason} onChange={(e) => setReason(e.target.value as (typeof SWAP_REASONS)[number])}>
+        <AppSelect aria-label="Reason" className={field} value={reason} onChange={(e) => setReason(e.target.value as (typeof SWAP_REASONS)[number])}>
           {SWAP_REASONS.map((item) => (
             <option key={item} value={item}>
               {item}
             </option>
           ))}
-        </select>
+        </AppSelect>
       </label>
       <label className="text-[12px] text-[#55555E]">
         Effective Time

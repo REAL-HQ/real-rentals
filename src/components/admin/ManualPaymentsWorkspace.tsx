@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from "./modal";
@@ -221,7 +222,7 @@ function RecordDialog({ charge, title, onClose, onSubmit }: { charge: Charge; ti
       <ModalHeader title="Record Payment" subtitle={`${title} · Open $${charge.balance.toFixed(2)}`} onClose={onClose} />
       <ModalBody>
         <div className="grid gap-3 sm:grid-cols-2 text-sm">
-          <label>Method<select className={inputCls} value={method} onChange={(e) => setMethod(e.target.value as Method)}>{Object.entries(METHOD_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+          <label>Method<AppSelect aria-label="Method" className={inputCls} value={method} onChange={(e) => setMethod(e.target.value as Method)}>{Object.entries(METHOD_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</AppSelect></label>
           <label>Amount<input className={inputCls} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" /></label>
           <label>Date Received<input type="date" className={inputCls} value={receivedOn} onChange={(e) => setReceivedOn(e.target.value)} /></label>
           <label>Transaction Reference<input className={inputCls} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Confirmation number" /></label>

@@ -186,8 +186,8 @@ const pairs = [
     "record expense button at lg",
   ],
   [
-    "px-4 py-3 capitalize",
-    "px-4 py-3 capitalize max-lg:whitespace-nowrap",
+    "px-4 py-3",
+    "px-4 py-3 max-lg:whitespace-nowrap",
     "expenses category cell at lg",
   ],
   [
@@ -236,7 +236,7 @@ const present = [
   [vehicles, 'className="min-w-0"', "the vehicles screen can shrink at every width"],
   [vehicles, "<AdminToolbar", "the vehicles toolbar uses the shared AdminToolbar (see scripts/admin-toolbar.test.mjs)"],
   [vehicles, "min-w-[56rem]", "the vehicles table keeps readable columns"],
-  [vehicles, 'aria-label="Vehicles table" tabIndex={0}', "table scroll region is keyboard accessible"],
+  [vehicles, 'aria-label="Vehicles Table" tabIndex={0}', "table scroll region is keyboard accessible"],
   [vehicles, "data-testid=\"fleet-readiness\"", "fleet readiness stays in the filter row"],
   [vehicles, "fleet_inbox", "import to the fleet inbox stays"],
   [vehicles, "Add Vehicle", "add vehicle stays"],
@@ -265,7 +265,7 @@ check(!vehicles.includes("bg-white overflow-hidden"), "the vehicles table no lon
 check(!expenses.includes("grid grid-cols-2 gap-3"), "expense fields are not two columns below lg");
 check(!expenses.includes('"col-span-2"'), "a full expense field does not span two columns below lg");
 check(!vehicles.includes("text-transform") && !expenses.includes("text-transform"), "neither screen adds a text-transform");
-check(expenses.includes("px-4 py-3 capitalize max-lg:whitespace-nowrap"), "the existing capitalize on a category stays");
+check(!expenses.includes("capitalize"), "category content is not blindly CSS-capitalized");
 check(!vehicles.includes("max-lg:uppercase") && !expenses.includes("max-lg:uppercase") && !vehicles.includes("max-lg:capitalize") && !expenses.includes("max-lg:capitalize"), "phone classes do not add a case transform");
 
 console.log(`${checks} vehicles and expenses mobile checks passed`);

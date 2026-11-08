@@ -1,3 +1,5 @@
+import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
@@ -126,7 +128,7 @@ export function MessagesOverlay({
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [thread?.messages.length]);
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !e.defaultPrevented) onClose(); };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -173,9 +175,9 @@ export function MessagesOverlay({
       <div className="px-4 md:px-3 pt-4 pb-3 border-b border-[#EDEDF0]">
         <div className="flex items-center gap-1">
           <h2 className="text-[17px] font-semibold text-[#111114] mr-auto">Messages</h2>
-          <button aria-label="Search conversations" title="Search" onClick={() => setSearchOpen((v) => !v)}
+          <button aria-label="Search Conversations" title="Search" onClick={() => setSearchOpen((v) => !v)}
             className="w-9 h-9 grid place-items-center rounded-lg text-[#55555E] hover:bg-[#F4F4F6]"><Search className="w-[18px] h-[18px]" /></button>
-          <button aria-label="Mark all as read" title="Mark All as Read" disabled={!convs?.some((c) => c.unread > 0)}
+          <button aria-label="Mark All As Read" title="Mark All as Read" disabled={!convs?.some((c) => c.unread > 0)}
             onClick={async () => { for (const c of convs ?? []) if (c.unread > 0) await markRead({ data: { applicationId: c.applicationId } }); void loadList(); }}
             className="w-9 h-9 grid place-items-center rounded-lg text-[#55555E] hover:bg-[#F4F4F6] disabled:text-[#C4C4CB] disabled:hover:bg-transparent"><CheckCheck className="w-[18px] h-[18px]" /></button>
           <button aria-label="New Message" title="New Message"
@@ -185,25 +187,25 @@ export function MessagesOverlay({
         {searchOpen && (
           <div className="relative mt-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A9AA3]" />
-            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search conversations" aria-label="Search conversations text"
+            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search conversations" aria-label="Search Conversations Text"
               className="w-full h-10 pl-9 pr-3 text-[13px] rounded-lg bg-white border border-[#E4E4E8] focus:outline-none focus:border-[#C4C4CB]" />
           </div>
         )}
         <div className={`mt-3 grid gap-2 ${hasBothChannels ? "grid-cols-2" : "grid-cols-1"}`}>
-          <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)} aria-label="Filter conversations"
+          <AppSelect value={filter} onChange={(e) => setFilter(e.target.value as Filter)} aria-label="Filter Conversations"
             style={{ colorScheme: "light" }}
             className="h-10 px-3 text-[13px] rounded-lg bg-white border border-[#E4E4E8] text-[#33333A] focus:outline-none">
             <option value="all">All Conversations</option>
             <option value="unread">Unread</option>
-          </select>
+          </AppSelect>
           {hasBothChannels && (
-            <select value={chFilter} onChange={(e) => setChFilter(e.target.value as typeof chFilter)} aria-label="Channel"
+            <AppSelect value={chFilter} onChange={(e) => setChFilter(e.target.value as typeof chFilter)} aria-label="Channel"
               style={{ colorScheme: "light" }}
               className="h-10 px-3 text-[13px] rounded-lg bg-white border border-[#E4E4E8] text-[#33333A] focus:outline-none">
               <option value="all">All Channels</option>
               <option value="sms">Text</option>
               <option value="email">Email</option>
-            </select>
+            </AppSelect>
           )}
         </div>
       </div>
@@ -263,7 +265,7 @@ export function MessagesOverlay({
             <div className="text-[14px] font-semibold">New Message</div>
           </header>
           <div className="p-4">
-            <label className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold">To</label>
+            <label className="text-[11px] tracking-wider text-[#9A9AA3] font-semibold">To</label>
             <input autoFocus value={peopleQ} onChange={(e) => setPeopleQ(e.target.value)} placeholder="Search drivers and applicants by name, email or phone"
               className="mt-1 w-full h-11 px-3 text-[14px] rounded-lg bg-white border border-[#EDEDF0] focus:outline-none focus:border-[#C4C4CB]" />
             <ul className="mt-2 rounded-lg bg-white border border-[#EDEDF0] divide-y divide-[#F4F4F6] empty:hidden">
@@ -287,13 +289,13 @@ export function MessagesOverlay({
       ) : (
         <>
           <header className="flex items-center gap-3 px-4 h-[72px] border-b border-[#EDEDF0] bg-white shrink-0">
-            <button aria-label="Back to conversations" onClick={() => { onSelect(null); setMobile("list"); }} className="md:hidden w-11 h-11 -ml-2 grid place-items-center rounded-lg"><ArrowLeft className="w-5 h-5" /></button>
+            <button aria-label="Back To Conversations" onClick={() => { onSelect(null); setMobile("list"); }} className="md:hidden w-11 h-11 -ml-2 grid place-items-center rounded-lg"><ArrowLeft className="w-5 h-5" /></button>
             <Avatar name={person?.name ?? "?"} id={applicationId} size={34} />
             <div className="min-w-0 flex-1">
               <div className="text-[17px] font-semibold truncate text-[#111114]">{person?.name ?? "Loading…"}</div>
-              <div className="text-[12px] text-[#77777F] truncate capitalize">{person?.status ?? ""}</div>
+              <div className="text-[12px] text-[#77777F] truncate ">{enumDisplayLabel(person?.status ?? "")}</div>
             </div>
-            <button aria-label="Conversation info" onClick={() => { setShowInfo((v) => !v); setMobile("info"); }}
+            <button aria-label="Conversation Info" onClick={() => { setShowInfo((v) => !v); setMobile("info"); }}
               title="Conversation Info"
               className="w-10 h-10 grid place-items-center rounded-lg border border-[#E4E4E8] text-[#55555E] hover:bg-[#F4F4F6]"><Info className="w-5 h-5" /></button>
           </header>
@@ -385,7 +387,7 @@ export function MessagesOverlay({
   const infoPane = person && applicationId ? (
     <aside className={`${mobile === "info" ? "flex" : "hidden"} md:hidden ${showInfo ? "xl:flex" : ""} flex-col min-h-0 border-l border-[#EDEDF0] bg-white overflow-y-auto`}>
       <div className="flex items-center gap-2 px-4 h-14 border-b border-[#EDEDF0] md:hidden">
-        <button aria-label="Back to conversation" onClick={() => setMobile("thread")} className="w-11 h-11 -ml-2 grid place-items-center rounded-lg"><ArrowLeft className="w-5 h-5" /></button>
+        <button aria-label="Back To Conversation" onClick={() => setMobile("thread")} className="w-11 h-11 -ml-2 grid place-items-center rounded-lg"><ArrowLeft className="w-5 h-5" /></button>
         <div className="text-[14px] font-semibold">Info</div>
       </div>
       <div className="hidden md:flex items-center gap-1 px-3 h-14 border-b border-[#EDEDF0]">
@@ -406,7 +408,7 @@ export function MessagesOverlay({
       {tab === "rental" && thread?.rental ? (
         <dl className="p-5 space-y-4 text-[13px]">
           {([
-            ["Status", <span className="capitalize">{thread.rental.status.replace(/_/g, " ")}</span>],
+            ["Status", <span className="">{enumDisplayLabel(thread.rental.status)}</span>],
             ["Vehicle", thread.rental.vehicle ?? "—"],
             ["Unit", thread.rental.unitNumber ?? "—"],
             ["Start", thread.rental.start ? fmtDate(thread.rental.start + "T00:00") : "—"],
@@ -414,23 +416,23 @@ export function MessagesOverlay({
             ["Weekly Rate", thread.rental.weeklyRate == null ? "Not Set" : `$${thread.rental.weeklyRate.toLocaleString()}`],
             ...(thread.rental.balanceDue != null ? [["Balance Due", `$${thread.rental.balanceDue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`] as const] : []),
           ] as const).map(([k, v]) => (
-            <div key={k as string}><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold">{k}</dt><dd className="mt-0.5">{v}</dd></div>
+            <div key={k as string}><dt className="text-[11px] tracking-wider text-[#9A9AA3] font-semibold">{k}</dt><dd className="mt-0.5">{v}</dd></div>
           ))}
         </dl>
       ) : (<>
       <div className="p-5 text-center border-b border-[#EDEDF0]">
         <div className="mx-auto w-fit"><Avatar name={person.name} id={person.applicationId} size={56} /></div>
         <div className="mt-2 text-[15px] font-semibold">{person.name}</div>
-        <div className="text-[12px] text-[#9A9AA3] capitalize">{person.status ?? "—"}</div>
+        <div className="text-[12px] text-[#9A9AA3] ">{enumDisplayLabel(person.status ?? "—")}</div>
         <Link to="/admin" search={{ tab: "drivers", id: person.applicationId }} onClick={onClose}
           className="mt-3 inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-[#EDEDF0] text-[12px] font-medium hover:bg-[#FAFAFB]">
           {person.kind === "driver" ? "View Driver" : "View Applicant"} <ExternalLink className="w-3.5 h-3.5" />
         </Link>
       </div>
       <dl className="p-5 space-y-4 text-[13px]">
-        <div><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Phone className="w-3 h-3" /> Phone</dt><dd className="mt-0.5">{person.phone ?? "—"}</dd><dd className="text-[11px] text-[#9A9AA3]">{person.sms_channel.available ? "Text available" : person.sms_channel.reason}</dd>{person.phone && <dd className="text-[11px] text-[#9A9AA3]">Text consent: {person.smsOptedOut ? "Opted out" : person.smsConsent ? "Yes" : "Not given"}</dd>}</div>
-        <div><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Mail className="w-3 h-3" /> Email</dt><dd className="mt-0.5 break-all">{person.email ?? "—"}</dd><dd className="text-[11px] text-[#9A9AA3]">{person.email_channel.available ? "Email available" : person.email_channel.reason}</dd></div>
-        <div><dt className="text-[11px] uppercase tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Car className="w-3 h-3" /> Vehicle</dt><dd className="mt-0.5">{person.vehicle ?? "None assigned"}</dd></div>
+        <div><dt className="text-[11px] tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Phone className="w-3 h-3" /> Phone</dt><dd className="mt-0.5">{person.phone ?? "—"}</dd><dd className="text-[11px] text-[#9A9AA3]">{person.sms_channel.available ? "Text available" : person.sms_channel.reason}</dd>{person.phone && <dd className="text-[11px] text-[#9A9AA3]">Text consent: {person.smsOptedOut ? "Opted out" : person.smsConsent ? "Yes" : "Not given"}</dd>}</div>
+        <div><dt className="text-[11px] tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Mail className="w-3 h-3" /> Email</dt><dd className="mt-0.5 break-all">{person.email ?? "—"}</dd><dd className="text-[11px] text-[#9A9AA3]">{person.email_channel.available ? "Email available" : person.email_channel.reason}</dd></div>
+        <div><dt className="text-[11px] tracking-wider text-[#9A9AA3] font-semibold flex items-center gap-1.5"><Car className="w-3 h-3" /> Vehicle</dt><dd className="mt-0.5">{person.vehicle ?? "None assigned"}</dd></div>
       </dl>
       </>)}
     </aside>
@@ -440,7 +442,7 @@ export function MessagesOverlay({
     <div role="dialog" aria-modal="true" aria-label="Messages" className="fixed inset-0 z-50 flex flex-col bg-[#0B0B0D]">
       {/* Dark band above the window; the close button lives here, outside the modal. */}
       <div className="shrink-0 h-12 md:h-14 flex items-center justify-end px-3 md:px-5" onClick={onClose}>
-        <button aria-label="Close messages" onClick={onClose}
+        <button aria-label="Close Messages" onClick={onClose}
           className="w-11 h-11 grid place-items-center rounded-full text-white/80 hover:text-white hover:bg-white/10">
           <X className="w-6 h-6" />
         </button>

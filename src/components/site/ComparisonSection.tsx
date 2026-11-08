@@ -72,7 +72,7 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
     <section className="bg-soft py-14 md:py-20">
       <div className="container-real">
         <FadeUp className="text-center mb-10">
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Why Drivers Choose Us</div>
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">Why Drivers Choose Us</div>
           <h2 className="mt-3 text-3xl md:text-5xl">{data.title}</h2>
         </FadeUp>
 
@@ -82,16 +82,16 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
-                    <th className="text-left px-5 md:px-6 py-5 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground border-b border-border border-r bg-white w-[28%]">
+                    <th className="text-left px-5 md:px-6 py-5 text-[11px] font-semibold tracking-[0.2em] text-muted-foreground border-b border-border border-r bg-white w-[28%]">
                       Feature
                     </th>
-                    <th className="px-5 md:px-6 py-5 text-center text-sm font-bold uppercase tracking-wider text-white bg-real-red border-b border-real-red border-r w-[24%]">
+                    <th className="px-5 md:px-6 py-5 text-center text-sm font-bold tracking-wider text-white bg-real-red border-b border-real-red border-r w-[24%]">
                       {colReal}
                     </th>
-                    <th className="px-5 md:px-6 py-5 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground border-b border-border border-r bg-white w-[24%]">
+                    <th className="px-5 md:px-6 py-5 text-center text-[11px] font-semibold tracking-[0.2em] text-muted-foreground border-b border-border border-r bg-white w-[24%]">
                       {colUber}
                     </th>
-                    <th className="px-5 md:px-6 py-5 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground border-b border-border bg-white w-[24%]">
+                    <th className="px-5 md:px-6 py-5 text-center text-[11px] font-semibold tracking-[0.2em] text-muted-foreground border-b border-border bg-white w-[24%]">
                       {colTrad}
                     </th>
                   </tr>

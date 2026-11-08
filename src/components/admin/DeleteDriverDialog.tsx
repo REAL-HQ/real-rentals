@@ -1,3 +1,4 @@
+import { enumDisplayLabel } from "@/lib/ui-display-labels";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -70,7 +71,7 @@ export function DeleteDriverDialog({
           <div className="space-y-3 text-sm">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
               <dt className="text-muted-foreground">Driver</dt><dd>{s.name}</dd>
-              <dt className="text-muted-foreground">Status</dt><dd className="capitalize">{s.status}</dd>
+              <dt className="text-muted-foreground">Status</dt><dd className="">{enumDisplayLabel(s.status)}</dd>
               <dt className="text-muted-foreground">Waitlist History</dt><dd>{s.waitlistHistory ? "Yes" : "No"}</dd>
               <dt className="text-muted-foreground">Linked Duplicates</dt><dd>{s.duplicates}</dd>
               <dt className="text-muted-foreground">Documents</dt><dd>{s.documents}</dd>

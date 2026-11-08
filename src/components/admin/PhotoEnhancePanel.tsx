@@ -79,7 +79,7 @@ export function PhotoEnhancePanel() {
               {data.recent.map((r: any) => (
                 <li key={r.id} className="py-1.5 flex flex-wrap gap-x-3">
                   <span className="text-[#9A9AA3]">{fmtDateTime(r.created_at)}</span>
-                  <span className="capitalize">{r.mode}</span>
+                  <span className="">{r.mode}</span>
                   <span className={r.status === "failed" ? "text-[#D03020]" : "text-[#55555E]"}>{r.status === "failed" ? "Failed" : r.status === "succeeded" ? "Done" : "Started"}</span>
                   {r.processing_ms != null && <span className="text-[#9A9AA3]">{(r.processing_ms / 1000).toFixed(1)}s</span>}
                   {r.error && <span className="text-[#D03020] w-full">{r.error} — retry from the vehicle's Photos tab.</span>}

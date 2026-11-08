@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -169,7 +170,7 @@ export function UnifiedFinancePanel() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select
+          <AppSelect
             value={periodId}
             onChange={(event) => setPeriodId(event.target.value)}
             aria-label="Period"
@@ -178,7 +179,7 @@ export function UnifiedFinancePanel() {
             {PERIODS.map((period) => (
               <option key={period.id} value={period.id}>{period.label}</option>
             ))}
-          </select>
+          </AppSelect>
           <div className="inline-flex rounded-lg border border-border overflow-hidden">
             {(["cash", "accrual"] as const).map((next) => (
               <button

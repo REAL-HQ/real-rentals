@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { PhoneLink } from "./PhoneLink";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { ArrowRight } from "lucide-react";
@@ -67,7 +68,7 @@ export function HeroQuoteBar({
       <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/80 via-black/15 to-black/90" />
       <FadeUp>
         {eyebrow && (
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">{eyebrow}</div>
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">{eyebrow}</div>
         )}
         <h1 className="mt-4 text-[40px] md:text-[72px] leading-[1.02] font-semibold text-white drop-shadow-[0_2px_24px_rgba(0,0,0,0.6)]">
           {headline}
@@ -125,21 +126,18 @@ function SelectField({
 }) {
   return (
     <label className="block">
-      <span className="text-[10px] md:text-[11px] uppercase tracking-[0.18em] text-muted-foreground font-semibold">{label}</span>
+      <span className="text-[10px] md:text-[11px] tracking-[0.18em] text-muted-foreground font-semibold">{label}</span>
       <div className="relative mt-1.5">
-        <select
+        <AppSelect aria-label={label}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full appearance-none rounded-lg border border-border bg-white px-4 py-3 pr-9 text-sm font-medium text-foreground focus:outline-none focus:border-real-red"
+          className="h-auto w-full rounded-lg border border-border bg-white px-4 py-3 pr-3 text-sm font-medium text-foreground focus:outline-none focus:border-real-red"
         >
           {placeholder && <option value="">{placeholder}</option>}
           {options.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
-        </select>
-        <svg aria-hidden viewBox="0 0 20 20" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground">
-          <path fill="currentColor" d="M5.5 7.5L10 12l4.5-4.5z" />
-        </svg>
+        </AppSelect>
       </div>
     </label>
   );
@@ -148,7 +146,7 @@ function SelectField({
 function DateField({ label, value, onChange, min }: { label: string; value: string; onChange: (v: string) => void; min?: string }) {
   return (
     <label className="block">
-      <span className="text-[10px] md:text-[11px] uppercase tracking-[0.18em] text-muted-foreground font-semibold">{label}</span>
+      <span className="text-[10px] md:text-[11px] tracking-[0.18em] text-muted-foreground font-semibold">{label}</span>
       <input
         type="date"
         min={min}

@@ -45,7 +45,7 @@ export function DocumentViewer({ doc, onClose }: { doc: ViewerDoc | null; onClos
 
   const onKey = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
       if (e.key === "+" || e.key === "=") setZoomIdx((i) => Math.min(i + 1, ZOOM_STEPS.length - 1));
       if (e.key === "-") setZoomIdx((i) => Math.max(i - 1, 0));
     },
@@ -166,7 +166,7 @@ export function DocumentViewer({ doc, onClose }: { doc: ViewerDoc | null; onClos
               <div>
                 This browser will not preview PDFs.
                 <a href={doc.url} target="_blank" rel="noreferrer" className="underline ml-1">
-                  Open it in a new tab
+                  Open It In A New Tab
                 </a>
               </div>
             </div>
@@ -194,7 +194,7 @@ export function DocumentViewer({ doc, onClose }: { doc: ViewerDoc | null; onClos
                   download={doc.fileName ?? undefined}
                   className="inline-flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-[12px] font-medium hover:bg-white/20"
                 >
-                  <Download className="w-3.5 h-3.5" /> Download to open
+                  <Download className="w-3.5 h-3.5" /> Download To Open
                 </a>
               </div>
             </div>

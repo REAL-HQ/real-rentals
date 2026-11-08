@@ -20,7 +20,7 @@ function SmsConsentPage() {
   return (
     <SiteLayout>
       <section className="container-real py-14 md:py-20 max-w-3xl">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Legal</div>
+        <div className="text-[11px] font-semibold tracking-[0.25em] text-real-red">Legal</div>
         <h1 className="mt-3 text-4xl md:text-5xl font-semibold">SMS Consent Policy</h1>
         <p className="mt-3 text-sm text-muted-foreground">Last updated: October 2026</p>
 

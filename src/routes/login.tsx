@@ -182,7 +182,7 @@ function LoginPage() {
             onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
             inputMode="numeric"
             autoComplete="one-time-code"
-            aria-label="6-digit code"
+            aria-label="6-Digit Code"
             placeholder="6-digit code"
             className={`${input} text-center tracking-[0.4em] text-lg`}
             required

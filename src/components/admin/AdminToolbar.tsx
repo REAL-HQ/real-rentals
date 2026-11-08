@@ -76,7 +76,7 @@ export function TopSearchChip({ value, onClear }: { value: string; onClear: () =
       <button
         type="button"
         onClick={onClear}
-        aria-label="Clear top search"
+        aria-label="Clear Top Search"
         className="inline-flex h-7 items-center rounded px-2 text-[#55555E] hover:bg-white hover:text-[#111114]"
       >
         Clear

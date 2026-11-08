@@ -115,7 +115,7 @@ function ApplicationQuickReviewPanel({
                   )}
                   {link.showExpired ? (
                     <button type="button" onClick={onOpenDocuments} className="mt-1.5 text-left text-[11px] font-medium text-[#8A1F12]">
-                      Link expired, open in Documents
+                      Link Expired, Open In Documents
                     </button>
                   ) : null}
                   <div className="mt-1.5 text-[12px] font-medium text-[#111114] leading-tight">{doc.label}</div>

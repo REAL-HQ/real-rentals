@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import {
   DRIVER_DOC_EXPIRY_ENABLED,
   DRIVER_DOC_EXPIRY_SEPARATE_TNC,
@@ -69,7 +70,7 @@ export function DriverDocExpiryFilter({
   if (DRIVER_DOC_EXPIRY_ENABLED !== true || canView !== true) return null;
   const showOk = !(DRIVER_DOC_EXPIRY_SEPARATE_TNC === true && tncTracked !== true);
   return (
-    <select
+    <AppSelect
       aria-label="Documents"
       data-documents-filter
       value={value}
@@ -81,7 +82,7 @@ export function DriverDocExpiryFilter({
       <option value="expiring">Expires In 30 Days ({counts.expiring})</option>
       {showOk ? <option value="ok">OK ({counts.ok})</option> : null}
       <option value="unknown">Unknown ({counts.unknown})</option>
-    </select>
+    </AppSelect>
   );
 }
 
