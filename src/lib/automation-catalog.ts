@@ -51,6 +51,12 @@ export type AutomationDef = {
   /** Template previews rendered with sample data (see previewAutomationTemplate). */
   previews: string[];
   note?: string;
+  /**
+   * false = OFF until an Owner turns it on. Used for sends that have never
+   * actually gone out (their daily job has always failed), so fixing that job
+   * cannot start them by surprise.
+   */
+  defaultOn?: false;
 };
 
 export const AUTOMATIONS: AutomationDef[] = [
@@ -208,6 +214,48 @@ export const AUTOMATIONS: AutomationDef[] = [
     previews: ["license_expiring"],
   },
   {
+    key: "held_retry",
+    title: "Held Retry",
+    audience: "Renters",
+    channels: ["Email"],
+    trigger: "A payment notice was held because these switches could not be read.",
+    cadence: "Every 5 minutes, once per notice, within 7 days.",
+    emailWorkflows: [],
+    cronJob: "automations-every-5-min",
+    control: { kind: "setting" },
+    previews: [],
+    defaultOn: false,
+    note: "Off until turned on. Needs the held-notices migration.",
+  },
+  {
+    key: "agreement_reminder",
+    title: "Agreement Reminder",
+    audience: "Renters",
+    channels: ["Email"],
+    trigger: "A rental agreement sent more than 3 days ago is still unsigned.",
+    cadence: "Daily at 8:30 AM ET, at most once every 6 days per renter.",
+    emailWorkflows: ["agreement_reminder"],
+    cronJob: "ops-reminders-daily",
+    control: { kind: "setting" },
+    previews: [],
+    defaultOn: false,
+    note: "Off until turned on. It has never sent, because its daily job has always failed.",
+  },
+  {
+    key: "service_digest",
+    title: "Service Digest",
+    audience: "Team",
+    channels: ["Email"],
+    trigger: "Vehicles are due for service, or driver documents expire within 30 days.",
+    cadence: "Daily at 8:30 AM ET, to team@drivereal.com.",
+    emailWorkflows: ["service_digest"],
+    cronJob: "ops-reminders-daily",
+    control: { kind: "setting" },
+    previews: [],
+    defaultOn: false,
+    note: "Off until turned on. It has never sent, because its daily job has always failed.",
+  },
+  {
     key: "document_expiring",
     title: "Document Expiring",
     audience: "Renters",
@@ -240,7 +288,12 @@ export function settingKeyForEmailWorkflow(workflow: string | undefined | null):
   return hit ? hit.key : null;
 }
 
-export type AutomationControlsValue = { off: Record<string, { at: string; by: string | null }> };
+type SwitchMark = { at: string; by: string | null };
+/** off: default-on entries turned off. on: default-off entries turned on. */
+export type AutomationControlsValue = { off: Record<string, SwitchMark>; on?: Record<string, SwitchMark> };
+
+const DEFAULT_OFF = new Set(AUTOMATIONS.filter((a) => a.defaultOn === false).map((a) => a.key));
+export function isDefaultOff(key: string): boolean { return DEFAULT_OFF.has(key); }
 
 /**
  * Parse the stored value. Returns null when a row exists but is malformed —
@@ -249,14 +302,16 @@ export type AutomationControlsValue = { off: Record<string, { at: string; by: st
  */
 export function readAutomationControls(value: unknown): AutomationControlsValue | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const off = (value as Record<string, unknown>).off;
-  if (off === undefined) return { off: {} };
-  if (!off || typeof off !== "object" || Array.isArray(off)) return null;
-  const out: AutomationControlsValue = { off: {} };
-  for (const [k, v] of Object.entries(off as Record<string, unknown>)) {
-    if (!AUTOMATION_KEYS.includes(k)) continue;
-    const rec = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
-    out.off[k] = { at: String(rec.at ?? ""), by: rec.by == null ? null : String(rec.by) };
+  const out: AutomationControlsValue = { off: {}, on: {} };
+  for (const field of ["off", "on"] as const) {
+    const m = (value as Record<string, unknown>)[field];
+    if (m === undefined) continue;
+    if (!m || typeof m !== "object" || Array.isArray(m)) return null;
+    for (const [k, v] of Object.entries(m as Record<string, unknown>)) {
+      if (!AUTOMATION_KEYS.includes(k)) continue;
+      const rec = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+      out[field]![k] = { at: String(rec.at ?? ""), by: rec.by == null ? null : String(rec.by) };
+    }
   }
   return out;
 }
@@ -267,6 +322,7 @@ export type AutomationControlsState =
   | { status: "error"; value: null };
 
 export function isAutomationOn(controls: AutomationControlsValue, key: string): boolean {
+  if (DEFAULT_OFF.has(key)) return Boolean(controls.on?.[key]);
   return !controls.off[key];
 }
 
@@ -279,9 +335,12 @@ export function nextAutomationControls(
   by: string | null,
 ): AutomationControlsValue {
   const off = { ...current.off };
-  if (on) delete off[key];
+  const onMap = { ...(current.on ?? {}) };
+  if (DEFAULT_OFF.has(key)) {
+    if (on) onMap[key] = { at, by }; else delete onMap[key];
+  } else if (on) delete off[key];
   else off[key] = { at, by };
-  return { off };
+  return { off, on: onMap };
 }
 
 /** Status words shown on each card. Kept separate so "on" never hides "not running". */

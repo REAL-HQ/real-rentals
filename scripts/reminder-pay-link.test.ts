@@ -43,13 +43,12 @@ describe("paying still goes through the guarded portal flow (source)", () => {
   const body = src.slice(src.indexOf("export const payRentalBalance"), src.indexOf("export const createRentalSetupSession"));
   test("signed-in renter only, own rental, server-computed balance, in-flight and nothing-owed blocks, single collection", () => {
     expect(body).toContain("requireSupabaseAuth");
-    expect(body).toContain("refuseStaffPortalWrite");
-    expect(body).toContain("rental.driver_id !== context.userId");
-    expect(body).toContain("rentalBalance(supabaseAdmin, data.rentalId)");
-    expect(body).toContain("if (processing)");
-    expect(body).toContain("if (!rows.length) return { error: 'Nothing is owed on this rental.' }");
-    expect(body).toContain("cents !== Math.round(data.amountCents)");
-    expect(body).toContain("collectRows(");
+    // Guards are exercised by behavior in scripts/pay-rental-balance.test.ts; here: wired to real deps.
+    expect(body).toContain("payRentalBalanceCore(data, context.userId");
+    expect(body).toContain("refuseStaff: refuseStaffPortalWrite");
+    expect(body).toContain("userDb: context.supabase");
+    expect(body).toContain("rentalBalance: rentalBalance");
+    expect(body).toContain("collectRows: collectRows");
     expect(body).not.toMatch(/checkout\.sessions\.create|paymentLinks\.create/);
   });
   test("no new Stripe Checkout or Payment Link creation anywhere for reminders", () => {

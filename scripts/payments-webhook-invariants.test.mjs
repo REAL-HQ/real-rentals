@@ -74,12 +74,7 @@ for (const s of allUpdates) {
 const noticeWrites = statements.filter((s) => /\.update\(\{\s*notified_status:/.test(s.text));
 assert.ok(noticeWrites.length >= 2, `expected notified_status claims, found ${noticeWrites.length}`);
 for (const s of noticeWrites) {
-  // Allowed: the claim guard, or an exact compare-and-set on the previous
-  // notified_status value (parking a held notice: only the row this delivery
-  // just claimed can change, and it sends nothing).
-  const claim = /\.or\(\s*[`'"]notified_status\.is\.null,notified_status\.neq\./.test(s.text);
-  const compareAndSet = /\.eq\('notified_status',\s*\w+\)/.test(s.text) && /\.eq\('status',\s*\w+\)/.test(s.text);
-  assert.ok(claim || compareAndSet,
+  assert.match(s.text, /\.or\(\s*[`'"]notified_status\.is\.null,notified_status\.neq\./,
     `${FILE}:${s.line} sets notified_status without the is-null/neq claim guard — a replay could email twice`);
 }
 

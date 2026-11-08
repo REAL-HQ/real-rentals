@@ -42,9 +42,12 @@ async function handle(request: Request): Promise<Response> {
   // Renter payment notices held while the Automations switches were unreadable.
   let heldNotices: unknown = null;
   try {
-    const { retryHeldPaymentNotices } = await import("@/lib/held-payment-notices.server");
-    const { sendPaymentReceiptEmail, sendPaymentFailedEmail } = await import("@/lib/email.server");
-    heldNotices = await retryHeldPaymentNotices(supabaseAdmin, { sendReceipt: sendPaymentReceiptEmail, sendFailed: sendPaymentFailedEmail });
+    const { retryHeldNotices } = await import("@/lib/held-payment-notices.server");
+    const m = await import("@/lib/email.server");
+    heldNotices = await retryHeldNotices(supabaseAdmin, {
+      sendReceipt: m.sendPaymentReceiptEmail, sendFailed: m.sendPaymentFailedEmail,
+      sendCardExpiring: m.sendCardExpiringEmail, sendTeamAlert: m.sendTeamPaymentAlertEmail,
+    });
   } catch (err) {
     console.error("[held-notices] retry failed", err);
   }

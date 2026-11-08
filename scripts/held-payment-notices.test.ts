@@ -9,6 +9,7 @@ process.env.SUPABASE_PUBLISHABLE_KEY ??= "dummy";
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= "dummy";
 process.env.RESEND_API_KEY = "test-only";
 type Row = Record<string, any>;
+const missingTables = new Set<string>();
 function fakeDb(seed: Record<string, Row[]>) {
   const state: Record<string, Row[]> = JSON.parse(JSON.stringify(seed));
   const rpcCalls: { name: string; args: any }[] = [];
@@ -29,7 +30,8 @@ function fakeDb(seed: Record<string, Row[]>) {
 
   function from(table: string) {
     state[table] ??= [];
-    let op: "select" | "insert" | "update" = "select";
+    let op: "select" | "insert" | "update" | "upsert" = "select";
+    let upsertOpts: any = null;
     let patch: Row | null = null;
     let inserted: Row | null = null;
     let single = false;
@@ -39,6 +41,8 @@ function fakeDb(seed: Record<string, Row[]>) {
       select() { return b; },
       insert(r: Row) { op = "insert"; inserted = r; return b; },
       update(p: Row) { op = "update"; patch = p; return b; },
+      upsert(r: Row, o: any) { op = "upsert"; inserted = r; upsertOpts = o; return b; },
+      lt(c: string, v: any) { filters.push((r) => r[c] < v); return b; },
       eq(c: string, v: any) { filters.push((r) => r[c] === v); return b; },
       neq(c: string, v: any) { filters.push((r) => r[c] !== v); return b; },
       in(c: string, vs: any[]) { filters.push((r) => vs.includes(r[c])); return b; },
@@ -52,6 +56,16 @@ function fakeDb(seed: Record<string, Row[]>) {
 
     function run() {
       const match = () => state[table].filter((r) => filters.every((f) => f(r)));
+      if (op === "upsert") {
+        if (missingTables.has(table)) return { data: null, error: { message: "relation does not exist" } };
+        const keys = String(upsertOpts?.onConflict ?? "id").split(",");
+        const dup = state[table].find((r) => keys.every((k) => r[k] === (inserted as Row)[k]));
+        if (dup) return { data: [], error: null };
+        const t = new Date().toISOString();
+        state[table].push({ id: `gen-${nextId++}`, attempts: 0, created_at: t, updated_at: t, ...inserted });
+        return { data: [], error: null };
+      }
+      if (missingTables.has(table)) return { data: null, error: { message: "relation does not exist" } };
       if (op === "insert") {
         const row = { id: `gen-${nextId++}`, ...inserted };
         state[table].push(row);
@@ -93,21 +107,23 @@ const proxy = {
 };
 mock.module("@/integrations/supabase/client.server", () => ({ supabaseAdmin: proxy }));
 const sent: string[] = [];
+const sentTo: string[] = [];
 (globalThis as any).fetch = async (url: string, init: any) => {
-  if (String(url).includes("resend")) sent.push(JSON.parse(init.body).subject);
+  if (String(url).includes("resend")) { const b = JSON.parse(init.body); sent.push(b.subject); sentTo.push([b.to].flat().join(",")); }
   return new Response(JSON.stringify({ id: "re_" + sent.length }), { status: 200 });
 };
 const { postVerifiedPaymentWebhook } = await import("../src/routes/api/public/payments/webhook.ts");
-const { retryHeldPaymentNotices } = await import("@/lib/held-payment-notices.server");
+const { retryHeldNotices } = await import("@/lib/held-payment-notices.server");
 const email = await import("@/lib/email.server");
-const deps = { sendReceipt: email.sendPaymentReceiptEmail, sendFailed: email.sendPaymentFailedEmail };
+const deps = { sendReceipt: email.sendPaymentReceiptEmail, sendFailed: email.sendPaymentFailedEmail, sendCardExpiring: email.sendCardExpiringEmail, sendTeamAlert: email.sendTeamPaymentAlertEmail };
 
 const P1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const P2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const RENTAL = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
-const seed = (pay: Row[], settings: Row[] = []) => fakeDb({
+const RETRY_ON = { on: { held_retry: { at: "t", by: "o" } } };
+const seed = (pay: Row[], settings: Row[] = [{ key: "automation_controls", value: RETRY_ON }]) => fakeDb({
   payments: pay,
-  rentals: [{ id: RENTAL, application_id: "app1", applications: { email: "r@example.com", full_name: "R", card_brand: "Visa", card_last4: "4242" }, vehicles: { license_plate: "X" } }],
+  rentals: [{ id: RENTAL, application_id: "app1", stripe_subscription_id: "sub_1", applications: { email: "r@example.com", full_name: "R", card_brand: "Visa", card_last4: "4242", card_exp_month: 12, card_exp_year: 2099 }, vehicles: { license_plate: "X" } }],
   app_settings: settings,
 });
 const paidEvent = (ids = P1) => ({ type: "payment_intent.succeeded", data: { object: { id: "pi_1", amount: 35000, metadata: { rentalId: RENTAL, reason: "rent", paymentIds: ids } } } });
@@ -115,81 +131,156 @@ const failEvent = () => ({ type: "payment_intent.payment_failed", data: { object
 const receipts = () => sent.filter((s) => s.startsWith("Payment Received")).length;
 const failures = () => sent.filter((s) => s.includes("Did Not Go Through")).length;
 
-beforeEach(() => { sent.length = 0; settingsMode = "ok"; });
+const teamAlerts = () => sentTo.filter((t) => !t.includes("r@example.com")).length;
+const bells = () => (db._state.notifications ?? []).length;
+const queue = () => (db._state.held_notices ?? []) as Row[];
+const OFF = (k: string) => [{ key: "automation_controls", value: { ...RETRY_ON, off: { [k]: { at: "t", by: "o" } } } }];
+const held = (o: Row): Row => ({ id: "h" + Math.random(), kind: "payment_receipt", source_ref: "pi_1", rental_id: RENTAL, payment_ids: [P1], outcome: "paid", amount: 350, reason: "rent", status: "held", attempts: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...o });
+const invoiceEvent = (type: string) => ({ type, data: { object: { id: "in_1", subscription: "sub_1", amount_due: 35000, amount_paid: type.endsWith("failed") ? 0 : 35000, period_start: 1790000000 } } });
 
-describe("webhook parks a held notice; sweep sends it once", () => {
-  test("unreadable switches: receipt held, row parked held:paid, nothing sent", async () => {
+beforeEach(() => { sent.length = 0; sentTo.length = 0; settingsMode = "ok"; missingTables.clear(); });
+
+describe("held notices: webhook queues references, sweep sends once", () => {
+  test("unreadable switches: receipt queued, notice claim kept, nothing sent, no body stored", async () => {
     db = seed([{ id: P1, status: "pending", balance_due: 350, notified_status: null }]);
     settingsMode = "error";
     expect((await postVerifiedPaymentWebhook(paidEvent(), db, "live")).status).toBe(200);
     expect(receipts()).toBe(0);
-    expect(db._state.payments[0]).toMatchObject({ status: "paid", notified_status: "held:paid" });
-    expect(db._state.email_deliveries?.some((d: Row) => d.workflow === "payment_receipt" && d.state === "failed")).toBe(true);
+    expect(db._state.payments[0]).toMatchObject({ status: "paid", notified_status: "paid" });
+    expect(queue()).toHaveLength(1);
+    expect(queue()[0]).toMatchObject({ kind: "payment_receipt", source_ref: "pi_1", payment_ids: [P1], status: "held" });
+    expect(JSON.stringify(queue()[0])).not.toMatch(/r@example\.com|<div|html/i);
   });
-  test("sweep while still unreadable does nothing", async () => {
-    db = seed([{ id: P1, status: "paid", notified_status: "held:paid", amount: 350, rental_id: RENTAL }]);
-    settingsMode = "error";
-    expect((await retryHeldPaymentNotices(proxy, deps)).skipped).toBe("settings_unreadable");
-    expect(db._state.payments[0].notified_status).toBe("held:paid");
-  });
-  test("sweep after recovery sends exactly one receipt; a second sweep and a Stripe replay send none", async () => {
-    db = seed([{ id: P1, status: "paid", notified_status: "held:paid", amount: 350, rental_id: RENTAL, reason: "rent" }]);
-    expect((await retryHeldPaymentNotices(proxy, deps)).sent).toBe(1);
-    expect(db._state.payments[0].notified_status).toBe("paid");
-    await retryHeldPaymentNotices(proxy, deps);
-    await postVerifiedPaymentWebhook(paidEvent(), db, "live");
-    expect(receipts()).toBe(1);
-  });
-  test("Owner switched it off meanwhile: dropped, never sent later", async () => {
-    db = seed([{ id: P1, status: "paid", notified_status: "held:paid", amount: 350, rental_id: RENTAL }], [{ key: "automation_controls", value: { off: { payment_receipt: { at: "t", by: "o" } } } }]);
-    expect((await retryHeldPaymentNotices(proxy, deps)).dropped).toBe(1);
-    expect(db._state.payments[0].notified_status).toBe("paid");
-    db._state.app_settings.length = 0;
-    await retryHeldPaymentNotices(proxy, deps);
-    expect(receipts()).toBe(0);
-  });
-  for (const now of ["paid", "waived", "void", "refunded"]) {
-    test(`held failure notice is dropped once the charge is ${now}`, async () => {
-      db = seed([{ id: P1, status: now, notified_status: "held:failed", amount: 350, rental_id: RENTAL }]);
-      await retryHeldPaymentNotices(proxy, deps);
-      expect(failures()).toBe(0);
-      expect(db._state.payments[0].notified_status).toBe("failed");
-    });
-  }
-  test("held failure notice still failed → sent once", async () => {
-    db = seed([{ id: P1, status: "failed", notified_status: "held:failed", amount: 350, rental_id: RENTAL }]);
-    expect((await retryHeldPaymentNotices(proxy, deps)).sent).toBe(1);
-    expect(failures()).toBe(1);
-  });
-  test("a re-held send is parked again, not marked notified", async () => {
-    db = seed([{ id: P1, status: "paid", notified_status: "held:paid", amount: 350, rental_id: RENTAL }]);
-    const r = await retryHeldPaymentNotices(proxy, { ...deps, sendReceipt: async () => ({ ok: false, blocked: "held" as const }) });
-    expect(r.stillHeld).toBe(1);
-    expect(db._state.payments[0].notified_status).toBe("held:paid");
-  });
-  test("webhook failure path parks held:failed", async () => {
+  test("Stripe replays while held: no second bell, no second team alert, one queue row", async () => {
     db = seed([{ id: P1, status: "pending", balance_due: 350, notified_status: null, stripe_payment_intent_id: "pi_1" }]);
     settingsMode = "error";
     await postVerifiedPaymentWebhook(failEvent(), db, "live");
-    expect(db._state.payments[0]).toMatchObject({ status: "failed", notified_status: "held:failed" });
+    const b1 = bells();
+    await postVerifiedPaymentWebhook(failEvent(), db, "live");
+    await postVerifiedPaymentWebhook(failEvent(), db, "live");
+    expect(bells()).toBe(b1);
+    expect(teamAlerts()).toBe(0);
+    expect(queue().filter((q) => q.kind === "payment_failed")).toHaveLength(1);
+    expect(queue().filter((q) => q.kind === "payment_team_alert")).toHaveLength(1);
+    settingsMode = "ok";
+    await retryHeldNotices(proxy, deps);
+    await retryHeldNotices(proxy, deps);
+    await postVerifiedPaymentWebhook(failEvent(), db, "live");
+    expect(failures()).toBe(1);
+    expect(teamAlerts()).toBe(1);
+    expect(bells()).toBe(b1);
   });
-  test("Owner Off at webhook time is not parked (intentionally not sent)", async () => {
-    db = seed([{ id: P1, status: "pending", balance_due: 350, notified_status: null }], [{ key: "automation_controls", value: { off: { payment_receipt: { at: "t", by: "o" } } } }]);
-    await postVerifiedPaymentWebhook(paidEvent(), db, "live");
+  test("sweep while still unreadable does nothing", async () => {
+    db = seed([{ id: P1, status: "paid" }]); db._state.held_notices = [held({})];
+    settingsMode = "error";
+    expect((await retryHeldNotices(proxy, deps)).skipped).toBe("settings_unreadable");
+    expect(queue()[0].status).toBe("held");
+  });
+  test("queue table missing (migration not applied): webhook still 200, sweep skips", async () => {
+    db = seed([{ id: P1, status: "pending", balance_due: 350, notified_status: null }]);
+    missingTables.add("held_notices"); settingsMode = "error";
+    expect((await postVerifiedPaymentWebhook(paidEvent(), db, "live")).status).toBe(200);
+    settingsMode = "ok";
+    expect((await retryHeldNotices(proxy, deps)).skipped).toBe("queue_unavailable");
     expect(receipts()).toBe(0);
-    expect(db._state.payments[0].notified_status).toBe("paid");
   });
-  test("multi-row charge is not parked (one receipt covers several rows)", async () => {
+  test("multi-row charge: one queue row with every payment id, one receipt", async () => {
     db = seed([{ id: P1, status: "pending", balance_due: 1, notified_status: null }, { id: P2, status: "pending", balance_due: 1, notified_status: null }]);
     settingsMode = "error";
     await postVerifiedPaymentWebhook(paidEvent(`${P1},${P2}`), db, "live");
-    expect(db._state.payments.every((p: Row) => p.notified_status === "paid")).toBe(true);
+    expect(queue()).toHaveLength(1);
+    expect([...queue()[0].payment_ids].sort()).toEqual([P1, P2]);
+    settingsMode = "ok";
+    expect((await retryHeldNotices(proxy, deps)).sent).toBe(1);
+    expect(receipts()).toBe(1);
   });
-  test("healthy switches: webhook sends the receipt directly, nothing parked", async () => {
+  test("weekly subscription invoice paid: queued by invoice id, sent once", async () => {
+    db = seed([]);
+    settingsMode = "error";
+    await postVerifiedPaymentWebhook(invoiceEvent("invoice.paid"), db, "live");
+    await postVerifiedPaymentWebhook(invoiceEvent("invoice.paid"), db, "live");
+    expect(receipts()).toBe(0);
+    expect(queue().filter((q) => q.source_ref === "in_1" && q.kind === "payment_receipt")).toHaveLength(1);
+    settingsMode = "ok";
+    await retryHeldNotices(proxy, deps); await retryHeldNotices(proxy, deps);
+    expect(receipts()).toBe(1);
+  });
+  test("weekly invoice failed: failure + team alert queued, sent once each", async () => {
+    db = seed([]);
+    settingsMode = "error";
+    await postVerifiedPaymentWebhook(invoiceEvent("invoice.payment_failed"), db, "live");
+    expect(queue().map((q) => q.kind).sort()).toEqual(["payment_failed", "payment_team_alert"]);
+    settingsMode = "ok";
+    await retryHeldNotices(proxy, deps); await retryHeldNotices(proxy, deps);
+    expect(failures()).toBe(1);
+    expect(teamAlerts()).toBe(1);
+  });
+  test("card-expiring notice: sent while still expiring, dropped once the card was replaced", async () => {
+    db = seed([{ id: P1, status: "paid" }]);
+    db._state.rentals[0].applications.card_exp_month = new Date().getMonth() + 1;
+    db._state.rentals[0].applications.card_exp_year = new Date().getFullYear();
+    db._state.held_notices = [held({ kind: "card_expiring" })];
+    expect((await retryHeldNotices(proxy, deps)).sent).toBe(1);
+    expect(sent.filter((s) => s.includes("is expiring"))).toHaveLength(1);
+    db = seed([{ id: P1, status: "paid" }]); db._state.held_notices = [held({ kind: "card_expiring" })];
+    expect((await retryHeldNotices(proxy, deps)).dropped).toBe(1);
+  });
+  test("Owner switched it off meanwhile: dropped, never sent after switching back on", async () => {
+    db = seed([{ id: P1, status: "paid" }], OFF("payment_receipt")); db._state.held_notices = [held({})];
+    expect((await retryHeldNotices(proxy, deps)).dropped).toBe(1);
+    db._state.app_settings[0].value = RETRY_ON;
+    await retryHeldNotices(proxy, deps);
+    expect(receipts()).toBe(0);
+  });
+  test("older than 7 days: dropped", async () => {
+    db = seed([{ id: P1, status: "paid" }]); db._state.held_notices = [held({ created_at: new Date(Date.now() - 8 * 86400000).toISOString() })];
+    expect((await retryHeldNotices(proxy, deps)).dropped).toBe(1);
+    expect(receipts()).toBe(0);
+  });
+  test("receipt for a charge since refunded: dropped", async () => {
+    db = seed([{ id: P1, status: "refunded" }]); db._state.held_notices = [held({})];
+    expect((await retryHeldNotices(proxy, deps)).dropped).toBe(1);
+  });
+  for (const now of ["paid", "waived", "void", "refunded"]) {
+    test(`failure notice and team alert dropped once the charge is ${now}`, async () => {
+      db = seed([{ id: P1, status: now }]);
+      db._state.held_notices = [held({ kind: "payment_failed", outcome: "failed" }), held({ kind: "payment_team_alert", outcome: "failed" })];
+      expect((await retryHeldNotices(proxy, deps)).dropped).toBe(2);
+      expect(failures() + teamAlerts()).toBe(0);
+    });
+  }
+  test("still held on retry: stays queued", async () => {
+    db = seed([{ id: P1, status: "paid" }]); db._state.held_notices = [held({})];
+    const r = await retryHeldNotices(proxy, { ...deps, sendReceipt: async () => ({ ok: false, blocked: "held" as const }) });
+    expect(r.stillHeld).toBe(1);
+    expect(queue()[0].status).toBe("held");
+  });
+  test("send threw or stuck in sending: marked failed, never resent", async () => {
+    db = seed([{ id: P1, status: "paid" }]);
+    db._state.held_notices = [held({}), held({ source_ref: "pi_2", status: "sending", updated_at: new Date(Date.now() - 3600000).toISOString() })];
+    const r = await retryHeldNotices(proxy, { ...deps, sendReceipt: async () => { throw new Error("x"); } });
+    expect(r.failed).toBe(1);
+    expect(queue().map((q) => q.status)).toEqual(["failed", "failed"]);
+    await retryHeldNotices(proxy, deps);
+    expect(receipts()).toBe(0);
+  });
+  test("Owner Off at webhook time is not queued (intentionally not sent)", async () => {
+    db = seed([{ id: P1, status: "pending", balance_due: 350, notified_status: null }], OFF("payment_receipt"));
+    await postVerifiedPaymentWebhook(paidEvent(), db, "live");
+    expect(receipts()).toBe(0);
+    expect(queue()).toHaveLength(0);
+  });
+  test("Held Retry is off by default: a queued notice is never sent", async () => {
+    db = seed([{ id: P1, status: "paid" }], []); db._state.held_notices = [held({})];
+    expect((await retryHeldNotices(proxy, deps)).skipped).toBe("retry_off");
+    expect(receipts()).toBe(0);
+    expect(queue()[0].status).toBe("held");
+  });
+  test("healthy switches: webhook sends directly, nothing queued", async () => {
     db = seed([{ id: P1, status: "pending", balance_due: 350, notified_status: null }]);
     await postVerifiedPaymentWebhook(paidEvent(), db, "live");
     expect(receipts()).toBe(1);
-    expect(db._state.payments[0].notified_status).toBe("paid");
+    expect(queue()).toHaveLength(0);
   });
 });
 
