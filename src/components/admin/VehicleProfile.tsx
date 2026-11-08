@@ -35,6 +35,7 @@ import {
   type VehicleProfile as Profile,
   type VehicleSection,
 } from "@/lib/vehicles.functions";
+import { bodyTypeLabel } from "@/lib/vehicle-defaults";
 import { getVehicleFinance, saveVehicleFinance } from "@/lib/vehicle-finance.functions";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { readStoredExperience } from "@/lib/experience";
@@ -934,7 +935,7 @@ function SectionDrawer({
               onChange={(v) => set("body_type", v)}
               options={[
                 { value: "", label: "—" },
-                ...BODY_TYPES.map((b) => ({ value: b, label: b })),
+                ...BODY_TYPES.map((b) => ({ value: b, label: bodyTypeLabel(b) })),
               ]}
             />
             <Text
