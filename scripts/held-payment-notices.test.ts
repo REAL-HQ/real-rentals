@@ -24,6 +24,7 @@ function fakeDb(seed: Record<string, Row[]>) {
         if (op === "is" && val === "null") return row[col] == null;
         if (op === "neq") return String(row[col] ?? "") !== val;
         if (op === "eq") return String(row[col] ?? "") === val;
+        if (op === "lt") return row[col] != null && String(row[col]) < val;
         throw new Error(`fakeDb: unsupported or() clause ${p}`);
       });
   };
@@ -67,6 +68,9 @@ function fakeDb(seed: Record<string, Row[]>) {
       }
       if (missingTables.has(table)) return { data: null, error: { message: "relation does not exist" } };
       if (op === "insert") {
+        // payments has a unique index on stripe_invoice_id (as in production).
+        if (table === "payments" && (inserted as Row).stripe_invoice_id && state[table].some((r) => r.stripe_invoice_id === (inserted as Row).stripe_invoice_id))
+          return { data: null, error: { code: "23505", message: "duplicate key" } };
         const row = { id: `gen-${nextId++}`, ...inserted };
         state[table].push(row);
         return { data: [row], error: null };
@@ -136,7 +140,7 @@ const bells = () => (db._state.notifications ?? []).length;
 const queue = () => (db._state.held_notices ?? []) as Row[];
 const OFF = (k: string) => [{ key: "automation_controls", value: { ...RETRY_ON, off: { [k]: { at: "t", by: "o" } } } }];
 const held = (o: Row): Row => ({ id: "h" + Math.random(), kind: "payment_receipt", source_ref: "pi_1", rental_id: RENTAL, payment_ids: [P1], outcome: "paid", amount: 350, reason: "rent", status: "held", attempts: 0, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...o });
-const invoiceEvent = (type: string) => ({ type, data: { object: { id: "in_1", subscription: "sub_1", amount_due: 35000, amount_paid: type.endsWith("failed") ? 0 : 35000, period_start: 1790000000 } } });
+const invoiceEvent = (type: string, attempt?: number) => ({ type, data: { object: { id: "in_1", subscription: "sub_1", amount_due: 35000, amount_paid: type.endsWith("failed") ? 0 : 35000, period_start: 1790000000, ...(attempt ? { attempt_count: attempt } : {}) } } });
 
 beforeEach(() => { sent.length = 0; sentTo.length = 0; settingsMode = "ok"; missingTables.clear(); });
 
@@ -281,6 +285,79 @@ describe("held notices: webhook queues references, sweep sends once", () => {
     await postVerifiedPaymentWebhook(paidEvent(), db, "live");
     expect(receipts()).toBe(1);
     expect(queue()).toHaveLength(0);
+  });
+});
+
+describe("weekly rent failure: one notice per Stripe attempt", () => {
+  const FAIL = "invoice.payment_failed";
+  const bellsTitled = (t: string) => (db._state.notifications ?? []).filter((n: Row) => n.title === t).length;
+  test("replayed failure event: one bell, one renter email, one team alert", async () => {
+    db = seed([]);
+    for (let i = 0; i < 3; i++) expect((await postVerifiedPaymentWebhook(invoiceEvent(FAIL, 1), db, "live")).status).toBe(200);
+    expect(bellsTitled("Weekly Rent Failed")).toBe(1);
+    expect(failures()).toBe(1);
+    expect(teamAlerts()).toBe(1);
+    expect(db._state.payments).toHaveLength(1);
+    expect(db._state.payments[0]).toMatchObject({ status: "failed", notified_status: "failed:a0001" });
+  });
+  test("concurrent duplicate deliveries: still one of each", async () => {
+    db = seed([]);
+    await Promise.all([1, 2, 3, 4].map(() => postVerifiedPaymentWebhook(invoiceEvent(FAIL, 1), db, "live")));
+    expect(bellsTitled("Weekly Rent Failed")).toBe(1);
+    expect(failures()).toBe(1);
+    expect(teamAlerts()).toBe(1);
+  });
+  test("Stripe's next retry attempt fails too: a genuinely new failure notifies once more", async () => {
+    db = seed([]);
+    await postVerifiedPaymentWebhook(invoiceEvent(FAIL, 1), db, "live");
+    await postVerifiedPaymentWebhook(invoiceEvent(FAIL, 2), db, "live");
+    await postVerifiedPaymentWebhook(invoiceEvent(FAIL, 2), db, "live");
+    expect(bellsTitled("Weekly Rent Failed")).toBe(2);
+    expect(failures()).toBe(2);
+    expect(teamAlerts()).toBe(2);
+  });
+  test("a late, older attempt arriving after a newer one notifies nothing", async () => {
+    db = seed([]);
+    await postVerifiedPaymentWebhook(invoiceEvent(FAIL, 3), db, "live");
+    await postVerifiedPaymentWebhook(invoiceEvent(FAIL, 1), db, "live");
+    expect(failures()).toBe(1);
+    expect(bellsTitled("Weekly Rent Failed")).toBe(1);
+  });
+  test("attempt 10 orders after attempt 9 (zero-padded keys)", async () => {
+    db = seed([]);
+    await postVerifiedPaymentWebhook(invoiceEvent(FAIL, 9), db, "live");
+    await postVerifiedPaymentWebhook(invoiceEvent(FAIL, 10), db, "live");
+    expect(failures()).toBe(2);
+  });
+  test("failure then paid: one receipt, paid replay sends nothing more", async () => {
+    db = seed([]);
+    await postVerifiedPaymentWebhook(invoiceEvent(FAIL, 1), db, "live");
+    await postVerifiedPaymentWebhook(invoiceEvent("invoice.paid"), db, "live");
+    await postVerifiedPaymentWebhook(invoiceEvent("invoice.paid"), db, "live");
+    expect(receipts()).toBe(1);
+    expect(bellsTitled("Weekly Rent Paid")).toBe(1);
+    expect(db._state.payments[0].status).toBe("paid");
+  });
+  test("a row our own collection is mid-charging is not failed or notified", async () => {
+    db = seed([{ id: P1, rental_id: RENTAL, status: "pending", last_attempt_at: "2026-11-07T00:00:00Z", stripe_invoice_id: "in_1", notified_status: null }]);
+    await postVerifiedPaymentWebhook(invoiceEvent(FAIL, 1), db, "live");
+    expect(db._state.payments.find((p: Row) => p.id === P1).status).toBe("pending");
+    expect(failures() + teamAlerts()).toBe(0);
+  });
+});
+
+describe("held receipt is event-specific: paid receipts are sent, not dropped", () => {
+  test("held receipt for a paid charge sends; a held failure notice for the same paid charge drops", async () => {
+    db = seed([{ id: P1, status: "paid" }]);
+    db._state.held_notices = [held({ kind: "payment_receipt", outcome: "paid" }), held({ kind: "payment_failed", outcome: "failed", source_ref: "pi_9" })];
+    const r = await retryHeldNotices(proxy, deps);
+    expect(r.sent).toBe(1); expect(r.dropped).toBe(1);
+    expect(receipts()).toBe(1); expect(failures()).toBe(0);
+  });
+  test("multi-row receipt drops only if any covered row is no longer paid", async () => {
+    db = seed([{ id: P1, status: "paid" }, { id: P2, status: "refunded" }]);
+    db._state.held_notices = [held({ payment_ids: [P1, P2] })];
+    expect((await retryHeldNotices(proxy, deps)).dropped).toBe(1);
   });
 });
 

@@ -422,6 +422,22 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     return;
   }
 
+  // A failed invoice row stays "failed", so a replayed invoice.payment_failed
+  // matches it again. Claim the failure notice per Stripe attempt: a replay
+  // (same attempt) or a late older attempt claims nothing, while Stripe's next
+  // retry attempt (a genuinely new failure) claims and notifies once.
+  // Zero-padded so text order = attempt order; plain 'failed' (charge path)
+  // sorts below every attempt key.
+  if (status !== 'paid') {
+    const attempt = Math.max(1, Math.min(9999, Math.trunc(Number(invoice.attempt_count) || 1)));
+    const key = `failed:a${String(attempt).padStart(4, '0')}`;
+    const claimed = must(await admin.from('payments').update({ notified_status: key })
+      .in('id', (r.data ?? []).map((x: any) => x.id)).eq('status', 'failed')
+      .or(`notified_status.is.null,notified_status.lt.${key}`)
+      .select('id'));
+    if (!claimed.data?.length) return;
+  }
+
   must(await admin.from('rentals').update({
     payment_status: status === 'paid' ? 'current' : 'past_due',
     ...(status === 'paid' && invoice.period_end
