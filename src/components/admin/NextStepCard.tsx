@@ -93,7 +93,7 @@ export function NextStepCard({
         <details className="mt-3 text-[12px]">
           <summary className="cursor-pointer text-[#55555E] hover:text-[#111114]">Full Checklist</summary>
           <div className="mt-2">
-            <ActivationRequirementList requirements={readiness.requirements} />
+            <ActivationRequirementList requirements={readiness.requirements} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} />
           </div>
         </details>
       ) : null}

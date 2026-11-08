@@ -21,6 +21,7 @@
 - Back-office sticky: chrome locked once in admin.tsx; pages opt filter rows in via `admin-sticky-bar` (styles.css) — no per-page sticky code.
 - Overview summary details: use one shared expansion state and existing authorized responses; service previews deduplicate by vehicle and prioritize maintenance status — so expansion cannot change reporting, access, or service classification.
 - Vehicle picker photo columns are opt-in presentation using existing staff media reads and confirmed-original thumbnail selection; keep option values and search unchanged — so visual improvements do not alter assignment or other pickers.
+- Driver checklist actions are navigation-only callbacks to existing evidence/review workflows; server requirement states stay read-only — so a checklist click cannot approve, sign, verify or activate a renter.
 - eSign tests run only against the disposable harness (scripts/esign-harness: throwaway Postgres + PostgREST + in-memory storage, outbound network refused, email/SMS capture-only) — never against the shared backend.
 
 - Agreement templates: each agreement family has its own key, version history and fingerprint (src/lib/agreement-library.ts); prepareAgreement takes an optional templateKey, adds it to the fingerprint, and refuses Send for any family version not Owner-approved — so insurance and no-insurance wording never mix and drafts can't be sent.
