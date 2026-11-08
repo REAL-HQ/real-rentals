@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { SettingsPanel, SECTION_KEY } from "@/components/admin/SettingsPanel";
 import { AutomationsPanel } from "@/components/admin/AutomationsPanel";
+import { AutomationsCatalog } from "@/components/admin/AutomationsCatalog";
 import { TeamPanel } from "@/components/admin/TeamPanel";
 import { VehicleDefaultsPanel } from "@/components/admin/VehicleDefaultsPanel";
 import { MaintenanceDefaultsPanel } from "@/components/admin/MaintenanceDefaultsPanel";
@@ -36,7 +37,7 @@ const DESCRIPTIONS: Record<string, string> = {
   payments: "Late fees, grace period and default payment method.",
   partners: "Default revenue share and contract term for vehicle partners.",
   notifications: "Where applicant alerts go, and whether email delivery is working.",
-  automations: "Automatic SMS and email follow-up sequences.",
+  automations: "Every automated email and text, its templates, and an on/off switch for each.",
   team: "Invite staff, set their tier and remove access.",
 };
 
@@ -112,7 +113,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           <p className="text-[13px] text-[#55555E] mt-0.5">{DESCRIPTIONS[current.id]}</p>
         </div>
         {current.id === "automations" ? (
-          <AutomationsPanel />
+          <div className="space-y-8"><AutomationsCatalog /><AutomationsPanel /></div>
         ) : current.id === "vehicle_defaults" ? (
           <VehicleDefaultsPanel />
         ) : current.id === "safe_autofill" ? (

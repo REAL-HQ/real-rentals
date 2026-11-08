@@ -45,6 +45,14 @@ async function handle(request: Request): Promise<Response> {
   if (tokenErr || !expectedToken) return new Response("token config missing", { status: 500 });
   if (!provided || provided !== expectedToken) return new Response("unauthorized", { status: 401 });
 
+  // Back Office → Automations switches, read fresh for this run. A switched-off
+  // reminder is skipped before its dedupe row or bell notification is written,
+  // so turning it back on sends only what is owed that day — never a replay.
+  const { loadAutomationControls } = await import("@/lib/automation-controls.server");
+  const { isAutomationOn } = await import("@/lib/automation-catalog");
+  const controls = await loadAutomationControls(supabaseAdmin, true);
+  const on = (key: string) => isAutomationOn(controls, key);
+
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
   const since = new Date(today.getTime() - 6 * 24 * 3600 * 1000).toISOString(); // license / agreement reminders: 1 per 6 days
@@ -94,6 +102,7 @@ async function handle(request: Request): Promise<Response> {
       if (!app?.email) continue;
       if (await alreadySent(supabaseAdmin, app.id, kind)) continue;
 
+      if (on("payment_past_due")) {
       await sendPastDueReminderEmail({
         to: app.email,
         firstName: app.full_name,
@@ -106,10 +115,11 @@ async function handle(request: Request): Promise<Response> {
         kind, "Balance Past Due", `$${info.amount.toFixed(2)} is past due.`,
       );
       pastDue++;
+      }
 
       // First time this balance shows up past due: tell the team once.
       const teamKind = `payment_team_past_due:${info.dueDate}`;
-      if (!(await alreadySent(supabaseAdmin, app.id, teamKind))) {
+      if (on("payment_team_alert") && !(await alreadySent(supabaseAdmin, app.id, teamKind))) {
         await sendTeamPaymentAlertEmail({
           event: "past_due", driverName: app.full_name, amount: info.amount,
           applicationId: app.id, dueDate: info.dueDate, daysLate,
@@ -144,6 +154,7 @@ async function handle(request: Request): Promise<Response> {
     upcomingByDriver.set(p.driver_id as string, (upcomingByDriver.get(p.driver_id as string) ?? 0) + owed);
   }
   for (const [appId, amount] of upcomingByDriver) {
+    if (!on("payment_due_tomorrow")) break;
     try {
       const kind = reminderKind("due_tomorrow", tomorrowStr);
       const { data: app } = await supabaseAdmin
@@ -181,7 +192,7 @@ async function handle(request: Request): Promise<Response> {
   // "Not specified" — never assumed to be Zelle.
   try {
     const planKind = collectionsPlanKind(todayStr);
-    const alreadyPlan = await teamDigestAlreadySent(supabaseAdmin, planKind);
+    const alreadyPlan = on("collections_plan") ? await teamDigestAlreadySent(supabaseAdmin, planKind) : true;
     if (!alreadyPlan) {
       const { data: dueRentals } = await supabaseAdmin
         .from("rentals")
@@ -368,6 +379,7 @@ async function handle(request: Request): Promise<Response> {
     .limit(200);
 
   for (const app of expiring ?? []) {
+    if (!on("license_expiring")) break;
     try {
       if (!app.email) continue;
       if (await recentlyNotified(supabaseAdmin, app.id, "license_expiring", since)) continue;

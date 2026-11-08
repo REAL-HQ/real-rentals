@@ -117,6 +117,18 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
   // Sender identity + why-you-got-this line, then a plain-text alternative
   // (Resend sends both as multipart/alternative). Links and tokens are kept verbatim.
   html = withIdentityFooter(html, track?.workflow);
+  // Back Office → Automations: a template preview never sends, and a switched-off
+  // automation is skipped before any delivery row or provider call.
+  {
+    const { capturePreviewEmail, automationAllowsEmail } = await import("@/lib/automation-controls.server");
+    if (capturePreviewEmail({ to: Array.isArray(to) ? to : [to], subject, html, workflow: track?.workflow ?? null })) {
+      return { ok: false, error: "Preview only. Nothing was sent." };
+    }
+    if (!(await automationAllowsEmail(track?.workflow))) {
+      console.info("[email] automation turned off; skipping send", { workflow: track?.workflow });
+      return { ok: false, error: "This automation is turned off in Back Office → Automations." };
+    }
+  }
   const text = htmlToText(html);
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -374,7 +386,8 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
 
   const prefs = await getLeadAlertPrefs();
   const wanted = event === "complete" ? prefs.onComplete : prefs.onNew;
-  if (!wanted) return;
+  // A Back Office preview renders the alert even while it is switched off.
+  if (!wanted && !(await import("@/lib/automation-controls.server")).inPreview()) return;
   if (!prefs.recipients.length) {
     console.error("[email] lead alert has no recipient; check Settings -> Notifications");
     return;
@@ -412,6 +425,8 @@ async function applicantResumeUrl(applicationId: string): Promise<string> {
  * never logs the applicant out of a tab they already have open.
  */
 async function applicantRecoveryUrl(applicationId: string): Promise<string> {
+  const preview = await import("@/lib/automation-controls.server");
+  if (preview.inPreview()) return preview.PREVIEW_LINK;
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { issueResumeToken, resumeUrl } = await import("@/lib/resume-tokens.server");
   return resumeUrl(await issueResumeToken(supabaseAdmin, applicationId, { recovery: true }));
