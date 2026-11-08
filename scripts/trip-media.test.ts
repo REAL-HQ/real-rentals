@@ -641,3 +641,27 @@ describe("adversarial PNG / WebP", () => {
     ).toBeNull();
   });
 });
+
+describe("renter portal Pictures: batch drop/picker per Pickup/Return/Issues (Yours)", () => {
+  const portal = readFileSync(new URL("../src/routes/portal.tsx", import.meta.url), "utf8");
+  const insp = readFileSync(
+    new URL("../src/components/admin/InspectionsPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  test("each section renders read-only Ours and an uploading Yours bound to that section's phase", () => {
+    const view = portal.slice(portal.indexOf("function PicturesView()"));
+    expect(view).toContain("CONDITION_SECTIONS.map((section)");
+    expect(view).toContain("title={ROLE_SUBSECTION.staff}");
+    expect(view).toContain("title={ROLE_SUBSECTION.driver}");
+    expect((view.match(/phase=\{section\.uploadPhase\}/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(view).toContain("readOnly");
+  });
+  test("the uploader is the shared batch FileUploader: multi-file, drop zone, phone camera, server confirm", () => {
+    const up = insp.slice(insp.indexOf("export function ConditionUploader"));
+    expect(up).toContain('variant="zone"');
+    expect(up).toContain("multiple");
+    expect(up).toContain("camera");
+    expect(up).toContain("accept={TRIP_MEDIA_ACCEPT}");
+    expect(up).toContain("upload={(file, { onProgress }) => uploadOne(file, onProgress)}");
+  });
+});

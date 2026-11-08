@@ -261,6 +261,13 @@ function Grid({
           <figcaption className="p-1.5 text-[10px] leading-tight text-[#55555E] space-y-0.5">
             <div>Taken {fmt(m.taken_at) ?? "— no camera time"}</div>
             <div>Uploaded {fmt(m.uploaded_at)}</div>
+            <div>
+              {!m.rental_id
+                ? "Before rental · team only"
+                : m.renter_preview
+                  ? "Renter sees a location-free copy"
+                  : "Renter sees the entry only (no safe preview)"}
+            </div>
             <div className="flex items-center gap-1">
               {m.has_gps && (
                 <span
