@@ -93,6 +93,16 @@ type ListState = {
 };
 const VIEW_KEY = "rr.vehicles.view";
 
+/** Vehicles-only density: the full filter/action set fits a 100% desktop view. */
+const VEHICLE_TOOLBAR = {
+  search: "h-8 min-w-[9rem] flex-[1_1_9rem] max-w-[16rem] rounded-md border border-border bg-white px-2.5 text-[13px] max-sm:max-w-none max-sm:w-full",
+  select: "h-8 w-[7.75rem] shrink-0 bg-white text-[13px] text-foreground max-sm:w-full",
+  button: TOOLBAR.button.replace("h-9", "h-8").replace("px-3.5", "px-3").replace("text-sm", "text-[13px]"),
+  primary: TOOLBAR.primary.replace("h-9", "h-8").replace("px-3.5", "px-3").replace("text-sm", "text-[13px]"),
+  segmented: TOOLBAR.segmented.replace("h-9", "h-8"),
+  segment: TOOLBAR.segment.replace("px-2", "px-1.5").replace("text-xs", "text-[11px]"),
+} as const;
+
 function vehicleName(v: VehicleListRow) {
   return [v.year, displayVehicleWord(v.make ?? ""), displayVehicleWord(v.model ?? "")].filter(Boolean).join(" ");
 }
@@ -140,7 +150,7 @@ function VehicleListThumbnail({ vehicle }: { vehicle: VehicleListRow }) {
 
   if (!staffPath && !publicUrl) {
     return (
-      <span className="grid h-10 w-14 place-items-center rounded-md border border-border bg-soft text-muted-foreground" title="No Vehicle Photo">
+      <span className="grid h-9 w-12 place-items-center rounded-md border border-border bg-soft text-muted-foreground" title="No Vehicle Photo">
         <Car className="h-4 w-4" aria-label="No Vehicle Photo" />
       </span>
     );
@@ -154,7 +164,7 @@ function VehicleListThumbnail({ vehicle }: { vehicle: VehicleListRow }) {
         onClick={openPhotos}
         aria-label={`View Photos: ${name}`}
         title={opening ? "Loading Photos…" : `View ${name} Photos`}
-        className="block h-10 w-14 overflow-hidden rounded-md border border-border bg-soft text-muted-foreground transition-colors hover:border-real-red disabled:cursor-wait"
+        className="block h-9 w-12 overflow-hidden rounded-md border border-border bg-soft text-muted-foreground transition-colors hover:border-real-red disabled:cursor-wait"
       >
         {url
           ? <img src={url} alt={name} loading="lazy" className="h-full w-full object-cover" />
@@ -451,24 +461,24 @@ function FleetVehicles({
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search unit, VIN, plate, year, make, model…"
             aria-label="Search vehicles"
-            className={TOOLBAR.search}
+            className={VEHICLE_TOOLBAR.search}
           />
           <Select value={statusFilter} onValueChange={(v) => setList({ status: v })}>
-            <SelectTrigger className={TOOLBAR.select} aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
               {(result?.statuses ?? []).map((s) => <SelectItem key={s} value={s}>{availabilityLabel({ on_rent: false, status: s })}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={bodyFilter} onValueChange={(v) => setList({ body: v })}>
-            <SelectTrigger className={TOOLBAR.select} aria-label="Body Type"><SelectValue placeholder="Body Type" /></SelectTrigger>
+            <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Body Type"><SelectValue placeholder="Body Type" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Body Types</SelectItem>
               {(result?.bodyTypes ?? []).map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={partnerFilter} onValueChange={(v) => setList({ partner: v })}>
-            <SelectTrigger className={TOOLBAR.select} aria-label="Partner"><SelectValue placeholder="Partner" /></SelectTrigger>
+            <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Partner"><SelectValue placeholder="Partner" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Partners</SelectItem>
               <SelectItem value="__none__">Unassigned</SelectItem>
@@ -476,7 +486,7 @@ function FleetVehicles({
             </SelectContent>
           </Select>
           <Select value={sort} onValueChange={(v) => setList({ sort: v })}>
-            <SelectTrigger className={TOOLBAR.select} aria-label="Sort"><SelectValue placeholder="Sort" /></SelectTrigger>
+            <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Sort"><SelectValue placeholder="Sort" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="unit">Sort: Unit</SelectItem>
               <SelectItem value="make">Sort: Make</SelectItem>
@@ -494,17 +504,17 @@ function FleetVehicles({
         }
         actions={
           <>
-          <div className={`hidden md:inline-flex ${TOOLBAR.segmented}`} role="group" aria-label="View">
-            <button onClick={() => chooseView("list")} aria-pressed={view === "list"} className={`${TOOLBAR.segment} ${view === "list" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><List className="h-3.5 w-3.5" /> List</button>
-            <button onClick={() => chooseView("cards")} aria-pressed={view === "cards"} className={`${TOOLBAR.segment} ${view === "cards" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><LayoutGrid className="h-3.5 w-3.5" /> Cards</button>
+          <div className={`hidden md:inline-flex ${VEHICLE_TOOLBAR.segmented}`} role="group" aria-label="View">
+            <button onClick={() => chooseView("list")} aria-pressed={view === "list"} className={`${VEHICLE_TOOLBAR.segment} ${view === "list" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><List className="h-3.5 w-3.5" /> List</button>
+            <button onClick={() => chooseView("cards")} aria-pressed={view === "cards"} className={`${VEHICLE_TOOLBAR.segment} ${view === "cards" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><LayoutGrid className="h-3.5 w-3.5" /> Cards</button>
           </div>
           {dueAllowed && (
-            <button onClick={() => chooseView("due")} aria-pressed={view === "due"} className={`${TOOLBAR.button} text-xs ${view === "due" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><Wrench className="h-3.5 w-3.5" /> Maintenance Due</button>
+            <button onClick={() => chooseView("due")} aria-pressed={view === "due"} className={`${VEHICLE_TOOLBAR.button} text-xs ${view === "due" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><Wrench className="h-3.5 w-3.5" /> Maintenance Due</button>
           )}
-          <button onClick={() => void navigate({ to: "/admin", search: { tab: "fleet_inbox" } as any })} className={TOOLBAR.button} title="Import vehicles through the Fleet Inbox">
+          <button onClick={() => void navigate({ to: "/admin", search: { tab: "fleet_inbox" } as any })} className={VEHICLE_TOOLBAR.button} title="Import vehicles through the Fleet Inbox">
             Import
           </button>
-          <button onClick={() => setAdding(true)} className={TOOLBAR.primary}>
+          <button onClick={() => setAdding(true)} className={VEHICLE_TOOLBAR.primary}>
             <Plus className="w-4 h-4" /> Add Vehicle
           </button>
           </>
@@ -568,8 +578,8 @@ function FleetVehicles({
       )}
 
       {view !== "due" && view === "list" && rows.length > 0 && (
-        <div className="hidden md:block mt-4 max-lg:min-w-0 max-lg:overflow-x-auto rounded-xl border border-border bg-white lg:overflow-hidden">
-          <table className="w-full text-sm max-lg:min-w-[64rem]">
+        <div className="hidden md:block mt-3 max-lg:min-w-0 max-lg:overflow-x-auto rounded-xl border border-border bg-white lg:overflow-hidden">
+          <table className="w-full text-[13px] max-lg:min-w-[64rem] [&_th]:px-2.5 [&_th]:py-1.5 [&_td]:px-2.5 [&_td]:py-1">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
                 <th scope="col" className="w-10 px-3 py-2 font-medium" aria-label="Row number">#</th>
@@ -635,7 +645,7 @@ function FleetVehicles({
                 ? `The top search “${topSearch}” is also applied here. Clear it to see every vehicle.`
                 : "Try clearing a filter or searching for a different make or model."
           }
-          action={hasActiveFilters ? <button onClick={clearAll} className={TOOLBAR.button}>Clear Filters</button> : undefined}
+          action={hasActiveFilters ? <button onClick={clearAll} className={VEHICLE_TOOLBAR.button}>Clear Filters</button> : undefined}
         />
       )}
 

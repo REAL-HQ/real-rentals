@@ -50,6 +50,8 @@ check(!vehicles.includes("admin-sticky-bar flex flex-col lg:flex-row"), "the old
 check(!vehicles.includes("self-start lg:self-auto"), "the old lg: action row is gone");
 for (const c of ["TOOLBAR.search", "TOOLBAR.select", "TOOLBAR.button", "TOOLBAR.primary", "TOOLBAR.segmented"]) check(vehicles.includes(c), `Vehicles uses ${c}`);
 check(vehicles.includes("Add Vehicle") && vehicles.includes("fleet_inbox") && vehicles.includes('data-testid="fleet-readiness"'), "Add Vehicle, Import and Fleet readiness stay");
+check(vehicles.includes("const VEHICLE_TOOLBAR") && vehicles.includes('w-[7.75rem]') && vehicles.includes('replace("h-9", "h-8")'), "Vehicles derives a compact 100%-desktop toolbar from the shared controls");
+check(vehicles.includes("text-[13px]") && vehicles.includes("[&_td]:py-1") && vehicles.includes("[&_th]:py-1.5"), "Vehicles compacts table type and row spacing without changing shared tables");
 
 // 5. Top search is visible and clearable.
 check(renderToStaticMarkup(h(TopSearchChip, { value: "  ", onClear() {} })) === "", "no chip when the top search is empty");
