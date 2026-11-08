@@ -2,7 +2,9 @@
  * Phone layout for staff Vehicles and Expenses. Class checks only.
  * Below lg the toolbars stack and the wide tables scroll inside the card.
  * At lg the utilities that paint are the ones these screens already had
- * on RC15 c46354b0 (the shared classes also match 7e3e6eb).
+ * on RC15 c46354b0 (the shared classes also match 7e3e6eb). The Vehicles
+ * toolbar is no longer pinned here: it moved to the viewport-independent
+ * AdminToolbar, which scripts/admin-toolbar.test.mjs guards.
  * No database and no change to the data those screens read.
  */
 import assert from "node:assert/strict";
@@ -88,61 +90,6 @@ function sameAtLg(before, after, label) {
 }
 
 const pairs = [
-  [
-    "admin-sticky-bar flex flex-col lg:flex-row lg:items-center gap-3 mb-4 pb-2",
-    "admin-sticky-bar flex flex-col lg:flex-row lg:items-center gap-3 mb-4 pb-2 max-lg:min-w-0",
-    "vehicles filter bar at lg",
-  ],
-  [
-    "flex-1 flex flex-wrap gap-2",
-    "flex-1 flex gap-2 max-lg:min-w-0 max-lg:flex-col lg:flex-wrap",
-    "vehicles filter cluster at lg",
-  ],
-  [
-    "flex-1 min-w-[200px] border border-border rounded-md px-3 py-2 text-sm bg-white",
-    "flex-1 min-w-[200px] border border-border rounded-md px-3 py-2 text-sm bg-white max-lg:w-full max-lg:min-w-0",
-    "vehicles search at lg",
-  ],
-  [
-    "h-9 w-[140px] bg-white text-foreground text-sm",
-    "h-9 w-[140px] bg-white text-foreground text-sm max-lg:w-full",
-    "vehicles status and body selects at lg",
-  ],
-  [
-    "h-9 w-[160px] bg-white text-foreground text-sm",
-    "h-9 w-[160px] bg-white text-foreground text-sm max-lg:w-full",
-    "vehicles partner select at lg",
-  ],
-  [
-    "h-9 w-[150px] bg-white text-foreground text-sm",
-    "h-9 w-[150px] bg-white text-foreground text-sm max-lg:w-full",
-    "vehicles sort select at lg",
-  ],
-  [
-    "inline-flex items-center gap-2",
-    "inline-flex items-center gap-2 max-lg:max-w-full max-lg:flex-wrap",
-    "vehicles readiness chips at lg",
-  ],
-  [
-    "flex items-center gap-2 self-start lg:self-auto",
-    "flex items-center gap-2 self-start lg:self-auto max-lg:w-full max-lg:flex-wrap",
-    "vehicles action row at lg",
-  ],
-  [
-    "hidden md:inline-flex rounded-md border border-[#EDEDF0] bg-white p-0.5",
-    "hidden md:inline-flex rounded-md border border-[#EDEDF0] bg-white p-0.5 max-lg:w-full max-lg:justify-center",
-    "vehicles view toggle at lg",
-  ],
-  [
-    "inline-flex items-center gap-2 rounded-md border border-[#EDEDF0] bg-white px-4 py-2 text-sm font-medium hover:bg-[#FAFAFB]",
-    "inline-flex items-center gap-2 rounded-md border border-[#EDEDF0] bg-white px-4 py-2 text-sm font-medium hover:bg-[#FAFAFB] max-lg:w-full max-lg:justify-center",
-    "vehicles import button at lg",
-  ],
-  [
-    "inline-flex items-center gap-2 rounded-md bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150",
-    "inline-flex items-center gap-2 rounded-md bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150 max-lg:w-full max-lg:justify-center",
-    "vehicles add button at lg",
-  ],
   [
     "hidden md:block mt-4 rounded-xl border border-border bg-white overflow-hidden",
     "hidden md:block mt-4 max-lg:min-w-0 max-lg:overflow-x-auto rounded-xl border border-border bg-white lg:overflow-hidden",
@@ -284,11 +231,6 @@ const pairs = [
     "expense form inputs at lg",
   ],
   [
-    "inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-xs",
-    "inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-xs max-lg:w-full max-lg:justify-center",
-    "maintenance due button at lg",
-  ],
-  [
     "mt-4 overflow-x-auto rounded-xl border border-border bg-white",
     "mt-4 overflow-x-auto rounded-xl border border-border bg-white max-lg:min-w-0",
     "maintenance due table scroller at lg",
@@ -302,11 +244,11 @@ for (const [before, after, label] of pairs) {
 
 const present = [
   [vehicles, 'className="max-lg:min-w-0"', "the vehicles screen can shrink inside the admin column"],
-  [vehicles, "flex-1 flex gap-2 max-lg:min-w-0 max-lg:flex-col lg:flex-wrap", "vehicle filters stack only below lg"],
+  [vehicles, "<AdminToolbar", "the vehicles toolbar uses the shared AdminToolbar (see scripts/admin-toolbar.test.mjs)"],
   [vehicles, "max-lg:min-w-[64rem]", "the vehicles table keeps a phone min width"],
   [vehicles, "lg:overflow-hidden", "the vehicles table clips only from lg up"],
   [vehicles, "data-testid=\"fleet-readiness\"", "fleet readiness stays in the filter row"],
-  [vehicles, "Import / Fleet Inbox", "import stays"],
+  [vehicles, "fleet_inbox", "import to the fleet inbox stays"],
   [vehicles, "Add Vehicle", "add vehicle stays"],
   [vehicles, "listVehicles", "vehicles still loads through listVehicles"],
   [expenses, "space-y-5 max-lg:min-w-0", "expenses can shrink inside the admin column"],
@@ -335,8 +277,5 @@ check(!expenses.includes('"col-span-2"'), "a full expense field does not span tw
 check(!vehicles.includes("text-transform") && !expenses.includes("text-transform"), "neither screen adds a text-transform");
 check(expenses.includes("px-4 py-3 capitalize max-lg:whitespace-nowrap"), "the existing capitalize on a category stays");
 check(!vehicles.includes("max-lg:uppercase") && !expenses.includes("max-lg:uppercase") && !vehicles.includes("max-lg:capitalize") && !expenses.includes("max-lg:capitalize"), "phone classes do not add a case transform");
-
-const filterCluster = "flex-1 flex gap-2 max-lg:min-w-0 max-lg:flex-col lg:flex-wrap";
-check(!filterCluster.split(/\s+/).includes("flex-wrap"), "phone css nowrap rule does not match the vehicle filter cluster");
 
 console.log(`${checks} vehicles and expenses mobile checks passed`);
