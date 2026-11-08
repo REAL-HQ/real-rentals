@@ -46,3 +46,6 @@ demo-data-backup-*.json
 .doc-gaps-build
 .document-review-build
 .waitlist-aging-build
+
+# Synthetic save regression fixture
+.vehicle-save-build/
