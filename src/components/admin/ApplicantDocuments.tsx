@@ -24,7 +24,9 @@ import {
 } from "@/lib/documents.functions";
 import { DocumentViewer, type ViewerDoc } from "./DocumentViewer";
 import { MicroLabel } from "./ui";
-import { FileUploader } from "@/components/FileUploader";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DriverDocumentUploadDialog } from "./DriverDocumentUploadDialog";
 import { DocumentBatchUpload } from "./DocumentBatchUpload";
 import { fmtDate } from "@/lib/date-format";
 import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
@@ -45,8 +47,6 @@ import { displayTitleCase } from "@/lib/display-normalize";
 // The status a document carries is deliberately narrow. Uploaded means it
 // arrived. Verified means a person looked at it. Those are different facts and
 // the readiness model depends on them staying apart.
-
-const MAX_MB = 15;
 
 /** Categories in the order a reviewer works through them. */
 const ORDER: DocCategory[] = [
@@ -166,6 +166,7 @@ export function ApplicantDocuments({
   const [busy, setBusy] = useState<string | null>(null);
   const [viewing, setViewing] = useState<ViewerDoc | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [uploadingCategory, setUploadingCategory] = useState<DocCategory | null>(null);
 
   const refresh = useCallback(async () => {
     await onRefresh();
@@ -438,20 +439,7 @@ export function ApplicantDocuments({
                     </button>
                   )}
                 </div>
-                {!locked ? <FileUploader
-                  variant="zone"
-                  title={`Drop ${displayTitleCase(meta.label).replace("(front)", "(Front)").replace("(back)", "(Back)")} Here`}
-                  label={d ? "Browse Replacement" : "Browse Files"}
-                  hint="Images Or PDF · 15 MB Max"
-                  accept="image/*,application/pdf"
-                  maxBytes={MAX_MB * 1024 * 1024}
-                  camera
-                  autoStart={false}
-                  submitLabel={d ? "Upload Replacement" : "Upload File"}
-                  disabled={busy != null}
-                  upload={(file, { onProgress }) => uploadCategory(key, file, onProgress)}
-                  className="mt-2 min-w-0 [&>div:first-child]:rounded-lg [&>div:first-child]:p-3 [&_svg.mx-auto]:h-4 [&_svg.mx-auto]:w-4 [&_div.mt-4]:mt-2 [&_button]:text-xs"
-                /> : null}
+                {!locked ? <Button type="button" variant="outline" size="sm" className="mt-2 h-8 self-start text-xs" disabled={busy != null} aria-label={`Add ${displayTitleCase(meta.label).replace("(front)", "(Front)").replace("(back)", "(Back)")}`} onClick={() => setUploadingCategory(key)}><Plus className="h-3.5 w-3.5" /> Add</Button> : null}
               </div>
             </div>
           );
@@ -525,6 +513,13 @@ export function ApplicantDocuments({
       )}
 
       <DocumentViewer doc={viewing} onClose={() => setViewing(null)} />
+      {uploadingCategory && !signedAgreementLocked(docs, uploadingCategory) ? <DriverDocumentUploadDialog
+        label={displayTitleCase(DOC_CATEGORIES.find((c) => c.key === uploadingCategory)?.label ?? "Document").replace("(front)", "(Front)").replace("(back)", "(Back)")}
+        hint={uploadingCategory === "agreement" ? "Signed Paper Copy · Owner/Manager Review Required" : undefined}
+        replacement={current.has(uploadingCategory)}
+        upload={(file, { onProgress }) => uploadCategory(uploadingCategory, file, onProgress)}
+        onClose={() => setUploadingCategory(null)}
+      /> : null}
     </div>
   );
 }

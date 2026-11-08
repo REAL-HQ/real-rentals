@@ -1914,9 +1914,12 @@ function DriverDetail({
   }, [refreshVault]);
   function renderChecklistEvidence(key: ActivationRequirementKey) {
     if (!isManager || vaultLoading || key === "insurance_document") return null;
+    // Canonical server readiness already recognizes signed eSign agreements;
+    // completed agreements never ask staff to upload a second copy.
+    if (key === "signed_agreement" && rentalTabReadiness?.requirements.some((r) => r.key === key && r.met === true)) return null;
     const categories = checklistDocumentCategories(key);
     if (!categories.length) return null;
-    return <div className="grid min-w-0 gap-2 sm:grid-cols-2">{categories.map((category) => <DriverEvidenceUpload key={`${driver.id}:${category}`} applicationId={driver.id} category={category} documents={vaultDocs} onUploaded={refreshEvidence} />)}</div>;
+    return <div className="flex min-w-0 flex-wrap justify-end gap-1.5">{categories.map((category) => <DriverEvidenceUpload key={`${driver.id}:${category}`} applicationId={driver.id} category={category} documents={vaultDocs} onUploaded={refreshEvidence} />)}</div>;
   }
 
   useEffect(() => {

@@ -60,8 +60,8 @@ export function ActivationRequirementList({
             <div className="flex max-w-36 shrink-0 flex-col items-end gap-1">
               <span className="text-right text-[10px] text-muted-foreground">{status}</span>
               {action && onRun ? <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => onRun(action.target)}>{action.label}</Button> : r.key === "gig_platform" ? <span className="text-right text-[10px] text-muted-foreground">No Platform Verification Connected</span> : null}
+              {renderEvidence ? renderEvidence(r.key) : null}
             </div>
-            {renderEvidence ? <div className="col-span-2 min-w-0 empty:hidden">{renderEvidence(r.key)}</div> : null}
           </li>
           );
         })}

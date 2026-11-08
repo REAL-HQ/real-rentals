@@ -86,10 +86,12 @@ export function NextStepCard({
                   {b.detail ? <span className="text-[#9A9AA3]"> · {b.detail}</span> : null}
                 </span>
               </span>
-              <button type="button" onClick={() => onRun(b.target)} className={`${secondary} h-8`}>
-                {b.fix}
-              </button>
-              {b.key !== "local" && renderEvidence ? <div className="w-full min-w-0 empty:hidden">{renderEvidence(b.key)}</div> : null}
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+                {b.key !== "local" && renderEvidence ? renderEvidence(b.key) : null}
+                <button type="button" onClick={() => onRun(b.target)} className={`${secondary} h-8`}>
+                  {b.fix}
+                </button>
+              </div>
             </li>
           ))}
         </ul>
