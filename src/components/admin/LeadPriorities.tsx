@@ -137,7 +137,7 @@ export default function LeadPriorities({
             <div className="my-4 grid grid-cols-3 gap-2 sm:gap-3">
               {(
                 [
-                  ["New Leads", result.counts.new, "new" as LeadFilter, "border-success/20 bg-success-soft hover:bg-success-soft", "text-success"],
+                  ["New Leads", result.counts.new, "new" as LeadFilter, "border-border bg-card hover:bg-secondary", "text-card-foreground"],
                   ["Hot Leads", result.counts.hot, "interested" as LeadFilter, "border-border bg-card hover:bg-secondary", "text-card-foreground"],
                   ["Overdue", result.counts.overdue, "follow_up_due" as LeadFilter, "border-destructive/20 bg-destructive/10 hover:bg-destructive/15", "text-destructive"],
                 ] as const
