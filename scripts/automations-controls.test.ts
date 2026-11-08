@@ -260,3 +260,31 @@ describe("overview is truthful", () => {
     expect(statusWords({ on: null, health: "No Schedule", blockers: ["Built but switched off"], canToggle: false }).label).toBe("Not Built On");
   });
 });
+
+describe("no cross-instance lag", () => {
+  test("an Off written by another instance applies to the very next send (no cache)", async () => {
+    expect((await pastDue()).ok).toBe(true);
+    db.settings.set(KEY, { off: { payment_past_due: { at: "t", by: "elsewhere" } } }); // no cache clear
+    expect((await pastDue()).blocked).toBe("off");
+  });
+});
+
+describe("applicant workflow dispatcher", () => {
+  test("a transient workflow read error leaves the enrollment active for retry, not cancelled", async () => {
+    const enr = { id: "e1", workflow_id: "wf1", application_id: "app1", status: "active", current_step: 0, enrolled_at: "2026-11-01", next_run_at: "2026-11-01" };
+    T("automation_enrollments").push(enr);
+    const orig = supabaseAdmin.from;
+    (supabaseAdmin as any).from = (n: string) => {
+      const t = orig(n);
+      if (n === "automation_workflows") t.maybeSingle = async () => ({ data: null, error: { message: "timeout" } });
+      return t;
+    };
+    try {
+      const { runDueAutomations } = await import("@/lib/automations.server");
+      const r: any = await runDueAutomations();
+      expect(r.cancelled).toBe(0);
+      expect(r.skipped).toBe(1);
+      expect(enr.status).toBe("active");
+    } finally { (supabaseAdmin as any).from = orig; }
+  });
+});

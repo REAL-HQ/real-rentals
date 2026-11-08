@@ -19,40 +19,33 @@ import {
   type AutomationControlsState,
 } from "@/lib/automation-catalog";
 
-const CACHE_MS = 30_000;
-let cache: { at: number; state: AutomationControlsState } | null = null;
-
 type Reader = {
   from: (t: string) => {
     select: (c: string) => { eq: (k: string, v: string) => { maybeSingle: () => PromiseLike<{ data: { value: unknown } | null; error: unknown }> } };
   };
 };
 
-/** The stored switches. `fresh` skips the 30s cache. Failures are never cached. */
-export async function loadAutomationControls(admin?: unknown, fresh = false): Promise<AutomationControlsState> {
-  if (!fresh && cache && Date.now() - cache.at < CACHE_MS) return cache.state;
-  let state: AutomationControlsState;
+/**
+ * The stored switches, read fresh on every call. There is no cache: a cache
+ * would let one server instance keep sending for a while after an Owner
+ * turned something off on another. One small keyed read per automated email.
+ * `_fresh` is accepted for older callers and ignored.
+ */
+export async function loadAutomationControls(admin?: unknown, _fresh = true): Promise<AutomationControlsState> {
   try {
     const sb = (admin ?? (await import("@/integrations/supabase/client.server")).supabaseAdmin) as unknown as Reader;
     const { data, error } = await sb.from("app_settings").select("value").eq("key", AUTOMATION_CONTROLS_KEY).maybeSingle();
-    if (error) state = { status: "error", value: null };
-    else if (!data) state = { status: "absent", value: { off: {} } };
-    else {
-      const value = readAutomationControls(data.value);
-      state = value ? { status: "ok", value } : { status: "error", value: null };
-    }
+    if (error) return { status: "error", value: null };
+    if (!data) return { status: "absent", value: { off: {} } };
+    const value = readAutomationControls(data.value);
+    return value ? { status: "ok", value } : { status: "error", value: null };
   } catch {
-    state = { status: "error", value: null };
+    return { status: "error", value: null };
   }
-  if (state.status === "error") { cache = null; return state; }
-  cache = { at: Date.now(), state };
-  return state;
 }
 
-/** Forget the cached switches (after a change in this isolate). */
-export function clearAutomationControlsCache(): void {
-  cache = null;
-}
+/** No-op kept for callers; there is no cache to clear. */
+export function clearAutomationControlsCache(): void {}
 
 /** "send" | "off" (Owner switched it off) | "held" (settings unreadable; retry later). */
 export type GateDecision = "send" | "off" | "held";
