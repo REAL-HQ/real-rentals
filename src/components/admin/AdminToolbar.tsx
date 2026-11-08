@@ -55,7 +55,7 @@ export const TOOLBAR = {
   primary:
     "inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-[#D03020] px-3.5 text-sm font-medium text-white transition-opacity hover:opacity-90",
   segmented: "inline-flex h-9 shrink-0 items-center rounded-md border border-[#EDEDF0] bg-white p-0.5",
-  segment: "inline-flex h-full items-center gap-1 rounded px-2 text-xs",
+  segment: "inline-flex h-full items-center gap-1 rounded px-2 text-sm",
 } as const;
 
 /**

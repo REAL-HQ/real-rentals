@@ -24,10 +24,11 @@ try {
     const filters = document.querySelector('[data-toolbar-filters]');
     const actions = document.querySelector('[data-toolbar-actions]');
     const table = document.querySelector('[aria-label="Vehicles table"]');
-    return { zoom:visualViewport.scale, font:parseFloat(getComputedStyle(document.querySelector('[data-toolbar-search] input')).fontSize), tableFont:parseFloat(getComputedStyle(document.querySelector('table')).fontSize), page:document.documentElement.scrollWidth, window:innerWidth, primary:rect(primary), filters:rect(filters), search:rect(document.querySelector('[data-toolbar-search] input')), selects:[...filters.querySelectorAll('[role="combobox"]')].map(rect), actions:[...actions.children].filter(visible).map(rect), controls:[...actions.querySelectorAll('button')].filter(visible).map(rect), actionBox:rect(actions), table:table && { ...rect(table), scrollWidth:table.scrollWidth, clientWidth:table.clientWidth, overflow:getComputedStyle(table).overflowX }, context:rect(document.querySelector('[data-toolbar-context]')) };
+    return { viewFonts:[...actions.querySelectorAll("button")].filter(el=>["List","Cards"].includes(el.textContent.trim())).map(el=>parseFloat(getComputedStyle(el).fontSize)), zoom:visualViewport.scale, font:parseFloat(getComputedStyle(document.querySelector('[data-toolbar-search] input')).fontSize), tableFont:parseFloat(getComputedStyle(document.querySelector('table')).fontSize), page:document.documentElement.scrollWidth, window:innerWidth, primary:rect(primary), filters:rect(filters), search:rect(document.querySelector('[data-toolbar-search] input')), selects:[...filters.querySelectorAll('[role="combobox"]')].map(rect), actions:[...actions.children].filter(visible).map(rect), controls:[...actions.querySelectorAll('button')].filter(visible).map(rect), actionBox:rect(actions), table:table && { ...rect(table), scrollWidth:table.scrollWidth, clientWidth:table.clientWidth, overflow:getComputedStyle(table).overflowX }, context:rect(document.querySelector('[data-toolbar-context]')) };
    });
    const label = `${variant} at ${width}px`;
    assert(layout.page <= width + 1, `${label}: no page overflow ${JSON.stringify(layout)}`);
+   assert(layout.viewFonts.every(size=>size===14), `${label}: List/Cards are 14px`);
    assert.equal(layout.zoom, 1, `${label}: native zoom, no scaling`);
    assert(layout.font >= 14 && layout.tableFont >= 14, `${label}: readable native text size`);
    assert(layout.context.y >= layout.primary.bottom - 1, `${label}: context below all controls`);
