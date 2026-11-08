@@ -85,6 +85,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { DocumentsExpiringChip } from "./DocumentsExpiring";
 import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
 import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
+import { Button } from "@/components/ui/button";
+import { Tooltip as ControlTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { serviceSummaryPreview, type ServiceSummaryRow } from "./overview-summary-details";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
 
@@ -174,6 +177,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const [overdueAmt, setOverdueAmt] = useState(0);
   const [activeRentalCount, setActiveRentalCount] = useState<number | null>(null);
   const [opsRefreshKey, setOpsRefreshKey] = useState(0);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
   const [rangeKey, setRangeKey] = useState<RangeKey>("last_7");
   const [customRange, setCustomRange] = useState<Partial<DayRange>>({});
@@ -192,11 +196,20 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const loadApplicants = useServerFn(getOverviewApplicants);
   const fleetMaint = useServerFn(getFleetMaintenance);
   const [svc, setSvc] = useState({ overdue: 0, due: 0, dueSoon: 0, open: 0, conflict: 0 });
+  const [servicePreview, setServicePreview] = useState<ServiceSummaryRow[] | null>(null);
+  const [serviceFailed, setServiceFailed] = useState(false);
   useEffect(() => {
     // Canonical maintenance-due engine (same as the Service page) — never a local re-derivation.
-    fleetMaint().then((r) => setSvc(r.counts)).catch(() => {});
+    let live = true;
+    fleetMaint().then((r) => {
+      if (!live) return;
+      setSvc(r.counts);
+      setServicePreview(serviceSummaryPreview([...r.attention, ...r.upcoming]));
+      setServiceFailed(false);
+    }).catch(() => { if (live) { setServicePreview(null); setServiceFailed(true); } });
+    return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [opsRefreshKey]);
 
   useEffect(() => {
     const onFocus = () => setOpsRefreshKey((n) => n + 1);
@@ -466,6 +479,13 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           href="/admin"
           search={{ tab: "vehicles", add: "1" }}
           control="add"
+          expanded={summaryExpanded}
+          onExpand={() => setSummaryExpanded((value) => !value)}
+          details={<>
+            <SummaryDetailRow label="Available" value={vehiclesAvail} />
+            <SummaryDetailRow label="Rented" value={rented} />
+            <SummaryDetailRow label="Maintenance" value={maintOpen} />
+          </>}
         />
 
         <RevenueCard
@@ -482,6 +502,8 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           overlapOwed={overlapOwed}
           projected={projected}
           projectedLoading={projectedLoading}
+          expanded={summaryExpanded}
+          onExpand={() => setSummaryExpanded((value) => !value)}
         />
 
         <ActionCard
@@ -499,6 +521,13 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           surface="yellow"
           tint={overdueAmt > 0 ? "red" : undefined}
           badge={overdueAmt > 0 ? overdueCount : undefined}
+          expanded={summaryExpanded}
+          onExpand={() => setSummaryExpanded((value) => !value)}
+          details={<>
+            <SummaryDetailRow label="Past Due Renters" value={overdueRenters} />
+            <SummaryDetailRow label="Open Charges" value={overdueCount} />
+            <SummaryDetailRow label="Outstanding" value={usd(overdueAmt)} />
+          </>}
         />
 
         <ActionCard
@@ -525,6 +554,27 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           surface="red"
           tint={svc.overdue > 0 ? "red" : svc.due + svc.open + svc.conflict > 0 ? "amber" : undefined}
           badge={serviceAttention > 0 ? serviceAttention : undefined}
+          expanded={summaryExpanded}
+          onExpand={() => setSummaryExpanded((value) => !value)}
+          details={servicePreview?.length ? (
+            <div className="space-y-2">
+              {servicePreview.map((row) => (
+                <Button key={row.vehicle.id} asChild variant="link" className="h-auto w-full justify-start p-0 text-left whitespace-normal text-foreground hover:text-destructive">
+                  <Link to="/admin" search={{ tab: "vehicles", id: row.vehicle.id }}>
+                    <Car className="shrink-0 text-destructive" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[11px] font-semibold">{row.vehicle.unit_number || "Vehicle"}</span>
+                      <span className="block text-[10px] font-normal text-muted-foreground">
+                        {row.vehicle.status === "maintenance" ? "Maintenance" : row.item}
+                        {row.vehicle.status === "maintenance" ? null : ` · ${row.due.state === "due_soon" ? "Due Soon" : row.due.state === "overdue" ? "Overdue" : row.due.state === "due" ? "Due" : row.due.state === "conflict" ? "Needs Review" : "Open"}`}
+                      </span>
+                    </span>
+                    <ArrowUpRight className="shrink-0 text-muted-foreground" />
+                  </Link>
+                </Button>
+              ))}
+            </div>
+          ) : <p className="text-[11px] text-muted-foreground">{serviceFailed ? "Service Details Unavailable" : servicePreview === null ? "Loading Service Details…" : "No Vehicles Need Service"}</p>}
         />
         {MAINTENANCE_LOG_ENABLED ? <MaintenanceDueTile /> : null}
       </div>
@@ -867,6 +917,52 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   );
 }
 
+function SummaryExpandControl({ expanded, onExpand }: { expanded: boolean; onExpand: () => void }) {
+  const label = expanded ? "Collapse All Summary Cards" : "Expand All Summary Cards";
+  return (
+    <TooltipProvider delayDuration={200}>
+      <ControlTooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label={label}
+            aria-expanded={expanded}
+            aria-controls="fleet-summary-details revenue-summary-details collections-summary-details service-summary-details"
+            onClick={(event) => { event.stopPropagation(); onExpand(); }}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <ChevronDown className={expanded ? "rotate-180 transition-transform motion-reduce:transition-none" : "transition-transform motion-reduce:transition-none"} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </ControlTooltip>
+    </TooltipProvider>
+  );
+}
+
+function SummaryDetails({ expanded, label, children }: { expanded: boolean; label: string; children: React.ReactNode }) {
+  return (
+    <div
+      id={`${label.split(" ")[0].toLowerCase()}-summary-details`}
+      role="region"
+      aria-label={label}
+      hidden={!expanded}
+      className="mt-3 min-h-20 space-y-1 border-t border-border pt-3"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {expanded ? children : null}
+    </div>
+  );
+}
+
+function SummaryDetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground"><span>{label}</span><span className="tabular-nums text-foreground">{value}</span></div>;
+}
+
 /**
  * A card that leads somewhere.
  *
@@ -885,6 +981,9 @@ function ActionCard({
   badge,
   tint,
   surface = "white",
+  expanded,
+  onExpand,
+  details,
 }: {
   icon: any;
   eyebrow: string;
@@ -896,6 +995,9 @@ function ActionCard({
   badge?: number;
   tint?: "red" | "amber";
   surface?: "white" | "yellow" | "red";
+  expanded: boolean;
+  onExpand: () => void;
+  details: React.ReactNode;
 }) {
   const border =
     surface === "yellow"
@@ -912,30 +1014,28 @@ function ActionCard({
   const badgeBg = surface === "red" || tint !== "amber" ? "bg-destructive text-destructive-foreground" : "bg-[#B77900] text-white";
 
   return (
-    <Link
-      to={href}
-      search={search}
-      className={`group relative rounded-2xl border ${surfaceBg} text-[#111114] shadow-sm px-5 py-4 transition-colors ${border}`}
+    <div
+      className={`group relative min-w-0 rounded-2xl border ${surfaceBg} text-foreground shadow-sm px-5 py-4 transition-colors ${border}`}
     >
       <div className="flex items-center justify-between">
         <div className={`h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] ${iconTone}`}>
           <Icon className="w-4 h-4" strokeWidth={1.75} />
         </div>
-        {control === "add" ? (
-          <span className="h-7 w-7 rounded-full grid place-items-center bg-[#111114] text-white group-hover:bg-[#CC0000] transition-colors">
-            <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-[#9A9AA3] group-hover:text-[#D03020] transition-colors">
-            View <ArrowUpRight className="w-3.5 h-3.5" />
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-1">
+          <Button asChild variant={control === "add" ? "default" : "link"} size={control === "add" ? "icon" : "sm"} className={control === "add" ? "h-7 w-7 rounded-full" : "h-7 px-1 text-[11px] text-muted-foreground hover:text-destructive"}>
+            <Link to={href} search={search} aria-label={control === "add" ? "Add Vehicle" : `View ${eyebrow}`}>
+              {control === "add" ? <Plus strokeWidth={2} /> : <>View <ArrowUpRight /></>}
+            </Link>
+          </Button>
+          <SummaryExpandControl expanded={expanded} onExpand={onExpand} />
+        </div>
       </div>
-      <div className="mt-4 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+      <Link to={href} search={search} className="block">
+      <div className="mt-4 text-[10px] font-semibold text-muted-foreground">
         {eyebrow}
       </div>
-      <div className="mt-1 flex items-baseline gap-2">
-        <div className="text-[18px] font-semibold tracking-tight">{title}</div>
+      <div className="mt-1 flex flex-wrap items-baseline gap-2">
+        <div className="text-[18px] font-semibold">{title}</div>
         {badge != null && (
           <span
             className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold ${badgeBg}`}
@@ -945,7 +1045,9 @@ function ActionCard({
         )}
       </div>
       {hint && <div className="mt-0.5 text-[11px] text-[#55555E]">{hint}</div>}
-    </Link>
+      </Link>
+      <SummaryDetails expanded={expanded} label={`${eyebrow} Details`}>{details}</SummaryDetails>
+    </div>
   );
 }
 
@@ -970,6 +1072,8 @@ function RevenueCard({
   overlapOwed,
   projected,
   projectedLoading,
+  expanded,
+  onExpand,
 }: {
   amount: number | null;
   delta: number | null;
@@ -984,6 +1088,8 @@ function RevenueCard({
   overlapOwed?: number | null;
   projected?: ProjectedRevenueSummary | null;
   projectedLoading?: boolean;
+  expanded: boolean;
+  onExpand: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -1013,23 +1119,28 @@ function RevenueCard({
       aria-label="Revenue — Open Payments"
       onClick={goPayments}
       onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); goPayments(); } }}
-      className="relative cursor-pointer rounded-2xl border border-success/30 bg-success-soft shadow-sm px-5 py-4 hover:border-success transition-colors"
+      className="relative min-w-0 cursor-pointer rounded-2xl border border-success/30 bg-success-soft shadow-sm px-5 py-4 hover:border-success transition-colors"
     >
       <div className="flex items-center justify-between">
         <div className="h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] text-success">
           <Receipt className="w-4 h-4" strokeWidth={1.75} />
         </div>
-        <button
+        <div className="flex min-w-0 items-center gap-1">
+        <Button
+          variant="outline"
+          size="sm"
           type="button"
           onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
           onKeyDown={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-3 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#D03020] hover:text-[#111114] transition-colors"
+          className="h-7 gap-1 bg-transparent px-2 text-[11px] text-muted-foreground"
         >
           {label} <ChevronDown className="w-3 h-3" />
-        </button>
+        </Button>
+        <SummaryExpandControl expanded={expanded} onExpand={onExpand} />
+        </div>
       </div>
 
-      <div className="mt-4 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+      <div className="mt-4 flex items-center gap-2 text-[10px] font-semibold text-muted-foreground">
         Revenue
         <span
           title={coverageHint}
@@ -1066,22 +1177,17 @@ function RevenueCard({
         )}
       </div>
 
-      {(projected || projectedLoading) && (
-        <div
-          className="mt-3 space-y-1 border-t border-[#EDEDF0] pt-2"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-        >
-          <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
-            Active Renters · Projected / Collected
+      <SummaryDetails expanded={expanded} label="Revenue Details">
+          <div className="text-[10px] font-semibold text-muted-foreground">
+            Revenue: Projected / Collected
           </div>
           {(["week", "month"] as const).map((key) => {
             const row = projected?.[key];
             const label = key === "week" ? "This Week" : "This Month";
             return (
-              <div key={key} className="flex items-baseline justify-between gap-2 text-[11px] text-[#55555E]">
+              <div key={key} className="flex flex-wrap items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
                 <span>{label}</span>
-                <span className="tabular-nums text-[#111114]">
+                <span className="tabular-nums text-foreground">
                   {projectedLoading || !row
                     ? "—"
                     : `${usd(centsToDollars(row.projectedCents))} / ${usd(centsToDollars(row.collectedCents))}`}
@@ -1089,8 +1195,7 @@ function RevenueCard({
               </div>
             );
           })}
-        </div>
-      )}
+      </SummaryDetails>
 
       {open && (
         <>
