@@ -468,7 +468,17 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 </div>
 
                 {readingStatus?.refusal && (
-                  <p className="mt-2 text-[11px] text-[#8A4B00]">{readingStatus.refusal}</p>
+                  <p className="mt-2 text-[11px] text-[#8A4B00]">
+                    {readingStatus.refusal}
+                    {!readingStatus.enabled && (
+                      <>
+                        {" "}
+                        <a href="/admin?tab=settings&section=photo_reading" className="font-semibold underline">
+                          Open Photo Reading Settings
+                        </a>
+                      </>
+                    )}
+                  </p>
                 )}
                 {readingStatus && !readingStatus.refusal && (
                   <p className="mt-2 text-[11px] text-[#55555E]">

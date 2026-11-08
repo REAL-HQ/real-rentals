@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 import { getPhotoReadingStatus, savePhotoReadingSettings } from "@/lib/vehicle-photo-analysis.functions";
 import { fmtDateTime } from "@/lib/date-format";
 
@@ -47,16 +48,29 @@ export function PhotoReadingPanel() {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-[#EDEDF0] bg-white p-5 space-y-4">
-        <label className="flex items-center gap-2 text-[14px] font-medium cursor-pointer">
-          <input
-            type="checkbox"
-            aria-label="Photo Reading enabled"
-            checked={data.enabled}
-            disabled={busy || !owner}
-            onChange={(e) => update({ enabled: e.target.checked })}
-          />
-          Photo Reading {data.enabled ? "On" : "Off"}
-        </label>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <label className="flex items-center gap-3 text-[14px] font-medium cursor-pointer">
+            <Switch
+              aria-label="Photo Reading enabled"
+              checked={data.enabled}
+              disabled={busy || !owner}
+              onCheckedChange={(v) => update({ enabled: v })}
+            />
+            Photo Reading Is {data.enabled ? "On" : "Off"}
+          </label>
+          {owner && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => update({ enabled: !data.enabled })}
+              className={data.enabled
+                ? "rounded-lg border border-border bg-background px-3 py-1.5 text-[13px] font-medium disabled:opacity-50"
+                : "rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-[13px] font-medium disabled:opacity-50"}
+            >
+              {data.enabled ? "Turn Off" : "Turn On"}
+            </button>
+          )}
+        </div>
         <p className="text-[12px] text-[#55555E] leading-relaxed">
           Lets staff read a vehicle photograph for details that are visible on the car — the plate,
           the colour, the body type, an odometer, a VIN plate. Every detail still needs an individual
