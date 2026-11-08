@@ -41,7 +41,8 @@ const Radio = ({ checked, onChange, label }: { checked: boolean; onChange: () =>
   <label className="flex cursor-pointer items-center gap-2"><input type="radio" checked={checked} onChange={onChange} /> {label}</label>
 );
 
-export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenTab }: {
+export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenTab, inline = false, onFixVehicle }: {
+  inline?: boolean; onFixVehicle?: (id: string) => void;
   applicationId: string; onClose: () => void; onSent: (r: any) => void; onOpenTab?: (tab: string) => void;
 }) {
   const doPreview = useServerFn(previewAgreement);
@@ -108,6 +109,10 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
 
   function fix(b: Blocker) {
     if (!b.fix) return null;
+    if ("vehicleId" in b.fix && onFixVehicle) {
+      const id = b.fix.vehicleId;
+      return <button className="ml-1 font-semibold underline" onClick={() => onFixVehicle(id)}>Edit Vehicle Details</button>;
+    }
     if ("vehicleId" in b.fix) return <a className="ml-1 font-semibold underline" href={`/admin?tab=vehicles&id=${b.fix.vehicleId}`} target="_blank" rel="noreferrer">Open Vehicle</a>;
     const t = b.fix.tab;
     return onOpenTab ? <button className="ml-1 font-semibold underline" onClick={() => { onClose(); onOpenTab(t); }}>{t === "payments" ? "Open Payments" : "Open Rental"}</button> : null;
@@ -210,7 +215,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   );
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-background" role="dialog" aria-label="Prepare Agreement">
+    <div className={inline ? "flex min-w-0 flex-col rounded-lg border bg-white" : "fixed inset-0 z-[100] flex flex-col bg-background"} role={inline ? "group" : "dialog"} aria-label="Prepare Agreement">
       <header className="flex shrink-0 flex-col gap-2 border-b bg-card px-3 py-2 sm:flex-row sm:items-center">
         <div className="flex min-w-0 items-center gap-2">
           <Button size="sm" variant="ghost" onClick={onClose}><ArrowLeft className="h-4 w-4" /> Back</Button>
@@ -234,14 +239,14 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
           </Button>
         </div>
       )}
-      <div className="flex shrink-0 border-b md:hidden" role="tablist">
+      {!inline && <div className="flex shrink-0 border-b md:hidden" role="tablist">
         {(["details", "preview"] as const).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`flex-1 py-2 text-[13px] ${tab === t ? "border-b-2 border-primary font-medium" : "text-muted-foreground"}`}>{t === "details" ? "Details" : "Preview"}</button>
         ))}
-      </div>
-      <div className="flex min-h-0 flex-1">
-        <aside className={`${tab === "details" ? "block" : "hidden"} w-full overflow-y-auto bg-muted/20 md:block md:w-[35%] md:border-r`}>{details}</aside>
-        <section className={`${tab === "preview" ? "flex" : "hidden"} min-w-0 flex-1 flex-col md:flex`}>
+      </div>}
+      <div className={inline ? "flex min-w-0 flex-col" : "flex min-h-0 flex-1"}>
+        <aside className={inline ? "w-full min-w-0 bg-muted/20" : `${tab === "details" ? "block" : "hidden"} w-full overflow-y-auto bg-muted/20 md:block md:w-[35%] md:border-r`}>{details}</aside>
+        <section className={inline ? "flex min-w-0 flex-col" : `${tab === "preview" ? "flex" : "hidden"} min-w-0 flex-1 flex-col md:flex`}>
           <div className="flex shrink-0 items-center gap-2 border-b bg-card px-3 py-2 text-[12px]">
             <span className="rounded bg-destructive/10 px-2 py-0.5 font-semibold text-destructive">PREVIEW — NOT SENT</span>
             {rendering && <span className="text-muted-foreground">Updating…</span>}

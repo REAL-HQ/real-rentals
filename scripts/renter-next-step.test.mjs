@@ -107,7 +107,8 @@ t("wiring: header and card share the model; fixes open the exact card; guards st
   assert.equal((p.match(/<ActivateRentalDialog/g) ?? []).length, 1);
   assert.doesNotMatch(p, /StartRentalCard/);
   const d = readFileSync("src/components/admin/ActivateRentalDialog.tsx", "utf8");
-  assert.match(d, /async function submit\(\) \{\n    if \(busy\) return;/);
+  assert.match(d, /async function submit\(\) \{\n    if \(!canSubmit \|\| inFlight\.current\) return;/);
+  assert(d.indexOf("inFlight.current = true") < d.indexOf("const res = await activate"), "synchronous latch precedes the activation request");
   assert.match(d, /const fresh = await check\(/, "server re-check on submit failure is kept");
   const lib = readFileSync("src/lib/next-step.ts", "utf8");
   assert.doesNotMatch(lib, /supabase|insurance_verified\s*[:=]\s*true|status:\s*"active"/, "the model writes nothing");

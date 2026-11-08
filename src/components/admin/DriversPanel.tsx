@@ -61,6 +61,8 @@ import {
   reissueApplicantLink,
 } from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
+import { InlineActivationFlow } from "./InlineActivationFlow";
+import { ACTIVATE_FROM_LIST, driverListStatusMenu } from "@/lib/driver-list-activation";
 import { NextStepCard } from "./NextStepCard";
 import { nextStep, type FixTarget } from "@/lib/next-step";
 import { AdminTableScroll } from "./AdminTableScroll";
@@ -947,6 +949,14 @@ setDocCounts(requiredDocCounts(rows));
 
   const saveLifecycle = useServerFn(updateApplicationLifecycle);
   const approveFromList = useServerFn(approveApplication);
+  const [activationId, setActivationId] = useState<string | null>(null);
+  const activationMenuClosing = useRef(false);
+  function closeInlineActivation() {
+    const id = activationId;
+    setActivationId(null);
+    requestAnimationFrame(() => document.getElementById(`driver-status-${id}`)?.focus());
+  }
+  const activationDriver = drivers.find((row) => row.id === activationId);
   const [closingId, setClosingId] = useState<string | null>(null);
   const [closingBusy, setClosingBusy] = useState(false);
   function applySaved(id: string, patch: Partial<Application>) {
@@ -1196,6 +1206,23 @@ setDocCounts(requiredDocCounts(rows));
   return (
     <div className="max-lg:min-w-0">
       {deleteDialog}
+      {activationDriver && (isOwner || isManager) ? (
+        <InlineActivationFlow
+          key={activationDriver.id}
+          driver={activationDriver}
+          vehicles={vehicles}
+          isOwner={isOwner}
+          onClose={closeInlineActivation}
+          onRefresh={() => { refreshDrivers(); refreshActiveRenters(); refreshOnboarding(); }}
+          onActivated={() => {
+            closeInlineActivation();
+            refreshDrivers();
+            refreshActiveRenters();
+            refreshOnboarding();
+          }}
+          renderPayments={() => <CardOnFileCard driver={activationDriver} onUpdate={(p) => applySaved(activationDriver.id, p)} canIssue={canIssueCardLink} />}
+        />
+      ) : null}
       {closingId ? (
         <CloseApplicationDialog
           busy={closingBusy}
@@ -1419,6 +1446,10 @@ setDocCounts(requiredDocCounts(rows));
                         value={a.status || ""}
                         onValueChange={(status) => {
                           const tier = panelTier(isOwner, isManager);
+                          if (status === ACTIVATE_FROM_LIST) {
+                            if ((isOwner || isManager) && !openRentals.has(a.id)) { activationMenuClosing.current = true; setActivationId(a.id); }
+                            return;
+                          }
                           if (applicationStatusChoiceDisabled(a.status, status, tier)) return;
                           if (status === "approved") {
                             void approveFromList({ data: { id: a.id } })
@@ -1439,7 +1470,7 @@ setDocCounts(requiredDocCounts(rows));
                           void update(a.id, { status });
                         }}
                       >
-                        <SelectTrigger aria-label="Application Status" className="h-7 w-auto min-w-[6rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden [&>span]:!inline-flex">
+                        <SelectTrigger id={`driver-status-${a.id}`} aria-label="Application Status" className="h-7 w-auto min-w-[6rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden [&>span]:!inline-flex">
                           {held.has(a.id) ? (
                             <span
                               title={`Underlying stage: ${a.status ?? "—"}`}
@@ -1468,8 +1499,10 @@ setDocCounts(requiredDocCounts(rows));
                             </span>
                           )}
                         </SelectTrigger>
-                        <SelectContent align="start" className="min-w-[10rem]">
-                          {applicationStatusMenu(a.status, panelTier(isOwner, isManager)).map((s) => (
+                        <SelectContent align="start" className="min-w-[10rem]" onCloseAutoFocus={(event) => {
+                          if (activationMenuClosing.current) { event.preventDefault(); activationMenuClosing.current = false; }
+                        }}>
+                          {driverListStatusMenu(a.status, panelTier(isOwner, isManager), openRentals.has(a.id)).map((s) => (
                             <SelectItem key={s.value} value={s.value} disabled={s.disabled} className="text-[13px]">
                               {s.label}
                             </SelectItem>

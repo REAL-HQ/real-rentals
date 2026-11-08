@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from "./modal";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import {
   OWNER_APPROVED_RENTAL_REASON,
   canUseOwnerActivatePreset,
 } from "@/lib/activation-readiness";
+import { nextActivationResolution, type ActivationResolution, type ActivationDraft } from "@/lib/driver-list-activation";
 import { MicroLabel } from "./ui";
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
@@ -39,6 +40,8 @@ export function ActivateRentalDialog({
   onClose,
   onActivated,
   isOwner = false,
+  renderResolution,
+  onRefresh,
 }: {
   driver: { id: string; full_name?: string | null; vehicle_id?: string | null };
   vehicles: VehicleLite[];
@@ -46,11 +49,27 @@ export function ActivateRentalDialog({
   onActivated: () => void;
   /** Owner/Admin may apply the preset override reason without typing. */
   isOwner?: boolean;
+  onRefresh?: () => void;
+  renderResolution?: (key: ActivationResolution, context: {
+    vehicleId: string;
+    draft: ActivationDraft;
+    onResolved: () => void;
+    onNavigate: (key: ActivationResolution | null) => void;
+  }) => ReactNode;
 }) {
   const check = useServerFn(getActivationReadiness);
   const activate = useServerFn(activateRental);
 
   const [vehicleId, setVehicleId] = useState<string>(driver.vehicle_id ?? "");
+  const [revision, setRevision] = useState(0);
+  const [resolution, setResolution] = useState<ActivationResolution | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const inFlight = useRef(false);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const prefilledVehicle = useRef<string | null>(null);
+  const resolutionRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (resolution) resolutionRef.current?.focus(); }, [resolution]);
+  useEffect(() => { if (failure) errorRef.current?.focus(); }, [failure]);
   const [readiness, setReadiness] = useState<ActivationReadiness | null>(null);
   const [checking, setChecking] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -73,6 +92,8 @@ export function ActivateRentalDialog({
   useEffect(() => {
     let cancelled = false;
     setChecking(true);
+    setReadiness(null);
+    setFailure(null);
     setAcknowledged(false);
     setInsuranceAck(false);
     check({ data: { applicationId: driver.id, vehicleId: vehicleId || null } })
@@ -83,15 +104,20 @@ export function ActivateRentalDialog({
           setWeeklyRate(String(r.suggestedWeeklyRate));
         if (r.suggestedDeposit != null && !deposit) setDeposit(String(r.suggestedDeposit));
         // Same observation as the pre-delivery inspection — prefilled, never re-entered.
-        setPickupMiles(r.inspectionMileage != null ? String(r.inspectionMileage) : "");
+        if (prefilledVehicle.current !== vehicleId) {
+          setPickupMiles(r.inspectionMileage != null ? String(r.inspectionMileage) : "");
+          prefilledVehicle.current = vehicleId;
+        }
       })
-      .catch((e) => !cancelled && toast.error(e?.message ?? "Could not check readiness"))
+      .catch((e) => {
+        if (!cancelled) setFailure(e?.message ?? "Could not check readiness. Try again.");
+      })
       .finally(() => !cancelled && setChecking(false));
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [driver.id, vehicleId]);
+  }, [driver.id, vehicleId, revision]);
 
   const hardBlockers = useMemo(
     () => (readiness?.blockers ?? []).filter((b) => isHardBlocker(b.code)),
@@ -110,6 +136,8 @@ export function ActivateRentalDialog({
   const pickupNum = pickupMiles.trim() ? Number(pickupMiles.replace(/[^\d]/g, "")) : null;
 
   const canSubmit =
+    !!readiness &&
+    !failure &&
     !busy &&
     !checking &&
     !!vehicleId &&
@@ -121,8 +149,10 @@ export function ActivateRentalDialog({
     (softBlockers.length === 0 || (acknowledged && overrideReason.trim().length >= MIN_OVERRIDE_REASON));
 
   async function submit() {
-    if (busy) return; // double click: one activation request only
+    if (!canSubmit || inFlight.current) return;
+    inFlight.current = true; // synchronous latch, including two events before React renders
     setBusy(true);
+    setFailure(null);
     try {
       const res = await activate({
         data: {
@@ -142,10 +172,12 @@ export function ActivateRentalDialog({
       });
       if (!res.ok) {
         const msg = (res.blockers ?? []).map((b) => b.message).join(" ");
-        toast.error(msg || "Could not activate this rental");
+        setFailure(msg || "Could not activate this rental");
         // Re-check so the dialog reflects whatever changed underneath us.
         const fresh = await check({ data: { applicationId: driver.id, vehicleId } });
         setReadiness(fresh);
+        setAcknowledged(false);
+        setInsuranceAck(false);
         return;
       }
       if (res.auditError) toast.error(res.auditError, { duration: Infinity });
@@ -156,24 +188,40 @@ export function ActivateRentalDialog({
       );
       onActivated();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not activate this rental");
+      setFailure(e instanceof Error ? e.message : "Could not activate this rental");
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
 
+  function resolved() {
+    setResolution(null);
+    setRevision((n) => n + 1);
+    onRefresh?.();
+  }
+  const nextFix = renderResolution ? nextActivationResolution(readiness?.blockers ?? []) : null;
+  const alreadyActive = readiness?.blockers.some((b) => b.code === "already_active");
+  const close = () => { if (!inFlight.current) onClose(); };
   const selectable = vehicles.filter((v) => v.status !== "retired");
 
   return (
-    <ModalShell onClose={onClose} size="md" label="Activate Rental">
+    <ModalShell manageFocus onClose={close} size="md" label="Activate Rental">
       <ModalHeader title="Activate Rental"
         subtitle={<>Starts {driver.full_name || "this driver"}&rsquo;s rental, creates their portal login and notifies them.</>}
-        onClose={onClose} />
+        onClose={close} />
         <ModalBody className="space-y-5">
+          {failure ? <div ref={errorRef} role="alert" tabIndex={-1} className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{failure}</div> : null}
+          {resolution && renderResolution ? (
+            <div ref={resolutionRef} tabIndex={-1} data-activation-resolution={resolution}>
+              {renderResolution(resolution, { vehicleId, draft: { vehicleId, weeklyRate: rateNum, depositAmount: depositNum, startDate, endDate: endDate || null }, onResolved: resolved, onNavigate: setResolution })}
+            </div>
+          ) : <>
           <div>
             <MicroLabel>Vehicle</MicroLabel>
             <div className="mt-1.5">
               <VehicleCombobox
+                disabled={busy}
                 vehicles={selectable as any}
                 value={vehicleId || null}
                 onChange={(id) => setVehicleId(id ?? "")}
@@ -295,6 +343,7 @@ export function ActivateRentalDialog({
             <div>
               <MicroLabel>Weekly Rate $</MicroLabel>
               <input
+                aria-label="Weekly Rate"
                 value={weeklyRate}
                 onChange={(e) => setWeeklyRate(e.target.value)}
                 inputMode="decimal"
@@ -305,6 +354,7 @@ export function ActivateRentalDialog({
             <div>
               <MicroLabel>Deposit $</MicroLabel>
               <input
+                aria-label="Deposit"
                 value={deposit}
                 onChange={(e) => setDeposit(e.target.value)}
                 inputMode="decimal"
@@ -316,6 +366,7 @@ export function ActivateRentalDialog({
               <MicroLabel>Start Date</MicroLabel>
               <input
                 type="date"
+                aria-label="Start Date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 className={`${inputCls} mt-1.5`}
@@ -325,6 +376,7 @@ export function ActivateRentalDialog({
               <MicroLabel>End Date (Optional)</MicroLabel>
               <input
                 type="date"
+                aria-label="End Date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 className={`${inputCls} mt-1.5`}
@@ -366,14 +418,25 @@ export function ActivateRentalDialog({
             />
             Deposit Already Collected
           </label>
+          </>}
         </ModalBody>
 
         <ModalFooter>
-          <ModalButton onClick={onClose}>Cancel</ModalButton>
-          <ModalButton variant="primary" onClick={submit} disabled={!canSubmit}>
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-            {busy ? "Activating…" : "Activate Rental"}
-          </ModalButton>
+          <ModalButton onClick={close} disabled={busy}>Cancel</ModalButton>
+          {resolution ? (
+            <ModalButton onClick={resolved}>Recheck & Continue</ModalButton>
+          ) : alreadyActive ? (
+            <ModalButton variant="primary" onClick={() => { onRefresh?.(); close(); }}>Refresh List</ModalButton>
+          ) : failure && !nextFix ? (
+            <ModalButton variant="primary" onClick={() => setRevision((n) => n + 1)}>Retry Readiness Check</ModalButton>
+          ) : nextFix && !checking ? (
+            <ModalButton variant="primary" onClick={() => setResolution(nextFix.key)} disabled={busy}>{nextFix.label}</ModalButton>
+          ) : (
+            <ModalButton variant="primary" onClick={submit} disabled={!canSubmit}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              {busy ? "Activating…" : "Activate Rental"}
+            </ModalButton>
+          )}
         </ModalFooter>
     </ModalShell>
   );
