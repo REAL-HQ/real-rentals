@@ -10,6 +10,7 @@ import {
   getAutomationsOverview,
   previewAutomationTemplate,
   setAutomationOn,
+  checkSmsSetup,
   type AutomationRow,
   type AutomationsOverview,
 } from "@/lib/automations-overview.functions";
@@ -53,6 +54,8 @@ export function AutomationsCatalog() {
   const load = useServerFn(getAutomationsOverview);
   const toggle = useServerFn(setAutomationOn);
   const preview = useServerFn(previewAutomationTemplate);
+  const smsCheck = useServerFn(checkSmsSetup);
+  const [sms, setSms] = useState<string | null>(null);
   const [data, setData] = useState<AutomationsOverview | null>(null);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -92,6 +95,13 @@ export function AutomationsCatalog() {
           Email: {data.emailReady ? "Set Up" : "Not Set Up"} · SMS: {data.smsReady ? "Set Up" : "Not Set Up"} ({data.smsSentEver} sent so far)
           {data.cronKnown ? "" : " · Schedule health isn't available yet."}
         </p>
+        <p>
+          SMS Setup: Account {data.smsSetup.account ? "Saved" : "Missing"} · Key {data.smsSetup.authToken ? "Saved" : "Missing"} · Sender {data.smsSetup.sender === "none" ? "Missing" : data.smsSetup.sender === "number" ? "Number" : "Service"}
+          {data.isOwner && (
+            <button type="button" className="ml-2 font-medium text-[#D03020]" onClick={() => void smsCheck().then((r) => setSms(r.detail)).catch(() => setSms("Check could not run."))}>Check SMS</button>
+          )}
+        </p>
+        {sms && <p>{sms}</p>}
         {!data.isOwner && <p>Only the Owner can change switches.</p>}
         {data.controlsStatus === "error" && <p className="text-[#B45309]">Switches could not be read. Every automated email listed here is held (not sent) until they can. Refresh to try again.</p>}
         <p>New Applicant Follow-Up has one switch for all its texts and emails. Turn single steps on or off in Workflows below.</p>
