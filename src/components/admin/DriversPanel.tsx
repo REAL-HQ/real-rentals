@@ -111,7 +111,6 @@ import {
   Search,
   Check,
   ChevronDown,
-  ArrowLeft,
   Mail,
   Phone,
   MapPin,
@@ -1051,7 +1050,6 @@ setDocCounts(requiredDocCounts(rows));
         key={open.id}
         driver={open}
         vehicles={vehicles}
-        onBack={() => setOpenId(null)}
         onUpdate={(p) => update(open.id, p)}
         onSaved={(p) => applySaved(open.id, p)}
         hasActiveRental={openRentals.has(open.id)}
@@ -1595,7 +1593,6 @@ setDocCounts(requiredDocCounts(rows));
 function DriverDetail({
   driver,
   vehicles,
-  onBack,
   onUpdate,
   onSaved,
   onDelete,
@@ -1611,7 +1608,6 @@ function DriverDetail({
 }: {
   driver: Application;
   vehicles: Vehicle[];
-  onBack: () => void;
   onUpdate: (patch: Partial<Application>) => void;
   onSaved: (patch: Partial<Application>) => void;
   onDelete: () => void;
@@ -2192,14 +2188,8 @@ function DriverDetail({
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         {/* Header + record navigation, sticky together */}
         <div className="sticky top-0 z-10 bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">
-          <button
-            onClick={onBack}
-            className="inline-flex items-center gap-1.5 text-[13px] text-[#55555E] hover:text-[#111114] transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" /> Drivers
-          </button>
           {/* Identity: its own box, with the record tabs directly below it */}
-          <div className="mt-3 rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
+          <div className="rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex max-lg:flex-wrap">
 
             <div className="flex min-w-0 flex-1 items-center gap-4">
