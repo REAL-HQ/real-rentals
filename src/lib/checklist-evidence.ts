@@ -2,8 +2,9 @@ import { z } from "zod";
 import type { ActivationRequirementKey, VaultDocFact } from "./activation-readiness";
 import type { StaffTier } from "./roles";
 
-/** Preparation only. Do not enable before durable state and atomic exceptions are accepted. */
-export const CHECKLIST_EVIDENCE_ENABLED = false;
+/** Saved check-offs live in checklist_evidence_events (record_checklist_evidence) and
+ *  activate_rental_checked_tx accepts them in the same transaction as the rental. */
+export const CHECKLIST_EVIDENCE_ENABLED = true;
 export const EVIDENCE_UPDATE_UNAVAILABLE = "Checklist Saving And Activation Exceptions Await The Approved Database Update.";
 export const evidenceFieldSchema = z.enum(["license_front", "license_back", "insurance", "agreement", "gig_profile"]);
 export type EvidenceField = z.infer<typeof evidenceFieldSchema>;
@@ -12,8 +13,8 @@ export const EVIDENCE_FIELD_LABELS: Record<EvidenceField, string> = {
 };
 
 export const attestationInput = z.discriminatedUnion("state", [
-  z.object({ applicationId: z.string().uuid(), field: evidenceFieldSchema, expectedRevision: z.number().int().nonnegative(), idempotencyKey: z.string().uuid(), state: z.literal("collected"), source: z.enum(["email", "text", "paper", "other"]), note: z.string().trim().min(3).max(1000) }).strict(),
-  z.object({ applicationId: z.string().uuid(), field: evidenceFieldSchema, expectedRevision: z.number().int().nonnegative(), idempotencyKey: z.string().uuid(), state: z.literal("not_collected"), source: z.null(), note: z.string().trim().min(3).max(1000) }).strict(),
+  z.object({ applicationId: z.string().uuid(), field: evidenceFieldSchema, expectedRevision: z.number().int().nonnegative(), idempotencyKey: z.string().uuid(), state: z.literal("collected"), source: z.enum(["email", "text", "paper", "other"]), note: z.string().trim().max(1000).default("") }).strict(),
+  z.object({ applicationId: z.string().uuid(), field: evidenceFieldSchema, expectedRevision: z.number().int().nonnegative(), idempotencyKey: z.string().uuid(), state: z.literal("not_collected"), source: z.null(), note: z.string().trim().max(1000).default("") }).strict(),
 ]);
 export type AttestationInput = z.infer<typeof attestationInput>;
 /** These attributes must be issued by the eventual transaction, never by the browser. */
@@ -95,7 +96,7 @@ export function projectCollectionEvidence(input: Omit<Parameters<typeof projectE
   return projection.uploaded ? { ...projection, tone: "green", status: "uploaded", label: "On File" } : projection;
 }
 
-export type EvidenceRequirementPresentation = { tone: EvidenceTone; label: string; fields: EvidenceProjection[] };
+export type EvidenceRequirementPresentation = { tone: EvidenceTone; label: string; fields: EvidenceProjection[]; onToggle?: () => void; busy?: boolean };
 export type EvidencePresentationMap = Partial<Record<ActivationRequirementKey, EvidenceRequirementPresentation>>;
 export function requirementEvidence(key: ActivationRequirementKey, fields: readonly EvidenceProjection[]): EvidenceRequirementPresentation | undefined {
   const matching = fields.filter((f) => evidenceFields(key).includes(f.field));

@@ -216,7 +216,7 @@ export function ActivateRentalDialog({
           {readiness?.requirements?.length ? (
             <ActivationRequirementList requirements={readiness.requirements} evidence={evidence} onRun={onRun} renderEvidence={renderEvidence} />
           ) : null}
-          {CHECKLIST_EVIDENCE_ENABLED && evidenceItems ? <ChecklistExceptionFields items={evidenceItems} selected={selectedEvidence} reason={evidenceReason} onSelected={setSelectedEvidence} onReason={setEvidenceReason} /> : null}
+          {/* Not Collected files are overridden with the same written reason below (server-checked). */}
 
           {hardBlockers.length > 0 ? (
             <div className="rounded-xl border border-[#F3C9C4] bg-[#FDF2F1] p-3">

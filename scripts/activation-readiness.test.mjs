@@ -717,7 +717,7 @@ try {
     const insurance = { status: "verified", exceptionAllowed: false, settingPresent: true, settingReadable: true };
     const d = rules.decideActivation({ blockers: [{ code: "something_new", message: "x" }], insurance }, { overrideBlockers: true, overrideReason: "long enough" });
     assert.equal(d.ok, false);
-    assert.deepEqual([...rules.SOFT_ACTIVATION_BLOCKERS].sort(), ["no_interview", "no_passed_inspection"]);
+    assert.deepEqual([...rules.SOFT_ACTIVATION_BLOCKERS].sort(), ["agreement_not_collected", "license_not_collected", "no_interview", "no_passed_inspection"]);
   });
 
   await test("insuranceStatus precedence: expired > verified > missing > unverified", async () => {

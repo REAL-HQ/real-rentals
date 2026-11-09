@@ -59,6 +59,20 @@ export function ActivationRequirementList({
             </span>
           );
           const icon = fileState ? fileState.tone === "green" ? completedIcon : <Circle className={`h-6 w-6 shrink-0 ${fileState.tone === "red" ? "text-destructive" : "text-warning"}`} aria-label={fileState.label} /> : r.met === true ? completedIcon : r.met === null ? <Minus className="h-6 w-6 shrink-0 text-muted-foreground" aria-label="Not Checked Yet" /> : <Circle className={`h-6 w-6 shrink-0 ${r.enforcement === "hard" ? "text-destructive" : r.enforcement === "soft" || r.enforcement === "acknowledge" ? "text-warning-foreground" : "text-muted-foreground"}`} aria-label="Incomplete" />;
+          const marker = fileState?.onToggle ? (
+            <button
+              type="button"
+              disabled={fileState.busy}
+              onClick={fileState.onToggle}
+              className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+              aria-label={fileState.tone === "yellow" ? `${r.label}: Upload Due. Click To Mark Not Collected` : `Check Off ${r.label}`}
+              title={fileState.tone === "yellow" ? "Checked Off — Upload Due. Click To Mark Not Collected." : "Click To Check Off. Upload The File Later."}
+            >
+              {fileState.tone === "yellow" ? (
+                <span className="grid h-6 w-6 place-items-center rounded-full border-2 border-warning bg-warning text-warning-foreground"><Check className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" /></span>
+              ) : icon}
+            </button>
+          ) : icon;
           return (
           <li
             key={r.key}
@@ -69,7 +83,7 @@ export function ActivationRequirementList({
           >
             {/* Status markers never navigate or pretend an unsaved attestation
                 is complete. Explicit review/upload actions remain separate. */}
-            <span className="flex min-w-0 items-center gap-2 px-1 py-2">{icon}<span className="min-w-0 break-words text-foreground">{r.label}{r.detail && r.met !== true ? <span className="text-muted-foreground"> · {r.detail}</span> : null}</span></span>
+            <span className="flex min-w-0 items-center gap-2 px-1 py-2">{marker}<span className="min-w-0 break-words text-foreground">{r.label}{r.detail && r.met !== true ? <span className="text-muted-foreground"> · {r.detail}</span> : null}</span></span>
             <div className={embedded ? "ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5 max-sm:w-full" : `flex shrink-0 flex-col items-end gap-1 ${fileState ? "max-w-80 max-sm:w-full" : "max-w-36"}`}>
               <span className="text-right text-[10px] text-muted-foreground">{status}</span>
               {embedded && renderEvidence ? renderEvidence(r.key) : null}

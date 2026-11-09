@@ -78,7 +78,8 @@ import {
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
 import { checklistDocumentCategories } from "./checklist-actions";
-import { CHECKLIST_EVIDENCE_ENABLED, evidenceTone, projectEvidence, requirementEvidence, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
+import { CHECKLIST_EVIDENCE_ENABLED, evidenceTone, latestEvidenceEvent, projectEvidence, requirementEvidence, type EvidenceEvent, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
+import { getChecklistEvidence, saveChecklistEvidence } from "@/lib/checklist-evidence.functions";
 import { ChecklistEvidenceControl } from "./ChecklistEvidenceControl";
 import { driverLifecycle } from "@/lib/driver-lifecycle";
 import type { ActivationRequirementKey } from "@/lib/activation-readiness";
@@ -1786,16 +1787,56 @@ function DriverDetail({
     : currentStage?.key === "docs" ? screening?.interview_completed_at ?? driver.created_at : driver.created_at;
   const timeInStage = stageStartIso ? formatDuration(Date.now() - new Date(stageStartIso).getTime()) : undefined;
   const [readinessNonce, setReadinessNonce] = useState(0);
-  // No evidence reads/writes while preparation is disabled. Never use local
-  // checkmarks to pretend a required document or activation exception is saved.
-  const evidenceItems: EvidenceProjection[] = CHECKLIST_EVIDENCE_ENABLED ? (["license_front", "license_back", "insurance", "agreement", "gig_profile"] as EvidenceField[]).map((field) => projectEvidence({
-    applicationId: driver.id, field, events: [], documents: vaultDocs,
-    itemComplete: field === "agreement" && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true,
+  // Saved check-offs only (checklist_evidence_events) — never local checkmarks.
+  const loadEvidence = useServerFn(getChecklistEvidence);
+  const saveEvidence = useServerFn(saveChecklistEvidence);
+  const [evidenceEvents, setEvidenceEvents] = useState<EvidenceEvent[]>([]);
+  const [evidenceSaving, setEvidenceSaving] = useState(false);
+  const refreshEvidenceEvents = useCallback(async () => {
+    if (!CHECKLIST_EVIDENCE_ENABLED || !isManager) return;
+    try { setEvidenceEvents((await loadEvidence({ data: { applicationId: driver.id } })).events); }
+    catch { setEvidenceEvents([]); }
+  }, [driver.id, isManager]);
+  useEffect(() => { setEvidenceEvents([]); void refreshEvidenceEvents(); }, [refreshEvidenceEvents]);
+  let safeEvents: EvidenceEvent[] = evidenceEvents;
+  try { for (const f of ["license_front", "license_back", "insurance", "agreement", "gig_profile"] as EvidenceField[]) latestEvidenceEvent(evidenceEvents, driver.id, f); }
+  catch { safeEvents = []; }
+  const evidenceItems: EvidenceProjection[] = CHECKLIST_EVIDENCE_ENABLED && isManager ? (["license_front", "license_back", "insurance", "agreement", "gig_profile"] as EvidenceField[]).map((field) => projectEvidence({
+    applicationId: driver.id, field, events: safeEvents, documents: vaultDocs,
+    itemComplete: field === "agreement" && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true && r.detail !== "Upload Due") === true,
     reviewRequired: field === "agreement" || field === "insurance",
   })) : [];
-  const evidencePresentation: EvidencePresentationMap | undefined = CHECKLIST_EVIDENCE_ENABLED ? Object.fromEntries((rentalTabReadiness?.requirements ?? []).flatMap((r) => {
+  // One click on a checklist circle: Missing/Not Collected -> Upload Due (Yellow);
+  // Upload Due -> Not Collected (Red). A file on record (Green) is never changed here.
+  async function toggleEvidence(fields: EvidenceProjection[]) {
+    if (evidenceSaving) return;
+    const open = fields.filter((f) => !f.uploaded && !f.complete);
+    if (!open.length) return;
+    const next: "collected" | "not_collected" = open.every((f) => f.status === "upload_due") ? "not_collected" : "collected";
+    setEvidenceSaving(true);
+    try {
+      for (const f of open) {
+        if ((next === "collected" && f.status === "upload_due") || (next === "not_collected" && f.status === "not_collected")) continue;
+        const base = { applicationId: driver.id, field: f.field, expectedRevision: f.revision, idempotencyKey: crypto.randomUUID(), note: "" };
+        await saveEvidence({ data: next === "collected" ? { ...base, state: "collected", source: "other" } : { ...base, state: "not_collected", source: null } });
+      }
+      toast.success(next === "collected" ? "Checked Off — Upload The File When You Have It" : "Marked Not Collected");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could Not Save This Check-Off.");
+    } finally {
+      await refreshEvidenceEvents();
+      setEvidenceSaving(false);
+      readinessChanged();
+    }
+  }
+  const evidencePresentation: EvidencePresentationMap | undefined = CHECKLIST_EVIDENCE_ENABLED && isManager ? Object.fromEntries((rentalTabReadiness?.requirements ?? []).flatMap((r) => {
     const presentation = requirementEvidence(r.key, evidenceItems);
-    return presentation ? [[r.key, presentation]] : [];
+    if (!presentation) return [];
+    // Collecting the card is not verifying insurance; say so on that row.
+    if (r.key === "insurance_verified" && r.met !== true && presentation.tone === "yellow") presentation.label = "Upload Due · Verify Insurance";
+    if (r.enforcement === "advisory" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Advisory";
+    const toggleable = presentation.fields.some((f) => !f.uploaded && !f.complete) && !(r.key === "signed_agreement" && r.met === true && presentation.fields.every((f) => f.status !== "upload_due"));
+    return [[r.key, toggleable ? { ...presentation, onToggle: () => void toggleEvidence(presentation.fields), busy: evidenceSaving } : presentation]];
   })) : undefined;
   const docsEvidenceTone = evidenceTone(evidenceItems.filter((i) => i.field !== "insurance"));
   const insuranceEvidenceTone = evidenceTone(evidenceItems.filter((i) => i.field === "insurance"));
@@ -1818,8 +1859,7 @@ function DriverDetail({
     const category = categories[0];
     if (!category) return null;
     return <div className="flex min-w-0 flex-wrap justify-end gap-1.5">{categories.map((category) => {
-      const item = evidenceItems.find((i) => i.field === category);
-      return item ? <ChecklistEvidenceControl key={`${driver.id}:${category}`} applicationId={driver.id} item={item} /> : null;
+      return null;
     })}<DriverEvidenceUpload applicationId={driver.id} category={category} categories={categories} documents={vaultDocs} onUploaded={refreshEvidence} /></div>;
   }
 

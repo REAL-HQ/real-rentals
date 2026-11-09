@@ -1063,6 +1063,66 @@ export type Database = {
         }
         Relationships: []
       }
+      checklist_evidence_events: {
+        Row: {
+          actor_id: string
+          actor_role: string
+          application_id: string
+          created_at: string
+          field: string
+          id: string
+          idempotency_key: string
+          note: string
+          revision: number
+          source: string | null
+          state: string
+          supersedes_id: string | null
+        }
+        Insert: {
+          actor_id: string
+          actor_role: string
+          application_id: string
+          created_at?: string
+          field: string
+          id?: string
+          idempotency_key: string
+          note?: string
+          revision: number
+          source?: string | null
+          state: string
+          supersedes_id?: string | null
+        }
+        Update: {
+          actor_id?: string
+          actor_role?: string
+          application_id?: string
+          created_at?: string
+          field?: string
+          id?: string
+          idempotency_key?: string
+          note?: string
+          revision?: number
+          source?: string | null
+          state?: string
+          supersedes_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checklist_evidence_events_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_evidence_events_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "checklist_evidence_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       condition_media: {
         Row: {
           angle: string | null
@@ -6143,6 +6203,18 @@ export type Database = {
       next_unit_number: { Args: { _prefix?: string }; Returns: string }
       promote_waitlist_entry: { Args: { _entry: string }; Returns: Json }
       purge_application: { Args: { _id: string }; Returns: Json }
+      record_checklist_evidence: {
+        Args: {
+          _application_id: string
+          _expected_revision: number
+          _field: string
+          _idempotency_key: string
+          _note: string
+          _source: string
+          _state: string
+        }
+        Returns: Json
+      }
       rental_at_time: {
         Args: { _at: string; _vehicle_id: string }
         Returns: string

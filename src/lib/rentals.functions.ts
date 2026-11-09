@@ -94,7 +94,7 @@ async function evaluateReadiness(
   // and the interview (soft). Same sources the drawer reads: the Document Vault
   // (documents.driver_id = application id), driver_screenings, agreements and
   // the audited paper-agreement verifications in audit_log.
-  const [docsRead, screeningRead, agreementsRead, auditsRead] = await Promise.all([
+  const [docsRead, screeningRead, agreementsRead, auditsRead, evidenceRead] = await Promise.all([
     admin
       .from("documents")
       .select("id,category,is_current,review_status,expires_at,reviewed_at,storage_path")
@@ -116,9 +116,16 @@ async function evaluateReadiness(
       .eq("action", "document.verified")
       .eq("entity_type", "application")
       .eq("entity_id", applicationId),
+    // Saved staff check-offs (Upload Due / Not Collected); the newest per file wins.
+    admin
+      .from("checklist_evidence_events")
+      .select("field,state,revision")
+      .eq("application_id", applicationId)
+      .in("field", ["license_front", "license_back", "agreement"])
+      .order("revision", { ascending: false }),
   ]);
   // A failed read must never read as "complete": refuse instead of guessing.
-  const readError = docsRead.error ?? screeningRead.error ?? agreementsRead.error ?? auditsRead.error;
+  const readError = docsRead.error ?? screeningRead.error ?? agreementsRead.error ?? auditsRead.error ?? evidenceRead.error;
   if (readError) throw new Error("Could not check activation readiness. Try again.");
   const docs = (docsRead.data ?? []) as DriverReadinessFacts["documents"];
   const screening = screeningRead.data;
@@ -146,7 +153,11 @@ async function evaluateReadiness(
     interviewCompletedAt: ((screening as any)?.interview_completed_at as string | null) ?? null,
     insurance,
     hasPassedInspection: null,
+    evidence: {},
   };
+  for (const row of (evidenceRead.data ?? []) as { field: "license_front" | "license_back" | "agreement"; state: "collected" | "not_collected" }[]) {
+    if (!facts.evidence![row.field]) facts.evidence![row.field] = row.state;
+  }
   blockers.push(...driverRequirementBlockers(facts));
 
   // An applicant already on an active rental should be edited, not re-activated.

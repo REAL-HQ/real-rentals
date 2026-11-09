@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assessEvidenceException, attestationInput, CHECKLIST_EVIDENCE_ENABLED, evidenceTone, latestEvidenceEvent, projectEvidence, proposeEvidenceEvent, requirementEvidence, type EvidenceEvent } from "../src/lib/checklist-evidence";
-import { unavailableEvidenceRead, unavailableEvidenceWrite } from "../src/lib/checklist-evidence.server";
+import { decideActivation, driverRequirementBlockers, activationRequirements, type DriverReadinessFacts } from "../src/lib/activation-readiness";
 
 const app = "11111111-1111-4111-8111-111111111111";
 const other = "22222222-2222-4222-8222-222222222222";
@@ -51,9 +51,10 @@ describe("Confirmed evidence states (isolated rules only)", () => {
     expect(() => latestEvidenceEvent([first, { ...corrected, supersedesId: null }], app, "license_front")).toThrow("Review");
     expect(() => latestEvidenceEvent([first, first], app, "license_front")).toThrow("Review");
   });
-  it("accepts source evidence but rejects client actor/verification injection and blank notes", () => {
+  it("accepts one-click check-offs with no note but rejects client actor/verification injection", () => {
     expect(attestationInput.safeParse(input).success).toBe(true);
-    for (const bad of [{ ...input, actorId: other }, { ...input, verified: true }, { ...input, note: " " }, { ...input, field: "approved" }, { ...input, state: "not_collected" }]) expect(attestationInput.safeParse(bad).success).toBe(false);
+    expect(attestationInput.safeParse({ ...input, note: "" }).success).toBe(true);
+    for (const bad of [{ ...input, actorId: other }, { ...input, verified: true }, { ...input, field: "approved" }, { ...input, state: "not_collected" }]) expect(attestationInput.safeParse(bad).success).toBe(false);
   });
 });
 
@@ -77,9 +78,29 @@ describe("Mock-only exception contract; production exceptions stay unavailable",
     expect(assessEvidenceException({ ...exception, selectedFields: [...exception.selectedFields, "agreement"] }).eligible).toBe(false);
     expect(assessEvidenceException({ ...exception, items: [project([first, corrected], [doc])] }).eligible).toBe(false);
   });
-  it("the real server seam is always disabled and never returns invented history", async () => {
-    expect(CHECKLIST_EVIDENCE_ENABLED).toBe(false);
-    expect(await unavailableEvidenceRead(app)).toMatchObject({ available: false, storageReady: false, atomicActivationReady: false });
-    await expect(unavailableEvidenceWrite(input)).rejects.toThrow("Await");
+});
+describe("Saved check-offs in activation (Dolmar's rule)", () => {
+  const facts = (evidence: DriverReadinessFacts["evidence"] = {}): DriverReadinessFacts => ({
+    status: "approved", agreements: [], documents: [], interviewCompletedAt: "2026-11-01T00:00:00Z", hasPassedInspection: true, evidence,
+    insurance: { status: "verified", exceptionAllowed: false, settingPresent: true, settingReadable: true } as any,
+  });
+  const decide = (f: DriverReadinessFacts, reason?: string) => decideActivation({ blockers: driverRequirementBlockers(f), insurance: f.insurance }, reason ? { overrideBlockers: true, overrideReason: reason } : {});
+  it("is enabled", () => expect(CHECKLIST_EVIDENCE_ENABLED).toBe(true));
+  it("Yellow (checked off, no file) never blocks activation for license and agreement", () => {
+    const f = facts({ license_front: "collected", license_back: "collected", agreement: "collected" });
+    expect(decide(f).ok).toBe(true);
+    expect(activationRequirements(f).find((r) => r.key === "license_documents")).toMatchObject({ met: true, detail: "Upload Due" });
+  });
+  it("Red (Not Collected) needs a written reason, then allows activation", () => {
+    const f = facts({ license_front: "not_collected", license_back: "collected", agreement: "not_collected" });
+    expect(decide(f).ok).toBe(false);
+    expect(decide(f, "four").ok).toBe(false);
+    const ok = decide(f, "Renter emailing license tonight");
+    expect(ok.ok).toBe(true);
+    if (ok.ok) expect(ok.overridden.map((b) => b.code).sort()).toEqual(["agreement_not_collected", "license_not_collected"]);
+  });
+  it("an untouched item (no file, no check-off) still blocks, even with a reason", () => {
+    expect(decide(facts({}), "Owner says go ahead").ok).toBe(false);
+    expect(decide(facts({ license_front: "collected" }), "Owner says go ahead").ok).toBe(false);
   });
 });

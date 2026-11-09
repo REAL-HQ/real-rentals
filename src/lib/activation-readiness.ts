@@ -57,6 +57,10 @@ export type ActivationBlockerCode =
   | "insurance_ack_required"
   /** Interview not completed. Overridable with a written reason. */
   | "no_interview"
+  /** License marked Not Collected by staff. Overridable by a Manager/Owner with a written reason. */
+  | "license_not_collected"
+  /** Agreement marked Not Collected by staff. Overridable by a Manager/Owner with a written reason. */
+  | "agreement_not_collected"
   /** A soft blocker was acknowledged without a written reason. */
   | "override_reason_required"
   /** Another approval write held the lock; nothing was written. Safe to retry. */
@@ -122,7 +126,7 @@ export type ActivationReadiness = {
  * Everything else — including any code added later — is hard: fail closed.
  */
 export const SOFT_ACTIVATION_BLOCKERS: ReadonlySet<ActivationBlockerCode> =
-  new Set<ActivationBlockerCode>(["no_passed_inspection", "no_interview"]);
+  new Set<ActivationBlockerCode>(["no_passed_inspection", "no_interview", "license_not_collected", "agreement_not_collected"]);
 
 export const MIN_OVERRIDE_REASON = 5;
 
@@ -317,7 +321,27 @@ export type DriverReadinessFacts = {
   insurance: InsuranceReadiness;
   /** null when no vehicle is chosen, so inspection cannot be judged. */
   hasPassedInspection: boolean | null;
+  /** Latest saved staff check-off per file (checklist_evidence_events). */
+  evidence?: Partial<Record<"license_front" | "license_back" | "agreement", "collected" | "not_collected">>;
 };
+
+export type FileCheck = "file" | "staff_confirmed" | "not_collected" | "missing";
+
+/** Mirrors activate_rental_checked_tx: a file wins, then a saved check-off; Not Collected needs a reason. */
+export function licenseCheck(f: DriverReadinessFacts): FileCheck {
+  const missing = new Set(missingRequiredCategories(f.documents));
+  const sides = (["license_front", "license_back"] as const).map((c) => (missing.has(c) ? f.evidence?.[c] ?? null : "file"));
+  if (sides.every((s) => s === "file")) return "file";
+  if (sides.every((s) => s === "file" || s === "collected")) return "staff_confirmed";
+  if (sides.every((s) => s !== null)) return "not_collected";
+  return "missing";
+}
+
+export function agreementCheck(f: DriverReadinessFacts): FileCheck {
+  if (hasSignedAgreement(f)) return "file";
+  const state = f.evidence?.agreement;
+  return state === "collected" ? "staff_confirmed" : state === "not_collected" ? "not_collected" : "missing";
+}
 
 export function hasSignedAgreement(f: DriverReadinessFacts): boolean {
   return (
@@ -330,6 +354,8 @@ export function hasSignedAgreement(f: DriverReadinessFacts): boolean {
 export function activationRequirements(f: DriverReadinessFacts): ActivationRequirement[] {
   const missing = new Set(missingRequiredCategories(f.documents));
   const ins = f.insurance;
+  const license = licenseCheck(f);
+  const agreement = agreementCheck(f);
   const gigOnFile = !missing.has("gig_profile");
   return [
     {
@@ -343,14 +369,16 @@ export function activationRequirements(f: DriverReadinessFacts): ActivationRequi
     {
       key: "license_documents",
       label: "Driver's License (Front And Back)",
-      met: HARD_REQUIRED_CATEGORIES.every((c) => !missing.has(c)),
-      enforcement: "hard",
+      met: license === "file" || license === "staff_confirmed",
+      enforcement: license === "not_collected" ? "soft" : "hard",
+      ...(license === "staff_confirmed" ? { detail: "Upload Due" } : license === "not_collected" ? { detail: "Not Collected" } : {}),
     },
     {
       key: "signed_agreement",
       label: "Rental Agreement Signed",
-      met: hasSignedAgreement(f),
-      enforcement: "hard",
+      met: agreement === "file" || agreement === "staff_confirmed",
+      enforcement: agreement === "not_collected" ? "soft" : "hard",
+      ...(agreement === "staff_confirmed" ? { detail: "Upload Due" } : agreement === "not_collected" ? { detail: "Not Collected" } : {}),
     },
     {
       key: "insurance_verified",
@@ -411,7 +439,10 @@ export function driverRequirementBlockers(f: DriverReadinessFacts): ActivationBl
       message: `Application is "${f.status}". Approve it before activating.`,
     });
   }
-  if (unmet("license_documents")) {
+  const license = licenseCheck(f);
+  if (license === "not_collected") {
+    out.push({ code: "license_not_collected", message: "Driver's license marked Not Collected. A Manager or Owner can activate with a written reason." });
+  } else if (unmet("license_documents")) {
     const missing = missingRequiredCategories(f.documents).filter((c) =>
       (HARD_REQUIRED_CATEGORIES as readonly string[]).includes(c),
     );
@@ -420,7 +451,9 @@ export function driverRequirementBlockers(f: DriverReadinessFacts): ActivationBl
       message: `Missing required documents: ${missing.map((c) => DOC_LABEL[c] ?? c).join(", ")}. Upload or replace them in Documents.`,
     });
   }
-  if (unmet("signed_agreement")) {
+  if (agreementCheck(f) === "not_collected") {
+    out.push({ code: "agreement_not_collected", message: "Rental agreement marked Not Collected. A Manager or Owner can activate with a written reason." });
+  } else if (unmet("signed_agreement")) {
     out.push({
       code: "no_signed_agreement",
       message:
@@ -586,10 +619,14 @@ export function checkedTxBlocker(msg: string): ActivationBlocker | null {
       message:
         "No passed pre-delivery inspection. Re-check readiness and override it with a written reason, or run the checklist.",
     };
+  if (msg.includes("override_required:license_not_collected"))
+    return { code: "license_not_collected", message: "Driver's license is marked Not Collected. Re-check readiness and override it with a written reason." };
+  if (msg.includes("override_required:agreement_not_collected"))
+    return { code: "agreement_not_collected", message: "Rental agreement is marked Not Collected. Re-check readiness and override it with a written reason." };
   if (msg.includes("override_not_allowed") || msg.includes("override_payload_invalid"))
     return {
       code: "override_reason_required",
-      message: "Only the interview and the pre-delivery inspection can be overridden.",
+      message: "Only the interview, the pre-delivery inspection and Not Collected files can be overridden.",
     };
   if (msg.includes("override_reason_required"))
     return { code: "override_reason_required", message: "Enter a reason for the override." };
