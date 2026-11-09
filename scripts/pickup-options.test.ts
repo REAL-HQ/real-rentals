@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PICKUP_COORDINATION, PICKUP_PAYMENT_METHODS, pickupLocationSuggestion } from "../src/lib/pickup-options";
+import { PICKUP_COORDINATION, PICKUP_PAYMENT_METHODS, pickupLocationSuggestion, pickupWelcomeIntent } from "../src/lib/pickup-options";
 describe("Owner-confirmed pickup choices", () => {
   it("the team confirms the appointment", () => expect(PICKUP_COORDINATION.appointmentOwner).toBe("team"));
   it("login access comes first without waiting for a pickup packet", () => expect(PICKUP_COORDINATION.approvalEmail).toBe("login_first"));
@@ -11,4 +11,11 @@ describe("Owner-confirmed pickup choices", () => {
     expect(pickupLocationSuggestion("custom")).toBeNull();
   });
   it("includes every requested pickup payment method without verifying a payment", () => expect(PICKUP_PAYMENT_METHODS.map((method) => method.id)).toEqual(["stripe", "zelle_bank", "cash_app_venmo", "cash", "other"]));
+  it("plans login access without car/appointment confirmation", () => expect(pickupWelcomeIntent({ approvalAction: "approve_and_invite", accountConflict: false, accountAccessReady: true, pickupConfirmed: false })).toEqual({ login: "planned", pickup: "awaiting_confirmation" }));
+  it("Approve Only does not imply an invitation", () => expect(pickupWelcomeIntent({ approvalAction: "approve_only", accountConflict: false, accountAccessReady: true, pickupConfirmed: false }).login).toBe("not_requested"));
+  it("a confirmed plan can prepare pickup details separately", () => expect(pickupWelcomeIntent({ approvalAction: "approve_and_invite", accountConflict: false, accountAccessReady: true, pickupConfirmed: true }).pickup).toBe("planned"));
+  it("does not plan access when account setup is missing or identity conflicts", () => {
+    expect(pickupWelcomeIntent({ approvalAction: "approve_and_invite", accountConflict: true, accountAccessReady: true, pickupConfirmed: true })).toEqual({ login: "blocked", pickup: "blocked" });
+    expect(pickupWelcomeIntent({ approvalAction: "approve_and_invite", accountConflict: false, accountAccessReady: false, pickupConfirmed: true })).toEqual({ login: "blocked", pickup: "blocked" });
+  });
 });

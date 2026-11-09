@@ -23,3 +23,15 @@ export const PICKUP_PAYMENT_METHODS = [
 export function pickupLocationSuggestion(id: string): string | null {
   return PICKUP_LOCATIONS.find((location) => location.id === id)?.address ?? null;
 }
+
+/** Proposed outbound intent only. Not a send gate, account creator or retry policy. */
+export function pickupWelcomeIntent(facts: {
+  approvalAction: "approve_only" | "approve_and_invite";
+  accountConflict: boolean; accountAccessReady: boolean; pickupConfirmed: boolean;
+}): { login: "planned" | "not_requested" | "blocked"; pickup: "planned" | "awaiting_confirmation" | "blocked" } {
+  if (facts.accountConflict || !facts.accountAccessReady) return { login: "blocked", pickup: "blocked" };
+  return {
+    login: facts.approvalAction === "approve_and_invite" ? "planned" : "not_requested",
+    pickup: facts.pickupConfirmed ? "planned" : "awaiting_confirmation",
+  };
+}
