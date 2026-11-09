@@ -36,6 +36,7 @@ import {
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
 import { VEHICLE_COMBOBOX_SELECT, formatVehicleLabel } from "@/lib/vehicle-label";
 import { BulkReceiptUpload } from "@/components/admin/BulkReceiptUpload";
+import { RenterReimbursements } from "@/components/admin/RenterReimbursements";
 
 // Expenses and per-vehicle P&L.
 //
@@ -74,7 +75,7 @@ const PERIODS = [
 ] as const;
 
 export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
-  const [view, setView] = useState<"pl" | "ledger">(autoOpenAdd ? "ledger" : "pl");
+  const [view, setView] = useState<"pl" | "ledger" | "reimbursements">(autoOpenAdd ? "ledger" : "pl");
   const [period, setPeriod] = useState<string>("3");
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
 
@@ -116,13 +117,13 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
             ))}
           </select>
           <div className="inline-flex rounded-lg border border-border overflow-hidden max-lg:shrink-0">
-            {(["pl", "ledger"] as const).map((v) => (
+            {(["pl", "ledger", "reimbursements"] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
                 className={`px-3 py-2 text-sm ${view === v ? "bg-[rgba(208,48,32,0.08)] text-[#D03020] font-medium" : "bg-white text-muted-foreground"}`}
               >
-                {v === "pl" ? "P&L" : "Ledger"}
+                {v === "pl" ? "P&L" : v === "ledger" ? "Ledger" : "Renter Reimbursements"}
               </button>
             ))}
           </div>
@@ -133,6 +134,8 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
 
       {view === "pl" ? (
         <ProfitAndLoss from={range.from} to={range.to} />
+      ) : view === "reimbursements" ? (
+        <RenterReimbursements from={range.from} to={range.to} />
       ) : (
         <Ledger
           vehicles={vehicles}

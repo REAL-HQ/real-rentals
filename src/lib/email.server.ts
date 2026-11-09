@@ -211,7 +211,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
   }
 }
 
-const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_ops", "staff_invite", "test_email", "driver_issue", "payment_team_alert", "collections_plan"]);
+const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_ops", "staff_invite", "test_email", "driver_issue", "payment_team_alert", "collections_plan", "duplicate_subscription_alert"]);
 
 /** Why this recipient got this email — accurate per workflow, never promotional. */
 export function emailReason(workflow: string | undefined): string {
@@ -614,9 +614,18 @@ type FailedArgs = {
   last4?: string | null;
   brand?: string | null;
   updateCardUrl?: string;
+  /**
+   * The failed invoice's own Stripe page (invoice.stripe.com). When given, it
+   * is the main button: paying it settles that week on the renter's existing
+   * subscription, with any card. Never a generic payment link (those start a
+   * second subscription). See failed-payment-link.ts.
+   */
+  payInvoiceUrl?: string | null;
 };
 
 export async function sendPaymentFailedEmail(args: FailedArgs): Promise<SendResult> {
+  const { isHostedInvoiceUrl } = await import("@/lib/failed-payment-link");
+  if (isHostedInvoiceUrl(args.payInvoiceUrl)) return sendInvoicePaymentFailedEmail({ ...args, payInvoiceUrl: args.payInvoiceUrl });
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
   const label = args.reason.replace(/_/g, " ");
@@ -626,6 +635,55 @@ export async function sendPaymentFailedEmail(args: FailedArgs): Promise<SendResu
       <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>
       <p style="color:#444;font-size:14px;margin:16px 0 0;line-height:1.5">Already updated it? <a href="${PORTAL_PAY_URL}" style="color:#D03020;font-weight:600">Pay Now</a> from your driver portal.</p>`);
   return sendEmail({ to: args.to, subject: `Your REAL RENTALS Payment Of ${money(args.amount)} Did Not Go Through`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
+}
+
+async function sendInvoicePaymentFailedEmail(args: FailedArgs & { payInvoiceUrl: string }): Promise<SendResult> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
+  const label = args.reason.replace(/_/g, " ");
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Payment Failed</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, we tried to charge your ${escapeHtml(method)} <strong>${money(args.amount)}</strong> for ${escapeHtml(label)} and it was declined. Please pay this week's invoice below. You can use a different card on that page.</p>
+      <a href="${escapeHtml(args.payInvoiceUrl)}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay This Week's Invoice</a>
+      <p style="color:#444;font-size:14px;margin:16px 0 0;line-height:1.5">Please use only this button, not an older payment link, so you are not charged twice. To change the card for future weeks, <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="color:#D03020;font-weight:600">Update Card</a>.</p>`);
+  return sendEmail({ to: args.to, subject: `Your REAL RENTALS Payment Of ${money(args.amount)} Did Not Go Through`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
+}
+
+type DuplicateSubscriptionArgs = {
+  driverName: string | null;
+  applicationId: string | null;
+  rentalId: string;
+  existingSubscriptionId: string;
+  newSubscriptionId: string;
+  invoiceId: string | null;
+  amount: number;
+  status: "paid" | "failed";
+};
+
+/** Staff alert: a renter's Stripe customer has a second weekly subscription. Nothing is changed in Stripe. */
+export async function sendDuplicateSubscriptionAlertEmail(args: DuplicateSubscriptionArgs): Promise<SendResult> {
+  const who = args.driverName || "Unknown renter";
+  const lines = [
+    `<strong>Renter:</strong> ${escapeHtml(who)}`,
+    `<strong>Rental's Subscription:</strong> ${escapeHtml(args.existingSubscriptionId)}`,
+    `<strong>Second Subscription:</strong> ${escapeHtml(args.newSubscriptionId)}`,
+    args.invoiceId ? `<strong>Invoice:</strong> ${escapeHtml(args.invoiceId)} (${money(args.amount)}, ${args.status})` : "",
+  ].filter(Boolean).join("<br>");
+  const link = args.applicationId
+    ? `https://drivereal.com/admin?tab=drivers&id=${encodeURIComponent(args.applicationId)}`
+    : "https://drivereal.com/admin";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:20px;color:#D03020;line-height:1.3">Possible Duplicate Subscription</h1>
+      <p style="color:#444;font-size:14px;line-height:1.6;margin:0 0 12px">${lines}</p>
+      <p style="color:#444;font-size:14px;line-height:1.6;margin:0 0 12px">This renter may be billed twice each week. Nothing was changed in Stripe. Check both subscriptions and cancel the extra one.</p>
+      <a href="${link}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open Renter</a>`);
+  return sendEmail({
+    to: TEAM_ALERT_INBOX,
+    subject: `Possible Duplicate Subscription: ${who}`,
+    html,
+    track: { workflow: "duplicate_subscription_alert" },
+    idempotencyKey: `dup-sub-${args.newSubscriptionId}`,
+  });
 }
 
 type CardExpiringArgs = {
