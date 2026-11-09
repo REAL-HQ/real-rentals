@@ -40,8 +40,8 @@ describe("vehicles list helpers", () => {
     expect(buildVehicleSearchOr("a,b)or(id.eq.x")).not.toMatch(/[,()]x?/.source ? /\)or\(/ : /^$/);
     expect(buildVehicleSearchOr("  ")).toBeNull();
   });
-  it("On Rent comes from running rentals, not status", () => {
-    expect(availabilityLabel({ on_rent: true, status: "available" })).toBe("On Rent");
+  it("running rentals take priority over the stored available status", () => {
+    expect(availabilityLabel({ on_rent: true, status: "available" })).toBe(availabilityLabel({ on_rent: false, status: "rented" }));
     expect(availabilityLabel({ on_rent: false, status: "rented" })).toBe("Rented");
     expect(availabilityLabel({ on_rent: false, status: "onboarding" })).toBe("Needs Setup");
   });

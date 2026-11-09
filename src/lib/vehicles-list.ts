@@ -147,7 +147,7 @@ export function buildVehicleSearchOr(raw: string): string | null {
 
 /** Availability shown in the list: running rental first, then operational status. */
 export function availabilityLabel(row: Pick<VehicleListRow, "on_rent" | "status">): string {
-  if (row.on_rent) return "On Rent";
+  if (row.on_rent) return "Rented";
   if (row.status === "onboarding") return "Needs Setup";
   return (row.status ?? "—").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
