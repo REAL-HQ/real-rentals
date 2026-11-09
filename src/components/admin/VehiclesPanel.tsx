@@ -392,12 +392,6 @@ function FleetVehicles({
   return (
     <div className="max-lg:min-w-0">
       {remindersFailed ? <p className="mb-3 text-sm text-[#D03020]" data-testid="maintenance-log-error">Could not load maintenance reminders.</p> : null}
-      {view !== "due" && (
-        <p className="mb-3 text-sm text-muted-foreground" data-testid="vehicle-count">
-          {result?.fleetTotal != null ? `${result.fleetTotal} vehicles total (including archived)` : listQuery.isPending ? "Loading vehicle total…" : "Vehicle total unavailable"}
-          {result && hasActiveFilters && !listQuery.isPlaceholderData && <span> · {total} matching</span>}
-        </p>
-      )}
       <AdminToolbar
         filters={
           <>
@@ -464,16 +458,22 @@ function FleetVehicles({
           </button>
           </>
         }
-        footer={result ? (
-          <>
+        footer={(
+          <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            {view !== "due" && (
+              <p className="shrink-0 text-xs text-muted-foreground" data-testid="vehicle-count">
+                {result?.fleetTotal != null ? `${result.fleetTotal} Vehicles Total (Including Archived)` : listQuery.isPending ? "Loading Vehicle Total…" : "Vehicle Total Unavailable"}
+                {result && hasActiveFilters && !listQuery.isPlaceholderData && <span> · {total} Matching</span>}
+              </p>
+            )}
           {/* Fleet-wide readiness lives IN the one sticky filter row: the bar
               publishes its own height and overlaps the 16px below it, so a
               second row OUTSIDE the bar is covered and unclickable (the toolbar
               footer is inside it). Counts cover
               everything the current search and filters match, not the page,
               and each chip is the filter for its own band. */}
-            <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-2" data-testid="fleet-readiness">
-              <span className="whitespace-nowrap text-xs text-muted-foreground">Fleet readiness</span>
+            {result ? <span className="ml-auto inline-flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2" data-testid="fleet-readiness">
+              <span className="whitespace-nowrap text-xs text-muted-foreground">Fleet Readiness</span>
               {READINESS_BANDS.map((band) => {
                 const n = result.readinessCounts?.[band] ?? 0;
                 const active = readyFilter === band;
@@ -502,7 +502,7 @@ function FleetVehicles({
                   onClick={() => setList({ ready: "all" })}
                   className="whitespace-nowrap px-1 text-xs text-muted-foreground hover:text-foreground"
                 >
-                  Show all
+                  Show All
                 </button>
               )}
               {result.readinessPartial && (
@@ -510,12 +510,12 @@ function FleetVehicles({
                   className="whitespace-nowrap text-xs text-[#8A6410]"
                   title="Only the first 2,000 vehicles were graded."
                 >
-                  counted on the first 2,000 vehicles
+                  Counted On The First 2,000 Vehicles
                 </span>
               )}
-            </span>
-          </>
-        ) : null}
+            </span> : null}
+          </div>
+        )}
       />
 
       {view === "due" && dueAllowed && (
