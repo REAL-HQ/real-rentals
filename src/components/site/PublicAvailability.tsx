@@ -1,9 +1,9 @@
 import { PUBLIC_AVAILABILITY_DATE_COLUMN, type PublicAvailability } from "@/lib/public-availability";
 
 const TONE = {
-  now: "border-success/20 bg-success-soft text-success",
+  now: "border-warning/30 bg-warning-soft text-warning-foreground",
   soon: "border-warning/30 bg-warning-soft text-warning-foreground",
-  rented: "border-status-occupied/20 bg-status-occupied-soft text-status-occupied",
+  rented: "border-success/20 bg-success-soft text-success",
 } as const;
 
 /** Read-only badge. Mounted only while PUBLIC_AVAILABILITY_ENABLED is true. */
