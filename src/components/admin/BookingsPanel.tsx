@@ -105,7 +105,7 @@ export function BookingsPanel({
         vehicle: vehicleFilter,
         ...over,
       };
-      const out: Record<string, string> = { tab: "bookings" };
+      const out: Record<string, string> = { tab: "bookings", view: "past" };
       if (next.q) out.q = next.q;
       if (next.phase && next.phase !== "all") out.phase = next.phase;
       if (next.sort && next.sort !== "recent") out.sort = next.sort;
@@ -174,7 +174,7 @@ export function BookingsPanel({
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           placeholder="Search driver, email, unit, plate, VIN…"
-          aria-label="Search bookings"
+          aria-label="Search rentals"
           className="w-full min-w-0 rounded-md border border-border bg-white px-3 py-2 text-sm lg:w-auto lg:min-w-[200px] lg:flex-1"
         />
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1 lg:contents">
@@ -371,24 +371,24 @@ export function BookingsPanel({
       )}
 
       {listQuery.isError && (
-        <div className="mt-6 text-sm text-real-red">Could not load bookings.</div>
+        <div className="mt-6 text-sm text-real-red">Could not load rentals.</div>
       )}
       {result && total === 0 && !hasActiveFilters && !effectiveQ && (
         <EmptyState
           className="mt-6"
           icon={<CalendarCheck className="w-6 h-6" strokeWidth={1.75} />}
-          title="No Bookings Yet"
-          hint="A booking appears here when a rental is activated from an approved driver's record."
+          title="No Rentals Yet"
+          hint="A rental appears here when it is activated from an approved driver's record."
         />
       )}
       {result && total === 0 && (hasActiveFilters || !!effectiveQ) && (
         <EmptyState
           className="mt-6"
           icon={<CalendarCheck className="w-6 h-6" strokeWidth={1.75} />}
-          title="No Matching Bookings"
+          title="No Matching Rentals"
           hint={
             phase !== "all"
-              ? `No ${BOOKING_PHASE_LABEL[phase as BookingPhase].toLowerCase()} booking matches this view.`
+              ? `No ${BOOKING_PHASE_LABEL[phase as BookingPhase].toLowerCase()} rental matches this view.`
               : "Try clearing the filter or searching for a different driver, unit or plate."
           }
         />
