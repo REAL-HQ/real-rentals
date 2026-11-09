@@ -28,6 +28,9 @@ import {
   type InspectionDetail,
 } from "@/lib/inspections.functions";
 import { fmtDateTime } from "@/lib/date-format";
+import { roleLabel } from "@/lib/condition-photos";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { VEHICLE_COMBOBOX_SELECT, formatVehicleLabel } from "@/lib/vehicle-label";
 
 type Row = {
   id: string;
@@ -45,7 +48,10 @@ type VehicleLite = {
   year: number | null;
   make: string | null;
   model: string | null;
+  unit_number?: string | null;
   license_plate: string | null;
+  vin?: string | null;
+  status?: string | null;
 };
 type Template = { id: string; name: string; inspection_type: string; is_active: boolean };
 
@@ -84,7 +90,7 @@ export function InspectionsPanel() {
         )
         .order("started_at", { ascending: false })
         .limit(100),
-      supabase.from("vehicles").select("id,year,make,model,license_plate").order("make"),
+      supabase.from("vehicles").select(VEHICLE_COMBOBOX_SELECT).order("make"),
       supabase
         .from("inspection_templates")
         .select("id,name,inspection_type,is_active")
@@ -113,7 +119,7 @@ export function InspectionsPanel() {
     const v = vehicles.find((x) => x.id === id);
     if (!v) return id.slice(0, 8);
     const base = [v.year, v.make, v.model].filter(Boolean).join(" ").trim();
-    return v.license_plate ? `${base} · ${v.license_plate}` : base || id.slice(0, 8);
+    return formatVehicleLabel(v) || id.slice(0, 8);
   };
 
   if (openId) {
@@ -261,19 +267,17 @@ function StartForm({
         <div className="p-4 space-y-4">
           <div>
             <MicroLabel>Vehicle</MicroLabel>
-            <select
-              value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
-              className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
-            >
-              {vehicles.length === 0 ? <option value="">No vehicles</option> : null}
-              {vehicles.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {[v.year, v.make, v.model].filter(Boolean).join(" ")}
-                  {v.license_plate ? ` · ${v.license_plate}` : ""}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1.5">
+              <VehicleCombobox
+                vehicles={vehicles}
+                value={vehicleId || null}
+                onChange={(id) => setVehicleId(id ?? "")}
+                allowNone={false}
+                placeholder={vehicles.length ? "Select vehicle…" : "No vehicles"}
+                disabled={vehicles.length === 0}
+                aria-label="Vehicle"
+              />
+            </div>
           </div>
           <div>
             <MicroLabel>Checklist</MicroLabel>
@@ -658,6 +662,9 @@ export function ConditionUploader({
   readOnly,
   onChanged,
   title = "Condition Photos",
+  hint,
+  defaultAngle,
+  onDelete,
 }: {
   vehicleId: string;
   inspectionId?: string | null;
@@ -671,14 +678,24 @@ export function ConditionUploader({
     media_type: string;
     captured_by_role: string;
     created_at: string;
+    taken_at?: string | null;
+    taken_at_source?: string | null;
+    missing_exif_time?: boolean;
+    can_delete?: boolean;
   }>;
   readOnly?: boolean;
   onChanged: () => void;
   title?: string;
+  /** Optional one-line help under the title. */
+  hint?: string;
+  defaultAngle?: string;
+  /** Enables deletion only on media the server marks can_delete. */
+  onDelete?: (id: string) => Promise<void>;
 }) {
   const startUpload = useServerFn(createConditionUploadUrl);
   const confirm = useServerFn(confirmConditionUpload);
-  const [angle, setAngle] = useState("front");
+  const [angle, setAngle] = useState(defaultAngle ?? (phase === "damage" ? "damage" : "front"));
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function uploadOne(file: File, onProgress: (pct: number) => void) {
     onProgress(10);
@@ -686,12 +703,13 @@ export function ConditionUploader({
       data: { vehicleId, fileName: file.name, mimeType: file.type || "image/jpeg" },
     });
     onProgress(40);
+    // Upload original bytes — EXIF is parsed server-side on these bytes.
     const { error } = await supabase.storage
       .from(bucket)
       .uploadToSignedUrl(path, token, file, { contentType: file.type || undefined });
     if (error) throw error;
     onProgress(80);
-    await confirm({
+    const res = await confirm({
       data: {
         vehicleId,
         rentalId: rentalId ?? null,
@@ -704,6 +722,9 @@ export function ConditionUploader({
         sizeBytes: file.size,
       },
     });
+    if (res && typeof res === "object" && "missingExifTime" in res && (res as any).missingExifTime) {
+      toast.message("Saved — no camera date on this file. Time shown is when you uploaded.");
+    }
     onProgress(100);
   }
 
@@ -724,8 +745,8 @@ export function ConditionUploader({
     <div className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm p-4">
       <h3 className="font-semibold text-sm">{title}</h3>
       <p className="mt-1 text-xs text-muted-foreground">
-        Photos and video are timestamped proof of condition. Capture the same angles at pickup and
-        return.
+        {hint ??
+          "Photos and video are timestamped proof of condition. Prefer the camera so date and time stay on the file."}
       </p>
 
       {!readOnly ? (
@@ -764,31 +785,59 @@ export function ConditionUploader({
         <p className="mt-4 text-sm text-muted-foreground">No photos yet.</p>
       ) : (
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {media.map((m) => (
-            <a
-              key={m.id}
-              href={m.url ?? "#"}
-              target="_blank"
-              rel="noreferrer"
-              className="group block overflow-hidden rounded-xl border border-[#EDEDF0]"
-            >
-              {m.media_type === "video" ? (
-                <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center text-xs text-muted-foreground">
-                  Video
-                </div>
-              ) : (
-                <img
-                  src={m.url ?? ""}
-                  alt={m.angle ?? "condition photo"}
-                  loading="lazy"
-                  className="h-28 w-full object-cover transition-transform group-hover:scale-[1.03]"
-                />
-              )}
-              <div className="px-2 py-1.5 text-[11px] text-muted-foreground truncate">
-                {(m.angle ?? "photo").replace(/_/g, " ")} · {m.captured_by_role}
+          {media.map((m) => {
+            const when = m.taken_at ?? m.created_at;
+            const missing = m.missing_exif_time ?? m.taken_at_source !== "exif";
+            return (
+              <div key={m.id} className="group relative overflow-hidden rounded-xl border border-[#EDEDF0]">
+                <a href={m.url ?? "#"} target="_blank" rel="noreferrer" className="block">
+                  {m.media_type === "video" ? (
+                    <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center text-xs text-muted-foreground">
+                      Video
+                    </div>
+                  ) : (
+                    <img
+                      src={m.url ?? ""}
+                      alt={m.angle ?? "condition photo"}
+                      loading="lazy"
+                      className="h-28 w-full object-cover transition-transform group-hover:scale-[1.03]"
+                    />
+                  )}
+                  <div className="px-2 py-1.5 text-[11px] text-muted-foreground truncate">
+                    {(m.angle ?? "photo").replace(/_/g, " ")} · {roleLabel(m.captured_by_role)}
+                  </div>
+                  <div className="px-2 pb-1.5 text-[10px] text-muted-foreground truncate">
+                    {fmtDateTime(when)}
+                    {missing ? " · upload time" : ""}
+                  </div>
+                </a>
+                {onDelete && m.can_delete && !readOnly ? (
+                  <button
+                    type="button"
+                    aria-label={`Delete ${(m.angle ?? "condition").replace(/_/g, " ")} Photo`}
+                    title="Delete Photo"
+                    disabled={deletingId !== null}
+                    onClick={async () => {
+                      if (!window.confirm("Delete this uploaded photo? This cannot be undone.")) return;
+                      setDeletingId(m.id);
+                      try {
+                        await onDelete(m.id);
+                        toast.success("Photo deleted");
+                        onChanged();
+                      } catch (error) {
+                        toast.error(error instanceof Error ? error.message : "Could not delete photo");
+                      } finally {
+                        setDeletingId(null);
+                      }
+                    }}
+                    className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-white text-real-red shadow-sm transition hover:bg-soft disabled:opacity-50"
+                  >
+                    {deletingId === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                  </button>
+                ) : null}
               </div>
-            </a>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

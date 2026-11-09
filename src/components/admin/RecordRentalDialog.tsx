@@ -4,10 +4,11 @@ import { useServerFn } from '@tanstack/react-start';
 import { supabase } from '@/integrations/supabase/client';
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from './modal';
 import { MicroLabel } from './ui';
+import { VehicleCombobox } from '@/components/admin/VehicleCombobox';
 import { recordExistingRentalV3 } from '@/lib/record-rental.functions';
 import { RECORD_RENTAL_CONTRACT_ENABLED, recordRequest } from '@/lib/record-rental-contract';
 import { readRecovery, saveRecovery, recoveryKey, type RecordRequest } from '@/lib/record-rental-recovery';
-type Vehicle = {id:string;year?:number|null;make?:string|null;model?:string|null;color?:string|null;license_plate?:string|null;status?:string|null};
+type Vehicle = {id:string;year?:number|null;make?:string|null;model?:string|null;color?:string|null;unit_number?:string|null;license_plate?:string|null;vin?:string|null;status?:string|null};
 export function RecordRentalDialog({driver,vehicles,onClose,onRecorded}:{driver:{id:string;full_name?:string|null};vehicles:Vehicle[];onClose:()=>void;onRecorded:()=>void}) {
  const record=useServerFn(recordExistingRentalV3);
  const [actor,setActor]=useState<string|null>(null),[pending,setPending]=useState<RecordRequest|null>(null);
@@ -43,7 +44,7 @@ export function RecordRentalDialog({driver,vehicles,onClose,onRecorded}:{driver:
   <ModalBody>
    <p>Disabled until the database contracts and hosted acceptance are complete. No charges, subscriptions, messages or historical payment imports.</p>
    {pending?<p>Unresolved operation {pending.operationId}. Only this exact request may be reconciled; no new operation is allowed.</p>:<fieldset disabled={busy} className="space-y-3 mt-4">
-    <label><MicroLabel>Vehicle</MicroLabel><select className={inputCls} value={vehicleId} onChange={e=>setVehicle(e.target.value)}><option value="">Select verified vehicle</option>{vehicles.map(v=><option key={v.id} value={v.id}>{[v.year,v.color,v.make,v.model,v.license_plate].filter(Boolean).join(' · ')}</option>)}</select></label>
+    <label className="block"><MicroLabel>Vehicle</MicroLabel><div className="mt-1"><VehicleCombobox vehicles={vehicles as any} value={vehicleId||null} onChange={(id)=>setVehicle(id??'')} placeholder="Select verified vehicle" allowNone={false} aria-label="Vehicle" /></div></label>
     <label><MicroLabel>Verified pickup timestamp with UTC offset</MicroLabel><input className={inputCls} placeholder="2026-10-15T10:00:00-04:00" value={startedAt} onChange={e=>setStart(e.target.value)}/></label>
     <p>Date alone is insufficient. Do not infer a pickup time.</p>
     <label><MicroLabel>Pickup mileage</MicroLabel><input className={inputCls} value={mileage} onChange={e=>setMiles(e.target.value)}/></label>

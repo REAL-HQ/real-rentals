@@ -3,15 +3,20 @@ import { Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { SettingsPanel, SECTION_KEY } from "@/components/admin/SettingsPanel";
 import { AutomationsPanel } from "@/components/admin/AutomationsPanel";
+import { AutomationsCatalog } from "@/components/admin/AutomationsCatalog";
 import { TeamPanel } from "@/components/admin/TeamPanel";
 import { VehicleDefaultsPanel } from "@/components/admin/VehicleDefaultsPanel";
 import { MaintenanceDefaultsPanel } from "@/components/admin/MaintenanceDefaultsPanel";
 import { SafeAutofillPanel } from "@/components/admin/SafeAutofillPanel";
 import { PhotoReadingPanel } from "@/components/admin/PhotoReadingPanel";
 import { PhotoEnhancePanel } from "@/components/admin/PhotoEnhancePanel";
+import { PhotoStudioSettingsCard } from "@/components/admin/PhotoStudioSettingsCard";
 import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
 import { ActivityPanel } from "@/components/admin/ActivityPanel";
 import { AgreementTemplatesPanel } from "@/components/admin/AgreementTemplatesPanel";
+import { RentalActivationSettingsPanel } from "@/components/admin/RentalActivationSettingsPanel";
+import { PendingSignatures } from "@/components/admin/PendingSignatures";
+import { AGREEMENT_PENDING_SIGNATURE_ENABLED } from "@/lib/agreement-pending-signatures-flag";
 import { visibleSettingsSections } from "@/components/admin/nav-config";
 import type { StaffTier } from "@/lib/roles";
 
@@ -24,7 +29,7 @@ const DESCRIPTIONS: Record<string, string> = {
   safe_autofill: "Owner-only. Automatically fill blank, non-sensitive vehicle details from trusted documents. Off by default.",
   photo_enhancement: "Owner-only. Free on-device lighting and studio backgrounds for listing photos. Off by default.",
   photo_reading: "Owner-only. Reads details off a vehicle photograph — the one feature here that costs money. Off by default, with a daily limit enforced on the server.",
-  rental_terms: "Minimum term, return notice and the terms text.",
+  rental_terms: "Minimum term, return notice, the terms text and rental activation rules.",
   deposits: "Default deposit and refund window.",
   applications: "Who qualifies to apply.",
   agreement_templates: "Owner-only. Rental agreement wording, versions and approval. Drafts never change what drivers receive.",
@@ -32,7 +37,7 @@ const DESCRIPTIONS: Record<string, string> = {
   payments: "Late fees, grace period and default payment method.",
   partners: "Default revenue share and contract term for vehicle partners.",
   notifications: "Where applicant alerts go, and whether email delivery is working.",
-  automations: "Automatic SMS and email follow-up sequences.",
+  automations: "Every automated email and text, its templates, and an on/off switch for each.",
   team: "Invite staff, set their tier and remove access.",
 };
 
@@ -108,13 +113,13 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           <p className="text-[13px] text-[#55555E] mt-0.5">{DESCRIPTIONS[current.id]}</p>
         </div>
         {current.id === "automations" ? (
-          <AutomationsPanel />
+          <div className="space-y-8"><AutomationsCatalog /><AutomationsPanel /></div>
         ) : current.id === "vehicle_defaults" ? (
           <VehicleDefaultsPanel />
         ) : current.id === "safe_autofill" ? (
           <SafeAutofillPanel />
         ) : current.id === "photo_enhancement" ? (
-          <PhotoEnhancePanel />
+          <div className="space-y-5"><PhotoEnhancePanel /><PhotoStudioSettingsCard /></div>
         ) : current.id === "photo_reading" ? (
           <PhotoReadingPanel />
         ) : current.id === "maintenance" ? (
@@ -130,6 +135,8 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
         ) : (
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-5">
             <SettingsPanel only={SECTION_KEY[current.id]} />
+            {current.id === "esign" && AGREEMENT_PENDING_SIGNATURE_ENABLED === true ? <PendingSignatures /> : null}
+            {current.id === "rental_terms" ? <RentalActivationSettingsPanel /> : null}
           </div>
         )}
       </section>

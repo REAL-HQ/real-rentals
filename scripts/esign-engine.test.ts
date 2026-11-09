@@ -493,3 +493,78 @@ describe("6. Signature experience (v1.6: adopted signature, initials, per-acknow
     expect(error).toBeTruthy();
   });
 });
+
+describe("7. PR 3 signing fixes (dates, dead links, initials, template evidence, portal)", () => {
+  const typed = (text: string) => ({ method: "typed" as const, text, style: "script1" as const });
+  it("the preview fingerprint is stable across midnight UTC on the same Eastern day, and Send accepts it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-10-25T23:59:00Z")); // 7:59pm EDT
+      const before = await A.previewAgreement.run({ applicationId: appId }, ctx("manager"));
+      vi.setSystemTime(new Date("2026-10-26T00:01:00Z")); // 8:01pm EDT, next UTC day
+      const after = await A.previewAgreement.run({ applicationId: appId }, ctx("manager"));
+      expect(before.merge.today).toBe("Oct 25, 2026");
+      expect(after.merge.today).toBe("Oct 25, 2026");
+      expect(after.fingerprint).toBe(before.fingerprint);
+      const r = await A.sendAgreement.run({ applicationId: appId, fingerprint: before.fingerprint, companyAck: true }, ctx("manager"));
+      const [row] = await q("agreements", { id: r.id });
+      expect(row.body).toBe(before.body);
+      expect(row.metadata.preview_fingerprint).toBe(before.fingerprint);
+      await A.voidAgreement.run({ agreementId: r.id }, ctx("manager"));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("template evidence is persisted at send and preserved through signing; initials stored in capitals; the dead link answers like a random one", async () => {
+    const p = await A.previewAgreement.run({ applicationId: appId }, ctx("manager"));
+    const r = await A.sendAgreement.run({ applicationId: appId, fingerprint: p.fingerprint, companyAck: true }, ctx("manager"));
+    const [sent] = await q("agreements", { id: r.id });
+    const evidence = {
+      template_key: p.template.key ?? null,
+      template_label: p.template.label,
+      template_version: p.template.version,
+      preview_fingerprint: p.fingerprint,
+      template_source: p.template.id ? "saved_template" : "built_in_default",
+    };
+    expect(sent.metadata).toEqual(evidence);
+    const view = await A.getAgreementByToken.run({ token: tokenOf(r.url) });
+    expect(view?.id).toBe(r.id);
+    const adoption = { signature: typed("Synthetic Driver"), initials: typed("sd"), acks: Array(ackRowsOf(sent.body).length).fill(true) };
+    const s = await A.signAgreement.run({ token: tokenOf(r.url), signerName: "Synthetic Driver", agree: true, adoption });
+    expect(s.alreadySigned).toBe(false);
+    const [row] = await q("agreements", { id: r.id });
+    expect(row.status).toBe("signed");
+    expect(row.archive_status).toBe("archived");
+    // Every evidence key survives the engine's signing write, unchanged.
+    expect(row.metadata).toMatchObject(evidence);
+    // The stored mark is the capitalised one, and the evidence hash covers it.
+    expect(row.metadata.signature.adoption.initials.text).toBe("SD");
+    expect(row.metadata.signature.adoption.signature.text).toBe("Synthetic Driver");
+    const normalised = { ...adoption, initials: typed("SD") };
+    expect(row.metadata.signature.adoption).toEqual(normalised);
+    expect(row.metadata.signature.sha256).toBe(await sha256Hex(JSON.stringify(normalised)));
+    expect(row.metadata.signature.sha256).not.toBe(await sha256Hex(JSON.stringify(adoption)));
+    const pdf = await A.getAgreementPdf.run({ agreementId: r.id }, ctx("driver"));
+    expect(await sha256Hex(new Uint8Array(Buffer.from(pdf.base64, "base64")))).toBe(row.sha256);
+    // The signed link now resolves exactly like a token that never existed.
+    const dead = await A.getAgreementByToken.run({ token: tokenOf(r.url) });
+    const random = await A.getAgreementByToken.run({ token: randomToken() });
+    expect(dead).toBeNull();
+    expect(dead).toEqual(random);
+    await expect(A.signAgreement.run({ token: tokenOf(r.url), signerName: "Synthetic Driver", agree: true, adoption })).rejects.toThrow(/no longer valid/);
+  });
+  it("portal: a voided agreement is never offered for signing", async () => {
+    const { portalAgreementState, awaitsDriverSignature } = await import("../src/lib/portal-agreement-state");
+    const p = await A.previewAgreement.run({ applicationId: appId }, ctx("manager"));
+    const r = await A.sendAgreement.run({ applicationId: appId, fingerprint: p.fingerprint, companyAck: true }, ctx("manager"));
+    let mine = await A.getMyAgreements.run({}, ctx("driver"));
+    expect(awaitsDriverSignature(mine.find((a: any) => a.id === r.id)!)).toBe(true);
+    await A.voidAgreement.run({ agreementId: r.id }, ctx("manager"));
+    mine = await A.getMyAgreements.run({}, ctx("driver"));
+    const voided = mine.find((a: any) => a.id === r.id)!;
+    expect(voided.status).toBe("voided");
+    expect(portalAgreementState(voided)).toBe("cancelled");
+    expect(mine.filter((a: any) => a.status === "voided").every((a: any) => !awaitsDriverSignature(a))).toBe(true);
+    await expect(A.signMyAgreement.run({ agreementId: r.id, signerName: "Synthetic Driver", agree: true }, ctx("driver"))).rejects.toThrow(/cancelled/);
+  });
+});

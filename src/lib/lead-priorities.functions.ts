@@ -5,11 +5,15 @@ import { requireStaff } from "@/lib/roles.server";
 import {
   ACTIVE_LEAD_STATUSES,
   LEAD_BUCKETS,
+  LEAD_FILTERS,
   LEAD_SELECT,
   leadToday,
   leadBucket,
+  leadBucketSort,
+  leadFilterBuckets,
   projectLead,
   type LeadBucket,
+  type LeadFilter,
   type LeadRow,
   type LeadPrioritiesResult,
 } from "./lead-priorities";
@@ -22,6 +26,7 @@ export const getLeadPriorities = createServerFn({ method: "POST" })
       .object({
         offset: z.number().int().min(0).max(100000).default(0),
         limit: z.number().int().min(1).max(25).default(5),
+        filter: z.enum(LEAD_FILTERS).default("all"),
       })
       .parse(input),
   )
@@ -29,10 +34,10 @@ export const getLeadPriorities = createServerFn({ method: "POST" })
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const today = leadToday();
-    // Mutually exclusive groups: an overdue new/interested lead counts only as overdue.
-    // Count-only requests fetch no notes. Only the requested page loads latest contact notes.
-    const query = (bucket: LeadBucket, countOnly: boolean) => {
-      let q = supabaseAdmin
+    const filter = data.filter as LeadFilter;
+
+    const base = (countOnly: boolean) =>
+      supabaseAdmin
         .from("applications")
         .select(countOnly ? "id" : LEAD_SELECT, countOnly ? { count: "exact", head: true } : {})
         .is("deleted_at", null)
@@ -41,6 +46,11 @@ export const getLeadPriorities = createServerFn({ method: "POST" })
           "contact_status",
           CONTACT_STATUS_KEYS.filter((s) => s !== "unqualified"),
         );
+
+    // Mutually exclusive groups for All / New / Follow-up Due counters and pages.
+    // An overdue new/interested lead counts only as overdue in those views.
+    const queryBucket = (bucket: LeadBucket, countOnly: boolean) => {
+      let q = base(countOnly);
       if (bucket === "overdue") return q.lt("contact_follow_up_on", today);
       q = q.or(`contact_follow_up_on.is.null,contact_follow_up_on.gte.${today}`);
       if (bucket === "new") return q.eq("contact_status", "new");
@@ -51,45 +61,104 @@ export const getLeadPriorities = createServerFn({ method: "POST" })
       if (bucket === "information") return q.eq("contact_status", "documents");
       return q.neq("contact_status", "documents").gt("contact_follow_up_on", today);
     };
-    const counted = await Promise.all(LEAD_BUCKETS.map((b) => query(b, true)));
+
+    // Interested filter includes overdue interested rows so recent interest surfaces.
+    const queryInterestedAll = (countOnly: boolean) =>
+      base(countOnly).eq("contact_status", "interested");
+
+    const counted = await Promise.all(LEAD_BUCKETS.map((b) => queryBucket(b, true)));
     if (counted.some((q) => q.error || !Number.isSafeInteger(q.count) || q.count! < 0))
       throw new Error("Lead priorities could not be loaded. Please retry.");
-    const counts = counted.map((q) => q.count!);
-    const total = counts.reduce((a, b) => a + b, 0);
-    if (total > 0 && data.offset >= total)
-      throw new Error("Lead priorities changed. Please refresh.");
-    const rows: ReturnType<typeof projectLead>[] = [];
-    let skip = data.offset;
-    for (const [i, bucket] of LEAD_BUCKETS.entries()) {
-      if (skip >= counts[i]) {
-        skip -= counts[i];
-        continue;
-      }
-      const take = Math.min(data.limit - rows.length, counts[i] - skip);
-      if (!take) break;
-      const result = await query(bucket, false)
-        .order("contact_follow_up_on", { ascending: true, nullsFirst: false })
-        .order("created_at", { ascending: true })
-        .order("id", { ascending: true })
-        .range(skip, skip + take - 1);
-      if (result.error || !result.data || result.data.length !== take)
-        throw new Error("Lead priorities changed or could not be loaded. Please refresh.");
-      const selected = result.data as unknown as LeadRow[];
+    const bucketCounts = counted.map((q) => q.count!);
+    const counts = {
+      overdue: bucketCounts[0],
+      new: bucketCounts[1],
+      hot: bucketCounts[2],
+    };
+
+    const orderBucket = (bucket: LeadBucket, q: ReturnType<typeof queryBucket>) => {
+      const sort = leadBucketSort(bucket);
+      return q
+        .order(sort.primary, {
+          ascending: sort.ascending,
+          nullsFirst: false,
+        })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true });
+    };
+
+    const pageBuckets = leadFilterBuckets(filter);
+    let total: number;
+    let rows: ReturnType<typeof projectLead>[] = [];
+
+    if (filter === "interested") {
+      const interestedCount = await queryInterestedAll(true);
       if (
-        selected.some(
-          (r) => leadBucket(r, today) !== bucket || rows.some((prior) => prior.id === r.id),
-        )
+        interestedCount.error ||
+        !Number.isSafeInteger(interestedCount.count) ||
+        interestedCount.count! < 0
       )
+        throw new Error("Lead priorities could not be loaded. Please retry.");
+      total = interestedCount.count!;
+      if (total > 0 && data.offset >= total)
         throw new Error("Lead priorities changed. Please refresh.");
-      rows.push(...selected.map((r) => projectLead(r, bucket)));
-      skip = 0;
+      if (total > 0) {
+        const result = await orderBucket("interested", queryInterestedAll(false)).range(
+          data.offset,
+          data.offset + data.limit - 1,
+        );
+        if (result.error || !result.data)
+          throw new Error("Lead priorities changed or could not be loaded. Please refresh.");
+        const selected = result.data as unknown as LeadRow[];
+        // project with the real bucket so overdue interested stay labeled Urgent.
+        rows = selected.map((r) => {
+          const bucket = leadBucket(r, today) ?? "interested";
+          return projectLead(r, bucket === "overdue" ? "overdue" : "interested");
+        });
+      }
+    } else {
+      const indexByBucket = Object.fromEntries(LEAD_BUCKETS.map((b, i) => [b, i])) as Record<
+        LeadBucket,
+        number
+      >;
+      total = pageBuckets.reduce((a, b) => a + bucketCounts[indexByBucket[b]], 0);
+      if (total > 0 && data.offset >= total)
+        throw new Error("Lead priorities changed. Please refresh.");
+      let skip = data.offset;
+      for (const bucket of pageBuckets) {
+        const count = bucketCounts[indexByBucket[bucket]];
+        if (skip >= count) {
+          skip -= count;
+          continue;
+        }
+        const take = Math.min(data.limit - rows.length, count - skip);
+        if (!take) break;
+        const result = await orderBucket(bucket, queryBucket(bucket, false)).range(
+          skip,
+          skip + take - 1,
+        );
+        if (result.error || !result.data || result.data.length !== take)
+          throw new Error("Lead priorities changed or could not be loaded. Please refresh.");
+        const selected = result.data as unknown as LeadRow[];
+        if (
+          selected.some(
+            (r) => leadBucket(r, today) !== bucket || rows.some((prior) => prior.id === r.id),
+          )
+        )
+          throw new Error("Lead priorities changed. Please refresh.");
+        rows.push(...selected.map((r) => projectLead(r, bucket)));
+        skip = 0;
+        if (rows.length >= data.limit) break;
+      }
     }
+
     return {
       rows,
       total,
-      counts: { overdue: counts[0], new: counts[1], hot: counts[2] },
+      counts,
       today,
       offset: data.offset,
       nextOffset: data.offset + rows.length < total ? data.offset + rows.length : null,
+      filter,
     };
   });

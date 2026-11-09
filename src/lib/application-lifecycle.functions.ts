@@ -3,6 +3,11 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireStaff } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
+import {
+  CLOSURE_REASON_KEYS,
+  canReopenClosedApplication,
+  closureReasonLabel,
+} from "@/lib/application-status";
 
 const text = z.string().max(2000).nullable();
 const date = z
@@ -11,9 +16,13 @@ const date = z
   .nullable();
 // Never accept a Partial<Application> at this elevated boundary. Identity
 // ownership, document pointers, review decisions and Contact Status are absent.
+// Approved and Active are absent: approval is approveApplication, and Active
+// is derived from rental, vehicle, payment and handover rows.
 const patchSchema = z
   .object({
     status: z.enum(["new", "reviewing", "suspended", "declined", "closed"]).optional(),
+    closure_reason: z.enum(CLOSURE_REASON_KEYS).optional(),
+    closure_notes: z.string().max(2000).nullable().optional(),
     contacted_at: z.string().datetime().optional(),
     phone: z.string().min(7).max(32).optional(),
     city: text.optional(),
@@ -30,9 +39,15 @@ const patchSchema = z
     weekly_rent: z.number().nonnegative().nullable().optional(),
     contract_start_date: date.optional(),
     contract_end_date: date.optional(),
+    dob: date.optional(),
     license_number: text.optional(),
     license_state: text.optional(),
     license_expiration: date.optional(),
+    years_licensed: z.number().int().nonnegative().max(100).nullable().optional(),
+    platforms: z.array(z.string().trim().min(1).max(100)).max(20).nullable().optional(),
+    weekly_hours: z.number().int().nonnegative().max(168).nullable().optional(),
+    expected_duration: text.optional(),
+    payment_method: text.optional(),
   })
   .strict()
   .refine((p) => Object.keys(p).length > 0, "No changes supplied");
@@ -48,7 +63,7 @@ export const updateApplicationLifecycle = createServerFn({ method: "POST" })
     const actor = await requireStaff(context.userId);
     const keys = Object.keys(data.patch);
     if (actor.tier === "coordinator") {
-      const permitted = ["status", "contacted_at", "phone", "city", "state"];
+      const permitted = ["status", "contacted_at", "phone", "city", "state", "closure_reason", "closure_notes"];
       if (keys.some((k) => !permitted.includes(k)) || data.patch.status === "suspended") {
         throw new Error("Forbidden: this change requires a Manager");
       }
@@ -62,6 +77,8 @@ export const updateApplicationLifecycle = createServerFn({ method: "POST" })
       .maybeSingle();
     if (readError) throw new Error(readError.message);
     if (!before) throw new Error("Application not found");
+    const closing = data.patch.status === "closed" && before.status !== "closed";
+    const reopening = before.status === "closed" && !!data.patch.status && data.patch.status !== "closed";
     if (data.patch.status && data.patch.status !== before.status) {
       if (before.status === "active")
         throw new Error("End the rental through the rental workflow first");
@@ -70,6 +87,9 @@ export const updateApplicationLifecycle = createServerFn({ method: "POST" })
         !["partial", "new", "reviewing", "declined", "closed"].includes(before.status)
       ) {
         throw new Error("Forbidden: changing a decided application requires a Manager");
+      }
+      if (reopening && !canReopenClosedApplication(actor.tier)) {
+        throw new Error("Forbidden: reopening a Closed application requires a Manager");
       }
       const { data: rentals, error: rentalError } = await supabaseAdmin
         .from("rentals")
@@ -80,8 +100,13 @@ export const updateApplicationLifecycle = createServerFn({ method: "POST" })
       if (rentalError) throw new Error(rentalError.message);
       if (!rentals || rentals.length)
         throw new Error("Cannot change lifecycle while an active rental exists");
+      if (closing && !data.patch.closure_reason) {
+        throw new Error("Closure reason is required");
+      }
     }
-    const patch = { ...data.patch };
+    const { closure_reason: closureReason, closure_notes: rawNotes, ...patch } = data.patch;
+    const closureNotes = typeof rawNotes === "string" && rawNotes.trim() ? rawNotes.trim() : null;
+    if (Object.keys(patch).length === 0) throw new Error("No changes supplied");
     // Time is authoritative on the server. Never overwrite the first contact.
     if (patch.contacted_at || (patch.status && patch.status !== "new")) {
       patch.contacted_at = before.contacted_at ?? new Date().toISOString();
@@ -105,14 +130,24 @@ export const updateApplicationLifecycle = createServerFn({ method: "POST" })
         "No application was updated. Refresh and retry; it may have changed or been removed.",
       );
     await logAudit(actor, {
-      action: "application.lifecycle_updated",
-      summary: "Updated application lifecycle or profile",
+      action: closing
+        ? "application.closed"
+        : reopening
+          ? "application.reopened"
+          : "application.lifecycle_updated",
+      summary: closing
+        ? `Closed application (${closureReasonLabel(closureReason)})`
+        : reopening
+          ? `Reopened application from Closed to ${patch.status}`
+          : "Updated application lifecycle or profile",
       entityType: "application",
       entityId: data.id,
       metadata: {
         fields: Object.keys(patch),
         previous_status: before.status,
         status: patch.status ?? before.status,
+        ...(closing ? { closure_reason: closureReason, closure_notes: closureNotes } : {}),
+        ...(reopening ? { reopened: true } : {}),
       },
     });
     return rows[0] as unknown as Record<string, string | number | null>;

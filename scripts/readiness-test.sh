@@ -40,3 +40,10 @@ node scripts/trip-screenshots.test.mjs
 node scripts/agreement-guard.test.mjs
 node scripts/document-registration.test.mjs
 node scripts/readiness-documents.test.mjs
+
+# Optional. workerd-smoke builds the worker and boots wrangler, so the
+# default readiness run stays fast. Set WORKERD_SMOKE=1 to include it.
+if [[ "${WORKERD_SMOKE:-}" == "1" ]]; then
+  bash scripts/workerd-smoke.sh
+fi
+node scripts/activation-readiness.test.mjs

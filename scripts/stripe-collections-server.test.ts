@@ -5,10 +5,12 @@ const { client } = vi.hoisted(() => ({ client: {
 } }));
 vi.mock("../src/lib/stripe.server", () => ({ createStripeClient: () => client }));
 import { loadStripeCollections } from "../src/lib/stripe-collections.server";
+import { clearStripeReaderCache } from "../src/lib/stripe-reader.server";
 const range = { from: "2026-10-15T00:00:00Z", to: "2026-10-17T00:00:00Z" };
 const created = Date.parse("2026-10-15T12:00:00Z") / 1000;
 const page = (data: unknown[]) => ({ data, has_more: false });
 beforeEach(() => {
+  clearStripeReaderCache();
   vi.resetAllMocks();
   vi.spyOn(Date, "now").mockReturnValue(created * 1000);
   client.subscriptions.list.mockResolvedValue(page([{ id: "sub_test", customer: { id: "cus_test", name: "Synthetic Renter" }, currency: "usd", status: "active", cancel_at_period_end: false, items: { has_more: false, data: [{ current_period_end: created + 604800, quantity: 1, price: { currency: "usd", unit_amount: 35000, recurring: { usage_type: "licensed", interval: "week", interval_count: 1 } } }] } }]));
@@ -61,4 +63,54 @@ describe("read-only Stripe reporting service", () => {
   it("keeps incomplete subscription rates and dates unknown", async () => { const rows = await client.subscriptions.list(); rows.data[0].items.has_more = true; client.subscriptions.list.mockResolvedValue(rows); const r = await loadStripeCollections("live", range); expect(r.subscriptions[0].scheduledAmount).toBeNull(); expect(r.subscriptions[0].nextAt).toBeNull(); });
   it("keeps transformed quantity pricing unknown instead of multiplying raw quantities", async () => { const rows = await client.subscriptions.list(); rows.data[0].items.data[0].price.transform_quantity = { divide_by: 5, round: "up" }; client.subscriptions.list.mockResolvedValue(rows); expect((await loadStripeCollections("live", range)).subscriptions[0].scheduledAmount).toBeNull(); });
   it("preserves canceled historical collections without upcoming billing", async () => { const rows = await client.subscriptions.list(); rows.data[0].status = "canceled"; client.subscriptions.list.mockResolvedValue(rows); const r = await loadStripeCollections("live", range); expect(r.activeSubscriptions).toBe(0); expect(r.subscriptions[0].nextAt).toBeNull(); expect(r.totals[0].gross).toBe(35000); });
+
+  it("keeps the pre-reader report for two pages and does not cache a later payment", async () => {
+    const charge = (id: string, amount: number, fee: number, intent: string) => ({
+      id, customer: "cus_test", payment_intent: intent, created, currency: "usd", amount_captured: amount,
+      paid: true, captured: true, status: "succeeded", balance_transaction: { currency: "usd", fee, created, amount },
+    });
+    const second = charge("ch_page2", 15000, 465, "pi_2");
+    client.charges.list.mockImplementation(async (params) => params?.starting_after
+      ? { data: [second], has_more: false }
+      : { data: [charge("ch_page1", 35000, 1045, "pi_1")], has_more: true });
+    client.refunds.list.mockImplementation(async (params) => params?.starting_after
+      ? { data: [], has_more: false }
+      : { data: [{ id: "re_page1", charge: "ch_page1", created, currency: "usd", amount: 2000, status: "succeeded", balance_transaction: { currency: "usd", fee: -50 } }], has_more: true });
+    client.payouts.list.mockImplementation(async (params) => params?.starting_after
+      ? { data: [{ id: "po_2", currency: "usd", amount: 4000 }], has_more: false }
+      : { data: [{ id: "po_1", currency: "usd", amount: 10000 }], has_more: true });
+    client.invoices.list.mockResolvedValue(page([
+      { id: "in_1", customer: "cus_test", parent: { subscription_details: { subscription: "sub_test" } } },
+      { id: "in_2", customer: "cus_test", parent: { subscription_details: { subscription: "sub_test" } } },
+    ]));
+    client.invoicePayments.list.mockResolvedValue(page([
+      { id: "ip_1", invoice: "in_1", payment: { payment_intent: "pi_1", charge: "ch_page1" } },
+      { id: "ip_2", invoice: "in_2", payment: { payment_intent: "pi_2", charge: "ch_page2" } },
+    ]));
+    const first = await loadStripeCollections("live", range);
+    expect(client.charges.list.mock.calls[1][0].starting_after).toBe("ch_page1");
+    expect(client.refunds.list.mock.calls[1][0].starting_after).toBe("re_page1");
+    expect(Object.keys(first).sort()).toEqual(["activeSubscriptions", "collectionsComplete", "customers", "failed", "incompletePortions", "payouts", "refreshedAt", "subscriptions", "successful", "totals", "verifiedCollections", "warnings"]);
+    expect(first.collectionsComplete).toBe(true);
+    expect(first.totals).toEqual([{ currency: "usd", gross: 50000, refunds: 2000, fees: 1460, net: 46540, successful: 2, failed: 0 }]);
+    expect(first.customers).toEqual([{ id: "cus_test", name: "Synthetic Renter", currency: "usd", gross: 50000, refunds: 2000, fees: 1460, net: 46540, successful: 2, failed: 0 }]);
+    expect(first.successful).toBe(2);
+    expect(first.failed).toBe(0);
+    expect(first.activeSubscriptions).toBe(1);
+    expect(first.subscriptions[0]).toMatchObject({ id: "sub_test", customerId: "cus_test", name: "Synthetic Renter", status: "active", currency: "usd", scheduledAmount: 35000, nextAt: created + 604800, cancelAtPeriodEnd: false });
+    expect(first.verifiedCollections.scope).toBe("Verified Only");
+    expect(first.verifiedCollections.charges.map((row) => row.id)).toEqual(["ch_page1", "ch_page2"]);
+    expect(first.verifiedCollections.refunds.map((row) => row.id)).toEqual(["re_page1"]);
+    expect(first.verifiedCollections.totals).toEqual(first.totals);
+    expect(first.payouts).toEqual([{ currency: "usd", amount: 14000, count: 2 }]);
+    expect(first.incompletePortions).toEqual([]);
+    expect(first.refreshedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    Object.assign(second, { status: "failed", paid: false, captured: false, amount_captured: 0 });
+    const callsBefore = client.charges.list.mock.calls.length;
+    const again = await loadStripeCollections("live", range);
+    expect(client.charges.list.mock.calls.length).toBeGreaterThan(callsBefore);
+    expect(again.collectionsComplete).toBe(true);
+    expect(again.totals).toEqual([{ currency: "usd", gross: 35000, refunds: 2000, fees: 995, net: 32005, successful: 1, failed: 1 }]);
+    expect(again.customers[0]).toMatchObject({ gross: 35000, refunds: 2000, fees: 995, net: 32005, successful: 1, failed: 1 });
+  });
 });

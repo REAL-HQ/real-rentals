@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { EmptyState, StatusPill } from "./ui";
 import {
   formatIssueTimeEt,
+  issueAgeLabel,
+  issueAlertBadge,
   issueKindLabel,
   issueStatusLabel,
   ISSUE_STATUSES,
@@ -27,6 +29,12 @@ export function DriverIssuesPanel() {
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   async function load(next = filter) {
     setLoading(true);
@@ -96,12 +104,27 @@ export function DriverIssuesPanel() {
         />
       ) : (
         <div className="space-y-3">
-          {rows.map((row) => (
-            <article key={row.id} className="rounded-2xl border border-[#EDEDF0] bg-white shadow-sm p-4" data-testid="driver-issue-row">
+          {rows.map((row) => {
+            const badge = issueAlertBadge(row);
+            return (
+            <article
+              key={row.id}
+              className={`rounded-2xl border bg-white shadow-sm p-4 ${row.pinned ? "border-[#D03020]" : "border-[#EDEDF0]"}`}
+              data-testid="driver-issue-row"
+              data-pinned={row.pinned ? "true" : "false"}
+            >
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h2 className="font-semibold text-[#111114]">{row.title}</h2>
+                    {badge ? (
+                      <span
+                        className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white"
+                        data-testid="issue-alert-badge"
+                      >
+                        {badge}
+                      </span>
+                    ) : null}
                     <StatusPill status={row.closed ? "completed" : "pending"}>{issueStatusLabel(row.status)}</StatusPill>
                     <span className="text-[11px] font-medium text-[#55555E]">{issueKindLabel(row.kind)}</span>
                   </div>
@@ -110,9 +133,17 @@ export function DriverIssuesPanel() {
                     {row.vehicleLabel ? ` · ${row.vehicleLabel}` : " · No Vehicle Linked"}
                   </p>
                 </div>
-                <time className="text-[12px] text-[#9A9AA3] whitespace-nowrap" dateTime={row.createdAt}>
-                  {formatIssueTimeEt(row.createdAt)}
-                </time>
+                <div className="text-right">
+                  <time className="block text-[12px] text-[#9A9AA3] whitespace-nowrap" dateTime={row.createdAt}>
+                    {formatIssueTimeEt(row.createdAt)}
+                  </time>
+                  <div
+                    className={`mt-0.5 text-[12px] font-medium whitespace-nowrap ${row.pinned ? "text-[#D03020]" : "text-[#55555E]"}`}
+                    data-testid="issue-age"
+                  >
+                    {issueAgeLabel(row.createdAt, now)}
+                  </div>
+                </div>
               </div>
 
               {row.body ? <p className="mt-3 text-sm text-[#111114] whitespace-pre-wrap">{row.body}</p> : null}
@@ -167,7 +198,8 @@ export function DriverIssuesPanel() {
                 </Link>
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

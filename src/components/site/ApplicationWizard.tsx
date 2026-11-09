@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -27,6 +27,21 @@ import { clearResumeToken } from "@/lib/resume-token";
 import { WelcomeBack } from "./WelcomeBack";
 import { FadeUp } from "./FadeUp";
 import { fmtDate as formatDate } from "@/lib/date-format";
+import { APPLY_PROGRESS_ENABLED } from "@/lib/apply-progress";
+import { UPLOAD_PRECHECK_ENABLED } from "@/lib/upload-precheck";
+import { APPLY_VEHICLE_PREFILL_ENABLED } from "@/lib/apply-vehicle-prefill";
+import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
+import { APPLICATION_LOCKED_MESSAGE } from "@/lib/application-edit-status";
+import {
+  createSaveSequencer,
+  isApplicationLockedError,
+  isRetryableSaveError,
+  retryDelayMs,
+  SaveSuperseded,
+  saveThenMark,
+  UPLOAD_SAVE_FAILED_MESSAGE,
+  type SaveStatus,
+} from "@/lib/wizard-save";
 
 /*
  * ONE application, TWO parts.
@@ -117,6 +132,16 @@ function fieldsFor(phase: Phase, s: WizardState): Record<string, unknown> {
       return {};
   }
 }
+
+/**
+ * Wizard writes ride a keepalive request, so one sent as the page is hidden
+ * or closed still reaches the server. This goes through the normal server
+ * function client (same serializer, validator and middleware) via its `fetch`
+ * option. navigator.sendBeacon was considered: the endpoint would accept a
+ * JSON POST, but a beacon cannot carry the server-function headers and would
+ * mean hand-writing the framework's internal payload format.
+ */
+const keepaliveFetch: typeof fetch = (input, init) => fetch(input, { ...init, keepalive: true });
 
 // ---------------------------------------------------------------- vocabulary
 
@@ -271,7 +296,7 @@ export function ProgressBar({
               className={`h-1.5 rounded-full transition-colors ${done || active ? "bg-real-red" : "bg-border"}`}
             />
             <div
-              className={`mt-1.5 text-[10px] uppercase tracking-wider text-center ${active ? "text-real-red font-semibold" : "text-muted-foreground"}`}
+              className={`mt-1.5 text-xs uppercase tracking-wide text-center ${active ? "text-real-red font-semibold" : "text-muted-foreground"}`}
             >
               {s.label}
             </div>
@@ -280,6 +305,33 @@ export function ProgressBar({
       })}
     </div>
   );
+}
+
+/** Panel loads only when APPLY_PROGRESS_ENABLED is exactly true. */
+export function ApplyProgressSlot({
+  stepKey,
+  showNeeded,
+  className = "",
+}: {
+  stepKey: string;
+  showNeeded: boolean;
+  className?: string;
+}) {
+  const [View, setView] = useState<
+    null | ((props: { stepKey: string; showNeeded: boolean; className?: string }) => React.ReactNode)
+  >(null);
+  useEffect(() => {
+    if (APPLY_PROGRESS_ENABLED !== true) return;
+    let live = true;
+    void import("@/components/site/ApplyProgress").then((mod) => {
+      if (live) setView(() => mod.ApplyProgress);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (APPLY_PROGRESS_ENABLED !== true || View == null) return null;
+  return <View stepKey={stepKey} showNeeded={showNeeded} className={className} />;
 }
 
 // ------------------------------------------------------------------ wizard
@@ -292,6 +344,12 @@ export function ApplicationWizard({ token }: { token: string }) {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // A decided application is shown, not edited. The server refuses the write
+  // either way; this keeps the applicant from filling in a form that cannot save.
+  const [locked, setLocked] = useState(false);
+  // Read by the save paths (which run outside render) so nothing is sent once locked.
+  const lockedRef = useRef(false);
+  lockedRef.current = locked;
 
   // Autosave. Answers used to live only in React state until the applicant
   // pressed Next, so closing the tab on the last question of a step threw the
@@ -300,34 +358,135 @@ export function ApplicationWizard({ token }: { token: string }) {
   const latest = useRef<WizardState | null>(null);
   const dirty = useRef(false);
   latest.current = state;
+  const phaseRef = useRef<Phase>(phase);
+  phaseRef.current = phase;
+
+  // Every write goes through one queue (see wizard-save.ts): an autosave on
+  // the wire finishes before a step change is sent, and an autosave that has
+  // not started is dropped once the step changes, so current_step can never
+  // be walked backwards by a slow autosave.
+  const seqRef = useRef<ReturnType<typeof createSaveSequencer> | null>(null);
+  if (!seqRef.current) seqRef.current = createSaveSequencer();
+  const seq = seqRef.current;
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const failedRounds = useRef(0);
 
   const update = <K extends keyof WizardState>(k: K, v: WizardState[K]) => {
     dirty.current = true;
     setState((p) => (p ? { ...p, [k]: v } : p));
   };
 
-  useEffect(() => {
-    if (!state || !dirty.current) return;
-    if (phase !== "rental" && phase !== "driving") return;
-    const t = setTimeout(async () => {
-      const snapshot = latest.current;
-      if (!snapshot || !dirty.current) return;
-      dirty.current = false;
-      try {
-        await updateStep({ data: { token, step: phase, ...fieldsFor(phase, snapshot) } as never });
+  const clearRetry = () => {
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+  };
+
+  /** A decided application: stop every save and show the read-only screen. */
+  const lockNow = () => {
+    lockedRef.current = true;
+    dirty.current = false;
+    clearRetry();
+    setLocked(true);
+  };
+
+  /**
+   * Save the fields on screen now. `flush` is the page going away (tab
+   * hidden, page hidden, unmount): it uses the same keepalive request but
+   * does not wait behind a write already on the wire, because a hidden page
+   * may be frozen before that write answers.
+   */
+  const autosaveNow = (reason: "debounce" | "retry" | "flush") => {
+    const snapshot = latest.current;
+    const p = phaseRef.current;
+    if (!snapshot || !dirty.current || lockedRef.current) return;
+    if (p !== "rental" && p !== "driving") return;
+    dirty.current = false;
+    clearRetry();
+    setSaveStatus("saving");
+    const startedIn = seq.epoch;
+    const write = () =>
+      updateStep({
+        data: { token, step: p, ...fieldsFor(p, snapshot) } as never,
+        fetch: keepaliveFetch,
+      });
+    const job =
+      reason === "flush" && seq.busy
+        ? write()
+        : seq.autosave(write);
+    job
+      .then(() => {
+        failedRounds.current = 0;
         setSavedAt(Date.now());
-      } catch {
-        // A failed autosave is not worth interrupting anybody over — the
-        // explicit save on Next reports its own errors and is what counts.
+        if (!dirty.current) setSaveStatus("saved");
+      })
+      .catch((err: unknown) => {
+        // Decided application: terminal. No retry, no "Couldn't Save" — the
+        // read-only screen replaces the form.
+        if (isApplicationLockedError(err)) {
+          lockNow();
+          return;
+        }
+        // Overtaken by Next/Submit, which wrote these same fields itself.
+        if (err instanceof SaveSuperseded || seq.epoch !== startedIn) return;
         dirty.current = true;
-      }
-    }, 1500);
+        setSaveStatus("error");
+        // The queue already retried quickly. Keep trying in the background,
+        // further apart, rather than waiting for the next keystroke — but
+        // only for failures a retry can fix (not an expired link).
+        if (isRetryableSaveError(err) && failedRounds.current < 6) {
+          failedRounds.current += 1;
+          clearRetry();
+          retryTimer.current = setTimeout(
+            () => autosaveRef.current("retry"),
+            retryDelayMs(failedRounds.current, { baseMs: 5000, maxMs: 60000 }),
+          );
+        }
+      });
+  };
+  const autosaveRef = useRef(autosaveNow);
+  autosaveRef.current = autosaveNow;
+
+  useEffect(() => {
+    if (!state || !dirty.current || locked) return;
+    if (phase !== "rental" && phase !== "driving") return;
+    const t = setTimeout(() => autosaveRef.current("debounce"), 1500);
     return () => clearTimeout(t);
-  }, [state, phase, token, updateStep]);
+  }, [state, phase, locked]);
+
+  // Leaving the page must not lose the last few seconds of typing: flush on
+  // tab hide, page hide (iOS Safari fires pagehide, not unload) and unmount.
+  // Coming back online retries a save that failed while offline.
+  useEffect(() => {
+    const flush = () => autosaveRef.current("flush");
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    const onOnline = () => {
+      if (dirty.current) autosaveRef.current("retry");
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onOnline);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
+      clearRetry();
+      flush();
+    };
+  }, []);
 
   useEffect(() => {
     fetchApp({ data: { token } })
-      .then((row) => {
+      .then(async (row) => {
+        if (row.editable === false) setLocked(true);
+        let phase = phaseFrom(row.current_step);
+        if (APPLICATION_RESUME_ENABLED === true) {
+          const mod = await import("@/lib/application-resume");
+          const progress = mod.progressFromWizard(row);
+          if (progress.phase) phase = progress.phase;
+        }
         setState({
           full_name: row.full_name ?? "",
           city: row.city,
@@ -358,12 +517,13 @@ export function ApplicationWizard({ token }: { token: string }) {
           insurance_policy_last4: row.insurance_policy_last4,
           insurance_policy_number: null,
         });
-        setPhase(phaseFrom(row.current_step));
+        setPhase(phase);
       })
       .catch((e) => setLoadError(e?.message ?? "Could not load your application."));
   }, [token, fetchApp]);
 
   if (loadError) return <LinkExpired message={loadError} />;
+  if (locked) return <ApplicationLocked />;
 
   if (!state) {
     return (
@@ -380,15 +540,35 @@ export function ApplicationWizard({ token }: { token: string }) {
     // step:"rental" write could land behind step:"submitted" and rewind
     // current_step, which in turn made the recovery cron think this applicant
     // had not finished and email them to say so.
+    //
+    // The write is also sequenced: seq.stepChange waits for any autosave
+    // already on the wire, and drops any not yet started, so nothing older
+    // can land after it. Serialization conflicts and network drops are
+    // retried with backoff; every field here is an absolute value.
     dirty.current = false;
+    clearRetry();
     setSaving(true);
+    setSaveStatus("saving");
     try {
-      await updateStep({ data: { token, step: next, ...payload } as never });
+      await seq.stepChange(() =>
+        updateStep({ data: { token, step: next, ...payload } as never, fetch: keepaliveFetch }),
+      );
       dirty.current = false;
+      failedRounds.current = 0;
       setSavedAt(Date.now());
+      setSaveStatus("saved");
       setPhase(next);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e: unknown) {
+      // Decided application: terminal, never retried. Show the read-only screen.
+      if (isApplicationLockedError(e)) {
+        lockNow();
+        return;
+      }
+      // The step did not move, and neither did these answers: let autosave
+      // (and the Retry in the status line) pick them up again.
+      if (Object.keys(payload).length) dirty.current = true;
+      setSaveStatus("error");
       toast.error(e instanceof Error ? e.message : "Could not save. Please try again.");
     } finally {
       setSaving(false);
@@ -396,6 +576,26 @@ export function ApplicationWizard({ token }: { token: string }) {
   };
 
   const inPart1 = phase === "rental" || phase === "driving";
+  const wizardSteps = (
+    <WizardSteps
+      phase={phase}
+      state={state}
+      update={update}
+      saving={saving}
+      savedAt={savedAt}
+      saveStatus={saveStatus}
+      onLocked={lockNow}
+      onRetrySave={() => {
+        dirty.current = true;
+        failedRounds.current = 0;
+        autosaveRef.current("retry");
+      }}
+      inPart1={inPart1}
+      token={token}
+      go={go}
+      setPhase={setPhase}
+    />
+  );
 
   return (
     <div className="min-h-screen w-full">
@@ -406,72 +606,124 @@ export function ApplicationWizard({ token }: { token: string }) {
           widened by an overflowing descendant. */}
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] lg:min-h-screen bg-soft min-w-0">
         <SideRail phase={phase} source={state.source} />
-        <FadeUp delay={50} className="min-w-0">
-          <div className="p-5 md:p-8 min-w-0">
-            {/* The side rail is desktop-only, so on mobile it would otherwise
-              carry no branding at all once the site nav was removed. One mark,
-              either way — never both on screen at once. */}
-            <div className="lg:hidden mb-6">
-              <div className="mb-5">
-                <Logo width={84} offset={false} href={false} />
-              </div>
-              {inPart1 && (
-                <>
-                  <ProgressBar current={phase} source={state.source} />
-                  <SavedIndicator savedAt={savedAt} saving={saving} />
-                </>
-              )}
-            </div>
-
-            {phase === "rental" && (
-              <RentalStep
-                state={state}
-                update={update}
-                saving={saving}
-                onNext={() => go("driving", fieldsFor("rental", state))}
-              />
-            )}
-            {phase === "driving" && (
-              <DrivingStep
-                state={state}
-                update={update}
-                saving={saving}
-                onBack={() => setPhase("rental")}
-                onSubmit={() => go("submitted", fieldsFor("driving", state))}
-              />
-            )}
-            {phase === "submitted" && (
-              <ApplicationReceived
-                state={state}
-                onContinue={() => go("documents", {})}
-                saving={saving}
-              />
-            )}
-            {(phase === "documents" || phase === "profile_complete") && (
-              <DriverProfile
-                token={token}
-                state={state}
-                update={update}
-                phase={phase}
-                onFinish={async () => {
-                  await go("profile_complete", {});
-                  // Done for now: stop this tab holding a credential for a
-                  // flow nobody is in any more. The emailed link still works.
-                  clearResumeToken();
-                }}
-                saving={saving}
-              />
-            )}
-
-            {inPart1 && (
-              <p className="mt-6 text-center text-[11px] text-muted-foreground lg:hidden">
-                No documents needed to apply · No payment required.
-              </p>
-            )}
+        {APPLY_PROGRESS_ENABLED ? (
+          <div className="min-w-0">
+            <ApplyProgressSlot
+              stepKey={phase}
+              showNeeded={phase === "rental" && state.source !== "homepage"}
+              className="px-5 pt-4 md:px-8"
+            />
+            <FadeUp delay={50} className="min-w-0">
+              <div className="p-5 md:p-8 min-w-0">{wizardSteps}</div>
+            </FadeUp>
           </div>
+        ) : (
+        <FadeUp delay={50} className="min-w-0">
+          <div className="p-5 md:p-8 min-w-0">{wizardSteps}</div>
         </FadeUp>
+        )}
       </div>
     </div>
+  );
+}
+
+function WizardSteps({
+  phase,
+  state,
+  update,
+  saving,
+  savedAt,
+  saveStatus,
+  onLocked,
+  onRetrySave,
+  inPart1,
+  token,
+  go,
+  setPhase,
+}: {
+  phase: Phase;
+  state: WizardState;
+  update: <K extends keyof WizardState>(k: K, v: WizardState[K]) => void;
+  saving: boolean;
+  savedAt: number | null;
+  saveStatus: SaveStatus;
+  onLocked: () => void;
+  onRetrySave: () => void;
+  inPart1: boolean;
+  token: string;
+  go: (next: Phase, payload: Record<string, unknown>) => void;
+  setPhase: (phase: Phase) => void;
+}) {
+  return (
+    <>
+      {/* The side rail is desktop-only, so on mobile it would otherwise
+          carry no branding at all once the site nav was removed. One mark,
+          either way — never both on screen at once. */}
+      <div className="lg:hidden mb-6">
+        <div className="mb-5">
+          <Logo width={84} offset={false} href={false} />
+        </div>
+        {inPart1 && (
+          <>
+            <ProgressBar current={phase} source={state.source} />
+            <SavedIndicator savedAt={savedAt} saving={saving} status={saveStatus} onRetry={onRetrySave} />
+          </>
+        )}
+      </div>
+      {/* The mobile header above is lg:hidden; desktop gets the same status line. */}
+      {inPart1 && (
+        <div className="hidden lg:flex justify-end -mt-1 mb-2">
+          <SavedIndicator savedAt={savedAt} saving={saving} status={saveStatus} onRetry={onRetrySave} />
+        </div>
+      )}
+
+      {phase === "rental" && (
+        <RentalStep
+          state={state}
+          update={update}
+          saving={saving}
+          onNext={() => go("driving", fieldsFor("rental", state))}
+        />
+      )}
+      {phase === "driving" && (
+        <DrivingStep
+          state={state}
+          update={update}
+          saving={saving}
+          onBack={() => setPhase("rental")}
+          onSubmit={() => go("submitted", fieldsFor("driving", state))}
+        />
+      )}
+      {phase === "submitted" && (
+        <ApplicationReceived
+          state={state}
+          onContinue={() => go("documents", {})}
+          saving={saving}
+        />
+      )}
+      {(phase === "documents" || phase === "profile_complete") && (
+        <DriverProfile
+          token={token}
+          onLocked={onLocked}
+          state={state}
+          update={update}
+          phase={phase}
+          onFinish={async () => {
+            await go("profile_complete", {});
+            // Done for now: stop this tab holding a credential for a
+            // flow nobody is in any more. The emailed link still works.
+            clearResumeToken();
+          }}
+          saving={saving}
+        />
+      )}
+
+      {inPart1 && (
+        <p className="mt-6 text-center text-[11px] text-muted-foreground lg:hidden">
+          No documents needed to apply · No payment required.
+        </p>
+      )}
+    </>
   );
 }
 
@@ -496,6 +748,35 @@ function LinkExpired({ message }: { message: string }) {
           className="inline-flex items-center justify-center rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40"
         >
           Start A New Application
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Read-only state for a decided application. Deliberately the same words for
+ * every decision: the link does not say whether somebody was approved or not.
+ */
+function ApplicationLocked() {
+  return (
+    <div className="mx-auto max-w-lg px-6 py-24 text-center">
+      <h1 className="text-2xl font-semibold">Your Application Is Already Submitted</h1>
+      <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
+        {APPLICATION_LOCKED_MESSAGE}
+      </p>
+      <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+        <a
+          href="mailto:team@drivereal.com"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:opacity-90"
+        >
+          <Mail className="h-4 w-4" /> Contact Us
+        </a>
+        <Link
+          to="/"
+          className="inline-flex items-center justify-center rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40"
+        >
+          Back To Home
         </Link>
       </div>
     </div>
@@ -566,7 +847,7 @@ function SideRail({ phase, source }: { phase: Phase; source: string | null | und
 function StepHeader({ eyebrow, title, sub }: { eyebrow: string; title: string; sub?: string }) {
   return (
     <div className="mb-5">
-      <div className="text-[10px] uppercase tracking-[0.22em] font-semibold text-real-red">
+      <div className="text-xs uppercase tracking-wide font-semibold text-real-red">
         {eyebrow}
       </div>
       <h2 className="mt-1.5 text-xl md:text-2xl font-semibold">{title}</h2>
@@ -590,7 +871,7 @@ function Choice<T extends string>({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
       {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
@@ -602,7 +883,7 @@ function Choice<T extends string>({
               key={o.value}
               type="button"
               onClick={() => onChange(o.value)}
-              className={`rounded-lg border px-4 py-2.5 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
+              className={`rounded-lg border px-4 min-h-11 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
             >
               {o.label}
             </button>
@@ -628,7 +909,7 @@ function YesNo({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
       <div className="mt-2 flex gap-2">
@@ -639,7 +920,7 @@ function YesNo({
               key={String(v)}
               type="button"
               onClick={() => onChange(v)}
-              className={`rounded-lg border px-5 py-2.5 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
+              className={`rounded-lg border px-5 min-h-11 text-sm transition ${active ? "border-real-red bg-real-red text-white" : "border-border bg-white text-foreground hover:border-foreground/40"}`}
             >
               {v ? yesLabel : noLabel}
             </button>
@@ -656,19 +937,54 @@ function YesNo({
  * It says Saved only after a write has actually returned. Claiming otherwise
  * would be worse than saying nothing, because an applicant who believes their
  * answers are safe will close the tab.
+ *
+ * Non-blocking status: Saving… / Saved / Couldn't Save — Retry. A failed save
+ * says so (it used to fail silently until the next keystroke) and offers a
+ * Retry, in a polite live region so a screen reader hears it without losing
+ * focus.
  */
-function SavedIndicator({ savedAt, saving }: { savedAt: number | null; saving: boolean }) {
-  if (saving) {
+function SavedIndicator({
+  savedAt,
+  saving,
+  status = "idle",
+  onRetry,
+}: {
+  savedAt: number | null;
+  saving: boolean;
+  status?: SaveStatus;
+  onRetry?: () => void;
+}) {
+  const base = "mt-2 flex items-center gap-1.5 text-[11px]";
+  if (status === "error" && !saving) {
     return (
-      <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <div role="status" aria-live="polite" className={`${base} text-real-red`}>
+        <span>Couldn't Save</span>
+        {onRetry && (
+          <>
+            <span aria-hidden>—</span>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="inline-flex min-h-6 items-center font-semibold underline underline-offset-2"
+            >
+              Retry
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }
+  if (saving || status === "saving") {
+    return (
+      <div role="status" aria-live="polite" className={`${base} text-muted-foreground`}>
         <Loader2 className="h-3 w-3 animate-spin" /> Saving…
       </div>
     );
   }
   if (!savedAt) return null;
   return (
-    <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-      <Check className="h-3 w-3 text-emerald-600" strokeWidth={3} /> Saved automatically
+    <div role="status" aria-live="polite" className={`${base} text-muted-foreground`}>
+      <Check className="h-3 w-3 text-emerald-600" strokeWidth={3} /> Saved
     </div>
   );
 }
@@ -723,23 +1039,33 @@ function TextField({
   value,
   onChange,
   placeholder,
+  autoComplete,
+  inputMode,
+  name,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  /** HTML autocomplete token, e.g. address-line1, postal-code. */
+  autoComplete?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  name?: string;
 }) {
   return (
     <label className="block">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </span>
       <input
         type="text"
+        name={name}
+        autoComplete={autoComplete}
+        inputMode={inputMode}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+        className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
       />
     </label>
   );
@@ -771,6 +1097,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
         sub="Three questions. No documents and no payment to apply."
       />
       <div className="space-y-5">
+        <ApplyVehiclePrefillSlot />
         {/* Carried forward from the form they already filled in. Shown, not
             re-asked — but editable, because a wrong city silently attached to
             an application is worse than one extra tap. */}
@@ -779,7 +1106,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
             <div className="flex items-center gap-2.5 min-w-0">
               <MapPin className="h-4 w-4 text-real-red shrink-0" />
               <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
                   Picking Up In
                 </div>
                 <div className="text-sm font-medium truncate">{place}</div>
@@ -798,11 +1125,15 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
           <div className="grid grid-cols-2 gap-3">
             <TextField
               label="City"
+              name="city"
+              autoComplete="address-level2"
               value={state.city ?? ""}
               onChange={(v) => update("city", v || null)}
             />
             <TextField
               label="State"
+              name="state"
+              autoComplete="address-level1"
               value={state.state ?? ""}
               onChange={(v) => update("state", v || null)}
             />
@@ -817,7 +1148,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
         />
 
         <label className="block max-w-xs">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
             When Do You Need The Vehicle?
           </span>
           <input
@@ -825,7 +1156,7 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
             min={today}
             value={state.pickup_date ?? ""}
             onChange={(e) => update("pickup_date", e.target.value || null)}
-            className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+            className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
           />
           {/* Prefilled, and said out loud. A date box that silently arrives
               filled in reads as a default; saying where it came from makes it
@@ -882,7 +1213,7 @@ function DrivingStep({
       />
       <div className="space-y-5">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
             Which Gig Apps Do You Use?
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -911,7 +1242,7 @@ function DrivingStep({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
               Roughly How Many Trips Have You Completed?
             </span>
             <input
@@ -921,14 +1252,14 @@ function DrivingStep({
               placeholder="e.g. 850"
               value={state.trips_completed ?? ""}
               onChange={(e) => update("trips_completed", e.target.value || null)}
-              className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+              className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
             />
             <span className="mt-1 block text-[11px] text-muted-foreground">
               A rough number across all apps is fine. Leave blank if you're not sure.
             </span>
           </label>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
               Driver Rating, If You Know It
             </span>
             <input
@@ -950,7 +1281,7 @@ function DrivingStep({
                 if (!Number.isFinite(n)) return;
                 update("rating", Math.min(5, Math.max(1, n)));
               }}
-              className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+              className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
             />
             <span className="mt-1 block text-[11px] text-muted-foreground">
               Out of 5. Leave blank if you're not sure.
@@ -1079,7 +1410,7 @@ function ApplicationReceived({
       </div>
 
       <div className="mt-6 rounded-xl bg-white border border-border p-4">
-        <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">
+        <div className="text-xs uppercase tracking-wide font-semibold text-muted-foreground mb-2">
           Questions Now?
         </div>
         {/*
@@ -1116,10 +1447,22 @@ function DriverProfile({
   phase,
   onFinish,
   saving,
-}: StepProps & { token: string; phase: Phase; onFinish: () => void }) {
+  onLocked,
+}: StepProps & { token: string; phase: Phase; onFinish: () => void; onLocked: () => void }) {
   const [open, setOpen] = useState<string | null>(null);
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const updateStep = useServerFn(updateApplicationStep);
+  // Upload saves are serialized (two quick trip uploads must land in order)
+  // and retried on conflicts and network drops.
+  const uploadSeq = useRef<ReturnType<typeof createSaveSequencer> | null>(null);
+  if (!uploadSeq.current) uploadSeq.current = createSaveSequencer();
+  // Trip screenshots that uploaded but whose save to the application failed.
+  const [tripsUnsaved, setTripsUnsaved] = useState(false);
+  const [tripSaveBusy, setTripSaveBusy] = useState(false);
+  const latestTrips = useRef<{ added: string[]; keep: string[] }>({
+    added: state.trip_screenshots_added,
+    keep: state.trip_screenshots_keep,
+  });
 
   /**
    * Each section writes on its own, so a half-finished profile is never lost
@@ -1129,26 +1472,33 @@ function DriverProfile({
    * be hardcoded to "documents", so saving one section on a finished profile
    * walked current_step backwards from profile_complete.
    */
-  const saveSection = async (
-    key: string,
-    payload: Record<string, unknown>,
-    opts: { quiet?: boolean } = {},
-  ) => {
-    if (!opts.quiet) setSavingSection(key);
+  const saveSection = async (key: string, payload: Record<string, unknown>): Promise<boolean> => {
+    setSavingSection(key);
     try {
-      await updateStep({ data: { token, step: phase, ...payload } as never });
-      if (!opts.quiet) {
-        toast.success("Saved");
-        setOpen(null);
-      }
+      await uploadSeq.current!.serial(() =>
+        updateStep({ data: { token, step: phase, ...payload } as never, fetch: keepaliveFetch }),
+      );
+      toast.success("Saved");
+      setOpen(null);
+      return true;
     } catch (e: unknown) {
-      if (!opts.quiet) {
-        toast.error(e instanceof Error ? e.message : "Could not save. Please try again.");
+      // Decided application: terminal, never retried — the read-only screen takes over.
+      if (isApplicationLockedError(e)) {
+        onLocked();
+        return false;
       }
+      toast.error(e instanceof Error ? e.message : "Could not save. Please try again.");
+      return false;
     } finally {
-      if (!opts.quiet) setSavingSection(null);
+      setSavingSection(null);
     }
   };
+
+  /** One row write for an upload, sequenced and retried. Throws if it still fails. */
+  const saveUploadRow = (payload: Record<string, unknown>) =>
+    uploadSeq.current!.serial(() =>
+      updateStep({ data: { token, step: phase, ...payload } as never, fetch: keepaliveFetch }),
+    );
 
   /**
    * A file that reached storage but whose path never reached the row is a file
@@ -1156,25 +1506,58 @@ function DriverProfile({
    * sync never sees it. Part 2 does not autosave, so an applicant who
    * photographs their licence, sees the tick and closes the tab used to lose
    * it. The path is written the moment the upload returns.
+   *
+   * "On file" is set only once that write succeeds. It used to be set first
+   * and the write's failure swallowed, so the screen said Uploaded for a file
+   * the application did not point at. Now a failed write rejects, and the
+   * uploader shows the error with its own Retry (which re-sends the save for
+   * the same file without uploading it again — see DocumentCapture).
    */
-  const persistUpload = (
+  const persistUpload = async (
     column: "license_photo_url" | "insurance_doc_url" | "profile_screenshot_url",
     presence: "license_photo_on_file" | "insurance_doc_on_file" | "profile_screenshot_on_file",
     path: string | null,
-  ) => {
-    update(presence, Boolean(path));
-    void saveSection("upload", { [column]: path }, { quiet: true });
+  ): Promise<void> =>
+    saveThenMark(
+      () => saveUploadRow({ [column]: path }),
+      () => update(presence, Boolean(path)),
+      (e) => {
+        if (isApplicationLockedError(e)) return onLocked();
+        console.error("[upload] row save failed", e);
+        toast.error(UPLOAD_SAVE_FAILED_MESSAGE);
+      },
+    );
+
+  /**
+   * Trip screenshots: the session's new paths, plus which stored ones survive.
+   * The list updates at once (the rows are what the applicant is managing),
+   * but the section only counts as done once the save lands; a failed save
+   * shows an alert with Retry instead of disappearing.
+   */
+  const saveTrips = async () => {
+    const { added, keep } = latestTrips.current;
+    setTripSaveBusy(true);
+    try {
+      await saveUploadRow({ trip_screenshots: added, trip_screenshots_keep: keep });
+      // A newer change may have been queued meanwhile; only clear if this was the latest.
+      if (latestTrips.current.added === added && latestTrips.current.keep === keep) {
+        setTripsUnsaved(false);
+      }
+    } catch (e) {
+      if (isApplicationLockedError(e)) return onLocked();
+      console.error("[upload] trip screenshot save failed", e);
+      setTripsUnsaved(true);
+      toast.error(UPLOAD_SAVE_FAILED_MESSAGE);
+    } finally {
+      setTripSaveBusy(false);
+    }
   };
 
-  /** Trip screenshots: the session's new paths, plus which stored ones survive. */
   const persistTripScreenshots = (added: string[], keep: string[]) => {
+    latestTrips.current = { added, keep };
     update("trip_screenshots_added", added);
     update("trip_screenshots_keep", keep);
-    void saveSection(
-      "upload",
-      { trip_screenshots: added, trip_screenshots_keep: keep },
-      { quiet: true },
-    );
+    void saveTrips();
   };
 
   const sections: Section[] = useMemo(
@@ -1205,7 +1588,9 @@ function DriverProfile({
         title: "Trip History",
         blurb: "A screenshot of your lifetime trip or delivery count.",
         icon: <ListChecks className="h-5 w-5" />,
-        done: state.trip_screenshots_keep.length + state.trip_screenshots_added.length > 0,
+        done:
+          !tripsUnsaved &&
+          state.trip_screenshots_keep.length + state.trip_screenshots_added.length > 0,
       },
       {
         key: "address",
@@ -1215,7 +1600,7 @@ function DriverProfile({
         done: Boolean(state.address && state.zip),
       },
     ],
-    [state],
+    [state, tripsUnsaved],
   );
 
   const doneCount = sections.filter((s) => s.done).length;
@@ -1348,9 +1733,22 @@ function DriverProfile({
                         added={state.trip_screenshots_added}
                         onChange={persistTripScreenshots}
                       />
+                      {tripsUnsaved && (
+                        <UploadSaveAlert busy={tripSaveBusy} onRetry={() => void saveTrips()} />
+                      )}
                       <SectionSave
                         busy={savingSection === s.key}
-                        onSave={() => saveSection(s.key, {})}
+                        onSave={() =>
+                          // Carries the screenshot list too, so Save is also a
+                          // retry for an upload whose save failed. Idempotent:
+                          // the server resolves names, not positions.
+                          saveSection(s.key, {
+                            trip_screenshots: state.trip_screenshots_added,
+                            trip_screenshots_keep: state.trip_screenshots_keep,
+                          }).then((ok) => {
+                            if (ok) setTripsUnsaved(false);
+                          })
+                        }
                       />
                     </>
                   )}
@@ -1363,22 +1761,30 @@ function DriverProfile({
                       </p>
                       <TextField
                         label="Street Address"
+                        name="address"
+                        autoComplete="street-address"
                         value={state.address ?? ""}
                         onChange={(v) => update("address", v || null)}
                       />
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         <TextField
                           label="City"
+                          name="city"
+                          autoComplete="address-level2"
                           value={state.city ?? ""}
                           onChange={(v) => update("city", v || null)}
                         />
                         <TextField
                           label="State"
+                          name="state"
+                          autoComplete="address-level1"
                           value={state.state ?? ""}
                           onChange={(v) => update("state", v || null)}
                         />
                         <TextField
                           label="ZIP"
+                          name="postal-code"
+                          autoComplete="postal-code"
                           value={state.zip ?? ""}
                           onChange={(v) => update("zip", v || null)}
                         />
@@ -1428,6 +1834,30 @@ function DriverProfile({
   );
 }
 
+/**
+ * A file reached storage but the application does not point at it yet.
+ * Stays until a save lands; Retry re-sends the save only (no re-upload).
+ */
+function UploadSaveAlert({ busy, onRetry }: { busy: boolean; onRetry: () => void }) {
+  return (
+    <div
+      role="alert"
+      className="flex items-start justify-between gap-3 rounded-lg border border-real-red/30 bg-red-50 px-3 py-2"
+    >
+      <span className="text-[12px] leading-relaxed text-real-red">{UPLOAD_SAVE_FAILED_MESSAGE}</span>
+      <button
+        type="button"
+        onClick={onRetry}
+        disabled={busy}
+        className="shrink-0 inline-flex min-h-[36px] items-center gap-1 rounded-md border border-real-red/40 bg-white px-3 text-[12px] font-semibold text-real-red disabled:opacity-50"
+      >
+        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+        Retry
+      </button>
+    </div>
+  );
+}
+
 function SectionSave({ busy, onSave }: { busy: boolean; onSave: () => void }) {
   return (
     <button
@@ -1470,7 +1900,7 @@ function InsuranceSection({
     column: "license_photo_url" | "insurance_doc_url" | "profile_screenshot_url",
     presence: "license_photo_on_file" | "insurance_doc_on_file" | "profile_screenshot_on_file",
     path: string | null,
-  ) => void;
+  ) => Promise<void>;
   busy: boolean;
   onSave: () => void;
 }) {
@@ -1504,7 +1934,7 @@ function InsuranceSection({
                 have ever handed over. */}
             {state.insurance_policy_on_file && !replacingPolicy ? (
               <div className="block">
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
                   Policy Number
                 </span>
                 <div className="mt-1.5 flex items-center justify-between gap-3 rounded-lg border border-border bg-white px-3 py-2.5">
@@ -1524,20 +1954,21 @@ function InsuranceSection({
             ) : (
               <TextField
                 label="Policy Number"
+                autoComplete="off"
                 value={state.insurance_policy_number ?? ""}
                 onChange={(v) => update("insurance_policy_number", v || null)}
               />
             )}
           </div>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
               Policy Expiration Date
             </span>
             <input
               type="date"
               value={state.insurance_expires_on ?? ""}
               onChange={(e) => update("insurance_expires_on", e.target.value || null)}
-              className="mt-1.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm"
+              className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
             />
           </label>
           <YesNo
@@ -1562,6 +1993,8 @@ function InsuranceSection({
  * stored array — so the applicant can delete a wrong screenshot without us
  * handing back the paths of the right ones.
  */
+type PrecheckView = { warnings: { code: string; message: string }[]; tips: string[] };
+
 function MultiFileUpload({
   label,
   hint,
@@ -1583,6 +2016,25 @@ function MultiFileUpload({
   const [uploading, setUploading] = useState(false);
   const cameraInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const overrideWait = useRef<((ok: boolean) => void) | null>(null);
+  const [precheck, setPrecheck] = useState<PrecheckView | null>(null);
+  const [PrecheckNotice, setPrecheckNotice] = useState<
+    null | ((props: PrecheckView & { onUpload: () => void; onRetake: () => void }) => React.ReactNode)
+  >(null);
+
+  async function askOverride(result: PrecheckView): Promise<boolean> {
+    if (UPLOAD_PRECHECK_ENABLED !== true) return true;
+    const mod = await import("@/components/site/UploadPrecheckNotice");
+    setPrecheckNotice(() => mod.UploadPrecheckNotice);
+    return new Promise((resolve) => {
+      overrideWait.current = (ok: boolean) => {
+        overrideWait.current = null;
+        setPrecheck(null);
+        resolve(ok);
+      };
+      setPrecheck(result);
+    });
+  }
   /** The screenshot a retake is about to stand in for, if any. */
   const [replacing, setReplacing] = useState<
     { name: string; stored: boolean; path?: string } | null
@@ -1633,6 +2085,18 @@ function MultiFileUpload({
     try {
       for (const file of chosen) {
         try {
+          if (UPLOAD_PRECHECK_ENABLED === true) {
+            const { reviewUpload } = await import("@/lib/upload-precheck");
+            const result = await reviewUpload(file);
+            if (result.blocked) {
+              toast.error(`${file.name}: ${result.blockMessage ?? "This file can't be uploaded."}`);
+              continue;
+            }
+            if (result.warnings.length && !(await askOverride(result))) {
+              toast.message("Choose another photo and try again.");
+              continue;
+            }
+          }
           const { path } = await uploadApplicantFile({ token, kind: "trip_history", file });
           uploaded.push(path);
         } catch (e) {
@@ -1670,7 +2134,7 @@ function MultiFileUpload({
 
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
       {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
@@ -1796,6 +2260,14 @@ function MultiFileUpload({
           ))}
         </ul>
       )}
+      {UPLOAD_PRECHECK_ENABLED && PrecheckNotice && precheck ? (
+        <PrecheckNotice
+          warnings={precheck.warnings}
+          tips={precheck.tips}
+          onUpload={() => overrideWait.current?.(true)}
+          onRetake={() => overrideWait.current?.(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1804,4 +2276,21 @@ function fmtDate(s: string) {
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   return formatDate(d);
+}
+
+/** Panel loads only when APPLY_VEHICLE_PREFILL_ENABLED is exactly true. */
+function ApplyVehiclePrefillSlot() {
+  const [Panel, setPanel] = useState<ComponentType<{ source: "session" }> | null>(null);
+  useEffect(() => {
+    if (APPLY_VEHICLE_PREFILL_ENABLED !== true) return;
+    let cancelled = false;
+    import("@/components/site/ApplyVehiclePrefill").then((mod) => {
+      if (!cancelled) setPanel(() => mod.ApplyVehiclePrefill);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (APPLY_VEHICLE_PREFILL_ENABLED !== true || !Panel) return null;
+  return <Panel source="session" />;
 }

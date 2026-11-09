@@ -6,6 +6,9 @@ import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { Check, Gauge, Fuel, Calendar, Wrench } from "lucide-react";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
+import { PublicAvailabilityBadge } from "@/components/site/PublicAvailability";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
+import { PUBLIC_AVAILABILITY_ENABLED, publicAvailability } from "@/lib/public-availability";
 
 export const Route = createFileRoute("/fleet/$id")({
   loader: async ({ params }) => {
@@ -187,6 +190,11 @@ function VehicleDetail() {
           <FadeUp delay={80}>
             <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">{v.year}</div>
             <h1 className="mt-3 text-4xl md:text-5xl font-semibold">{v.make} {v.model}</h1>
+            {PUBLIC_AVAILABILITY_ENABLED ? (
+              <div className="mt-4">
+                <PublicAvailabilityBadge availability={publicAvailability(v)} />
+              </div>
+            ) : null}
             <p className="mt-4 text-muted-foreground leading-relaxed">{v.description}</p>
 
             <div className="mt-8 inline-flex rounded-lg bg-soft p-1 text-sm">
@@ -217,7 +225,7 @@ function VehicleDetail() {
                   <s.I className="w-5 h-5 text-real-red" strokeWidth={1.75} />
                   <div>
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{s.l}</div>
-                    <div className="font-medium capitalize">{String(s.v)}</div>
+                    <div className="font-medium">{s.l === "Status" ? <VehicleStatusBadge status={v.status} /> : String(s.v)}</div>
                   </div>
                 </div>
               ))}

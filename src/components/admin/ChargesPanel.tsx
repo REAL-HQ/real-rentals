@@ -17,13 +17,18 @@ import {
   type ImportOutcome,
 } from "@/lib/charges.functions";
 import { fmtDateTime } from "@/lib/date-format";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { VEHICLE_COMBOBOX_SELECT } from "@/lib/vehicle-label";
 
 type VehicleLite = {
   id: string;
   year: number | null;
   make: string | null;
   model: string | null;
+  unit_number?: string | null;
   license_plate: string | null;
+  vin?: string | null;
+  status?: string | null;
 };
 
 const STATUS_FILTERS = [
@@ -62,7 +67,7 @@ export function ChargesPanel() {
     try {
       const [charges, v] = await Promise.all([
         fetchCharges({ data: { status: filter } }),
-        supabase.from("vehicles").select("id,year,make,model,license_plate").order("make"),
+        supabase.from("vehicles").select(VEHICLE_COMBOBOX_SELECT).order("make"),
       ]);
       setRows(charges);
       setVehicles((v.data as any) ?? []);
@@ -432,18 +437,16 @@ function AddChargeForm({
     <Modal title="Add Charge" onClose={onClose}>
       <div>
         <MicroLabel>Vehicle</MicroLabel>
-        <select
-          value={vehicleId}
-          onChange={(e) => setVehicleId(e.target.value)}
-          className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
-        >
-          {vehicles.map((v) => (
-            <option key={v.id} value={v.id}>
-              {[v.year, v.make, v.model].filter(Boolean).join(" ")}
-              {v.license_plate ? ` · ${v.license_plate}` : ""}
-            </option>
-          ))}
-        </select>
+        <div className="mt-1.5">
+          <VehicleCombobox
+            vehicles={vehicles}
+            value={vehicleId || null}
+            onChange={(id) => setVehicleId(id ?? "")}
+            allowNone={false}
+            placeholder="Select vehicle…"
+            aria-label="Vehicle"
+          />
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>

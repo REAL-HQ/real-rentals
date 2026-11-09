@@ -244,14 +244,14 @@ export function overallReadiness(checks: ReadinessCheck[]): OverallReadiness {
   return "ready";
 }
 
-export type Availability = "Available" | "Reserved" | "On Rent" | "Onboarding" | "Out of Service" | "Retired";
+export type Availability = "Available" | "Reserved" | "Rented" | "Onboarding" | "Out of Service" | "Retired";
 /** Availability comes from status and live rentals only — never from readiness. */
 export function vehicleAvailability(status: string | null | undefined, hasActiveRental: boolean): Availability {
-  if (hasActiveRental) return "On Rent";
+  if (hasActiveRental) return "Rented";
   switch (String(status ?? "")) {
     case "available": return "Available";
     case "reserved": return "Reserved";
-    case "rented": return "On Rent";
+    case "rented": return "Rented";
     case "onboarding": return "Onboarding";
     case "retired": case "sold": case "archived": return "Retired";
     default: return "Out of Service";

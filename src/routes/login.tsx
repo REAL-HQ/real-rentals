@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/site/Logo";
 import { Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
 import { requestPortalSignIn, verifyPortalSignIn } from "@/lib/portal-signin.functions";
+import { rememberPayIntent } from "@/lib/portal-pay-link";
 
 /**
  * Driver Portal sign-in — one door for Leads, Waitlist, Applicants and Drivers.
@@ -14,8 +15,10 @@ import { requestPortalSignIn, verifyPortalSignIn } from "@/lib/portal-signin.fun
  * in the same Supabase session — there is one login system.
  */
 export const Route = createFileRoute("/login")({
-  validateSearch: (s: Record<string, unknown>): { signin?: string } => ({
+  validateSearch: (s: Record<string, unknown>): { signin?: string; pay?: "balance" } => ({
     signin: typeof s.signin === "string" ? s.signin : undefined,
+    // Only the one allowlisted word; anything else is dropped.
+    pay: s.pay === "balance" ? "balance" : undefined,
   }),
   head: () => ({
     meta: [
@@ -35,7 +38,11 @@ type Mode = "code" | "enter" | "password" | "forgot" | "forgotSent";
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { signin } = Route.useSearch();
+  const { signin, pay } = Route.useSearch();
+  // Remember "pay" for the emailed one-time link, which opens in a new tab.
+  useEffect(() => { if (pay === "balance") rememberPayIntent(window.localStorage); }, [pay]);
+  const toPortal = (replace = false) =>
+    navigate({ to: "/portal", replace, ...(pay === "balance" ? { search: { pay: "balance" } as any } : {}) });
   const request = useServerFn(requestPortalSignIn);
   const verify = useServerFn(verifyPortalSignIn);
   const [email, setEmail] = useState("");
@@ -50,7 +57,7 @@ function LoginPage() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session && !signin) navigate({ to: "/portal" });
+      if (data.session && !signin) toPortal();
     });
   }, [navigate, signin]);
 
@@ -63,7 +70,7 @@ function LoginPage() {
   async function finish(tokenHash: string) {
     const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "magiclink" });
     if (error) throw new Error("Sign-in is unavailable right now. Please try again.");
-    navigate({ to: "/portal", replace: true });
+    toPortal(true);
   }
 
   // One-time link from the email.
@@ -79,7 +86,7 @@ function LoginPage() {
       .catch((e) => {
         setErr(e instanceof Error ? e.message : "That link is invalid or has expired.");
         setMode("code");
-        navigate({ to: "/login", search: { signin: undefined }, replace: true });
+        navigate({ to: "/login", search: { signin: undefined, pay }, replace: true });
       })
       .finally(() => setLoading(false));
   }, [signin]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -128,13 +135,13 @@ function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pw });
     setLoading(false);
     if (error) return setErr(error.message);
-    navigate({ to: "/portal" });
+    toPortal();
   }
 
-  const input = "w-full bg-soft rounded-lg px-5 py-3 text-sm";
+  const input = "w-full min-h-11 bg-soft rounded-lg px-5 text-base";
   const primary =
-    "w-full min-h-11 rounded-lg bg-real-red text-primary-foreground py-3 text-sm font-medium hover:opacity-90 transition disabled:opacity-50 inline-flex items-center justify-center gap-2";
-  const quiet = "text-sm text-muted-foreground hover:text-foreground hover:underline";
+    "w-full min-h-11 rounded-lg bg-real-red text-primary-foreground text-sm font-medium hover:opacity-90 transition disabled:opacity-50 inline-flex items-center justify-center gap-2";
+  const quiet = "inline-flex min-h-11 items-center justify-center px-2 text-sm text-muted-foreground hover:text-foreground hover:underline";
 
   if (signin && loading) {
     return (
@@ -153,7 +160,7 @@ function LoginPage() {
         <p className="mt-3 text-sm text-muted-foreground">
           If an account exists for <span className="font-medium text-foreground">{email}</span>, we've sent a link to set a new password.
         </p>
-        <button type="button" onClick={() => setMode("password")} className="mt-6 text-sm text-real-red hover:underline font-medium">
+        <button type="button" onClick={() => setMode("password")} className="mt-6 inline-flex min-h-11 items-center text-sm text-real-red hover:underline font-medium">
           Back To Sign In
         </button>
       </Shell>
@@ -227,7 +234,7 @@ function LoginPage() {
               aria-label="Password"
               className={`${input} pr-12`}
             />
-            <button type="button" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? "Hide password" : "Show password"} className="absolute inset-y-0 right-3 flex items-center text-muted-foreground hover:text-foreground">
+            <button type="button" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? "Hide password" : "Show password"} className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground hover:text-foreground">
               {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
@@ -246,7 +253,7 @@ function LoginPage() {
           </button>
         ) : (
           <>
-            <button type="button" onClick={() => { setMode("code"); setErr(null); }} className="text-sm text-real-red hover:underline font-medium">
+            <button type="button" onClick={() => { setMode("code"); setErr(null); }} className="inline-flex min-h-11 items-center text-sm text-real-red hover:underline font-medium">
               Email Me A Code Instead
             </button>
             <button type="button" onClick={() => { setMode(mode === "forgot" ? "password" : "forgot"); setErr(null); }} className={quiet}>
@@ -258,7 +265,7 @@ function LoginPage() {
 
       <p className="mt-6 text-xs text-muted-foreground">
         Haven't applied yet?{" "}
-        <Link to="/apply" className="text-real-red hover:underline font-medium">
+        <Link to="/apply" className="inline-flex min-h-11 items-center text-real-red hover:underline font-medium">
           Start An Application
         </Link>
         .

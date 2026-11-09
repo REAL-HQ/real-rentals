@@ -3,6 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { tierAllows, tierFromRoles, type StaffTier } from "@/lib/roles";
+import { parseConditionExif } from "@/lib/condition-exif";
 
 export const CONDITION_BUCKET = "condition-media";
 
@@ -56,6 +57,15 @@ export type ConditionMedia = {
   caption: string | null;
   captured_by_role: string;
   created_at: string;
+  taken_at: string | null;
+  taken_at_source: string | null;
+  /** Present for staff listings only; never returned to renters. */
+  gps_lat: number | null;
+  gps_lng: number | null;
+  /** True when EXIF datetime was missing at upload (or unknown for legacy rows). */
+  missing_exif_time: boolean;
+  /** True only for the signed-in driver's own removable portal upload. */
+  can_delete: boolean;
   url: string | null;
 };
 
@@ -130,7 +140,7 @@ async function staffTier(supabase: unknown, userId: string): Promise<StaffTier |
   return tierFromRoles(((data ?? []) as Array<{ role: unknown }>).map((r) => String(r.role)));
 }
 
-/** Owner or Manager. Unchanged: the gate on destroying condition evidence. */
+/** Owner or Manager. Staff deletion of any condition evidence; drivers use the separate own-upload guard below. */
 async function isStaff(supabase: unknown, userId: string): Promise<boolean> {
   return tierAllows(await staffTier(supabase, userId), "manager");
 }
@@ -164,12 +174,18 @@ function safeExt(fileName: string, mime: string): string {
   return map[mime] || "bin";
 }
 
-async function signMedia(admin: any, rows: any[]): Promise<ConditionMedia[]> {
+async function signMedia(
+  admin: any,
+  rows: any[],
+  opts: { includeGps: boolean; canDelete?: (media: any) => boolean },
+): Promise<ConditionMedia[]> {
   return Promise.all(
     rows.map(async (m) => {
       const { data: signed } = await admin.storage
         .from(m.storage_bucket)
         .createSignedUrl(m.storage_path, 60 * 30);
+      const takenAt = (m.taken_at as string | null) ?? (m.created_at as string);
+      const source = (m.taken_at_source as string | null) ?? (m.taken_at ? "exif" : "upload");
       return {
         id: m.id,
         vehicle_id: m.vehicle_id,
@@ -180,6 +196,12 @@ async function signMedia(admin: any, rows: any[]): Promise<ConditionMedia[]> {
         caption: m.caption ?? null,
         captured_by_role: m.captured_by_role ?? "staff",
         created_at: m.created_at,
+        taken_at: takenAt,
+        taken_at_source: source,
+        gps_lat: opts.includeGps && m.gps_lat != null ? Number(m.gps_lat) : null,
+        gps_lng: opts.includeGps && m.gps_lng != null ? Number(m.gps_lng) : null,
+        missing_exif_time: source !== "exif",
+        can_delete: opts.canDelete?.(m) === true,
         url: signed?.signedUrl ?? null,
       };
     }),
@@ -200,6 +222,30 @@ async function activeRentalFor(supabase: any, userId: string) {
     .limit(1)
     .maybeSingle();
   return data ?? null;
+}
+
+/** A driver can remove only their own unlinked upload on their current rental. */
+export function driverCanDeleteConditionMedia(
+  media: {
+    vehicle_id?: string | null;
+    rental_id?: string | null;
+    inspection_id?: string | null;
+    incident_id?: string | null;
+    captured_by?: string | null;
+    captured_by_role?: string | null;
+  },
+  userId: string,
+  rental: { id: string; vehicle_id: string } | null,
+): boolean {
+  return Boolean(
+    rental
+    && media.vehicle_id === rental.vehicle_id
+    && media.rental_id === rental.id
+    && media.captured_by === userId
+    && media.captured_by_role === "driver"
+    && !media.inspection_id
+    && !media.incident_id
+  );
 }
 
 // ------------------------------------------------------------- condition media
@@ -270,6 +316,26 @@ export const confirmConditionUpload = createServerFn({ method: "POST" })
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const isVideo = (data.mimeType ?? "").startsWith("video/");
+
+    // Read original bytes from storage and parse EXIF BEFORE any re-encode.
+    const uploadNow = new Date();
+    let exif: Awaited<ReturnType<typeof parseConditionExif>> = {
+      takenAt: uploadNow,
+      takenAtSource: "upload",
+      gpsLat: null,
+      gpsLng: null,
+      missingExifTime: true,
+    };
+    if (!isVideo) {
+      const { data: blob, error: dlErr } = await supabaseAdmin.storage
+        .from(CONDITION_BUCKET)
+        .download(data.path);
+      if (!dlErr && blob) {
+        const buf = new Uint8Array(await blob.arrayBuffer());
+        exif = await parseConditionExif(buf, uploadNow);
+      }
+    }
+
     const { error } = await supabaseAdmin.from("condition_media").insert({
       vehicle_id: data.vehicleId,
       rental_id: rentalId,
@@ -285,9 +351,13 @@ export const confirmConditionUpload = createServerFn({ method: "POST" })
       captured_by: context.userId,
       captured_by_role: operator ? "staff" : "driver",
       caption: data.caption ?? null,
+      taken_at: (exif.takenAt ?? uploadNow).toISOString(),
+      taken_at_source: exif.takenAtSource,
+      gps_lat: exif.gpsLat,
+      gps_lng: exif.gpsLng,
     });
     if (error) throw new Error(error.message);
-    return { ok: true };
+    return { ok: true, missingExifTime: exif.missingExifTime };
   });
 
 export const listConditionMedia = createServerFn({ method: "POST" })
@@ -301,10 +371,11 @@ export const listConditionMedia = createServerFn({ method: "POST" })
     const operator = await canInspect(context.supabase, context.userId);
 
     let vehicleId = data.vehicleId ?? null;
+    let driverRental: { id: string; vehicle_id: string } | null = null;
     if (!operator) {
-      const rental = await activeRentalFor(context.supabase, context.userId);
-      if (!rental?.vehicle_id) return [];
-      vehicleId = rental.vehicle_id as string;
+      driverRental = await activeRentalFor(context.supabase, context.userId);
+      if (!driverRental?.vehicle_id) return [];
+      vehicleId = driverRental.vehicle_id as string;
     }
     if (!vehicleId) return [];
 
@@ -318,7 +389,11 @@ export const listConditionMedia = createServerFn({ method: "POST" })
     if (data.rentalId) q = q.eq("rental_id", data.rentalId);
 
     const { data: rows } = await q;
-    return signMedia(supabaseAdmin, rows ?? []);
+    // Precise GPS is staff-only; renters see time but not coordinates.
+    return signMedia(supabaseAdmin, rows ?? [], {
+      includeGps: !!operator,
+      canDelete: operator ? undefined : (media) => driverCanDeleteConditionMedia(media, context.userId, driverRental),
+    });
   });
 
 export const deleteConditionMedia = createServerFn({ method: "POST" })
@@ -340,6 +415,49 @@ export const deleteConditionMedia = createServerFn({ method: "POST" })
         .remove([row.storage_path as string]);
       await supabaseAdmin.from("condition_media").delete().eq("id", data.id);
     }
+    return { ok: true };
+  });
+
+export const deleteOwnConditionMedia = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const rental = await activeRentalFor(context.supabase, context.userId);
+    if (!rental) throw new Error("Forbidden");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: row, error: readError } = await supabaseAdmin
+      .from("condition_media")
+      .select("id,vehicle_id,rental_id,inspection_id,incident_id,captured_by,captured_by_role,storage_bucket,storage_path")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (readError) throw new Error(readError.message);
+    if (!row || !driverCanDeleteConditionMedia(row, context.userId, rental)) throw new Error("Forbidden");
+
+    const { error: storageError } = await supabaseAdmin.storage
+      .from(row.storage_bucket as string)
+      .remove([row.storage_path as string]);
+    if (storageError) throw new Error(storageError.message);
+    const { error: deleteError } = await supabaseAdmin
+      .from("condition_media")
+      .delete()
+      .eq("id", data.id)
+      .eq("captured_by", context.userId)
+      .eq("captured_by_role", "driver")
+      .eq("rental_id", rental.id)
+      .is("inspection_id", null)
+      .is("incident_id", null);
+    if (deleteError) throw new Error(deleteError.message);
+
+    await supabaseAdmin.from("audit_log").insert({
+      actor_user_id: context.userId,
+      actor_email: typeof context.claims.email === "string" ? context.claims.email : null,
+      actor_role: "driver",
+      action: "condition_media.deleted_by_driver",
+      entity_type: "condition_media",
+      entity_id: data.id,
+      summary: "Driver deleted their own uploaded condition photo",
+      metadata: { rental_id: rental.id, vehicle_id: rental.vehicle_id },
+    });
     return { ok: true };
   });
 
@@ -499,7 +617,7 @@ export const getInspection = createServerFn({ method: "POST" })
       driver_signed_at: inspection.driver_signed_at ?? null,
       driver_notes: inspection.driver_notes ?? null,
       items: (items ?? []) as InspectionItem[],
-      media: await signMedia(supabaseAdmin, media ?? []),
+      media: await signMedia(supabaseAdmin, media ?? [], { includeGps: true }),
     };
   });
 
@@ -706,7 +824,7 @@ export const getMyCheckoutInspection = createServerFn({ method: "GET" })
       signatureName: (inspection.driver_signature_name as string | null) ?? null,
       driverNotes: (inspection.driver_notes as string | null) ?? null,
       items: (items ?? []) as InspectionToSign["items"],
-      media: await signMedia(supabaseAdmin, media ?? []),
+      media: await signMedia(supabaseAdmin, media ?? [], { includeGps: false }),
     };
   });
 

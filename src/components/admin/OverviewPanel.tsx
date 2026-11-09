@@ -1,22 +1,24 @@
+import { paymentOverlap } from "@/lib/payment-overlap";
 import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/lib/revenue-state";
 import { tierFromRoles, tierAllows } from "@/lib/roles";
-import { StripeCollections } from "./StripeCollections";
+import { OVERVIEW_TODAY_ENABLED } from "@/lib/overview-today-flag";
 import LeadPriorities from "./LeadPriorities";
+import OverviewToday from "./OverviewToday";
+import { BookingFollowupSlot } from "./BookingFollowupSlot";
+import { BookingConversion } from "./BookingConversion";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { displayPersonName, displayTitleCase } from "@/lib/display-normalize";
+import { displayPersonName } from "@/lib/display-normalize";
 import {
   Car,
   CreditCard,
   Wrench,
   ArrowUpRight,
   Plus,
-  Flame,
   CheckCircle2,
   ChevronDown,
   TrendingUp,
   Receipt,
-  CalendarDays,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -30,10 +32,20 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill, ReadinessMetrics } from "./ui";
-import { isHotProspect, compareReadiness, type ReadinessResult } from "@/lib/readiness";
-import { summarizeFleet, type FleetSummary } from "@/lib/fleet-summary";
+import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill } from "./ui";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
+import { compareReadiness, type ReadinessResult } from "@/lib/readiness";
+import {
+  summarizeFleet,
+  summarizeFleetOccupancy,
+  activeRentalVehicleIds,
+  type FleetSummary,
+  type FleetStatusMismatch,
+} from "@/lib/fleet-summary";
+import { buildWeeklyBilledCollected, OVERVIEW_REVENUE_TYPES } from "@/lib/overview-weekly-revenue";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
+import { MaintenanceDueTile } from "./MaintenanceLog";
+import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
 import {
   APPLICANT_WINDOW,
   type OverviewApplicantRow,
@@ -66,9 +78,17 @@ import { fmtDate } from "@/lib/date-format";
 import type React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getStripeCollections } from "@/lib/stripe-collections.functions";
+import { getProjectedRevenueSummary } from "@/lib/projected-revenue.functions";
+import type { ProjectedRevenueSummary } from "@/lib/projected-revenue";
+import { centsToDollars } from "@/lib/projected-revenue";
 import { consolidatedRevenue } from "@/lib/stripe-collections";
 import { useNavigate } from "@tanstack/react-router";
+import { DocumentsExpiringChip } from "./DocumentsExpiring";
 import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
+import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
+import { Button } from "@/components/ui/button";
+import { Tooltip as ControlTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { serviceSummaryPreview, type ServiceSummaryRow } from "./overview-summary-details";
 
 type WeekPoint = { label: string; iso: string; collected: number; billed: number };
 
@@ -79,9 +99,9 @@ type WeekPoint = { label: string; iso: string; collected: number; billed: number
  * deposits. A deposit is the renter's money held against damage — it is on the
  * balance sheet, not the income statement, and counting it made a good week
  * look better than it was. The old Weekly Revenue figure summed every paid
- * row regardless of type, deposits included.
+ * row regardless of type, deposits included. Shared with Billed vs Collected.
  */
-const REVENUE_TYPES = ["rent", "late_fee", "other"] as const;
+const REVENUE_TYPES = OVERVIEW_REVENUE_TYPES;
 
 /**
  * What counts as collections.
@@ -90,8 +110,6 @@ const REVENUE_TYPES = ["rent", "late_fee", "other"] as const;
  * figure summed every row whose status was not 'paid', which swept in
  * invoices that are simply not due yet and showed them as outstanding debt.
  */
-const OVERDUE_STATUSES = ["late", "past_due", "collections", "overdue", "failed", "unpaid"] as const;
-
 function usd(n: number | undefined | null) {
   if (n == null) return "—";
   return n.toLocaleString(undefined, {
@@ -119,37 +137,6 @@ function shortDate(iso?: string | null) {
   if (!iso) return "—";
   return fmtDate(iso);
 }
-/**
- * How long ago the person applied, counted in whole calendar days so an
- * application filed at 11pm still reads "Today" a few minutes later and
- * "Yesterday" the next morning.
- */
-function appliedAgo(iso?: string | null) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const now = new Date();
-  const days = Math.floor(
-    (new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() -
-      new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) /
-      86_400_000,
-  );
-  if (days <= 0) return "Today";
-  if (days === 1) return "Yesterday";
-  return `${days} Days Ago`;
-}
-/**
- * The "Applied Oct 1, 2026 · 6 days ago" line on a Hot Prospect card. Built
- * from the application's own created_at — never reviewed_at or last contact —
- * and says so plainly when that date is missing instead of guessing.
- */
-function appliedLine(iso?: string | null) {
-  const rel = appliedAgo(iso);
-  if (!rel) return "Date Unknown";
-  const d = new Date(iso as string);
-  return `Applied ${fmtDate(d)} · ${rel}`;
-}
-
 export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
   const client=useQueryClient();
   const [boundary,setBoundary]=useState<RevenueSession>({epoch:0,ready:false,collections:false});
@@ -178,6 +165,8 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
 
 function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
   const [fleet, setFleet] = useState<FleetSummary>(() => summarizeFleet([]));
+  const [fleetMismatches, setFleetMismatches] = useState<FleetStatusMismatch[]>([]);
+  const [opsUpdatedAt, setOpsUpdatedAt] = useState<Date | null>(null);
   // Null, not 0, until the read lands. A rendered 0 reads as "nobody
   // applied"; the truth before the answer arrives is "we do not know yet",
   // and after a failure it is "we could not find out".
@@ -187,6 +176,9 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const [overdueCount, setOverdueCount] = useState(0);
   const [overdueRenters, setOverdueRenters] = useState(0);
   const [overdueAmt, setOverdueAmt] = useState(0);
+  const [activeRentalCount, setActiveRentalCount] = useState<number | null>(null);
+  const [opsRefreshKey, setOpsRefreshKey] = useState(0);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
   const [rangeKey, setRangeKey] = useState<RangeKey>("last_7");
   const [customRange, setCustomRange] = useState<Partial<DayRange>>({});
@@ -194,6 +186,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const [priorRevenue, setPriorRevenue] = useState<number | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(true);
   const [internalNonStripe, setInternalNonStripe] = useState<number | null>(null);
+  const [overlapOwed, setOverlapOwed] = useState<number | null>(null);
   const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
   const [nextReturn, setNextReturn] = useState<string | null>(null);
   const [recentApps, setRecentApps] = useState<ApplicantRow[]>([]);
@@ -204,10 +197,25 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const loadApplicants = useServerFn(getOverviewApplicants);
   const fleetMaint = useServerFn(getFleetMaintenance);
   const [svc, setSvc] = useState({ overdue: 0, due: 0, dueSoon: 0, open: 0, conflict: 0 });
+  const [servicePreview, setServicePreview] = useState<ServiceSummaryRow[] | null>(null);
+  const [serviceFailed, setServiceFailed] = useState(false);
   useEffect(() => {
     // Canonical maintenance-due engine (same as the Service page) — never a local re-derivation.
-    fleetMaint().then((r) => setSvc(r.counts)).catch(() => {});
+    let live = true;
+    fleetMaint().then((r) => {
+      if (!live) return;
+      setSvc(r.counts);
+      setServicePreview(serviceSummaryPreview([...r.attention, ...r.upcoming]));
+      setServiceFailed(false);
+    }).catch(() => { if (live) { setServicePreview(null); setServiceFailed(true); } });
+    return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opsRefreshKey]);
+
+  useEffect(() => {
+    const onFocus = () => setOpsRefreshKey((n) => n + 1);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   useEffect(() => {
@@ -230,20 +238,25 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         billed12wQ,
         nextReturnQ,
         allVehiclesQ,
+        activeRentalsQ,
       ] = await Promise.all([
         // Collections: due and not received. `current` is issued-but-not-yet-due
         // and is deliberately absent.
         supabase
           .from("payments")
-          .select("amount, driver_id")
-          .in("status", OVERDUE_STATUSES as unknown as string[]),
+          .select("amount, balance_due, driver_id")
+          .in("status", [...COLLECTIONS_WATCH_STATUSES]),
         supabase
           .from("payments")
-          .select("net_collected, paid_date")
+          .select("net_collected, paid_date, type")
           .in("status", ["paid", "refunded"])
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", d84),
-        supabase.from("payments").select("amount, due_date").gte("due_date", d84),
+        supabase
+          .from("payments")
+          .select("amount, due_date, type")
+          .in("type", REVENUE_TYPES as unknown as string[])
+          .gte("due_date", d84),
         supabase
           .from("rentals")
           .select("end_date")
@@ -257,9 +270,24 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           .select(
             "id, status, archived_at, current_odometer, last_oil_change_miles, oil_interval_miles, last_tire_date, last_brake_inspection_date",
           ),
+        // Live active rentals drive occupancy; vehicle.status alone can lag.
+        supabase
+          .from("rentals")
+          .select("id, vehicle_id", { count: "exact" })
+          .eq("status", "active"),
       ]);
 
-      setFleet(summarizeFleet((allVehiclesQ.data ?? []) as { status: string | null; archived_at: string | null }[]));
+      const vehicleRows = (allVehiclesQ.data ?? []) as {
+        id: string;
+        status: string | null;
+        archived_at: string | null;
+      }[];
+      const activeRows = (activeRentalsQ.data ?? []) as { id: string; vehicle_id: string | null }[];
+      const occupancy = summarizeFleetOccupancy(vehicleRows, activeRentalVehicleIds(activeRows));
+      const { mismatches, ...fleetSummary } = occupancy;
+      setFleet(fleetSummary);
+      setFleetMismatches(mismatches);
+      setActiveRentalCount(typeof activeRentalsQ.count === "number" ? activeRentalsQ.count : activeRows.length);
 
       // Hot Prospect is not a column you can filter on — it is derived from
       // the application, the screening and the documents. That derivation
@@ -282,47 +310,31 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       }
       const sumAmt = (rows?: any[] | null) =>
         (rows ?? []).reduce((a, r) => a + Number(r.net_collected ?? 0), 0);
+      // Outstanding = balance still due (falls back to the billed amount). The
+      // collections query has no net_collected, so summing it was always $0.
+      const sumOutstanding = (rows?: any[] | null) =>
+        (rows ?? []).reduce((a, r) => a + (Number(r.balance_due ?? 0) || Number(r.amount ?? 0)), 0);
       const overdueRows = (overdueQ.data ?? []) as any[];
-      setOverdueAmt(sumAmt(overdueRows));
+      setOverdueAmt(sumOutstanding(overdueRows));
       setOverdueCount(overdueRows.length);
       setOverdueRenters(new Set(overdueRows.map((r) => r.driver_id).filter(Boolean)).size);
 
 
-      // 12-week weekly buckets
-      const bucketStart = (d: Date) => {
-        const c = new Date(d);
-        c.setHours(0, 0, 0, 0);
-        c.setDate(c.getDate() - c.getDay());
-        return c;
-      };
-      const start = bucketStart(new Date(now.getTime() - 11 * 7 * 864e5));
-      const series: WeekPoint[] = [];
-      for (let i = 0; i < 12; i++) {
-        const d = new Date(start.getTime() + i * 7 * 864e5);
-        series.push({
-          label: fmtDate(d),
-          iso: d.toISOString(),
-          collected: 0,
-          billed: 0,
-        });
-      }
-      for (const p of (pay12wQ.data ?? []) as any[]) {
-        if (!p.paid_date) continue;
-        const w = bucketStart(new Date(p.paid_date));
-        const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
-        if (idx >= 0 && idx < 12) series[idx].collected += Number(p.net_collected ?? 0);
-      }
-      for (const p of (billed12wQ.data ?? []) as any[]) {
-        if (!p.due_date) continue;
-        const w = bucketStart(new Date(p.due_date));
-        const idx = Math.round((w.getTime() - start.getTime()) / (7 * 864e5));
-        if (idx >= 0 && idx < 12) series[idx].billed += Number(p.amount ?? 0);
-      }
-      setWeekly(series);
+      // 12-week weekly buckets — same revenue types as the Revenue card
+      // (multi-method collected; deposits excluded from billed and collected).
+      setWeekly(
+        buildWeeklyBilledCollected({
+          now,
+          collected: (pay12wQ.data ?? []) as { paid_date: string | null; net_collected: number | null; type: string | null }[],
+          billed: (billed12wQ.data ?? []) as { due_date: string | null; amount: number | null; type: string | null }[],
+          label: (d) => fmtDate(d),
+        }),
+      );
       setNextReturn((nextReturnQ.data?.[0]?.end_date as string | undefined) ?? null);
+      setOpsUpdatedAt(new Date());
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [opsRefreshKey]);
 
   const { total, rentable, rented, reserved, needsSetup } = fleet;
   const vehiclesAvail = fleet.available;
@@ -340,14 +352,14 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   const compare = useMemo(() => priorRange(range), [range]);
 
   useEffect(() => {
-    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setRevenueLoading(false);return;}
+    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setOverlapOwed(null);setRevenueLoading(false);return;}
     let live = true;
     setRevenueLoading(true);
     (async () => {
       const q = (r: DayRange) =>
         supabase
           .from("payments")
-          .select("net_collected, stripe_payment_intent_id", { count: "exact" })
+          .select("net_collected, stripe_payment_intent_id, stripe_invoice_id, failure_reason, notified_status", { count: "exact" })
           .in("status", ["paid", "refunded"])
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", r.from)
@@ -357,16 +369,17 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
       const current=paymentRevenue(cur), previous=paymentRevenue(prev);
       setRevenue(current?.total ?? null);
       setInternalNonStripe(current?.nonStripe ?? null);
+      setOverlapOwed(paymentOverlap(cur));
       setPriorRevenue(previous?.total ?? null);
       setRevenueLoading(false);
     })().catch(()=>{
       if(!live)return;
-      setRevenue(null);setInternalNonStripe(null);setPriorRevenue(null);setRevenueLoading(false);
+      setRevenue(null);setInternalNonStripe(null);setOverlapOwed(null);setPriorRevenue(null);setRevenueLoading(false);
     });
     return () => {
       live = false;
     };
-  }, [range, compare, canSeeCollections]);
+  }, [range, compare, canSeeCollections, opsRefreshKey]);
 
   const revenueDelta = useMemo(() => {
     // No prior revenue is not a 100% rise; it is a comparison that cannot be
@@ -374,6 +387,31 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
     if (priorRevenue === null || revenue === null || priorRevenue === 0) return null;
     return Math.round(((revenue - priorRevenue) / priorRevenue) * 100);
   }, [revenue, priorRevenue]);
+
+  // Projected vs collected rent for the current ET week and month. Separate
+  // from the range picker total above — this is the active-renter schedule
+  // against rent already recorded, deposits excluded from both.
+  const loadProjected = useServerFn(getProjectedRevenueSummary);
+  const [projected, setProjected] = useState<ProjectedRevenueSummary | null>(null);
+  const [projectedLoading, setProjectedLoading] = useState(false);
+  useEffect(() => {
+    if (!canSeeCollections) { setProjected(null); setProjectedLoading(false); return; }
+    let live = true;
+    setProjectedLoading(true);
+    loadProjected()
+      .then((res) => {
+        if (!live) return;
+        setProjected(res.status === "ready" ? res.summary : null);
+        setProjectedLoading(false);
+      })
+      .catch(() => {
+        if (!live) return;
+        setProjected(null);
+        setProjectedLoading(false);
+      });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSeeCollections, opsRefreshKey]);
 
   const serviceAttention = svc.overdue + svc.due + svc.open + svc.conflict;
 
@@ -385,23 +423,6 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
     () => new Map<string, ReadinessResult>(Object.entries(readiness)),
     [readiness],
   );
-
-  /**
-   * Hot Prospect: worth prioritising for follow-up. Not approved, not decision
-   * ready, not verified, not rental ready. The rule lives in the readiness
-   * module — qualification, coverage and no critical concern — and this strip
-   * only renders what it returns.
-   */
-  const hot = useMemo(() => {
-    if (!canSeeReadiness) return [];
-    return recentApps
-      .flatMap((a) => {
-        const r = readinessIndex.get(a.id);
-        return r && isHotProspect(r) ? [{ app: a, readiness: r }] : [];
-      })
-      .sort((x, y) => compareReadiness(x.readiness, y.readiness))
-      .slice(0, 5);
-  }, [recentApps, readinessIndex, canSeeReadiness]);
 
   const sortedApps = useMemo(() => {
     const rows = [...recentApps];
@@ -429,7 +450,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
   }, [recentApps, appSort, readinessIndex]);
 
   return (
-    <div className="space-y-6">
+    <div className="max-lg:min-w-0 space-y-6">
       {/* Heading — the floating Weekly Revenue metric that sat here has moved
           into the Revenue card, where it has a range and a comparison. */}
       <div>
@@ -437,74 +458,16 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
         <p className="text-[13px] text-[#55555E] mt-1">Pipeline, Fleet And Revenue At A Glance</p>
       </div>
 
-      <LeadPriorities />
+      {OVERVIEW_TODAY_ENABLED && canSeeCollections && <OverviewToday />}
 
-      {/* Priority strip — who is worth calling first, above everything else.
-          Absent entirely when there is nobody, rather than an empty module.
-
-          Hot Prospect means "worth prioritising for follow-up" and nothing
-          more. It is not approval, not Decision Ready, not verification. So
-          the strip carries the readiness state alongside the name: a hot
-          prospect who is still 55% known says so on its face. */}
-      {hot.length > 0 && (
-        <div className="rounded-2xl border border-[#D03020]/25 bg-[rgba(208,48,32,0.03)] px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Flame className="w-4 h-4 text-[#D03020]" strokeWidth={2} />
-            <span className="text-[12px] font-semibold text-[#111114]">Hot Prospects</span>
-            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#D03020] text-white text-[10px] font-semibold">
-              {hot.length}
-            </span>
-            <span className="text-[11px] text-[#9A9AA3]">Worth Following Up First</span>
-            <Link
-              to="/admin"
-              search={{ tab: "drivers" }}
-              className="ml-auto shrink-0 inline-flex items-center gap-1 text-[12px] font-medium text-[#D03020] hover:opacity-80"
-            >
-              {hot.length === 1 ? "View" : "View All"} <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-          {/* One card per person, and the whole card is the link. The previous
-              version was a wrapped row of text links, so the click target was
-              the name itself — a few pixels tall, on the busiest strip on the
-              page. */}
-          <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
-            {hot.map(({ app, readiness }) => (
-              <li key={app.id} className="min-w-0">
-                <Link
-                  to="/admin"
-                  search={{ tab: "drivers", id: app.id }}
-                  className="group flex h-full flex-col gap-2 rounded-xl border border-[#EDEDF0] bg-white p-3 hover:border-[#D03020]/40 hover:shadow-sm transition"
-                >
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="flex items-center justify-between gap-2 min-w-0">
-                      <span className="text-[14px] font-semibold text-[#111114] truncate group-hover:text-[#D03020] transition-colors">
-                        {app.full_name ? displayPersonName(app.full_name) : "Unnamed"}
-                      </span>
-                      <ReadinessStatePill state={readiness.state} short />
-                    </span>
-                    {/* Full width of the card: at phone width the badge and the
-                        name share the row above, so this line gets the room it
-                        needs instead of ending in an ellipsis. */}
-                    <span className="flex min-w-0 items-center gap-1 text-[11px] text-[#9A9AA3]">
-                      <CalendarDays className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{appliedLine(app.created_at)}</span>
-                    </span>
-                  </span>
-                  <ReadinessMetrics result={readiness} />
-                  {readiness.positives.length > 0 && (
-                    <span className="text-[11px] text-[#9A9AA3] line-clamp-2">
-                      {readiness.positives
-                        .slice(0, 2)
-                        .map((f) => displayTitleCase(f.detail))
-                        .join(" · ")}
-                    </span>
-                  )}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <LeadPriorities
+        isManager={canSeeCollections}
+        refreshKey={opsRefreshKey}
+        readiness={readiness}
+        canSeeReadiness={canSeeReadiness}
+      />
+      <BookingFollowupSlot />
+      <BookingConversion canView={canSeeCollections} />
 
       {/* Four cards. Each control matches what the card is for — a plus only
           where something gets created. */}
@@ -517,6 +480,13 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           href="/admin"
           search={{ tab: "vehicles", add: "1" }}
           control="add"
+          expanded={summaryExpanded}
+          onExpand={() => setSummaryExpanded((value) => !value)}
+          details={<>
+            <SummaryDetailRow label="Available" value={vehiclesAvail} />
+            <SummaryDetailRow label="Rented" value={rented} />
+            <SummaryDetailRow label="Maintenance" value={maintOpen} />
+          </>}
         />
 
         <RevenueCard
@@ -530,6 +500,11 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           custom={customRange}
           onCustom={setCustomRange}
           consolidated={canSeeCollections ? { internalNonStripe } : null}
+          overlapOwed={overlapOwed}
+          projected={projected}
+          projectedLoading={projectedLoading}
+          expanded={summaryExpanded}
+          onExpand={() => setSummaryExpanded((value) => !value)}
         />
 
         <ActionCard
@@ -544,8 +519,16 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           href="/admin"
           search={{ tab: "payments", filter: "overdue" }}
           control="view"
+          surface="yellow"
           tint={overdueAmt > 0 ? "red" : undefined}
           badge={overdueAmt > 0 ? overdueCount : undefined}
+          expanded={summaryExpanded}
+          onExpand={() => setSummaryExpanded((value) => !value)}
+          details={<>
+            <SummaryDetailRow label="Past Due Renters" value={overdueRenters} />
+            <SummaryDetailRow label="Open Charges" value={overdueCount} />
+            <SummaryDetailRow label="Outstanding" value={usd(overdueAmt)} />
+          </>}
         />
 
         <ActionCard
@@ -569,28 +552,70 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           href="/admin"
           search={{ tab: "maintenance" }}
           control="view"
+          surface="red"
           tint={svc.overdue > 0 ? "red" : svc.due + svc.open + svc.conflict > 0 ? "amber" : undefined}
           badge={serviceAttention > 0 ? serviceAttention : undefined}
+          expanded={summaryExpanded}
+          onExpand={() => setSummaryExpanded((value) => !value)}
+          details={servicePreview?.length ? (
+            <div className="space-y-2">
+              {servicePreview.map((row) => (
+                <Button key={row.vehicle.id} asChild variant="link" className="h-auto w-full justify-start p-0 text-left whitespace-normal text-foreground hover:text-destructive">
+                  <Link to="/admin" search={{ tab: "vehicles", id: row.vehicle.id }}>
+                    <Car className="shrink-0 text-destructive" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[11px] font-semibold">{row.vehicle.unit_number || "Vehicle"}</span>
+                      <span className="block text-[10px] font-normal text-muted-foreground">
+                        {row.vehicle.status === "maintenance" ? <VehicleStatusBadge status="maintenance" /> : row.item}
+                        {row.vehicle.status === "maintenance" ? null : ` · ${row.due.state === "due_soon" ? "Due Soon" : row.due.state === "overdue" ? "Overdue" : row.due.state === "due" ? "Due" : row.due.state === "conflict" ? "Needs Review" : "Open"}`}
+                      </span>
+                    </span>
+                    <ArrowUpRight className="shrink-0 text-muted-foreground" />
+                  </Link>
+                </Button>
+              ))}
+            </div>
+          ) : <p className="text-[11px] text-muted-foreground">{serviceFailed ? "Service Details Unavailable" : servicePreview === null ? "Loading Service Details…" : "No Vehicles Need Service"}</p>}
         />
+        {MAINTENANCE_LOG_ENABLED ? <MaintenanceDueTile /> : null}
       </div>
+      {canSeeCollections ? <DocumentsExpiringChip /> : null}
 
       {/* Fleet snapshot + Applications queue */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <SectionCard
           className="lg:col-span-3"
           title="Fleet Snapshot"
-          subtitle="Utilization And Current Inventory"
+          subtitle={
+            fleetMismatches.length
+              ? `Utilization From Active Rentals · ${fleetMismatches.length} status ${fleetMismatches.length === 1 ? "mismatch" : "mismatches"}`
+              : "Utilization From Active Rentals"
+          }
           right={
-            <Link
-              to="/admin"
-              search={{ tab: "vehicles" }}
-              className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]"
-            >
-              Open Fleet <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
+            <div className="flex items-center gap-3">
+              {opsUpdatedAt && (
+                <span className="text-[11px] text-[#9A9AA3]">
+                  Updated {opsUpdatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setOpsRefreshKey((n) => n + 1)}
+                className="text-[12px] text-[#55555E] hover:text-[#D03020]"
+              >
+                Refresh
+              </button>
+              <Link
+                to="/admin"
+                search={{ tab: "vehicles" }}
+                className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]"
+              >
+                Open Fleet <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
           }
         >
-          <div className="grid grid-cols-[auto_1fr] gap-6 items-center">
+          <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-6 lg:grid-cols-[auto_1fr]">
             <SegmentedDonut
               total={total}
               segments={[
@@ -615,18 +640,18 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
                       className="h-2 w-2 rounded-full shrink-0"
                       style={{ background: s.color }}
                     />
-                    <span className="text-[#111114] flex-1">{s.label}</span>
-                    <span className="tabular-nums font-medium text-[#111114]">{s.value}</span>
-                    <span className="tabular-nums text-[11px] text-[#9A9AA3] w-9 text-right">
+                    <span className="min-w-0 flex-1 text-[#111114] lg:min-w-[auto]">{s.label}</span>
+                    <span className="shrink-0 tabular-nums font-medium text-[#111114] lg:shrink">{s.value}</span>
+                    <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-[#9A9AA3] lg:shrink">
                       {pctOf(s.value)}%
                     </span>
                   </li>
                 ))}
               </ul>
               <div className="mt-4">
-                <div className="flex items-baseline justify-between mb-1">
-                  <MicroLabel>Utilization {utilPct === null ? "—" : `${utilPct}%`} (Of Rentable)</MicroLabel>
-                  <span className="text-[11px] text-[#9A9AA3] tabular-nums">
+                <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 lg:flex-nowrap lg:gap-x-0 lg:gap-y-0">
+                  <MicroLabel className="min-w-0 lg:min-w-[auto]">Utilization {utilPct === null ? "—" : `${utilPct}%`} (Of Rentable)</MicroLabel>
+                  <span className="shrink-0 text-[11px] text-[#9A9AA3] tabular-nums lg:shrink">
                     {rented} of {rentable} rentable
                   </span>
                 </div>
@@ -643,10 +668,24 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
             <div className="grid grid-cols-3 gap-2">
               <OpStat label="Available Now" value={String(vehiclesAvail)} />
               <OpStat
-                label="In Service"
-                value={String(rented)}
+                label="Active Rentals"
+                value={activeRentalCount === null ? "—" : String(activeRentalCount)}
               />
               <OpStat label="Next Return" value={shortDate(nextReturn)} />
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <Link
+                to="/admin"
+                search={{ tab: "active_rentals" }}
+                className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]"
+              >
+                Open Active Rentals <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+              {fleetMismatches.length > 0 && (
+                <span className="text-[11px] text-[#8A5A00]">
+                  {fleetMismatches.length} vehicle {fleetMismatches.length === 1 ? "status does" : "statuses do"} not match active rentals
+                </span>
+              )}
             </div>
           </div>
         </SectionCard>
@@ -717,35 +756,39 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
                     <Link
                       to="/admin"
                       search={{ tab: "drivers", id: a.id }}
-                      className="flex items-center gap-3 px-5 py-3 border-b border-[#F4F4F6] last:border-0 hover:bg-[#FAFAFB] transition-colors"
+                      className="flex flex-wrap items-center max-lg:gap-x-3 max-lg:gap-y-2 border-b border-[#F4F4F6] px-4 py-3 last:border-0 transition-colors hover:bg-[#FAFAFB] sm:px-5 lg:flex-nowrap lg:gap-3"
                     >
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#F4F4F6] to-[#EDEDF0] grid place-items-center text-[12px] font-semibold text-[#55555E] shrink-0">
-                        {initials(a.full_name)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[13px] font-medium text-[#111114] truncate flex items-center gap-1.5">
-                          {unread && (
-                            <span
-                              className="h-1.5 w-1.5 rounded-full bg-[#D03020] shrink-0"
-                              title="Not Yet Opened"
-                            />
-                          )}
-                          <span className="truncate">{a.full_name ? displayPersonName(a.full_name) : "Unnamed Driver"}</span>
+                      <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:flex-1 lg:contents">
+                        <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-[#F4F4F6] to-[#EDEDF0] grid place-items-center text-[12px] font-semibold text-[#55555E]">
+                          {initials(a.full_name)}
                         </div>
-                        <div className="text-[11px] text-[#9A9AA3] mt-0.5 truncate">
-                          {timeAgo(a.created_at)}
-                          {progress ? ` · ${progress}` : ""}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 truncate text-[13px] font-medium text-[#111114]">
+                            {unread && (
+                              <span
+                                className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#D03020]"
+                                title="Not Yet Opened"
+                              />
+                            )}
+                            <span className="truncate">{a.full_name ? displayPersonName(a.full_name) : "Unnamed Driver"}</span>
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] text-[#9A9AA3]">
+                            {timeAgo(a.created_at)}
+                            {progress ? ` · ${progress}` : ""}
+                          </div>
                         </div>
                       </div>
-                      <StatusPill tone={stage.tone as any}>{stage.label}</StatusPill>
-                      {(() => {
-                        const r = readinessIndex.get(a.id);
-                        // The old bare score pill lived here. A number on its
-                        // own could not say whether 100 meant a complete
-                        // applicant or two lucky answers, so the state goes in
-                        // its place and the figures stay on the profile.
-                        return r ? <ReadinessStatePill state={r.state} short /> : null;
-                      })()}
+                      <div className="flex flex-wrap items-center gap-1.5 pl-12 sm:pl-0 lg:contents">
+                        <StatusPill tone={stage.tone as any}>{stage.label}</StatusPill>
+                        {(() => {
+                          const r = readinessIndex.get(a.id);
+                          // The old bare score pill lived here. A number on its
+                          // own could not say whether 100 meant a complete
+                          // applicant or two lucky answers, so the state goes in
+                          // its place and the figures stay on the profile.
+                          return r ? <ReadinessStatePill state={r.state} short /> : null;
+                        })()}
+                      </div>
                     </Link>
                   </li>
                 );
@@ -772,7 +815,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
                   <TrendingUp className="w-4 h-4" strokeWidth={1.75} />
                 </div>
                 <div className="mt-3 text-[13px] font-medium text-[#111114]">
-                  No payment activity yet
+                  No Payment Activity Yet
                 </div>
                 <p className="mt-1 text-[12px] text-[#9A9AA3] max-w-[380px] mx-auto leading-relaxed">
                   Revenue and collections will appear here after your first rental begins.
@@ -796,11 +839,11 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
             title="Billed vs Collected"
             subtitle={
               collectionRate == null
-                ? "Last 12 Weeks · No Invoices Yet"
-                : `Last 12 Weeks · ${collectionRate}% Collection Rate${worst ? ` · Worst Week ${shortDate(worst.iso)}` : ""}`
+                ? "Last 12 Weeks · Rent / Fees · Multi-Method Collected"
+                : `Last 12 Weeks · ${collectionRate}% Collection Rate · Multi-Method${worst ? ` · Worst Week ${shortDate(worst.iso)}` : ""}`
             }
             right={
-              <div className="flex items-baseline gap-3">
+              <div className="flex max-w-[11rem] flex-wrap justify-end max-lg:gap-x-3 max-lg:gap-y-0.5 sm:max-w-none lg:max-w-none lg:flex-nowrap lg:items-baseline lg:justify-start lg:gap-3">
                 <span className="text-[11px] text-[#55555E]">
                   Billed{" "}
                   <span className="tabular-nums font-medium text-[#111114]">{usd(totBilled)}</span>
@@ -871,9 +914,54 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
           </SectionCard>
         );
       })()}
-      {canSeeCollections && <StripeCollections />}
     </div>
   );
+}
+
+function SummaryExpandControl({ expanded, onExpand }: { expanded: boolean; onExpand: () => void }) {
+  const label = expanded ? "Collapse All Summary Cards" : "Expand All Summary Cards";
+  return (
+    <TooltipProvider delayDuration={200}>
+      <ControlTooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label={label}
+            aria-expanded={expanded}
+            aria-controls="fleet-summary-details revenue-summary-details collections-summary-details service-summary-details"
+            onClick={(event) => { event.stopPropagation(); onExpand(); }}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <ChevronDown className={expanded ? "rotate-180 transition-transform motion-reduce:transition-none" : "transition-transform motion-reduce:transition-none"} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </ControlTooltip>
+    </TooltipProvider>
+  );
+}
+
+function SummaryDetails({ expanded, label, children }: { expanded: boolean; label: string; children: React.ReactNode }) {
+  return (
+    <div
+      id={`${label.split(" ")[0].toLowerCase()}-summary-details`}
+      role="region"
+      aria-label={label}
+      hidden={!expanded}
+      className="mt-3 min-h-20 space-y-1 border-t border-border pt-3"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {expanded ? children : null}
+    </div>
+  );
+}
+
+function SummaryDetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground"><span>{label}</span><span className="tabular-nums text-foreground">{value}</span></div>;
 }
 
 /**
@@ -893,6 +981,10 @@ function ActionCard({
   control,
   badge,
   tint,
+  surface = "white",
+  expanded,
+  onExpand,
+  details,
 }: {
   icon: any;
   eyebrow: string;
@@ -903,40 +995,48 @@ function ActionCard({
   control: "add" | "view";
   badge?: number;
   tint?: "red" | "amber";
+  surface?: "white" | "yellow" | "red";
+  expanded: boolean;
+  onExpand: () => void;
+  details: React.ReactNode;
 }) {
   const border =
-    tint === "red"
-      ? "border-[#CC0000]/40 hover:border-[#CC0000]"
-      : tint === "amber"
-        ? "border-[#B77900]/40 hover:border-[#B77900]"
-        : "border-[#EDEDF0] hover:border-[#D03020]";
-  const badgeBg = tint === "amber" ? "bg-[#B77900] text-white" : "bg-[#CC0000] text-white";
+    surface === "yellow"
+      ? "border-warning/40 hover:border-warning"
+      : surface === "red"
+        ? "border-destructive/30 hover:border-destructive"
+        : tint === "red"
+          ? "border-[#CC0000]/40 hover:border-[#CC0000]"
+          : tint === "amber"
+            ? "border-[#B77900]/40 hover:border-[#B77900]"
+            : "border-[#EDEDF0] hover:border-[#D03020]";
+  const surfaceBg = surface === "yellow" ? "bg-warning-soft" : surface === "red" ? "bg-danger-soft" : "bg-card";
+  const iconTone = surface === "yellow" ? "text-warning-foreground" : surface === "red" ? "text-destructive" : "text-[#55555E]";
+  const badgeBg = surface === "red" || tint !== "amber" ? "bg-destructive text-destructive-foreground" : "bg-[#B77900] text-white";
 
   return (
-    <Link
-      to={href}
-      search={search}
-      className={`group relative rounded-2xl border bg-white text-[#111114] shadow-sm px-5 py-4 transition-colors ${border}`}
+    <div
+      className={`group relative min-w-0 rounded-2xl border ${surfaceBg} text-foreground shadow-sm px-5 py-4 transition-colors ${border}`}
     >
       <div className="flex items-center justify-between">
-        <div className="h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] text-[#55555E]">
+        <div className={`h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] ${iconTone}`}>
           <Icon className="w-4 h-4" strokeWidth={1.75} />
         </div>
-        {control === "add" ? (
-          <span className="h-7 w-7 rounded-full grid place-items-center bg-[#111114] text-white group-hover:bg-[#CC0000] transition-colors">
-            <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-[#9A9AA3] group-hover:text-[#D03020] transition-colors">
-            View <ArrowUpRight className="w-3.5 h-3.5" />
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-1">
+          <Button asChild variant={control === "add" ? "default" : "link"} size={control === "add" ? "icon" : "sm"} className={control === "add" ? "h-7 w-7 rounded-full" : "h-7 px-1 text-[11px] text-muted-foreground hover:text-destructive"}>
+            <Link to={href} search={search} aria-label={control === "add" ? "Add Vehicle" : `View ${eyebrow}`}>
+              {control === "add" ? <Plus strokeWidth={2} /> : <>View <ArrowUpRight /></>}
+            </Link>
+          </Button>
+          <SummaryExpandControl expanded={expanded} onExpand={onExpand} />
+        </div>
       </div>
-      <div className="mt-4 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+      <Link to={href} search={search} className="block">
+      <div className="mt-4 text-[10px] font-semibold text-muted-foreground">
         {eyebrow}
       </div>
-      <div className="mt-1 flex items-baseline gap-2">
-        <div className="text-[18px] font-semibold tracking-tight">{title}</div>
+      <div className="mt-1 flex flex-wrap items-baseline gap-2">
+        <div className="text-[18px] font-semibold">{title}</div>
         {badge != null && (
           <span
             className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold ${badgeBg}`}
@@ -946,7 +1046,9 @@ function ActionCard({
         )}
       </div>
       {hint && <div className="mt-0.5 text-[11px] text-[#55555E]">{hint}</div>}
-    </Link>
+      </Link>
+      <SummaryDetails expanded={expanded} label={`${eyebrow} Details`}>{details}</SummaryDetails>
+    </div>
   );
 }
 
@@ -968,6 +1070,11 @@ function RevenueCard({
   custom,
   onCustom,
   consolidated,
+  overlapOwed,
+  projected,
+  projectedLoading,
+  expanded,
+  onExpand,
 }: {
   amount: number | null;
   delta: number | null;
@@ -979,6 +1086,11 @@ function RevenueCard({
   custom: Partial<DayRange>;
   onCustom: (c: Partial<DayRange>) => void;
   consolidated?: { internalNonStripe: number | null } | null;
+  overlapOwed?: number | null;
+  projected?: ProjectedRevenueSummary | null;
+  projectedLoading?: boolean;
+  expanded: boolean;
+  onExpand: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -988,7 +1100,7 @@ function RevenueCard({
   const sq = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, Boolean(consolidated)));
   const c = consolidated
     ? sq.isError ? { amount: null, coverage: "Unavailable" as const }
-      : consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, report: sq.data })
+      : consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, overlap: overlapOwed, report: sq.data })
     : null;
   const shownLoading = consolidated ? loading || (sq.isFetching && !sq.data) : loading;
   const shownAmount = c ? c.amount : amount;
@@ -996,7 +1108,7 @@ function RevenueCard({
   const coverageHint = coverage === "Unavailable"
     ? "A required revenue source could not be verified for this period, so no consolidated total is shown. Verified Stripe collections remain available in Collections."
     : c
-      ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
+      ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. A manual receipt Stripe later collected is not added on top of that Stripe net. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
       : "Recorded payments only. Stripe, Zelle, Cash App, Venmo, cash and bank transfers are not all verified yet.";
   const goPayments = () => !open && navigate({ to: "/admin", search: { tab: "payments" } });
   const label = RANGE_LABELS.find((r) => r.key === rangeKey)?.label ?? "Range";
@@ -1008,23 +1120,28 @@ function RevenueCard({
       aria-label="Revenue — Open Payments"
       onClick={goPayments}
       onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); goPayments(); } }}
-      className="relative cursor-pointer rounded-2xl border border-[#EDEDF0] bg-white shadow-sm px-5 py-4 hover:border-[#D03020] transition-colors"
+      className="relative min-w-0 cursor-pointer rounded-2xl border border-success/30 bg-success-soft shadow-sm px-5 py-4 hover:border-success transition-colors"
     >
       <div className="flex items-center justify-between">
-        <div className="h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] text-[#55555E]">
+        <div className="h-9 w-9 rounded-full grid place-items-center bg-[#F4F4F6] text-success">
           <Receipt className="w-4 h-4" strokeWidth={1.75} />
         </div>
-        <button
+        <div className="flex min-w-0 items-center gap-1">
+        <Button
+          variant="outline"
+          size="sm"
           type="button"
           onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
           onKeyDown={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-3 py-1 text-[11px] font-medium text-[#55555E] hover:border-[#D03020] hover:text-[#111114] transition-colors"
+          className="h-7 gap-1 bg-transparent px-2 text-[11px] text-muted-foreground"
         >
           {label} <ChevronDown className="w-3 h-3" />
-        </button>
+        </Button>
+        <SummaryExpandControl expanded={expanded} onExpand={onExpand} />
+        </div>
       </div>
 
-      <div className="mt-4 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+      <div className="mt-4 flex items-center gap-2 text-[10px] font-semibold text-muted-foreground">
         Revenue
         <span
           title={coverageHint}
@@ -1037,6 +1154,11 @@ function RevenueCard({
       <div className="mt-1 text-[22px] font-semibold tracking-tight tabular-nums leading-none">
         {shownLoading || shownAmount == null ? <span className="text-[#C7C7CC]">—</span> : usd(shownAmount)}
       </div>
+      {overlapOwed != null && overlapOwed > 0 && (
+        <div className="mt-1 text-[11px] text-[#8A5A00]">
+          Possible Double Collection / Refund Owed · {usd(overlapOwed)}
+        </div>
+      )}
       <div className="mt-1 text-[11px] text-[#55555E] truncate">
         {describeRange(range)}
         {c ? null : delta != null ? (
@@ -1055,6 +1177,26 @@ function RevenueCard({
           </>
         )}
       </div>
+
+      <SummaryDetails expanded={expanded} label="Revenue Details">
+          <div className="text-[10px] font-semibold text-muted-foreground">
+            Revenue: Projected / Collected
+          </div>
+          {(["week", "month"] as const).map((key) => {
+            const row = projected?.[key];
+            const label = key === "week" ? "This Week" : "This Month";
+            return (
+              <div key={key} className="flex flex-wrap items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
+                <span>{label}</span>
+                <span className="tabular-nums text-foreground">
+                  {projectedLoading || !row
+                    ? "—"
+                    : `${usd(centsToDollars(row.projectedCents))} / ${usd(centsToDollars(row.collectedCents))}`}
+                </span>
+              </div>
+            );
+          })}
+      </SummaryDetails>
 
       {open && (
         <>
@@ -1118,12 +1260,12 @@ function RevenueCard({
 
 function OpStat({ label, value, tone }: { label: string; value: string; tone?: "red" }) {
   return (
-    <div className="rounded-xl border border-[#EDEDF0] bg-white px-3 py-2.5">
-      <div className="text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]">
+    <div className="min-w-0 rounded-xl border border-[#EDEDF0] bg-white px-2 py-2.5 sm:px-3 lg:min-w-[auto] lg:px-3">
+      <div className="text-[9px] font-semibold uppercase leading-tight tracking-normal text-[#9A9AA3] sm:text-[10px] sm:tracking-[0.12em] lg:text-[10px] lg:leading-normal lg:tracking-[0.12em]">
         {label}
       </div>
       <div
-        className={`mt-1 text-[18px] font-semibold tabular-nums leading-none ${tone === "red" ? "text-[#CC0000]" : "text-[#111114]"}`}
+        className={`mt-1 break-words text-[16px] font-semibold tabular-nums leading-tight sm:text-[18px] lg:break-normal lg:text-[18px] lg:leading-none ${tone === "red" ? "text-[#CC0000]" : "text-[#111114]"}`}
       >
         {value}
       </div>
@@ -1146,7 +1288,7 @@ function SegmentedDonut({
   let offset = 0;
   const sum = segments.reduce((a, s) => a + s.value, 0) || 1;
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
+    <div className="relative mx-auto shrink-0 sm:mx-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle
           cx={size / 2}

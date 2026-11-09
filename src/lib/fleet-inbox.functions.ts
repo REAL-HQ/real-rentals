@@ -12,7 +12,7 @@ import { normalizeBodyType } from "@/lib/safe-autofill";
 import { tierAllows } from "@/lib/roles";
 import { logAudit } from "@/lib/audit";
 import {
-  DOC_CLASSES, FIELD_LABELS, FINANCE_FIELDS, HIGH_RISK, VEHICLE_FIELDS, buildProposal, authorityOf, defaultWeeklyRate,
+  DOC_CLASSES, FIELD_LABELS, FINANCE_FIELDS, HIGH_RISK, VEHICLE_FIELDS, buildProposal, identityMutationBlocked, NON_VIN_MATCH_BASES, authorityOf, defaultWeeklyRate,
   isFinanceField, isPhotoClass, docGroupOf, type ExistingVehicle, type ExtractedEntry, type ExtractedField, type ProvenanceIndex, type Change,
 } from "@/lib/fleet-inbox";
 import { documentExpiryFrom } from "@/lib/vehicle-doc-upload";
@@ -105,7 +105,9 @@ export const registerInboxFile = createServerFn({ method: "POST" })
     const mime = data.mimeType || file.type || null;
 
     // Duplicate by content, not filename.
-    const { data: dup } = await sb.from("documents").select("id,file_name").eq("content_sha256", sha).is("driver_id", null).maybeSingle();
+    let { data: dup } = await sb.from("documents").select("id,file_name").eq("content_sha256", sha).is("driver_id", null).maybeSingle();
+    // A Fleet Inbox file already filed to a renter (rental agreement) is still the same original: never store it twice.
+    if (!dup) dup = (await sb.from("documents").select("id,file_name").eq("content_sha256", sha).eq("source", "fleet_inbox").not("driver_id", "is", null).order("created_at").limit(1).maybeSingle()).data;
     if (dup) {
       await sb.storage.from(BUCKET).remove([data.path]);
       // A date typed for THIS upload still belongs on the file already on
@@ -118,7 +120,9 @@ export const registerInboxFile = createServerFn({ method: "POST" })
         content_sha256: sha, status: "duplicate", duplicate_of_document_id: dup.id, document_id: dup.id,
       }).select("id").single();
       await refreshBatchStatus(data.batchId);
-      return { itemId: item?.id as string, duplicate: true, existingFileName: dup.file_name as string | null };
+      // Point the uploader at where the stored original already lives.
+      const { data: orig } = await sb.from("fleet_import_items").select("batch_id").eq("document_id", dup.id).neq("status", "duplicate").order("created_at").limit(1).maybeSingle();
+      return { itemId: item?.id as string, duplicate: true, existingFileName: dup.file_name as string | null, existingBatchId: (orig?.batch_id ?? null) as string | null, existingDocumentId: dup.id as string };
     }
 
     const declared = data.intendedClass ?? null;
@@ -139,7 +143,7 @@ export const registerInboxFile = createServerFn({ method: "POST" })
         batch_id: data.batchId, file_name: data.fileName, mime_type: mime, size_bytes: bytes.byteLength,
         content_sha256: sha, status: "duplicate", duplicate_of_document_id: d2.id, document_id: d2.id,
       }).select("id").single();
-      return { itemId: item?.id as string, duplicate: true, existingFileName: null };
+      return { itemId: item?.id as string, duplicate: true, existingFileName: null, existingBatchId: null as string | null, existingDocumentId: d2.id as string };
     }
     const { data: item } = await sb.from("fleet_import_items").insert({
       batch_id: data.batchId, document_id: doc.id, file_name: data.fileName, mime_type: mime,
@@ -150,7 +154,7 @@ export const registerInboxFile = createServerFn({ method: "POST" })
     await sb.from("fleet_import_batches").update({ status: "processing" }).eq("id", data.batchId);
     // Background analysis starts now, whether or not anyone keeps the import open.
     if (item?.id) await enqueueAnalysis(sb, item.id as string, data.batchId, "upload");
-    return { itemId: item?.id as string, duplicate: false, existingFileName: null };
+    return { itemId: item?.id as string, duplicate: false, existingFileName: null, existingBatchId: null as string | null, existingDocumentId: null as string | null };
   });
 
 // ---------------------------------------------------------------- analyze
@@ -183,6 +187,13 @@ export const classifyInboxItem = createServerFn({ method: "POST" })
       .eq("id", data.itemId).neq("status", "analyzing").select("batch_id,document_id,extraction,status").maybeSingle();
     if (!item) return { ok: false as const, error: "File is busy." };
     if (item.document_id) await sb.from("documents").update({ kind: data.docClass, category: data.docClass }).eq("id", item.document_id);
+    if (data.docClass === "rental_agreement") {
+      // Renter paperwork never becomes vehicle changes; it is filed to the renter instead.
+      await sb.from("fleet_import_proposals").update({ status: "superseded" }).eq("item_id", data.itemId).in("status", ["pending", "failed"]);
+      if (item.status !== "duplicate") await sb.from("fleet_import_items").update({ status: "needs_attention" }).eq("id", data.itemId);
+      await refreshBatchStatus(item.batch_id);
+      return { ok: true as const };
+    }
     const { isServiceClass, readServiceItem, rebuildServiceTransactions } = await import("@/lib/service-ingest.server");
     const { isFinancialClass } = await import("@/lib/financial-docs");
     if (isFinancialClass(data.docClass)) {
@@ -431,7 +442,7 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
         const prov = await loadProvenance(sb, target ? [target.id] : []);
         const fresh = target ? buildProposal(entry, docClass, [target], prov) : buildProposal(entry, docClass, vehicles, prov);
         if (dec.action === "create") {
-          if (!fresh.vin || !fresh.vinCheck?.formatValid) throw new Error("A valid VIN is required to create a vehicle.");
+          if (!fresh.vin || !fresh.vinCheck?.formatValid || fresh.vinCheck?.checkDigitValid !== true) throw new Error("A valid VIN (17 characters with a matching check digit) is required to create a vehicle.");
           if (fresh.kind !== "new") throw new Error("A vehicle with this VIN or identifier now exists — choose Match instead.");
           if (!entry.fields.year?.value || !entry.fields.make?.value || !entry.fields.model?.value) throw new Error("Year, make and model are required to create a vehicle.");
         }
@@ -453,6 +464,21 @@ export const applyImportDecisions = createServerFn({ method: "POST" })
             refused.push({ field: f, label: labelOf(f), reason: "Owner only." });
           }
         }
+        // Server guard: plate/unit/title/near-VIN matches cannot mutate year/make/model/VIN
+        // even if the UI ticked them. Exact-VIN matches are unchanged.
+        const basisForGuard = (fresh.matchBasis ?? p.match_basis ?? null) as string | null;
+        if (dec.action === "match" && basisForGuard && NON_VIN_MATCH_BASES.has(basisForGuard)) {
+          for (const f of [...accept]) {
+            if (!identityMutationBlocked(basisForGuard, f)) continue;
+            accept.delete(f);
+            refused.push({
+              field: f,
+              label: labelOf(f),
+              reason: `Identity cannot change from a ${basisForGuard} match — exact VIN required.`,
+            });
+          }
+        }
+
         const toWrite: Record<string, unknown> = {};
         const written: Change[] = [];
         for (const f of accept) {

@@ -1018,6 +1018,66 @@ export type Database = {
         }
         Relationships: []
       }
+      checklist_evidence_events: {
+        Row: {
+          actor_id: string
+          actor_role: string
+          application_id: string
+          created_at: string
+          field: string
+          id: string
+          idempotency_key: string
+          note: string
+          revision: number
+          source: string | null
+          state: string
+          supersedes_id: string | null
+        }
+        Insert: {
+          actor_id: string
+          actor_role: string
+          application_id: string
+          created_at?: string
+          field: string
+          id?: string
+          idempotency_key: string
+          note?: string
+          revision: number
+          source?: string | null
+          state: string
+          supersedes_id?: string | null
+        }
+        Update: {
+          actor_id?: string
+          actor_role?: string
+          application_id?: string
+          created_at?: string
+          field?: string
+          id?: string
+          idempotency_key?: string
+          note?: string
+          revision?: number
+          source?: string | null
+          state?: string
+          supersedes_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checklist_evidence_events_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_evidence_events_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "checklist_evidence_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       condition_media: {
         Row: {
           angle: string | null
@@ -1027,6 +1087,8 @@ export type Database = {
           captured_by_role: string
           created_at: string
           file_name: string | null
+          gps_lat: number | null
+          gps_lng: number | null
           id: string
           incident_id: string | null
           inspection_id: string | null
@@ -1037,6 +1099,8 @@ export type Database = {
           size_bytes: number | null
           storage_bucket: string
           storage_path: string
+          taken_at: string | null
+          taken_at_source: string | null
           vehicle_id: string
         }
         Insert: {
@@ -1047,6 +1111,8 @@ export type Database = {
           captured_by_role?: string
           created_at?: string
           file_name?: string | null
+          gps_lat?: number | null
+          gps_lng?: number | null
           id?: string
           incident_id?: string | null
           inspection_id?: string | null
@@ -1057,6 +1123,8 @@ export type Database = {
           size_bytes?: number | null
           storage_bucket?: string
           storage_path: string
+          taken_at?: string | null
+          taken_at_source?: string | null
           vehicle_id: string
         }
         Update: {
@@ -1067,6 +1135,8 @@ export type Database = {
           captured_by_role?: string
           created_at?: string
           file_name?: string | null
+          gps_lat?: number | null
+          gps_lng?: number | null
           id?: string
           incident_id?: string | null
           inspection_id?: string | null
@@ -1077,6 +1147,8 @@ export type Database = {
           size_bytes?: number | null
           storage_bucket?: string
           storage_path?: string
+          taken_at?: string | null
+          taken_at_source?: string | null
           vehicle_id?: string
         }
         Relationships: [
@@ -5909,6 +5981,23 @@ export type Database = {
       }
     }
     Functions: {
+      activate_rental_checked_tx: {
+        Args: {
+          _actor: string
+          _application_id: string
+          _audit: Json
+          _deposit: number
+          _deposit_held: boolean
+          _driver_id: string
+          _end: string
+          _insurance_exception_ack: boolean
+          _pickup_miles: number
+          _start: string
+          _vehicle_id: string
+          _weekly_rate: number
+        }
+        Returns: Json
+      }
       activate_rental_tx: {
         Args: {
           _actor?: string
@@ -6026,6 +6115,10 @@ export type Database = {
         Args: { _reason: string; _settlement: string }
         Returns: string
       }
+      finish_application_recovery: {
+        Args: { _attempt_id: string; _provider_id?: string; _status: string }
+        Returns: undefined
+      }
       fleet_inbox_acquire_lease: {
         Args: { _seconds: number }
         Returns: boolean
@@ -6065,9 +6158,30 @@ export type Database = {
       next_unit_number: { Args: { _prefix?: string }; Returns: string }
       promote_waitlist_entry: { Args: { _entry: string }; Returns: Json }
       purge_application: { Args: { _id: string }; Returns: Json }
+      record_checklist_evidence: {
+        Args: {
+          _application_id: string
+          _expected_revision: number
+          _field: string
+          _idempotency_key: string
+          _note: string
+          _source: string
+          _state: string
+        }
+        Returns: Json
+      }
       rental_at_time: {
         Args: { _at: string; _vehicle_id: string }
         Returns: string
+      }
+      renter_portal_summary: { Args: never; Returns: Json }
+      reserve_application_recovery: {
+        Args: { _application_id: string; _token_hash: string }
+        Returns: Json
+      }
+      resolve_application_identity_review: {
+        Args: { _note: string; _resolution: string; _review_id: string }
+        Returns: Json
       }
       resolve_waitlist_phone_conflict: {
         Args: {
@@ -6084,7 +6198,15 @@ export type Database = {
         Returns: Json
       }
       restore_application: { Args: { _id: string }; Returns: Json }
+      set_insurance_verification: {
+        Args: { _application_id: string; _note: string; _verified: boolean }
+        Returns: Json
+      }
       set_legal_hold: { Args: { _id: string; _on: boolean }; Returns: Json }
+      set_rental_activation_insurance_exception: {
+        Args: { _allow: boolean }
+        Returns: Json
+      }
       soft_delete_application: {
         Args: { _id: string; _reason: string }
         Returns: Json

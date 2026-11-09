@@ -26,6 +26,7 @@ import {
   OWNERSHIP_TYPES,
   type VehicleProfile as Profile,
 } from "@/lib/vehicles.functions";
+import { bodyTypeLabel } from "@/lib/vehicle-defaults";
 import { getVehicleFinance, saveVehicleFinance } from "@/lib/vehicle-finance.functions";
 import { readStoredExperience } from "@/lib/experience";
 import { checkVin, normalizeVin } from "@/lib/vin";
@@ -33,6 +34,7 @@ import { Text, Area, NumberField, DateInput, Choice } from "./VehicleProfileFiel
 import { MicroLabel } from "./ui";
 import { fmtDateTime } from "@/lib/date-format";
 import { usStateOptions } from "@/lib/us-states";
+import { formatVehicleIdentityLine } from "@/lib/vehicle-label";
 
 // Edit a vehicle without walking every tab.
 //
@@ -339,7 +341,7 @@ export function VehicleEditorDrawer({
           <div className="min-w-0 flex-1">
             <h2 className="text-[15px] font-semibold text-[#111114] truncate">Edit Vehicle</h2>
             <p className="text-[12px] text-[#9A9AA3] truncate">
-              {profile.unitLabel}
+              {[profile.unitLabel, formatVehicleIdentityLine(profile.vehicle ?? {})].filter(Boolean).join(" · ")}
               {hasChanges && <span className="ml-2 text-[#C68A12]">· Unsaved changes</span>}
               {!hasChanges && justSaved && <span className="ml-2 text-[#3E9A4C]">· Saved</span>}
             </p>
@@ -441,7 +443,7 @@ export function VehicleEditorDrawer({
                 onChange={(x) => set("identity", "body_type", x)}
                 options={[
                   { value: "", label: "—" },
-                  ...BODY_TYPES.map((b) => ({ value: b, label: b })),
+                  ...BODY_TYPES.map((b) => ({ value: b, label: bodyTypeLabel(b) })),
                 ]}
               />
               <NumberField
@@ -478,6 +480,7 @@ export function VehicleEditorDrawer({
                 label="Status"
                 value={str("status")}
                 onChange={(x) => set("identity", "status", x)}
+                vehicleStatus
                 options={VEHICLE_STATUSES.map((s) => ({ value: s.value, label: s.label }))}
                 hint="Taking a car out of the fleet is refused while a rental is active."
               />

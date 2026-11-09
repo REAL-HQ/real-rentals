@@ -22,7 +22,8 @@ export type TriggerEvent =
   | "rental_started"
   | "rental_ended"
   | "incident_logged"
-  | "payment_past_due";
+  | "payment_past_due"
+  | "document_expiring";
 
 /** Business timezone used for quiet-hours math. */
 const BUSINESS_TZ = "America/New_York";
@@ -181,12 +182,19 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
   for (const enrollment of due ?? []) {
     result.processed++;
     try {
-      const { data: workflow } = await supabaseAdmin
+      const { data: workflow, error: workflowErr } = await supabaseAdmin
         .from("automation_workflows")
         .select("id,name,is_active,quiet_hours_start,quiet_hours_end,stop_on_statuses")
         .eq("id", enrollment.workflow_id)
         .maybeSingle();
 
+      // A transient read failure is not "switched off": send nothing now and
+      // leave the enrollment as it is, so the next 5-minute sweep retries it.
+      if (workflowErr) {
+        result.skipped++;
+        console.error("[automations] workflow read failed; will retry", enrollment.id, workflowErr);
+        continue;
+      }
       // A workflow switched off mid-sequence stops sending immediately.
       if (!workflow || !workflow.is_active) {
         await cancel(supabaseAdmin, enrollment.id, "workflow inactive");

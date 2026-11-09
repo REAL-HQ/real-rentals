@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { openResumeLink } from "@/lib/applications.functions";
 import { ApplicationWizard } from "@/components/site/ApplicationWizard";
 import { useResumeToken, storeResumeToken } from "@/lib/resume-token";
 import { WelcomeBack } from "@/components/site/WelcomeBack";
+import { thankYouView } from "@/lib/secure-link-copy";
 
 export const Route = createFileRoute("/thank-you")({
   // `t` is a resume token, not an application id. The id used to travel here
@@ -61,18 +62,19 @@ function ThankYouPage() {
     };
   }, [raw, open]);
 
-  if (token === undefined) return null;
-  if (token === null) return <Navigate to="/apply" />;
-  if (token === "") {
+  const view = thankYouView(token);
+  if (view === "wait") return null;
+  if (view === "missing" || view === "expired") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="max-w-lg w-full">
-          <WelcomeBack expired />
+          <WelcomeBack missing={view === "missing"} expired={view === "expired"} />
         </div>
       </div>
     );
   }
 
+  if (!token) return null;
   return (
     // Matches /apply: one logo, carried by the wizard's own panel.
     <div className="min-h-screen bg-background">

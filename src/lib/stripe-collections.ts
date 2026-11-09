@@ -1,4 +1,5 @@
 import { tierFromRoles, tierAllows } from "./roles";
+import { STRIPE_READER_MAX_PAGES, paginateStripeList } from "./stripe-reader";
 
 export const STRIPE_COLLECTIONS_ENABLED = true;
 export function assertCollectionsAccess(roles: string[]) {
@@ -22,17 +23,10 @@ export function collectionsWindow(range: CollectionsRange) {
 export async function readAllPages<T extends { id: string }>(
   read: (cursor?: string) => Promise<{ data: T[]; has_more: boolean }>,
 ): Promise<T[]> {
-  const rows = new Map<string, T>();
-  let cursor: string | undefined;
-  for (let page = 0; page < 100; page++) {
-    const result = await read(cursor);
-    for (const row of result.data) rows.set(row.id, row);
-    if (!result.has_more) return [...rows.values()];
-    const next = result.data.at(-1)?.id;
-    if (!next || next === cursor) throw new Error("Stripe pagination incomplete");
-    cursor = next;
-  }
-  throw new Error("Stripe report exceeds the safe page limit; no partial totals returned");
+  const result = await paginateStripeList(read, { label: "Stripe collections", dedupe: true, maxPages: STRIPE_READER_MAX_PAGES });
+  if (result.ok) return result.rows;
+  if (result.reason === "capped") throw new Error("Stripe report exceeds the safe page limit; no partial totals returned");
+  throw new Error("Stripe pagination incomplete");
 }
 
 export type CollectionCharge = {
@@ -42,6 +36,29 @@ export type CollectionCharge = {
 export type CollectionRefund = {
   id: string; chargeId: string; created: number; currency: string;
   amount: number; status: string | null; fee: number | null;
+};
+/** One invoice payment after its invoice and subscription customers are read. A null customer means the link did not match. */
+export type CollectionInvoicePayment = {
+  id: string;
+  invoiceId: string | null;
+  intentId: string | null;
+  chargeId: string | null;
+  externalRecord: boolean;
+};
+export type CollectionInvoiceRef = { id: string; customerId: string | null; subscriptionId: string | null };
+export type CollectionSubscriptionRef = { id: string; customerId: string | null };
+export type CollectionBalanceEvidence = { created: unknown; currency: unknown; amount: unknown; fee: unknown };
+export type UnverifiedCollectionCharge = {
+  id: string;
+  customerId: string | null;
+  paymentIntentId: string | null;
+  currency: string;
+  amountCaptured: number;
+  paid: boolean;
+  captured: boolean;
+  status: string;
+  created: number;
+  balance: CollectionBalanceEvidence | null;
 };
 export type CollectionSubscription = {
   id: string; customerId: string; name: string; status: string;
@@ -146,17 +163,137 @@ export function stripeCollectedLabel(report: CollectionsReport | null | undefine
 
 /**
  * The Revenue card's single figure: verified Stripe net (after refunds and
- * fees) plus internal net_collected from rows NOT tied to a Stripe payment
- * (those are already inside the Stripe figure — never counted twice).
+ * fees) plus internal net_collected from rows with neither a Stripe payment
+ * intent nor a Stripe invoice id, and from a failed invoice row staff marked
+ * paid (failure_reason still set). A later Stripe success leaves that
+ * manual record in place, so the cash stays in the non-Stripe sum and the
+ * row is still one amount. Overview shows the overlap separately. The
+ * headline subtracts the part of that overlap that the Stripe net still
+ * contains, so the same receipt is not revenue twice. A Stripe refund that
+ * removes the duplicate leaves the manual receipt in the headline. Deposit
+ * rows are not removed here.
  * Returns null whenever Stripe cannot be established (never zero). Coverage
  * is never "Complete": Zelle/Cash App/Venmo/cash/ACH are not verified yet.
  */
-export function consolidatedRevenue(input: { internalNonStripe: number | null; report: CollectionsReport | null | undefined }):
-  { amount: number | null; coverage: "Partial" | "Unavailable" } {
+/**
+ * The same charge and refund verification Overview uses before aggregateCollections.
+ * Cash is dated by balance_transaction.created. A charge counts only when one
+ * invoice customer owns it and that customer is the charge customer. A collected
+ * charge whose balance is missing, undated, or whose balance.amount differs from
+ * amount_captured is incomplete. A succeeded refund that is not tied to a verified
+ * charge of the same currency makes the whole result incomplete.
+ */
+export function verifyCollectedCharges(input: {
+  charges: UnverifiedCollectionCharge[];
+  refunds: CollectionRefund[];
+  invoicePayments: CollectionInvoicePayment[];
+  invoices: CollectionInvoiceRef[];
+  subscriptions: CollectionSubscriptionRef[];
+  window: { gte: number; lt: number };
+}): {
+  charges: CollectionCharge[];
+  refunds: CollectionRefund[];
+  collectionsComplete: boolean;
+  incompletePortions: CollectionsReport["incompletePortions"];
+  externalRecords: boolean;
+} {
+  const invoiceIndex = new Map(input.invoices.map((invoice) => [invoice.id, invoice]));
+  const subscriptionIndex = new Map(input.subscriptions.map((subscription) => [subscription.id, subscription]));
+  const linkedIntents = new Map<string, Set<string>>();
+  const linkedCharges = new Map<string, Set<string>>();
+  let externalRecords = false;
+  let collectionsComplete = true;
+  const incompletePortions: CollectionsReport["incompletePortions"] = [];
+  const incomplete = (source: "InvoicePayment" | "Charge" | "Refund", id: string, reason: string) => {
+    collectionsComplete = false;
+    incompletePortions.push({ source, id, reason });
+  };
+  const unresolvedIntents = new Set<string>();
+  const unresolvedCharges = new Set<string>();
+  const addOwner = (map: Map<string, Set<string>>, id: string | null, customer: string) => {
+    if (!id) return;
+    const owners = map.get(id) || new Set<string>();
+    owners.add(customer);
+    map.set(id, owners);
+  };
+  for (const payment of input.invoicePayments) {
+    const invoice = payment.invoiceId ? invoiceIndex.get(payment.invoiceId) : undefined;
+    const subscription = invoice?.subscriptionId ? subscriptionIndex.get(invoice.subscriptionId) : undefined;
+    const customer = subscription?.customerId || null;
+    if (!invoice || !subscription || !customer || invoice.customerId !== customer) {
+      incomplete("InvoicePayment", payment.id, "Invoice, subscription or matching customer unavailable");
+      if (payment.intentId) unresolvedIntents.add(payment.intentId);
+      if (payment.chargeId) unresolvedCharges.add(payment.chargeId);
+      continue;
+    }
+    if (payment.externalRecord) externalRecords = true;
+    addOwner(linkedIntents, payment.intentId, customer);
+    addOwner(linkedCharges, payment.chargeId, customer);
+  }
+  const verifiedCharges: CollectionCharge[] = [];
+  for (const charge of input.charges) {
+    const customerId = charge.customerId;
+    const balance = charge.balance;
+    const collected = charge.paid && charge.captured && charge.status === "succeeded" && charge.amountCaptured > 0;
+    const capturedAt = balance && typeof balance.created === "number" && Number.isFinite(balance.created) ? balance.created : null;
+    const dated = capturedAt !== null;
+    const refundInRange = input.refunds.some((refund) => refund.chargeId === charge.id && refund.status === "succeeded");
+    const inWindow = dated && capturedAt >= input.window.gte && capturedAt < input.window.lt;
+    const relevant = refundInRange
+      || (collected && (!dated || inWindow))
+      || (charge.status === "failed" && charge.created >= input.window.gte);
+    const owners = new Set<string>([
+      ...(linkedCharges.get(charge.id) || []),
+      ...(linkedIntents.get(charge.paymentIntentId || "") || []),
+    ]);
+    if (!customerId || owners.size !== 1 || !owners.has(customerId) || unresolvedCharges.has(charge.id) || unresolvedIntents.has(charge.paymentIntentId || "")) {
+      if (relevant) incomplete("Charge", charge.id, "Payment ownership or invoice relationship unverified");
+      continue;
+    }
+    if (collected && (!dated || (balance !== null && balance.currency === charge.currency && balance.amount !== charge.amountCaptured))) {
+      if (relevant) incomplete("Charge", charge.id, "Capture date or settlement amount unverified");
+      continue;
+    }
+    const fee = balance !== null && balance.currency === charge.currency && typeof balance.fee === "number" ? balance.fee : null;
+    verifiedCharges.push({
+      id: charge.id,
+      customerId,
+      created: collected && capturedAt !== null ? capturedAt : charge.created,
+      currency: charge.currency,
+      amount: charge.amountCaptured,
+      paid: charge.paid,
+      captured: charge.captured,
+      status: charge.status,
+      fee,
+    });
+  }
+  const verifiedRefunds = input.refunds.filter((refund) =>
+    verifiedCharges.some((charge) => charge.id === refund.chargeId && charge.captured && charge.paid && charge.amount > 0 && charge.status === "succeeded" && charge.currency === refund.currency)
+    && refund.status === "succeeded");
+  for (const refund of input.refunds) {
+    if (refund.status === "succeeded" && !verifiedRefunds.some((verified) => verified.id === refund.id)) {
+      incomplete("Refund", refund.id, "Captured charge relationship or currency unverified");
+    }
+  }
+  return { charges: verifiedCharges, refunds: verifiedRefunds, collectionsComplete, incompletePortions, externalRecords };
+}
+
+export function consolidatedRevenue(input: {
+  internalNonStripe: number | null;
+  overlap?: number | null;
+  report: CollectionsReport | null | undefined;
+}): { amount: number | null; coverage: "Partial" | "Unavailable" } {
   if(input.internalNonStripe === null || !Number.isFinite(input.internalNonStripe)) return { amount: null, coverage: "Unavailable" };
+  if (input.overlap === null || (input.overlap !== undefined && (!Number.isFinite(input.overlap) || input.overlap < 0))) {
+    return { amount: null, coverage: "Unavailable" };
+  }
   const r = input.report;
   if (!r || !r.collectionsComplete || !r.totals) return { amount: null, coverage: "Unavailable" };
   if (r.totals.some(t => t.currency.toLowerCase() !== "usd" || t.net === null || !Number.isFinite(t.net))) return { amount: null, coverage: "Unavailable" };
   const stripeNet = r.totals.reduce((s, t) => s + (t.net as number), 0) / 100;
-  return { amount: Math.round((stripeNet + input.internalNonStripe) * 100) / 100, coverage: "Partial" };
+  const overlap = input.overlap ?? 0;
+  // Never subtract more than Stripe still reports. A refund of the duplicate
+  // charge drops the Stripe net, and the manual receipt stays.
+  const deducted = Math.min(overlap, Math.max(stripeNet, 0));
+  return { amount: Math.round((stripeNet + input.internalNonStripe - deducted) * 100) / 100, coverage: "Partial" };
 }

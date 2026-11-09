@@ -1,6 +1,7 @@
 import { contactStatusLabel } from "./contact-status";
 
 export const LEAD_TIME_ZONE = "America/New_York";
+export const LEAD_PREVIEW_LIMIT = 6;
 export const LEAD_BUCKETS = [
   "overdue",
   "new",
@@ -10,6 +11,36 @@ export const LEAD_BUCKETS = [
   "future",
 ] as const;
 export type LeadBucket = (typeof LEAD_BUCKETS)[number];
+
+/**
+ * Overview filters. "All" keeps every open bucket. "Follow-up Due" is overdue
+ * plus due today. "Interested" is contact_status=interested even when the
+ * follow-up is overdue — so recent interest is not buried behind October
+ * overdue rows in the All queue.
+ */
+export const LEAD_FILTERS = ["all", "new", "follow_up_due", "interested"] as const;
+export type LeadFilter = (typeof LEAD_FILTERS)[number];
+export const LEAD_FILTER_LABELS: Record<LeadFilter, string> = {
+  all: "All",
+  new: "New",
+  follow_up_due: "Follow-Up Due",
+  interested: "Interested",
+};
+
+/**
+ * Page order for the All filter. New and Interested surface before the overdue
+ * backlog so a fresh interested lead is not stuck behind months-old due dates.
+ * Urgent overdue work remains one tap away on Follow-up Due.
+ */
+export const LEAD_ALL_PAGE_ORDER: LeadBucket[] = [
+  "new",
+  "interested",
+  "overdue",
+  "today",
+  "information",
+  "future",
+];
+
 export const ACTIVE_LEAD_STATUSES = ["new", "reviewing", "approved"];
 export const LEAD_SELECT =
   "id,full_name,phone,status,created_at,contact_status,contact_status_note,contact_follow_up_on,contact_status_at,contact_status_by";
@@ -53,6 +84,29 @@ export function leadBucket(row: LeadRow, today: string): LeadBucket | null {
   if (due && due > today) return "future";
   return null;
 }
+
+/** Buckets included for a filter. Interested is handled as a status query. */
+export function leadFilterBuckets(filter: LeadFilter): LeadBucket[] {
+  if (filter === "all") return [...LEAD_ALL_PAGE_ORDER];
+  if (filter === "new") return ["new"];
+  if (filter === "follow_up_due") return ["overdue", "today"];
+  return ["interested"];
+}
+
+/** Newest-first for pipeline buckets; oldest due-date first for overdue urgency. */
+export function leadBucketSort(bucket: LeadBucket): {
+  primary: "contact_follow_up_on" | "created_at" | "contact_status_at";
+  ascending: boolean;
+} {
+  if (bucket === "overdue" || bucket === "today" || bucket === "future") {
+    return { primary: "contact_follow_up_on", ascending: true };
+  }
+  if (bucket === "interested") {
+    return { primary: "contact_status_at", ascending: false };
+  }
+  return { primary: "created_at", ascending: false };
+}
+
 const EXPLANATIONS = {
   overdue: [
     "Urgent",
@@ -88,6 +142,7 @@ export function projectLead(raw: LeadRow, bucket: LeadBucket) {
     id: raw.id,
     full_name: raw.full_name,
     phone: raw.phone,
+    created_at: raw.created_at,
     contact_status: raw.contact_status,
     contact_status_note: raw.contact_status_note,
     contact_follow_up_on: raw.contact_follow_up_on,
@@ -108,4 +163,5 @@ export type LeadPrioritiesResult = {
   today: string;
   offset: number;
   nextOffset: number | null;
+  filter: LeadFilter;
 };

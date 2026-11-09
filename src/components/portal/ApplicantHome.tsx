@@ -6,13 +6,23 @@ import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Nav } from "@/components/site/Nav";
 import { getMyPortalAccess, openMyApplication, updateMyWaitlist } from "@/lib/portal-access.functions";
+import { APPLICATION_TIMELINE_ENABLED } from "@/lib/application-timeline";
+import { ApplicationTimelineSection } from "@/components/portal/ApplicationTimeline";
 import { fmtDate } from "@/lib/date-format";
+import { ApplicationStatusTracker } from "@/components/portal/ApplicationStatusTracker";
+import { APPLICATION_STATUS_TRACKER_ENABLED } from "@/lib/application-status-tracker";
+import { getApplicationStatus } from "@/lib/application-status-tracker.functions";
 
 /**
  * The Driver Portal for people who are not drivers yet (Lead / Waitlist,
  * Applicant, Approved-awaiting-onboarding). Same portal route and session;
  * everything shown is resolved on the server from the verified identity.
  */
+function ApplicationStatusGate() {
+  const read = useServerFn(getApplicationStatus);
+  return <ApplicationStatusTracker read={() => read({ data: {} })} />;
+}
+
 export function ApplicantHome() {
   const fetchAccess = useServerFn(getMyPortalAccess);
   const { data, isLoading, error } = useQuery({ queryKey: ["my-portal-access"], queryFn: () => fetchAccess() });
@@ -36,6 +46,7 @@ export function ApplicantHome() {
               {data.stage === "waitlist" ? "Your Waitlist Spot" : data.stage === "none" ? "Welcome" : "Your Application"}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">Signed in as {data.email}</p>
+            {APPLICATION_STATUS_TRACKER_ENABLED ? <ApplicationStatusGate /> : null}
             {data.review && (
               <div role="status" className="mt-6 rounded-xl border border-border bg-soft p-4 text-sm">
                 We found more than one record for this email. A team member will review and connect the right one — nothing
@@ -43,6 +54,7 @@ export function ApplicantHome() {
               </div>
             )}
             {data.application ? <ApplicationCard app={data.application} approved={data.stage === "approved"} /> : null}
+            {APPLICATION_TIMELINE_ENABLED && data.stage === "applicant" ? <ApplicationTimelineSection /> : null}
             {!data.application && data.waitlist ? <WaitlistCard w={data.waitlist} /> : null}
             {data.stage === "none" && !data.review && (
               <div className="mt-8 rounded-xl border border-border p-6">

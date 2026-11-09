@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, ArrowRight, X, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { comingSoonSignup } from "@/lib/waitlist-claim";
 import { FadeUp } from "./FadeUp";
 
 type LocationCard = {
@@ -142,20 +143,21 @@ function WaitlistModal({ card, onClose }: { card: LocationCard; onClose: () => v
     if (!fullName || !email) return toast.error("Name and email required");
     setSubmitting(true);
     const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-    const { error } = await supabase.from("waitlist").insert({
+    const signup = comingSoonSignup(false, {
       market_id: card.market_id,
       full_name: fullName,
       email,
-      phone: phone || null,
+      phone,
       driver_status: driverStatus,
-      source: "homepage_waitlist",
+      city: card.city,
       utm_source: params.get("utm_source"),
       utm_medium: params.get("utm_medium"),
       utm_campaign: params.get("utm_campaign"),
       utm_term: params.get("utm_term"),
       utm_content: params.get("utm_content"),
       gclid: params.get("gclid"),
-    } as any);
+    });
+    const { error } = await supabase.from("waitlist").insert(signup.row as any);
     setSubmitting(false);
     if (error) return toast.error(error.message);
     if (typeof window !== "undefined" && (window as any).gtag) {

@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Car, Hourglass, MailCheck, ShieldAlert, UserPlus } from "lucide-react";
+import { Car, Hourglass, MailCheck, MapPin, ShieldAlert, Tag as TagIcon, UserPlus } from "lucide-react";
 import { WaitlistConflictDialog } from "./WaitlistConflictDialog";
+import { WaitlistTagsDialog } from "./WaitlistTagsDialog";
 import {
   listWaitlist,
   setCarsAvailable,
   notifyWaitlistTop,
   promoteToApplicant,
+  setWaitlistTags,
   type WaitlistEntry,
 } from "@/lib/waitlist.functions";
 import { AdminTableScroll } from "./AdminTableScroll";
@@ -22,6 +24,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { fmtDate } from "@/lib/date-format";
+import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
+import { WAITLIST_AGING_ENABLED, failedWaitlistAging, type WaitlistAgingResult } from "@/lib/waitlist-aging";
+import { getWaitlistAging } from "@/lib/waitlist-aging.functions";
+import { WaitlistAging } from "./WaitlistAging";
+import { filterWaitlistByTag, waitlistLocation } from "@/lib/waitlist-tags";
 
 // Waitlist back office.
 //
@@ -32,9 +39,12 @@ import { fmtDate } from "@/lib/date-format";
 // top of the queue before the news goes anywhere else.
 
 export function WaitlistPanel({
+  canManage = false,
   onEntriesChange,
   onPromoted,
 }: {
+  /** Owner + Manager may edit staff tags; the server enforces the same boundary. */
+  canManage?: boolean;
   /** Reports the live count of entries not yet promoted (for the Drivers filter). */
   onEntriesChange?: (n: number) => void;
   onPromoted?: () => void;
@@ -43,6 +53,9 @@ export function WaitlistPanel({
   const saveAvailability = useServerFn(setCarsAvailable);
   const notifyTop = useServerFn(notifyWaitlistTop);
   const promote = useServerFn(promoteToApplicant);
+  const saveTags = useServerFn(setWaitlistTags);
+  const loadAging = useServerFn(getWaitlistAging);
+  const [aging, setAging] = useState<WaitlistAgingResult | null>(null);
 
   const [entries, setEntries] = useState<WaitlistEntry[] | null>(null);
   const [carsAvailable, setCarsAvailableState] = useState<number | null>(null);
@@ -54,6 +67,11 @@ export function WaitlistPanel({
   const [promotingId, setPromotingId] = useState<string | null>(null);
   const [conflictIds, setConflictIds] = useState<Set<string>>(new Set());
   const [reviewId, setReviewId] = useState<string | null>(null);
+  const [resumeLink, setResumeLink] = useState<{ href: string; name: string } | null>(null);
+  const [tagsAvailable, setTagsAvailable] = useState(true);
+  const [tagFilter, setTagFilter] = useState("");
+  const [tagEditorId, setTagEditorId] = useState<string | null>(null);
+  const [savingTags, setSavingTags] = useState(false);
 
   const refresh = useCallback(async () => {
     setFleet(null); // Never leave a previous successful count visible after a failed refresh.
@@ -62,6 +80,7 @@ export function WaitlistPanel({
     setEntries(r.entries);
     setCarsAvailableState(r.carsAvailable);
     setFleet(r.fleet);
+    setTagsAvailable(r.tagsAvailable);
     onEntriesChange?.(r.entries.filter((e) => e.status !== "promoted").length);
     return r;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,7 +90,32 @@ export function WaitlistPanel({
     refresh().catch((e) => toast.error(e?.message ?? "Could not load the waitlist."));
   }, [refresh]);
 
+  useEffect(() => {
+    if (WAITLIST_AGING_ENABLED !== true) return;
+    let cancelled = false;
+    loadAging()
+      .then((result) => {
+        if (!cancelled) setAging(result);
+      })
+      .catch(() => {
+        if (!cancelled) setAging(failedWaitlistAging());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAging]);
+
   const waitingCount = entries?.filter((e) => e.status === "waiting").length ?? 0;
+  const availableTags = useMemo(() => {
+    const unique = new Map<string, string>();
+    for (const tag of (entries ?? []).flatMap((entry) => entry.tags)) {
+      const key = tag.toLocaleLowerCase("en-US");
+      if (!unique.has(key)) unique.set(key, tag);
+    }
+    return [...unique.values()].sort((a, b) => a.localeCompare(b));
+  }, [entries]);
+  const visibleEntries = useMemo(() => filterWaitlistByTag(entries ?? [], tagFilter), [entries, tagFilter]);
+  const tagEditorEntry = entries?.find((entry) => entry.id === tagEditorId) ?? null;
 
   async function handleSave(clear: boolean) {
     setSaving(true);
@@ -132,9 +176,11 @@ export function WaitlistPanel({
 
   async function handlePromote(entry: WaitlistEntry) {
     setPromotingId(entry.id);
+    setResumeLink(null);
     try {
       const res = await promote({ data: { entryId: entry.id } });
       if (!res.ok) {
+        setResumeLink(null);
         if ("conflict" in res && res.conflict) {
           setConflictIds((s) => new Set(s).add(entry.id));
           toast.warning("Needs review: the email matches an existing driver but the phone differs. Use Review Conflict.");
@@ -143,12 +189,36 @@ export function WaitlistPanel({
         throw new Error(res.error);
       }
       toast.success(`${entry.full_name} is now an applicant — you'll find them under New.`);
+      if (APPLICATION_RESUME_ENABLED === true) {
+        const { resumeLinkForPromotion } = await import("@/lib/application-resume");
+        const link = resumeLinkForPromotion({ ok: res.ok, token: res.token, name: entry.full_name });
+        setResumeLink(link?.href && link.name ? link : null);
+      } else {
+        setResumeLink(null);
+      }
       await refresh();
       onPromoted?.();
     } catch (e: any) {
+      setResumeLink(null);
       toast.error(e?.message ?? "Could not promote.");
     } finally {
       setPromotingId(null);
+    }
+  }
+
+  async function handleSaveTags(tags: string[]) {
+    if (!tagEditorId) return;
+    setSavingTags(true);
+    try {
+      const result = await saveTags({ data: { entryId: tagEditorId, tags } });
+      if (!result.ok) throw new Error(result.error);
+      setEntries((current) => current?.map((entry) => entry.id === tagEditorId ? { ...entry, tags: result.ok ? result.tags : entry.tags } : entry) ?? current);
+      toast.success("Waitlist tags saved.");
+      setTagEditorId(null);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not save tags.");
+    } finally {
+      setSavingTags(false);
     }
   }
 
@@ -156,8 +226,42 @@ export function WaitlistPanel({
     s === "promoted" ? "green" : "amber";
   const statusLabel = (s: string) => (s === "waiting" ? "Waiting" : s === "notified" ? "Notified" : "Promoted");
 
+  async function copyResumeLink() {
+    if (!resumeLink) return;
+    try {
+      await navigator.clipboard.writeText(resumeLink.href);
+      toast.success("Link copied.");
+    } catch {
+      toast.error("Select the link and copy it.");
+    }
+  }
+
   return (
     <div className="space-y-4">
+      {APPLICATION_RESUME_ENABLED === true && resumeLink?.href && resumeLink.name ? (
+        <section className="rounded-xl border border-[#EDEDF0] bg-white px-5 py-4" aria-label={`Resume Link For ${resumeLink.name}`}>
+          <div className="text-sm font-semibold text-[#111114]">Resume Link For {resumeLink.name}</div>
+          <p className="mt-1 text-[13px] leading-snug text-[#55555E]">
+            Promotion created this application for {resumeLink.name}. Copy this link and give it to them. This page does not send an email.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              readOnly
+              aria-label={`Resume Link For ${resumeLink.name}`}
+              value={resumeLink.href}
+              className="min-h-11 w-full rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] px-3 text-sm text-[#111114]"
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <button
+              type="button"
+              onClick={() => void copyResumeLink()}
+              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg bg-[#D03020] px-4 text-sm font-semibold text-white hover:opacity-90"
+            >
+              Copy Link
+            </button>
+          </div>
+        </section>
+      ) : null}
       <SectionCard
         title="Cars Available"
         subtitle="Fleet counts come from your vehicles. The public override is optional and only changes what the website shows."
@@ -231,6 +335,8 @@ export function WaitlistPanel({
         </p>
       </SectionCard>
 
+      {WAITLIST_AGING_ENABLED === true ? <WaitlistAging result={aging} /> : null}
+
       <SectionCard
         title="Waitlist"
         subtitle="First joined is first served. Promote someone as soon as a car frees up."
@@ -248,12 +354,32 @@ export function WaitlistPanel({
             />
           </div>
         ) : (
+          <>
+          <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
+            <TagIcon className="h-4 w-4 text-muted-foreground" strokeWidth={1.75} />
+            <label htmlFor="waitlist-tag-filter" className="text-xs font-medium text-foreground">Filter By Tag</label>
+            <select
+              id="waitlist-tag-filter"
+              value={tagFilter}
+              onChange={(event) => setTagFilter(event.target.value)}
+              disabled={!tagsAvailable || availableTags.length === 0}
+              className="min-h-9 rounded-lg border border-border bg-white px-3 pr-9 text-xs text-foreground disabled:opacity-50"
+            >
+              <option value="">All Tags</option>
+              {availableTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+            </select>
+            <span className="ml-auto text-xs text-muted-foreground">Showing {visibleEntries.length} Of {entries.length}</span>
+            {!tagsAvailable ? (
+              <p className="w-full text-xs text-amber-700">Tag storage is not connected yet. City display is available; no tags have been changed.</p>
+            ) : null}
+          </div>
           <AdminTableScroll>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#EDEDF0] text-left">
                   <th className="px-5 py-2.5"><MicroLabel>Position</MicroLabel></th>
                   <th className="px-5 py-2.5"><MicroLabel>Driver</MicroLabel></th>
+                  <th className="px-5 py-2.5"><MicroLabel>Tags</MicroLabel></th>
                   <th className="px-5 py-2.5"><MicroLabel>Wants To Start</MicroLabel></th>
                   <th className="px-5 py-2.5"><MicroLabel>Readiness</MicroLabel></th>
                   <th className="px-5 py-2.5"><MicroLabel>Status</MicroLabel></th>
@@ -262,7 +388,9 @@ export function WaitlistPanel({
                 </tr>
               </thead>
               <tbody>
-                {entries.map((e) => (
+                {visibleEntries.length === 0 ? (
+                  <tr><td colSpan={8} className="p-5"><EmptyState title="No Matching Entries" hint="Clear the tag filter to see the full Waitlist." /></td></tr>
+                ) : visibleEntries.map((e) => (
                   <tr key={e.id} className="border-b border-[#EDEDF0] last:border-0 hover:bg-[#FAFAFB]">
                     <td className="px-5 py-3 text-[13px] font-semibold text-[#111114]">
                       {e.position ?? "—"}
@@ -273,6 +401,27 @@ export function WaitlistPanel({
                         {e.email}
                         {e.phone ? ` · ${e.phone}` : ""}
                       </div>
+                      <div className="mt-1 flex items-center gap-1 text-[11px] text-[#55555E]">
+                        <MapPin className="h-3 w-3 shrink-0 text-[#9A9AA3]" strokeWidth={1.75} />
+                        {waitlistLocation(e.city, e.state)}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 align-top">
+                      <div className="flex max-w-64 flex-wrap gap-1.5">
+                        {!tagsAvailable ? <span className="text-[11px] text-[#9A9AA3]">Unavailable</span> : e.tags.length ? e.tags.map((tag) => (
+                          <span key={tag} className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-foreground">{tag}</span>
+                        )) : <span className="text-[11px] text-[#9A9AA3]">No Tags</span>}
+                      </div>
+                      {canManage ? (
+                        <button
+                          type="button"
+                          onClick={() => setTagEditorId(e.id)}
+                          title="Edit staff tags"
+                          className="mt-2 inline-flex min-h-8 items-center gap-1 rounded-lg border border-border bg-white px-2.5 text-[11px] font-medium text-foreground hover:bg-muted"
+                        >
+                          <TagIcon className="h-3 w-3" /> Edit Tags
+                        </button>
+                      ) : null}
                     </td>
                     <td className="px-5 py-3 whitespace-nowrap text-[13px] text-[#55555E]">
                       {e.pickup_date ? fmtDate(e.pickup_date) : "—"}
@@ -321,8 +470,17 @@ export function WaitlistPanel({
               </tbody>
             </table>
           </AdminTableScroll>
+          </>
         )}
       </SectionCard>
+
+      <WaitlistTagsDialog
+        entry={tagEditorEntry}
+        saving={savingTags}
+        storageAvailable={tagsAvailable}
+        onClose={() => setTagEditorId(null)}
+        onSave={(tags) => void handleSaveTags(tags)}
+      />
 
       <WaitlistConflictDialog
         entryId={reviewId}

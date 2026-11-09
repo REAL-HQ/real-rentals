@@ -33,6 +33,14 @@ import { PlatformLogo, platformLabel } from "./PlatformLogo";
 import { computeReadiness, type ReadinessInput } from "@/lib/readiness";
 import { VerificationRecording } from "./VerificationRecording";
 import { fmtDateTime } from "@/lib/date-format";
+import { useServerFn } from "@tanstack/react-start";
+import { withoutInsuranceDecision } from "@/lib/insurance-verification";
+import {
+  getInsuranceVerificationActivity,
+  requestInsuranceVerification,
+  setInsuranceVerification,
+  type InsuranceVerificationActivity,
+} from "@/lib/insurance-verification.functions";
 
 /* ------------------------------------------------------------------ */
 /* Disqualifier rules                                                  */
@@ -106,148 +114,6 @@ export function useDriverScreening(leadId: string) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Pipeline stepper                                                    */
-/* ------------------------------------------------------------------ */
-
-const PIPELINE: { key: ScreeningStatus; label: string }[] = [
-  { key: "new_lead", label: "New Lead" },
-  { key: "contacted", label: "Contacted" },
-  { key: "interview_complete", label: "Interview Complete" },
-  { key: "docs_pending", label: "Docs Pending" },
-  { key: "insurance_verified", label: "Insurance Verified" },
-  { key: "approved", label: "Approved" },
-  { key: "pickup_scheduled", label: "Pickup Scheduled" },
-  { key: "active_renter", label: "Active Renter" },
-];
-
-function statusIndex(s: ScreeningStatus | null | undefined): number {
-  const i = PIPELINE.findIndex((p) => p.key === s);
-  return i < 0 ? 0 : i;
-}
-
-export function ScreeningPipeline({
-  screening,
-  docCount,
-  hasRecording,
-  hasActiveRental = false,
-  onAdvance,
-}: {
-  screening: DriverScreening | null;
-  /**
-   * How many of the four required document types are on file, counted from
-   * the document vault rather than from `lead_documents`.
-   *
-   * The gate used to count `lead_documents`, which only ever held files a
-   * staff member uploaded here — an applicant's own licence, sent through the
-   * application, was invisible to it. So a driver could have supplied
-   * everything and still be blocked at Docs Pending.
-   */
-  docCount: number;
-  /**
-   * Whether a current verification recording exists. Reported by the
-   * Owner-only recording control; a Manager or Coordinator never learns it and
-   * for them this gate simply reads as outstanding. The database decides
-   * either way, so the UI knowing less is not a way around it.
-   */
-  hasRecording: boolean;
-  /** Active Renter completes only once a rental is running (enforced in the database). */
-  hasActiveRental?: boolean;
-  onAdvance: (next: ScreeningStatus) => Promise<void>;
-}) {
-  const current = (screening?.status ?? "new_lead") as ScreeningStatus;
-  const isDq = screening?.disqualified === true || current === "disqualified";
-  const activeIdx = statusIndex(current);
-
-  function attempt(target: ScreeningStatus) {
-    const missing: string[] = [];
-    if (target === "active_renter" && !hasActiveRental) missing.push("Start a rental first");
-    if (target !== "new_lead" && target !== "contacted") {
-      if (!screening?.interview_completed_at) missing.push("Complete the interview first");
-      if (screening?.disqualified) missing.push("Driver is disqualified");
-    }
-    if (["insurance_verified", "approved", "pickup_scheduled", "active_renter"].includes(target)) {
-      if (docCount < 4) missing.push(`Upload all four documents (${docCount}/4)`);
-      if (!screening?.insurance_verified) missing.push("Mark insurance verified");
-      if (!hasRecording) missing.push("Upload verification call recording");
-    }
-    if (missing.length > 0) {
-      toast.error(`Cannot advance to "${target.replace(/_/g, " ")}"`, {
-        description: missing.join(" • "),
-      });
-      return;
-    }
-    void onAdvance(target);
-  }
-
-  return (
-    <div className="rounded-xl border border-[#EDEDF0] bg-white p-4">
-      {isDq && screening?.disqualification_reason && (
-        <div className="mb-3 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <div>
-            <div className="font-semibold">Disqualified</div>
-            <div className="text-xs">{screening.disqualification_reason}</div>
-          </div>
-        </div>
-      )}
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
-            Stage {isDq ? "—" : `${activeIdx + 1} of ${PIPELINE.length}`}
-          </div>
-          <div className="text-[13px] font-semibold text-[#111114] truncate">
-            {isDq ? "Disqualified" : PIPELINE[activeIdx]?.label}
-          </div>
-        </div>
-        <div className="text-[11px] text-[#9A9AA3] tabular-nums">
-          {isDq ? "" : `${Math.round(((activeIdx + 1) / PIPELINE.length) * 100)}%`}
-        </div>
-      </div>
-      <div className="relative flex items-center">
-        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[2px] rounded bg-[#EDEDF0]" />
-        <div
-          className="absolute left-0 top-1/2 -translate-y-1/2 h-[2px] rounded bg-[#D03020] transition-all duration-200"
-          style={{ width: isDq ? "0%" : `${(activeIdx / (PIPELINE.length - 1)) * 100}%` }}
-        />
-        <div className="relative z-10 flex w-full items-center justify-between">
-          {PIPELINE.map((p, i) => {
-            const done = !isDq && i < activeIdx;
-            const active = !isDq && i === activeIdx;
-            const dotCls = isDq
-              ? "bg-white border-[#EDEDF0] text-[#C4C4CB]"
-              : done
-                ? "bg-[#D03020] border-[#D03020] text-white"
-                : active
-                  ? "bg-white border-[#D03020] text-[#D03020] ring-4 ring-[#D03020]/10"
-                  : "bg-white border-[#EDEDF0] text-[#C4C4CB]";
-            return (
-              <button
-                key={p.key}
-                type="button"
-                onClick={() => attempt(p.key)}
-                disabled={p.key === "active_renter" && !hasActiveRental && current !== "active_renter"}
-                title={p.key === "active_renter" && !hasActiveRental && current !== "active_renter" ? "Active Renter: Available Once A Rental Is Running" : p.label}
-                className={`group h-6 w-6 shrink-0 rounded-full border-2 grid place-items-center transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${dotCls}`}
-              >
-                {done ? (
-                  <CheckCircle2 className="h-3 w-3" />
-                ) : (
-                  <span className="text-[10px] font-semibold">{i + 1}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div className="mt-2 flex items-center justify-between text-[10px] text-[#9A9AA3]">
-        <span>{PIPELINE[0].label}</span>
-        <span>{PIPELINE[PIPELINE.length - 1].label}</span>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* Interview Tab                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -315,8 +181,9 @@ export function InterviewTab({
       // in the column as history; nothing recomputes them and nothing displays
       // them as a current signal. Completing an interview now saves the
       // answers, and coverage rises because the answers exist.
+      // The insurance decision columns are never written from the browser.
       const patch: Partial<DriverScreening> = {
-        ...s,
+        ...withoutInsuranceDecision(s as Record<string, unknown>),
         lead_id: driver.id,
         disqualified,
         disqualification_reason: disqualified ? reasons.join(", ") : null,
@@ -419,7 +286,7 @@ export function InterviewTab({
             </div>
           </Field>
           <Row cols={2}>
-            <Field label="Gig Account Status">
+            <Field label="Gig Account Status (Staff Noted)">
               <SelectInput
                 value={s.gig_account_status ?? ""}
                 onChange={(v) => up("gig_account_status" as any, (v || null) as any)}
@@ -724,11 +591,14 @@ export function InsuranceVerificationCard({
   leadId,
   screening,
   isOwner,
+  canDecide = false,
   onScreening,
   onRecordingChange,
 }: {
   leadId: string;
   screening: DriverScreening | null;
+  /** Manager or Owner. Only they make the verification decision; the server and database enforce it. */
+  canDecide?: boolean;
   /** Recordings are Owner-only; see VerificationRecording. */
   isOwner: boolean;
   onScreening: (next: DriverScreening) => void;
@@ -740,11 +610,12 @@ export function InsuranceVerificationCard({
   async function save(patch: Partial<DriverScreening>) {
     setSaving(true);
     try {
-      const merged: Partial<DriverScreening> = {
+      // The insurance decision columns are never written from the browser.
+      const merged = withoutInsuranceDecision({
         lead_id: leadId,
         ...(screening ?? {}),
         ...patch,
-      };
+      } as Record<string, unknown>);
       const { data, error } = await supabase
         .from("driver_screenings")
         .upsert(merged as any, { onConflict: "lead_id" })
@@ -759,15 +630,48 @@ export function InsuranceVerificationCard({
     }
   }
 
+  const decide = useServerFn(setInsuranceVerification);
+  const request = useServerFn(requestInsuranceVerification);
+  const loadActivity = useServerFn(getInsuranceVerificationActivity);
+  const [activity, setActivity] = useState<InsuranceVerificationActivity | null>(null);
+  const refreshActivity = useCallback(() => {
+    loadActivity({ data: { applicationId: leadId } })
+      .then(setActivity)
+      .catch(() => setActivity(null));
+  }, [leadId, loadActivity]);
+  useEffect(() => {
+    refreshActivity();
+  }, [refreshActivity]);
+
+  // Verify or revoke: Manager/Owner only, through the audited server path. Re-reads the row after.
   async function toggleVerified(v: boolean) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    await save({
-      insurance_verified: v,
-      insurance_verified_at: v ? new Date().toISOString() : null,
-      insurance_verified_by: v ? (user?.email ?? user?.id ?? "back-office") : null,
-    });
+    if (!canDecide) return;
+    if (!v && !window.confirm("Revoke insurance verification? This is recorded against your account.")) return;
+    setSaving(true);
+    try {
+      await decide({ data: { applicationId: leadId, verified: v } });
+      const { data } = await supabase.from("driver_screenings").select("*").eq("lead_id", leadId).maybeSingle();
+      if (data) onScreening(data as DriverScreening);
+      toast.success(v ? "Insurance Verified" : "Insurance Verification Revoked");
+      refreshActivity();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save the insurance decision");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function requestVerification() {
+    setSaving(true);
+    try {
+      await request({ data: { applicationId: leadId } });
+      toast.success("Verification Requested");
+      refreshActivity();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not request verification");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -801,7 +705,26 @@ export function InsuranceVerificationCard({
         )}
         <Row cols={2}>
           <Field label="Insurance Verified">
-            <BoolToggle value={screening?.insurance_verified ?? null} onChange={toggleVerified} />
+            {canDecide ? (
+              <BoolToggle value={screening?.insurance_verified ?? null} onChange={toggleVerified} />
+            ) : (
+              <div className="space-y-1.5">
+                <div className="rounded-md bg-soft px-2 py-1.5 text-sm">
+                  {screening?.insurance_verified ? "Yes" : "No"}
+                </div>
+                {!screening?.insurance_verified ? (
+                  <button
+                    type="button"
+                    onClick={() => void requestVerification()}
+                    disabled={saving}
+                    className="text-xs font-medium text-[#D03020] hover:underline disabled:opacity-50"
+                  >
+                    Request Verification
+                  </button>
+                ) : null}
+                <p className="text-[11px] text-muted-foreground">Only A Manager Or Owner Can Verify Or Revoke.</p>
+              </div>
+            )}
           </Field>
           <Field label="Verified By">
             <div className="rounded-md bg-soft px-2 py-1.5 text-sm">
@@ -816,6 +739,12 @@ export function InsuranceVerificationCard({
             </div>
           </Field>
         </Row>
+        {activity?.lastRequest ? (
+          <p className="text-[11px] text-[#8A5A00]">
+            Verification Requested {fmtDateTime(activity.lastRequest.at)}
+            {activity.lastRequest.by ? ` By ${activity.lastRequest.by}` : ""}
+          </p>
+        ) : null}
         <div>
           <VerificationRecording
             applicationId={leadId}

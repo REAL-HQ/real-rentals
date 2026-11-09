@@ -79,8 +79,8 @@ ok(/onOpen=\{setViewing\}/.test(panel) && /src=\{viewing\}/.test(panel),
 ok(/Read From A Photo/.test(panel), "the row says the value came from a photograph");
 
 console.log("\nit works on a phone as well as a desktop");
-ok(/grid-cols-2 sm:grid-cols-3 lg:grid-cols-4/.test(photos),
-  "the photo grid reflows from two columns to four");
+ok(/grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5/.test(photos),
+  "the photo grid reflows from two columns to five");
 ok(/<div className="mb-3 rounded-xl border border-\[#EDEDF0\] bg-\[#FAFAFB\] p-3">[\s\S]{0,200}?flex flex-wrap items-center gap-2/.test(photos),
   "the Read Photos bar wraps rather than overflowing a narrow screen");
 ok(/basis-full sm:basis-auto/.test(photos),
@@ -93,6 +93,13 @@ ok(/max-h-\[90vh\] max-w-full object-contain/.test(panel),
 
 console.log("\nthe tab still does its original job");
 ok(/label="Add Photos"/.test(photos), "uploading photos is untouched");
+const uploader = /<FileUploader[\s\S]*?\/>/.exec(photos)?.[0] ?? "";
+ok(/variant="zone"/.test(uploader), "a full drag/drop field is visible, not only a small button");
+ok(/key=\{uploadRevision\}/.test(uploader), "the temporary upload queue can reset after completion");
+ok(/function afterUpload\(\) \{[\s\S]{0,160}?setUploadRevision\(\(v\) => v \+ 1\)/.test(photos),
+  "successful uploads clear their temporary cards before the saved gallery is shown");
+ok(photos.indexOf(uploader) >= 0 && photos.indexOf(uploader) < photos.indexOf("{loading && !data"),
+  "the drop field stays mounted when a vehicle already has photos");
 ok(/No photos are on the website yet/.test(photos), "so is the Listing Ready warning");
 ok(/onPublish=\{\(v\) => patch\(m, \{ id: m\.id, published: v \}\)\}/.test(photos), "so is publishing");
 

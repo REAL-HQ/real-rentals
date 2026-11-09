@@ -20,6 +20,7 @@ import {
   listVehicleMedia,
   registerVehicleMedia,
   updateVehicleMedia,
+  setVehicleListThumbnail,
   deleteVehicleMedia,
   type VehicleMedia,
   type VehicleMediaList,
@@ -36,7 +37,8 @@ import {
   reviewPhotoEnhance,
 } from "@/lib/photo-enhance.functions";
 import { ENHANCE_MODES, localProcessingBlocker, runEnhance, type EnhanceMode } from "@/lib/photo-enhance.browser";
-import { SectionCard, MicroLabel, EmptyState } from "./ui";
+import { SectionCard, MicroLabel } from "./ui";
+import { PhotoStudioPanel } from "./PhotoStudioPanel";
 
 // The gallery.
 //
@@ -56,6 +58,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   const load = useServerFn(listVehicleMedia);
   const register = useServerFn(registerVehicleMedia);
   const update = useServerFn(updateVehicleMedia);
+  const chooseListThumbnail = useServerFn(setVehicleListThumbnail);
   const remove = useServerFn(deleteVehicleMedia);
   const enhStatusFn = useServerFn(getPhotoEnhanceStatus);
   const startFn = useServerFn(startPhotoEnhance);
@@ -85,6 +88,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   useEffect(() => { void refreshEnh(); }, [refreshEnh]);
 
   const [data, setData] = useState<VehicleMediaList | null>(null);
+  const [uploadRevision, setUploadRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -134,6 +138,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   }
 
   function afterUpload() {
+    setUploadRevision((v) => v + 1);
     void refresh();
     window.dispatchEvent(new Event("vehicle-profile-refresh"));
   }
@@ -263,6 +268,21 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
     }
   }
 
+  async function selectListThumbnail(m: VehicleMedia) {
+    setBusyId(m.id);
+    try {
+      const res = await chooseListThumbnail({ data: { vehicleId, mediaId: m.id } });
+      if (!res.ok) return toast.error(res.error ?? "Could not save the Vehicles-list thumbnail.");
+      toast.success("Vehicles-List Thumbnail Updated");
+      await refresh();
+      window.dispatchEvent(new Event("vehicle-profile-refresh"));
+    } catch {
+      toast.error("Could not save the Vehicles-list thumbnail.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function destroy(m: VehicleMedia) {
     const derivatives = (data?.items ?? []).filter((x) => x.derived_from_id === m.id).length;
     const extra = derivatives
@@ -359,6 +379,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
 
   return (
     <div className="space-y-5">
+      <PhotoStudioPanel vehicleId={vehicleId} canEdit={canEdit} />
       <SectionCard
         title="Photos"
         subtitle={
@@ -368,37 +389,30 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
               (enhanced.length ? ` · ${enhanced.length} retouched` : "") +
               ` · ${publishedCount} on the website`
         }
-        right={
-          canEdit ? (
-            <FileUploader
-              variant="inline"
-              label="Add Photos"
-              accept={ACCEPT}
-              multiple
-              camera
-              maxBytes={MAX_BYTES}
-              context={`Vehicle ${vehicleId} · Photos`}
-              upload={uploadOne}
-              onAllDone={afterUpload}
-            />
-          ) : null
-        }
       >
+        {canEdit && (
+          <FileUploader
+            key={uploadRevision}
+            variant="zone"
+            title="Drop Photos Here"
+            hint="Up to 15 MB each. Photos stay private until you show them on the website."
+            label="Add Photos"
+            accept={ACCEPT}
+            multiple
+            camera
+            maxBytes={MAX_BYTES}
+            context={`Vehicle ${vehicleId} · Photos`}
+            upload={uploadOne}
+            onAllDone={afterUpload}
+            listLayout="grid"
+            className="mb-4 w-full"
+          />
+        )}
         {loading && !data ? (
           <div className="flex items-center gap-2 text-[13px] text-[#9A9AA3] py-6 justify-center">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading photos…
           </div>
-        ) : items.length === 0 ? (
-          <EmptyState
-            icon={<ImageOff className="w-6 h-6" strokeWidth={1.75} />}
-            title="No Photos Yet"
-            hint={
-              canEdit
-                ? "Drag photos here or tap Add Photos. The first one becomes the photo the website leads with."
-                : "Nobody has added photos for this vehicle."
-            }
-          />
-        ) : (
+        ) : items.length > 0 ? (
           <>
             {/* A car with photos and none of them on the website is the state
                 this screen was worst at explaining: every tile said "Not on
@@ -466,7 +480,17 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 </div>
 
                 {readingStatus?.refusal && (
-                  <p className="mt-2 text-[11px] text-[#8A4B00]">{readingStatus.refusal}</p>
+                  <p className="mt-2 text-[11px] text-[#8A4B00]">
+                    {readingStatus.refusal}
+                    {!readingStatus.enabled && (
+                      <>
+                        {" "}
+                        <a href="/admin?tab=settings&section=photo_reading" className="font-semibold underline">
+                          Open Photo Reading Settings
+                        </a>
+                      </>
+                    )}
+                  </p>
                 )}
                 {readingStatus && !readingStatus.refusal && (
                   <p className="mt-2 text-[11px] text-[#55555E]">
@@ -512,7 +536,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 )}
               </div>
             )}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 mx-auto w-full">
             {items.map((m) => (
               <div key={m.id} className="relative">
               {picking && m.kind === "original" && (
@@ -541,6 +565,9 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 onView={() => setViewIdx(items.indexOf(m))}
                 onCompare={() => setCompare(m)}
                 onReview={(d) => review(m, d)}
+                isListThumbnail={data?.listThumbnailId === m.id}
+                isConfirmedCarPhoto={data?.confirmedCarPhotoIds.includes(m.id) ?? false}
+                onListThumbnail={() => selectListThumbnail(m)}
                 onPrimary={() => patch(m, { id: m.id, makePrimary: true })}
                 onPublish={(v) => patch(m, { id: m.id, published: v })}
                 onCaption={(c) => patch(m, { id: m.id, caption: c })}
@@ -551,7 +578,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
             ))}
             </div>
           </>
-        )}
+        ) : null}
       </SectionCard>
 
       {data && (
@@ -579,7 +606,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
         </SectionCard>
       )}
       {viewIdx != null && items[viewIdx] && (
-        <PhotoViewer items={items} index={viewIdx} onIndex={setViewIdx} onClose={() => setViewIdx(null)} />
+        <VehiclePhotoViewer items={items} index={viewIdx} onIndex={setViewIdx} onClose={() => setViewIdx(null)} />
       )}
       {compare && (
         <CompareModal
@@ -661,6 +688,9 @@ function PhotoTile({
   canDelete,
   busy,
   enhancement,
+  isListThumbnail,
+  isConfirmedCarPhoto,
+  onListThumbnail,
   onPrimary,
   onPublish,
   onCaption,
@@ -682,6 +712,9 @@ function PhotoTile({
   canDelete: boolean;
   busy: boolean;
   enhancement: { available: boolean; reason: string };
+  isListThumbnail: boolean;
+  isConfirmedCarPhoto: boolean;
+  onListThumbnail: () => void;
   onPrimary: () => void;
   onPublish: (v: boolean) => void;
   onCaption: (c: string) => void;
@@ -728,6 +761,7 @@ function PhotoTile({
         )}
 
         <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1">
+          {isListThumbnail && <Tag tone="dark">List Thumbnail</Tag>}
           {m.is_primary && m.published && (
             <Tag tone="dark">
               <Star className="w-2.5 h-2.5 fill-current" /> Lead
@@ -792,6 +826,27 @@ function PhotoTile({
         ) : m.caption ? (
           <div className="text-[11px] text-[#55555E] truncate">{m.caption}</div>
         ) : null}
+
+        {canEdit && !isEnhanced && (
+          <button
+            type="button"
+            aria-pressed={isListThumbnail}
+            disabled={busy || isListThumbnail}
+            onClick={onListThumbnail}
+            title={isListThumbnail
+              ? "This confirmed car photo is the Vehicles-list thumbnail."
+              : isConfirmedCarPhoto
+                ? "Use this confirmed car photo for the Vehicles-list thumbnail. This does not publish it."
+                : "Confirm this original shows the car, not a document, and use it for the Vehicles-list thumbnail. This does not publish it."}
+            className={`h-7 w-full rounded-md border px-2 text-[11px] font-medium disabled:cursor-default ${
+              isListThumbnail
+                ? "border-real-red/40 bg-real-red/5 text-real-red"
+                : "border-border bg-white text-foreground hover:bg-soft"
+            }`}
+          >
+            {isListThumbnail ? "Current Thumbnail" : isConfirmedCarPhoto ? "Use As Thumbnail" : "Confirm Car & Use"}
+          </button>
+        )}
 
         {canEdit && (
           <div className="flex items-center gap-1">
@@ -930,7 +985,7 @@ function Tag({ children, tone }: { children: React.ReactNode; tone: "dark" | "vi
 }
 
 /** Full-size viewer for any gallery photo; bytes come from the same staff-only loader. */
-function PhotoViewer({ items, index, onIndex, onClose }: {
+export function VehiclePhotoViewer({ items, index, onIndex, onClose }: {
   items: VehicleMedia[]; index: number; onIndex: (i: number) => void; onClose: () => void;
 }) {
   const m = items[index];

@@ -16,12 +16,13 @@ export function getConnectionApiKey(env: StripeEnv): string {
     : getEnv('STRIPE_LIVE_API_KEY');
 }
 
-export function createStripeClient(env: StripeEnv): Stripe {
+export function createStripeClient(env: StripeEnv, options?: { timeout?: number }): Stripe {
   const connectionApiKey = getConnectionApiKey(env);
   const lovableApiKey = getEnv('LOVABLE_API_KEY');
 
   return new Stripe(connectionApiKey, {
     apiVersion: '2026-03-25.dahlia',
+    ...(options?.timeout ? { timeout: options.timeout } : {}),
     httpClient: Stripe.createFetchHttpClient((input, init) => {
       const stripeUrl = input instanceof Request ? input.url : input.toString();
       const gatewayUrl = stripeUrl.replace('https://api.stripe.com', GATEWAY_STRIPE_BASE);

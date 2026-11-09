@@ -1,10 +1,25 @@
 import { createServerFn } from "@tanstack/react-start";
+import { HOLD_VERIFIED_CATEGORIES, holdsVerifiedUntilReview, reviewFollowUp, supersedeQuery } from "@/lib/insurance-review-hold";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import {
+  DOCUMENT_CONTENT_SHA256_ENABLED,
+  isUploadedContentShaRefusal,
+  recordUploadedContentSha,
+} from "@/lib/document-content-sha";
+import {
+  SIGNED_AGREEMENT_DELETE_REFUSED,
+  SIGNED_AGREEMENT_DRIVER_UPLOAD_REFUSED,
+  SIGNED_AGREEMENT_NEEDS_NEW_REFUSED,
+  SIGNED_AGREEMENT_REPLACE_REFUSED,
+  isSignedAgreementEvidence,
+} from "@/lib/signed-agreement-evidence";
 
 export const DOC_BUCKET = "driver-docs";
 
 export const DOC_CATEGORIES = [
+  { key: "rental_application", label: "Rental application", expiring: false },
+  { key: "agreement", label: "Rental agreement", expiring: false },
   { key: "license_front", label: "Driver's license (front)", expiring: true },
   { key: "license_back", label: "Driver's license (back)", expiring: true },
   { key: "insurance", label: "Insurance card", expiring: true },
@@ -16,7 +31,6 @@ export const DOC_CATEGORIES = [
   // up as one document with three "previous versions", none of them the file
   // the label claimed.
   { key: "trip_history", label: "Trip history screenshot", expiring: false },
-  { key: "agreement", label: "Signed agreement", expiring: false },
   { key: "other", label: "Other document", expiring: false },
   // Owner-only. A recording of an insurance verification call carries a third
   // party's voice and policy details, so it is confined at the row level in
@@ -35,6 +49,15 @@ export const DOC_CATEGORIES = [
  * URLs with the service role and therefore bypass RLS entirely.
  */
 export const RESTRICTED_CATEGORIES: readonly string[] = ["verification_recording"];
+
+/** Contracts and applications are filed by the team or eSign, never by a driver upload. */
+export const STAFF_FILED_CATEGORIES: readonly string[] = ["rental_application", "agreement"];
+export const RENTAL_APPLICATION_DRIVER_UPLOAD_REFUSED =
+  "Rental applications are filed by the team and can't be uploaded from the portal.";
+
+export function driverCanUploadCategory(category: string): boolean {
+  return !STAFF_FILED_CATEGORIES.includes(category) && !RESTRICTED_CATEGORIES.includes(category);
+}
 
 /**
  * Categories where several files are current at once.
@@ -71,11 +94,18 @@ export type VaultDocument = {
   review_status: DocumentReviewStatus;
   review_note: string | null;
   reviewed_at: string | null;
+  /**
+   * Signed-agreement evidence by its row shape (isSignedAgreementEvidence).
+   * The vault hides Delete for these; deleteDocument refuses them regardless,
+   * and also refuses anything an agreements row points at.
+   */
+  signed_agreement: boolean;
 };
 
 export type DocumentReviewStatus = "uploaded" | "verified" | "rejected";
 
 const CategoryEnum = z.enum([
+  "rental_application",
   "license_front",
   "license_back",
   "insurance",
@@ -114,14 +144,16 @@ function safeExt(fileName: string, mime: string): string {
   return map[mime] || "bin";
 }
 
-async function withUrls(admin: any, rows: any[]): Promise<VaultDocument[]> {
+async function withUrls(admin: any, rows: any[], includeUrls = true): Promise<VaultDocument[]> {
   return Promise.all(
     rows.map(async (d) => {
       let url: string | null = null;
-      const { data: signed } = await admin.storage
-        .from(d.storage_bucket)
-        .createSignedUrl(d.storage_path, 60 * 15);
-      url = signed?.signedUrl ?? null;
+      if (includeUrls) {
+        const { data: signed } = await admin.storage
+          .from(d.storage_bucket)
+          .createSignedUrl(d.storage_path, 60 * 15);
+        url = signed?.signedUrl ?? null;
+      }
       return {
         id: d.id,
         category: d.category ?? "other",
@@ -138,13 +170,46 @@ async function withUrls(admin: any, rows: any[]): Promise<VaultDocument[]> {
         review_status: (d.review_status ?? "uploaded") as DocumentReviewStatus,
         review_note: d.review_note ?? null,
         reviewed_at: d.reviewed_at ?? null,
+        signed_agreement: isSignedAgreementEvidence(d),
       };
     }),
   );
 }
 
 const SELECT =
-  "id,category,label,file_name,mime_type,size_bytes,expires_at,is_current,visibility,uploaded_by_role,created_at,storage_bucket,storage_path,review_status,review_note,reviewed_at";
+  "id,kind,category,label,notes,file_name,mime_type,size_bytes,expires_at,is_current,visibility,uploaded_by_role,created_at,storage_bucket,storage_path,review_status,review_note,reviewed_at";
+
+export type StoredDriverDocument = VaultDocument & { kind: string; notes: string | null };
+
+/**
+ * A driver's own written application and agreement history. These originals
+ * are often team-only in storage because staff filed them; ownership is
+ * established by the caller's authorized application ids before this helper
+ * is called. Staff notes never cross into the driver payload.
+ */
+export async function listStoredDriverDocuments(
+  admin: any,
+  applicationIds: string[],
+  includeUrls: boolean,
+): Promise<StoredDriverDocument[]> {
+  if (applicationIds.length === 0) return [];
+  const { data, error } = await admin
+    .from("documents")
+    .select(SELECT)
+    .in("driver_id", applicationIds)
+    .in("category", [...STAFF_FILED_CATEGORIES])
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  const rows = data ?? [];
+  const documents = await withUrls(admin, rows, includeUrls);
+  return documents.map((document, index) => ({
+    ...document,
+    kind: rows[index]?.kind ?? rows[index]?.category ?? "document",
+    notes: null,
+    review_note: null,
+    visibility: ["driver", "admin"],
+  }));
+}
 
 /**
  * Register an already-uploaded file as the current document in its category
@@ -223,6 +288,9 @@ export async function registerDocument(
     return { id: seen.id as string };
   }
 
+  // Flag on, a missing object or a user_metadata write throws. Callers catch
+  // that. Flag off, this returns null and the insert columns stay as they are.
+  const contentSha = await recordUploadedContentSha(admin, args.bucket, args.path);
   const { data: row, error } = await admin
     .from("documents")
     .insert({
@@ -240,6 +308,7 @@ export async function registerDocument(
       is_current: true,
       uploaded_by: args.uploadedBy ?? null,
       uploaded_by_role: args.uploadedByRole ?? "driver",
+      ...(contentSha ? { content_sha256: contentSha } : {}),
     })
     .select("id")
     .single();
@@ -250,13 +319,17 @@ export async function registerDocument(
 
   // Single-slot categories only. See MULTI_FILE_CATEGORIES.
   if (!MULTI_FILE_CATEGORIES.includes(args.category)) {
-    await admin
-      .from("documents")
-      .update({ is_current: false, superseded_by: row.id })
-      .eq("driver_id", args.applicationId)
-      .eq("category", args.category)
-      .eq("is_current", true)
-      .neq("id", row.id);
+    // Renter insurance: a verified card stays current until this upload is reviewed.
+    await supersedeQuery(
+      admin
+        .from("documents")
+        .update({ is_current: false, superseded_by: row.id })
+        .eq("driver_id", args.applicationId)
+        .eq("category", args.category)
+        .eq("is_current", true)
+        .neq("id", row.id),
+      holdsVerifiedUntilReview(args.category, args.uploadedByRole ?? "driver"),
+    );
   }
 
   return { id: row.id as string };
@@ -335,6 +408,30 @@ async function objectMeta(
 }
 
 /**
+ * Flag off: registerDocument's errors propagate, as they did before the
+ * content-hash flag. Flag on: only a content-hash refusal is logged and
+ * skipped, so one file does not drop the rest of the wizard sync.
+ */
+async function registerSyncedUpload(
+  admin: any,
+  category: string,
+  args: Parameters<typeof registerDocument>[1],
+): Promise<boolean> {
+  if (!DOCUMENT_CONTENT_SHA256_ENABLED) {
+    const res = await registerDocument(admin, args);
+    return !!res;
+  }
+  try {
+    const res = await registerDocument(admin, args);
+    return !!res;
+  } catch (e) {
+    if (!isUploadedContentShaRefusal(e)) throw e;
+    console.error("[documents] registration refused", category, e);
+    return false;
+  }
+}
+
+/**
  * Copy any files captured during the application into the document vault.
  * Safe to call on every wizard step — already-registered paths are skipped.
  */
@@ -350,38 +447,44 @@ export async function syncApplicationUploads(
     // Legacy rows stored a full URL rather than a storage path; those are not
     // objects we own, so leave them alone.
     if (!path || typeof path !== "string" || path.startsWith("http")) continue;
-    const res = await registerDocument(admin, {
-      applicationId: application.id as string,
-      category: field.category,
-      bucket: field.bucket,
-      path,
-      fileName: path.split("/").pop() ?? null,
-      label: field.label,
-      expiresAt:
-        field.category === "license_front" ? (application.license_expiration ?? null) : null,
-      uploadedBy: (application.user_id as string) ?? null,
-      uploadedByRole: "driver",
-      ...(await objectMeta(admin, field.bucket, path)),
-    });
-    if (res) registered++;
+    if (
+      await registerSyncedUpload(admin, field.category, {
+        applicationId: application.id as string,
+        category: field.category,
+        bucket: field.bucket,
+        path,
+        fileName: path.split("/").pop() ?? null,
+        label: field.label,
+        expiresAt:
+          field.category === "license_front" ? (application.license_expiration ?? null) : null,
+        uploadedBy: (application.user_id as string) ?? null,
+        uploadedByRole: "driver",
+        ...(await objectMeta(admin, field.bucket, path)),
+      })
+    ) {
+      registered++;
+    }
   }
 
   // Gig trip screenshots arrive as an array of paths.
   const shots = Array.isArray(application.trip_screenshots) ? application.trip_screenshots : [];
   for (const path of shots) {
     if (!path || typeof path !== "string" || path.startsWith("http")) continue;
-    const res = await registerDocument(admin, {
-      applicationId: application.id as string,
-      category: "trip_history",
-      bucket: TRIP_SCREENSHOT_BUCKET,
-      path,
-      fileName: path.split("/").pop() ?? null,
-      label: "Trip screenshot (from application)",
-      uploadedBy: (application.user_id as string) ?? null,
-      uploadedByRole: "driver",
-      ...(await objectMeta(admin, TRIP_SCREENSHOT_BUCKET, path)),
-    });
-    if (res) registered++;
+    if (
+      await registerSyncedUpload(admin, "trip_history", {
+        applicationId: application.id as string,
+        category: "trip_history",
+        bucket: TRIP_SCREENSHOT_BUCKET,
+        path,
+        fileName: path.split("/").pop() ?? null,
+        label: "Trip screenshot (from application)",
+        uploadedBy: (application.user_id as string) ?? null,
+        uploadedByRole: "driver",
+        ...(await objectMeta(admin, TRIP_SCREENSHOT_BUCKET, path)),
+      })
+    ) {
+      registered++;
+    }
   }
 
   /*
@@ -482,6 +585,7 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
         category: CategoryEnum,
         fileName: z.string().min(1).max(200),
         mimeType: z.string().min(3).max(120),
+        internal: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -502,11 +606,13 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
       if (await getActor(context.userId)) await requireManager(context.userId);
     }
     let applicationId = data.applicationId ?? null;
+    let staff = admin;
     if (admin) {
       if (!applicationId) throw new Error("Missing driver");
     } else if (await isStaffUser(context.userId)) {
       // Coordinator or Manager uploading on an applicant's behalf.
       if (!applicationId) throw new Error("Missing driver");
+      staff = true;
     } else {
       const { data: app } = await context.supabase
         .from("applications")
@@ -520,13 +626,58 @@ export const createDocumentUploadUrl = createServerFn({ method: "POST" })
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const path = `${applicationId}/${data.category}-${crypto.randomUUID()}.${safeExt(data.fileName, data.mimeType)}`;
+    // Before anything is signed, so a refused Replace leaves no object behind.
+    await refuseSignedAgreementReplace(supabaseAdmin, {
+      applicationId: applicationId as string,
+      category: data.category,
+      staff,
+    });
+    // Team only is decided HERE, at reservation, not only at confirm: the
+    // path carries it, and confirm refuses to share anything reserved as
+    // team only. Only staff may reserve one; a driver asking is refused
+    // rather than silently given a shared upload.
+    if (data.internal && !staff) throw new Error(TEAM_ONLY_STAFF_ONLY);
+    const path = uploadPath(applicationId as string, data.category, !!data.internal, data.fileName, data.mimeType);
     const { data: signed, error } = await supabaseAdmin.storage
       .from(DOC_BUCKET)
       .createSignedUploadUrl(path);
     if (error || !signed) throw new Error(error?.message || "Could not start upload");
-    return { path: signed.path, token: signed.token, bucket: DOC_BUCKET, applicationId };
+    return { path: signed.path, token: signed.token, bucket: DOC_BUCKET, applicationId, internal: !!data.internal };
   });
+
+export const TEAM_ONLY_STAFF_ONLY = "Only team members can upload team-only documents.";
+export const TEAM_ONLY_MISMATCH =
+  "This upload was reserved as team only and can't be confirmed as shared. Nothing was saved.";
+export const DUPLICATE_CONFIRM = "This upload was already saved. Nothing was added.";
+
+/** Storage path for a vault upload. Team-only uploads live under `<app>/internal/`. */
+export function uploadPath(applicationId: string, category: string, internal: boolean, fileName: string, mimeType: string): string {
+  const folder = internal ? `${applicationId}/internal` : applicationId;
+  return `${folder}/${category}-${crypto.randomUUID()}.${safeExt(fileName, mimeType)}`;
+}
+
+/** True when the path was reserved as team only. */
+export function reservedTeamOnly(applicationId: string, path: string): boolean {
+  return path.startsWith(`${applicationId}/internal/`);
+}
+
+/**
+ * Who may see a confirmed upload. Restricted categories and team-only
+ * reservations are admin-only no matter what the confirm asks; a driver can
+ * never make anything team only; a team-only reservation confirmed as
+ * shared is refused rather than downgraded.
+ */
+export function confirmVisibility(args: {
+  restricted: boolean;
+  staff: boolean;
+  internal: boolean | undefined;
+  reservedInternal: boolean;
+}): string[] {
+  if (args.reservedInternal && !args.staff) throw new Error(TEAM_ONLY_STAFF_ONLY);
+  if (args.reservedInternal && args.internal === false) throw new Error(TEAM_ONLY_MISMATCH);
+  if (args.restricted || args.reservedInternal || (args.staff && args.internal)) return ["admin"];
+  return ["driver", "admin"];
+}
 
 /**
  * Refuse to act on a restricted document unless the caller is an Owner.
@@ -546,6 +697,137 @@ async function assertMayTouch(userId: string, documentId: string): Promise<void>
     const { requireOwner } = await import("@/lib/roles.server");
     await requireOwner(userId);
   }
+}
+
+/** True when an agreements row names any of these documents as its evidence. */
+async function namedByAgreement(admin: any, ids: string[], failure: string): Promise<boolean> {
+  if (!ids.length) return false;
+  for (const column of ["document_id", "completed_document_id"] as const) {
+    const { data, error } = await admin.from("agreements").select("id").in(column, ids).limit(1);
+    // Fail closed: a lookup that errored is not proof the rows are ordinary.
+    if (error) throw new Error(failure);
+    if ((data ?? []).length > 0) return true;
+  }
+  return false;
+}
+
+const REPLACE_CHECK_FAILED =
+  "Could not confirm this upload would not replace a signed agreement. Nothing was uploaded.";
+
+/**
+ * Refuse an upload that would supersede signed-agreement evidence.
+ *
+ * Replace in the vault is "upload a new file in the same category":
+ * persistConfirmedDocument marks every current row of that category
+ * is_current=false, superseded_by=<new row>. On the Signed agreement card that
+ * demoted the archived, signed PDF to "Replaced versions" and showed the new
+ * upload as the signed agreement. Signed evidence is immutable; a wrong
+ * agreement is voided and re-sent through eSign instead. Drivers never file
+ * agreements at all — theirs come from eSign. Called before an upload URL is
+ * signed and again before the row is written.
+ * See docs/esign/SIGNED-AGREEMENT-IMMUTABILITY.md.
+ */
+async function refuseSignedAgreementReplace(
+  admin: any,
+  args: { applicationId: string; category: string; staff: boolean },
+): Promise<void> {
+  if (!args.staff && args.category === "agreement") {
+    throw new Error(SIGNED_AGREEMENT_DRIVER_UPLOAD_REFUSED);
+  }
+  if (!args.staff && args.category === "rental_application") {
+    throw new Error(RENTAL_APPLICATION_DRIVER_UPLOAD_REFUSED);
+  }
+  const { data: rows, error } = await admin
+    .from("documents")
+    .select("id,kind,category,storage_bucket,storage_path")
+    .eq("driver_id", args.applicationId)
+    .eq("category", args.category)
+    .eq("is_current", true);
+  if (error) throw new Error(REPLACE_CHECK_FAILED);
+  const current = (rows ?? []) as Array<{ id: string } & Parameters<typeof isSignedAgreementEvidence>[0]>;
+  if (current.some((r) => isSignedAgreementEvidence(r))) {
+    throw new Error(SIGNED_AGREEMENT_REPLACE_REFUSED);
+  }
+  if (await namedByAgreement(admin, current.map((r) => r.id), REPLACE_CHECK_FAILED)) {
+    throw new Error(SIGNED_AGREEMENT_REPLACE_REFUSED);
+  }
+}
+
+type UploadHasher = (admin: any, bucket: string, path: string) => Promise<string | null>;
+
+/**
+ * Insert the documents row, then hash. The hasher returns null when
+ * DOCUMENT_CONTENT_SHA256_ENABLED is off, and when the packet function is
+ * not installed yet. A returned hex is written to content_sha256. A thrown
+ * hasher marks this new row not current and is rethrown. The previous
+ * current row stays current. The new row is not deleted. Supersede runs
+ * only after the hasher returns.
+ */
+export async function persistConfirmedDocument(
+  admin: any,
+  fields: {
+    driver_id: string;
+    kind: string;
+    category: string;
+    label: string | null;
+    storage_bucket: string;
+    storage_path: string;
+    visibility: string[];
+    file_name: string | null;
+    mime_type: string | null;
+    size_bytes: number | null;
+    expires_at: string | null;
+    uploaded_by: string | null;
+    uploaded_by_role: string;
+  },
+  hash: UploadHasher = recordUploadedContentSha,
+): Promise<{ id: string }> {
+  const { data: row, error } = await admin
+    .from("documents")
+    .insert({ ...fields, is_current: true })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  let contentSha: string | null = null;
+  try {
+    contentSha = await hash(admin, fields.storage_bucket, fields.storage_path);
+  } catch (hashError) {
+    const demoted = await admin.from("documents").update({ is_current: false }).eq("id", row.id);
+    if (demoted?.error) {
+      console.error(
+        "[documents] could not mark the unhashed upload not current",
+        demoted.error.message ?? demoted.error,
+      );
+    }
+    throw hashError;
+  }
+  if (contentSha) {
+    const stamped = await admin.from("documents").update({ content_sha256: contentSha }).eq("id", row.id);
+    if (stamped?.error) {
+      const demoted = await admin.from("documents").update({ is_current: false }).eq("id", row.id);
+      if (demoted?.error) {
+        console.error(
+          "[documents] could not mark the unhashed upload not current",
+          demoted.error.message ?? demoted.error,
+        );
+      }
+      throw new Error(stamped.error.message || "Could not record the content hash");
+    }
+  }
+  // Multi-file categories keep every file current; see MULTI_FILE_CATEGORIES.
+  if (MULTI_FILE_CATEGORIES.includes(fields.category)) return { id: row.id as string };
+  // Renter insurance: a verified card stays current until this upload is reviewed.
+  await supersedeQuery(
+    admin
+      .from("documents")
+      .update({ is_current: false, superseded_by: row.id })
+      .eq("driver_id", fields.driver_id)
+      .eq("category", fields.category)
+      .eq("is_current", true)
+      .neq("id", row.id),
+    holdsVerifiedUntilReview(fields.category, fields.uploaded_by_role),
+  );
+  return { id: row.id as string };
 }
 
 /** True for Coordinator and above. */
@@ -603,42 +885,47 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
     if (!data.path.startsWith(`${data.applicationId}/`)) throw new Error("Invalid upload path");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Again here: the confirm is what supersedes, and it can be called alone.
+    await refuseSignedAgreementReplace(supabaseAdmin, {
+      applicationId: data.applicationId,
+      category: data.category,
+      staff,
+    });
     // A recording is never shared with the applicant, whatever the caller
     // asked for.
-    const visibility = restricted || (staff && data.internal) ? ["admin"] : ["driver", "admin"];
-
-    const { data: row, error } = await supabaseAdmin
-      .from("documents")
-      .insert({
-        driver_id: data.applicationId,
-        kind: data.category,
-        category: data.category,
-        label: data.label ?? null,
-        storage_bucket: DOC_BUCKET,
-        storage_path: data.path,
-        visibility,
-        file_name: data.fileName ?? null,
-        mime_type: data.mimeType ?? null,
-        size_bytes: data.sizeBytes ?? null,
-        expires_at: data.expiresAt || null,
-        is_current: true,
-        uploaded_by: context.userId,
-        uploaded_by_role: admin ? "team" : "driver",
-      })
-      .select("id")
-      .single();
-    if (error) throw new Error(error.message);
-
-    // Supersede the previous current document in the same category.
-    await supabaseAdmin
-      .from("documents")
-      .update({ is_current: false, superseded_by: row.id })
-      .eq("driver_id", data.applicationId)
-      .eq("category", data.category)
-      .eq("is_current", true)
-      .neq("id", row.id);
-
-    return { ok: true, id: row.id as string };
+    const visibility = confirmVisibility({
+      restricted,
+      staff,
+      internal: data.internal,
+      reservedInternal: reservedTeamOnly(data.applicationId, data.path),
+    });
+    // One reservation, one row. A retried confirm must not add a second copy.
+    {
+      const { data: existing, error: dupError } = await supabaseAdmin
+        .from("documents")
+        .select("id")
+        .eq("storage_bucket", DOC_BUCKET)
+        .eq("storage_path", data.path)
+        .limit(1);
+      if (dupError) throw new Error("Could not check for an existing copy. Nothing was saved.");
+      if ((existing ?? []).length > 0) throw new Error(DUPLICATE_CONFIRM);
+    }
+    const saved = await persistConfirmedDocument(supabaseAdmin, {
+      driver_id: data.applicationId,
+      kind: data.category,
+      category: data.category,
+      label: data.label ?? null,
+      storage_bucket: DOC_BUCKET,
+      storage_path: data.path,
+      visibility,
+      file_name: data.fileName ?? null,
+      mime_type: data.mimeType ?? null,
+      size_bytes: data.sizeBytes ?? null,
+      expires_at: data.expiresAt || null,
+      uploaded_by: context.userId,
+      uploaded_by_role: admin ? "team" : "driver",
+    });
+    return { ok: true, id: saved.id };
   });
 
 export const updateDocumentMeta = createServerFn({ method: "POST" })
@@ -683,17 +970,44 @@ export const deleteDocument = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     if (!(await isAdmin(context.supabase, context.userId))) throw new Error("Forbidden");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: doc } = await supabaseAdmin
+    const { data: doc, error: readError } = await supabaseAdmin
       .from("documents")
-      .select("id,storage_bucket,storage_path")
+      .select("id,kind,category,storage_bucket,storage_path,uploaded_by_role")
       .eq("id", data.documentId)
       .maybeSingle();
-    if (doc) {
-      await supabaseAdmin.storage
-        .from(doc.storage_bucket as string)
-        .remove([doc.storage_path as string]);
-      await supabaseAdmin.from("documents").delete().eq("id", data.documentId);
+    // Fail closed: a read that errored is not proof the document is ordinary.
+    if (readError) throw new Error(readError.message);
+    if (!doc) return { ok: true };
+    if (doc.uploaded_by_role === "driver") {
+      throw new Error("Driver-uploaded documents are permanent records and cannot be deleted.");
     }
+
+    // Signed-agreement evidence is refused before storage is touched, so a
+    // refusal removes nothing. The storage object went first here, which is
+    // why the row-shape check and the agreements lookup both come before it.
+    if (isSignedAgreementEvidence(doc)) throw new Error(SIGNED_AGREEMENT_DELETE_REFUSED);
+    // Any document an agreement names as its evidence, whatever bucket or
+    // category it was filed under. Two equality filters, not an interpolated
+    // .or(). agreements.document_id is ON DELETE SET NULL, so deleting the row
+    // would also have silently detached the agreement from its archive.
+    for (const column of ["document_id", "completed_document_id"] as const) {
+      const { data: refs, error: refError } = await supabaseAdmin
+        .from("agreements")
+        .select("id")
+        .eq(column, data.documentId)
+        .limit(1);
+      if (refError) {
+        throw new Error(
+          "Could not confirm this document is not a signed agreement. Nothing was deleted.",
+        );
+      }
+      if ((refs ?? []).length > 0) throw new Error(SIGNED_AGREEMENT_DELETE_REFUSED);
+    }
+
+    await supabaseAdmin.storage
+      .from(doc.storage_bucket as string)
+      .remove([doc.storage_path as string]);
+    await supabaseAdmin.from("documents").delete().eq("id", data.documentId);
     return { ok: true };
   });
 
@@ -765,10 +1079,76 @@ export const setDocumentReview = createServerFn({ method: "POST" })
 
     const { data: doc } = await supabaseAdmin
       .from("documents")
-      .select("id,driver_id,category,label,review_status")
+      .select("id,driver_id,kind,category,label,review_status,is_current,storage_bucket,storage_path,content_sha256")
       .eq("id", data.documentId)
       .maybeSingle();
     if (!doc) throw new Error("Document not found");
+
+    // Needs New asks for a replacement, and a signed agreement is never
+    // replaced: it is voided and re-sent through eSign. Verifying, and
+    // clearing a decision already on the row, stay allowed.
+    if (
+      data.status === "rejected" &&
+      (isSignedAgreementEvidence(doc) ||
+        (await namedByAgreement(
+          supabaseAdmin,
+          [doc.id as string],
+          "Could not confirm this document is not a signed agreement. Nothing was changed.",
+        )))
+    ) {
+      throw new Error(SIGNED_AGREEMENT_NEEDS_NEW_REFUSED);
+    }
+
+    // A signed paper agreement verified here counts as the signed agreement
+    // for rental activation (activation-readiness.ts isAuditedPaperAgreement,
+    // re-checked in activate_rental_checked_tx). So this verification must
+    // leave a complete, mandatory audit trail BEFORE the document changes:
+    // verifier, time, document id, storage path, content SHA-256 and version
+    // when known. If that audit row cannot be written, nothing is verified.
+    // Activation trusts the audit row, not review_status alone.
+    if (doc.category === "agreement" && data.status === "verified") {
+      if (!doc.is_current) throw new Error("Only the current agreement document can be verified.");
+      if (!doc.storage_bucket || !doc.storage_path)
+        throw new Error("Upload the signed agreement file before verifying it.");
+      const reviewedAt = new Date().toISOString();
+      const { error: auditErr } = await supabaseAdmin.from("audit_log").insert({
+        actor_user_id: actor.userId,
+        actor_email: actor.email ?? null,
+        actor_role: actor.role,
+        action: "document.verified",
+        entity_type: "application",
+        entity_id: doc.driver_id,
+        summary: `Verified signed agreement ${doc.label ?? doc.id}`,
+        metadata: {
+          documentId: doc.id,
+          category: doc.category,
+          from: doc.review_status,
+          to: "verified",
+          note: data.note ?? null,
+          paper_agreement: true,
+          verifier_user_id: actor.userId,
+          verifier_role: actor.role,
+          verifier_tier: actor.tier,
+          reviewed_at: reviewedAt,
+          reviewed_at_ms: Date.parse(reviewedAt),
+          storage_bucket: doc.storage_bucket,
+          storage_path: doc.storage_path,
+          content_sha256: doc.content_sha256 ?? null,
+          document_label: doc.label ?? null,
+          // Vault documents carry no agreement version; recorded as unknown.
+          agreement_version: null,
+        },
+      });
+      if (auditErr) throw new Error("Could not record the verification. The agreement was not verified.");
+      const { error: upErr } = await supabaseAdmin
+        .from("documents")
+        .update({ review_status: "verified", review_note: data.note ?? null, reviewed_at: reviewedAt, reviewed_by: context.userId })
+        .eq("id", data.documentId);
+      // The audit row names this exact reviewed_at; without the matching
+      // document update it never counts as a signed agreement.
+      if (upErr) throw new Error(upErr.message);
+      return { ok: true as const };
+    }
 
     const clearing = data.status === "uploaded";
     const { error } = await supabaseAdmin
@@ -782,6 +1162,33 @@ export const setDocumentReview = createServerFn({ method: "POST" })
       })
       .eq("id", data.documentId);
     if (error) throw new Error(error.message);
+
+    // Renter insurance held for review: finish the swap now that the team decided.
+    if (doc.driver_id && (HOLD_VERIFIED_CATEGORIES as readonly string[]).includes(doc.category)) {
+      const others = await supabaseAdmin
+        .from("documents")
+        .select("id")
+        .eq("driver_id", doc.driver_id)
+        .eq("category", doc.category)
+        .eq("is_current", true)
+        .eq("review_status", "verified")
+        .neq("id", doc.id)
+        .limit(1);
+      const follow = reviewFollowUp(doc.category, data.status, { is_current: doc.is_current !== false }, (others.data ?? []).length > 0);
+      if (follow === "supersede_others") {
+        const { error: supErr } = await supabaseAdmin
+          .from("documents")
+          .update({ is_current: false, superseded_by: doc.id })
+          .eq("driver_id", doc.driver_id)
+          .eq("category", doc.category)
+          .eq("is_current", true)
+          .neq("id", doc.id);
+        if (supErr) throw new Error(supErr.message);
+      } else if (follow === "demote_rejected") {
+        const { error: demErr } = await supabaseAdmin.from("documents").update({ is_current: false }).eq("id", doc.id);
+        if (demErr) throw new Error(demErr.message);
+      }
+    }
 
     await logAudit(actor, {
       action: `document.${data.status === "uploaded" ? "review_cleared" : data.status}`,

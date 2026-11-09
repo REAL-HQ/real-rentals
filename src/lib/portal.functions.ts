@@ -1,5 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { isSignedAgreementEvidence } from "@/lib/signed-agreement-evidence";
+import { listStoredDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
+import { choosePortalVehiclePhoto } from "@/lib/portal-vehicle-photo";
+import { vehicleListThumbnailKey } from "@/lib/vehicle-thumbnail";
 
 /** Reads may name a driver for staff read-only preview; verified server-side in portalScope. */
 const previewInput = (d: unknown): { previewDriverId?: string } => {
@@ -183,12 +187,9 @@ export const getMyRentalHistory = createServerFn({ method: "GET" })
     });
   });
 
-export type DriverDocument = {
-  id: string;
+export type DriverDocument = VaultDocument & {
   kind: string;
   notes: string | null;
-  created_at: string;
-  url: string | null;
 };
 
 export const getDriverDashboard = createServerFn({ method: "GET" })
@@ -218,11 +219,32 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { data: v } = await supabaseAdmin
         .from("vehicles")
-        .select("id,year,make,model,trim,color,status,photos,license_plate")
+        .select("id,year,make,model,trim,color,status,license_plate")
         .eq("id", rental.vehicle_id)
         .maybeSingle();
       if (v) {
-        const photos = (v.photos as string[] | null) ?? null;
+        const [{ data: media }, { data: thumbnailSetting }] = await Promise.all([
+          supabaseAdmin
+            .from("vehicle_media")
+            .select("id,vehicle_id,kind,storage_bucket,storage_path,review_status,is_primary,sort_order,created_at")
+            .eq("vehicle_id", v.id)
+            .order("is_primary", { ascending: false })
+            .order("sort_order", { ascending: true })
+            .order("created_at", { ascending: true }),
+          supabaseAdmin
+            .from("app_settings")
+            .select("value")
+            .eq("key", vehicleListThumbnailKey(v.id))
+            .maybeSingle(),
+        ]);
+        const selected = choosePortalVehiclePhoto(v.id, (media ?? []) as any[], thumbnailSetting?.value);
+        let photo: string | null = null;
+        if (selected) {
+          const { data: signed } = await supabaseAdmin.storage
+            .from(selected.storage_bucket)
+            .createSignedUrl(selected.storage_path, 15 * 60);
+          photo = signed?.signedUrl ?? null;
+        }
         vehicle = {
           id: v.id,
           year: v.year,
@@ -230,7 +252,7 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
           model: v.model,
           trim: v.trim ?? null,
           color: v.color ?? null,
-          photo: (photos && photos[0]) || null,
+          photo,
           plate: (v as any).license_plate ?? null,
           status: v.status ?? null,
         };
@@ -318,6 +340,44 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
       shops: (shops ?? []) as any,
     };
   });
+
+/**
+ * The signed-in driver's own next payment, for the read-only portal banner.
+ *
+ * Same portal scope as the dashboard: a driver reads their row, and a staff
+ * preview reads only the driver they were allowed to open. Nothing else on
+ * the rental is selected. While the flag is off this refuses before that read.
+ */
+export type MyPaymentBanner = {
+  active: boolean;
+  weeklyRate: number | null;
+  nextPaymentDue: string | null;
+};
+
+export const getMyPaymentBanner = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(previewInput)
+  .handler(async ({ context, data: input }): Promise<MyPaymentBanner> => {
+    const { assertRenterPaymentBannerEnabled } = await import("@/lib/renter-payment-banner");
+    assertRenterPaymentBannerEnabled();
+    const { supabase, userId } = await scope(context, input, "payment_banner");
+    const { data: rental } = await supabase
+      .from("rentals")
+      .select("weekly_rate,next_payment_due")
+      .eq("driver_id", userId)
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!rental) return { active: false, weeklyRate: null, nextPaymentDue: null };
+    const rate = rental.weekly_rate;
+    return {
+      active: true,
+      weeklyRate: rate == null || Number.isNaN(Number(rate)) ? null : Number(rate),
+      nextPaymentDue: rental.next_payment_due ?? null,
+    };
+  });
+
 export const getDriverDocuments = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator(previewInput)
@@ -332,24 +392,48 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
 
     const { data } = await supabase
       .from("documents")
-      .select("id,kind,notes,created_at,storage_bucket,storage_path,visibility")
+      .select("id,kind,category,label,notes,file_name,mime_type,size_bytes,expires_at,is_current,visibility,uploaded_by_role,created_at,storage_bucket,storage_path,review_status,review_note,reviewed_at")
       .in("driver_id", appIds)
-      .order("created_at", { ascending: false })
-      .limit(50);
+      .order("created_at", { ascending: false });
 
     const rows = (data ?? []).filter((d: any) => (d.visibility ?? []).includes("driver"));
 
-    return Promise.all(
+    const shared = await Promise.all(
       rows.map(async (d: any) => {
         let url: string | null = null;
-        if (preview) return { id: d.id, kind: d.kind, notes: d.notes ?? null, created_at: d.created_at, url };
-        const { data: signed } = await supabase.storage
-          .from(d.storage_bucket)
-          .createSignedUrl(d.storage_path, 60 * 10);
-        url = signed?.signedUrl ?? null;
-        return { id: d.id, kind: d.kind, notes: d.notes ?? null, created_at: d.created_at, url };
+        if (!preview) {
+          const { data: signed } = await supabase.storage
+            .from(d.storage_bucket)
+            .createSignedUrl(d.storage_path, 60 * 10);
+          url = signed?.signedUrl ?? null;
+        }
+        return {
+          id: d.id,
+          kind: d.kind,
+          notes: d.notes ?? null,
+          category: d.category ?? "other",
+          label: d.label ?? null,
+          file_name: d.file_name ?? null,
+          mime_type: d.mime_type ?? null,
+          size_bytes: d.size_bytes ?? null,
+          expires_at: d.expires_at ?? null,
+          is_current: d.is_current ?? true,
+          visibility: (d.visibility ?? []) as string[],
+          uploaded_by_role: d.uploaded_by_role ?? null,
+          created_at: d.created_at,
+          url,
+          review_status: d.review_status ?? "uploaded",
+          review_note: d.review_note ?? null,
+          reviewed_at: d.reviewed_at ?? null,
+          signed_agreement: isSignedAgreementEvidence(d),
+        } satisfies DriverDocument;
       }),
     );
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const stored = await listStoredDriverDocuments(supabaseAdmin, appIds, !preview);
+    const merged = new Map<string, DriverDocument>();
+    for (const document of [...shared, ...stored]) merged.set(document.id, document);
+    return [...merged.values()].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
   });
 
 export type DriverIssue = {
@@ -414,7 +498,8 @@ export const createDriverIssue = createServerFn({ method: "POST" })
       .select("id")
       .single();
     if (error) return { error: error.message };
-    // Staff email only. The driver still gets { ok: true } and the same portal list.
+    // Staff notice only after the row exists. Email and roadside SMS stay inside
+    // driver-issue-alert.server and both default off. The driver still gets { ok: true }.
     // Isolated from the dashboard deposit fields (PR #62 edits those, not this insert).
     void import("@/lib/driver-issue-alert.server")
       .then(({ notifyManagersOfDriverIssue }) =>

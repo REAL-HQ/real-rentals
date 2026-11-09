@@ -1,11 +1,57 @@
+import { OnboardingChecklist } from "./OnboardingChecklist";
+import { getOnboardingChecklist } from "@/lib/onboarding-checklist.functions";
+import {
+  ONBOARDING_CHECKLIST_ENABLED,
+  onboardingCohort,
+  type OnboardingChecklistResult,
+} from "@/lib/onboarding-checklist";
+import {
+  DriverDocExpiryCell,
+  DriverDocExpiryFilter,
+  DriverDocExpiryHeader,
+  DriverDocExpiryNotice,
+} from "./DriverDocExpiry";
+import { getDriverDocExpiry } from "@/lib/driver-doc-expiry-column.functions";
+import {
+  DRIVER_DOC_EXPIRY_ENABLED,
+  DRIVER_DOC_EXPIRY_ROW_CAP,
+  documentListStatus,
+  documentRowIndex,
+  type DriverDocExpiryResult,
+} from "@/lib/driver-doc-expiry-column";
+import { ApplicationDocGaps } from "./ApplicationDocGaps";
+import { getApplicationDocGaps } from "@/lib/application-doc-gaps.functions";
+import {
+  APPLICATION_DOC_GAPS_ENABLED,
+  APPLICATION_DOC_GAPS_ROW_CAP,
+  type ApplicationDocGapsResult,
+} from "@/lib/application-doc-gaps";
+import { ApplicationResumeReminders } from "./ApplicationResumeReminders";
+import { APPLICATION_RESUME_REMINDERS_ENABLED } from "@/lib/application-resume-reminders-flag";
 import { RecordedRentalCloseout } from "./RecordedRentalCloseout";
 import { RecordRentalDialog } from "./RecordRentalDialog";
 import { RECORD_RENTAL_CONTRACT_ENABLED } from "@/lib/record-rental-contract";
+import { END_RENTAL_PRESERVES_APPLICATION_ENABLED } from "@/lib/end-rental-preserves-application";
 import { updateApplicationLifecycle, type LifecyclePatch } from "@/lib/application-lifecycle.functions";
+import {
+  applicationFilterCount,
+  applicationStatusChoiceDisabled,
+  applicationStatusLabel,
+  applicationStatusMenu,
+  visibleDriverActivity,
+  type ApplicationStatusEvent,
+  type ClosureReason,
+} from "@/lib/application-status";
+import type { StaffTier } from "@/lib/roles";
+import { getApplicationStatusHistory, listDriverActiveSets } from "@/lib/application-status.functions";
+import { CloseApplicationDialog } from "./CloseApplicationDialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
+import { easternDay, STALLED_APPLICATIONS_ENABLED } from "@/lib/stalled-applications";
+import { listStalledApplications, type StalledApplicationRow } from "@/lib/stalled-applications.functions";
+import { StalledApplications } from "./StalledApplications";
 import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -15,16 +61,35 @@ import {
   reissueApplicantLink,
 } from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
+import { NextStepCard } from "./NextStepCard";
+import { DriverRentalDetails } from "./DriverRentalDetails";
+import { nextStep, type FixTarget } from "@/lib/next-step";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { DepositDialog } from "./DepositDialog";
+import { DriverStatement } from "./DriverStatement";
 import { NO_PAY_CELLS, type PayCells } from "@/lib/driver-payment-status";
 import { getDriverPayStatuses } from "@/lib/driver-payment-status.functions";
-import { endRental } from "@/lib/rentals.functions";
+import { endRental, getActivationReadiness, type ActivationReadiness } from "@/lib/rentals.functions";
+import {
+  activationEntryState,
+  missingRequiredCategories,
+  notifyActivationReadinessRefresh,
+  primaryStep,
+} from "@/lib/activation-readiness";
+import { ActivationRequirementList } from "./ActivationRequirementList";
+import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
+import { ChecklistInspectionFiles } from "./ChecklistInspectionFiles";
+import { checklistDocumentCategories } from "./checklist-actions";
+import { CHECKLIST_EVIDENCE_ENABLED, EVIDENCE_FIELDS, PICKUP_PAYMENT_METHODS, documentCollection, evidenceTone, latestEvidenceEvent, projectEvidence, requirementEvidence, type EvidenceEvent, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
+import { pickupAmountCents } from "@/lib/pickup-payment";
+import { getChecklistEvidence, saveChecklistEvidence } from "@/lib/checklist-evidence.functions";
+import { ChecklistEvidenceControl } from "./ChecklistEvidenceControl";
+import { driverLifecycle } from "@/lib/driver-lifecycle";
+import type { ActivationRequirementKey } from "@/lib/activation-readiness";
 import { scoreApplication } from "@/lib/scoring.functions";
 import {
   InsuranceVerificationCard,
   InterviewTab,
-  ScreeningPipeline,
   useDriverScreening,
 } from "./DriverScreening";
 import {
@@ -48,7 +113,6 @@ import {
   Search,
   Check,
   ChevronDown,
-  ArrowLeft,
   Mail,
   Phone,
   MapPin,
@@ -73,9 +137,21 @@ import {
   Link2 as LinkIcon,
   Loader2,
 } from "lucide-react";
-import { removeCardOnFile } from "@/lib/payments.functions";
+import { issueCardOnFileLink, removeCardOnFile } from "@/lib/payments.functions";
+import {
+  cardEmailHref,
+  cardLinkFresh,
+  cardTextHref,
+  forgetCachedCardLink,
+  readCachedCardLink,
+  rememberCachedCardLink,
+  type CachedCardLink,
+} from "@/lib/card-link-cache";
 import { AgreementsCard } from "./AgreementsCard";
 import { ContactStatusCell } from "./ContactStatusCell";
+import { ApprovedNotRentingList } from "./ApprovedNotRenting";
+import { listApprovedNotRenting } from "@/lib/booking-funnel.functions";
+import type { ApprovedNotRentingResult } from "@/lib/booking-funnel";
 import { listDriverRows, type DriverListResult } from "@/lib/drivers-list.functions";
 import {
   CONTACT_STATUSES,
@@ -88,6 +164,7 @@ import {
   stopRentalAutopay,
   type ChargeReason,
 } from "@/lib/rental-payments.functions";
+import { AUTOPAY_START_OFF_MESSAGE, RENTAL_AUTOPAY_START_ENABLED } from "@/lib/rental-autopay-flag";
 import { requestApplicationDocuments } from "@/lib/admin-communications.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { SourceBadge } from "./SourceBadge";
@@ -103,21 +180,26 @@ import {
   SectionCard,
   MicroLabel,
   EmptyState,
-  type LifecycleStage,
 } from "./ui";
 import {
   computeReadiness,
-  nextActions,
   type ReadinessDocument,
   type ReadinessResult,
-  type Remedy,
 } from "@/lib/readiness";
 
 import { requiredDocCounts } from "@/lib/required-docs";
+import {
+  DOCUMENT_REVIEW_AGING_ENABLED,
+  DOCUMENT_REVIEW_AGING_ROW_CAP,
+  type DocumentReviewAgingResult,
+} from "@/lib/document-review-aging";
+import { getDocumentReviewAging } from "@/lib/document-review-aging.functions";
+import { DocumentReviewAging } from "./DocumentReviewAging";
 import { buildReadinessIndex } from "@/lib/readiness-index";
 import { ApplicantDocuments, REQUIRED_VAULT_CATEGORIES } from "./ApplicantDocuments";
 import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
 import { InterviewDrawer } from "./InterviewDrawer";
+import { RecordCallDialog } from "./RecordCallDialog";
 import { acknowledgeApplication } from "@/lib/applications.functions";
 import { ClipboardList, Clock as ClockIcon, ExternalLink } from "lucide-react";
 import { WaitlistPanel } from "./WaitlistPanel";
@@ -125,6 +207,10 @@ import { DeleteDriverDialog } from "./DeleteDriverDialog";
 import { RecentlyDeletedDialog } from "./RecentlyDeletedDialog";
 import { listWaitlist, listWaitlistHolds, setWaitlistHold } from "@/lib/waitlist.functions";
 import { IdentityReviewCard } from "@/components/admin/IdentityReviewCard";
+import { ApplicationQuickReview } from "@/components/admin/ApplicationQuickReview";
+import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
+import { formatVehicleIdentityLine } from "@/lib/vehicle-label";
+import { APPLICATION_QUICK_REVIEW_ENABLED, isPendingReviewStatus } from "@/lib/application-quick-review";
 import {
   Dialog,
   DialogContent,
@@ -133,108 +219,17 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import { DocumentsExpiringList } from "./DocumentsExpiring";
+import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
+import type { ExpiryScope } from "@/lib/document-expiry";
 
-/**
- * What arrived, at a glance, above the tabs.
- *
- * The profile led with lifecycle, summary, rental need and readiness — four
- * panels about what is outstanding — and the evidence the applicant had
- * actually sent sat behind a tab nobody had reason to click. An operator
- * looking at a driver who had uploaded a licence, an insurance PDF, a gig
- * profile and a trip screenshot could not tell any of them existed.
- */
-function DocumentsStrip({
-  docs,
-  loading,
-  onOpen,
-}: {
-  docs: VaultDocument[];
-  loading: boolean;
-  onOpen: () => void;
-}) {
-  const GROUPS: { keys: string[]; label: string }[] = [
-    { keys: ["license_front", "license_back"], label: "Driver's License" },
-    { keys: ["insurance"], label: "Insurance" },
-    { keys: ["gig_profile"], label: "Gig Profile" },
-    { keys: ["trip_history"], label: "Trip History" },
-  ];
-  const current = docs.filter((d) => d.is_current);
-  const total = current.length;
-
-  return (
-    <SectionCard
-      padded={false}
-      title="Documents"
-      right={
-        <button
-          onClick={onOpen}
-          className="inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#55555E] hover:border-[#C4C4CB] transition-colors"
-        >
-          {total > 0 ? `Open All ${total}` : "Open Documents"}
-        </button>
-      }
-    >
-      <div className="px-5 py-4">
-        {loading ? (
-          <p className="text-[12.5px] text-[#77777F]">Loading what they sent…</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {GROUPS.map((g) => {
-              const hits = current.filter((d) => g.keys.includes(d.category));
-              const verified = hits.length > 0 && hits.every((d) => d.review_status === "verified");
-              const rejected = hits.some((d) => d.review_status === "rejected");
-              const tone = !hits.length
-                ? "bg-[#F4F4F6] text-[#77777F] border-[#EDEDF0]"
-                : rejected
-                  ? "bg-red-50 text-red-700 border-red-200"
-                  : verified
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : "bg-sky-50 text-sky-700 border-sky-200";
-              return (
-                <button
-                  key={g.label}
-                  onClick={onOpen}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition-opacity hover:opacity-80 ${tone}`}
-                >
-                  {g.label}
-                  <span className="tabular-nums font-normal">
-                    {!hits.length
-                      ? "Not Received"
-                      : rejected
-                        ? "Needs Replacement"
-                        : hits.length > 1
-                          ? `${hits.length} Files`
-                          : verified
-                            ? "Verified"
-                            : "Uploaded"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </SectionCard>
-  );
-}
-
-const DRIVER_STATUSES = [
-  "new",
-  "reviewing",
-  "approved",
-  "active",
-  "suspended",
-  "declined",
-  "closed",
-] as const;
-// "active" is set only by activate_rental_tx when a rental really starts;
-// approval goes through approveApplication; neither is a generic status edit.
-const SELECTABLE_STATUSES = DRIVER_STATUSES.filter((s) => s !== "active" && s !== "approved");
 const DEPOSIT_STATUSES = ["not_paid", "partially_paid", "paid", "refunded"] as const;
 const PAYMENT_STATUSES = ["current", "late", "past_due", "collections"] as const;
 const CHECK_STATUSES = ["pending", "passed", "failed"] as const;
+const CHECK_STATUS_LABELS = { pending: "Pending", passed: "Passed", failed: "Failed" } as const;
 
 const statusBadge: Record<string, string> = {
   new: "bg-blue-100 text-blue-800",
@@ -291,18 +286,36 @@ function useNow(intervalMs = 30000) {
 type PayIndex = Record<string, PayCells>;
 function payCells(e: PayCells | undefined): PayCells { return e ?? NO_PAY_CELLS; }
 
+function panelTier(isOwner: boolean, isManager: boolean): StaffTier {
+  if (isOwner) return "owner";
+  if (isManager) return "manager";
+  return "coordinator";
+}
+
 export function DriversPanel({
   externalSearch = "",
   initialOpenId,
   isOwner = false,
+  isManager = false,
   canManageWaitlist = false,
+  canViewOnboarding = false,
+  canIssueCardLink = false,
   urlFilter,
 }: {
   /** Owner + Manager: may Add/Remove Waitlist (server enforces the same). */
   canManageWaitlist?: boolean;
+  /** Manager and above. Quick review and the driver statement are not mounted otherwise. */
+  isManager?: boolean;
+  /** Owner + Manager (team). The checklist stays unmounted while its flag is false. */
+  canViewOnboarding?: boolean;
+  /** Owner + Manager. The card-link server function requires a manager. */
+  canIssueCardLink?: boolean;
   externalSearch?: string;
   initialOpenId?: string;
-  /** ?filter= from the address bar; only "waitlist" is honoured (old ?tab=waitlist links land here). */
+  /**
+   * ?filter= from the address bar. "waitlist" is honoured for every staff
+   * tier. "documents-expiring" and "approved-not-renting" are honoured for a manager.
+   */
   urlFilter?: string;
   /** Verification recordings are Owner-only. See VerificationRecording. */
   isOwner?: boolean;
@@ -329,13 +342,23 @@ export function DriversPanel({
    */
   const navigate = useNavigate();
   const openId = initialOpenId ?? null;
+  const stalledOn = STALLED_APPLICATIONS_ENABLED === true && canManageWaitlist;
   const setOpenId = useCallback(
-    (id: string | null) =>
-      void navigate({
-        to: "/admin",
-        search: id ? { tab: "drivers", id } : { tab: "drivers" },
-      }),
-    [navigate],
+    (id: string | null) => {
+      const search: {
+        tab: "drivers";
+        id?: string;
+        filter?: "documents-expiring" | "approved-not-renting" | "stalled";
+      } = id ? { tab: "drivers", id } : { tab: "drivers" };
+      // Opening a driver from a manager list comes back to that list.
+      // Waitlist links stay as they were: the filter is not kept.
+      if (canManageWaitlist && (urlFilter === "documents-expiring" || urlFilter === "approved-not-renting")) {
+        search.filter = urlFilter;
+      }
+      if (urlFilter === "stalled" && stalledOn) search.filter = "stalled";
+      void navigate({ to: "/admin", search });
+    },
+    [navigate, urlFilter, canManageWaitlist, stalledOn],
   );
   const [localFilter, setLocalFilter] = useState<string>("all");
   /*
@@ -350,6 +373,10 @@ export function DriversPanel({
    * param is claimed.
    */
   const [contactFilter, setContactFilter] = useState<string>("all");
+  const [onboardingResult, setOnboardingResult] = useState<OnboardingChecklistResult | null>(null);
+  const [onboardingFailed, setOnboardingFailed] = useState(false);
+  const [docExpiry, setDocExpiry] = useState<DriverDocExpiryResult | null>(null);
+  const [docFilter, setDocFilter] = useState("all");
   /*
    * False for a Coordinator: the server sent operational fields only, so
    * anything computed from licence, insurance or document data would be
@@ -357,19 +384,67 @@ export function DriversPanel({
    * says so rather than showing a score built on absent data.
    */
   const [canSeeSensitive, setCanSeeSensitive] = useState(true);
-  // Waitlist lives in the URL so old ?tab=waitlist bookmarks and the back button work.
-  const filter = urlFilter === "waitlist" ? "waitlist" : localFilter;
+  const [docGaps, setDocGaps] = useState<ApplicationDocGapsResult | null>(null);
+  const [reviewAging, setReviewAging] = useState<DocumentReviewAgingResult | null>(null);
+  // Waitlist and the manager lists live in the URL so a chip, a bookmark,
+  // and the back button agree. Manager lists are ignored for a coordinator.
+  const urlListFilter =
+    urlFilter === "waitlist" ||
+    ((urlFilter === "documents-expiring" || urlFilter === "approved-not-renting") && canManageWaitlist) ||
+    (urlFilter === "stalled" && stalledOn)
+      ? urlFilter
+      : null;
+  const filter = urlListFilter ?? localFilter;
   const setFilter = useCallback(
     (f: string) => {
-      if (f === "waitlist") {
-        void navigate({ to: "/admin", search: { tab: "drivers", filter: "waitlist" } });
+      if (f === "waitlist" || (f === "documents-expiring" && canManageWaitlist)) {
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: f } });
+        return;
+      }
+      if (f === "approved-not-renting" && canManageWaitlist) {
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: "approved-not-renting" } });
+        return;
+      }
+      if (f === "stalled") {
+        if (!stalledOn) return;
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: "stalled" } });
         return;
       }
       setLocalFilter(f);
-      if (urlFilter === "waitlist") void navigate({ to: "/admin", search: { tab: "drivers" } });
+      if (
+        urlFilter === "waitlist" ||
+        urlFilter === "documents-expiring" ||
+        urlFilter === "approved-not-renting" ||
+        urlFilter === "stalled"
+      ) {
+        void navigate({ to: "/admin", search: { tab: "drivers" } });
+      }
     },
-    [navigate, urlFilter],
+    [navigate, urlFilter, canManageWaitlist, stalledOn],
   );
+  const loadExpiring = useServerFn(listExpiringRenterDocuments);
+  const [expiringDocs, setExpiringDocs] = useState<ExpiringRenterDocuments | null>(null);
+  const [expiringFailed, setExpiringFailed] = useState(false);
+  const [expiringScope, setExpiringScope] = useState<ExpiryScope>("approved");
+  useEffect(() => {
+    if (!canManageWaitlist) return;
+    let live = true;
+    loadExpiring({ data: undefined })
+      .then((result) => {
+        if (!live) return;
+        setExpiringDocs(result);
+        setExpiringScope(result.defaultScope);
+        setExpiringFailed(false);
+      })
+      .catch(() => {
+        if (!live) return;
+        setExpiringFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManageWaitlist]);
   // Live waitlist size (entries not yet promoted) — never hard-coded.
   const loadWaitlist = useServerFn(listWaitlist);
   const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
@@ -380,21 +455,92 @@ export function DriversPanel({
   }, [loadWaitlist]);
   // Drivers held on the waitlist. A display status only: the application
   // stage underneath is never changed, so Remove restores it automatically.
+  const loadStalled = useServerFn(listStalledApplications);
+  const [stalledRows, setStalledRows] = useState<StalledApplicationRow[] | null>(null);
+  const [stalledTruncated, setStalledTruncated] = useState(false);
+  const [stalledRelatedTruncated, setStalledRelatedTruncated] = useState(false);
+  const [stalledFailed, setStalledFailed] = useState(false);
+  useEffect(() => {
+    if (!stalledOn) return;
+    let cancelled = false;
+    setStalledFailed(false);
+    loadStalled()
+      .then((result) => {
+        if (!cancelled) {
+          setStalledRows(result.rows);
+          setStalledTruncated(result.truncated);
+          setStalledRelatedTruncated(result.relatedTruncated);
+          setStalledFailed(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStalledFailed(true);
+          setStalledRows([]);
+          setStalledTruncated(false);
+          setStalledRelatedTruncated(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadStalled, stalledOn]);
   const loadHolds = useServerFn(listWaitlistHolds);
   const holdFn = useServerFn(setWaitlistHold);
   const [held, setHeld] = useState<Set<string>>(new Set());
-  // Active Renter source of truth: drivers with a rentals row in status 'active'.
+  // Active filter and its count use one set. While Record Rental is
+  // uninstalled that set is every rentals.status = 'active' row, so an
+  // existing renter is not dropped for a missing pickup reading or payment.
+  // A failed read stays "…" instead of looking like zero renters.
+  // openRentals is that installed set, so a stored Active with no rental
+  // still reads as Marked Active, No Rental.
   const [activeRenters, setActiveRenters] = useState<Set<string>>(new Set());
+  const [openRentals, setOpenRentals] = useState<Set<string>>(new Set());
+  const [activeReadFailed, setActiveReadFailed] = useState(false);
+  const loadActiveSets = useServerFn(listDriverActiveSets);
   const refreshActiveRenters = useCallback(() => {
-    supabase
-      .from("rentals")
-      .select("application_id")
-      .eq("status", "active")
-      .then(({ data }) =>
-        setActiveRenters(new Set((data ?? []).map((r: any) => r.application_id).filter(Boolean))),
-      );
-  }, []);
+    loadActiveSets()
+      .then((sets) => {
+        const recordRentalEnabled = RECORD_RENTAL_CONTRACT_ENABLED as boolean;
+        const filterIds = recordRentalEnabled === true ? sets.authoritativeIds : sets.openRentalIds;
+        setActiveRenters(new Set(filterIds));
+        setOpenRentals(new Set(sets.openRentalIds));
+        setActiveReadFailed(false);
+      })
+      .catch(() => {
+        setActiveReadFailed(true);
+      });
+  }, [loadActiveSets]);
   useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters]);
+  const loadFunnel = useServerFn(listApprovedNotRenting);
+  const [funnel, setFunnel] = useState<ApprovedNotRentingResult | null>(null);
+  const [funnelFailed, setFunnelFailed] = useState(false);
+  const [funnelLoading, setFunnelLoading] = useState(canManageWaitlist);
+  const viewingFunnel = filter === "approved-not-renting";
+  useEffect(() => {
+    if (!canManageWaitlist) return;
+    let cancelled = false;
+    setFunnelLoading(true);
+    setFunnelFailed(false);
+    loadFunnel()
+      .then((r) => {
+        if (cancelled) return;
+        setFunnel(r);
+        setFunnelFailed(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFunnel(null);
+          setFunnelFailed(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setFunnelLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageWaitlist, loadFunnel, viewingFunnel]);
   const [holdBusy, setHoldBusy] = useState<string | null>(null);
   const refreshHolds = useCallback(
     () =>
@@ -519,6 +665,63 @@ export function DriversPanel({
    * blanked or hidden.
    */
   const loadDriverRows = useServerFn(listDriverRows);
+  const loadOnboarding = useServerFn(getOnboardingChecklist);
+  const refreshOnboarding = useCallback(() => {
+    if (ONBOARDING_CHECKLIST_ENABLED !== true || canViewOnboarding !== true) return;
+    void loadOnboarding()
+      .then((result) => {
+        setOnboardingResult(result);
+        setOnboardingFailed(result.failed === true);
+      })
+      .catch(() => setOnboardingFailed(true));
+  }, [loadOnboarding, canViewOnboarding]);
+  useEffect(() => {
+    refreshOnboarding();
+  }, [refreshOnboarding]);
+  const loadDocExpiry = useServerFn(getDriverDocExpiry);
+  useEffect(() => {
+    if (DRIVER_DOC_EXPIRY_ENABLED !== true || !driversLoaded || canSeeSensitive !== true) return;
+    let cancel = false;
+    void loadDocExpiry()
+      .then((result) => {
+        if (!cancel) setDocExpiry(result);
+      })
+      .catch(() => {
+        if (!cancel) {
+          setDocExpiry({
+            failed: true,
+            truncated: false,
+            cap: DRIVER_DOC_EXPIRY_ROW_CAP,
+            drivers: [],
+          });
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [loadDocExpiry, driversLoaded, canSeeSensitive]);
+  const loadDocGaps = useServerFn(getApplicationDocGaps);
+  useEffect(() => {
+    if (APPLICATION_DOC_GAPS_ENABLED !== true || !driversLoaded || canSeeSensitive !== true) return;
+    let cancel = false;
+    void loadDocGaps()
+      .then((result) => {
+        if (!cancel) setDocGaps(result);
+      })
+      .catch(() => {
+        if (!cancel) {
+          setDocGaps({
+            failed: true,
+            truncated: false,
+            cap: APPLICATION_DOC_GAPS_ROW_CAP,
+            applications: [],
+          });
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [loadDocGaps, driversLoaded, canSeeSensitive]);
   const refreshDrivers = useCallback(
     () =>
       void loadDriverRows({ data: undefined })
@@ -580,6 +783,29 @@ setDocCounts(requiredDocCounts(rows));
     // refreshing after somebody changes how it loads.
   }, [refreshDrivers]);
 
+  const loadReviewAging = useServerFn(getDocumentReviewAging);
+  useEffect(() => {
+    if (DOCUMENT_REVIEW_AGING_ENABLED !== true || !driversLoaded || canSeeSensitive !== true) return;
+    let cancel = false;
+    void loadReviewAging()
+      .then((result) => {
+        if (!cancel) setReviewAging(result);
+      })
+      .catch(() => {
+        if (!cancel) {
+          setReviewAging({
+            failed: true,
+            truncated: false,
+            cap: DOCUMENT_REVIEW_AGING_ROW_CAP,
+            categories: [],
+          });
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [loadReviewAging, driversLoaded, canSeeSensitive]);
+
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v])), [vehicles]);
 
   // Readiness for the whole list, from the three result sets already loaded
@@ -589,6 +815,8 @@ setDocCounts(requiredDocCounts(rows));
     () => buildReadinessIndex(drivers, Object.values(screenings), docRows),
     [drivers, screenings, docRows],
   );
+
+  const docRowsById = useMemo(() => documentRowIndex(docExpiry), [docExpiry]);
 
   // Group by primary_application_id (falls back to id). Primary row = the one
   // whose id === groupKey; others render as collapsed history.
@@ -606,6 +834,7 @@ setDocCounts(requiredDocCounts(rows));
       // readContactStatus already answers New for a row that has no value, so
       // filtering by New finds the leads nobody has worked yet.
       .filter((a) => contactFilter === "all" || readContactStatus(a).state.status === contactFilter)
+      .filter((a) => DRIVER_DOC_EXPIRY_ENABLED !== true || docFilter === "all" || documentListStatus(docExpiry, a.id, docRowsById) === docFilter)
       .filter((a) => {
       if (!q) return true;
       const hay =
@@ -629,14 +858,29 @@ setDocCounts(requiredDocCounts(rows));
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, contactFilter, externalSearch, held, activeRenters]);
+  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters]);
+
+  const funnelRows = useMemo(() => {
+    const q = externalSearch.trim().toLowerCase();
+    return (funnel?.rows ?? []).filter((r) => {
+      if (contactFilter !== "all" && readContactStatus(r.contact).state.status !== contactFilter) return false;
+      if (!q) return true;
+      return r.fullName.toLowerCase().includes(q);
+    });
+  }, [funnel, contactFilter, externalSearch]);
 
   const saveLifecycle = useServerFn(updateApplicationLifecycle);
+  const approveFromList = useServerFn(approveApplication);
+  const [closingId, setClosingId] = useState<string | null>(null);
+  const [closingBusy, setClosingBusy] = useState(false);
   function applySaved(id: string, patch: Partial<Application>) {
     setDrivers((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row));
     refreshActiveRenters();
   }
-  async function update(id: string, patch: Partial<Application>): Promise<boolean> {
+  async function update(
+    id: string,
+    patch: Partial<Application> & { closure_reason?: ClosureReason; closure_notes?: string | null },
+  ): Promise<boolean> {
     try {
       const saved = await saveLifecycle({ data: { id, patch: patch as LifecyclePatch } });
       applySaved(id, saved as Partial<Application>);
@@ -659,6 +903,53 @@ setDocCounts(requiredDocCounts(rows));
    * which will not carry the contact_* columns until the migration is applied
    * and the types are regenerated.
    */
+  function applyFunnelContact(id: string, st: ContactStatusState) {
+    setFunnel((prev) =>
+      prev
+        ? {
+            ...prev,
+            rows: prev.rows.map((r) =>
+              r.id === id
+                ? {
+                    ...r,
+                    contact: {
+                      contact_status: st.status,
+                      contact_status_note: st.note,
+                      contact_follow_up_on: st.followUpOn,
+                      contact_status_at: st.changedAt,
+                      contact_status_by: st.changedBy,
+                    },
+                  }
+                : r,
+            ),
+          }
+        : prev,
+    );
+    applyContactStatus(id, st);
+  }
+
+  function saveStalledContact(applicationId: string, state: ContactStatusState) {
+    setStalledRows(
+      (rows) =>
+        rows?.map((row) =>
+          row.id === applicationId
+            ? {
+                ...row,
+                lastContactOn: state.changedAt ? easternDay(new Date(state.changedAt)) : row.lastContactOn,
+                contact: {
+                  contact_status: state.status,
+                  contact_status_note: state.note,
+                  contact_follow_up_on: state.followUpOn,
+                  contact_status_at: state.changedAt,
+                  contact_status_by: state.changedBy,
+                },
+              }
+            : row,
+        ) ?? rows,
+    );
+    applyContactStatus(applicationId, state);
+  }
+
   function applyContactStatus(id: string, st: ContactStatusState) {
     setDrivers((arr) =>
       arr.map((x) =>
@@ -763,18 +1054,24 @@ setDocCounts(requiredDocCounts(rows));
         key={open.id}
         driver={open}
         vehicles={vehicles}
-        onBack={() => setOpenId(null)}
         onUpdate={(p) => update(open.id, p)}
         onSaved={(p) => applySaved(open.id, p)}
-        hasActiveRental={activeRenters.has(open.id)}
+        hasActiveRental={openRentals.has(open.id)}
+        onCloseApplication={async (reason, notes) => update(open.id, { status: "closed", closure_reason: reason, closure_notes: notes })}
         onRentalStarted={() => {
           setDrivers((a) => a.map((x) => (x.id === open.id ? { ...x, status: "active" } : x)));
           refreshActiveRenters();
         }}
         onDelete={() => remove(open.id)}
         onScreeningChange={(s) => setScreenings((prev) => ({ ...prev, [open.id]: s }))}
+        onSharedReadinessRefresh={refreshOnboarding}
         onVaultChange={(count) => setDocCounts((prev) => ({ ...prev, [open.id]: count }))}
         isOwner={isOwner}
+        isManager={isManager}
+        canViewOnboarding={canViewOnboarding}
+        onboardingResult={onboardingResult}
+        onboardingFailed={onboardingFailed}
+        canIssueCardLink={canIssueCardLink}
       />
       {deleteDialog}
       </>
@@ -786,16 +1083,17 @@ setDocCounts(requiredDocCounts(rows));
     active: "Active", suspended: "Suspended", declined: "Declined", closed: "Closed",
   };
   const FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active", "suspended", "declined", "closed"];
-  const filterCount = (s: string) =>
-    s === "waitlist"
-      ? waitlistCount == null
-        ? "…"
-        : waitlistCount + drivers.filter((a) => held.has(a.id)).length
-      : s === "all"
-        ? drivers.length
-        : s === "active"
-          ? drivers.filter((a) => activeRenters.has(a.id)).length
-          : drivers.filter((a) => a.status === s && !held.has(a.id)).length;
+  const filterCount = (s: string) => {
+    if (s === "active" && activeReadFailed && activeRenters.size === 0) return "…";
+    const count = applicationFilterCount(s, drivers, held, activeRenters, waitlistCount);
+    return count == null ? "…" : count;
+  };
+  const expiryCounts = { expired: 0, expiring: 0, ok: 0, unknown: 0 };
+  for (const row of docExpiry?.drivers ?? []) {
+    if (row.status === "expired" || row.status === "expiring" || row.status === "ok" || row.status === "unknown") {
+      expiryCounts[row.status] += 1;
+    }
+  }
   const filterButtons = FILTER_ORDER.map((s) => (
     <button
       key={s}
@@ -805,18 +1103,71 @@ setDocCounts(requiredDocCounts(rows));
       {FILTER_LABEL[s]} ({filterCount(s)})
     </button>
   ));
-
+  if (stalledOn) {
+    filterButtons.push(
+      <button
+        key="stalled"
+        type="button"
+        data-stalled-filter
+        onClick={() => setFilter("stalled")}
+        className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "stalled" ? "bg-black text-white" : "bg-white border border-border"}`}
+      >
+        Stalled ({stalledRows == null ? "…" : stalledRows.length})
+      </button>,
+    );
+  }
   return (
-    <div>
+    <div className="max-lg:min-w-0">
       {deleteDialog}
+      {closingId ? (
+        <CloseApplicationDialog
+          busy={closingBusy}
+          onCancel={() => { if (!closingBusy) setClosingId(null); }}
+          onConfirm={(reason, notes) => {
+            const id = closingId;
+            setClosingBusy(true);
+            void update(id, { status: "closed", closure_reason: reason, closure_notes: notes })
+              .then((ok) => { if (ok) setClosingId(null); })
+              .finally(() => setClosingBusy(false));
+          }}
+        />
+      ) : null}
+      {APPLICATION_DOC_GAPS_ENABLED === true && driversLoaded && canSeeSensitive ? (
+        <ApplicationDocGaps canView={canSeeSensitive} result={docGaps} />
+      ) : null}
       {showDeleted && (
         <RecentlyDeletedDialog
           onClose={() => setShowDeleted(false)}
           onRestored={() => refreshDrivers()}
         />
       )}
-      <div className="admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1">
+      {ONBOARDING_CHECKLIST_ENABLED === true && (
+        <OnboardingChecklist canView={canViewOnboarding} result={onboardingResult} failed={onboardingFailed} />
+      )}
+      <div className="admin-sticky-bar mb-4 flex flex-col gap-2 pb-1 text-xs lg:flex-row lg:overflow-x-auto lg:-mx-1 lg:px-1">
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto -mx-1 px-1 pb-1 lg:contents">
         {filterButtons}
+        {canManageWaitlist && (
+          <button
+            type="button"
+            data-documents-expiring-filter
+            onClick={() => setFilter("documents-expiring")}
+            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "documents-expiring" ? "bg-black text-white" : "bg-white border border-border"}`}
+          >
+            Documents Expiring ({expiringFailed ? "—" : expiringDocs ? (expiringDocs.defaultScope === "renting" ? expiringDocs.renting.length : expiringDocs.approved.length) : "…"})
+          </button>
+        )}
+        {canManageWaitlist && (
+          <button
+            type="button"
+            data-approved-not-renting-filter
+            onClick={() => setFilter("approved-not-renting")}
+            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "approved-not-renting" ? "bg-black text-white" : "bg-white border border-border"}`}
+          >
+            Approved, Not Yet Renting (
+            {funnelFailed || !funnel ? (funnelLoading ? "…" : "—") : funnel.rows.length})
+          </button>
+        )}
         {/*
          * Contact Status filter. Reads "Contact: All" so it can never be
          * mistaken for the application-status chips beside it.
@@ -836,23 +1187,72 @@ setDocCounts(requiredDocCounts(rows));
             </option>
           ))}
         </select>
+        {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+          <DriverDocExpiryFilter
+            canView={canSeeSensitive}
+            value={docFilter}
+            onChange={setDocFilter}
+            counts={expiryCounts}
+            tncTracked={docExpiry?.tncTracked === true}
+          />
+        ) : null}
         {isOwner && (
           <button type="button" className="shrink-0 px-3 py-1.5 rounded-md border text-xs" onClick={() => setShowDeleted(true)}>
             Recently Deleted
           </button>
         )}
-        <div className="ml-auto shrink-0">
+        </div>
+        <div className="shrink-0 lg:ml-auto max-lg:w-full">
           <button
             onClick={handleMerge}
             disabled={merging}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50 max-lg:w-full max-lg:justify-center"
           >
             <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge Duplicates"}
           </button>
         </div>
       </div>
-      <AdminTableScroll className="rounded-lg border border-border bg-white">
-          <table className="w-full text-sm">
+      {filter === "documents-expiring" ? (
+        <DocumentsExpiringList
+          result={expiringDocs}
+          failed={expiringFailed}
+          scope={expiringScope}
+          onScope={setExpiringScope}
+          onOpen={(id) => setOpenId(id)}
+        />
+      ) : filter === "approved-not-renting" ? (
+        <ApprovedNotRentingList
+          rows={funnelRows}
+          populationEmpty={!!funnel && funnel.rows.length === 0}
+          failed={funnelFailed}
+          loading={funnelLoading && !funnel}
+          onOpen={(id) => {
+            const match = drivers.find((d) => d.id === id);
+            if (match) openDriver(match);
+            else setOpenId(id);
+          }}
+          onContactSaved={applyFunnelContact}
+        />
+      ) : filter === "stalled" && stalledOn ? (
+        <StalledApplications
+          rows={stalledRows ?? []}
+          loading={stalledRows == null && !stalledFailed}
+          failed={stalledFailed}
+          truncated={stalledTruncated}
+          relatedTruncated={stalledRelatedTruncated}
+          onContactSaved={saveStalledContact}
+        />
+      ) : (
+      <>
+      {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+        <DriverDocExpiryNotice canView={canSeeSensitive} meta={docExpiry} />
+      ) : null}
+      {DOCUMENT_REVIEW_AGING_ENABLED === true ? (
+        <DocumentReviewAging canView={canSeeSensitive} result={reviewAging} />
+      ) : null}
+      {APPLICATION_RESUME_REMINDERS_ENABLED === true ? <ApplicationResumeReminders /> : null}
+      <AdminTableScroll className="max-lg:min-w-0 rounded-lg border border-border bg-white">
+          <table className="w-full text-sm max-lg:min-w-[56rem]">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">Name</th>
@@ -865,6 +1265,9 @@ setDocCounts(requiredDocCounts(rows));
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Readiness
                 </th>
+                {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+                  <DriverDocExpiryHeader />
+                ) : null}
                 <th className="text-left font-medium px-3 py-2.5 border-b border-border">
                   Payment
                 </th>
@@ -900,7 +1303,7 @@ setDocCounts(requiredDocCounts(rows));
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors"
                   >
                     <td className="px-3 py-2.5 font-medium whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5 max-w-[105px]">
+                      <span className="inline-flex items-center gap-1.5 max-w-[105px] max-lg:max-w-[12rem]">
                         <span className="truncate" title={a.full_name ?? undefined}>{a.full_name ? displayPersonName(a.full_name) : a.full_name}</span>
                       </span>
                       <SourceBadge
@@ -937,9 +1340,29 @@ setDocCounts(requiredDocCounts(rows));
                     >
                       <Select
                         value={a.status || ""}
-                        onValueChange={(status) => update(a.id, { status })}
+                        onValueChange={(status) => {
+                          const tier = panelTier(isOwner, isManager);
+                          if (applicationStatusChoiceDisabled(a.status, status, tier)) return;
+                          if (status === "approved") {
+                            void approveFromList({ data: { id: a.id } })
+                              .then((res) => {
+                                if (!res.ok) throw new Error(res.error ?? "Could not approve");
+                                applySaved(a.id, { status: "approved" });
+                                toast.success("Approved");
+                              })
+                              .catch((error) => {
+                                toast.error(error instanceof Error ? error.message : "Could not approve");
+                              });
+                            return;
+                          }
+                          if (status === "closed" && a.status !== "closed") {
+                            setClosingId(a.id);
+                            return;
+                          }
+                          void update(a.id, { status });
+                        }}
                       >
-                        <SelectTrigger className="h-7 w-auto min-w-[6rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden [&>span]:!inline-flex">
+                        <SelectTrigger aria-label="Application Status" className="h-7 w-auto min-w-[6rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden [&>span]:!inline-flex">
                           {held.has(a.id) ? (
                             <span
                               title={`Underlying stage: ${a.status ?? "—"}`}
@@ -951,7 +1374,7 @@ setDocCounts(requiredDocCounts(rows));
                           ) : a.status ? (
                             activeRenters.has(a.id) ? (
                               <StatusPill status="active" caret />
-                            ) : a.status === "active" ? (
+                            ) : a.status === "active" && !openRentals.has(a.id) ? (
                               <span
                                 title="Marked Active, but no active rental exists. Status unchanged pending review."
                                 className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
@@ -969,9 +1392,9 @@ setDocCounts(requiredDocCounts(rows));
                           )}
                         </SelectTrigger>
                         <SelectContent align="start" className="min-w-[10rem]">
-                          {SELECTABLE_STATUSES.map((s) => (
-                            <SelectItem key={s} value={s} className="capitalize text-[13px]">
-                              {s}
+                          {applicationStatusMenu(a.status, panelTier(isOwner, isManager)).map((s) => (
+                            <SelectItem key={s.value} value={s.value} disabled={s.disabled} className="text-[13px]">
+                              {s.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1000,7 +1423,7 @@ setDocCounts(requiredDocCounts(rows));
                         <a
                           href={`mailto:${a.email}`}
                           title={a.email}
-                          className="inline-flex items-center gap-1 max-w-[122px] text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                          className="inline-flex items-center gap-1 max-w-[122px] text-[11px] text-muted-foreground hover:text-foreground hover:underline max-lg:max-w-[16rem] max-lg:min-w-0"
                         >
                           <Mail className="w-3 h-3 shrink-0" />
                           <span className="truncate">{a.email}</span>
@@ -1025,6 +1448,14 @@ setDocCounts(requiredDocCounts(rows));
                         </span>
                       )}
                     </td>
+                    {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <DriverDocExpiryCell
+                          status={documentListStatus(docExpiry, a.id, docRowsById)}
+                          separateLabel={docRowsById.get(a.id)?.separateLabel ?? null}
+                        />
+                      </td>
+                    ) : null}
                     <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
                       {payCells(payIndex[a.id]).pay}
                     </td>
@@ -1102,6 +1533,14 @@ setDocCounts(requiredDocCounts(rows));
                         <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">{payCells(payIndex[h.id]).pay}</td>
                         <td className="px-4 py-2">{payCells(payIndex[h.id]).dep.text}</td>
+                        {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+                          <td className="px-4 py-2">
+                            <DriverDocExpiryCell
+                              status={documentListStatus(docExpiry, h.id, docRowsById)}
+                              separateLabel={docRowsById.get(h.id)?.separateLabel ?? null}
+                            />
+                          </td>
+                        ) : null}
                         <td className="px-4 py-2 capitalize">{h.status}</td>
                         {/* A superseded submission has no conversation of its
                             own: the contact status belongs to the person, and
@@ -1125,7 +1564,7 @@ setDocCounts(requiredDocCounts(rows));
               })}
               {grouped.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="p-4">
+                  <td colSpan={DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? 11 : 10} className="p-4">
                     <EmptyState
                       title="No Drivers Yet"
                       hint="Drivers appear here as soon as someone completes the quote form or an application."
@@ -1136,6 +1575,8 @@ setDocCounts(requiredDocCounts(rows));
             </tbody>
           </table>
       </AdminTableScroll>
+      </>
+      )}
       {filter === "waitlist" && (
         <div className="mt-6">
           <div className="mb-4">
@@ -1143,6 +1584,7 @@ setDocCounts(requiredDocCounts(rows));
             <p className="text-[12px] text-[#55555E] mt-0.5">People Who Joined The Waitlist Before Applying</p>
           </div>
           <WaitlistPanel
+            canManage={canManageWaitlist}
             onEntriesChange={(n) => setWaitlistCount(n)}
             onPromoted={() => refreshDrivers()}
           />
@@ -1155,28 +1597,39 @@ setDocCounts(requiredDocCounts(rows));
 function DriverDetail({
   driver,
   vehicles,
-  onBack,
   onUpdate,
   onSaved,
   onDelete,
   onScreeningChange,
+  onSharedReadinessRefresh,
   onVaultChange,
   isOwner,
+  isManager = false,
+  canIssueCardLink,
   hasActiveRental,
   onRentalStarted,
+  onCloseApplication,
 }: {
   driver: Application;
   vehicles: Vehicle[];
-  onBack: () => void;
   onUpdate: (patch: Partial<Application>) => void;
   onSaved: (patch: Partial<Application>) => void;
   onDelete: () => void;
   onScreeningChange?: (s: DriverScreeningRow) => void;
+  /** Re-reads the shared checklist after a vault or screening edit. No-ops while the flag is off. */
+  onSharedReadinessRefresh?: () => void;
   onVaultChange?: (requiredCount: number) => void;
   isOwner: boolean;
+  /** Manager and above. The quick review panel is not mounted otherwise. */
+  isManager?: boolean;
+  canIssueCardLink: boolean;
   /** True only when a rentals row with status 'active' exists for this driver. */
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
+  onCloseApplication?: (reason: ClosureReason, notes: string | null) => Promise<boolean>;
+  canViewOnboarding?: boolean;
+  onboardingResult?: OnboardingChecklistResult | null;
+  onboardingFailed?: boolean;
 }) {
   const rentalActiveFlag = hasActiveRental;
   const rentalActive = hasActiveRental;
@@ -1194,28 +1647,25 @@ function DriverDetail({
   // to staff; it is no longer a pass/fail badge on the record.
   const { screening, setScreening } = useDriverScreening(driver.id);
 
-  async function advanceStatus(next: import("./types").ScreeningStatus) {
-    try {
-      const base = screening ?? {
-        lead_id: driver.id,
-        status: "new_lead" as import("./types").ScreeningStatus,
-      };
-      const { data, error } = await supabase
-        .from("driver_screenings")
-        .upsert({ ...base, lead_id: driver.id, status: next } as any, { onConflict: "lead_id" })
-        .select("*")
-        .single();
-      if (error) throw error;
-      const row = data as DriverScreeningRow;
-      setScreening(row);
-      onScreeningChange?.(row);
-      toast.success(`Status: ${next.replace(/_/g, " ")}`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to advance status");
-    }
-  }
-
   const [interviewOpen, setInterviewOpen] = useState(false);
+  const [recordCallOpen, setRecordCallOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [closeBusy, setCloseBusy] = useState(false);
+  const loadStatusHistory = useServerFn(getApplicationStatusHistory);
+  const [statusEvents, setStatusEvents] = useState<ApplicationStatusEvent[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    loadStatusHistory({ data: { applicationId: driver.id } })
+      .then((rows) => {
+        if (!cancelled) setStatusEvents(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setStatusEvents([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [driver.id, driver.status, loadStatusHistory]);
   // Controlled so the Documents strip and the readiness remedies can send the
   // operator straight to the tab that answers them.
   const [tab, setTab] = useState("overview");
@@ -1251,19 +1701,17 @@ function DriverDetail({
     void refreshVault();
   }, [refreshVault]);
 
-  const vaultDocCount = useMemo(() => {
-    const current = new Set(vaultDocs.filter((d) => d.is_current).map((d) => d.category));
-    return REQUIRED_VAULT_CATEGORIES.filter((c) => current.has(c)).length;
-  }, [vaultDocs]);
+  // Current and not rejected — the same rule activation readiness enforces on
+  // the server (missingRequiredCategories), so the two never disagree.
+  const vaultDocCount = useMemo(
+    () => REQUIRED_VAULT_CATEGORIES.length - missingRequiredCategories(vaultDocs).length,
+    [vaultDocs],
+  );
   useEffect(() => {
     if (!vaultLoading) onVaultChange?.(vaultDocCount);
     // onVaultChange is parent-owned; depending on it would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultDocCount, vaultLoading]);
-  // Owner-only; for every other tier this stays false and the gate reads the
-  // recording as outstanding. The database decides regardless.
-  const [hasRecording, setHasRecording] = useState(false);
-
   // ---- Derive lifecycle stages from driver + screening ------------------
   const scrStatus = String((screening as any)?.status ?? "").toLowerCase();
   const dStatus = String(driver.status ?? "").toLowerCase();
@@ -1277,45 +1725,7 @@ function DriverDetail({
   // Active Renter = an actual active rental (rentals table), never the
   // application stage alone. rentalActive is declared below with the lookup.
   const approved = dStatus === "approved" || dStatus === "active";
-  const pickedUp = !!(driver as any).pickup_at || rentalActiveFlag;
   const active = rentalActiveFlag;
-
-  const stageFlags: { key: string; label: string; done: boolean }[] = [
-    { key: "applied", label: "Applied", done: true },
-    { key: "contacted", label: "Contacted", done: contacted },
-    { key: "screening", label: "Screening", done: screeningDone },
-    { key: "docs", label: "Documents", done: docsComplete },
-    { key: "insurance", label: "Insurance", done: insuranceOk },
-    { key: "approved", label: "Approved", done: approved },
-    { key: "pickup", label: "Pickup", done: pickedUp },
-    { key: "active", label: "Active", done: active },
-  ];
-  let markedCurrent = false;
-  const lifecycle: LifecycleStage[] = stageFlags.map((s) => {
-    if (s.done) return { key: s.key, label: s.label, state: "done" };
-    if (!markedCurrent) {
-      markedCurrent = true;
-      return { key: s.key, label: s.label, state: "current" };
-    }
-    return { key: s.key, label: s.label, state: "upcoming" };
-  });
-  const currentStage =
-    lifecycle.find((s) => s.state === "current") ?? lifecycle[lifecycle.length - 1];
-  const doneCount = lifecycle.filter((s) => s.state === "done").length;
-  const percentComplete = Math.round((doneCount / lifecycle.length) * 100);
-
-  // Time in current stage — best-effort from most relevant timestamp
-  const stageStartIso =
-    currentStage.key === "contacted"
-      ? (driver.created_at as any)
-      : currentStage.key === "screening"
-        ? ((driver.contacted_at as any) ?? (driver.created_at as any))
-        : currentStage.key === "docs"
-          ? ((screening as any)?.interview_completed_at ?? (driver.created_at as any))
-          : (driver.created_at as any);
-  const timeInStage = stageStartIso
-    ? formatDuration(Date.now() - new Date(stageStartIso).getTime())
-    : undefined;
 
   // ---- Readiness -------------------------------------------------------
   //
@@ -1333,17 +1743,229 @@ function DriverDetail({
   const approve = useServerFn(approveApplication);
   const closeRental = useServerFn(endRental);
   const [activateOpen, setActivateOpen] = useState(false);
+  // Rental tab: Activate Rental entry and the server's readiness checklist.
+  // Loaded only for Manager+ (the server refuses a Coordinator) and only while
+  // no rental is running.
+  const activationEntry = activationEntryState({ isManager, rentalActive });
+  const checkActivation = useServerFn(getActivationReadiness);
+  const [rentalTabReadiness, setRentalTabReadiness] = useState<ActivationReadiness | null>(null);
+  const [rentalTabReadinessLoading, setRentalTabReadinessLoading] = useState(false);
+  const [rentalTabReadinessFailed, setRentalTabReadinessFailed] = useState(false);
+  const [readinessNonce, setReadinessNonce] = useState(0);
+  // Saved check-offs only (checklist_evidence_events) — never local checkmarks.
+  const loadEvidence = useServerFn(getChecklistEvidence);
+  const saveEvidence = useServerFn(saveChecklistEvidence);
+  const [evidenceEvents, setEvidenceEvents] = useState<EvidenceEvent[]>([]);
+  const [evidenceSaving, setEvidenceSaving] = useState(false);
+  const [pickupPaymentOpen, setPickupPaymentOpen] = useState(false);
+  const [pickupPayment, setPickupPayment] = useState<PayCells | null>(null);
+  const loadPickupPayment = useServerFn(getDriverPayStatuses);
+  useEffect(() => {
+    setPickupPayment(null);
+    void loadPickupPayment({ data: { driverIds: [driver.id] } }).then((rows) => setPickupPayment(rows[driver.id] ?? NO_PAY_CELLS)).catch(() => setPickupPayment(null));
+  }, [driver.id, loadPickupPayment, readinessNonce]);
+  const pickupPaid = pickupPayment?.pay === "Current";
+  const [evidenceLoading, setEvidenceLoading] = useState(true);
+  const [evidenceFailed, setEvidenceFailed] = useState(false);
+  const refreshEvidenceEvents = useCallback(async () => {
+    if (!CHECKLIST_EVIDENCE_ENABLED || !isManager) return;
+    setEvidenceLoading(true);
+    setEvidenceFailed(false);
+    try { setEvidenceEvents((await loadEvidence({ data: { applicationId: driver.id } })).events); }
+    catch { setEvidenceEvents([]); setEvidenceFailed(true); }
+    finally { setEvidenceLoading(false); }
+  }, [driver.id, isManager]);
+  useEffect(() => { setEvidenceEvents([]); void refreshEvidenceEvents(); }, [refreshEvidenceEvents]);
+  let safeEvents: EvidenceEvent[] = evidenceEvents;
+  try { for (const f of EVIDENCE_FIELDS) latestEvidenceEvent(evidenceEvents, driver.id, f); }
+  catch { safeEvents = []; }
+  const collectedDocuments = documentCollection({
+    applicationId: driver.id,
+    events: safeEvents,
+    documents: vaultDocs.map((doc) => ({ ...doc, applicationId: driver.id })),
+  });
+  const evidenceItems: EvidenceProjection[] = CHECKLIST_EVIDENCE_ENABLED && isManager ? EVIDENCE_FIELDS.map((field) => projectEvidence({
+    applicationId: driver.id, field, events: safeEvents, documents: vaultDocs,
+    itemComplete: field === "agreement"
+      ? rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true && r.detail !== "Upload Due") === true
+      : field === "pickup"
+        ? rentalActiveFlag || pickupPaid
+      : field === "inspection"
+        ? !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true
+        : false,
+    reviewRequired: field === "agreement" || field === "insurance",
+  })) : [];
+  // One click on a checklist circle: Missing/Not Collected -> Upload Due (Yellow);
+  // Upload Due -> Not Collected (Red). A file on record (Green) is never changed here.
+  async function toggleEvidence(fields: EvidenceProjection[]) {
+    if (evidenceSaving) return;
+    const open = fields.filter((f) => !f.uploaded && !f.complete);
+    if (!open.length) return;
+    const next: "collected" | "not_collected" = open.every((f) => f.status === "upload_due") ? "not_collected" : "collected";
+    setEvidenceSaving(true);
+    try {
+      for (const f of open) {
+        if ((next === "collected" && f.status === "upload_due") || (next === "not_collected" && f.status === "not_collected")) continue;
+        const base = { applicationId: driver.id, field: f.field, expectedRevision: f.revision, idempotencyKey: crypto.randomUUID(), note: "" };
+        await saveEvidence({ data: next === "collected" ? { ...base, state: "collected", source: "other" } : { ...base, state: "not_collected", source: null } });
+      }
+      toast.success(next === "collected" ? open.every((f) => f.field === "pickup") ? "Pickup Checked Off — Use Activate Rental To Start The Rental" : "Checked Off — Upload The File When You Have It" : open.every((f) => f.field === "pickup") ? "Pickup Marked Not Done" : "Marked Not Collected");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could Not Save This Check-Off.");
+    } finally {
+      await refreshEvidenceEvents();
+      setEvidenceSaving(false);
+      readinessChanged();
+    }
+  }
+  async function confirmPickupPayment(method: string, amount: string) {
+    const item = pickupItems[0];
+    const cents = pickupAmountCents(amount);
+    if (!item || cents === null || evidenceSaving) return;
+    setEvidenceSaving(true);
+    try {
+      await saveEvidence({ data: {
+        applicationId: driver.id, field: "pickup", expectedRevision: item.revision,
+        idempotencyKey: crypto.randomUUID(), state: "collected", source: "other",
+        note: `Payment Confirmed: ${method}; Amount Received: $${(cents / 100).toFixed(2)}`,
+      } });
+      setPickupPaymentOpen(false);
+      toast.success("Pickup Payment Confirmed — Use Activate Rental To Start The Rental");
+      await refreshEvidenceEvents();
+      readinessChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could Not Confirm Pickup Payment.");
+    } finally { setEvidenceSaving(false); }
+  }
+  const evidencePresentation: EvidencePresentationMap | undefined = CHECKLIST_EVIDENCE_ENABLED && isManager ? Object.fromEntries((rentalTabReadiness?.requirements ?? []).flatMap((r) => {
+    const presentation = requirementEvidence(r.key, evidenceItems);
+    if (!presentation) {
+      if (r.key === "interview") return [[r.key, {
+        tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Call Complete", fields: [],
+        onToggle: () => r.met === true ? setInterviewOpen(true) : setRecordCallOpen(true),
+        toggleLabel: r.met === true ? "View Completed Interview" : "Record Interview Completion",
+        toggleTitle: r.met === true ? "View The Completed Interview." : "Record A Completed Qualification Call.",
+      }]];
+      if (r.key === "approved") return [[r.key, {
+        tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Approval Required", fields: [],
+        onToggle: () => r.met === true ? openSection("application", "") : void approveAndSend(),
+        toggleLabel: r.met === true ? "View Approved Application" : "Review And Approve Application",
+        toggleTitle: r.met === true ? "View The Approved Application." : "Run The Existing Approval Checks.",
+      }]];
+      if (r.key === "rental_active") return [[r.key, {
+        tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Completed By Activation", fields: [],
+        onToggle: () => r.met === true ? setTab("rental") : setActivateOpen(true),
+        toggleLabel: r.met === true ? `View ${r.label}` : `Open Activate Rental For ${r.label}`,
+        toggleTitle: "Pickup And Active Status Come Only From A Real Running Rental.",
+      }]];
+      return [];
+    }
+    // Collecting the card is not verifying insurance; say so on that row.
+    if (r.key === "insurance_verified" && r.met !== true && presentation.tone === "yellow") presentation.label = "Upload Due · Verify Insurance";
+    if (r.key === "inspection" && presentation.tone === "yellow") presentation.label = "Upload Due · Written Override Required";
+    // A payment confirmation records receipt only; it never creates a charge or starts a rental.
+    if (r.key === "pickup" && presentation.tone === "yellow") {
+      const latest = latestEvidenceEvent(safeEvents, driver.id, "pickup");
+      presentation.label = latest?.state === "collected" && latest.note.startsWith("Payment Confirmed:") ? "Payment Confirmed · Activate To Finish" : "Checked Off · Payment Details Due";
+    }
+    if (r.key === "pickup" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Not Done";
+    if (r.enforcement === "advisory" && r.key !== "pickup" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Advisory";
+    const toggleable = presentation.fields.some((f) => !f.uploaded && !f.complete) && !(r.key === "signed_agreement" && r.met === true && presentation.fields.every((f) => f.status !== "upload_due"));
+    return [[r.key, toggleable ? { ...presentation, onToggle: r.key === "pickup" ? () => setPickupPaymentOpen(true) : () => void toggleEvidence(presentation.fields), busy: evidenceSaving, toggleLabel: r.key === "pickup" ? "Confirm Pickup Payment" : presentation.toggleLabel, toggleTitle: r.key === "pickup" ? "Confirm The Amount Received And Payment Method." : presentation.toggleTitle } : presentation]];
+  })) : undefined;
+  const licenseItems = evidenceItems.filter((i) => i.field === "license_front" || i.field === "license_back");
+  const profileItems = evidenceItems.filter((i) => i.field === "gig_profile");
+  const agreementItems = evidenceItems.filter((i) => i.field === "agreement");
+  const inspectionItems = evidenceItems.filter((i) => i.field === "inspection");
+  const pickupItems = evidenceItems.filter((i) => i.field === "pickup");
+  const pickupEvidenceTone = evidenceTone(pickupItems);
+  const docsEvidenceTone = evidenceTone(licenseItems);
+  const profileEvidenceTone = evidenceTone(profileItems);
+  const agreementEvidenceTone = evidenceTone(agreementItems);
+  const inspectionEvidenceTone = evidenceTone(inspectionItems);
+  const insuranceEvidenceTone = evidenceTone(evidenceItems.filter((i) => i.field === "insurance"));
+  const addressed = (items: EvidenceProjection[]) => items.length > 0 && items.every((i) => i.status !== "missing");
+  const actualInspection = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true;
+  const actualAgreement = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true;
+  const { stages: lifecycle, current: currentStage, percent: percentComplete } = driverLifecycle({
+    contacted, screening: screeningDone,
+    documentsReceived: !vaultLoading && collectedDocuments.collected,
+    documents: isManager ? addressed(licenseItems) : !missingRequiredCategories(vaultDocs).some((c) => c === "license_front" || c === "license_back"),
+    profile: isManager ? addressed(profileItems) : !missingRequiredCategories(vaultDocs).includes("gig_profile"),
+    insuranceOnFile: !vaultLoading && !missingRequiredCategories(vaultDocs).includes("insurance"),
+    approved, rentalActive: rentalActiveFlag,
+    pickup: isManager && pickupItems.some((i) => i.status === "upload_due"),
+    // Saved Yellow/Red evidence stays visible; only a real passed inspection or signed agreement is Green.
+    inspection: isManager ? actualInspection || addressed(inspectionItems) : actualInspection,
+    agreement: isManager ? actualAgreement || addressed(agreementItems) : actualAgreement,
+  });
+  const stageStartIso = currentStage?.key === "screening" ? driver.contacted_at ?? driver.created_at
+    : currentStage?.key === "docs" ? screening?.interview_completed_at ?? driver.created_at : driver.created_at;
+  const timeInStage = stageStartIso ? formatDuration(Date.now() - new Date(stageStartIso).getTime()) : undefined;
+
+  function readinessChanged() {
+    setReadinessNonce((n) => n + 1);
+    notifyActivationReadinessRefresh({ applicationId: driver.id });
+    onSharedReadinessRefresh?.();
+  }
+  const refreshEvidence = useCallback(async () => {
+    await refreshVault();
+    readinessChanged();
+  }, [refreshVault]);
+  // Renter uploads and external staff updates become visible when staff return to the profile.
+  useEffect(() => {
+    const refresh = () => { void refreshVault(); void refreshEvidenceEvents(); };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [refreshVault, refreshEvidenceEvents]);
+  function renderChecklistEvidence(key: ActivationRequirementKey) {
+    if (!isManager || vaultLoading || key === "insurance_document") return null;
+    if (key === "inspection") return <ChecklistInspectionFiles applicationId={driver.id} vehicleId={driver.vehicle_id ?? null} documents={vaultDocs} onUploaded={refreshEvidence} />;
+    const categories = checklistDocumentCategories(key);
+    const category = categories[0];
+    if (!category) return null;
+    return <DriverEvidenceUpload applicationId={driver.id} category={category} categories={categories} documents={vaultDocs} onUploaded={refreshEvidence} />;
+  }
+
+  useEffect(() => {
+    // The header's next step comes from the server's answer on every tab
+    // (re-checked on tab change so a fix made in a section shows up).
+    if (activationEntry !== "enabled" || activateOpen) return;
+    let cancelled = false;
+    setRentalTabReadinessLoading(true);
+    setRentalTabReadinessFailed(false);
+    checkActivation({ data: { applicationId: driver.id, vehicleId: driver.vehicle_id ?? null } })
+      .then((r) => {
+        if (!cancelled) setRentalTabReadiness(r);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRentalTabReadiness(null);
+          setRentalTabReadinessFailed(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRentalTabReadinessLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, activationEntry, activateOpen, driver.id, driver.vehicle_id, driver.status, checkActivation, readinessNonce]);
   const [recordOpen, setRecordOpen] = useState(false);
   const [recordCloseOpen, setRecordCloseOpen] = useState(false);
   const [approving, setApproving] = useState(false);
   const [depositRentalId, setDepositRentalId] = useState<string | null>(null);
   const [activeRentalId, setActiveRentalId] = useState<string | null>(null);
   const [rentalStatus, setRentalStatus] = useState<string | null>(null);
+  const [rentalLookupLoading, setRentalLookupLoading] = useState(true);
+  const [rentalLookupFailed, setRentalLookupFailed] = useState(false);
 
   // The rental is what deposit disposition and ending hang off, so look it up
   // once the driver is active.
   useEffect(() => {
     let cancelled = false;
+    setRentalLookupLoading(true);
+    setRentalLookupFailed(false);
     supabase
       .from("rentals")
       .select("id,status")
@@ -1351,10 +1973,12 @@ function DriverDetail({
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (cancelled) return;
         setActiveRentalId((data?.id as string) ?? null);
         setRentalStatus((data?.status as string) ?? null);
+        setRentalLookupFailed(!!error);
+        setRentalLookupLoading(false);
       });
     return () => {
       cancelled = true;
@@ -1381,7 +2005,12 @@ function DriverDetail({
       if (res && res.ok === false) { toast.error(res.error ?? "Could not end the rental"); return; }
       toast.success("Rental ended — settle the deposit next");
       setDepositRentalId(activeRentalId);
-      onSaved({ status: "closed" });
+      // The installed end_rental_tx also closes the application. The proposed
+      // SQL leaves the application status alone; until it is installed the
+      // flag stays false and this screen matches the database.
+      if (END_RENTAL_PRESERVES_APPLICATION_ENABLED !== true) {
+        onSaved({ status: "closed" });
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not end the rental");
     }
@@ -1390,6 +2019,7 @@ function DriverDetail({
   // Approving and sending the contract used to be two separate manual steps,
   // so an approved driver could sit waiting on a contract nobody sent.
   async function approveAndSend() {
+    if (approving) return; // a double click must not approve twice
     setApproving(true);
     try {
       const res = await approve({ data: { id: driver.id } });
@@ -1422,95 +2052,59 @@ function DriverDetail({
     }
   }
 
-  const primaryAction = !screeningDone
-    ? { label: "Continue Interview", onClick: () => setInterviewOpen(true), icon: ClipboardList }
-    : !docsComplete
-      ? {
-          label: "Review Documents",
-          onClick: () => setTab("documents"),
-          icon: FileText,
-        }
-      : !insuranceOk
-        ? {
-            label: "Verify Insurance",
-            onClick: () => setTab("screening"),
-            icon: ShieldCheck,
-          }
-        : !approved
-          ? {
-              label: approving ? "Approving…" : "Approve & Send Contract",
-              onClick: approveAndSend,
-              icon: Check,
-            }
-          : !rentalActive
-            ? { label: "Activate Rental", onClick: () => setActivateOpen(true), icon: Car }
-            : {
-                label: "View Rental",
-                onClick: () => setTab("rental"),
-                icon: Car,
-              };
+  // The header's single next step (order unchanged). A Coordinator is sent to
+  // the Rental tab instead of Activate Rental: the server refuses them.
+  const step = primaryStep({ screeningDone, docsComplete, insuranceOk, approved, rentalActive, isManager });
+  // One next step for the header and the Overview card, from the server's
+  // readiness when it is loaded (see src/lib/next-step.ts).
+  const next = nextStep({
+    step,
+    entry: activationEntry,
+    readiness: rentalTabReadiness,
+    loading: rentalTabReadinessLoading,
+    failed: rentalTabReadinessFailed,
+  });
+  function openSection(tabValue: string, anchor: string) {
+    setTab(tabValue);
+    // Let the tab render, then bring the exact card into view.
+    window.setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  }
+  function runTarget(t: FixTarget | { kind: "rental" } | { kind: "none" }) {
+    if (t.kind === "section") openSection(t.tab, t.anchor);
+    else if (t.kind === "interview") setInterviewOpen(true);
+    else if (t.kind === "record_call") setRecordCallOpen(true);
+    else if (t.kind === "approve") void approveAndSend();
+    else if (t.kind === "activate") { if (!activateOpen) setActivateOpen(true); }
+    else if (t.kind === "rental") setTab("rental");
+  }
+  const nextIcon =
+    next.target.kind === "interview" || next.target.kind === "record_call" ? ClipboardList
+      : next.target.kind === "approve" ? Check
+        : next.target.kind === "section" && next.target.tab === "documents" ? FileText
+          : next.target.kind === "section" && next.target.tab === "screening" ? ShieldCheck
+            : Car;
+  const primaryAction = {
+    label: next.target.kind === "approve" && approving ? "Approving…" : next.label,
+    onClick: () => runTarget(next.target),
+    icon: nextIcon,
+    disabled: next.busy || (next.target.kind === "approve" && approving),
+  };
   const PrimaryIcon = primaryAction.icon;
-
-  // What to collect next, ordered by how much coverage each action unlocks.
-  //
-  // Every entry here opens a workflow that already exists on this page. There
-  // is deliberately no generic "collect information" button: a gap the app
-  // cannot act on is shown in Still Needed as text and nothing more, because a
-  // button that does nothing is worse than no button.
-  const readinessActions = useMemo(() => {
-    // The tabs are controlled now, so a remedy selects one directly rather
-    // than synthesising a click on its trigger.
-    const open = (value: string) => () => setTab(value);
-    const route: Partial<Record<Remedy, { label: string; onClick: () => void }>> = {
-      interview: { label: "Complete Interview", onClick: () => setInterviewOpen(true) },
-      request_document: { label: "Review Documents", onClick: open("documents") },
-      verify: { label: "Verify Insurance", onClick: open("screening") },
-      applicant: { label: "Review Driver Information", onClick: open("application") },
-    };
-    return nextActions(readiness).flatMap((g) => {
-      const r = route[g.remedy];
-      return r ? [{ ...r, coverageGain: g.coverageGain }] : [];
-    });
-  }, [readiness]);
-
-  // Where the person is in the journey decides what Overview leads with.
-  // Derived from the same flags the lifecycle rail uses — no new state.
-  const phase: "screening" | "pickup" | "active" =
-    rentalActive ? "active" : approved ? "pickup" : "screening";
 
   const stageTargets: Partial<Record<string, () => void>> = {
     screening: () => setTab("screening"),
-    docs: () => setTab("documents"),
-    insurance: () => setTab("screening"),
+    docs: () => openSection("documents", "profile-documents"),
+    profile: () => openSection("documents", "profile-documents"),
+    insurance: () => openSection("screening", "profile-insurance"),
     approved: () => setTab("application"),
+    inspection: () => openSection("rental", "profile-vehicle"),
+    agreement: () => openSection("documents", "profile-agreements"),
     pickup: () => setTab("rental"),
     active: () => setTab("rental"),
   };
 
   const btnSecondary =
     "inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#55555E] hover:border-[#C4C4CB] hover:text-[#111114] transition-colors";
-
-  // Remedy buttons live inside Next Steps, beside the gap they close. The
-  // header keeps the single primary CTA; anything it already covers is not
-  // repeated as a red button here.
-  const remedyActions: Record<string, React.ReactNode> = Object.fromEntries(
-    readinessActions.map((a) => {
-      const remedy =
-        a.label === "Complete Interview"
-          ? "interview"
-          : a.label === "Review Documents"
-            ? "request_document"
-            : a.label === "Verify Insurance"
-              ? "verify"
-              : "applicant";
-      return [
-        remedy,
-        <button key={a.label} onClick={a.onClick} className={btnSecondary}>
-          {a.label}
-        </button>,
-      ];
-    }),
-  );
 
   // Real, timestamped events only — nothing inferred, nothing scheduled.
   const activity = useMemo(() => {
@@ -1532,24 +2126,26 @@ function DriverDetail({
     push((driver as any).agreement_signed_at, "Agreement Signed");
     push((driver as any).pickup_at, "Vehicle Picked Up");
     push((driver as any).return_at, "Vehicle Returned");
-    return ev.sort((a, b) => +new Date(b.at) - +new Date(a.at)).slice(0, 12);
-  }, [driver, screening, vaultDocs]);
-
-  const requirements: { ok: boolean; label: string }[] = [
-    { ok: screeningDone, label: "Interview Complete" },
-    { ok: docsComplete, label: `Documents ${vaultDocCount}/${REQUIRED_VAULT_CATEGORIES.length}` },
-    { ok: !!driver.license_photo_url || !!driver.license_valid, label: "License Uploaded" },
-    { ok: insuranceOk, label: "Insurance Verified" },
-    { ok: !!(screening as any)?.mvr_authorized, label: "MVR Authorized" },
-    { ok: !!driver.card_last4, label: "Card On File" },
-    { ok: approved, label: "Approved" },
-    { ok: !!(driver as any).agreement_signed_at, label: "Agreement Signed" },
-    { ok: !!(driver as any).pickup_at, label: "Pickup Scheduled" },
-  ];
-  const reqDone = requirements.filter((r) => r.ok).length;
+    for (const event of statusEvents) {
+      if (!event.at) continue;
+      const detail = [
+        event.action === "closed" ? event.reasonLabel : applicationStatusLabel(event.status),
+        event.notes,
+        event.actor,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      ev.push({
+        at: event.at,
+        label: event.action === "closed" ? "Application Closed" : "Application Reopened",
+        detail: detail || undefined,
+      });
+    }
+    return visibleDriverActivity(ev);
+  }, [driver, screening, vaultDocs, statusEvents]);
 
   const summaryRow = (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-2">
       <SectionCard title="Driver Summary">
         <div className="space-y-2 text-[12px]">
           {driver.phone && (
@@ -1613,26 +2209,10 @@ function DriverDetail({
         </dl>
       </SectionCard>
 
-      {/* The one operational checklist. Replaces the separate Readiness
-          Signals card and Requirements Checklist, which showed the same state twice. */}
-      <SectionCard
-        title="Rental Readiness"
-        right={<span className="text-[11px] text-[#9A9AA3] tabular-nums">{reqDone}/{requirements.length}</span>}
-      >
-        <dl className="space-y-2 text-[12px]">
-          {requirements.map((r) => (
-            <SignalRow key={r.label} label={r.label} ok={r.ok} />
-          ))}
-        </dl>
-      </SectionCard>
     </div>
   );
 
-  const readinessCard = <ReadinessSummary result={readiness} remedyActions={remedyActions} />;
-
-  const docsPreview = (
-    <DocumentsStrip docs={vaultDocs} loading={vaultLoading} onOpen={() => setTab("documents")} />
-  );
+  const readinessCard = <ReadinessSummary result={readiness} showNextSteps={false} />;
 
   const factsCard = (
     <SectionCard title="Driver Facts">
@@ -1659,19 +2239,11 @@ function DriverDetail({
     </SectionCard>
   );
 
-  // Secondary actions not already the header CTA or a Next Steps button.
+  // Secondary actions. Documents, insurance and vehicle are reached from the
+  // Next Step card's fix buttons and the tabs, so they are not repeated here.
   const moreActions = (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9A9AA3] mr-1">Actions</span>
-      <button className={btnSecondary} onClick={() => setTab("documents")}>
-        <FileText className="w-3.5 h-3.5" /> Request Documents
-      </button>
-      <button className={btnSecondary} onClick={() => setTab("screening")}>
-        <ShieldCheck className="w-3.5 h-3.5" /> Verify Insurance
-      </button>
-      <button className={btnSecondary} onClick={() => setTab("rental")}>
-        <Car className="w-3.5 h-3.5" /> Assign Vehicle
-      </button>
       <button className={btnSecondary} onClick={() => setTab("notes")}>
         <FileText className="w-3.5 h-3.5" /> Add Note
       </button>
@@ -1723,19 +2295,13 @@ function DriverDetail({
   ] as const;
 
   return (
-    <div className="-m-4 md:-mx-8 md:-mt-4 md:-mb-8 min-h-full bg-[#FAFAFB] overflow-x-clip">
+    <div className="-mx-4 -mt-5 -mb-4 md:-mx-8 md:-mt-2 md:-mb-8 min-h-full bg-[#FAFAFB] overflow-x-clip max-lg:min-w-0">
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         {/* Header + record navigation, sticky together */}
-        <div className="sticky top-0 z-10 bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">
-          <button
-            onClick={onBack}
-            className="inline-flex items-center gap-1.5 text-[13px] text-[#55555E] hover:text-[#111114] transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" /> Drivers
-          </button>
+        <div className="admin-sticky-record bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">
           {/* Identity: its own box, with the record tabs directly below it */}
-          <div className="mt-3 rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex">
+          <div className="rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex max-lg:flex-wrap">
 
             <div className="flex min-w-0 flex-1 items-center gap-4">
               <div className="h-12 w-12 shrink-0 rounded-full bg-[#141416] text-white grid place-items-center text-[15px] font-semibold">
@@ -1759,7 +2325,7 @@ function DriverDetail({
                     </span>
                   )}
                 </div>
-                <div className="mt-1 hidden sm:flex items-center gap-3 flex-wrap text-[12px] text-[#55555E]">
+                <div className="mt-1 flex flex-wrap items-center gap-3 text-[12px] text-[#55555E]">
                   {(driver.city || driver.state) && (
                     <span className="inline-flex items-center gap-1">
                       <MapPin className="w-3 h-3 text-[#9A9AA3]" />{" "}
@@ -1772,7 +2338,7 @@ function DriverDetail({
                     </span>
                   )}
                   {driver.email && (
-                    <span className="inline-flex items-center gap-1 truncate max-w-[240px]">
+                    <span className="inline-flex items-center gap-1 truncate max-w-[240px] max-lg:max-w-full max-lg:min-w-0">
                       <Mail className="w-3 h-3 text-[#9A9AA3]" /> {driver.email}
                     </span>
                   )}
@@ -1792,7 +2358,9 @@ function DriverDetail({
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               <button
                 onClick={primaryAction.onClick}
-                className="hidden sm:inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
+                disabled={primaryAction.disabled}
+                data-testid="profile-primary"
+                className="disabled:opacity-50 disabled:cursor-not-allowed hidden sm:inline-flex items-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-1.5 text-[12px] font-semibold hover:bg-[#B00000] transition-colors"
               >
                 <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
               </button>
@@ -1830,7 +2398,7 @@ function DriverDetail({
                 <DropdownMenuTrigger aria-label="More actions" className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors">
                   <MoreVertical className="w-4 h-4" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="w-56 max-w-[calc(100vw-2rem)] [&>button]:gap-2 [&>*>svg]:mr-0 [&>*>svg]:size-4 [&>*>svg]:shrink-0">
                   {driver.phone && (
                     <DropdownMenuItem className="sm:hidden" onClick={() => (window.location.href = `tel:${driver.phone}`)}>
                       <Phone className="w-4 h-4 mr-2" /> Call
@@ -1844,12 +2412,12 @@ function DriverDetail({
                   <DropdownMenuItem title="Open In Messages" aria-label="Open In Messages" onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: driver.id } }))}>
                     <MessageSquare className="w-4 h-4 mr-2" /> Messages
                   </DropdownMenuItem>
-                  <DropdownMenuItem title="Edit Interview" aria-label="Edit Interview" onClick={() => setInterviewOpen(true)}>
-                    <ClipboardList className="w-4 h-4 mr-2" /> Interview
+                  <DropdownMenuItem title="Optional Interview Script" aria-label="Interview Script" onClick={() => setInterviewOpen(true)}>
+                    <ClipboardList className="w-4 h-4 mr-2" /> Interview Script
                   </DropdownMenuItem>
                   <RequestDocumentsAction driver={driver} onUpdate={onSaved} />
                   <ReissueLinkAction applicationId={driver.id} />
-                  <CardOnFileActions driver={driver} onUpdate={onSaved} />
+                  <CardOnFileActions driver={driver} onUpdate={onSaved} canIssue={canIssueCardLink} />
 {isOwner && (<DropdownMenuItem
                     className="text-[#D03020] focus:text-[#D03020]"
                     onClick={onDelete}
@@ -1864,13 +2432,41 @@ function DriverDetail({
             <div className="pt-3 sm:hidden">
               <button
                 onClick={primaryAction.onClick}
-                className="w-full inline-flex items-center justify-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-2 text-[13px] font-semibold"
+                disabled={primaryAction.disabled}
+                className="disabled:opacity-50 w-full inline-flex items-center justify-center gap-1.5 rounded-md bg-[#D03020] text-white px-3.5 py-2 text-[13px] font-semibold"
               >
                 <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
               </button>
             </div>
           </div>
-          {/* Primary record navigation: one button per tab, below the identity box */}
+          <div className="mt-3">
+            <LifecycleRail
+              stages={lifecycle}
+              evidenceTones={CHECKLIST_EVIDENCE_ENABLED ? {
+                documents: collectedDocuments.tone,
+                ...(docsEvidenceTone ? { docs: docsEvidenceTone } : {}),
+                ...(profileEvidenceTone ? { profile: profileEvidenceTone } : {}),
+                ...(insuranceEvidenceTone ? { insurance: insuranceEvidenceTone } : {}),
+                ...(inspectionEvidenceTone ? { inspection: inspectionEvidenceTone } : {}),
+                ...(agreementEvidenceTone ? { agreement: agreementEvidenceTone } : {}),
+                ...(pickupEvidenceTone && pickupEvidenceTone !== "red" ? { pickup: pickupEvidenceTone } : {}),
+              } : undefined}
+              percent={percentComplete}
+              timeInStage={timeInStage}
+              blocker={readiness.disqualifiers[0]}
+              onStageClick={stageTargets}
+              stageCheckoffs={CHECKLIST_EVIDENCE_ENABLED && isManager ? {
+                documents: {
+                  onToggle: () => void toggleEvidence(collectedDocuments.fields),
+                  disabled: vaultLoading || evidenceLoading || evidenceFailed || evidenceSaving || collectedDocuments.uploaded,
+                  checked: collectedDocuments.collected,
+                  label: "Documents Received",
+                  title: collectedDocuments.uploaded ? "Documents On File" : collectedDocuments.collected ? "Received Elsewhere · Upload Due" : "Confirm Documents Received Elsewhere",
+                },
+              } : undefined}
+            />
+          </div>
+          {/* Primary record navigation: below identity and lifecycle progress */}
           <div className="mt-3 overflow-x-auto [scrollbar-width:none]">
 
             <TabsList className="h-auto bg-transparent p-0 gap-2 rounded-none flex w-max">
@@ -1891,26 +2487,28 @@ function DriverDetail({
 
         <div className="px-4 sm:px-8 py-6 max-w-[1400px]">
               <TabsContent value="overview" className="mt-0 space-y-5">
-                <LifecycleRail
-                  stages={lifecycle}
-                  percent={percentComplete}
-                  timeInStage={timeInStage}
-                  blocker={readiness.disqualifiers[0]}
-                  onStageClick={stageTargets}
+                {APPLICATION_QUICK_REVIEW_ENABLED && isManager && isPendingReviewStatus(driver.status) ? (
+                  <ApplicationQuickReview
+                    applicationId={driver.id}
+                    documents={vaultDocs}
+                    onRefreshDocuments={refreshVault}
+                    onOpenDocuments={() => setTab("documents")}
+                  />
+                ) : null}
+                <NextStepCard
+                  model={next}
+                  readiness={rentalTabReadiness}
+                  renderEvidence={renderChecklistEvidence}
+                  evidence={evidencePresentation}
+                  onRun={runTarget}
+                  onActivate={() => runTarget({ kind: "activate" })}
+                  onRetry={() => setReadinessNonce((n) => n + 1)}
                 />
-                {phase === "screening" ? (
-                  <>
-                    {readinessCard}
-                    {summaryRow}
-                    {docsPreview}
-                  </>
-                ) : (
-                  <>
-                    {summaryRow}
-                    {docsPreview}
-                    {readinessCard}
-                  </>
-                )}
+                {summaryRow}
+                <details className="text-xs text-muted-foreground">
+                  <summary className="cursor-pointer">Review Notes</summary>
+                  <div className="mt-3">{readinessCard}</div>
+                </details>
                 {moreActions}
                 <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
                   {factsCard}
@@ -1919,13 +2517,13 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="documents" className="mt-0 space-y-4">
-                <AgreementsCard applicationId={driver.id} onOpenTab={(t) => setTab(t)} />
+                <div id="profile-agreements" className="scroll-mt-48"><AgreementsCard applicationId={driver.id} onOpenTab={(t) => setTab(t)} /></div>
                 <SectionCard
                   title="Documents"
                   subtitle="Everything this applicant sent us. Shared with the driver unless marked team only."
                   padded={false}
                 >
-                  <div className="p-5">
+                  <div className="p-5 scroll-mt-48" id="profile-documents">
                     {/* One view over the document vault. It used to be three
                         stacked surfaces — the vault as a text list, a card
                         backed by a different table, and two one-off cards
@@ -1936,75 +2534,100 @@ function DriverDetail({
                       applicationId={driver.id}
                       docs={vaultDocs}
                       loading={vaultLoading}
-                      onRefresh={refreshVault}
+                      onRefresh={async () => {
+                        await refreshVault();
+                        readinessChanged();
+                      }}
                     />
                   </div>
                 </SectionCard>
               </TabsContent>
 
               <TabsContent value="screening" className="mt-0 space-y-4">
-                <ScreeningPipeline
-                  screening={screening}
-                  docCount={vaultDocCount}
-                  hasRecording={hasRecording}
-                  hasActiveRental={hasActiveRental}
-                  onAdvance={advanceStatus}
-                />
+                <div id="profile-insurance" className="scroll-mt-48">
                 <InsuranceVerificationCard
                   leadId={driver.id}
                   screening={screening}
                   isOwner={isOwner}
+                  canDecide={isManager}
                   onScreening={(s) => {
                     setScreening(s);
                     onScreeningChange?.(s);
+                    readinessChanged();
                   }}
-                  onRecordingChange={setHasRecording}
                 />
+                </div>
                 <IdentityReviewCard applicationId={driver.id} />
                 <AISnapshotCard driver={driver} />
               </TabsContent>
 
               <TabsContent value="application" className="mt-0 space-y-4">
                 <Card title="Driver Info" icon={<UserIcon className="w-4 h-4" />}>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    <Field label="DOB" value={driver.dob} />
-                    <Field label="License #" value={driver.license_number} />
-                    <Field label="License State" value={driver.license_state} />
-                    <Field label="License exp." value={driver.license_expiration} />
-                    <Field label="Years Licensed" value={driver.years_licensed} />
-                    <Field
-                      label="Address"
-                      value={
-                        [driver.address, driver.city, driver.state, driver.zip]
-                          .filter(Boolean)
-                          .join(", ") || null
-                      }
-                    />
-                    <Field label="Platforms" value={driver.platforms?.join(", ") || null} />
-                    <Field label="Weekly Hours" value={driver.weekly_hours} />
-                    <Field label="Term" value={driver.rental_term} />
-                    <Field label="Payment Method" value={driver.payment_method} />
-                  </div>
+                  {isManager ? (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <DateField label="DOB" value={driver.dob} onSave={(v) => onUpdate({ dob: v })} />
+                        <TxtField label="License #" value={driver.license_number} onSave={(v) => onUpdate({ license_number: v })} />
+                        <TxtField label="License State" value={driver.license_state ?? screening?.license_state ?? null} onSave={(v) => onUpdate({ license_state: v })} />
+                        <DateField label="License Exp." value={driver.license_expiration} onSave={(v) => onUpdate({ license_expiration: v })} />
+                        <NumField label="Years Licensed" value={driver.years_licensed ?? screening?.license_years ?? null} onSave={(v) => onUpdate({ years_licensed: v })} />
+                        <TxtField label="Street Address" value={driver.address} onSave={(v) => onUpdate({ address: v })} />
+                        <TxtField label="City" value={driver.city} onSave={(v) => onUpdate({ city: v })} />
+                        <TxtField label="State" value={driver.state} onSave={(v) => onUpdate({ state: v })} />
+                        <TxtField label="ZIP" value={driver.zip} onSave={(v) => onUpdate({ zip: v })} />
+                        <TxtField label="Phone" value={driver.phone} onSave={(v) => { if (v) onUpdate({ phone: v }); }} />
+                        <TxtField
+                          label="Platforms"
+                          value={(driver.platforms ?? screening?.gig_apps)?.join(", ") || null}
+                          onSave={(v) => onUpdate({ platforms: v ? v.split(",").map((item) => item.trim()).filter(Boolean) : null })}
+                        />
+                        <NumField label="Weekly Hours" value={driver.weekly_hours} onSave={(v) => onUpdate({ weekly_hours: v })} />
+                        <TxtField label="Term" value={driver.expected_duration ?? driver.rental_term} onSave={(v) => onUpdate({ expected_duration: v } as any)} />
+                        <TxtField label="Payment Method" value={driver.payment_method} onSave={(v) => onUpdate({ payment_method: v })} />
+                      </div>
+                      <p className="mt-3 text-[11px] text-muted-foreground">Saved automatically when you click away. Enter only details supplied or confirmed by the driver.</p>
+                    </>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <Field label="City" value={driver.city} />
+                      <Field label="State" value={driver.state} />
+                    </div>
+                  )}
                 </Card>
                 <Card title="Status & Compliance" icon={<ShieldCheck className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     <SelField
-                      label="Driver Status"
+                      label="Application Status"
                       value={driver.status}
-                      options={[...new Set([driver.status, ...SELECTABLE_STATUSES])]}
-                      onChange={(v) => { if (v !== "active" && v !== "approved") onUpdate({ status: v }); }}
+                      options={applicationStatusMenu(driver.status, panelTier(isOwner, isManager)).map((s) => s.value)}
+                      labels={Object.fromEntries(applicationStatusMenu(driver.status, panelTier(isOwner, isManager)).map((s) => [s.value, s.label]))}
+                      disabledValues={applicationStatusMenu(driver.status, panelTier(isOwner, isManager)).filter((s) => s.disabled).map((s) => s.value)}
+                      onChange={(v) => {
+                        if (applicationStatusChoiceDisabled(driver.status, v, panelTier(isOwner, isManager))) return;
+                        if (v === "approved") {
+                          void approveAndSend();
+                          return;
+                        }
+                        if (v === "closed" && driver.status !== "closed") {
+                          setCloseOpen(true);
+                          return;
+                        }
+                        onUpdate({ status: v });
+                      }}
                     />
                     <DerivedPayFields driverId={driver.id} />
                     <SelField
                       label="Background Check"
                       value={driver.background_check_status}
                       options={[...CHECK_STATUSES]}
+                      labels={CHECK_STATUS_LABELS}
                       onChange={(v) => onUpdate({ background_check_status: v })}
                     />
                     <SelField
                       label="MVR Status"
                       value={driver.mvr_status}
                       options={[...CHECK_STATUSES]}
+                      labels={CHECK_STATUS_LABELS}
                       onChange={(v) => onUpdate({ mvr_status: v })}
                     />
                     <NumField
@@ -2039,8 +2662,18 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="rental" className="mt-0">
+                <div className="mb-4"><NextStepCard
+                  model={next}
+                  readiness={rentalTabReadiness}
+                  renderEvidence={renderChecklistEvidence}
+                  evidence={evidencePresentation}
+                  onRun={runTarget}
+                  onActivate={() => runTarget({ kind: "activate" })}
+                  onRetry={() => setReadinessNonce((n) => n + 1)}
+                /></div>
                 <button className={btnSecondary} disabled={!RECORD_RENTAL_CONTRACT_ENABLED} onClick={()=>setRecordOpen(true)}>Record Rental — pending acceptance</button>
                 {activeRentalId ? <button className={btnSecondary} disabled={!RECORD_RENTAL_CONTRACT_ENABLED} onClick={()=>setRecordCloseOpen(true)}>Close recorded rental — pending acceptance</button> : null}
+                <div id="profile-vehicle" className="scroll-mt-48">
                 <Card title="Assigned Vehicle" icon={<Car className="w-4 h-4" />}>
                   <div className="rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] p-4 mb-3">
                     {veh ? (
@@ -2050,8 +2683,9 @@ function DriverDetail({
                           {veh.trim ? ` ${veh.trim}` : ""}
                         </div>
                         <div className="text-[11px] text-[#55555E] mt-1">
-                          {[veh.body_type, veh.fuel_type, veh.status].filter(Boolean).join(" · ")} ·
-                          ID {veh.id.slice(0, 8)}
+                          {[formatVehicleIdentityLine(veh), veh.body_type, veh.fuel_type, veh.status]
+                            .filter(Boolean)
+                            .join(" · ")}
                         </div>
                       </div>
                     ) : (
@@ -2064,9 +2698,13 @@ function DriverDetail({
                     onChange={(id) => onUpdate({ vehicle_id: id })}
                   />
                 </Card>
+                </div>
+                <DriverRentalDetails key={activeRentalId ?? driver.id} rentalId={activeRentalId} applicationId={driver.id}
+                  lookupLoading={rentalLookupLoading} lookupFailed={rentalLookupFailed} />
               </TabsContent>
 
               <TabsContent value="payments" className="mt-0 space-y-4">
+                {isManager && <DriverStatement driverId={driver.id} />}
                 <Card title="Payment Terms" icon={<CreditCard className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <NumField
@@ -2118,62 +2756,7 @@ function DriverDetail({
                     without both.
                   </p>
                 </Card>
-                <Card title="Driver Address" icon={<MapPin className="w-4 h-4" />}>
-                  {/* The agreement names the driver's address, and Part 1 no
-                      longer asks for it — by design, it is contract
-                      information rather than lead capture. Part 2 collects it
-                      when the applicant gets that far; when they do not, this
-                      is where staff put what the driver confirms on the call.
-                      Without it the agreement will not generate, and before
-                      this card existed there was nowhere in the back office to
-                      enter it. */}
-                  <TxtField
-                    label="Street Address"
-                    value={driver.address ?? null}
-                    onSave={(v) => onUpdate({ address: v } as any)}
-                  />
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-                    <TxtField
-                      label="City"
-                      value={driver.city ?? null}
-                      onSave={(v) => onUpdate({ city: v } as any)}
-                    />
-                    <TxtField
-                      label="State"
-                      value={driver.state ?? null}
-                      onSave={(v) => onUpdate({ state: v } as any)}
-                    />
-                    <TxtField
-                      label="ZIP"
-                      value={driver.zip ?? null}
-                      onSave={(v) => onUpdate({ zip: v } as any)}
-                    />
-                    <TxtField
-                      label="Phone"
-                      value={driver.phone ?? null}
-                      onSave={(v) => onUpdate({ phone: v } as any)}
-                    />
-                    <TxtField
-                      label="License #"
-                      value={driver.license_number ?? null}
-                      onSave={(v) => onUpdate({ license_number: v } as any)}
-                    />
-                    <TxtField
-                      label="License State"
-                      value={driver.license_state ?? null}
-                      onSave={(v) => onUpdate({ license_state: v } as any)}
-                    />
-                    <TxtField
-                      label="License Exp. (YYYY-MM-DD)"
-                      value={driver.license_expiration ?? null}
-                      onSave={(v) => onUpdate({ license_expiration: v } as any)}
-                    />
-                  </div>
-                  <p className="text-[11px] text-[#9A9AA3] mt-2">
-                    Must match the address on their licence. Never fill this in from a guess.
-                  </p>
-                </Card>
-                <CardOnFileCard driver={driver} onUpdate={onSaved} />
+                <CardOnFileCard driver={driver} onUpdate={onSaved} canIssue={canIssueCardLink} />
               </TabsContent>
 
               <TabsContent value="notes" className="mt-0">
@@ -2201,8 +2784,15 @@ function DriverDetail({
         onSaved={(next) => {
           setScreening(next);
           onScreeningChange?.(next);
+          readinessChanged();
         }}
       />
+
+      {recordCallOpen ? <RecordCallDialog applicationId={driver.id} name={driver.full_name ?? "Driver"}
+        onClose={() => setRecordCallOpen(false)}
+        onInterview={() => { setRecordCallOpen(false); setInterviewOpen(true); }}
+        onSaved={(saved) => { setScreening(saved); onScreeningChange?.(saved); readinessChanged(); }}
+      /> : null}
 
       {depositRentalId ? (
         <DepositDialog rentalId={depositRentalId} onClose={() => setDepositRentalId(null)} />
@@ -2210,10 +2800,31 @@ function DriverDetail({
 
       {recordCloseOpen && activeRentalId && RECORD_RENTAL_CONTRACT_ENABLED ? <RecordedRentalCloseout key={activeRentalId} rentalId={activeRentalId} onClose={()=>setRecordCloseOpen(false)} onSaved={()=>{setRecordCloseOpen(false);onRentalStarted?.();}}/> : null}
       {recordOpen && RECORD_RENTAL_CONTRACT_ENABLED ? <RecordRentalDialog key={driver.id} driver={driver} vehicles={vehicles} onClose={()=>setRecordOpen(false)} onRecorded={()=>{setRecordOpen(false);onRentalStarted?.();}}/> : null}
+      {closeOpen ? (
+        <CloseApplicationDialog
+          busy={closeBusy}
+          onCancel={() => { if (!closeBusy) setCloseOpen(false); }}
+          onConfirm={(reason, notes) => {
+            if (!onCloseApplication) return;
+            setCloseBusy(true);
+            void onCloseApplication(reason, notes)
+              .then((ok) => { if (ok) setCloseOpen(false); })
+              .finally(() => setCloseBusy(false));
+          }}
+        />
+      ) : null}
+
+      {pickupPaymentOpen ? <PickupPaymentDialog busy={evidenceSaving} onClose={() => setPickupPaymentOpen(false)} onConfirm={confirmPickupPayment} /> : null}
+
       {activateOpen ? (
         <ActivateRentalDialog
           driver={driver}
           vehicles={vehicles}
+          isOwner={isOwner}
+          renderEvidence={renderChecklistEvidence}
+          evidence={evidencePresentation}
+          evidenceItems={evidenceItems}
+          onRun={(target) => { setActivateOpen(false); runTarget(target); }}
           onClose={() => setActivateOpen(false)}
           onActivated={() => {
             setActivateOpen(false);
@@ -2227,27 +2838,31 @@ function DriverDetail({
   );
 }
 
+function PickupPaymentDialog({ busy, onClose, onConfirm }: { busy: boolean; onClose: () => void; onConfirm: (method: string, amount: string) => void }) {
+  const [method, setMethod] = useState<string>("Cash");
+  const [amount, setAmount] = useState("");
+  const valid = pickupAmountCents(amount) !== null;
+  return <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader><DialogTitle>Confirm Pickup Payment</DialogTitle></DialogHeader>
+      <div className="space-y-4 text-sm">
+        <p className="text-muted-foreground">Record payment already received. This does not create a charge or start the rental.</p>
+        <label className="block space-y-1.5"><span className="font-medium">Payment Method</span>
+          <Select value={method} onValueChange={setMethod}><SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger><SelectContent>{PICKUP_PAYMENT_METHODS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
+        </label>
+        <label className="block space-y-1.5"><span className="font-medium">Amount Received</span><div className="flex items-center gap-2"><span>$</span><input autoFocus inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" className="h-10 min-w-0 flex-1 rounded-md border border-input bg-white px-3 text-sm" aria-label="Amount Received" /></div></label>
+      </div>
+      <DialogFooter><Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button><Button type="button" disabled={!valid || busy} onClick={() => onConfirm(method, amount)}>{busy ? "Saving…" : "Confirm Payment"}</Button></DialogFooter>
+    </DialogContent>
+  </Dialog>;
+}
+
 function Row2({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt className="text-[#9A9AA3]">{label}</dt>
       <dd className="font-medium text-[#111114] text-right truncate max-w-[180px]">
         {value ?? "—"}
-      </dd>
-    </div>
-  );
-}
-function SignalRow({ label, ok, detail }: { label: string; ok: boolean; detail?: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <dt className="text-[#55555E] inline-flex items-center gap-1.5">
-        <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-[#50C060]" : "bg-[#C4C4CB]"}`} />
-        {label}
-      </dt>
-      <dd
-        className={`text-[11px] font-medium tabular-nums ${ok ? "text-[#50C060]" : "text-[#9A9AA3]"}`}
-      >
-        {detail ?? (ok ? "Ready" : "Pending")}
       </dd>
     </div>
   );
@@ -2511,24 +3126,28 @@ function SelField({
   label,
   value,
   options,
+  labels,
+  disabledValues,
   onChange,
 }: {
   label: string;
   value: string;
   options: string[];
+  labels?: Record<string, string>;
+  disabledValues?: string[];
   onChange: (v: string) => void;
 }) {
   return (
     <div className="bg-soft rounded-md px-3 py-2">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="h-8 bg-white text-foreground">
+        <SelectTrigger className="h-8 bg-white text-foreground" aria-label={label}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {options.map((o) => (
-            <SelectItem key={o} value={o}>
-              {o.replace(/_/g, " ")}
+            <SelectItem key={o} value={o} disabled={disabledValues?.includes(o)}>
+              {labels?.[o] ?? o.replace(/_/g, " ")}
             </SelectItem>
           ))}
         </SelectContent>
@@ -2627,153 +3246,20 @@ function VehiclePicker({
   value: string | null;
   onChange: (id: string | null) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const [make, setMake] = useState<string>("all");
-  const [body, setBody] = useState<string>("all");
-  const [fuel, setFuel] = useState<string>("all");
-  const [status, setStatus] = useState<string>("all");
-
-  const selected = value ? vehicles.find((v) => v.id === value) : null;
-
-  const uniq = (arr: (string | null | undefined)[]) =>
-    Array.from(new Set(arr.filter((x): x is string => !!x))).sort();
-  const makes = useMemo(() => uniq(vehicles.map((v) => v.make)), [vehicles]);
-  const bodies = useMemo(() => uniq(vehicles.map((v) => v.body_type)), [vehicles]);
-  const fuels = useMemo(() => uniq(vehicles.map((v) => v.fuel_type)), [vehicles]);
-  const statuses = useMemo(() => uniq(vehicles.map((v) => v.status)), [vehicles]);
-
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return vehicles.filter((v) => {
-      if (make !== "all" && v.make !== make) return false;
-      if (body !== "all" && v.body_type !== body) return false;
-      if (fuel !== "all" && v.fuel_type !== fuel) return false;
-      if (status !== "all" && v.status !== status) return false;
-      if (!needle) return true;
-      const hay = `${v.year} ${v.make} ${v.model} ${v.trim ?? ""} ${v.color ?? ""}`.toLowerCase();
-      return hay.includes(needle);
-    });
-  }, [vehicles, q, make, body, fuel, status]);
-
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full h-8 bg-white border border-border rounded-md px-3 text-sm flex items-center justify-between text-left"
-      >
-        <span className={selected ? "" : "text-muted-foreground"}>
-          {selected
-            ? `${selected.year} ${selected.make} ${selected.model}${selected.trim ? " " + selected.trim : ""}`
-            : "Assign Vehicle"}
-        </span>
-        <ChevronDown className="w-4 h-4 text-muted-foreground" />
-      </button>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute z-50 mt-1 w-full min-w-[320px] bg-white border border-border rounded-md shadow-lg p-2">
-            <div className="relative mb-2">
-              <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                autoFocus
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search year, make, model…"
-                className="w-full h-8 pl-8 pr-2 text-sm border border-border rounded-md bg-white"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-1.5 mb-2">
-              <FilterSelect label="Make" value={make} onChange={setMake} options={makes} />
-              <FilterSelect label="Body" value={body} onChange={setBody} options={bodies} />
-              <FilterSelect label="Fuel" value={fuel} onChange={setFuel} options={fuels} />
-              <FilterSelect label="Status" value={status} onChange={setStatus} options={statuses} />
-            </div>
-            <div className="max-h-64 overflow-y-auto -mx-1">
-              <button
-                type="button"
-                onClick={() => {
-                  onChange(null);
-                  setOpen(false);
-                }}
-                className="w-full text-left px-3 py-1.5 text-sm hover:bg-soft rounded flex items-center gap-2 text-muted-foreground"
-              >
-                {!value && <Check className="w-3.5 h-3.5" />} — None —
-              </button>
-              {filtered.map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => {
-                    onChange(v.id);
-                    setOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-sm hover:bg-soft rounded flex items-center justify-between gap-2"
-                >
-                  <span className="flex items-center gap-2 min-w-0">
-                    {value === v.id && <Check className="w-3.5 h-3.5 shrink-0" />}
-                    <span className="truncate">
-                      {v.year} {v.make} {v.model}
-                      {v.trim ? ` ${v.trim}` : ""}
-                    </span>
-                  </span>
-                  <span className="text-[10px] text-muted-foreground shrink-0 capitalize">
-                    {[v.body_type, v.fuel_type, v.status].filter(Boolean).join(" · ")}
-                  </span>
-                </button>
-              ))}
-              {filtered.length === 0 && (
-                <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                  No matches
-                </div>
-              )}
-            </div>
-            <div className="mt-1 px-2 pt-1 text-[10px] text-muted-foreground border-t border-border">
-              {filtered.length} of {vehicles.length}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function FilterSelect({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-}) {
-  return (
-    <select
+    <VehicleCombobox
+      vehicles={vehicles as any}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="h-7 text-xs bg-white border border-border rounded px-1.5 capitalize"
-    >
-      <option value="all">{label}: all</option>
-      {options.map((o) => (
-        <option key={o} value={o} className="capitalize">
-          {o}
-        </option>
-      ))}
-    </select>
+      onChange={onChange}
+      placeholder="Assign Vehicle"
+      noneLabel="— None —"
+      aria-label="Assign Vehicle"
+      photoColumns
+    />
   );
 }
 
-/**
- * Kill every live application link and hand back a fresh one.
- *
- * Resume tokens are stored hashed, so nobody — us included — can recover a
- * link once it has gone out. That makes "they lost the email" and "that link
- * ended up somewhere it shouldn't" the same operation: revoke, mint, send.
- */
+
 function ReissueLinkAction({ applicationId }: { applicationId: string }) {
   const reissue = useServerFn(reissueApplicantLink);
   const [busy, setBusy] = useState(false);
@@ -2787,6 +3273,7 @@ function ReissueLinkAction({ applicationId }: { applicationId: string }) {
         setBusy(true);
         try {
           const res = await reissue({ data: { id: applicationId } });
+          forgetCardOnFileLink(applicationId);
           await navigator.clipboard.writeText(res.url).catch(() => {});
           toast.success(
             res.revoked
@@ -2805,23 +3292,129 @@ function ReissueLinkAction({ applicationId }: { applicationId: string }) {
   );
 }
 
-function cardLinkFor(applicationId: string) {
-  if (typeof window === "undefined") return "";
-  return `${window.location.origin}/card/${applicationId}`;
+const cardLinkCache = new Map<string, CachedCardLink>();
+const cardLinkPending = new Map<string, Promise<CachedCardLink>>();
+const cardLinkListeners = new Set<() => void>();
+
+function notifyCardLinks() {
+  for (const listener of cardLinkListeners) listener();
 }
 
-function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: any) => void }) {
-  const link = cardLinkFor(driver.id);
+function forgetCardOnFileLink(applicationId: string) {
+  forgetCachedCardLink(cardLinkCache, applicationId);
+  cardLinkPending.delete(applicationId);
+  notifyCardLinks();
+}
+
+function useCardOnFileLink(applicationId: string) {
+  const issue = useServerFn(issueCardOnFileLink);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const listener = () => setTick((tick) => tick + 1);
+    cardLinkListeners.add(listener);
+    return () => {
+      cardLinkListeners.delete(listener);
+    };
+  }, []);
+  const ensure = useCallback(() => {
+    const cached = readCachedCardLink(cardLinkCache, applicationId);
+    if (cached) return Promise.resolve(cached);
+    const pending = cardLinkPending.get(applicationId);
+    if (pending) return pending;
+    const next = issue({ data: { applicationId } })
+      .then((res) => {
+        if (typeof res.expiresAt !== "number" || !cardLinkFresh(res.expiresAt)) {
+          forgetCardOnFileLink(applicationId);
+          throw new Error("Could not prepare the card link.");
+        }
+        const entry = {
+          link: `${window.location.origin}${res.path}`,
+          expiresAt: res.expiresAt,
+        };
+        rememberCachedCardLink(cardLinkCache, applicationId, entry);
+        cardLinkPending.delete(applicationId);
+        notifyCardLinks();
+        return entry;
+      })
+      .catch((error: unknown) => {
+        forgetCardOnFileLink(applicationId);
+        throw error;
+      });
+    cardLinkPending.set(applicationId, next);
+    return next;
+  }, [applicationId, issue]);
+  return { ensure, cached: readCachedCardLink(cardLinkCache, applicationId) };
+}
+
+function cardLinkText(ensure: () => Promise<CachedCardLink>) {
+  return () => ensure().then((entry) => entry.link);
+}
+
+/**
+ * Copy starts in the click turn. The link is minted inside the clipboard item,
+ * so Safari still treats the write as part of the gesture.
+ */
+function copyCardLink(ensureLink: () => Promise<string>, success: string) {
+  const clipboard = navigator.clipboard;
+  const writeText = () =>
+    ensureLink()
+      .then((link) => clipboard.writeText(link))
+      .then(() => toast.success(success))
+      .catch(() => toast.error("Failed to copy link"));
+  if (!clipboard?.write || typeof ClipboardItem === "undefined") {
+    writeText();
+    return;
+  }
+  void clipboard
+    .write([
+      new ClipboardItem({
+        "text/plain": ensureLink().then((link) => new Blob([link], { type: "text/plain" })),
+      }),
+    ])
+    .then(() => toast.success(success))
+    .catch(() => writeText());
+}
+
+/** Open the window in the click turn, then navigate once the link exists. */
+function previewCardLink(ensureLink: () => Promise<string>) {
+  const opened = window.open("", "_blank");
+  if (!opened) {
+    toast.error("Failed to prepare the link");
+    return;
+  }
+  opened.opener = null;
+  void ensureLink()
+    .then((link) => {
+      opened.location.href = link;
+    })
+    .catch(() => {
+      opened.close();
+      toast.error("Failed to prepare the link");
+    });
+}
+
+const handoffItemClass =
+  "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none bg-white text-foreground hover:bg-muted [&>svg]:size-4 [&>svg]:shrink-0";
+
+function CardOnFileActions({ driver, onUpdate, canIssue }: { driver: any; onUpdate: (p: any) => void; canIssue: boolean }) {
+  const { ensure: ensureLink, cached } = useCardOnFileLink(driver.id);
   const hasCard = !!driver.card_last4;
   const [chargeOpen, setChargeOpen] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const ready = cached && cardLinkFresh(cached.expiresAt) ? cached : null;
+  const canHandoff = !!(driver.phone || driver.email);
 
-  async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(link);
-      toast.success("Card-on-file link copied");
-    } catch {
-      toast.error("Failed to copy link");
-    }
+  function copyLink() {
+    copyCardLink(cardLinkText(ensureLink), "Card-on-file link copied");
+  }
+
+  function prepare(event: Event) {
+    event.preventDefault();
+    if (preparing || ready) return;
+    setPreparing(true);
+    void ensureLink()
+      .catch(() => toast.error("Failed to prepare the link"))
+      .finally(() => setPreparing(false));
   }
 
   async function remove() {
@@ -2858,26 +3451,29 @@ function CardOnFileActions({ driver, onUpdate }: { driver: any; onUpdate: (p: an
               <CreditCard className="w-4 h-4 mr-2" /> Charge Card…
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem onClick={copyLink}>
-            <Copy className="w-4 h-4 mr-2" /> Copy Card-On-File Link
-          </DropdownMenuItem>
-          {driver.phone && (
-            <DropdownMenuItem asChild>
-              <a
-                href={`sms:${driver.phone}?&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}
-              >
-                <MessageSquare className="w-4 h-4 mr-2" /> Text Link to Driver
-              </a>
-            </DropdownMenuItem>
-          )}
-          {driver.email && (
-            <DropdownMenuItem asChild>
-              <a
-                href={`mailto:${driver.email}?subject=${encodeURIComponent("Save your card on file")}&body=${encodeURIComponent(`Save your card on file for Real Rentals: ${link}`)}`}
-              >
-                <Mail className="w-4 h-4 mr-2" /> Email Link to Driver
-              </a>
-            </DropdownMenuItem>
+          {canIssue ? (
+            <>
+              <DropdownMenuItem onClick={copyLink}>
+                <Copy className="w-4 h-4 mr-2" /> Copy Card-On-File Link
+              </DropdownMenuItem>
+              {canHandoff && !ready && (
+                <DropdownMenuItem onSelect={prepare} disabled={preparing}>
+                  <LinkIcon className="w-4 h-4 mr-2" /> {preparing ? "Preparing Link…" : "Prepare Link"}
+                </DropdownMenuItem>
+              )}
+              {ready && driver.phone && (
+                <a href={cardTextHref(driver.phone, ready.link)} className={handoffItemClass}>
+                  <MessageSquare className="w-4 h-4 mr-2" /> Text Link to Driver
+                </a>
+              )}
+              {ready && driver.email && (
+                <a href={cardEmailHref(driver.email, ready.link)} className={handoffItemClass}>
+                  <Mail className="w-4 h-4 mr-2" /> Email Link to Driver
+                </a>
+              )}
+            </>
+          ) : (
+            <DropdownMenuItem disabled>Manager Required</DropdownMenuItem>
           )}
           {hasCard && (
             <DropdownMenuItem className="text-real-red focus:text-real-red" onClick={remove}>
@@ -2925,7 +3521,13 @@ function ChargeCardDialog({ driver, onClose }: { driver: any; onClose: () => voi
         },
       });
       if ("error" in res) throw new Error(res.error);
-      toast.success(`Charged $${(cents / 100).toFixed(2)} to card`);
+      // Only a charge Stripe reports as succeeded is Paid. Anything else (for example the card
+      // needs the driver's authentication) stays Pending until the webhook settles it.
+      if (res.status === "paid") toast.success(`Paid: $${(cents / 100).toFixed(2)} collected`);
+      else
+        toast.warning(
+          `Charge of $${(cents / 100).toFixed(2)} submitted but not confirmed; Payments shows it as Processing. Don't charge again: check the payment in Stripe.`,
+        );
       onClose();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Charge failed");
@@ -3010,7 +3612,9 @@ function ChargeCardDialog({ driver, onClose }: { driver: any; onClose: () => voi
 function AutopayActions({ driver }: { driver: any }) {
   const [rental, setRental] = useState<{
     id: string;
+    status: string | null;
     autopay_active: boolean;
+    stripe_subscription_id: string | null;
     weekly_rate: number | null;
   } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -3018,7 +3622,7 @@ function AutopayActions({ driver }: { driver: any }) {
   async function refresh() {
     const { data } = await supabase
       .from("rentals")
-      .select("id, autopay_active, weekly_rate")
+      .select("id, status, autopay_active, stripe_subscription_id, weekly_rate")
       .eq("application_id", driver.id)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -3030,7 +3634,20 @@ function AutopayActions({ driver }: { driver: any }) {
   }, [driver.id]);
 
   if (!rental) return null;
-  const active = rental.autopay_active;
+  // Stop is always offered while a subscription exists, even on a closed rental.
+  const active = rental.autopay_active || !!rental.stripe_subscription_id;
+  if (!active && rental.status !== "active") return null;
+  if (!active && !RENTAL_AUTOPAY_START_ENABLED) {
+    return (
+      <span
+        title={AUTOPAY_START_OFF_MESSAGE}
+        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-soft px-3 py-1.5 text-xs font-medium text-muted-foreground"
+      >
+        <Wallet className="w-3.5 h-3.5" />
+        Autopay Off · Charge Weekly
+      </span>
+    );
+  }
 
   async function toggle() {
     setBusy(true);
@@ -3064,11 +3681,13 @@ function AutopayActions({ driver }: { driver: any }) {
 function CardOnFileCard({
   driver,
   onUpdate: _onUpdate,
+  canIssue,
 }: {
   driver: any;
   onUpdate: (p: any) => void;
+  canIssue: boolean;
 }) {
-  const link = cardLinkFor(driver.id);
+  const { ensure: ensureLink } = useCardOnFileLink(driver.id);
   const hasCard = !!driver.card_last4;
   return (
     <div className="rounded-xl border border-border bg-white p-5">
@@ -3114,29 +3733,25 @@ function CardOnFileCard({
           <p className="text-xs text-muted-foreground">
             Send this driver a secure link to save a card. No charge is made.
           </p>
-          <div className="flex gap-1.5">
-            <button
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(link);
-                  toast.success("Link copied");
-                } catch {
-                  toast.error("Failed to copy");
-                }
-              }}
-              className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft"
-            >
-              Copy Link
-            </button>
-            <a
-              href={link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft inline-flex items-center justify-center"
-            >
-              Preview
-            </a>
-          </div>
+          {canIssue ? (
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => copyCardLink(cardLinkText(ensureLink), "Link copied")}
+                className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft"
+              >
+                Copy Link
+              </button>
+              <button
+                type="button"
+                onClick={() => previewCardLink(cardLinkText(ensureLink))}
+                className="flex-1 h-7 text-xs rounded-md border border-border bg-white hover:bg-soft inline-flex items-center justify-center"
+              >
+                Preview
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Manager Required</p>
+          )}
         </div>
       )}
     </div>

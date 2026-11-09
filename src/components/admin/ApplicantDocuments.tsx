@@ -11,13 +11,11 @@ import {
   History,
   ShieldCheck,
   Clock,
+  Lock,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import {
   DOC_CATEGORIES,
   adminListDriverDocuments,
-  createDocumentUploadUrl,
-  confirmDocumentUpload,
   updateDocumentMeta,
   deleteDocument,
   setDocumentReview,
@@ -26,8 +24,16 @@ import {
 } from "@/lib/documents.functions";
 import { DocumentViewer, type ViewerDoc } from "./DocumentViewer";
 import { MicroLabel } from "./ui";
-import { FileUploader } from "@/components/FileUploader";
-import { fmtDate } from "@/lib/date-format";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DriverDocumentUploadDialog } from "./DriverDocumentUploadDialog";
+import { DocumentBatchUpload } from "./DocumentBatchUpload";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
+import { verifyApprovalIdentity } from "@/lib/identity-verification.functions";
+import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
+import { useDriverDocumentUpload } from "./use-driver-document-upload";
+import { displayTitleCase } from "@/lib/display-normalize";
 
 // Everything an applicant sent us, in one place, grouped the way somebody
 // looking at it actually thinks.
@@ -42,16 +48,15 @@ import { fmtDate } from "@/lib/date-format";
 // arrived. Verified means a person looked at it. Those are different facts and
 // the readiness model depends on them staying apart.
 
-const MAX_MB = 15;
-
 /** Categories in the order a reviewer works through them. */
 const ORDER: DocCategory[] = [
+  "rental_application",
+  "agreement",
   "license_front",
   "license_back",
   "insurance",
   "gig_profile",
   "trip_history",
-  "agreement",
   "other",
 ];
 
@@ -88,13 +93,51 @@ function isImageDoc(d: VaultDocument): boolean {
   return !/\.(pdf|mp3|wav|m4a|ogg|mp4|mov|webm|zip|docx?)$/i.test(d.file_name ?? "");
 }
 
-/** The four categories the screening pipeline treats as required. */
-export const REQUIRED_VAULT_CATEGORIES: DocCategory[] = [
-  "license_front",
-  "license_back",
-  "insurance",
-  "gig_profile",
-];
+/** The four categories the screening pipeline treats as required. One list, shared with the server. */
+export { REQUIRED_VAULT_CATEGORIES } from "@/lib/required-docs";
+
+function VerifyIdentityAction({ applicationId }: { applicationId: string }) {
+  if (!IDENTITY_VERIFICATION_ENABLED) return null;
+  return <VerifyIdentityForm applicationId={applicationId} />;
+}
+
+function VerifyIdentityForm({ applicationId }: { applicationId: string }) {
+  const verify = useServerFn(verifyApprovalIdentity);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const note = window.prompt("What did you check? The note is stored with the decision.")?.trim() ?? "";
+    if (!note) return;
+    if (note.length < 3) {
+      toast.error("The note needs at least 3 characters");
+      return;
+    }
+    setBusy(true);
+    try {
+      await verify({ data: { applicationId, note } });
+      toast.success("Identity verified");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not verify identity");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-[#EDEDF0] bg-white px-3 py-2">
+      <span className="text-[12px] text-[#55555E]">Record the identity decision for this application.</span>
+      <button
+        type="button"
+        onClick={() => void submit()}
+        disabled={busy}
+        className="inline-flex items-center gap-1 rounded-md bg-[#111114] text-white px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50"
+      >
+        {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+        Verify Identity
+      </button>
+    </div>
+  );
+}
 
 export function ApplicantDocuments({
   applicationId,
@@ -117,8 +160,6 @@ export function ApplicantDocuments({
   /** Re-read the vault after this component changes it. */
   onRefresh: () => Promise<void> | void;
 }) {
-  const startUpload = useServerFn(createDocumentUploadUrl);
-  const confirmUpload = useServerFn(confirmDocumentUpload);
   const patchMeta = useServerFn(updateDocumentMeta);
   const removeDoc = useServerFn(deleteDocument);
   const review = useServerFn(setDocumentReview);
@@ -126,10 +167,12 @@ export function ApplicantDocuments({
   const [busy, setBusy] = useState<string | null>(null);
   const [viewing, setViewing] = useState<ViewerDoc | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [uploadingCategory, setUploadingCategory] = useState<DocCategory | null>(null);
 
   const refresh = useCallback(async () => {
     await onRefresh();
   }, [onRefresh]);
+  const uploadDocument = useDriverDocumentUpload(applicationId, refresh);
 
   // One pass, not one find() per category.
   const { current, history } = useMemo(() => {
@@ -156,34 +199,8 @@ export function ApplicantDocuments({
   async function uploadCategory(category: DocCategory, file: File, onProgress: (pct: number) => void) {
     setBusy(category);
     try {
-      onProgress(10);
-      const signed = await startUpload({
-        data: {
-          applicationId,
-          category,
-          fileName: file.name,
-          mimeType: file.type || "application/octet-stream",
-        },
-      });
-      onProgress(40);
-      const { error } = await supabase.storage
-        .from(signed.bucket)
-        .uploadToSignedUrl(signed.path, signed.token, file);
-      if (error) throw new Error(error.message);
-      onProgress(80);
-      await confirmUpload({
-        data: {
-          applicationId: signed.applicationId!,
-          category,
-          path: signed.path,
-          fileName: file.name,
-          mimeType: file.type || null,
-          sizeBytes: file.size,
-        },
-      });
-      onProgress(100);
+      await uploadDocument(category, file, onProgress);
       toast.success("Document uploaded");
-      await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
       throw err;
@@ -282,6 +299,8 @@ export function ApplicantDocuments({
         )}
       </div>
 
+      <VerifyIdentityAction applicationId={applicationId} />
+
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
         {ORDER.map((key) => {
           const meta = DOC_CATEGORIES.find((c) => c.key === key)!;
@@ -289,6 +308,10 @@ export function ApplicantDocuments({
           const st = statusOf(d);
           const style = STATUS_STYLE[st];
           const working = busy === key || (d && busy === d.id);
+          // Signed agreements are permanent records: no Replace and no Needs
+          // New, and the server refuses both anyway. A wrong agreement is
+          // voided and re-sent through eSign.
+          const locked = signedAgreementLocked(docs, key);
           return (
             <div
               key={key}
@@ -330,9 +353,19 @@ export function ApplicantDocuments({
                   <span
                     className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${style.cls}`}
                   >
-                    {style.label}
+                    {key === "gig_profile" && st === "verified" ? "Staff Reviewed" : style.label}
                   </span>
                 </div>
+                {key === "gig_profile" ? (
+                  <div className="text-[10px] text-[#9A9AA3]">
+                    Screenshot Only. Not Verified With Uber, Lyft Or Any Platform.
+                  </div>
+                ) : key === "agreement" ? (
+                  <div className="text-[10px] text-[#9A9AA3]">
+                    Verify Only A Fully Signed Agreement. Verification Is Audited And Counts As The
+                    Signed Agreement For Activation.
+                  </div>
+                ) : null}
 
                 {d && (
                   <div className="text-[11px] text-[#9A9AA3] space-y-0.5">
@@ -377,7 +410,7 @@ export function ApplicantDocuments({
                       <RotateCcw className="w-3 h-3" /> Unverify
                     </button>
                   )}
-                  {d && st !== "rejected" && (
+                  {d && st !== "rejected" && !locked && (
                     <button
                       onClick={() => void decide(d, "rejected")}
                       disabled={!!working}
@@ -386,17 +419,17 @@ export function ApplicantDocuments({
                       <AlertTriangle className="w-3 h-3" /> Needs New
                     </button>
                   )}
-                  <FileUploader
-                    variant="inline"
-                    label={d ? "Replace" : "Upload"}
-                    context={`${meta.label} · Application ${applicationId.slice(0, 8)}`}
-                    accept="image/*,application/pdf"
-                    maxBytes={MAX_MB * 1024 * 1024}
-                    camera
-                    disabled={!!working}
-                    upload={(file, { onProgress }) => uploadCategory(key, file, onProgress)}
-                  />
-                  {d && (
+                  {locked ? (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-md border border-[#EDEDF0] px-2 py-1 text-[11px] font-medium text-[#55555E]"
+                      title="Signed agreements can't be replaced. To correct one, void it and send a new agreement through eSign."
+                    >
+                      <ShieldCheck className="w-3 h-3" /> Permanent Record
+                    </span>
+                  ) : null}
+                  {/* Signed agreements are permanent records: no Delete, and
+                      the server refuses it anyway (deleteDocument). */}
+                  {d && key !== "agreement" && !d.signed_agreement && d.uploaded_by_role !== "driver" && (
                     <button
                       onClick={() => void drop(d)}
                       disabled={!!working}
@@ -407,11 +440,14 @@ export function ApplicantDocuments({
                     </button>
                   )}
                 </div>
+                {!locked ? <Button type="button" variant="outline" size="sm" className="mt-2 h-8 self-start text-xs" disabled={busy != null} aria-label={`Add ${displayTitleCase(meta.label).replace("(front)", "(Front)").replace("(back)", "(Back)")}`} onClick={() => setUploadingCategory(key)}><Plus className="h-3.5 w-3.5" /> Add</Button> : null}
               </div>
             </div>
           );
         })}
       </div>
+
+      <DocumentBatchUpload applicationId={applicationId} docs={docs} onDone={refresh} />
 
       {extras.length > 0 && (
         <div>
@@ -434,6 +470,15 @@ export function ApplicantDocuments({
                     <FileText className="w-6 h-6" />
                   </span>
                 )}
+                {!(d.visibility ?? []).includes("driver") && (
+                  <span
+                    className="absolute top-1 left-1 rounded-full bg-[#111114] text-white p-0.5"
+                    title="Team only"
+                    aria-label="Team only"
+                  >
+                    <Lock className="w-2.5 h-2.5" />
+                  </span>
+                )}
                 {statusOf(d) === "verified" && (
                   <span className="absolute top-1 right-1 rounded-full bg-emerald-600 text-white p-0.5">
                     <Check className="w-2.5 h-2.5" strokeWidth={3} />
@@ -447,7 +492,7 @@ export function ApplicantDocuments({
 
       {showHistory && history.length > 0 && (
         <div>
-          <MicroLabel className="mb-2">Replaced versions</MicroLabel>
+          <MicroLabel className="mb-2">Previous Uploads</MicroLabel>
           <ul className="rounded-xl border border-[#EDEDF0] bg-white divide-y divide-[#F4F4F6]">
             {history.map((d) => (
               <li key={d.id} className="flex items-center gap-3 px-3 py-2 text-[12px]">
@@ -455,9 +500,9 @@ export function ApplicantDocuments({
                 <span className="min-w-0 flex-1 truncate text-[#55555E]">
                   {d.label ?? d.file_name}
                 </span>
-                <span className="text-[11px] text-[#9A9AA3] shrink-0">{fmtDate(d.created_at)}</span>
+                <span className="text-[11px] text-[#9A9AA3] shrink-0">{fmtDateTime(d.created_at)}</span>
                 <button
-                  onClick={() => open(d, `${d.label ?? d.file_name} (replaced)`)}
+                  onClick={() => open(d, `${d.label ?? d.file_name} (Previous Upload)`)}
                   className="text-[11px] font-medium text-[#55555E] hover:text-[#111114] shrink-0"
                 >
                   View
@@ -469,6 +514,12 @@ export function ApplicantDocuments({
       )}
 
       <DocumentViewer doc={viewing} onClose={() => setViewing(null)} />
+      {uploadingCategory && !signedAgreementLocked(docs, uploadingCategory) ? <DriverDocumentUploadDialog
+        label={displayTitleCase(DOC_CATEGORIES.find((c) => c.key === uploadingCategory)?.label ?? "Document").replace("(front)", "(Front)").replace("(back)", "(Back)")}
+        hint={uploadingCategory === "agreement" ? "Written Or Signed Copy · Owner/Manager Review Required" : uploadingCategory === "rental_application" ? "Written Or Completed Application · Owner/Manager Review Required" : undefined}
+        upload={(file, { onProgress }) => uploadCategory(uploadingCategory, file, onProgress)}
+        onClose={() => setUploadingCategory(null)}
+      /> : null}
     </div>
   );
 }

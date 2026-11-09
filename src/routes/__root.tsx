@@ -5,6 +5,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
   type ErrorComponentProps,
@@ -16,6 +17,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { FileDropBridge } from "@/components/FileDropBridge";
 import { captureAttribution } from "@/lib/attribution";
+import { GOOGLE_ADS_BOOTSTRAP, isCredentialTrackingPath } from "@/lib/tracking-url";
 
 function NotFoundComponent() {
   return (
@@ -87,7 +89,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       // viewport-fit=cover so env(safe-area-inset-*) is non-zero on a
       // notched phone — without it the sticky Continue bar sits under the
       // home indicator.
-      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" },
       { title: "Car Rentals For Uber, Lyft & Gig Apps | Unlimited Miles" },
       {
         name: "description",
@@ -141,22 +143,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  // /thank-you loads the same Google tag live uses. Credential routes
+  // (/login, /sign, /card, /invite) omit it so the HTML never asks for
+  // gtag.js. Every loaded page passes a sanitized page_location.
+  const ads = isCredentialTrackingPath(pathname) ? null : (
+    <script dangerouslySetInnerHTML={{ __html: GOOGLE_ADS_BOOTSTRAP }} />
+  );
   return (
     <html lang="en">
       <head>
-        {/* Google tag (gtag.js) */}
-        <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18340435293"></script>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-
-              gtag('config', 'AW-18340435293');
-            `,
-          }}
-        />
+        {ads}
         <HeadContent />
       </head>
       <body>

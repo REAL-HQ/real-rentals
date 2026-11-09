@@ -35,10 +35,12 @@ import {
   type VehicleProfile as Profile,
   type VehicleSection,
 } from "@/lib/vehicles.functions";
+import { bodyTypeLabel } from "@/lib/vehicle-defaults";
 import { getVehicleFinance, saveVehicleFinance } from "@/lib/vehicle-finance.functions";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { readStoredExperience } from "@/lib/experience";
 import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { Row, TwoCol, Text, Area, NumberField, DateInput, Choice } from "./VehicleProfileFields";
 import { VehicleEditDrawer } from "./VehicleEditDrawer";
 import { ShareVehicleDialog } from "./ShareVehicleDialog";
@@ -47,6 +49,8 @@ import { VehicleDocuments } from "./VehicleDocuments";
 import { ApplyTemplateDialog } from "./ApplyTemplateDialog";
 import { VehiclePhotos } from "./VehiclePhotos";
 import { VehicleService } from "./VehicleService";
+import { MaintenanceLogHistory } from "./MaintenanceLog";
+import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
 import { VehicleTimeline } from "./VehicleTimeline";
 import { BookingVehicleHistory } from "./BookingVehicleHistory";
 import { rentalReadyItems, listingReadyItems, profileItems, percent, vehicleReadinessChecks, listingPhotoCheck, overallReadiness, readinessByCategory, vehicleAvailability, type ReadinessCheck, type FixTarget } from "@/lib/vehicle-readiness";
@@ -207,7 +211,7 @@ export function VehicleProfile({
                     <h2 className="text-[19px] font-semibold text-[#111114] truncate">
                       {p?.unitLabel ?? "Vehicle"}
                     </h2>
-                    {v.status && <StatusPill status={String(v.status)} />}
+                    {v.status && <VehicleStatusBadge status={String(v.status)} />}
                     {!p?.isActive && (
                       <span className="text-[11px] text-[#9A9AA3]">Out of fleet</span>
                     )}
@@ -221,7 +225,7 @@ export function VehicleProfile({
                   <VehicleSuggestions
                     vehicleId={vehicleId}
                     canEdit={!!p?.canEdit}
-                    onApplied={refresh}
+                    onApplied={afterSave}
                     onCount={setPendingDetails}
                     openSignal={openSuggest}
                   />
@@ -241,6 +245,7 @@ export function VehicleProfile({
               <button
                 onClick={() => setSharing(true)}
                 disabled={!p}
+                aria-label="Share"
                 className="inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-3 py-1.5 text-[12px] font-medium text-[#111114] hover:bg-[#FAFAFB] transition-colors disabled:opacity-50"
               >
                 <Share2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Share</span>
@@ -327,7 +332,12 @@ export function VehicleProfile({
                   onReviewDetails={() => setOpenSuggest((n) => n + 1)}
                 />
               )}
-              {tab === "service" && <VehicleService vehicleId={vehicleId} />}
+              {tab === "service" && (
+                <>
+                  {MAINTENANCE_LOG_ENABLED ? <MaintenanceLogHistory vehicleId={vehicleId} /> : null}
+                  <VehicleService vehicleId={vehicleId} />
+                </>
+              )}
               {tab === "timeline" && <VehicleTimeline vehicleId={vehicleId} />}
               {tab === "photos" && <VehiclePhotos vehicleId={vehicleId} canEdit={p.canEdit} />}
               {tab === "documents" && (
@@ -344,7 +354,7 @@ export function VehicleProfile({
                     // fields, so the profile — and the Readiness checklist it
                     // feeds — has to be re-read. Same refresh the header's
                     // suggestion pill already uses.
-                    onVehicleChanged={refresh}
+                    onVehicleChanged={afterSave}
                   />
                 </SectionCard>
               )}
@@ -375,7 +385,7 @@ export function VehicleProfile({
       {editing === "finance" && p && (
         <FinanceDrawer vehicleId={vehicleId} onClose={() => setEditing(null)} onSaved={afterSave} />
       )}
-      {sharing && <ShareVehicleDialog vehicleId={vehicleId} onClose={() => setSharing(false)} />}
+      {sharing && <ShareVehicleDialog vehicleId={vehicleId} canSend={!!p?.canEdit} onClose={() => setSharing(false)} />}
       {editorOpen && p && (
         <VehicleEditorDrawer
           profile={{ ...p, id: vehicleId }}
@@ -484,7 +494,7 @@ function Overview({
               <Row label="VIN" value={v.vin} mono />
               <Row label="Plate" value={plate} mono />
               <Row label="Mileage" value={miles(v.current_odometer)} />
-              <Row label="Status" value={v.status ? <StatusPill status={String(v.status)} /> : null} />
+              <Row label="Status" value={v.status ? <VehicleStatusBadge status={String(v.status)} /> : null} />
             </div>
           </TwoCol>
           {optional.length > 0 && (
@@ -926,7 +936,7 @@ function SectionDrawer({
               onChange={(v) => set("body_type", v)}
               options={[
                 { value: "", label: "—" },
-                ...BODY_TYPES.map((b) => ({ value: b, label: b })),
+                ...BODY_TYPES.map((b) => ({ value: b, label: bodyTypeLabel(b) })),
               ]}
             />
             <Text
@@ -948,6 +958,7 @@ function SectionDrawer({
               label="Status"
               value={str("status")}
               onChange={(v) => set("status", v)}
+              vehicleStatus
               options={VEHICLE_STATUSES.map((s) => ({ value: s.value, label: s.label }))}
             />
             <NumberField label="Seats" value={num("seats")} onChange={(v) => set("seats", v)} />
@@ -1488,7 +1499,7 @@ function ReadinessChecklist({ p, onEdit, onOpenTab, pendingDetails = 0, onReview
         <span data-testid="readiness-overall" className={`inline-flex items-center gap-1.5 rounded-full border border-[#EDEDF0] bg-white px-2.5 py-1 text-[12px] font-semibold ${st.text}`}>
           <span className={`h-2 w-2 rounded-full ${st.dot}`} /> {st.label}
         </span>
-        <span data-testid="readiness-availability" className="inline-flex items-center rounded-full bg-[#F4F4F6] px-2.5 py-1 text-[12px] font-medium text-[#111114]">{avail}</span>
+        <VehicleStatusBadge data-testid="readiness-availability" status={avail} label={avail} />
         <span className="text-[11px] text-[#9A9AA3]">Readiness never changes availability.</span>
       </div>
 

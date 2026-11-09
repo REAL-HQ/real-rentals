@@ -5,6 +5,8 @@ import { fmtDate } from "@/lib/date-format";
 // Workers bind env at request time).
 
 /** Canonical renter-facing sender identity. The only place it is defined. */
+import { PORTAL_PAY_URL } from "@/lib/portal-pay-link";
+
 export const EMAIL_FROM = "REAL RENTALS <team@drivereal.com>";
 /** Canonical Reply-To for every renter/customer email. Never hello@ or go@. */
 export const EMAIL_REPLY_TO = "team@drivereal.com";
@@ -25,6 +27,13 @@ type SendArgs = {
   track?: { workflow: string };
   /** Stable key for a reserved recovery attempt. Omitted by every other sender. */
   idempotencyKey?: string;
+  /**
+   * Driver notices set this. Live sends omit it, so the Resend fetch is the
+   * same request it was before: no abort signal is created.
+   */
+  noticeTimeout?: boolean;
+  /** Combined with the 5s notice abort. Live sends omit noticeTimeout, so this is ignored. */
+  signal?: AbortSignal;
 };
 
 export type SendResult = {
@@ -34,7 +43,26 @@ export type SendResult = {
   deliveryId?: string;
   /** Provider outcome could not be classified. Absent when the secret is missing. */
   uncertain?: boolean;
+  /**
+   * Back Office → Automations stopped this send before the provider.
+   * "off": the Owner switched it off. "held": the switches could not be read,
+   * so it was held (recorded as failed "Held: ...") and may be retried.
+   */
+  blocked?: "off" | "held";
+  retriable?: boolean;
 };
+
+/** A held send leaves an honest trail: a failed delivery row, never "sent". */
+async function recordHeldDelivery(workflow: string, recipient: string): Promise<void> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { HELD_REASON } = await import("@/lib/automation-controls.server");
+    const now = new Date().toISOString();
+    await (supabaseAdmin as any).from("email_deliveries").insert({ workflow, recipient, state: "failed", failed_at: now, provider_reason: HELD_REASON });
+  } catch (err) {
+    console.error("[email] could not record held delivery", { workflow }, err);
+  }
+}
 
 /**
  * Record one send attempt in email_deliveries. Never throws, never delays the
@@ -93,7 +121,13 @@ async function finishEmailDelivery(
  * Send one email. Returns a result rather than throwing, so a failed send can
  * never take down the operation that triggered it.
  */
-export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey }: SendArgs): Promise<SendResult> {
+function noticeFetchSignal(noticeTimeout: boolean | undefined, signal: AbortSignal | undefined): AbortSignal | undefined {
+  if (noticeTimeout !== true) return undefined;
+  const timeout = AbortSignal.timeout(5000);
+  return signal ? AbortSignal.any([timeout, signal]) : timeout;
+}
+
+export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey, noticeTimeout, signal }: SendArgs): Promise<SendResult> {
   // Company phone in templates resolves from Settings → Business Phone.
   let html = rawHtml;
   if (html.includes("{{company_phone}}")) {
@@ -104,6 +138,24 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
   // Sender identity + why-you-got-this line, then a plain-text alternative
   // (Resend sends both as multipart/alternative). Links and tokens are kept verbatim.
   html = withIdentityFooter(html, track?.workflow);
+  // Back Office → Automations: a template preview never sends, and a switched-off
+  // automation is skipped before any delivery row or provider call.
+  {
+    const { capturePreviewEmail, emailGate } = await import("@/lib/automation-controls.server");
+    if (capturePreviewEmail({ to: Array.isArray(to) ? to : [to], subject, html, workflow: track?.workflow ?? null })) {
+      return { ok: false, error: "Preview only. Nothing was sent." };
+    }
+    const gate = await emailGate(track?.workflow);
+    if (gate === "off") {
+      console.info("[email] automation turned off; skipping send", { workflow: track?.workflow });
+      return { ok: false, blocked: "off", error: "This automation is turned off in Back Office → Automations." };
+    }
+    if (gate === "held") {
+      console.error("[email] automation settings unreadable; holding send", { workflow: track?.workflow });
+      await recordHeldDelivery(track!.workflow, Array.isArray(to) ? (to[0] ?? "") : to);
+      return { ok: false, blocked: "held", retriable: true, error: "Held: automation settings could not be read. Not sent." };
+    }
+  }
   const text = htmlToText(html);
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -119,6 +171,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
     }
     return result;
   };
+  const noticeSignal = noticeFetchSignal(noticeTimeout, signal);
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -135,6 +188,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
         text,
         reply_to: replyTo ?? EMAIL_REPLY_TO,
       }),
+      ...(noticeSignal ? { signal: noticeSignal } : {}),
     });
     if (!res.ok) {
       const body = await res.text();
@@ -157,7 +211,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
   }
 }
 
-const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_ops", "staff_invite", "test_email", "driver_issue"]);
+const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_ops", "staff_invite", "test_email", "driver_issue", "payment_team_alert", "collections_plan"]);
 
 /** Why this recipient got this email — accurate per workflow, never promotional. */
 export function emailReason(workflow: string | undefined): string {
@@ -241,6 +295,8 @@ export type LeadAlertPrefs = {
   recipients: string[];
   onNew: boolean;
   onComplete: boolean;
+  /** The setting could not be read; alerts are held, not sent. */
+  unreadable?: boolean;
 };
 
 const DEFAULT_OPS_INBOX = "team@drivereal.com";
@@ -264,11 +320,14 @@ export async function getLeadAlertPrefs(): Promise<LeadAlertPrefs> {
 
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from("app_settings")
       .select("value")
       .eq("key", "notifications")
       .maybeSingle();
+    // A read error is not "never configured": hold rather than override an Off.
+    if (error) throw error;
+    if (data && (!data.value || typeof data.value !== "object" || Array.isArray(data.value))) throw new Error("notifications setting malformed");
 
     const v = (data?.value ?? {}) as Record<string, unknown>;
     const configured = parseRecipients(v.admin_email);
@@ -281,8 +340,8 @@ export async function getLeadAlertPrefs(): Promise<LeadAlertPrefs> {
       onComplete: v.alert_on_complete !== false,
     };
   } catch (err) {
-    console.error("[email] could not read alert settings; using fallback", err);
-    return { recipients: fallback, onNew: true, onComplete: true };
+    console.error("[email] could not read alert settings; holding lead alerts", err);
+    return { recipients: fallback, onNew: false, onComplete: false, unreadable: true };
   }
 }
 
@@ -359,7 +418,13 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
 
   const prefs = await getLeadAlertPrefs();
   const wanted = event === "complete" ? prefs.onComplete : prefs.onNew;
-  if (!wanted) return;
+  // A Back Office preview renders the alert even while it is switched off.
+  const previewing = (await import("@/lib/automation-controls.server")).inPreview();
+  if (prefs.unreadable && !previewing) {
+    await recordHeldDelivery("lead_alert", prefs.recipients[0] ?? "");
+    return;
+  }
+  if (!wanted && !previewing) return;
   if (!prefs.recipients.length) {
     console.error("[email] lead alert has no recipient; check Settings -> Notifications");
     return;
@@ -381,6 +446,33 @@ async function applicantResumeUrl(applicationId: string): Promise<string> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { issueResumeUrl } = await import("@/lib/resume-tokens.server");
   return issueResumeUrl(supabaseAdmin, applicationId);
+}
+
+/**
+ * The link in an automated reminder: a short-lived, single-use recovery link,
+ * the same kind requestApplicationLink sends.
+ *
+ * The hourly reminders used to mint a 14-day reusable session token per
+ * email. Those sit in inboxes, get forwarded and pass through link-scanning
+ * gateways, and nobody asked for them — so an unattended job was minting a
+ * fortnight of access to an application on a timer. A recovery link is
+ * exchanged for a session on first open and then dies; if it has expired by
+ * the time the applicant clicks, the page they land on emails a fresh link to
+ * the address on file. A recovery mint only trims older recovery links, so it
+ * never logs the applicant out of a tab they already have open.
+ */
+async function applicantRecoveryUrl(applicationId: string): Promise<string> {
+  const preview = await import("@/lib/automation-controls.server");
+  if (preview.inPreview()) return preview.PREVIEW_LINK;
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { issueResumeToken, resumeUrl } = await import("@/lib/resume-tokens.server");
+  return resumeUrl(await issueResumeToken(supabaseAdmin, applicationId, { recovery: true }));
+}
+
+/** One sentence under every reminder button, so an expired link is not a dead end. */
+async function recoveryLinkNote(): Promise<string> {
+  const { RECOVERY_TOKEN_MINUTES } = await import("@/lib/resume-tokens.server");
+  return `For your security this link works once and expires ${RECOVERY_TOKEN_MINUTES} minutes after this email was sent. If it has expired, open it anyway and enter your email — we'll send a fresh link to the address on your application.`;
 }
 
 /**
@@ -431,9 +523,10 @@ type RecoveryArgs = {
   variant: "24h" | "72h";
 };
 
-export async function sendWizardRecoveryEmail({ to, firstName, applicationId, variant }: RecoveryArgs): Promise<void> {
+export async function sendWizardRecoveryEmail({ to, firstName, applicationId, variant }: RecoveryArgs): Promise<SendResult> {
   const name = (firstName || "").trim().split(" ")[0] || "there";
-  const resumeUrl = await applicantResumeUrl(applicationId);
+  const resumeUrl = await applicantRecoveryUrl(applicationId);
+  const linkNote = await recoveryLinkNote();
   const subject =
     variant === "24h"
       ? `${name}, your REAL RENTALS application is saved`
@@ -453,13 +546,14 @@ export async function sendWizardRecoveryEmail({ to, firstName, applicationId, va
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Hi ${escapeHtml(name)}, ${escapeHtml(body)}</p>
       <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Finish My Application</a>
       <p style="color:#888;font-size:12px;margin:24px 0 0;line-height:1.5">Or paste this into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>
+      <p style="color:#888;font-size:12px;margin:12px 0 0;line-height:1.5">${escapeHtml(linkNote)}</p>
       <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
       <p style="color:#999;font-size:12px;margin:0">Questions? Reply to this email or call {{company_phone}}.</p>
     </div>
   </div>
 </body></html>`;
 
-  await sendEmail({ to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
+  return sendEmail({ to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
 }
 
 // -----------------------------------------------------------------------------
@@ -494,7 +588,7 @@ type ReceiptArgs = {
   portalUrl?: string;
 };
 
-export async function sendPaymentReceiptEmail(args: ReceiptArgs): Promise<void> {
+export async function sendPaymentReceiptEmail(args: ReceiptArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
   const label = args.reason.replace(/_/g, " ");
@@ -509,7 +603,7 @@ export async function sendPaymentReceiptEmail(args: ReceiptArgs): Promise<void> 
       <div style="margin-top:20px">
         <a href="${args.portalUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View Payment History</a>
       </div>`);
-  await sendEmail({ to: args.to, subject: `Payment Received — ${money(args.amount)}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_receipt" } });
+  return sendEmail({ to: args.to, subject: `Payment Received — ${money(args.amount)}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_receipt" } });
 }
 
 type FailedArgs = {
@@ -522,15 +616,16 @@ type FailedArgs = {
   updateCardUrl?: string;
 };
 
-export async function sendPaymentFailedEmail(args: FailedArgs): Promise<void> {
+export async function sendPaymentFailedEmail(args: FailedArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
   const label = args.reason.replace(/_/g, " ");
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Payment Failed</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, we tried to charge your ${escapeHtml(method)} <strong>${money(args.amount)}</strong> for ${escapeHtml(label)} and it was declined. Please update your card to avoid interruption.</p>
-      <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
-  await sendEmail({ to: args.to, subject: `Your REAL RENTALS Payment Of ${money(args.amount)} Did Not Go Through`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
+      <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>
+      <p style="color:#444;font-size:14px;margin:16px 0 0;line-height:1.5">Already updated it? <a href="${PORTAL_PAY_URL}" style="color:#D03020;font-weight:600">Pay Now</a> from your driver portal.</p>`);
+  return sendEmail({ to: args.to, subject: `Your REAL RENTALS Payment Of ${money(args.amount)} Did Not Go Through`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
 }
 
 type CardExpiringArgs = {
@@ -551,15 +646,127 @@ type PastDueArgs = {
   daysLate: number;
 };
 
-export async function sendPastDueReminderEmail(args: PastDueArgs): Promise<void> {
+export async function sendPastDueReminderEmail(args: PastDueArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const when = args.dueDate ? fmtDate(args.dueDate) : "recently";
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#D03020;line-height:1.3">Balance Past Due</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your balance of <strong>${money(args.amount)}</strong> was due ${escapeHtml(when)} — that's ${args.daysLate} day${args.daysLate === 1 ? "" : "s"} ago. Please pay now to keep your rental active and avoid late fees.</p>
-      <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay Balance</a>`);
-  await sendEmail({ to: args.to, subject: `Past Due — ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_past_due" } });
+      <a href="${PORTAL_PAY_URL}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay Now</a>
+      <p style="color:#888;font-size:12px;margin:16px 0 0;line-height:1.5">Sign in to your driver portal to pay. We'll show your current balance before you confirm.</p>`);
+  return sendEmail({ to: args.to, subject: `Past Due — ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_past_due" } });
 }
+
+type DueTomorrowArgs = { to: string; firstName: string | null; amount: number; dueDate: string; autopay?: boolean };
+
+export async function sendPaymentDueTomorrowEmail(args: DueTomorrowArgs): Promise<SendResult> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const how = args.autopay
+    ? "Your card on file will be charged automatically. Make sure it is up to date."
+    : "Pay from your driver portal, or reply to this email if you need help.";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Payment Due Tomorrow</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, a friendly reminder that <strong>${money(args.amount)}</strong> is due ${escapeHtml(fmtDate(args.dueDate))}. ${escapeHtml(how)}</p>
+      <a href="${PORTAL_PAY_URL}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">${args.autopay ? "View Payment" : "Pay Now"}</a>`);
+  return sendEmail({ to: args.to, subject: `Reminder: ${money(args.amount)} Due Tomorrow`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_due_tomorrow" } });
+}
+
+type TeamPaymentAlertArgs = {
+  event: "failed" | "past_due";
+  driverName: string | null;
+  amount: number;
+  applicationId?: string | null;
+  rentalId?: string | null;
+  plate?: string | null;
+  reason?: string | null;
+  daysLate?: number;
+  dueDate?: string | null;
+};
+
+/** Short internal alert to team@ for a failed charge or a first-time past-due balance. */
+export async function sendTeamPaymentAlertEmail(args: TeamPaymentAlertArgs): Promise<SendResult> {
+  const who = args.driverName || "Unknown renter";
+  const headline = args.event === "failed" ? "Payment Failed" : "Payment Past Due";
+  const lines = [
+    `<strong>Renter:</strong> ${escapeHtml(who)}`,
+    `<strong>Amount:</strong> ${money(args.amount)}`,
+    args.plate ? `<strong>Plate:</strong> ${escapeHtml(args.plate)}` : "",
+    args.rentalId ? `<strong>Rental:</strong> ${escapeHtml(args.rentalId)}` : "",
+    args.reason ? `<strong>Reason:</strong> ${escapeHtml(args.reason.replace(/_/g, " "))}` : "",
+    args.dueDate ? `<strong>Due:</strong> ${escapeHtml(fmtDate(args.dueDate))}` : "",
+    args.daysLate ? `<strong>Days overdue:</strong> ${args.daysLate}` : "",
+  ].filter(Boolean).join("<br>");
+  const link = args.applicationId
+    ? `https://drivereal.com/admin?tab=drivers&id=${encodeURIComponent(args.applicationId)}`
+    : "https://drivereal.com/admin?tab=payments";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:20px;color:#D03020;line-height:1.3">${headline}</h1>
+      <p style="color:#444;font-size:14px;line-height:1.6;margin:0 0 16px">${lines}</p>
+      <a href="${link}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open In Admin</a>`);
+  return sendEmail({ to: TEAM_ALERT_INBOX, subject: `${headline}: ${who} — ${money(args.amount)}`, html, track: { workflow: "payment_team_alert" } });
+}
+
+export const TEAM_ALERT_INBOX = "team@drivereal.com";
+
+type CollectionsPlanEmailItem = {
+  renterName: string;
+  vehicleLabel: string;
+  plate?: string | null;
+  amount: number;
+  dueDate: string;
+  method: string;
+  autopay: boolean;
+  adminPath: string;
+};
+
+type CollectionsPlanEmailArgs = {
+  today: string;
+  tomorrow: string;
+  dueToday: CollectionsPlanEmailItem[];
+  dueTomorrow: CollectionsPlanEmailItem[];
+};
+
+/** One daily digest so the team can prep collections across every payment method. */
+export async function sendTeamCollectionsPlanEmail(args: CollectionsPlanEmailArgs): Promise<SendResult> {
+  const section = (title: string, rows: CollectionsPlanEmailItem[]) => {
+    if (!rows.length) {
+      return `<h2 style="margin:18px 0 6px;font-size:15px;color:#111">${escapeHtml(title)}</h2>
+        <p style="color:#888;font-size:13px;margin:0 0 8px">None</p>`;
+    }
+    const body = rows.map((row) => {
+      const vehicle = row.plate ? `${row.vehicleLabel} · ${row.plate}` : row.vehicleLabel;
+      const link = row.adminPath.startsWith("http") ? row.adminPath : `https://drivereal.com${row.adminPath}`;
+      return `<tr>
+        <td style="padding:8px 0;border-bottom:1px solid #eee;font-size:13px;color:#111;vertical-align:top">
+          <strong>${escapeHtml(row.renterName)}</strong><br>
+          <span style="color:#666">${escapeHtml(vehicle)}</span>
+        </td>
+        <td style="padding:8px 0;border-bottom:1px solid #eee;font-size:13px;color:#111;text-align:right;vertical-align:top;white-space:nowrap">
+          ${money(row.amount)}<br>
+          <span style="color:#666">${escapeHtml(row.method)}${row.autopay ? " · Autopay" : ""}</span><br>
+          <a href="${link}" style="color:#D03020;text-decoration:none;font-size:12px">Open</a>
+        </td>
+      </tr>`;
+    }).join("");
+    return `<h2 style="margin:18px 0 6px;font-size:15px;color:#111">${escapeHtml(title)} · ${rows.length}</h2>
+      <table style="width:100%;border-collapse:collapse">${body}</table>`;
+  };
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:20px;color:#111;line-height:1.3">Collections Plan — Due Today / Due Tomorrow</h1>
+      <p style="color:#444;font-size:14px;line-height:1.55;margin:0 0 8px">Prep list for ${escapeHtml(fmtDate(args.today))} (ET). Method is taken from autopay/Stripe when linked, otherwise the last recorded method — never assumed.</p>
+      ${section("Due Today", args.dueToday)}
+      ${section("Due Tomorrow", args.dueTomorrow)}
+      <a href="https://drivereal.com/admin?tab=payments" style="display:inline-block;margin-top:18px;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open Payments</a>`);
+  const n = args.dueToday.length + args.dueTomorrow.length;
+  return sendEmail({
+    to: TEAM_ALERT_INBOX,
+    subject: `Collections Plan — Due Today / Due Tomorrow (${n})`,
+    html,
+    track: { workflow: "collections_plan" },
+  });
+}
+
+
 
 type LicenseExpiryArgs = {
   to: string;
@@ -568,7 +775,7 @@ type LicenseExpiryArgs = {
   daysLeft: number;
 };
 
-export async function sendLicenseExpiringEmail(args: LicenseExpiryArgs): Promise<void> {
+export async function sendLicenseExpiringEmail(args: LicenseExpiryArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const when = fmtDate(args.expiration);
   const expired = args.daysLeft <= 0;
@@ -576,7 +783,7 @@ export async function sendLicenseExpiringEmail(args: LicenseExpiryArgs): Promise
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${expired ? "Your License Has Expired" : "Your License Is Expiring Soon"}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, our records show your driver's license ${expired ? "expired" : "expires"} on <strong>${escapeHtml(when)}</strong>. Send us an updated photo so your rental stays in good standing.</p>
       <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Upload New License</a>`);
-  await sendEmail({ to: args.to, subject: expired ? "Your driver's license on file has expired" : `Your driver's license expires ${when}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "license_expiring" } });
+  return sendEmail({ to: args.to, subject: expired ? "Your driver's license on file has expired" : `Your driver's license expires ${when}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "license_expiring" } });
 }
 
 type ServiceDigestArgs = {
@@ -598,7 +805,7 @@ export async function sendServiceDigestEmail(args: ServiceDigestArgs): Promise<v
   await sendEmail({ to: args.to, subject: `Service Due — ${args.items.length} vehicle${args.items.length === 1 ? "" : "s"} need attention`, html, track: { workflow: "service_digest" } });
 }
 
-export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<void> {
+export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const method = args.last4 ? `${args.brand ?? "Card"} ····${args.last4}` : "card on file";
   const mm = String(args.expMonth).padStart(2, "0");
@@ -606,7 +813,7 @@ export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<voi
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Card Is Expiring</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your ${escapeHtml(method)} on file expires <strong>${mm}/${args.expYear}</strong>. Update it now so your weekly rent doesn't miss a beat.</p>
       <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
-  await sendEmail({ to: args.to, subject: `Your card ending in ${args.last4 ?? "••••"} is expiring`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "card_expiring" } });
+  return sendEmail({ to: args.to, subject: `Your card ending in ${args.last4 ?? "••••"} is expiring`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "card_expiring" } });
 }
 
 // -----------------------------------------------------------------------------
@@ -655,9 +862,10 @@ type AbandonedArgs = {
   pickupDate: string | null;
 };
 
-export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<void> {
+export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
-  const resumeUrl = await applicantResumeUrl(args.applicationId);
+  const resumeUrl = await applicantRecoveryUrl(args.applicationId);
+  const linkNote = await recoveryLinkNote();
   const subject = "Finish Your REAL RENTALS Quote — Cars Are Moving Fast";
   const details: string[] = [];
   if (args.market) details.push(`in <strong>${escapeHtml(args.market)}</strong>`);
@@ -669,8 +877,9 @@ export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<v
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">You're Almost There, ${escapeHtml(name)}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">${detailLine} It only takes about 2 minutes to finish. Lock in your vehicle before it's gone.</p>
       <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pick Up Where You Left Off</a>
-      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>`);
-  await sendEmail({ to: args.to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>
+      <p style="color:#888;font-size:12px;margin:12px 0 0;line-height:1.5">${escapeHtml(linkNote)}</p>`);
+  return sendEmail({ to: args.to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "application_recovery" } });
 }
 // -----------------------------------------------------------------------------
 // Rental agreements (e-signature)

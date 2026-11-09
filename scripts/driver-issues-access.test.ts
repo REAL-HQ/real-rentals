@@ -25,9 +25,16 @@ ok(/driver_id: userId/.test(portal), "a driver still files the issue as themselv
 const create = portal.slice(portal.indexOf("export const createDriverIssue"), portal.indexOf("export type DriverReferral"));
 ok(create.indexOf("if (error) return") < create.indexOf("notifyManagersOfDriverIssue"), "the staff alert runs only after the insert succeeds");
 ok(!/from\("notifications"\)/.test(alert), "the staff alert does not write a driver-facing notification");
-ok(!/sendSms/.test(alert), "the staff alert does not send SMS");
 ok(/DRIVER_ISSUE_ALERTS_ENABLED = process\.env\.DRIVER_ISSUE_ALERTS_ENABLED === "true"/.test(alert), "external email stays off unless the env flag is true");
-ok(/if \(!DRIVER_ISSUE_ALERTS_ENABLED\) return/.test(alert), "the alert returns before it loads the mailer");
+const roadsideFlag = readFileSync("src/lib/roadside-sms-flag.ts", "utf8");
+ok(/export const ROADSIDE_SMS_ALERTS_ENABLED = false/.test(roadsideFlag), "roadside SMS is a hard-false constant");
+ok(!/process\.env\.ROADSIDE_SMS_ALERTS_ENABLED/.test(alert + roadsideFlag), "env true cannot enable roadside SMS");
+const notifyBody = alert.slice(alert.indexOf("export async function notifyManagersOfDriverIssue"));
+const smsBranch = notifyBody.indexOf("if (ROADSIDE_SMS_ALERTS_ENABLED && plan.sms)");
+ok(/if \(!plan\.email && !plan\.sms\) return/.test(notifyBody), "both flags off returns before mail or SMS");
+ok(notifyBody.indexOf("if (!plan.email && !plan.sms) return") < notifyBody.indexOf("await import"), "the early return happens before either helper loads");
+ok(smsBranch > 0 && !notifyBody.slice(0, smsBranch).includes("sendSms"), "sendSms is not called on the email path");
+ok(notifyBody.slice(smsBranch).includes("sendSms"), "roadside SMS reuses the existing sendSms helper");
 
 ok(DRIVER_ISSUE_NOTES_ENABLED === false, "staff notes are off");
 ok(!/\.update\(\{[^}]*staff_note/.test(fn), "nothing writes a staff_note column");

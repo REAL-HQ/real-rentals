@@ -169,6 +169,27 @@
       "when": 1792545492197,
       "tag": "0023_application_resume_atomic_security",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794199725200,
+      "tag": "0024_checklist_evidence_checkoffs",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794201540896,
+      "tag": "0025_checklist_inspection_checkoffs",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794202859114,
+      "tag": "0026_checklist_pickup_checkoffs",
+      "breakpoints": true
     }
   ]
 }
