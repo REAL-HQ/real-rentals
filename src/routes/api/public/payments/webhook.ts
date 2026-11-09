@@ -6,6 +6,7 @@ import { doubleCollectionMessage } from '@/lib/payment-overlap';
 import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatched';
 import { holdIfHeld, type HeldNoticeInput } from '@/lib/held-payment-notices.server';
 import { failedInvoiceLink } from '@/lib/failed-payment-link';
+import { easternDateOf } from '@/lib/rent-reminders';
 import { linkOrFlagSubscription, renderWebhookReminder, sendFailedPaymentText, webhookReminderSlot, type SmsSender } from '@/lib/failed-payment-notice.server';
 
 /** Test seam for the outbound text and staff alert; the route never sets it. */
@@ -379,7 +380,10 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     type: 'rent',
     reason: 'rent',
     status: 'pending',
-    due_date: invoice.period_start ? new Date(invoice.period_start * 1000).toISOString().slice(0, 10) : today(),
+    // The week this invoice bills starts when Stripe created it (ET), the same
+    // date the rent reminders and late-fee waivers use. invoice.period_start is
+    // the previous period for renewals, which made weeks look days later.
+    due_date: invoice.created ? easternDateOf(Number(invoice.created)) : invoice.period_start ? new Date(invoice.period_start * 1000).toISOString().slice(0, 10) : today(),
     stripe_invoice_id: invoice.id,
     stripe_subscription_id: subscriptionId,
   }));

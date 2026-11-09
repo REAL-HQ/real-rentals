@@ -405,13 +405,20 @@ export function renderReminder(
     linkLabel = "Pay This Week's Invoice";
   }
   let lateFeeLine = "";
-  if (!wholeWeekWaived) {
-    if (stage === "overdue") {
-      lateFeeLine = ` Per your rental agreement, a $${LATE_FEE_PER_DAY}/day late fee applies for each day it stays unpaid.`;
-    } else if (stage === "daily" && fee.fee > 0) {
+  if (stage === "overdue") {
+    if (!wholeWeekWaived) lateFeeLine = ` Per your rental agreement, a $${LATE_FEE_PER_DAY}/day late fee applies for each day it stays unpaid.`;
+  } else if (stage === "daily") {
+    // Each unpaid week's own fee, honoring that week's waiver: a waived week adds
+    // nothing, a newer unwaived week still counts.
+    const primaryFee = wholeWeekWaived ? 0 : fee.fee;
+    const otherFees = s.mode === "stripe"
+      ? (s.otherInvoices ?? []).reduce((t, o) => t + lateFeeFor({ dueDate: o.createdOn, today, waivers: s.waivers }).fee, 0)
+      : 0;
+    const totalFee = round2(primaryFee + otherFees);
+    if (totalFee > 0) {
       lateFeeLine = s.mode === "stripe"
-        ? ` Late fees of ${money(fee.fee)} ($${LATE_FEE_PER_DAY}/day per your rental agreement) are owed separately and are not part of this invoice.`
-        : ` That includes ${money(fee.fee)} in late fees ($${LATE_FEE_PER_DAY}/day per your rental agreement).`;
+        ? ` Late fees of ${money(totalFee)} ($${LATE_FEE_PER_DAY}/day per your rental agreement) are owed separately and are not part of ${s.otherInvoices?.length ? "these invoices" : "this invoice"}.`
+        : ` That includes ${money(totalFee)} in late fees ($${LATE_FEE_PER_DAY}/day per your rental agreement).`;
     }
   }
   // Each other open invoice with its own amount and its own page; never a combined total.
