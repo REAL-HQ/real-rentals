@@ -788,7 +788,7 @@ try {
     assert.match(scr, /Request Verification/);
     const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
     assert.match(panel, /canDecide=\{isManager\}/);
-    assert.match(panel, /withoutInsuranceDecision\(base as Record<string, unknown>\)/);
+    assert.doesNotMatch(panel, /from\("driver_screenings"\)\s*\.upsert/);
   });
 
   await test("the rental transaction stays the only start path", async () => {

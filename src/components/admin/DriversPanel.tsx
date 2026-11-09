@@ -85,12 +85,10 @@ import { getChecklistEvidence, saveChecklistEvidence } from "@/lib/checklist-evi
 import { ChecklistEvidenceControl } from "./ChecklistEvidenceControl";
 import { driverLifecycle } from "@/lib/driver-lifecycle";
 import type { ActivationRequirementKey } from "@/lib/activation-readiness";
-import { withoutInsuranceDecision } from "@/lib/insurance-verification";
 import { scoreApplication } from "@/lib/scoring.functions";
 import {
   InsuranceVerificationCard,
   InterviewTab,
-  ScreeningPipeline,
   useDriverScreening,
 } from "./DriverScreening";
 import {
@@ -1648,29 +1646,6 @@ function DriverDetail({
   // to staff; it is no longer a pass/fail badge on the record.
   const { screening, setScreening } = useDriverScreening(driver.id);
 
-  async function advanceStatus(next: import("./types").ScreeningStatus) {
-    try {
-      const base = screening ?? {
-        lead_id: driver.id,
-        status: "new_lead" as import("./types").ScreeningStatus,
-      };
-      const { data, error } = await supabase
-        .from("driver_screenings")
-        // The insurance decision columns are never written from the browser.
-        .upsert({ ...withoutInsuranceDecision(base as Record<string, unknown>), lead_id: driver.id, status: next } as any, { onConflict: "lead_id" })
-        .select("*")
-        .single();
-      if (error) throw error;
-      const row = data as DriverScreeningRow;
-      setScreening(row);
-      onScreeningChange?.(row);
-      readinessChanged();
-      toast.success(`Status: ${next.replace(/_/g, " ")}`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to advance status");
-    }
-  }
-
   const [interviewOpen, setInterviewOpen] = useState(false);
   const [recordCallOpen, setRecordCallOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
@@ -1736,10 +1711,6 @@ function DriverDetail({
     // onVaultChange is parent-owned; depending on it would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultDocCount, vaultLoading]);
-  // Owner-only; for every other tier this stays false and the gate reads the
-  // recording as outstanding. The database decides regardless.
-  const [hasRecording, setHasRecording] = useState(false);
-
   // ---- Derive lifecycle stages from driver + screening ------------------
   const scrStatus = String((screening as any)?.status ?? "").toLowerCase();
   const dStatus = String(driver.status ?? "").toLowerCase();
@@ -2566,13 +2537,6 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="screening" className="mt-0 space-y-4">
-                <ScreeningPipeline
-                  screening={screening}
-                  docCount={vaultDocCount}
-                  hasRecording={hasRecording}
-                  hasActiveRental={hasActiveRental}
-                  onAdvance={advanceStatus}
-                />
                 <div id="profile-insurance" className="scroll-mt-48">
                 <InsuranceVerificationCard
                   leadId={driver.id}
@@ -2584,7 +2548,6 @@ function DriverDetail({
                     onScreeningChange?.(s);
                     readinessChanged();
                   }}
-                  onRecordingChange={setHasRecording}
                 />
                 </div>
                 <IdentityReviewCard applicationId={driver.id} />
