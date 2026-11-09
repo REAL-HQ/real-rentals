@@ -48,7 +48,7 @@ export function ActivationRequirementList({
         </div>
       </div> : null}
       <ul className="mt-2 divide-y divide-border">
-        {requirements.filter((r) => !embedded || (NEXT_STEP_REQUIREMENT_KEYS as readonly ActivationRequirementKey[]).includes(r.key)).map((r) => {
+        {requirements.filter((r) => r.key !== "gig_platform" && (!embedded || (NEXT_STEP_REQUIREMENT_KEYS as readonly ActivationRequirementKey[]).includes(r.key))).map((r) => {
           const blocker = blockers.find((item) => item.key === r.key || (item.key === "local" && r.key === "interview" && item.target.kind === "record_call"));
           const action = onRun ? blocker ? { label: blocker.fix, target: blocker.target } : checklistAction(r) : null;
           const fileState = evidence?.[r.key];
@@ -88,7 +88,7 @@ export function ActivationRequirementList({
             <div className={embedded ? "ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5 max-sm:w-full" : `flex shrink-0 flex-col items-end gap-1 ${fileState ? "max-w-80 max-sm:w-full" : "max-w-36"}`}>
               <span className="text-right text-[10px] text-muted-foreground">{status}</span>
               {embedded ? fileControls : null}
-              {action && onRun && !fileControls ? <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => onRun(action.target)}>{action.label}</Button> : r.key === "gig_platform" ? <span className="text-right text-[10px] text-muted-foreground">No Platform Verification Connected</span> : null}
+              {action && onRun && !fileControls ? <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => onRun(action.target)}>{action.label}</Button> : null}
               {!embedded ? fileControls : null}
             </div>
           </li>
