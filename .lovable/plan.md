@@ -42,16 +42,16 @@ Use approved disposable fixtures for saves, emails, payments and activation; eSi
 - Canonical `prepareAgreement`/eSign, audited paper review, `inspections.functions.ts`, reviewed vehicle-sharing snapshots/private media. No parallel signing or public private-photo exposure.
 
 ### Proposed Durable Changes (Contract Only; No SQL In This Plan)
-- `application_checklist_events`: append-only application/field attestations with revision, previous event, Collected/Not Collected, source, note, server actor/time, idempotency key and request fingerprint. No anonymous access, direct overwrite/delete or client-issued actor facts.
-- `application_pickup_plans`: confirmed appointment timestamp/timezone, pickup location snapshot, current vehicle assignment, revision and staff attribution; separate from applicant-requested `pickup_date`/`pickup_time`.
-- `application_pickup_plan_events`: immutable appointment/assignment history with previous/next revision, car, actor and reason. This supplies pre-pickup history without enabling permanent numbering or post-activation swaps.
-- `application_pickup_packet_deliveries`: reviewed packet fingerprint, plan revision, recipient identity reference, retry key and claimed/result state/provider reference. Store no passwords or raw bearer tokens. Reuse existing provider delivery tracking, with visible uncertain delivery rather than duplicate retry.
-- Field follow-up is derived from latest attestation plus current saved document; completion/exception history is retained. Add a separate task table only if a durable follow-up action cannot be represented by these existing facts.
-- Restricted authenticated mutation functions for attestation append, pickup-plan save/change and packet claim/finalize; explicit grants, RLS and append-only validation. Permission comes from existing role authority and caller-scoped application access; only Manager/Owner approval, final assignment and activation.
-- Extend the existing checked activation transaction to lock/re-read role, application, current pickup-plan revision, final vehicle, scoped evidence, applicable payment and signed-agreement binding; validate selected operational exceptions/reason; call canonical activation and write immutable audit/follow-up/handoff evidence in the same transaction. Missing support or audit failure refuses, with no legacy bypass.
+- `application_checklist_events`: append-only field receipt state, revision/correction, source/note, server actor/time and retry fingerprint; no direct overwrite/delete or forged actors.
+- `application_pickup_plans`: confirmed timestamp/timezone, location snapshot, final vehicle, revision/actor; distinct from requested pickup date/time.
+- `application_pickup_plan_events`: immutable appointment/assignment revisions, car, actor/reason; no numbering or post-activation swap changes.
+- `application_pickup_packet_deliveries`: reviewed fingerprint, plan revision, recipient reference, retry key, claim/result/provider reference; no passwords/raw tokens. Reuse delivery tracking and show uncertain outcomes.
+- Derive field follow-up from latest receipt/current file; retain history. Add a task table only if those facts cannot represent required follow-up.
+- Restricted authenticated append/plan/packet functions: explicit grants/RLS, caller-scoped access, immutable attribution and existing role authority. Manager/Owner only for approval, final assignment and activation.
+- Extend checked activation to lock/re-read role, application, plan revision, final car, evidence, payment and agreement binding. Validate selected exceptions/reason; canonical rental start plus audit/handoff commit together. Missing support/audit failure refuses; no legacy bypass.
 
 ### Focused New Modules
-Create pure `driver-lifecycle.ts` and `pickup-plan.ts` with tests; scoped `pickup-plan.functions.ts` / `pickup-plan.server.ts` and `pickup-packet.functions.ts` / `pickup-packet.server.ts` only after the durable contract is authorized. Use small `PickupPlanDialog.tsx`, `PickupHandoffDialog.tsx` and a single `PortalPickupPlan.tsx` rather than expanding the profile with extra panels. Preserve existing exported interfaces and routes.
+Pure `driver-lifecycle.ts` / `pickup-plan.ts` with tests; scoped pickup-plan/packet functions and server helpers after durable-contract authorization. Small `PickupPlanDialog.tsx`, `PickupHandoffDialog.tsx`, one `PortalPickupPlan.tsx`; no extra profile panels or changed public interfaces/routes.
 
 ## Acceptance
 - Exact ten-stage order; one document/insurance row; one license Add with Front/Back; desktop/phone and keyboard checks.
