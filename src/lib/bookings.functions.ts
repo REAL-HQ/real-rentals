@@ -11,6 +11,8 @@ import {
   bookingUnavailable,
   isBookingPhaseFilter,
   PHASE_STATUSES,
+  statusesForBookingList,
+  isPastPhase,
   vehicleLabelOf,
   type BookingCounts,
   type BookingListResult,
@@ -76,6 +78,7 @@ const listInput = (d: unknown) =>
     .object({
       q: z.string().max(100).optional().default(""),
       phase: z.string().max(20).optional().default("all"),
+      scope: z.enum(["past", "all"]).optional().default("all"),
       vehicleId: z.string().uuid().optional(),
       sort: z.string().max(20).optional().default("recent"),
       page: z.number().int().min(1).max(100000).optional().default(1),
@@ -116,6 +119,8 @@ export const listBookings = createServerFn({ method: "POST" })
     const canSeeMoney = tierAllows(actor.tier, "manager");
     const sb = await admin();
     const phase = isBookingPhaseFilter(data.phase) ? data.phase : "all";
+    const scope = data.scope === "past" ? "past" : "all";
+    const statusFilter = statusesForBookingList({ scope, phase });
     const sort = (BOOKING_SORTS as readonly string[]).includes(data.sort) ? data.sort : "recent";
 
     // The search box matches a person or a car, neither of which is on the
@@ -193,6 +198,7 @@ export const listBookings = createServerFn({ method: "POST" })
     for (const r of (statusRows ?? []) as Array<{ status: string | null }>) {
       const p = bookingPhase(r.status);
       if (p === "reserved") continue; // Phase A never claims an upcoming booking.
+      if (scope === "past" && !isPastPhase(p)) continue;
       counts[p] += 1;
     }
 
@@ -201,7 +207,7 @@ export const listBookings = createServerFn({ method: "POST" })
         .from("rentals")
         .select(canSeeMoney ? RENTAL_WITH_MONEY : RENTAL_OPERATIONAL, { count: "exact" }),
     );
-    if (phase !== "all") query = query.in("status", PHASE_STATUSES[phase] as string[]);
+    if (statusFilter) query = query.in("status", statusFilter as string[]);
     // Deterministic secondary key keeps pages stable across equal values.
     if (sort === "oldest")
       query = query.order("created_at", { ascending: true, nullsFirst: false });
