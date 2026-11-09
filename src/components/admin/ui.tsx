@@ -9,6 +9,7 @@ import {
 } from "@/lib/readiness";
 import { fmtDate as formatDate } from "@/lib/date-format";
 import type { EvidenceTone } from "@/lib/checklist-evidence";
+import { Button } from "@/components/ui/button";
 
 // ---- Design tokens (shared across admin) --------------------------------
 // Canvas #FAFAFB · Card #FFFFFF · Border #EDEDF0 · Ink #111114 · Sub #55555E
@@ -286,35 +287,33 @@ export function LifecycleRail({
   /** Optional operational evidence color; never changes lifecycle completion or status. */
   evidenceTones?: Partial<Record<string, EvidenceTone>>;
 }) {
-  const currentIdx = Math.max(
-    0,
-    stages.findIndex((s) => s.state === "current"),
-  );
+  const foundCurrent = stages.findIndex((s) => s.state === "current");
+  const currentIdx = foundCurrent >= 0 ? foundCurrent : Math.max(0, stages.length - 1);
   const current = stages[currentIdx] ?? stages[stages.length - 1];
   const upcoming = stages[currentIdx + 1];
   return (
-    <section className={`rounded-2xl border border-[#EDEDF0] bg-white p-5 shadow-sm ${className}`}>
+    <section className={`rounded-lg border border-border bg-card p-5 shadow-sm ${className}`}>
       <div className="flex items-baseline justify-between gap-3 mb-4">
         <div className="min-w-0">
-          <MicroLabel>Driver Lifecycle</MicroLabel>
-          <div className="mt-1 text-[15px] font-semibold text-[#111114] truncate">
+          <div className="text-[10px] font-semibold text-muted-foreground">Driver Lifecycle</div>
+          <div className="mt-1 text-[15px] font-semibold text-foreground truncate">
             {current?.label ?? "—"}
             {timeInStage && (
-              <span className="ml-2 text-[12px] font-normal text-[#9A9AA3]">
+              <span className="ml-2 text-[12px] font-normal text-muted-foreground">
                 · {timeInStage} in stage
               </span>
             )}
           </div>
           {blocker && (
-            <div className="text-[12px] text-[#D03020] mt-0.5 truncate">Blocker: {blocker}</div>
+            <div className="text-[12px] text-destructive mt-0.5 truncate">Blocker: {blocker}</div>
           )}
         </div>
         <div className="text-right shrink-0">
-          <div className="text-[22px] font-semibold text-[#111114] tabular-nums leading-none">
+          <div className="text-[22px] font-semibold text-foreground tabular-nums leading-none">
             {percent ?? 0}%
           </div>
           {upcoming && (
-            <div className="text-[11px] text-[#9A9AA3] mt-1">Next: {upcoming.label}</div>
+            <div className="text-[11px] text-muted-foreground mt-1">Next: {upcoming.label}</div>
           )}
         </div>
       </div>
@@ -333,17 +332,17 @@ export function LifecycleRail({
                       : evidenceTone === "red"
                         ? "bg-destructive/10 border-destructive text-destructive"
                         : done
-                      ? "bg-[#50C060] border-[#50C060] text-white"
+                      ? "bg-success border-success text-primary-foreground"
                       : cur
-                        ? "bg-white border-[#D03020] text-[#D03020] ring-4 ring-[#D03020]/10"
-                        : "bg-white border-[#EDEDF0] text-[#C4C4CB]"
+                        ? "bg-card border-brand text-brand ring-4 ring-brand/10"
+                        : "bg-card border-border text-muted-foreground"
                   }`}
                 >
                   {done && (!evidenceTone || evidenceTone === "green") ? <Check className="w-3 h-3" strokeWidth={2.5} /> : i + 1}
                 </span>
                 <span
                   className={`text-[10px] font-medium whitespace-nowrap ${
-                    cur ? "text-[#111114]" : done ? "text-[#55555E]" : "text-[#9A9AA3]"
+                    cur ? "text-foreground" : "text-muted-foreground"
                   }`}
                 >
                   {s.label}
@@ -351,8 +350,7 @@ export function LifecycleRail({
               </StageWrap>
               {i < stages.length - 1 && (
                 <span
-                  className="h-[2px] w-8 mt-[-14px] rounded"
-                  style={{ backgroundColor: done ? "#50C060" : "#EDEDF0" }}
+                  className={`h-[2px] w-5 mt-[-14px] rounded sm:w-8 ${done ? "bg-success" : "bg-border"}`}
                 />
               )}
             </li>
@@ -366,14 +364,15 @@ export function LifecycleRail({
 function StageWrap({ onClick, label, children }: { onClick?: () => void; label: string; children: ReactNode }) {
   if (!onClick) return <div className="flex flex-col items-center gap-1.5">{children}</div>;
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onClick}
       title={`Open ${label}`}
-      className="flex flex-col items-center gap-1.5 rounded-md px-1 hover:opacity-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/30"
+      aria-label={`Open ${label}`}
+      className="flex h-auto flex-col items-center gap-1.5 rounded-md px-1 py-0 hover:bg-transparent hover:opacity-75 focus-visible:ring-brand/30"
     >
       {children}
-    </button>
+    </Button>
   );
 }
 

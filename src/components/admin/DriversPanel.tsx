@@ -80,6 +80,7 @@ import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
 import { checklistDocumentCategories } from "./checklist-actions";
 import { CHECKLIST_EVIDENCE_ENABLED, evidenceTone, projectEvidence, requirementEvidence, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
 import { ChecklistEvidenceControl } from "./ChecklistEvidenceControl";
+import { driverLifecycle } from "@/lib/driver-lifecycle";
 import type { ActivationRequirementKey } from "@/lib/activation-readiness";
 import { withoutInsuranceDecision } from "@/lib/insurance-verification";
 import { scoreApplication } from "@/lib/scoring.functions";
@@ -178,7 +179,6 @@ import {
   SectionCard,
   MicroLabel,
   EmptyState,
-  type LifecycleStage,
 } from "./ui";
 import {
   computeReadiness,
@@ -1752,45 +1752,7 @@ function DriverDetail({
   // Active Renter = an actual active rental (rentals table), never the
   // application stage alone. rentalActive is declared below with the lookup.
   const approved = dStatus === "approved" || dStatus === "active";
-  const pickedUp = !!(driver as any).pickup_at || rentalActiveFlag;
   const active = rentalActiveFlag;
-
-  const stageFlags: { key: string; label: string; done: boolean }[] = [
-    { key: "applied", label: "Applied", done: true },
-    { key: "contacted", label: "Contacted", done: contacted },
-    { key: "screening", label: "Screening", done: screeningDone },
-    { key: "docs", label: "Documents", done: docsComplete },
-    { key: "insurance", label: "Insurance", done: insuranceOk },
-    { key: "approved", label: "Approved", done: approved },
-    { key: "pickup", label: "Pickup", done: pickedUp },
-    { key: "active", label: "Active", done: active },
-  ];
-  let markedCurrent = false;
-  const lifecycle: LifecycleStage[] = stageFlags.map((s) => {
-    if (s.done) return { key: s.key, label: s.label, state: "done" };
-    if (!markedCurrent) {
-      markedCurrent = true;
-      return { key: s.key, label: s.label, state: "current" };
-    }
-    return { key: s.key, label: s.label, state: "upcoming" };
-  });
-  const currentStage =
-    lifecycle.find((s) => s.state === "current") ?? lifecycle[lifecycle.length - 1];
-  const doneCount = lifecycle.filter((s) => s.state === "done").length;
-  const percentComplete = Math.round((doneCount / lifecycle.length) * 100);
-
-  // Time in current stage — best-effort from most relevant timestamp
-  const stageStartIso =
-    currentStage.key === "contacted"
-      ? (driver.created_at as any)
-      : currentStage.key === "screening"
-        ? ((driver.contacted_at as any) ?? (driver.created_at as any))
-        : currentStage.key === "docs"
-          ? ((screening as any)?.interview_completed_at ?? (driver.created_at as any))
-          : (driver.created_at as any);
-  const timeInStage = stageStartIso
-    ? formatDuration(Date.now() - new Date(stageStartIso).getTime())
-    : undefined;
 
   // ---- Readiness -------------------------------------------------------
   //
@@ -1816,6 +1778,17 @@ function DriverDetail({
   const [rentalTabReadiness, setRentalTabReadiness] = useState<ActivationReadiness | null>(null);
   const [rentalTabReadinessLoading, setRentalTabReadinessLoading] = useState(false);
   const [rentalTabReadinessFailed, setRentalTabReadinessFailed] = useState(false);
+  const { stages: lifecycle, current: currentStage, percent: percentComplete } = driverLifecycle({
+    contacted, screening: screeningDone, documents: docsComplete,
+    insuranceOnFile: !vaultLoading && !missingRequiredCategories(vaultDocs).includes("insurance"),
+    approved, rentalActive: rentalActiveFlag,
+    // Never infer inspection/signature from status, upload or a legacy timestamp.
+    inspection: !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness?.requirements.some((r) => r.key === "inspection" && r.met === true) === true,
+    agreement: !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true,
+  });
+  const stageStartIso = currentStage?.key === "screening" ? driver.contacted_at ?? driver.created_at
+    : currentStage?.key === "docs" ? screening?.interview_completed_at ?? driver.created_at : driver.created_at;
+  const timeInStage = stageStartIso ? formatDuration(Date.now() - new Date(stageStartIso).getTime()) : undefined;
   const [readinessNonce, setReadinessNonce] = useState(0);
   // No evidence reads/writes while preparation is disabled. Never use local
   // checkmarks to pretend a required document or activation exception is saved.
@@ -2014,9 +1987,11 @@ function DriverDetail({
 
   const stageTargets: Partial<Record<string, () => void>> = {
     screening: () => setTab("screening"),
-    docs: () => setTab("documents"),
-    insurance: () => setTab("screening"),
+    docs: () => openSection("documents", "profile-documents"),
+    insurance: () => openSection("screening", "profile-insurance"),
     approved: () => setTab("application"),
+    inspection: () => openSection("rental", "profile-vehicle"),
+    agreement: () => openSection("documents", "profile-agreements"),
     pickup: () => setTab("rental"),
     active: () => setTab("rental"),
   };

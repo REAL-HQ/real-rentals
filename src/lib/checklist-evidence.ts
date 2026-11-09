@@ -12,7 +12,7 @@ export const EVIDENCE_FIELD_LABELS: Record<EvidenceField, string> = {
 };
 
 export const attestationInput = z.discriminatedUnion("state", [
-  z.object({ applicationId: z.string().uuid(), field: evidenceFieldSchema, expectedRevision: z.number().int().nonnegative(), idempotencyKey: z.string().uuid(), state: z.literal("collected"), source: z.enum(["email", "paper", "other"]), note: z.string().trim().min(3).max(1000) }).strict(),
+  z.object({ applicationId: z.string().uuid(), field: evidenceFieldSchema, expectedRevision: z.number().int().nonnegative(), idempotencyKey: z.string().uuid(), state: z.literal("collected"), source: z.enum(["email", "text", "paper", "other"]), note: z.string().trim().min(3).max(1000) }).strict(),
   z.object({ applicationId: z.string().uuid(), field: evidenceFieldSchema, expectedRevision: z.number().int().nonnegative(), idempotencyKey: z.string().uuid(), state: z.literal("not_collected"), source: z.null(), note: z.string().trim().min(3).max(1000) }).strict(),
 ]);
 export type AttestationInput = z.infer<typeof attestationInput>;
@@ -82,6 +82,17 @@ export function evidenceTone(items: readonly Pick<EvidenceProjection, "tone">[])
   if (items.some((i) => i.tone === "red")) return "red";
   if (items.some((i) => i.tone === "yellow")) return "yellow";
   return "green";
+}
+
+/** Collection is not verification. Use only scoped, authorized saved-file facts. */
+export function projectCollectionEvidence(input: Omit<Parameters<typeof projectEvidence>[0], "documents"> & {
+  documents: readonly (VaultDocFact & { applicationId: string })[];
+}): EvidenceProjection {
+  const projection = projectEvidence({ ...input, documents: input.documents.filter((doc) => doc.applicationId === input.applicationId) });
+  if (projection.status === "conflict") return projection;
+  // Agreement retains the canonical signature/paper-review gate; a PDF is not a signature.
+  if (input.field === "agreement") return projection;
+  return projection.uploaded ? { ...projection, tone: "green", status: "uploaded", label: "On File" } : projection;
 }
 
 export type EvidenceRequirementPresentation = { tone: EvidenceTone; label: string; fields: EvidenceProjection[] };

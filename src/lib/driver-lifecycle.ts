@@ -1,0 +1,35 @@
+/** Presentation only: completion facts are supplied by existing authorized reads. */
+export const DRIVER_LIFECYCLE_STAGES = [
+  { key: "applied", label: "Applied" },
+  { key: "contacted", label: "Contacted" },
+  { key: "screening", label: "Screening" },
+  { key: "docs", label: "Documents" },
+  { key: "insurance", label: "Insurance" },
+  { key: "approved", label: "Approved" },
+  { key: "inspection", label: "Inspection" },
+  { key: "agreement", label: "Agreement" },
+  { key: "pickup", label: "Pickup" },
+  { key: "active", label: "Active" },
+] as const;
+export type DriverLifecycleKey = typeof DRIVER_LIFECYCLE_STAGES[number]["key"];
+export type DriverLifecycleStage = { key: DriverLifecycleKey; label: string; state: "done" | "current" | "upcoming" };
+
+export function driverLifecycle(facts: {
+  contacted: boolean; screening: boolean; documents: boolean; insuranceOnFile: boolean;
+  approved: boolean; inspection: boolean; agreement: boolean; rentalActive: boolean;
+}) {
+  const completed: Record<DriverLifecycleKey, boolean> = {
+    applied: true, contacted: facts.contacted, screening: facts.screening,
+    docs: facts.documents, insurance: facts.insuranceOnFile, approved: facts.approved,
+    inspection: facts.inspection, agreement: facts.agreement,
+    pickup: facts.rentalActive, active: facts.rentalActive,
+  };
+  let currentFound = false;
+  const stages: DriverLifecycleStage[] = DRIVER_LIFECYCLE_STAGES.map(({ key, label }) => {
+    if (completed[key]) return { key, label, state: "done" };
+    if (!currentFound) { currentFound = true; return { key, label, state: "current" }; }
+    return { key, label, state: "upcoming" };
+  });
+  const current = stages.find((stage) => stage.state === "current") ?? stages[stages.length - 1];
+  return { stages, current, percent: Math.round(stages.filter((stage) => stage.state === "done").length / stages.length * 100) };
+}

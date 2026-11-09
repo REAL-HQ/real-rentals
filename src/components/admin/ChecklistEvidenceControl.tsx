@@ -26,7 +26,7 @@ function EvidenceChoiceDialog({ applicationId, item, choice, save, onClose, onSa
   applicationId: string; item: EvidenceProjection; choice: "collected" | "not_collected";
   save?: (input: AttestationInput) => Promise<void>; onClose: () => void; onSaved?: () => void;
 }) {
-  const [source, setSource] = useState<"email" | "paper" | "other">("email");
+  const [source, setSource] = useState<"email" | "text" | "paper" | "other">("email");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +59,7 @@ function EvidenceChoiceDialog({ applicationId, item, choice, save, onClose, onSa
     <ModalShell label={`${choice === "collected" ? "Collected" : "Not Collected"}: ${EVIDENCE_FIELD_LABELS[item.field]}`} size="sm" z="z-[80]" onClose={close} closeOnBackdrop={!busy}>
       <ModalHeader title={choice === "collected" ? "Collected Elsewhere" : "Not Collected"} subtitle={EVIDENCE_FIELD_LABELS[item.field]} onClose={busy ? undefined : close} />
       <ModalBody className="space-y-4">
-        {choice === "collected" ? <Field label="Received Via" required><Select value={source} disabled={busy} onValueChange={(v) => { if (v === "email" || v === "paper" || v === "other") setSource(v); }}><SelectTrigger aria-label="Received Via"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="email">Email</SelectItem><SelectItem value="paper">Paper</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></Field> : null}
+        {choice === "collected" ? <Field label="Received Via" required><Select value={source} disabled={busy} onValueChange={(v) => { if (v === "email" || v === "text" || v === "paper" || v === "other") setSource(v); }}><SelectTrigger aria-label="Received Via"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="email">Email</SelectItem><SelectItem value="text">Text</SelectItem><SelectItem value="paper">Paper</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></Field> : null}
         <Field label="Evidence Note" required><textarea aria-label="Evidence Note" className={`${inputCls} h-auto py-2`} rows={3} maxLength={1000} value={note} disabled={busy} onChange={(e) => setNote(e.target.value)} /></Field>
         {!save ? <p role="status" className="text-xs text-warning-foreground">{EVIDENCE_UPDATE_UNAVAILABLE}</p> : null}
         {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
