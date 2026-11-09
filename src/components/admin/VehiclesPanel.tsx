@@ -16,7 +16,7 @@ import {
 } from "@/lib/vehicles-list";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
-import { loadStaffPhoto, resolvePhotoUrl } from "@/lib/photoUrl";
+import { loadStaffPhoto } from "@/lib/photoUrl";
 import { listVehicleMedia, type VehicleMedia } from "@/lib/vehicle-media.functions";
 import { VehicleProfile } from "./VehicleProfile";
 import { VehiclePhotoViewer } from "./VehiclePhotos";
@@ -64,25 +64,38 @@ function vehicleName(v: VehicleListRow) {
   return [v.year, displayVehicleWord(v.make ?? ""), displayVehicleWord(v.model ?? "")].filter(Boolean).join(" ");
 }
 
-/** The table's lead thumbnail and its on-demand, staff-only original gallery. */
-function VehicleListThumbnail({ vehicle }: { vehicle: VehicleListRow }) {
-  const loadMedia = useServerFn(listVehicleMedia);
-  const staffPath = vehicle.thumbnailPath ?? null;
+/** Both staff views display the same confirmed original, including unlisted cars. */
+function VehicleStaffPhoto({ path, name, className }: { path: string | null; name: string; className: string }) {
   const [url, setUrl] = useState<string | null>(null);
-  const [opening, setOpening] = useState(false);
-  const [viewer, setViewer] = useState<{ items: VehicleMedia[]; index: number } | null>(null);
-  const name = vehicleName(vehicle);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let live = true;
     setUrl(null);
-    if (staffPath) {
-      void loadStaffPhoto(staffPath).then((next) => {
-        if (live) setUrl(next);
+    setFailed(false);
+    if (path) {
+      void loadStaffPhoto(path).then((next) => {
+        if (live) { setUrl(next); setFailed(!next); }
       });
     }
     return () => { live = false; };
-  }, [staffPath]);
+  }, [path]);
+
+  if (url && !failed) {
+    return <img src={url} alt={name} loading="lazy" className={className} onError={() => setFailed(true)} />;
+  }
+  return <span className="grid h-full w-full place-items-center text-muted-foreground" title={!path ? "No Vehicle Photo" : failed ? "Photo Unavailable" : "Loading Photo…"}>
+    <Car className="h-4 w-4" aria-label={!path ? "No Vehicle Photo" : failed ? "Photo Unavailable" : "Loading Photo…"} />
+  </span>;
+}
+
+/** The table's lead thumbnail and its on-demand, staff-only original gallery. */
+function VehicleListThumbnail({ vehicle }: { vehicle: VehicleListRow }) {
+  const loadMedia = useServerFn(listVehicleMedia);
+  const staffPath = vehicle.thumbnailPath ?? null;
+  const [opening, setOpening] = useState(false);
+  const [viewer, setViewer] = useState<{ items: VehicleMedia[]; index: number } | null>(null);
+  const name = vehicleName(vehicle);
 
   async function openPhotos(event: React.MouseEvent<HTMLButtonElement>) {
     event.stopPropagation();
@@ -123,9 +136,7 @@ function VehicleListThumbnail({ vehicle }: { vehicle: VehicleListRow }) {
         title={opening ? "Loading Photos…" : `View ${name} Photos`}
         className="block h-9 w-12 overflow-hidden rounded-md border border-border bg-soft text-muted-foreground transition-colors hover:border-real-red disabled:cursor-wait"
       >
-        {url
-          ? <img src={url} alt={name} loading="lazy" className="h-full w-full object-cover" />
-          : <Car className="mx-auto h-4 w-4" aria-hidden />}
+        <VehicleStaffPhoto path={staffPath} name={name} className="h-full w-full object-cover" />
       </button>
       {viewer && (
         <VehiclePhotoViewer
@@ -342,12 +353,11 @@ function FleetVehicles({
   const cardsGrid = (
     <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-lg:min-w-0 ${view === "list" ? "md:hidden" : ""}`}>
       {rows.map((v, index) => {
-        const img = resolvePhotoUrl(v.photo ?? undefined);
         return (
           <div key={v.id} onClick={() => setViewing(v.id)} className="rounded-2xl bg-soft overflow-hidden cursor-pointer transition-shadow hover:shadow-md max-lg:min-w-0">
-            <div className={`aspect-[4/3] bg-white items-center justify-center ${view === "list" ? "hidden" : "flex"}`}>
-              {img ? <img src={img} alt="" loading="lazy" className="w-full h-full object-cover" /> : <span className="text-xs text-muted-foreground">No photo</span>}
-            </div>
+            {view !== "list" && <div className="aspect-[4/3] bg-background flex items-center justify-center">
+              <VehicleStaffPhoto path={v.thumbnailPath ?? null} name={vehicleName(v)} className="w-full h-full object-cover" />
+            </div>}
             <div className="p-4">
               <div className="h-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><span className="mr-2 tabular-nums">#{rowNumber(index)}</span>{v.unit_number ?? ""}</div>
               <div className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</div>
