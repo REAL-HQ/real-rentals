@@ -132,7 +132,7 @@ it("flags each finance data problem and leaves sound rows out", async () => {
   const blank = report.issues.find((row) => row.id === "method:p-blank:blank");
   expect(blank).toMatchObject({ recordLabel: "Payment p-blank", recordHref: "/admin?tab=drivers&id=app-1", suggestedFix: expect.stringContaining("known method") });
   const rate = report.issues.find((row) => row.id === "active_rental:r-rate:rate");
-  expect(rate).toMatchObject({ recordLabel: "Unit 12 · 2020 Honda Civic", recordHref: "/admin?tab=active_rentals&view=all&id=r-rate" });
+  expect(rate).toMatchObject({ recordLabel: "Unit 12 · 2020 Honda Civic", recordHref: "/admin?tab=bookings&view=past&id=r-rate" });
   const refund = report.issues.find((row) => row.id === "orphan_refund:rf-missing:missing");
   expect(refund).toMatchObject({ recordLabel: "Refund rf-missing", recordHref: "/admin?tab=payments" });
   const ids = report.issues.map((row) => row.id).join(" ");
@@ -142,7 +142,7 @@ it("flags each finance data problem and leaves sound rows out", async () => {
   const csv = financeDataQualityToCsv(report);
   expect(csv).toContain("Payment Method,4");
   expect(csv).toContain("Refund Without Payment,3");
-  expect(csv).toContain("/admin?tab=active_rentals&view=all&id=r-rate");
+  expect(csv).toContain("/admin?tab=bookings&view=past&id=r-rate");
   expect(csv).toContain("Enter a weekly rate greater than zero.");
 });
 

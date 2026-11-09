@@ -224,7 +224,7 @@ ok(totals.driverTotals.length === 1 && totals.driverTotals[0]?.incidents === 2 &
 ok(otherTotal.estimatedCostCents === 5000 && otherTotal.actualCostCents === null && otherTotal.actualUnknown === 1 && otherTotal.recoveredCostCents === null && otherTotal.recoveredUnknown === 1, "a null actual cost and a missing recovery stay unknown");
 ok(vehicleTotal.estimatedUnknown === 0 && vehicleTotal.actualUnknown === 0, "known estimated and actual costs are not counted as missing");
 ok(incidentMoneyText(5000, 1) === "$50.00 · 1 Not Recorded" && incidentMoneyText(null, 2) === "Not Recorded", "a known total names how many amounts were not recorded");
-ok(claimedRows[0]?.rental === "Rental Not On File" && claimedRows[0]?.rentalHref === "/admin?tab=active_rentals&view=all&id=22222222-2222-4222-8222-222222222222", "a rental links to Active instead of showing the id");
+ok(claimedRows[0]?.rental === "Rental Not On File" && claimedRows[0]?.rentalHref === "/admin?tab=bookings&view=past&id=22222222-2222-4222-8222-222222222222", "a rental links to Active instead of showing the id");
 ok(claimedRows[2]?.rental === "No Rental" && claimedRows[2]?.rentalHref === null, "a missing rental says No Rental");
 ok(incidentRentalLabel({ status: "active", startDate: "2026-10-01" }) === "Active · 2026-10-01", "a rental label uses the status and start date");
 

@@ -18,6 +18,8 @@ export function NextStepCard({
   readiness,
   onRun,
   onActivate,
+  onReserve,
+  canReserve = false,
   onRetry,
   renderEvidence,
   evidence,
@@ -26,6 +28,9 @@ export function NextStepCard({
   readiness: ActivationReadiness | null;
   onRun: (b: NextStep["blockers"][number]["target"]) => void;
   onActivate: () => void;
+  onReserve?: () => void;
+  /** Soft hold available for an approved driver without an open reservation. */
+  canReserve?: boolean;
   onRetry: () => void;
   renderEvidence?: (key: ActivationRequirementKey) => ReactNode;
   evidence?: EvidencePresentationMap;
@@ -65,6 +70,11 @@ export function NextStepCard({
               <Car className="h-3.5 w-3.5" /> Activate Rental
             </button>
           ) : null}
+          {canReserve && model.target.kind !== "reserve" && onReserve ? (
+            <button type="button" onClick={onReserve} className={secondary} data-testid="next-step-reserve">
+              <Car className="h-3.5 w-3.5" /> Reserve Car
+            </button>
+          ) : null}
           <Button type="button" variant="outline" title="Optional Interview Script" className="h-9 shrink-0 gap-1.5 px-3 text-[12px]" onClick={() => onRun({ kind: "interview" })}>
             <ClipboardList className="h-3.5 w-3.5" /> Interview Script
           </Button>
@@ -73,10 +83,10 @@ export function NextStepCard({
               type="button"
               data-testid="next-step-primary"
               disabled={model.busy}
-              onClick={() => (model.target.kind === "activate" ? onActivate() : onRun(model.target as any))}
+              onClick={() => (model.target.kind === "activate" ? onActivate() : model.target.kind === "reserve" ? onReserve?.() : onRun(model.target as any))}
               className={`${primary} max-sm:flex-1`}
             >
-              {model.target.kind === "activate" ? <Car className="h-3.5 w-3.5" /> : null}
+              {model.target.kind === "activate" || model.target.kind === "reserve" ? <Car className="h-3.5 w-3.5" /> : null}
               {model.label}
             </button>
           ) : null}

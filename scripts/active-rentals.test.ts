@@ -107,10 +107,10 @@ ok(sortActiveRentals(failed)[0].id === "solo", "a null issue count does not sort
 
 const fn = readFileSync("src/lib/active-rentals.functions.ts", "utf8");
 const tabs = (tier: "coordinator" | "manager" | "owner") => visibleTabs(tier).map((tab) => tab.id);
-ok(tabs("coordinator").includes("active_rentals"), "a Coordinator sees Active (history) after Bookings folded in");
-ok(tabs("manager").includes("active_rentals") && tabs("owner").includes("active_rentals"), "a Manager and an Owner do");
-ok(railEntries("coordinator").some((tab) => tab.id === "active_rentals" && tab.label === "Active"), "Active is on the Coordinator rail");
-ok(!tabs("coordinator").includes("bookings") && !tabs("owner").includes("bookings"), "Bookings is no longer a nav tab");
+ok(tabs("coordinator").includes("bookings"), "a Coordinator sees Bookings");
+ok(tabs("manager").includes("bookings") && tabs("owner").includes("bookings"), "a Manager and an Owner do");
+ok(railEntries("coordinator").some((tab) => tab.id === "bookings" && tab.label === "Bookings"), "Bookings is on the Coordinator rail");
+ok(!tabs("coordinator").includes("active_rentals") && !tabs("owner").includes("active_rentals"), "Active Rentals is no longer a nav tab");
 ok(/requireManager\(/.test(fn) && !/requireStaff\(/.test(fn), "the board gate is requireManager, matching payments, incidents, and issues");
 const imports = fn.split("\n").filter((line) => /^\s*import\b/.test(line) || line.includes("await import(")).join("\n");
 ok(!/stripe-collections|vehicle-finance|reconciliation|rentals\.functions|incidents\.functions|payment-collection/i.test(imports), "the board does not import finance, reconciliation, or the locked writers");

@@ -105,7 +105,7 @@ export function BookingsPanel({
         vehicle: vehicleFilter,
         ...over,
       };
-      const out: Record<string, string> = { tab: "active_rentals", view: "all" };
+      const out: Record<string, string> = { tab: "bookings", view: "past" };
       if (next.q) out.q = next.q;
       if (next.phase && next.phase !== "all") out.phase = next.phase;
       if (next.sort && next.sort !== "recent") out.sort = next.sort;

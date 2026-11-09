@@ -222,7 +222,7 @@ export function buildFleetCalendar(input: FleetCalendarInput): FleetCalendarBoar
         detail: rental.end_date ? "Active Rental" : "Open Rental",
         start: span.start,
         end: span.end,
-        search: { tab: "active_rentals", view: "all", id: rental.id },
+        search: { tab: "bookings", view: "past", id: rental.id },
       });
     }
     for (const pickup of input.pickups) {

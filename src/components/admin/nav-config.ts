@@ -84,16 +84,16 @@ export type Group = (typeof GROUP_ORDER)[number];
 export const TABS: readonly TabDef[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard, minTier: "coordinator", group: "HOME", description: "Pipeline, Fleet And Revenue At A Glance" },
   { id: "drivers", label: "Drivers", icon: Users, minTier: "coordinator", group: "PEOPLE", description: "Manage Applicants, Active Renters And Driver Lifecycle" },
-  // Active is the one rentals screen: who is out now, and the full rental
-  // history that used to live under Bookings. Coordinator-visible so staff
-  // can open paperwork; the On Rent board stays Manager+ on the server.
+  // Bookings: reservations (Booked), who is out (Active), and past rentals.
+  // Coordinator-visible so staff can open paperwork; the Active board stays
+  // Manager+ on the server. Old ?tab=bookings links redirect here.
   {
-    id: "active_rentals",
-    label: "Active",
+    id: "bookings",
+    label: "Bookings",
     icon: ListChecks,
     minTier: "coordinator",
     group: "RENTALS",
-    description: "Who Is Out, What Is Due, And Past Rentals",
+    description: "Reservations, Active Rentals And Past Bookings",
   },
   { id: "payments", label: "Payments", icon: CreditCard, minTier: "manager", group: "RENTALS", description: "Rent, Deposits, Balances And Renter Charges" },
   { id: "charges", label: "Charges", icon: Receipt, minTier: "manager", description: "Tolls And Violations, Matched To The Renter Who Had The Car" },
@@ -123,8 +123,8 @@ export const LEGACY_TABS: Record<string, { tab: string; section?: string; filter
   websites: { tab: "settings", section: "website" },
   activity: { tab: "settings", section: "activity" },
   waitlist: { tab: "drivers", filter: "waitlist" },
-  // Bookings folded into Active; keep old links working.
-  bookings: { tab: "active_rentals" },
+  // Active Rentals folded into Bookings; keep old links working.
+  active_rentals: { tab: "bookings" },
 };
 
 /** Settings workspace menu. Only sections with real settings/functionality. */
@@ -566,7 +566,7 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
     next = spliceAfter(next, "vehicles", VEHICLE_TURNAROUND_TAB);
   }
   if (RENEWALS_DUE_ENABLED && tierAllows(tier, "manager")) {
-    next = spliceAfter(next, "active_rentals", RENEWALS_DUE_TAB);
+    next = spliceAfter(next, "bookings", RENEWALS_DUE_TAB);
   }
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
     next = spliceAfter(next, "vehicles", FLEET_AVAILABILITY_TAB);
@@ -639,7 +639,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
     entries = spliceAfter(entries, "vehicles", { ...VEHICLE_TURNAROUND_TAB, href: "vehicle_turnaround" });
   }
   if (RENEWALS_DUE_ENABLED && tierAllows(tier, "manager")) {
-    entries = spliceAfter(entries, "active_rentals", { ...RENEWALS_DUE_TAB, href: "renewals_due" });
+    entries = spliceAfter(entries, "bookings", { ...RENEWALS_DUE_TAB, href: "renewals_due" });
   }
   if (FLEET_AVAILABILITY_ENABLED && tierAllows(tier, "coordinator")) {
     entries = spliceAfter(entries, "vehicles", { ...FLEET_AVAILABILITY_TAB, href: "fleet_availability" });

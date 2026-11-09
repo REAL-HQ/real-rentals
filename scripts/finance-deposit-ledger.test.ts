@@ -37,7 +37,7 @@ it("shows collected amount, date, method, held, applied, refunded, and the balan
   expect(built.report.rows[0]).toMatchObject({
     renterName: "Ada Lovelace",
     rentalLabel: "Rental",
-    rentalHref: "/admin?tab=active_rentals&view=all&id=r1",
+    rentalHref: "/admin?tab=bookings&view=past&id=r1",
     collected: 50000,
     collectedDate: "2026-10-21",
     method: "Cash",
@@ -55,7 +55,7 @@ it("shows collected amount, date, method, held, applied, refunded, and the balan
   const csv = depositLedgerToCsv(built.report);
   expect(csv).toContain("2026-10-21");
   expect(csv).toContain("2026-10-20");
-  expect(csv).toContain("/admin?tab=active_rentals&view=all&id=r1");
+  expect(csv).toContain("/admin?tab=bookings&view=past&id=r1");
   expect(csv).toContain("$500.00");
   expect(csv).toContain("$125.00");
   expect(csv).toContain("$75.00");

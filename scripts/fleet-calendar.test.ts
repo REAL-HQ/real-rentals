@@ -102,7 +102,7 @@ const built = buildFleetCalendar({
 const road = built.rows.find((row) => row.vehicleId === "road")!;
 const shop = built.rows.find((row) => row.vehicleId === "shop")!;
 ok(built.weekStart === "2026-10-19" && built.rows.length === 2 && !built.rows.some((row) => row.vehicleId === "old"), "the week snaps to Monday and archived vehicles drop out");
-ok(road.blocks.some((block) => block.kind === "rental" && block.search.tab === "active_rentals" && block.end === weekEnd), "the open rental links to Active and stays open through Sunday");
+ok(road.blocks.some((block) => block.kind === "rental" && block.search.tab === "bookings" && block.end === weekEnd), "the open rental links to Active and stays open through Sunday");
 ok(!road.blocks.some((block) => block.id === "done"), "the completed rental is not a block");
 ok(road.blocks.some((block) => block.id === "pick" && block.search.tab === "drivers"), "the pickup links to Drivers");
 ok(shop.blocks.some((block) => block.kind === "in_maintenance" && block.start === weekStart && block.end === weekEnd && block.search.id === "shop"), "In Maintenance covers the visible week and opens the vehicle");

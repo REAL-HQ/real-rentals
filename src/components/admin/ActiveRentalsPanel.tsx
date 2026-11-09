@@ -193,7 +193,7 @@ export function ActiveRentalsPanel() {
                       <div className="flex items-center justify-end gap-1.5">
                         <Link
                           to="/admin"
-                          search={{ tab: "active_rentals", view: "all", id: row.id }}
+                          search={{ tab: "bookings", view: "past", id: row.id }}
                           className="inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-3 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB]"
                         >
                           Open

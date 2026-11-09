@@ -113,7 +113,7 @@ import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { TaxExportPanel } from "@/components/admin/TaxExportPanel";
 import { TAX_EXPORT_ENABLED } from "@/lib/tax-export-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
-import { ActivePanel } from "@/components/admin/ActivePanel";
+import { BookingsWorkspace } from "@/components/admin/BookingsWorkspace";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
@@ -178,8 +178,8 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   // stripped the id back out of the URL a moment after the navigation, the
   // panel fell back to whichever vehicle sorted first, and a pre-delivery
   // inspection could be filed against the wrong one.
-  // "active_rentals" opens a rental record (the former Bookings drawer).
-  id: ["drivers", "vehicles", "inspections", "active_rentals"],
+  // "bookings" opens a rental record on the Past tab.
+  id: ["drivers", "vehicles", "inspections", "bookings"],
   // Payments is the only list that takes a filter from a link today.
   filter: ["payments", "drivers"],
   // A creation flow opened from "+ Create".
@@ -187,16 +187,16 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   section: ["settings"],
   // Active (All Rentals) holds search, sort, page, phase, and vehicle under
   // the same names the old Bookings list used.
-  q: ["vehicles", "active_rentals"],
+  q: ["vehicles", "bookings"],
   vstatus: ["vehicles"],
   body: ["vehicles"],
   partner: ["vehicles"],
-  sort: ["vehicles", "active_rentals"],
-  page: ["vehicles", "active_rentals"],
-  view: ["vehicles", "active_rentals"],
+  sort: ["vehicles", "bookings"],
+  page: ["vehicles", "bookings"],
+  view: ["vehicles", "bookings"],
   ready: ["vehicles"],
-  phase: ["active_rentals"],
-  vehicle: ["active_rentals"],
+  phase: ["bookings"],
+  vehicle: ["bookings"],
   issue: ["incidents"],
 };
 
@@ -505,9 +505,9 @@ function Admin() {
       if (legacy.filter) next.filter = legacy.filter;
       if (legacy.vstatus) next.vstatus = legacy.vstatus;
       if (legacy.messages || search.msg) next.msg = search.msg ?? "inbox";
-      // Bookings → Active: keep the open rental and list filters, land on All Rentals.
-      if (urlTab === "bookings") {
-        next.view = "all";
+      // Active Rentals → Bookings: keep the open rental and list filters, land on Past.
+      if (urlTab === "active_rentals") {
+        next.view = search.view === "board" || !search.view ? "active" : search.view === "all" ? "past" : search.view;
         if (search.id) next.id = search.id;
         if (search.q) next.q = search.q;
         if (search.phase) next.phase = search.phase;
@@ -960,11 +960,12 @@ function Admin() {
               <DriversPanel initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} canViewOnboarding={tierAllows(tier, "manager")} canIssueCardLink={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
             {tab === "vehicles" && <VehiclesPanel autoOpenAdd={urlAdd} openId={urlRecordId} canSeeMaintenanceDue={tierAllows(tier, "manager")} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
-            {tab === "active_rentals" && (
-              <ActivePanel
+            {tab === "bookings" && (
+              <BookingsWorkspace
                 openId={urlRecordId}
                 canViewBoard={tierAllows(tier, "manager")}
                 canViewConversion={tierAllows(tier, "manager")}
+                canManageReservations={tierAllows(tier, "manager")}
                 view={search?.view}
                 listState={{
                   q: search?.q,

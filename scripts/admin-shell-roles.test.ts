@@ -28,10 +28,10 @@ ok(ids(visibleCreateActions("manager")).length === 5, "Manager Create: all five 
 ok(visibleTabs("coordinator").some((t) => t.id === "fleet_inbox" && t.group === "FLEET"), "Fleet Inbox under FLEET for Coordinator+");
 ok(navOwner("shops") === "partners" && navOwner("vendors") === "partners" && navOwner("charges") === "payments" && navOwner("inspections") === "maintenance", "Child tabs highlight their workspace");
 const rail = (t: any) => railEntries(t).map((e) => e.label).join(",");
-ok(rail("owner") === "Overview,Drivers,Active,Payments,Vehicles,Fleet Inbox,Service,Incidents,Driver Issues,Expenses,Partners,Monthly Owner P&L", "Owner rail matches target: " + rail("owner"));
-ok(rail("coordinator") === "Overview,Drivers,Active,Vehicles,Fleet Inbox,Service,Partners", "Coordinator rail: " + rail("coordinator"));
-ok(coord.includes("active_rentals"), "Coordinator: Active (rental history) replaces Bookings");
-ok(LEGACY_TABS.bookings.tab === "active_rentals", "Old Bookings bookmark → Active");
+ok(rail("owner") === "Overview,Drivers,Bookings,Payments,Vehicles,Fleet Inbox,Service,Incidents,Driver Issues,Expenses,Partners,Monthly Owner P&L", "Owner rail matches target: " + rail("owner"));
+ok(rail("coordinator") === "Overview,Drivers,Bookings,Vehicles,Fleet Inbox,Service,Partners", "Coordinator rail: " + rail("coordinator"));
+ok(coord.includes("bookings"), "Coordinator: Bookings (reservations + active + past)");
+ok(LEGACY_TABS.active_rentals.tab === "bookings", "Old Active Rentals bookmark → Bookings");
 ok(JSON.stringify(visibleWorkspaceTabs("maintenance", "coordinator").map((k) => k.id)) === '["inspections"]', "Coordinator Service: Inspections only");
 ok(JSON.stringify(visibleWorkspaceTabs("partners", "coordinator").map((k) => k.id)) === '["vendors"]', "Coordinator Partners: Vendors only");
 ok(railEntries("coordinator").find((e) => e.id === "maintenance")!.href === "inspections", "Coordinator Service link opens Inspections");

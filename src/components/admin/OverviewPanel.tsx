@@ -676,7 +676,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
               <Link
                 to="/admin"
-                search={{ tab: "active_rentals" }}
+                search={{ tab: "bookings" }}
                 className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]"
               >
                 Open Active <ArrowUpRight className="w-3.5 h-3.5" />
