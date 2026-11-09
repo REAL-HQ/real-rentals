@@ -43,7 +43,7 @@ export type AutomationsOverview = {
   emailReady: boolean;
   smsReady: boolean;
   /** Which SMS settings are present on the server (never their values). */
-  smsSetup: { account: boolean; authToken: boolean; sender: "number" | "messaging_service" | "none" };
+  smsSetup: { provider: "quo" | "twilio" | "none"; dryRun: boolean; account: boolean; authToken: boolean; sender: "number" | "messaging_service" | "none" };
   cronKnown: boolean;
   smsSentEver: number;
   isOwner: boolean;
@@ -96,7 +96,9 @@ export const getAutomationsOverview = createServerFn({ method: "POST" })
     const { count: smsSentEver } = await sb.from("outbound_messages").select("id", { count: "exact", head: true }).eq("channel", "sms").eq("status", "sent");
 
     const emailReady = Boolean(process.env.RESEND_API_KEY);
-    const smsReady = Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && (process.env.TWILIO_FROM_NUMBER || process.env.TWILIO_MESSAGING_SERVICE_SID));
+    const { smsProviderStatus } = await import("@/lib/sms-provider.server");
+    const smsProvider = smsProviderStatus();
+    const smsReady = smsProvider.ready;
     const lifecycleOn = process.env.RENTER_LIFECYCLE_NOTICES_ENABLED === "true";
 
     const rows: AutomationRow[] = [];
@@ -154,9 +156,11 @@ export const getAutomationsOverview = createServerFn({ method: "POST" })
       });
     }
     const smsSetup = {
-      account: Boolean(process.env.TWILIO_ACCOUNT_SID),
-      authToken: Boolean(process.env.TWILIO_AUTH_TOKEN),
-      sender: process.env.TWILIO_MESSAGING_SERVICE_SID ? "messaging_service" as const : process.env.TWILIO_FROM_NUMBER ? "number" as const : "none" as const,
+      provider: smsProvider.provider,
+      dryRun: smsProvider.dryRun,
+      account: smsProvider.provider === "quo" ? true : Boolean(process.env.TWILIO_ACCOUNT_SID),
+      authToken: smsProvider.provider === "quo" ? true : Boolean(process.env.TWILIO_AUTH_TOKEN),
+      sender: smsProvider.senderKind,
     };
     return { rows, emailReady, smsReady, smsSetup, cronKnown: cron !== null, smsSentEver: smsSentEver ?? 0, isOwner: actor.tier === "owner", controlsStatus: controls.status };
   });

@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireStaff } from "@/lib/roles.server";
+import { smsSkipMessage } from "@/lib/sms-messages";
 
 // Unified, channel-aware staff inbox. A conversation belongs to a PERSON
 // (an application row); each message carries its own channel. Sending goes
@@ -47,6 +48,8 @@ export type PersonInfo = {
   kind: "driver" | "applicant";
   smsConsent: boolean;
   smsOptedOut: boolean;
+  /** One short line under the composer: which number texts come from, or Test Mode. */
+  smsNote: string | null;
 };
 
 export type RentalInfo = {
@@ -74,7 +77,8 @@ async function channelsFor(sb: any, app: { id: string; email: string | null; pho
       ? { available: false, reason: "Email sending is not configured.", address: app.email }
       : { available: true, reason: null, address: app.email };
   const e164 = toE164(app.phone);
-  const twilio = !!process.env.TWILIO_ACCOUNT_SID && !!process.env.TWILIO_AUTH_TOKEN && (!!process.env.TWILIO_FROM_NUMBER || !!process.env.TWILIO_MESSAGING_SERVICE_SID);
+  const { smsConfigured } = await import("@/lib/sms-provider.server");
+  const twilio = smsConfigured();
   let sms: ChannelAvailability;
   if (!e164) sms = { available: false, reason: "No valid mobile number on file.", address: null };
   else if (!twilio) sms = { available: false, reason: "Texting is not set up yet (no SMS provider connected).", address: e164 };
@@ -82,6 +86,15 @@ async function channelsFor(sb: any, app: { id: string; email: string | null; pho
   else if (!app.sms_consent) sms = { available: false, reason: "No text-message consent on file.", address: e164 };
   else sms = { available: true, reason: null, address: e164 };
   return { email, sms };
+}
+
+async function smsNoteFor(): Promise<string | null> {
+  const { smsProviderStatus } = await import("@/lib/sms-provider.server");
+  const p = smsProviderStatus();
+  if (!p.ready) return null;
+  if (p.dryRun) return "Test Mode: texts are logged here, not sent.";
+  if (p.provider === "quo") return "Texts go out from the REAL Rentals line in Quo.";
+  return null;
 }
 
 /** Effective state: email rows follow the webhook-tracked delivery record. */
@@ -206,6 +219,7 @@ export const getConversation = createServerFn({ method: "POST" })
         kind: rental ? "driver" : "applicant",
         smsConsent: !!(app as any).sms_consent,
         smsOptedOut: !!(app as any).sms_opt_out_at,
+        smsNote: await smsNoteFor(),
       },
       rental,
       messages: (msgs ?? []).map((m: any) => ({
@@ -280,6 +294,7 @@ export const sendStaffMessage = createServerFn({ method: "POST" })
     const ch = await channelsFor(sb, app as any);
     const avail = data.channel === "email" ? ch.email : ch.sms;
     if (!avail.available) return { ok: false, state: "skipped", error: avail.reason ?? "Channel unavailable." };
+    if (data.channel === "sms" && data.body.length > 1600) return { ok: false, state: "skipped", error: "Texts can be at most 1600 characters." };
 
     const { data: row, error: insErr } = await sb
       .from("messages")
@@ -315,9 +330,13 @@ export const sendStaffMessage = createServerFn({ method: "POST" })
       const { sendSms } = await import("@/lib/sms.server");
       const r = await sendSms({ to: avail.address!, body: data.body, kind: "staff_message", applicationId: data.applicationId });
       if (r.ok) state = "sent";
-      else if ("skipped" in r && r.skipped) { state = "skipped"; err = r.reason; }
+      else if ("skipped" in r && r.skipped) {
+        state = r.reason === "dry_run" ? "test_mode" : "skipped";
+        err = smsSkipMessage(r.reason);
+      }
       else { state = "failed"; err = "error" in r ? r.error : "Send failed"; }
     }
-    await sb.from("messages").update({ delivery_state: state, delivery_error: err, email_delivery_id: deliveryId } as any).eq("id", row.id);
+    // messages.delivery_state allows no "test_mode"; the row says skipped + why.
+    await sb.from("messages").update({ delivery_state: state === "test_mode" ? "skipped" : state, delivery_error: err, email_delivery_id: deliveryId } as any).eq("id", row.id);
     return { ok: state === "accepted" || state === "sent", state, error: err ?? undefined };
   });

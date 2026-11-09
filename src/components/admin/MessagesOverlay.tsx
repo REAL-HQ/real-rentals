@@ -148,11 +148,12 @@ export function MessagesOverlay({
   }, [convs, filter, query, chFilter]);
 
   async function submit() {
-    if (!thread || !body.trim()) return;
+    if (!thread || !body.trim() || sending) return;
     setSending(true);
     try {
       const r = await send({ data: { applicationId: thread.person.applicationId, channel, body: body.trim(), subject: channel === "email" ? subject.trim() || undefined : undefined } });
-      if (r.ok) { setBody(""); setSubject(""); toast.success(channel === "email" ? "Email sent" : "Text sent"); }
+      if (r.ok) { setBody(""); setSubject(""); toast.success(channel === "email" ? "Email Sent" : "Text Sent"); }
+      else if (r.state === "test_mode") { setBody(""); toast(r.error ?? "Test Mode: text logged, not sent."); }
       else toast.error(r.error ?? "Message was not sent");
       await loadThread(thread.person.applicationId);
     } catch (e) {
@@ -360,15 +361,16 @@ export function MessagesOverlay({
                           </button>
                         );
                       })}
-                      <button onClick={() => void submit()} disabled={sending || !body.trim() || !chAvail?.available}
+                      <button onClick={() => void submit()} disabled={sending || !body.trim() || !chAvail?.available || (channel === "sms" && body.length > 1600)}
                         className="ml-auto h-9 px-4 rounded-lg bg-[#F59E0B] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#E08E06] disabled:opacity-40">
                         {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send
                       </button>
                     </div>
                   </div>
                   {channel === "sms" && body.length > 0 && (
-                    <p className="mt-1.5 text-[11px] text-[#9A9AA3]">{body.length} characters · {body.length <= 160 ? 1 : Math.ceil(body.length / 153)} text segment{body.length > 160 ? "s" : ""}</p>
+                    <p className={`mt-1.5 text-[11px] ${body.length > 1600 ? "text-[#B42318]" : "text-[#9A9AA3]"}`}>{body.length} characters · {body.length <= 160 ? 1 : Math.ceil(body.length / 153)} text segment{body.length > 160 ? "s" : ""}{body.length > 1600 ? " · Limit is 1600" : ""}</p>
                   )}
+                  {channel === "sms" && chAvail?.available && person.smsNote && <p className="mt-1.5 text-[10px] text-[#9A9AA3]" data-testid="sms-sender-note">{person.smsNote}</p>}
                   {!person.sms_channel.available && person.sms_channel.reason && channel === "email" && (
                     <p className="mt-1.5 text-[11px] text-[#9A9AA3]">Text unavailable: {person.sms_channel.reason}</p>
                   )}

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { classifyInboundSms, toE164 } from "@/lib/sms.server";
+import { toE164 } from "@/lib/sms.server";
 
 // Twilio inbound SMS webhook.
 //
@@ -59,8 +59,6 @@ function twiml(message?: string): Response {
 }
 
 async function handle(request: Request): Promise<Response> {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
   const raw = await request.text();
   const params: Record<string, string> = {};
   for (const [k, v] of new URLSearchParams(raw)) params[k] = v;
@@ -81,128 +79,14 @@ async function handle(request: Request): Promise<Response> {
   }
 
   const from = toE164(params.From);
-  const body = params.Body ?? "";
   if (!from) return twiml();
-
-  const intent = classifyInboundSms(body);
-
-  // Log the inbound message so the team can see the conversation in the admin.
-  await supabaseAdmin.from("outbound_messages").insert({
-    channel: "sms",
-    to_address: from,
-    from_address: params.To ?? null,
-    body,
-    status: "sent",
+  const { processInboundSms } = await import("@/lib/sms-inbound.server");
+  const out = await processInboundSms({
+    from,
+    to: params.To ?? null,
+    body: params.Body ?? "",
     provider: "twilio",
-    provider_message_id: params.MessageSid ?? null,
-    kind: `inbound_${intent}`,
-    sent_at: new Date().toISOString(),
+    providerMessageId: params.MessageSid ?? null,
   });
-
-  // Match the number back to applications so we can act on their record.
-  const digits = from.replace(/^\+1/, "");
-  const { data: apps } = await supabaseAdmin
-    .from("applications")
-    .select("id,phone")
-    .ilike("phone", `%${digits.slice(-10)}%`)
-    .limit(10);
-  const appIds = (apps ?? []).map((a: any) => a.id as string);
-
-  // Thread every inbound text into the staff Messages conversation for the
-  // matched person (most recent application wins when duplicates exist).
-  if (appIds.length) {
-    const { data: newest } = await supabaseAdmin
-      .from("applications").select("id").in("id", appIds)
-      .order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (newest) {
-      await supabaseAdmin.from("messages").insert({
-        thread_id: newest.id, application_id: newest.id, body: body || "(empty message)",
-        kind: "inbound", channel: "sms", direction: "inbound", delivery_state: "delivered",
-        to_address: from, read: false,
-      } as any);
-    }
-  }
-
-  if (intent === "stop") {
-    await supabaseAdmin
-      .from("sms_opt_outs")
-      .upsert({ phone: from, reason: "inbound STOP" }, { onConflict: "phone" });
-    if (appIds.length) {
-      await supabaseAdmin
-        .from("applications")
-        .update({ sms_opt_out_at: new Date().toISOString(), sms_consent: false })
-        .in("id", appIds);
-      await supabaseAdmin
-        .from("automation_enrollments")
-        .update({
-          status: "cancelled",
-          cancelled_reason: "recipient replied STOP",
-          next_run_at: null,
-        })
-        .in("application_id", appIds)
-        .eq("status", "active");
-    }
-    // Twilio's Advanced Opt-Out sends the confirmation itself; stay silent.
-    return twiml();
-  }
-
-  if (intent === "start") {
-    await supabaseAdmin.from("sms_opt_outs").delete().eq("phone", from);
-    if (appIds.length) {
-      await supabaseAdmin
-        .from("applications")
-        .update({
-          sms_opt_out_at: null,
-          sms_consent: true,
-          // Re-consent by texting START: recorded as its own source.
-          sms_consent_at: new Date().toISOString(),
-          sms_consent_source: "sms_keyword_start",
-          sms_consent_version: null,
-          sms_consent_text: body.trim().slice(0, 40),
-          sms_consent_phone: from,
-          sms_consent_page: null,
-        } as any)
-        .in("id", appIds);
-    }
-    return twiml();
-  }
-
-  if (intent === "help") {
-    const { getBusinessPhone } = await import("@/lib/company.server");
-    const { smsHelpReply } = await import("@/lib/sms-consent");
-    return twiml(smsHelpReply((await getBusinessPhone(supabaseAdmin)).display));
-  }
-
-  // A real reply — stop the drip so a human can take over the conversation.
-  if (appIds.length) {
-    const { data: live } = await supabaseAdmin
-      .from("automation_enrollments")
-      .select("id,workflow_id")
-      .in("application_id", appIds)
-      .eq("status", "active");
-
-    for (const enrollment of live ?? []) {
-      const { data: wf } = await supabaseAdmin
-        .from("automation_workflows")
-        .select("stop_on_reply")
-        .eq("id", enrollment.workflow_id)
-        .maybeSingle();
-      if (wf?.stop_on_reply) {
-        await supabaseAdmin
-          .from("automation_enrollments")
-          .update({ status: "cancelled", cancelled_reason: "recipient replied", next_run_at: null })
-          .eq("id", enrollment.id);
-      }
-    }
-
-    // Surface the reply in the admin inbox.
-    await supabaseAdmin.from("notifications").insert({
-      kind: "sms_reply",
-      title: "New SMS reply",
-      body: `${from}: ${body.slice(0, 280)}`,
-      channels: ["in_app"],
-    });
-  }
-
-  return twiml();
+  return twiml(out.reply);
 }

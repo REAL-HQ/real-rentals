@@ -1,10 +1,21 @@
-// Read-only SMS provider check (Twilio). GET requests only; never sends a
+// Read-only SMS provider check (Quo, else Twilio). GET requests only; never sends a
 // message, never returns credentials, account ids or phone numbers.
 import type { SmsCheck } from "@/lib/automations-overview.functions";
 
 type Env = Record<string, string | undefined>;
 
 export async function runSmsSetupCheck(env: Env, fetchFn: typeof fetch): Promise<SmsCheck> {
+  // Quo (formerly OpenPhone) takes priority whenever its key is saved.
+  const quoKey = String(env.QUO_API_KEY ?? "").trim();
+  if (quoKey) {
+    const { checkQuoSetup } = await import("@/lib/quo.server");
+    const { quoSender } = await import("@/lib/sms-provider.server");
+    const r = await checkQuoSetup(quoKey, quoSender(env), fetchFn);
+    if (r === "rejected") return { status: "rejected", detail: "Quo rejected the saved API key." };
+    if (r === "sender_missing") return { status: "sender_missing", detail: "The REAL Rentals number was not found in Quo." };
+    if (r === "unreachable") return { status: "unreachable", detail: "Could not reach Quo. Try again later." };
+    return { status: "ok", detail: "Quo key and REAL Rentals number check out. No message was sent." };
+  }
   const sid = env.TWILIO_ACCOUNT_SID, token = env.TWILIO_AUTH_TOKEN;
   const from = env.TWILIO_FROM_NUMBER, svc = env.TWILIO_MESSAGING_SERVICE_SID;
   if (!sid || !token) return { status: "not_set_up", detail: "SMS account settings are missing on the server." };

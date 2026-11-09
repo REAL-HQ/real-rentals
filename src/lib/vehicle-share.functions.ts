@@ -67,7 +67,7 @@ export const getVehicleShareOptions = createServerFn({ method: "POST" })
       enhancedPhotoIds: automaticEnhancedPhotoIds(photos),
       insurancePhotoIds: automaticInsurancePhotoIds(photos),
       emailAvailable: !!process.env.RESEND_API_KEY,
-      smsAvailable: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && (process.env.TWILIO_FROM_NUMBER || process.env.TWILIO_MESSAGING_SERVICE_SID)),
+      smsAvailable: (await import("@/lib/sms-provider.server")).smsConfigured(),
     };
   });
 

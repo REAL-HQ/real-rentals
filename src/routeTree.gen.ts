@@ -47,6 +47,7 @@ import { Route as ApiPublicInboundEmailRouteImport } from './routes/api/public/i
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicResendWebhookRouteImport } from './routes/api/public/resend/webhook'
 import { Route as ApiPublicSmsInboundRouteImport } from './routes/api/public/sms/inbound'
+import { Route as ApiPublicSmsQuoRouteImport } from './routes/api/public/sms/quo'
 import { Route as ApiPublicVehiclePhotosSplatRouteImport } from './routes/api/public/vehicle-photos/$'
 import { Route as ShareVehiclePhotoTokenMediaIdRouteImport } from './routes/share/vehicle-photo/$token/$mediaId'
 
@@ -245,6 +246,11 @@ const ApiPublicSmsInboundRoute = ApiPublicSmsInboundRouteImport.update({
   path: '/api/public/sms/inbound',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicSmsQuoRoute = ApiPublicSmsQuoRouteImport.update({
+  id: '/api/public/sms/quo',
+  path: '/api/public/sms/quo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicVehiclePhotosSplatRoute =
   ApiPublicVehiclePhotosSplatRouteImport.update({
     id: '/api/public/vehicle-photos/$',
@@ -297,6 +303,7 @@ export interface FileRoutesByFullPath {
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
+  '/api/public/sms/quo': typeof ApiPublicSmsQuoRoute
   '/api/public/vehicle-photos/$': typeof ApiPublicVehiclePhotosSplatRoute
   '/share/vehicle-photo/$token/$mediaId': typeof ShareVehiclePhotoTokenMediaIdRoute
 }
@@ -339,6 +346,7 @@ export interface FileRoutesByTo {
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
+  '/api/public/sms/quo': typeof ApiPublicSmsQuoRoute
   '/api/public/vehicle-photos/$': typeof ApiPublicVehiclePhotosSplatRoute
   '/share/vehicle-photo/$token/$mediaId': typeof ShareVehiclePhotoTokenMediaIdRoute
 }
@@ -382,6 +390,7 @@ export interface FileRoutesById {
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
+  '/api/public/sms/quo': typeof ApiPublicSmsQuoRoute
   '/api/public/vehicle-photos/$': typeof ApiPublicVehiclePhotosSplatRoute
   '/share/vehicle-photo/$token/$mediaId': typeof ShareVehiclePhotoTokenMediaIdRoute
 }
@@ -426,6 +435,7 @@ export interface FileRouteTypes {
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
+    | '/api/public/sms/quo'
     | '/api/public/vehicle-photos/$'
     | '/share/vehicle-photo/$token/$mediaId'
   fileRoutesByTo: FileRoutesByTo
@@ -468,6 +478,7 @@ export interface FileRouteTypes {
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
+    | '/api/public/sms/quo'
     | '/api/public/vehicle-photos/$'
     | '/share/vehicle-photo/$token/$mediaId'
   id:
@@ -510,6 +521,7 @@ export interface FileRouteTypes {
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
+    | '/api/public/sms/quo'
     | '/api/public/vehicle-photos/$'
     | '/share/vehicle-photo/$token/$mediaId'
   fileRoutesById: FileRoutesById
@@ -553,6 +565,7 @@ export interface RootRouteChildren {
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicResendWebhookRoute: typeof ApiPublicResendWebhookRoute
   ApiPublicSmsInboundRoute: typeof ApiPublicSmsInboundRoute
+  ApiPublicSmsQuoRoute: typeof ApiPublicSmsQuoRoute
   ApiPublicVehiclePhotosSplatRoute: typeof ApiPublicVehiclePhotosSplatRoute
   ShareVehiclePhotoTokenMediaIdRoute: typeof ShareVehiclePhotoTokenMediaIdRoute
 }
@@ -825,6 +838,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicSmsInboundRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/sms/quo': {
+      id: '/api/public/sms/quo'
+      path: '/api/public/sms/quo'
+      fullPath: '/api/public/sms/quo'
+      preLoaderRoute: typeof ApiPublicSmsQuoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/vehicle-photos/$': {
       id: '/api/public/vehicle-photos/$'
       path: '/api/public/vehicle-photos/$'
@@ -881,6 +901,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicResendWebhookRoute: ApiPublicResendWebhookRoute,
   ApiPublicSmsInboundRoute: ApiPublicSmsInboundRoute,
+  ApiPublicSmsQuoRoute: ApiPublicSmsQuoRoute,
   ApiPublicVehiclePhotosSplatRoute: ApiPublicVehiclePhotosSplatRoute,
   ShareVehiclePhotoTokenMediaIdRoute: ShareVehiclePhotoTokenMediaIdRoute,
 }
