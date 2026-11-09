@@ -75,7 +75,6 @@ function SharedVehiclePage() {
             />
           ))}
         </section>
-        <footer className="py-8 text-center text-xs text-muted-foreground">Only the photos and details in this reviewed package are visible through this link.</footer>
       </div>
     </main>
   );
