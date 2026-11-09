@@ -16,7 +16,6 @@ import {
   History as HistoryIcon,
   Settings as SettingsGear,
   UserPlus,
-  Search,
   Bell,
   Menu,
   Plus,
@@ -129,6 +128,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { fmtDateTime } from "@/lib/date-format";
 import { displayPersonName, personInitials } from "@/lib/display-normalize";
+import { AdminGlobalSearch } from "@/components/admin/AdminGlobalSearch";
+import type { SearchKind } from "@/components/admin/admin-search";
 
 /** Deep-link parameters the Overview cards and applicant rows send. */
 type AdminSearch = {
@@ -306,7 +307,7 @@ function Admin() {
   const urlRecordId = typeof search?.id === "string" ? search.id : null;
   const urlFilter = typeof search?.filter === "string" ? search.filter : null;
   const urlAdd = search?.add === "1";
-  const [globalSearch, setGlobalSearch] = useState("");
+  const [partnerSearch, setPartnerSearch] = useState("");
   const stickyRef = useRef<HTMLDivElement | null>(null);
   // Shared sticky layout: publish chrome + filter-row heights as CSS vars
   // (see "Back-office sticky layout standard" in styles.css). Re-measures
@@ -498,17 +499,6 @@ function Admin() {
    * ?tab=vehicles, say) that would otherwise hold a child view open or
    * filter a list nobody asked to filter.
    */
-  /**
-   * Go to a tab's root, for the few controls that cannot be links — a select
-   * handler, a search box reacting as you type. Same destination the sidebar
-   * links produce, so there is one way to reach a root view and not two.
-   */
-  const goRoot = useCallback(
-    (next: string, opts?: { replace?: boolean }) =>
-      void navigate({ to: "/admin", search: rootSearch(next), replace: opts?.replace }),
-    [navigate],
-  );
-
   useEffect(() => {
     // Old bookmarks (?tab=messages / automations / team) land on their new home.
     const legacy = urlTab ? LEGACY_TABS[urlTab] : undefined;
@@ -771,22 +761,9 @@ function Admin() {
               >
                 <Menu className="w-5 h-5" strokeWidth={1.75} />
               </button>
-              <div className="relative hidden sm:block w-[340px] max-w-full">
-                <Search className="w-[17px] h-[17px] text-[#9A9AA3] absolute left-3 top-1/2 -translate-y-1/2" strokeWidth={1.75} />
-                <input
-                  type="search"
-                  aria-label="Search drivers, vehicles and partners"
-                  placeholder="Search Drivers, Vehicles, Partners…"
-                  value={globalSearch}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setGlobalSearch(v);
-                    if (v && !["drivers", "vehicles", "partners"].includes(tab)) goRoot("drivers", { replace: true });
-                  }}
-                  className="w-full pl-10 pr-3 py-2 rounded-full bg-white border border-[#EDEDF0] focus:border-[#D03020]/40 focus:outline-none focus:ring-2 focus:ring-[#D03020]/20 text-[13px] text-[#111114] placeholder:text-[#9A9AA3]"
-                />
-              </div>
-              <div className="md:hidden text-[15px] font-semibold truncate">{current.label}</div>
+              <AdminGlobalSearch key={`${session.user.id}:${tier}`} userId={session.user.id}
+                allowed={(["drivers", "vehicles", "partners"] as SearchKind[]).filter((kind) => navTabs.some((item) => item.id === kind))}
+                onSelect={(result) => setPartnerSearch(result.kind === "partners" ? result.label : "")} />
             </div>
             <div className="flex items-center gap-1.5 md:gap-2">
               {createActions.length > 0 && (
@@ -973,13 +950,12 @@ function Admin() {
             {RENEWALS_DUE_ENABLED && tab === "renewals_due" && <RenewalsDue />}
             {REVENUE_FORECAST_ENABLED && tab === "revenue_forecast" && <RevenueForecastPanel />}
             {tab === "drivers" && (
-              <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} canViewOnboarding={tierAllows(tier, "manager")} canIssueCardLink={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
+              <DriversPanel initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} canViewOnboarding={tierAllows(tier, "manager")} canIssueCardLink={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
-            {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} onClearExternalSearch={() => setGlobalSearch("")} autoOpenAdd={urlAdd} openId={urlRecordId} canSeeMaintenanceDue={tierAllows(tier, "manager")} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
+            {tab === "vehicles" && <VehiclesPanel autoOpenAdd={urlAdd} openId={urlRecordId} canSeeMaintenanceDue={tierAllows(tier, "manager")} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
             {tab === "active_rentals" && <ActiveRentalsPanel />}
             {tab === "bookings" && (
               <BookingsPanel
-                externalSearch={globalSearch}
                 openId={urlRecordId}
                 canViewConversion={tierAllows(tier, "manager")}
                 listState={{
@@ -992,7 +968,7 @@ function Admin() {
               />
             )}
             {tab === "fleet_inbox" && <FleetInboxPanel isManager={tierAllows(tier, "manager")} />}
-            {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
+            {tab === "partners" && <PartnersPanel externalSearch={partnerSearch} />}
             {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} tier={tier} />}
             {tab === "maintenance" && <MaintenancePanel autoOpenAdd={urlAdd} />}
             {tab === "shops" && <ShopsPanel />}
