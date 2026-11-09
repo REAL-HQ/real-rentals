@@ -50,7 +50,13 @@ export type PersonInfo = {
   smsOptedOut: boolean;
   /** One short line under the composer: which number texts come from, or Test Mode. */
   smsNote: string | null;
+  /** Allowlisted Quo numbers staff may text from (empty unless Quo is set up). */
+  smsSenders: SmsSenderOption[];
+  /** Pre-selected sender: the line this conversation last used, else the default. */
+  smsDefaultFrom: string | null;
 };
+
+export type SmsSenderOption = { id: string; label: string };
 
 export type RentalInfo = {
   id: string;
@@ -88,12 +94,44 @@ async function channelsFor(sb: any, app: { id: string; email: string | null; pho
   return { email, sms };
 }
 
+/**
+ * Sending-number choices plus the conversation's last line. "Last line" is
+ * the newest Quo-logged text to or from this phone (outbound rows store the
+ * number we sent from; inbound rows the number they texted), and it only
+ * counts when that number is still allowlisted.
+ */
+async function sendersFor(sb: any, e164: string | null): Promise<{ smsSenders: SmsSenderOption[]; smsDefaultFrom: string | null }> {
+  const { smsProviderStatus, quoSenders, quoSenderFor } = await import("@/lib/sms-provider.server");
+  if (smsProviderStatus().provider !== "quo") return { smsSenders: [], smsDefaultFrom: null };
+  const list = quoSenders();
+  const smsSenders = list.map((s) => ({ id: s.id, label: `${s.label} ${s.display}` }));
+  let smsDefaultFrom = list[0].id;
+  if (e164) {
+    try {
+      const { data } = await sb
+        .from("outbound_messages")
+        .select("from_address")
+        .eq("channel", "sms")
+        .eq("provider", "quo")
+        .eq("to_address", e164)
+        .in("status", ["queued", "sent"])
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const last = quoSenderFor(Array.isArray(data) ? data[0]?.from_address : null);
+      if (last) smsDefaultFrom = last.id;
+    } catch {
+      /* default line */
+    }
+  }
+  return { smsSenders, smsDefaultFrom };
+}
+
 async function smsNoteFor(): Promise<string | null> {
   const { smsProviderStatus } = await import("@/lib/sms-provider.server");
   const p = smsProviderStatus();
   if (!p.ready) return null;
   if (p.dryRun) return "Test Mode: texts are logged here, not sent.";
-  if (p.provider === "quo") return "Texts go out from the REAL Rentals line in Quo.";
+  if (p.provider === "quo") return "Sent through Quo.";
   return null;
 }
 
@@ -220,6 +258,7 @@ export const getConversation = createServerFn({ method: "POST" })
         smsConsent: !!(app as any).sms_consent,
         smsOptedOut: !!(app as any).sms_opt_out_at,
         smsNote: await smsNoteFor(),
+        ...(await sendersFor(sb, sms.address)),
       },
       rental,
       messages: (msgs ?? []).map((m: any) => ({
@@ -280,6 +319,8 @@ export const sendStaffMessage = createServerFn({ method: "POST" })
       channel: z.enum(["email", "sms"]),
       body: z.string().trim().min(1).max(4000),
       subject: z.string().trim().max(200).optional(),
+      /** Quo number id; checked against the server allowlist in sendSms. */
+      fromId: z.string().trim().regex(/^PN[A-Za-z0-9]{1,40}$/).optional(),
     }).parse(d),
   )
   .handler(async ({ data, context }): Promise<{ ok: boolean; state: string; error?: string }> => {
@@ -294,6 +335,12 @@ export const sendStaffMessage = createServerFn({ method: "POST" })
     const ch = await channelsFor(sb, app as any);
     const avail = data.channel === "email" ? ch.email : ch.sms;
     if (!avail.available) return { ok: false, state: "skipped", error: avail.reason ?? "Channel unavailable." };
+    if (data.channel === "sms" && data.fromId) {
+      const { resolveQuoSender } = await import("@/lib/sms-provider.server");
+      if (!resolveQuoSender(data.fromId) || (await import("@/lib/sms-provider.server")).smsProviderStatus().provider !== "quo") {
+        return { ok: false, state: "skipped", error: "That sending number isn't allowed." };
+      }
+    }
     if (data.channel === "sms" && data.body.length > 1600) return { ok: false, state: "skipped", error: "Texts can be at most 1600 characters." };
 
     const { data: row, error: insErr } = await sb
@@ -328,7 +375,7 @@ export const sendStaffMessage = createServerFn({ method: "POST" })
       deliveryId = r.deliveryId ?? null;
     } else {
       const { sendSms } = await import("@/lib/sms.server");
-      const r = await sendSms({ to: avail.address!, body: data.body, kind: "staff_message", applicationId: data.applicationId });
+      const r = await sendSms({ to: avail.address!, body: data.body, kind: "staff_message", applicationId: data.applicationId, fromId: data.fromId ?? null });
       if (r.ok) state = "sent";
       else if ("skipped" in r && r.skipped) {
         state = r.reason === "dry_run" ? "test_mode" : "skipped";

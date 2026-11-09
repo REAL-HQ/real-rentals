@@ -97,7 +97,7 @@ export function AutomationsCatalog() {
         </p>
         <p>
           {data.smsSetup.provider === "quo"
-            ? <>SMS Setup: Quo · Key Saved · Sender REAL Rentals Line{data.smsSetup.dryRun ? " · Test Mode (Nothing Is Sent)" : ""}</>
+            ? <>SMS Setup: Quo · Key Saved · Automations Send From {data.smsSetup.defaultSender}{data.smsSetup.dryRun ? " · Test Mode (Nothing Is Sent)" : ""}</>
             : <>SMS Setup: Account {data.smsSetup.account ? "Saved" : "Missing"} · Key {data.smsSetup.authToken ? "Saved" : "Missing"} · Sender {data.smsSetup.sender === "none" ? "Missing" : data.smsSetup.sender === "number" ? "Number" : "Service"}{data.smsSetup.dryRun ? " · Test Mode (Nothing Is Sent)" : ""}</>}
           {data.isOwner && (
             <button type="button" className="ml-2 font-medium text-[#D03020]" onClick={() => void smsCheck().then((r) => setSms(r.detail)).catch(() => setSms("Check could not run."))}>Check SMS</button>

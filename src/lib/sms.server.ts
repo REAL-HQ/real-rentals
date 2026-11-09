@@ -11,7 +11,7 @@
 // never texted. That check lives here rather than at each call site so a new
 // caller cannot accidentally bypass it.
 
-import { smsProviderStatus } from "@/lib/sms-provider.server";
+import { resolveQuoSender, smsProviderStatus } from "@/lib/sms-provider.server";
 
 export type SmsResult =
   | { ok: true; id: string | null; skipped?: false }
@@ -41,6 +41,12 @@ type SendSmsArgs = {
   noticeTimeout?: boolean;
   /** Combined with the 5s notice abort. Live sends omit noticeTimeout, so this is ignored. */
   signal?: AbortSignal;
+  /**
+   * Quo number to send from (PN id). Must be on the server allowlist
+   * (sms-provider.server quoSenders); anything else is refused before any
+   * send. Omitted → the default REAL Rentals line.
+   */
+  fromId?: string | null;
 };
 
 /**
@@ -212,6 +218,14 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
     return { ok: false, skipped: true, reason: "not_configured" };
   }
 
+  // Sender choice: only allowlisted Quo numbers, and only when Quo is the provider.
+  const hasFrom = args.fromId != null && args.fromId !== "";
+  const sender = provider.provider === "quo" ? resolveQuoSender(args.fromId) : null;
+  if (hasFrom && !sender) {
+    console.error("[sms] refused a sending number that is not allowlisted", { kind: args.kind });
+    return { ok: false, skipped: true, reason: "sender_not_allowed" };
+  }
+
   // 3. Same text to the same number moments ago (double click, retry, two
   //    staff, overlapping cron) — never text it twice.
   if (await recentDuplicate(supabaseAdmin, to, args.body)) {
@@ -222,7 +236,7 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
   if (provider.dryRun) {
     await logMessage(supabaseAdmin, {
       ...base,
-      from_address: provider.sender,
+      from_address: sender?.e164 ?? provider.sender,
       status: "skipped",
       provider: provider.provider,
       error: "dry run: not sent",
@@ -231,7 +245,7 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
   }
 
   const noticeSignal = noticeFetchSignal(args.noticeTimeout, args.signal);
-  if (provider.provider === "quo") return sendViaQuo(supabaseAdmin, base, provider.sender as string, noticeSignal);
+  if (provider.provider === "quo" && sender) return sendViaQuo(supabaseAdmin, base, sender, noticeSignal);
   return sendViaTwilio(supabaseAdmin, args, to, noticeSignal);
 }
 
@@ -266,11 +280,13 @@ async function recentDuplicate(admin: any, to: string, body: string): Promise<bo
  * moves to sent / failed; a timeout or 5xx stays "queued" with an
  * "Unconfirmed" error because Quo may have accepted it — never auto-resent.
  */
-async function sendViaQuo(admin: any, base: Record<string, unknown>, from: string, signal: AbortSignal | undefined): Promise<SmsResult> {
+async function sendViaQuo(admin: any, base: Record<string, unknown>, sender: { id: string; e164: string }, signal: AbortSignal | undefined): Promise<SmsResult> {
   const { sendQuoMessage } = await import("@/lib/quo.server");
+  // from_address records the number actually used (E.164), so replies and
+  // the next text in this conversation can default to the same line.
   const claim = await admin
     .from("outbound_messages")
-    .insert({ ...base, from_address: from, status: "queued", provider: "quo" })
+    .insert({ ...base, from_address: sender.e164, status: "queued", provider: "quo" })
     .select("id")
     .single();
   if (claim.error) {
@@ -289,7 +305,7 @@ async function sendViaQuo(admin: any, base: Record<string, unknown>, from: strin
 
   const r = await sendQuoMessage({
     apiKey: String(process.env.QUO_API_KEY).trim(),
-    from,
+    from: sender.id,
     to: String(base.to_address),
     content: String(base.body),
     signal,

@@ -9,12 +9,16 @@ export async function runSmsSetupCheck(env: Env, fetchFn: typeof fetch): Promise
   const quoKey = String(env.QUO_API_KEY ?? "").trim();
   if (quoKey) {
     const { checkQuoSetup } = await import("@/lib/quo.server");
-    const { quoSender } = await import("@/lib/sms-provider.server");
-    const r = await checkQuoSetup(quoKey, quoSender(env), fetchFn);
-    if (r === "rejected") return { status: "rejected", detail: "Quo rejected the saved API key." };
-    if (r === "sender_missing") return { status: "sender_missing", detail: "The REAL Rentals number was not found in Quo." };
-    if (r === "unreachable") return { status: "unreachable", detail: "Could not reach Quo. Try again later." };
-    return { status: "ok", detail: "Quo key and REAL Rentals number check out. No message was sent." };
+    const { quoSenders } = await import("@/lib/sms-provider.server");
+    // One read-only GET per allowlisted number, so the Owner sees both lines.
+    const results: { name: string; r: Awaited<ReturnType<typeof checkQuoSetup>> }[] = [];
+    for (const s of quoSenders(env)) results.push({ name: `${s.label} ${s.display}`, r: await checkQuoSetup(quoKey, s.id, fetchFn) });
+    const word = { ok: "OK", rejected: "Key Rejected", sender_missing: "Not Found In Quo", unreachable: "No Answer" } as const;
+    const lines = results.map((x) => `${x.name}: ${word[x.r]}`).join(" · ");
+    if (results.some((x) => x.r === "rejected")) return { status: "rejected", detail: `Quo rejected the saved API key. ${lines}` };
+    if (results.some((x) => x.r === "unreachable")) return { status: "unreachable", detail: `Could not reach Quo for every number. Try again later. ${lines}` };
+    if (results.some((x) => x.r === "sender_missing")) return { status: "sender_missing", detail: `A sending number was not found in Quo. ${lines}` };
+    return { status: "ok", detail: `Quo key checks out. ${lines}. No message was sent.` };
   }
   const sid = env.TWILIO_ACCOUNT_SID, token = env.TWILIO_AUTH_TOKEN;
   const from = env.TWILIO_FROM_NUMBER, svc = env.TWILIO_MESSAGING_SERVICE_SID;

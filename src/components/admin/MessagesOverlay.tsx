@@ -84,6 +84,7 @@ export function MessagesOverlay({
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [fromId, setFromId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [chFilter, setChFilter] = useState<"all" | "email" | "sms">("all");
   const [tab, setTab] = useState<"details" | "rental">("details");
@@ -105,6 +106,7 @@ export function MessagesOverlay({
     try {
       const r = await get({ data: { applicationId: id } });
       setThread(r);
+      setFromId(r.person.smsDefaultFrom ?? null);
       setChannel(r.person.email_channel.available ? "email" : r.person.sms_channel.available ? "sms" : "email");
       const last = [...r.messages].reverse().find((m) => m.channel === "email" || m.channel === "sms");
       if (last && (last.channel === "email" ? r.person.email_channel.available : r.person.sms_channel.available)) setChannel(last.channel as "email" | "sms");
@@ -151,7 +153,7 @@ export function MessagesOverlay({
     if (!thread || !body.trim() || sending) return;
     setSending(true);
     try {
-      const r = await send({ data: { applicationId: thread.person.applicationId, channel, body: body.trim(), subject: channel === "email" ? subject.trim() || undefined : undefined } });
+      const r = await send({ data: { applicationId: thread.person.applicationId, channel, body: body.trim(), subject: channel === "email" ? subject.trim() || undefined : undefined, fromId: channel === "sms" && fromId ? fromId : undefined } });
       if (r.ok) { setBody(""); setSubject(""); toast.success(channel === "email" ? "Email Sent" : "Text Sent"); }
       else if (r.state === "test_mode") { setBody(""); toast(r.error ?? "Test Mode: text logged, not sent."); }
       else toast.error(r.error ?? "Message was not sent");
@@ -361,8 +363,17 @@ export function MessagesOverlay({
                           </button>
                         );
                       })}
+                      {channel === "sms" && chAvail?.available && person.smsSenders.length > 1 && (
+                        <label className="ml-auto inline-flex items-center gap-1.5 text-[12px] text-[#55555E]" data-testid="sms-send-from">
+                          Send From
+                          <select value={fromId ?? person.smsSenders[0].id} onChange={(e) => setFromId(e.target.value)} disabled={sending}
+                            aria-label="Send From" className="h-8 rounded-lg border border-[#E4E4E8] bg-white px-2 text-[12px] text-[#111114] focus:outline-none focus:border-[#C4C4CB]">
+                            {person.smsSenders.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                          </select>
+                        </label>
+                      )}
                       <button onClick={() => void submit()} disabled={sending || !body.trim() || !chAvail?.available || (channel === "sms" && body.length > 1600)}
-                        className="ml-auto h-9 px-4 rounded-lg bg-[#F59E0B] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#E08E06] disabled:opacity-40">
+                        className={`${channel === "sms" && chAvail?.available && person.smsSenders.length > 1 ? "ml-2" : "ml-auto"} h-9 px-4 rounded-lg bg-[#F59E0B] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#E08E06] disabled:opacity-40`}>
                         {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send
                       </button>
                     </div>

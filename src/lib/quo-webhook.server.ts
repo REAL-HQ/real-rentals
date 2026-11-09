@@ -1,7 +1,7 @@
 // Quo webhook handler (see routes/api/public/sms/quo.ts). Split out so tests
 // can drive it with a fake database and a signed request.
 import { verifyQuoWebhook } from "@/lib/quo.server";
-import { quoSender } from "@/lib/sms-provider.server";
+import { quoSenderFor } from "@/lib/sms-provider.server";
 import { toE164 } from "@/lib/sms.server";
 
 type Deps = {
@@ -43,8 +43,10 @@ export async function handleQuoWebhook(request: Request, deps: Deps = {}): Promi
   const type = String(event?.type ?? "");
   const resource = event?.data?.resource ?? {};
   const context = event?.data?.context ?? {};
-  // Only the REAL Rentals line feeds the app.
-  if (context.phoneNumberId && context.phoneNumberId !== quoSender()) return ok();
+  // Only the allowlisted lines (REAL Rentals 888, Primary 813) feed the app;
+  // events for any other Quo number are acknowledged and dropped.
+  const line = quoSenderFor(typeof context.phoneNumberId === "string" ? context.phoneNumberId : null);
+  if (!line) return ok();
 
   const admin = deps.admin ?? (await import("@/integrations/supabase/client.server")).supabaseAdmin;
   const messageId = typeof resource.id === "string" ? resource.id : null;
@@ -63,7 +65,8 @@ export async function handleQuoWebhook(request: Request, deps: Deps = {}): Promi
       ?? (await import("@/lib/sms-inbound.server")).processInboundSms;
     await processInbound({
       from,
-      to: Array.isArray(context.recipientIdentifiers) ? String(context.recipientIdentifiers[0] ?? "") || null : null,
+      // Record the line it arrived on, so the next reply defaults to it.
+      to: line.e164,
       body: String(resource.text ?? ""),
       provider: "quo",
       providerMessageId: messageId,

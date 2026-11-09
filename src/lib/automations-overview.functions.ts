@@ -43,7 +43,7 @@ export type AutomationsOverview = {
   emailReady: boolean;
   smsReady: boolean;
   /** Which SMS settings are present on the server (never their values). */
-  smsSetup: { provider: "quo" | "twilio" | "none"; dryRun: boolean; account: boolean; authToken: boolean; sender: "number" | "messaging_service" | "none" };
+  smsSetup: { provider: "quo" | "twilio" | "none"; dryRun: boolean; defaultSender: string | null; account: boolean; authToken: boolean; sender: "number" | "messaging_service" | "none" };
   cronKnown: boolean;
   smsSentEver: number;
   isOwner: boolean;
@@ -96,7 +96,7 @@ export const getAutomationsOverview = createServerFn({ method: "POST" })
     const { count: smsSentEver } = await sb.from("outbound_messages").select("id", { count: "exact", head: true }).eq("channel", "sms").eq("status", "sent");
 
     const emailReady = Boolean(process.env.RESEND_API_KEY);
-    const { smsProviderStatus } = await import("@/lib/sms-provider.server");
+    const { smsProviderStatus, quoSenders } = await import("@/lib/sms-provider.server");
     const smsProvider = smsProviderStatus();
     const smsReady = smsProvider.ready;
     const lifecycleOn = process.env.RENTER_LIFECYCLE_NOTICES_ENABLED === "true";
@@ -158,6 +158,7 @@ export const getAutomationsOverview = createServerFn({ method: "POST" })
     const smsSetup = {
       provider: smsProvider.provider,
       dryRun: smsProvider.dryRun,
+      defaultSender: smsProvider.provider === "quo" ? (() => { const d = quoSenders()[0]; return `${d.label} ${d.display}`; })() : null,
       account: smsProvider.provider === "quo" ? true : Boolean(process.env.TWILIO_ACCOUNT_SID),
       authToken: smsProvider.provider === "quo" ? true : Boolean(process.env.TWILIO_AUTH_TOKEN),
       sender: smsProvider.senderKind,

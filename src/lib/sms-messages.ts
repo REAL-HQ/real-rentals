@@ -8,6 +8,7 @@ export function smsSkipMessage(reason: string): string {
     case "opted_out": return "This person opted out of texts.";
     case "no_consent": return "No text-message consent on file.";
     case "invalid_phone": return "The mobile number on file can't receive texts.";
+    case "sender_not_allowed": return "That sending number isn't allowed.";
     case "not_configured": return "Texting is not set up yet (no SMS provider connected).";
     default: return "Text was not sent.";
   }
