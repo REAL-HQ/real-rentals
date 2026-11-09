@@ -48,7 +48,7 @@ export function ActivationRequirementList({
         </div>
       </div> : null}
       <ul className="mt-2 divide-y divide-border">
-        {requirements.filter((r) => r.key !== "gig_platform" && (!embedded || (NEXT_STEP_REQUIREMENT_KEYS as readonly ActivationRequirementKey[]).includes(r.key))).map((r) => {
+        {requirements.filter((r) => r.key !== "gig_platform" && r.key !== "insurance_document" && (!embedded || (NEXT_STEP_REQUIREMENT_KEYS as readonly ActivationRequirementKey[]).includes(r.key))).map((r) => {
           const blocker = blockers.find((item) => item.key === r.key || (item.key === "local" && r.key === "interview" && item.target.kind === "record_call"));
           const action = onRun ? blocker ? { label: blocker.fix, target: blocker.target } : checklistAction(r) : null;
           const fileState = evidence?.[r.key];

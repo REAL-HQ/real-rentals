@@ -377,13 +377,20 @@ export function ActivateRentalDialog({
               aria-label="Pickup Mileage"
               className={`${inputCls} mt-1.5`}
             />
-            <p className="text-[11px] text-[#55555E] mt-1">
-              {readiness?.inspectionMileage != null && String(readiness.inspectionMileage) === pickupMiles.replace(/[^\d]/g, "")
-                ? "From The Pre-Delivery Inspection — Recorded Once."
-                : readiness?.currentMileage != null
-                  ? `Last Reading: ${readiness.currentMileage.toLocaleString("en-US")} mi.`
-                  : "No Mileage On File Yet."}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[#55555E]">
+              <span>
+                {readiness?.inspectionMileage != null && String(readiness.inspectionMileage) === pickupMiles.replace(/[^\d]/g, "")
+                  ? "From The Pre-Delivery Inspection — Recorded Once."
+                  : readiness?.currentMileage != null
+                    ? `Last Reading: ${readiness.currentMileage.toLocaleString("en-US")} mi.`
+                    : "No Mileage On File Yet."}
+              </span>
+              {readiness?.currentMileage != null && !pickupMiles.trim() ? (
+                <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[11px]" onClick={() => setPickupMiles(String(readiness.currentMileage))}>
+                  Use {readiness.currentMileage.toLocaleString("en-US")}
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <label className="flex items-center gap-2 text-sm">

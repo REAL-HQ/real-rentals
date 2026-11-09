@@ -17,7 +17,7 @@ export function activationSubmitIssues(input: {
   if (!input.readiness) return [{ key: "readiness", message: "Requirements Could Not Be Checked. Retry Before Activating." }];
   if (!input.vehicleId) issues.push({ key: "vehicle", message: "Choose A Vehicle." });
   if (!(input.rate > 0)) issues.push({ key: "rate", message: "Enter A Positive Weekly Rate." });
-  if (input.pickupMileage == null || !(input.pickupMileage >= 0)) issues.push({ key: "mileage", message: "Enter Pickup Mileage." });
+  if (input.pickupMileage == null || !(input.pickupMileage >= 0)) issues.push({ key: "mileage", message: "Enter Pickup Mileage Below (Odometer At Handover)." });
   if (!input.startDate) issues.push({ key: "date", message: "Choose A Start Date." });
   for (const blocker of input.readiness.blockers.filter((b) => isHardBlocker(b.code))) issues.push({ key: blocker.code, message: blocker.message });
   const insurance = input.readiness.insurance;
