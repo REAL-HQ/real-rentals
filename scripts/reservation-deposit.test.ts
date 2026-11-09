@@ -108,7 +108,7 @@ describe("Booking Login Email + Reserve Car next step", () => {
     assert.ok(row);
     assert.equal(row?.title, "Booking Login Email");
     assert.equal(row?.defaultOn, undefined);
-    assert.deepEqual(row?.emailWorkflows, ["portal_invite"]);
+    assert.deepEqual(row?.emailWorkflows, []); // portal_invite stays ungated for Approve
   });
 
   it("offers Reserve Car after approval when ready and no reservation yet", () => {
