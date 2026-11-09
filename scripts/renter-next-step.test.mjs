@@ -32,7 +32,10 @@ t("blocked card still shows Activate Rental (findable) and names the blocker wit
   assert.match(html, /data-activation="blocked"/);
   assert.match(html, />(<svg[^]*?<\/svg>)? ?Activate Rental<\/button>/);
   assert.match(html, /data-blocker="insurance_verified"[^]*Verify Insurance/);
-  assert.match(html, /Full Checklist/);
+  assert.equal((html.match(/data-requirement="insurance_verified"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-requirement="license_documents"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-requirement="signed_agreement"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-requirement="insurance_document"/g) ?? []).length, 0);
 });
 t("blockers ordered: documents, insurance, approval, agreement", () => {
   const r = readiness([req("signed_agreement", false), req("approved", false), req("insurance_verified", false), req("license_documents", false)]);

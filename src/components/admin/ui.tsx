@@ -540,12 +540,14 @@ export function ReadinessSummary({
   actions,
   primary,
   remedyActions,
+  showNextSteps = true,
 }: {
   result: ReadinessResult;
   actions?: ReactNode;
   primary?: ReactNode;
   /** Buttons keyed by remedy, rendered inside Next Steps beside the gap they close. */
   remedyActions?: Partial<Record<string, ReactNode>>;
+  showNextSteps?: boolean;
 }) {
   const gaps = nextActions(result);
   return (
@@ -570,7 +572,7 @@ export function ReadinessSummary({
         )}
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#EDEDF0]">
+      <div className={`grid grid-cols-1 ${showNextSteps ? "md:grid-cols-3" : "md:grid-cols-2"} divide-y md:divide-y-0 md:divide-x divide-[#EDEDF0]`}>
         <div className="p-5">
           <MicroLabel className="mb-2">Positive Signals</MicroLabel>
           {result.positives.length === 0 ? (
@@ -617,7 +619,7 @@ export function ReadinessSummary({
           )}
         </div>
 
-        <div className="p-5">
+        {showNextSteps ? <div className="p-5">
           <MicroLabel className="mb-2">Next Steps</MicroLabel>
           {gaps.length === 0 ? (
             <div className="text-[12px] text-[#9A9AA3]">Nothing outstanding.</div>
@@ -640,7 +642,7 @@ export function ReadinessSummary({
               ))}
             </ul>
           )}
-        </div>
+        </div> : null}
       </div>
 
       {(actions || primary) && (

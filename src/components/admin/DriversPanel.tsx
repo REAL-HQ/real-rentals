@@ -1,4 +1,4 @@
-import { OnboardingChecklist, OnboardingLoadError, OnboardingReadinessRows } from "./OnboardingChecklist";
+import { OnboardingChecklist } from "./OnboardingChecklist";
 import { getOnboardingChecklist } from "@/lib/onboarding-checklist.functions";
 import {
   ONBOARDING_CHECKLIST_ENABLED,
@@ -182,10 +182,8 @@ import {
 } from "./ui";
 import {
   computeReadiness,
-  nextActions,
   type ReadinessDocument,
   type ReadinessResult,
-  type Remedy,
 } from "@/lib/readiness";
 
 import { requiredDocCounts } from "@/lib/required-docs";
@@ -225,90 +223,6 @@ import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { DocumentsExpiringList } from "./DocumentsExpiring";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
 import type { ExpiryScope } from "@/lib/document-expiry";
-
-/**
- * What arrived, at a glance, above the tabs.
- *
- * The profile led with lifecycle, summary, rental need and readiness — four
- * panels about what is outstanding — and the evidence the applicant had
- * actually sent sat behind a tab nobody had reason to click. An operator
- * looking at a driver who had uploaded a licence, an insurance PDF, a gig
- * profile and a trip screenshot could not tell any of them existed.
- */
-function DocumentsStrip({
-  docs,
-  loading,
-  onOpen,
-}: {
-  docs: VaultDocument[];
-  loading: boolean;
-  onOpen: () => void;
-}) {
-  const GROUPS: { keys: string[]; label: string }[] = [
-    { keys: ["license_front", "license_back"], label: "Driver's License" },
-    { keys: ["insurance"], label: "Insurance" },
-    { keys: ["gig_profile"], label: "Gig Profile" },
-    { keys: ["trip_history"], label: "Trip History" },
-  ];
-  const current = docs.filter((d) => d.is_current);
-  const total = current.length;
-
-  return (
-    <SectionCard
-      padded={false}
-      title="Documents"
-      right={
-        <button
-          onClick={onOpen}
-          className="inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#55555E] hover:border-[#C4C4CB] transition-colors"
-        >
-          {total > 0 ? `Open All ${total}` : "Open Documents"}
-        </button>
-      }
-    >
-      <div className="px-5 py-4">
-        {loading ? (
-          <p className="text-[12.5px] text-[#77777F]">Loading what they sent…</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {GROUPS.map((g) => {
-              const hits = current.filter((d) => g.keys.includes(d.category));
-              const verified = hits.length > 0 && hits.every((d) => d.review_status === "verified");
-              const rejected = hits.some((d) => d.review_status === "rejected");
-              const tone = !hits.length
-                ? "bg-[#F4F4F6] text-[#77777F] border-[#EDEDF0]"
-                : rejected
-                  ? "bg-red-50 text-red-700 border-red-200"
-                  : verified
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : "bg-sky-50 text-sky-700 border-sky-200";
-              return (
-                <button
-                  key={g.label}
-                  onClick={onOpen}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition-opacity hover:opacity-80 ${tone}`}
-                >
-                  {g.label}
-                  <span className="tabular-nums font-normal">
-                    {!hits.length
-                      ? "Not Received"
-                      : rejected
-                        ? "Needs Replacement"
-                        : hits.length > 1
-                          ? `${hits.length} Files`
-                          : verified
-                            ? "Verified"
-                            : "Uploaded"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </SectionCard>
-  );
-}
 
 const DEPOSIT_STATUSES = ["not_paid", "partially_paid", "paid", "refunded"] as const;
 const PAYMENT_STATUSES = ["current", "late", "past_due", "collections"] as const;
@@ -1694,9 +1608,6 @@ function DriverDetail({
   hasActiveRental,
   onRentalStarted,
   onCloseApplication,
-  canViewOnboarding = false,
-  onboardingResult = null,
-  onboardingFailed = false,
 }: {
   driver: Application;
   vehicles: Vehicle[];
@@ -2101,33 +2012,6 @@ function DriverDetail({
   };
   const PrimaryIcon = primaryAction.icon;
 
-  // What to collect next, ordered by how much coverage each action unlocks.
-  //
-  // Every entry here opens a workflow that already exists on this page. There
-  // is deliberately no generic "collect information" button: a gap the app
-  // cannot act on is shown in Still Needed as text and nothing more, because a
-  // button that does nothing is worse than no button.
-  const readinessActions = useMemo(() => {
-    // The tabs are controlled now, so a remedy selects one directly rather
-    // than synthesising a click on its trigger.
-    const open = (value: string) => () => setTab(value);
-    const route: Partial<Record<Remedy, { label: string; onClick: () => void }>> = {
-      interview: { label: "Complete Interview", onClick: () => setInterviewOpen(true) },
-      request_document: { label: "Review Documents", onClick: open("documents") },
-      verify: { label: "Verify Insurance", onClick: open("screening") },
-      applicant: { label: "Review Driver Information", onClick: open("application") },
-    };
-    return nextActions(readiness).flatMap((g) => {
-      const r = route[g.remedy];
-      return r ? [{ ...r, coverageGain: g.coverageGain }] : [];
-    });
-  }, [readiness]);
-
-  // Where the person is in the journey decides what Overview leads with.
-  // Derived from the same flags the lifecycle rail uses — no new state.
-  const phase: "screening" | "pickup" | "active" =
-    rentalActive ? "active" : approved ? "pickup" : "screening";
-
   const stageTargets: Partial<Record<string, () => void>> = {
     screening: () => setTab("screening"),
     docs: () => setTab("documents"),
@@ -2139,28 +2023,6 @@ function DriverDetail({
 
   const btnSecondary =
     "inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#55555E] hover:border-[#C4C4CB] hover:text-[#111114] transition-colors";
-
-  // Remedy buttons live inside Next Steps, beside the gap they close. The
-  // header keeps the single primary CTA; anything it already covers is not
-  // repeated as a red button here.
-  const remedyActions: Record<string, React.ReactNode> = Object.fromEntries(
-    readinessActions.map((a) => {
-      const remedy =
-        a.label === "Complete Interview"
-          ? "interview"
-          : a.label === "Review Documents"
-            ? "request_document"
-            : a.label === "Verify Insurance"
-              ? "verify"
-              : "applicant";
-      return [
-        remedy,
-        <button key={a.label} onClick={a.onClick} className={btnSecondary}>
-          {a.label}
-        </button>,
-      ];
-    }),
-  );
 
   // Real, timestamped events only — nothing inferred, nothing scheduled.
   const activity = useMemo(() => {
@@ -2200,30 +2062,8 @@ function DriverDetail({
     return visibleDriverActivity(ev);
   }, [driver, screening, vaultDocs, statusEvents]);
 
-  const sharedDriver =
-    ONBOARDING_CHECKLIST_ENABLED === true &&
-    canViewOnboarding &&
-    onboardingCohort(driver.status) &&
-    onboardingResult &&
-    onboardingResult.failed !== true
-      ? (onboardingResult.drivers.find((row) => row.id === driver.id) ?? null)
-      : null;
-
-  const requirements: { ok: boolean; label: string }[] = [
-    { ok: screeningDone, label: "Interview Complete" },
-    { ok: docsComplete, label: `Documents ${vaultDocCount}/${REQUIRED_VAULT_CATEGORIES.length}` },
-    { ok: !!driver.license_photo_url || !!driver.license_valid, label: "License Uploaded" },
-    { ok: insuranceOk, label: "Insurance Verified" },
-    { ok: !!(screening as any)?.mvr_authorized, label: "MVR Authorized" },
-    { ok: !!driver.card_last4, label: "Card On File" },
-    { ok: approved, label: "Approved" },
-    { ok: !!(driver as any).agreement_signed_at, label: "Agreement Signed" },
-    { ok: !!(driver as any).pickup_at, label: "Pickup Scheduled" },
-  ];
-  const reqDone = requirements.filter((r) => r.ok).length;
-
   const summaryRow = (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-2">
       <SectionCard title="Driver Summary">
         <div className="space-y-2 text-[12px]">
           {driver.phone && (
@@ -2287,56 +2127,10 @@ function DriverDetail({
         </dl>
       </SectionCard>
 
-      {/* Flag off: the boolean rows this card already had. Flag on, a manager
-          looking at an approved driver sees the same shared facts as the
-          cohort list, from the read that already finished. Opening this
-          drawer does not start another list read. */}
-      <SectionCard
-        title="Rental Readiness"
-        right={
-          <span className="text-[11px] text-[#9A9AA3] tabular-nums">
-            {ONBOARDING_CHECKLIST_ENABLED === true && sharedDriver
-              ? `${sharedDriver.steps.filter((step) => step.state === "done").length}/${sharedDriver.steps.length}`
-              : `${reqDone}/${requirements.length}`}
-          </span>
-        }
-      >
-        {ONBOARDING_CHECKLIST_ENABLED === true && sharedDriver ? (
-          <OnboardingReadinessRows driver={sharedDriver} />
-        ) : (
-          <>
-            {ONBOARDING_CHECKLIST_ENABLED === true &&
-            canViewOnboarding &&
-            onboardingCohort(driver.status) &&
-            onboardingFailed ? (
-              <OnboardingLoadError />
-            ) : null}
-            {ONBOARDING_CHECKLIST_ENABLED === true &&
-            canViewOnboarding &&
-            onboardingCohort(driver.status) &&
-            onboardingResult?.failed !== true &&
-            onboardingResult?.truncated === true &&
-            !sharedDriver ? (
-              <p className="mb-2 text-[12px] text-[#55555E]">
-                This Driver Is Past The First 1000. Showing The Original Readiness Rows.
-              </p>
-            ) : null}
-            <dl className="space-y-2 text-[12px]">
-              {requirements.map((r) => (
-                <SignalRow key={r.label} label={r.label} ok={r.ok} />
-              ))}
-            </dl>
-          </>
-        )}
-      </SectionCard>
     </div>
   );
 
-  const readinessCard = <ReadinessSummary result={readiness} remedyActions={remedyActions} />;
-
-  const docsPreview = (
-    <DocumentsStrip docs={vaultDocs} loading={vaultLoading} onOpen={() => setTab("documents")} />
-  );
+  const readinessCard = <ReadinessSummary result={readiness} showNextSteps={false} />;
 
   const factsCard = (
     <SectionCard title="Driver Facts">
@@ -2617,19 +2411,11 @@ function DriverDetail({
                   onActivate={() => runTarget({ kind: "activate" })}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
                 />
-                {phase === "screening" ? (
-                  <>
-                    {readinessCard}
-                    {summaryRow}
-                    {docsPreview}
-                  </>
-                ) : (
-                  <>
-                    {summaryRow}
-                    {docsPreview}
-                    {readinessCard}
-                  </>
-                )}
+                {summaryRow}
+                <details className="text-xs text-muted-foreground">
+                  <summary className="cursor-pointer">Review Notes</summary>
+                  <div className="mt-3">{readinessCard}</div>
+                </details>
                 {moreActions}
                 <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
                   {factsCard}
@@ -3011,21 +2797,6 @@ function Row2({ label, value }: { label: string; value: React.ReactNode }) {
       <dt className="text-[#9A9AA3]">{label}</dt>
       <dd className="font-medium text-[#111114] text-right truncate max-w-[180px]">
         {value ?? "—"}
-      </dd>
-    </div>
-  );
-}
-function SignalRow({ label, ok, detail }: { label: string; ok: boolean; detail?: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <dt className="text-[#55555E] inline-flex items-center gap-1.5">
-        <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-[#50C060]" : "bg-[#C4C4CB]"}`} />
-        {label}
-      </dt>
-      <dd
-        className={`text-[11px] font-medium tabular-nums ${ok ? "text-[#50C060]" : "text-[#9A9AA3]"}`}
-      >
-        {detail ?? (ok ? "Ready" : "Pending")}
       </dd>
     </div>
   );

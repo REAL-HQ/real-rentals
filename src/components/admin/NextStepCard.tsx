@@ -1,4 +1,4 @@
-import { AlertCircle, Car, ClipboardList, Loader2, RotateCw } from "lucide-react";
+import { Circle, Car, ClipboardList, Loader2, RotateCw } from "lucide-react";
 import type { ActivationReadiness } from "@/lib/activation-readiness";
 import type { NextStep } from "@/lib/next-step";
 import { ActivationRequirementList } from "./ActivationRequirementList";
@@ -82,17 +82,17 @@ export function NextStepCard({
           ) : null}
         </div>
       </div>
-      {model.blockers.length ? (
+      {!readiness && model.blockers.length ? (
         <ul className="mt-3 divide-y divide-[#F1F1F4] rounded-lg border border-[#F1F1F4]" aria-label="Blocking">
           {model.blockers.map((b, i) => (
             <li key={`${b.key}-${i}`} data-blocker={b.key} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[13px]">
-              <span className="inline-flex min-w-0 items-start gap-1.5 text-[#111114]">
-                <AlertCircle aria-label={b.key !== "local" ? evidence?.[b.key]?.label : undefined} className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${b.key !== "local" && evidence?.[b.key]?.tone === "yellow" ? "text-warning" : b.key !== "local" && evidence?.[b.key]?.tone === "green" ? "text-success" : "text-destructive"}`} />
+              <Button type="button" variant="ghost" className="h-auto min-h-10 min-w-0 justify-start gap-2 whitespace-normal px-1 text-left text-[13px] font-normal" aria-label={`${b.fix}: ${b.label}`} onClick={() => onRun(b.target)}>
+                <Circle className="h-4 w-4 shrink-0 text-destructive" />
                 <span>
                   {b.label}
                   {b.detail ? <span className="text-[#9A9AA3]"> · {b.detail}</span> : null}
                 </span>
-              </span>
+              </Button>
               <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
                 {b.key !== "local" && renderEvidence ? renderEvidence(b.key) : null}
                 <button type="button" onClick={() => onRun(b.target)} className={`${secondary} h-8`}>
@@ -104,12 +104,7 @@ export function NextStepCard({
         </ul>
       ) : null}
       {readiness ? (
-        <details className="mt-3 text-[12px]">
-          <summary className="cursor-pointer text-[#55555E] hover:text-[#111114]">Full Checklist</summary>
-          <div className="mt-2">
-            <ActivationRequirementList requirements={readiness.requirements} evidence={evidence} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} renderEvidence={renderEvidence} />
-          </div>
-        </details>
+        <ActivationRequirementList embedded blockers={model.blockers} requirements={readiness.requirements} evidence={evidence} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} renderEvidence={renderEvidence} />
       ) : null}
     </section>
   );
