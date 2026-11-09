@@ -636,10 +636,13 @@ describe("no duplicates and no catch-up blast", () => {
 
 describe("wiring", () => {
   const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
-  test("the older past-due / due-tomorrow emails stand down once any rent reminder stage is on", () => {
+  test("ops-reminders no longer sends the older renter Due Tomorrow / Past Due emails", () => {
     const src = read("src/routes/api/public/cron/ops-reminders.ts");
-    expect(src).toContain("RENT_REMINDER_SWITCHES");
-    expect(src).toMatch(/LEGACY_RENTER_RENT = new Set\(\["payment_past_due", "payment_due_tomorrow"\]\)/);
+    expect(src).not.toContain("sendPastDueReminderEmail");
+    expect(src).not.toContain("sendPaymentDueTomorrowEmail");
+    expect(src).not.toContain("payment_due_tomorrow");
+    expect(src).toContain("sendTeamPaymentAlertEmail");
+    expect(src).toContain("collections_plan");
   });
   test("the cron route checks its own token", () => {
     const src = read("src/routes/api/public/cron/rent-reminders.ts");
