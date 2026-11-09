@@ -62,6 +62,7 @@ import {
 } from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
 import { NextStepCard } from "./NextStepCard";
+import { DriverRentalDetails } from "./DriverRentalDetails";
 import { nextStep, type FixTarget } from "@/lib/next-step";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { DepositDialog } from "./DepositDialog";
@@ -1956,11 +1957,15 @@ function DriverDetail({
   const [depositRentalId, setDepositRentalId] = useState<string | null>(null);
   const [activeRentalId, setActiveRentalId] = useState<string | null>(null);
   const [rentalStatus, setRentalStatus] = useState<string | null>(null);
+  const [rentalLookupLoading, setRentalLookupLoading] = useState(true);
+  const [rentalLookupFailed, setRentalLookupFailed] = useState(false);
 
   // The rental is what deposit disposition and ending hang off, so look it up
   // once the driver is active.
   useEffect(() => {
     let cancelled = false;
+    setRentalLookupLoading(true);
+    setRentalLookupFailed(false);
     supabase
       .from("rentals")
       .select("id,status")
@@ -1968,10 +1973,12 @@ function DriverDetail({
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (cancelled) return;
         setActiveRentalId((data?.id as string) ?? null);
         setRentalStatus((data?.status as string) ?? null);
+        setRentalLookupFailed(!!error);
+        setRentalLookupLoading(false);
       });
     return () => {
       cancelled = true;
@@ -2692,6 +2699,8 @@ function DriverDetail({
                   />
                 </Card>
                 </div>
+                <DriverRentalDetails key={activeRentalId ?? driver.id} rentalId={activeRentalId} applicationId={driver.id}
+                  lookupLoading={rentalLookupLoading} lookupFailed={rentalLookupFailed} />
               </TabsContent>
 
               <TabsContent value="payments" className="mt-0 space-y-4">
