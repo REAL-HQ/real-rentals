@@ -53,7 +53,12 @@ export function ActivationRequirementList({
           const action = onRun ? blocker ? { label: blocker.fix, target: blocker.target } : checklistAction(r) : null;
           const fileState = evidence?.[r.key];
           const status = fileState?.label ?? (r.met === true ? "Complete" : r.met === null ? "Choose A Vehicle" : ENFORCEMENT_LABEL[r.enforcement]);
-          const icon = fileState ? <Circle className={`h-4 w-4 shrink-0 ${fileState.tone === "red" ? "text-destructive" : fileState.tone === "yellow" ? "text-warning" : "text-success"}`} aria-label={fileState.label} /> : r.met === true ? <Check className="h-4 w-4 shrink-0 text-success" aria-label="Complete" /> : r.met === null ? <Minus className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Not Checked Yet" /> : <Circle className={`h-4 w-4 shrink-0 ${r.enforcement === "hard" ? "text-destructive" : r.enforcement === "soft" || r.enforcement === "acknowledge" ? "text-warning-foreground" : "text-muted-foreground"}`} aria-label="Incomplete" />;
+          const completedIcon = (
+            <span role="img" aria-label={fileState?.label ?? "Complete"} className="grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 border-success bg-success text-primary-foreground">
+              <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+            </span>
+          );
+          const icon = fileState ? fileState.tone === "green" ? completedIcon : <Circle className={`h-6 w-6 shrink-0 ${fileState.tone === "red" ? "text-destructive" : "text-warning"}`} aria-label={fileState.label} /> : r.met === true ? completedIcon : r.met === null ? <Minus className="h-6 w-6 shrink-0 text-muted-foreground" aria-label="Not Checked Yet" /> : <Circle className={`h-6 w-6 shrink-0 ${r.enforcement === "hard" ? "text-destructive" : r.enforcement === "soft" || r.enforcement === "acknowledge" ? "text-warning-foreground" : "text-muted-foreground"}`} aria-label="Incomplete" />;
           return (
           <li
             key={r.key}
