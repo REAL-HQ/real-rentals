@@ -293,3 +293,18 @@ describe("renter reimbursements", () => {
     expect(sql).toContain("ON CONFLICT (source_expense_id) DO NOTHING");
   });
 });
+describe("webhook: the failed week's due date", () => {
+  test("is the ET date Stripe created the invoice (not the previous period's start)", async () => {
+    const db = fakeDb(seed({ on: ["payment_failed_text"] }));
+    // Damon-style renewal: period_start is the previous week (10/31), created 11/05 5:41 PM ET.
+    const inv = failedInvoice({ period_start: Math.floor(Date.UTC(2026, 9, 31, 12, 5) / 1000), created: Math.floor(Date.UTC(2026, 10, 5, 22, 41) / 1000) });
+    await postVerifiedPaymentWebhook({ type: "invoice.payment_failed", data: { object: inv } }, db, "live", { sendSms: spySms().send, now: NOON_ET });
+    expect(db._state.payments[0].due_date).toBe("2026-11-05");
+  });
+  test("an invoice created late evening ET keeps its ET date", async () => {
+    const db = fakeDb(seed({ on: ["payment_failed_text"] }));
+    const inv = failedInvoice({ created: Math.floor(Date.UTC(2026, 10, 10, 3, 30) / 1000) }); // 10:30 PM ET on 11/9
+    await postVerifiedPaymentWebhook({ type: "invoice.payment_failed", data: { object: inv } }, db, "live", { sendSms: spySms().send, now: NOON_ET });
+    expect(db._state.payments[0].due_date).toBe("2026-11-09");
+  });
+});

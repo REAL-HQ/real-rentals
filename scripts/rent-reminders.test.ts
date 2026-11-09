@@ -607,6 +607,18 @@ describe("no duplicates and no catch-up blast", () => {
     expect(stripeTexts(sp)).toHaveLength(1);
     expect(stripeTexts(sp)[0].body).toContain("live_second");
   });
+  test("Daily late fees: a waived week adds nothing, a newer unwaived week still counts", async () => {
+    const db: any = fakeDb(seedAt("2026-11-01T00:00:00Z", { rent_late_fee_waivers: [{ id: "w1", rental_id: R_STRIPE, due_date: "2026-11-05", waived_through: null }] }));
+    claimedOverdue(db._state);
+    const sp = spies();
+    await runRentReminders(db, sp.deps(at("2026-11-10", 10, 5), { nextChargeOn: "2026-11-12", failedInvoices: [twoSnap().failedInvoices[0]] }));
+    expect(stripeTexts(sp)[0].body).not.toMatch(/late fee/i);
+    await runRentReminders(db, sp.deps(at("2026-11-14", 10, 5), twoSnap()));
+    const t = stripeTexts(sp)[1].body as string;
+    // Only the 11/12 week: 2 days x $50.
+    expect(t).toContain("Late fees of $100 ($50/day per your rental agreement) are owed separately and are not part of these invoices.");
+    expect(t).toContain("live_second");
+  });
   test("could not read today's texts: hold the text (fail closed)", async () => {
     const db: any = fakeDb(seedAt("2026-11-01T00:00:00Z"));
     claimedOverdue(db._state);
