@@ -19,16 +19,24 @@ export const CLOSED_RESUME_STATUSES = [
 
 /**
  * Live portal refusal. While resume is off, openMyApplication uses only these.
- * Approved and complete are not here: Review My Application still opens them.
+ * Complete stays open for Review My Application. Approved and active use /login.
  */
 export const BASE_CLOSED_APPLICATION_STATUSES = ["declined", "closed"] as const;
 
+/** Statuses that open the Driver Portal instead of the resume wizard. */
+export const PORTAL_HANDOFF_STATUSES = ["approved", "active"] as const;
+
 /** Statuses the portal still opens so Review My Application keeps working. */
-const REVIEW_APPLICATION_STATUSES = ["approved", "complete"] as const;
+const REVIEW_APPLICATION_STATUSES = ["complete"] as const;
 
 export function isClosedResumeStatus(status: unknown): boolean {
   const raw = typeof status === "string" ? status.trim().toLowerCase() : "";
   return (CLOSED_RESUME_STATUSES as readonly string[]).includes(raw);
+}
+
+export function isPortalHandoffStatus(status: unknown): boolean {
+  const raw = typeof status === "string" ? status.trim().toLowerCase() : "";
+  return (PORTAL_HANDOFF_STATUSES as readonly string[]).includes(raw);
 }
 
 function applicationStatus(status: unknown): string {
@@ -36,11 +44,10 @@ function applicationStatus(status: unknown): string {
 }
 
 /**
- * Whether the portal should refuse to open this application.
+ * Whether the portal should refuse to open this application via a resume token.
  * Flag off: exact String(status) match of declined or closed, the live check.
- * Flag on: the full resume-closed list, except approved and complete. Those
- * two stay open for Review My Application. The wider list only blocks a resume
- * token for a draft that is no longer open.
+ * Flag on: the full resume-closed list, except complete (Review My Application).
+ * Approved and active are refused — those use /login → portal.
  */
 export function portalOpenRefused(status: unknown, resumeEnabled: boolean): boolean {
   if (!resumeEnabled) {

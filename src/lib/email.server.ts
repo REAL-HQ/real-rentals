@@ -516,6 +516,32 @@ export async function sendApplicationResumeEmail(args: {
   return sent;
 }
 
+/**
+ * Approved/active applicants: point them at /login instead of a resume token.
+ * Email is prefilled only; no auto-login and no account creation from this mail.
+ */
+export async function sendPortalHandoffEmail(args: {
+  to: string;
+  firstName: string | null;
+  email: string;
+}): Promise<SendResult> {
+  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const { portalLoginUrl } = await import("@/lib/portal-handoff");
+  const url = portalLoginUrl(args.email);
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">You're Approved — Sign In To Your Account</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Hi ${escapeHtml(name)}, your application is approved. Sign in to your REAL RENTALS account to upload documents, sign your agreement, and finish setup. No password needed — we'll email you a sign-in code.</p>
+      <a href="${url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Sign In To Your Account</a>
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${url}</span></p>`);
+  return sendEmail({
+    to: args.to,
+    subject: "You're Approved — Sign In To Your REAL RENTALS Account",
+    html,
+    replyTo: EMAIL_REPLY_TO,
+    track: { workflow: "portal_handoff" },
+  });
+}
+
 type RecoveryArgs = {
   to: string;
   firstName: string | null;
