@@ -60,7 +60,7 @@ describe("Driver checklist alignment", () => {
 describe("Pickup check-off", () => {
   it("saves a staff pickup check-off as Yellow and never as an active rental", () => {
     const applicationId = "22222222-2222-4222-8222-222222222222";
-    const input = { applicationId, field: "pickup", expectedRevision: 0, idempotencyKey: applicationId, state: "collected", source: "other", note: "" } as const;
+    const input = { applicationId, field: "pickup", expectedRevision: 0, idempotencyKey: applicationId, state: "collected", source: "other", note: "Payment Confirmed: Cash; Amount Received: $350.00" } as const;
     expect(attestationInput.parse(input).field).toBe("pickup");
     const projection = projectEvidence({ applicationId, field: "pickup", events: [{ ...input, id: "event-1", revision: 1, supersedesId: null, actorId: applicationId, occurredAt: "2026-11-09T00:00:00Z" }], documents: [], itemComplete: false });
     expect(projection).toMatchObject({ tone: "yellow", status: "upload_due", complete: false });

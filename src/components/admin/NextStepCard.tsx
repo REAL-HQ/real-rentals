@@ -84,7 +84,7 @@ export function NextStepCard({
       </div>
       {!readiness && model.blockers.length ? (
         <ul className="mt-3 divide-y divide-[#F1F1F4] rounded-lg border border-[#F1F1F4]" aria-label="Blocking">
-          {model.blockers.map((b, i) => (
+          {model.blockers.map((b, i) => { const fileControls = b.key !== "local" ? renderEvidence?.(b.key) : null; return (
             <li key={`${b.key}-${i}`} data-blocker={b.key} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[13px]">
               <span className="flex min-h-10 min-w-0 items-center gap-2 px-1 text-left text-[13px] font-normal">
                 <Circle className="h-4 w-4 shrink-0 text-destructive" />
@@ -94,13 +94,13 @@ export function NextStepCard({
                 </span>
               </span>
               <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
-                {b.key !== "local" && renderEvidence ? renderEvidence(b.key) : null}
-                <button type="button" onClick={() => onRun(b.target)} className={`${secondary} h-8`}>
+                {fileControls}
+                {!fileControls ? <button type="button" onClick={() => onRun(b.target)} className={`${secondary} h-8`}>
                   {b.fix}
-                </button>
+                </button> : null}
               </div>
             </li>
-          ))}
+          ); })}
         </ul>
       ) : null}
       {readiness ? (

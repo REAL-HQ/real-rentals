@@ -11,7 +11,7 @@ export function DriverDocumentUploadDialog({ label, hint, upload, onClose, repla
   upload: UploadFn;
   onClose: () => void;
   replacement?: boolean;
-  choices?: { label: string; upload: UploadFn }[];
+  choices?: { label: string; upload: UploadFn; accept?: string; multiple?: boolean; hint?: string; maxBytes?: number }[];
 }) {
   const [busy, setBusy] = useState(false);
   const scope = useRef<HTMLDivElement>(null);
@@ -38,13 +38,14 @@ export function DriverDocumentUploadDialog({ label, hint, upload, onClose, repla
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
   }
 
-  function uploader(title: string, uploadFile: UploadFn) {
+  function uploader(title: string, uploadFile: UploadFn, options?: NonNullable<typeof choices>[number]) {
     return <FileUploader
       title={`Drop ${title} Here`}
       label="Browse Files"
-      hint={hint ?? "Images Or PDF · 15 MB Max"}
-      accept="image/*,application/pdf"
-      maxBytes={15 * 1024 * 1024}
+      hint={options?.hint ?? hint ?? "Images Or PDF · 15 MB Max"}
+      accept={options?.accept ?? "image/*,application/pdf"}
+      maxBytes={options?.maxBytes ?? 15 * 1024 * 1024}
+      multiple={options?.multiple}
       camera
       disabled={busy}
       autoStart={false}
@@ -68,7 +69,7 @@ export function DriverDocumentUploadDialog({ label, hint, upload, onClose, repla
               {choices.map((choice) => <TabsTrigger key={choice.label} value={choice.label} disabled={busy}>{choice.label}</TabsTrigger>)}
             </TabsList>
             {choices.map((choice) => <TabsContent key={choice.label} value={choice.label} forceMount className="data-[state=inactive]:hidden">
-              {uploader(choice.label, choice.upload)}
+              {uploader(choice.label, choice.upload, choice)}
             </TabsContent>)}
           </Tabs> : uploader(label, upload)}
         </ModalBody>

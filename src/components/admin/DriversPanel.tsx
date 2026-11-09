@@ -77,6 +77,7 @@ import {
 } from "@/lib/activation-readiness";
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
+import { ChecklistInspectionFiles } from "./ChecklistInspectionFiles";
 import { checklistDocumentCategories } from "./checklist-actions";
 import { CHECKLIST_EVIDENCE_ENABLED, EVIDENCE_FIELDS, PICKUP_PAYMENT_METHODS, documentCollection, evidenceTone, latestEvidenceEvent, projectEvidence, requirementEvidence, type EvidenceEvent, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
 import { pickupAmountCents } from "@/lib/pickup-payment";
@@ -1946,15 +1947,11 @@ function DriverDetail({
   }, [refreshVault, refreshEvidenceEvents]);
   function renderChecklistEvidence(key: ActivationRequirementKey) {
     if (!isManager || vaultLoading || key === "insurance_document") return null;
-    // Canonical server readiness already recognizes signed eSign agreements;
-    // completed agreements never ask staff to upload a second copy.
-    if (key === "signed_agreement" && rentalTabReadiness?.requirements.some((r) => r.key === key && r.met === true)) return null;
+    if (key === "inspection") return <ChecklistInspectionFiles applicationId={driver.id} vehicleId={driver.vehicle_id ?? null} documents={vaultDocs} onUploaded={refreshEvidence} />;
     const categories = checklistDocumentCategories(key);
     const category = categories[0];
     if (!category) return null;
-    return <div className="flex min-w-0 flex-wrap justify-end gap-1.5">{categories.map((category) => {
-      return null;
-    })}<DriverEvidenceUpload applicationId={driver.id} category={category} categories={categories} documents={vaultDocs} onUploaded={refreshEvidence} /></div>;
+    return <DriverEvidenceUpload applicationId={driver.id} category={category} categories={categories} documents={vaultDocs} onUploaded={refreshEvidence} />;
   }
 
   useEffect(() => {

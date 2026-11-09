@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checklistAction, checklistDocumentCategories } from "../src/components/admin/checklist-actions";
+import { checklistAction, checklistDocumentCategories, checklistInspectionPhotos, pickupInspectionCaption } from "../src/components/admin/checklist-actions";
 import type { ActivationRequirement, ActivationRequirementKey } from "../src/lib/activation-readiness";
 
 const requirement = (key: ActivationRequirementKey, met: boolean | null = false): ActivationRequirement => ({ key, met, label: key, enforcement: "hard" });
@@ -21,10 +21,9 @@ describe("Driver checklist actions", () => {
     }
   });
   it("unfinished insurance opens file upload; completed insurance opens review", () => {
-    expect(checklistAction(requirement("insurance_verified"))).toMatchObject({ label: "Add / Review", target: { kind: "section", tab: "documents", anchor: "profile-documents" } });
+    expect(checklistAction(requirement("insurance_verified"))?.target).toEqual({ kind: "section", tab: "documents", anchor: "profile-documents" });
     expect(checklistAction(requirement("insurance_verified", true))?.target).toEqual({ kind: "section", tab: "documents", anchor: "profile-documents" });
-    expect(checklistAction(requirement("inspection"))?.label).toBe("Add Photos");
-    expect(checklistAction(requirement("inspection", true))?.label).toBe("View Photos");
+    expect(checklistAction(requirement("inspection"))?.target).toEqual({ kind: "section", tab: "rental", anchor: "profile-vehicle" });
     expect(checklistAction(requirement("interview"))?.target).toEqual({ kind: "record_call" });
     expect(checklistAction(requirement("interview", true))?.target).toEqual({ kind: "interview" });
   });
@@ -39,5 +38,17 @@ describe("Driver checklist actions", () => {
     const completed = requirement("license_documents", true);
     expect(checklistAction(completed)?.target).toEqual(checklistAction(requirement("license_documents"))?.target);
     expect(completed.met).toBe(true);
+  });
+});
+
+describe("Pickup inspection evidence scope", () => {
+  const row = { vehicle_id: "car-1", rental_id: null, phase: "checkout", caption: pickupInspectionCaption("app-1") };
+  it("shows only this applicant's pre-rental pickup photos on the assigned car", () => {
+    const rows = [row, { ...row, caption: pickupInspectionCaption("app-2") }, { ...row, vehicle_id: "car-2" }, { ...row, phase: "checkin" }, { ...row, rental_id: "old-rental" }, { ...row, caption: null }];
+    expect(checklistInspectionPhotos(rows, "car-1", "app-1", null)).toEqual([row]);
+  });
+  it("with an active rental shows only its pickup photos, not old rentals or another car", () => {
+    const mine = { ...row, rental_id: "rental-1", caption: null };
+    expect(checklistInspectionPhotos([mine, row, { ...mine, rental_id: "rental-2" }, { ...mine, vehicle_id: "car-2" }], "car-1", "app-1", "rental-1")).toEqual([mine]);
   });
 });
