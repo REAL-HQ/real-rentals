@@ -320,7 +320,7 @@ export function LifecycleRail({
           )}
         </div>
       </div>
-      <ol className="flex items-center gap-1.5 overflow-x-auto pb-1">
+      <ol className="flex w-full items-start overflow-x-auto pb-1 pt-1">
         {stages.map((s, i) => {
           const done = s.state === "done";
           const cur = s.state === "current";
@@ -344,7 +344,12 @@ export function LifecycleRail({
             </span>
           );
           return (
-            <li key={s.key} className="flex items-center gap-1.5 shrink-0">
+            <li key={s.key} className="relative flex min-w-16 flex-1 basis-0 flex-col items-center">
+              {i < stages.length - 1 && (
+                <span aria-hidden="true"
+                  className={`pointer-events-none absolute left-[calc(50%+18px)] right-[calc(-50%+18px)] top-[11px] h-0.5 rounded ${done ? "bg-success" : "bg-border"}`}
+                />
+              )}
               <StageWrap onClick={checkoff ? undefined : onStageClick?.[s.key]} label={s.label}>
                 {checkoff ? (
                   <Button type="button" variant="ghost" size="icon" role="checkbox"
@@ -361,11 +366,6 @@ export function LifecycleRail({
                   {s.label}
                 </span>
               </StageWrap>
-              {i < stages.length - 1 && (
-                <span
-                  className={`h-[2px] w-5 mt-[-14px] rounded sm:w-8 ${done ? "bg-success" : "bg-border"}`}
-                />
-              )}
             </li>
           );
         })}
