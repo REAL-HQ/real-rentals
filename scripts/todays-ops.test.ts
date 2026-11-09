@@ -68,7 +68,7 @@ for (const tier of ["coordinator", "manager", "owner"] as const) {
   ok(!visibleTabs(tier).some((t) => t.id === "todays_ops"), `${tier} nav has no Today's Ops tab while the flag is off`);
   ok(!railEntries(tier).some((t) => t.id === "todays_ops"), `${tier} rail has no Today's Ops tab while the flag is off`);
 }
-ok(visibleTabs("owner").length === TABS.length, "owner still sees exactly the dark-build destinations");
+ok(visibleTabs("owner").filter((t) => t.id !== "owner_pnl").length === TABS.length && visibleTabs("owner").some((t) => t.id === "owner_pnl"), "owner still sees exactly the dark-build destinations plus Monthly Owner P&L");
 ok(admin.includes("TODAYS_OPS_ENABLED && tab === \"todays_ops\" && <TodaysOps />"), "the panel mounts only while the flag is on");
 ok(panel.includes("if (!TODAYS_OPS_ENABLED) return null"), "the panel renders nothing while the flag is off");
 ok(!/stripe/i.test(panel), "the panel does not mention Stripe");
@@ -159,7 +159,7 @@ const built = buildTodaysOps({
 const byId = (id: string) => built.sections.find((section) => section.id === id)!;
 ok(byId("pickups").items.length === 1 && byId("pickups").items[0].search.tab === "drivers", "an approved pickup is listed once and links to Drivers");
 ok(byId("approved_ready").items.map((item) => item.id).join() === "pick,ready", "approved-ready includes the pickup and the other approved driver");
-ok(byId("returns").items[0].detail === "Ends Today" && byId("returns").items[0].search.tab === "bookings", "a return today links to Bookings");
+ok(byId("returns").items[0].detail === "Ends Today" && byId("returns").items[0].search.tab === "active_rentals", "a return today links to Active");
 ok(byId("payments_due").items.length === 1 && byId("payments_due").items[0].detail === "Due Today", "only the rental due today is in Payments Due Today");
 ok(byId("overdue").items.length === 1 && byId("overdue").items[0].search.filter === "overdue" && byId("overdue").items[0].detail.includes("$120.00"), "overdue links to the Payments overdue filter");
 ok(byId("documents").items[0].search.id === "veh" && byId("documents").items[0].detail === "Registration · Expires In 4 Days", "a document links to its vehicle");

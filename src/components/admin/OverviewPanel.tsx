@@ -679,7 +679,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
                 search={{ tab: "active_rentals" }}
                 className="inline-flex items-center gap-1 text-[12px] text-[#55555E] hover:text-[#D03020]"
               >
-                Open Active Rentals <ArrowUpRight className="w-3.5 h-3.5" />
+                Open Active <ArrowUpRight className="w-3.5 h-3.5" />
               </Link>
               {fleetMismatches.length > 0 && (
                 <span className="text-[11px] text-[#8A5A00]">

@@ -182,7 +182,7 @@ export function DriverIssuesPanel() {
                 {row.rentalId ? (
                   <Link
                     to="/admin"
-                    search={{ tab: "bookings", id: row.rentalId }}
+                    search={{ tab: "active_rentals", view: "all", id: row.rentalId }}
                     className="rounded-lg border border-[#EDEDF0] px-3 py-1.5 text-sm text-[#111114] hover:bg-[#FAFAFB]"
                   >
                     Open Booking

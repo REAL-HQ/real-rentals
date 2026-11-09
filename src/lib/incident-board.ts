@@ -254,7 +254,7 @@ export function toIncidentBoardRow(source: IncidentBoardSource): IncidentBoardRo
 export function incidentRentalHref(rentalId: string | null | undefined): string | null {
   const id = rentalId?.trim();
   if (!id) return null;
-  return `/admin?tab=bookings&id=${encodeURIComponent(id)}`;
+  return `/admin?tab=active_rentals&view=all&id=${encodeURIComponent(id)}`;
 }
 
 export function incidentRentalLabel(input: { status?: string | null; startDate?: string | null } | null): string {

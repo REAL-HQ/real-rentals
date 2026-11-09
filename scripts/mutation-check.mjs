@@ -134,7 +134,7 @@ const MUTATIONS = [
   ["a readiness Fix carries the vehicle id", PROFILE,
     "search: { tab: f.tab, id: v.id } as never", "search: { tab: f.tab } as never", READYTEST],
   ["the router lets the inspections tab keep the vehicle id", ADMIN,
-    '  id: ["drivers", "vehicles", "inspections", "bookings"],', '  id: ["drivers", "vehicles"],', READYTEST],
+    '  id: ["drivers", "vehicles", "inspections", "active_rentals"],', '  id: ["drivers", "vehicles"],', READYTEST],
   ["a title scan counts as a title on file", READY,
     "  if (t) return t.documentOnFile || t.metadataRecorded;", "  if (t) return t.metadataRecorded;", READYTEST],
   ["a missing registration expiry still blocks (no quiet downgrade)", READY,

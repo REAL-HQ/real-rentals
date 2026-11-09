@@ -76,7 +76,7 @@ function utcDate(isoDate: string): Date {
   return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
 }
 
-export type FleetSearch = { tab: string; id?: string };
+export type FleetSearch = { tab: string; id?: string; view?: string };
 
 export type FleetBlock = {
   id: string;
@@ -222,7 +222,7 @@ export function buildFleetCalendar(input: FleetCalendarInput): FleetCalendarBoar
         detail: rental.end_date ? "Active Rental" : "Open Rental",
         start: span.start,
         end: span.end,
-        search: { tab: "bookings", id: rental.id },
+        search: { tab: "active_rentals", view: "all", id: rental.id },
       });
     }
     for (const pickup of input.pickups) {

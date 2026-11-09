@@ -113,8 +113,7 @@ import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { TaxExportPanel } from "@/components/admin/TaxExportPanel";
 import { TAX_EXPORT_ENABLED } from "@/lib/tax-export-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
-import { BookingsPanel } from "@/components/admin/BookingsPanel";
-import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
+import { ActivePanel } from "@/components/admin/ActivePanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
@@ -151,9 +150,9 @@ type AdminSearch = {
   view?: string;
   /** Fleet-wide readiness filter: listing_ready | rental_ready | not_ready. */
   ready?: string;
-  /** Bookings list: active | completed | cancelled. */
+  /** Active → All Rentals: active | completed | cancelled. */
   phase?: string;
-  /** Bookings list: one vehicle's rentals. */
+  /** Active → All Rentals: one vehicle's rentals. */
   vehicle?: string;
   /** Incidents form prefilled from a driver issue. Does not create the incident. */
   issue?: string;
@@ -179,27 +178,25 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   // stripped the id back out of the URL a moment after the navigation, the
   // panel fell back to whichever vehicle sorted first, and a pre-delivery
   // inspection could be filed against the wrong one.
-  // "bookings" is here because a booking IS a record you open — the drawer is
-  // held by the same `id` the drivers and vehicles lists use.
-  id: ["drivers", "vehicles", "inspections", "bookings"],
+  // "active_rentals" opens a rental record (the former Bookings drawer).
+  id: ["drivers", "vehicles", "inspections", "active_rentals"],
   // Payments is the only list that takes a filter from a link today.
   filter: ["payments", "drivers"],
   // A creation flow opened from "+ Create".
   add: [...ADD_TABS],
   section: ["settings"],
-  // The Bookings list holds its own search, sort and page under the same
-  // names; a parameter not owned by its tab is stripped a moment after the
-  // navigation, which is how a filter silently resets itself.
-  q: ["vehicles", "bookings"],
+  // Active (All Rentals) holds search, sort, page, phase, and vehicle under
+  // the same names the old Bookings list used.
+  q: ["vehicles", "active_rentals"],
   vstatus: ["vehicles"],
   body: ["vehicles"],
   partner: ["vehicles"],
-  sort: ["vehicles", "bookings"],
-  page: ["vehicles", "bookings"],
-  view: ["vehicles"],
+  sort: ["vehicles", "active_rentals"],
+  page: ["vehicles", "active_rentals"],
+  view: ["vehicles", "active_rentals"],
   ready: ["vehicles"],
-  phase: ["bookings"],
-  vehicle: ["bookings"],
+  phase: ["active_rentals"],
+  vehicle: ["active_rentals"],
   issue: ["incidents"],
 };
 
@@ -508,6 +505,16 @@ function Admin() {
       if (legacy.filter) next.filter = legacy.filter;
       if (legacy.vstatus) next.vstatus = legacy.vstatus;
       if (legacy.messages || search.msg) next.msg = search.msg ?? "inbox";
+      // Bookings → Active: keep the open rental and list filters, land on All Rentals.
+      if (urlTab === "bookings") {
+        next.view = "all";
+        if (search.id) next.id = search.id;
+        if (search.q) next.q = search.q;
+        if (search.phase) next.phase = search.phase;
+        if (search.sort) next.sort = search.sort;
+        if (search.page) next.page = search.page;
+        if (search.vehicle) next.vehicle = search.vehicle;
+      }
       void navigate({ to: "/admin", search: next, replace: true });
       return;
     }
@@ -953,11 +960,12 @@ function Admin() {
               <DriversPanel initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} canViewOnboarding={tierAllows(tier, "manager")} canIssueCardLink={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
             {tab === "vehicles" && <VehiclesPanel autoOpenAdd={urlAdd} openId={urlRecordId} canSeeMaintenanceDue={tierAllows(tier, "manager")} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
-            {tab === "active_rentals" && <ActiveRentalsPanel />}
-            {tab === "bookings" && (
-              <BookingsPanel
+            {tab === "active_rentals" && (
+              <ActivePanel
                 openId={urlRecordId}
+                canViewBoard={tierAllows(tier, "manager")}
                 canViewConversion={tierAllows(tier, "manager")}
+                view={search?.view}
                 listState={{
                   q: search?.q,
                   phase: search?.phase,

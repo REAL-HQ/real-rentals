@@ -183,7 +183,7 @@ export function billingHealthToCsv(report: BillingHealthReport): string {
       row.driverName,
       row.vehicleLabel,
       row.reason,
-      row.rentalId ? `/admin?tab=bookings&id=${encodeURIComponent(row.rentalId)}` : "",
+      row.rentalId ? `/admin?tab=active_rentals&view=all&id=${encodeURIComponent(row.rentalId)}` : "",
       row.applicationId ? `/admin?tab=drivers&id=${encodeURIComponent(row.applicationId)}` : "",
       row.subscriptionId ?? "",
       row.subscriptionStatus ?? "",
