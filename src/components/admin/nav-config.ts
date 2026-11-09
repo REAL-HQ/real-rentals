@@ -138,14 +138,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "website", label: "Website", group: "GENERAL", minTier: "manager" },
   { id: "maintenance", label: "Maintenance", group: "FLEET", minTier: "manager" },
   { id: "safe_autofill", label: "Safe Autofill", group: "FLEET", minTier: "owner" },
-  { id: "photo_enhancement", label: "Photo Enhancement", group: "FLEET", minTier: "owner" },
-  { id: "photo_reading", label: "Photo Reading", group: "FLEET", minTier: "owner" },
+  { id: "vehicle_photos", label: "Photos", group: "FLEET", minTier: "owner" },
   { id: "vehicle_defaults", label: "Vehicle Pricing", group: "RENTALS", minTier: "manager" },
   { id: "rental_terms", label: "Rental Terms", group: "RENTALS", minTier: "owner" },
   { id: "deposits", label: "Deposits", group: "RENTALS", minTier: "owner" },
   { id: "applications", label: "Applications", group: "RENTALS", minTier: "owner" },
-  { id: "esign", label: "Agreements & eSign", group: "RENTALS", minTier: "owner" },
-  { id: "agreement_templates", label: "Agreement Templates", group: "RENTALS", minTier: "owner" },
+  { id: "agreements", label: "Agreements", group: "RENTALS", minTier: "owner" },
   { id: "payments", label: "Payment Settings", group: "PAYMENTS", minTier: "owner" },
   { id: "partners", label: "Partner Terms", group: "BUSINESS", minTier: "owner" },
   { id: "notifications", label: "Notifications & Email", group: "COMMUNICATIONS", minTier: "owner" },
@@ -155,6 +153,20 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
 ];
 export function visibleSettingsSections(tier: StaffTier | null): SettingsSectionDef[] {
   return SETTINGS_SECTIONS.filter((s) => tierAllows(tier, s.minTier));
+}
+
+/** Old Settings section ids → current ones. Bookmarks and in-app links resolve through this. */
+export const SETTINGS_SECTION_ALIASES: Record<string, string> = {
+  photo_enhancement: "vehicle_photos",
+  photo_reading: "vehicle_photos",
+  esign: "agreements",
+  agreement_templates: "agreements",
+};
+
+/** Resolve a Settings ?section= value, including legacy ids. */
+export function resolveSettingsSection(section: string | null | undefined): string | null {
+  if (!section) return null;
+  return SETTINGS_SECTION_ALIASES[section] ?? section;
 }
 
 /** Shown only while Fleet Availability is compiled on. Kept out of TABS so a dark build cannot list it. */

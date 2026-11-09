@@ -72,7 +72,7 @@ export function BookingsWorkspace({
       ) : effective === "active" ? (
         <ActiveRentalsPanel />
       ) : (
-        <BookingsPanel openId={openId} canViewConversion={canViewConversion} listState={listState} />
+        <BookingsPanel openId={openId} canViewConversion={canViewConversion} listState={listState} scope="past" />
       )}
     </div>
   );
