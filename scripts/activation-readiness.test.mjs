@@ -217,11 +217,11 @@ try {
     install(world({ app: { status: "reviewing" }, documents: [doc("license_front")], screenings: [], agreements: [], inspections: [] }));
     const r = await readiness(MANAGER);
     const byKey = Object.fromEntries(r.requirements.map((q) => [q.key, q]));
-    assert.deepEqual(r.requirements.map((q) => q.key), ["approved", "license_documents", "signed_agreement", "insurance_verified", "interview", "inspection", "insurance_document", "gig_profile", "gig_platform"]);
+    assert.deepEqual(r.requirements.map((q) => q.key), ["interview", "license_documents", "gig_profile", "insurance_verified", "approved", "inspection", "signed_agreement", "pickup", "rental_active", "insurance_document", "gig_platform"]);
     for (const k of Object.keys(byKey)) assert.equal(byKey[k].met, false, k);
     assert.deepEqual(Object.fromEntries(r.requirements.map((q) => [q.key, q.enforcement])), {
       approved: "hard", license_documents: "hard", signed_agreement: "hard", insurance_verified: "hard",
-      interview: "soft", inspection: "soft", insurance_document: "advisory", gig_profile: "advisory", gig_platform: "advisory",
+      interview: "soft", inspection: "soft", pickup: "advisory", rental_active: "advisory", insurance_document: "advisory", gig_profile: "advisory", gig_platform: "advisory",
     });
     assert.equal(byKey.insurance_verified.detail, "No Insurance Document");
     assert.deepEqual(codes(r.blockers), ["insurance_not_verified", "missing_documents", "no_interview", "no_passed_inspection", "no_signed_agreement", "not_approved"]);
@@ -232,7 +232,8 @@ try {
     const r = await readiness(MANAGER);
     const gp = r.requirements.find((q) => q.key === "gig_platform");
     assert.deepEqual([gp.label, gp.met, gp.enforcement], ["Gig Platform: Not Verified", false, "advisory"]);
-    assert.equal(r.requirements.find((q) => q.key === "gig_profile").label, "Gig Profile Screenshot On File (Not Platform-Verified)");
+    assert.equal(r.requirements.find((q) => q.key === "gig_profile").label, "Gig Profile Verified");
+    assert.equal(r.requirements.find((q) => q.key === "gig_profile").detail, "Screenshot Review Only · Platform Not Verified");
     install(world({ documents: [doc("license_front"), doc("license_back"), doc("insurance")] }));
     const r2 = await readiness(MANAGER);
     assert.deepEqual(r2.blockers, [], "no gig profile does not block");

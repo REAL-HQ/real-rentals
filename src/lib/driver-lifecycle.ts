@@ -3,7 +3,8 @@ export const DRIVER_LIFECYCLE_STAGES = [
   { key: "applied", label: "Applied" },
   { key: "contacted", label: "Contacted" },
   { key: "screening", label: "Screening" },
-  { key: "docs", label: "Documents" },
+  { key: "docs", label: "License" },
+  { key: "profile", label: "Profile" },
   { key: "insurance", label: "Insurance" },
   { key: "approved", label: "Approved" },
   { key: "inspection", label: "Inspection" },
@@ -15,12 +16,12 @@ export type DriverLifecycleKey = typeof DRIVER_LIFECYCLE_STAGES[number]["key"];
 export type DriverLifecycleStage = { key: DriverLifecycleKey; label: string; state: "done" | "current" | "upcoming" };
 
 export function driverLifecycle(facts: {
-  contacted: boolean; screening: boolean; documents: boolean; insuranceOnFile: boolean;
+  contacted: boolean; screening: boolean; documents: boolean; profile: boolean; insuranceOnFile: boolean;
   approved: boolean; inspection: boolean; agreement: boolean; rentalActive: boolean;
 }) {
   const completed: Record<DriverLifecycleKey, boolean> = {
     applied: true, contacted: facts.contacted, screening: facts.screening,
-    docs: facts.documents, insurance: facts.insuranceOnFile, approved: facts.approved,
+    docs: facts.documents, profile: facts.profile, insurance: facts.insuranceOnFile, approved: facts.approved,
     inspection: facts.inspection, agreement: facts.agreement,
     pickup: facts.rentalActive, active: facts.rentalActive,
   };

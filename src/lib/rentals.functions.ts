@@ -169,6 +169,7 @@ async function evaluateReadiness(
       .eq("status", "active")
       .limit(1);
     if (existing && existing.length) {
+      facts.rentalActive = true;
       blockers.push({
         code: "already_active",
         message: "This driver already has an active rental.",

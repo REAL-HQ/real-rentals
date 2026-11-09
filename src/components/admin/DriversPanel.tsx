@@ -78,7 +78,7 @@ import {
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
 import { checklistDocumentCategories } from "./checklist-actions";
-import { CHECKLIST_EVIDENCE_ENABLED, evidenceTone, latestEvidenceEvent, projectEvidence, requirementEvidence, type EvidenceEvent, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
+import { CHECKLIST_EVIDENCE_ENABLED, EVIDENCE_FIELDS, evidenceTone, latestEvidenceEvent, projectEvidence, requirementEvidence, type EvidenceEvent, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
 import { getChecklistEvidence, saveChecklistEvidence } from "@/lib/checklist-evidence.functions";
 import { ChecklistEvidenceControl } from "./ChecklistEvidenceControl";
 import { driverLifecycle } from "@/lib/driver-lifecycle";
@@ -1775,17 +1775,6 @@ function DriverDetail({
   const [rentalTabReadiness, setRentalTabReadiness] = useState<ActivationReadiness | null>(null);
   const [rentalTabReadinessLoading, setRentalTabReadinessLoading] = useState(false);
   const [rentalTabReadinessFailed, setRentalTabReadinessFailed] = useState(false);
-  const { stages: lifecycle, current: currentStage, percent: percentComplete } = driverLifecycle({
-    contacted, screening: screeningDone, documents: docsComplete,
-    insuranceOnFile: !vaultLoading && !missingRequiredCategories(vaultDocs).includes("insurance"),
-    approved, rentalActive: rentalActiveFlag,
-    // Never infer inspection/signature from status, upload or a legacy timestamp.
-    inspection: !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness?.requirements.some((r) => r.key === "inspection" && r.met === true) === true,
-    agreement: !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true,
-  });
-  const stageStartIso = currentStage?.key === "screening" ? driver.contacted_at ?? driver.created_at
-    : currentStage?.key === "docs" ? screening?.interview_completed_at ?? driver.created_at : driver.created_at;
-  const timeInStage = stageStartIso ? formatDuration(Date.now() - new Date(stageStartIso).getTime()) : undefined;
   const [readinessNonce, setReadinessNonce] = useState(0);
   // Saved check-offs only (checklist_evidence_events) — never local checkmarks.
   const loadEvidence = useServerFn(getChecklistEvidence);
@@ -1799,11 +1788,15 @@ function DriverDetail({
   }, [driver.id, isManager]);
   useEffect(() => { setEvidenceEvents([]); void refreshEvidenceEvents(); }, [refreshEvidenceEvents]);
   let safeEvents: EvidenceEvent[] = evidenceEvents;
-  try { for (const f of ["license_front", "license_back", "insurance", "agreement", "gig_profile"] as EvidenceField[]) latestEvidenceEvent(evidenceEvents, driver.id, f); }
+  try { for (const f of EVIDENCE_FIELDS) latestEvidenceEvent(evidenceEvents, driver.id, f); }
   catch { safeEvents = []; }
-  const evidenceItems: EvidenceProjection[] = CHECKLIST_EVIDENCE_ENABLED && isManager ? (["license_front", "license_back", "insurance", "agreement", "gig_profile"] as EvidenceField[]).map((field) => projectEvidence({
+  const evidenceItems: EvidenceProjection[] = CHECKLIST_EVIDENCE_ENABLED && isManager ? EVIDENCE_FIELDS.map((field) => projectEvidence({
     applicationId: driver.id, field, events: safeEvents, documents: vaultDocs,
-    itemComplete: field === "agreement" && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true && r.detail !== "Upload Due") === true,
+    itemComplete: field === "agreement"
+      ? rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true && r.detail !== "Upload Due") === true
+      : field === "inspection"
+        ? !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true
+        : false,
     reviewRequired: field === "agreement" || field === "insurance",
   })) : [];
   // One click on a checklist circle: Missing/Not Collected -> Upload Due (Yellow);
@@ -1831,15 +1824,59 @@ function DriverDetail({
   }
   const evidencePresentation: EvidencePresentationMap | undefined = CHECKLIST_EVIDENCE_ENABLED && isManager ? Object.fromEntries((rentalTabReadiness?.requirements ?? []).flatMap((r) => {
     const presentation = requirementEvidence(r.key, evidenceItems);
-    if (!presentation) return [];
+    if (!presentation) {
+      if (r.key === "interview") return [[r.key, {
+        tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Call Complete", fields: [],
+        onToggle: () => r.met === true ? setInterviewOpen(true) : setRecordCallOpen(true),
+        toggleLabel: r.met === true ? "View Completed Interview" : "Record Interview Completion",
+        toggleTitle: r.met === true ? "View The Completed Interview." : "Record A Completed Qualification Call.",
+      }]];
+      if (r.key === "approved") return [[r.key, {
+        tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Approval Required", fields: [],
+        onToggle: () => r.met === true ? openSection("application", "") : void approveAndSend(),
+        toggleLabel: r.met === true ? "View Approved Application" : "Review And Approve Application",
+        toggleTitle: r.met === true ? "View The Approved Application." : "Run The Existing Approval Checks.",
+      }]];
+      if (r.key === "pickup" || r.key === "rental_active") return [[r.key, {
+        tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Completed By Activation", fields: [],
+        onToggle: () => r.met === true ? setTab("rental") : setActivateOpen(true),
+        toggleLabel: r.met === true ? `View ${r.label}` : `Open Activate Rental For ${r.label}`,
+        toggleTitle: "Pickup And Active Status Come Only From A Real Running Rental.",
+      }]];
+      return [];
+    }
     // Collecting the card is not verifying insurance; say so on that row.
     if (r.key === "insurance_verified" && r.met !== true && presentation.tone === "yellow") presentation.label = "Upload Due · Verify Insurance";
+    if (r.key === "inspection" && presentation.tone === "yellow") presentation.label = "Upload Due · Written Override Required";
     if (r.enforcement === "advisory" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Advisory";
     const toggleable = presentation.fields.some((f) => !f.uploaded && !f.complete) && !(r.key === "signed_agreement" && r.met === true && presentation.fields.every((f) => f.status !== "upload_due"));
     return [[r.key, toggleable ? { ...presentation, onToggle: () => void toggleEvidence(presentation.fields), busy: evidenceSaving } : presentation]];
   })) : undefined;
-  const docsEvidenceTone = evidenceTone(evidenceItems.filter((i) => i.field !== "insurance"));
+  const licenseItems = evidenceItems.filter((i) => i.field === "license_front" || i.field === "license_back");
+  const profileItems = evidenceItems.filter((i) => i.field === "gig_profile");
+  const agreementItems = evidenceItems.filter((i) => i.field === "agreement");
+  const inspectionItems = evidenceItems.filter((i) => i.field === "inspection");
+  const docsEvidenceTone = evidenceTone(licenseItems);
+  const profileEvidenceTone = evidenceTone(profileItems);
+  const agreementEvidenceTone = evidenceTone(agreementItems);
+  const inspectionEvidenceTone = evidenceTone(inspectionItems);
   const insuranceEvidenceTone = evidenceTone(evidenceItems.filter((i) => i.field === "insurance"));
+  const addressed = (items: EvidenceProjection[]) => items.length > 0 && items.every((i) => i.status !== "missing");
+  const actualInspection = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true;
+  const actualAgreement = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true;
+  const { stages: lifecycle, current: currentStage, percent: percentComplete } = driverLifecycle({
+    contacted, screening: screeningDone,
+    documents: isManager ? addressed(licenseItems) : !missingRequiredCategories(vaultDocs).some((c) => c === "license_front" || c === "license_back"),
+    profile: isManager ? addressed(profileItems) : !missingRequiredCategories(vaultDocs).includes("gig_profile"),
+    insuranceOnFile: !vaultLoading && !missingRequiredCategories(vaultDocs).includes("insurance"),
+    approved, rentalActive: rentalActiveFlag,
+    // Saved Yellow/Red evidence stays visible; only a real passed inspection or signed agreement is Green.
+    inspection: isManager ? actualInspection || addressed(inspectionItems) : actualInspection,
+    agreement: isManager ? actualAgreement || addressed(agreementItems) : actualAgreement,
+  });
+  const stageStartIso = currentStage?.key === "screening" ? driver.contacted_at ?? driver.created_at
+    : currentStage?.key === "docs" ? screening?.interview_completed_at ?? driver.created_at : driver.created_at;
+  const timeInStage = stageStartIso ? formatDuration(Date.now() - new Date(stageStartIso).getTime()) : undefined;
 
   function readinessChanged() {
     setReadinessNonce((n) => n + 1);
@@ -2024,6 +2061,7 @@ function DriverDetail({
   const stageTargets: Partial<Record<string, () => void>> = {
     screening: () => setTab("screening"),
     docs: () => openSection("documents", "profile-documents"),
+    profile: () => openSection("documents", "profile-documents"),
     insurance: () => openSection("screening", "profile-insurance"),
     approved: () => setTab("application"),
     inspection: () => openSection("rental", "profile-vehicle"),
@@ -2371,7 +2409,13 @@ function DriverDetail({
           <div className="mt-3">
             <LifecycleRail
               stages={lifecycle}
-              evidenceTones={CHECKLIST_EVIDENCE_ENABLED ? { ...(docsEvidenceTone ? { docs: docsEvidenceTone } : {}), ...(insuranceEvidenceTone ? { insurance: insuranceEvidenceTone } : {}) } : undefined}
+              evidenceTones={CHECKLIST_EVIDENCE_ENABLED ? {
+                ...(docsEvidenceTone ? { docs: docsEvidenceTone } : {}),
+                ...(profileEvidenceTone ? { profile: profileEvidenceTone } : {}),
+                ...(insuranceEvidenceTone ? { insurance: insuranceEvidenceTone } : {}),
+                ...(inspectionEvidenceTone ? { inspection: inspectionEvidenceTone } : {}),
+                ...(agreementEvidenceTone ? { agreement: agreementEvidenceTone } : {}),
+              } : undefined}
               percent={percentComplete}
               timeInStage={timeInStage}
               blocker={readiness.disqualifiers[0]}

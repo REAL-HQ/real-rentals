@@ -42,7 +42,7 @@ const FIX: Partial<Record<ActivationRequirementKey, { fix: string; target: FixTa
   inspection: { fix: "Choose Vehicle", target: { kind: "section", tab: "rental", anchor: "profile-vehicle" } },
 };
 /** Fix order: what must happen first comes first (approval sends the agreement). */
-const ORDER: ActivationRequirementKey[] = ["license_documents", "insurance_verified", "approved", "signed_agreement"];
+const ORDER: ActivationRequirementKey[] = ["interview", "license_documents", "gig_profile", "insurance_verified", "approved", "inspection", "signed_agreement", "pickup", "rental_active"];
 
 const LOCAL: Record<Exclude<PrimaryStep, "activate" | "view_rental">, Blocker> = {
   interview: { key: "local", label: "Interview not complete", ...FIX.interview! },

@@ -6,10 +6,11 @@ import type { StaffTier } from "./roles";
  *  activate_rental_checked_tx accepts them in the same transaction as the rental. */
 export const CHECKLIST_EVIDENCE_ENABLED = true;
 export const EVIDENCE_UPDATE_UNAVAILABLE = "Checklist Saving And Activation Exceptions Await The Approved Database Update.";
-export const evidenceFieldSchema = z.enum(["license_front", "license_back", "insurance", "agreement", "gig_profile"]);
+export const EVIDENCE_FIELDS = ["license_front", "license_back", "insurance", "agreement", "gig_profile", "inspection"] as const;
+export const evidenceFieldSchema = z.enum(EVIDENCE_FIELDS);
 export type EvidenceField = z.infer<typeof evidenceFieldSchema>;
 export const EVIDENCE_FIELD_LABELS: Record<EvidenceField, string> = {
-  license_front: "License Front", license_back: "License Back", insurance: "Insurance", agreement: "Agreement", gig_profile: "Gig Profile",
+  license_front: "License Front", license_back: "License Back", insurance: "Insurance", agreement: "Agreement", gig_profile: "Gig Profile", inspection: "Pre-Inspection",
 };
 
 export const attestationInput = z.discriminatedUnion("state", [
@@ -39,6 +40,7 @@ export function evidenceFields(key: ActivationRequirementKey): EvidenceField[] {
     case "insurance_verified":
     case "insurance_document": return ["insurance"];
     case "gig_profile": return ["gig_profile"];
+    case "inspection": return ["inspection"];
     default: return [];
   }
 }
@@ -96,7 +98,7 @@ export function projectCollectionEvidence(input: Omit<Parameters<typeof projectE
   return projection.uploaded ? { ...projection, tone: "green", status: "uploaded", label: "On File" } : projection;
 }
 
-export type EvidenceRequirementPresentation = { tone: EvidenceTone; label: string; fields: EvidenceProjection[]; onToggle?: () => void; busy?: boolean };
+export type EvidenceRequirementPresentation = { tone: EvidenceTone; label: string; fields: EvidenceProjection[]; onToggle?: () => void; busy?: boolean; toggleLabel?: string; toggleTitle?: string };
 export type EvidencePresentationMap = Partial<Record<ActivationRequirementKey, EvidenceRequirementPresentation>>;
 export function requirementEvidence(key: ActivationRequirementKey, fields: readonly EvidenceProjection[]): EvidenceRequirementPresentation | undefined {
   const matching = fields.filter((f) => evidenceFields(key).includes(f.field));

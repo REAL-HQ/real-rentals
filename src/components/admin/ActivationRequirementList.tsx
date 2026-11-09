@@ -1,5 +1,5 @@
 import { Check, Circle, Minus } from "lucide-react";
-import type { ActivationRequirement, ActivationRequirementKey, RequirementEnforcement } from "@/lib/activation-readiness";
+import { NEXT_STEP_REQUIREMENT_KEYS, type ActivationRequirement, type ActivationRequirementKey, type RequirementEnforcement } from "@/lib/activation-readiness";
 import type { ReactNode } from "react";
 import type { FixTarget } from "@/lib/next-step";
 import type { Blocker } from "@/lib/next-step";
@@ -48,7 +48,7 @@ export function ActivationRequirementList({
         </div>
       </div> : null}
       <ul className="mt-2 divide-y divide-border">
-        {requirements.filter((r) => !embedded || r.key !== "insurance_document" || !requirements.some((item) => item.key === "insurance_verified")).map((r) => {
+        {requirements.filter((r) => !embedded || (NEXT_STEP_REQUIREMENT_KEYS as readonly ActivationRequirementKey[]).includes(r.key)).map((r) => {
           const blocker = blockers.find((item) => item.key === r.key || (item.key === "local" && r.key === "interview" && item.target.kind === "record_call"));
           const action = onRun ? blocker ? { label: blocker.fix, target: blocker.target } : checklistAction(r) : null;
           const fileState = evidence?.[r.key];
@@ -65,8 +65,8 @@ export function ActivationRequirementList({
               disabled={fileState.busy}
               onClick={fileState.onToggle}
               className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-              aria-label={fileState.tone === "yellow" ? `${r.label}: Upload Due. Click To Mark Not Collected` : `Check Off ${r.label}`}
-              title={fileState.tone === "yellow" ? "Checked Off — Upload Due. Click To Mark Not Collected." : "Click To Check Off. Upload The File Later."}
+              aria-label={fileState.toggleLabel ?? (fileState.tone === "yellow" ? `${r.label}: Upload Due. Click To Mark Not Collected` : `Check Off ${r.label}`)}
+              title={fileState.toggleTitle ?? (fileState.tone === "yellow" ? "Checked Off — Upload Due. Click To Mark Not Collected." : "Click To Check Off. Upload The File Later.")}
             >
               {fileState.tone === "yellow" ? (
                 <span className="grid h-6 w-6 place-items-center rounded-full border-2 border-warning bg-warning text-warning-foreground"><Check className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" /></span>

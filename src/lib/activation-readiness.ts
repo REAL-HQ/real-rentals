@@ -82,7 +82,9 @@ export type ActivationRequirementKey =
   | "inspection"
   | "insurance_document"
   | "gig_profile"
-  | "gig_platform";
+  | "gig_platform"
+  | "pickup"
+  | "rental_active";
 
 export type ActivationRequirement = {
   key: ActivationRequirementKey;
@@ -323,6 +325,8 @@ export type DriverReadinessFacts = {
   hasPassedInspection: boolean | null;
   /** Latest saved staff check-off per file (checklist_evidence_events). */
   evidence?: Partial<Record<"license_front" | "license_back" | "agreement", "collected" | "not_collected">>;
+  /** Pickup and Active come only from a real running rental, never a checkmark. */
+  rentalActive?: boolean;
 };
 
 export type FileCheck = "file" | "staff_confirmed" | "not_collected" | "missing";
@@ -350,6 +354,12 @@ export function hasSignedAgreement(f: DriverReadinessFacts): boolean {
   );
 }
 
+/** The nine operational rows shown in the profile's Next Step card, in Dolmar's order. */
+export const NEXT_STEP_REQUIREMENT_KEYS = [
+  "interview", "license_documents", "gig_profile", "insurance_verified", "approved",
+  "inspection", "signed_agreement", "pickup", "rental_active",
+] as const satisfies readonly ActivationRequirementKey[];
+
 /** The readiness checklist, in the order the work is done. */
 export function activationRequirements(f: DriverReadinessFacts): ActivationRequirement[] {
   const missing = new Set(missingRequiredCategories(f.documents));
@@ -357,28 +367,27 @@ export function activationRequirements(f: DriverReadinessFacts): ActivationRequi
   const license = licenseCheck(f);
   const agreement = agreementCheck(f);
   const gigOnFile = !missing.has("gig_profile");
+  const rentalActive = f.rentalActive === true;
   return [
     {
-      key: "approved",
-      label: "Application Approved",
-      met: (ACTIVATABLE_STATUSES as readonly string[]).includes(
-        String(f.status ?? "").toLowerCase(),
-      ),
-      enforcement: "hard",
+      key: "interview",
+      label: "Interview Complete",
+      met: !!f.interviewCompletedAt,
+      enforcement: "soft",
     },
     {
       key: "license_documents",
-      label: "Driver's License (Front And Back)",
+      label: "Driver's License Verified",
       met: license === "file" || license === "staff_confirmed",
       enforcement: license === "not_collected" ? "soft" : "hard",
       ...(license === "staff_confirmed" ? { detail: "Upload Due" } : license === "not_collected" ? { detail: "Not Collected" } : {}),
     },
     {
-      key: "signed_agreement",
-      label: "Rental Agreement Signed",
-      met: agreement === "file" || agreement === "staff_confirmed",
-      enforcement: agreement === "not_collected" ? "soft" : "hard",
-      ...(agreement === "staff_confirmed" ? { detail: "Upload Due" } : agreement === "not_collected" ? { detail: "Not Collected" } : {}),
+      key: "gig_profile",
+      label: "Gig Profile Verified",
+      met: gigOnFile,
+      enforcement: "advisory",
+      detail: "Screenshot Review Only · Platform Not Verified",
     },
     {
       key: "insurance_verified",
@@ -388,29 +397,30 @@ export function activationRequirements(f: DriverReadinessFacts): ActivationRequi
       detail: insuranceStatusLabel(ins.status),
     },
     {
-      key: "interview",
-      label: "Interview Complete",
-      met: !!f.interviewCompletedAt,
-      enforcement: "soft",
+      key: "approved",
+      label: "Application Approved",
+      met: (ACTIVATABLE_STATUSES as readonly string[]).includes(String(f.status ?? "").toLowerCase()),
+      enforcement: "hard",
     },
     {
       key: "inspection",
-      label: "Passed Pre-Delivery Inspection",
+      label: "Pre-Inspection Passed",
       met: f.hasPassedInspection,
       enforcement: "soft",
     },
     {
+      key: "signed_agreement",
+      label: "Rental Agreement Signed",
+      met: agreement === "file" || agreement === "staff_confirmed",
+      enforcement: agreement === "not_collected" ? "soft" : "hard",
+      ...(agreement === "staff_confirmed" ? { detail: "Upload Due" } : agreement === "not_collected" ? { detail: "Not Collected" } : {}),
+    },
+    { key: "pickup", label: "Pickup Complete", met: rentalActive, enforcement: "advisory" },
+    { key: "rental_active", label: "Rental Active", met: rentalActive, enforcement: "advisory" },
+    {
       key: "insurance_document",
       label: "Insurance Card On File",
       met: !missing.has("insurance"),
-      enforcement: "advisory",
-    },
-    {
-      key: "gig_profile",
-      label: gigOnFile
-        ? "Gig Profile Screenshot On File (Not Platform-Verified)"
-        : "Gig Profile Screenshot",
-      met: gigOnFile,
       enforcement: "advisory",
     },
     // No integration verifies a driver with Uber, Lyft or any platform, so this

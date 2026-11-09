@@ -37,5 +37,9 @@ export function checklistAction(requirement: ActivationRequirement): ChecklistAc
       return { label: "View Application", target: { kind: "section", tab: "application", anchor: "" } };
     case "gig_platform":
       return null;
+    case "pickup":
+      return { label: "Activate Rental", target: { kind: "activate" } };
+    case "rental_active":
+      return { label: "View Rental", target: { kind: "section", tab: "rental", anchor: "profile-vehicle" } };
   }
 }

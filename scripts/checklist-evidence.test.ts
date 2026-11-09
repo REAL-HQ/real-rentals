@@ -51,6 +51,13 @@ describe("Confirmed evidence states (isolated rules only)", () => {
     expect(() => latestEvidenceEvent([first, { ...corrected, supersedesId: null }], app, "license_front")).toThrow("Review");
     expect(() => latestEvidenceEvent([first, first], app, "license_front")).toThrow("Review");
   });
+  it("accepts an inspection attestation as Yellow without marking the inspection Passed", () => {
+    const inspectionInput = { ...input, field: "inspection" as const };
+    expect(attestationInput.safeParse(inspectionInput).success).toBe(true);
+    const item = projectEvidence({ applicationId: app, field: "inspection", events: [{ ...first, field: "inspection" }], documents: [], itemComplete: false });
+    expect(item).toMatchObject({ tone: "yellow", status: "upload_due", complete: false });
+    expect(requirementEvidence("inspection", [item])?.tone).toBe("yellow");
+  });
   it("accepts one-click check-offs with no note but rejects client actor/verification injection", () => {
     expect(attestationInput.safeParse(input).success).toBe(true);
     expect(attestationInput.safeParse({ ...input, note: "" }).success).toBe(true);
