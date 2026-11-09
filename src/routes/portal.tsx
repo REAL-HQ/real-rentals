@@ -1899,7 +1899,7 @@ function DashboardView({
           <MetricTile
             label="Deposit Held"
             value={rental.deposit_amount == null ? "Not Set" : fmt(rental.deposit_amount)}
-            sub={rental.deposit_held == null ? "Not Set" : rental.deposit_held ? "On file" : "Not yet collected"}
+            sub={rental.deposit_held == null ? "Not Set" : rental.deposit_held ? "On File" : "None Collected"}
             tooltip="Your refundable deposit is held for the duration of your rental and refunded 14 to 30 days after your rental ends, less any unpaid balance."
           />
           <MetricTile
