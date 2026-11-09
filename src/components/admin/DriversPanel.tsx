@@ -2593,25 +2593,36 @@ function DriverDetail({
 
               <TabsContent value="application" className="mt-0 space-y-4">
                 <Card title="Driver Info" icon={<UserIcon className="w-4 h-4" />}>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    <Field label="DOB" value={driver.dob} />
-                    <Field label="License #" value={driver.license_number} />
-                    <Field label="License State" value={driver.license_state} />
-                    <Field label="License exp." value={driver.license_expiration} />
-                    <Field label="Years Licensed" value={driver.years_licensed} />
-                    <Field
-                      label="Address"
-                      value={
-                        [driver.address, driver.city, driver.state, driver.zip]
-                          .filter(Boolean)
-                          .join(", ") || null
-                      }
-                    />
-                    <Field label="Platforms" value={driver.platforms?.join(", ") || null} />
-                    <Field label="Weekly Hours" value={driver.weekly_hours} />
-                    <Field label="Term" value={driver.rental_term} />
-                    <Field label="Payment Method" value={driver.payment_method} />
-                  </div>
+                  {isManager ? (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <DateField label="DOB" value={driver.dob} onSave={(v) => onUpdate({ dob: v })} />
+                        <TxtField label="License #" value={driver.license_number} onSave={(v) => onUpdate({ license_number: v })} />
+                        <TxtField label="License State" value={driver.license_state ?? screening?.license_state ?? null} onSave={(v) => onUpdate({ license_state: v })} />
+                        <DateField label="License Exp." value={driver.license_expiration} onSave={(v) => onUpdate({ license_expiration: v })} />
+                        <NumField label="Years Licensed" value={driver.years_licensed ?? screening?.license_years ?? null} onSave={(v) => onUpdate({ years_licensed: v })} />
+                        <TxtField label="Street Address" value={driver.address} onSave={(v) => onUpdate({ address: v })} />
+                        <TxtField label="City" value={driver.city} onSave={(v) => onUpdate({ city: v })} />
+                        <TxtField label="State" value={driver.state} onSave={(v) => onUpdate({ state: v })} />
+                        <TxtField label="ZIP" value={driver.zip} onSave={(v) => onUpdate({ zip: v })} />
+                        <TxtField label="Phone" value={driver.phone} onSave={(v) => { if (v) onUpdate({ phone: v }); }} />
+                        <TxtField
+                          label="Platforms"
+                          value={(driver.platforms ?? screening?.gig_apps)?.join(", ") || null}
+                          onSave={(v) => onUpdate({ platforms: v ? v.split(",").map((item) => item.trim()).filter(Boolean) : null })}
+                        />
+                        <NumField label="Weekly Hours" value={driver.weekly_hours} onSave={(v) => onUpdate({ weekly_hours: v })} />
+                        <TxtField label="Term" value={driver.expected_duration ?? driver.rental_term} onSave={(v) => onUpdate({ expected_duration: v } as any)} />
+                        <TxtField label="Payment Method" value={driver.payment_method} onSave={(v) => onUpdate({ payment_method: v })} />
+                      </div>
+                      <p className="mt-3 text-[11px] text-muted-foreground">Saved automatically when you click away. Enter only details supplied or confirmed by the driver.</p>
+                    </>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <Field label="City" value={driver.city} />
+                      <Field label="State" value={driver.state} />
+                    </div>
+                  )}
                 </Card>
                 <Card title="Status & Compliance" icon={<ShieldCheck className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -2771,61 +2782,6 @@ function DriverDetail({
                       : ""}
                     . Agree the real dates with them before sending an agreement — it will not send
                     without both.
-                  </p>
-                </Card>
-                <Card title="Driver Address" icon={<MapPin className="w-4 h-4" />}>
-                  {/* The agreement names the driver's address, and Part 1 no
-                      longer asks for it — by design, it is contract
-                      information rather than lead capture. Part 2 collects it
-                      when the applicant gets that far; when they do not, this
-                      is where staff put what the driver confirms on the call.
-                      Without it the agreement will not generate, and before
-                      this card existed there was nowhere in the back office to
-                      enter it. */}
-                  <TxtField
-                    label="Street Address"
-                    value={driver.address ?? null}
-                    onSave={(v) => onUpdate({ address: v } as any)}
-                  />
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-                    <TxtField
-                      label="City"
-                      value={driver.city ?? null}
-                      onSave={(v) => onUpdate({ city: v } as any)}
-                    />
-                    <TxtField
-                      label="State"
-                      value={driver.state ?? null}
-                      onSave={(v) => onUpdate({ state: v } as any)}
-                    />
-                    <TxtField
-                      label="ZIP"
-                      value={driver.zip ?? null}
-                      onSave={(v) => onUpdate({ zip: v } as any)}
-                    />
-                    <TxtField
-                      label="Phone"
-                      value={driver.phone ?? null}
-                      onSave={(v) => onUpdate({ phone: v } as any)}
-                    />
-                    <TxtField
-                      label="License #"
-                      value={driver.license_number ?? null}
-                      onSave={(v) => onUpdate({ license_number: v } as any)}
-                    />
-                    <TxtField
-                      label="License State"
-                      value={driver.license_state ?? null}
-                      onSave={(v) => onUpdate({ license_state: v } as any)}
-                    />
-                    <TxtField
-                      label="License Exp. (YYYY-MM-DD)"
-                      value={driver.license_expiration ?? null}
-                      onSave={(v) => onUpdate({ license_expiration: v } as any)}
-                    />
-                  </div>
-                  <p className="text-[11px] text-[#9A9AA3] mt-2">
-                    Must match the address on their licence. Never fill this in from a guess.
                   </p>
                 </Card>
                 <CardOnFileCard driver={driver} onUpdate={onSaved} canIssue={canIssueCardLink} />
