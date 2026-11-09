@@ -2287,7 +2287,7 @@ function DriverDetail({
                 <DropdownMenuTrigger aria-label="More actions" className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors">
                   <MoreVertical className="w-4 h-4" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="w-56 max-w-[calc(100vw-2rem)] [&>button]:gap-2 [&>*>svg]:mr-0 [&>*>svg]:size-4 [&>*>svg]:shrink-0">
                   {driver.phone && (
                     <DropdownMenuItem className="sm:hidden" onClick={() => (window.location.href = `tel:${driver.phone}`)}>
                       <Phone className="w-4 h-4 mr-2" /> Call
