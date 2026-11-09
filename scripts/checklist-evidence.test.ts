@@ -58,6 +58,15 @@ describe("Confirmed evidence states (isolated rules only)", () => {
     expect(item).toMatchObject({ tone: "yellow", status: "upload_due", complete: false });
     expect(requirementEvidence("inspection", [item])?.tone).toBe("yellow");
   });
+  it("pickup confirmation requires an exact amount and method without creating a payment", () => {
+    const pickup = { ...input, field: "pickup" as const, source: "other" as const, note: "Payment Confirmed: Cash App; Amount Received: $350.00" };
+    expect(attestationInput.safeParse(pickup).success).toBe(true);
+    for (const note of ["", "Paid $350", "Payment Confirmed: Cash App; Amount Received: $0.00", "Payment Confirmed: Cash App; Amount Received: $350.999"]) {
+      expect(attestationInput.safeParse({ ...pickup, note }).success).toBe(false);
+    }
+    const item = projectEvidence({ applicationId: app, field: "pickup", events: [], documents: [], itemComplete: true });
+    expect(item).toMatchObject({ tone: "green", complete: true });
+  });
   it("accepts one-click check-offs with no note but rejects client actor/verification injection", () => {
     expect(attestationInput.safeParse(input).success).toBe(true);
     expect(attestationInput.safeParse({ ...input, note: "" }).success).toBe(true);

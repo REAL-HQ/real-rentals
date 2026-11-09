@@ -14,10 +14,19 @@ export const EVIDENCE_FIELD_LABELS: Record<EvidenceField, string> = {
   license_front: "License Front", license_back: "License Back", insurance: "Insurance", agreement: "Agreement", gig_profile: "Gig Profile", inspection: "Pre-Inspection", pickup: "Pickup",
 };
 
+export const PICKUP_PAYMENT_METHODS = ["Cash", "Stripe", "Zelle", "Cash App", "Venmo", "Bank Transfer", "Other"] as const;
+export const pickupPaymentNote = z.string().regex(/^Payment Confirmed: [A-Za-z ]+; Amount Received: \$\d+(?:\.\d{2})?$/, "Payment Method And Exact Amount Required").superRefine((note, ctx) => {
+  const match = note.match(/^Payment Confirmed: ([A-Za-z ]+); Amount Received: \$(\d+(?:\.\d{2})?)$/);
+  if (!match || !(PICKUP_PAYMENT_METHODS as readonly string[]).includes(match[1] ?? "") || Number(match[2]) <= 0) ctx.addIssue({ code: "custom", message: "A Listed Payment Method And Positive Exact Amount Required" });
+});
 export const attestationInput = z.discriminatedUnion("state", [
   z.object({ applicationId: z.string().uuid(), field: evidenceFieldSchema, expectedRevision: z.number().int().nonnegative(), idempotencyKey: z.string().uuid(), state: z.literal("collected"), source: z.enum(["email", "text", "paper", "other"]), note: z.string().trim().max(1000).default("") }).strict(),
   z.object({ applicationId: z.string().uuid(), field: evidenceFieldSchema, expectedRevision: z.number().int().nonnegative(), idempotencyKey: z.string().uuid(), state: z.literal("not_collected"), source: z.null(), note: z.string().trim().max(1000).default("") }).strict(),
-]);
+]).superRefine((value, ctx) => {
+  if (value.field === "pickup" && value.state === "collected" && !pickupPaymentNote.safeParse(value.note).success) {
+    ctx.addIssue({ code: "custom", path: ["note"], message: "Confirm The Payment Method And Exact Amount Received" });
+  }
+});
 export type AttestationInput = z.infer<typeof attestationInput>;
 /** These attributes must be issued by the eventual transaction, never by the browser. */
 export type EvidenceEvent = AttestationInput & { id: string; revision: number; supersedesId: string | null; actorId: string; occurredAt: string };

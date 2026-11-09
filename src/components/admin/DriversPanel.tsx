@@ -78,7 +78,8 @@ import {
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
 import { checklistDocumentCategories } from "./checklist-actions";
-import { CHECKLIST_EVIDENCE_ENABLED, EVIDENCE_FIELDS, documentCollection, evidenceTone, latestEvidenceEvent, projectEvidence, requirementEvidence, type EvidenceEvent, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
+import { CHECKLIST_EVIDENCE_ENABLED, EVIDENCE_FIELDS, PICKUP_PAYMENT_METHODS, documentCollection, evidenceTone, latestEvidenceEvent, projectEvidence, requirementEvidence, type EvidenceEvent, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
+import { pickupAmountCents } from "@/lib/pickup-payment";
 import { getChecklistEvidence, saveChecklistEvidence } from "@/lib/checklist-evidence.functions";
 import { ChecklistEvidenceControl } from "./ChecklistEvidenceControl";
 import { driverLifecycle } from "@/lib/driver-lifecycle";
@@ -218,6 +219,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { DocumentsExpiringList } from "./DocumentsExpiring";
@@ -1781,6 +1783,14 @@ function DriverDetail({
   const saveEvidence = useServerFn(saveChecklistEvidence);
   const [evidenceEvents, setEvidenceEvents] = useState<EvidenceEvent[]>([]);
   const [evidenceSaving, setEvidenceSaving] = useState(false);
+  const [pickupPaymentOpen, setPickupPaymentOpen] = useState(false);
+  const [pickupPayment, setPickupPayment] = useState<PayCells | null>(null);
+  const loadPickupPayment = useServerFn(getDriverPayStatuses);
+  useEffect(() => {
+    setPickupPayment(null);
+    void loadPickupPayment({ data: { driverIds: [driver.id] } }).then((rows) => setPickupPayment(rows[driver.id] ?? NO_PAY_CELLS)).catch(() => setPickupPayment(null));
+  }, [driver.id, loadPickupPayment, readinessNonce]);
+  const pickupPaid = pickupPayment?.pay === "Current";
   const [evidenceLoading, setEvidenceLoading] = useState(true);
   const [evidenceFailed, setEvidenceFailed] = useState(false);
   const refreshEvidenceEvents = useCallback(async () => {
@@ -1805,7 +1815,7 @@ function DriverDetail({
     itemComplete: field === "agreement"
       ? rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true && r.detail !== "Upload Due") === true
       : field === "pickup"
-        ? rentalActiveFlag
+        ? rentalActiveFlag || pickupPaid
       : field === "inspection"
         ? !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true
         : false,
@@ -1834,6 +1844,25 @@ function DriverDetail({
       readinessChanged();
     }
   }
+  async function confirmPickupPayment(method: string, amount: string) {
+    const item = pickupItems[0];
+    const cents = pickupAmountCents(amount);
+    if (!item || cents === null || evidenceSaving) return;
+    setEvidenceSaving(true);
+    try {
+      await saveEvidence({ data: {
+        applicationId: driver.id, field: "pickup", expectedRevision: item.revision,
+        idempotencyKey: crypto.randomUUID(), state: "collected", source: "other",
+        note: `Payment Confirmed: ${method}; Amount Received: $${(cents / 100).toFixed(2)}`,
+      } });
+      setPickupPaymentOpen(false);
+      toast.success("Pickup Payment Confirmed — Use Activate Rental To Start The Rental");
+      await refreshEvidenceEvents();
+      readinessChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could Not Confirm Pickup Payment.");
+    } finally { setEvidenceSaving(false); }
+  }
   const evidencePresentation: EvidencePresentationMap | undefined = CHECKLIST_EVIDENCE_ENABLED && isManager ? Object.fromEntries((rentalTabReadiness?.requirements ?? []).flatMap((r) => {
     const presentation = requirementEvidence(r.key, evidenceItems);
     if (!presentation) {
@@ -1860,12 +1889,15 @@ function DriverDetail({
     // Collecting the card is not verifying insurance; say so on that row.
     if (r.key === "insurance_verified" && r.met !== true && presentation.tone === "yellow") presentation.label = "Upload Due · Verify Insurance";
     if (r.key === "inspection" && presentation.tone === "yellow") presentation.label = "Upload Due · Written Override Required";
-    // A pickup check-off is a staff note only; the rental still starts through Activate Rental.
-    if (r.key === "pickup" && presentation.tone === "yellow") presentation.label = "Checked Off · Activate To Finish";
+    // A payment confirmation records receipt only; it never creates a charge or starts a rental.
+    if (r.key === "pickup" && presentation.tone === "yellow") {
+      const latest = latestEvidenceEvent(safeEvents, driver.id, "pickup");
+      presentation.label = latest?.state === "collected" && latest.note.startsWith("Payment Confirmed:") ? "Payment Confirmed · Activate To Finish" : "Checked Off · Payment Details Due";
+    }
     if (r.key === "pickup" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Not Done";
     if (r.enforcement === "advisory" && r.key !== "pickup" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Advisory";
     const toggleable = presentation.fields.some((f) => !f.uploaded && !f.complete) && !(r.key === "signed_agreement" && r.met === true && presentation.fields.every((f) => f.status !== "upload_due"));
-    return [[r.key, toggleable ? { ...presentation, onToggle: () => void toggleEvidence(presentation.fields), busy: evidenceSaving } : presentation]];
+    return [[r.key, toggleable ? { ...presentation, onToggle: r.key === "pickup" ? () => setPickupPaymentOpen(true) : () => void toggleEvidence(presentation.fields), busy: evidenceSaving, toggleLabel: r.key === "pickup" ? "Confirm Pickup Payment" : presentation.toggleLabel, toggleTitle: r.key === "pickup" ? "Confirm The Amount Received And Payment Method." : presentation.toggleTitle } : presentation]];
   })) : undefined;
   const licenseItems = evidenceItems.filter((i) => i.field === "license_front" || i.field === "license_back");
   const profileItems = evidenceItems.filter((i) => i.field === "gig_profile");
@@ -2854,6 +2886,8 @@ function DriverDetail({
         />
       ) : null}
 
+      {pickupPaymentOpen ? <PickupPaymentDialog busy={evidenceSaving} onClose={() => setPickupPaymentOpen(false)} onConfirm={confirmPickupPayment} /> : null}
+
       {activateOpen ? (
         <ActivateRentalDialog
           driver={driver}
@@ -2874,6 +2908,25 @@ function DriverDetail({
       ) : null}
     </div>
   );
+}
+
+function PickupPaymentDialog({ busy, onClose, onConfirm }: { busy: boolean; onClose: () => void; onConfirm: (method: string, amount: string) => void }) {
+  const [method, setMethod] = useState<string>("Cash");
+  const [amount, setAmount] = useState("");
+  const valid = pickupAmountCents(amount) !== null;
+  return <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader><DialogTitle>Confirm Pickup Payment</DialogTitle></DialogHeader>
+      <div className="space-y-4 text-sm">
+        <p className="text-muted-foreground">Record payment already received. This does not create a charge or start the rental.</p>
+        <label className="block space-y-1.5"><span className="font-medium">Payment Method</span>
+          <Select value={method} onValueChange={setMethod}><SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger><SelectContent>{PICKUP_PAYMENT_METHODS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
+        </label>
+        <label className="block space-y-1.5"><span className="font-medium">Amount Received</span><div className="flex items-center gap-2"><span>$</span><input autoFocus inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" className="h-10 min-w-0 flex-1 rounded-md border border-input bg-white px-3 text-sm" aria-label="Amount Received" /></div></label>
+      </div>
+      <DialogFooter><Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button><Button type="button" disabled={!valid || busy} onClick={() => onConfirm(method, amount)}>{busy ? "Saving…" : "Confirm Payment"}</Button></DialogFooter>
+    </DialogContent>
+  </Dialog>;
 }
 
 function Row2({ label, value }: { label: string; value: React.ReactNode }) {

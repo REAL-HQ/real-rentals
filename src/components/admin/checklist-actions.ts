@@ -28,11 +28,11 @@ export function checklistAction(requirement: ActivationRequirement): ChecklistAc
       // The same vault handles signed paper uploads and their audited review.
       return { label: requirement.met === true ? "View Agreement" : "Add / Review", target: documentTarget };
     case "insurance_verified":
-      return { label: "Review", target: { kind: "section", tab: "screening", anchor: "profile-insurance" } };
+      return { label: requirement.met === true ? "Review" : "Add / Review", target: { kind: "section", tab: "documents", anchor: "profile-documents" } };
     case "interview":
       return { label: requirement.met === true ? "Interview Script" : "Call Complete", target: { kind: requirement.met === true ? "interview" : "record_call" } };
     case "inspection":
-      return { label: requirement.met === null ? "Choose Vehicle" : "View Vehicle", target: { kind: "section", tab: "rental", anchor: "profile-vehicle" } };
+      return { label: requirement.met === null ? "Choose Vehicle" : requirement.met === true ? "View Photos" : "Add Photos", target: { kind: "section", tab: "rental", anchor: "profile-vehicle" } };
     case "approved":
       return { label: "View Application", target: { kind: "section", tab: "application", anchor: "" } };
     case "gig_platform":

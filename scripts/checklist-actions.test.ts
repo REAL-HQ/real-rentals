@@ -20,8 +20,11 @@ describe("Driver checklist actions", () => {
       expect(before.met).toBe(false);
     }
   });
-  it("insurance review and interview open the established workflows", () => {
-    expect(checklistAction(requirement("insurance_verified"))?.target).toEqual({ kind: "section", tab: "screening", anchor: "profile-insurance" });
+  it("unfinished insurance opens file upload; completed insurance opens review", () => {
+    expect(checklistAction(requirement("insurance_verified"))).toMatchObject({ label: "Add / Review", target: { kind: "section", tab: "documents", anchor: "profile-documents" } });
+    expect(checklistAction(requirement("insurance_verified", true))?.target).toEqual({ kind: "section", tab: "documents", anchor: "profile-documents" });
+    expect(checklistAction(requirement("inspection"))?.label).toBe("Add Photos");
+    expect(checklistAction(requirement("inspection", true))?.label).toBe("View Photos");
     expect(checklistAction(requirement("interview"))?.target).toEqual({ kind: "record_call" });
     expect(checklistAction(requirement("interview", true))?.target).toEqual({ kind: "interview" });
   });

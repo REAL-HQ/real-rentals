@@ -83,11 +83,11 @@ export function ActivationRequirementList({
           >
             {/* Status markers never navigate or pretend an unsaved attestation
                 is complete. Explicit review/upload actions remain separate. */}
-            <span className="flex min-w-0 items-center gap-2 px-1 py-2">{marker}<span className="min-w-0 break-words text-foreground">{r.label}{r.detail && r.met !== true ? <span className="text-muted-foreground"> · {r.detail}</span> : null}</span></span>
+            <span className="flex min-w-0 items-center gap-2 px-1 py-2">{marker}<span className="min-w-0 break-words text-foreground">{r.label}{r.key === "inspection" && r.met !== true ? <span className="text-muted-foreground"> · Pickup Photos; Inspection Report Optional</span> : r.detail && r.met !== true ? <span className="text-muted-foreground"> · {r.detail}</span> : null}</span></span>
             <div className={embedded ? "ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5 max-sm:w-full" : `flex shrink-0 flex-col items-end gap-1 ${fileState ? "max-w-80 max-sm:w-full" : "max-w-36"}`}>
               <span className="text-right text-[10px] text-muted-foreground">{status}</span>
               {embedded && renderEvidence ? renderEvidence(r.key) : null}
-              {action && onRun ? <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => onRun(action.target)}>{action.label}</Button> : r.key === "gig_platform" ? <span className="text-right text-[10px] text-muted-foreground">No Platform Verification Connected</span> : null}
+              {action && onRun && !(fileState?.tone === "yellow" && embedded && renderEvidence && ["license_documents", "insurance_verified", "insurance_document", "gig_profile"].includes(r.key)) ? <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => onRun(action.target)}>{fileState?.tone === "yellow" && r.key === "signed_agreement" ? "Add / Review" : action.label}</Button> : r.key === "gig_platform" ? <span className="text-right text-[10px] text-muted-foreground">No Platform Verification Connected</span> : null}
               {!embedded && renderEvidence ? renderEvidence(r.key) : null}
             </div>
           </li>
