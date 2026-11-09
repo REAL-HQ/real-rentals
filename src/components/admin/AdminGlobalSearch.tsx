@@ -93,7 +93,7 @@ export function AdminGlobalSearch({ userId, allowed, onSelect }: {
         className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 rounded-full text-muted-foreground hover:bg-muted hover:text-popover-foreground"
         onClick={() => { setQuery(""); setOpen(false); input.current?.focus(); }}><X /></Button>}
       {show && <div id="admin-search-results" aria-label="Search Results"
-        className="absolute left-0 top-full z-50 mt-2 max-h-[min(28rem,65vh)] w-[28rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
+        className="absolute left-0 top-full z-50 mt-2 max-h-[min(28rem,65vh)] w-[28rem] max-w-[calc(100vw-4rem)] overflow-y-auto rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
         {pending ? <div role="status" className="flex items-center gap-2 p-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Searching…</div>
           : <>
             {kinds.map(({ kind, label, icon: Icon }) => {
