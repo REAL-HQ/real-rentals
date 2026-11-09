@@ -43,7 +43,7 @@ function SharedVehiclePage() {
           <div className="text-sm font-bold tracking-wide text-brand">REAL RENTALS</div>
           <h1 className="mt-3 text-2xl font-semibold sm:text-3xl">{pkg.title}</h1>
           <p className="mt-2 text-sm text-muted-foreground">{pkg.photoIds.length} photo{pkg.photoIds.length === 1 ? "" : "s"}{pkg.details ? " · Vehicle and registration details" : ""}</p>
-          <p className="mt-3 text-xs text-muted-foreground">Private link expires {fmtDateTime(pkg.expiresAt)}.</p>
+          <p className="mt-3 text-xs text-muted-foreground">Private Link Expires: {fmtDateTime(pkg.expiresAt)}.</p>
         </header>
 
         {pkg.details && (
