@@ -438,6 +438,7 @@ function FleetVehicles({
             <SelectContent>
               <SelectItem value="unit">Sort: Unit</SelectItem>
               <SelectItem value="make">Sort: Make</SelectItem>
+              <SelectItem value="year">Sort: Year</SelectItem>
               <SelectItem value="color">Sort: Color</SelectItem>
               <SelectItem value="rate">Sort: Rate</SelectItem>
               <SelectItem value="newest">Sort: Newest</SelectItem>

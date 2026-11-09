@@ -2,6 +2,13 @@ import { describe, it, expect } from "vitest";
 import { buildVehicleSearchOr, availabilityLabel, vehicleSortOrders, VEHICLE_SORTS } from "../src/lib/vehicles-list";
 
 describe("vehicles list helpers", () => {
+  it("supports Year sorting oldest first, with missing years last and stable ties", () => {
+    expect(VEHICLE_SORTS).toContain("year");
+    expect(vehicleSortOrders("year")).toEqual([
+      { column: "year", options: { ascending: true, nullsFirst: false } },
+      { column: "id", options: { ascending: true } },
+    ]);
+  });
   it("supports Color sorting alphabetically, with missing colors last and stable ties", () => {
     expect(VEHICLE_SORTS).toContain("color");
     expect(vehicleSortOrders("color")).toEqual([
