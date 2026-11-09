@@ -1881,7 +1881,7 @@ function DashboardView({
               Pay Now <ArrowRight className="w-4 h-4 ml-2" />
             </button>
             <div className="mt-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs p-3">
-              Pay On Time To Avoid A $50 Late Fee, Applied 3 Days After The Due Date.
+              Pay On Time To Avoid A $50 Late Fee.
             </div>
           </div>
         </div>
