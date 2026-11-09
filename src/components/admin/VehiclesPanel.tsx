@@ -346,7 +346,7 @@ function FleetVehicles({
                 <dd className="min-w-0"><CopyVin vin={v.vin} /></dd>
               </dl>
               <div className="mt-2.5 text-[13px] text-muted-foreground"><Rate v={v} /></div>
-              <div data-vehicle-status-row className="mt-2 flex items-center gap-1.5 whitespace-nowrap"><Availability v={v} /><ReadinessPill v={v} /></div>
+              <div data-vehicle-status-row className="mt-2 flex items-center gap-1.5 whitespace-nowrap"><ReadinessPill v={v} /><Availability v={v} /></div>
               <div className="mt-3 flex gap-2 max-lg:flex-wrap" onClick={(e) => e.stopPropagation()}>
                 <button onClick={() => setViewing(v.id)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
                   Open Record <ArrowRight className="w-3.5 h-3.5" />
@@ -519,8 +519,8 @@ function FleetVehicles({
                 <th className="px-3 py-2 font-medium">Color</th>
                 <th className="px-3 py-2 font-medium">Plate</th>
                 <th className="px-3 py-2 font-medium">VIN</th>
-                <th className="px-3 py-2 font-medium">Availability</th>
                 <th className="px-3 py-2 font-medium">Readiness</th>
+                <th className="px-3 py-2 font-medium">Availability</th>
                 <th className="px-3 py-2 font-medium">Weekly Rate</th>
                 <th className="px-3 py-2 font-medium sr-only">Open</th>
               </tr>
@@ -534,8 +534,8 @@ function FleetVehicles({
                   <td className="px-3 py-2 whitespace-nowrap">{displayVehicleWord(v.color ?? "") || <span className="text-muted-foreground">Not Set</span>}</td>
                   <td className="px-3 py-2 font-mono whitespace-nowrap">{v.license_plate || <span className="text-muted-foreground">—</span>}</td>
                   <td className="px-3 py-2"><CopyVin vin={v.vin} /></td>
-                  <td className="px-3 py-2 whitespace-nowrap"><Availability v={v} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><ReadinessPill v={v} /></td>
+                  <td className="px-3 py-2 whitespace-nowrap"><Availability v={v} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><Rate v={v} /></td>
                   <td className="px-3 py-2 text-right">
                     <button onClick={(e) => { e.stopPropagation(); setViewing(v.id); }} className="inline-flex items-center gap-1 rounded-md bg-black text-white px-2.5 py-1 text-xs">
