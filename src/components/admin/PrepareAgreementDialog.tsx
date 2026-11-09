@@ -125,9 +125,8 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
         return { ...current, details: next };
       });
       if (added > 0) toast.success(`${added} Written Agreement ${added === 1 ? "Detail" : "Details"} Added — Review Before Saving`);
-    } catch {
-      // No readable current agreement is not an error in the preparation flow.
-      // Staff can still enter every field manually; nothing is auto-verified.
+    } catch (error: any) {
+      toast.error(error?.message ?? "Could not read the written agreement. Enter the details manually.");
     } finally {
       setAgreementReading(false);
     }

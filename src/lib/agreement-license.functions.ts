@@ -96,7 +96,7 @@ export const readWrittenAgreement = createServerFn({ method: "POST" })
       .limit(1)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!document) throw new Error("No current written agreement is on file.");
+    if (!document) return { details: {}, fileName: "", documentId: "" };
 
     const { data: file, error: downloadError } = await supabaseAdmin.storage
       .from(document.storage_bucket)
