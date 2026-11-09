@@ -16,6 +16,7 @@ All IDs are UUIDs. Staff actor UUIDs have no cascading managed-auth foreign key.
 ### application_pickup_plans
 `application_id`, `revision`, `appointment_at` (timestamptz), `time_zone`, `location_snapshot`, `vehicle_id`, `actor_id`, `confirmed_at`.
 - One current plan per application. Requested application pickup date/time is not confirmation.
+- Staff confirm appointments; no renter self-scheduling. Location choices include 3500 E. Hillsborough Ave., Tampa, FL 33610 and 6411 E County Line Rd., Tampa, FL 33647, plus editable custom locations; neither address is selected or confirmed automatically.
 - Valid IANA zone, confirmed real location and existing eligible car; no defaults for unknown facts. Current plan updated only through the reviewed transaction, not direct browser writes.
 
 ### application_pickup_plan_events
@@ -54,11 +55,11 @@ All calls authenticated and caller scoped; strict validation rejects extra actor
 6. Avoid a read-then-write race on payment/void/refund evidence; agree shared locking or version guards with those canonical writers during protected integration review. “Checked once” is not sufficient.
 
 ## Dependencies And Blockers
-1. Approval/account ownership review: current approval provisions accounts, invites newly created accounts only, and defaults to agreement send. Exact approval-only/invite/retry semantics require a protected compatibility decision; no new auth writer or silent agreement send.
+1. Approval/account ownership review: current approval provisions accounts, invites newly created accounts only, and defaults to agreement send. User chose secure login/account setup first, even without a confirmed appointment/car; pickup details follow confirmation. Preserve an approval-only option and safe existing-account sign-in handling, not duplicate invites. Exact retry semantics require protected compatibility approval; no new auth writer or silent agreement send.
 2. Durable attestations + scoped readers and immutable audit; then plan revision/history. Final-vehicle reassignment must invalidate packet review and recheck inspection/insurance/agreement applicability.
 3. Accepted atomic checked activation wrapper and retry receipts; only then handoff extension. Existing required-file/identity gates must be reviewed together without weakening actual validity/access.
 4. Packet claim/outcome receipts, existing approved private share package and existing sender; then own-renter pre-pickup reads. Email provider is unchanged, delivery and retries unverified until capture-only acceptance.
-5. Existing balance link creates no charge and may need a real rental. No pre-rental payment obligation is invented; separately review Record Rental/payment linkage before enabling payment access.
+5. Pickup verification must support Stripe, Zelle/bank transfer, Cash App/Venmo, cash and Other. A method choice is not payment proof. Non-Stripe evidence needs staff verifier/time, exact amount/date, payer/reference/source evidence, applicable obligation and deduplication through an approved canonical path; never auto-post. Existing balance link creates no charge and may need a real rental. No pre-rental payment obligation is invented; separately review Record Rental/payment linkage before enabling payment access. Other requires the actual method name, never guessed from this answer.
 6. Install ordering and journal must be reconciled with pending proposals first. Security 0031 and Record Rental remain independent held dependencies; no migration number is assigned, historical receipts edited, SQL copied/generated or execution route re-investigated here.
 7. Protected auth/Identity Review and eSign changes require separate scope approval. Post-activation swap/numbering/C2 are excluded.
 
