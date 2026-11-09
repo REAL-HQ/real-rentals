@@ -7,7 +7,7 @@ const ok = (c: boolean, m: string) => { console.log(`${c ? "  PASS" : "  FAIL"} 
 const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
 
 const owner = ids(visibleTabs("owner")), mgr = ids(visibleTabs("manager")), coord = ids(visibleTabs("coordinator"));
-ok(owner.length === TABS.length, "Owner sees every destination");
+ok(TABS.every((tab) => owner.includes(tab.id)), "Owner sees every destination");
 ok(visibleSettingsSections("manager").length > 0, "Manager: Settings sections (opened from profile menu)");
 ok(JSON.stringify(ids(visibleSettingsSections("manager"))) === '["website","maintenance","vehicle_defaults","automations","activity"]', "Manager Settings: Website, Vehicle Defaults, Maintenance, Automations, Activity");
 ok(ids(visibleSettingsSections("owner")).includes("team") && ids(visibleSettingsSections("owner")).includes("automations"), "Owner Settings: Team + Automations");
@@ -28,7 +28,7 @@ ok(ids(visibleCreateActions("manager")).length === 5, "Manager Create: all five 
 ok(visibleTabs("coordinator").some((t) => t.id === "fleet_inbox" && t.group === "FLEET"), "Fleet Inbox under FLEET for Coordinator+");
 ok(navOwner("shops") === "partners" && navOwner("vendors") === "partners" && navOwner("charges") === "payments" && navOwner("inspections") === "maintenance", "Child tabs highlight their workspace");
 const rail = (t: any) => railEntries(t).map((e) => e.label).join(",");
-ok(rail("owner") === "Overview,Drivers,Bookings,Active Rentals,Payments,Vehicles,Fleet Inbox,Service,Incidents,Driver Issues,Expenses,Partners", "Owner rail matches target: " + rail("owner"));
+ok(rail("owner") === "Overview,Drivers,Bookings,Active Rentals,Payments,Vehicles,Fleet Inbox,Service,Issues,Expenses,Partners,Monthly Owner P&L", "Owner rail matches target: " + rail("owner"));
 ok(rail("coordinator") === "Overview,Drivers,Bookings,Vehicles,Fleet Inbox,Service,Partners", "Coordinator rail: " + rail("coordinator"));
 ok(!coord.includes("active_rentals"), "Coordinator: no Active Rentals");
 ok(JSON.stringify(visibleWorkspaceTabs("maintenance", "coordinator").map((k) => k.id)) === '["inspections"]', "Coordinator Service: Inspections only");
@@ -36,6 +36,9 @@ ok(JSON.stringify(visibleWorkspaceTabs("partners", "coordinator").map((k) => k.i
 ok(railEntries("coordinator").find((e) => e.id === "maintenance")!.href === "inspections", "Coordinator Service link opens Inspections");
 ok(visibleWorkspaceTabs("payments", "coordinator").length === 0, "Coordinator: no Payments/Charges");
 ok(LEGACY_TABS.websites.section === "website" && LEGACY_TABS.activity.section === "activity", "Websites/Activity bookmarks → Settings");
+ok(!TABS.some((x) => x.id === "incidents" || x.id === "driver_issues"), "Incidents and Driver Issues tabs removed");
+ok(TABS.some((x) => x.id === "issues" && x.label === "Issues"), "Issues nav is one word");
+ok(LEGACY_TABS.incidents?.tab === "issues" && LEGACY_TABS.driver_issues?.tab === "issues", "Old issue bookmarks → Issues");
 
 console.log(fail ? `\n${fail} FAILURE(S)` : "\nall assertions passed");
 process.exit(fail ? 1 : 0);

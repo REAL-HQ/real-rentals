@@ -190,7 +190,7 @@ export function DriverIssuesPanel() {
                 ) : null}
                 <Link
                   to="/admin"
-                  search={{ tab: "incidents", issue: row.id }}
+                  search={{ tab: "issues", filter: "incident", issue: row.id }}
                   className="rounded-lg border border-[#EDEDF0] px-3 py-1.5 text-sm text-[#111114] hover:bg-[#FAFAFB]"
                   data-testid="create-incident-from-issue"
                 >
