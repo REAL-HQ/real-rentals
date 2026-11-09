@@ -111,7 +111,6 @@ export const TABS: readonly TabDef[] = [
   { id: "deposits_ledger", label: "Deposits & Refunds", icon: Banknote, minTier: "manager", description: "Stripe Refunds, Deposits Held And The Period Net" },
   { id: "weekly_cash_flow", label: "Weekly Cash Flow", icon: TrendingUp, minTier: "manager", description: "Twelve Weeks Of Collections, Refunds, Expenses And Cash Flow" },
   { id: "vehicles", label: "Vehicles", icon: Car, minTier: "coordinator", group: "FLEET", description: "Fleet Inventory & Vehicle Status" },
-  { id: "available_cars", label: "Available Cars", icon: Car, minTier: "coordinator", group: "FLEET", description: "Ready-To-Rent Cars With Photos, Specs And Assign" },
   { id: "fleet_inbox", label: "Fleet Inbox", icon: Inbox, minTier: "coordinator", group: "FLEET", description: "Drop Fleet Files — Sorted, Matched To Vehicles And Ready For Review" },
   { id: "maintenance", label: "Service", icon: Wrench, minTier: "manager", group: "FLEET", description: "Maintenance, Due Work And Inspections" },
   { id: "inspections", label: "Inspections", icon: ClipboardCheck, minTier: "coordinator", description: "Pre-Delivery And Return Checklists With Photo Proof" },
@@ -125,7 +124,8 @@ export const TABS: readonly TabDef[] = [
 ];
 
 /** Old destinations that now live elsewhere; bookmarks resolve through this. */
-export const LEGACY_TABS: Record<string, { tab: string; section?: string; filter?: string; messages?: true }> = {
+export const LEGACY_TABS: Record<string, { tab: string; section?: string; filter?: string; vstatus?: string; messages?: true }> = {
+  available_cars: { tab: "vehicles", vstatus: "available" },
   automations: { tab: "settings", section: "automations" },
   team: { tab: "settings", section: "team" },
   messages: { tab: "overview", messages: true },

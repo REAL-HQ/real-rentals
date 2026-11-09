@@ -114,7 +114,6 @@ import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { TaxExportPanel } from "@/components/admin/TaxExportPanel";
 import { TAX_EXPORT_ENABLED } from "@/lib/tax-export-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
-import { AvailableCarsBoard } from "@/components/admin/AvailableCarsBoard";
 import { BookingsPanel } from "@/components/admin/BookingsPanel";
 import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
@@ -517,6 +516,7 @@ function Admin() {
       const next: AdminSearch = { tab: legacy.tab };
       if (legacy.section) next.section = legacy.section;
       if (legacy.filter) next.filter = legacy.filter;
+      if (legacy.vstatus) next.vstatus = legacy.vstatus;
       if (legacy.messages || search.msg) next.msg = search.msg ?? "inbox";
       void navigate({ to: "/admin", search: next, replace: true });
       return;
@@ -991,7 +991,6 @@ function Admin() {
                 }}
               />
             )}
-            {tab === "available_cars" && <AvailableCarsBoard canAssign={tierAllows(tier, "manager")} />}
             {tab === "fleet_inbox" && <FleetInboxPanel isManager={tierAllows(tier, "manager")} />}
             {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
             {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} tier={tier} />}
