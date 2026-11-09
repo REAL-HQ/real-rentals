@@ -2277,8 +2277,8 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
         </div>
       )}
 
-      {PORTAL_PAYMENT_HISTORY_ENABLED === true && previewId == null ? (
-        <PaymentHistoryCard />
+      {PORTAL_PAYMENT_HISTORY_ENABLED === true ? (
+        <PaymentHistoryCard previewDriverId={previewId ?? undefined} />
       ) : (
       <div className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">All Payments</h3>
