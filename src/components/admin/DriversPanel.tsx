@@ -1930,7 +1930,9 @@ function DriverDetail({
   useEffect(() => {
     // The header's next step comes from the server's answer on every tab
     // (re-checked on tab change so a fix made in a section shows up).
-    if (activationEntry !== "enabled" || activateOpen) return;
+    // Active rentals still need document-derived lifecycle facts. Skipping
+    // this read left a verified written Agreement yellow forever after Pickup.
+    if (!isManager || activateOpen) return;
     let cancelled = false;
     setRentalTabReadinessLoading(true);
     setRentalTabReadinessFailed(false);
@@ -1950,7 +1952,7 @@ function DriverDetail({
     return () => {
       cancelled = true;
     };
-  }, [tab, activationEntry, activateOpen, driver.id, driver.vehicle_id, driver.status, checkActivation, readinessNonce]);
+  }, [tab, isManager, activateOpen, driver.id, driver.vehicle_id, driver.status, checkActivation, readinessNonce]);
   const [recordOpen, setRecordOpen] = useState(false);
   const [recordCloseOpen, setRecordCloseOpen] = useState(false);
   const [approving, setApproving] = useState(false);

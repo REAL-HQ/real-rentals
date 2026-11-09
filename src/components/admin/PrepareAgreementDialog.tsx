@@ -7,7 +7,7 @@ import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { previewAgreement, sendAgreement } from "@/lib/agreements.functions";
 import { EMPTY_PREP, fillBlankAgreementDetails, type AgreementDetails, type AgreementPrep, type AdditionalDriver } from "@/lib/agreement-prep";
 import { defaultRentalEndIso } from "@/lib/agreement-dates";
-import { readAgreementLicense } from "@/lib/agreement-license.functions";
+import { readAgreementLicense, readWrittenAgreement } from "@/lib/agreement-license.functions";
 import { LIBRARY, DRAFT_STATUS_LABEL, acknowledgmentsOf } from "@/lib/agreement-library";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
@@ -50,6 +50,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const doPreview = useServerFn(previewAgreement);
   const doSend = useServerFn(sendAgreement);
   const doReadLicense = useServerFn(readAgreementLicense);
+  const doReadAgreement = useServerFn(readWrittenAgreement);
   const [prep, setPrep] = useState<AgreementPrep>(EMPTY_PREP);
   const [res, setRes] = useState<Res | null>(null);
   const [reviewedKey, setReviewedKey] = useState<string>("");
@@ -60,6 +61,8 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const [templateKey, setTemplateKey] = useState<string>("");
   const [licenseReading, setLicenseReading] = useState(false);
   const [licenseReadAttempted, setLicenseReadAttempted] = useState(false);
+  const [agreementReading, setAgreementReading] = useState(false);
+  const [agreementReadAttempted, setAgreementReadAttempted] = useState(false);
   // Send refused because the preview went stale: kept on screen (a toast can
   // be missed) until staff regenerate the preview and review it again.
   const [staleRefusal, setStaleRefusal] = useState<string | null>(null);
@@ -108,6 +111,28 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
     setPrep((current) => ({ ...current, details: { ...(current.details ?? values), ...patch } }));
   };
 
+  async function readAgreement() {
+    if (agreementReading || !values) return;
+    setAgreementReadAttempted(true);
+    setAgreementReading(true);
+    try {
+      const result = await doReadAgreement({ data: { applicationId } });
+      let added = 0;
+      setPrep((current) => {
+        const base = current.details ?? values;
+        const next = fillBlankAgreementDetails(base, result.details);
+        added = Object.keys(next).filter((key) => next[key as keyof AgreementDetails] !== base[key as keyof AgreementDetails]).length;
+        return { ...current, details: next };
+      });
+      if (added > 0) toast.success(`${added} Written Agreement ${added === 1 ? "Detail" : "Details"} Added — Review Before Saving`);
+    } catch {
+      // No readable current agreement is not an error in the preparation flow.
+      // Staff can still enter every field manually; nothing is auto-verified.
+    } finally {
+      setAgreementReading(false);
+    }
+  }
+
   async function readLicense(manual: boolean) {
     if (licenseReading || !values) return;
     setLicenseReadAttempted(true);
@@ -130,6 +155,15 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
       setLicenseReading(false);
     }
   }
+
+  useEffect(() => {
+    if (!res?.values || agreementReadAttempted || agreementReading) return;
+    const current = prep.details ?? res.values;
+    if (Object.values(current).some((value) => !value.trim())) void readAgreement();
+    else setAgreementReadAttempted(true);
+    // One blank-only read per dialog opening; staff corrections always win.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res?.values, agreementReadAttempted]);
 
   useEffect(() => {
     if (!res?.values || licenseReadAttempted || licenseReading) return;

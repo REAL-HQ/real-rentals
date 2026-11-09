@@ -39,6 +39,16 @@ assert.match(
   "the readiness request must depend on the refresh revision, not only the selected ids",
 );
 assert.match(
+  drivers,
+  /if \(!isManager \|\| activateOpen\) return;/,
+  "active rentals must still refresh signed-agreement lifecycle facts",
+);
+assert.doesNotMatch(
+  drivers,
+  /if \(activationEntry !== "enabled" \|\| activateOpen\) return;/,
+  "an existing active rental must not suppress the Agreement readiness read",
+);
+assert.match(
   vehicleDocs,
   /onDocumentChanged=\{\(\) => void documentsChanged\(\)\}/,
   "vehicle paperwork saves must reload the profile and readiness derived from them",
