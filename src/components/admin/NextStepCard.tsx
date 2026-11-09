@@ -86,7 +86,7 @@ export function NextStepCard({
         <ul className="mt-3 divide-y divide-[#F1F1F4] rounded-lg border border-[#F1F1F4]" aria-label="Blocking">
           {model.blockers.map((b, i) => (
             <li key={`${b.key}-${i}`} data-blocker={b.key} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[13px]">
-              <Button type="button" variant="ghost" className="h-auto min-h-10 min-w-0 justify-start gap-2 whitespace-normal px-1 text-left text-[13px] font-normal" aria-label={`${b.fix}: ${b.label}`} onClick={() => onRun(b.target)}>
+              <Button type="button" variant="ghost" className="h-auto min-h-10 min-w-0 justify-start gap-2 whitespace-normal px-1 text-left text-[13px] font-normal hover:bg-danger-soft hover:text-foreground" aria-label={`${b.fix}: ${b.label}`} onClick={() => onRun(b.target)}>
                 <Circle className="h-4 w-4 shrink-0 text-destructive" />
                 <span>
                   {b.label}

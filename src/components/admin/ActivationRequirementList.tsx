@@ -63,7 +63,7 @@ export function ActivationRequirementList({
             data-blocker={blocker?.key}
           >
             {action && onRun ? (
-              <Button type="button" variant="ghost" className="h-auto min-h-10 min-w-0 justify-start gap-2 px-1 py-2 text-left text-[13px] font-normal whitespace-normal" aria-label={`${action.label}: ${r.label}`} onClick={() => onRun(action.target)}>
+              <Button type="button" variant="ghost" className="h-auto min-h-10 min-w-0 justify-start gap-2 px-1 py-2 text-left text-[13px] font-normal whitespace-normal hover:bg-danger-soft hover:text-foreground" aria-label={`${action.label}: ${r.label}`} onClick={() => onRun(action.target)}>
                 {icon}
                 <span className="min-w-0 break-words text-foreground">{r.label}{r.detail && r.met !== true ? <span className="text-muted-foreground"> · {r.detail}</span> : null}</span>
               </Button>
