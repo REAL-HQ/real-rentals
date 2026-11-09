@@ -31,8 +31,6 @@ const FILTERS = [
   { id: "issues", label: "Issues" },
 ] as const;
 
-const HEADERS = ["Driver", "Vehicle", "Started", "Weeks", "Rate", "Due", "Paid", "Overdue", "Late Fee", "Actions"];
-
 function countLabel(value: number | null): string {
   return value == null ? "Unavailable" : String(value);
 }
@@ -40,6 +38,17 @@ function countLabel(value: number | null): string {
 function documentLabel(row: ActiveRentalRow): string {
   if (row.documentsExpiring == null) return "Unavailable";
   return row.documentsExpiring ? "Expiring" : "Current";
+}
+
+function isAbortError(e: unknown): boolean {
+  if (!e || typeof e !== "object") return false;
+  const err = e as { name?: string; message?: string; cause?: { name?: string } };
+  const msg = String(err.message ?? "");
+  return (
+    err.name === "AbortError" ||
+    err.cause?.name === "AbortError" ||
+    /aborted|ERR_CONNECTION_CLOSED|Failed to fetch|The operation was aborted/i.test(msg)
+  );
 }
 
 export function ActiveRentalsPanel() {
@@ -58,10 +67,19 @@ export function ActiveRentalsPanel() {
     let alive = true;
     setFeesLoaded(false);
     fetchFees()
-      .then((res) => { if (alive) setFees(new Map(res.rows.map((r) => [r.rentalId, r]))); })
-      .catch(() => { if (alive) setFees(new Map()); })
-      .finally(() => { if (alive) setFeesLoaded(true); });
-    return () => { alive = false; };
+      .then((res) => {
+        if (alive) setFees(new Map(res.rows.map((r) => [r.rentalId, r])));
+      })
+      .catch((e) => {
+        if (!alive || isAbortError(e)) return;
+        setFees(new Map());
+      })
+      .finally(() => {
+        if (alive) setFeesLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
   }, [fetchFees, reload]);
 
   useEffect(() => {
@@ -79,7 +97,7 @@ export function ActiveRentalsPanel() {
         });
       })
       .catch((e) => {
-        if (!alive) return;
+        if (!alive || isAbortError(e)) return;
         toast.error(e instanceof Error ? e.message : "Could not load active rentals");
       })
       .finally(() => {
@@ -127,8 +145,10 @@ export function ActiveRentalsPanel() {
             !loaded.issues ? "Open issue counts are unavailable." : null,
             !loaded.incidents ? "Open incident counts are unavailable." : null,
             !loaded.documents ? "Document expiry is unavailable." : null,
-          ].filter(Boolean).join(" ")}
-          {" "}Unavailable means that read did not load.
+          ]
+            .filter(Boolean)
+            .join(" ")}{" "}
+          Unavailable means that read did not load.
         </p>
       ) : null}
 
@@ -142,59 +162,78 @@ export function ActiveRentalsPanel() {
         />
       ) : (
         <AdminTableScroll className="mt-4 rounded-2xl border border-[#EDEDF0] bg-white">
-          <table className="min-w-[1020px] w-full text-left text-sm">
+          {/* Fits ~1000px content width at 1280 / 100% zoom: no min-width, merged cells, sticky Open. */}
+          <table className="w-full table-fixed text-left text-sm" data-testid="active-rentals-table">
             <thead className="text-[11px] font-semibold text-[#55555E]">
               <tr className="border-b border-[#EDEDF0]">
-                {HEADERS.map((label) => (
-                  <th key={label} className={`whitespace-nowrap px-3 py-2.5 font-semibold ${label === "Actions" ? "text-right" : ""}`}>{label}</th>
-                ))}
+                <th className="w-[16%] px-2 py-2.5 font-semibold">Driver</th>
+                <th className="w-[22%] px-2 py-2.5 font-semibold">Vehicle</th>
+                <th className="w-[14%] px-2 py-2.5 font-semibold">Started</th>
+                <th className="w-[10%] px-2 py-2.5 font-semibold">Rate</th>
+                <th className="w-[16%] px-2 py-2.5 font-semibold">Due</th>
+                <th className="w-[12%] px-2 py-2.5 font-semibold">Overdue</th>
+                <th className="w-[10%] px-2 py-2.5 font-semibold text-right sticky right-0 bg-white">Open</th>
               </tr>
             </thead>
             <tbody>
               {visible.map((row) => {
                 const [vehicleName, ...vehicleDetails] = row.vehicleLabel.split(" · ");
+                const fee = fees.get(row.id);
+                const lateDue = (fee?.lateFee ?? 0) > 0 && !fee?.waived;
                 return (
                   <tr key={row.id} className="border-b border-[#EDEDF0] last:border-0" data-testid="active-rental-row">
-                    <td className="min-w-[120px] px-3 py-2.5 align-middle font-medium text-[#111114]">{row.driverName}</td>
-                    <td className="min-w-[220px] px-3 py-2.5 align-middle text-[#111114]">
-                      <div className="flex items-center gap-2.5">
-                        <span className="block h-10 w-14 shrink-0 overflow-hidden rounded-md border border-border bg-soft">
+                    <td className="px-2 py-2 align-middle font-medium text-[#111114]">
+                      <span className="block truncate">{row.driverName}</span>
+                    </td>
+                    <td className="px-2 py-2 align-middle text-[#111114]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="block h-8 w-11 shrink-0 overflow-hidden rounded-md border border-border bg-soft">
                           <VehicleStaffPhoto path={row.thumbnailPath ?? null} name={vehicleName} className="h-full w-full object-cover" />
                         </span>
                         <span className="min-w-0">
-                          <span className="block font-medium leading-tight">{vehicleName}</span>
-                          {vehicleDetails.length ? <span className="mt-1 block text-xs text-muted-foreground">{vehicleDetails.join(" · ")}</span> : null}
+                          <span className="block truncate font-medium leading-tight">{vehicleName}</span>
+                          {vehicleDetails.length ? (
+                            <span className="mt-0.5 block truncate text-xs text-muted-foreground">{vehicleDetails.join(" · ")}</span>
+                          ) : null}
                         </span>
                       </div>
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">{formatBoardDate(row.startDate)}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">{weeksInLabel(row.weeksIn)}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">{formatWeeklyRate(row.weeklyRate)}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">{formatBoardDate(row.nextPaymentDue) || "No Due Date"}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">
-                      {paymentStatusLabel(row.lastPaymentStatus, row.paymentsLoaded)}
-                      {row.lastPaymentViaStripe ? <span className="ml-1 text-[11px] text-[#55555E]">Stripe</span> : null}
+                    <td className="px-2 py-2 align-middle">
+                      <span className="block whitespace-nowrap">{formatBoardDate(row.startDate)}</span>
+                      <span className="block text-xs text-muted-foreground">{weeksInLabel(row.weeksIn)}</span>
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">
+                    <td className="px-2 py-2 align-middle whitespace-nowrap">{formatWeeklyRate(row.weeklyRate)}</td>
+                    <td className="px-2 py-2 align-middle">
+                      <span className="block whitespace-nowrap">{formatBoardDate(row.nextPaymentDue) || "No Due Date"}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {paymentStatusLabel(row.lastPaymentStatus, row.paymentsLoaded)}
+                        {row.lastPaymentViaStripe ? " · Stripe" : ""}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 align-middle">
                       {(row.overdueDays ?? 0) > 0 ? (
-                        <span className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white">{overdueLabel(row.overdueDays)}</span>
+                        <span className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white">
+                          {overdueLabel(row.overdueDays)}
+                        </span>
                       ) : (
-                        overdueLabel(row.overdueDays)
+                        <span className="text-muted-foreground">{overdueLabel(row.overdueDays)}</span>
+                      )}
+                      {lateDue ? (
+                        <span className="mt-1 block text-xs font-medium text-[#D03020]" data-testid="late-fee">
+                          Late {lateFeeLabel(fee, feesLoaded)}
+                        </span>
+                      ) : (
+                        <span className="sr-only" data-testid="late-fee">
+                          {lateFeeLabel(fee, feesLoaded)}
+                        </span>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 align-middle" data-testid="late-fee">
-                      {(fees.get(row.id)?.lateFee ?? 0) > 0 && !fees.get(row.id)?.waived ? (
-                        <span className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white">{lateFeeLabel(fees.get(row.id), feesLoaded)}</span>
-                      ) : (
-                        lateFeeLabel(fees.get(row.id), feesLoaded)
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">
-                      <div className="flex items-center justify-end gap-1.5">
+                    <td className="px-2 py-2 align-middle sticky right-0 bg-white">
+                      <div className="flex items-center justify-end gap-1">
                         <Link
                           to="/admin"
-                          search={{ tab: "bookings", id: row.id }}
-                          className="inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-3 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB]"
+                          search={{ tab: "bookings", view: "past", id: row.id }}
+                          className="inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-2.5 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB]"
                         >
                           Open
                         </Link>
@@ -208,14 +247,18 @@ export function ActiveRentalsPanel() {
                               <MoreVertical className="h-4 w-4" />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuContent align="end" className="w-48 bg-white">
                             {row.applicationId ? (
                               <DropdownMenuItem asChild>
-                                <Link to="/admin" search={{ tab: "drivers", id: row.applicationId }}>Driver</Link>
+                                <Link to="/admin" search={{ tab: "drivers", id: row.applicationId }}>
+                                  Driver
+                                </Link>
                               </DropdownMenuItem>
                             ) : null}
                             <DropdownMenuItem asChild>
-                              <Link to="/admin" search={{ tab: "vehicles", id: row.vehicleId }}>Vehicle</Link>
+                              <Link to="/admin" search={{ tab: "vehicles", id: row.vehicleId }}>
+                                Vehicle
+                              </Link>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             {fees.get(row.id)?.mode === "manual" ? (
@@ -226,14 +269,20 @@ export function ActiveRentalsPanel() {
                             ) : null}
                             {fees.get(row.id)?.mode === "manual" || fees.get(row.id)?.owing ? <DropdownMenuSeparator /> : null}
                             <DropdownMenuItem asChild>
-                              <Link to="/admin" search={{ tab: "driver_issues" }}>Issues: {countLabel(row.openIssues)}</Link>
+                              <Link to="/admin" search={{ tab: "driver_issues" }}>
+                                Issues: {countLabel(row.openIssues)}
+                              </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild>
-                              <Link to="/admin" search={{ tab: "incidents" }}>Incidents: {countLabel(row.openIncidents)}</Link>
+                              <Link to="/admin" search={{ tab: "incidents" }}>
+                                Incidents: {countLabel(row.openIncidents)}
+                              </Link>
                             </DropdownMenuItem>
                             {row.applicationId ? (
                               <DropdownMenuItem asChild>
-                                <Link to="/admin" search={{ tab: "drivers", id: row.applicationId }}>Documents: {documentLabel(row)}</Link>
+                                <Link to="/admin" search={{ tab: "drivers", id: row.applicationId }}>
+                                  Documents: {documentLabel(row)}
+                                </Link>
                               </DropdownMenuItem>
                             ) : null}
                           </DropdownMenuContent>
@@ -249,16 +298,25 @@ export function ActiveRentalsPanel() {
       )}
       {dialog?.kind === "pay" ? (
         <RecordPaymentDialog
-          open onOpenChange={(v) => { if (!v) setDialog(null); }}
-          rentalId={dialog.row.id} driverName={dialog.row.driverName}
+          open
+          onOpenChange={(v) => {
+            if (!v) setDialog(null);
+          }}
+          rentalId={dialog.row.id}
+          driverName={dialog.row.driverName}
           weeklyRate={typeof dialog.row.weeklyRate === "number" ? dialog.row.weeklyRate : null}
           onSaved={() => setReload((n) => n + 1)}
         />
       ) : null}
       {dialog?.kind === "waive" ? (
         <WaiveLateFeeDialog
-          open onOpenChange={(v) => { if (!v) setDialog(null); }}
-          rentalId={dialog.row.id} driverName={dialog.row.driverName} status={fees.get(dialog.row.id)}
+          open
+          onOpenChange={(v) => {
+            if (!v) setDialog(null);
+          }}
+          rentalId={dialog.row.id}
+          driverName={dialog.row.driverName}
+          status={fees.get(dialog.row.id)}
           onSaved={() => setReload((n) => n + 1)}
         />
       ) : null}

@@ -16,6 +16,7 @@ import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
 import { ActivityPanel } from "@/components/admin/ActivityPanel";
 import { AgreementTemplatesPanel } from "@/components/admin/AgreementTemplatesPanel";
 import { RentalActivationSettingsPanel } from "@/components/admin/RentalActivationSettingsPanel";
+import { ReservationDepositSettingsPanel } from "@/components/admin/ReservationDepositSettingsPanel";
 import { PendingSignatures } from "@/components/admin/PendingSignatures";
 import { AGREEMENT_PENDING_SIGNATURE_ENABLED } from "@/lib/agreement-pending-signatures-flag";
 import { resolveSettingsSection, visibleSettingsSections } from "@/components/admin/nav-config";
@@ -30,7 +31,7 @@ const DESCRIPTIONS: Record<string, string> = {
   safe_autofill: "Owner-only. Automatically fill blank, non-sensitive vehicle details from trusted documents. Off by default.",
   vehicle_photos: "Owner-only. Listing photo enhancement, studio backgrounds, and reading details off a photograph. Enhancement is free and on-device; reading costs money and has a daily limit. All off by default.",
   rental_terms: "Minimum term, return notice, the terms text and rental activation rules.",
-  deposits: "Default deposit and refund window.",
+  deposits: "Default deposit, refund window, and optional reservation deposit.",
   applications: "Who qualifies to apply.",
   agreements: "Owner-only. Who countersigns, agreement wording, versions and approval. Changing the signer never alters documents already sent. Drafts never change what drivers receive.",
   payments: "Late fees, grace period and default payment method.",
@@ -140,6 +141,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-5">
             <SettingsPanel only={SECTION_KEY[current.id]} />
             {current.id === "rental_terms" ? <RentalActivationSettingsPanel /> : null}
+            {current.id === "deposits" ? <ReservationDepositSettingsPanel /> : null}
           </div>
         )}
       </section>

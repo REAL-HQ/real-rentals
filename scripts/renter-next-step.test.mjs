@@ -106,8 +106,11 @@ t("wiring: header and card share the model; fixes open the exact card; guards st
   assert.match(p, /onClick: \(\) => runTarget\(next\.target\)/);
   for (const id of ["profile-insurance", "profile-documents", "profile-agreements", "profile-vehicle"]) assert.match(p, new RegExp(`id="${id}"`));
   assert.match(p, /if \(approving\) return;/);
-  assert.match(p, /if \(activationEntry !== "enabled" \|\| activateOpen\) return;/, "readiness only fetched for Manager+");
+  assert.match(p, /if \(!isManager \|\| activateOpen\) return;/, "readiness only fetched for Manager+");
   assert.equal((p.match(/<ActivateRentalDialog/g) ?? []).length, 1);
+  assert.match(p, /ReserveCarDialog/);
+  assert.match(p, /canReserve/);
+  assert.match(p, /kind === "reserve"/);
   assert.doesNotMatch(p, /StartRentalCard/);
   const d = readFileSync("src/components/admin/ActivateRentalDialog.tsx", "utf8");
   assert.match(d, /async function submit\(\) \{\n    if \(!canSubmit\) return;/);

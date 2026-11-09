@@ -15,7 +15,8 @@ export type FixTarget =
   | { kind: "interview" }
   | { kind: "record_call" }
   | { kind: "approve" }
-  | { kind: "activate" };
+  | { kind: "activate" }
+  | { kind: "reserve" };
 
 export type Blocker = { key: ActivationRequirementKey | "local"; label: string; detail?: string; fix: string; target: FixTarget };
 
@@ -57,8 +58,13 @@ export function nextStep(input: {
   readiness: ActivationReadiness | null;
   loading: boolean;
   failed: boolean;
+  /** Approved (or active) with no open rental — offer Reserve Car. */
+  canReserve?: boolean;
+  /** Soft hold already on file. */
+  hasReservation?: boolean;
 }): NextStep {
   const { step, entry, readiness, loading, failed } = input;
+  const canReserve = input.canReserve === true && input.hasReservation !== true;
   if (entry === "rental_active") {
     return { label: "View Rental", target: { kind: "rental" }, busy: false, blockers: [], activation: "rental_active", note: "Rental is running. Active comes from this rental." };
   }
@@ -89,6 +95,9 @@ export function nextStep(input: {
   if (blockers.length) {
     const first = blockers[0];
     return { label: first.fix, target: first.target, busy: false, blockers, activation: "blocked", note: `${unmet.length || 1} item${(unmet.length || 1) === 1 ? "" : "s"} before this renter can start a rental.` };
+  }
+  if (canReserve) {
+    return { label: "Reserve Car", target: { kind: "reserve" }, busy: false, blockers: [], activation: "ready", note: "Approved — reserve a car for pickup, or start the rental when everything is ready. Activate Rental still re-checks every requirement." };
   }
   return { label: "Activate Rental", target: { kind: "activate" }, busy: false, blockers: [], activation: "ready", note: "Required items are complete. A driver becomes Active only when a rental starts; Activate Rental re-checks everything first." };
 }

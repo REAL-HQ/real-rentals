@@ -6,7 +6,6 @@ import {
   Users,
   Car,
   Handshake,
-  CalendarCheck,
   CreditCard,
   Wrench,
   LayoutDashboard,
@@ -85,24 +84,16 @@ export type Group = (typeof GROUP_ORDER)[number];
 export const TABS: readonly TabDef[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard, minTier: "coordinator", group: "HOME", description: "Pipeline, Fleet And Revenue At A Glance" },
   { id: "drivers", label: "Drivers", icon: Users, minTier: "coordinator", group: "PEOPLE", description: "Manage Applicants, Active Renters And Driver Lifecycle" },
-  // Bookings sits above Payments under RENTALS: what is out on rent, and what
-  // came back, before the money it generated. Coordinator-visible — the money
-  // columns are withheld by the SERVER for that tier, not by this list.
+  // Bookings: reservations (Booked), who is out (Active), and past rentals.
+  // Coordinator-visible so staff can open paperwork; the Active board stays
+  // Manager+ on the server. Old ?tab=bookings links redirect here.
   {
     id: "bookings",
     label: "Bookings",
-    icon: CalendarCheck,
+    icon: ListChecks,
     minTier: "coordinator",
     group: "RENTALS",
-    description: "Active And Completed Rentals, With Their Paperwork",
-  },
-  {
-    id: "active_rentals",
-    label: "Active Rentals",
-    icon: ListChecks,
-    minTier: "manager",
-    group: "RENTALS",
-    description: "Who Is Out, What Is Due, And What Is Still Open",
+    description: "Reservations, Active Rentals And Past Bookings",
   },
   { id: "payments", label: "Payments", icon: CreditCard, minTier: "manager", group: "RENTALS", description: "Rent, Deposits, Balances And Renter Charges" },
   { id: "charges", label: "Charges", icon: Receipt, minTier: "manager", description: "Tolls And Violations, Matched To The Renter Who Had The Car" },
@@ -132,6 +123,8 @@ export const LEGACY_TABS: Record<string, { tab: string; section?: string; filter
   websites: { tab: "settings", section: "website" },
   activity: { tab: "settings", section: "activity" },
   waitlist: { tab: "drivers", filter: "waitlist" },
+  // Active Rentals folded into Bookings; keep old links working.
+  active_rentals: { tab: "bookings" },
 };
 
 /** Settings workspace menu. Only sections with real settings/functionality. */
