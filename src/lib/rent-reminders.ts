@@ -8,18 +8,34 @@
 //                 (manual payers; an autopay card is charged later that day)
 //   overdue       a failed Stripe charge, or still unpaid at 6 PM on the due date.
 //                 Says the $50/day late fee applies (firm from the first week).
-//   daily         every day after that, from 10 AM, with the running balance
-//                 including late fees, until paid or staff stops it.
+//   daily         from the day AFTER the overdue notice (never the same day as it
+//                 or as a Payment Failed Text), from 10 AM, until paid or stopped.
+//                 Stripe renters: this week's invoice amount with its own link,
+//                 and any late fee stated as owed separately (the link cannot
+//                 collect it). Manual payers: rent plus late fees.
+//
+// No catch-up blast: an overdue notice is only sent for a failure (Stripe
+// invoice created, or manual 6 PM due-day cutoff) that happened after the
+// Overdue switch was turned on and within CATCHUP_MAX_DAYS. Older ones, and
+// ones a renter was already texted about (Payment Failed Text, or any outbound
+// text naming that invoice in the last few days), count as already notified,
+// so only the next day's daily notice follows.
+//
+// A whole-week late-fee waiver removes every late-fee line and amount.
 //
 // One send per rental + due date + stage (+ day for daily) + channel. The
 // ledger (rent_reminder_log) is the claim, shared with the Stripe webhook's
 // failed-payment text, so a renter never gets two texts for the same thing.
 //
-// Stripe renters only ever get their own invoice page (invoice.stripe.com) or
-// a card-update link for their own subscription. Never another way to pay.
-import { isGenericPaymentLink, isHostedInvoiceUrl } from "@/lib/failed-payment-link";
+// Stripe renters only ever get their own invoice page (invoice.stripe.com).
+// The day-before autopay heads-up has no link at all. Never another way to pay.
+import { isHostedInvoiceUrl } from "@/lib/failed-payment-link";
 
 export const LATE_FEE_PER_DAY = 50;
+/** Overdue notices are only sent for failures this recent (days), and never for ones before the switch went on. */
+export const CATCHUP_MAX_DAYS = 3;
+/** An outbound text about the same invoice / week within this many days counts as the overdue notice. */
+export const PRIOR_NOTICE_DAYS = 3;
 
 export const RENT_REMINDER_STAGES = ["due_tomorrow", "due_today", "overdue", "daily"] as const;
 export type RentReminderStage = (typeof RENT_REMINDER_STAGES)[number];
@@ -118,8 +134,11 @@ export type RentalBillingState = {
   rentOwed: number;
   /** Stripe: the failed invoice's own page. */
   invoiceUrl?: string | null;
-  /** Stripe: a card-update link for this subscription, when one could be made. */
-  cardUpdateUrl?: string | null;
+  /** Stripe: the failed invoice's id and creation time (Unix seconds). */
+  invoiceId?: string | null;
+  invoiceCreatedAt?: number | null;
+  /** Stripe: other open failed invoices (newer), each listed with its own amount and link. */
+  otherInvoices?: { url: string | null; amount: number; createdOn: string }[];
   waivers?: LateFeeWaiver[];
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
@@ -129,47 +148,120 @@ export type StageDecision =
   | { send: true; stage: RentReminderStage; ledgerStage: string; dueDate: string }
   | { send: false; reason: string };
 
+/** Ledger claims for one rental + due date + channel: stage -> ET date it was claimed. */
+export type ClaimMap = Map<string, string>;
+
+/** Older callers pass a Set (dates unknown): treat those claims as made on an earlier day. */
+export function toClaimMap(sent: Set<string> | ClaimMap): ClaimMap {
+  if (sent instanceof Map) return sent;
+  return new Map([...sent].map((k) => [k, "0000-01-01"]));
+}
+
+export type StageContext = {
+  /** When the Overdue switch was turned on (ISO). Failures before this are never caught up. Null = on but unknown: no catch-up. Undefined = switch off. */
+  overdueEnabledAt?: string | null;
+  /** ET date of the latest outbound text about this invoice / week within PRIOR_NOTICE_DAYS, if any. */
+  priorNoticeOn?: string | null;
+};
+
+/** Parse a stored timestamp ("2026-11-09 19:26:29.81+00" or ISO) to ms, or null. */
+export function parseTs(v: unknown): number | null {
+  if (typeof v !== "string" || !v.trim()) return null;
+  let t = v.trim().replace(" ", "T");
+  if (/T.*[+-]\d{2}$/.test(t)) t += ":00";
+  const ms = Date.parse(t);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** When the failure that owes an overdue notice happened (ms): Stripe invoice creation, or 6 PM ET on a manual due date. */
+function failureMoment(s: RentalBillingState): number | null {
+  if (s.mode === "stripe") return s.invoiceCreatedAt ? s.invoiceCreatedAt * 1000 : (s.dueDate ? Date.parse(`${s.dueDate}T23:00:00Z`) : null);
+  return s.dueDate ? Date.parse(`${s.dueDate}T23:00:00Z`) : null; // 6 PM EST
+}
+
 /**
- * Which stage is owed right now. `sent` holds ledger stages already claimed for
- * this rental + due date (e.g. "overdue", "daily:2026-11-10"). A missed hour or
- * day sends the latest stage owed, never a burst of old ones.
+ * Which stage is owed right now. `sent` holds the ledger claims for this rental
+ * + due date + channel with the ET date of each claim. A missed hour or day
+ * sends the latest stage owed, never a burst of old ones.
  */
-export function decideStage(s: RentalBillingState, now: Date, sent: Set<string>): StageDecision {
+export function decideStage(s: RentalBillingState, now: Date, sent: Set<string> | ClaimMap, ctx: StageContext = {}): StageDecision {
   if (!s.dueDate) return { send: false, reason: "no_due_date" };
+  const claims = toClaimMap(sent);
   const { date: today, hour } = easternParts(now);
   const days = dayDiff(s.dueDate, today); // -1 = due tomorrow, 0 = due today, 1+ = late
 
   if (days === -1) {
     if (s.owing) return { send: false, reason: "not_owing_yet" };
     if (hour < 10) return { send: false, reason: "too_early" };
-    return pick("due_tomorrow", "due_tomorrow", s.dueDate, sent);
+    return pick("due_tomorrow", "due_tomorrow", s.dueDate, claims);
   }
   if (days < -1) return { send: false, reason: "not_due_yet" };
   if (!s.owing) return { send: false, reason: "paid_or_pending" };
 
-  if (days === 0) {
-    const failedStripe = s.mode === "stripe"; // Stripe is only "owing" once its charge failed
-    if (failedStripe || hour >= 18) return pick("overdue", "overdue", s.dueDate, sent);
-    if (s.mode === "manual" && hour >= 8) return pick("due_today", "due_today", s.dueDate, sent);
+  // Manual payer on the due day before the 6 PM cutoff: the due-today notice.
+  if (s.mode === "manual" && days === 0 && hour < 18) {
+    if (hour >= 8) return pick("due_today", "due_today", s.dueDate, claims);
     return { send: false, reason: "too_early" };
   }
 
-  // Late: the overdue notice first (catch-up), then one a day.
-  if (!sent.has("overdue")) return pick("overdue", "overdue", s.dueDate, sent);
+  // When was this week's overdue notice given? A ledger claim, or a recent text
+  // about the same invoice (Payment Failed Text / a staff text).
+  let overdueOn: string | null = claims.get("overdue") ?? null;
+  if (!overdueOn && ctx.priorNoticeOn) overdueOn = ctx.priorNoticeOn;
+  if (!overdueOn) {
+    const failedAt = failureMoment(s);
+    const enabledAt = parseTs(ctx.overdueEnabledAt ?? null);
+    const failedOn = failedAt != null ? easternParts(new Date(failedAt)).date : s.dueDate;
+    const recent = dayDiff(failedOn, today) <= CATCHUP_MAX_DAYS;
+    // undefined = Overdue is off (the runner then skips it as stage_off); null = on but its time is unreadable: no catch-up.
+    const afterEnable = ctx.overdueEnabledAt === undefined || (enabledAt != null && failedAt != null && failedAt >= enabledAt);
+    if (recent && afterEnable) return pick("overdue", "overdue", s.dueDate, claims);
+    // Before the switch went on, or too old: no catch-up notice. It counts as
+    // given on the later of the failure day and the day the switch went on, so
+    // the first notice is the next day's daily one (going forward only).
+    const enabledOn = enabledAt != null ? easternParts(new Date(enabledAt)).date : today;
+    overdueOn = failedOn > enabledOn ? failedOn : enabledOn;
+  }
+
+  // Daily: never the same day as the overdue notice, from 10 AM, once a day.
+  if (overdueOn >= today) return { send: false, reason: "overdue_given_today" };
+  if (claims.has(`daily:${today}`)) return { send: false, reason: "already_sent" };
   if (hour < 10) return { send: false, reason: "too_early" };
-  return pick("daily", `daily:${today}`, s.dueDate, sent);
+  return pick("daily", `daily:${today}`, s.dueDate, claims);
 }
 
-function pick(stage: RentReminderStage, ledgerStage: string, dueDate: string, sent: Set<string>): StageDecision {
+function pick(stage: RentReminderStage, ledgerStage: string, dueDate: string, sent: ClaimMap): StageDecision {
   if (sent.has(ledgerStage)) return { send: false, reason: "already_sent" };
   return { send: true, stage, ledgerStage, dueDate };
 }
 
-/** The ledger stage a Stripe failed-payment text should claim today. */
-export function webhookLedgerStage(sent: Set<string>, now: Date): string | null {
-  if (!sent.has("overdue")) return "overdue";
-  const key = `daily:${easternParts(now).date}`;
-  return sent.has(key) ? null : key;
+/**
+ * The ledger stage a Stripe failed-payment text should claim now, or null to
+ * stay quiet. Never a second text on a day that already had one (an overdue
+ * notice, a daily notice, or a recent text about the same invoice).
+ */
+/**
+ * Texts: at most one past-due text per day, so a same-day retry after the
+ * Overdue text (or after a staff text with this invoice) sends nothing.
+ * Emails (`onePerDay: false`): each genuinely new Stripe attempt still gets one
+ * failure email, but never two on the same ledger slot.
+ */
+export function webhookLedgerStage(
+  sent: Set<string> | ClaimMap,
+  now: Date,
+  priorNoticeOn: string | null = null,
+  opts: { onePerDay?: boolean } = {},
+): string | null {
+  const onePerDay = opts.onePerDay ?? true;
+  const claims = toClaimMap(sent);
+  const today = easternParts(now).date;
+  if (priorNoticeOn && priorNoticeOn >= today) return null;
+  for (const [stage, on] of claims) {
+    if (stage === `daily:${today}`) return null;
+    if (onePerDay && stage === "overdue" && on >= today) return null;
+  }
+  if (!claims.has("overdue")) return "overdue";
+  return `daily:${today}`;
 }
 
 // ------------------------------------------------------------------ templates
@@ -187,9 +279,9 @@ const STOP = " Reply STOP to opt out.";
 export const DEFAULT_TEMPLATES: RentReminderTemplates = {
   stripe: {
     due_tomorrow: {
-      sms: "Hi {{first_name}}, this is REAL RENTALS. Your card on file will be charged {{amount}} tomorrow ({{due_date}}) for your weekly rental.{{card_line}}" + STOP,
+      sms: "Hi {{first_name}}, this is REAL RENTALS. Heads up: your card on file will be charged {{amount}} tomorrow ({{due_date}}) for your weekly rental. Nothing else to do." + STOP,
       subject: "Your Weekly Rental Payment Is Tomorrow",
-      email: "Hi {{first_name}}, your card on file will be charged {{amount}} tomorrow, {{due_date}}, for your weekly rental. Please make sure it has funds available.{{card_line}}",
+      email: "Hi {{first_name}}, a quick heads up: your card on file will be charged {{amount}} tomorrow, {{due_date}}, for your weekly rental. Please make sure it has funds available. There is nothing else to do.",
     },
     due_today: {
       sms: "Hi {{first_name}}, this is REAL RENTALS. Your weekly payment of {{amount}} did not go through. Pay this week's invoice here: {{link}}" + STOP,
@@ -197,14 +289,14 @@ export const DEFAULT_TEMPLATES: RentReminderTemplates = {
       email: "Hi {{first_name}}, your weekly payment of {{amount}} did not go through. Please pay this week's invoice using the button below. You can use a different card on that page.",
     },
     overdue: {
-      sms: "Hi {{first_name}}, this is REAL RENTALS. Your weekly payment of {{amount}} due {{due_date}} did not go through. Pay this week's invoice here: {{link}} Per your rental agreement, a ${{late_fee_per_day}}/day late fee applies for each day it stays unpaid. Please use only this link so you are not charged twice." + STOP,
-      subject: "Payment Past Due: Late Fees Apply",
-      email: "Hi {{first_name}}, your weekly payment of {{amount}} due {{due_date}} did not go through. Please pay this week's invoice using the button below (you can use a different card on that page). Per your rental agreement, a ${{late_fee_per_day}} late fee applies for each day it stays unpaid. Please use only this button so you are not charged twice.",
+      sms: "Hi {{first_name}}, this is REAL RENTALS. Your weekly payment of {{amount}} due {{due_date}} did not go through. Pay this week's invoice here: {{link}}{{other_invoices_line}}{{late_fee_line}} Please use only this link so you are not charged twice." + STOP,
+      subject: "Payment Past Due",
+      email: "Hi {{first_name}}, your weekly payment of {{amount}} due {{due_date}} did not go through. Please pay this week's invoice using the button below (you can use a different card on that page).{{other_invoices_line}}{{late_fee_line}} Please use only this button so you are not charged twice.",
     },
     daily: {
-      sms: "Hi {{first_name}}, this is REAL RENTALS. Your rent is {{days_late}} day(s) late. You owe {{balance}}: {{amount}} rent plus {{late_fee}} in late fees. Pay this week's invoice here: {{link}}" + STOP,
-      subject: "Past Due Balance: {{balance}}",
-      email: "Hi {{first_name}}, your rent is {{days_late}} day(s) late. Your balance is {{balance}}: {{amount}} rent plus {{late_fee}} in late fees (${{late_fee_per_day}} per day, per your rental agreement). Please pay this week's invoice using the button below.",
+      sms: "Hi {{first_name}}, this is REAL RENTALS. Your weekly payment of {{amount}} is {{days_late}} day(s) late. Pay this week's {{amount}} invoice here: {{link}}{{other_invoices_line}}{{late_fee_line}}" + STOP,
+      subject: "Rent Past Due: {{amount}} Invoice",
+      email: "Hi {{first_name}}, your weekly payment of {{amount}} is {{days_late}} day(s) late. Please pay this week's {{amount}} invoice using the button below.{{other_invoices_line}}{{late_fee_line}}",
     },
   },
   manual: {
@@ -219,20 +311,20 @@ export const DEFAULT_TEMPLATES: RentReminderTemplates = {
       email: "Hi {{first_name}}, your weekly rent of {{amount}} is due today, {{due_date}}. {{payment_instructions}}",
     },
     overdue: {
-      sms: "Hi {{first_name}}, this is REAL RENTALS. Your weekly rent of {{amount}} due {{due_date}} has not been paid. Per your rental agreement, a ${{late_fee_per_day}}/day late fee applies for each day it stays unpaid. {{payment_instructions}}" + STOP,
-      subject: "Rent Past Due: Late Fees Apply",
-      email: "Hi {{first_name}}, your weekly rent of {{amount}} due {{due_date}} has not been paid. Per your rental agreement, a ${{late_fee_per_day}} late fee applies for each day it stays unpaid. {{payment_instructions}}",
+      sms: "Hi {{first_name}}, this is REAL RENTALS. Your weekly rent of {{amount}} due {{due_date}} has not been paid.{{late_fee_line}} {{payment_instructions}}" + STOP,
+      subject: "Rent Past Due",
+      email: "Hi {{first_name}}, your weekly rent of {{amount}} due {{due_date}} has not been paid.{{late_fee_line}} {{payment_instructions}}",
     },
     daily: {
-      sms: "Hi {{first_name}}, this is REAL RENTALS. Your rent is {{days_late}} day(s) late. You owe {{balance}}: {{amount}} rent plus {{late_fee}} in late fees. {{payment_instructions}}" + STOP,
+      sms: "Hi {{first_name}}, this is REAL RENTALS. Your rent is {{days_late}} day(s) late. You owe {{balance}}.{{late_fee_line}} {{payment_instructions}}" + STOP,
       subject: "Past Due Balance: {{balance}}",
-      email: "Hi {{first_name}}, your rent is {{days_late}} day(s) late. Your balance is {{balance}}: {{amount}} rent plus {{late_fee}} in late fees (${{late_fee_per_day}} per day, per your rental agreement). {{payment_instructions}}",
+      email: "Hi {{first_name}}, your rent is {{days_late}} day(s) late. Your balance is {{balance}}.{{late_fee_line}} {{payment_instructions}}",
     },
   },
   manualInstructions: "Reply to this message and we will send you how to pay.",
 };
 
-const PAYMENT_HANDLES = /(cash\s*app|cashapp|venmo|zelle|paypal|apple\s*pay|buy\.stripe\.com|checkout\.stripe\.com|(^|\s)\$[a-z][a-z0-9_-]{1,})/i;
+const PAYMENT_HANDLES = /(cash\s*app|cashapp|venmo|zelle|paypal|apple\s*pay|buy\.stripe\.com|checkout\.stripe\.com|billing\.stripe\.com|(^|\s)\$[a-z][a-z0-9_-]{1,})/i;
 
 /**
  * Why a template cannot be saved, or null. Stripe templates may not mention any
@@ -244,11 +336,18 @@ export function templateProblem(mode: PayerMode, stage: RentReminderStage, t: St
     if (text.length > (field === "Text" ? 640 : field === "Subject" ? 140 : 4000)) return `${field} Is Too Long`;
   }
   if (!/reply stop/i.test(t.sms)) return "Text Must Say Reply STOP To Opt Out";
+  // Late fees only through {{late_fee_line}}, so a waived week never mentions one.
+  const literal = `${t.sms}\n${t.subject}\n${t.email}`.replace(/\{\{[a-z_]+\}\}/g, "");
+  if (/late\s*fee/i.test(literal)) return "Use {{late_fee_line}} For Late Fees";
+  if (/\{\{(late_fee|late_fee_per_day)\}\}/.test(`${t.sms}${t.subject}${t.email}`)) return "Use {{late_fee_line}} For Late Fees";
   if (mode === "stripe") {
     const all = `${t.sms}\n${t.subject}\n${t.email}`;
     if (all.includes("{{payment_instructions}}")) return "Stripe Renters Only Get Their Own Invoice Link";
     if (PAYMENT_HANDLES.test(all.replace(/\$\{\{[a-z_]+\}\}/g, ""))) return "Stripe Renters Only Get Their Own Invoice Link";
     if (stage !== "due_tomorrow" && !t.sms.includes("{{link}}")) return "Text Must Include {{link}}";
+    if (stage === "due_tomorrow" && /\{\{link\}\}/.test(`${t.sms}${t.email}`)) return "Autopay Heads-Up Has No Link";
+    // The invoice link collects the invoice only; a total with late fees would not match it.
+    if (/\{\{balance\}\}/.test(`${t.sms}${t.subject}${t.email}`)) return "Stripe Renters See The Invoice Amount; Late Fees Are Stated Separately";
   }
   return null;
 }
@@ -295,18 +394,32 @@ export function renderReminder(
 ): RenderedReminder | null {
   const today = easternParts(now).date;
   const fee = lateFeeFor({ dueDate: s.dueDate!, today, waivers: s.waivers });
+  const wholeWeekWaived = (s.waivers ?? []).some((w) => w.dueDate === s.dueDate && w.waivedThrough == null);
   const amount = s.mode === "stripe" && s.rentOwed > 0 ? s.rentOwed : s.weeklyRate;
   let link: string | null = null;
   let linkLabel: string | null = null;
-  let cardLine = "";
-  if (s.mode === "stripe") {
-    if (stage === "due_tomorrow") {
-      const card = s.cardUpdateUrl && !isGenericPaymentLink(s.cardUpdateUrl) && /^https:\/\//.test(s.cardUpdateUrl) ? s.cardUpdateUrl : null;
-      if (card) { link = card; linkLabel = "Update Card"; cardLine = ` To use a different card: ${card}`; }
-    } else {
-      if (!isHostedInvoiceUrl(s.invoiceUrl)) return null;
-      link = s.invoiceUrl!.trim();
-      linkLabel = "Pay This Week's Invoice";
+  if (s.mode === "stripe" && stage !== "due_tomorrow") {
+    // Autopay heads-up carries no link at all. Every other Stripe notice: own invoice page only.
+    if (!isHostedInvoiceUrl(s.invoiceUrl)) return null;
+    link = s.invoiceUrl!.trim();
+    linkLabel = "Pay This Week's Invoice";
+  }
+  let lateFeeLine = "";
+  if (!wholeWeekWaived) {
+    if (stage === "overdue") {
+      lateFeeLine = ` Per your rental agreement, a $${LATE_FEE_PER_DAY}/day late fee applies for each day it stays unpaid.`;
+    } else if (stage === "daily" && fee.fee > 0) {
+      lateFeeLine = s.mode === "stripe"
+        ? ` Late fees of ${money(fee.fee)} ($${LATE_FEE_PER_DAY}/day per your rental agreement) are owed separately and are not part of this invoice.`
+        : ` That includes ${money(fee.fee)} in late fees ($${LATE_FEE_PER_DAY}/day per your rental agreement).`;
+    }
+  }
+  // Each other open invoice with its own amount and its own page; never a combined total.
+  let otherInvoicesLine = "";
+  if (s.mode === "stripe" && stage !== "due_tomorrow") {
+    for (const o of s.otherInvoices ?? []) {
+      if (!isHostedInvoiceUrl(o.url)) continue;
+      otherInvoicesLine += ` Your ${money(o.amount)} invoice from ${fmtDue(o.createdOn)} is also unpaid: ${o.url!.trim()}`;
     }
   }
   const vars: Record<string, string> = {
@@ -314,15 +427,15 @@ export function renderReminder(
     amount: money(amount),
     due_date: fmtDue(s.dueDate!),
     days_late: String(fee.daysLate),
-    late_fee: money(fee.fee),
-    late_fee_per_day: String(LATE_FEE_PER_DAY),
-    balance: money(round2(s.rentOwed + fee.fee)),
+    // A waived week shows rent only.
+    balance: money(round2(s.rentOwed + (wholeWeekWaived ? 0 : fee.fee))),
     link: link ?? "",
-    card_line: cardLine,
+    late_fee_line: lateFeeLine,
+    other_invoices_line: otherInvoicesLine,
     payment_instructions: s.mode === "manual" ? templates.manualInstructions : "",
   };
   const t = templates[s.mode][stage];
-  const fill = (x: string) => x.replace(/\{\{([a-z_]+)\}\}/g, (_, k) => vars[k] ?? "").replace(/\s{2,}/g, " ").trim();
+  const fill = (x: string) => x.replace(/\{\{([a-z_]+)\}\}/g, (_, k) => vars[k] ?? "").replace(/\s{2,}/g, " ").replace(/\s+([.,])/g, "$1").trim();
   return { sms: fill(t.sms), subject: fill(t.subject), email: fill(t.email), link, linkLabel };
 }
 

@@ -15,7 +15,7 @@ const STAGE_LABEL: Record<RentReminderStage, string> = {
   daily: "Daily Past Due",
 };
 const input = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm";
-const PLACEHOLDERS = "{{first_name}} {{amount}} {{due_date}} {{days_late}} {{late_fee}} {{late_fee_per_day}} {{balance}} {{link}} {{card_line}} {{payment_instructions}}";
+const PLACEHOLDERS = "{{first_name}} {{amount}} {{due_date}} {{days_late}} {{late_fee_line}} {{balance}} (manual only) {{link}} {{other_invoices_line}} (autopay only) {{payment_instructions}} (manual only)";
 
 export function RentReminderTemplates() {
   const load = useServerFn(getRentReminderTemplates);
@@ -52,7 +52,7 @@ export function RentReminderTemplates() {
         <div>
           <h3 className="text-[15px] font-semibold text-[#111114]">Rent Reminder Templates</h3>
           <p className="mt-0.5 text-[13px] text-[#55555E]">
-            One schedule for every renter. Autopay renters only ever get their own Stripe invoice or card link.
+            One schedule for every renter. Autopay renters only ever get their own Stripe invoice link; the day-before heads-up has no link. Late fees appear only through {"{{late_fee_line}}"}, which is left out when a week is waived.
             Turn each stage on in the list above; all start Off.
           </p>
         </div>

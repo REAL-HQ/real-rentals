@@ -127,8 +127,11 @@ function seed(opts: { on?: string[]; manualDue?: string; manualPaid?: number } =
 }
 
 const failedSnap = (createdOn: string, url: string | null = INVOICE_URL): StripeBillingSnapshot => ({
-  nextChargeOn: "2026-11-16", failedInvoices: [{ id: "in_failed", hostedUrl: url, amountDue: 350, createdOn }],
+  nextChargeOn: "2026-11-16",
+  failedInvoices: [{ id: "in_failed", hostedUrl: url, amountDue: 350, createdOn, createdAt: Math.floor(at(createdOn, 10).getTime() / 1000) }],
 });
+/** Overdue switch turned on well before the failures in these tests. */
+const E = { overdueEnabledAt: "2026-11-01T00:00:00Z" };
 const okSnap = (nextChargeOn: string): StripeBillingSnapshot => ({ nextChargeOn, failedInvoices: [] });
 
 function spies() {
@@ -136,10 +139,9 @@ function spies() {
   const email: any[] = [];
   return {
     sms, email,
-    deps: (now: Date, snap: StripeBillingSnapshot | null, card: string | null = CARD_URL) => ({
+    deps: (now: Date, snap: StripeBillingSnapshot | null) => ({
       now,
       stripeSnapshot: async () => snap,
-      cardUpdateUrl: async () => card,
       sendSms: async (a: any) => { sms.push(a); return { ok: true }; },
       sendEmail: async (a: any) => { email.push(a); return { ok: true }; },
     }),
@@ -163,18 +165,18 @@ describe("stage schedule", () => {
     expect(decideStage(m, at("2026-11-09", 7), new Set())).toMatchObject({ send: false });
     expect(decideStage(m, at("2026-11-09", 8), new Set())).toMatchObject({ send: true, stage: "due_today" });
     expect(decideStage(m, at("2026-11-09", 17, 59), new Set(["due_today"]))).toMatchObject({ send: false, reason: "already_sent" });
-    expect(decideStage(m, at("2026-11-09", 18), new Set(["due_today"]))).toMatchObject({ send: true, stage: "overdue" });
+    expect(decideStage(m, at("2026-11-09", 18), new Set(["due_today"]), E)).toMatchObject({ send: true, stage: "overdue" });
   });
   test("due day, paid: nothing", () => {
     expect(decideStage(base({ mode: "manual", owing: false }), at("2026-11-09", 12), new Set())).toMatchObject({ send: false, reason: "paid_or_pending" });
     expect(decideStage(base({ owing: false }), at("2026-11-09", 12), new Set())).toMatchObject({ send: false });
   });
   test("autopay failed charge: overdue right away on the due day (no due_today)", () => {
-    expect(decideStage(base({ owing: true, rentOwed: 350, invoiceUrl: INVOICE_URL }), at("2026-11-09", 12), new Set())).toMatchObject({ send: true, stage: "overdue" });
+    expect(decideStage(base({ owing: true, rentOwed: 350, invoiceUrl: INVOICE_URL }), at("2026-11-09", 12), new Set(), E)).toMatchObject({ send: true, stage: "overdue" });
   });
-  test("after the due day: overdue first (catch-up), then one daily notice from 10 AM", () => {
+  test("after the due day: overdue first (recent catch-up), then one daily notice from 10 AM", () => {
     const s = base({ owing: true, rentOwed: 350, invoiceUrl: INVOICE_URL });
-    expect(decideStage(s, at("2026-11-11", 8), new Set())).toMatchObject({ send: true, stage: "overdue" });
+    expect(decideStage(s, at("2026-11-11", 8), new Set(), E)).toMatchObject({ send: true, stage: "overdue" });
     expect(decideStage(s, at("2026-11-11", 9), new Set(["overdue"]))).toMatchObject({ send: false, reason: "too_early" });
     expect(decideStage(s, at("2026-11-11", 10), new Set(["overdue"]))).toMatchObject({ send: true, stage: "daily", ledgerStage: "daily:2026-11-11" });
     expect(decideStage(s, at("2026-11-11", 15), new Set(["overdue", "daily:2026-11-11"]))).toMatchObject({ send: false, reason: "already_sent" });
@@ -200,18 +202,49 @@ describe("late fees", () => {
     expect(lateFeeFor({ dueDate: "2026-11-09", today: "2026-11-13", waivers: [{ dueDate: "2026-11-09", waivedThrough: "2026-11-11" }] })).toMatchObject({ feeDays: 2, fee: 100 });
     expect(lateFeeFor({ dueDate: "2026-11-09", today: "2026-11-13", waivers: [{ dueDate: "2026-11-02", waivedThrough: null }] }).fee).toBe(200);
   });
-  test("the daily notice shows the running balance with late fees", () => {
+  test("autopay daily: the invoice amount with its link, late fees stated as owed separately (no total the link cannot collect)", () => {
     const r = renderReminder(DEFAULT_TEMPLATES, "daily", base({ owing: true, rentOwed: 350, invoiceUrl: INVOICE_URL }), at("2026-11-12", 10))!;
     expect(r.sms).toContain("3 day(s) late");
-    expect(r.sms).toContain("$500");
+    expect(r.sms).toContain("Pay this week's $350 invoice here: " + INVOICE_URL);
+    expect(r.sms).toContain("Late fees of $150 ($50/day per your rental agreement) are owed separately and are not part of this invoice.");
+    expect(r.sms).not.toContain("$500");
+    expect(r.subject).toBe("Rent Past Due: $350 Invoice");
+    expect(r.email).toContain("owed separately");
+  });
+  test("manual daily: the balance includes the late fees", () => {
+    const r = renderReminder(DEFAULT_TEMPLATES, "daily", base({ mode: "manual", owing: true, rentOwed: 350 }), at("2026-11-12", 10))!;
+    expect(r.sms).toContain("You owe $500.");
     expect(r.sms).toContain("$150 in late fees");
+    expect(r.subject).toBe("Past Due Balance: $500");
   });
   test("overdue notices state the $50/day fee from day one", () => {
     for (const mode of ["stripe", "manual"] as const) {
       const r = renderReminder(DEFAULT_TEMPLATES, "overdue", base({ mode, owing: true, rentOwed: 350, invoiceUrl: INVOICE_URL }), at("2026-11-09", 18))!;
       expect(r.sms).toContain("$50/day late fee");
-      expect(r.email).toContain("$50 late fee");
+      expect(r.email).toContain("$50/day late fee");
+      expect(r.subject).not.toMatch(/late fee/i);
     }
+  });
+  test("a whole-week waiver removes every late-fee line and amount, in every stage", () => {
+    const waivers = [{ dueDate: "2026-11-09", waivedThrough: null }];
+    for (const mode of ["stripe", "manual"] as const) {
+      for (const [stage, day] of [["overdue", "2026-11-09"], ["daily", "2026-11-12"], ["due_today", "2026-11-09"]] as const) {
+        const r = renderReminder(DEFAULT_TEMPLATES, stage, base({ mode, owing: true, rentOwed: 350, invoiceUrl: INVOICE_URL, waivers }), at(day, 18));
+        if (!r) continue;
+        for (const text of [r.sms, r.subject, r.email]) expect(text).not.toMatch(/late fee/i);
+        expect(r.sms).not.toContain("$500");
+      }
+    }
+    const m = renderReminder(DEFAULT_TEMPLATES, "daily", base({ mode: "manual", owing: true, rentOwed: 350, waivers }), at("2026-11-12", 10))!;
+    expect(m.sms).toContain("You owe $350.");
+    expect(m.subject).toBe("Past Due Balance: $350");
+  });
+  test("a waiver through a date keeps the line only while a fee is owed", () => {
+    const through = [{ dueDate: "2026-11-09", waivedThrough: "2026-11-11" }];
+    const early = renderReminder(DEFAULT_TEMPLATES, "daily", base({ owing: true, rentOwed: 350, invoiceUrl: INVOICE_URL, waivers: through }), at("2026-11-11", 10))!;
+    expect(early.sms).not.toMatch(/late fee/i);
+    const later = renderReminder(DEFAULT_TEMPLATES, "daily", base({ owing: true, rentOwed: 350, invoiceUrl: INVOICE_URL, waivers: through }), at("2026-11-13", 10))!;
+    expect(later.sms).toContain("Late fees of $100");
   });
   test("waiver saves who and when, and re-waiving updates the same week", async () => {
     const db = fakeDb(seed());
@@ -224,21 +257,14 @@ describe("late fees", () => {
 });
 
 describe("wording and links", () => {
-  test("autopay due-tomorrow: card on file charged tomorrow + own card link; no other way to pay", () => {
-    const r = renderReminder(DEFAULT_TEMPLATES, "due_tomorrow", base({ dueDate: "2026-11-10", cardUpdateUrl: CARD_URL }), at("2026-11-09", 10))!;
-    expect(r.sms).toContain("card on file will be charged $350 tomorrow");
-    expect(r.sms).toContain(CARD_URL);
-    expect(r.link).toBe(CARD_URL);
-    expect(r.sms).not.toMatch(/cash app|venmo|zelle|reply to this message and we will send/i);
-    expect(r.sms).toContain("Reply STOP to opt out.");
-  });
-  test("autopay due-tomorrow without a card link drops the line, never a generic link", () => {
-    const a = renderReminder(DEFAULT_TEMPLATES, "due_tomorrow", base({ dueDate: "2026-11-10", cardUpdateUrl: null }), at("2026-11-09", 10))!;
-    expect(a.link).toBeNull();
-    expect(a.sms).not.toContain("http");
-    const b = renderReminder(DEFAULT_TEMPLATES, "due_tomorrow", base({ dueDate: "2026-11-10", cardUpdateUrl: BUY_LINK }), at("2026-11-09", 10))!;
-    expect(b.link).toBeNull();
-    expect(b.sms).not.toContain("buy.stripe.com");
+  test("autopay due-tomorrow: a short heads-up the card on file is charged tomorrow, with no link of any kind", () => {
+    const r = renderReminder(DEFAULT_TEMPLATES, "due_tomorrow", base({ dueDate: "2026-11-10", invoiceUrl: INVOICE_URL }), at("2026-11-09", 10))!;
+    expect(r.sms).toBe("Hi Regina, this is REAL RENTALS. Heads up: your card on file will be charged $350 tomorrow (Tue, Nov 10) for your weekly rental. Nothing else to do. Reply STOP to opt out.");
+    expect(r.link).toBeNull();
+    for (const text of [r.sms, r.email, r.subject]) {
+      expect(text).not.toContain("http");
+      expect(text).not.toMatch(/cash app|venmo|zelle|reply to this message and we will send/i);
+    }
   });
   test("autopay overdue uses only the failed invoice's own page; no page = no message", () => {
     const r = renderReminder(DEFAULT_TEMPLATES, "overdue", base({ owing: true, rentOwed: 350, invoiceUrl: INVOICE_URL }), at("2026-11-09", 12))!;
@@ -265,6 +291,13 @@ describe("wording and links", () => {
     expect(templateProblem("stripe", "overdue", { ...ok, sms: ok.sms + " {{payment_instructions}}" })).not.toBeNull();
     expect(templateProblem("stripe", "overdue", { ...ok, sms: ok.sms.replace("{{link}}", "") })).not.toBeNull();
     expect(templateProblem("stripe", "overdue", { ...ok, sms: "Pay {{link}}" })).toBe("Text Must Say Reply STOP To Opt Out");
+    // Late fees only through {{late_fee_line}} (so a waiver can drop them).
+    expect(templateProblem("stripe", "overdue", { ...ok, sms: ok.sms.replace("{{late_fee_line}}", " A $50 late fee applies.") })).toBe("Use {{late_fee_line}} For Late Fees");
+    expect(templateProblem("manual", "daily", { ...DEFAULT_TEMPLATES.manual.daily, sms: "You owe {{balance}} plus {{late_fee}}. Reply STOP" })).toBe("Use {{late_fee_line}} For Late Fees");
+    // Stripe: no total the invoice link cannot collect, no link on the heads-up, no billing-portal link.
+    expect(templateProblem("stripe", "daily", { ...DEFAULT_TEMPLATES.stripe.daily, sms: "You owe {{balance}}: {{link}} Reply STOP" })).not.toBeNull();
+    expect(templateProblem("stripe", "due_tomorrow", { ...DEFAULT_TEMPLATES.stripe.due_tomorrow, sms: "Charged tomorrow {{link}} Reply STOP" })).not.toBeNull();
+    expect(templateProblem("stripe", "due_tomorrow", { ...DEFAULT_TEMPLATES.stripe.due_tomorrow, sms: "Update card " + CARD_URL + " Reply STOP" })).not.toBeNull();
     for (const mode of ["stripe", "manual"] as const) for (const st of ["due_tomorrow", "due_today", "overdue", "daily"] as const) {
       expect(templateProblem(mode, st, DEFAULT_TEMPLATES[mode][st])).toBeNull();
     }
@@ -347,14 +380,17 @@ describe("runner", () => {
     expect(run.skipped.no_safe_link).toBeGreaterThan(0);
     expect(db._state.rent_reminder_log.filter((r: Row) => r.rental_id === R_STRIPE)).toHaveLength(0);
   });
-  test("autopay day-before reminder mints the renter's own card link", async () => {
+  test("autopay day-before heads-up carries no link and makes no Stripe card session", async () => {
     const db = fakeDb(seed({ on: ALL }));
     const sp = spies();
     await runRentReminders(db, sp.deps(at("2026-11-15", 10), okSnap("2026-11-16")));
     const t = sp.sms.find((s) => s.rentalId === R_STRIPE);
     expect(t.kind).toBe("rent_reminder_due_tomorrow");
-    expect(t.body).toContain(CARD_URL);
-    expect(t.body).toContain("card on file");
+    expect(t.body).toContain("card on file will be charged $350 tomorrow");
+    expect(t.body).not.toContain("http");
+    const e = sp.email.find((x) => x.to === "regina@example.com");
+    expect(e.link).toBeNull();
+    expect(readFileSync(new URL("../src/lib/rent-reminders.server.ts", import.meta.url), "utf8")).not.toContain("billingPortal");
   });
   test("manual payer: due tomorrow, due today, then Record Payment stops the rest", async () => {
     const db = fakeDb(seed({ on: ALL, manualDue: "2026-11-10" }));
@@ -400,9 +436,11 @@ describe("one schedule with the Stripe failed-payment text", () => {
     const sp = spies();
     await runRentReminders(db, sp.deps(at("2026-11-09", 13), failedSnap("2026-11-09")));
     expect(sp.sms.filter((s) => s.rentalId === R_STRIPE)).toHaveLength(0);
-    // A retry later the same day: the daily slot, then nothing more that day.
-    expect(await sendFailedPaymentText(db, input, { sendSms: send, now: at("2026-11-09", 15) })).toEqual({ sent: true });
-    expect(await sendFailedPaymentText(db, input, { sendSms: send, now: at("2026-11-09", 16) })).toMatchObject({ sent: false, reason: "already_sent" });
+    // A retry later the same day: nothing more that day (one text a day).
+    expect(await sendFailedPaymentText(db, input, { sendSms: send, now: at("2026-11-09", 15) })).toMatchObject({ sent: false, reason: "already_sent" });
+    // The next day a retry takes that day's daily slot, then nothing more that day.
+    expect(await sendFailedPaymentText(db, input, { sendSms: send, now: at("2026-11-10", 15) })).toEqual({ sent: true });
+    expect(await sendFailedPaymentText(db, input, { sendSms: send, now: at("2026-11-10", 16) })).toMatchObject({ sent: false, reason: "already_sent" });
     expect(calls).toHaveLength(2);
   });
   test("with the rent reminders off, the failed text keeps its current wording", async () => {
@@ -424,10 +462,163 @@ describe("one schedule with the Stripe failed-payment text", () => {
     expect(r).toEqual({ sent: true });
     expect(calls).toHaveLength(1);
   });
-  test("webhookLedgerStage: overdue first, then one daily slot per day", () => {
+  test("webhookLedgerStage: overdue first, then one daily slot per day, never a second text the same day", () => {
     expect(webhookLedgerStage(new Set(), at("2026-11-09", 12))).toBe("overdue");
     expect(webhookLedgerStage(new Set(["overdue"]), at("2026-11-09", 12))).toBe("daily:2026-11-09");
     expect(webhookLedgerStage(new Set(["overdue", "daily:2026-11-09"]), at("2026-11-09", 12))).toBeNull();
+    expect(webhookLedgerStage(new Map([["overdue", "2026-11-09"]]), at("2026-11-09", 19))).toBeNull();
+    expect(webhookLedgerStage(new Map([["overdue", "2026-11-08"]]), at("2026-11-09", 19))).toBe("daily:2026-11-09");
+    expect(webhookLedgerStage(new Map(), at("2026-11-09", 19), "2026-11-09")).toBeNull();
+    // Emails: a genuinely new Stripe attempt the same day still gets its one email.
+    expect(webhookLedgerStage(new Map([["overdue", "2026-11-09"]]), at("2026-11-09", 19), null, { onePerDay: false })).toBe("daily:2026-11-09");
+    expect(webhookLedgerStage(new Map([["overdue", "2026-11-09"], ["daily:2026-11-09", "2026-11-09"]]), at("2026-11-09", 20), null, { onePerDay: false })).toBeNull();
+  });
+});
+
+describe("no duplicates and no catch-up blast", () => {
+  const ALL = [...RENT_REMINDER_SWITCHES, "payment_failed_text"];
+  const seedAt = (enabledAt: string, extra: Record<string, Row[]> = {}) => {
+    const sd: any = seed({ on: ALL });
+    sd.app_settings[0].value.on.rent_reminder_overdue.at = enabledAt;
+    return { ...sd, ...extra };
+  };
+  const invoiceOf = (createdOn: string, hour = 17) => ({ id: "in_failed", status: "open", hosted_invoice_url: INVOICE_URL, created: Math.floor(at(createdOn, hour, 41).getTime() / 1000) });
+  const snapOf = (createdOn: string, hour = 17): StripeBillingSnapshot => ({
+    nextChargeOn: "2026-11-16", failedInvoices: [{ id: "in_failed", hostedUrl: INVOICE_URL, amountDue: 350, createdOn, createdAt: Math.floor(at(createdOn, hour, 41).getTime() / 1000) }],
+  });
+  const stripeTexts = (sp: ReturnType<typeof spies>) => sp.sms.filter((s) => s.rentalId === R_STRIPE);
+
+  test("daily never goes out the same day as the overdue notice", async () => {
+    const db = fakeDb(seedAt("2026-11-01T00:00:00Z"));
+    const sp = spies();
+    for (const h of [11, 12, 15, 20]) await runRentReminders(db, sp.deps(at("2026-11-10", h, 5), snapOf("2026-11-09")));
+    expect(stripeTexts(sp).map((s) => s.kind)).toEqual(["rent_reminder_overdue"]);
+    for (const h of [9, 10, 14]) await runRentReminders(db, sp.deps(at("2026-11-11", h, 5), snapOf("2026-11-09")));
+    expect(stripeTexts(sp).map((s) => s.kind)).toEqual(["rent_reminder_overdue", "rent_reminder_daily"]);
+  });
+  test("a Payment Failed Text in the evening: no daily that evening, the daily starts the next morning", async () => {
+    const db = fakeDb(seedAt("2026-11-09T19:43:52.322Z"));
+    const sp = spies();
+    const calls: any[] = [];
+    // Damon-style: invoice from 11/5, retried and failing at 7:42 PM on 11/9.
+    await runRentReminders(db, sp.deps(at("2026-11-09", 16, 5), snapOf("2026-11-05")));
+    expect(stripeTexts(sp)).toHaveLength(0); // no catch-up for a failure before the switch went on
+    const r = await sendFailedPaymentText(db, { invoice: invoiceOf("2026-11-05"), amount: 350, rentalId: R_STRIPE, applicationId: APP_S, firstName: "Damon", phone: "3212870986" },
+      { now: at("2026-11-09", 19, 42), sendSms: async (a: any) => { calls.push(a); return { ok: true }; } });
+    expect(r).toEqual({ sent: true });
+    for (const h of [20, 21]) await runRentReminders(db, sp.deps(at("2026-11-09", h, 5), snapOf("2026-11-05")));
+    expect(stripeTexts(sp)).toHaveLength(0);
+    await runRentReminders(db, sp.deps(at("2026-11-10", 10, 5), snapOf("2026-11-05")));
+    expect(stripeTexts(sp).map((s) => s.kind)).toEqual(["rent_reminder_daily"]);
+    expect(calls).toHaveLength(1);
+  });
+  test("no catch-up blast: an invoice that failed before Overdue went on gets no overdue notice, only next-day dailies", async () => {
+    const db = fakeDb(seedAt("2026-11-09T19:43:52.322Z"));
+    const sp = spies();
+    for (const h of [15, 16, 18, 20]) await runRentReminders(db, sp.deps(at("2026-11-09", h, 5), snapOf("2026-11-09", 10)));
+    expect(stripeTexts(sp)).toHaveLength(0);
+    expect(sp.email.filter((e) => e.to === "regina@example.com")).toHaveLength(0);
+    await runRentReminders(db, sp.deps(at("2026-11-10", 10, 5), snapOf("2026-11-09", 10)));
+    expect(stripeTexts(sp).map((s) => s.kind)).toEqual(["rent_reminder_daily"]);
+  });
+  test("no catch-up for a failure older than the catch-up window, even after the switch went on", async () => {
+    const db = fakeDb(seedAt("2026-11-01T00:00:00Z"));
+    const sp = spies();
+    await runRentReminders(db, sp.deps(at("2026-11-09", 12, 5), snapOf("2026-11-05")));
+    const kinds = stripeTexts(sp).map((s) => s.kind);
+    expect(kinds).not.toContain("rent_reminder_overdue");
+  });
+  test("a staff text with the same invoice link counts as the overdue notice (no re-notify that day)", async () => {
+    const db = fakeDb(seedAt("2026-11-01T00:00:00Z", {
+      outbound_messages: [{ id: "m1", channel: "sms", rental_id: R_STRIPE, to_address: "+13212870986", status: "sent", kind: "manual",
+        body: "Hi Regina, please pay this week's invoice here: " + INVOICE_URL, created_at: at("2026-11-09", 13, 27).toISOString() }],
+    }));
+    const sp = spies();
+    for (const h of [14, 15, 18]) await runRentReminders(db, sp.deps(at("2026-11-09", h, 5), snapOf("2026-11-09", 10)));
+    expect(stripeTexts(sp)).toHaveLength(0);
+    expect(sp.email.filter((e) => e.to === "regina@example.com")).toHaveLength(0);
+    const calls: any[] = [];
+    const r = await sendFailedPaymentText(db, { invoice: invoiceOf("2026-11-09", 10), amount: 350, rentalId: R_STRIPE, applicationId: APP_S, firstName: "Regina", phone: "3212870986" },
+      { now: at("2026-11-09", 16), sendSms: async (a: any) => { calls.push(a); return { ok: true }; } });
+    expect(r).toMatchObject({ sent: false, reason: "already_sent" });
+    await runRentReminders(db, sp.deps(at("2026-11-10", 10, 5), snapOf("2026-11-09", 10)));
+    expect(stripeTexts(sp).map((s) => s.kind)).toEqual(["rent_reminder_daily"]);
+  });
+  test("a text about a different invoice (yesterday) does not count as this invoice's notice", async () => {
+    const db = fakeDb(seedAt("2026-11-01T00:00:00Z", {
+      outbound_messages: [{ id: "m1", channel: "sms", rental_id: R_STRIPE, to_address: "+13212870986", status: "sent", kind: "payment_failed",
+        body: "Pay here: https://invoice.stripe.com/i/acct_1TwBPNGsNNO50lXb/live_OTHER?s=ap", created_at: at("2026-11-08", 9).toISOString() }],
+    }));
+    const sp = spies();
+    await runRentReminders(db, sp.deps(at("2026-11-09", 12, 5), snapOf("2026-11-09", 10)));
+    expect(stripeTexts(sp).map((s) => s.kind)).toEqual(["rent_reminder_overdue"]);
+  });
+  test("a waived week: the overdue and daily texts never mention a late fee", async () => {
+    const db = fakeDb(seedAt("2026-11-01T00:00:00Z", { rent_late_fee_waivers: [{ id: "w1", rental_id: R_STRIPE, due_date: "2026-11-09", waived_through: null }] }));
+    const sp = spies();
+    await runRentReminders(db, sp.deps(at("2026-11-09", 12, 5), snapOf("2026-11-09", 10)));
+    await runRentReminders(db, sp.deps(at("2026-11-12", 10, 5), snapOf("2026-11-09", 10)));
+    expect(stripeTexts(sp).map((s) => s.kind)).toEqual(["rent_reminder_overdue", "rent_reminder_daily"]);
+    for (const t of stripeTexts(sp)) expect(t.body).not.toMatch(/late fee/i);
+  });
+  const twoSnap = (): StripeBillingSnapshot => ({
+    nextChargeOn: "2026-11-19",
+    failedInvoices: [
+      { id: "in_failed", hostedUrl: INVOICE_URL, amountDue: 350, createdOn: "2026-11-05", createdAt: Math.floor(at("2026-11-05", 17, 41).getTime() / 1000) },
+      { id: "in_second", hostedUrl: "https://invoice.stripe.com/i/acct_1TwBPNGsNNO50lXb/live_second", amountDue: 350, createdOn: "2026-11-12", createdAt: Math.floor(at("2026-11-12", 17, 41).getTime() / 1000) },
+    ],
+  });
+  const claimedOverdue = (st: any) => {
+    for (const channel of ["sms", "email"]) st.rent_reminder_log.push({ rental_id: R_STRIPE, due_date: "2026-11-05", stage: "overdue", channel, created_at: "2026-11-06T15:00:00Z" });
+  };
+  test("two open invoices: the text states the linked invoice's own amount and lists the other with its own link, never a combined total", async () => {
+    const db: any = fakeDb(seedAt("2026-11-01T00:00:00Z"));
+    claimedOverdue(db._state);
+    const sp = spies();
+    await runRentReminders(db, sp.deps(at("2026-11-13", 10, 5), twoSnap()));
+    const t = stripeTexts(sp)[0].body as string;
+    expect(t).toContain("Pay this week's $350 invoice here: " + INVOICE_URL);
+    expect(t).toContain("Your $350 invoice from Thu, Nov 12 is also unpaid: https://invoice.stripe.com/i/acct_1TwBPNGsNNO50lXb/live_second");
+    expect(t).not.toContain("$700");
+    expect(t).toContain("owed separately");
+    const e = sp.email.find((x) => x.workflow === "rent_reminder_daily");
+    expect(e.link).toBe(INVOICE_URL);
+    expect(e.text).toContain("live_second");
+  });
+  test("one rent text per renter per day: a newer invoice failing after today's daily waits; a daily after today's failed-payment text waits", async () => {
+    const db: any = fakeDb(seedAt("2026-11-01T00:00:00Z"));
+    claimedOverdue(db._state);
+    db._state.outbound_messages = [{ rental_id: R_STRIPE, to_address: "+13212870986", channel: "sms", kind: "rent_reminder_daily", status: "sent", body: `Pay: ${INVOICE_URL}`, created_at: at("2026-11-12", 10, 5).toISOString() }];
+    const calls: any[] = [];
+    const second = { id: "in_second", status: "open", hosted_invoice_url: "https://invoice.stripe.com/i/acct_1TwBPNGsNNO50lXb/live_second", created: Math.floor(at("2026-11-12", 17, 41).getTime() / 1000) };
+    const r = await sendFailedPaymentText(db, { invoice: second, amount: 350, rentalId: R_STRIPE, applicationId: APP_S, firstName: "Damon", phone: "3212870986" },
+      { now: at("2026-11-12", 17, 41), sendSms: async (a: any) => { calls.push(a); return { ok: true }; } });
+    expect(r.sent).toBe(false);
+    expect(calls).toHaveLength(0);
+    // Reverse order: a failed-payment text at 9 AM; the 10 AM daily for the older invoice waits a day.
+    const db2: any = fakeDb(seedAt("2026-11-01T00:00:00Z"));
+    claimedOverdue(db2._state);
+    db2._state.outbound_messages = [{ rental_id: R_STRIPE, to_address: "+13212870986", channel: "sms", kind: "payment_failed", status: "sent", body: "Pay: live_second", created_at: at("2026-11-16", 9, 0).toISOString() }];
+    const sp = spies();
+    const run = await runRentReminders(db2, sp.deps(at("2026-11-16", 10, 5), twoSnap()));
+    expect(stripeTexts(sp)).toHaveLength(0);
+    expect(run.skipped.texted_today).toBe(1);
+    await runRentReminders(db2, sp.deps(at("2026-11-17", 10, 5), twoSnap()));
+    expect(stripeTexts(sp)).toHaveLength(1);
+    expect(stripeTexts(sp)[0].body).toContain("live_second");
+  });
+  test("could not read today's texts: hold the text (fail closed)", async () => {
+    const db: any = fakeDb(seedAt("2026-11-01T00:00:00Z"));
+    claimedOverdue(db._state);
+    const from = db.from;
+    db.from = (t: string) => {
+      if (t !== "outbound_messages") return from(t);
+      const b: any = { select: () => b, eq: () => b, then: (res: any) => Promise.resolve({ data: null, error: { message: "down" } }).then(res) };
+      return b;
+    };
+    const sp = spies();
+    await runRentReminders(db, sp.deps(at("2026-11-13", 10, 5), twoSnap()));
+    expect(stripeTexts(sp)).toHaveLength(0);
   });
 });
 
