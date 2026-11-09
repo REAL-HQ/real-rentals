@@ -46,6 +46,7 @@ import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import { CONDITION_SECTIONS, ROLE_SUBSECTION, groupConditionPhotos } from "@/lib/condition-photos";
 import {
   listConditionMedia,
+  deleteOwnConditionMedia,
   getMyCheckoutInspection,
   signCheckoutInspection,
 } from "@/lib/inspections.functions";
@@ -1113,6 +1114,7 @@ function PicturesView() {
   const picsPreviewId = usePreviewDriver();
   const fetchPics = usePortalRead(getDriverPictures);
   const fetchCondition = usePreviewNull(listConditionMedia, [] as any);
+  const deletePhoto = useServerFn(deleteOwnConditionMedia);
   const fetchDashboard = usePortalRead(getDriverDashboard);
 
   const { data: dash } = useQuery({
@@ -1189,6 +1191,7 @@ function PicturesView() {
                     phase={section.uploadPhase}
                     media={yours}
                     defaultAngle={section.key === "during" ? "damage" : "front"}
+                    onDelete={async (id) => { await deletePhoto({ data: { id } }); }}
                     onChanged={() => refetchCondition()}
                   />
                 )}

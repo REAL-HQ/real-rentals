@@ -664,6 +664,7 @@ export function ConditionUploader({
   title = "Condition Photos",
   hint,
   defaultAngle,
+  onDelete,
 }: {
   vehicleId: string;
   inspectionId?: string | null;
@@ -680,6 +681,7 @@ export function ConditionUploader({
     taken_at?: string | null;
     taken_at_source?: string | null;
     missing_exif_time?: boolean;
+    can_delete?: boolean;
   }>;
   readOnly?: boolean;
   onChanged: () => void;
@@ -687,10 +689,13 @@ export function ConditionUploader({
   /** Optional one-line help under the title. */
   hint?: string;
   defaultAngle?: string;
+  /** Enables deletion only on media the server marks can_delete. */
+  onDelete?: (id: string) => Promise<void>;
 }) {
   const startUpload = useServerFn(createConditionUploadUrl);
   const confirm = useServerFn(confirmConditionUpload);
   const [angle, setAngle] = useState(defaultAngle ?? (phase === "damage" ? "damage" : "front"));
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function uploadOne(file: File, onProgress: (pct: number) => void) {
     onProgress(10);
@@ -784,33 +789,53 @@ export function ConditionUploader({
             const when = m.taken_at ?? m.created_at;
             const missing = m.missing_exif_time ?? m.taken_at_source !== "exif";
             return (
-              <a
-                key={m.id}
-                href={m.url ?? "#"}
-                target="_blank"
-                rel="noreferrer"
-                className="group block overflow-hidden rounded-xl border border-[#EDEDF0]"
-              >
-                {m.media_type === "video" ? (
-                  <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center text-xs text-muted-foreground">
-                    Video
+              <div key={m.id} className="group relative overflow-hidden rounded-xl border border-[#EDEDF0]">
+                <a href={m.url ?? "#"} target="_blank" rel="noreferrer" className="block">
+                  {m.media_type === "video" ? (
+                    <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center text-xs text-muted-foreground">
+                      Video
+                    </div>
+                  ) : (
+                    <img
+                      src={m.url ?? ""}
+                      alt={m.angle ?? "condition photo"}
+                      loading="lazy"
+                      className="h-28 w-full object-cover transition-transform group-hover:scale-[1.03]"
+                    />
+                  )}
+                  <div className="px-2 py-1.5 text-[11px] text-muted-foreground truncate">
+                    {(m.angle ?? "photo").replace(/_/g, " ")} · {roleLabel(m.captured_by_role)}
                   </div>
-                ) : (
-                  <img
-                    src={m.url ?? ""}
-                    alt={m.angle ?? "condition photo"}
-                    loading="lazy"
-                    className="h-28 w-full object-cover transition-transform group-hover:scale-[1.03]"
-                  />
-                )}
-                <div className="px-2 py-1.5 text-[11px] text-muted-foreground truncate">
-                  {(m.angle ?? "photo").replace(/_/g, " ")} · {roleLabel(m.captured_by_role)}
-                </div>
-                <div className="px-2 pb-1.5 text-[10px] text-muted-foreground truncate">
-                  {fmtDateTime(when)}
-                  {missing ? " · upload time" : ""}
-                </div>
-              </a>
+                  <div className="px-2 pb-1.5 text-[10px] text-muted-foreground truncate">
+                    {fmtDateTime(when)}
+                    {missing ? " · upload time" : ""}
+                  </div>
+                </a>
+                {onDelete && m.can_delete && !readOnly ? (
+                  <button
+                    type="button"
+                    aria-label={`Delete ${(m.angle ?? "condition").replace(/_/g, " ")} Photo`}
+                    title="Delete Photo"
+                    disabled={deletingId !== null}
+                    onClick={async () => {
+                      if (!window.confirm("Delete this uploaded photo? This cannot be undone.")) return;
+                      setDeletingId(m.id);
+                      try {
+                        await onDelete(m.id);
+                        toast.success("Photo deleted");
+                        onChanged();
+                      } catch (error) {
+                        toast.error(error instanceof Error ? error.message : "Could not delete photo");
+                      } finally {
+                        setDeletingId(null);
+                      }
+                    }}
+                    className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-white text-real-red shadow-sm transition hover:bg-soft disabled:opacity-50"
+                  >
+                    {deletingId === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                  </button>
+                ) : null}
+              </div>
             );
           })}
         </div>

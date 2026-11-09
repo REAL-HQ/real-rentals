@@ -291,6 +291,51 @@ for (const [fn, name, data] of [
 ok(S.tables.inspections.length === 0, "and no inspection was created by any of it");
 ok(S.tables.condition_media.length === 2, "and no photo was removed");
 
+console.log("\\na driver can delete only their own unlinked current-rental upload");
+const DRIVER_PHOTO = "66666666-0000-4000-8000-0000000000d1";
+function addDriverPhoto(patch = {}) {
+  const row = {
+    id: DRIVER_PHOTO, vehicle_id: V1, rental_id: R1, inspection_id: null, incident_id: null,
+    phase: "checkout", angle: "front", media_type: "photo", storage_bucket: "condition-media",
+    storage_path: `${V1}/driver.jpg`, captured_by: U1, captured_by_role: "driver",
+    created_at: "2026-09-01T11:00:00Z", caption: null, ...patch,
+  };
+  S.tables.condition_media.push(row);
+  S.files[`condition-media/${V1}/driver.jpg`] = [4, 5, 6];
+  return row;
+}
+seed();
+addDriverPhoto();
+let driverList = await call(I.listConditionMedia, {}, U1);
+ok(driverList.find((m) => m.id === DRIVER_PHOTO)?.can_delete === true,
+  "the driver's own current-rental upload is marked removable");
+ok(driverList.find((m) => m.id === CM1)?.can_delete === false,
+  "a staff photo is not marked removable for the driver");
+await call(I.deleteOwnConditionMedia, { id: DRIVER_PHOTO }, U1);
+ok(!S.tables.condition_media.some((m) => m.id === DRIVER_PHOTO), "the driver's own photo row is deleted");
+ok(!S.files[`condition-media/${V1}/driver.jpg`], "and its private bytes are deleted");
+ok(S.tables.audit_log.some((a) => a.action === "condition_media.deleted_by_driver" && a.actor_user_id === U1),
+  "and the deletion is attributed to the driver");
+
+for (const [label, patch] of [
+  ["another driver's photo", { captured_by: U2 }],
+  ["inspection evidence", { inspection_id: "77777777-0000-4000-8000-000000000001" }],
+  ["incident evidence", { incident_id: "88888888-0000-4000-8000-000000000001" }],
+  ["a previous or different rental", { rental_id: R2 }],
+]) {
+  seed();
+  addDriverPhoto(patch);
+  msg = await refused(I.deleteOwnConditionMedia, { id: DRIVER_PHOTO }, U1);
+  ok(msg === "Forbidden", `deleteOwnConditionMedia refuses ${label}`);
+  ok(S.tables.condition_media.some((m) => m.id === DRIVER_PHOTO), "  and the protected row remains");
+  ok(!!S.files[`condition-media/${V1}/driver.jpg`], "  and its private bytes remain");
+}
+seed();
+addDriverPhoto();
+msg = await refused(I.deleteOwnConditionMedia, { id: DRIVER_PHOTO }, "mgr-1");
+ok(msg === "Forbidden", "the driver deletion action cannot be used by a staff-only account");
+ok(S.tables.condition_media.some((m) => m.id === DRIVER_PHOTO), "and staff-only preview cannot delete through it");
+
 // =============================================== 4. anonymous / unknown
 console.log("\\nsomebody with no role gets nothing");
 seed();
