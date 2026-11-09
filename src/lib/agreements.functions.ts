@@ -8,10 +8,10 @@ import {
   renderTemplate,
   type MergeData,
 } from "@/lib/agreement-merge";
-import { fmtContractDate, fmtContractDateOnly, minTermEndIso, minTermWeeks } from "@/lib/agreement-dates";
+import { contractTodayIso, defaultRentalEndIso, fmtContractDate, fmtContractDateOnly, minTermEndIso, minTermWeeks, rentalEndBeforeMinimum } from "@/lib/agreement-dates";
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
-import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
+import { applyPrep, PrepSchema, type AgreementDetails, type AgreementPrep } from "@/lib/agreement-prep";
 import { STALE_PREVIEW_REFUSAL } from "@/lib/agreement-send-refusal";
 import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
 import { SWAP_ENABLED } from "@/lib/record-numbers";
@@ -123,6 +123,7 @@ async function buildMergeData(
   admin: any,
   applicationId: string,
   vehicleId?: string,
+  prep?: AgreementPrep,
 ): Promise<{
   data: MergeData;
   app: any;
@@ -131,6 +132,7 @@ async function buildMergeData(
   /** The contract start date as stored: a date-only ISO string, or null. */
   startIso: string | null;
   namedVehicleId: string | null;
+  editorValues: AgreementDetails;
 }> {
   const { data: app, error } = await admin
     .from("applications")
@@ -141,6 +143,28 @@ async function buildMergeData(
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!app) throw new Error("Driver not found");
+
+  // Per-agreement corrections stay in this fingerprinted snapshot. They do
+  // not overwrite the application, verify identity, or change a live rental.
+  const details = prep?.details;
+  if (details) {
+    Object.assign(app, {
+      full_name: details.driverName,
+      email: details.driverEmail,
+      phone: details.driverPhone,
+      address: details.address,
+      city: details.city,
+      state: details.state,
+      zip: details.zip,
+      dob: details.dob || null,
+      license_number: details.licenseNumber,
+      license_state: details.licenseState,
+      license_expiration: details.licenseExpiration || null,
+      weekly_rent: details.weeklyRate.trim() ? Number(details.weeklyRate) : null,
+      insurance_carrier: details.insuranceCarrier,
+      insurance_policy_number: details.insurancePolicy,
+    });
+  }
 
   // A LIVE rental is the authority on its own dates once it exists; before
   // activation the agreed contract dates on the application are.
@@ -168,8 +192,10 @@ async function buildMergeData(
   // the only field staff could fill being the one the code had decided to
   // ignore.
   const fromRental = Boolean(rental?.start_date);
-  const startDate = fromRental ? rental.start_date : (app.contract_start_date ?? null);
-  const endDate = (fromRental ? rental.end_date : null) ?? app.contract_end_date ?? null;
+  const storedStart = fromRental ? rental.start_date : (app.contract_start_date ?? null);
+  const storedEnd = (fromRental ? rental.end_date : null) ?? app.contract_end_date ?? null;
+  const startDate = prep ? (details?.startDate ?? storedStart ?? contractTodayIso()) : storedStart;
+  const endDate = prep ? (details?.endDate ?? storedEnd ?? defaultRentalEndIso(startDate)) : storedEnd;
 
   /*
    * Application intent is NOT contract data.
@@ -196,12 +222,22 @@ async function buildMergeData(
       label: "Scheduled end date",
       why: "The applicant only told us roughly how long they expect to need the vehicle. That cannot become a contractual return date.",
     });
-  if (startDate && endDate && endDate <= startDate)
+  if (startDate && endDate && endDate <= startDate) {
     blockers.push({
       field: "contract_end_date",
       label: "A scheduled end date after the start date",
       why: `The agreement would run from ${startDate} to ${endDate}, which ends on or before it begins.`,
     });
+  } else if (startDate && endDate) {
+    const minimumEnd = defaultRentalEndIso(startDate);
+    if (rentalEndBeforeMinimum(startDate, endDate) && minimumEnd) {
+      blockers.push({
+        field: "contract_end_date",
+        label: "Minimum four-week rental",
+        why: `The scheduled end date must be at least ${fmtContractDate(minimumEnd)}. Staff can choose a later date.`,
+      });
+    }
+  }
   // ---- Agreement Readiness: every value the contract renders must be real.
   // No placeholders, no defaults — a blank here would print "__________" in a
   // document someone signs. This is the ONE validator: preview, send, the
@@ -253,13 +289,20 @@ async function buildMergeData(
       .eq("id", namedVehicleId)
       .maybeSingle();
     vehicle = v ?? null;
+    if (vehicle && details) {
+      Object.assign(vehicle, {
+        color: details.vehicleColor,
+        vin: details.vehicleVin,
+        license_plate: details.licensePlate,
+      });
+    }
   }
   if (!vehicle) {
     blockers.push({ field: "vehicle", label: "Vehicle assignment", why: "Choose the vehicle this agreement covers.", fix: { tab: "rental" } });
   } else {
     const vfix = { vehicleId: vehicle.id as string };
     const { checkVin } = await import("@/lib/vin");
-    if (!vehicle.year || !vehicle.make || !vehicle.model)
+    if (!details?.vehicleDescription.trim() && (!vehicle.year || !vehicle.make || !vehicle.model))
       blockers.push({ field: "vehicle", label: "Vehicle year, make and model", why: "The agreement describes the vehicle.", fix: vfix });
     if (!vehicle.vin)
       blockers.push({ field: "vehicle_vin", label: "VIN", why: "The agreement identifies the vehicle by VIN.", fix: vfix });
@@ -301,9 +344,9 @@ async function buildMergeData(
     license_number: app.license_number ?? "",
     license_state: app.license_state ?? "",
     license_expiration: licenceExpiry,
-    vehicle: vehicle
+    vehicle: details?.vehicleDescription ?? (vehicle
       ? [vehicle.year, vehicle.make, vehicle.model, vehicle.trim].filter(Boolean).join(" ")
-      : "",
+      : ""),
     vehicle_color: vehicle?.color ?? "",
     // The real VIN, never a stand-in. (This used to print the first 8
     // characters of our internal record id under the heading "VIN".)
@@ -321,7 +364,7 @@ async function buildMergeData(
     license_plate: vehicle?.license_plate
       ? [String(vehicle.license_plate).toUpperCase(), vehicle.plate_state].filter(Boolean).join(" / ")
       : "",
-    card_on_file: app.card_last4 ? `${app.card_brand ? String(app.card_brand).toUpperCase() : "Card"} ending ${app.card_last4}` : "",
+    card_on_file: details?.cardOnFile ?? (app.card_last4 ? `${app.card_brand ? String(app.card_brand).toUpperCase() : "Card"} ending ${app.card_last4}` : ""),
     // Not stored anywhere yet: entered by staff in Driver Agreement Preparation.
     additional_drivers: "",
     // "If Any" rows: say plainly that nothing is on file rather than leave a blank.
@@ -337,7 +380,30 @@ async function buildMergeData(
   // The rendered start_date above is for the human. Calculations get the real
   // value: reading the formatted string back is what broke min_term_end and
   // the additional-driver licence check when the display format changed.
-  return { data, app, vehicle, blockers, startIso: startDate ?? null, namedVehicleId };
+  const editorValues = {
+    driverName: String(app.full_name ?? ""),
+    driverEmail: String(app.email ?? ""),
+    driverPhone: String(app.phone ?? ""),
+    address: String(app.address ?? ""),
+    city: String(app.city ?? ""),
+    state: String(app.state ?? ""),
+    zip: String(app.zip ?? ""),
+    dob: String(app.dob ?? ""),
+    licenseNumber: String(app.license_number ?? ""),
+    licenseState: String(app.license_state ?? ""),
+    licenseExpiration: String(app.license_expiration ?? ""),
+    vehicleDescription: data.vehicle,
+    vehicleColor: String(vehicle?.color ?? ""),
+    vehicleVin: String(vehicle?.vin ?? ""),
+    licensePlate: String(vehicle?.license_plate ?? ""),
+    startDate: startDate ?? "",
+    endDate: endDate ?? "",
+    weeklyRate: weekly == null ? "" : String(weekly),
+    cardOnFile: data.card_on_file,
+    insuranceCarrier: String(app.insurance_carrier ?? ""),
+    insurancePolicy: String(app.insurance_policy_number ?? ""),
+  };
+  return { data, app, vehicle, blockers, startIso: startDate ?? null, namedVehicleId, editorValues };
 }
 
 /** The only vehicle an override may name: the active rental's current car. */
@@ -556,7 +622,7 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
  * rendered text and fingerprint.
  */
 async function prepareAgreement(admin: any, applicationId: string, prep?: AgreementPrep, templateKey?: string, vehicleId?: string) {
-  const built = await buildMergeData(admin, applicationId, vehicleId);
+  const built = await buildMergeData(admin, applicationId, vehicleId, prep);
   const lib = templateKey ? libraryTemplate(templateKey) : null;
   if (templateKey && !lib) throw new Error("Unknown agreement template.");
   const tpl = lib ? await libraryWithDraft(admin, lib) : await activeTemplate(admin);
@@ -566,7 +632,7 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     // The real start date, not one recovered from the printed string — this is
     // what guards "an additional driver's licence must still be valid on the
     // start date", and it failed open while the display format had moved on.
-    const r = applyPrep(prep, { startIso: built.startIso, depositClause: String(terms?.deposit_clause ?? "") });
+    const r = applyPrep(prep, { startIso: null, depositClause: String(terms?.deposit_clause ?? "") });
     Object.assign(built.data, r.merge);
     // The staff deposit choice replaces the record-based deposit checks.
     for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "deposit_amount") built.blockers.splice(i, 1);
@@ -689,6 +755,7 @@ async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepare
       companyMissing: prep.companyMissing,
       companyFallback: prep.companyFallback,
       merge,
+      values: prep.editorValues,
       terms: readTerms(tpl.body),
       missing,
       blockers,

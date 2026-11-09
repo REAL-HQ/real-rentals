@@ -15,7 +15,44 @@ export const AdditionalDriverSchema = z.object({
   licenseExpiration: z.string().trim().max(10), // YYYY-MM-DD
   verified: z.boolean(),
 });
+const detail = (max: number) => z.string().trim().max(max);
+export const AgreementDetailsSchema = z.object({
+  driverName: detail(120),
+  driverEmail: detail(160),
+  driverPhone: detail(40),
+  address: detail(160),
+  city: detail(80),
+  state: detail(40),
+  zip: detail(20),
+  dob: detail(10),
+  licenseNumber: detail(40),
+  licenseState: detail(2),
+  licenseExpiration: detail(10),
+  vehicleDescription: detail(160),
+  vehicleColor: detail(50),
+  vehicleVin: detail(17),
+  licensePlate: detail(30),
+  startDate: detail(10),
+  endDate: detail(10),
+  weeklyRate: detail(20),
+  cardOnFile: detail(100),
+  insuranceCarrier: detail(120),
+  insurancePolicy: detail(120),
+});
+export type AgreementDetails = z.infer<typeof AgreementDetailsSchema>;
+
+/** Autofill may complete blanks, never replace a saved or staff-entered value. */
+export function fillBlankAgreementDetails(base: AgreementDetails, proposed: Partial<AgreementDetails>): AgreementDetails {
+  const next = { ...base };
+  for (const key of Object.keys(base) as Array<keyof AgreementDetails>) {
+    const value = proposed[key];
+    if (value && !base[key].trim()) next[key] = value;
+  }
+  return next;
+}
+
 export const PrepSchema = z.object({
+  details: AgreementDetailsSchema.optional(),
   drivers: z.object({ mode: z.enum(["none", "listed"]), list: z.array(AdditionalDriverSchema).max(4) }),
   reservation: z.object({ mode: z.enum(["not_required", "required"]), amount: z.number().nonnegative().max(10000).nullable() }),
   deposit: z.object({
