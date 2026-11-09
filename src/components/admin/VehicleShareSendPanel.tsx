@@ -11,6 +11,7 @@ import {
 } from "@/lib/vehicle-share.functions";
 import { loadStaffPhoto } from "@/lib/photoUrl";
 import { fmtDateTime } from "@/lib/date-format";
+import { VehicleShareMessageEditor } from "./VehicleShareMessageEditor";
 
 const input = "h-10 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground outline-none focus:border-brand";
 type PackageMode = "enhanced" | "insurance" | "custom";
@@ -148,10 +149,7 @@ export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
           <input id="vehicle-share-recipient" type={channel === "email" ? "email" : "tel"} value={channel === "email" ? email : phone} onChange={(event) => channel === "email" ? setEmail(event.target.value) : setPhone(event.target.value)} placeholder={channel === "email" ? "name@example.com" : "(555) 555-5555"} className={input} />
         </div>
       </section>
-      <section>
-        <label className="mb-1.5 block text-xs font-medium" htmlFor="vehicle-share-message">Optional Message</label>
-        <textarea id="vehicle-share-message" value={message} onChange={(event) => setMessage(event.target.value)} maxLength={500} rows={2} placeholder="Add a short note for this recipient" className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-brand" />
-      </section>
+      <VehicleShareMessageEditor value={message} onChange={setMessage} disabled={!!busy} />
 
       {!available && <p className="rounded-lg border border-border bg-soft p-3 text-xs leading-5 text-muted-foreground">{channel === "email" ? "Email" : "Text"} sending is not configured. You can still copy the secure link.</p>}
       {error && <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
