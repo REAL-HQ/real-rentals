@@ -5,6 +5,12 @@ import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail,
 import { doubleCollectionMessage } from '@/lib/payment-overlap';
 import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatched';
 import { holdIfHeld, type HeldNoticeInput } from '@/lib/held-payment-notices.server';
+import { failedInvoiceLink } from '@/lib/failed-payment-link';
+import { linkOrFlagSubscription, sendFailedPaymentText, type SmsSender } from '@/lib/failed-payment-notice.server';
+
+/** Test seam for the outbound text and staff alert; the route never sets it. */
+export type WebhookDeps = { sendSms?: SmsSender; alert?: (a: any) => Promise<unknown>; now?: Date };
+let webhookDeps: WebhookDeps = {};
 
 let _supabase: ReturnType<typeof createClient> | null = null;
 let webhookAdmin: any = null;
@@ -24,7 +30,7 @@ async function driverForRental(rentalId: string | undefined) {
   const admin: any = getSupabase();
   const { data } = await admin
     .from('rentals')
-    .select('application_id, vehicles:vehicle_id(license_plate), applications:application_id(email, full_name, card_brand, card_last4, card_exp_month, card_exp_year)')
+    .select('application_id, vehicles:vehicle_id(license_plate), applications:application_id(email, phone, full_name, card_brand, card_last4, card_exp_month, card_exp_year)')
     .eq('id', rentalId)
     .maybeSingle();
   if (!data?.applications?.email) return null;
@@ -33,6 +39,7 @@ async function driverForRental(rentalId: string | undefined) {
     applicationId: (data.application_id as string | null) ?? null,
     plate: (data.vehicles?.license_plate as string | null) ?? null,
     name: (data.applications.full_name as string | null) ?? null,
+    phone: (data.applications.phone as string | null) ?? null,
     brand: data.applications.card_brand as string | null,
     last4: data.applications.card_last4 as string | null,
     expMonth: data.applications.card_exp_month as number | null,
@@ -339,11 +346,18 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     await warnUnmatchedInvoice(admin, invoice, status, null);
     return;
   }
-  const rentalResult = await admin
+  const findRental = () => admin
     .from('rentals')
     .select('id, application_id, vehicle_id')
     .eq('stripe_subscription_id', subscriptionId)
     .maybeSingle();
+  let rentalResult = await findRental();
+  if (!rentalResult.error && !rentalResult.data) {
+    // Automations → Subscription Matching (off by default): link this
+    // subscription to its one renter, or flag a second subscription.
+    const linked = await linkOrFlagSubscription(admin, invoice, subscriptionId, status, { alert: webhookDeps.alert });
+    if (linked.kind === 'linked') rentalResult = await findRental();
+  }
   if (rentalResult.error || !rentalResult.data) {
     if (!rentalResult.error) await warnUnmatchedInvoice(admin, invoice, status, subscriptionId);
     return;
@@ -473,12 +487,25 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
         await holdIfHeld(admin, card, invNotice('card_expiring'));
       }
     } else {
+      // The failed invoice's own page, never a generic payment link: paying
+      // it settles this week on the SAME subscription (no second one).
       const failed = await sendPaymentFailedEmail({
         to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
         brand: driver.brand, last4: driver.last4,
+        payInvoiceUrl: failedInvoiceLink(invoice),
       });
       await holdIfHeld(admin, failed, invNotice('payment_failed'));
     }
+  }
+  if (status !== 'paid') {
+    // Automations → Payment Failed Text (off by default). Same claim as above,
+    // so one text per Stripe attempt.
+    const text = await sendFailedPaymentText(admin, {
+      invoice, amount, rentalId: rental.id, vehicleId: rental.vehicle_id ?? null,
+      applicationId: rental.application_id ?? null,
+      firstName: driver?.name ?? null, phone: driver?.phone ?? null,
+    }, { sendSms: webhookDeps.sendSms, now: webhookDeps.now });
+    if (!text.sent && text.reason !== 'off') console.info('[payments] failed-payment text not sent', { invoice: invoice.id, reason: text.reason });
   }
   if (status !== 'paid') await alertTeamPaymentFailed(driver, amount, 'weekly rent', rental.id, invNotice('payment_team_alert'));
 }
@@ -578,9 +605,12 @@ export async function postVerifiedPaymentWebhook(
   event: { type: string; data: { object: any } },
   admin: any,
   env: StripeEnv = 'live',
+  deps: WebhookDeps = {},
 ): Promise<Response> {
   const previous = webhookAdmin;
+  const previousDeps = webhookDeps;
   webhookAdmin = admin;
+  webhookDeps = deps;
   try {
     await handleVerifiedPaymentEvent(event, env);
     return Response.json({ received: true });
@@ -589,6 +619,7 @@ export async function postVerifiedPaymentWebhook(
     return new Response('Webhook error', { status: 400 });
   } finally {
     webhookAdmin = previous;
+    webhookDeps = previousDeps;
   }
 }
 
