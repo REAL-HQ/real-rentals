@@ -513,7 +513,7 @@ function DocumentsView() {
   const shared = (data ?? []).filter((d) => d.kind === "rental_agreement" || d.kind === "receipt");
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="w-full space-y-5">
       <AgreementsView />
 
       <div className="rounded-2xl border border-border bg-white p-5">
@@ -1143,7 +1143,7 @@ function PicturesView() {
   }, [media]);
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="w-full space-y-5">
       <CheckoutSignOffCard />
 
       {vehicleId ? (
@@ -1277,7 +1277,7 @@ function SettingsView() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="w-full space-y-6">
       {isLoading ? (
         <div className="rounded-2xl border border-border bg-white p-5 text-sm text-muted-foreground">
           Loading…
@@ -1382,7 +1382,7 @@ function IssuesViewInner() {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="w-full space-y-6">
       <RoadsideHelpForm onReported={() => refetch()} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
@@ -1527,7 +1527,7 @@ function ReferralsView() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="w-full space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <MetricTile label="Rewards Earned" value={fmt(earned)} sub="Paid out to date" />
         <MetricTile label="Referrals Pending" value={`${pending}`} sub="Awaiting first rental" />
@@ -2334,7 +2334,7 @@ function UpdateCardButton() {
 function DepositView({ data }: { data: DriverDashboard }) {
   const r = data.rental;
   return (
-    <div className="rounded-2xl border border-border bg-white p-6 max-w-2xl">
+    <div className="w-full rounded-2xl border border-border bg-white p-6">
       <h3 className="font-semibold">Refundable Deposit</h3>
       <div className="mt-4 text-3xl font-semibold">{r?.deposit_amount == null ? "Not Set" : fmt(r.deposit_amount)}</div>
       <div className="mt-1 text-sm text-muted-foreground">
@@ -2496,7 +2496,7 @@ function DriverPreview({ tier }: { tier: StaffTier | null }) {
             <button type="button" onClick={() => setPicking(true)} className="min-h-9 rounded-lg bg-real-red px-3 text-sm font-medium text-white">Select Driver</button>
           </div>
         )}
-        <div className="p-6 md:p-10 max-w-3xl">
+        <div className="w-full p-6 md:p-10">
           {validId ? (
             previewError ? (
               <div className="text-sm text-real-red">{previewError}</div>
