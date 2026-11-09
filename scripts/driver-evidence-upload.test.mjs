@@ -35,6 +35,15 @@ try {
   assert.equal(calls[2][1].path, signed.path);
   assert.equal(Object.hasOwn(calls[2][1], "review_status"), false);
   console.log("PASS signed copy uses existing private vault sequence, without a verification write");
+  for (const category of ["license_front", "license_back"]) {
+    calls.length = 0;
+    await upload(category, { ...file, name: `${category}.pdf` }, () => {});
+    assert.equal(calls[0][1].category, category);
+    assert.equal(calls[2][1].category, category);
+    assert.equal(calls[2][1].fileName, `${category}.pdf`);
+    assert.equal(Object.hasOwn(calls[2][1], "review_status"), false);
+    console.log(`PASS ${category} retains its separate private vault category without verification`);
+  }
   calls.length = 0;
   globalThis.fixture.start = async () => ({ ...signed, applicationId: "another-app" });
   await assert.rejects(upload("license_front", file, () => {}), /destination could not be confirmed/);

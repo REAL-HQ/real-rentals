@@ -1935,11 +1935,12 @@ function DriverDetail({
     // completed agreements never ask staff to upload a second copy.
     if (key === "signed_agreement" && rentalTabReadiness?.requirements.some((r) => r.key === key && r.met === true)) return null;
     const categories = checklistDocumentCategories(key);
-    if (!categories.length) return null;
+    const category = categories[0];
+    if (!category) return null;
     return <div className="flex min-w-0 flex-wrap justify-end gap-1.5">{categories.map((category) => {
       const item = evidenceItems.find((i) => i.field === category);
-      return <div key={`${driver.id}:${category}`} className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">{item ? <ChecklistEvidenceControl applicationId={driver.id} item={item} /> : null}<DriverEvidenceUpload applicationId={driver.id} category={category} documents={vaultDocs} onUploaded={refreshEvidence} /></div>;
-    })}</div>;
+      return item ? <ChecklistEvidenceControl key={`${driver.id}:${category}`} applicationId={driver.id} item={item} /> : null;
+    })}<DriverEvidenceUpload applicationId={driver.id} category={category} categories={categories} documents={vaultDocs} onUploaded={refreshEvidence} /></div>;
   }
 
   useEffect(() => {
