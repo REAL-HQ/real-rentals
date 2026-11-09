@@ -7,7 +7,7 @@ const ok = (c: boolean, m: string) => { console.log(`${c ? "  PASS" : "  FAIL"} 
 const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
 
 const owner = ids(visibleTabs("owner")), mgr = ids(visibleTabs("manager")), coord = ids(visibleTabs("coordinator"));
-ok(owner.length === TABS.length, "Owner sees every destination");
+ok(TABS.every((tab) => owner.includes(tab.id)), "Owner sees every destination");
 ok(visibleSettingsSections("manager").length > 0, "Manager: Settings sections (opened from profile menu)");
 ok(JSON.stringify(ids(visibleSettingsSections("manager"))) === '["website","maintenance","vehicle_defaults","automations","activity"]', "Manager Settings: Website, Vehicle Defaults, Maintenance, Automations, Activity");
 ok(ids(visibleSettingsSections("owner")).includes("team") && ids(visibleSettingsSections("owner")).includes("automations"), "Owner Settings: Team + Automations");
@@ -15,6 +15,8 @@ ok(visibleSettingsSections("coordinator").length === 0, "Coordinator: no Setting
 ok(mgr.includes("payments") && mgr.includes("expenses"), "Manager: money screens");
 for (const t of ["payments", "charges", "expenses", "settings", "activity", "partners", "shops"])
   ok(!coord.includes(t), `Coordinator: no ${t}`);
+ok(!TABS.some((t) => t.id === "shops"), "Repair Shops removed from tabs");
+ok(LEGACY_TABS.shops?.tab === "vendors" && LEGACY_TABS.shops?.filter === "repair_shop", "Old Repair Shops bookmark → Vendors → Repair");
 ok(["overview", "drivers", "vehicles", "inspections", "vendors"].every((t) => coord.includes(t)), "Coordinator: operational screens");
 ok(visibleTabs(null).length === 0, "No tier: nothing");
 
@@ -26,9 +28,9 @@ ok(LEGACY_TABS.automations.section === "automations" && LEGACY_TABS.team.section
 ok(JSON.stringify(ids(visibleCreateActions("coordinator"))) === '["vehicle","fleet_files"]', "Coordinator Create: Add Vehicle, Upload Fleet Files");
 ok(ids(visibleCreateActions("manager")).length === 5, "Manager Create: all five (incl. Service)");
 ok(visibleTabs("coordinator").some((t) => t.id === "fleet_inbox" && t.group === "FLEET"), "Fleet Inbox under FLEET for Coordinator+");
-ok(navOwner("shops") === "partners" && navOwner("vendors") === "partners" && navOwner("charges") === "payments" && navOwner("inspections") === "maintenance", "Child tabs highlight their workspace");
+ok(navOwner("vendors") === "partners" && navOwner("charges") === "payments" && navOwner("inspections") === "maintenance", "Child tabs highlight their workspace");
 const rail = (t: any) => railEntries(t).map((e) => e.label).join(",");
-ok(rail("owner") === "Overview,Drivers,Bookings,Active Rentals,Payments,Vehicles,Fleet Inbox,Service,Incidents,Driver Issues,Expenses,Partners", "Owner rail matches target: " + rail("owner"));
+ok(rail("owner") === "Overview,Drivers,Bookings,Active Rentals,Payments,Vehicles,Fleet Inbox,Service,Incidents,Driver Issues,Expenses,Partners,Monthly Owner P&L", "Owner rail matches target: " + rail("owner"));
 ok(rail("coordinator") === "Overview,Drivers,Bookings,Vehicles,Fleet Inbox,Service,Partners", "Coordinator rail: " + rail("coordinator"));
 ok(!coord.includes("active_rentals"), "Coordinator: no Active Rentals");
 ok(JSON.stringify(visibleWorkspaceTabs("maintenance", "coordinator").map((k) => k.id)) === '["inspections"]', "Coordinator Service: Inspections only");

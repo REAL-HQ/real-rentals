@@ -37,7 +37,6 @@ import {
   type TabDef,
 } from "@/components/admin/nav-config";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
-import { ShopsPanel } from "@/components/admin/ShopsPanel";
 import { MessagesOverlay } from "@/components/admin/MessagesOverlay";
 import { SettingsWorkspace } from "@/components/admin/SettingsWorkspace";
 import { useServerFn } from "@tanstack/react-start";
@@ -183,7 +182,7 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   // held by the same `id` the drivers and vehicles lists use.
   id: ["drivers", "vehicles", "inspections", "bookings"],
   // Payments is the only list that takes a filter from a link today.
-  filter: ["payments", "drivers"],
+  filter: ["payments", "drivers", "vendors"],
   // A creation flow opened from "+ Create".
   add: [...ADD_TABS],
   section: ["settings"],
@@ -971,8 +970,7 @@ function Admin() {
             {tab === "partners" && <PartnersPanel externalSearch={partnerSearch} />}
             {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} tier={tier} />}
             {tab === "maintenance" && <MaintenancePanel autoOpenAdd={urlAdd} />}
-            {tab === "shops" && <ShopsPanel />}
-            {tab === "vendors" && <VendorsPanel />}
+            {tab === "vendors" && <VendorsPanel initialTypeFilter={urlFilter ?? "all"} />}
             {RENTER_PORTAL_ENABLED && tab === "vendors" && <RenterVendorsPanel />}
             {tab === "inspections" && <InspectionsPanel />}
             {tab === "charges" && <ChargesPanel />}
