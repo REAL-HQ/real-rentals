@@ -436,7 +436,7 @@ function FleetVehicles({
           {dueAllowed && (
             <button onClick={() => chooseView("due")} aria-pressed={view === "due"} className={`${VEHICLE_TOOLBAR.button} text-xs ${view === "due" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><Wrench className="h-3.5 w-3.5" /> Maintenance Due</button>
           )}
-          <button onClick={() => void navigate({ to: "/admin", search: { tab: "fleet_inbox" } as any })} className={VEHICLE_TOOLBAR.button} title="Import vehicles through the Fleet Inbox">
+          <button onClick={() => void navigate({ to: "/admin", search: { tab: "fleet_inbox" } as any })} className={VEHICLE_TOOLBAR.button} title="Import vehicles through Inbox">
             Import
           </button>
           <button onClick={() => setAdding(true)} className={VEHICLE_TOOLBAR.primary}>

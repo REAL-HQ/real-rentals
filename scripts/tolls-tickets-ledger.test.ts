@@ -56,10 +56,10 @@ for (const tier of ["coordinator", "manager", "owner"] as const) {
   ok(!visibleTabs(tier).some((t) => t.id === "tolls_tickets"), `${tier} nav has no Tolls And Tickets tab while the flag is off`);
   ok(!railEntries(tier).some((t) => t.id === "tolls_tickets" || t.label === "Tolls And Tickets"), `${tier} rail has no Tolls And Tickets tab while the flag is off`);
 }
-ok(visibleTabs("owner").filter((t) => t.id !== "owner_pnl").length === TABS.length && visibleTabs("owner").some((t) => t.id === "owner_pnl"), "owner still sees exactly the dark-build destinations plus Monthly Owner P&L");
+ok(visibleTabs("owner").filter((t) => t.id !== "owner_pnl").length === TABS.length && visibleTabs("owner").some((t) => t.id === "owner_pnl"), "owner still sees exactly the dark-build destinations plus P&L");
 ok(
   railEntries("owner").map((entry) => entry.label).join(",") ===
-    "Overview,Drivers,Active,Payments,Vehicles,Fleet Inbox,Service,Incidents,Driver Issues,Expenses,Partners,Monthly Owner P&L",
+    "Overview,Drivers,Active,Payments,Vehicles,Inbox,Service,Incidents,Driver Issues,Expenses,Partners,P&L",
   "the owner rail is unchanged while the flag is off",
 );
 ok(nav.includes('minTier: "manager"') && nav.includes('id: "tolls_tickets"'), "the tab is manager and owner only");
