@@ -230,6 +230,7 @@ import type { ExpiryScope } from "@/lib/document-expiry";
 const DEPOSIT_STATUSES = ["not_paid", "partially_paid", "paid", "refunded"] as const;
 const PAYMENT_STATUSES = ["current", "late", "past_due", "collections"] as const;
 const CHECK_STATUSES = ["pending", "passed", "failed"] as const;
+const CHECK_STATUS_LABELS = { pending: "Pending", passed: "Passed", failed: "Failed" } as const;
 
 const statusBadge: Record<string, string> = {
   new: "bg-blue-100 text-blue-800",
@@ -2638,12 +2639,14 @@ function DriverDetail({
                       label="Background Check"
                       value={driver.background_check_status}
                       options={[...CHECK_STATUSES]}
+                      labels={CHECK_STATUS_LABELS}
                       onChange={(v) => onUpdate({ background_check_status: v })}
                     />
                     <SelField
                       label="MVR Status"
                       value={driver.mvr_status}
                       options={[...CHECK_STATUSES]}
+                      labels={CHECK_STATUS_LABELS}
                       onChange={(v) => onUpdate({ mvr_status: v })}
                     />
                     <NumField
