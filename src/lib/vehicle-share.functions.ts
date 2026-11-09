@@ -27,6 +27,8 @@ export type VehicleShareOptions = {
   insurancePhotoIds: string[];
   emailAvailable: boolean;
   smsAvailable: boolean;
+  /** Allowlisted Quo sending numbers, default first (empty unless Quo is set up). */
+  smsSenders?: { id: string; label: string }[];
 };
 
 function mediaView(row: Record<string, any>): VehicleShareMedia {
@@ -67,7 +69,11 @@ export const getVehicleShareOptions = createServerFn({ method: "POST" })
       enhancedPhotoIds: automaticEnhancedPhotoIds(photos),
       insurancePhotoIds: automaticInsurancePhotoIds(photos),
       emailAvailable: !!process.env.RESEND_API_KEY,
-      smsAvailable: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && (process.env.TWILIO_FROM_NUMBER || process.env.TWILIO_MESSAGING_SERVICE_SID)),
+      smsAvailable: (await import("@/lib/sms-provider.server")).smsConfigured(),
+      smsSenders: await (async () => {
+        const p = await import("@/lib/sms-provider.server");
+        return p.smsProviderStatus().provider === "quo" ? p.quoSenders().map((x) => ({ id: x.id, label: `${x.label} ${x.display}` })) : [];
+      })(),
     };
   });
 
@@ -194,6 +200,8 @@ export const sendVehicleSharePackage = createServerFn({ method: "POST" })
     recipient: z.string().trim().min(3).max(320),
     message: z.string().trim().max(500).optional(),
     applicationId: uuid.nullish(),
+    /** Quo number id; checked against the server allowlist in sendSms. */
+    fromId: z.string().trim().regex(/^PN[A-Za-z0-9]{1,40}$/).optional(),
   }).parse(d))
   .handler(async ({ data, context }): Promise<{ ok: boolean; error?: string }> => {
     const actor = await requireManager(context.userId);
@@ -224,6 +232,7 @@ export const sendVehicleSharePackage = createServerFn({ method: "POST" })
       const sms = await sendSms({
         to: data.recipient, body, kind: "vehicle_share", vehicleId: pkg.vehicleId,
         applicationId: data.applicationId ?? null,
+        fromId: data.fromId ?? null,
         // This recipient-specific requested package is transactional; STOP still wins.
         requireConsent: false,
       });
@@ -237,6 +246,7 @@ export const sendVehicleSharePackage = createServerFn({ method: "POST" })
 
     const friendlyError = result.ok ? undefined : result.reason === "not_configured"
       ? `${data.channel === "email" ? "Email" : "Text"} sending is not configured. Copy the secure link instead.`
+      : result.reason === "sender_not_allowed" ? "That sending number isn't allowed."
       : result.reason === "opted_out" ? "This phone number has opted out of text messages."
       : result.error || `Could not send the ${data.channel === "email" ? "email" : "text"}. Copy the secure link instead.`;
     await logAudit(actor, {

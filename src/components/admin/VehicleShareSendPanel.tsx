@@ -26,6 +26,7 @@ export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
   const [channel, setChannel] = useState<"email" | "sms">("email");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [fromId, setFromId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [created, setCreated] = useState<CreatedVehicleShare | null>(null);
   const [busy, setBusy] = useState<"link" | "send" | null>(null);
@@ -90,6 +91,7 @@ export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
       const result = await send({ data: {
         packageId: pkg.id, token: pkg.token, channel, recipient,
         message: message.trim() || undefined,
+        fromId: channel === "sms" && fromId ? fromId : undefined,
       } });
       if (!result.ok) { setError(result.error || "Could not send. Copy the secure link instead."); return; }
       toast.success(channel === "email" ? "Email Sent" : "Text Sent");
@@ -149,6 +151,14 @@ export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
           <input id="vehicle-share-recipient" type={channel === "email" ? "email" : "tel"} value={channel === "email" ? email : phone} onChange={(event) => channel === "email" ? setEmail(event.target.value) : setPhone(event.target.value)} placeholder={channel === "email" ? "name@example.com" : "(555) 555-5555"} className={input} />
         </div>
       </section>
+      {channel === "sms" && (options?.smsSenders?.length ?? 0) > 1 && (
+        <div className="sm:ml-[192px]" data-testid="share-send-from">
+          <label className="mb-1.5 block text-xs font-medium" htmlFor="vehicle-share-from">Send From</label>
+          <select id="vehicle-share-from" value={fromId ?? options!.smsSenders![0].id} onChange={(event) => setFromId(event.target.value)} disabled={!!busy} className={input}>
+            {options!.smsSenders!.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+        </div>
+      )}
       <VehicleShareMessageEditor value={message} onChange={setMessage} disabled={!!busy} />
 
       {!available && <p className="rounded-lg border border-border bg-soft p-3 text-xs leading-5 text-muted-foreground">{channel === "email" ? "Email" : "Text"} sending is not configured. You can still copy the secure link.</p>}
