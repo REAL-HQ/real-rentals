@@ -982,6 +982,7 @@ export type Database = {
           delay_minutes: number
           id: string
           is_active: boolean
+          skip_when_profile_complete: boolean
           step_order: number
           subject: string | null
           updated_at: string
@@ -994,6 +995,7 @@ export type Database = {
           delay_minutes?: number
           id?: string
           is_active?: boolean
+          skip_when_profile_complete?: boolean
           step_order?: number
           subject?: string | null
           updated_at?: string
@@ -1006,6 +1008,7 @@ export type Database = {
           delay_minutes?: number
           id?: string
           is_active?: boolean
+          skip_when_profile_complete?: boolean
           step_order?: number
           subject?: string | null
           updated_at?: string

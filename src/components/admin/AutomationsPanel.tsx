@@ -26,7 +26,14 @@ type Step = {
   subject: string | null;
   body: string;
   is_active: boolean;
+  /** Undefined until the skip_when_profile_complete migration is applied. */
+  skip_when_profile_complete?: boolean;
 };
+
+/** True once the database has the skip_when_profile_complete column. */
+export function hasSkipColumn(rows: Array<Record<string, unknown>>): boolean {
+  return rows.some((r) => Object.prototype.hasOwnProperty.call(r, "skip_when_profile_complete"));
+}
 
 type LogRow = {
   id: string;
@@ -50,7 +57,15 @@ const TRIGGERS = [
   { value: "document_expiring", label: "A Document Is Expiring" },
 ];
 
-const TOKENS = ["first_name", "full_name", "city", "phone", "email"];
+const TOKENS = [
+  "first_name",
+  "full_name",
+  "city",
+  "phone",
+  "email",
+  "company_phone",
+  "resume_link",
+];
 
 /** Turn minutes into something an operator reads at a glance. */
 export function humanDelay(minutes: number): string {
@@ -219,6 +234,9 @@ export function AutomationsPanel() {
                           <Clock className="w-3.5 h-3.5 ml-1" />
                           <span>{humanDelay(s.delay_minutes)} they apply</span>
                           {!s.is_active ? <span className="text-[#D03020]">· disabled</span> : null}
+                          {s.skip_when_profile_complete ? (
+                            <span>· Skipped If Profile Is Complete</span>
+                          ) : null}
                         </div>
                         {s.subject ? (
                           <div className="mt-1 text-sm font-medium">{s.subject}</div>
@@ -473,6 +491,12 @@ function StepForm({
     return "minutes";
   });
   const [busy, setBusy] = useState(false);
+  // Only offered once the column exists, so saving never names a missing column.
+  const skipSupported = hasSkipColumn(step ? [step] : existing);
+  const [skipWhenComplete, setSkipWhenComplete] = useState(
+    step?.skip_when_profile_complete === true,
+  );
+  const skipPatch = skipSupported ? { skip_when_profile_complete: skipWhenComplete } : {};
 
   const delayMinutes = (() => {
     const n = Number(amount);
@@ -494,6 +518,7 @@ function StepForm({
           subject: channel === "email" ? subject.trim() || null : null,
           body: body.trim(),
           delay_minutes: delayMinutes,
+          ...skipPatch,
         })
         .eq("id", step.id);
       setBusy(false);
@@ -507,6 +532,7 @@ function StepForm({
         subject: channel === "email" ? subject.trim() || null : null,
         body: body.trim(),
         delay_minutes: delayMinutes,
+        ...skipPatch,
       });
       setBusy(false);
       if (error) return toast.error(error.message);
@@ -582,7 +608,32 @@ function StepForm({
             "Reply STOP to opt out" in the first message of a sequence.
           </p>
         ) : null}
+        {/\{\{\s*resume_link\s*\}\}/i.test(body) ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {"{{resume_link}}"} becomes the applicant's private link to finish their profile. It
+            works for 14 days{channel === "email" ? " and shows as a Finish My Profile button" : ""}
+            .
+          </p>
+        ) : null}
       </Field>
+
+      {skipSupported ? (
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={skipWhenComplete}
+            onChange={(e) => setSkipWhenComplete(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-[#D03020]"
+          />
+          <span>
+            Skip If Profile Is Complete
+            <span className="block text-xs text-muted-foreground">
+              Applicants who already finished their license, insurance and address don't get this
+              message. The next message still goes out on schedule.
+            </span>
+          </span>
+        </label>
+      ) : null}
 
       <div>
         <MicroLabel>Personalisation</MicroLabel>
