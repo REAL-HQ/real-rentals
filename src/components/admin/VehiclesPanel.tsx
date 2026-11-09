@@ -509,8 +509,8 @@ function FleetVehicles({
       )}
 
       {view !== "due" && view === "list" && rows.length > 0 && (
-        <div className="hidden md:block mt-3 max-lg:min-w-0 max-lg:overflow-x-auto rounded-xl border border-border bg-white lg:overflow-hidden">
-          <table className="w-full text-[13px] max-lg:min-w-[64rem] [&_th]:px-2.5 [&_th]:py-1.5 [&_td]:px-2.5 [&_td]:py-1">
+        <div data-vehicles-table-scroller className="hidden md:block mt-3 min-w-0 overflow-x-auto overscroll-x-contain rounded-xl border border-border bg-white">
+          <table className="w-full min-w-[64rem] text-[13px] [&_th]:px-2.5 [&_th]:py-1.5 [&_td]:px-2.5 [&_td]:py-1">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
                 <th scope="col" className="w-10 px-3 py-2 font-medium" aria-label="Row number">#</th>
@@ -522,12 +522,12 @@ function FleetVehicles({
                 <th className="px-3 py-2 font-medium">Readiness</th>
                 <th className="px-3 py-2 font-medium">Availability</th>
                 <th className="px-3 py-2 font-medium">Weekly Rate</th>
-                <th className="px-3 py-2 font-medium sr-only">Open</th>
+                <th data-vehicles-open-col className="sticky right-0 z-[1] bg-[#FAFAFB] border-l border-border px-3 py-2 font-medium"><span className="sr-only">Open</span></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((v, index) => (
-                <tr key={v.id} onClick={() => setViewing(v.id)} className="border-t border-border cursor-pointer hover:bg-[#FAFAFB]">
+                <tr key={v.id} onClick={() => setViewing(v.id)} className="group border-t border-border cursor-pointer hover:bg-[#FAFAFB]">
                   <td className="w-10 px-3 py-2 tabular-nums text-muted-foreground">{rowNumber(index)}</td>
                   <td className="px-3 py-2 whitespace-nowrap"><VehicleListThumbnail vehicle={v} /></td>
                   <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</td>
@@ -537,7 +537,7 @@ function FleetVehicles({
                   <td className="px-3 py-2 whitespace-nowrap"><ReadinessPill v={v} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><Availability v={v} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><Rate v={v} /></td>
-                  <td className="px-3 py-2 text-right">
+                  <td data-vehicles-open-col className="sticky right-0 z-[1] bg-white group-hover:bg-[#FAFAFB] border-l border-border px-3 py-2 text-right whitespace-nowrap">
                     <button onClick={(e) => { e.stopPropagation(); setViewing(v.id); }} className="inline-flex items-center gap-1 rounded-md bg-black text-white px-2.5 py-1 text-xs">
                       Open <ArrowRight className="w-3 h-3" />
                     </button>

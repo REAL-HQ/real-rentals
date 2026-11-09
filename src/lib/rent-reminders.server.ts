@@ -13,13 +13,16 @@ import {
   RENT_REMINDER_SWITCHES,
   STAGE_SWITCH,
   STAGE_WORKFLOW,
+  PRIOR_NOTICE_DAYS,
   decideStage,
   easternDateOf,
   easternParts,
   manualOwed,
   mergeTemplates,
+  parseTs,
   renderReminder,
   withinQuietHoursAllowed,
+  type ClaimMap,
   type LateFeeWaiver,
   type RentReminderTemplates,
   type RentalBillingState,
@@ -32,13 +35,12 @@ export type StripeBillingSnapshot = {
   /** Next automatic charge, ET date. */
   nextChargeOn: string | null;
   /** Open invoices Stripe already tried to charge (failed), oldest first. */
-  failedInvoices: { id: string; hostedUrl: string | null; amountDue: number; createdOn: string }[];
+  failedInvoices: { id: string; hostedUrl: string | null; amountDue: number; createdOn: string; createdAt?: number | null }[];
 };
 
 export type ReminderDeps = {
   now?: Date;
   stripeSnapshot?: (subscriptionId: string) => Promise<StripeBillingSnapshot | null>;
-  cardUpdateUrl?: (customerId: string | null, subscriptionId: string) => Promise<string | null>;
   sendSms?: (a: any) => Promise<{ ok: boolean; skipped?: boolean; reason?: string; error?: string }>;
   sendEmail?: (a: { to: string; subject: string; text: string; link: string | null; linkLabel: string | null; workflow: string }) => Promise<{ ok: boolean; blocked?: string; error?: string }>;
 };
@@ -76,44 +78,99 @@ export async function liveStripeSnapshot(subscriptionId: string): Promise<Stripe
   const invoices = await stripe.invoices.list({ subscription: subscriptionId, status: "open", limit: 10 });
   const failed = (invoices.data ?? [])
     .filter((i: any) => Number(i.attempt_count ?? 0) > 0 && Number(i.amount_due ?? 0) > 0)
-    .map((i: any) => ({ id: i.id, hostedUrl: i.hosted_invoice_url ?? null, amountDue: Number(i.amount_due) / 100, createdOn: easternDateOf(i.created) }))
+    .map((i: any) => ({ id: i.id, hostedUrl: i.hosted_invoice_url ?? null, amountDue: Number(i.amount_due) / 100, createdOn: easternDateOf(i.created), createdAt: Number(i.created) || null }))
     .sort((a: any, b: any) => (a.createdOn < b.createdOn ? -1 : 1));
   return { nextChargeOn: periodEnd ? easternDateOf(periodEnd) : null, failedInvoices: failed };
 }
 
-/** A Stripe card-update page for this customer's own subscription, or null. Never a payment link. */
-export async function liveCardUpdateUrl(customerId: string | null, subscriptionId: string): Promise<string | null> {
-  if (!customerId) return null;
-  try {
-    const { createStripeClient } = await import("@/lib/stripe.server");
-    const env = process.env.RENT_REMINDER_STRIPE_ENV === "sandbox" ? "sandbox" : "live";
-    const stripe: any = createStripeClient(env, { timeout: 8000 });
-    const session = await stripe.billingPortal.sessions.create({
-      customer: customerId,
-      return_url: "https://drivereal.com/portal",
-      flow_data: { type: "payment_method_update" },
-    });
-    return typeof session?.url === "string" && session.url.startsWith("https://billing.stripe.com/") ? session.url : null;
-  } catch (err) {
-    console.error("[rent-reminders] card update link failed", { subscriptionId });
-    return null;
+/**
+ * Ledger claims for a rental + due date + channel: stage -> ET date claimed.
+ * Null when the ledger cannot be read (callers then send nothing new).
+ */
+export async function claimedStages(admin: any, rentalId: string, dueDate: string, channel: "sms" | "email"): Promise<ClaimMap | null> {
+  const res = await admin.from("rent_reminder_log").select("stage, created_at").eq("rental_id", rentalId).eq("due_date", dueDate).eq("channel", channel);
+  if (res.error) return null;
+  const out: ClaimMap = new Map();
+  for (const r of res.data ?? []) {
+    const ms = parseTs(r.created_at);
+    out.set(String(r.stage), ms != null ? easternParts(new Date(ms)).date : "0000-01-01");
   }
+  return out;
 }
 
-/** Ledger stages already claimed for a rental + due date. Null when the ledger cannot be read. */
-export async function claimedStages(admin: any, rentalId: string, dueDate: string, channel: "sms" | "email"): Promise<Set<string> | null> {
-  const res = await admin.from("rent_reminder_log").select("stage").eq("rental_id", rentalId).eq("due_date", dueDate).eq("channel", channel);
-  if (res.error) return null;
-  return new Set((res.data ?? []).map((r: any) => String(r.stage)));
+/**
+ * ET date of the latest text in the last PRIOR_NOTICE_DAYS that already told
+ * this renter about this week: for a Stripe renter, any outbound text naming
+ * the failed invoice (Payment Failed Text, or a staff text with the invoice
+ * link); for a manual payer, an earlier overdue/daily notice. Null = none;
+ * "unavailable" = could not read (callers hold the overdue notice).
+ */
+export async function recentInvoiceNotice(
+  admin: any,
+  s: { rentalId: string; phone?: string | null; mode: "stripe" | "manual"; invoiceId?: string | null; invoiceUrl?: string | null },
+  now: Date,
+): Promise<string | null | "unavailable"> {
+  const since = now.getTime() - PRIOR_NOTICE_DAYS * 86400000;
+  const rows = await renterTexts(admin, s.rentalId, s.phone ?? null);
+  if (rows === "unavailable") return "unavailable";
+  let latest: number | null = null;
+  for (const r of rows) {
+    const at = parseTs(r.created_at);
+    if (at == null || at < since || at > now.getTime()) continue;
+    if ((r.channel ?? "sms") !== "sms") continue;
+    if (!["sent", "queued", "delivered"].includes(String(r.status ?? ""))) continue;
+    const body = String(r.body ?? "");
+    const kind = String(r.kind ?? "");
+    const about = s.mode === "stripe"
+      ? Boolean((s.invoiceUrl && body.includes(s.invoiceUrl.trim())) || (s.invoiceId && body.includes(s.invoiceId)))
+      : /^rent_reminder_(overdue|daily)$/.test(kind);
+    if (about && (latest == null || at > latest)) latest = at;
+  }
+  return latest == null ? null : easternParts(new Date(latest)).date;
+}
+
+async function renterTexts(admin: any, rentalId: string, phoneRaw: string | null): Promise<any[] | "unavailable"> {
+  const rows: any[] = [];
+  const byRental = await admin.from("outbound_messages").select("created_at, body, kind, status, channel").eq("rental_id", rentalId);
+  if (byRental.error) return "unavailable";
+  rows.push(...(byRental.data ?? []));
+  const { toE164 } = await import("@/lib/sms.server");
+  const phone = toE164(phoneRaw);
+  if (phone) {
+    const byPhone = await admin.from("outbound_messages").select("created_at, body, kind, status, channel").eq("to_address", phone);
+    if (byPhone.error) return "unavailable";
+    rows.push(...(byPhone.data ?? []));
+  }
+  return rows;
+}
+
+/**
+ * At most one rent text per renter per ET day, across all their invoices: true
+ * when a payment-failed / rent reminder text (or any text with an invoice link)
+ * already went out today. "unavailable" = could not read (callers hold the text).
+ */
+export async function rentTextedToday(admin: any, rentalId: string, phone: string | null, now: Date): Promise<boolean | "unavailable"> {
+  const rows = await renterTexts(admin, rentalId, phone);
+  if (rows === "unavailable") return "unavailable";
+  const today = easternParts(now).date;
+  return rows.some((r) => {
+    const at = parseTs(r.created_at);
+    if (at == null || at > now.getTime() || easternParts(new Date(at)).date !== today) return false;
+    if ((r.channel ?? "sms") !== "sms") return false;
+    if (!["sent", "queued", "delivered"].includes(String(r.status ?? ""))) return false;
+    const kind = String(r.kind ?? "");
+    return kind === "payment_failed" || kind.startsWith("rent_reminder_") || String(r.body ?? "").includes("invoice.stripe.com/");
+  });
 }
 
 /** Claim one send. True only for the caller that inserted the row. */
 export async function claimReminder(
   admin: any,
-  row: { rentalId: string; dueDate: string; stage: string; channel: "sms" | "email"; source: "scheduler" | "webhook" },
+  row: { rentalId: string; dueDate: string; stage: string; channel: "sms" | "email"; source: "scheduler" | "webhook"; at?: Date },
 ): Promise<"claimed" | "taken" | "unavailable"> {
   const res = await admin.from("rent_reminder_log").insert({
     rental_id: row.rentalId, due_date: row.dueDate, stage: row.stage, channel: row.channel, source: row.source,
+    ...(row.at ? { created_at: row.at.toISOString() } : {}),
   });
   if (!res.error) return "claimed";
   if (res.error.code === "23505") return "taken";
@@ -160,13 +217,15 @@ export async function loadBillingStates(admin: any, deps: ReminderDeps, today: s
       if (!snap) continue; // canceled: nothing to remind about
       const failed = snap.failedInvoices[0];
       if (failed) {
-        const owed = snap.failedInvoices.reduce((s, i) => s + i.amountDue, 0);
-        states.push({ ...base, mode: "stripe", dueDate: failed.createdOn, owing: true, rentOwed: Math.round(owed * 100) / 100, invoiceUrl: failed.hostedUrl });
+        // {{amount}} is the linked invoice's own amount; newer open invoices are listed separately.
+        states.push({
+          ...base, mode: "stripe", dueDate: failed.createdOn, owing: true, rentOwed: Math.round(failed.amountDue * 100) / 100,
+          invoiceUrl: failed.hostedUrl, invoiceId: failed.id, invoiceCreatedAt: failed.createdAt ?? null,
+          otherInvoices: snap.failedInvoices.slice(1).map((i) => ({ url: i.hostedUrl, amount: i.amountDue, createdOn: i.createdOn })),
+        });
       } else {
         states.push({
           ...base, mode: "stripe", dueDate: snap.nextChargeOn, owing: false, rentOwed: 0,
-          // The card link is minted lazily, only when a due-tomorrow reminder will actually send.
-          cardUpdateUrl: undefined,
           stripeCustomerId: (r.stripe_customer_id as string | null) ?? null,
           stripeSubscriptionId: r.stripe_subscription_id as string,
         });
@@ -203,30 +262,42 @@ export async function runRentReminders(admin: any, deps: ReminderDeps = {}): Pro
   const sendSms = deps.sendSms ?? (async (a: any) => (await import("@/lib/sms.server")).sendSms(a) as any);
   const sendMail = deps.sendEmail ?? (async (a: any) => (await import("@/lib/email.server")).sendRentReminderEmail(a));
   const smsFrom = process.env.RENT_REMINDER_SMS_FROM?.trim() || process.env.PAYMENT_FAILED_SMS_FROM?.trim() || null;
+  // Overdue is only sent for failures after its switch went on (no catch-up blast).
+  const overdueEnabledAt = gates[STAGE_SWITCH.overdue] === "send" ? (controls.value?.on?.[STAGE_SWITCH.overdue]?.at ?? null) : undefined;
 
   for (const s of states) {
     run.examined++;
     if (!s.dueDate) { bump(run, "no_due_date"); continue; }
+    let priorNoticeOn: string | null = null;
+    if (s.owing) {
+      const prior = await recentInvoiceNotice(admin, s, now);
+      if (prior === "unavailable") { bump(run, "outbound_unavailable"); continue; }
+      priorNoticeOn = prior;
+    }
     for (const channel of ["sms", "email"] as const) {
       const sent = await claimedStages(admin, s.rentalId, s.dueDate, channel);
       if (!sent) { bump(run, "ledger_unavailable"); continue; }
-      const d = decideStage(s, now, sent);
+      const d = decideStage(s, now, sent, { overdueEnabledAt, priorNoticeOn });
       if (!d.send) { bump(run, d.reason); continue; }
       if (gates[STAGE_SWITCH[d.stage]] !== "send") { bump(run, "stage_off"); continue; }
       if (channel === "sms" && !withinQuietHoursAllowed(hour)) { bump(run, "quiet_hours"); continue; }
       if (channel === "sms" && !s.phone) { bump(run, "no_phone"); continue; }
       if (channel === "email" && !s.email) { bump(run, "no_email"); continue; }
+      if (channel === "sms") {
+        const texted = await rentTextedToday(admin, s.rentalId, s.phone, now);
+        if (texted === "unavailable") { bump(run, "outbound_unavailable"); continue; }
+        if (texted) { bump(run, "texted_today"); continue; }
+      }
 
       const state = s;
-      if (s.mode === "stripe" && d.stage === "due_tomorrow" && s.cardUpdateUrl === undefined && s.stripeSubscriptionId) {
-        s.cardUpdateUrl = await (deps.cardUpdateUrl ?? liveCardUpdateUrl)(s.stripeCustomerId ?? null, s.stripeSubscriptionId);
-      }
       const msg = renderReminder(templates, d.stage, state, now);
       if (!msg) { bump(run, "no_safe_link"); continue; }
       if (state.mode === "stripe" && d.stage !== "due_tomorrow" && !isHostedInvoiceUrl(msg.link)) { bump(run, "no_safe_link"); continue; }
+      // The autopay heads-up never carries a link of any kind.
+      if (state.mode === "stripe" && d.stage === "due_tomorrow" && (msg.link || /https?:\/\//i.test(`${msg.sms} ${msg.email}`))) { bump(run, "no_safe_link"); continue; }
 
       const key = { rentalId: s.rentalId, dueDate: d.dueDate, stage: d.ledgerStage, channel };
-      const claim = await claimReminder(admin, { ...key, source: "scheduler" });
+      const claim = await claimReminder(admin, { ...key, source: "scheduler", at: now });
       if (claim !== "claimed") { bump(run, claim === "taken" ? "already_sent" : "ledger_unavailable"); continue; }
       try {
         if (channel === "sms") {

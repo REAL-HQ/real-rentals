@@ -64,7 +64,7 @@ export async function sendFailedPaymentText(
   // One schedule with the rent reminders: claim today's slot in the shared
   // ledger (overdue first, then daily) so the hourly scheduler never repeats
   // it. If the ledger table is not there yet, behave exactly as before.
-  const slot = await webhookReminderSlot(admin, input.rentalId, input.invoice, "sms", now);
+  const slot = await webhookReminderSlot(admin, input.rentalId, input.invoice, "sms", now, { phone: input.phone });
   if (slot.kind === "taken") return { sent: false, reason: "already_sent" };
   let body = failedPaymentSmsBody({ firstName: input.firstName, amount: input.amount, invoiceUrl: link });
   if (slot.kind === "claimed" && slot.useReminderTemplate) {
@@ -202,16 +202,32 @@ export async function webhookReminderSlot(
   invoice: any,
   channel: "sms" | "email",
   now: Date,
+  opts: { phone?: string | null } = {},
 ): Promise<WebhookSlot> {
   try {
-    const { claimedStages, claimReminder } = await import("@/lib/rent-reminders.server");
+    const { claimedStages, claimReminder, recentInvoiceNotice, rentTextedToday } = await import("@/lib/rent-reminders.server");
     const { easternDateOf, easternParts, webhookLedgerStage, STAGE_SWITCH } = await import("@/lib/rent-reminders");
     const dueDate = Number.isFinite(Number(invoice?.created)) && invoice?.created ? easternDateOf(Number(invoice.created)) : easternParts(now).date;
     const sent = await claimedStages(admin, rentalId, dueDate, channel);
     if (!sent) return { kind: "legacy" };
-    const ledgerStage = webhookLedgerStage(sent, now);
+    // A text about this same invoice already went out today (e.g. a staff text
+    // with the invoice link): not a second one the same day.
+    let priorNoticeOn: string | null = null;
+    if (channel === "sms") {
+      const prior = await recentInvoiceNotice(admin, {
+        rentalId, phone: opts.phone ?? null, mode: "stripe",
+        invoiceId: typeof invoice?.id === "string" ? invoice.id : null,
+        invoiceUrl: typeof invoice?.hosted_invoice_url === "string" ? invoice.hosted_invoice_url : null,
+      }, now);
+      if (prior !== "unavailable") priorNoticeOn = prior;
+      // One rent text per renter per day: a newer invoice failing after today's
+      // reminder waits for tomorrow's (which lists it with its own link).
+      const texted = await rentTextedToday(admin, rentalId, opts.phone ?? null, now);
+      if (texted === "unavailable" || texted) return { kind: "taken" };
+    }
+    const ledgerStage = webhookLedgerStage(sent, now, priorNoticeOn, { onePerDay: channel === "sms" });
     if (!ledgerStage) return { kind: "taken" };
-    const claim = await claimReminder(admin, { rentalId, dueDate, stage: ledgerStage, channel, source: "webhook" });
+    const claim = await claimReminder(admin, { rentalId, dueDate, stage: ledgerStage, channel, source: "webhook", at: now });
     if (claim === "taken") return { kind: "taken" };
     if (claim === "unavailable") return { kind: "legacy" };
     const stageKey = ledgerStage === "overdue" ? STAGE_SWITCH.overdue : STAGE_SWITCH.daily;
@@ -238,6 +254,7 @@ export async function renderWebhookReminder(
     return renderReminder(templates, slot.ledgerStage === "overdue" ? "overdue" : "daily", {
       rentalId: input.rentalId, applicationId: input.applicationId, firstName: input.firstName, phone: input.phone, email: null,
       weeklyRate: input.amount, mode: "stripe", dueDate: slot.dueDate, owing: true, rentOwed: input.amount, invoiceUrl: link,
+      invoiceId: typeof input.invoice?.id === "string" ? input.invoice.id : null,
       waivers: (w.error ? [] : w.data ?? []).map((x: any) => ({ dueDate: x.due_date, waivedThrough: x.waived_through ?? null })),
     }, now);
   } catch {

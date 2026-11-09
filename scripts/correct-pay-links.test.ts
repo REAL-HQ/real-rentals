@@ -210,9 +210,14 @@ describe("webhook: invoice.payment_failed", () => {
     expect(sms.calls[0].body).toContain(INVOICE_URL);
     await postVerifiedPaymentWebhook(event(failedInvoice()), db, "live", { sendSms: sms.send, now: NOON_ET });
     expect(sms.calls.length).toBe(1);
-    // Stripe's next retry is a new failure: one more text.
+    // A same-day Stripe retry is not a second text (one past-due text per day).
     await postVerifiedPaymentWebhook(event(failedInvoice({ attempt_count: 2 })), db, "live", { sendSms: sms.send, now: NOON_ET });
+    expect(sms.calls.length).toBe(1);
+    // The next day's retry is a new failure: one more text, still the invoice's own link.
+    const nextDay = new Date(NOON_ET.getTime() + 24 * 3600 * 1000);
+    await postVerifiedPaymentWebhook(event(failedInvoice({ attempt_count: 3 })), db, "live", { sendSms: sms.send, now: nextDay });
     expect(sms.calls.length).toBe(2);
+    expect(sms.calls[1].body).toContain(INVOICE_URL);
   });
 
   test("never texts a generic link, and holds texts overnight", async () => {
