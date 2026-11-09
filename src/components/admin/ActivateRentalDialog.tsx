@@ -22,6 +22,8 @@ import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
 import { activationSubmitIssues } from "./activation-submit-issues";
 import type { FixTarget } from "@/lib/next-step";
 import { Button } from "@/components/ui/button";
+import { CHECKLIST_EVIDENCE_ENABLED, type EvidencePresentationMap, type EvidenceProjection, type EvidenceField } from "@/lib/checklist-evidence";
+import { ChecklistExceptionFields } from "./ChecklistExceptionFields";
 
 type VehicleLite = {
   id: string;
@@ -45,6 +47,8 @@ export function ActivateRentalDialog({
   isOwner = false,
   onRun,
   renderEvidence,
+  evidence,
+  evidenceItems,
 }: {
   driver: { id: string; full_name?: string | null; vehicle_id?: string | null };
   vehicles: VehicleLite[];
@@ -54,6 +58,8 @@ export function ActivateRentalDialog({
   isOwner?: boolean;
   onRun?: (target: FixTarget) => void;
   renderEvidence?: (key: ActivationRequirementKey) => ReactNode;
+  evidence?: EvidencePresentationMap;
+  evidenceItems?: EvidenceProjection[];
 }) {
   const check = useServerFn(getActivationReadiness);
   const activate = useServerFn(activateRental);
@@ -76,6 +82,8 @@ export function ActivateRentalDialog({
   const [pickupMiles, setPickupMiles] = useState("");
   const [suppressWelcome, setSuppressWelcome] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [selectedEvidence, setSelectedEvidence] = useState<EvidenceField[]>([]);
+  const [evidenceReason, setEvidenceReason] = useState("");
 
   useEffect(() => {
     const onReadinessChanged = (event: Event) => {
@@ -206,8 +214,9 @@ export function ActivateRentalDialog({
           ) : null}
 
           {readiness?.requirements?.length ? (
-            <ActivationRequirementList requirements={readiness.requirements} onRun={onRun} renderEvidence={renderEvidence} />
+            <ActivationRequirementList requirements={readiness.requirements} evidence={evidence} onRun={onRun} renderEvidence={renderEvidence} />
           ) : null}
+          {CHECKLIST_EVIDENCE_ENABLED && evidenceItems ? <ChecklistExceptionFields items={evidenceItems} selected={selectedEvidence} reason={evidenceReason} onSelected={setSelectedEvidence} onReason={setEvidenceReason} /> : null}
 
           {hardBlockers.length > 0 ? (
             <div className="rounded-xl border border-[#F3C9C4] bg-[#FDF2F1] p-3">

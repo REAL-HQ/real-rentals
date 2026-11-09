@@ -5,6 +5,7 @@ import { ActivationRequirementList } from "./ActivationRequirementList";
 import type { ActivationRequirementKey } from "@/lib/activation-readiness";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import type { EvidencePresentationMap } from "@/lib/checklist-evidence";
 
 /**
  * The profile's one "what now" card. It shows the server's blockers with a
@@ -19,6 +20,7 @@ export function NextStepCard({
   onActivate,
   onRetry,
   renderEvidence,
+  evidence,
 }: {
   model: NextStep;
   readiness: ActivationReadiness | null;
@@ -26,6 +28,7 @@ export function NextStepCard({
   onActivate: () => void;
   onRetry: () => void;
   renderEvidence?: (key: ActivationRequirementKey) => ReactNode;
+  evidence?: EvidencePresentationMap;
 }) {
   const { activation } = model;
   if (activation === "rental_active") return null;
@@ -84,7 +87,7 @@ export function NextStepCard({
           {model.blockers.map((b, i) => (
             <li key={`${b.key}-${i}`} data-blocker={b.key} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[13px]">
               <span className="inline-flex min-w-0 items-start gap-1.5 text-[#111114]">
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#B00000]" />
+                <AlertCircle aria-label={b.key !== "local" ? evidence?.[b.key]?.label : undefined} className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${b.key !== "local" && evidence?.[b.key]?.tone === "yellow" ? "text-warning" : b.key !== "local" && evidence?.[b.key]?.tone === "green" ? "text-success" : "text-destructive"}`} />
                 <span>
                   {b.label}
                   {b.detail ? <span className="text-[#9A9AA3]"> · {b.detail}</span> : null}
@@ -104,7 +107,7 @@ export function NextStepCard({
         <details className="mt-3 text-[12px]">
           <summary className="cursor-pointer text-[#55555E] hover:text-[#111114]">Full Checklist</summary>
           <div className="mt-2">
-            <ActivationRequirementList requirements={readiness.requirements} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} renderEvidence={renderEvidence} />
+            <ActivationRequirementList requirements={readiness.requirements} evidence={evidence} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} renderEvidence={renderEvidence} />
           </div>
         </details>
       ) : null}

@@ -8,6 +8,7 @@ import {
   type ReadinessState,
 } from "@/lib/readiness";
 import { fmtDate as formatDate } from "@/lib/date-format";
+import type { EvidenceTone } from "@/lib/checklist-evidence";
 
 // ---- Design tokens (shared across admin) --------------------------------
 // Canvas #FAFAFB · Card #FFFFFF · Border #EDEDF0 · Ink #111114 · Sub #55555E
@@ -273,6 +274,7 @@ export function LifecycleRail({
   blocker,
   className = "",
   onStageClick,
+  evidenceTones,
 }: {
   stages: LifecycleStage[];
   percent?: number;
@@ -281,6 +283,8 @@ export function LifecycleRail({
   className?: string;
   /** Only stages with a real destination get a handler; others stay static. */
   onStageClick?: Partial<Record<string, () => void>>;
+  /** Optional operational evidence color; never changes lifecycle completion or status. */
+  evidenceTones?: Partial<Record<string, EvidenceTone>>;
 }) {
   const currentIdx = Math.max(
     0,
@@ -318,19 +322,24 @@ export function LifecycleRail({
         {stages.map((s, i) => {
           const done = s.state === "done";
           const cur = s.state === "current";
+          const evidenceTone = evidenceTones?.[s.key];
           return (
             <li key={s.key} className="flex items-center gap-1.5 shrink-0">
               <StageWrap onClick={onStageClick?.[s.key]} label={s.label}>
                 <span
                   className={`h-6 w-6 rounded-full grid place-items-center border-2 text-[10px] font-semibold ${
-                    done
+                    evidenceTone === "yellow"
+                      ? "bg-warning-soft border-warning text-warning-foreground"
+                      : evidenceTone === "red"
+                        ? "bg-destructive/10 border-destructive text-destructive"
+                        : done
                       ? "bg-[#50C060] border-[#50C060] text-white"
                       : cur
                         ? "bg-white border-[#D03020] text-[#D03020] ring-4 ring-[#D03020]/10"
                         : "bg-white border-[#EDEDF0] text-[#C4C4CB]"
                   }`}
                 >
-                  {done ? <Check className="w-3 h-3" strokeWidth={2.5} /> : i + 1}
+                  {done && (!evidenceTone || evidenceTone === "green") ? <Check className="w-3 h-3" strokeWidth={2.5} /> : i + 1}
                 </span>
                 <span
                   className={`text-[10px] font-medium whitespace-nowrap ${

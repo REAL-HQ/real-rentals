@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { FixTarget } from "@/lib/next-step";
 import { Button } from "@/components/ui/button";
 import { checklistAction } from "./checklist-actions";
+import type { EvidencePresentationMap } from "@/lib/checklist-evidence";
 
 // Renders the server's readiness checklist. Nothing here decides anything:
 // the list, each state and each enforcement level come from
@@ -20,10 +21,12 @@ export function ActivationRequirementList({
   requirements,
   onRun,
   renderEvidence,
+  evidence,
 }: {
   requirements: ActivationRequirement[];
   onRun?: (target: FixTarget) => void;
   renderEvidence?: (key: ActivationRequirementKey) => ReactNode;
+  evidence?: EvidencePresentationMap;
 }) {
   // Advisory items (insurance card, gig profile, gig platform) never block, so
   // they are not counted as outstanding.
@@ -42,12 +45,13 @@ export function ActivationRequirementList({
       <ul className="mt-2 divide-y divide-border">
         {requirements.map((r) => {
           const action = onRun ? checklistAction(r) : null;
-          const status = r.met === true ? "Complete" : r.met === null ? "Choose A Vehicle" : ENFORCEMENT_LABEL[r.enforcement];
-          const icon = r.met === true ? <Check className="h-4 w-4 shrink-0 text-success" aria-label="Complete" /> : r.met === null ? <Minus className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Not Checked Yet" /> : <Circle className={`h-4 w-4 shrink-0 ${r.enforcement === "hard" ? "text-destructive" : r.enforcement === "soft" || r.enforcement === "acknowledge" ? "text-warning-foreground" : "text-muted-foreground"}`} aria-label="Incomplete" />;
+          const fileState = evidence?.[r.key];
+          const status = fileState?.label ?? (r.met === true ? "Complete" : r.met === null ? "Choose A Vehicle" : ENFORCEMENT_LABEL[r.enforcement]);
+          const icon = fileState ? <Circle className={`h-4 w-4 shrink-0 ${fileState.tone === "red" ? "text-destructive" : fileState.tone === "yellow" ? "text-warning" : "text-success"}`} aria-label={fileState.label} /> : r.met === true ? <Check className="h-4 w-4 shrink-0 text-success" aria-label="Complete" /> : r.met === null ? <Minus className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Not Checked Yet" /> : <Circle className={`h-4 w-4 shrink-0 ${r.enforcement === "hard" ? "text-destructive" : r.enforcement === "soft" || r.enforcement === "acknowledge" ? "text-warning-foreground" : "text-muted-foreground"}`} aria-label="Incomplete" />;
           return (
           <li
             key={r.key}
-            className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1 text-[13px]"
+            className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1 text-[13px] max-sm:grid-cols-1"
             data-requirement={r.key}
             data-met={String(r.met)}
           >
@@ -57,7 +61,7 @@ export function ActivationRequirementList({
                 <span className="min-w-0 break-words text-foreground">{r.label}{r.detail && r.met !== true ? <span className="text-muted-foreground"> · {r.detail}</span> : null}</span>
               </Button>
             ) : <span className="flex min-w-0 items-center gap-2 px-1 py-2">{icon}<span className="min-w-0 break-words text-foreground">{r.label}{r.detail && r.met !== true ? <span className="text-muted-foreground"> · {r.detail}</span> : null}</span></span>}
-            <div className="flex max-w-36 shrink-0 flex-col items-end gap-1">
+            <div className={`flex shrink-0 flex-col items-end gap-1 ${fileState ? "max-w-80 max-sm:w-full" : "max-w-36"}`}>
               <span className="text-right text-[10px] text-muted-foreground">{status}</span>
               {action && onRun ? <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => onRun(action.target)}>{action.label}</Button> : r.key === "gig_platform" ? <span className="text-right text-[10px] text-muted-foreground">No Platform Verification Connected</span> : null}
               {renderEvidence ? renderEvidence(r.key) : null}

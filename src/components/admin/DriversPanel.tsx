@@ -78,6 +78,8 @@ import {
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
 import { checklistDocumentCategories } from "./checklist-actions";
+import { CHECKLIST_EVIDENCE_ENABLED, evidenceTone, projectEvidence, requirementEvidence, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
+import { ChecklistEvidenceControl } from "./ChecklistEvidenceControl";
 import type { ActivationRequirementKey } from "@/lib/activation-readiness";
 import { withoutInsuranceDecision } from "@/lib/insurance-verification";
 import { scoreApplication } from "@/lib/scoring.functions";
@@ -1904,6 +1906,19 @@ function DriverDetail({
   const [rentalTabReadinessLoading, setRentalTabReadinessLoading] = useState(false);
   const [rentalTabReadinessFailed, setRentalTabReadinessFailed] = useState(false);
   const [readinessNonce, setReadinessNonce] = useState(0);
+  // No evidence reads/writes while preparation is disabled. Never use local
+  // checkmarks to pretend a required document or activation exception is saved.
+  const evidenceItems: EvidenceProjection[] = CHECKLIST_EVIDENCE_ENABLED ? (["license_front", "license_back", "insurance", "agreement", "gig_profile"] as EvidenceField[]).map((field) => projectEvidence({
+    applicationId: driver.id, field, events: [], documents: vaultDocs,
+    itemComplete: field === "agreement" && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true,
+    reviewRequired: field === "agreement" || field === "insurance",
+  })) : [];
+  const evidencePresentation: EvidencePresentationMap | undefined = CHECKLIST_EVIDENCE_ENABLED ? Object.fromEntries((rentalTabReadiness?.requirements ?? []).flatMap((r) => {
+    const presentation = requirementEvidence(r.key, evidenceItems);
+    return presentation ? [[r.key, presentation]] : [];
+  })) : undefined;
+  const docsEvidenceTone = evidenceTone(evidenceItems.filter((i) => i.field !== "insurance"));
+  const insuranceEvidenceTone = evidenceTone(evidenceItems.filter((i) => i.field === "insurance"));
 
   function readinessChanged() {
     setReadinessNonce((n) => n + 1);
@@ -1921,7 +1936,10 @@ function DriverDetail({
     if (key === "signed_agreement" && rentalTabReadiness?.requirements.some((r) => r.key === key && r.met === true)) return null;
     const categories = checklistDocumentCategories(key);
     if (!categories.length) return null;
-    return <div className="flex min-w-0 flex-wrap justify-end gap-1.5">{categories.map((category) => <DriverEvidenceUpload key={`${driver.id}:${category}`} applicationId={driver.id} category={category} documents={vaultDocs} onUploaded={refreshEvidence} />)}</div>;
+    return <div className="flex min-w-0 flex-wrap justify-end gap-1.5">{categories.map((category) => {
+      const item = evidenceItems.find((i) => i.field === category);
+      return <div key={`${driver.id}:${category}`} className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">{item ? <ChecklistEvidenceControl applicationId={driver.id} item={item} /> : null}<DriverEvidenceUpload applicationId={driver.id} category={category} documents={vaultDocs} onUploaded={refreshEvidence} /></div>;
+    })}</div>;
   }
 
   useEffect(() => {
@@ -2553,6 +2571,7 @@ function DriverDetail({
           <div className="mt-3">
             <LifecycleRail
               stages={lifecycle}
+              evidenceTones={CHECKLIST_EVIDENCE_ENABLED ? { ...(docsEvidenceTone ? { docs: docsEvidenceTone } : {}), ...(insuranceEvidenceTone ? { insurance: insuranceEvidenceTone } : {}) } : undefined}
               percent={percentComplete}
               timeInStage={timeInStage}
               blocker={readiness.disqualifiers[0]}
@@ -2592,6 +2611,7 @@ function DriverDetail({
                   model={next}
                   readiness={rentalTabReadiness}
                   renderEvidence={renderChecklistEvidence}
+                  evidence={evidencePresentation}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
@@ -2761,6 +2781,7 @@ function DriverDetail({
                   model={next}
                   readiness={rentalTabReadiness}
                   renderEvidence={renderChecklistEvidence}
+                  evidence={evidencePresentation}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
@@ -2967,6 +2988,8 @@ function DriverDetail({
           vehicles={vehicles}
           isOwner={isOwner}
           renderEvidence={renderChecklistEvidence}
+          evidence={evidencePresentation}
+          evidenceItems={evidenceItems}
           onRun={(target) => { setActivateOpen(false); runTarget(target); }}
           onClose={() => setActivateOpen(false)}
           onActivated={() => {
