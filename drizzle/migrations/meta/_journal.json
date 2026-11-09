@@ -183,6 +183,13 @@
       "when": 1794201540896,
       "tag": "0025_checklist_inspection_checkoffs",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794202859114,
+      "tag": "0026_checklist_pickup_checkoffs",
+      "breakpoints": true
     }
   ]
 }

@@ -1794,6 +1794,8 @@ function DriverDetail({
     applicationId: driver.id, field, events: safeEvents, documents: vaultDocs,
     itemComplete: field === "agreement"
       ? rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true && r.detail !== "Upload Due") === true
+      : field === "pickup"
+        ? rentalActiveFlag
       : field === "inspection"
         ? !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true
         : false,
@@ -1813,7 +1815,7 @@ function DriverDetail({
         const base = { applicationId: driver.id, field: f.field, expectedRevision: f.revision, idempotencyKey: crypto.randomUUID(), note: "" };
         await saveEvidence({ data: next === "collected" ? { ...base, state: "collected", source: "other" } : { ...base, state: "not_collected", source: null } });
       }
-      toast.success(next === "collected" ? "Checked Off — Upload The File When You Have It" : "Marked Not Collected");
+      toast.success(next === "collected" ? open.every((f) => f.field === "pickup") ? "Pickup Checked Off — Use Activate Rental To Start The Rental" : "Checked Off — Upload The File When You Have It" : open.every((f) => f.field === "pickup") ? "Pickup Marked Not Done" : "Marked Not Collected");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could Not Save This Check-Off.");
     } finally {
@@ -1837,7 +1839,7 @@ function DriverDetail({
         toggleLabel: r.met === true ? "View Approved Application" : "Review And Approve Application",
         toggleTitle: r.met === true ? "View The Approved Application." : "Run The Existing Approval Checks.",
       }]];
-      if (r.key === "pickup" || r.key === "rental_active") return [[r.key, {
+      if (r.key === "rental_active") return [[r.key, {
         tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Completed By Activation", fields: [],
         onToggle: () => r.met === true ? setTab("rental") : setActivateOpen(true),
         toggleLabel: r.met === true ? `View ${r.label}` : `Open Activate Rental For ${r.label}`,
@@ -1848,7 +1850,10 @@ function DriverDetail({
     // Collecting the card is not verifying insurance; say so on that row.
     if (r.key === "insurance_verified" && r.met !== true && presentation.tone === "yellow") presentation.label = "Upload Due · Verify Insurance";
     if (r.key === "inspection" && presentation.tone === "yellow") presentation.label = "Upload Due · Written Override Required";
-    if (r.enforcement === "advisory" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Advisory";
+    // A pickup check-off is a staff note only; the rental still starts through Activate Rental.
+    if (r.key === "pickup" && presentation.tone === "yellow") presentation.label = "Checked Off · Activate To Finish";
+    if (r.key === "pickup" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Not Done";
+    if (r.enforcement === "advisory" && r.key !== "pickup" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Advisory";
     const toggleable = presentation.fields.some((f) => !f.uploaded && !f.complete) && !(r.key === "signed_agreement" && r.met === true && presentation.fields.every((f) => f.status !== "upload_due"));
     return [[r.key, toggleable ? { ...presentation, onToggle: () => void toggleEvidence(presentation.fields), busy: evidenceSaving } : presentation]];
   })) : undefined;
@@ -1856,6 +1861,8 @@ function DriverDetail({
   const profileItems = evidenceItems.filter((i) => i.field === "gig_profile");
   const agreementItems = evidenceItems.filter((i) => i.field === "agreement");
   const inspectionItems = evidenceItems.filter((i) => i.field === "inspection");
+  const pickupItems = evidenceItems.filter((i) => i.field === "pickup");
+  const pickupEvidenceTone = evidenceTone(pickupItems);
   const docsEvidenceTone = evidenceTone(licenseItems);
   const profileEvidenceTone = evidenceTone(profileItems);
   const agreementEvidenceTone = evidenceTone(agreementItems);
@@ -1870,6 +1877,7 @@ function DriverDetail({
     profile: isManager ? addressed(profileItems) : !missingRequiredCategories(vaultDocs).includes("gig_profile"),
     insuranceOnFile: !vaultLoading && !missingRequiredCategories(vaultDocs).includes("insurance"),
     approved, rentalActive: rentalActiveFlag,
+    pickup: isManager && pickupItems.some((i) => i.status === "upload_due"),
     // Saved Yellow/Red evidence stays visible; only a real passed inspection or signed agreement is Green.
     inspection: isManager ? actualInspection || addressed(inspectionItems) : actualInspection,
     agreement: isManager ? actualAgreement || addressed(agreementItems) : actualAgreement,
@@ -2415,6 +2423,7 @@ function DriverDetail({
                 ...(insuranceEvidenceTone ? { insurance: insuranceEvidenceTone } : {}),
                 ...(inspectionEvidenceTone ? { inspection: inspectionEvidenceTone } : {}),
                 ...(agreementEvidenceTone ? { agreement: agreementEvidenceTone } : {}),
+                ...(pickupEvidenceTone && pickupEvidenceTone !== "red" ? { pickup: pickupEvidenceTone } : {}),
               } : undefined}
               percent={percentComplete}
               timeInStage={timeInStage}

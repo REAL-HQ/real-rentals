@@ -6,11 +6,11 @@ import type { StaffTier } from "./roles";
  *  activate_rental_checked_tx accepts them in the same transaction as the rental. */
 export const CHECKLIST_EVIDENCE_ENABLED = true;
 export const EVIDENCE_UPDATE_UNAVAILABLE = "Checklist Saving And Activation Exceptions Await The Approved Database Update.";
-export const EVIDENCE_FIELDS = ["license_front", "license_back", "insurance", "agreement", "gig_profile", "inspection"] as const;
+export const EVIDENCE_FIELDS = ["license_front", "license_back", "insurance", "agreement", "gig_profile", "inspection", "pickup"] as const;
 export const evidenceFieldSchema = z.enum(EVIDENCE_FIELDS);
 export type EvidenceField = z.infer<typeof evidenceFieldSchema>;
 export const EVIDENCE_FIELD_LABELS: Record<EvidenceField, string> = {
-  license_front: "License Front", license_back: "License Back", insurance: "Insurance", agreement: "Agreement", gig_profile: "Gig Profile", inspection: "Pre-Inspection",
+  license_front: "License Front", license_back: "License Back", insurance: "Insurance", agreement: "Agreement", gig_profile: "Gig Profile", inspection: "Pre-Inspection", pickup: "Pickup",
 };
 
 export const attestationInput = z.discriminatedUnion("state", [
@@ -41,6 +41,7 @@ export function evidenceFields(key: ActivationRequirementKey): EvidenceField[] {
     case "insurance_document": return ["insurance"];
     case "gig_profile": return ["gig_profile"];
     case "inspection": return ["inspection"];
+    case "pickup": return ["pickup"];
     default: return [];
   }
 }

@@ -56,3 +56,18 @@ describe("Driver checklist alignment", () => {
     expect(source).toContain('inspection: inspectionEvidenceTone');
   });
 });
+
+describe("Pickup check-off", () => {
+  it("saves a staff pickup check-off as Yellow and never as an active rental", () => {
+    const applicationId = "22222222-2222-4222-8222-222222222222";
+    const input = { applicationId, field: "pickup", expectedRevision: 0, idempotencyKey: applicationId, state: "collected", source: "other", note: "" } as const;
+    expect(attestationInput.parse(input).field).toBe("pickup");
+    const projection = projectEvidence({ applicationId, field: "pickup", events: [{ ...input, id: "event-1", revision: 1, supersedesId: null, actorId: applicationId, occurredAt: "2026-11-09T00:00:00Z" }], documents: [], itemComplete: false });
+    expect(projection).toMatchObject({ tone: "yellow", status: "upload_due", complete: false });
+    expect(requirementEvidence("pickup", [projection])?.tone).toBe("yellow");
+    expect(activationRequirements(facts).find((item) => item.key === "rental_active")?.met).toBe(false);
+    const life = driverLifecycle({ contacted: true, screening: true, documents: true, profile: true, insuranceOnFile: true, approved: true, inspection: true, agreement: true, rentalActive: false, pickup: true });
+    expect(life.stages.find((s) => s.key === "pickup")?.state).toBe("done");
+    expect(life.stages.find((s) => s.key === "active")?.state).toBe("current");
+  });
+});
