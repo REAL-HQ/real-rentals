@@ -42,6 +42,7 @@ import { MessagesOverlay } from "@/components/admin/MessagesOverlay";
 import { SettingsWorkspace } from "@/components/admin/SettingsWorkspace";
 import { useServerFn } from "@tanstack/react-start";
 import { listConversations } from "@/lib/messages.functions";
+import { getReservationDepositSettings } from "@/lib/reservations.functions";
 import { getAdminNotifications } from "@/lib/admin-overview.functions";
 import { OverviewPanel } from "@/components/admin/OverviewPanel";
 import { VendorsPanel } from "@/components/admin/VendorsPanel";
@@ -77,6 +78,10 @@ import { FinanceDepositLedgerPanel } from "@/components/admin/FinanceDepositLedg
 import { FINANCE_DEPOSIT_LEDGER_ENABLED } from "@/lib/finance-deposit-ledger-flag";
 import { StripeRiskMonitorPanel } from "@/components/admin/StripeRiskMonitorPanel";
 import { STRIPE_RISK_MONITOR_ENABLED } from "@/lib/stripe-risk-monitor-flag";
+import { STRIPE_MATCH_REPORT_ENABLED } from "@/lib/stripe-match-flag";
+import { COLLECTIONS_WATCH_ENABLED } from "@/lib/collections-watch-flag";
+import { DEPOSITS_LEDGER_ENABLED } from "@/lib/deposits-ledger-flag";
+import { WEEKLY_CASH_FLOW_ENABLED } from "@/lib/weekly-cash-flow-flag";
 import { StripePayoutReconPanel } from "@/components/admin/StripePayoutReconPanel";
 import { STRIPE_PAYOUT_RECON_ENABLED } from "@/lib/stripe-payout-recon-flag";
 import { ApplicantFunnelPanel } from "@/components/admin/ApplicantFunnelPanel";
@@ -353,6 +358,18 @@ function Admin() {
   >([]);
   const [notifsFailed, setNotifsFailed] = useState(false);
   const [tier, setTier] = useState<StaffTier | null>(null);
+  const [reservationDepositEnabled, setReservationDepositEnabled] = useState(false);
+  const loadReservationDepositSettings = useServerFn(getReservationDepositSettings);
+  useEffect(() => {
+    if (!tier) return;
+    let cancelled = false;
+    void loadReservationDepositSettings().then((s) => {
+      if (!cancelled) setReservationDepositEnabled(s.enabled === true);
+    }).catch(() => {
+      if (!cancelled) setReservationDepositEnabled(false);
+    });
+    return () => { cancelled = true; };
+  }, [tier, loadReservationDepositSettings]);
   const navTabs = useMemo(() => visibleTabs(tier), [tier]);
 
   /*
@@ -478,6 +495,24 @@ function Admin() {
       if (!OWNER_FINANCE_SNAPSHOT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
       return "owner_finance_snapshot";
     }
+    // Payments workspace extras: hidden while source flags are Off (Deposits returns with reservation deposits).
+    if (urlTab === "stripe_match") {
+      if (!STRIPE_MATCH_REPORT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "stripe_match";
+    }
+    if (urlTab === "collections_watch") {
+      if (!COLLECTIONS_WATCH_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "collections_watch";
+    }
+    if (urlTab === "weekly_cash_flow") {
+      if (!WEEKLY_CASH_FLOW_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "weekly_cash_flow";
+    }
+    if (urlTab === "deposits_ledger") {
+      if (tier && !tierAllows(tier, "manager")) return "overview";
+      if (!DEPOSITS_LEDGER_ENABLED && !reservationDepositEnabled) return "overview";
+      return "deposits_ledger";
+    }
     // Rental Renewal Due is not in TABS. While the flag is off a direct link falls back to Overview.
     if (urlTab === "renewals_due") {
       if (!RENEWALS_DUE_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
@@ -486,7 +521,7 @@ function Admin() {
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
     return urlTab as Tab;
-  }, [urlTab, tier, navTabs]);
+  }, [urlTab, tier, navTabs, reservationDepositEnabled]);
 
   /*
    * Normalize the address bar to match what is on screen — replace, not
@@ -679,7 +714,7 @@ function Admin() {
     ? <ExperienceSwitcher value={experience} options={expOptions} onChange={chooseExperience} />
     : null;
   const workspace = TABS.find((t) => t.id === ownerTab) ?? current;
-  const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, navTier) : [];
+  const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, navTier, { reservationDepositEnabled }) : [];
   const recordParent = urlRecordId && (tab === "drivers" || tab === "vehicles") ? current : null;
 
   const navLink = (t: TabDef & { href?: string }, onClick?: () => void) => {
