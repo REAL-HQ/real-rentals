@@ -51,7 +51,7 @@ Use approved disposable fixtures for saves, emails, payments and activation; eSi
 - Extend checked activation to lock/re-read role, application, plan revision, final car, evidence, payment and agreement binding. Validate selected exceptions/reason; canonical rental start plus audit/handoff commit together. Missing support/audit failure refuses; no legacy bypass.
 
 ### Focused New Modules
-Pure `driver-lifecycle.ts` / `pickup-plan.ts` with tests; scoped pickup-plan/packet functions and server helpers after durable-contract authorization. Small `PickupPlanDialog.tsx`, `PickupHandoffDialog.tsx`, one `PortalPickupPlan.tsx`; no extra profile panels or changed public interfaces/routes.
+Pure lifecycle/pickup modules with tests; scoped server helpers only after durable authorization. Compact plan/handoff dialogs and one portal pickup view; no duplicate panels or changed public interfaces.
 
 ### Current Review Status
 Preview steps are verified; location choices/custom editing are prepared and tested. Login-first sending, durable check-offs, payment verification and handoff still need exact-package/protected integration approval. No live emails, records, SQL or publication.
@@ -66,4 +66,4 @@ Preview steps are verified; location choices/custom editing are prepared and tes
 - Payment/signature evidence belongs to this handoff; pending/failed/refunded/unrelated payments never pass by checkbox. Written exceptions preserve separate identity/license/access controls and unresolved follow-up; audit failure rolls back; Active requires successful canonical transaction/readback.
 
 ## Recommendation
-**GO for the simple presentation and isolated rules once this plan is approved. NO-GO for live manual check-offs, automatic pickup packets, new payment obligations or revised handoff activation until the exact durable package, protected integrations and disposable acceptance are explicitly approved.** Keep the existing sender unchanged; Lovable’s email-status check does not cover the app’s existing Resend setup, so verify that provider without introducing a replacement email system.
+**GO for tested presentation/preparation. Live check-offs, emails, payment obligations and handoff remain blocked pending exact-package/protected integration approval and disposable acceptance.** Preserve the existing sender/provider; no publication.
