@@ -22,7 +22,7 @@ function reasonLine(item: PortalDocumentUpdateItem): string {
 /**
  * Upload control for one license or insurance file.
  *
- * Same sequence as DocumentVault's driver Replace: a signed upload URL from
+ * Same sequence as DocumentVault's driver Add: a signed upload URL from
  * createDocumentUploadUrl, bytes to the bucket that function returns
  * (driver-docs), then confirmDocumentUpload. Confirm inserts a new current
  * row and supersedes the previous one. Nothing here deletes a row or an

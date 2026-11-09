@@ -512,6 +512,7 @@ function DocumentsView() {
     queryFn: () => fetchDocs(),
   });
   const shared = (data ?? []).filter((d) => d.kind === "rental_agreement" || d.kind === "receipt");
+  const previewDocuments = useMemo(() => data ?? [], [data]);
 
   return (
     <div className="w-full space-y-5">
@@ -520,11 +521,15 @@ function DocumentsView() {
       <div className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">Your Documents</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Keep your license and insurance current. Uploading a new file replaces the old one — we
-          keep the history.
+          Every upload stays on file. The newest file in each category is marked Latest, with its upload date and time.
         </p>
         <div className="mt-4">
-          {docsPreviewId ? <ReadOnlyNote what="Uploads" /> : <DocumentVault mode="driver" />}
+          <DocumentVault
+            mode="driver"
+            readOnly={Boolean(docsPreviewId)}
+            initialDocuments={docsPreviewId ? previewDocuments : undefined}
+            externalLoading={isLoading}
+          />
         </div>
       </div>
 

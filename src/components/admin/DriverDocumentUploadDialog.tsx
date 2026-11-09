@@ -5,12 +5,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton } from "./modal";
 
 /** Staged files only; the caller retains the existing private vault pipeline. */
-export function DriverDocumentUploadDialog({ label, hint, upload, onClose, replacement = false, choices }: {
+export function DriverDocumentUploadDialog({ label, hint, upload, onClose, choices }: {
   label: string;
   hint?: string;
   upload: UploadFn;
   onClose: () => void;
-  replacement?: boolean;
   choices?: { label: string; upload: UploadFn; accept?: string; multiple?: boolean; hint?: string; maxBytes?: number }[];
 }) {
   const [busy, setBusy] = useState(false);
@@ -49,7 +48,7 @@ export function DriverDocumentUploadDialog({ label, hint, upload, onClose, repla
       camera
       disabled={busy}
       autoStart={false}
-      submitLabel={replacement ? "Upload Replacement" : "Upload File"}
+      submitLabel="Upload File"
       onAllDone={choices?.length ? undefined : onClose}
       upload={async (file, context) => {
         setBusy(true);

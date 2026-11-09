@@ -480,6 +480,30 @@ try {
     assert.equal(ev.signedAgreementLocked(rows, "license_front"), false);
   });
 
+  await test("DocumentVault groups every file by type, highlights Latest and retains timestamped history", async () => {
+    const ui = await load(
+      "DocumentVault.render.tsx",
+      `import { renderToStaticMarkup } from "react-dom/server";
+       import { DocumentVault } from "@/components/admin/DocumentVault";
+       export const render = (props) => renderToStaticMarkup(<DocumentVault {...props} />);`,
+    );
+    const old = doc(50, { file_name: "old-license.jpg", created_at: "2026-10-01T13:05:00Z", is_current: false });
+    const latest = doc(51, { file_name: "new-license.jpg", created_at: "2026-11-09T16:45:00Z", is_current: true });
+    const gig = doc(52, { category: "gig_profile", kind: "gig_profile", file_name: "gig.png", created_at: "2026-11-08T10:30:00Z" });
+    const html = ui.render({ mode: "driver", readOnly: true, initialDocuments: [old, gig, latest] });
+    assert.match(html, /Driver&#x27;s License \(Front\)/);
+    assert.match(html, /Gig Profile Screenshot/);
+    assert.match(html, /Insurance Card/);
+    assert.match(html, /Latest/);
+    assert.match(html, /Previous Uploads/);
+    assert.ok(html.indexOf("new-license.jpg") < html.indexOf("old-license.jpg"), "newest file is first");
+    assert.match(html, /Uploaded Nov 9, 2026, \d{1,2}:\d{2} [AP]M/);
+    assert.match(html, /Uploaded Oct 1, 2026, \d{1,2}:\d{2} [AP]M/);
+    assert.doesNotMatch(html, />Replace</);
+    assert.doesNotMatch(html, /title="Delete"/);
+    assert.doesNotMatch(html, /Verification Call Recording/, "Owner-only call recordings never appear as driver rows");
+  });
+
   // ------------------------------------------------------- archive retry path
 
   await test("eSign archive retry (cron/staff retry) still re-archives a signed agreement's PDF", async () => {

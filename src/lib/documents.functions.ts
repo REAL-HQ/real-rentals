@@ -924,12 +924,15 @@ export const deleteDocument = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: doc, error: readError } = await supabaseAdmin
       .from("documents")
-      .select("id,kind,category,storage_bucket,storage_path")
+      .select("id,kind,category,storage_bucket,storage_path,uploaded_by_role")
       .eq("id", data.documentId)
       .maybeSingle();
     // Fail closed: a read that errored is not proof the document is ordinary.
     if (readError) throw new Error(readError.message);
     if (!doc) return { ok: true };
+    if (doc.uploaded_by_role === "driver") {
+      throw new Error("Driver-uploaded documents are permanent records and cannot be deleted.");
+    }
 
     // Signed-agreement evidence is refused before storage is touched, so a
     // refusal removes nothing. The storage object went first here, which is

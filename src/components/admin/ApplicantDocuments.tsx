@@ -28,7 +28,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DriverDocumentUploadDialog } from "./DriverDocumentUploadDialog";
 import { DocumentBatchUpload } from "./DocumentBatchUpload";
-import { fmtDate } from "@/lib/date-format";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { verifyApprovalIdentity } from "@/lib/identity-verification.functions";
 import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
@@ -428,7 +428,7 @@ export function ApplicantDocuments({
                   ) : null}
                   {/* Signed agreements are permanent records: no Delete, and
                       the server refuses it anyway (deleteDocument). */}
-                  {d && key !== "agreement" && !d.signed_agreement && (
+                  {d && key !== "agreement" && !d.signed_agreement && d.uploaded_by_role !== "driver" && (
                     <button
                       onClick={() => void drop(d)}
                       disabled={!!working}
@@ -491,7 +491,7 @@ export function ApplicantDocuments({
 
       {showHistory && history.length > 0 && (
         <div>
-          <MicroLabel className="mb-2">Replaced versions</MicroLabel>
+          <MicroLabel className="mb-2">Previous Uploads</MicroLabel>
           <ul className="rounded-xl border border-[#EDEDF0] bg-white divide-y divide-[#F4F4F6]">
             {history.map((d) => (
               <li key={d.id} className="flex items-center gap-3 px-3 py-2 text-[12px]">
@@ -499,9 +499,9 @@ export function ApplicantDocuments({
                 <span className="min-w-0 flex-1 truncate text-[#55555E]">
                   {d.label ?? d.file_name}
                 </span>
-                <span className="text-[11px] text-[#9A9AA3] shrink-0">{fmtDate(d.created_at)}</span>
+                <span className="text-[11px] text-[#9A9AA3] shrink-0">{fmtDateTime(d.created_at)}</span>
                 <button
-                  onClick={() => open(d, `${d.label ?? d.file_name} (replaced)`)}
+                  onClick={() => open(d, `${d.label ?? d.file_name} (Previous Upload)`)}
                   className="text-[11px] font-medium text-[#55555E] hover:text-[#111114] shrink-0"
                 >
                   View
@@ -516,7 +516,6 @@ export function ApplicantDocuments({
       {uploadingCategory && !signedAgreementLocked(docs, uploadingCategory) ? <DriverDocumentUploadDialog
         label={displayTitleCase(DOC_CATEGORIES.find((c) => c.key === uploadingCategory)?.label ?? "Document").replace("(front)", "(Front)").replace("(back)", "(Back)")}
         hint={uploadingCategory === "agreement" ? "Signed Paper Copy · Owner/Manager Review Required" : undefined}
-        replacement={current.has(uploadingCategory)}
         upload={(file, { onProgress }) => uploadCategory(uploadingCategory, file, onProgress)}
         onClose={() => setUploadingCategory(null)}
       /> : null}

@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { isSignedAgreementEvidence } from "@/lib/signed-agreement-evidence";
+import type { VaultDocument } from "@/lib/documents.functions";
 
 /** Reads may name a driver for staff read-only preview; verified server-side in portalScope. */
 const previewInput = (d: unknown): { previewDriverId?: string } => {
@@ -183,12 +185,9 @@ export const getMyRentalHistory = createServerFn({ method: "GET" })
     });
   });
 
-export type DriverDocument = {
-  id: string;
+export type DriverDocument = VaultDocument & {
   kind: string;
   notes: string | null;
-  created_at: string;
-  url: string | null;
 };
 
 export const getDriverDashboard = createServerFn({ method: "GET" })
@@ -370,22 +369,41 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
 
     const { data } = await supabase
       .from("documents")
-      .select("id,kind,notes,created_at,storage_bucket,storage_path,visibility")
+      .select("id,kind,category,label,notes,file_name,mime_type,size_bytes,expires_at,is_current,visibility,uploaded_by_role,created_at,storage_bucket,storage_path,review_status,review_note,reviewed_at")
       .in("driver_id", appIds)
-      .order("created_at", { ascending: false })
-      .limit(50);
+      .order("created_at", { ascending: false });
 
     const rows = (data ?? []).filter((d: any) => (d.visibility ?? []).includes("driver"));
 
     return Promise.all(
       rows.map(async (d: any) => {
         let url: string | null = null;
-        if (preview) return { id: d.id, kind: d.kind, notes: d.notes ?? null, created_at: d.created_at, url };
-        const { data: signed } = await supabase.storage
-          .from(d.storage_bucket)
-          .createSignedUrl(d.storage_path, 60 * 10);
-        url = signed?.signedUrl ?? null;
-        return { id: d.id, kind: d.kind, notes: d.notes ?? null, created_at: d.created_at, url };
+        if (!preview) {
+          const { data: signed } = await supabase.storage
+            .from(d.storage_bucket)
+            .createSignedUrl(d.storage_path, 60 * 10);
+          url = signed?.signedUrl ?? null;
+        }
+        return {
+          id: d.id,
+          kind: d.kind,
+          notes: d.notes ?? null,
+          category: d.category ?? "other",
+          label: d.label ?? null,
+          file_name: d.file_name ?? null,
+          mime_type: d.mime_type ?? null,
+          size_bytes: d.size_bytes ?? null,
+          expires_at: d.expires_at ?? null,
+          is_current: d.is_current ?? true,
+          visibility: (d.visibility ?? []) as string[],
+          uploaded_by_role: d.uploaded_by_role ?? null,
+          created_at: d.created_at,
+          url,
+          review_status: d.review_status ?? "uploaded",
+          review_note: d.review_note ?? null,
+          reviewed_at: d.reviewed_at ?? null,
+          signed_agreement: isSignedAgreementEvidence(d),
+        };
       }),
     );
   });
