@@ -2,6 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { isSignedAgreementEvidence } from "@/lib/signed-agreement-evidence";
 import { listStoredDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
+import { choosePortalVehiclePhoto } from "@/lib/portal-vehicle-photo";
+import { vehicleListThumbnailKey } from "@/lib/vehicle-thumbnail";
 
 /** Reads may name a driver for staff read-only preview; verified server-side in portalScope. */
 const previewInput = (d: unknown): { previewDriverId?: string } => {
@@ -217,11 +219,32 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { data: v } = await supabaseAdmin
         .from("vehicles")
-        .select("id,year,make,model,trim,color,status,photos,license_plate")
+        .select("id,year,make,model,trim,color,status,license_plate")
         .eq("id", rental.vehicle_id)
         .maybeSingle();
       if (v) {
-        const photos = (v.photos as string[] | null) ?? null;
+        const [{ data: media }, { data: thumbnailSetting }] = await Promise.all([
+          supabaseAdmin
+            .from("vehicle_media")
+            .select("id,vehicle_id,kind,storage_bucket,storage_path,review_status,is_primary,sort_order,created_at")
+            .eq("vehicle_id", v.id)
+            .order("is_primary", { ascending: false })
+            .order("sort_order", { ascending: true })
+            .order("created_at", { ascending: true }),
+          supabaseAdmin
+            .from("app_settings")
+            .select("value")
+            .eq("key", vehicleListThumbnailKey(v.id))
+            .maybeSingle(),
+        ]);
+        const selected = choosePortalVehiclePhoto(v.id, (media ?? []) as any[], thumbnailSetting?.value);
+        let photo: string | null = null;
+        if (selected) {
+          const { data: signed } = await supabaseAdmin.storage
+            .from(selected.storage_bucket)
+            .createSignedUrl(selected.storage_path, 15 * 60);
+          photo = signed?.signedUrl ?? null;
+        }
         vehicle = {
           id: v.id,
           year: v.year,
@@ -229,7 +252,7 @@ export const getDriverDashboard = createServerFn({ method: "GET" })
           model: v.model,
           trim: v.trim ?? null,
           color: v.color ?? null,
-          photo: (photos && photos[0]) || null,
+          photo,
           plate: (v as any).license_plate ?? null,
           status: v.status ?? null,
         };
