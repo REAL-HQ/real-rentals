@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSharedVehiclePackage } from "@/lib/vehicle-share.functions";
 import { fmtDateTime } from "@/lib/date-format";
+import { VEHICLE_SHARE_TOKEN_RE } from "@/lib/vehicle-share";
 
-const TOKEN = /^[A-Za-z0-9_-]{43}$/;
+const TOKEN = VEHICLE_SHARE_TOKEN_RE;
 
 export const Route = createFileRoute("/share/vehicle/$token")({
   head: () => ({

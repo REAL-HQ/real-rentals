@@ -167,6 +167,7 @@ export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
         <section className="rounded-xl border border-success/20 bg-success-soft p-3">
           <div className="flex items-center gap-2 text-xs font-medium text-success"><ShieldCheck className="h-4 w-4" /> Private Link Ready · Expires {fmtDateTime(created.expiresAt)}</div>
           <input aria-label="Secure Sharing Link" readOnly value={created.url} onFocus={(event) => event.target.select()} className="mt-2 h-9 w-full rounded-md border border-border bg-card px-2 text-xs text-foreground" />
+          <p className="mt-2 text-[11px] leading-4 text-muted-foreground">If a texted link opens as Package Unavailable, copy this full link and send it again — some phones cut the link short.</p>
         </section>
       )}
 

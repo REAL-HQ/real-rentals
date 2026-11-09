@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { isShareMediaEligible } from "@/lib/vehicle-share";
+import { isShareMediaEligible, VEHICLE_SHARE_TOKEN_RE } from "@/lib/vehicle-share";
 
-const TOKEN = /^[A-Za-z0-9_-]{43}$/;
+const TOKEN = VEHICLE_SHARE_TOKEN_RE;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
 const NOT_FOUND = () => new Response("Not found", { status: 404 });
