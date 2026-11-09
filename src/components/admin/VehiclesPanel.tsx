@@ -38,49 +38,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-function PartnerAssignSelect({
-  value,
-  partners,
-  onChange,
-}: {
-  value: string | null;
-  partners: Array<{ id: string; name: string }>;
-  onChange: (pid: string | null) => void;
-}) {
-  const [q, setQ] = useState("");
-  const filtered = partners.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()));
-  return (
-    <Select
-      value={value ?? "__none__"}
-      onValueChange={(val) => onChange(val === "__none__" ? null : val)}
-    >
-      <SelectTrigger className="h-8 bg-white text-foreground text-xs">
-        <SelectValue placeholder="Unassigned" />
-      </SelectTrigger>
-      <SelectContent>
-        <div className="p-1 sticky top-0 bg-white z-10 border-b border-border">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.stopPropagation()}
-            placeholder="Search partners…"
-            className="w-full h-7 px-2 text-xs border border-border rounded-md outline-none focus:border-real-red"
-          />
-        </div>
-        <SelectItem value="__none__">Unassigned</SelectItem>
-        {filtered.map((p) => (
-          <SelectItem key={p.id} value={p.id}>
-            {p.name}
-          </SelectItem>
-        ))}
-        {filtered.length === 0 && (
-          <div className="px-3 py-2 text-xs text-muted-foreground">No matches</div>
-        )}
-      </SelectContent>
-    </Select>
-  );
-}
-
 type ListState = {
   q?: string;
   status?: string;
@@ -185,13 +142,13 @@ function VehicleListThumbnail({ vehicle }: { vehicle: VehicleListRow }) {
 function CopyVin({ vin }: { vin: string | null }) {
   if (!vin) return <span className="text-muted-foreground">—</span>;
   return (
-    <span className="flex min-w-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+    <span className="flex min-w-0 items-center gap-1.5">
       <span className="truncate font-mono" title={vin}>…{vin.slice(-6)}</span>
       <button
         type="button"
         aria-label={`Copy full VIN ${vin}`}
         title={`Copy ${vin}`}
-        onClick={() => { void navigator.clipboard.writeText(vin); toast.success(`VIN copied: ${vin}`); }}
+        onClick={(event) => { event.stopPropagation(); void navigator.clipboard.writeText(vin); toast.success(`VIN copied: ${vin}`); }}
         className="grid h-6 w-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-white hover:text-foreground"
       >
         <Copy className="h-3.5 w-3.5" />
@@ -360,16 +317,6 @@ function FleetVehicles({
       .order("name")
       .then(({ data }) => setPartners(data || []));
   }, []);
-  const partnerName = (id: string | null) => (id ? partners.find((p) => p.id === id)?.name ?? "—" : "Unassigned");
-
-  async function assignPartner(v: VehicleListRow, partner_id: string | null) {
-    const { data, error } = await supabase.from("vehicles").update({ partner_id }).eq("id", v.id).select("id");
-    if (error) return toast.error(error.message);
-    // A role without edit rights is refused by the database with zero rows, not an error.
-    if (!data?.length) return toast.error("You don't have permission to change this vehicle.");
-    load();
-  }
-
   // No direct browser deletes: Archive / Restore / Delete Permanently all go
   // through audited server actions.
   const [lifecycle, setLifecycle] = useState<{ v: VehicleListRow; mode: LifecycleMode } | null>(null);
@@ -405,6 +352,8 @@ function FleetVehicles({
               <div className="h-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><span className="mr-2 tabular-nums">#{rowNumber(index)}</span>{v.unit_number ?? ""}</div>
               <div className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</div>
               <dl className="mt-2.5 grid grid-cols-[44px_1fr] items-center gap-y-0.5 text-[13px] leading-6">
+                <dt className="text-muted-foreground">Color</dt>
+                <dd className="truncate">{displayVehicleWord(v.color ?? "") || <span className="text-muted-foreground">Not Set</span>}</dd>
                 <dt className="text-muted-foreground">Plate</dt>
                 <dd className="truncate font-mono">{v.license_plate || <span className="text-muted-foreground">—</span>}</dd>
                 <dt className="text-muted-foreground">VIN</dt>
@@ -414,10 +363,6 @@ function FleetVehicles({
                 <Rate v={v} /><span className="mx-1.5">·</span><Availability v={v} />
               </div>
               <div className="mt-2"><ReadinessPill v={v} /></div>
-              <div className="mt-3" onClick={(e) => e.stopPropagation()}>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Partner</div>
-                <PartnerAssignSelect value={v.partner_id} partners={partners} onChange={(pid) => assignPartner(v, pid)} />
-              </div>
               <div className="mt-3 flex gap-2 max-lg:flex-wrap" onClick={(e) => e.stopPropagation()}>
                 <button onClick={() => setViewing(v.id)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
                   Open Record <ArrowRight className="w-3.5 h-3.5" />
@@ -585,12 +530,12 @@ function FleetVehicles({
                 <th scope="col" className="w-10 px-3 py-2 font-medium" aria-label="Row number">#</th>
                 <th className="px-3 py-2 font-medium">Photo</th>
                 <th className="px-3 py-2 font-medium">Vehicle</th>
+                <th className="px-3 py-2 font-medium">Color</th>
                 <th className="px-3 py-2 font-medium">Plate</th>
                 <th className="px-3 py-2 font-medium">VIN</th>
                 <th className="px-3 py-2 font-medium">Availability</th>
                 <th className="px-3 py-2 font-medium">Readiness</th>
                 <th className="px-3 py-2 font-medium">Weekly Rate</th>
-                <th className="px-3 py-2 font-medium">Partner</th>
                 <th className="px-3 py-2 font-medium sr-only">Open</th>
               </tr>
             </thead>
@@ -600,12 +545,12 @@ function FleetVehicles({
                   <td className="w-10 px-3 py-2 tabular-nums text-muted-foreground">{rowNumber(index)}</td>
                   <td className="px-3 py-2 whitespace-nowrap"><VehicleListThumbnail vehicle={v} /></td>
                   <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{displayVehicleWord(v.color ?? "") || <span className="text-muted-foreground">Not Set</span>}</td>
                   <td className="px-3 py-2 font-mono whitespace-nowrap">{v.license_plate || <span className="text-muted-foreground">—</span>}</td>
                   <td className="px-3 py-2"><CopyVin vin={v.vin} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><Availability v={v} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><ReadinessPill v={v} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><Rate v={v} /></td>
-                  <td className="px-3 py-2 max-w-[160px] truncate">{partnerName(v.partner_id)}</td>
                   <td className="px-3 py-2 text-right">
                     <button onClick={(e) => { e.stopPropagation(); setViewing(v.id); }} className="inline-flex items-center gap-1 rounded-md bg-black text-white px-2.5 py-1 text-xs">
                       Open <ArrowRight className="w-3 h-3" />
