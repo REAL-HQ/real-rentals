@@ -250,7 +250,7 @@ describe("portal document upload reuses the vault path", () => {
 
   it("confirm still supersedes the previous current row instead of deleting it", () => {
     const src = readFileSync("src/lib/documents.functions.ts", "utf8");
-    const start = src.indexOf("export const confirmDocumentUpload");
+    const start = src.indexOf("export async function persistConfirmedDocument");
     const end = src.indexOf("export const updateDocumentMeta");
     const confirm = src.slice(start, end);
     assert.match(confirm, /is_current: true/);

@@ -511,8 +511,8 @@ function DocumentsView() {
     queryKey: ["driver-documents"],
     queryFn: () => fetchDocs(),
   });
-  const shared = (data ?? []).filter((d) => d.kind === "rental_agreement" || d.kind === "receipt");
-  const previewDocuments = useMemo(() => data ?? [], [data]);
+  const shared = (data ?? []).filter((d) => d.kind === "receipt");
+  const portalDocuments = useMemo(() => data ?? [], [data]);
 
   return (
     <div className="w-full space-y-5">
@@ -527,7 +527,7 @@ function DocumentsView() {
           <DocumentVault
             mode="driver"
             readOnly={Boolean(docsPreviewId)}
-            initialDocuments={docsPreviewId ? previewDocuments : undefined}
+            initialDocuments={portalDocuments}
             externalLoading={isLoading}
           />
         </div>
@@ -583,12 +583,12 @@ function AgreementsView() {
   // stay visible, neutrally, with no signing call to action.
   const rows = (data ?? [])
     .map((a) => ({ ...a, state: portalAgreementState(a) }))
-    .filter((a) => a.state !== "hidden");
+    .filter((a) => a.state === "awaiting_signature" || a.state === "signing");
   if (rows.length === 0) return null;
 
   return (
     <div className="rounded-2xl border border-border bg-white p-5">
-      <h3 className="font-semibold">Rental Agreements</h3>
+      <h3 className="font-semibold">Agreements To Sign</h3>
       <ul className="mt-3 divide-y divide-border">
         {rows.map((a) => (
           <li key={a.id} className="py-3">

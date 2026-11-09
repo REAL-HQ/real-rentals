@@ -6,6 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { FileUploader } from "@/components/FileUploader";
 import {
   DOC_CATEGORIES,
+  STAFF_FILED_CATEGORIES,
+  driverCanUploadCategory,
   adminListDriverDocuments,
   createDocumentUploadUrl,
   confirmDocumentUpload,
@@ -22,12 +24,13 @@ import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
 const MAX_MB = 15;
 
 const DOC_TYPE_TITLES: Record<string, string> = {
+  rental_application: "Rental Application",
+  agreement: "Rental Agreement",
   license_front: "Driver's License (Front)",
   license_back: "Driver's License (Back)",
   insurance: "Insurance Card",
   gig_profile: "Gig Profile Screenshot",
   trip_history: "Trip History Screenshot",
-  agreement: "Signed Agreement",
   other: "Other Document",
   verification_recording: "Verification Call Recording",
 };
@@ -137,7 +140,7 @@ export function DocumentVault({
   const categories =
     mode === "admin"
       ? DOC_CATEGORIES
-      : DOC_CATEGORIES.filter((c) => c.key !== "agreement" && c.key !== "verification_recording");
+      : DOC_CATEGORIES.filter((c) => c.key !== "verification_recording");
 
   if (isLoading) {
     return (
@@ -224,7 +227,7 @@ export function DocumentVault({
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
                   ) : null}
-                  {!readOnly && cat.key !== "agreement" && !signedAgreementLocked(current, cat.key) ? (
+                  {!readOnly && (mode === "admin" || driverCanUploadCategory(cat.key)) && !signedAgreementLocked(current, cat.key) ? (
                     <FileUploader
                       variant="inline"
                       label="+ Add"
@@ -233,7 +236,7 @@ export function DocumentVault({
                       upload={(file) => uploadDoc(cat.key as DocCategory, false, file)}
                     />
                   ) : null}
-                  {mode === "admin" && !readOnly && doc && cat.key !== "agreement" && !doc.signed_agreement && doc.uploaded_by_role !== "driver" ? (
+                  {mode === "admin" && !readOnly && doc && !STAFF_FILED_CATEGORIES.includes(cat.key) && !doc.signed_agreement && doc.uploaded_by_role !== "driver" ? (
                     <button
                       onClick={async () => {
                         if (!confirm("Delete this document permanently?")) return;

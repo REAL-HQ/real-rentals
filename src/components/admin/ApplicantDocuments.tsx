@@ -50,12 +50,13 @@ import { displayTitleCase } from "@/lib/display-normalize";
 
 /** Categories in the order a reviewer works through them. */
 const ORDER: DocCategory[] = [
+  "rental_application",
+  "agreement",
   "license_front",
   "license_back",
   "insurance",
   "gig_profile",
   "trip_history",
-  "agreement",
   "other",
 ];
 
@@ -515,7 +516,7 @@ export function ApplicantDocuments({
       <DocumentViewer doc={viewing} onClose={() => setViewing(null)} />
       {uploadingCategory && !signedAgreementLocked(docs, uploadingCategory) ? <DriverDocumentUploadDialog
         label={displayTitleCase(DOC_CATEGORIES.find((c) => c.key === uploadingCategory)?.label ?? "Document").replace("(front)", "(Front)").replace("(back)", "(Back)")}
-        hint={uploadingCategory === "agreement" ? "Signed Paper Copy · Owner/Manager Review Required" : undefined}
+        hint={uploadingCategory === "agreement" ? "Written Or Signed Copy · Owner/Manager Review Required" : uploadingCategory === "rental_application" ? "Written Or Completed Application · Owner/Manager Review Required" : undefined}
         upload={(file, { onProgress }) => uploadCategory(uploadingCategory, file, onProgress)}
         onClose={() => setUploadingCategory(null)}
       /> : null}

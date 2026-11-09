@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { isSignedAgreementEvidence } from "@/lib/signed-agreement-evidence";
-import type { VaultDocument } from "@/lib/documents.functions";
+import { listStoredDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
 
 /** Reads may name a driver for staff read-only preview; verified server-side in portalScope. */
 const previewInput = (d: unknown): { previewDriverId?: string } => {
@@ -375,7 +375,7 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
 
     const rows = (data ?? []).filter((d: any) => (d.visibility ?? []).includes("driver"));
 
-    return Promise.all(
+    const shared = await Promise.all(
       rows.map(async (d: any) => {
         let url: string | null = null;
         if (!preview) {
@@ -403,9 +403,14 @@ export const getDriverDocuments = createServerFn({ method: "GET" })
           review_note: d.review_note ?? null,
           reviewed_at: d.reviewed_at ?? null,
           signed_agreement: isSignedAgreementEvidence(d),
-        };
+        } satisfies DriverDocument;
       }),
     );
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const stored = await listStoredDriverDocuments(supabaseAdmin, appIds, !preview);
+    const merged = new Map<string, DriverDocument>();
+    for (const document of [...shared, ...stored]) merged.set(document.id, document);
+    return [...merged.values()].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
   });
 
 export type DriverIssue = {
