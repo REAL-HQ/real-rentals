@@ -1,12 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { createClient } from '@supabase/supabase-js';
 import { type StripeEnv, verifyWebhook, createStripeClient } from '@/lib/stripe.server';
-import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail, sendTeamPaymentAlertEmail } from '@/lib/email.server';
+import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail, sendTeamPaymentAlertEmail, sendRentReminderEmail } from '@/lib/email.server';
 import { doubleCollectionMessage } from '@/lib/payment-overlap';
 import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatched';
 import { holdIfHeld, type HeldNoticeInput } from '@/lib/held-payment-notices.server';
 import { failedInvoiceLink } from '@/lib/failed-payment-link';
-import { linkOrFlagSubscription, sendFailedPaymentText, type SmsSender } from '@/lib/failed-payment-notice.server';
+import { linkOrFlagSubscription, renderWebhookReminder, sendFailedPaymentText, webhookReminderSlot, type SmsSender } from '@/lib/failed-payment-notice.server';
 
 /** Test seam for the outbound text and staff alert; the route never sets it. */
 export type WebhookDeps = { sendSms?: SmsSender; alert?: (a: any) => Promise<unknown>; now?: Date };
@@ -489,12 +489,31 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     } else {
       // The failed invoice's own page, never a generic payment link: paying
       // it settles this week on the SAME subscription (no second one).
-      const failed = await sendPaymentFailedEmail({
-        to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
-        brand: driver.brand, last4: driver.last4,
-        payInvoiceUrl: failedInvoiceLink(invoice),
-      });
-      await holdIfHeld(admin, failed, invNotice('payment_failed'));
+      // Shares the rent-reminder ledger: if today's reminder email for this
+      // week already went out, send nothing; with Rent Reminder: Overdue on,
+      // the email uses that editable template (with the late fee).
+      const slot = await webhookReminderSlot(admin, rental.id, invoice, 'email', webhookDeps.now ?? new Date());
+      const link = failedInvoiceLink(invoice);
+      let rendered: Awaited<ReturnType<typeof renderWebhookReminder>> = null;
+      if (slot.kind === 'claimed' && slot.useReminderTemplate && link) {
+        rendered = await renderWebhookReminder(admin, slot, {
+          invoice, amount, rentalId: rental.id, applicationId: rental.application_id ?? null,
+          firstName: driver.name ?? null, phone: driver.phone ?? null,
+        }, link, webhookDeps.now ?? new Date());
+      }
+      if (slot.kind !== 'taken') {
+        const failed = rendered && slot.kind === 'claimed'
+          ? await sendRentReminderEmail({
+              to: driver.email, subject: rendered.subject, text: rendered.email, link: rendered.link,
+              linkLabel: rendered.linkLabel, workflow: slot.ledgerStage === 'overdue' ? 'rent_reminder_overdue' : 'rent_reminder_daily',
+            })
+          : await sendPaymentFailedEmail({
+              to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
+              brand: driver.brand, last4: driver.last4,
+              payInvoiceUrl: link,
+            });
+        await holdIfHeld(admin, failed, invNotice('payment_failed'));
+      }
     }
   }
   if (status !== 'paid') {
