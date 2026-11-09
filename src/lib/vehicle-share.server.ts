@@ -2,23 +2,21 @@ import {
   isVehicleShareActive,
   readStoredVehicleSharePackage,
   vehicleShareStorageKey,
+  VEHICLE_SHARE_TOKEN_RE,
   type StoredVehicleSharePackage,
 } from "@/lib/vehicle-share";
 
-const RAW_TOKEN = /^[A-Za-z0-9_-]{43}$/;
-
 export async function hashVehicleShareToken(token: string): Promise<string> {
-  if (!RAW_TOKEN.test(token)) throw new Error("Invalid vehicle share token.");
+  if (!VEHICLE_SHARE_TOKEN_RE.test(token)) throw new Error("Invalid vehicle share token.");
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** Hex tokens only — underscores in base64url are truncated by Quo/iOS SMS auto-link. */
 export async function newVehicleShareToken(): Promise<{ token: string; tokenHash: string }> {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  const token = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  const token = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   return { token, tokenHash: await hashVehicleShareToken(token) };
 }
 
@@ -49,7 +47,7 @@ export async function loadVehicleShareByToken(
 }
 
 export function vehicleShareUrl(origin: string, token: string): string {
-  if (!RAW_TOKEN.test(token)) throw new Error("Invalid vehicle share token.");
+  if (!VEHICLE_SHARE_TOKEN_RE.test(token)) throw new Error("Invalid vehicle share token.");
   let url: URL;
   try { url = new URL(origin); } catch { url = new URL("https://drivereal.com"); }
   const host = url.hostname;

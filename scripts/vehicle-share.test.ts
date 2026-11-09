@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   VEHICLE_SHARE_TTL_MS,
+  VEHICLE_SHARE_TOKEN_RE,
   automaticEnhancedPhotoIds,
   automaticInsurancePhotoIds,
   buildInsuranceDetails,
+  formatVehicleShareSmsBody,
   isShareMediaEligible,
   isVehicleShareActive,
   maskShareRecipient,
@@ -71,15 +73,20 @@ describe("vehicle insurance photo package", () => {
 });
 
 describe("private share token and stored package", () => {
-  test("raw tokens are high entropy and only their SHA-256 hash is used for storage", async () => {
+  test("raw tokens are high entropy hex (SMS-safe) and only their SHA-256 hash is used for storage", async () => {
     const first = await newVehicleShareToken();
     const second = await newVehicleShareToken();
-    expect(first.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(first.token).toMatch(/^[0-9a-f]{64}$/);
+    expect(first.token).not.toMatch(/[_-]/); // Quo/iOS truncate share URLs at "_"
     expect(first.token).not.toBe(second.token);
     expect(first.tokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(first.tokenHash).not.toBe(first.token);
     expect(await hashVehicleShareToken(first.token)).toBe(first.tokenHash);
     expect(vehicleShareStorageKey(first.tokenHash)).toBe(`vehicle_share_package:${first.tokenHash}`);
+    expect(VEHICLE_SHARE_TOKEN_RE.test(first.token)).toBe(true);
+    // Legacy base64url tokens from older packages still open.
+    expect(VEHICLE_SHARE_TOKEN_RE.test("r8fQ_GHWJ-SB_sPyTD7qcmsEOFII65UHswcMU0UMUhU")).toBe(true);
+    expect(VEHICLE_SHARE_TOKEN_RE.test("r8fQ_")).toBe(false);
   });
 
   test("recipient links always use the public site, never a staff-only preview or unknown host", async () => {
@@ -98,6 +105,25 @@ describe("private share token and stored package", () => {
     expect(isVehicleShareActive({ expiresAt: "2026-01-01T00:00:00.000Z", revokedAt: null })).toBe(false);
     expect(isVehicleShareActive({ expiresAt: future, revokedAt: "2026-11-08T00:00:00.000Z" })).toBe(false);
     expect(readStoredVehicleSharePackage({ vehicleId: "v", mediaIds: [] })).toBeNull();
+  });
+
+  test("SMS body keeps the full URL alone on its own line", () => {
+    const url = "https://drivereal.com/share/vehicle/" + "a".repeat(64);
+    const body = formatVehicleShareSmsBody({
+      title: "2015 Ford Fusion",
+      includeDetails: false,
+      message: "Hi Heather! Pickup tomorrow.\nEmail: rosa@drivereal.com",
+      url,
+      expiresLabel: "Nov 12, 2026",
+    });
+    expect(body).toContain("REAL RENTALS: 2015 Ford Fusion photos");
+    expect(body).toContain("Hi Heather! Pickup tomorrow.");
+    expect(body).toContain("Private link expires Nov 12, 2026:");
+    expect(body).toContain("\n\n" + url + "\n\n");
+    expect(body.indexOf(url)).toBeGreaterThan(body.indexOf("Private link expires"));
+    // URL must not be jammed onto the Email: signature line.
+    expect(body).not.toMatch(/Email:[^\n]*share\/vehicle/);
+    expect(body.endsWith("Reply STOP to opt out.")).toBe(true);
   });
 
   test("audit metadata masks the recipient", () => {

@@ -7,10 +7,12 @@ import { fmtDate } from "@/lib/date-format";
 import {
   VEHICLE_SHARE_PHOTO_LIMIT,
   VEHICLE_SHARE_TTL_MS,
+  VEHICLE_SHARE_TOKEN_RE,
   automaticEnhancedPhotoIds,
   automaticInsurancePhotoIds,
   buildInsuranceDetails,
   escapeVehicleShareHtml,
+  formatVehicleShareSmsBody,
   isShareMediaEligible,
   maskShareRecipient,
   type StoredVehicleSharePackage,
@@ -19,7 +21,7 @@ import {
 
 const uuid = z.string().uuid();
 const tokenHash = z.string().regex(/^[0-9a-f]{64}$/);
-const rawToken = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+const rawToken = z.string().regex(VEHICLE_SHARE_TOKEN_RE);
 
 export type VehicleShareOptions = {
   photos: VehicleShareMedia[];
@@ -228,7 +230,13 @@ export const sendVehicleSharePackage = createServerFn({ method: "POST" })
     } else {
       const { sendSms, toE164 } = await import("@/lib/sms.server");
       if (!toE164(data.recipient)) return { ok: false, error: "Enter a valid mobile phone number." };
-      const body = `REAL RENTALS: ${pkg.title} photos${pkg.includeDetails ? " and vehicle details" : ""}${data.message ? ` — ${data.message}` : ""}: ${url} Private link expires ${fmtDate(pkg.expiresAt)}. Reply STOP to opt out.`;
+      const body = formatVehicleShareSmsBody({
+        title: pkg.title,
+        includeDetails: pkg.includeDetails,
+        message: data.message,
+        url,
+        expiresLabel: fmtDate(pkg.expiresAt),
+      });
       const sms = await sendSms({
         to: data.recipient, body, kind: "vehicle_share", vehicleId: pkg.vehicleId,
         applicationId: data.applicationId ?? null,

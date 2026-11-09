@@ -3,6 +3,9 @@ import { fmtDate } from "@/lib/date-format";
 export const VEHICLE_SHARE_TTL_MS = 72 * 60 * 60 * 1000;
 export const VEHICLE_SHARE_PHOTO_LIMIT = 24;
 const TOKEN_HASH = /^[0-9a-f]{64}$/;
+/** New tokens are lowercase hex (SMS clients truncate base64url at "_"). Legacy 43-char tokens still open. */
+export const VEHICLE_SHARE_TOKEN_RE = /^(?:[0-9a-f]{64}|[A-Za-z0-9_-]{43})$/;
+
 
 export type StoredVehicleSharePackage = {
   vehicleId: string;
@@ -142,6 +145,26 @@ export function buildInsuranceDetails(vehicle: Record<string, unknown>): Vehicle
 
 export function isVehicleShareActive(pkg: { expiresAt: string; revokedAt: string | null }, now = Date.now()): boolean {
   return !pkg.revokedAt && Number.isFinite(Date.parse(pkg.expiresAt)) && Date.parse(pkg.expiresAt) > now;
+}
+
+
+/** Keep the URL alone on its own line so SMS/Quo auto-link the full path. */
+export function formatVehicleShareSmsBody(input: {
+  title: string;
+  includeDetails: boolean;
+  message?: string | null;
+  url: string;
+  expiresLabel: string;
+}): string {
+  const parts = [
+    `REAL RENTALS: ${input.title} photos${input.includeDetails ? " and vehicle details" : ""}`,
+  ];
+  const note = input.message?.trim();
+  if (note) parts.push(note);
+  parts.push(`Private link expires ${input.expiresLabel}:`);
+  parts.push(input.url);
+  parts.push("Reply STOP to opt out.");
+  return parts.join("\n\n");
 }
 
 export function maskShareRecipient(channel: "email" | "sms", recipient: string): string {
