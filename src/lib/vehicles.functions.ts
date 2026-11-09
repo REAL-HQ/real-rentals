@@ -22,7 +22,7 @@ async function loadVehicleDocPresence(sb: any, vehicleId: string, includeFinance
 // columns on vehicles itself and the vehicle_media table for photography.
 
 export const OWNERSHIP_TYPES = [
-  { value: "owned", label: "Owned Outright" },
+  { value: "owned", label: "Owned" },
   { value: "financed", label: "Financed" },
   { value: "leased", label: "Leased" },
   { value: "partner", label: "Partner Vehicle" },
