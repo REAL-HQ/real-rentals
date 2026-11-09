@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { CalendarCheck } from "lucide-react";
+import { CalendarCheck, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "./ui";
+import { VehicleStaffPhoto } from "./VehicleStaffPhoto";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   formatBoardDate,
   formatWeeklyRate,
@@ -17,11 +25,18 @@ import { listActiveRentals } from "@/lib/active-rentals.functions";
 const FILTERS = [
   { id: "all", label: "All" },
   { id: "overdue", label: "Overdue" },
-  { id: "issues", label: "Issues Open" },
+  { id: "issues", label: "Issues" },
 ] as const;
+
+const HEADERS = ["Driver", "Vehicle", "Started", "Weeks", "Rate", "Due", "Paid", "Overdue", "Actions"];
 
 function countLabel(value: number | null): string {
   return value == null ? "Unavailable" : String(value);
+}
+
+function documentLabel(row: ActiveRentalRow): string {
+  if (row.documentsExpiring == null) return "Unavailable";
+  return row.documentsExpiring ? "Expiring" : "Current";
 }
 
 export function ActiveRentalsPanel() {
@@ -83,7 +98,7 @@ export function ActiveRentalsPanel() {
           ))}
         </div>
         <span className="text-sm text-muted-foreground">
-          {visible.length} active rental{visible.length === 1 ? "" : "s"}
+          {visible.length} Active Rental{visible.length === 1 ? "" : "s"}
         </span>
       </div>
 
@@ -109,56 +124,93 @@ export function ActiveRentalsPanel() {
         />
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-[#EDEDF0] bg-white">
-          <table className="min-w-[1080px] w-full text-left text-sm">
+          <table className="min-w-[940px] w-full text-left text-sm">
             <thead className="text-[11px] font-semibold text-[#55555E]">
               <tr className="border-b border-[#EDEDF0]">
-                {["Driver", "Vehicle", "Started", "Weeks In", "Weekly Rate", "Next Payment Due", "Last Payment", "Overdue", "Issues", "Incidents", "Documents", "Booking"].map((label) => (
-                  <th key={label} className="px-3 py-2 font-semibold">{label}</th>
+                {HEADERS.map((label) => (
+                  <th key={label} className={`whitespace-nowrap px-3 py-2.5 font-semibold ${label === "Actions" ? "text-right" : ""}`}>{label}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {visible.map((row) => (
-                <tr key={row.id} className="border-b border-[#EDEDF0] last:border-0" data-testid="active-rental-row">
-                  <td className="px-3 py-3 align-top">
-                    {row.applicationId ? (
-                      <Link to="/admin" search={{ tab: "drivers", id: row.applicationId }} className="font-medium text-[#111114] hover:underline">
-                        {row.driverName}
-                      </Link>
-                    ) : (
-                      <span className="font-medium text-[#111114]">{row.driverName}</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-3 align-top text-[#111114]">{row.vehicleLabel}</td>
-                  <td className="px-3 py-3 align-top whitespace-nowrap">{formatBoardDate(row.startDate)}</td>
-                  <td className="px-3 py-3 align-top whitespace-nowrap">{weeksInLabel(row.weeksIn)}</td>
-                  <td className="px-3 py-3 align-top whitespace-nowrap">{formatWeeklyRate(row.weeklyRate)}</td>
-                  <td className="px-3 py-3 align-top whitespace-nowrap">{formatBoardDate(row.nextPaymentDue) || "No Due Date"}</td>
-                  <td className="px-3 py-3 align-top whitespace-nowrap">
-                    {paymentStatusLabel(row.lastPaymentStatus, row.paymentsLoaded)}
-                    {row.lastPaymentViaStripe ? <span className="ml-1 text-[11px] text-[#55555E]">Stripe</span> : null}
-                  </td>
-                  <td className="px-3 py-3 align-top whitespace-nowrap">
-                    {(row.overdueDays ?? 0) > 0 ? (
-                      <span className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white">{overdueLabel(row.overdueDays)}</span>
-                    ) : (
-                      overdueLabel(row.overdueDays)
-                    )}
-                  </td>
-                  <td className="px-3 py-3 align-top">{countLabel(row.openIssues)}</td>
-                  <td className="px-3 py-3 align-top">{countLabel(row.openIncidents)}</td>
-                  <td className="px-3 py-3 align-top whitespace-nowrap">
-                    {row.documentsExpiring == null ? "Unavailable" : row.documentsExpiring ? (
-                      <span className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white">Expiring</span>
-                    ) : "Current"}
-                  </td>
-                  <td className="px-3 py-3 align-top whitespace-nowrap">
-                    <Link to="/admin" search={{ tab: "bookings", id: row.id }} className="text-[#111114] hover:underline">
-                      Open Booking
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+              {visible.map((row) => {
+                const [vehicleName, ...vehicleDetails] = row.vehicleLabel.split(" · ");
+                return (
+                  <tr key={row.id} className="border-b border-[#EDEDF0] last:border-0" data-testid="active-rental-row">
+                    <td className="min-w-[120px] px-3 py-2.5 align-middle font-medium text-[#111114]">{row.driverName}</td>
+                    <td className="min-w-[220px] px-3 py-2.5 align-middle text-[#111114]">
+                      <div className="flex items-center gap-2.5">
+                        <span className="block h-10 w-14 shrink-0 overflow-hidden rounded-md border border-border bg-soft">
+                          <VehicleStaffPhoto path={row.thumbnailPath ?? null} name={vehicleName} className="h-full w-full object-cover" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-medium leading-tight">{vehicleName}</span>
+                          {vehicleDetails.length ? <span className="mt-1 block text-xs text-muted-foreground">{vehicleDetails.join(" · ")}</span> : null}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">{formatBoardDate(row.startDate)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">{weeksInLabel(row.weeksIn)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">{formatWeeklyRate(row.weeklyRate)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">{formatBoardDate(row.nextPaymentDue) || "No Due Date"}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">
+                      {paymentStatusLabel(row.lastPaymentStatus, row.paymentsLoaded)}
+                      {row.lastPaymentViaStripe ? <span className="ml-1 text-[11px] text-[#55555E]">Stripe</span> : null}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">
+                      {(row.overdueDays ?? 0) > 0 ? (
+                        <span className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white">{overdueLabel(row.overdueDays)}</span>
+                      ) : (
+                        overdueLabel(row.overdueDays)
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 align-middle">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Link
+                          to="/admin"
+                          search={{ tab: "bookings", id: row.id }}
+                          className="inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-3 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB]"
+                        >
+                          Open
+                        </Link>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={`Actions For ${row.driverName}`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-soft hover:text-foreground"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            {row.applicationId ? (
+                              <DropdownMenuItem asChild>
+                                <Link to="/admin" search={{ tab: "drivers", id: row.applicationId }}>Driver</Link>
+                              </DropdownMenuItem>
+                            ) : null}
+                            <DropdownMenuItem asChild>
+                              <Link to="/admin" search={{ tab: "vehicles", id: row.vehicleId }}>Vehicle</Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem asChild>
+                              <Link to="/admin" search={{ tab: "driver_issues" }}>Issues: {countLabel(row.openIssues)}</Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                              <Link to="/admin" search={{ tab: "incidents" }}>Incidents: {countLabel(row.openIncidents)}</Link>
+                            </DropdownMenuItem>
+                            {row.applicationId ? (
+                              <DropdownMenuItem asChild>
+                                <Link to="/admin" search={{ tab: "drivers", id: row.applicationId }}>Documents: {documentLabel(row)}</Link>
+                              </DropdownMenuItem>
+                            ) : null}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

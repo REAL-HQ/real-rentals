@@ -121,6 +121,7 @@ export type ActiveRentalRow = {
   applicationId: string | null;
   vehicleId: string;
   vehicleLabel: string;
+  thumbnailPath?: string | null;
   startDate: string;
   weeksIn: number | null;
   weeklyRate: number | null;

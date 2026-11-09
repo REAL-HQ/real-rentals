@@ -9,6 +9,7 @@ import {
   type PaymentFact,
   type ReadResult,
 } from "@/lib/active-rentals";
+import { chooseVehicleThumbnailPaths, vehicleListThumbnailKey, type VehicleThumbnailMedia } from "@/lib/vehicle-thumbnail";
 
 // Manager board for rentals that are out right now.
 //
@@ -74,7 +75,7 @@ export const listActiveRentals = createServerFn({ method: "POST" })
     const vehicleIds = ids(list.map((r) => r.vehicle_id));
     const applicationIds = ids(list.map((r) => r.application_id));
 
-    const [payments, issues, incidentsByVehicle, incidentsByRental, applications, vehicles] = await Promise.all([
+    const [payments, issues, incidentsByVehicle, incidentsByRental, applications, vehicles, media, thumbnailSettings] = await Promise.all([
       readRows<PaymentFact>(
         supabaseAdmin
           .from("payments")
@@ -167,6 +168,18 @@ export const listActiveRentals = createServerFn({ method: "POST" })
           .select("id,unit_number,year,make,model,license_plate,plate_expires_on,registration_expires_on,insurance_expires_on")
           .in("id", vehicleIds),
       ),
+      supabaseAdmin
+        .from("vehicle_media")
+        .select("id,vehicle_id,storage_path")
+        .in("vehicle_id", vehicleIds)
+        .eq("kind", "original")
+        .order("is_primary", { ascending: false })
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true }),
+      supabaseAdmin
+        .from("app_settings")
+        .select("key,value")
+        .in("key", vehicleIds.map((id) => vehicleListThumbnailKey(id))),
     ]);
 
     const capped = <T,>(result: ReadResult<T>, limit: number): ReadResult<T> =>
@@ -187,11 +200,7 @@ export const listActiveRentals = createServerFn({ method: "POST" })
         const app = rental.application_id ? appById.get(rental.application_id) : undefined;
         const vehicle = vehicleById.get(rental.vehicle_id);
         const name = [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(" ");
-        const vehicleLabel = [
-          vehicle?.unit_number ? `Unit ${vehicle.unit_number}` : null,
-          name || null,
-          vehicle?.license_plate || null,
-        ].filter(Boolean).join(" · ") || "Vehicle";
+        const vehicleLabel = [name || null, vehicle?.license_plate || null].filter(Boolean).join(" · ") || "Vehicle";
         return {
           id: rental.id,
           driverId: rental.driver_id,
@@ -228,8 +237,13 @@ export const listActiveRentals = createServerFn({ method: "POST" })
         : { ok: false },
     });
 
+    const thumbnailFor = chooseVehicleThumbnailPaths(
+      (media.data ?? []) as VehicleThumbnailMedia[],
+      thumbnailSettings.data ?? [],
+    );
+
     return {
-      rows,
+      rows: rows.map((row) => ({ ...row, thumbnailPath: thumbnailFor.get(row.vehicleId) ?? null })),
       today,
       paymentsLoaded: paymentsRead.ok,
       issuesLoaded: issuesRead.ok,

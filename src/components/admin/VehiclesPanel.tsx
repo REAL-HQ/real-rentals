@@ -16,7 +16,7 @@ import {
 } from "@/lib/vehicles-list";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
-import { loadStaffPhoto } from "@/lib/photoUrl";
+import { VehicleStaffPhoto } from "./VehicleStaffPhoto";
 import { listVehicleMedia, type VehicleMedia } from "@/lib/vehicle-media.functions";
 import { VehicleProfile } from "./VehicleProfile";
 import { VehiclePhotoViewer } from "./VehiclePhotos";
@@ -63,31 +63,6 @@ const VEHICLE_TOOLBAR = {
 
 function vehicleName(v: VehicleListRow) {
   return [v.year, displayVehicleWord(v.make ?? ""), displayVehicleWord(v.model ?? "")].filter(Boolean).join(" ");
-}
-
-/** Both staff views display the same confirmed original, including unlisted cars. */
-function VehicleStaffPhoto({ path, name, className }: { path: string | null; name: string; className: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let live = true;
-    setUrl(null);
-    setFailed(false);
-    if (path) {
-      void loadStaffPhoto(path).then((next) => {
-        if (live) { setUrl(next); setFailed(!next); }
-      });
-    }
-    return () => { live = false; };
-  }, [path]);
-
-  if (url && !failed) {
-    return <img src={url} alt={name} loading="lazy" className={className} onError={() => setFailed(true)} />;
-  }
-  return <span className="grid h-full w-full place-items-center text-muted-foreground" title={!path ? "No Vehicle Photo" : failed ? "Photo Unavailable" : "Loading Photo…"}>
-    <Car className="h-4 w-4" aria-label={!path ? "No Vehicle Photo" : failed ? "Photo Unavailable" : "Loading Photo…"} />
-  </span>;
 }
 
 /** The table's lead thumbnail and its on-demand, staff-only original gallery. */
