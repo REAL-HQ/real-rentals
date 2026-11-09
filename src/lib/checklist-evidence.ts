@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ActivationRequirementKey, VaultDocFact } from "./activation-readiness";
 import type { StaffTier } from "./roles";
+import { REQUIRED_VAULT_CATEGORIES } from "./required-docs";
 
 /** Saved check-offs live in checklist_evidence_events (record_checklist_evidence) and
  *  activate_rental_checked_tx accepts them in the same transaction as the rental. */
@@ -97,6 +98,23 @@ export function projectCollectionEvidence(input: Omit<Parameters<typeof projectE
   // Agreement retains the canonical signature/paper-review gate; a PDF is not a signature.
   if (input.field === "agreement") return projection;
   return projection.uploaded ? { ...projection, tone: "green", status: "uploaded", label: "On File" } : projection;
+}
+
+/** Aggregate receipt only; reuse the required vault categories and saved per-file history. */
+export function documentCollection(input: {
+  applicationId: string;
+  events: readonly EvidenceEvent[];
+  documents: readonly (VaultDocFact & { applicationId: string })[];
+}) {
+  const fields = REQUIRED_VAULT_CATEGORIES.map((field) => projectCollectionEvidence({
+    ...input, field, itemComplete: false,
+  }));
+  return {
+    fields,
+    tone: evidenceTone(fields) ?? "red",
+    collected: fields.every((field) => field.collected),
+    uploaded: fields.every((field) => field.uploaded),
+  };
 }
 
 export type EvidenceRequirementPresentation = { tone: EvidenceTone; label: string; fields: EvidenceProjection[]; onToggle?: () => void; busy?: boolean; toggleLabel?: string; toggleTitle?: string };

@@ -78,7 +78,7 @@ import {
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
 import { checklistDocumentCategories } from "./checklist-actions";
-import { CHECKLIST_EVIDENCE_ENABLED, EVIDENCE_FIELDS, evidenceTone, latestEvidenceEvent, projectEvidence, requirementEvidence, type EvidenceEvent, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
+import { CHECKLIST_EVIDENCE_ENABLED, EVIDENCE_FIELDS, documentCollection, evidenceTone, latestEvidenceEvent, projectEvidence, requirementEvidence, type EvidenceEvent, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
 import { getChecklistEvidence, saveChecklistEvidence } from "@/lib/checklist-evidence.functions";
 import { ChecklistEvidenceControl } from "./ChecklistEvidenceControl";
 import { driverLifecycle } from "@/lib/driver-lifecycle";
@@ -1781,15 +1781,25 @@ function DriverDetail({
   const saveEvidence = useServerFn(saveChecklistEvidence);
   const [evidenceEvents, setEvidenceEvents] = useState<EvidenceEvent[]>([]);
   const [evidenceSaving, setEvidenceSaving] = useState(false);
+  const [evidenceLoading, setEvidenceLoading] = useState(true);
+  const [evidenceFailed, setEvidenceFailed] = useState(false);
   const refreshEvidenceEvents = useCallback(async () => {
     if (!CHECKLIST_EVIDENCE_ENABLED || !isManager) return;
+    setEvidenceLoading(true);
+    setEvidenceFailed(false);
     try { setEvidenceEvents((await loadEvidence({ data: { applicationId: driver.id } })).events); }
-    catch { setEvidenceEvents([]); }
+    catch { setEvidenceEvents([]); setEvidenceFailed(true); }
+    finally { setEvidenceLoading(false); }
   }, [driver.id, isManager]);
   useEffect(() => { setEvidenceEvents([]); void refreshEvidenceEvents(); }, [refreshEvidenceEvents]);
   let safeEvents: EvidenceEvent[] = evidenceEvents;
   try { for (const f of EVIDENCE_FIELDS) latestEvidenceEvent(evidenceEvents, driver.id, f); }
   catch { safeEvents = []; }
+  const collectedDocuments = documentCollection({
+    applicationId: driver.id,
+    events: safeEvents,
+    documents: vaultDocs.map((doc) => ({ ...doc, applicationId: driver.id })),
+  });
   const evidenceItems: EvidenceProjection[] = CHECKLIST_EVIDENCE_ENABLED && isManager ? EVIDENCE_FIELDS.map((field) => projectEvidence({
     applicationId: driver.id, field, events: safeEvents, documents: vaultDocs,
     itemComplete: field === "agreement"
@@ -1873,6 +1883,7 @@ function DriverDetail({
   const actualAgreement = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true;
   const { stages: lifecycle, current: currentStage, percent: percentComplete } = driverLifecycle({
     contacted, screening: screeningDone,
+    documentsReceived: !vaultLoading && collectedDocuments.collected,
     documents: isManager ? addressed(licenseItems) : !missingRequiredCategories(vaultDocs).some((c) => c === "license_front" || c === "license_back"),
     profile: isManager ? addressed(profileItems) : !missingRequiredCategories(vaultDocs).includes("gig_profile"),
     insuranceOnFile: !vaultLoading && !missingRequiredCategories(vaultDocs).includes("insurance"),
@@ -1895,6 +1906,12 @@ function DriverDetail({
     await refreshVault();
     readinessChanged();
   }, [refreshVault]);
+  // Renter uploads and external staff updates become visible when staff return to the profile.
+  useEffect(() => {
+    const refresh = () => { void refreshVault(); void refreshEvidenceEvents(); };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [refreshVault, refreshEvidenceEvents]);
   function renderChecklistEvidence(key: ActivationRequirementKey) {
     if (!isManager || vaultLoading || key === "insurance_document") return null;
     // Canonical server readiness already recognizes signed eSign agreements;
@@ -2418,6 +2435,7 @@ function DriverDetail({
             <LifecycleRail
               stages={lifecycle}
               evidenceTones={CHECKLIST_EVIDENCE_ENABLED ? {
+                documents: collectedDocuments.tone,
                 ...(docsEvidenceTone ? { docs: docsEvidenceTone } : {}),
                 ...(profileEvidenceTone ? { profile: profileEvidenceTone } : {}),
                 ...(insuranceEvidenceTone ? { insurance: insuranceEvidenceTone } : {}),
@@ -2429,6 +2447,15 @@ function DriverDetail({
               timeInStage={timeInStage}
               blocker={readiness.disqualifiers[0]}
               onStageClick={stageTargets}
+              stageCheckoffs={CHECKLIST_EVIDENCE_ENABLED && isManager ? {
+                documents: {
+                  onToggle: () => void toggleEvidence(collectedDocuments.fields),
+                  disabled: vaultLoading || evidenceLoading || evidenceFailed || evidenceSaving || collectedDocuments.uploaded,
+                  checked: collectedDocuments.collected,
+                  label: "Documents Received",
+                  title: collectedDocuments.uploaded ? "Documents On File" : collectedDocuments.collected ? "Received Elsewhere · Upload Due" : "Confirm Documents Received Elsewhere",
+                },
+              } : undefined}
             />
           </div>
           {/* Primary record navigation: below identity and lifecycle progress */}

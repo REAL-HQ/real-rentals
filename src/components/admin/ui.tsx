@@ -276,6 +276,7 @@ export function LifecycleRail({
   className = "",
   onStageClick,
   evidenceTones,
+  stageCheckoffs,
 }: {
   stages: LifecycleStage[];
   percent?: number;
@@ -286,6 +287,8 @@ export function LifecycleRail({
   onStageClick?: Partial<Record<string, () => void>>;
   /** Optional operational evidence color; never changes lifecycle completion or status. */
   evidenceTones?: Partial<Record<string, EvidenceTone>>;
+  /** In-place receipt controls are separate from stage navigation. */
+  stageCheckoffs?: Partial<Record<string, { onToggle: () => void; disabled: boolean; checked: boolean; label: string; title: string }>>;
 }) {
   const foundCurrent = stages.findIndex((s) => s.state === "current");
   const currentIdx = foundCurrent >= 0 ? foundCurrent : Math.max(0, stages.length - 1);
@@ -322,24 +325,34 @@ export function LifecycleRail({
           const done = s.state === "done";
           const cur = s.state === "current";
           const evidenceTone = evidenceTones?.[s.key];
-          return (
-            <li key={s.key} className="flex items-center gap-1.5 shrink-0">
-              <StageWrap onClick={onStageClick?.[s.key]} label={s.label}>
-                <span
-                  className={`h-6 w-6 rounded-full grid place-items-center border-2 text-[10px] font-semibold ${
-                    evidenceTone === "yellow"
-                      ? "bg-warning-soft border-warning text-warning-foreground"
-                      : evidenceTone === "red"
-                        ? "bg-destructive/10 border-destructive text-destructive"
-                        : done
+          const checkoff = stageCheckoffs?.[s.key];
+          const marker = (
+            <span
+              className={`h-6 w-6 rounded-full grid place-items-center border-2 text-[10px] font-semibold ${
+                evidenceTone === "yellow"
+                  ? "bg-warning-soft border-warning text-warning-foreground"
+                  : evidenceTone === "red"
+                    ? "bg-destructive/10 border-destructive text-destructive"
+                    : done
                       ? "bg-success border-success text-primary-foreground"
                       : cur
                         ? "bg-card border-brand text-brand ring-4 ring-brand/10"
                         : "bg-card border-border text-muted-foreground"
-                  }`}
-                >
-                  {done && (!evidenceTone || evidenceTone === "green") ? <Check className="w-3 h-3" strokeWidth={2.5} /> : i + 1}
-                </span>
+              }`}
+            >
+              {(checkoff ? checkoff.checked && evidenceTone !== "red" : done && (!evidenceTone || evidenceTone === "green")) ? <Check className="w-3 h-3" strokeWidth={2.5} /> : i + 1}
+            </span>
+          );
+          return (
+            <li key={s.key} className="flex items-center gap-1.5 shrink-0">
+              <StageWrap onClick={checkoff ? undefined : onStageClick?.[s.key]} label={s.label}>
+                {checkoff ? (
+                  <Button type="button" variant="ghost" size="icon" role="checkbox"
+                    aria-label={checkoff.label} aria-checked={checkoff.checked} title={checkoff.title}
+                    disabled={checkoff.disabled} onClick={checkoff.onToggle}
+                    className="h-6 w-6 rounded-full p-0 hover:bg-transparent disabled:opacity-100"
+                  >{marker}</Button>
+                ) : marker}
                 <span
                   className={`text-[10px] font-medium whitespace-nowrap ${
                     cur ? "text-foreground" : "text-muted-foreground"

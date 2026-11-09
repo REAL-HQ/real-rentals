@@ -2,6 +2,7 @@
 export const DRIVER_LIFECYCLE_STAGES = [
   { key: "applied", label: "Applied" },
   { key: "contacted", label: "Contacted" },
+  { key: "documents", label: "Documents" },
   { key: "screening", label: "Screening" },
   { key: "docs", label: "License" },
   { key: "profile", label: "Profile" },
@@ -20,9 +21,11 @@ export function driverLifecycle(facts: {
   approved: boolean; inspection: boolean; agreement: boolean; rentalActive: boolean;
   /** Saved staff pickup check-off (Yellow); Active still needs a real running rental. */
   pickup?: boolean;
+  /** Aggregate receipt of required files, not their verification. */
+  documentsReceived?: boolean;
 }) {
   const completed: Record<DriverLifecycleKey, boolean> = {
-    applied: true, contacted: facts.contacted, screening: facts.screening,
+    applied: true, contacted: facts.contacted, documents: facts.documentsReceived === true, screening: facts.screening,
     docs: facts.documents, profile: facts.profile, insurance: facts.insuranceOnFile, approved: facts.approved,
     inspection: facts.inspection, agreement: facts.agreement,
     pickup: facts.rentalActive || facts.pickup === true, active: facts.rentalActive,

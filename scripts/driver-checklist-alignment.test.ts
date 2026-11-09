@@ -32,7 +32,7 @@ describe("Driver checklist alignment", () => {
 
   it("adds Profile after License in the lifecycle", () => {
     const result = driverLifecycle({ contacted: true, screening: true, documents: false, profile: false, insuranceOnFile: false, approved: true, inspection: false, agreement: false, rentalActive: false });
-    expect(result.stages.map((stage) => stage.label)).toEqual(["Applied", "Contacted", "Screening", "License", "Profile", "Insurance", "Approved", "Inspection", "Agreement", "Pickup", "Active"]);
+    expect(result.stages.map((stage) => stage.label)).toEqual(["Applied", "Contacted", "Documents", "Screening", "License", "Profile", "Insurance", "Approved", "Inspection", "Agreement", "Pickup", "Active"]);
   });
 
   it("saves a file-free inspection check-off as Yellow, never Passed", () => {
@@ -66,7 +66,7 @@ describe("Pickup check-off", () => {
     expect(projection).toMatchObject({ tone: "yellow", status: "upload_due", complete: false });
     expect(requirementEvidence("pickup", [projection])?.tone).toBe("yellow");
     expect(activationRequirements(facts).find((item) => item.key === "rental_active")?.met).toBe(false);
-    const life = driverLifecycle({ contacted: true, screening: true, documents: true, profile: true, insuranceOnFile: true, approved: true, inspection: true, agreement: true, rentalActive: false, pickup: true });
+    const life = driverLifecycle({ contacted: true, documentsReceived: true, screening: true, documents: true, profile: true, insuranceOnFile: true, approved: true, inspection: true, agreement: true, rentalActive: false, pickup: true });
     expect(life.stages.find((s) => s.key === "pickup")?.state).toBe("done");
     expect(life.stages.find((s) => s.key === "active")?.state).toBe("current");
   });
