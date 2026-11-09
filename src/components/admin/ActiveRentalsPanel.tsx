@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { CalendarCheck, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "./ui";
+import { AdminTableScroll } from "./AdminTableScroll";
 import { VehicleStaffPhoto } from "./VehicleStaffPhoto";
 import {
   DropdownMenu,
@@ -123,7 +124,7 @@ export function ActiveRentalsPanel() {
           hint="Rentals with status Active show up here."
         />
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-[#EDEDF0] bg-white">
+        <AdminTableScroll className="mt-4 rounded-2xl border border-[#EDEDF0] bg-white">
           <table className="min-w-[940px] w-full text-left text-sm">
             <thead className="text-[11px] font-semibold text-[#55555E]">
               <tr className="border-b border-[#EDEDF0]">
@@ -213,7 +214,7 @@ export function ActiveRentalsPanel() {
               })}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
       )}
     </div>
   );
