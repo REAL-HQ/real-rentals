@@ -33,6 +33,7 @@ import {
   Legend,
 } from "recharts";
 import { SectionCard, MicroLabel, StatusPill, ReadinessStatePill } from "./ui";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { compareReadiness, type ReadinessResult } from "@/lib/readiness";
 import {
   summarizeFleet,
@@ -565,7 +566,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
                     <span className="min-w-0 flex-1">
                       <span className="block text-[11px] font-semibold">{row.vehicle.unit_number || "Vehicle"}</span>
                       <span className="block text-[10px] font-normal text-muted-foreground">
-                        {row.vehicle.status === "maintenance" ? "Maintenance" : row.item}
+                        {row.vehicle.status === "maintenance" ? <VehicleStatusBadge status="maintenance" /> : row.item}
                         {row.vehicle.status === "maintenance" ? null : ` · ${row.due.state === "due_soon" ? "Due Soon" : row.due.state === "overdue" ? "Overdue" : row.due.state === "due" ? "Due" : row.due.state === "conflict" ? "Needs Review" : "Open"}`}
                       </span>
                     </span>

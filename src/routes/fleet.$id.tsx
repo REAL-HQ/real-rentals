@@ -7,6 +7,7 @@ import { FadeUp } from "@/components/site/FadeUp";
 import { Check, Gauge, Fuel, Calendar, Wrench } from "lucide-react";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { PublicAvailabilityBadge } from "@/components/site/PublicAvailability";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { PUBLIC_AVAILABILITY_ENABLED, publicAvailability } from "@/lib/public-availability";
 
 export const Route = createFileRoute("/fleet/$id")({
@@ -224,7 +225,7 @@ function VehicleDetail() {
                   <s.I className="w-5 h-5 text-real-red" strokeWidth={1.75} />
                   <div>
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{s.l}</div>
-                    <div className="font-medium capitalize">{String(s.v)}</div>
+                    <div className="font-medium">{s.l === "Status" ? <VehicleStatusBadge status={v.status} /> : String(s.v)}</div>
                   </div>
                 </div>
               ))}

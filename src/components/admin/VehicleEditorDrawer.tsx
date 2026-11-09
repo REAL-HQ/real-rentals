@@ -480,6 +480,7 @@ export function VehicleEditorDrawer({
                 label="Status"
                 value={str("status")}
                 onChange={(x) => set("identity", "status", x)}
+                vehicleStatus
                 options={VEHICLE_STATUSES.map((s) => ({ value: s.value, label: s.label }))}
                 hint="Taking a car out of the fleet is refused while a rental is active."
               />

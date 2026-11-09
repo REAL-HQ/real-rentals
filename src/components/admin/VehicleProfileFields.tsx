@@ -7,6 +7,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MicroLabel } from "./ui";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 
 // The pieces the vehicle profile reads and writes with.
 //
@@ -201,6 +202,7 @@ export function Choice({
   options,
   hint,
   error,
+  vehicleStatus = false,
 }: {
   label: string;
   value: string;
@@ -208,6 +210,7 @@ export function Choice({
   options: Array<{ value: string; label: string }>;
   hint?: string;
   error?: string;
+  vehicleStatus?: boolean;
 }) {
   const items = options.map((o) => ({
     value: o.value === "" ? NO_VALUE : o.value,
@@ -234,7 +237,7 @@ export function Choice({
               value={o.value}
               className="text-[13px] text-popover-foreground hover:bg-[#F5F5F7] focus:bg-[#F5F5F7] data-[highlighted]:bg-[#F5F5F7]"
             >
-              {o.label}
+              {vehicleStatus && o.value !== NO_VALUE ? <VehicleStatusBadge status={o.value} label={o.label} /> : o.label}
             </SelectItem>
           ))}
         </SelectContent>

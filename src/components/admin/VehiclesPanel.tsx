@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { Plus, Trash2, Car, ArrowRight, Copy, List, LayoutGrid, ChevronLeft, ChevronRight, Archive, RotateCcw, Wrench } from "lucide-react";
 import { displayVehicleWord } from "@/lib/display-normalize";
 import { EmptyState } from "./ui";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { MaintenanceDue } from "./MaintenanceDue";
 import { MAINTENANCE_DUE_ENABLED } from "@/lib/maintenance-due";
 import { MaintenanceLogBadge, MaintenanceLogBadgeSource } from "./MaintenanceLog";
@@ -170,7 +171,7 @@ function CopyVin({ vin }: { vin: string | null }) {
 
 function Availability({ v }: { v: VehicleListRow }) {
   const label = availabilityLabel(v);
-  return <span className={v.on_rent || v.status === "onboarding" ? "font-medium text-foreground" : ""}>{label}</span>;
+  return <VehicleStatusBadge status={v.on_rent ? "on_rent" : v.status} label={label} />;
 }
 
 /**
@@ -181,9 +182,9 @@ function Availability({ v }: { v: VehicleListRow }) {
  * find out. Colour alone never carries the meaning — the words are there.
  */
 const READINESS_TONE: Record<ReadinessBand, string> = {
-  listing_ready: "bg-[rgba(32,160,96,0.10)] text-[#13613B]",
-  rental_ready: "bg-[rgba(240,192,64,0.14)] text-[#8A6410]",
-  not_ready: "bg-[rgba(208,48,32,0.08)] text-[#D03020]",
+  listing_ready: "bg-success-soft text-success",
+  rental_ready: "bg-warning-soft text-warning-foreground",
+  not_ready: "bg-danger-soft text-destructive",
 };
 const READINESS_DOT: Record<ReadinessBand, string> = {
   listing_ready: "bg-[#1C8F57]",
@@ -369,10 +370,8 @@ function FleetVehicles({
                 <dt className="text-muted-foreground">VIN</dt>
                 <dd className="min-w-0"><CopyVin vin={v.vin} /></dd>
               </dl>
-              <div className="mt-2.5 text-[13px] text-muted-foreground">
-                <Rate v={v} /><span className="mx-1.5">·</span><Availability v={v} />
-              </div>
-              <div className="mt-2"><ReadinessPill v={v} /></div>
+              <div className="mt-2.5 text-[13px] text-muted-foreground"><Rate v={v} /></div>
+              <div data-vehicle-status-row className="mt-2 flex items-center gap-1.5 whitespace-nowrap"><Availability v={v} /><ReadinessPill v={v} /></div>
               <div className="mt-3 flex gap-2 max-lg:flex-wrap" onClick={(e) => e.stopPropagation()}>
                 <button onClick={() => setViewing(v.id)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
                   Open Record <ArrowRight className="w-3.5 h-3.5" />
@@ -416,7 +415,7 @@ function FleetVehicles({
             <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
-              {(result?.statuses ?? []).map((s) => <SelectItem key={s} value={s}>{availabilityLabel({ on_rent: false, status: s })}</SelectItem>)}
+              {(result?.statuses ?? []).map((s) => <SelectItem key={s} value={s}><VehicleStatusBadge status={s} label={availabilityLabel({ on_rent: false, status: s })} /></SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={bodyFilter} onValueChange={(v) => setList({ body: v })}>

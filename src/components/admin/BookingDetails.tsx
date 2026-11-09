@@ -26,6 +26,7 @@ import { listAuditLog, type AuditRow } from "@/lib/team.functions";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { Row, TwoCol } from "./VehicleProfileFields";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { BOOKING_PHASE_LABEL, bookingDates } from "@/lib/bookings-list";
 import { persistedNumber } from "@/lib/record-numbers";
@@ -382,7 +383,7 @@ function Overview({
               <Row label="VIN" value={d.vehicle.vin} mono />
               <Row
                 label="Status"
-                value={d.vehicle.status ? <StatusPill status={d.vehicle.status} /> : null}
+                value={d.vehicle.status ? <VehicleStatusBadge status={d.vehicle.status} /> : null}
               />
             </>
           ) : (

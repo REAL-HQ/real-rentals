@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { displayTitleCase, displayVehicleWord } from "@/lib/display-normalize";
 import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import {
   formatVehicleLabel,
   vehicleMatchesQuery,
@@ -157,7 +158,7 @@ export function VehicleCombobox({
                       </span>
                       <span className="hidden min-w-0 truncate text-[11px] tabular-nums sm:block">{v.license_plate || "—"}</span>
                       <span className="hidden min-w-0 truncate text-[11px] tabular-nums text-muted-foreground sm:block">{vinLast6(v.vin) || "—"}</span>
-                      <span className="min-w-0 truncate text-[10px] font-medium">{displayTitleCase(v.status?.replace(/_/g, " ") ?? "") || "Not Set"}</span>
+                      <VehicleStatusBadge status={v.status} className="max-w-full px-1.5 text-[10px]" />
                     </> : <span className="truncate">{label}</span>}
                   </CommandItem>
                 );

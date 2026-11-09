@@ -40,6 +40,7 @@ import { getVehicleFinance, saveVehicleFinance } from "@/lib/vehicle-finance.fun
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { readStoredExperience } from "@/lib/experience";
 import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { Row, TwoCol, Text, Area, NumberField, DateInput, Choice } from "./VehicleProfileFields";
 import { VehicleEditDrawer } from "./VehicleEditDrawer";
 import { ShareVehicleDialog } from "./ShareVehicleDialog";
@@ -210,7 +211,7 @@ export function VehicleProfile({
                     <h2 className="text-[19px] font-semibold text-[#111114] truncate">
                       {p?.unitLabel ?? "Vehicle"}
                     </h2>
-                    {v.status && <StatusPill status={String(v.status)} />}
+                    {v.status && <VehicleStatusBadge status={String(v.status)} />}
                     {!p?.isActive && (
                       <span className="text-[11px] text-[#9A9AA3]">Out of fleet</span>
                     )}
@@ -493,7 +494,7 @@ function Overview({
               <Row label="VIN" value={v.vin} mono />
               <Row label="Plate" value={plate} mono />
               <Row label="Mileage" value={miles(v.current_odometer)} />
-              <Row label="Status" value={v.status ? <StatusPill status={String(v.status)} /> : null} />
+              <Row label="Status" value={v.status ? <VehicleStatusBadge status={String(v.status)} /> : null} />
             </div>
           </TwoCol>
           {optional.length > 0 && (
@@ -957,6 +958,7 @@ function SectionDrawer({
               label="Status"
               value={str("status")}
               onChange={(v) => set("status", v)}
+              vehicleStatus
               options={VEHICLE_STATUSES.map((s) => ({ value: s.value, label: s.label }))}
             />
             <NumberField label="Seats" value={num("seats")} onChange={(v) => set("seats", v)} />
@@ -1497,7 +1499,7 @@ function ReadinessChecklist({ p, onEdit, onOpenTab, pendingDetails = 0, onReview
         <span data-testid="readiness-overall" className={`inline-flex items-center gap-1.5 rounded-full border border-[#EDEDF0] bg-white px-2.5 py-1 text-[12px] font-semibold ${st.text}`}>
           <span className={`h-2 w-2 rounded-full ${st.dot}`} /> {st.label}
         </span>
-        <span data-testid="readiness-availability" className="inline-flex items-center rounded-full bg-[#F4F4F6] px-2.5 py-1 text-[12px] font-medium text-[#111114]">{avail}</span>
+        <VehicleStatusBadge data-testid="readiness-availability" status={avail} label={avail} />
         <span className="text-[11px] text-[#9A9AA3]">Readiness never changes availability.</span>
       </div>
 
