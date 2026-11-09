@@ -15,10 +15,14 @@ import { rememberPayIntent } from "@/lib/portal-pay-link";
  * in the same Supabase session — there is one login system.
  */
 export const Route = createFileRoute("/login")({
-  validateSearch: (s: Record<string, unknown>): { signin?: string; pay?: "balance" } => ({
+  validateSearch: (s: Record<string, unknown>): { signin?: string; pay?: "balance"; email?: string } => ({
     signin: typeof s.signin === "string" ? s.signin : undefined,
     // Only the one allowlisted word; anything else is dropped.
     pay: s.pay === "balance" ? "balance" : undefined,
+    email:
+      typeof s.email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email.trim())
+        ? s.email.trim().toLowerCase()
+        : undefined,
   }),
   head: () => ({
     meta: [
@@ -38,14 +42,17 @@ type Mode = "code" | "enter" | "password" | "forgot" | "forgotSent";
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { signin, pay } = Route.useSearch();
+  const { signin, pay, email: emailPrefill } = Route.useSearch();
   // Remember "pay" for the emailed one-time link, which opens in a new tab.
   useEffect(() => { if (pay === "balance") rememberPayIntent(window.localStorage); }, [pay]);
   const toPortal = (replace = false) =>
     navigate({ to: "/portal", replace, ...(pay === "balance" ? { search: { pay: "balance" } as any } : {}) });
   const request = useServerFn(requestPortalSignIn);
   const verify = useServerFn(verifyPortalSignIn);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(emailPrefill ?? "");
+  useEffect(() => {
+    if (emailPrefill) setEmail(emailPrefill);
+  }, [emailPrefill]);
   const [code, setCode] = useState("");
   const [pw, setPw] = useState("");
   const [showPw, setShowPw] = useState(false);

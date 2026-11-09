@@ -1659,7 +1659,7 @@ function PreRentalPanel({
             Upload or replace your licence and insurance, and read your rental agreement.
           </div>
           <div className="mt-3 text-sm text-real-red font-medium inline-flex items-center gap-1">
-            Open Documents <ArrowRight className="w-3.5 h-3.5" />
+            Upload Missing Documents <ArrowRight className="w-3.5 h-3.5" />
           </div>
         </button>
 

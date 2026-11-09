@@ -190,10 +190,21 @@ async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: strin
   try {
     const { data: onFile } = await supabaseAdmin
       .from("applications")
-      .select("email, full_name")
+      .select("email, full_name, status, user_id")
       .eq("id", applicationId)
       .maybeSingle();
     if (!onFile?.email) return false;
+    const { shouldHandoffToPortal } = await import("@/lib/portal-handoff");
+    if (await shouldHandoffToPortal(supabaseAdmin, onFile)) {
+      const { sendPortalHandoffEmail } = await import("@/lib/email.server");
+      const r = await sendPortalHandoffEmail({
+        to: onFile.email,
+        firstName: onFile.full_name ?? null,
+        email: onFile.email,
+      });
+      if (!r.ok) console.error("[portal-handoff] provider refused", applicationId, r.error);
+      return r.ok;
+    }
     const { sendApplicationResumeEmail } = await import("@/lib/email.server");
     const r = await sendApplicationResumeEmail({ to: onFile.email, firstName: onFile.full_name ?? null, applicationId });
     if (!r.ok) console.error("[resume-link] provider refused", applicationId, r.error);
@@ -1142,7 +1153,25 @@ export const reissueApplicantLink = createServerFn({ method: "POST" })
     const { revokeResumeTokens, issueResumeToken, resumeUrl } =
       await import("@/lib/resume-tokens.server");
 
+    const { data: app } = await supabaseAdmin
+      .from("applications")
+      .select("status,email,user_id")
+      .eq("id", data.id)
+      .maybeSingle();
+    const { shouldHandoffToPortal, portalLoginUrl } = await import("@/lib/portal-handoff");
     const revoked = await revokeResumeTokens(supabaseAdmin, data.id);
+    if (await shouldHandoffToPortal(supabaseAdmin, app as any)) {
+      const url = portalLoginUrl((app as any)?.email);
+      const { logAudit } = await import("@/lib/audit.server");
+      await logAudit(actor, {
+        action: "application.link_reissued",
+        summary: `Directed approved applicant to portal sign-in${revoked ? ` and revoked ${revoked}` : ""}`,
+        entityType: "application",
+        entityId: data.id,
+        metadata: { revoked, portal: true },
+      });
+      return { url, revoked };
+    }
     const url = resumeUrl(await issueResumeToken(supabaseAdmin, data.id));
 
     const { logAudit } = await import("@/lib/audit.server");
@@ -1514,14 +1543,29 @@ export const openResumeLink = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ token: z.string().min(20).max(200) }).parse(d))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { exchangeResumeToken } = await import("@/lib/resume-tokens.server");
-    // exchangeResumeToken is the gate: hash lookup, expiry, revocation, and
-    // single-use consume of a recovery credential before a session is issued.
-    // resolveResumeToken rejects recovery-lifetime tokens, so calling it here
-    // would refuse every emailed link.
+    const { exchangeResumeToken, inspectResumeToken } = await import("@/lib/resume-tokens.server");
+    const { shouldHandoffToPortal } = await import("@/lib/portal-handoff");
+    // Peek first: approved/active (or a linked driver) go to /login, and we
+    // never exchange a recovery link into a wizard session for them.
     try {
-      return { token: await exchangeResumeToken(supabaseAdmin, data.token) };
+      const peek = await inspectResumeToken(supabaseAdmin, data.token);
+      if (peek) {
+        const { data: app } = await supabaseAdmin
+          .from("applications")
+          .select("status,email,user_id")
+          .eq("id", peek.applicationId)
+          .maybeSingle();
+        if (await shouldHandoffToPortal(supabaseAdmin, app as any)) {
+          return {
+            token: null as string | null,
+            portal: { email: String((app as any)?.email ?? "").trim() },
+          };
+        }
+      }
+      // exchangeResumeToken is the gate: hash lookup, expiry, revocation, and
+      // single-use consume of a recovery credential before a session is issued.
+      return { token: await exchangeResumeToken(supabaseAdmin, data.token), portal: null as null };
     } catch {
-      return { token: null as string | null };
+      return { token: null as string | null, portal: null as null };
     }
   });
