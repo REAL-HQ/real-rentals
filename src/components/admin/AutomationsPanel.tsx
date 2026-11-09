@@ -3,7 +3,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Plus, X, Zap, MessageSquare, Mail, Clock, Trash2, Send } from "lucide-react";
 import { StatusPill, EmptyState, MicroLabel } from "./ui";
+import { WorkflowSwitch } from "./WorkflowSwitch";
 import { fmtDateTime } from "@/lib/date-format";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Workflow = {
   id: string;
@@ -110,21 +121,32 @@ export function AutomationsPanel() {
     load();
   }, []);
 
-  async function toggleActive(wf: Workflow) {
-    if (!wf.is_active) {
-      const count = steps.filter((s) => s.workflow_id === wf.id && s.is_active).length;
-      if (count === 0) {
-        return toast.error("Add at least one message before turning this on.");
-      }
-      if (!confirm(`Turn on "${wf.name}"? Real messages will start going out to applicants.`))
-        return;
+  // The workflow's is_active flag is the only switch the engine checks:
+  // enrollInWorkflows enrolls only into active workflows and the 5-minute
+  // sweep cancels any enrollment whose workflow is off. There is no other
+  // global gate, so the toggle shows is_active as-is and never claims more.
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirmOn, setConfirmOn] = useState<Workflow | null>(null);
+
+  function requestToggle(wf: Workflow, next: boolean) {
+    if (busyId) return;
+    if (!next) return void setActive(wf, false); // Turning off is immediate.
+    const count = steps.filter((s) => s.workflow_id === wf.id && s.is_active).length;
+    if (count === 0) {
+      return void toast.error("Add at least one message before turning this on.");
     }
+    setConfirmOn(wf); // Turning on sends to real people, so confirm first.
+  }
+
+  async function setActive(wf: Workflow, next: boolean) {
+    setBusyId(wf.id);
     const { error } = await supabase
       .from("automation_workflows")
-      .update({ is_active: !wf.is_active })
+      .update({ is_active: next })
       .eq("id", wf.id);
-    if (error) return toast.error(error.message);
-    toast.success(wf.is_active ? "Automation paused" : "Automation is live");
+    setBusyId(null);
+    if (error) return void toast.error(error.message);
+    toast.success(next ? `${wf.name} Is On` : `${wf.name} Is Off`);
     load();
   }
 
@@ -157,6 +179,31 @@ export function AutomationsPanel() {
         </button>
       </div>
 
+      <AlertDialog open={confirmOn !== null} onOpenChange={(o) => !o && setConfirmOn(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Turn On {confirmOn?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Real texts and emails will start going out to new applicants from now on. People who
+              applied before you turn it on are not messaged.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-[#D03020] text-white hover:bg-[#B82818]"
+              onClick={() => {
+                const wf = confirmOn;
+                setConfirmOn(null);
+                if (wf) void setActive(wf, true);
+              }}
+            >
+              Turn On
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : workflows.length === 0 ? (
@@ -181,7 +228,7 @@ export function AutomationsPanel() {
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold truncate">{wf.name}</h3>
                       <StatusPill status={wf.is_active ? "active" : "paused"}>
-                        {wf.is_active ? "Live" : "Paused"}
+                        {wf.is_active ? "Live" : "Off"}
                       </StatusPill>
                     </div>
                     {wf.description ? (
@@ -197,16 +244,12 @@ export function AutomationsPanel() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => toggleActive(wf)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${
-                        wf.is_active
-                          ? "border-[#EDEDF0] text-[#55555E] hover:border-[#D6D6DB]"
-                          : "border-transparent bg-[#D03020] text-white hover:opacity-90"
-                      }`}
-                    >
-                      {wf.is_active ? "Pause" : "Turn On"}
-                    </button>
+                    <WorkflowSwitch
+                      name={wf.name}
+                      on={wf.is_active}
+                      busy={busyId === wf.id}
+                      onChange={(next) => requestToggle(wf, next)}
+                    />
                     <button
                       onClick={() => removeWorkflow(wf.id)}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#EDEDF0] text-[#55555E] hover:text-[#D03020] hover:border-[#D6D6DB]"

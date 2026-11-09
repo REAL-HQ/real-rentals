@@ -57,7 +57,13 @@ async function handle(request: Request): Promise<Response> {
     console.error("[ops-reminders] automation settings unreadable; nothing sent");
     return new Response("automation settings unreadable; nothing sent", { status: 503 });
   }
-  const on = (key: string) => isAutomationOn(controls.value, key);
+  // Once any Rent Reminder stage is on, the hourly rent-reminders job owns
+  // renter rent notices; the older past-due / due-tomorrow emails stand down
+  // so a renter never gets two. The team alert and plan are unchanged.
+  const { RENT_REMINDER_SWITCHES } = await import("@/lib/rent-reminders");
+  const rentRemindersOn = RENT_REMINDER_SWITCHES.some((k) => isAutomationOn(controls.value, k));
+  const LEGACY_RENTER_RENT = new Set(["payment_past_due", "payment_due_tomorrow"]);
+  const on = (key: string) => (rentRemindersOn && LEGACY_RENTER_RENT.has(key) ? false : isAutomationOn(controls.value, key));
 
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
