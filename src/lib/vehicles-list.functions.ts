@@ -8,7 +8,7 @@ import {
   readinessBand,
   readinessGaps,
   VEHICLE_LIST_PAGE_SIZE,
-  VEHICLE_SORTS,
+  vehicleSortOrders,
   type ReadinessBand,
   type ReadinessCounts,
   type VehicleListRow,
@@ -82,7 +82,6 @@ export const listVehicles = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<VehicleListResult> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const sort = (VEHICLE_SORTS as readonly string[]).includes(data.sort) ? data.sort : "unit";
 
     const ready = isReadinessFilter(data.ready) ? data.ready : "all";
 
@@ -154,15 +153,9 @@ export const listVehicles = createServerFn({ method: "POST" })
     }
 
     // Deterministic secondary key (id) keeps pages stable across equal values.
-    if (sort === "unit") query = query.order("unit_number", { ascending: true, nullsFirst: false });
-    else if (sort === "make")
-      query = query
-        .order("make", { ascending: true, nullsFirst: false })
-        .order("model", { ascending: true, nullsFirst: false });
-    else if (sort === "rate")
-      query = query.order("weekly_rate", { ascending: true, nullsFirst: false });
-    else query = query.order("created_at", { ascending: false, nullsFirst: false });
-    query = query.order("id", { ascending: true });
+    for (const { column, options } of vehicleSortOrders(data.sort)) {
+      query = query.order(column, options);
+    }
 
     const from = (data.page - 1) * data.pageSize;
     const [{ data: rows, count, error }, options] = await Promise.all([

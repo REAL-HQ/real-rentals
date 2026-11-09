@@ -1,7 +1,28 @@
 import { describe, it, expect } from "vitest";
-import { buildVehicleSearchOr, availabilityLabel } from "../src/lib/vehicles-list";
+import { buildVehicleSearchOr, availabilityLabel, vehicleSortOrders, VEHICLE_SORTS } from "../src/lib/vehicles-list";
 
 describe("vehicles list helpers", () => {
+  it("supports Color sorting alphabetically, with missing colors last and stable ties", () => {
+    expect(VEHICLE_SORTS).toContain("color");
+    expect(vehicleSortOrders("color")).toEqual([
+      { column: "color", options: { ascending: true, nullsFirst: false } },
+      { column: "id", options: { ascending: true } },
+    ]);
+  });
+  it("preserves existing sorts and falls back to Unit for unknown choices", () => {
+    for (const [sort, columns, ascending] of [
+      ["unit", ["unit_number", "id"], true],
+      ["make", ["make", "model", "id"], true],
+      ["rate", ["weekly_rate", "id"], true],
+      ["newest", ["created_at", "id"], false],
+      ["invalid", ["unit_number", "id"], true],
+    ] as const) {
+      const orders = vehicleSortOrders(sort);
+      expect(orders.map(({ column }) => column)).toEqual(columns);
+      expect(orders[0]?.options).toEqual({ ascending, nullsFirst: false });
+      expect(orders.at(-1)?.options).toEqual({ ascending: true });
+    }
+  });
   it("searches all text fields and exact year", () => {
     const or = buildVehicleSearchOr("2015")!;
     for (const f of ["unit_number", "vin", "license_plate", "make", "model", "trim", "color"]) expect(or).toContain(`${f}.ilike.*2015*`);

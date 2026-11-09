@@ -2,8 +2,20 @@
 import { isRentalReady, rentalReadyItems } from "@/lib/vehicle-readiness";
 
 export const VEHICLE_LIST_PAGE_SIZE = 50;
-export const VEHICLE_SORTS = ["unit", "make", "rate", "newest"] as const;
+export const VEHICLE_SORTS = ["unit", "make", "color", "rate", "newest"] as const;
 export type VehicleSort = (typeof VEHICLE_SORTS)[number];
+
+/** Sort the full filtered result before pagination, with missing values last. */
+export function vehicleSortOrders(raw: string) {
+  const primary = raw === "make" ? ["make", "model"]
+    : raw === "color" ? ["color"]
+    : raw === "rate" ? ["weekly_rate"]
+    : raw === "newest" ? ["created_at"] : ["unit_number"];
+  return [
+    ...primary.map((column) => ({ column, options: { ascending: raw !== "newest", nullsFirst: false } })),
+    { column: "id", options: { ascending: true } },
+  ];
+}
 
 export type VehicleListRow = {
   id: string;
