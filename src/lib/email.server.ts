@@ -219,7 +219,7 @@ export function emailReason(workflow: string | undefined): string {
   if (STAFF_WORKFLOWS.has(workflow)) return "Internal REAL RENTALS team notification.";
   if (workflow.startsWith("application")) return "You received this because you started a driver application with REAL RENTALS.";
   if (workflow.startsWith("esign")) return "You received this because a REAL RENTALS rental agreement was prepared for you.";
-  if (workflow.startsWith("payment") || workflow === "card_expiring") return "You received this because you have a rental account with REAL RENTALS.";
+  if (workflow.startsWith("payment") || workflow.startsWith("rent_reminder") || workflow === "card_expiring") return "You received this because you have a rental account with REAL RENTALS.";
   return "You received this email from REAL RENTALS about your application, account or rental.";
 }
 
@@ -647,6 +647,31 @@ async function sendInvoicePaymentFailedEmail(args: FailedArgs & { payInvoiceUrl:
       <a href="${escapeHtml(args.payInvoiceUrl)}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay This Week's Invoice</a>
       <p style="color:#444;font-size:14px;margin:16px 0 0;line-height:1.5">Please use only this button, not an older payment link, so you are not charged twice. To change the card for future weeks, <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="color:#D03020;font-weight:600">Update Card</a>.</p>`);
   return sendEmail({ to: args.to, subject: `Your REAL RENTALS Payment Of ${money(args.amount)} Did Not Go Through`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
+}
+
+/**
+ * A rent reminder (rent-reminders.server). The text comes from the editable
+ * template; the one button is the renter's own Stripe invoice page or card
+ * update page, or none for manual payers (their instructions are in the text).
+ */
+export async function sendRentReminderEmail(args: {
+  to: string;
+  subject: string;
+  text: string;
+  link: string | null;
+  linkLabel: string | null;
+  workflow: string;
+}): Promise<SendResult> {
+  const { isGenericPaymentLink } = await import("@/lib/failed-payment-link");
+  const link = args.link && /^https:\/\//.test(args.link) && !isGenericPaymentLink(args.link) ? args.link : null;
+  const paragraphs = args.text.split(/\n{2,}/).map((p) => `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 14px">${escapeHtml(p)}</p>`).join("");
+  const button = link
+    ? `<a href="${escapeHtml(link)}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">${escapeHtml(args.linkLabel || "Open")}</a>`
+    : "";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${escapeHtml(args.subject)}</h1>
+      ${paragraphs}${button}`);
+  return sendEmail({ to: args.to, subject: args.subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: args.workflow } });
 }
 
 type DuplicateSubscriptionArgs = {

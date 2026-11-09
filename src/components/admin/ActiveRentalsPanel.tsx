@@ -22,6 +22,8 @@ import {
   type ActiveRentalRow,
 } from "@/lib/active-rentals";
 import { listActiveRentals } from "@/lib/active-rentals.functions";
+import { getRentalLateFees, type RentalLateFeeStatus } from "@/lib/rent-reminders.functions";
+import { RecordPaymentDialog, WaiveLateFeeDialog, lateFeeLabel } from "./RentPaymentActions";
 
 const FILTERS = [
   { id: "all", label: "All" },
@@ -29,7 +31,7 @@ const FILTERS = [
   { id: "issues", label: "Issues" },
 ] as const;
 
-const HEADERS = ["Driver", "Vehicle", "Started", "Weeks", "Rate", "Due", "Paid", "Overdue", "Actions"];
+const HEADERS = ["Driver", "Vehicle", "Started", "Weeks", "Rate", "Due", "Paid", "Overdue", "Late Fee", "Actions"];
 
 function countLabel(value: number | null): string {
   return value == null ? "Unavailable" : String(value);
@@ -46,6 +48,21 @@ export function ActiveRentalsPanel() {
   const [rows, setRows] = useState<ActiveRentalRow[]>([]);
   const [loaded, setLoaded] = useState({ payments: true, issues: true, incidents: true, documents: true });
   const [loading, setLoading] = useState(true);
+  const fetchFees = useServerFn(getRentalLateFees);
+  const [fees, setFees] = useState<Map<string, RentalLateFeeStatus>>(new Map());
+  const [feesLoaded, setFeesLoaded] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [dialog, setDialog] = useState<{ kind: "pay" | "waive"; row: ActiveRentalRow } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setFeesLoaded(false);
+    fetchFees()
+      .then((res) => { if (alive) setFees(new Map(res.rows.map((r) => [r.rentalId, r]))); })
+      .catch(() => { if (alive) setFees(new Map()); })
+      .finally(() => { if (alive) setFeesLoaded(true); });
+    return () => { alive = false; };
+  }, [fetchFees, reload]);
 
   useEffect(() => {
     let alive = true;
@@ -71,7 +88,7 @@ export function ActiveRentalsPanel() {
     return () => {
       alive = false;
     };
-  }, [fetchBoard]);
+  }, [fetchBoard, reload]);
 
   const visible = rows.filter((row) => {
     if (filter === "overdue") return (row.overdueDays ?? 0) > 0;
@@ -125,7 +142,7 @@ export function ActiveRentalsPanel() {
         />
       ) : (
         <AdminTableScroll className="mt-4 rounded-2xl border border-[#EDEDF0] bg-white">
-          <table className="min-w-[940px] w-full text-left text-sm">
+          <table className="min-w-[1020px] w-full text-left text-sm">
             <thead className="text-[11px] font-semibold text-[#55555E]">
               <tr className="border-b border-[#EDEDF0]">
                 {HEADERS.map((label) => (
@@ -165,6 +182,13 @@ export function ActiveRentalsPanel() {
                         overdueLabel(row.overdueDays)
                       )}
                     </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 align-middle" data-testid="late-fee">
+                      {(fees.get(row.id)?.lateFee ?? 0) > 0 && !fees.get(row.id)?.waived ? (
+                        <span className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white">{lateFeeLabel(fees.get(row.id), feesLoaded)}</span>
+                      ) : (
+                        lateFeeLabel(fees.get(row.id), feesLoaded)
+                      )}
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2.5 align-middle">
                       <div className="flex items-center justify-end gap-1.5">
                         <Link
@@ -194,6 +218,13 @@ export function ActiveRentalsPanel() {
                               <Link to="/admin" search={{ tab: "vehicles", id: row.vehicleId }}>Vehicle</Link>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
+                            {fees.get(row.id)?.mode === "manual" ? (
+                              <DropdownMenuItem onSelect={() => setDialog({ kind: "pay", row })}>Record Payment</DropdownMenuItem>
+                            ) : null}
+                            {fees.get(row.id)?.owing ? (
+                              <DropdownMenuItem onSelect={() => setDialog({ kind: "waive", row })}>Waive Late Fee</DropdownMenuItem>
+                            ) : null}
+                            {fees.get(row.id)?.mode === "manual" || fees.get(row.id)?.owing ? <DropdownMenuSeparator /> : null}
                             <DropdownMenuItem asChild>
                               <Link to="/admin" search={{ tab: "driver_issues" }}>Issues: {countLabel(row.openIssues)}</Link>
                             </DropdownMenuItem>
@@ -216,6 +247,21 @@ export function ActiveRentalsPanel() {
           </table>
         </AdminTableScroll>
       )}
+      {dialog?.kind === "pay" ? (
+        <RecordPaymentDialog
+          open onOpenChange={(v) => { if (!v) setDialog(null); }}
+          rentalId={dialog.row.id} driverName={dialog.row.driverName}
+          weeklyRate={typeof dialog.row.weeklyRate === "number" ? dialog.row.weeklyRate : null}
+          onSaved={() => setReload((n) => n + 1)}
+        />
+      ) : null}
+      {dialog?.kind === "waive" ? (
+        <WaiveLateFeeDialog
+          open onOpenChange={(v) => { if (!v) setDialog(null); }}
+          rentalId={dialog.row.id} driverName={dialog.row.driverName} status={fees.get(dialog.row.id)}
+          onSaved={() => setReload((n) => n + 1)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { SettingsPanel, SECTION_KEY } from "@/components/admin/SettingsPanel";
 import { AutomationsPanel } from "@/components/admin/AutomationsPanel";
 import { AutomationsCatalog } from "@/components/admin/AutomationsCatalog";
+import { RentReminderTemplates } from "@/components/admin/RentReminderTemplates";
 import { TeamPanel } from "@/components/admin/TeamPanel";
 import { VehicleDefaultsPanel } from "@/components/admin/VehicleDefaultsPanel";
 import { MaintenanceDefaultsPanel } from "@/components/admin/MaintenanceDefaultsPanel";
@@ -113,7 +114,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           <p className="text-[13px] text-[#55555E] mt-0.5">{DESCRIPTIONS[current.id]}</p>
         </div>
         {current.id === "automations" ? (
-          <div className="space-y-8"><AutomationsCatalog /><AutomationsPanel /></div>
+          <div className="space-y-8"><AutomationsCatalog /><RentReminderTemplates /><AutomationsPanel /></div>
         ) : current.id === "vehicle_defaults" ? (
           <VehicleDefaultsPanel />
         ) : current.id === "safe_autofill" ? (
