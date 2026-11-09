@@ -2184,10 +2184,10 @@ function DriverDetail({
   ] as const;
 
   return (
-    <div className="-m-4 md:-mx-8 md:-mt-4 md:-mb-8 min-h-full bg-[#FAFAFB] overflow-x-clip max-lg:min-w-0">
+    <div className="-mx-4 -mt-5 -mb-4 md:-mx-8 md:-mt-2 md:-mb-8 min-h-full bg-[#FAFAFB] overflow-x-clip max-lg:min-w-0">
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         {/* Header + record navigation, sticky together */}
-        <div className="sticky top-0 z-10 bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">
+        <div className="admin-sticky-record bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">
           {/* Identity: its own box, with the record tabs directly below it */}
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex max-lg:flex-wrap">
