@@ -34,6 +34,7 @@ import {
   WORKSPACE_TABS,
   visibleWorkspaceTabs,
   LEGACY_TABS,
+  resolveSettingsSection,
   type TabDef,
 } from "@/components/admin/nav-config";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
@@ -510,6 +511,14 @@ function Admin() {
       if (legacy.messages || search.msg) next.msg = search.msg ?? "inbox";
       void navigate({ to: "/admin", search: next, replace: true });
       return;
+    }
+    // Old Settings section ids (Photo Enhancement, Photo Reading, eSign, Agreement Templates).
+    if (tab === "settings" && search.section) {
+      const resolved = resolveSettingsSection(search.section);
+      if (resolved && resolved !== search.section) {
+        void navigate({ to: "/admin", search: { ...search, tab: "settings", section: resolved }, replace: true });
+        return;
+      }
     }
     const owned = ownedSearch(tab, search);
     const same =
