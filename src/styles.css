@@ -306,8 +306,6 @@
             height published as --admin-sticky-h.
    Layer 2: one filter/toolbar row per page — add class "admin-sticky-bar";
             height published as --admin-bar-h. z-15.
-            Record identity/progress/tabs use "admin-sticky-record" with the
-            same chrome offset, without filter-row sizing or mobile overflow.
    Layer 3: list-table column headers — wrap the table in AdminTableScroll
             (components/admin/AdminTableScroll.tsx). When the table fits the
             card it renders overflow: clip (not a scroll container, so sticky
@@ -320,11 +318,6 @@
 .admin-sticky-bar {
   background: #fafafb;
   padding-top: 4px;
-}
-.admin-sticky-record {
-  position: sticky;
-  top: var(--admin-sticky-h, 0px);
-  z-index: 15;
 }
 @media (min-width: 768px) {
   .admin-sticky-bar {
