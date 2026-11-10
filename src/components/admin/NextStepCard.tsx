@@ -21,6 +21,7 @@ export function NextStepCard({
   onReserve,
   onReturn,
   canReserve = false,
+  canEditCallNotes = false,
   onRetry,
   renderEvidence,
   evidence,
@@ -33,11 +34,15 @@ export function NextStepCard({
   onReturn?: () => void;
   /** Soft hold available for an approved driver without an open reservation. */
   canReserve?: boolean;
+  /** Completed-call notes stay editable even after the checklist collapses. */
+  canEditCallNotes?: boolean;
   onRetry: () => void;
   renderEvidence?: (key: ActivationRequirementKey) => ReactNode;
   evidence?: EvidencePresentationMap;
 }) {
   const { activation } = model;
+  const primary = "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-[#D03020] px-3.5 text-[12px] font-semibold text-white hover:bg-[#B00000] disabled:cursor-not-allowed disabled:opacity-50";
+  const secondary = "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-3 text-[12px] font-semibold text-[#55555E] hover:border-[#C4C4CB] hover:text-[#111114] disabled:cursor-not-allowed disabled:opacity-50";
   if (activation === "rental_active") {
     return (
       <section aria-label="Next Step" data-testid="next-step" data-activation={activation} className="rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
@@ -46,20 +51,25 @@ export function NextStepCard({
             <h3 className="text-[14px] font-semibold text-[#111114]">Next Step</h3>
             <p className="mt-0.5 text-[12px] text-[#55555E]">{model.note}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => onReturn?.()}
-            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-[#D03020] px-3.5 text-[12px] font-semibold text-white hover:bg-[#B00000]"
-            data-testid="next-step-return"
-          >
-            <Car className="h-3.5 w-3.5" /> Return
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {canEditCallNotes ? (
+              <button type="button" onClick={() => onRun({ kind: "record_call" })} className={secondary} data-testid="edit-call-notes">
+                <ClipboardList className="h-3.5 w-3.5" /> Edit Notes
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => onReturn?.()}
+              className={primary}
+              data-testid="next-step-return"
+            >
+              <Car className="h-3.5 w-3.5" /> Return
+            </button>
+          </div>
         </div>
       </section>
     );
   }
-  const primary = "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-[#D03020] px-3.5 text-[12px] font-semibold text-white hover:bg-[#B00000] disabled:cursor-not-allowed disabled:opacity-50";
-  const secondary = "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-3 text-[12px] font-semibold text-[#55555E] hover:border-[#C4C4CB] hover:text-[#111114] disabled:cursor-not-allowed disabled:opacity-50";
   return (
     <section
       aria-label="Next Step"

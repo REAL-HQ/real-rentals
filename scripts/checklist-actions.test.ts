@@ -25,7 +25,8 @@ describe("Driver checklist actions", () => {
     expect(checklistAction(requirement("insurance_verified", true))?.target).toEqual({ kind: "section", tab: "documents", anchor: "profile-documents" });
     expect(checklistAction(requirement("inspection"))?.target).toEqual({ kind: "section", tab: "rental", anchor: "profile-vehicle" });
     expect(checklistAction(requirement("interview"))?.target).toEqual({ kind: "record_call" });
-    expect(checklistAction(requirement("interview", true))?.target).toEqual({ kind: "interview" });
+    expect(checklistAction(requirement("interview", true))?.target).toEqual({ kind: "record_call" });
+    expect(checklistAction(requirement("interview", true))?.label).toBe("Edit Notes");
   });
   it("approval and inspection never offer a direct approval or activation override", () => {
     expect(checklistAction(requirement("approved"))?.target).toEqual({ kind: "section", tab: "application", anchor: "" });

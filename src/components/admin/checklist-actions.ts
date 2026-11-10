@@ -38,7 +38,7 @@ export function checklistAction(requirement: ActivationRequirement): ChecklistAc
     case "insurance_verified":
       return { label: requirement.met === true ? "View" : "+ Add", target: { kind: "section", tab: "documents", anchor: "profile-documents" } };
     case "interview":
-      return { label: requirement.met === true ? "Interview Script" : "Call Complete", target: { kind: requirement.met === true ? "interview" : "record_call" } };
+      return { label: requirement.met === true ? "Edit Notes" : "Call Complete", target: { kind: "record_call" } };
     case "inspection":
       return { label: requirement.met === null ? "Choose Vehicle" : requirement.met === true ? "View" : "+ Add", target: { kind: "section", tab: "rental", anchor: "profile-vehicle" } };
     case "approved":

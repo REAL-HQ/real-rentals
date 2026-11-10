@@ -15,7 +15,7 @@ const t = (name, fn) => { fn(); n++; console.log("PASS", name); };
 const req = (key, met, enforcement = "hard", extra = {}) => ({ key, label: key, met, enforcement, ...extra });
 const readiness = (requirements) => ({ ready: false, blockers: [], warnings: [], requirements, insurance: { status: "unverified", exceptionAllowed: false, settingPresent: true, settingReadable: true }, vehicleId: null, suggestedWeeklyRate: null, suggestedDeposit: null, inspectionMileage: null, currentMileage: null });
 const base = { step: "activate", entry: "enabled", readiness: null, loading: false, failed: false };
-const render = (model, r = null) => renderToStaticMarkup(h(NextStepCard, { model, readiness: r, onRun() {}, onActivate() {}, onRetry() {} }));
+const render = (model, r = null, extra = {}) => renderToStaticMarkup(h(NextStepCard, { model, readiness: r, onRun() {}, onActivate() {}, onRetry() {}, ...extra }));
 
 // Schrita/Damon/Regina shape: approved, agreement + docs fine, insurance NOT verified.
 const noInsurance = readiness([req("approved", true), req("signed_agreement", true), req("license_documents", true), req("insurance_verified", false, "hard", { detail: "Unverified" }), req("interview", true, "soft"), req("inspection", null, "soft"), req("insurance_document", false, "advisory")]);
@@ -90,10 +90,16 @@ t("Coordinator: never gets an Activate action; disabled entry with an explanatio
   const local = nextStep({ ...base, entry: "manager_only", step: "insurance" });
   assert.equal(local.label, "Verify Insurance");
 });
-t("rental running: card hidden, header says View Rental", () => {
+t("rental running: Next Step offers Return", () => {
   const m = nextStep({ ...base, entry: "rental_active", readiness: noInsurance });
-  assert.equal(m.label, "View Rental");
-  assert.equal(render(m), "");
+  assert.equal(m.label, "Return");
+  assert.match(render(m), /data-testid="next-step-return"/);
+});
+t("active rental keeps completed call notes editable beside Return", () => {
+  const m = nextStep({ ...base, entry: "rental_active", readiness: noInsurance });
+  const html = render({ ...m, activation: "rental_active" }, null, { canEditCallNotes: true });
+  assert.match(html, /data-testid="edit-call-notes"[^>]*>.*Edit Notes/);
+  assert.match(html, /data-testid="next-step-return"/);
 });
 t("responsive controls: same 36px height, full width on a phone", () => {
   const html = render(nextStep({ ...base, readiness: noInsurance }), noInsurance);
@@ -107,7 +113,7 @@ t("wiring: header and card share the model; fixes open the exact card; guards st
   for (const id of ["profile-insurance", "profile-documents", "profile-agreements", "profile-vehicle"]) assert.match(p, new RegExp(`id="${id}"`));
   assert.match(p, /if \(approving\) return;/);
   assert.match(p, /if \(!isManager \|\| activateOpen\) return;/, "readiness only fetched for Manager+");
-  assert.equal((p.match(/<ActivateRentalDialog/g) ?? []).length, 1);
+  assert.equal((p.match(/<ActivateRentalDialog/g) ?? []).length, 2, "one list dialog and one driver-profile dialog");
   assert.match(p, /ReserveCarDialog/);
   assert.match(p, /canReserve/);
   assert.match(p, /kind === "reserve"/);

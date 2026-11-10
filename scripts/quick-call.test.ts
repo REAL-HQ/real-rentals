@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { quickCallInput, quickCallPatch } from "../src/lib/quick-call";
-import { recordQuickCall } from "../src/lib/quick-call.server";
+import { quickCallInput, quickCallNotesInput, quickCallPatch } from "../src/lib/quick-call";
+import { recordQuickCall, updateQuickCallNotes } from "../src/lib/quick-call.server";
 
 const fixture = vi.hoisted(() => ({ audit: vi.fn() }));
 vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin: { from: () => ({ insert: fixture.audit }) } }));
@@ -104,5 +104,72 @@ describe("Quick phone call recording", () => {
   it("reports refusal-audit failure instead of silently discarding it", async () => {
     fixture.audit.mockResolvedValueOnce({ error: null }).mockResolvedValueOnce({ error: { message: "refusal failed" } });
     await expect(recordQuickCall(input, context({ conflict: true }).ctx)).rejects.toThrow("Refusal Audit");
+  });
+});
+
+describe("Completed call note editing", () => {
+  const edit = { applicationId: id, note: "Corrected qualification call notes" };
+  const completed = {
+    id: "screening", lead_id: id, status: "pickup_scheduled", updated_at: "version",
+    interview_completed_at: "2026-01-01T14:00:00.000Z", interviewed_by: "original@example.invalid",
+    interview_notes: "Original call notes", disqualified: true, license_active: false, has_dui: true,
+  };
+
+  it("requires real notes and rejects unexpected fields", () => {
+    expect(quickCallNotesInput.safeParse(edit).success).toBe(true);
+    expect(quickCallNotesInput.safeParse({ ...edit, note: "ab" }).success).toBe(false);
+    expect(quickCallNotesInput.safeParse({ ...edit, interview_completed_at: null }).success).toBe(false);
+  });
+
+  for (const role of ["admin", "team", "coordinator"]) it(`${role} edits only notes and preserves completion, answers and stage`, async () => {
+    const { ctx, writes } = context({ role, current: completed });
+    const result = await updateQuickCallNotes(edit, ctx);
+    expect(result.screening.interview_notes).toBe(edit.note);
+    expect(result.screening.interview_completed_at).toBe(completed.interview_completed_at);
+    expect(result.screening.interviewed_by).toBe(completed.interviewed_by);
+    expect(result.screening.status).toBe("pickup_scheduled");
+    expect(result.screening.disqualified).toBe(true);
+    expect(result.screening.license_active).toBe(false);
+    expect(writes.map((write) => write.table)).toEqual(["driver_screenings"]);
+    expect(writes[0].patch).toEqual({ interview_notes: edit.note });
+    expect(writes[0].conditions).toContainEqual(["eq", "updated_at", "version"]);
+    expect(writes[0].conditions).toContainEqual(["eq", "interview_completed_at", completed.interview_completed_at]);
+    expect(fixture.audit.mock.calls[0][0].metadata.previous_notes).toBe("Original call notes");
+    expect(fixture.audit.mock.calls.map((call) => call[0].action)).toEqual(["interview.call_notes_update_requested", "interview.call_notes_updated"]);
+  });
+
+  for (const role of ["driver", "user", "partner"]) it(`refuses ${role} before audit or note writes`, async () => {
+    const { ctx, writes } = context({ role, current: completed });
+    await expect(updateQuickCallNotes(edit, ctx)).rejects.toThrow("Only Staff");
+    expect(writes).toEqual([]);
+    expect(fixture.audit).not.toHaveBeenCalled();
+  });
+
+  it("refuses to create or complete a call through note editing", async () => {
+    const { ctx, writes } = context({ current: { ...completed, interview_completed_at: null } });
+    await expect(updateQuickCallNotes(edit, ctx)).rejects.toThrow("Complete The Call");
+    expect(writes).toEqual([]);
+    expect(fixture.audit).not.toHaveBeenCalled();
+  });
+
+  it("does not write or audit an unchanged note", async () => {
+    const { ctx, writes } = context({ current: completed });
+    const result = await updateQuickCallNotes({ applicationId: id, note: "Original call notes" }, ctx);
+    expect(result.screening).toEqual(completed);
+    expect(writes).toEqual([]);
+    expect(fixture.audit).not.toHaveBeenCalled();
+  });
+
+  it("audit refusal prevents the note write", async () => {
+    fixture.audit.mockResolvedValue({ error: { message: "audit unavailable" } });
+    const { ctx, writes } = context({ current: completed });
+    await expect(updateQuickCallNotes(edit, ctx)).rejects.toThrow("Nothing Was Changed");
+    expect(writes).toEqual([]);
+  });
+
+  it("refuses stale note writes and records the refusal", async () => {
+    const { ctx } = context({ current: completed, conflict: true });
+    await expect(updateQuickCallNotes(edit, ctx)).rejects.toThrow("Refresh");
+    expect(fixture.audit.mock.calls.map((call) => call[0].action)).toEqual(["interview.call_notes_update_requested", "interview.call_notes_update_refused"]);
   });
 });

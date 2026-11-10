@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Let staff edit saved Call Complete notes later without changing completion metadata, interview answers, stage or verification history; test permissions and Preview without saving a real note.
 - [ ] Add Reserved after Approved: reuse the existing reservation flow, collect pickup date/time/location, show reserved drivers in Booked, and keep unreserved approved drivers in the waiting list.
 - [ ] Move automatic account-login delivery from Approved/agreement signing to Reserved; preserve existing-account, verification, agreement and atomic-activation safeguards.
 - [ ] Run focused lifecycle/reservation/access tests and signed-in Preview checks without sending real email, reserving a real driver, or publishing.

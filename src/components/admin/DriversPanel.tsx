@@ -1981,9 +1981,9 @@ function DriverDetail({
     if (!presentation) {
       if (r.key === "interview") return [[r.key, {
         tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Call Complete", fields: [],
-        onToggle: () => r.met === true ? setInterviewOpen(true) : setRecordCallOpen(true),
-        toggleLabel: r.met === true ? "View Completed Interview" : "Record Interview Completion",
-        toggleTitle: r.met === true ? "View The Completed Interview." : "Record A Completed Qualification Call.",
+        onToggle: () => setRecordCallOpen(true),
+        toggleLabel: r.met === true ? "Edit Call Notes" : "Record Interview Completion",
+        toggleTitle: r.met === true ? "Edit The Saved Call Notes Without Changing Completion." : "Record A Completed Qualification Call.",
       }]];
       if (r.key === "approved") return [[r.key, {
         tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Approval Required", fields: [],
@@ -2659,6 +2659,7 @@ function DriverDetail({
                   onActivate={() => runTarget({ kind: "activate" })}
                   onReserve={() => runTarget({ kind: "reserve" })}
                   canReserve={canReserve && !hasReservation}
+                  canEditCallNotes={Boolean(screening?.interview_completed_at)}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
                 />
                 {summaryRow}
@@ -2829,6 +2830,7 @@ function DriverDetail({
                   onActivate={() => runTarget({ kind: "activate" })}
                   onReserve={() => runTarget({ kind: "reserve" })}
                   canReserve={canReserve && !hasReservation}
+                  canEditCallNotes={Boolean(screening?.interview_completed_at)}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
                 /></div>
                 <button className={btnSecondary} disabled={!RECORD_RENTAL_CONTRACT_ENABLED} onClick={()=>setRecordOpen(true)}>Record Rental — pending acceptance</button>
@@ -2948,7 +2950,7 @@ function DriverDetail({
         }}
       />
 
-      {recordCallOpen ? <RecordCallDialog applicationId={driver.id} name={driver.full_name ?? "Driver"}
+      {recordCallOpen ? <RecordCallDialog applicationId={driver.id} name={driver.full_name ?? "Driver"} screening={screening}
         onClose={() => setRecordCallOpen(false)}
         onInterview={() => { setRecordCallOpen(false); setInterviewOpen(true); }}
         onSaved={(saved) => { setScreening(saved); onScreeningChange?.(saved); readinessChanged(); }}

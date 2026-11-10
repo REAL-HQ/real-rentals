@@ -7,6 +7,11 @@ export const quickCallInput = z.object({
   completed: z.literal(true),
 }).strict();
 
+export const quickCallNotesInput = z.object({
+  applicationId: z.string().uuid(),
+  note: z.string().trim().min(3).max(4000),
+}).strict();
+
 /** Only completion metadata: never manufacture answers or change stages. */
 export function quickCallPatch(existing: { interview_notes?: string | null }, input: { occurredAt: string; note: string }, actor: { userId: string; email: string | null }) {
   const note = `Phone Call Completed · ${input.occurredAt}\n${input.note}`;
