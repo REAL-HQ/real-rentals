@@ -54,7 +54,7 @@ export function formatOpsDate(isoDate: string): string {
   }).format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))));
 }
 
-export type OpsSearch = { tab: string; id?: string; filter?: string };
+export type OpsSearch = { tab: string; id?: string; filter?: string; view?: string };
 
 export type OpsItem = {
   id: string;
@@ -300,7 +300,7 @@ export function buildTodaysOps(input: TodaysOpsInput): TodaysOpsBoard {
           id: row.id,
           label: `${person(row.driver_name)} · ${row.vehicle_label?.trim() || "Vehicle"}`,
           detail: row.end_date === today ? "Ends Today" : "Ends Tomorrow",
-          search: { tab: "bookings", id: row.id },
+          search: { tab: "bookings", view: "past", id: row.id },
         })),
         returns.truncated,
       ),
@@ -311,7 +311,7 @@ export function buildTodaysOps(input: TodaysOpsInput): TodaysOpsBoard {
           id: row.id,
           label: `${person(row.driver_name)} · ${row.vehicle_label?.trim() || "Vehicle"}`,
           detail: "Due Today",
-          search: { tab: "bookings", id: row.id },
+          search: { tab: "bookings", view: "past", id: row.id },
         })),
         due.truncated,
       ),
@@ -344,7 +344,7 @@ export function buildTodaysOps(input: TodaysOpsInput): TodaysOpsBoard {
           id: row.id,
           label: row.vehicle_label?.trim() || "Vehicle",
           detail: titled(row.incident_type, INCIDENT_TYPE),
-          search: { tab: "incidents" },
+          search: { tab: "issues", filter: "incident" },
         })),
         incidents.truncated,
       ),
@@ -355,7 +355,7 @@ export function buildTodaysOps(input: TodaysOpsInput): TodaysOpsBoard {
           id: row.id,
           label: (row.title ?? "").trim() || "Roadside Issue",
           detail: titled(row.kind, { breakdown: "Breakdown", tow: "Tow" }),
-          search: { tab: "driver_issues" },
+          search: { tab: "issues", filter: "driver" },
         })),
         roadside.truncated,
       ),

@@ -27,18 +27,18 @@ export function WeeklyCashFlowPanel() {
       if (result.status === "disabled") setLoad({ kind: "disabled" });
       else if (result.status === "unavailable") setLoad({ kind: "unavailable", reason: result.reason });
       else setLoad({ kind: "ready", report: result.report });
-    }).catch(() => { if (!cancelled) setLoad({ kind: "unavailable", reason: "Weekly Cash Flow could not be loaded" }); });
+    }).catch(() => { if (!cancelled) setLoad({ kind: "unavailable", reason: "Cashflow could not be loaded" }); });
     return () => { cancelled = true; };
   }, [read]);
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Weekly Cash Flow</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Cashflow</h1>
         <p className="mt-1 text-sm text-muted-foreground">The last 12 weeks, Monday through Sunday, Eastern Time. Gross collected is succeeded Stripe charges. Cash flow is net minus expenses.</p>
       </div>
-      {load.kind === "loading" && <p className="text-sm text-muted-foreground">Loading Weekly Cash Flow…</p>}
-      {load.kind === "disabled" && <p className="text-sm text-muted-foreground">Weekly Cash Flow Is Off.</p>}
+      {load.kind === "loading" && <p className="text-sm text-muted-foreground">Loading Cashflow…</p>}
+      {load.kind === "disabled" && <p className="text-sm text-muted-foreground">Cashflow Is Off.</p>}
       {load.kind === "unavailable" && <p className="text-sm text-muted-foreground">{load.reason}</p>}
       {load.kind === "ready" && (
         <div className="space-y-8">

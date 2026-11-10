@@ -90,7 +90,7 @@ function Mismatch({ row }: { row: BillingMismatch }) {
       </td>
       <td className="py-2 pr-3">
         {row.rentalId ? (
-          <Link to="/admin" search={{ tab: "bookings", id: row.rentalId }} className="underline">{row.vehicleLabel}</Link>
+          <Link to="/admin" search={{ tab: "bookings", view: "past", id: row.rentalId }} className="underline">{row.vehicleLabel}</Link>
         ) : row.vehicleLabel}
       </td>
       <td className="py-2 pr-3">{row.reason}</td>
