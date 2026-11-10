@@ -117,10 +117,10 @@ describe("matching", () => {
     expect(report.unmatched[0]).toMatchObject({ reason: "No Match", lastPaidDate: "2026-01-14" });
   });
 
-  it("shows the match report to managers and owners only", () => {
+  it("keeps Matching off the Payments workspace while the source flag is Off", () => {
     expect(visibleTabs("coordinator").some((tab) => tab.id === "stripe_match")).toBe(false);
     expect(visibleTabs("manager").some((tab) => tab.id === "stripe_match")).toBe(true);
-    expect(visibleWorkspaceTabs("payments", "manager").map((tab) => tab.id)).toContain("stripe_match");
+    expect(visibleWorkspaceTabs("payments", "manager").map((tab) => tab.id)).not.toContain("stripe_match");
     expect(visibleWorkspaceTabs("payments", "coordinator")).toEqual([]);
   });
 });

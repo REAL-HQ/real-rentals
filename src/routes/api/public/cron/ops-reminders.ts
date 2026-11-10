@@ -1,10 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
   sendEmail,
-  sendPastDueReminderEmail,
   sendLicenseExpiringEmail,
   sendServiceDigestEmail,
-  sendPaymentDueTomorrowEmail,
   sendTeamPaymentAlertEmail,
   sendTeamCollectionsPlanEmail,
 } from "@/lib/email.server";
@@ -15,7 +13,6 @@ import {
   addDays,
   daysBetween,
   followUpStage,
-  reminderKind,
 } from "@/lib/payment-reminders";
 import {
   buildCollectionsPlan,
@@ -57,16 +54,14 @@ async function handle(request: Request): Promise<Response> {
     console.error("[ops-reminders] automation settings unreadable; nothing sent");
     return new Response("automation settings unreadable; nothing sent", { status: 503 });
   }
-  // Once any Rent Reminder stage is on, the hourly rent-reminders job owns
-  // renter rent notices; the older past-due / due-tomorrow emails stand down
-  // so a renter never gets two. The team alert and plan are unchanged.
-  const { RENT_REMINDER_SWITCHES } = await import("@/lib/rent-reminders");
-  const rentRemindersOn = RENT_REMINDER_SWITCHES.some((k) => isAutomationOn(controls.value, k));
-  const LEGACY_RENTER_RENT = new Set(["payment_past_due", "payment_due_tomorrow"]);
-  const on = (key: string) => (rentRemindersOn && LEGACY_RENTER_RENT.has(key) ? false : isAutomationOn(controls.value, key));
+  // Renter Due Tomorrow / Past Due emails were removed; Rent Reminders own
+  // those stages. Team Payment Alert, Collections Plan, and the other ops
+  // jobs below are unchanged.
+  const on = (key: string) => isAutomationOn(controls.value, key);
 
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
+  const tomorrowStr = addDays(today, 1);
   const since = new Date(today.getTime() - 6 * 24 * 3600 * 1000).toISOString(); // license / agreement reminders: 1 per 6 days
 
   let pastDue = 0;
@@ -75,11 +70,9 @@ async function handle(request: Request): Promise<Response> {
   let licenses = 0;
   let collectionsPlanSent = 0;
 
-  // ---- 1. Past-due follow-ups (day 1 / 3 / 7 / weekly) ----------------------
-  // Cadence + dedupe live in payment-reminders.ts. Each stage is sent once per
-  // application + earliest unpaid due date; paid / waived / void rows are not
-  // in UNPAID_STATUSES, so the sequence stops the run after payment clears or
-  // staff marks the charge handled.
+  // ---- 1. Team past-due alerts (renter Past Due email removed) ---------------
+  // Cadence uses payment-reminders followUpStage so the team is only alerted
+  // on the same day-1 / 3 / 7 / weekly schedule. Rent Reminders own renter mail.
   const { data: duePayments } = await supabaseAdmin
     .from("payments")
     .select("id,driver_id,amount,balance_due,due_date,status")
@@ -105,31 +98,12 @@ async function handle(request: Request): Promise<Response> {
       const daysLate = daysBetween(info.dueDate, today);
       const stage = followUpStage(daysLate);
       if (!stage) continue;
-      const kind = reminderKind(stage, info.dueDate);
       const { data: app } = await supabaseAdmin
         .from("applications")
         .select("id,full_name,email,user_id")
         .eq("id", appId)
         .maybeSingle();
-      if (!app?.email) continue;
-      if (await alreadySent(supabaseAdmin, app.id, kind)) continue;
-
-      if (on("payment_past_due")) {
-      const sentPastDue = await sendPastDueReminderEmail({
-        to: app.email,
-        firstName: app.full_name,
-        amount: info.amount,
-        dueDate: info.dueDate,
-        daysLate,
-      });
-      // Stopped by a switch at send time: record nothing, so it is not logged as sent.
-      if (sentPastDue.blocked) continue;
-      await logNotification(
-        supabaseAdmin, app.id, app.user_id, app.email,
-        kind, "Balance Past Due", `$${info.amount.toFixed(2)} is past due.`,
-      );
-      pastDue++;
-      }
+      if (!app) continue;
 
       // First time this balance shows up past due: tell the team once.
       const teamKind = `payment_team_past_due:${info.dueDate}`;
@@ -153,53 +127,6 @@ async function handle(request: Request): Promise<Response> {
     }
   }
 
-  // ---- 1b. Day-before-due reminders ----------------------------------------
-  const tomorrowStr = addDays(today, 1);
-  const { data: upcoming } = await supabaseAdmin
-    .from("payments")
-    .select("id,driver_id,amount,balance_due,due_date,status")
-    .eq("due_date", tomorrowStr)
-    .not("driver_id", "is", null)
-    .in("status", [...UPCOMING_STATUSES])
-    .limit(200);
-  const upcomingByDriver = new Map<string, number>();
-  for (const p of upcoming ?? []) {
-    const owed = Number(p.balance_due ?? 0) || Number(p.amount ?? 0);
-    if (owed <= 0) continue;
-    upcomingByDriver.set(p.driver_id as string, (upcomingByDriver.get(p.driver_id as string) ?? 0) + owed);
-  }
-  for (const [appId, amount] of upcomingByDriver) {
-    if (!on("payment_due_tomorrow")) break;
-    try {
-      const kind = reminderKind("due_tomorrow", tomorrowStr);
-      const { data: app } = await supabaseAdmin
-        .from("applications")
-        .select("id,full_name,email,user_id")
-        .eq("id", appId)
-        .maybeSingle();
-      if (!app?.email) continue;
-      if (await alreadySent(supabaseAdmin, app.id, kind)) continue;
-      const { data: rental } = await supabaseAdmin
-        .from("rentals")
-        .select("autopay_active")
-        .eq("application_id", app.id)
-        .eq("status", "active")
-        .limit(1)
-        .maybeSingle();
-      const sentDue = await sendPaymentDueTomorrowEmail({
-        to: app.email, firstName: app.full_name, amount, dueDate: tomorrowStr,
-        autopay: !!(rental as { autopay_active?: boolean } | null)?.autopay_active,
-      });
-      if (sentDue.blocked) continue;
-      await logNotification(
-        supabaseAdmin, app.id, app.user_id, app.email,
-        kind, "Payment Due Tomorrow", `$${amount.toFixed(2)} is due ${tomorrowStr}.`,
-      );
-      dueTomorrow++;
-    } catch (err) {
-      console.error("[ops-reminders] day-before send failed", appId, err);
-    }
-  }
 
   // ---- 1c. Team Collections Plan (due today / due tomorrow) -----------------
   // Independent of renter emails. Reconciles active rental next_payment_due

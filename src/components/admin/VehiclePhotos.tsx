@@ -485,7 +485,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                     {!readingStatus.enabled && (
                       <>
                         {" "}
-                        <a href="/admin?tab=settings&section=photo_reading" className="font-semibold underline">
+                        <a href="/admin?tab=settings&section=vehicle_photos" className="font-semibold underline">
                           Open Photo Reading Settings
                         </a>
                       </>

@@ -61,6 +61,10 @@ import {
   reissueApplicantLink,
 } from "@/lib/applications.functions";
 import { ActivateRentalDialog } from "./ActivateRentalDialog";
+import { ACTIVATE_FROM_LIST, driverListStatusMenu } from "@/lib/driver-list-activation";
+import { createDriverReadVersions } from "@/lib/latest-driver-reads";
+import { DriverDocumentUploadDialog } from "./DriverDocumentUploadDialog";
+import { useDriverDocumentUpload } from "./use-driver-document-upload";
 import { ReserveCarDialog } from "./ReserveCarDialog";
 import { NextStepCard } from "./NextStepCard";
 import { DriverRentalDetails } from "./DriverRentalDetails";
@@ -130,6 +134,7 @@ import {
   Copy,
   GitMerge,
   MessageSquare,
+  Upload,
   PhoneOutgoing,
   BadgeDollarSign,
   Globe,
@@ -498,12 +503,22 @@ export function DriversPanel({
   // openRentals is that installed set, so a stored Active with no rental
   // still reads as Marked Active, No Rental.
   const [activeRenters, setActiveRenters] = useState<Set<string>>(new Set());
+  const [listActivateId, setListActivateId] = useState<string | null>(null);
+  const [pendingProfileTab, setPendingProfileTab] = useState<string | null>(null);
+  const [listUploadId, setListUploadId] = useState<string | null>(null);
+  const [activationRefresh, setActivationRefresh] = useState(0);
+  const [readVersions] = useState(createDriverReadVersions);
+  useEffect(() => () => readVersions.invalidateAll(), [readVersions]);
+  const refreshActivationContext = useCallback(() => setActivationRefresh((n) => n + 1), []);
+
   const [openRentals, setOpenRentals] = useState<Set<string>>(new Set());
   const [activeReadFailed, setActiveReadFailed] = useState(false);
   const loadActiveSets = useServerFn(listDriverActiveSets);
   const refreshActiveRenters = useCallback(() => {
+    const current = readVersions.begin("active-rentals");
     loadActiveSets()
       .then((sets) => {
+        if (!current()) return;
         const recordRentalEnabled = RECORD_RENTAL_CONTRACT_ENABLED as boolean;
         const filterIds = recordRentalEnabled === true ? sets.authoritativeIds : sets.openRentalIds;
         setActiveRenters(new Set(filterIds));
@@ -511,10 +526,10 @@ export function DriversPanel({
         setActiveReadFailed(false);
       })
       .catch(() => {
-        setActiveReadFailed(true);
+        if (current()) setActiveReadFailed(true);
       });
-  }, [loadActiveSets]);
-  useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters]);
+  }, [loadActiveSets, readVersions]);
+  useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters, activationRefresh]);
   const loadFunnel = useServerFn(listApprovedNotRenting);
   const [funnel, setFunnel] = useState<ApprovedNotRentingResult | null>(null);
   const [funnelFailed, setFunnelFailed] = useState(false);
@@ -1061,6 +1076,8 @@ setDocCounts(requiredDocCounts(rows));
         onSaved={(p) => applySaved(open.id, p)}
         hasActiveRental={openRentals.has(open.id)}
         onCloseApplication={async (reason, notes) => update(open.id, { status: "closed", closure_reason: reason, closure_notes: notes })}
+        initialTab={pendingProfileTab}
+        onInitialTabConsumed={() => setPendingProfileTab(null)}
         onRentalStarted={() => {
           setDrivers((a) => a.map((x) => (x.id === open.id ? { ...x, status: "active" } : x)));
           refreshActiveRenters();
@@ -1345,6 +1362,10 @@ setDocCounts(requiredDocCounts(rows));
                         value={a.status || ""}
                         onValueChange={(status) => {
                           const tier = panelTier(isOwner, isManager);
+                          if (status === ACTIVATE_FROM_LIST) {
+                            if (!openRentals.has(a.id) && (isOwner || isManager)) setListActivateId(a.id);
+                            return;
+                          }
                           if (applicationStatusChoiceDisabled(a.status, status, tier)) return;
                           if (status === "approved") {
                             void approveFromList({ data: { id: a.id } })
@@ -1394,8 +1415,8 @@ setDocCounts(requiredDocCounts(rows));
                             </span>
                           )}
                         </SelectTrigger>
-                        <SelectContent align="start" className="min-w-[10rem]">
-                          {applicationStatusMenu(a.status, panelTier(isOwner, isManager)).map((s) => (
+                        <SelectContent align="start" className="min-w-[10rem] bg-white">
+                          {driverListStatusMenu(a.status, panelTier(isOwner, isManager), openRentals.has(a.id)).map((s) => (
                             <SelectItem key={s.value} value={s.value} disabled={s.disabled} className="text-[13px]">
                               {s.label}
                             </SelectItem>
@@ -1479,8 +1500,26 @@ setDocCounts(requiredDocCounts(rows));
                         <DropdownMenuTrigger className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-soft text-muted-foreground">
                           <MoreVertical className="w-4 h-4" />
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align="end" className="bg-white">
                           <DropdownMenuItem onClick={() => openDriver(a)}><ExternalLink className="w-4 h-4 mr-2" /> Open</DropdownMenuItem>
+                          {(isOwner || isManager) && !openRentals.has(a.id) && (
+                            <DropdownMenuItem onClick={() => setListActivateId(a.id)}>
+                              <Car className="w-4 h-4 mr-2" /> Activate
+                            </DropdownMenuItem>
+                          )}
+                          {(isOwner || isManager) && (
+                            <DropdownMenuItem onClick={() => { setPendingProfileTab("payments"); openDriver(a); }}>
+                              <CreditCard className="w-4 h-4 mr-2" /> Record Payment
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: a.id } }))}>
+                            <MessageSquare className="w-4 h-4 mr-2" /> Send Message
+                          </DropdownMenuItem>
+                          {(isOwner || isManager) && (
+                            <DropdownMenuItem onClick={() => setListUploadId(a.id)}>
+                              <Upload className="w-4 h-4 mr-2" /> Upload Docs
+                            </DropdownMenuItem>
+                          )}
                           {a.phone && (
                             <DropdownMenuItem
                               onClick={() => (window.location.href = `tel:${a.phone}`)}
@@ -1580,6 +1619,27 @@ setDocCounts(requiredDocCounts(rows));
       </AdminTableScroll>
       </>
       )}
+      {listActivateId ? (() => {
+        const driver = drivers.find((d) => d.id === listActivateId);
+        if (!driver) return null;
+        return (
+          <ActivateRentalDialog
+            key={driver.id}
+            driver={driver}
+            vehicles={vehicles}
+            isOwner={!!isOwner}
+            onClose={() => setListActivateId(null)}
+            onActivated={() => {
+              setListActivateId(null);
+              refreshActivationContext();
+              refreshActiveRenters();
+            }}
+          />
+        );
+      })() : null}
+      {listUploadId ? (
+        <ListDocUpload applicationId={listUploadId} onClose={() => setListUploadId(null)} />
+      ) : null}
       {filter === "waitlist" && (
         <div className="mt-6">
           <div className="mb-4">
@@ -1594,6 +1654,21 @@ setDocCounts(requiredDocCounts(rows));
         </div>
       )}
     </div>
+  );
+}
+
+
+function ListDocUpload({ applicationId, onClose }: { applicationId: string; onClose: () => void }) {
+  const upload = useDriverDocumentUpload(applicationId, async () => { onClose(); });
+  return (
+    <DriverDocumentUploadDialog
+      label="Documents"
+      hint="Images Or PDF · Drag And Drop Or Browse · 15 MB Max"
+      onClose={onClose}
+      upload={async (file, ctx) => {
+        await upload("other" as any, file, ctx.onProgress);
+      }}
+    />
   );
 }
 
@@ -1612,6 +1687,8 @@ function DriverDetail({
   hasActiveRental,
   onRentalStarted,
   onCloseApplication,
+  initialTab = null,
+  onInitialTabConsumed,
 }: {
   driver: Application;
   vehicles: Vehicle[];
@@ -1630,6 +1707,8 @@ function DriverDetail({
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
   onCloseApplication?: (reason: ClosureReason, notes: string | null) => Promise<boolean>;
+  initialTab?: string | null;
+  onInitialTabConsumed?: () => void;
   canViewOnboarding?: boolean;
   onboardingResult?: OnboardingChecklistResult | null;
   onboardingFailed?: boolean;
@@ -1672,6 +1751,11 @@ function DriverDetail({
   // Controlled so the Documents strip and the readiness remedies can send the
   // operator straight to the tab that answers them.
   const [tab, setTab] = useState("overview");
+  useEffect(() => {
+    if (!initialTab) return;
+    setTab(initialTab);
+    onInitialTabConsumed?.();
+  }, [initialTab, onInitialTabConsumed]);
   /*
    * The document vault for this applicant, loaded by the drawer itself.
    *

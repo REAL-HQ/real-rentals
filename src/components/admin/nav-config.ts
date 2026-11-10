@@ -18,7 +18,6 @@ import {
   Banknote,
   TrendingUp,
   ShieldAlert,
-  AlertTriangle,
   Wallet,
   Inbox,
   Upload,
@@ -67,6 +66,10 @@ import { RENT_RECONCILIATION_ENABLED } from "@/lib/rent-reconciliation-flag";
 import { OWNER_FINANCE_SNAPSHOT_ENABLED } from "@/lib/owner-finance-snapshot-flag";
 import { RENEWALS_DUE_ENABLED } from "@/lib/renewals-due-flag";
 import { FINANCE_EXPENSE_CATEGORIES_ENABLED } from "@/lib/expense-categories-flag";
+import { STRIPE_MATCH_REPORT_ENABLED } from "@/lib/stripe-match-flag";
+import { COLLECTIONS_WATCH_ENABLED } from "@/lib/collections-watch-flag";
+import { DEPOSITS_LEDGER_ENABLED } from "@/lib/deposits-ledger-flag";
+import { WEEKLY_CASH_FLOW_ENABLED } from "@/lib/weekly-cash-flow-flag";
 
 export type TabDef = {
   id: string;
@@ -97,19 +100,17 @@ export const TABS: readonly TabDef[] = [
   },
   { id: "payments", label: "Payments", icon: CreditCard, minTier: "manager", group: "RENTALS", description: "Rent, Deposits, Balances And Renter Charges" },
   { id: "charges", label: "Charges", icon: Receipt, minTier: "manager", description: "Tolls And Violations, Matched To The Renter Who Had The Car" },
-  { id: "stripe_match", label: "Stripe Match", icon: ArrowLeftRight, minTier: "manager", description: "Live Stripe Customers Next To The Driver They Belong To" },
-  { id: "collections_watch", label: "Collections Watch", icon: Bell, minTier: "manager", description: "Past Due Subscriptions, Failed Charges And What Is Due This Week" },
-  { id: "deposits_ledger", label: "Deposits & Refunds", icon: Banknote, minTier: "manager", description: "Stripe Refunds, Deposits Held And The Period Net" },
-  { id: "weekly_cash_flow", label: "Weekly Cash Flow", icon: TrendingUp, minTier: "manager", description: "Twelve Weeks Of Collections, Refunds, Expenses And Cash Flow" },
+  { id: "stripe_match", label: "Matching", icon: ArrowLeftRight, minTier: "manager", description: "Live Stripe Customers Next To The Driver They Belong To" },
+  { id: "collections_watch", label: "Watch", icon: Bell, minTier: "manager", description: "Past Due Subscriptions, Failed Charges And What Is Due This Week" },
+  { id: "deposits_ledger", label: "Deposits", icon: Banknote, minTier: "manager", description: "Stripe Refunds, Deposits Held And The Period Net" },
+  { id: "weekly_cash_flow", label: "Cashflow", icon: TrendingUp, minTier: "manager", description: "Twelve Weeks Of Collections, Refunds, Expenses And Cash Flow" },
   { id: "vehicles", label: "Vehicles", icon: Car, minTier: "coordinator", group: "FLEET", description: "Fleet Inventory & Vehicle Status" },
   { id: "fleet_inbox", label: "Inbox", icon: Inbox, minTier: "coordinator", group: "FLEET", description: "Drop Fleet Files — Sorted, Matched To Vehicles And Ready For Review" },
   { id: "maintenance", label: "Service", icon: Wrench, minTier: "manager", group: "FLEET", description: "Maintenance, Due Work And Inspections" },
   { id: "inspections", label: "Inspections", icon: ClipboardCheck, minTier: "coordinator", description: "Pre-Delivery And Return Checklists With Photo Proof" },
-  { id: "incidents", label: "Incidents", icon: ShieldAlert, minTier: "manager", group: "FLEET", description: "Accidents, Damage And Insurance Claims" },
-  { id: "driver_issues", label: "Driver Issues", icon: AlertTriangle, minTier: "manager", group: "FLEET", description: "Breakdowns And Other Reports From Renters" },
+  { id: "issues", label: "Issues", icon: ShieldAlert, minTier: "manager", group: "FLEET", description: "Accidents, Claims, Breakdowns And Driver Reports" },
   { id: "expenses", label: "Expenses", icon: Wallet, minTier: "manager", group: "BUSINESS", description: "Every Cost Against Every Car, And What Each One Earns" },
   { id: "vendors", label: "Vendors", icon: Truck, minTier: "coordinator", description: "Every Vendor We Work With — Repair Shops, Towing, GPS, Insurance" },
-  { id: "shops", label: "Repair Shops", icon: Truck, minTier: "manager", description: "Preferred Maintenance Providers By Market" },
   { id: "partners", label: "Partners", icon: Handshake, minTier: "manager", group: "BUSINESS", description: "Vehicle Owners, Lenders And Vendors" },
   // Settings is opened from the profile dropdown, not the rail — the tab stays reachable (deep links / LEGACY_TABS).
 ];
@@ -123,6 +124,9 @@ export const LEGACY_TABS: Record<string, { tab: string; section?: string; filter
   websites: { tab: "settings", section: "website" },
   activity: { tab: "settings", section: "activity" },
   waitlist: { tab: "drivers", filter: "waitlist" },
+  shops: { tab: "vendors", filter: "repair_shop" },
+  incidents: { tab: "issues" },
+  driver_issues: { tab: "issues", filter: "driver" },
   // Active Rentals folded into Bookings; keep old links working.
   active_rentals: { tab: "bookings" },
 };
@@ -134,14 +138,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "website", label: "Website", group: "GENERAL", minTier: "manager" },
   { id: "maintenance", label: "Maintenance", group: "FLEET", minTier: "manager" },
   { id: "safe_autofill", label: "Safe Autofill", group: "FLEET", minTier: "owner" },
-  { id: "photo_enhancement", label: "Photo Enhancement", group: "FLEET", minTier: "owner" },
-  { id: "photo_reading", label: "Photo Reading", group: "FLEET", minTier: "owner" },
+  { id: "vehicle_photos", label: "Photos", group: "FLEET", minTier: "owner" },
   { id: "vehicle_defaults", label: "Pricing", group: "RENTALS", minTier: "manager" },
   { id: "rental_terms", label: "Terms", group: "RENTALS", minTier: "owner" },
   { id: "deposits", label: "Deposits", group: "RENTALS", minTier: "owner" },
   { id: "applications", label: "Applications", group: "RENTALS", minTier: "owner" },
-  { id: "esign", label: "Agreements & eSign", group: "RENTALS", minTier: "owner" },
-  { id: "agreement_templates", label: "Agreement Templates", group: "RENTALS", minTier: "owner" },
+  { id: "agreements", label: "Agreements", group: "RENTALS", minTier: "owner" },
   { id: "payments", label: "Payments", group: "PAYMENTS", minTier: "owner" },
   { id: "partners", label: "Partner Terms", group: "BUSINESS", minTier: "owner" },
   { id: "notifications", label: "Notifications", group: "COMMUNICATIONS", minTier: "owner" },
@@ -151,6 +153,20 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
 ];
 export function visibleSettingsSections(tier: StaffTier | null): SettingsSectionDef[] {
   return SETTINGS_SECTIONS.filter((s) => tierAllows(tier, s.minTier));
+}
+
+/** Old Settings section ids → current ones. Bookmarks and in-app links resolve through this. */
+export const SETTINGS_SECTION_ALIASES: Record<string, string> = {
+  photo_enhancement: "vehicle_photos",
+  photo_reading: "vehicle_photos",
+  esign: "agreements",
+  agreement_templates: "agreements",
+};
+
+/** Resolve a Settings ?section= value, including legacy ids. */
+export function resolveSettingsSection(section: string | null | undefined): string | null {
+  if (!section) return null;
+  return SETTINGS_SECTION_ALIASES[section] ?? section;
 }
 
 /** Shown only while Fleet Availability is compiled on. Kept out of TABS so a dark build cannot list it. */
@@ -572,7 +588,7 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
     next = spliceAfter(next, "vehicles", FLEET_AVAILABILITY_TAB);
   }
   if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
-    const at = next.findIndex((t) => t.id === "incidents");
+    const at = next.findIndex((t) => t.id === "issues");
     const insertAt = at >= 0 ? at : next.findIndex((t) => t.id === "maintenance");
     next.splice(insertAt >= 0 ? insertAt : next.length, 0, INCIDENT_BOARD_TAB);
   }
@@ -600,9 +616,9 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
  * own id, minTier, panel and server checks — this only groups them.
  */
 export const WORKSPACE_TABS: Record<string, readonly { id: string; label: string }[]> = {
-  payments: [{ id: "payments", label: "Payments" }, { id: "charges", label: "Charges" }, { id: "stripe_match", label: "Stripe Match" }, { id: "collections_watch", label: "Collections Watch" }, { id: "deposits_ledger", label: "Deposits & Refunds" }, { id: "weekly_cash_flow", label: "Weekly Cash Flow" }],
+  payments: [{ id: "payments", label: "Payments" }, { id: "charges", label: "Charges" }, { id: "stripe_match", label: "Matching" }, { id: "collections_watch", label: "Watch" }, { id: "deposits_ledger", label: "Deposits" }, { id: "weekly_cash_flow", label: "Cashflow" }],
   maintenance: [{ id: "maintenance", label: "Maintenance" }, { id: "inspections", label: "Inspections" }],
-  partners: [{ id: "partners", label: "Partners" }, { id: "vendors", label: "Vendors" }, { id: "shops", label: "Repair Shops" }],
+  partners: [{ id: "partners", label: "Partners" }, { id: "vendors", label: "Vendors" }],
 };
 
 /** Which rail entry is highlighted for a tab (Charges → Payments, Inspections → Service, Vendors → Partners). */
@@ -611,12 +627,30 @@ export function navOwner(tab: string): string {
   return tab;
 }
 
+export type PaymentsWorkspaceOptions = {
+  /** Reservation deposit setting On → show Deposits. */
+  reservationDepositEnabled?: boolean;
+};
+
 /** Workspace tabs this tier may open (never broadens: each tab keeps its minTier). */
-export function visibleWorkspaceTabs(parent: string, tier: StaffTier | null) {
+export function visibleWorkspaceTabs(
+  parent: string,
+  tier: StaffTier | null,
+  options?: PaymentsWorkspaceOptions,
+) {
   const kids = WORKSPACE_TABS[parent] ?? [{ id: parent, label: "" }];
   return kids.filter((k) => {
     const def = TABS.find((t) => t.id === k.id);
-    return !!def && tierAllows(tier, def.minTier);
+    if (!def || !tierAllows(tier, def.minTier)) return false;
+    if (parent !== "payments") return true;
+    if (k.id === "stripe_match") return STRIPE_MATCH_REPORT_ENABLED;
+    if (k.id === "collections_watch") return COLLECTIONS_WATCH_ENABLED;
+    if (k.id === "weekly_cash_flow") return WEEKLY_CASH_FLOW_ENABLED;
+    // Deposits: hide until reservation deposits are on (or the source flag is on).
+    if (k.id === "deposits_ledger") {
+      return DEPOSITS_LEDGER_ENABLED || options?.reservationDepositEnabled === true;
+    }
+    return true;
   });
 }
 
@@ -645,7 +679,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
     entries = spliceAfter(entries, "vehicles", { ...FLEET_AVAILABILITY_TAB, href: "fleet_availability" });
   }
   if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
-    const at = entries.findIndex((t) => t.id === "incidents");
+    const at = entries.findIndex((t) => t.id === "issues");
     const insertAt = at >= 0 ? at : entries.findIndex((t) => t.id === "maintenance");
     entries.splice(insertAt >= 0 ? insertAt : entries.length, 0, { ...INCIDENT_BOARD_TAB, href: "incident_board" });
   }
@@ -802,6 +836,24 @@ export function resolveAdminTab(args: {
   if (args.urlTab === "finance_deposit_ledger") {
     if (!FINANCE_DEPOSIT_LEDGER_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
     return "finance_deposit_ledger";
+  }
+  if (args.urlTab === "stripe_match") {
+    if (!STRIPE_MATCH_REPORT_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "stripe_match";
+  }
+  if (args.urlTab === "collections_watch") {
+    if (!COLLECTIONS_WATCH_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "collections_watch";
+  }
+  if (args.urlTab === "weekly_cash_flow") {
+    if (!WEEKLY_CASH_FLOW_ENABLED || (args.tier && !tierAllows(args.tier, "manager"))) return "overview";
+    return "weekly_cash_flow";
+  }
+  if (args.urlTab === "deposits_ledger") {
+    // Hidden from the Payments workspace until reservation deposits are On (or the source flag).
+    // A deep link still resolves for managers; the panel/server refuse when both are Off.
+    if (args.tier && !tierAllows(args.tier, "manager")) return "overview";
+    return "deposits_ledger";
   }
   if (!args.urlTab || !TABS.some((t) => t.id === args.urlTab)) return "overview";
   if (args.tier && !args.navTabs.some((t) => t.id === args.urlTab)) return "overview";

@@ -34,14 +34,15 @@ import {
   WORKSPACE_TABS,
   visibleWorkspaceTabs,
   LEGACY_TABS,
+  resolveSettingsSection,
   type TabDef,
 } from "@/components/admin/nav-config";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
-import { ShopsPanel } from "@/components/admin/ShopsPanel";
 import { MessagesOverlay } from "@/components/admin/MessagesOverlay";
 import { SettingsWorkspace } from "@/components/admin/SettingsWorkspace";
 import { useServerFn } from "@tanstack/react-start";
 import { listConversations } from "@/lib/messages.functions";
+import { getReservationDepositSettings } from "@/lib/reservations.functions";
 import { getAdminNotifications } from "@/lib/admin-overview.functions";
 import { OverviewPanel } from "@/components/admin/OverviewPanel";
 import { VendorsPanel } from "@/components/admin/VendorsPanel";
@@ -49,10 +50,9 @@ import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { DepositsLedgerPanel } from "@/components/admin/DepositsLedgerPanel";
 import { WeeklyCashFlowPanel } from "@/components/admin/WeeklyCashFlowPanel";
-import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
+import { IssuesPanel } from "@/components/admin/IssuesPanel";
 import { IncidentBoard } from "@/components/admin/IncidentBoard";
 import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
-import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
@@ -77,6 +77,10 @@ import { FinanceDepositLedgerPanel } from "@/components/admin/FinanceDepositLedg
 import { FINANCE_DEPOSIT_LEDGER_ENABLED } from "@/lib/finance-deposit-ledger-flag";
 import { StripeRiskMonitorPanel } from "@/components/admin/StripeRiskMonitorPanel";
 import { STRIPE_RISK_MONITOR_ENABLED } from "@/lib/stripe-risk-monitor-flag";
+import { STRIPE_MATCH_REPORT_ENABLED } from "@/lib/stripe-match-flag";
+import { COLLECTIONS_WATCH_ENABLED } from "@/lib/collections-watch-flag";
+import { DEPOSITS_LEDGER_ENABLED } from "@/lib/deposits-ledger-flag";
+import { WEEKLY_CASH_FLOW_ENABLED } from "@/lib/weekly-cash-flow-flag";
 import { StripePayoutReconPanel } from "@/components/admin/StripePayoutReconPanel";
 import { STRIPE_PAYOUT_RECON_ENABLED } from "@/lib/stripe-payout-recon-flag";
 import { ApplicantFunnelPanel } from "@/components/admin/ApplicantFunnelPanel";
@@ -181,7 +185,7 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   // "bookings" opens a rental record on the Past tab.
   id: ["drivers", "vehicles", "inspections", "bookings"],
   // Payments is the only list that takes a filter from a link today.
-  filter: ["payments", "drivers"],
+  filter: ["payments", "drivers", "issues", "vendors"],
   // A creation flow opened from "+ Create".
   add: [...ADD_TABS],
   section: ["settings"],
@@ -197,7 +201,7 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   ready: ["vehicles"],
   phase: ["bookings"],
   vehicle: ["bookings"],
-  issue: ["incidents"],
+  issue: ["issues"],
 };
 
 /** The search for a tab's ROOT view: the tab, and nothing that belongs to a child. */
@@ -353,6 +357,18 @@ function Admin() {
   >([]);
   const [notifsFailed, setNotifsFailed] = useState(false);
   const [tier, setTier] = useState<StaffTier | null>(null);
+  const [reservationDepositEnabled, setReservationDepositEnabled] = useState(false);
+  const loadReservationDepositSettings = useServerFn(getReservationDepositSettings);
+  useEffect(() => {
+    if (!tier) return;
+    let cancelled = false;
+    void loadReservationDepositSettings().then((s) => {
+      if (!cancelled) setReservationDepositEnabled(s.enabled === true);
+    }).catch(() => {
+      if (!cancelled) setReservationDepositEnabled(false);
+    });
+    return () => { cancelled = true; };
+  }, [tier, loadReservationDepositSettings]);
   const navTabs = useMemo(() => visibleTabs(tier), [tier]);
 
   /*
@@ -478,6 +494,24 @@ function Admin() {
       if (!OWNER_FINANCE_SNAPSHOT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
       return "owner_finance_snapshot";
     }
+    // Payments workspace extras: hidden while source flags are Off (Deposits returns with reservation deposits).
+    if (urlTab === "stripe_match") {
+      if (!STRIPE_MATCH_REPORT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "stripe_match";
+    }
+    if (urlTab === "collections_watch") {
+      if (!COLLECTIONS_WATCH_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "collections_watch";
+    }
+    if (urlTab === "weekly_cash_flow") {
+      if (!WEEKLY_CASH_FLOW_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "weekly_cash_flow";
+    }
+    if (urlTab === "deposits_ledger") {
+      if (tier && !tierAllows(tier, "manager")) return "overview";
+      if (!DEPOSITS_LEDGER_ENABLED && !reservationDepositEnabled) return "overview";
+      return "deposits_ledger";
+    }
     // Rental Renewal Due is not in TABS. While the flag is off a direct link falls back to Overview.
     if (urlTab === "renewals_due") {
       if (!RENEWALS_DUE_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
@@ -486,7 +520,7 @@ function Admin() {
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
     return urlTab as Tab;
-  }, [urlTab, tier, navTabs]);
+  }, [urlTab, tier, navTabs, reservationDepositEnabled]);
 
   /*
    * Normalize the address bar to match what is on screen — replace, not
@@ -517,6 +551,14 @@ function Admin() {
       }
       void navigate({ to: "/admin", search: next, replace: true });
       return;
+    }
+    // Old Settings section ids (Photo Enhancement, Photo Reading, eSign, Agreement Templates).
+    if (tab === "settings" && search.section) {
+      const resolved = resolveSettingsSection(search.section);
+      if (resolved && resolved !== search.section) {
+        void navigate({ to: "/admin", search: { ...search, tab: "settings", section: resolved }, replace: true });
+        return;
+      }
     }
     const owned = ownedSearch(tab, search);
     const same =
@@ -679,7 +721,7 @@ function Admin() {
     ? <ExperienceSwitcher value={experience} options={expOptions} onChange={chooseExperience} />
     : null;
   const workspace = TABS.find((t) => t.id === ownerTab) ?? current;
-  const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, navTier) : [];
+  const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, navTier, { reservationDepositEnabled }) : [];
   const recordParent = urlRecordId && (tab === "drivers" || tab === "vehicles") ? current : null;
 
   const navLink = (t: TabDef & { href?: string }, onClick?: () => void) => {
@@ -920,7 +962,7 @@ function Admin() {
 
           <div className="px-4 md:px-8 pt-3 md:pt-4">
             {/* Driver and vehicle records carry their own "Drivers ←" / "Vehicles /" breadcrumb. */}
-            {tab !== "overview" && !recordParent && (
+            {tab !== "overview" && tab !== "issues" && !recordParent && (
               <div className="mb-3">
                 <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
                 <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
@@ -980,8 +1022,7 @@ function Admin() {
             {tab === "partners" && <PartnersPanel externalSearch={partnerSearch} />}
             {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} tier={tier} />}
             {tab === "maintenance" && <MaintenancePanel autoOpenAdd={urlAdd} />}
-            {tab === "shops" && <ShopsPanel />}
-            {tab === "vendors" && <VendorsPanel />}
+            {tab === "vendors" && <VendorsPanel initialTypeFilter={urlFilter ?? "all"} />}
             {RENTER_PORTAL_ENABLED && tab === "vendors" && <RenterVendorsPanel />}
             {tab === "inspections" && <InspectionsPanel />}
             {tab === "charges" && <ChargesPanel />}
@@ -989,9 +1030,13 @@ function Admin() {
             {tab === "collections_watch" && <CollectionsWatchPanel />}
             {tab === "deposits_ledger" && <DepositsLedgerPanel />}
             {tab === "weekly_cash_flow" && <WeeklyCashFlowPanel />}
-            {tab === "incidents" && <IncidentsPanel seedIssueId={search.issue ?? null} />}
+            {tab === "issues" && (
+              <IssuesPanel
+                seedIssueId={search.issue ?? null}
+                initialSource={urlFilter === "driver" ? "driver" : urlFilter === "incident" ? "incident" : "all"}
+              />
+            )}
             {INCIDENT_BOARD_ENABLED && tab === "incident_board" && <IncidentBoard />}
-            {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
             {TOLLS_TICKETS_LEDGER_ENABLED && tab === "tolls_tickets" && <TollsTickets />}

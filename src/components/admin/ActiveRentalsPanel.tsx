@@ -269,14 +269,10 @@ export function ActiveRentalsPanel() {
                             ) : null}
                             {fees.get(row.id)?.mode === "manual" || fees.get(row.id)?.owing ? <DropdownMenuSeparator /> : null}
                             <DropdownMenuItem asChild>
-                              <Link to="/admin" search={{ tab: "driver_issues" }}>
-                                Issues: {countLabel(row.openIssues)}
-                              </Link>
+                              <Link to="/admin" search={{ tab: "issues", filter: "driver" }}>Issues: {countLabel(row.openIssues)}</Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild>
-                              <Link to="/admin" search={{ tab: "incidents" }}>
-                                Incidents: {countLabel(row.openIncidents)}
-                              </Link>
+                              <Link to="/admin" search={{ tab: "issues", filter: "incident" }}>Incidents: {countLabel(row.openIncidents)}</Link>
                             </DropdownMenuItem>
                             {row.applicationId ? (
                               <DropdownMenuItem asChild>
