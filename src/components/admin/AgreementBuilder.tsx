@@ -20,7 +20,7 @@ const isOpen = (v?: string) => /\[[^\]]*\]/.test(String(v ?? ""));
 const FIX_LINK: Record<string, string> = {
   "Legal Business Name": "/admin?tab=settings&section=company", "Business Address": "/admin?tab=settings&section=company",
   "Support Phone": "/admin?tab=settings&section=company", "Support Email": "/admin?tab=settings&section=company",
-  "Countersigner": "/admin?tab=settings&section=esign",
+  "Countersigner": "/admin?tab=settings&section=media",
 };
 import { Diff } from "@/components/admin/AgreementTemplatesPanel";
 
@@ -154,7 +154,7 @@ export function AgreementBuilder({
             </div>
           ))}
         </dl>
-        <p className="text-[11px] text-muted-foreground">Company details come from Settings → Company and Agreements & eSign. Edit them there.</p>
+        <p className="text-[11px] text-muted-foreground">Company details come from Settings → Company and Media. Edit them there.</p>
       </Section>
 
       {TERM_GROUPS.map((g) => {

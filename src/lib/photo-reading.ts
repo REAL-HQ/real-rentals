@@ -92,9 +92,9 @@ export function remainingOn(s: PhotoReadingSettings, day: string): number {
  * Checked server-side before anything is queued; the UI shows the same string.
  */
 export function refusalReason(s: PhotoReadingSettings, day: string): string | null {
-  if (!s.enabled) return "Photo Reading is switched off. An Owner can turn it on in Settings → Photo Reading.";
+  if (!s.enabled) return "Photo Reading is switched off. An Owner can turn it on in Settings → Media.";
   if (s.pausedReason) return `Photo Reading is paused: ${s.pausedReason}`;
-  if (s.dailyLimit <= 0) return "Photo Reading has a daily limit of zero. An Owner can raise it in Settings → Photo Reading.";
+  if (s.dailyLimit <= 0) return "Photo Reading has a daily limit of zero. An Owner can raise it in Settings → Media.";
   if (remainingOn(s, day) <= 0) return `Today's limit of ${s.dailyLimit} photo${s.dailyLimit === 1 ? "" : "s"} has been reached. It resets at midnight UTC.`;
   return null;
 }

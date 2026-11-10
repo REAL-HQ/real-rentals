@@ -15,8 +15,9 @@ const incidents = readFileSync("src/lib/incidents.functions.ts", "utf8");
 
 ok(!/requireStaff\(/.test(fn), "the inbox does not call requireStaff (that would admit Coordinators)");
 const tabIds = (tier: "coordinator" | "manager" | "owner") => visibleTabs(tier).map((t) => t.id);
-ok(!tabIds("coordinator").includes("driver_issues"), "a Coordinator does not see Driver Issues");
-ok(tabIds("manager").includes("driver_issues") && tabIds("owner").includes("driver_issues"), "a Manager and an Owner do");
+ok(!tabIds("coordinator").includes("issues"), "a Coordinator does not see Issues");
+ok(tabIds("manager").includes("issues") && tabIds("owner").includes("issues"), "a Manager and an Owner see Issues");
+ok(!tabIds("manager").includes("driver_issues") && !tabIds("manager").includes("incidents"), "Driver Issues and Incidents tabs are gone");
 ok(fn.split("await gate(").length >= 5, "list, status, note, and incident seed all pass the manager gate");
 ok(/async function gate[\s\S]{0,180}requireManager\(userId\)/.test(fn), "the gate is requireManager, matching admin/team RLS");
 ok(/\.eq\("driver_id", sc\.userId\)/.test(portal), "a driver still reads only their own issues");

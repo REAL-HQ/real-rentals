@@ -41,7 +41,7 @@ async function companyChecks(admin: any) {
   const { getCompanyIdentity } = await import("@/lib/company-identity.server");
   const [signer, id] = await Promise.all([getCompanySigner(admin), getCompanyIdentity(admin)]);
   const issues = id.missing.map((m) => `${m} is missing in Settings → Company.`);
-  if (!signer.title) issues.push("Countersigner title is not set (Settings → Agreements & eSign).");
+  if (!signer.title) issues.push("Countersigner title is not set (Settings → Media).");
   return { company: { ...id.merge, signer_name: signer.name, signer_title: signer.title }, issues, missing: id.missing };
 }
 

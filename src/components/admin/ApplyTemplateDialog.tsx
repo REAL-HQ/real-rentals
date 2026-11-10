@@ -46,7 +46,7 @@ export function ApplyTemplateDialog({ vehicleId, open, onOpenChange, onApplied }
         <DialogHeader><DialogTitle>Apply Pricing Template</DialogTitle></DialogHeader>
         {!data ? <p className="text-[13px] text-muted-foreground">Loading…</p>
           : !data.bodyType ? <p className="text-[13px]">This vehicle has no body type. Set the body type first; the system will not guess.</p>
-          : !data.hasTemplate ? <p className="text-[13px]">No Vehicle Pricing is set for {bodyTypeLabel(data.bodyType)}. Add it in Settings → Rentals → Vehicle Pricing.</p>
+          : !data.hasTemplate ? <p className="text-[13px]">No Pricing is set for {bodyTypeLabel(data.bodyType)}. Add it in Settings → Rentals → Pricing.</p>
           : (
             <div className="space-y-3">
               <p className="text-[12px] text-muted-foreground">Template: <span className="font-medium text-foreground">{bodyTypeLabel(data.bodyType)}</span>. Only ticked rows change. Rentals and agreements already sent or signed are not affected.</p>

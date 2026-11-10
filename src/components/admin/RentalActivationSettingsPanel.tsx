@@ -12,7 +12,7 @@ import {
 } from "@/lib/rental-activation-settings";
 
 /**
- * Settings → Rentals → Rental Terms. Owner only: the section is Owner-only in the
+ * Settings → Rentals → Terms. Owner only: the section is Owner-only in the
  * menu, the server functions call requireOwner, and the database function checks
  * private.is_owner() again and audits every change (actor, old → new, time).
  */

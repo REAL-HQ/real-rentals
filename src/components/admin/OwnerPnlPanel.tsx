@@ -100,8 +100,7 @@ export function OwnerPnlPanel() {
       <style>{PRINT_CSS}</style>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-lg font-semibold">Monthly Owner P&L</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground">
             Stripe charges plus recorded Cash App, Zelle, Venmo, wire, and cash for one Eastern Time month, next to the month before. Deposits stay off the net. Stripe fees stay on the company net.
           </p>
         </div>
@@ -135,7 +134,7 @@ export function OwnerPnlPanel() {
 
       {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
       {problem && <p className="text-sm text-[#D03020]">{problem}</p>}
-      {response?.status === "disabled" && <p className="text-sm text-muted-foreground">Monthly Owner P&L Is Off</p>}
+      {response?.status === "disabled" && <p className="text-sm text-muted-foreground">P&L Is Off</p>}
       {response?.status === "unavailable" && <p className="text-sm text-[#D03020]">{response.reason}</p>}
 
       {report && (

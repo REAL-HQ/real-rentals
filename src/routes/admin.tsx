@@ -38,7 +38,6 @@ import {
   type TabDef,
 } from "@/components/admin/nav-config";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
-import { ShopsPanel } from "@/components/admin/ShopsPanel";
 import { MessagesOverlay } from "@/components/admin/MessagesOverlay";
 import { SettingsWorkspace } from "@/components/admin/SettingsWorkspace";
 import { useServerFn } from "@tanstack/react-start";
@@ -51,10 +50,9 @@ import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { DepositsLedgerPanel } from "@/components/admin/DepositsLedgerPanel";
 import { WeeklyCashFlowPanel } from "@/components/admin/WeeklyCashFlowPanel";
-import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
+import { IssuesPanel } from "@/components/admin/IssuesPanel";
 import { IncidentBoard } from "@/components/admin/IncidentBoard";
 import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
-import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
@@ -187,7 +185,7 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   // "bookings" opens a rental record on the Past tab.
   id: ["drivers", "vehicles", "inspections", "bookings"],
   // Payments is the only list that takes a filter from a link today.
-  filter: ["payments", "drivers"],
+  filter: ["payments", "drivers", "issues", "vendors"],
   // A creation flow opened from "+ Create".
   add: [...ADD_TABS],
   section: ["settings"],
@@ -203,7 +201,7 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   ready: ["vehicles"],
   phase: ["bookings"],
   vehicle: ["bookings"],
-  issue: ["incidents"],
+  issue: ["issues"],
 };
 
 /** The search for a tab's ROOT view: the tab, and nothing that belongs to a child. */
@@ -722,7 +720,12 @@ function Admin() {
   const switcher = experience && experience !== "driver"
     ? <ExperienceSwitcher value={experience} options={expOptions} onChange={chooseExperience} />
     : null;
-  const workspace = TABS.find((t) => t.id === ownerTab) ?? current;
+  // Settings is off the rail, so it is not in TABS. Without a dedicated
+  // workspace the fallback is Overview, which left every Settings page
+  // showing that stale header.
+  const workspace = tab === "settings"
+    ? { id: "settings", label: "Settings", description: "" }
+    : (TABS.find((t) => t.id === ownerTab) ?? current);
   const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, navTier, { reservationDepositEnabled }) : [];
   const recordParent = urlRecordId && (tab === "drivers" || tab === "vehicles") ? current : null;
 
@@ -964,10 +967,12 @@ function Admin() {
 
           <div className="px-4 md:px-8 pt-3 md:pt-4">
             {/* Driver and vehicle records carry their own "Drivers ←" / "Vehicles /" breadcrumb. */}
-            {tab !== "overview" && !recordParent && (
+            {tab !== "overview" && tab !== "issues" && !recordParent && (
               <div className="mb-3">
                 <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
-                <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
+                {workspace.description ? (
+                  <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
+                ) : null}
               </div>
             )}
             {workspaceTabs.length > 1 && !recordParent && (
@@ -1024,8 +1029,7 @@ function Admin() {
             {tab === "partners" && <PartnersPanel externalSearch={partnerSearch} />}
             {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} tier={tier} />}
             {tab === "maintenance" && <MaintenancePanel autoOpenAdd={urlAdd} />}
-            {tab === "shops" && <ShopsPanel />}
-            {tab === "vendors" && <VendorsPanel />}
+            {tab === "vendors" && <VendorsPanel initialTypeFilter={urlFilter ?? "all"} />}
             {RENTER_PORTAL_ENABLED && tab === "vendors" && <RenterVendorsPanel />}
             {tab === "inspections" && <InspectionsPanel />}
             {tab === "charges" && <ChargesPanel />}
@@ -1033,9 +1037,13 @@ function Admin() {
             {tab === "collections_watch" && <CollectionsWatchPanel />}
             {tab === "deposits_ledger" && <DepositsLedgerPanel />}
             {tab === "weekly_cash_flow" && <WeeklyCashFlowPanel />}
-            {tab === "incidents" && <IncidentsPanel seedIssueId={search.issue ?? null} />}
+            {tab === "issues" && (
+              <IssuesPanel
+                seedIssueId={search.issue ?? null}
+                initialSource={urlFilter === "driver" ? "driver" : urlFilter === "incident" ? "incident" : "all"}
+              />
+            )}
             {INCIDENT_BOARD_ENABLED && tab === "incident_board" && <IncidentBoard />}
-            {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
             {TOLLS_TICKETS_LEDGER_ENABLED && tab === "tolls_tickets" && <TollsTickets />}

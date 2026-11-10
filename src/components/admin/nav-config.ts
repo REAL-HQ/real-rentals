@@ -18,7 +18,6 @@ import {
   Banknote,
   TrendingUp,
   ShieldAlert,
-  AlertTriangle,
   Wallet,
   Inbox,
   Upload,
@@ -106,14 +105,12 @@ export const TABS: readonly TabDef[] = [
   { id: "deposits_ledger", label: "Deposits", icon: Banknote, minTier: "manager", description: "Stripe Refunds, Deposits Held And The Period Net" },
   { id: "weekly_cash_flow", label: "Cashflow", icon: TrendingUp, minTier: "manager", description: "Twelve Weeks Of Collections, Refunds, Expenses And Cash Flow" },
   { id: "vehicles", label: "Vehicles", icon: Car, minTier: "coordinator", group: "FLEET", description: "Fleet Inventory & Vehicle Status" },
-  { id: "fleet_inbox", label: "Fleet Inbox", icon: Inbox, minTier: "coordinator", group: "FLEET", description: "Drop Fleet Files — Sorted, Matched To Vehicles And Ready For Review" },
+  { id: "fleet_inbox", label: "Inbox", icon: Inbox, minTier: "coordinator", group: "FLEET", description: "Drop Fleet Files — Sorted, Matched To Vehicles And Ready For Review" },
   { id: "maintenance", label: "Service", icon: Wrench, minTier: "manager", group: "FLEET", description: "Maintenance, Due Work And Inspections" },
   { id: "inspections", label: "Inspections", icon: ClipboardCheck, minTier: "coordinator", description: "Pre-Delivery And Return Checklists With Photo Proof" },
-  { id: "incidents", label: "Incidents", icon: ShieldAlert, minTier: "manager", group: "FLEET", description: "Accidents, Damage And Insurance Claims" },
-  { id: "driver_issues", label: "Driver Issues", icon: AlertTriangle, minTier: "manager", group: "FLEET", description: "Breakdowns And Other Reports From Renters" },
+  { id: "issues", label: "Issues", icon: ShieldAlert, minTier: "manager", group: "FLEET", description: "Accidents, Claims, Breakdowns And Driver Reports" },
   { id: "expenses", label: "Expenses", icon: Wallet, minTier: "manager", group: "BUSINESS", description: "Every Cost Against Every Car, And What Each One Earns" },
   { id: "vendors", label: "Vendors", icon: Truck, minTier: "coordinator", description: "Every Vendor We Work With — Repair Shops, Towing, GPS, Insurance" },
-  { id: "shops", label: "Repair Shops", icon: Truck, minTier: "manager", description: "Preferred Maintenance Providers By Market" },
   { id: "partners", label: "Partners", icon: Handshake, minTier: "manager", group: "BUSINESS", description: "Vehicle Owners, Lenders And Vendors" },
   // Settings is opened from the profile dropdown, not the rail — the tab stays reachable (deep links / LEGACY_TABS).
 ];
@@ -127,6 +124,9 @@ export const LEGACY_TABS: Record<string, { tab: string; section?: string; filter
   websites: { tab: "settings", section: "website" },
   activity: { tab: "settings", section: "activity" },
   waitlist: { tab: "drivers", filter: "waitlist" },
+  shops: { tab: "vendors", filter: "repair_shop" },
+  incidents: { tab: "issues" },
+  driver_issues: { tab: "issues", filter: "driver" },
   // Active Rentals folded into Bookings; keep old links working.
   active_rentals: { tab: "bookings" },
 };
@@ -137,16 +137,15 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "company", label: "Company", group: "GENERAL", minTier: "owner" },
   { id: "website", label: "Website", group: "GENERAL", minTier: "manager" },
   { id: "maintenance", label: "Maintenance", group: "FLEET", minTier: "manager" },
-  { id: "safe_autofill", label: "Safe Autofill", group: "FLEET", minTier: "owner" },
-  { id: "vehicle_photos", label: "Photos", group: "FLEET", minTier: "owner" },
-  { id: "vehicle_defaults", label: "Vehicle Pricing", group: "RENTALS", minTier: "manager" },
-  { id: "rental_terms", label: "Rental Terms", group: "RENTALS", minTier: "owner" },
+  { id: "safe_autofill", label: "Autofill", group: "FLEET", minTier: "owner" },
+  { id: "media", label: "Media", group: "FLEET", minTier: "owner" },
+  { id: "vehicle_defaults", label: "Pricing", group: "RENTALS", minTier: "manager" },
+  { id: "rental_terms", label: "Terms", group: "RENTALS", minTier: "owner" },
   { id: "deposits", label: "Deposits", group: "RENTALS", minTier: "owner" },
   { id: "applications", label: "Applications", group: "RENTALS", minTier: "owner" },
-  { id: "agreements", label: "Agreements", group: "RENTALS", minTier: "owner" },
-  { id: "payments", label: "Payment Settings", group: "PAYMENTS", minTier: "owner" },
-  { id: "partners", label: "Partner Terms", group: "BUSINESS", minTier: "owner" },
-  { id: "notifications", label: "Notifications & Email", group: "COMMUNICATIONS", minTier: "owner" },
+  { id: "payments", label: "Payments", group: "PAYMENTS", minTier: "owner" },
+  { id: "partners", label: "Partners", group: "BUSINESS", minTier: "owner" },
+  { id: "notifications", label: "Notifications", group: "COMMUNICATIONS", minTier: "owner" },
   { id: "automations", label: "Automations", group: "AUTOMATION", minTier: "manager" },
   { id: "team", label: "Team", group: "TEAM", minTier: "owner" },
   { id: "activity", label: "Activity", group: "TEAM", minTier: "manager" },
@@ -157,10 +156,12 @@ export function visibleSettingsSections(tier: StaffTier | null): SettingsSection
 
 /** Old Settings section ids → current ones. Bookmarks and in-app links resolve through this. */
 export const SETTINGS_SECTION_ALIASES: Record<string, string> = {
-  photo_enhancement: "vehicle_photos",
-  photo_reading: "vehicle_photos",
-  esign: "agreements",
-  agreement_templates: "agreements",
+  photo_enhancement: "media",
+  photo_reading: "media",
+  vehicle_photos: "media",
+  esign: "media",
+  agreement_templates: "media",
+  agreements: "media",
 };
 
 /** Resolve a Settings ?section= value, including legacy ids. */
@@ -473,7 +474,7 @@ const PARTNER_STATEMENT_TAB: TabDef = {
 /** Shown only while Monthly Owner P&L is compiled on. Kept out of TABS so a dark build cannot list it. */
 const OWNER_PNL_TAB: TabDef = {
   id: "owner_pnl",
-  label: "Monthly Owner P&L",
+  label: "P&L",
   icon: Scale,
   minTier: "owner",
   group: "BUSINESS",
@@ -588,7 +589,7 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
     next = spliceAfter(next, "vehicles", FLEET_AVAILABILITY_TAB);
   }
   if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
-    const at = next.findIndex((t) => t.id === "incidents");
+    const at = next.findIndex((t) => t.id === "issues");
     const insertAt = at >= 0 ? at : next.findIndex((t) => t.id === "maintenance");
     next.splice(insertAt >= 0 ? insertAt : next.length, 0, INCIDENT_BOARD_TAB);
   }
@@ -618,7 +619,7 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
 export const WORKSPACE_TABS: Record<string, readonly { id: string; label: string }[]> = {
   payments: [{ id: "payments", label: "Payments" }, { id: "charges", label: "Charges" }, { id: "stripe_match", label: "Matching" }, { id: "collections_watch", label: "Watch" }, { id: "deposits_ledger", label: "Deposits" }, { id: "weekly_cash_flow", label: "Cashflow" }],
   maintenance: [{ id: "maintenance", label: "Maintenance" }, { id: "inspections", label: "Inspections" }],
-  partners: [{ id: "partners", label: "Partners" }, { id: "vendors", label: "Vendors" }, { id: "shops", label: "Repair Shops" }],
+  partners: [{ id: "partners", label: "Partners" }, { id: "vendors", label: "Vendors" }],
 };
 
 /** Which rail entry is highlighted for a tab (Charges → Payments, Inspections → Service, Vendors → Partners). */
@@ -679,7 +680,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
     entries = spliceAfter(entries, "vehicles", { ...FLEET_AVAILABILITY_TAB, href: "fleet_availability" });
   }
   if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
-    const at = entries.findIndex((t) => t.id === "incidents");
+    const at = entries.findIndex((t) => t.id === "issues");
     const insertAt = at >= 0 ? at : entries.findIndex((t) => t.id === "maintenance");
     entries.splice(insertAt >= 0 ? insertAt : entries.length, 0, { ...INCIDENT_BOARD_TAB, href: "incident_board" });
   }

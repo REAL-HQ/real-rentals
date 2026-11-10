@@ -56,10 +56,10 @@ for (const tier of ["coordinator", "manager", "owner"] as const) {
   ok(!visibleTabs(tier).some((t) => t.id === "tolls_tickets"), `${tier} nav has no Tolls And Tickets tab while the flag is off`);
   ok(!railEntries(tier).some((t) => t.id === "tolls_tickets" || t.label === "Tolls And Tickets"), `${tier} rail has no Tolls And Tickets tab while the flag is off`);
 }
-ok(visibleTabs("owner").filter((t) => t.id !== "owner_pnl").length === TABS.length && visibleTabs("owner").some((t) => t.id === "owner_pnl"), "owner still sees exactly the dark-build destinations plus Monthly Owner P&L");
+ok(visibleTabs("owner").filter((t) => t.id !== "owner_pnl").length === TABS.length && visibleTabs("owner").some((t) => t.id === "owner_pnl"), "owner still sees exactly the dark-build destinations plus P&L");
 ok(
   railEntries("owner").map((entry) => entry.label).join(",") ===
-    "Overview,Drivers,Active,Payments,Vehicles,Fleet Inbox,Service,Incidents,Driver Issues,Expenses,Partners,Monthly Owner P&L",
+    "Overview,Drivers,Bookings,Payments,Vehicles,Inbox,Service,Issues,Expenses,Partners,P&L",
   "the owner rail is unchanged while the flag is off",
 );
 ok(nav.includes('minTier: "manager"') && nav.includes('id: "tolls_tickets"'), "the tab is manager and owner only");
@@ -200,7 +200,7 @@ const loose = ledger.lines.find((line) => line.id === "pay-loose");
 ok(loose?.dateEt === "Oct 14, 2026", "an unpaid toll payment with no due date uses the Eastern Time created date");
 const ticket = ledger.lines.find((line) => line.id === "incident-1");
 ok(ticket?.kind === "Ticket" && ticket.amount === 3 && ticket.billedToRenter === null && ticket.paid === null, "a parking ticket incident has no billed or paid flag");
-ok(ticket?.link === "/admin?tab=incidents&issue=incident-1", "an incident links to its record");
+ok(ticket?.link === "/admin?tab=issues&filter=incident&issue=incident-1", "an incident links to its record");
 const tollIncident = ledger.lines.find((line) => line.id === "incident-toll");
 ok(tollIncident?.kind === "Toll" && tollIncident.amount === 2.5, "an incident that names a toll uses the driver responsible amount");
 

@@ -1,8 +1,11 @@
 /**
  * Phone layout for staff Drivers and Payments. Class checks only.
- * Below lg the toolbars stack and the wide tables scroll inside the card.
- * At lg the utilities that paint are the ones the screens already had
- * on rental-ops 3e6b3494. Rental-ops sections stay mounted.
+ * Below lg the Payments toolbar stacks and the wide Payments table scrolls
+ * inside the card. Drivers chips wrap at every width and the Drivers table
+ * is table-fixed with no min-width side scroll (PR 347).
+ * At lg the remaining utilities that paint are the ones the screens already
+ * had on rental-ops 3e6b3494, except the Drivers list layout above.
+ * Rental-ops sections stay mounted.
  * No database and no change to the data those screens read.
  */
 import assert from "node:assert/strict";
@@ -87,18 +90,18 @@ function sameAtLg(before, after, label) {
 
 const pairs = [
   [
-    "admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto -mx-1 px-1 pb-1",
-    "admin-sticky-bar mb-4 flex flex-col gap-2 pb-1 text-xs lg:flex-row lg:overflow-x-auto lg:-mx-1 lg:px-1",
+    "admin-sticky-bar mb-4 flex flex-col gap-2 text-xs",
+    "admin-sticky-bar mb-4 flex flex-col gap-2 text-xs",
     "drivers filter bar at lg",
   ],
   [
-    "ml-auto shrink-0",
-    "shrink-0 lg:ml-auto max-lg:w-full",
+    "ml-auto",
+    "ml-auto",
     "drivers merge slot at lg",
   ],
   [
     "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50",
-    "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50 max-lg:w-full max-lg:justify-center",
+    "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50",
     "drivers merge button at lg",
   ],
   [
@@ -107,19 +110,14 @@ const pairs = [
     "drivers table scroller at lg",
   ],
   [
-    "w-full text-sm",
-    "w-full text-sm max-lg:min-w-[56rem]",
+    "w-full table-fixed text-sm",
+    "w-full table-fixed text-sm",
     "drivers table min width at lg",
   ],
   [
     "inline-flex items-center gap-1.5 max-w-[105px]",
     "inline-flex items-center gap-1.5 max-w-[105px] max-lg:max-w-[12rem]",
     "drivers name width at lg",
-  ],
-  [
-    "inline-flex items-center gap-1 max-w-[122px] text-[11px] text-muted-foreground hover:text-foreground hover:underline",
-    "inline-flex items-center gap-1 max-w-[122px] text-[11px] text-muted-foreground hover:text-foreground hover:underline max-lg:max-w-[16rem] max-lg:min-w-0",
-    "drivers email width at lg",
   ],
   [
     "-m-4 md:-mx-8 md:-mt-4 md:-mb-8 min-h-full bg-[#FAFAFB] overflow-x-clip",
@@ -202,11 +200,11 @@ for (const [before, after, label] of pairs) sameAtLg(before, after, label);
 
 const present = [
   [drivers, "max-lg:min-w-0", "drivers list can shrink inside the admin column"],
-  [drivers, "admin-sticky-bar mb-4 flex flex-col gap-2 pb-1 text-xs lg:flex-row lg:overflow-x-auto lg:-mx-1 lg:px-1", "drivers filters stack only below lg"],
-  [drivers, "flex min-w-0 items-center gap-2 overflow-x-auto -mx-1 px-1 pb-1 lg:contents", "drivers chip scroller disappears at lg"],
+  [drivers, "admin-sticky-bar mb-4 flex flex-col gap-2 text-xs", "drivers filters stack; chips wrap at every width"],
+  [drivers, "flex min-w-0 flex-wrap items-center gap-2", "drivers chips wrap without a horizontal scroller"],
   [drivers, "data-contact-filter", "the contact status filter stays"],
   [drivers, "Merge Duplicates", "merge duplicates stays"],
-  [drivers, "max-lg:min-w-[56rem]", "the drivers table keeps a phone min width"],
+  [drivers, "w-full table-fixed text-sm", "the drivers table is fixed-width with no min-width scroll"],
   [drivers, "mt-1 flex flex-wrap items-center gap-3 text-[12px] text-[#55555E]", "driver phone and email stay on the record header"],
   [payments, "admin-sticky-bar mb-4 flex flex-col gap-2 pb-2 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2", "payments filters stack only below lg"],
   [payments, "flex gap-2 max-lg:w-full lg:contents", "payment actions share a row on a phone and rejoin the bar at lg"],
@@ -219,16 +217,14 @@ const present = [
 for (const [src, needle, label] of present) check(src.includes(needle), label);
 
 check(!drivers.includes("admin-sticky-bar flex gap-2 mb-4 text-xs overflow-x-auto"), "the old drivers bar class is gone");
+check(!drivers.includes("lg:overflow-x-auto lg:-mx-1"), "the drivers chip scroller is gone");
+check(!drivers.includes("max-lg:min-w-[56rem]"), "the drivers table has no phone min-width scroll");
 check(!payments.includes("admin-sticky-bar flex flex-wrap items-center gap-2 mb-4 pb-2"), "the old payments bar class is gone");
 check(!drivers.includes("text-transform") && !payments.includes("text-transform"), "neither screen adds a text-transform");
 check(payments.includes("rounded-md capitalize max-lg:shrink-0"), "the existing capitalize on status chips stays");
 check(!drivers.includes("max-lg:uppercase") && !payments.includes("max-lg:uppercase") && !drivers.includes("max-lg:capitalize") && !payments.includes("max-lg:capitalize"), "phone classes do not add a case transform");
 
-const contents = [
-  "flex min-w-0 items-center gap-2 overflow-x-auto -mx-1 px-1 pb-1 lg:contents",
-  "flex gap-2 max-lg:w-full lg:contents",
-];
-check(contents.every((cls) => drivers.includes(cls) || payments.includes(cls)), "phone wrappers use lg:contents so they add no box at lg");
+check(payments.includes("flex gap-2 max-lg:w-full lg:contents"), "payment phone wrappers use lg:contents so they add no box at lg");
 
 const mounts = [
   ["<OnboardingChecklist", "onboarding checklist stays mounted"],

@@ -179,7 +179,7 @@ function serverFn(name, input) {
         enabled: r.enabled, dailyLimit: r.dailyLimit, usedToday: r.usedToday, remainingToday: remaining,
         pausedReason: null, pausedAt: null, updatedAt: new Date().toISOString(), updatedBy: "owner-1",
         refusal: !r.enabled
-          ? "Photo Reading is switched off. An Owner can turn it on in Settings → Photo Reading."
+          ? "Photo Reading is switched off. An Owner can turn it on in Settings → Media."
           : remaining <= 0 ? `Today's limit of ${r.dailyLimit} photos has been reached. It resets at midnight UTC.` : null,
         isOwner: true,
       };
@@ -217,7 +217,7 @@ function serverFn(name, input) {
       if (m.kind !== "original") return { ok: false, mediaId, error: "Only original photographs can be read — an enhanced copy is not evidence." };
       if (state.readsByMedia.has(mediaId)) return { ok: true, mediaId, itemId: state.readsByMedia.get(mediaId), duplicate: true };
       const remaining = state.reading.dailyLimit - state.reading.usedToday;
-      if (!state.reading.enabled) return { ok: false, mediaId, error: "Photo Reading is switched off. An Owner can turn it on in Settings → Photo Reading." };
+      if (!state.reading.enabled) return { ok: false, mediaId, error: "Photo Reading is switched off. An Owner can turn it on in Settings → Media." };
       if (remaining <= 0) return { ok: false, mediaId, error: `Today's limit of ${state.reading.dailyLimit} photos has been reached. It resets at midnight UTC.` };
       state.reading.usedToday += 1;
       const b = state.batches.get(input?.batchId);

@@ -38,8 +38,8 @@ export function SafeAutofillPanel() {
       <div className="rounded-xl border border-[#EDEDF0] bg-white p-5 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="flex items-center gap-3 text-[14px] font-medium cursor-pointer">
-            <Switch aria-label="Safe Autofill enabled" checked={s.enabled} disabled={busy} onCheckedChange={(v) => update(v)} />
-            Safe Autofill Is {s.enabled ? "On" : "Off"}
+            <Switch aria-label="Autofill enabled" checked={s.enabled} disabled={busy} onCheckedChange={(v) => update(v)} />
+            Autofill Is {s.enabled ? "On" : "Off"}
           </label>
           <button
             type="button"
