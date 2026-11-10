@@ -113,7 +113,7 @@ const MUTATIONS = [
     '      .eq("key", PHOTO_READING_KEY).eq("value->>version", String(current.version)).select("key");\n    // Exactly one writer sees rows come back',
     '      .eq("key", PHOTO_READING_KEY).select("key");\n    // Exactly one writer sees rows come back', CAPTEST],
   ["reading is off until an Owner turns it on", RULES2,
-    '  if (!s.enabled) return "Photo Reading is switched off. An Owner can turn it on in Settings → Photo Reading.";',
+    '  if (!s.enabled) return "Photo Reading is switched off. An Owner can turn it on in Settings → Media.";',
     "", CAPTEST],
   ["the daily limit refuses the read that would exceed it", RULES2,
     "  if (remainingOn(s, day) <= 0) return `Today's limit of ${s.dailyLimit} photo${s.dailyLimit === 1 ? \"\" : \"s\"} has been reached. It resets at midnight UTC.`;",

@@ -79,22 +79,16 @@ export function TeamPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="text-lg font-semibold">Team</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Who can get into the back office, and what they can reach.
-          </p>
-        </div>
-        {canManage && (
+      {canManage && (
+        <div className="flex justify-end">
           <button
             onClick={() => setShowForm(true)}
             className="inline-flex items-center gap-2 rounded-lg bg-real-red text-white px-4 py-2 text-sm font-medium"
           >
             <UserPlus className="w-4 h-4" /> Invite Teammate
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* What each tier means, stated where the decision gets made rather than
           buried in documentation nobody opens. */}

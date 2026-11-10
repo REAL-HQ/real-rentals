@@ -76,7 +76,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
       const s = await enhStatusFn();
       setEnh(
         !s.enabled
-          ? { available: false, reason: "Photo Enhancement is Off. An Owner can turn it on in Settings → Photo Enhancement." }
+          ? { available: false, reason: "Photo Enhancement is Off. An Owner can turn it on in Settings → Media." }
           : s.usedToday >= s.dailyLimit
             ? { available: false, reason: `Daily limit reached (${s.dailyLimit} photos).` }
             : { available: true, reason: `Free, on this device · ${s.usedToday} of ${s.dailyLimit} used today.` },
@@ -485,7 +485,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                     {!readingStatus.enabled && (
                       <>
                         {" "}
-                        <a href="/admin?tab=settings&section=vehicle_photos" className="font-semibold underline">
+                        <a href="/admin?tab=settings&section=media" className="font-semibold underline">
                           Open Photo Reading Settings
                         </a>
                       </>

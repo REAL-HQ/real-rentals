@@ -29,11 +29,10 @@ const DESCRIPTIONS: Record<string, string> = {
   vehicle_defaults: "Set standard pricing for each vehicle type. These values pre-fill new vehicles and can always be changed before saving. Existing vehicles never change.",
   maintenance: "Company maintenance intervals by miles, time or both. A vehicle can override an interval from its Service tab.",
   safe_autofill: "Owner-only. Automatically fill blank, non-sensitive vehicle details from trusted documents. Off by default.",
-  vehicle_photos: "Owner-only. Listing photo enhancement, studio backgrounds, and reading details off a photograph. Enhancement is free and on-device; reading costs money and has a daily limit. All off by default.",
+  media: "Owner-only. Listing photo enhancement, studio backgrounds, and reading details off a photograph, plus who countersigns, agreement wording, versions and approval. Enhancement is free and on-device; reading costs money and has a daily limit. Changing the signer never alters documents already sent. Drafts never change what drivers receive.",
   rental_terms: "Minimum term, return notice, the terms text and rental activation rules.",
   deposits: "Default deposit, refund window, and optional reservation deposit.",
   applications: "Who qualifies to apply.",
-  agreements: "Owner-only. Who countersigns, agreement wording, versions and approval. Changing the signer never alters documents already sent. Drafts never change what drivers receive.",
   payments: "Late fees, grace period and default payment method.",
   partners: "Default revenue share and contract term for vehicle partners.",
   notifications: "Where applicant alerts go, and whether email delivery is working.",
@@ -57,7 +56,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
     () => new Set(groups.slice(1)),
   );
   if (!current) return <p className="text-[13px] text-[#55555E]">No settings are available for your role.</p>;
-  const wide = ["automations", "team", "website", "activity", "agreements", "vehicle_photos"].includes(current.id);
+  const wide = ["automations", "team", "website", "activity", "media"].includes(current.id);
   const toggleGroup = (g: string) =>
     setClosedGroups((prev) => {
       const next = new Set(prev);
@@ -119,22 +118,21 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           <VehicleDefaultsPanel />
         ) : current.id === "safe_autofill" ? (
           <SafeAutofillPanel />
-        ) : current.id === "vehicle_photos" ? (
-          <div className="space-y-5"><PhotoEnhancePanel /><PhotoStudioSettingsCard /><PhotoReadingPanel /></div>
-        ) : current.id === "maintenance" ? (
-          <MaintenanceDefaultsPanel />
-        ) : current.id === "website" ? (
-          <WebsitesPanel />
-        ) : current.id === "activity" ? (
-          <ActivityPanel />
-        ) : current.id === "agreements" ? (
+        ) : current.id === "media" ? (
           <div className="space-y-8">
+            <div className="space-y-5"><PhotoEnhancePanel /><PhotoStudioSettingsCard /><PhotoReadingPanel /></div>
             <div className="rounded-xl border border-[#EDEDF0] bg-white p-5">
               <SettingsPanel only={SECTION_KEY.esign} />
               {AGREEMENT_PENDING_SIGNATURE_ENABLED === true ? <PendingSignatures /> : null}
             </div>
             <AgreementTemplatesPanel />
           </div>
+        ) : current.id === "maintenance" ? (
+          <MaintenanceDefaultsPanel />
+        ) : current.id === "website" ? (
+          <WebsitesPanel />
+        ) : current.id === "activity" ? (
+          <ActivityPanel />
         ) : current.id === "team" ? (
           <TeamPanel />
         ) : (
