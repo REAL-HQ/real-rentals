@@ -28,7 +28,7 @@ import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { Row, TwoCol } from "./VehicleProfileFields";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
-import { BOOKING_PHASE_LABEL, bookingDates } from "@/lib/bookings-list";
+import { BOOKING_PHASE_LABEL, bookingDates, bookingVehicleName } from "@/lib/bookings-list";
 import { persistedNumber } from "@/lib/record-numbers";
 import { RecordNumber } from "@/components/admin/RecordNumber";
 import { BookingVehicleHistory } from "@/components/admin/BookingVehicleHistory";
@@ -165,8 +165,7 @@ export function BookingDetails({
               <p className="mt-1 break-words text-[13px] text-[#55555E] lg:break-normal">
                 {b ? (
                   <>
-                    {[b.unitNumber, b.vehicleLabel].filter(Boolean).join(" · ") ||
-                      "Vehicle not linked"}
+                    {bookingVehicleName(b)}
                     <span className="mx-1.5 text-[#C4C4CB]">|</span>
                     {bookingDates(b.startDate, b.endDate, b.phase)}
                   </>
@@ -387,7 +386,7 @@ function Overview({
               />
             </>
           ) : (
-            <p className="text-[13px] text-[#55555E]">No vehicle is linked to this rental.</p>
+            <p className="text-[13px] text-[#55555E]">Unknown</p>
           )}
         </SectionCard>
 

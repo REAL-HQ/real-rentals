@@ -188,7 +188,7 @@ export function vehicleOpsLabel(vehicle: {
   const title = [vehicle.year, vehicle.make, vehicle.model].filter((part) => part != null && String(part).trim() !== "").join(" ");
   const unit = vehicle.unit_number?.trim() ? `#${vehicle.unit_number.trim()}` : "";
   const plate = vehicle.license_plate?.trim() ?? "";
-  return [unit, title, plate].filter(Boolean).join(" · ") || "Vehicle";
+  return [unit, title, plate].filter(Boolean).join(" · ") || "Unknown";
 }
 
 const APP_STATUS: Record<string, string> = {
@@ -298,7 +298,7 @@ export function buildTodaysOps(input: TodaysOpsInput): TodaysOpsBoard {
         "Returns Today And Tomorrow",
         returns.rows.map((row) => ({
           id: row.id,
-          label: `${person(row.driver_name)} · ${row.vehicle_label?.trim() || "Vehicle"}`,
+          label: `${person(row.driver_name)} · ${row.vehicle_label?.trim() || "Unknown"}`,
           detail: row.end_date === today ? "Ends Today" : "Ends Tomorrow",
           search: { tab: "bookings", view: "past", id: row.id },
         })),
@@ -309,7 +309,7 @@ export function buildTodaysOps(input: TodaysOpsInput): TodaysOpsBoard {
         "Payments Due Today",
         due.rows.map((row) => ({
           id: row.id,
-          label: `${person(row.driver_name)} · ${row.vehicle_label?.trim() || "Vehicle"}`,
+          label: `${person(row.driver_name)} · ${row.vehicle_label?.trim() || "Unknown"}`,
           detail: "Due Today",
           search: { tab: "bookings", view: "past", id: row.id },
         })),
@@ -331,7 +331,7 @@ export function buildTodaysOps(input: TodaysOpsInput): TodaysOpsBoard {
         "Documents Expiring",
         documents.rows.map((row) => ({
           id: `${row.vehicle_id}:${row.what}:${row.expires_on}`,
-          label: row.label.trim() || "Vehicle",
+          label: row.label.trim() || "Unknown",
           detail: documentDetail(row),
           search: { tab: "vehicles", id: row.vehicle_id },
         })),
@@ -342,7 +342,7 @@ export function buildTodaysOps(input: TodaysOpsInput): TodaysOpsBoard {
         "Open Incidents",
         incidents.rows.map((row) => ({
           id: row.id,
-          label: row.vehicle_label?.trim() || "Vehicle",
+          label: row.vehicle_label?.trim() || "Unknown",
           detail: titled(row.incident_type, INCIDENT_TYPE),
           search: { tab: "issues", filter: "incident" },
         })),
@@ -364,7 +364,7 @@ export function buildTodaysOps(input: TodaysOpsInput): TodaysOpsBoard {
         "In Maintenance",
         maintenance.rows.map((row) => ({
           id: row.id,
-          label: row.label.trim() || "Vehicle",
+          label: row.label.trim() || "Unknown",
           detail: "In Maintenance",
           search: { tab: "vehicles", id: row.id },
         })),

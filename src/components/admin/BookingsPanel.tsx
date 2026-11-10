@@ -8,6 +8,7 @@ import {
   BOOKING_LIST_PAGE_SIZE,
   BOOKING_PHASE_LABEL,
   bookingDates,
+  bookingVehicleName,
   isBookingPhaseFilter,
   type BookingPhase,
   type BookingRow,
@@ -65,10 +66,10 @@ function DriverCell({ b }: { b: BookingRow }) {
 }
 
 function VehicleCell({ b }: { b: BookingRow }) {
-  if (!b.vehicleId) return <span className="text-muted-foreground">Not linked</span>;
+  if (!b.vehicleId) return <span className="text-muted-foreground">Unknown</span>;
   return (
     <span className="block min-w-0">
-      <span className="block truncate font-medium text-foreground">{b.unitNumber ?? "—"}</span>
+      <span className="block truncate font-medium text-foreground">{b.unitNumber ?? "Unknown"}</span>
       <span className="block truncate text-xs text-muted-foreground">{b.vehicleLabel ?? ""}</span>
     </span>
   );
@@ -329,7 +330,7 @@ export function BookingsPanel({
                 </StatusPill>
               </div>
               <div className="mt-2 text-[13px] text-muted-foreground">
-                {[b.unitNumber, b.vehicleLabel].filter(Boolean).join(" · ") || "Vehicle not linked"}
+                {bookingVehicleName(b)}
               </div>
               <div className="mt-1 text-[13px] text-muted-foreground">
                 {bookingDates(b.startDate, b.endDate, b.phase)}

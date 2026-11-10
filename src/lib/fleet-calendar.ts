@@ -97,7 +97,7 @@ export type FleetVehicle = {
 
 export type FleetRental = {
   id: string;
-  vehicle_id: string;
+  vehicle_id: string | null;
   status: string;
   start_date: string;
   end_date: string | null;
@@ -212,7 +212,7 @@ export function buildFleetCalendar(input: FleetCalendarInput): FleetCalendarBoar
       });
     }
     for (const rental of input.rentals) {
-      if (rental.vehicle_id !== vehicle.id) continue;
+      if (!rental.vehicle_id || rental.vehicle_id !== vehicle.id) continue;
       const span = activeRentalSpan(rental, weekStart, weekEnd);
       if (!span) continue;
       blocks.push({

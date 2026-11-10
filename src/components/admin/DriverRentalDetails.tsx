@@ -37,6 +37,7 @@ export function DriverRentalDetails({ rentalId, applicationId, lookupLoading, lo
   const miles = (value: number | null) => value == null ? "Not Recorded" : `${value.toLocaleString("en-US")} mi`;
   const usd = (value: number | null) => value == null ? "Not Set" : value.toLocaleString("en-US", { style: "currency", currency: "USD" });
   const items: { label: string; value: string }[] = facts ? [
+    { label: "Vehicle", value: facts.vehicle },
     { label: "Status", value: facts.status ? facts.status.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) : "Not Recorded" },
     { label: "Start Date", value: facts.startDate ? fmtDate(facts.startDate) : "Not Recorded" },
     { label: "End Date", value: facts.endDate ? fmtDate(facts.endDate) : facts.openEnded ? "Open-Ended" : "Not Recorded" },

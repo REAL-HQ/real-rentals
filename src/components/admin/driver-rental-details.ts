@@ -1,4 +1,5 @@
 import type { BookingDetail } from "@/lib/bookings.functions";
+import { bookingVehicleName } from "@/lib/bookings-list";
 
 /** Only the rental's saved terms and linked pickup/return readings, not application drafts. */
 export function driverRentalFacts(detail: BookingDetail, applicationId: string) {
@@ -7,6 +8,7 @@ export function driverRentalFacts(detail: BookingDetail, applicationId: string) 
     status: detail.booking.status,
     startDate: detail.booking.startDate,
     endDate: detail.booking.endDate,
+    vehicle: bookingVehicleName(detail.booking),
     active: detail.booking.phase === "active",
     openEnded: detail.booking.openEnded,
     mileageOut: detail.mileage.pickup,

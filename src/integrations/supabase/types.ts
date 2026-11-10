@@ -4563,7 +4563,7 @@ export type Database = {
           stripe_payment_method_id: string | null
           stripe_subscription_id: string | null
           updated_at: string
-          vehicle_id: string
+          vehicle_id: string | null
           weekly_rate: number
         }
         Insert: {
@@ -4594,7 +4594,7 @@ export type Database = {
           stripe_payment_method_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
-          vehicle_id: string
+          vehicle_id?: string | null
           weekly_rate?: number
         }
         Update: {
@@ -4625,7 +4625,7 @@ export type Database = {
           stripe_payment_method_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
-          vehicle_id?: string
+          vehicle_id?: string | null
           weekly_rate?: number
         }
         Relationships: [

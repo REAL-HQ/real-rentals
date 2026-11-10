@@ -158,7 +158,7 @@ export const getTodaysOps = createServerFn({ method: "POST" })
       end_date: row.end_date,
       next_payment_due: row.next_payment_due,
       driver_name: driverNames.get(row.driver_id) ?? null,
-      vehicle_label: vehicleLabels.get(row.vehicle_id) ?? null,
+      vehicle_label: row.vehicle_id ? vehicleLabels.get(row.vehicle_id) ?? null : "Unknown",
     }));
     const payments: OpsPayment[] = (overdueQ.data ?? []).map((row) => ({
       id: row.id,

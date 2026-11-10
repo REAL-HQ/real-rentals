@@ -189,7 +189,7 @@ export function BookingActions({
           kind={handoff}
           rentalId={d.booking.id}
           vehicleId={vehicleId}
-          vehicleLabel={d.vehicle?.label ?? d.vehicle?.unitNumber ?? "this vehicle"}
+          vehicleLabel={d.vehicle?.label ?? d.vehicle?.unitNumber ?? "Unknown"}
           onClose={() => {
             setHandoff(null);
             onRefresh();
