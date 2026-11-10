@@ -12,6 +12,7 @@ import { contractTodayIso, defaultRentalEndIso, fmtContractDate, fmtContractDate
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementDetails, type AgreementPrep } from "@/lib/agreement-prep";
+import { recordFillsFromDetails, type AppliedFill } from "@/lib/agreement-fills";
 import { STALE_PREVIEW_REFUSAL } from "@/lib/agreement-send-refusal";
 import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
 import { SWAP_ENABLED } from "@/lib/record-numbers";
@@ -632,7 +633,7 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     // The real start date, not one recovered from the printed string — this is
     // what guards "an additional driver's licence must still be valid on the
     // start date", and it failed open while the display format had moved on.
-    const r = applyPrep(prep, { startIso: null, depositClause: String(terms?.deposit_clause ?? "") });
+    const r = applyPrep(prep, { startIso: built.startIso, depositClause: String(terms?.deposit_clause ?? "") });
     Object.assign(built.data, r.merge);
     // The staff deposit choice replaces the record-based deposit checks.
     for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "deposit_amount") built.blockers.splice(i, 1);
@@ -746,7 +747,7 @@ async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepare
       pdfBase64 = btoa(bin);
     }
     return {
-      body: blockers.length ? null : prep.body,
+      body: prep.body,
       pdfBase64,
       fingerprint: blockers.length ? null : prep.fingerprint,
       template: tpl.meta,
@@ -826,6 +827,12 @@ export async function issueAgreement(
   if (opts.fingerprint !== undefined && prep.companyMissing.length && opts.companyAck !== true)
     throw new Error(`Company details are incomplete (${prep.companyMissing.join(", ")}). Confirm you want to send with the current fallback values.`);
 
+  // After the fingerprint matches, save only the blank or invalid driver and
+  // vehicle fields the reviewed details filled. A failure here sends nothing.
+  if (opts.prep?.details) {
+    await persistReviewedGaps(admin, applicationId, opts.prep.details, vehicleOverride ? prep.namedVehicleId : null, opts.createdBy ?? null);
+  }
+
   const token = randomToken();
   const tokenHash = await hashToken(token);
   const expires = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
@@ -892,6 +899,78 @@ export async function issueAgreement(
   });
 
   return { id: row.id as string, url, delivery };
+}
+
+const APPLICATION_FILL_COLUMNS = new Set([
+  "full_name", "email", "phone", "address", "city", "state", "zip", "dob",
+  "license_number", "license_state", "license_expiration", "weekly_rent",
+  "contract_start_date", "contract_end_date", "insurance_carrier", "insurance_policy_number",
+]);
+const VEHICLE_FILL_COLUMNS = new Set(["vin", "color", "license_plate"]);
+
+/** Writes reviewed gap-fills onto empty or invalid fields. Does not insert the agreement. */
+async function persistReviewedGaps(
+  admin: any,
+  applicationId: string,
+  details: AgreementDetails,
+  namedVehicleId: string | null,
+  actorId: string | null,
+) {
+  const { data: source } = await admin.from("applications").select("*").eq("id", applicationId).is("deleted_at", null).maybeSingle();
+  if (!source) throw new Error("Application not found");
+  const vehicleId = namedVehicleId || (source.vehicle_id as string | null) || null;
+  let vehicle: Record<string, unknown> | null = null;
+  if (vehicleId) {
+    const { data } = await admin.from("vehicles").select("*").eq("id", vehicleId).is("archived_at", null).maybeSingle();
+    vehicle = (data as Record<string, unknown> | null) ?? null;
+  }
+  const { data: openRental } = await admin
+    .from("rentals")
+    .select("id")
+    .eq("application_id", applicationId)
+    .is("end_date", null)
+    .limit(1);
+  const datesFromRental = Array.isArray(openRental) && openRental.length > 0;
+  const applied = recordFillsFromDetails(source as Record<string, unknown>, vehicle, details, {
+    datesFromRental,
+    startIso: (source.contract_start_date as string | null) ?? null,
+    endIso: (source.contract_end_date as string | null) ?? null,
+  });
+  for (const fill of applied) {
+    if (fill.table === "vehicles" && fill.column === "vin") {
+      const { data: dup } = await admin.from("vehicles").select("id").eq("vin", fill.value).neq("id", fill.id).is("archived_at", null).limit(1);
+      if (dup?.length) throw new Error("Another vehicle already has this VIN.");
+    }
+    if (fill.table === "vehicles" && fill.column === "license_plate") {
+      const { data: dup } = await admin.from("vehicles").select("id").eq("license_plate", fill.value).neq("id", fill.id).is("archived_at", null).limit(1);
+      if (dup?.length) throw new Error("Another vehicle already has this license plate.");
+    }
+  }
+  const appPatch: Record<string, string | number> = {};
+  const vehiclePatch: Record<string, string | number> = {};
+  for (const fill of applied) {
+    if (fill.table === "applications" && APPLICATION_FILL_COLUMNS.has(fill.column)) appPatch[fill.column] = fill.value;
+    if (fill.table === "vehicles" && VEHICLE_FILL_COLUMNS.has(fill.column)) vehiclePatch[fill.column] = fill.value;
+  }
+  if (Object.keys(appPatch).length) {
+    const { error } = await admin.from("applications").update(appPatch).eq("id", applicationId).is("deleted_at", null);
+    if (error) throw new Error(error.message);
+  }
+  if (vehicle && Object.keys(vehiclePatch).length) {
+    const { error } = await admin.from("vehicles").update(vehiclePatch).eq("id", vehicle.id).is("archived_at", null);
+    if (error) throw new Error(error.message);
+  }
+  if (applied.length) {
+    const { logAudit } = await import("@/lib/audit.server");
+    const actor = actorId ? await (await import("@/lib/roles.server")).getActor(actorId) : null;
+    await logAudit(actor, {
+      action: "agreement.fields_saved",
+      summary: "Blank or invalid driver and vehicle fields saved from the reviewed agreement",
+      entityType: "application",
+      entityId: applicationId,
+      metadata: { fields: applied.map((f: AppliedFill) => `${f.table}.${f.column}`) },
+    });
+  }
 }
 
 /**
@@ -1156,14 +1235,41 @@ async function agreementPortalAccess(admin: any, applicationId: string | null): 
   return !!data?.user_id;
 }
 
-async function sendSignedEmails(admin: any, id: string, signerName: string) {
+async function sendSignedEmails(admin: any, id: string, signerName: string): Promise<boolean> {
   const { data: ag } = await admin
     .from("agreements")
     .select("application_id,signer_email,merge_data")
     .eq("id", id)
     .maybeSingle();
-  if (!ag) return;
+  if (!ag) return false;
   const merge = (ag.merge_data ?? {}) as MergeData;
+  let portalAccess = await agreementPortalAccess(admin, ag.application_id as string | null);
+  try {
+    if (ag.application_id && ag.signer_email) {
+      const { provisionDriverAccount } = await import("@/lib/driver-account.server");
+      const account = await provisionDriverAccount(admin, {
+        applicationId: ag.application_id as string,
+        email: ag.signer_email as string,
+        fullName: merge.driver_name || signerName,
+      });
+      if (!account.conflict) {
+        portalAccess = true;
+        if (account.created) {
+          const { sendPortalInviteEmail } = await import("@/lib/email.server");
+          await sendPortalInviteEmail({ to: ag.signer_email as string, firstName: merge.driver_name ?? signerName, inviteUrl: account.inviteUrl });
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[agreement] portal provision failed", e);
+  }
+  let payment: { url: string; amount: number; tiedToRenter: boolean; label: string } | null = null;
+  try {
+    const { createInitialPaymentLink } = await import("@/lib/initial-payment.server");
+    payment = await createInitialPaymentLink(admin, id, null);
+  } catch (e) {
+    console.error("[agreement] initial payment link failed", e);
+  }
   try {
     const { sendAgreementSignedEmail, sendAgreementSignedOpsEmail } = await import("@/lib/email.server");
     if (ag.signer_email) {
@@ -1171,7 +1277,8 @@ async function sendSignedEmails(admin: any, id: string, signerName: string) {
         to: ag.signer_email as string,
         firstName: merge.driver_name ?? signerName,
         vehicle: merge.vehicle || null,
-        portalAccess: await agreementPortalAccess(admin, ag.application_id as string | null),
+        portalAccess,
+        payment,
       });
     }
     await sendAgreementSignedOpsEmail({
@@ -1182,6 +1289,7 @@ async function sendSignedEmails(admin: any, id: string, signerName: string) {
   } catch (e) {
     console.error("[agreement] signed emails failed", e);
   }
+  return portalAccess;
 }
 
 function claimError(result: string): never {
@@ -1224,10 +1332,11 @@ export const signAgreement = createServerFn({ method: "POST" })
       authMethod: "email_link",
       adoption: data.adoption ?? null,
     });
-    const portalAccess = await agreementPortalAccess(supabaseAdmin, ag.application_id as string | null);
-    if (result === "already_signed") return { ok: true, alreadySigned: true, portalAccess };
+    if (result === "already_signed") {
+      return { ok: true, alreadySigned: true, portalAccess: await agreementPortalAccess(supabaseAdmin, ag.application_id as string | null) };
+    }
     if (result !== "won") claimError(result);
-    await sendSignedEmails(supabaseAdmin, ag.id as string, data.signerName);
+    const portalAccess = await sendSignedEmails(supabaseAdmin, ag.id as string, data.signerName);
     return { ok: true, alreadySigned: false, portalAccess };
   });
 

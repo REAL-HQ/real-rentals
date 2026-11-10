@@ -7,11 +7,13 @@ import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { previewAgreement, sendAgreement } from "@/lib/agreements.functions";
 import { EMPTY_PREP, fillBlankAgreementDetails, type AgreementDetails, type AgreementPrep, type AdditionalDriver } from "@/lib/agreement-prep";
 import { defaultRentalEndIso } from "@/lib/agreement-dates";
+import { layoutToText } from "@/lib/agreement-layout";
 import { readAgreementLicense, readWrittenAgreement } from "@/lib/agreement-license.functions";
 import { LIBRARY, DRAFT_STATUS_LABEL, acknowledgmentsOf } from "@/lib/agreement-library";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
 type Res = {
+  body: string | null;
   pdfBase64: string | null;
   fingerprint: string | null;
   canSend: boolean;
@@ -55,7 +57,6 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const [res, setRes] = useState<Res | null>(null);
   const [reviewedKey, setReviewedKey] = useState<string>("");
   const [rendering, setRendering] = useState(false);
-  const [tab, setTab] = useState<"details" | "preview">("details");
   const [companyAck, setCompanyAck] = useState(false);
   const [busy, setBusy] = useState(false);
   const [templateKey, setTemplateKey] = useState<string>("");
@@ -239,6 +240,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
       </Section>
 
       <Section title="Rental Details">
+        <div data-testid="agreement-missing-fields">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[11px] text-muted-foreground">License autofill fills blanks only. Review every value against the original document.</p>
           <Button type="button" size="sm" variant="outline" className="h-7 shrink-0 px-2 text-[11px]" disabled={licenseReading || !values} onClick={() => void readLicense(true)}>
@@ -298,7 +300,8 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
             </dl>
           </div>
         ) : <p className="text-muted-foreground">Loading Details…</p>}
-        <p className="text-[11px] text-muted-foreground">Corrections apply only to this reviewed agreement and its delivery details; they do not overwrite the driver's or vehicle's records. Preparing an agreement never charges the card.</p>
+        <p className="text-[11px] text-muted-foreground">Blank or invalid driver and vehicle fields are saved to the records when you send. A correction of a value already on file stays on this agreement only. The vehicle description, payment method and fleet rate are not written back. Preparing an agreement never charges the card.</p>
+        </div>
       </Section>
 
       <Section title="Authorized Drivers" badge={byField("additional_drivers")}>
@@ -373,25 +376,21 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
       {staleRefusal && (
         <div className="flex shrink-0 flex-col gap-2 border-b border-warning/40 bg-warning/10 px-3 py-2 text-[12px] sm:flex-row sm:items-center" role="alert" data-testid="stale-preview-refusal">
           <p className="min-w-0 flex-1">{staleRefusal}</p>
-          <Button size="sm" variant="outline" disabled={rendering} onClick={() => { setTab("preview"); setRegen((n) => n + 1); }}>
+          <Button size="sm" variant="outline" disabled={rendering} onClick={() => setRegen((n) => n + 1)}>
             {rendering ? "Regenerating…" : "Regenerate Preview"}
           </Button>
         </div>
       )}
-      <div className="flex shrink-0 border-b md:hidden" role="tablist">
-        {(["details", "preview"] as const).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`flex-1 py-2 text-[13px] ${tab === t ? "border-b-2 border-primary font-medium" : "text-muted-foreground"}`}>{t === "details" ? "Details" : "Preview"}</button>
-        ))}
-      </div>
-      <div className="flex min-h-0 flex-1">
-        <aside className={`${tab === "details" ? "block" : "hidden"} w-full overflow-y-auto bg-muted/20 md:block md:w-[35%] md:border-r`}>{details}</aside>
-        <section className={`${tab === "preview" ? "flex" : "hidden"} min-w-0 flex-1 flex-col md:flex`}>
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row" data-testid="prepare-layout">
+        <aside className="w-full overflow-y-auto bg-muted/20 md:w-[35%] md:border-r">{details}</aside>
+        <section className="flex min-w-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center gap-2 border-b bg-card px-3 py-2 text-[12px]">
             <span className="rounded bg-destructive/10 px-2 py-0.5 font-semibold text-destructive">PREVIEW — NOT SENT</span>
             {rendering && <span className="text-muted-foreground">Updating…</span>}
           </div>
           <div className="min-h-0 flex-1 overflow-auto bg-muted/40" data-testid="prep-preview">
             {res?.pdfBase64 ? <AgreementPdfViewer key={res.fingerprint ?? ""} base64={res.pdfBase64} /> :
+              res?.body ? <pre className="whitespace-pre-wrap p-6 font-serif text-[13px] leading-relaxed text-foreground">{layoutToText(res.body)}</pre> :
               <p className="p-6 text-[12px] text-muted-foreground">{res ? "The document appears once every item on the left is resolved — blanks never reach a signature." : "Building the agreement…"}</p>}
           </div>
         </section>

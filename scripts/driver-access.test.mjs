@@ -115,6 +115,21 @@ ok(
   /portalAccount/.test(read("src/components/admin/DriversPanel.tsx")),
   "the admin UI tells staff what happened to the login",
 );
+const agreements = read("src/lib/agreements.functions.ts");
+const signAt = agreements.indexOf("export const signAgreement");
+const signBody = agreements.slice(signAt, agreements.indexOf("export const", signAt + 10));
+ok(
+  signBody.indexOf('result === "already_signed"') < signBody.indexOf("sendSignedEmails"),
+  "a repeat signature returns before another login or payment email",
+);
+ok(
+  /provisionDriverAccount/.test(agreements) && /account\.created[\s\S]{0,240}sendPortalInviteEmail/.test(agreements),
+  "signing creates the portal account and sends the set-password email only when the account is new",
+);
+ok(
+  /redirectTo: `\$\{site\}\/set-password`/.test(account),
+  "the recovery link opens /set-password",
+);
 
 /* ---------------------------------- identity linking is never silent ----- */
 console.log("\nan application is never handed to a different identity");

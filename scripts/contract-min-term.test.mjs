@@ -51,6 +51,7 @@ export const createServerFn = () => {
   const api = { middleware: () => api, inputValidator: (v) => (api._v = v, api), handler: (fn) => Object.assign(fn, { _validate: api._v }) };
   return api;
 };
+export const createServerOnlyFn = (fn) => fn;
 `);
 writeFileSync(`${OUT}/stub-start-server.js`, `
 export const getRequest = () => ({ headers: new Map() });
