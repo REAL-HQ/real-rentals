@@ -67,6 +67,8 @@ import { DriverDocumentUploadDialog } from "./DriverDocumentUploadDialog";
 import { useDriverDocumentUpload } from "./use-driver-document-upload";
 import { ReserveCarDialog } from "./ReserveCarDialog";
 import { NextStepCard } from "./NextStepCard";
+import { ReturnFlowDialog } from "./ReturnFlowDialog";
+import { RETURN_FLOW_ENABLED } from "@/lib/return-flow";
 import { DriverRentalDetails } from "./DriverRentalDetails";
 import { nextStep, type FixTarget } from "@/lib/next-step";
 import { AdminTableScroll } from "./AdminTableScroll";
@@ -1842,6 +1844,7 @@ function DriverDetail({
   // ---- Primary action -------------------------------------------------
   const approve = useServerFn(approveApplication);
   const closeRental = useServerFn(endRental);
+  const [returnFlowOpen, setReturnFlowOpen] = useState(false);
   const [activateOpen, setActivateOpen] = useState(false);
   const [reserveOpen, setReserveOpen] = useState(false);
   const [hasReservation, setHasReservation] = useState(false);
@@ -2250,6 +2253,8 @@ function DriverDetail({
 
   const btnSecondary =
     "inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#55555E] hover:border-[#C4C4CB] hover:text-[#111114] transition-colors";
+  const btnPrimary =
+    "inline-flex items-center gap-1.5 rounded-md border border-[#D03020] bg-[#D03020] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-[#B52A1C] transition-colors";
 
   // Real, timestamped events only — nothing inferred, nothing scheduled.
   const activity = useMemo(() => {
@@ -2398,9 +2403,24 @@ function DriverDetail({
             <Wallet className="w-3.5 h-3.5" /> Deposit Disposition
           </button>
           {rentalActive ? (
-            <button className={btnSecondary} onClick={doEndRental}>
-              <Car className="w-3.5 h-3.5" /> End Rental
-            </button>
+            <>
+              {RETURN_FLOW_ENABLED ? (
+                <button className={btnPrimary} onClick={() => setReturnFlowOpen(true)} data-testid="driver-return-open">
+                  <Car className="w-3.5 h-3.5" /> Return
+                </button>
+              ) : (
+                <button className={btnSecondary} onClick={doEndRental}>
+                  <Car className="w-3.5 h-3.5" /> End Rental
+                </button>
+              )}
+              {returnFlowOpen && RETURN_FLOW_ENABLED && activeRentalId ? (
+                <ReturnFlowDialog
+                  rentalId={activeRentalId}
+                  onClose={() => setReturnFlowOpen(false)}
+                  onCompleted={() => setReturnFlowOpen(false)}
+                />
+              ) : null}
+            </>
           ) : null}
         </>
       ) : null}
@@ -2641,6 +2661,7 @@ function DriverDetail({
                   />
                 ) : null}
                 <NextStepCard
+                  onReturn={RETURN_FLOW_ENABLED ? () => setReturnFlowOpen(true) : undefined}
                   model={next}
                   readiness={rentalTabReadiness}
                   renderEvidence={renderChecklistEvidence}
@@ -2810,6 +2831,7 @@ function DriverDetail({
 
               <TabsContent value="rental" className="mt-0">
                 <div className="mb-4"><NextStepCard
+                  onReturn={RETURN_FLOW_ENABLED ? () => setReturnFlowOpen(true) : undefined}
                   model={next}
                   readiness={rentalTabReadiness}
                   renderEvidence={renderChecklistEvidence}

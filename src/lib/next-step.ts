@@ -16,7 +16,8 @@ export type FixTarget =
   | { kind: "record_call" }
   | { kind: "approve" }
   | { kind: "activate" }
-  | { kind: "reserve" };
+  | { kind: "reserve" }
+  | { kind: "return" };
 
 export type Blocker = { key: ActivationRequirementKey | "local"; label: string; detail?: string; fix: string; target: FixTarget };
 
@@ -66,7 +67,7 @@ export function nextStep(input: {
   const { step, entry, readiness, loading, failed } = input;
   const canReserve = input.canReserve === true && input.hasReservation !== true;
   if (entry === "rental_active") {
-    return { label: "View Rental", target: { kind: "rental" }, busy: false, blockers: [], activation: "rental_active", note: "Rental is running. Active comes from this rental." };
+    return { label: "Return", target: { kind: "return" }, busy: false, blockers: [], activation: "rental_active", note: "Rental is active. Use Return to record the car back, balances, and stop billing." };
   }
   // Coordinator: the server refuses them readiness and activation, so the
   // profile's own checklist decides the step and activation is explained.

@@ -24,6 +24,8 @@ import {
 import { listActiveRentals } from "@/lib/active-rentals.functions";
 import { getRentalLateFees, type RentalLateFeeStatus } from "@/lib/rent-reminders.functions";
 import { RecordPaymentDialog, WaiveLateFeeDialog, lateFeeLabel } from "./RentPaymentActions";
+import { ReturnFlowDialog } from "./ReturnFlowDialog";
+import { RETURN_FLOW_ENABLED } from "@/lib/return-flow";
 
 const FILTERS = [
   { id: "all", label: "All" },
@@ -61,7 +63,7 @@ export function ActiveRentalsPanel() {
   const [fees, setFees] = useState<Map<string, RentalLateFeeStatus>>(new Map());
   const [feesLoaded, setFeesLoaded] = useState(false);
   const [reload, setReload] = useState(0);
-  const [dialog, setDialog] = useState<{ kind: "pay" | "waive"; row: ActiveRentalRow } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "pay" | "waive" | "return"; row: ActiveRentalRow } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -268,6 +270,10 @@ export function ActiveRentalsPanel() {
                               <DropdownMenuItem onSelect={() => setDialog({ kind: "waive", row })}>Waive Late Fee</DropdownMenuItem>
                             ) : null}
                             {fees.get(row.id)?.mode === "manual" || fees.get(row.id)?.owing ? <DropdownMenuSeparator /> : null}
+                            {RETURN_FLOW_ENABLED ? (
+                              <DropdownMenuItem onSelect={() => setDialog({ kind: "return", row })}>Return</DropdownMenuItem>
+                            ) : null}
+                            {RETURN_FLOW_ENABLED ? <DropdownMenuSeparator /> : null}
                             <DropdownMenuItem asChild>
                               <Link to="/admin" search={{ tab: "issues", filter: "driver" }}>Issues: {countLabel(row.openIssues)}</Link>
                             </DropdownMenuItem>
@@ -302,6 +308,17 @@ export function ActiveRentalsPanel() {
           driverName={dialog.row.driverName}
           weeklyRate={typeof dialog.row.weeklyRate === "number" ? dialog.row.weeklyRate : null}
           onSaved={() => setReload((n) => n + 1)}
+        />
+      ) : null}
+      {dialog?.kind === "return" && RETURN_FLOW_ENABLED ? (
+        <ReturnFlowDialog
+          rentalId={dialog.row.id}
+          driverName={dialog.row.driverName}
+          onClose={() => setDialog(null)}
+          onCompleted={() => {
+            setDialog(null);
+            setReload((n) => n + 1);
+          }}
         />
       ) : null}
       {dialog?.kind === "waive" ? (

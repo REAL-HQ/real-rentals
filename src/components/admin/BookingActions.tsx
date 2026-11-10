@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { endRental } from "@/lib/rentals.functions";
+import { ReturnFlowDialog } from "@/components/admin/ReturnFlowDialog";
+import { RETURN_FLOW_ENABLED } from "@/lib/return-flow";
 import { RETURN_CHECKLIST_ENABLED, emptyReturnChecklist, type ReturnChecklistDraft } from "@/lib/return-checklist";
 import { ReturnCloseoutFields } from "@/components/admin/ReturnCloseoutFields";
 import { startInspection } from "@/lib/inspections.functions";
@@ -80,7 +82,7 @@ export function BookingActions({
         {d.canManage && active && (
           <ActionButton
             icon={<LogOut className="w-3.5 h-3.5" strokeWidth={1.75} />}
-            label="End Rental"
+            label={RETURN_FLOW_ENABLED ? "Return" : "End Rental"}
             testId="action-end-rental"
             onClick={() => setEnding(true)}
             primary
@@ -153,19 +155,28 @@ export function BookingActions({
         />
       </div>
 
-      {ending && (
+      {ending && RETURN_FLOW_ENABLED ? (
+        <ReturnFlowDialog
+          rentalId={d.booking.id}
+          driverName={d.driver.name ?? undefined}
+          onClose={() => setEnding(false)}
+          onCompleted={() => {
+            setEnding(false);
+            onRefresh();
+            if (d.canManage) setDepositOpen(true);
+          }}
+        />
+      ) : ending ? (
         <EndRentalDialog
           d={d}
           onClose={() => setEnding(false)}
           onEnded={() => {
             setEnding(false);
             onRefresh();
-            // The deposit is the next thing anybody does, and forgetting it is
-            // how a renter's money sits unsettled for a month.
             if (d.canManage) setDepositOpen(true);
           }}
         />
-      )}
+      ) : null}
       {depositOpen && (
         <DepositDialog
           rentalId={d.booking.id}

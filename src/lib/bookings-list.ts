@@ -1,3 +1,4 @@
+export { pastRentalBadge } from "@/lib/return-flow";
 // Browser-safe shapes and helpers for Bookings (List + Details).
 //
 // A booking, in this phase, IS a rental. There is no bookings table and no
