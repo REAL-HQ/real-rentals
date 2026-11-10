@@ -111,7 +111,6 @@ export const TABS: readonly TabDef[] = [
   { id: "issues", label: "Issues", icon: ShieldAlert, minTier: "manager", group: "FLEET", description: "Accidents, Claims, Breakdowns And Driver Reports" },
   { id: "expenses", label: "Expenses", icon: Wallet, minTier: "manager", group: "BUSINESS", description: "Every Cost Against Every Car, And What Each One Earns" },
   { id: "vendors", label: "Vendors", icon: Truck, minTier: "coordinator", description: "Every Vendor We Work With — Repair Shops, Towing, GPS, Insurance" },
-  { id: "shops", label: "Repair Shops", icon: Truck, minTier: "manager", description: "Preferred Maintenance Providers By Market" },
   { id: "partners", label: "Partners", icon: Handshake, minTier: "manager", group: "BUSINESS", description: "Vehicle Owners, Lenders And Vendors" },
   // Settings is opened from the profile dropdown, not the rail — the tab stays reachable (deep links / LEGACY_TABS).
 ];
@@ -125,6 +124,7 @@ export const LEGACY_TABS: Record<string, { tab: string; section?: string; filter
   websites: { tab: "settings", section: "website" },
   activity: { tab: "settings", section: "activity" },
   waitlist: { tab: "drivers", filter: "waitlist" },
+  shops: { tab: "vendors", filter: "repair_shop" },
   incidents: { tab: "issues" },
   driver_issues: { tab: "issues", filter: "driver" },
   // Active Rentals folded into Bookings; keep old links working.
@@ -618,7 +618,7 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
 export const WORKSPACE_TABS: Record<string, readonly { id: string; label: string }[]> = {
   payments: [{ id: "payments", label: "Payments" }, { id: "charges", label: "Charges" }, { id: "stripe_match", label: "Matching" }, { id: "collections_watch", label: "Watch" }, { id: "deposits_ledger", label: "Deposits" }, { id: "weekly_cash_flow", label: "Cashflow" }],
   maintenance: [{ id: "maintenance", label: "Maintenance" }, { id: "inspections", label: "Inspections" }],
-  partners: [{ id: "partners", label: "Partners" }, { id: "vendors", label: "Vendors" }, { id: "shops", label: "Repair Shops" }],
+  partners: [{ id: "partners", label: "Partners" }, { id: "vendors", label: "Vendors" }],
 };
 
 /** Which rail entry is highlighted for a tab (Charges → Payments, Inspections → Service, Vendors → Partners). */

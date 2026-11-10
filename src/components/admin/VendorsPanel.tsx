@@ -28,16 +28,17 @@ type Vendor = {
 };
 
 export const VENDOR_TYPES = [
-  { value: "maintenance", label: "Maintenance / Mechanic" },
-  { value: "body_shop", label: "Body Shop" },
+  { value: "maintenance", label: "Maintenance" },
+  { value: "body_shop", label: "Body" },
+  { value: "repair_shop", label: "Repair" },
   { value: "tires", label: "Tires" },
-  { value: "towing", label: "Towing / Recovery" },
-  { value: "detailing", label: "Detailing / Cleaning" },
-  { value: "gps", label: "GPS / Telematics" },
+  { value: "towing", label: "Towing" },
+  { value: "detailing", label: "Detail" },
+  { value: "gps", label: "GPS" },
   { value: "insurance", label: "Insurance" },
-  { value: "dmv", label: "DMV / Registration" },
-  { value: "parts", label: "Parts Supplier" },
-  { value: "fuel", label: "Fuel / Tolls" },
+  { value: "dmv", label: "DMV" },
+  { value: "parts", label: "Parts" },
+  { value: "fuel", label: "Fuel" },
   { value: "other", label: "Other" },
 ];
 
@@ -63,12 +64,15 @@ const EMPTY: Omit<Vendor, "id"> = {
   notes: null,
 };
 
-export function VendorsPanel() {
+export function VendorsPanel(props: { initialTypeFilter?: string } = {}) {
+  const initialTypeFilter = props.initialTypeFilter ?? "all";
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [markets, setMarkets] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Vendor | "new" | null>(null);
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState(() =>
+    VENDOR_TYPES.some((x) => x.value === initialTypeFilter) ? initialTypeFilter : "all",
+  );
   const [search, setSearch] = useState("");
 
   async function load() {
@@ -155,7 +159,7 @@ export function VendorsPanel() {
           title={vendors.length === 0 ? "No Vendors Yet" : "No Matching Vendors"}
           hint={
             vendors.length === 0
-              ? "Add the shops, tow companies, GPS installers and insurers you work with so the team has one list to call from."
+              ? "Add repair shops, tow companies, GPS installers and insurers so the team has one list to call from."
               : "Try a different search or filter."
           }
         />

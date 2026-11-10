@@ -21,6 +21,8 @@ ok(visibleSettingsSections("coordinator").length === 0, "Coordinator: no Setting
 ok(mgr.includes("payments") && mgr.includes("expenses"), "Manager: money screens");
 for (const t of ["payments", "charges", "expenses", "settings", "activity", "partners", "shops"])
   ok(!coord.includes(t), `Coordinator: no ${t}`);
+ok(!TABS.some((t) => t.id === "shops"), "Repair Shops removed from tabs");
+ok(LEGACY_TABS.shops?.tab === "vendors" && LEGACY_TABS.shops?.filter === "repair_shop", "Old Repair Shops bookmark → Vendors → Repair");
 ok(["overview", "drivers", "vehicles", "inspections", "vendors"].every((t) => coord.includes(t)), "Coordinator: operational screens");
 ok(visibleTabs(null).length === 0, "No tier: nothing");
 
@@ -32,7 +34,7 @@ ok(LEGACY_TABS.automations.section === "automations" && LEGACY_TABS.team.section
 ok(JSON.stringify(ids(visibleCreateActions("coordinator"))) === '["vehicle","fleet_files"]', "Coordinator Create: Add Vehicle, Upload Fleet Files");
 ok(ids(visibleCreateActions("manager")).length === 5, "Manager Create: all five (incl. Service)");
 ok(visibleTabs("coordinator").some((t) => t.id === "fleet_inbox" && t.group === "FLEET"), "Fleet Inbox under FLEET for Coordinator+");
-ok(navOwner("shops") === "partners" && navOwner("vendors") === "partners" && navOwner("charges") === "payments" && navOwner("inspections") === "maintenance", "Child tabs highlight their workspace");
+ok(navOwner("vendors") === "partners" && navOwner("charges") === "payments" && navOwner("inspections") === "maintenance", "Child tabs highlight their workspace");
 const rail = (t: any) => railEntries(t).map((e) => e.label).join(",");
 ok(rail("owner") === "Overview,Drivers,Bookings,Payments,Vehicles,Fleet Inbox,Service,Issues,Expenses,Partners,Monthly Owner P&L", "Owner rail matches target: " + rail("owner"));
 ok(rail("coordinator") === "Overview,Drivers,Bookings,Vehicles,Fleet Inbox,Service,Partners", "Coordinator rail: " + rail("coordinator"));
