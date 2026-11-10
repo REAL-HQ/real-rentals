@@ -372,8 +372,8 @@ export const activateRental = createServerFn({ method: "POST" })
       return { ok: false, blockers: [{ code: "no_email", message: "No email on file." }] };
 
     // 1. Auth account, driver role, application link. Normally already done
-    //    at approval — this is the repair path for an application approved
-    //    before that existed, or one whose provisioning failed at the time.
+    //    at Reserved — this is the repair path for an older reservation or
+    //    one whose provisioning failed at the time.
     const { provisionDriverAccount } = await import("@/lib/driver-account.server");
     const {
       userId,
@@ -562,7 +562,7 @@ export const activateRental = createServerFn({ method: "POST" })
 
     // 7. Welcome the driver. A brand-new account gets the set-password link
     //    minted during provisioning; an existing one — which is now the normal
-    //    case, because approval already made the account — just gets the
+    //    case, because Reserved already made the account — just gets the
     //    portal URL, since they already have a password.
     const inviteUrl = freshInviteUrl;
 

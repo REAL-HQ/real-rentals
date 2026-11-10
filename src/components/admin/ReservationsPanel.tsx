@@ -13,6 +13,7 @@ import {
   type ReservationDepositSettings,
 } from "@/lib/reservation-deposit-settings";
 import { MANUAL_METHODS, easternParts, money } from "@/lib/rent-reminders";
+import { fmtDate, formatReservationTime } from "@/lib/date-format";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -184,7 +185,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
         </div>
         {canManage ? (
           <button type="button" className={primary} onClick={() => setReserveOpen(true)}>
-            Reserve Car
+            Reserved
           </button>
         ) : null}
       </div>
@@ -207,6 +208,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                 <th className="px-3 py-2 font-medium">Driver</th>
                 <th className="px-3 py-2 font-medium">Vehicle</th>
                 <th className="px-3 py-2 font-medium">Pickup</th>
+                <th className="px-3 py-2 font-medium">Location</th>
                 <th className="px-3 py-2 font-medium">Deposit</th>
                 <th className="px-3 py-2 font-medium">Note</th>
                 {canManage ? <th className="px-3 py-2 font-medium" /> : null}
@@ -221,7 +223,8 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                     {row.unitNumber && row.vehicleLabel ? " · " : null}
                     {row.vehicleLabel ?? "—"}
                   </td>
-                  <td className="px-3 py-2.5 text-[#55555E]">{row.pickupDate}</td>
+                  <td className="px-3 py-2.5 text-[#55555E]">{fmtDate(row.pickupDate)}{row.pickupTime ? ` · ${formatReservationTime(row.pickupTime)}` : ""}</td>
+                  <td className="px-3 py-2.5 text-[#55555E] max-w-[18rem]">{row.pickupLocation ?? "—"}</td>
                   <td className="px-3 py-2.5">
                     <span
                       data-deposit-status={row.depositStatus}

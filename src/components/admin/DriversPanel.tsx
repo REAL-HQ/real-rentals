@@ -1083,6 +1083,7 @@ setDocCounts(requiredDocCounts(rows));
         vehicles={vehicles}
         onUpdate={(p) => update(open.id, p)}
         onSaved={(p) => applySaved(open.id, p)}
+        onReserved={() => setFunnel((current) => current ? { ...current, rows: current.rows.filter((row) => row.id !== open.id) } : current)}
         hasActiveRental={openRentals.has(open.id)}
         onCloseApplication={async (reason, notes) => update(open.id, { status: "closed", closure_reason: reason, closure_notes: notes })}
         initialTab={pendingProfileTab}
@@ -1193,7 +1194,7 @@ setDocCounts(requiredDocCounts(rows));
             onClick={() => setFilter("approved-not-renting")}
             className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "approved-not-renting" ? "bg-black text-white" : "bg-white border border-border"}`}
           >
-            Approved, Not Yet Renting (
+            Approved, Awaiting Reservation (
             {funnelFailed || !funnel ? (funnelLoading ? "…" : "—") : funnel.rows.length})
           </button>
         )}
@@ -1372,7 +1373,7 @@ setDocCounts(requiredDocCounts(rows));
                               .then((res) => {
                                 if (!res.ok) throw new Error(res.error ?? "Could not approve");
                                 applySaved(a.id, { status: "approved" });
-                                toast.success("Approved");
+                                toast.success("Approved — Login Details Send At Reserved.");
                               })
                               .catch((error) => {
                                 toast.error(error instanceof Error ? error.message : "Could not approve");
@@ -1692,6 +1693,7 @@ function DriverDetail({
   vehicles,
   onUpdate,
   onSaved,
+  onReserved,
   onDelete,
   onScreeningChange,
   onSharedReadinessRefresh,
@@ -1709,6 +1711,7 @@ function DriverDetail({
   vehicles: Vehicle[];
   onUpdate: (patch: Partial<Application>) => void;
   onSaved: (patch: Partial<Application>) => void;
+  onReserved?: () => void;
   onDelete: () => void;
   onScreeningChange?: (s: DriverScreeningRow) => void;
   /** Re-reads the shared checklist after a vault or screening edit. No-ops while the flag is off. */
@@ -1875,7 +1878,7 @@ function DriverDetail({
     void loadPickupPayment({ data: { driverIds: [driver.id] } }).then((rows) => setPickupPayment(rows[driver.id] ?? NO_PAY_CELLS)).catch(() => setPickupPayment(null));
   }, [driver.id, loadPickupPayment, readinessNonce]);
   useEffect(() => {
-    if (!isManager || rentalActive || !approved) {
+    if (rentalActive || !approved) {
       setHasReservation(false);
       setReservationDepositStatus(null);
       return;
@@ -2029,7 +2032,7 @@ function DriverDetail({
     documents: isManager ? addressed(licenseItems) : !missingRequiredCategories(vaultDocs).some((c) => c === "license_front" || c === "license_back"),
     profile: isManager ? addressed(profileItems) : !missingRequiredCategories(vaultDocs).includes("gig_profile"),
     insuranceOnFile: !vaultLoading && !missingRequiredCategories(vaultDocs).includes("insurance"),
-    approved, rentalActive: rentalActiveFlag,
+    approved, reserved: hasReservation, rentalActive: rentalActiveFlag,
     pickup: isManager && pickupItems.some((i) => i.status === "upload_due"),
     // Saved Yellow/Red evidence stays visible; only a real passed inspection or signed agreement is Green.
     inspection: isManager ? actualInspection || addressed(inspectionItems) : actualInspection,
@@ -2162,25 +2165,10 @@ function DriverDetail({
     try {
       const res = await approve({ data: { id: driver.id } });
       if (!res.ok) throw new Error(res.error ?? "Could not approve");
-      // Say what happened to the portal login too. Approval now creates the
-      // driver's account, and whether they were emailed a set-password link is
-      // the first thing anybody asks when the applicant says they can't get in.
-      const portal =
-        res.portalAccount === "created"
-          ? " Portal invite emailed."
-          : res.portalAccount === "existing"
-            ? " They already have a portal login."
-            : res.portalAccount === "conflict"
-              ? " Portal login NOT linked: this application belongs to a different account. Check the email on file."
-              : res.portalAccount === "failed"
-                ? " Portal login could not be created — it will retry on activation."
-                : "";
       if (res.agreementSent) {
-        toast.success(`Approved — rental agreement sent for signature.${portal}`);
+        toast.success("Approved — Agreement Sent. Login Details Send At Reserved.");
       } else {
-        toast.success(
-          `Approved. Agreement not sent: ${res.agreementSkippedReason ?? "unknown"}.${portal}`,
-        );
+        toast.success(`Approved. Agreement Not Sent: ${res.agreementSkippedReason ?? "unknown"}. Login Details Send At Reserved.`);
       }
       onSaved({ status: "approved" });
     } catch (e) {
@@ -2245,6 +2233,7 @@ function DriverDetail({
     profile: () => openSection("documents", "profile-documents"),
     insurance: () => openSection("screening", "profile-insurance"),
     approved: () => setTab("application"),
+    reserved: () => { if (isManager && !hasReservation) setReserveOpen(true); },
     inspection: () => openSection("rental", "profile-vehicle"),
     agreement: () => openSection("documents", "profile-agreements"),
     pickup: () => setTab("rental"),
@@ -3016,6 +3005,7 @@ function DriverDetail({
           onSaved={() => {
             setHasReservation(true);
             setReadinessNonce((n) => n + 1);
+            onReserved?.();
           }}
         />
       ) : null}

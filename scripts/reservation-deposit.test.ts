@@ -11,14 +11,17 @@ import {
 import {
   isReservationStatus,
   normalizeReservationNote,
+  readReservationDetails,
   reservationBlocksStart,
   reservationPickupDate,
+  writeReservationDetails,
   RESERVATION_STATUS,
 } from "../src/lib/reservations.ts";
 import { parseBookingsView } from "../src/lib/bookings-workspace.ts";
 import { LEGACY_TABS, visibleTabs, railEntries } from "../src/components/admin/nav-config.ts";
 import { AUTOMATIONS } from "../src/lib/automation-catalog.ts";
 import { nextStep } from "../src/lib/next-step.ts";
+import { formatReservationTime } from "../src/lib/date-format.ts";
 
 describe("reservation deposit settings", () => {
   it("defaults Off with amount 0 and does not block Start Rental", () => {
@@ -102,7 +105,25 @@ describe("bookings workspace + nav", () => {
   });
 });
 
-describe("Booking Login Email + Reserve Car next step", () => {
+describe("Reserved pickup appointment details", () => {
+  it("round-trips confirmed time, location and note through the existing reservation field", () => {
+    const stored = writeReservationDetails({ pickupTime: "14:05", pickupLocation: "3500 E. Hillsborough Ave., Tampa, FL 33610", note: "Confirmed With Driver" });
+    assert.deepEqual(readReservationDetails(stored), {
+      pickupTime: "14:05",
+      pickupLocation: "3500 E. Hillsborough Ave., Tampa, FL 33610",
+      note: "Confirmed With Driver",
+    });
+    assert.equal(formatReservationTime("14:05"), "2:05 PM");
+  });
+
+  it("preserves legacy plain notes and rejects incomplete new appointments", () => {
+    assert.deepEqual(readReservationDetails("Historical Note"), { pickupTime: null, pickupLocation: null, note: "Historical Note" });
+    assert.throws(() => writeReservationDetails({ pickupTime: "25:00", pickupLocation: "Tampa" }), /Pick A Real Pickup Time/);
+    assert.throws(() => writeReservationDetails({ pickupTime: "09:00", pickupLocation: "" }), /Enter A Pickup Location/);
+  });
+});
+
+describe("Booking Login Email + Reserved next step", () => {
   it("catalogues Booking Login Email default On", () => {
     const row = AUTOMATIONS.find((a) => a.key === "booking_login_email");
     assert.ok(row);
@@ -111,7 +132,7 @@ describe("Booking Login Email + Reserve Car next step", () => {
     assert.deepEqual(row?.emailWorkflows, []); // portal_invite stays ungated for Approve
   });
 
-  it("offers Reserve Car after approval when ready and no reservation yet", () => {
+  it("offers Reserved after approval when ready and no reservation yet", () => {
     const readiness = {
       ok: true as const,
       requirements: [],
@@ -130,7 +151,7 @@ describe("Booking Login Email + Reserve Car next step", () => {
       hasReservation: false,
     });
     assert.equal(m.target.kind, "reserve");
-    assert.equal(m.label, "Reserve Car");
+    assert.equal(m.label, "Reserved");
     const kept = nextStep({
       step: "activate",
       entry: "enabled",

@@ -59,7 +59,7 @@ export function nextStep(input: {
   readiness: ActivationReadiness | null;
   loading: boolean;
   failed: boolean;
-  /** Approved (or active) with no open rental — offer Reserve Car. */
+  /** Approved (or active) with no open rental — offer Reserved. */
   canReserve?: boolean;
   /** Soft hold already on file. */
   hasReservation?: boolean;
@@ -98,7 +98,7 @@ export function nextStep(input: {
     return { label: first.fix, target: first.target, busy: false, blockers, activation: "blocked", note: `${unmet.length || 1} item${(unmet.length || 1) === 1 ? "" : "s"} before this renter can start a rental.` };
   }
   if (canReserve) {
-    return { label: "Reserve Car", target: { kind: "reserve" }, busy: false, blockers: [], activation: "ready", note: "Approved — reserve a car for pickup, or start the rental when everything is ready. Activate Rental still re-checks every requirement." };
+    return { label: "Reserved", target: { kind: "reserve" }, busy: false, blockers: [], activation: "ready", note: "Approved — confirm the pickup appointment and reserve a car. Account login details are sent when Reserved is saved." };
   }
   return { label: "Activate Rental", target: { kind: "activate" }, busy: false, blockers: [], activation: "ready", note: "Required items are complete. A driver becomes Active only when a rental starts; Activate Rental re-checks everything first." };
 }

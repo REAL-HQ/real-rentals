@@ -1243,26 +1243,9 @@ async function sendSignedEmails(admin: any, id: string, signerName: string): Pro
     .maybeSingle();
   if (!ag) return false;
   const merge = (ag.merge_data ?? {}) as MergeData;
-  let portalAccess = await agreementPortalAccess(admin, ag.application_id as string | null);
-  try {
-    if (ag.application_id && ag.signer_email) {
-      const { provisionDriverAccount } = await import("@/lib/driver-account.server");
-      const account = await provisionDriverAccount(admin, {
-        applicationId: ag.application_id as string,
-        email: ag.signer_email as string,
-        fullName: merge.driver_name || signerName,
-      });
-      if (!account.conflict) {
-        portalAccess = true;
-        if (account.created) {
-          const { sendPortalInviteEmail } = await import("@/lib/email.server");
-          await sendPortalInviteEmail({ to: ag.signer_email as string, firstName: merge.driver_name ?? signerName, inviteUrl: account.inviteUrl });
-        }
-      }
-    }
-  } catch (e) {
-    console.error("[agreement] portal provision failed", e);
-  }
+  // Signing never creates a login or sends account details. Reserved handles
+  // that after the pickup appointment is confirmed; existing logins still work.
+  const portalAccess = await agreementPortalAccess(admin, ag.application_id as string | null);
   let payment: { url: string; amount: number; tiedToRenter: boolean; label: string } | null = null;
   try {
     const { createInitialPaymentLink } = await import("@/lib/initial-payment.server");

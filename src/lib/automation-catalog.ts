@@ -103,13 +103,13 @@ export const AUTOMATIONS: AutomationDef[] = [
     audience: "Applicants",
     channels: ["Email"],
     trigger: "A Manager reserves a car for an approved applicant or renter.",
-    cadence: "Once per person — never resent. Uses the same portal invite email.",
-    // Empty on purpose: portal_invite must stay ungated for Approve / Resend Invite.
-    // Reserve Car checks gateFor("booking_login_email") before sendPortalInviteEmail.
+    cadence: "Once per reservation. Existing accounts get the portal link; new accounts get a set-password link.",
+    // Empty on purpose: portal_invite must stay ungated for manual Resend Invite.
+    // Reserved checks gateFor("booking_login_email") before sendPortalInviteEmail.
     emailWorkflows: [],
     control: { kind: "setting" },
     previews: [],
-    note: "On by default. Sends when the reservation is made, whether or not a deposit is required or paid. Turn off to stop new invites from Reserve Car; manual Resend Invite and Approve still work.",
+    note: "On by default. Sends with the confirmed pickup details when Reserved is saved, whether or not a deposit is required or paid. Turn off to stop new invites from Reserved; manual Resend Invite still works. Approved never sends login details.",
   },
   {
     key: "lead_alert_new",

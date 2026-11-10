@@ -147,8 +147,8 @@ export async function provisionDriverAccount(
    *
    * ensureAuthUser matches on the email string alone, and anyone can create an
    * account for any address through the public sign-up forms. Without this,
-   * registering with a pending applicant's email before we approve them meant
-   * the approval granted THAT account the driver role and pointed the
+   * registering with a pending applicant's email before we reserve them meant
+   * the reservation granted THAT account the driver role and pointed the
    * application at it — handing over the applicant's licence, insurance,
    * agreement (which signMyAgreement would then let them execute in the
    * applicant's name), payments and, later, the vehicle.

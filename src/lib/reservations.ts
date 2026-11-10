@@ -26,6 +26,55 @@ export function normalizeReservationNote(raw: string | null | undefined): string
   return note || null;
 }
 
+/** 24-hour HH:mm from the appointment picker. */
+export function reservationPickupTime(raw: string | null | undefined): string | null {
+  const value = String(raw ?? "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : null;
+}
+
+
+/**
+ * The existing reservation_note column carries a small versioned appointment
+ * record. Plain historical notes still read as notes; no schema change or
+ * second reservation store is introduced.
+ */
+export function writeReservationDetails(input: {
+  pickupTime: string;
+  pickupLocation: string;
+  note?: string | null;
+}): string {
+  const pickupTime = reservationPickupTime(input.pickupTime);
+  const pickupLocation = String(input.pickupLocation ?? "").trim().slice(0, 180);
+  if (!pickupTime) throw new Error("Pick A Real Pickup Time.");
+  if (pickupLocation.length < 3) throw new Error("Enter A Pickup Location.");
+  return JSON.stringify({
+    reservation_details: 1,
+    pickup_time: pickupTime,
+    pickup_location: pickupLocation,
+    note: normalizeReservationNote(input.note)?.slice(0, 140) ?? null,
+  });
+}
+
+export function readReservationDetails(raw: string | null | undefined): {
+  pickupTime: string | null;
+  pickupLocation: string | null;
+  note: string | null;
+} {
+  const fallback = { pickupTime: null, pickupLocation: null, note: normalizeReservationNote(raw) };
+  if (!raw) return fallback;
+  try {
+    const value = JSON.parse(raw) as Record<string, unknown>;
+    if (value?.reservation_details !== 1) return fallback;
+    return {
+      pickupTime: reservationPickupTime(typeof value.pickup_time === "string" ? value.pickup_time : null),
+      pickupLocation: typeof value.pickup_location === "string" ? value.pickup_location : null,
+      note: normalizeReservationNote(typeof value.note === "string" ? value.note : null),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 export type ReservationRow = {
   id: string;
   applicationId: string | null;
@@ -35,6 +84,8 @@ export type ReservationRow = {
   vehicleLabel: string | null;
   unitNumber: string | null;
   pickupDate: string;
+  pickupTime: string | null;
+  pickupLocation: string | null;
   note: string | null;
   createdAt: string;
   depositRequired: boolean;

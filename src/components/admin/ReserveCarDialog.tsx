@@ -28,7 +28,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 /**
- * Shared Reserve Car action: from Next Step after approval, or Bookings → Booked.
+ * Shared Reserved action: from Next Step after approval, or Bookings → Booked.
  * Only approved / active applicants. Sends the Booking Login Email once when
  * automation is On. Never marks insurance or verification complete.
  */
@@ -58,6 +58,8 @@ export function ReserveCarDialog({
   const [personId, setPersonId] = useState(applicationId ?? "");
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [pickupDate, setPickupDate] = useState(easternParts(new Date()).date);
+  const [pickupTime, setPickupTime] = useState("09:00");
+  const [pickupLocation, setPickupLocation] = useState("");
   const [note, setNote] = useState("");
   const depositOn = resolvedSettings?.enabled === true;
   const [depositRequired, setDepositRequired] = useState(depositOn);
@@ -69,6 +71,8 @@ export function ReserveCarDialog({
     setPersonId(applicationId ?? "");
     setVehicleId(null);
     setPickupDate(easternParts(new Date()).date);
+    setPickupTime("09:00");
+    setPickupLocation("");
     setNote("");
     const applySettings = (s: ReservationDepositSettings | null) => {
       setResolvedSettings(s);
@@ -101,6 +105,10 @@ export function ReserveCarDialog({
       toast.error("Pick A Vehicle");
       return;
     }
+    if (pickupLocation.trim().length < 3) {
+      toast.error("Enter A Pickup Location");
+      return;
+    }
     setBusy(true);
     try {
       const res = await create({
@@ -108,6 +116,8 @@ export function ReserveCarDialog({
           applicationId: appId,
           vehicleId,
           pickupDate,
+          pickupTime,
+          pickupLocation: pickupLocation.trim(),
           note: note.trim() || undefined,
           depositRequired: depositOn ? depositRequired : false,
           depositAmount: depositOn && depositRequired ? Number(depositAmount) || 0 : 0,
@@ -122,8 +132,10 @@ export function ReserveCarDialog({
               ? " Booking Login Email Is Off."
               : res.loginEmail === "held"
                 ? " Booking Login Email Held."
-                : "";
-      toast.success(`Car Reserved.${emailNote}`);
+                : res.loginEmail === "failed"
+                  ? " Login Email Could Not Be Sent."
+                  : "";
+      toast.success(`Reserved.${emailNote}`);
       onOpenChange(false);
       onSaved();
     } catch (e) {
@@ -137,8 +149,9 @@ export function ReserveCarDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-white sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Reserve Car{driverName ? `: ${driverName}` : ""}</DialogTitle>
+          <DialogTitle>Reserved{driverName ? `: ${driverName}` : ""}</DialogTitle>
         </DialogHeader>
+        <p className="text-sm text-muted-foreground">Confirm the pickup appointment. Account login details are emailed when Reserved is saved.</p>
         <div className="grid gap-3">
           {!applicationId ? (
             <Field label="Approved Driver">
@@ -155,11 +168,19 @@ export function ReserveCarDialog({
           <Field label="Vehicle">
             <VehicleCombobox vehicles={vehicles} value={vehicleId} onChange={setVehicleId} allowNone={false} />
           </Field>
-          <Field label="Pickup Date">
-            <input className={input} type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} aria-label="Pickup Date" />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Pickup Date">
+              <input className={input} type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} aria-label="Pickup Date" required />
+            </Field>
+            <Field label="Pickup Time">
+              <input className={input} type="time" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} aria-label="Pickup Time" required />
+            </Field>
+          </div>
+          <Field label="Pickup Location">
+            <textarea className={`${input} min-h-20 resize-y`} value={pickupLocation} onChange={(e) => setPickupLocation(e.target.value)} placeholder="Street Address, City, State" aria-label="Pickup Location" maxLength={180} required />
           </Field>
           <Field label="Note">
-            <input className={input} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" aria-label="Note" maxLength={500} />
+            <input className={input} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" aria-label="Note" maxLength={140} />
           </Field>
           {depositOn ? (
             <>
@@ -193,7 +214,7 @@ export function ReserveCarDialog({
             Cancel
           </button>
           <button type="button" className={primary} disabled={busy} onClick={() => void submit()}>
-            {busy ? "Saving…" : "Reserve Car"}
+            {busy ? "Saving…" : "Reserved"}
           </button>
         </DialogFooter>
       </DialogContent>

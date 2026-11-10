@@ -31,7 +31,7 @@ export function pickupWelcomeIntent(facts: {
 }): { login: "planned" | "not_requested" | "blocked"; pickup: "planned" | "awaiting_confirmation" | "blocked" } {
   if (facts.accountConflict || !facts.accountAccessReady) return { login: "blocked", pickup: "blocked" };
   return {
-    login: facts.approvalAction === "approve_and_invite" ? "planned" : "not_requested",
+    login: facts.approvalAction === "approve_and_invite" && facts.pickupConfirmed ? "planned" : "not_requested",
     pickup: facts.pickupConfirmed ? "planned" : "awaiting_confirmation",
   };
 }

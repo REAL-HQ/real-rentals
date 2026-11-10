@@ -11,7 +11,7 @@ import { Eye, EyeOff, Loader2, ShieldCheck, AlertTriangle } from "lucide-react";
  * visitor here already holding a recovery session. So the only thing this page
  * has to do is wait for that session to exist and then set a password on it.
  *
- * It handles the invite sent at approval and the Forgot Password link from
+ * It handles the invite sent at Reserved and the Forgot Password link from
  * /login identically — an invite is a recovery link for an account that has
  * never had a password, which is the same transaction.
  */

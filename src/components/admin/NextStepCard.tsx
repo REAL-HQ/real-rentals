@@ -93,7 +93,7 @@ export function NextStepCard({
           ) : null}
           {canReserve && model.target.kind !== "reserve" && onReserve ? (
             <button type="button" onClick={onReserve} className={secondary} data-testid="next-step-reserve">
-              <Car className="h-3.5 w-3.5" /> Reserve Car
+              <Car className="h-3.5 w-3.5" /> Reserved
             </button>
           ) : null}
           <Button type="button" variant="outline" title="Optional Interview Script" className="h-9 shrink-0 gap-1.5 px-3 text-[12px]" onClick={() => onRun({ kind: "interview" })}>

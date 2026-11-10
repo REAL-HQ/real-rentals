@@ -8,6 +8,7 @@ export const DRIVER_LIFECYCLE_STAGES = [
   { key: "profile", label: "Profile" },
   { key: "insurance", label: "Insurance" },
   { key: "approved", label: "Approved" },
+  { key: "reserved", label: "Reserved" },
   { key: "inspection", label: "Inspection" },
   { key: "agreement", label: "Agreement" },
   { key: "pickup", label: "Pickup" },
@@ -19,6 +20,8 @@ export type DriverLifecycleStage = { key: DriverLifecycleKey; label: string; sta
 export function driverLifecycle(facts: {
   contacted: boolean; screening: boolean; documents: boolean; profile: boolean; insuranceOnFile: boolean;
   approved: boolean; inspection: boolean; agreement: boolean; rentalActive: boolean;
+  /** Existing reserved rental with confirmed pickup details; Active also completes this stage. */
+  reserved?: boolean;
   /** Saved staff pickup check-off (Yellow); Active still needs a real running rental. */
   pickup?: boolean;
   /** Aggregate receipt of required files, not their verification. */
@@ -27,7 +30,7 @@ export function driverLifecycle(facts: {
   const completed: Record<DriverLifecycleKey, boolean> = {
     applied: true, contacted: facts.contacted, documents: facts.documentsReceived === true, screening: facts.screening,
     docs: facts.documents, profile: facts.profile, insurance: facts.insuranceOnFile, approved: facts.approved,
-    inspection: facts.inspection, agreement: facts.agreement,
+    reserved: facts.rentalActive || facts.reserved === true, inspection: facts.inspection, agreement: facts.agreement,
     pickup: facts.rentalActive || facts.pickup === true, active: facts.rentalActive,
   };
   let currentFound = false;

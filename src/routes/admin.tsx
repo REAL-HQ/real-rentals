@@ -1099,13 +1099,13 @@ function AdminShell({ children }: { children: React.ReactNode }) {
  * grants a role, and NoAccess below is what an unroled account sees — but it
  * was still an uncontrolled way to occupy an email address, and it fed the
  * squat against driver provisioning: register with a pending applicant's
- * address, and approval would resolve their identity to your account.
+ * address, and Reserved would resolve their identity to your account.
  * provisionDriverAccount refuses that now; this removes the surface as well.
  *
  * Nothing legitimate depended on it. A new teammate gets an invitation and
  * creates their account at /invite, which is bound to the invited address.
  * A partner signs up at /partner, which is a deliberate step of that
- * onboarding handshake. A driver's account is made for them at approval.
+ * onboarding handshake. A driver's account is made for them at Reserved.
  */
 function SignIn() {
   const [email, setEmail] = useState("");

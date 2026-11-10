@@ -11,7 +11,8 @@ describe("Owner-confirmed pickup choices", () => {
     expect(pickupLocationSuggestion("custom")).toBeNull();
   });
   it("includes every requested pickup payment method without verifying a payment", () => expect(PICKUP_PAYMENT_METHODS.map((method) => method.id)).toEqual(["stripe", "zelle_bank", "cash_app_venmo", "cash", "other"]));
-  it("plans login access without car/appointment confirmation", () => expect(pickupWelcomeIntent({ approvalAction: "approve_and_invite", accountConflict: false, accountAccessReady: true, pickupConfirmed: false })).toEqual({ login: "planned", pickup: "awaiting_confirmation" }));
+  it("waits for pickup confirmation before planning login access", () => expect(pickupWelcomeIntent({ approvalAction: "approve_and_invite", accountConflict: false, accountAccessReady: true, pickupConfirmed: false })).toEqual({ login: "not_requested", pickup: "awaiting_confirmation" }));
+  it("plans login access with the confirmed Reserved appointment", () => expect(pickupWelcomeIntent({ approvalAction: "approve_and_invite", accountConflict: false, accountAccessReady: true, pickupConfirmed: true }).login).toBe("planned"));
   it("Approve Only does not imply an invitation", () => expect(pickupWelcomeIntent({ approvalAction: "approve_only", accountConflict: false, accountAccessReady: true, pickupConfirmed: false }).login).toBe("not_requested"));
   it("a confirmed plan can prepare pickup details separately", () => expect(pickupWelcomeIntent({ approvalAction: "approve_and_invite", accountConflict: false, accountAccessReady: true, pickupConfirmed: true }).pickup).toBe("planned"));
   it("does not plan access when account setup is missing or identity conflicts", () => {

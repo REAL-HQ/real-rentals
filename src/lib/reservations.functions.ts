@@ -3,8 +3,9 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   isReservationStatus,
-  normalizeReservationNote,
+  readReservationDetails,
   reservationPickupDate,
+  writeReservationDetails,
   RESERVATION_STATUS,
   type ReservationRow,
 } from "@/lib/reservations";
@@ -48,6 +49,7 @@ async function loadDepositSettings(admin: any): Promise<ReservationDepositSettin
 
 function mapRow(r: any, app: any, veh: any): ReservationRow {
   const label = veh ? [veh.year, veh.make, veh.model].filter(Boolean).join(" ").trim() || null : null;
+  const details = readReservationDetails(r.reservation_note);
   const status = isReservationDepositStatus(r.reservation_deposit_status)
     ? (r.reservation_deposit_status as ReservationDepositStatus)
     : "not_required";
@@ -60,7 +62,9 @@ function mapRow(r: any, app: any, veh: any): ReservationRow {
     vehicleLabel: label,
     unitNumber: veh?.unit_number ?? null,
     pickupDate: r.start_date,
-    note: r.reservation_note ?? null,
+    pickupTime: details.pickupTime,
+    pickupLocation: details.pickupLocation,
+    note: details.note,
     createdAt: r.created_at,
     depositRequired: r.reservation_deposit_required === true,
     depositAmount: Number(r.reservation_deposit_amount ?? 0),
@@ -69,8 +73,12 @@ function mapRow(r: any, app: any, veh: any): ReservationRow {
   };
 }
 
-/** Idempotent portal invite after a reservation. Never resends. */
-async function maybeSendBookingLoginEmail(admin: any, applicationId: string): Promise<"sent" | "skipped" | "off" | "held" | "failed"> {
+/** One pickup/login email per new reservation; existing accounts get the portal URL, not a new password link. */
+async function maybeSendBookingLoginEmail(
+  admin: any,
+  applicationId: string,
+  reservation: { pickupDate: string; pickupTime: string; pickupLocation: string; vehicle: string | null },
+): Promise<"sent" | "skipped" | "off" | "held" | "failed"> {
   const { gateFor, loadAutomationControls } = await import("@/lib/automation-controls.server");
   const gate = gateFor(await loadAutomationControls(admin), "booking_login_email");
   if (gate === "off") return "off";
@@ -84,27 +92,6 @@ async function maybeSendBookingLoginEmail(admin: any, applicationId: string): Pr
   if (error || !app?.email) return "failed";
   if (!["approved", "active"].includes(String(app.status ?? "").toLowerCase())) return "skipped";
 
-  // Already emailed a portal invite for this address → never resend.
-  const prior = await admin
-    .from("email_deliveries")
-    .select("id")
-    .eq("workflow", "portal_invite")
-    .ilike("to_address", String(app.email))
-    .eq("status", "sent")
-    .limit(1);
-  if ((prior.data ?? []).length) return "skipped";
-
-  // Existing login with a prior invite attempt also skips (manual Resend Invite only).
-  if (app.user_id) {
-    const anyInvite = await admin
-      .from("email_deliveries")
-      .select("id")
-      .eq("workflow", "portal_invite")
-      .ilike("to_address", String(app.email))
-      .limit(1);
-    if ((anyInvite.data ?? []).length) return "skipped";
-  }
-
   try {
     const { provisionDriverAccount } = await import("@/lib/driver-account.server");
     const account = await provisionDriverAccount(admin, {
@@ -112,15 +99,16 @@ async function maybeSendBookingLoginEmail(admin: any, applicationId: string): Pr
       email: String(app.email),
       fullName: (app.full_name as string | null) ?? null,
     });
-    // Someone who already had a login does not need a set-password email.
-    if (!account.created && !account.inviteUrl) return "skipped";
-    if (account.conflict) return "skipped";
+    if (account.conflict) return "failed";
+    // Existing accounts receive the confirmed appointment and portal URL;
+    // only a brand-new account receives a set-password link.
 
     const { sendPortalInviteEmail } = await import("@/lib/email.server");
     await sendPortalInviteEmail({
       to: String(app.email),
       firstName: String(app.full_name ?? "there").trim().split(/\s+/)[0] || "there",
       inviteUrl: account.inviteUrl,
+      reservation,
     });
     return "sent";
   } catch (e) {
@@ -212,7 +200,9 @@ export const createReservation = createServerFn({ method: "POST" })
         applicationId: UUID,
         vehicleId: UUID,
         pickupDate: z.string().max(32),
-        note: z.string().max(500).optional(),
+        pickupTime: z.string().max(5),
+        pickupLocation: z.string().trim().min(3).max(180),
+        note: z.string().max(140).optional(),
         depositRequired: z.boolean().optional(),
         depositAmount: z.number().min(0).max(10000).optional(),
       })
@@ -222,7 +212,11 @@ export const createReservation = createServerFn({ method: "POST" })
     await requireManager(context.userId);
     const pickup = reservationPickupDate(data.pickupDate);
     if (!pickup) throw new Error("Pick A Real Pickup Date.");
-    const note = normalizeReservationNote(data.note);
+    const reservationNote = writeReservationDetails({
+      pickupTime: data.pickupTime,
+      pickupLocation: data.pickupLocation,
+      note: data.note,
+    });
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const settings = await loadDepositSettings(supabaseAdmin);
     const deposit = resolveReservationDeposit({
@@ -252,6 +246,7 @@ export const createReservation = createServerFn({ method: "POST" })
           email: String(app.email ?? ""),
           fullName: (app.full_name as string | null) ?? null,
         });
+        if (account.conflict) throw new Error("This Application’s Login Identity Conflicts With The Email On File. Resolve It Before Reserving.");
         if (!account.userId) throw new Error("Could Not Create A Portal Login For This Person.");
         app.user_id = account.userId;
       } catch (e) {
@@ -261,7 +256,7 @@ export const createReservation = createServerFn({ method: "POST" })
 
     const { data: vehicle, error: vehErr } = await supabaseAdmin
       .from("vehicles")
-      .select("id,status,archived_at,weekly_rate")
+      .select("id,status,archived_at,weekly_rate,year,make,model")
       .eq("id", data.vehicleId)
       .maybeSingle();
     if (vehErr) throw new Error(vehErr.message);
@@ -290,7 +285,7 @@ export const createReservation = createServerFn({ method: "POST" })
       deposit_amount: deposit.required ? deposit.amount : 0,
       deposit_held: false,
       deposit_status: deposit.required ? "none" : "none",
-      reservation_note: note,
+      reservation_note: reservationNote,
       reservation_deposit_required: deposit.required,
       reservation_deposit_amount: deposit.amount,
       reservation_deposit_status: deposit.status,
@@ -306,7 +301,12 @@ export const createReservation = createServerFn({ method: "POST" })
 
     await supabaseAdmin.from("vehicles").update({ status: "reserved" }).eq("id", data.vehicleId).neq("status", "rented");
 
-    const loginEmail = await maybeSendBookingLoginEmail(supabaseAdmin, data.applicationId);
+    const loginEmail = await maybeSendBookingLoginEmail(supabaseAdmin, data.applicationId, {
+      pickupDate: pickup,
+      pickupTime: data.pickupTime,
+      pickupLocation: data.pickupLocation.trim(),
+      vehicle: [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ").trim() || null,
+    });
     return { id: inserted.id, loginEmail };
   });
 

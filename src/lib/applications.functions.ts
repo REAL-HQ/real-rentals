@@ -1283,12 +1283,8 @@ export const approveApplication = createServerFn({ method: "POST" })
       ok: boolean;
       agreementSent: boolean;
       agreementSkippedReason?: string;
-      /**
-       * What happened to their portal login. "created" means they were just
-       * emailed a set-password link; "existing" means they already had one.
-       * "failed" is reported rather than thrown — see below.
-       */
-      portalAccount: "created" | "existing" | "failed" | "conflict" | "no email";
+      /** Account provisioning and login delivery intentionally wait for Reserved. */
+      portalAccount: "deferred";
       error?: string;
     }> => {
       // Manager, not staff. A Coordinator may read and work an application —
@@ -1309,7 +1305,7 @@ export const approveApplication = createServerFn({ method: "POST" })
         return {
           ok: false,
           agreementSent: false,
-          portalAccount: "failed",
+          portalAccount: "deferred",
           error: "Application not found",
         };
 
@@ -1373,81 +1369,14 @@ export const approveApplication = createServerFn({ method: "POST" })
           },
         });
         if (!approved.ok) {
-          return { ok: false, agreementSent: false, portalAccount: "failed", error: approved.error };
+          return { ok: false, agreementSent: false, portalAccount: "deferred", error: approved.error };
         }
       }
 
-      /*
-       * Give them a login now, not when a car is assigned.
-       *
-       * Approval is the point at which this is a person we intend to rent to,
-       * and it is the start of the window where they have to finish documents
-       * and sign a contract. Doing it at activation meant that whole window
-       * ran on emailed links with no account behind them.
-       *
-       * Deliberately never fatal. Approval has already been written and
-       * audited by this point; failing the call would leave the operator
-       * looking at an error for something that succeeded, and re-approving is
-       * the obvious response, which would re-send the agreement. The outcome
-       * is reported instead, and activateRental provisions again anyway, so a
-       * failure here self-repairs at the next step.
-       */
-      let portalAccount: "created" | "existing" | "failed" | "conflict" | "no email" = "no email";
-      let inviteUrl: string | null = null;
-      if (app.email) {
-        try {
-          const { provisionDriverAccount } = await import("@/lib/driver-account.server");
-          const account = await provisionDriverAccount(supabaseAdmin, {
-            applicationId: data.id,
-            email: app.email as string,
-            fullName: (app.full_name as string | null) ?? null,
-          });
-          portalAccount = account.conflict ? "conflict" : account.created ? "created" : "existing";
-          inviteUrl = account.inviteUrl;
-        } catch (e) {
-          console.error("[approve] driver account provisioning failed", e);
-          portalAccount = "failed";
-        }
-      }
-
-      // Only a brand-new account needs telling. Somebody who already had a
-      // login does not need a second "set your password" email, and a
-      // re-approval must not generate one at all.
-      if (portalAccount === "created" && app.email) {
-        try {
-          const { sendPortalInviteEmail } = await import("@/lib/email.server");
-          await sendPortalInviteEmail({
-            to: app.email as string,
-            firstName:
-              String(app.full_name ?? "there")
-                .trim()
-                .split(/\s+/)[0] || "there",
-            inviteUrl,
-          });
-        } catch (e) {
-          console.error("[approve] portal invite email failed", e);
-        }
-      }
-
-      /*
-       * A conflicted identity does not get a contract.
-       *
-       * The approval itself stands — it is written and audited above, and it
-       * was a legitimate decision. But issuing the agreement now would put a
-       * signable contract on an application whose portal is reachable by the
-       * wrong account, and signMyAgreement derives ownership from exactly that
-       * link. Staff resolve the identity, then approve again; this function is
-       * safe to re-run and will send the agreement once the conflict is gone.
-       */
-      if (portalAccount === "conflict") {
-        return {
-          ok: true,
-          agreementSent: false,
-          agreementSkippedReason:
-            "the portal login for this application is in conflict — resolve it, then approve again",
-          portalAccount,
-        };
-      }
+      // Approval records the vetting decision only. The existing Reserved
+      // workflow provisions the account and emails login details after staff
+      // confirm the pickup appointment; activation remains the safety net.
+      const portalAccount = "deferred" as const;
 
       if (data.sendAgreement === false) {
         return {

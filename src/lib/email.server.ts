@@ -1,4 +1,4 @@
-import { fmtDate } from "@/lib/date-format";
+import { fmtDate, formatReservationTime } from "@/lib/date-format";
 // Server-only Resend email helper.
 // Never import from client code — the .server.ts suffix keeps it out of
 // the browser bundle. Read process.env INSIDE the function (Cloudflare
@@ -997,12 +997,11 @@ export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<S
 type AgreementSendArgs = { to: string; firstName: string | null; url: string; vehicle: string | null };
 
 /**
- * "You're approved — set up your portal."
+ * "Your pickup is reserved — set up your portal."
  *
- * Sent once, on the approval that creates the account. A returning driver
- * never gets it: they already have a password, and a second set-password link
- * in their inbox is how somebody ends up resetting an account they were
- * already signed into.
+ * Sent once, after Reserved saves the confirmed pickup appointment. A
+ * returning driver never gets it: they already have a password, and a second
+ * set-password link would reset an account they were already signed into.
  *
  * inviteUrl is a one-time Supabase recovery link. When it could not be minted
  * the mail still goes out pointing at the portal, where Forgot Password gets
@@ -1012,17 +1011,28 @@ export async function sendPortalInviteEmail(args: {
   to: string;
   firstName: string | null;
   inviteUrl: string | null;
+  reservation?: {
+    pickupDate: string;
+    pickupTime: string;
+    pickupLocation: string;
+    vehicle: string | null;
+  };
 }): Promise<void> {
   const name = escapeHtml(args.firstName || "there");
   const site = process.env.PUBLIC_SITE_URL || "https://drivereal.com";
   const url = escapeHtml(args.inviteUrl || `${site}/login`);
+  const reservation = args.reservation;
+  const appointment = reservation ? `
+      <p><strong>Pickup:</strong> ${escapeHtml(fmtDate(reservation.pickupDate))}, ${escapeHtml(formatReservationTime(reservation.pickupTime))}<br>
+      <strong>Location:</strong> ${escapeHtml(reservation.pickupLocation)}${reservation.vehicle ? `<br><strong>Vehicle:</strong> ${escapeHtml(reservation.vehicle)}` : ""}</p>` : "";
   await sendEmail({
     to: args.to,
-    subject: "You're approved — set up your driver portal",
+    subject: reservation ? "Your pickup is reserved — set up your driver portal" : "Your REAL RENTALS driver portal",
     html: `
       <p>Hi ${name},</p>
-      <p>Good news — you're approved. Your driver portal is ready, and it is where
+      <p>${reservation ? "Your pickup is reserved." : "Your REAL RENTALS driver portal is ready."} Your driver portal is where
          you finish everything before you pick up a vehicle.</p>
+      ${appointment}
       <p style="margin:26px 0">
         <a href="${url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">
           ${args.inviteUrl ? "Set Your Password" : "Open Your Portal"}
@@ -1034,7 +1044,7 @@ export async function sendPortalInviteEmail(args: {
         <li>keep your contact details up to date</li>
         <li>read and sign your rental agreement</li>
       </ul>
-      <p>We'll let you know as soon as a vehicle is assigned to you.</p>
+      ${reservation ? "<p>Please arrive at your confirmed pickup time. Contact us if you need to make a change.</p>" : "<p>We'll let you know as soon as a vehicle is assigned to you.</p>"}
       <p>— REAL RENTALS</p>
     `,
     track: { workflow: "portal_invite" },
