@@ -21,7 +21,7 @@ const FILTERS = [
   { id: "all", label: "All" },
 ] as const;
 
-export function DriverIssuesPanel() {
+export function DriverIssuesPanel({ embedded = false }: { embedded?: boolean } = {}) {
   const fetchList = useServerFn(listDriverIssues);
   const saveStatus = useServerFn(updateDriverIssueStatus);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("open");
@@ -71,8 +71,21 @@ export function DriverIssuesPanel() {
 
   return (
     <div className="space-y-4" data-testid="driver-issues">
-      <div className="admin-sticky-bar flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-1.5">
+      <div
+        className={
+          embedded
+            ? "flex flex-wrap items-center justify-between gap-2"
+            : "admin-sticky-bar flex flex-wrap items-center justify-between gap-2"
+        }
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {embedded ? <h2 className="text-[15px] font-semibold text-[#111114]">Driver</h2> : null}
+          <span className="text-sm text-muted-foreground">
+            {rows.length} issue{rows.length === 1 ? "" : "s"}
+            {truncated ? " · newest 200" : ""}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1.5" data-testid="driver-status-chips">
           {FILTERS.map((f) => (
             <button
               key={f.id}
@@ -88,10 +101,6 @@ export function DriverIssuesPanel() {
             </button>
           ))}
         </div>
-        <span className="text-sm text-muted-foreground">
-          {rows.length} issue{rows.length === 1 ? "" : "s"}
-          {truncated ? " · newest 200" : ""}
-        </span>
       </div>
 
       {loading ? (

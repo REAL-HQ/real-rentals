@@ -4,7 +4,9 @@ import { DriverIssuesPanel } from "./DriverIssuesPanel";
 
 /**
  * One Issues page for fleet incidents and driver reports.
- * Keeps both tables; this is a unified view only. Incident Board stays flag-gated elsewhere.
+ * Owns the page title (shell header is suppressed for this tab) so All /
+ * Incident / Driver chips sit on the same row. Nested panels render section
+ * chrome without a second sticky bar, so status chips are never clipped.
  */
 const SOURCES = [
   { id: "all", label: "All" },
@@ -26,12 +28,12 @@ export function IssuesPanel({
   const [source, setSource] = useState<(typeof SOURCES)[number]["id"]>(start);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="issues-panel">
       <div className="admin-sticky-bar flex flex-col gap-2 pb-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[#111114]">Issues</h1>
+        <div className="min-w-0">
+          <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">Issues</h1>
           <p className="mt-1 text-[13px] text-[#55555E]">
-            Accidents, claims, breakdowns and other reports in one place.
+            Accidents, Claims, Breakdowns And Driver Reports
           </p>
         </div>
         <div className="flex gap-1.5 max-lg:overflow-x-auto" role="tablist" aria-label="Issue Source">
@@ -41,6 +43,7 @@ export function IssuesPanel({
               type="button"
               role="tab"
               aria-selected={source === s.id}
+              data-source={s.id}
               onClick={() => setSource(s.id)}
               className={`h-9 shrink-0 rounded-full px-3 text-[13px] font-medium border ${
                 source === s.id
@@ -55,18 +58,12 @@ export function IssuesPanel({
       </div>
       {(source === "all" || source === "incident") && (
         <section aria-label="Incidents">
-          {source === "all" ? (
-            <h2 className="mb-3 text-[15px] font-semibold text-[#111114]">Incident</h2>
-          ) : null}
-          <IncidentsPanel seedIssueId={seedIssueId} />
+          <IncidentsPanel seedIssueId={seedIssueId} embedded />
         </section>
       )}
       {(source === "all" || source === "driver") && (
         <section aria-label="Driver Reports">
-          {source === "all" ? (
-            <h2 className="mb-3 mt-2 text-[15px] font-semibold text-[#111114]">Driver</h2>
-          ) : null}
-          <DriverIssuesPanel />
+          <DriverIssuesPanel embedded />
         </section>
       )}
     </div>

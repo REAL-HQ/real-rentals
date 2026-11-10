@@ -962,7 +962,7 @@ function Admin() {
 
           <div className="px-4 md:px-8 pt-3 md:pt-4">
             {/* Driver and vehicle records carry their own "Drivers ←" / "Vehicles /" breadcrumb. */}
-            {tab !== "overview" && !recordParent && (
+            {tab !== "overview" && tab !== "issues" && !recordParent && (
               <div className="mb-3">
                 <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
                 <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
