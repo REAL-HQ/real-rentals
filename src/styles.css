@@ -338,6 +338,11 @@
     padding-bottom: 16px;
     margin-bottom: -16px;
   }
+  /* Section pages need real separation below their sticky heading; unlike
+     table toolbars, they must not pull the next section under the paint. */
+  .admin-sticky-bar[data-admin-flow] {
+    margin-bottom: 0;
+  }
 }
 @media (max-width: 767px) {
   .admin-sticky-bar,
@@ -348,6 +353,9 @@
   }
   .admin-sticky-bar > * { flex-shrink: 0; }
   .admin-sticky-bar.flex-col > * { flex-shrink: 1; }
+  .admin-sticky-bar[data-admin-flow] {
+    overflow-x: visible;
+  }
   /* AdminToolbar wraps by the space it has; the phone side-scroll rule above
      would turn its row into a hidden horizontal strip. */
   .admin-sticky-bar[data-admin-toolbar] > .flex-wrap {

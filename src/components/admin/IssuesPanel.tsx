@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { IncidentsPanel } from "./IncidentsPanel";
 import { DriverIssuesPanel } from "./DriverIssuesPanel";
+import { Button } from "@/components/ui/button";
 
 /**
  * One Issues page for fleet incidents and driver reports.
@@ -28,31 +29,28 @@ export function IssuesPanel({
   const [source, setSource] = useState<(typeof SOURCES)[number]["id"]>(start);
 
   return (
-    <div className="space-y-6" data-testid="issues-panel">
-      <div className="admin-sticky-bar flex flex-col gap-2 pb-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+    <div className="flex min-w-0 flex-col gap-6" data-testid="issues-panel">
+      <div data-admin-flow className="admin-sticky-bar flex flex-col gap-3 pb-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
         <div className="min-w-0">
-          <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">Issues</h1>
-          <p className="mt-1 text-[13px] text-[#55555E]">
+          <h1 className="text-[22px] font-semibold tracking-normal text-foreground">Issues</h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">
             Accidents, Claims, Breakdowns And Driver Reports
           </p>
         </div>
-        <div className="flex gap-1.5 max-lg:overflow-x-auto" role="tablist" aria-label="Issue Source">
+        <div className="flex shrink-0 gap-1.5" role="tablist" aria-label="Issue Source">
           {SOURCES.map((s) => (
-            <button
+            <Button
               key={s.id}
               type="button"
+              variant={source === s.id ? "default" : "outline"}
               role="tab"
               aria-selected={source === s.id}
               data-source={s.id}
               onClick={() => setSource(s.id)}
-              className={`h-9 shrink-0 rounded-full px-3 text-[13px] font-medium border ${
-                source === s.id
-                  ? "bg-[#111114] text-white border-[#111114]"
-                  : "bg-white text-[#55555E] border-[#EDEDF0]"
-              }`}
+              className={`h-9 shrink-0 rounded-full border px-3 text-[13px] shadow-none ${source === s.id ? "border-primary" : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
             >
               {s.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
