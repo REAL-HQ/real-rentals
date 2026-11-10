@@ -307,8 +307,9 @@ try {
   callers = execFileSync("grep", ["-rlE", 'rpc\\("end_rental_tx"', "src/"], { encoding: "utf8" })
     .split("\n").filter(Boolean);
 } catch { /* grep exits 1 when nothing matches */ }
-ok(callers.length === 1 && callers[0] === "src/lib/rentals.functions.ts",
-  `exactly one module in src/ CALLS end_rental_tx (${callers.join(", ") || "none"})`);
+const endCallers = [...callers].sort();
+ok(endCallers.length === 2 && endCallers[0] === "src/lib/rentals.functions.ts" && endCallers[1] === "src/lib/return-flow.functions.ts",
+  `end_rental_tx is called only by endRental and completeReturn (${callers.join(", ") || "none"})`);
 let activators = [];
 try {
   activators = execFileSync("grep", ["-rlE", 'rpc\\("activate_rental_tx"', "src/"], { encoding: "utf8" })
