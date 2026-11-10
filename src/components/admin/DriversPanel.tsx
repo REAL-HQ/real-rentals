@@ -79,6 +79,7 @@ import { getDriverPayStatuses } from "@/lib/driver-payment-status.functions";
 import { endRental, getActivationReadiness, type ActivationReadiness } from "@/lib/rentals.functions";
 import { clearReservationAfterActivate, getOpenReservationForApplication, getReservationDepositSettings } from "@/lib/reservations.functions";
 import { reservationBlocksStart } from "@/lib/reservations";
+import { approvalEmailMessage } from "@/lib/approval-email";
 import {
   activationEntryState,
   missingRequiredCategories,
@@ -1373,7 +1374,7 @@ setDocCounts(requiredDocCounts(rows));
                               .then((res) => {
                                 if (!res.ok) throw new Error(res.error ?? "Could not approve");
                                 applySaved(a.id, { status: "approved" });
-                                toast.success("Approved — Login Details Send At Reserved.");
+                                toast.success(`Approved — Login Details Send At Reserved. ${approvalEmailMessage(res.approvalEmail)}`.trim());
                               })
                               .catch((error) => {
                                 toast.error(error instanceof Error ? error.message : "Could not approve");
@@ -2166,9 +2167,9 @@ function DriverDetail({
       const res = await approve({ data: { id: driver.id } });
       if (!res.ok) throw new Error(res.error ?? "Could not approve");
       if (res.agreementSent) {
-        toast.success("Approved — Agreement Sent. Login Details Send At Reserved.");
+        toast.success(`Approved — Agreement Sent. Login Details Send At Reserved. ${approvalEmailMessage(res.approvalEmail)}`.trim());
       } else {
-        toast.success(`Approved. Agreement Not Sent: ${res.agreementSkippedReason ?? "unknown"}. Login Details Send At Reserved.`);
+        toast.success(`Approved. Agreement Not Sent: ${res.agreementSkippedReason ?? "unknown"}. Login Details Send At Reserved. ${approvalEmailMessage(res.approvalEmail)}`.trim());
       }
       onSaved({ status: "approved" });
     } catch (e) {

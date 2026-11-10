@@ -90,6 +90,8 @@ const approveBody = apps.slice(
 ok(approveBody.length > 500, "found the approveApplication handler");
 ok(!/provisionDriverAccount|sendPortalInviteEmail/.test(approveBody), "approval neither provisions nor emails a login");
 ok(/portalAccount = "deferred"/.test(approveBody), "approval explicitly defers account delivery to Reserved");
+ok(/newlyApproved[\s\S]*sendApprovalConfirmationEmail/.test(approveBody), "approval sends its separate confirmation only on a new approval");
+ok(/idempotencyKey: `approval-confirmation-\$\{args\.applicationId\}`/.test(email), "the approval confirmation has a stable per-application idempotency key");
 ok(/export async function sendPortalInviteEmail/.test(email), "the Reserved invite email exists");
 ok(/reservation\?:/.test(email) && /pickupLocation/.test(email), "the login email can include confirmed pickup details");
 ok(/sendPortalInviteEmail/.test(reservations), "Reserved sends the account login email");

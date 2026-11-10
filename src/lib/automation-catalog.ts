@@ -112,6 +112,18 @@ export const AUTOMATIONS: AutomationDef[] = [
     note: "On by default. Sends with the confirmed pickup details when Reserved is saved, whether or not a deposit is required or paid. Turn off to stop new invites from Reserved; manual Resend Invite still works. Approved never sends login details.",
   },
   {
+    key: "approval_confirmation",
+    title: "Approval Confirmation",
+    audience: "Applicants",
+    channels: ["Email"],
+    trigger: "A Manager or Owner approves an applicant.",
+    cadence: "Once when the applicant first becomes Approved. Re-approving to manage an agreement does not resend it.",
+    emailWorkflows: ["approval_confirmation"],
+    control: { kind: "setting" },
+    previews: ["approval_confirmation"],
+    note: "Confirms the vetting decision only. No vehicle is reserved; account login and pickup details still arrive at Reserved.",
+  },
+  {
     key: "lead_alert_new",
     title: "New Lead Alert",
     audience: "Team",

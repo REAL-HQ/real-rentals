@@ -12,6 +12,7 @@ import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { applicationResumeAtomicEnabled, deliverApplicationRecovery } from "@/lib/application-recovery.server";
 import { z } from "zod";
 import { SAVE_BUSY_CODE, SAVE_BUSY_MESSAGE } from "@/lib/wizard-save";
+import type { ApprovalEmailStatus } from "@/lib/approval-email";
 
 const nullableString = z.string().trim().max(255).nullable().optional();
 
@@ -1285,6 +1286,7 @@ export const approveApplication = createServerFn({ method: "POST" })
       agreementSkippedReason?: string;
       /** Account provisioning and login delivery intentionally wait for Reserved. */
       portalAccount: "deferred";
+      approvalEmail?: ApprovalEmailStatus;
       error?: string;
     }> => {
       // Manager, not staff. A Coordinator may read and work an application —
@@ -1309,10 +1311,10 @@ export const approveApplication = createServerFn({ method: "POST" })
           error: "Application not found",
         };
 
-      // Already approved: do not write status or application.approved again.
-      // The packet trigger refuses both, and a repeat call is how the
-      // agreement goes out after the first approval.
-      if (app.status !== "approved") {
+      // Already approved: do not write status, application.approved, or the
+      // one-time Approval Confirmation again. A repeat call manages only the agreement.
+      const newlyApproved = app.status !== "approved";
+      if (newlyApproved) {
         const { approveThroughPacket } = await import("@/lib/approval-rpc.server");
         const approved = await approveThroughPacket({
           applicationId: data.id,
@@ -1377,6 +1379,24 @@ export const approveApplication = createServerFn({ method: "POST" })
       // workflow provisions the account and emails login details after staff
       // confirm the pickup appointment; activation remains the safety net.
       const portalAccount = "deferred" as const;
+      let approvalEmail: ApprovalEmailStatus = "not_sent";
+      if (newlyApproved) {
+        if (!app.email) approvalEmail = "no_email";
+        else {
+          try {
+            const { sendApprovalConfirmationEmail } = await import("@/lib/email.server");
+            const result = await sendApprovalConfirmationEmail({
+              to: String(app.email),
+              firstName: (app.full_name as string | null) ?? null,
+              applicationId: data.id,
+            });
+            approvalEmail = result.ok ? "sent" : result.blocked ?? "failed";
+          } catch {
+            // Approval is already durable; never undo it because a notice failed.
+            approvalEmail = "failed";
+          }
+        }
+      }
 
       if (data.sendAgreement === false) {
         return {
@@ -1384,6 +1404,7 @@ export const approveApplication = createServerFn({ method: "POST" })
           agreementSent: false,
           agreementSkippedReason: "not requested",
           portalAccount,
+          approvalEmail,
         };
       }
       if (!app.email) {
@@ -1392,6 +1413,7 @@ export const approveApplication = createServerFn({ method: "POST" })
           agreementSent: false,
           agreementSkippedReason: "no email on file",
           portalAccount,
+          approvalEmail,
         };
       }
 
@@ -1403,12 +1425,13 @@ export const approveApplication = createServerFn({ method: "POST" })
           agreementSent: false,
           agreementSkippedReason: "an agreement is already out",
           portalAccount,
+          approvalEmail,
         };
       }
 
       try {
         await issueAgreement(supabaseAdmin, data.id, { createdBy: context.userId });
-        return { ok: true, agreementSent: true, portalAccount };
+        return { ok: true, agreementSent: true, portalAccount, approvalEmail };
       } catch (e) {
         // Approval already succeeded; report the send failure without undoing it.
         return {
@@ -1416,6 +1439,7 @@ export const approveApplication = createServerFn({ method: "POST" })
           agreementSent: false,
           agreementSkippedReason: e instanceof Error ? e.message : "could not send agreement",
           portalAccount,
+          approvalEmail,
         };
       }
     },

@@ -217,6 +217,7 @@ const STAFF_WORKFLOWS = new Set(["lead_alert", "service_digest", "esign_signed_o
 export function emailReason(workflow: string | undefined): string {
   if (!workflow) return "You received this email from REAL RENTALS about your account or rental.";
   if (STAFF_WORKFLOWS.has(workflow)) return "Internal REAL RENTALS team notification.";
+  if (workflow === "approval_confirmation") return "You received this because your REAL RENTALS driver application was approved.";
   if (workflow.startsWith("application")) return "You received this because you started a driver application with REAL RENTALS.";
   if (workflow.startsWith("esign")) return "You received this because a REAL RENTALS rental agreement was prepared for you.";
   if (workflow.startsWith("payment") || workflow.startsWith("rent_reminder") || workflow === "card_expiring") return "You received this because you have a rental account with REAL RENTALS.";
@@ -583,7 +584,7 @@ export async function sendWizardRecoveryEmail({ to, firstName, applicationId, va
 }
 
 // -----------------------------------------------------------------------------
-// Driver transactional payment emails
+// Shared renter email layout
 // -----------------------------------------------------------------------------
 
 function shell(body: string): string {
@@ -603,6 +604,32 @@ function shell(body: string): string {
 function money(n: number): string {
   return `$${n.toFixed(2)}`;
 }
+
+/** One short vetting confirmation. Account access and pickup details still wait for Reserved. */
+export async function sendApprovalConfirmationEmail(args: {
+  to: string;
+  firstName: string | null;
+  applicationId: string;
+}): Promise<SendResult> {
+  const name = (args.firstName || "").trim().split(/\s+/)[0] || "there";
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Application Is Approved</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your qualification and verification checks are complete.</p>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Our team will be in touch to assign a vehicle and schedule your pickup.</p>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0">No vehicle is reserved yet. We'll send your driver portal login and pickup details once your reservation is confirmed.</p>`);
+  return sendEmail({
+    to: args.to,
+    subject: "Your REAL RENTALS Application Is Approved",
+    html,
+    replyTo: EMAIL_REPLY_TO,
+    track: { workflow: "approval_confirmation" },
+    idempotencyKey: `approval-confirmation-${args.applicationId}`,
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Driver transactional payment emails
+// -----------------------------------------------------------------------------
 
 type ReceiptArgs = {
   to: string;
