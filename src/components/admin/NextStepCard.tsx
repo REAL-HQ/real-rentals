@@ -19,6 +19,7 @@ export function NextStepCard({
   onRun,
   onActivate,
   onReserve,
+  onReturn,
   canReserve = false,
   onRetry,
   renderEvidence,
@@ -29,6 +30,7 @@ export function NextStepCard({
   onRun: (b: NextStep["blockers"][number]["target"]) => void;
   onActivate: () => void;
   onReserve?: () => void;
+  onReturn?: () => void;
   /** Soft hold available for an approved driver without an open reservation. */
   canReserve?: boolean;
   onRetry: () => void;
@@ -36,7 +38,26 @@ export function NextStepCard({
   evidence?: EvidencePresentationMap;
 }) {
   const { activation } = model;
-  if (activation === "rental_active") return null;
+  if (activation === "rental_active") {
+    return (
+      <section aria-label="Next Step" data-testid="next-step" data-activation={activation} className="rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-[1_1_16rem]">
+            <h3 className="text-[14px] font-semibold text-[#111114]">Next Step</h3>
+            <p className="mt-0.5 text-[12px] text-[#55555E]">{model.note}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onReturn?.()}
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-[#D03020] px-3.5 text-[12px] font-semibold text-white hover:bg-[#B00000]"
+            data-testid="next-step-return"
+          >
+            <Car className="h-3.5 w-3.5" /> Return
+          </button>
+        </div>
+      </section>
+    );
+  }
   const primary = "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-[#D03020] px-3.5 text-[12px] font-semibold text-white hover:bg-[#B00000] disabled:cursor-not-allowed disabled:opacity-50";
   const secondary = "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-3 text-[12px] font-semibold text-[#55555E] hover:border-[#C4C4CB] hover:text-[#111114] disabled:cursor-not-allowed disabled:opacity-50";
   return (
