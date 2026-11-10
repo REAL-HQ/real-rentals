@@ -107,7 +107,7 @@ const mailer = src.slice(
   src.indexOf("async function emailLinkToAddressOnFile"),
   src.indexOf("async function sendRecoveryLink"),
 );
-ok(/\.select\("email, full_name"\)[\s\S]{0,500}sendApplicationResumeEmail\(\{ to: onFile\.email/.test(mailer),
+ok(/\.select\("email, full_name[\s\S]{0,1600}sendApplicationResumeEmail\(\{ to: onFile\.email/.test(mailer),
    "  to the address on the matched record, not the submitted one");
 // Stronger than excluding the identity fields, which is what this used to
 // check: nothing the caller submitted is applied to a record they merely

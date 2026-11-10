@@ -206,9 +206,11 @@ export async function provisionDriverAccount(
   let inviteUrl: string | null = null;
   if (created) {
     try {
+      const site = (process.env.PUBLIC_SITE_URL || "https://drivereal.com").replace(/\/$/, "");
       const { data: link } = await admin.auth.admin.generateLink({
         type: "recovery",
         email: target,
+        options: { redirectTo: `${site}/set-password` },
       });
       inviteUrl = (link?.properties?.action_link as string) ?? null;
     } catch (e) {

@@ -14,6 +14,11 @@ import { z } from "zod";
 import { SAVE_BUSY_CODE, SAVE_BUSY_MESSAGE } from "@/lib/wizard-save";
 
 const nullableString = z.string().trim().max(255).nullable().optional();
+
+/** Exact case-insensitive match. Escapes ILIKE wildcards so a typed % is not a pattern. */
+function literalIlike(value: string): string {
+  return value.replace(/[%_\\]/g, (ch) => `\\${ch}`);
+}
 const nullableUuid = z.string().uuid().nullable().optional();
 
 /*
@@ -254,21 +259,14 @@ export const requestApplicationLink = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const emailLower = data.email.trim().toLowerCase();
-    const variants = Array.from(new Set([data.email.trim(), emailLower]));
-    const results = await Promise.all(
-      variants.map((e) =>
-        supabaseAdmin
-          .from("applications")
-          .select("id, primary_application_id, created_at")
-          .eq("email", e)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false })
-          .limit(1),
-      ),
-    );
-    const hit = results.flatMap((r) => r.data ?? []).sort((a: any, b: any) =>
-      String(b.created_at).localeCompare(String(a.created_at)),
-    )[0] as any;
+    const { data: emailRows } = await supabaseAdmin
+      .from("applications")
+      .select("id, primary_application_id, created_at")
+      .ilike("email", literalIlike(emailLower))
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const hit = emailRows?.[0] as any;
     let outcome: LinkOutcome | "none" = "none";
     if (hit) {
       outcome = (await sendRecoveryLink(supabaseAdmin, hit.primary_application_id ?? hit.id, { source: "link_request" })).outcome;
@@ -397,8 +395,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     const dupeCols =
       "id, email, primary_application_id, resubmission_count, resubmission_history, ai_flags, created_at";
     const emailLower = data.email.trim().toLowerCase();
-    const emailVariants = Array.from(new Set([data.email, emailLower, data.email.trim()]));
-    const [byPhone, ...byEmailResults] = await Promise.all([
+    const [byPhone, byEmail] = await Promise.all([
       supabaseAdmin
         .from("applications")
         .select(dupeCols)
@@ -406,17 +403,14 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(1),
-      ...emailVariants.map((e) =>
-        supabaseAdmin
-          .from("applications")
-          .select(dupeCols)
-          .eq("email", e)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false })
-          .limit(1),
-      ),
+      supabaseAdmin
+        .from("applications")
+        .select(dupeCols)
+        .ilike("email", literalIlike(emailLower))
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1),
     ]);
-    const byEmail = { data: byEmailResults.flatMap((r) => r.data ?? []) };
     // An email match wins; a phone-only match is handled as an identity conflict below.
     const newest = (rows: any[]) =>
       [...rows].sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))[0];
