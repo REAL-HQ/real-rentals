@@ -65,6 +65,7 @@ import { ACTIVATE_FROM_LIST, driverListStatusMenu } from "@/lib/driver-list-acti
 import { createDriverReadVersions } from "@/lib/latest-driver-reads";
 import { DriverDocumentUploadDialog } from "./DriverDocumentUploadDialog";
 import { useDriverDocumentUpload } from "./use-driver-document-upload";
+import { ReserveCarDialog } from "./ReserveCarDialog";
 import { NextStepCard } from "./NextStepCard";
 import { DriverRentalDetails } from "./DriverRentalDetails";
 import { nextStep, type FixTarget } from "@/lib/next-step";
@@ -74,6 +75,8 @@ import { DriverStatement } from "./DriverStatement";
 import { NO_PAY_CELLS, type PayCells } from "@/lib/driver-payment-status";
 import { getDriverPayStatuses } from "@/lib/driver-payment-status.functions";
 import { endRental, getActivationReadiness, type ActivationReadiness } from "@/lib/rentals.functions";
+import { clearReservationAfterActivate, getOpenReservationForApplication, getReservationDepositSettings } from "@/lib/reservations.functions";
+import { reservationBlocksStart } from "@/lib/reservations";
 import {
   activationEntryState,
   missingRequiredCategories,
@@ -1827,6 +1830,10 @@ function DriverDetail({
   const approve = useServerFn(approveApplication);
   const closeRental = useServerFn(endRental);
   const [activateOpen, setActivateOpen] = useState(false);
+  const [reserveOpen, setReserveOpen] = useState(false);
+  const [hasReservation, setHasReservation] = useState(false);
+  const [reservationDepositStatus, setReservationDepositStatus] = useState<string | null>(null);
+  const [blockStartWhenPending, setBlockStartWhenPending] = useState(false);
   // Rental tab: Activate Rental entry and the server's readiness checklist.
   // Loaded only for Manager+ (the server refuses a Coordinator) and only while
   // no rental is running.
@@ -1844,10 +1851,39 @@ function DriverDetail({
   const [pickupPaymentOpen, setPickupPaymentOpen] = useState(false);
   const [pickupPayment, setPickupPayment] = useState<PayCells | null>(null);
   const loadPickupPayment = useServerFn(getDriverPayStatuses);
+  const loadOpenReservation = useServerFn(getOpenReservationForApplication);
+  const loadReservationDepositSettings = useServerFn(getReservationDepositSettings);
+  const clearReservation = useServerFn(clearReservationAfterActivate);
   useEffect(() => {
     setPickupPayment(null);
     void loadPickupPayment({ data: { driverIds: [driver.id] } }).then((rows) => setPickupPayment(rows[driver.id] ?? NO_PAY_CELLS)).catch(() => setPickupPayment(null));
   }, [driver.id, loadPickupPayment, readinessNonce]);
+  useEffect(() => {
+    if (!isManager || rentalActive || !approved) {
+      setHasReservation(false);
+      setReservationDepositStatus(null);
+      return;
+    }
+    let cancelled = false;
+    void Promise.all([
+      loadOpenReservation({ data: { applicationId: driver.id } }),
+      loadReservationDepositSettings(),
+    ])
+      .then(([open, settings]) => {
+        if (cancelled) return;
+        setHasReservation(!!open.reservation);
+        setReservationDepositStatus(open.reservation?.depositStatus ?? null);
+        setBlockStartWhenPending(settings.blockStartWhenPending === true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHasReservation(false);
+        setReservationDepositStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [driver.id, isManager, rentalActive, approved, loadOpenReservation, loadReservationDepositSettings, readinessNonce]);
   const pickupPaid = pickupPayment?.pay === "Current";
   const [evidenceLoading, setEvidenceLoading] = useState(true);
   const [evidenceFailed, setEvidenceFailed] = useState(false);
@@ -2143,12 +2179,15 @@ function DriverDetail({
   const step = primaryStep({ screeningDone, docsComplete, insuranceOk, approved, rentalActive, isManager });
   // One next step for the header and the Overview card, from the server's
   // readiness when it is loaded (see src/lib/next-step.ts).
+  const canReserve = isManager && approved && !rentalActive;
   const next = nextStep({
     step,
     entry: activationEntry,
     readiness: rentalTabReadiness,
     loading: rentalTabReadinessLoading,
     failed: rentalTabReadinessFailed,
+    canReserve,
+    hasReservation,
   });
   function openSection(tabValue: string, anchor: string) {
     setTab(tabValue);
@@ -2160,7 +2199,14 @@ function DriverDetail({
     else if (t.kind === "interview") setInterviewOpen(true);
     else if (t.kind === "record_call") setRecordCallOpen(true);
     else if (t.kind === "approve") void approveAndSend();
-    else if (t.kind === "activate") { if (!activateOpen) setActivateOpen(true); }
+    else if (t.kind === "reserve") { if (!reserveOpen) setReserveOpen(true); }
+    else if (t.kind === "activate") {
+      if (reservationBlocksStart({ depositStatus: reservationDepositStatus, blockStartWhenPending })) {
+        toast.error("Reservation Deposit Is Still Pending. Record It Or Turn Off Block Start When Pending In Settings → Deposits.");
+        return;
+      }
+      if (!activateOpen) setActivateOpen(true);
+    }
     else if (t.kind === "rental") setTab("rental");
   }
   const nextIcon =
@@ -2588,6 +2634,8 @@ function DriverDetail({
                   evidence={evidencePresentation}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
+                  onReserve={() => runTarget({ kind: "reserve" })}
+                  canReserve={canReserve && !hasReservation}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
                 />
                 {summaryRow}
@@ -2755,6 +2803,8 @@ function DriverDetail({
                   evidence={evidencePresentation}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
+                  onReserve={() => runTarget({ kind: "reserve" })}
+                  canReserve={canReserve && !hasReservation}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
                 /></div>
                 <button className={btnSecondary} disabled={!RECORD_RENTAL_CONTRACT_ENABLED} onClick={()=>setRecordOpen(true)}>Record Rental — pending acceptance</button>
@@ -2914,9 +2964,23 @@ function DriverDetail({
           onClose={() => setActivateOpen(false)}
           onActivated={() => {
             setActivateOpen(false);
+            void clearReservation({ data: { applicationId: driver.id } }).catch(() => undefined);
             // activate_rental_tx already set the stage in the same transaction;
             // only refresh the screen — no second browser write.
             onRentalStarted?.();
+          }}
+        />
+      ) : null}
+
+      {reserveOpen ? (
+        <ReserveCarDialog
+          open={reserveOpen}
+          onOpenChange={setReserveOpen}
+          applicationId={driver.id}
+          driverName={driver.full_name}
+          onSaved={() => {
+            setHasReservation(true);
+            setReadinessNonce((n) => n + 1);
           }}
         />
       ) : null}

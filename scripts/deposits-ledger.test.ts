@@ -24,12 +24,13 @@ describe("list-only guard", () => {
     expect(panel).toContain("No deposit records");
   });
 
-  it("checks the flag before any role or table read", () => {
+  it("checks enablement before any role or table read", () => {
     const source = read("lib/deposits-ledger.functions.ts");
     const handler = source.slice(source.indexOf(".handler"));
-    const flag = handler.indexOf("if (!DEPOSITS_LEDGER_ENABLED)");
+    const flag = handler.indexOf("if (!enabled)");
     expect(flag).toBeGreaterThan(-1);
     expect(flag).toBeLessThan(handler.indexOf('from("user_roles")'));
+    expect(handler.indexOf("RESERVATION_DEPOSIT_SETTINGS_KEY")).toBeGreaterThan(-1);
     expect(flag).toBeLessThan(handler.indexOf("loadDepositsDirectory"));
   });
 });
@@ -154,11 +155,12 @@ describe("flag off", () => {
     expect(reads).toBe(0);
   });
 
-  it("stays off the rail and out of a coordinator Payments workspace", () => {
-    expect(visibleWorkspaceTabs("payments", "manager").map((tab) => tab.id)).toContain("deposits_ledger");
-    expect(visibleWorkspaceTabs("payments", "owner").map((tab) => tab.id)).toContain("deposits_ledger");
-    expect(visibleWorkspaceTabs("payments", "coordinator")).toEqual([]);
-    expect(railEntries("owner").map((entry) => entry.label)).not.toContain("Deposits & Refunds");
+  it("stays hidden until reservation deposits are On", () => {
+    expect(visibleWorkspaceTabs("payments", "manager").map((tab) => tab.id)).not.toContain("deposits_ledger");
+    expect(visibleWorkspaceTabs("payments", "manager", { reservationDepositEnabled: true }).map((tab) => tab.id)).toContain("deposits_ledger");
+    expect(visibleWorkspaceTabs("payments", "owner", { reservationDepositEnabled: true }).map((tab) => tab.id)).toContain("deposits_ledger");
+    expect(visibleWorkspaceTabs("payments", "coordinator", { reservationDepositEnabled: true })).toEqual([]);
+    expect(railEntries("owner").map((entry) => entry.label)).not.toContain("Deposits");
   });
 });
 

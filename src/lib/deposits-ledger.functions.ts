@@ -13,13 +13,23 @@ export const getDepositsLedger = createServerFn({ method: "POST" })
     return period === "this_month" || period === "last_month" || period === "last_90" ? { period } : { period: null };
   })
   .handler(async ({ data, context }): Promise<DepositsLedgerResponse> => {
-    if (!DEPOSITS_LEDGER_ENABLED) return { status: "disabled", report: null };
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { readReservationDepositSettings, RESERVATION_DEPOSIT_SETTINGS_KEY } = await import("./reservation-deposit-settings");
+    let reservationOn = false;
+    try {
+      const { data: row } = await supabaseAdmin.from("app_settings").select("value").eq("key", RESERVATION_DEPOSIT_SETTINGS_KEY).maybeSingle();
+      reservationOn = readReservationDepositSettings(row?.value).enabled === true;
+    } catch {
+      reservationOn = false;
+    }
+    const enabled = DEPOSITS_LEDGER_ENABLED || reservationOn;
+    if (!enabled) return { status: "disabled", report: null };
     if (!data.period) return { status: "unavailable", reason: "The period is not recognized", report: null };
     if (!context.userId) throw new Error("Forbidden");
     const { data: roles, error } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
     if (error || !roles) throw new Error("Forbidden");
     return runDepositsLedger({
-      enabled: DEPOSITS_LEDGER_ENABLED,
+      enabled,
       userId: context.userId,
       roles: roles.map((row) => row.role),
       period: data.period,
