@@ -661,7 +661,8 @@ type AgreementSendArgs = { to: string; firstName: string | null; url: string; ve
 /**
  * "You're approved — set up your portal."
  *
- * Sent once, on the approval that creates the account. A returning driver
+ * Sent when the account is first created: on approval, or on the signature
+ * when nobody approved them first. A returning driver
  * never gets it: they already have a password, and a second set-password link
  * in their inbox is how somebody ends up resetting an account they were
  * already signed into.
@@ -717,13 +718,32 @@ export async function sendAgreementEmail(args: AgreementSendArgs): Promise<SendR
   return sendEmail({ to: args.to, subject: "Sign Your REAL RENTALS Rental Agreement", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signing_request" } });
 }
 
-export async function sendAgreementSignedEmail(args: { to: string; firstName: string | null; vehicle: string | null; portalAccess: boolean }): Promise<void> {
+export async function sendAgreementSignedEmail(args: {
+  to: string;
+  firstName: string | null;
+  vehicle: string | null;
+  portalAccess: boolean;
+  payment?: { url: string; amount: number; tiedToRenter: boolean; label: string } | null;
+}): Promise<void> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const amount = args.payment
+    ? escapeHtml(args.payment.amount.toLocaleString("en-US", { style: "currency", currency: "USD" }))
+    : "";
+  const pay = args.payment
+    ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Your initial payment is <strong>${amount}</strong> — ${escapeHtml(args.payment.label)} on your agreement.</p>
+      <a href="${escapeHtml(args.payment.url)}" style="display:inline-block;background:#111;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay ${amount}</a>
+      <p style="color:#666;font-size:13px;line-height:1.55;margin:12px 0 0">${args.payment.tiedToRenter
+        ? "This link is only for your account and expires within 24 hours."
+        : "This is the company payment page, not a personal checkout. Include your name so we can match the payment to you."}</p>`
+    : "";
   const tail = args.portalAccess
-    ? `is fully executed and saved to your driver file. It's available in your portal.</p>
+    ? `is fully executed and saved to your driver file.</p>
+      ${pay}
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:16px 0 12px">Sign in at <a href="https://drivereal.com/login">drivereal.com/login</a> with this email address. A code sent to this inbox works, and you can set a password from there.</p>
       <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">View In Your Portal</a>`
     : `is fully executed and securely saved to your driver file.</p>
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:0">We'll send you access to your driver portal when your account is ready.</p>`;
+      ${pay}
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:16px 0 0">We'll send you access to your driver portal when your account is ready.</p>`;
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Agreement Signed — You're All Set</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Thanks ${escapeHtml(name)}. Your rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} ${tail}`);

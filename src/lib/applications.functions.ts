@@ -7,6 +7,11 @@ import type { Database, Json } from "@/integrations/supabase/types";
 const nullableString = z.string().trim().max(255).nullable().optional();
 const nullableUuid = z.string().uuid().nullable().optional();
 
+/** Exact ilike: `%`, `_` and `\` in an email are not wildcards. */
+function literalIlike(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 /*
  * Three applicant endpoints used to live here: submitApplication,
  * getApplicationRentalInfo and completeApplicationProfile. All three are gone.
@@ -186,7 +191,7 @@ async function sendRecoveryLink(
       at: new Date().toISOString(),
       ...entry,
       link_sent: result.outcome === "sent",
-      link_failed: result.outcome === "failed",
+      link_failed: result.outcome === "failed" || result.outcome === "unavailable",
       link_unknown: result.outcome === "unknown",
     });
     const { error: historyError } = await supabaseAdmin
@@ -210,21 +215,14 @@ export const requestApplicationLink = createServerFn({ method: "POST" })
     const { recoveryEntryPaused, recoveryMaintenanceResponse } = await import("@/lib/recovery-maintenance.server");
     if (await recoveryEntryPaused(supabaseAdmin)) return recoveryMaintenanceResponse;
     const emailLower = data.email.trim().toLowerCase();
-    const variants = Array.from(new Set([data.email.trim(), emailLower]));
-    const results = await Promise.all(
-      variants.map((e) =>
-        supabaseAdmin
-          .from("applications")
-          .select("id, primary_application_id, created_at")
-          .eq("email", e)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false })
-          .limit(1),
-      ),
-    );
-    const hit = results
-      .flatMap((r) => r.data ?? [])
-      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+    const { data: hits } = await supabaseAdmin
+      .from("applications")
+      .select("id, primary_application_id, created_at")
+      .ilike("email", literalIlike(emailLower))
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const hit = hits?.[0];
     if (hit) {
       await sendRecoveryLink(supabaseAdmin, hit.primary_application_id ?? hit.id, {
         source: "link_request",
@@ -313,8 +311,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     const dupeCols =
       "id, email, primary_application_id, resubmission_count, resubmission_history, ai_flags, created_at";
     const emailLower = data.email.trim().toLowerCase();
-    const emailVariants = Array.from(new Set([data.email, emailLower, data.email.trim()]));
-    const [byPhone, ...byEmailResults] = await Promise.all([
+    const [byPhone, byEmailResult] = await Promise.all([
       supabaseAdmin
         .from("applications")
         .select(dupeCols)
@@ -322,17 +319,15 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(1),
-      ...emailVariants.map((e) =>
-        supabaseAdmin
-          .from("applications")
-          .select(dupeCols)
-          .eq("email", e)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false })
-          .limit(1),
-      ),
+      supabaseAdmin
+        .from("applications")
+        .select(dupeCols)
+        .ilike("email", literalIlike(emailLower))
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1),
     ]);
-    const byEmail = { data: byEmailResults.flatMap((r) => r.data ?? []) };
+    const byEmail = { data: byEmailResult.data ?? [] };
     // An email match wins; a phone-only match is handled as an identity conflict below.
     const newest = <T extends { created_at: string | null }>(rows: T[]) =>
       [...rows].sort((a, b) =>
@@ -453,7 +448,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         id: null as string | null,
         token: null as string | null,
         existing: true as const,
-        linkStatus: (outcome === "unknown" ? "failed" : outcome) as "sent" | "recent" | "failed" | "review",
+        linkStatus: (outcome === "sent" || outcome === "recent" ? outcome : "failed") as "sent" | "recent" | "failed" | "review",
         linkOk: outcome === "sent" || outcome === "recent",
         retryAfterSeconds: wait,
       };
