@@ -1370,7 +1370,7 @@ setDocCounts(requiredDocCounts(rows));
                           }
                           if (applicationStatusChoiceDisabled(a.status, status, tier)) return;
                           if (status === "approved") {
-                            void approveFromList({ data: { id: a.id } })
+                            void approveFromList({ data: { id: a.id, sendAgreement: false } })
                               .then((res) => {
                                 if (!res.ok) throw new Error(res.error ?? "Could not approve");
                                 applySaved(a.id, { status: "approved" });
@@ -1988,7 +1988,7 @@ function DriverDetail({
       }]];
       if (r.key === "approved") return [[r.key, {
         tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Approval Required", fields: [],
-        onToggle: () => r.met === true ? openSection("application", "") : void approveAndSend(),
+        onToggle: () => r.met === true ? openSection("application", "") : void approveOnly(),
         toggleLabel: r.met === true ? "View Approved Application" : "Review And Approve Application",
         toggleTitle: r.met === true ? "View The Approved Application." : "Run The Existing Approval Checks.",
       }]];
@@ -2158,19 +2158,14 @@ function DriverDetail({
     }
   }
 
-  // Approving and sending the contract used to be two separate manual steps,
-  // so an approved driver could sit waiting on a contract nobody sent.
-  async function approveAndSend() {
+  // Approval is only the vetting decision. Agreements are prepared and sent explicitly.
+  async function approveOnly() {
     if (approving) return; // a double click must not approve twice
     setApproving(true);
     try {
-      const res = await approve({ data: { id: driver.id } });
+      const res = await approve({ data: { id: driver.id, sendAgreement: false } });
       if (!res.ok) throw new Error(res.error ?? "Could not approve");
-      if (res.agreementSent) {
-        toast.success(`Approved — Agreement Sent. Login Details Send At Reserved. ${approvalEmailMessage(res.approvalEmail)}`.trim());
-      } else {
-        toast.success(`Approved. Agreement Not Sent: ${res.agreementSkippedReason ?? "unknown"}. Login Details Send At Reserved. ${approvalEmailMessage(res.approvalEmail)}`.trim());
-      }
+      toast.success(`Approved — Login Details Send At Reserved. ${approvalEmailMessage(res.approvalEmail)}`.trim());
       onSaved({ status: "approved" });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not approve this driver");
@@ -2203,7 +2198,7 @@ function DriverDetail({
     if (t.kind === "section") openSection(t.tab, t.anchor);
     else if (t.kind === "interview") setInterviewOpen(true);
     else if (t.kind === "record_call") setRecordCallOpen(true);
-    else if (t.kind === "approve") void approveAndSend();
+    else if (t.kind === "approve") void approveOnly();
     else if (t.kind === "reserve") { if (!reserveOpen) setReserveOpen(true); }
     else if (t.kind === "activate") {
       if (reservationBlocksStart({ depositStatus: reservationDepositStatus, blockStartWhenPending })) {
@@ -2764,7 +2759,7 @@ function DriverDetail({
                       onChange={(v) => {
                         if (applicationStatusChoiceDisabled(driver.status, v, panelTier(isOwner, isManager))) return;
                         if (v === "approved") {
-                          void approveAndSend();
+                          void approveOnly();
                           return;
                         }
                         if (v === "closed" && driver.status !== "closed") {

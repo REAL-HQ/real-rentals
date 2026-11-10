@@ -133,6 +133,7 @@
     "approval explicitly defers account delivery to Reserved",
     "approval sends its separate confirmation only on a new approval",
     "the approval confirmation has a stable per-application idempotency key",
+    "approval never sends an agreement unless explicitly requested",
     "the Reserved invite email exists",
     "the login email can include confirmed pickup details",
     "Reserved sends the account login email",

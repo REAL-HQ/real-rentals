@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Stop Approved from implicitly preparing an agreement; keep agreement sending explicit and remove the misleading missing-details toast.
 - [x] Send one short Approval Confirmation when an applicant first becomes Approved; keep login at Reserved, report delivery outcome, and test without sending real email.
 - [x] Let staff edit saved Call Complete notes later without changing completion metadata, interview answers, stage or verification history; test permissions and Preview without saving a real note.
 - [x] Add Reserved after Approved: reuse the existing reservation flow, collect pickup date/time/location, show reserved drivers in Booked, and keep unreserved approved drivers in the waiting list.

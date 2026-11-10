@@ -50,6 +50,17 @@ describe("Approval Confirmation", () => {
     expect(body).toContain('approvalEmail = "failed"');
     expect(body).not.toContain("provisionDriverAccount");
     expect(body).not.toContain("sendPortalInviteEmail");
+    expect(body).toContain("if (data.sendAgreement !== true)");
+    expect(body).toContain("send_agreement: data.sendAgreement === true");
+    expect(body).not.toContain("data.sendAgreement !== false");
+  });
+
+  test("both staff Approved controls explicitly choose Approve Only", () => {
+    const source = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
+    expect(source).toContain('approve({ data: { id: driver.id, sendAgreement: false } })');
+    expect(source).toContain('approveFromList({ data: { id: a.id, sendAgreement: false } })');
+    expect(source).not.toContain("Agreement Not Sent:");
+    expect(source).not.toContain("approveAndSend");
   });
 
   test("staff see a concrete delivery outcome without changing the approval result", () => {

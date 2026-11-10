@@ -1259,12 +1259,9 @@ export const mergeDuplicateApplications = createServerFn({ method: "POST" })
   });
 
 /**
- * Approve an applicant and put the rental agreement in front of them.
- *
- * Approval and "send the contract" were previously two separate manual steps,
- * so an approved driver could sit waiting on a contract nobody remembered to
- * send. This does both, and is safe to call repeatedly: if an agreement is
- * already out for signature or already signed, it is not re-sent.
+ * Approve an applicant. Approval Confirmation is automatic on the first
+ * transition; a rental agreement is sent only when sendAgreement === true.
+ * Repeating an explicit send is safe when an agreement is already out or signed.
  */
 export const approveApplication = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -1365,7 +1362,7 @@ export const approveApplication = createServerFn({ method: "POST" })
               summary: `Approved ${app.full_name ?? app.email ?? data.id}`,
               entityType: "application",
               entityId: data.id,
-              metadata: { previous_status: app.status, send_agreement: data.sendAgreement !== false },
+              metadata: { previous_status: app.status, send_agreement: data.sendAgreement === true },
             });
             return { error: null };
           },
@@ -1398,7 +1395,7 @@ export const approveApplication = createServerFn({ method: "POST" })
         }
       }
 
-      if (data.sendAgreement === false) {
+      if (data.sendAgreement !== true) {
         return {
           ok: true,
           agreementSent: false,
