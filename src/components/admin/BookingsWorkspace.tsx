@@ -45,7 +45,7 @@ export function BookingsWorkspace({
 
   return (
     <div className="space-y-4" data-testid="bookings-workspace">
-      <div className="admin-sticky-bar flex flex-wrap items-center gap-1.5">
+      <div className="admin-sticky-bar flex flex-wrap items-end gap-5 border-b border-border">
         {BOOKINGS_VIEWS.map((item) => {
           if (item.id === "active" && !canViewBoard) return null;
           if (item.id === "booked" && !canManageReservations && !canViewBoard) return null;
@@ -55,10 +55,10 @@ export function BookingsWorkspace({
               type="button"
               onClick={() => setView(item.id)}
               aria-pressed={effective === item.id}
-              className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+              className={`-mb-px border-b-2 px-0.5 pb-2 text-sm font-semibold transition-colors ${
                 effective === item.id
-                  ? "border-[#D03020] bg-[#D03020] text-white"
-                  : "border-[#EDEDF0] bg-white text-[#55555E] hover:border-[#D6D6DB]"
+                  ? "border-[#D03020] text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
               {item.label}
