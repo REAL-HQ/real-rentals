@@ -110,6 +110,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -157,6 +158,7 @@ import {
 } from "@/lib/card-link-cache";
 import { AgreementsCard } from "./AgreementsCard";
 import { ContactStatusCell } from "./ContactStatusCell";
+import { RecordPaymentDialog } from "./RentPaymentActions";
 import { ApprovedNotRentingList } from "./ApprovedNotRenting";
 import { listApprovedNotRenting } from "@/lib/booking-funnel.functions";
 import type { ApprovedNotRentingResult } from "@/lib/booking-funnel";
@@ -506,6 +508,11 @@ export function DriversPanel({
   const [listActivateId, setListActivateId] = useState<string | null>(null);
   const [pendingProfileTab, setPendingProfileTab] = useState<string | null>(null);
   const [listUploadId, setListUploadId] = useState<string | null>(null);
+  const [listRecordPay, setListRecordPay] = useState<{
+    rentalId: string;
+    driverName: string;
+    weeklyRate: number | null;
+  } | null>(null);
   const [activationRefresh, setActivationRefresh] = useState(0);
   const [readVersions] = useState(createDriverReadVersions);
   useEffect(() => () => readVersions.invalidateAll(), [readVersions]);
@@ -1164,8 +1171,8 @@ setDocCounts(requiredDocCounts(rows));
       {ONBOARDING_CHECKLIST_ENABLED === true && (
         <OnboardingChecklist canView={canViewOnboarding} result={onboardingResult} failed={onboardingFailed} />
       )}
-      <div className="admin-sticky-bar mb-4 flex flex-col gap-2 pb-1 text-xs lg:flex-row lg:overflow-x-auto lg:-mx-1 lg:px-1">
-        <div className="flex min-w-0 items-center gap-2 overflow-x-auto -mx-1 px-1 pb-1 lg:contents">
+      <div className="admin-sticky-bar mb-4 flex flex-col gap-2 text-xs">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
         {filterButtons}
         {canManageWaitlist && (
           <button
@@ -1222,11 +1229,11 @@ setDocCounts(requiredDocCounts(rows));
           </button>
         )}
         </div>
-        <div className="shrink-0 lg:ml-auto max-lg:w-full">
+        <div className="ml-auto">
           <button
             onClick={handleMerge}
             disabled={merging}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50 max-lg:w-full max-lg:justify-center"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50"
           >
             <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge Duplicates"}
           </button>
@@ -1272,32 +1279,23 @@ setDocCounts(requiredDocCounts(rows));
       ) : null}
       {APPLICATION_RESUME_REMINDERS_ENABLED === true ? <ApplicationResumeReminders /> : null}
       <AdminTableScroll className="max-lg:min-w-0 rounded-lg border border-border bg-white">
-          <table className="w-full text-sm max-lg:min-w-[56rem]">
+          {/* Fits 1280/100% and 1024: hide Email/Deposit/Created, sticky actions, no min-width scroll. */}
+          <table className="w-full table-fixed text-sm" data-testid="drivers-table">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="text-left font-medium px-3 py-2.5 border-b border-border">Name</th>
-                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
-                  Contact
-                </th>
-                <th className="text-left font-medium px-3 py-2.5 border-b border-border">Status</th>
-                <th className="text-left font-medium px-3 py-2.5 border-b border-border">Phone</th>
-                <th className="text-left font-medium px-3 py-2.5 border-b border-border">Email</th>
-                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
-                  Readiness
-                </th>
+                <th className="w-[16%] text-left font-medium px-2 py-2.5 border-b border-border">Name</th>
+                <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Contact</th>
+                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Status</th>
+                <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Phone</th>
+                <th className="hidden">Email</th>
+                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Readiness</th>
                 {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
                   <DriverDocExpiryHeader />
                 ) : null}
-                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
-                  Payment
-                </th>
-                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
-                  Deposit
-                </th>
-                <th className="text-left font-medium px-3 py-2.5 border-b border-border">
-                  Created
-                </th>
-                <th className="px-2 py-2.5 border-b border-border w-10"></th>
+                <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Payment</th>
+                <th className="hidden">Deposit</th>
+                <th className="hidden">Created</th>
+                <th className="w-[8%] px-2 py-2.5 border-b border-border text-right sticky right-0 bg-[#FAFAFB]">Open</th>
               </tr>
             </thead>
             <tbody>
@@ -1322,7 +1320,7 @@ setDocCounts(requiredDocCounts(rows));
                     onClick={() => openDriver(a)}
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors"
                   >
-                    <td className="px-3 py-2.5 font-medium whitespace-nowrap">
+                    <td className="px-2 py-2.5 font-medium whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5 max-w-[105px] max-lg:max-w-[12rem]">
                         <span className="truncate" title={a.full_name ?? undefined}>{a.full_name ? displayPersonName(a.full_name) : a.full_name}</span>
                       </span>
@@ -1439,22 +1437,8 @@ setDocCounts(requiredDocCounts(rows));
                         <span className="text-[11px] text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td
-                      className="px-3 py-2.5 whitespace-nowrap"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {a.email ? (
-                        <a
-                          href={`mailto:${a.email}`}
-                          title={a.email}
-                          className="inline-flex items-center gap-1 max-w-[122px] text-[11px] text-muted-foreground hover:text-foreground hover:underline max-lg:max-w-[16rem] max-lg:min-w-0"
-                        >
-                          <Mail className="w-3 h-3 shrink-0" />
-                          <span className="truncate">{a.email}</span>
-                        </a>
-                      ) : (
-                        <span className="text-[11px] text-muted-foreground">—</span>
-                      )}
+                    <td className="hidden" aria-hidden="true">
+                      {a.email || ""}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       {canSeeSensitive ? (
@@ -1480,69 +1464,87 @@ setDocCounts(requiredDocCounts(rows));
                         />
                       </td>
                     ) : null}
-                    <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
-                      {payCells(payIndex[a.id]).pay}
+                    <td className="px-2 py-2.5 whitespace-nowrap text-muted-foreground">
+                      <span className="block truncate">{payCells(payIndex[a.id]).pay}</span>
+                      {(() => {
+                        const d = payCells(payIndex[a.id]).dep;
+                        return d.text && d.text !== "—" ? (
+                          <span className="block truncate text-[10px] opacity-70">Dep {d.text}</span>
+                        ) : null;
+                      })()}
                     </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
-                      {(() => { const d = payCells(payIndex[a.id]).dep; return <>{d.text}{d.detail ? <span className="block text-[10px]">{d.detail}</span> : null}</>; })()}
-                    </td>
-                    <td className="px-3 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
-                      <div>{fmtDate(a.created_at!)}</div>
-                      <div className="text-[10px] opacity-70">
-                        {new Date(a.created_at!).toLocaleTimeString([], {
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                      </div>
-                    </td>
-                    <td className="px-2 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+                    <td className="hidden" aria-hidden="true" />
+                    <td className="hidden" aria-hidden="true" />
+                    <td className="px-2 py-2.5 text-right sticky right-0 bg-white" onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-soft text-muted-foreground">
                           <MoreVertical className="w-4 h-4" />
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-white">
-                          <DropdownMenuItem onClick={() => openDriver(a)}><ExternalLink className="w-4 h-4 mr-2" /> Open</DropdownMenuItem>
+                        <DropdownMenuContent align="end" className="w-52 bg-white">
+                          <DropdownMenuItem onClick={() => openDriver(a)}>
+                            <ExternalLink className="w-4 h-4 mr-2" /> Open
+                          </DropdownMenuItem>
                           {(isOwner || isManager) && !openRentals.has(a.id) && (
                             <DropdownMenuItem onClick={() => setListActivateId(a.id)}>
                               <Car className="w-4 h-4 mr-2" /> Activate
                             </DropdownMenuItem>
                           )}
                           {(isOwner || isManager) && (
-                            <DropdownMenuItem onClick={() => { setPendingProfileTab("payments"); openDriver(a); }}>
-                              <CreditCard className="w-4 h-4 mr-2" /> Record Payment
-                            </DropdownMenuItem>
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  void (async () => {
+                                    const { data } = await supabase
+                                      .from("rentals")
+                                      .select("id, weekly_rate")
+                                      .eq("application_id", a.id)
+                                      .eq("status", "active")
+                                      .maybeSingle();
+                                    if (data?.id) {
+                                      setListRecordPay({
+                                        rentalId: data.id as string,
+                                        driverName: a.full_name ? displayPersonName(a.full_name) : "Driver",
+                                        weeklyRate: data.weekly_rate == null ? null : Number(data.weekly_rate),
+                                      });
+                                      return;
+                                    }
+                                    // No active rental — open the Payments tab so staff can still manage terms / card.
+                                    setPendingProfileTab("payments");
+                                    openDriver(a);
+                                  })();
+                                }}
+                              >
+                                <CreditCard className="w-4 h-4 mr-2" /> Record Payment
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setListUploadId(a.id)}>
+                                <Upload className="w-4 h-4 mr-2" /> Upload Docs
+                              </DropdownMenuItem>
+                            </>
                           )}
-                          <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: a.id } }))}>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() =>
+                              window.dispatchEvent(
+                                new CustomEvent("open-messages", { detail: { applicationId: a.id } }),
+                              )
+                            }
+                          >
                             <MessageSquare className="w-4 h-4 mr-2" /> Send Message
                           </DropdownMenuItem>
-                          {(isOwner || isManager) && (
-                            <DropdownMenuItem onClick={() => setListUploadId(a.id)}>
-                              <Upload className="w-4 h-4 mr-2" /> Upload Docs
-                            </DropdownMenuItem>
-                          )}
-                          {a.phone && (
-                            <DropdownMenuItem
-                              onClick={() => (window.location.href = `tel:${a.phone}`)}
-                            >
+                          {a.phone ? (
+                            <DropdownMenuItem onClick={() => (window.location.href = `tel:${a.phone}`)}>
                               <Phone className="w-4 h-4 mr-2" /> Call
                             </DropdownMenuItem>
-                          )}
-                          {a.phone && (
-                            <DropdownMenuItem
-                              onClick={() => (window.location.href = smsHref(a.phone))}
-                            >
-                              <MessageSquare className="w-4 h-4 mr-2" /> Text
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: a.id } }))}>
-                            <MessageSquare className="w-4 h-4 mr-2" /> Open in Messages
-                          </DropdownMenuItem>
+                          ) : null}
+                          {(canManageWaitlist || !contactedMs) && <DropdownMenuSeparator />}
                           {canManageWaitlist && (
                             <DropdownMenuItem
                               disabled={holdBusy === a.id}
                               onClick={() => void toggleHold(a.id, !held.has(a.id))}
                             >
-                              <ClockIcon className="w-4 h-4 mr-2" /> {held.has(a.id) ? "Remove Waitlist" : "Add Waitlist"}
+                              <ClockIcon className="w-4 h-4 mr-2" />{" "}
+                              {held.has(a.id) ? "Remove Waitlist" : "Add Waitlist"}
                             </DropdownMenuItem>
                           )}
                           {!contactedMs && (
@@ -1550,6 +1552,7 @@ setDocCounts(requiredDocCounts(rows));
                               <PhoneOutgoing className="w-4 h-4 mr-2" /> Mark Contacted
                             </DropdownMenuItem>
                           )}
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-real-red focus:text-real-red"
                             onClick={() => remove(a.id)}
@@ -1639,6 +1642,16 @@ setDocCounts(requiredDocCounts(rows));
       })() : null}
       {listUploadId ? (
         <ListDocUpload applicationId={listUploadId} onClose={() => setListUploadId(null)} />
+      ) : null}
+      {listRecordPay ? (
+        <RecordPaymentDialog
+          open
+          onOpenChange={(v) => { if (!v) setListRecordPay(null); }}
+          rentalId={listRecordPay.rentalId}
+          driverName={listRecordPay.driverName}
+          weeklyRate={listRecordPay.weeklyRate}
+          onSaved={() => { setListRecordPay(null); refreshDrivers(); }}
+        />
       ) : null}
       {filter === "waitlist" && (
         <div className="mt-6">
