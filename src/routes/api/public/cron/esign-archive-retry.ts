@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { createServerOnlyFn } from "@tanstack/react-start";
 import { timingSafeEqual } from "crypto";
 
 // Re-attempts PDF archiving for signed eSign documents whose archive failed
@@ -10,6 +11,10 @@ export const Route = createFileRoute("/api/public/cron/esign-archive-retry")({
     },
   },
 });
+
+// Server-only loader: keeps the eSign engine (and its server-only imports) out
+// of the browser bundle, which otherwise fails to build.
+const loadEsign = createServerOnlyFn(() => import("@/lib/esign.server"));
 
 const MAX_ATTEMPTS = 10;
 /** Exponential backoff: 5 min, 10, 20 … capped at 12 h between attempts. */
@@ -24,7 +29,7 @@ async function handle(request: Request): Promise<Response> {
   if (!expected || a.length !== b.length || !timingSafeEqual(a, b))
     return new Response("unauthorized", { status: 401 });
 
-  const { retryArchive } = await import("@/lib/esign.server");
+  const { retryArchive } = await loadEsign();
   const cutoff = new Date(Date.now() - 2 * 60 * 1000).toISOString();
   const { data } = await supabaseAdmin
     .from("agreements")

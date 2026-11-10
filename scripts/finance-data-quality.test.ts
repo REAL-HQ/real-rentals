@@ -177,7 +177,7 @@ it("lets an owner read and refuses a coordinator before the load", async () => {
   const owner = await runFinanceDataQuality({ enabled: true, userId: "owner-1", tier: "owner", load });
   expect(owner.status).toBe("ready");
   expect(load).toHaveBeenCalledTimes(1);
-  const blocked = vi.fn(load);
+  const blocked = vi.fn(async () => ({ ok: true as const, payments: [], rentals: [], refunds: [] }));
   await expect(runFinanceDataQuality({ enabled: true, userId: "coord-1", tier: "coordinator", load: blocked })).rejects.toThrow("Forbidden");
   expect(blocked).not.toHaveBeenCalled();
 });
