@@ -11,10 +11,12 @@ ok(owner.filter((id) => id !== "owner_pnl").length === TABS.length && owner.incl
 ok(visibleSettingsSections("manager").length > 0, "Manager: Settings sections (opened from profile menu)");
 ok(JSON.stringify(ids(visibleSettingsSections("manager"))) === '["website","maintenance","vehicle_defaults","automations","activity"]', "Manager Settings: Website, Vehicle Defaults, Maintenance, Automations, Activity");
 ok(ids(visibleSettingsSections("owner")).includes("team") && ids(visibleSettingsSections("owner")).includes("automations"), "Owner Settings: Team + Automations");
-ok(ids(visibleSettingsSections("owner")).includes("vehicle_photos") && !ids(visibleSettingsSections("owner")).includes("photo_enhancement") && !ids(visibleSettingsSections("owner")).includes("photo_reading"), "Owner Settings: one Photos section");
-ok(ids(visibleSettingsSections("owner")).includes("agreements") && !ids(visibleSettingsSections("owner")).includes("esign") && !ids(visibleSettingsSections("owner")).includes("agreement_templates"), "Owner Settings: one Agreements section");
-ok(resolveSettingsSection("photo_enhancement") === "vehicle_photos" && resolveSettingsSection("photo_reading") === "vehicle_photos", "Legacy photo settings redirect");
-ok(resolveSettingsSection("esign") === "agreements" && resolveSettingsSection("agreement_templates") === "agreements", "Legacy agreement settings redirect");
+ok(ids(visibleSettingsSections("owner")).includes("media") && !ids(visibleSettingsSections("owner")).includes("vehicle_photos") && !ids(visibleSettingsSections("owner")).includes("agreements") && !ids(visibleSettingsSections("owner")).includes("photo_enhancement") && !ids(visibleSettingsSections("owner")).includes("photo_reading") && !ids(visibleSettingsSections("owner")).includes("esign") && !ids(visibleSettingsSections("owner")).includes("agreement_templates"), "Owner Settings: one Media section");
+ok(resolveSettingsSection("photo_enhancement") === "media" && resolveSettingsSection("photo_reading") === "media" && resolveSettingsSection("vehicle_photos") === "media", "Legacy photo settings redirect to Media");
+ok(resolveSettingsSection("esign") === "media" && resolveSettingsSection("agreement_templates") === "media" && resolveSettingsSection("agreements") === "media", "Legacy agreement settings redirect to Media");
+ok(SETTINGS_SECTIONS.every((sec) => !sec.label.includes(" ") && !sec.group.includes(" ")), "Settings list entries and groups are one word");
+ok(SETTINGS_SECTIONS.some((sec) => sec.id === "safe_autofill" && sec.label === "Autofill"), "Safe Autofill list item is Autofill");
+ok(SETTINGS_SECTIONS.some((sec) => sec.id === "partners" && sec.label === "Partners"), "Partner Terms list item is Partners");
 ok(Object.keys(SETTINGS_SECTION_ALIASES).every((k) => SETTINGS_SECTIONS.some((s) => s.id === SETTINGS_SECTION_ALIASES[k])), "Alias targets exist");
 
 ok(visibleSettingsSections("coordinator").length === 0, "Coordinator: no Settings sections");

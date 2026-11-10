@@ -720,7 +720,12 @@ function Admin() {
   const switcher = experience && experience !== "driver"
     ? <ExperienceSwitcher value={experience} options={expOptions} onChange={chooseExperience} />
     : null;
-  const workspace = TABS.find((t) => t.id === ownerTab) ?? current;
+  // Settings is off the rail, so it is not in TABS. Without a dedicated
+  // workspace the fallback is Overview, which left every Settings page
+  // showing that stale header.
+  const workspace = tab === "settings"
+    ? { id: "settings", label: "Settings", description: "" }
+    : (TABS.find((t) => t.id === ownerTab) ?? current);
   const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, navTier, { reservationDepositEnabled }) : [];
   const recordParent = urlRecordId && (tab === "drivers" || tab === "vehicles") ? current : null;
 
@@ -965,7 +970,9 @@ function Admin() {
             {tab !== "overview" && tab !== "issues" && !recordParent && (
               <div className="mb-3">
                 <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
-                <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
+                {workspace.description ? (
+                  <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
+                ) : null}
               </div>
             )}
             {workspaceTabs.length > 1 && !recordParent && (

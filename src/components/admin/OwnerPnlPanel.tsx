@@ -100,8 +100,7 @@ export function OwnerPnlPanel() {
       <style>{PRINT_CSS}</style>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-lg font-semibold">P&L</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground">
             Stripe charges plus recorded Cash App, Zelle, Venmo, wire, and cash for one Eastern Time month, next to the month before. Deposits stay off the net. Stripe fees stay on the company net.
           </p>
         </div>

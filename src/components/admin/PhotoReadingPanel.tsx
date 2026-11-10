@@ -1,4 +1,4 @@
-// Settings → Photo Reading. The Owner's switch over the only thing in this
+// Settings → Media (Photo Reading). The Owner's switch over the only thing in this
 // system that spends money.
 //
 // Photo Enhancement's panel sits next to this one and says, correctly, that

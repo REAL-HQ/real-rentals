@@ -137,15 +137,14 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "company", label: "Company", group: "GENERAL", minTier: "owner" },
   { id: "website", label: "Website", group: "GENERAL", minTier: "manager" },
   { id: "maintenance", label: "Maintenance", group: "FLEET", minTier: "manager" },
-  { id: "safe_autofill", label: "Safe Autofill", group: "FLEET", minTier: "owner" },
-  { id: "vehicle_photos", label: "Photos", group: "FLEET", minTier: "owner" },
+  { id: "safe_autofill", label: "Autofill", group: "FLEET", minTier: "owner" },
+  { id: "media", label: "Media", group: "FLEET", minTier: "owner" },
   { id: "vehicle_defaults", label: "Pricing", group: "RENTALS", minTier: "manager" },
   { id: "rental_terms", label: "Terms", group: "RENTALS", minTier: "owner" },
   { id: "deposits", label: "Deposits", group: "RENTALS", minTier: "owner" },
   { id: "applications", label: "Applications", group: "RENTALS", minTier: "owner" },
-  { id: "agreements", label: "Agreements", group: "RENTALS", minTier: "owner" },
   { id: "payments", label: "Payments", group: "PAYMENTS", minTier: "owner" },
-  { id: "partners", label: "Partner Terms", group: "BUSINESS", minTier: "owner" },
+  { id: "partners", label: "Partners", group: "BUSINESS", minTier: "owner" },
   { id: "notifications", label: "Notifications", group: "COMMUNICATIONS", minTier: "owner" },
   { id: "automations", label: "Automations", group: "AUTOMATION", minTier: "manager" },
   { id: "team", label: "Team", group: "TEAM", minTier: "owner" },
@@ -157,10 +156,12 @@ export function visibleSettingsSections(tier: StaffTier | null): SettingsSection
 
 /** Old Settings section ids → current ones. Bookmarks and in-app links resolve through this. */
 export const SETTINGS_SECTION_ALIASES: Record<string, string> = {
-  photo_enhancement: "vehicle_photos",
-  photo_reading: "vehicle_photos",
-  esign: "agreements",
-  agreement_templates: "agreements",
+  photo_enhancement: "media",
+  photo_reading: "media",
+  vehicle_photos: "media",
+  esign: "media",
+  agreement_templates: "media",
+  agreements: "media",
 };
 
 /** Resolve a Settings ?section= value, including legacy ids. */
