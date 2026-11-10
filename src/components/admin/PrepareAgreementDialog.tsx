@@ -7,9 +7,13 @@ import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { previewAgreement, sendAgreement } from "@/lib/agreements.functions";
 import { EMPTY_PREP, type AgreementPrep, type AdditionalDriver } from "@/lib/agreement-prep";
 import { LIBRARY, DRAFT_STATUS_LABEL, acknowledgmentsOf } from "@/lib/agreement-library";
+import { FILLABLE_FIELDS, recordToFills, type AgreementFills, type AgreementRecord } from "@/lib/agreement-fills";
+import { layoutToText } from "@/lib/agreement-layout";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
+type VehicleChoice = { id: string; label: string };
 type Res = {
+  body: string | null;
   pdfBase64: string | null;
   fingerprint: string | null;
   canSend: boolean;
@@ -19,6 +23,8 @@ type Res = {
   merge: Record<string, string>;
   terms: Record<string, string> | null;
   template: { label: string };
+  record?: AgreementRecord;
+  vehicles?: VehicleChoice[];
 };
 
 function Section({ title, children, open = true, badge }: { title: string; children: React.ReactNode; open?: boolean; badge?: number }) {
@@ -36,6 +42,38 @@ function Section({ title, children, open = true, badge }: { title: string; child
   );
 }
 
+const FILL_KEYS: Record<string, (keyof AgreementFills)[]> = {
+  driver_name: ["fullName"],
+  driver_email: ["email"],
+  driver_phone: ["phone"],
+  driver_address: ["address", "city", "state", "zip"],
+  license_number: ["licenseNumber"],
+  license_state: ["licenseState"],
+  license_expiration: ["licenseExpiration"],
+  driver_dob: ["dob"],
+  vehicle: ["vehicleId", "year", "make", "model"],
+  vehicle_vin: ["vin"],
+  vehicle_color: ["color"],
+  license_plate: ["licensePlate", "plateState"],
+  weekly_rate: ["weeklyRent"],
+  contract_start_date: ["contractStart"],
+  contract_end_date: ["contractEnd"],
+  insurance_carrier: ["insuranceCarrier"],
+  insurance_policy: ["insurancePolicy"],
+};
+
+/** Only the gaps currently on the form. A complete record sends nothing, so its fingerprint does not move. */
+function outgoingFills(fills: AgreementFills, keep: string[]): AgreementFills {
+  const next: AgreementFills = {};
+  for (const field of keep) {
+    for (const key of FILL_KEYS[field] ?? []) {
+      const value = fills[key];
+      if (value != null && value !== "") (next as Record<string, unknown>)[key] = value;
+    }
+  }
+  return next;
+}
+
 const input = "h-8 w-full rounded-md border bg-background px-2 text-[12px]";
 const Radio = ({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) => (
   <label className="flex cursor-pointer items-center gap-2"><input type="radio" checked={checked} onChange={onChange} /> {label}</label>
@@ -47,14 +85,17 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const doPreview = useServerFn(previewAgreement);
   const doSend = useServerFn(sendAgreement);
   const [prep, setPrep] = useState<AgreementPrep>(EMPTY_PREP);
+  const [fills, setFills] = useState<AgreementFills>({});
+  const [seeded, setSeeded] = useState(false);
+  const [keep, setKeep] = useState<string[]>([]);
   const [res, setRes] = useState<Res | null>(null);
   const [reviewedKey, setReviewedKey] = useState<string>("");
   const [rendering, setRendering] = useState(false);
-  const [tab, setTab] = useState<"details" | "preview">("details");
   const [companyAck, setCompanyAck] = useState(false);
   const [busy, setBusy] = useState(false);
   const [templateKey, setTemplateKey] = useState<string>("");
-  const key = useMemo(() => JSON.stringify({ prep, templateKey }), [prep, templateKey]);
+  const outgoing = useMemo(() => outgoingFills(fills, keep), [fills, keep]);
+  const key = useMemo(() => JSON.stringify({ prep, templateKey, outgoing }), [prep, templateKey, outgoing]);
   function chooseTemplate(k: string) {
     // Switching templates invalidates the previous preview and its fingerprint.
     setRes(null); setReviewedKey(""); setCompanyAck(false); setTemplateKey(k);
@@ -65,7 +106,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
     const t = setTimeout(async () => {
       setRendering(true);
       try {
-        const r = (await doPreview({ data: { applicationId, prep, templateKey: (templateKey || undefined) as any } })) as Res;
+        const r = (await doPreview({ data: { applicationId, prep, templateKey: (templateKey || undefined) as any, fills: outgoing } })) as Res;
         if (!stale) { setRes(r); setReviewedKey(key); }
       } catch (e: any) {
         if (!stale) toast.error(e?.message ?? "Could not build the agreement");
@@ -74,6 +115,22 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
     return () => { stale = true; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, applicationId]);
+
+  useEffect(() => {
+    if (!res?.record || seeded) return;
+    setFills((current) => (Object.keys(current).length ? current : recordToFills(res.record!)));
+    setSeeded(true);
+  }, [res, seeded]);
+
+  useEffect(() => {
+    if (!res) return;
+    const locked = res.record?.datesFromRental ? new Set(["contract_start_date", "contract_end_date"]) : new Set<string>();
+    setKeep((prev) => {
+      const add = res.blockers.map((b) => b.field).filter((f) => FILLABLE_FIELDS.has(f) && !locked.has(f));
+      const next = Array.from(new Set([...prev, ...add]));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [res]);
 
   const m = res?.merge ?? {};
   const terms = res?.terms ?? {};
@@ -89,7 +146,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
     if (!canSend || !res?.fingerprint) return;
     setBusy(true);
     try {
-      const r = await doSend({ data: { applicationId, fingerprint: res.fingerprint, companyAck: companyAck || undefined, prep, templateKey: (templateKey || undefined) as any } });
+      const r = await doSend({ data: { applicationId, fingerprint: res.fingerprint, companyAck: companyAck || undefined, prep, templateKey: (templateKey || undefined) as any, fills: outgoing } });
       onSent(r);
     } catch (e: any) { toast.error(e?.message ?? "Could not send the agreement"); } finally { setBusy(false); }
   }
@@ -105,12 +162,90 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
     <div key={k} className="contents"><dt className="text-muted-foreground">{k}</dt><dd className="min-w-0 break-words">{v && v.trim() ? v : <span className="text-destructive">Not Set</span>}</dd></div>
   );
 
+  const show = (field: string) => keep.includes(field);
+  const whys = (field: string) => (res?.blockers ?? []).filter((b) => b.field === field);
+  const setText = (key: keyof AgreementFills, value: string) =>
+    setFills((f) => {
+      const next = { ...f };
+      if (!value.trim()) delete next[key];
+      else (next as Record<string, unknown>)[key] = value;
+      return next;
+    });
+  const shown = new Set<string>();
+  for (const field of keep) if (show(field)) shown.add(field);
+  if (res?.record?.datesFromRental) {
+    shown.delete("contract_start_date");
+    shown.delete("contract_end_date");
+  }
+  const otherBlockers = (res?.blockers ?? []).filter((b) => !shown.has(b.field));
+  const record = res?.record;
+  const fieldError = (field: string) => whys(field).map((b) => b.why).join(" ");
+
   const details = (
     <div className="space-y-3 p-3 sm:p-4">
-      {res && res.blockers.length > 0 && (
+      {keep.length > 0 && (
+        <section className="space-y-2 rounded-lg border bg-card p-3" data-testid="agreement-missing-fields">
+          <h2 className="text-[13px] font-medium">Missing Information</h2>
+          <p className="text-[11px] text-muted-foreground">These values are saved to the driver and vehicle records when you send. The agreement is rebuilt on the server from those records. This does not change the vehicle's fleet rate or deposit.</p>
+          {show("driver_name") && <label className="block">Full Legal Name<input className={input} autoComplete="off" value={fills.fullName ?? ""} onChange={(e) => setText("fullName", e.target.value)} />{fieldError("driver_name") && <span className="text-destructive">{fieldError("driver_name")}</span>}</label>}
+          {show("driver_email") && <label className="block">Email<input className={input} autoComplete="off" value={fills.email ?? ""} onChange={(e) => setText("email", e.target.value)} />{fieldError("driver_email") && <span className="text-destructive">{fieldError("driver_email")}</span>}</label>}
+          {show("driver_phone") && <label className="block">Phone<input className={input} autoComplete="off" value={fills.phone ?? ""} onChange={(e) => setText("phone", e.target.value)} />{fieldError("driver_phone") && <span className="text-destructive">{fieldError("driver_phone")}</span>}</label>}
+          {show("driver_address") && (
+            <div className="space-y-1.5">
+              <label className="block">Street<input className={input} autoComplete="off" value={fills.address ?? ""} onChange={(e) => setText("address", e.target.value)} /></label>
+              <div className="grid grid-cols-[1fr_56px_80px] gap-1.5">
+                <label className="block">City<input className={input} autoComplete="off" value={fills.city ?? ""} onChange={(e) => setText("city", e.target.value)} /></label>
+                <label className="block">State<input className={input} autoComplete="off" maxLength={2} value={fills.state ?? ""} onChange={(e) => setText("state", e.target.value.toUpperCase())} /></label>
+                <label className="block">ZIP<input className={input} autoComplete="off" value={fills.zip ?? ""} onChange={(e) => setText("zip", e.target.value)} /></label>
+              </div>
+              {fieldError("driver_address") && <p className="text-destructive">{fieldError("driver_address")}</p>}
+            </div>
+          )}
+          {show("license_number") && <label className="block">Licence Number<input className={input} autoComplete="off" value={fills.licenseNumber ?? ""} onChange={(e) => setText("licenseNumber", e.target.value)} /></label>}
+          {show("license_state") && <label className="block">Licence State<input className={input} autoComplete="off" maxLength={2} value={fills.licenseState ?? ""} onChange={(e) => setText("licenseState", e.target.value.toUpperCase())} />{fieldError("license_state") && <span className="text-destructive">{fieldError("license_state")}</span>}</label>}
+          {show("license_expiration") && <label className="block">Licence Expiration<input type="date" className={input} value={fills.licenseExpiration ?? ""} onChange={(e) => setText("licenseExpiration", e.target.value)} />{fieldError("license_expiration") && <span className="text-destructive">{fieldError("license_expiration")}</span>}</label>}
+          {show("driver_dob") && <label className="block">Date Of Birth<input type="date" className={input} value={fills.dob ?? ""} onChange={(e) => setText("dob", e.target.value)} />{fieldError("driver_dob") && <span className="text-destructive">{fieldError("driver_dob")}</span>}</label>}
+          {show("vehicle") && !record?.vehicleId && (
+            <label className="block">Vehicle
+              <select className={input} value={fills.vehicleId ?? ""} onChange={(e) => setFills((f) => ({ ...f, vehicleId: e.target.value || undefined }))}>
+                <option value="">Choose A Vehicle</option>
+                {(res?.vehicles ?? []).map((v) => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
+              </select>
+              {fieldError("vehicle") && <span className="text-destructive">{fieldError("vehicle")}</span>}
+            </label>
+          )}
+          {show("vehicle") && (record?.vehicleId || fills.vehicleId) && whys("vehicle").length > 0 && (
+            <div className="grid grid-cols-3 gap-1.5">
+              <label className="block">Year<input className={input} inputMode="numeric" value={fills.year ?? ""} onChange={(e) => { const n = Number(e.target.value); setFills((f) => ({ ...f, year: e.target.value.trim() && Number.isFinite(n) ? n : undefined })); }} /></label>
+              <label className="block">Make<input className={input} autoComplete="off" value={fills.make ?? ""} onChange={(e) => setText("make", e.target.value)} /></label>
+              <label className="block">Model<input className={input} autoComplete="off" value={fills.model ?? ""} onChange={(e) => setText("model", e.target.value)} /></label>
+            </div>
+          )}
+          {show("vehicle_vin") && <label className="block">VIN<input className={input} autoComplete="off" value={fills.vin ?? ""} onChange={(e) => setText("vin", e.target.value.toUpperCase())} />{fieldError("vehicle_vin") && <span className="text-destructive">{fieldError("vehicle_vin")}</span>}</label>}
+          {show("vehicle_color") && <label className="block">Colour<input className={input} autoComplete="off" value={fills.color ?? ""} onChange={(e) => setText("color", e.target.value)} />{fieldError("vehicle_color") && <span className="text-destructive">{fieldError("vehicle_color")}</span>}</label>}
+          {show("license_plate") && (
+            <div className="grid grid-cols-[1fr_56px] gap-1.5">
+              <label className="block">Licence Plate<input className={input} autoComplete="off" value={fills.licensePlate ?? ""} onChange={(e) => setText("licensePlate", e.target.value.toUpperCase())} /></label>
+              <label className="block">State<input className={input} autoComplete="off" maxLength={2} value={fills.plateState ?? ""} onChange={(e) => setText("plateState", e.target.value.toUpperCase())} /></label>
+              {fieldError("license_plate") && <p className="col-span-2 text-destructive">{fieldError("license_plate")}</p>}
+            </div>
+          )}
+          {show("weekly_rate") && <label className="block">Weekly Rate ($)<input type="number" min={0} step="0.01" className={input} value={fills.weeklyRent ?? ""} onChange={(e) => { const n = Number(e.target.value); setFills((f) => ({ ...f, weeklyRent: e.target.value !== "" && n > 0 && n <= 10000 ? n : undefined })); }} />{fieldError("weekly_rate") && <span className="text-destructive">{fieldError("weekly_rate")}</span>}</label>}
+          {(show("contract_start_date") || show("contract_end_date")) && !record?.datesFromRental && (
+            <div className="grid grid-cols-2 gap-1.5">
+              <label className="block">Contract Start<input type="date" className={input} value={fills.contractStart ?? ""} onChange={(e) => setText("contractStart", e.target.value)} /></label>
+              <label className="block">Contract End<input type="date" className={input} value={fills.contractEnd ?? ""} onChange={(e) => setText("contractEnd", e.target.value)} /></label>
+              {(fieldError("contract_start_date") || fieldError("contract_end_date")) && <p className="col-span-2 text-destructive">{fieldError("contract_start_date") || fieldError("contract_end_date")}</p>}
+            </div>
+          )}
+          {show("insurance_carrier") && <label className="block">Insurance Carrier<input className={input} autoComplete="off" value={fills.insuranceCarrier ?? ""} onChange={(e) => setText("insuranceCarrier", e.target.value)} /></label>}
+          {show("insurance_policy") && <label className="block">Insurance Policy<input className={input} autoComplete="off" value={fills.insurancePolicy ?? ""} onChange={(e) => setText("insurancePolicy", e.target.value)} /></label>}
+        </section>
+      )}
+      {res && otherBlockers.length > 0 && (
         <div className="space-y-1 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive" data-testid="prep-blockers">
           <p className="font-semibold">This agreement cannot be sent yet:</p>
-          {res.blockers.map((b, i) => <p key={i}>- {b.label}: {b.why}{fix(b)}</p>)}
+          {otherBlockers.map((b, i) => <p key={i}>- {b.label}: {b.why}{fix(b)}</p>)}
         </div>
       )}
       {res?.sendRefusal && <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12px]">{res.sendRefusal}</p>}
@@ -142,7 +277,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
           {row("Weekly Rate", m.weekly_rate)}{row("Payment Method", m.card_on_file)}
           {row("Agreement Number", m.agreement_number)}{row("Template", res?.template.label)}
         </dl>
-        <p className="text-[11px] text-muted-foreground">Corrections are made in the driver's and vehicle's own records; this screen never invents values. Preparing an agreement never charges the card.</p>
+        <p className="text-[11px] text-muted-foreground">This is what the agreement will print. Missing items are entered above and saved when you send. Preparing an agreement never charges the card.</p>
       </Section>
 
       <Section title="Authorized Drivers" badge={byField("additional_drivers")}>
@@ -214,20 +349,16 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
           </Button>
         </div>
       </header>
-      <div className="flex shrink-0 border-b md:hidden" role="tablist">
-        {(["details", "preview"] as const).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`flex-1 py-2 text-[13px] ${tab === t ? "border-b-2 border-primary font-medium" : "text-muted-foreground"}`}>{t === "details" ? "Details" : "Preview"}</button>
-        ))}
-      </div>
-      <div className="flex min-h-0 flex-1">
-        <aside className={`${tab === "details" ? "block" : "hidden"} w-full overflow-y-auto bg-muted/20 md:block md:w-[35%] md:border-r`}>{details}</aside>
-        <section className={`${tab === "preview" ? "flex" : "hidden"} min-w-0 flex-1 flex-col md:flex`}>
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row" data-testid="prepare-layout">
+        <aside className="w-full overflow-y-auto bg-muted/20 md:w-[35%] md:border-r">{details}</aside>
+        <section className="flex min-h-[50vh] min-w-0 flex-1 flex-col md:min-h-0">
           <div className="flex shrink-0 items-center gap-2 border-b bg-card px-3 py-2 text-[12px]">
             <span className="rounded bg-destructive/10 px-2 py-0.5 font-semibold text-destructive">PREVIEW — NOT SENT</span>
             {rendering && <span className="text-muted-foreground">Updating…</span>}
           </div>
           <div className="min-h-0 flex-1 overflow-auto bg-muted/40" data-testid="prep-preview">
             {res?.pdfBase64 ? <AgreementPdfViewer key={res.fingerprint ?? ""} base64={res.pdfBase64} /> :
+              res?.body ? <pre className="whitespace-pre-wrap p-4 font-sans text-[12px] leading-relaxed">{layoutToText(res.body)}</pre> :
               <p className="p-6 text-[12px] text-muted-foreground">{res ? "The document appears once every item on the left is resolved — blanks never reach a signature." : "Building the agreement…"}</p>}
           </div>
         </section>

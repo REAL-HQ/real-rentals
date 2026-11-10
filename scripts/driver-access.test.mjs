@@ -108,6 +108,21 @@ ok(
   "only a brand-new account triggers the set-password email",
 );
 ok(
+  /redirectTo: `\$\{site\}\/set-password`/.test(account),
+  "the invite link opens the set-password page",
+);
+const agreements = read("src/lib/agreements.functions.ts");
+ok(
+  /if \(result === "already_signed"\)/.test(agreements) &&
+    agreements.indexOf('if (result === "already_signed")') < agreements.indexOf("sendSignedEmails(supabaseAdmin"),
+  "a repeat signature does not send the emails again",
+);
+ok(
+  /provisionDriverAccount\(/.test(agreements) &&
+    /account\.created[\s\S]{0,240}sendPortalInviteEmail/.test(agreements),
+  "a signature creates the login and emails a set-password link only when that login is new",
+);
+ok(
   /export async function sendPortalInviteEmail/.test(email),
   "the invite email exists",
 );

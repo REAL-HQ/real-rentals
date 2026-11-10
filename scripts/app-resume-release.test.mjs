@@ -17,6 +17,15 @@ function client(role = "service") {
       },
     },
     async rpc(name, args) {
+      if (
+        globalThis.__rr.fail === "recovery-rpc-missing" &&
+        (name === "reserve_application_recovery" || name === "finish_application_recovery")
+      ) {
+        return {
+          data: null,
+          error: { code: "PGRST202", message: `Could not find the function public.${name}` },
+        };
+      }
       if (name === "reserve_application_recovery") {
         assert.match(args._token_hash, /^[a-f0-9]{64}$/);
         const app = db.applications.find((a) => a.id === args._application_id);
@@ -101,6 +110,11 @@ function client(role = "service") {
         },
         eq(k, v) {
           filters.push((r) => r[k] === v);
+          return q;
+        },
+        ilike(k, v) {
+          const literal = String(v).replace(/\\%/g, "%").replace(/\\_/g, "_").replace(/\\\\/g, "\\");
+          filters.push((r) => String(r[k] ?? "").toLowerCase() === literal.toLowerCase());
           return q;
         },
         gte(k, v) {
@@ -197,6 +211,8 @@ function reset() {
         ai_flags: ["original"],
       },
     ],
+    // The public form and the resume email stay closed until this row says open.
+    app_settings: [{ key: "recovery_cutover_maintenance", value: { mode: "open" } }],
   };
   emails = [];
   audits = [];
@@ -315,6 +331,38 @@ try {
       "ai_flags",
     ])
       assert.deepEqual(db.applications[0][key], before[key]);
+  });
+  await test("email match is case-insensitive and does not open a second application", async () => {
+    db.applications[0].email = "Owner@example.invalid";
+    const result = await applications.savePartialApplication({
+      data: {
+        full_name: "Fixture Owner",
+        email: "owner@example.invalid",
+        phone: "8135559999",
+        sms_consent: false,
+        source: "homepage",
+      },
+    });
+    assert.equal(result.token, null);
+    assert.equal(result.id, null);
+    assert.equal(db.applications.length, 1);
+    assert.equal(emails.length, 1);
+    assert.equal(emails[0].to, "Owner@example.invalid");
+  });
+  await test("a missing recovery migration sends no email", async () => {
+    globalThis.__rr.fail = "recovery-rpc-missing";
+    const result = await applications.savePartialApplication({
+      data: {
+        full_name: "Fixture Owner",
+        email: "owner@example.invalid",
+        phone: "8135551234",
+        sms_consent: false,
+        source: "homepage",
+      },
+    });
+    assert.equal(result.linkStatus, "failed");
+    assert.equal(emails.length, 0);
+    assert.equal(db.applications.length, 1);
   });
   await test("phone-only conflict is durable, deduplicated and sends no email", async () => {
     const data = {

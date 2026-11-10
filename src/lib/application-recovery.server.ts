@@ -13,7 +13,20 @@ const reservation = z.discriminatedUnion("reserved", [
     full_name: z.string().nullable(),
   }),
 ]);
-export type RecoveryOutcome = { outcome: "sent" | "recent" | "failed" | "unknown"; wait: number };
+export type RecoveryOutcome = { outcome: "sent" | "recent" | "failed" | "unknown" | "unavailable"; wait: number };
+
+/**
+ * The resume email's quota and token live in this script. It is intentionally
+ * not under supabase/migrations, so a deploy does not apply it. Until the
+ * Owner runs it, this function must not send a link.
+ */
+export const RECOVERY_MIGRATION_REQUIRED =
+  "Application resume email needs scripts/app-resume-integration/0022_application_resume_atomic_security.sql (reserve_application_recovery / finish_application_recovery). It is not in supabase/migrations and is not applied by a code deploy.";
+
+function recoveryRpcMissing(error: { code?: string; message?: string }): boolean {
+  const message = String(error.message ?? "");
+  return error.code === "PGRST202" || error.code === "42883" || /reserve_application_recovery|finish_application_recovery/.test(message);
+}
 
 /** PostgreSQL owns quota and token creation; never fall back to an unreserved send. */
 export async function deliverApplicationRecovery(
@@ -25,7 +38,14 @@ export async function deliverApplicationRecovery(
     _application_id: applicationId,
     _token_hash: await hashResumeToken(token),
   });
-  if (error) throw new Error("Could not reserve recovery delivery");
+  if (error) {
+    if (recoveryRpcMissing(error)) {
+      console.error(`[resume-link] ${RECOVERY_MIGRATION_REQUIRED}`);
+      return { outcome: "unavailable", wait: 120 };
+    }
+    console.error("[resume-link] reserve failed", error.message);
+    throw new Error("Could not reserve recovery delivery");
+  }
   const attempt = reservation.parse(data);
   if (!attempt.reserved) return { outcome: "recent", wait: attempt.retry_after_seconds };
   let result: Awaited<ReturnType<typeof sendApplicationResumeEmail>>;
