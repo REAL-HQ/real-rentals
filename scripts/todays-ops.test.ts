@@ -163,8 +163,8 @@ ok(byId("returns").items[0].detail === "Ends Today" && byId("returns").items[0].
 ok(byId("payments_due").items.length === 1 && byId("payments_due").items[0].detail === "Due Today", "only the rental due today is in Payments Due Today");
 ok(byId("overdue").items.length === 1 && byId("overdue").items[0].search.filter === "overdue" && byId("overdue").items[0].detail.includes("$120.00"), "overdue links to the Payments overdue filter");
 ok(byId("documents").items[0].search.id === "veh" && byId("documents").items[0].detail === "Registration · Expires In 4 Days", "a document links to its vehicle");
-ok(byId("incidents").items.length === 1 && byId("incidents").items[0].search.tab === "incidents" && !byId("incidents").items[0].search.id, "an incident opens the Incidents list");
-ok(byId("roadside").items.length === 1 && byId("roadside").items[0].search.tab === "driver_issues", "a tow opens Driver Issues");
+ok(byId("incidents").items.length === 1 && byId("incidents").items[0].search.tab === "issues" && byId("incidents").items[0].search.filter === "incident" && !byId("incidents").items[0].search.id, "an incident opens Issues filtered to incidents");
+ok(byId("roadside").items.length === 1 && byId("roadside").items[0].search.tab === "issues" && byId("roadside").items[0].search.filter === "driver", "a tow opens Issues filtered to driver reports");
 ok(byId("maintenance").items.length === 1 && byId("maintenance").items[0].search.id === "shop", "a maintenance vehicle opens that vehicle");
 ok(built.sections.every((section) => section.items.length >= 0) && built.omitted === TODAYS_OPS_OMITTED, "every section is present and the omitted list is returned");
 ok(built.omitted.some((line) => line.includes("licence")) && built.omitted.some((line) => line.includes("Stripe")), "the omitted list names the gaps");

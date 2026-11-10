@@ -51,10 +51,9 @@ import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { DepositsLedgerPanel } from "@/components/admin/DepositsLedgerPanel";
 import { WeeklyCashFlowPanel } from "@/components/admin/WeeklyCashFlowPanel";
-import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
+import { IssuesPanel } from "@/components/admin/IssuesPanel";
 import { IncidentBoard } from "@/components/admin/IncidentBoard";
 import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
-import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
@@ -187,7 +186,7 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   // "bookings" opens a rental record on the Past tab.
   id: ["drivers", "vehicles", "inspections", "bookings"],
   // Payments is the only list that takes a filter from a link today.
-  filter: ["payments", "drivers"],
+  filter: ["payments", "drivers", "issues"],
   // A creation flow opened from "+ Create".
   add: [...ADD_TABS],
   section: ["settings"],
@@ -203,7 +202,7 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   ready: ["vehicles"],
   phase: ["bookings"],
   vehicle: ["bookings"],
-  issue: ["incidents"],
+  issue: ["issues"],
 };
 
 /** The search for a tab's ROOT view: the tab, and nothing that belongs to a child. */
@@ -1033,9 +1032,13 @@ function Admin() {
             {tab === "collections_watch" && <CollectionsWatchPanel />}
             {tab === "deposits_ledger" && <DepositsLedgerPanel />}
             {tab === "weekly_cash_flow" && <WeeklyCashFlowPanel />}
-            {tab === "incidents" && <IncidentsPanel seedIssueId={search.issue ?? null} />}
+            {tab === "issues" && (
+              <IssuesPanel
+                seedIssueId={search.issue ?? null}
+                initialSource={urlFilter === "driver" ? "driver" : urlFilter === "incident" ? "incident" : "all"}
+              />
+            )}
             {INCIDENT_BOARD_ENABLED && tab === "incident_board" && <IncidentBoard />}
-            {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
             {TOLLS_TICKETS_LEDGER_ENABLED && tab === "tolls_tickets" && <TollsTickets />}

@@ -18,7 +18,6 @@ import {
   Banknote,
   TrendingUp,
   ShieldAlert,
-  AlertTriangle,
   Wallet,
   Inbox,
   Upload,
@@ -109,8 +108,7 @@ export const TABS: readonly TabDef[] = [
   { id: "fleet_inbox", label: "Fleet Inbox", icon: Inbox, minTier: "coordinator", group: "FLEET", description: "Drop Fleet Files — Sorted, Matched To Vehicles And Ready For Review" },
   { id: "maintenance", label: "Service", icon: Wrench, minTier: "manager", group: "FLEET", description: "Maintenance, Due Work And Inspections" },
   { id: "inspections", label: "Inspections", icon: ClipboardCheck, minTier: "coordinator", description: "Pre-Delivery And Return Checklists With Photo Proof" },
-  { id: "incidents", label: "Incidents", icon: ShieldAlert, minTier: "manager", group: "FLEET", description: "Accidents, Damage And Insurance Claims" },
-  { id: "driver_issues", label: "Driver Issues", icon: AlertTriangle, minTier: "manager", group: "FLEET", description: "Breakdowns And Other Reports From Renters" },
+  { id: "issues", label: "Issues", icon: ShieldAlert, minTier: "manager", group: "FLEET", description: "Accidents, Claims, Breakdowns And Driver Reports" },
   { id: "expenses", label: "Expenses", icon: Wallet, minTier: "manager", group: "BUSINESS", description: "Every Cost Against Every Car, And What Each One Earns" },
   { id: "vendors", label: "Vendors", icon: Truck, minTier: "coordinator", description: "Every Vendor We Work With — Repair Shops, Towing, GPS, Insurance" },
   { id: "shops", label: "Repair Shops", icon: Truck, minTier: "manager", description: "Preferred Maintenance Providers By Market" },
@@ -127,6 +125,8 @@ export const LEGACY_TABS: Record<string, { tab: string; section?: string; filter
   websites: { tab: "settings", section: "website" },
   activity: { tab: "settings", section: "activity" },
   waitlist: { tab: "drivers", filter: "waitlist" },
+  incidents: { tab: "issues" },
+  driver_issues: { tab: "issues", filter: "driver" },
   // Active Rentals folded into Bookings; keep old links working.
   active_rentals: { tab: "bookings" },
 };
@@ -588,7 +588,7 @@ function withFinance(tabs: TabDef[], tier: StaffTier | null): TabDef[] {
     next = spliceAfter(next, "vehicles", FLEET_AVAILABILITY_TAB);
   }
   if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
-    const at = next.findIndex((t) => t.id === "incidents");
+    const at = next.findIndex((t) => t.id === "issues");
     const insertAt = at >= 0 ? at : next.findIndex((t) => t.id === "maintenance");
     next.splice(insertAt >= 0 ? insertAt : next.length, 0, INCIDENT_BOARD_TAB);
   }
@@ -679,7 +679,7 @@ export function railEntries(tier: StaffTier | null): (TabDef & { href: string })
     entries = spliceAfter(entries, "vehicles", { ...FLEET_AVAILABILITY_TAB, href: "fleet_availability" });
   }
   if (INCIDENT_BOARD_ENABLED && tierAllows(tier, "coordinator")) {
-    const at = entries.findIndex((t) => t.id === "incidents");
+    const at = entries.findIndex((t) => t.id === "issues");
     const insertAt = at >= 0 ? at : entries.findIndex((t) => t.id === "maintenance");
     entries.splice(insertAt >= 0 ? insertAt : entries.length, 0, { ...INCIDENT_BOARD_TAB, href: "incident_board" });
   }
