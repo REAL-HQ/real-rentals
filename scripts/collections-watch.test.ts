@@ -151,11 +151,11 @@ describe("flag off", () => {
     expect(reads).toBe(0);
   });
 
-  it("stays off the rail and out of a coordinator Payments workspace", () => {
-    expect(visibleWorkspaceTabs("payments", "manager").map((tab) => tab.id)).toContain("collections_watch");
-    expect(visibleWorkspaceTabs("payments", "owner").map((tab) => tab.id)).toContain("collections_watch");
+  it("stays off the rail and hidden on Payments while the source flag is Off", () => {
+    expect(visibleWorkspaceTabs("payments", "manager").map((tab) => tab.id)).not.toContain("collections_watch");
+    expect(visibleWorkspaceTabs("payments", "owner").map((tab) => tab.id)).not.toContain("collections_watch");
     expect(visibleWorkspaceTabs("payments", "coordinator")).toEqual([]);
-    expect(railEntries("owner").map((entry) => entry.label)).not.toContain("Collections Watch");
+    expect(railEntries("owner").map((entry) => entry.label)).not.toContain("Watch");
   });
 });
 

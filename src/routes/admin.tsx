@@ -34,6 +34,7 @@ import {
   WORKSPACE_TABS,
   visibleWorkspaceTabs,
   LEGACY_TABS,
+  resolveSettingsSection,
   type TabDef,
 } from "@/components/admin/nav-config";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
@@ -42,6 +43,7 @@ import { MessagesOverlay } from "@/components/admin/MessagesOverlay";
 import { SettingsWorkspace } from "@/components/admin/SettingsWorkspace";
 import { useServerFn } from "@tanstack/react-start";
 import { listConversations } from "@/lib/messages.functions";
+import { getReservationDepositSettings } from "@/lib/reservations.functions";
 import { getAdminNotifications } from "@/lib/admin-overview.functions";
 import { OverviewPanel } from "@/components/admin/OverviewPanel";
 import { VendorsPanel } from "@/components/admin/VendorsPanel";
@@ -76,6 +78,10 @@ import { FinanceDepositLedgerPanel } from "@/components/admin/FinanceDepositLedg
 import { FINANCE_DEPOSIT_LEDGER_ENABLED } from "@/lib/finance-deposit-ledger-flag";
 import { StripeRiskMonitorPanel } from "@/components/admin/StripeRiskMonitorPanel";
 import { STRIPE_RISK_MONITOR_ENABLED } from "@/lib/stripe-risk-monitor-flag";
+import { STRIPE_MATCH_REPORT_ENABLED } from "@/lib/stripe-match-flag";
+import { COLLECTIONS_WATCH_ENABLED } from "@/lib/collections-watch-flag";
+import { DEPOSITS_LEDGER_ENABLED } from "@/lib/deposits-ledger-flag";
+import { WEEKLY_CASH_FLOW_ENABLED } from "@/lib/weekly-cash-flow-flag";
 import { StripePayoutReconPanel } from "@/components/admin/StripePayoutReconPanel";
 import { STRIPE_PAYOUT_RECON_ENABLED } from "@/lib/stripe-payout-recon-flag";
 import { ApplicantFunnelPanel } from "@/components/admin/ApplicantFunnelPanel";
@@ -112,8 +118,7 @@ import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { TaxExportPanel } from "@/components/admin/TaxExportPanel";
 import { TAX_EXPORT_ENABLED } from "@/lib/tax-export-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
-import { BookingsPanel } from "@/components/admin/BookingsPanel";
-import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
+import { BookingsWorkspace } from "@/components/admin/BookingsWorkspace";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
@@ -150,9 +155,9 @@ type AdminSearch = {
   view?: string;
   /** Fleet-wide readiness filter: listing_ready | rental_ready | not_ready. */
   ready?: string;
-  /** Bookings list: active | completed | cancelled. */
+  /** Active → All Rentals: active | completed | cancelled. */
   phase?: string;
-  /** Bookings list: one vehicle's rentals. */
+  /** Active → All Rentals: one vehicle's rentals. */
   vehicle?: string;
   /** Incidents form prefilled from a driver issue. Does not create the incident. */
   issue?: string;
@@ -178,24 +183,22 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   // stripped the id back out of the URL a moment after the navigation, the
   // panel fell back to whichever vehicle sorted first, and a pre-delivery
   // inspection could be filed against the wrong one.
-  // "bookings" is here because a booking IS a record you open — the drawer is
-  // held by the same `id` the drivers and vehicles lists use.
+  // "bookings" opens a rental record on the Past tab.
   id: ["drivers", "vehicles", "inspections", "bookings"],
   // Payments is the only list that takes a filter from a link today.
   filter: ["payments", "drivers", "issues"],
   // A creation flow opened from "+ Create".
   add: [...ADD_TABS],
   section: ["settings"],
-  // The Bookings list holds its own search, sort and page under the same
-  // names; a parameter not owned by its tab is stripped a moment after the
-  // navigation, which is how a filter silently resets itself.
+  // Active (All Rentals) holds search, sort, page, phase, and vehicle under
+  // the same names the old Bookings list used.
   q: ["vehicles", "bookings"],
   vstatus: ["vehicles"],
   body: ["vehicles"],
   partner: ["vehicles"],
   sort: ["vehicles", "bookings"],
   page: ["vehicles", "bookings"],
-  view: ["vehicles"],
+  view: ["vehicles", "bookings"],
   ready: ["vehicles"],
   phase: ["bookings"],
   vehicle: ["bookings"],
@@ -355,6 +358,18 @@ function Admin() {
   >([]);
   const [notifsFailed, setNotifsFailed] = useState(false);
   const [tier, setTier] = useState<StaffTier | null>(null);
+  const [reservationDepositEnabled, setReservationDepositEnabled] = useState(false);
+  const loadReservationDepositSettings = useServerFn(getReservationDepositSettings);
+  useEffect(() => {
+    if (!tier) return;
+    let cancelled = false;
+    void loadReservationDepositSettings().then((s) => {
+      if (!cancelled) setReservationDepositEnabled(s.enabled === true);
+    }).catch(() => {
+      if (!cancelled) setReservationDepositEnabled(false);
+    });
+    return () => { cancelled = true; };
+  }, [tier, loadReservationDepositSettings]);
   const navTabs = useMemo(() => visibleTabs(tier), [tier]);
 
   /*
@@ -480,6 +495,24 @@ function Admin() {
       if (!OWNER_FINANCE_SNAPSHOT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
       return "owner_finance_snapshot";
     }
+    // Payments workspace extras: hidden while source flags are Off (Deposits returns with reservation deposits).
+    if (urlTab === "stripe_match") {
+      if (!STRIPE_MATCH_REPORT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "stripe_match";
+    }
+    if (urlTab === "collections_watch") {
+      if (!COLLECTIONS_WATCH_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "collections_watch";
+    }
+    if (urlTab === "weekly_cash_flow") {
+      if (!WEEKLY_CASH_FLOW_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "weekly_cash_flow";
+    }
+    if (urlTab === "deposits_ledger") {
+      if (tier && !tierAllows(tier, "manager")) return "overview";
+      if (!DEPOSITS_LEDGER_ENABLED && !reservationDepositEnabled) return "overview";
+      return "deposits_ledger";
+    }
     // Rental Renewal Due is not in TABS. While the flag is off a direct link falls back to Overview.
     if (urlTab === "renewals_due") {
       if (!RENEWALS_DUE_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
@@ -488,7 +521,7 @@ function Admin() {
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
     return urlTab as Tab;
-  }, [urlTab, tier, navTabs]);
+  }, [urlTab, tier, navTabs, reservationDepositEnabled]);
 
   /*
    * Normalize the address bar to match what is on screen — replace, not
@@ -507,8 +540,26 @@ function Admin() {
       if (legacy.filter) next.filter = legacy.filter;
       if (legacy.vstatus) next.vstatus = legacy.vstatus;
       if (legacy.messages || search.msg) next.msg = search.msg ?? "inbox";
+      // Active Rentals → Bookings: keep the open rental and list filters, land on Past.
+      if (urlTab === "active_rentals") {
+        next.view = search.view === "board" || !search.view ? "active" : search.view === "all" ? "past" : search.view;
+        if (search.id) next.id = search.id;
+        if (search.q) next.q = search.q;
+        if (search.phase) next.phase = search.phase;
+        if (search.sort) next.sort = search.sort;
+        if (search.page) next.page = search.page;
+        if (search.vehicle) next.vehicle = search.vehicle;
+      }
       void navigate({ to: "/admin", search: next, replace: true });
       return;
+    }
+    // Old Settings section ids (Photo Enhancement, Photo Reading, eSign, Agreement Templates).
+    if (tab === "settings" && search.section) {
+      const resolved = resolveSettingsSection(search.section);
+      if (resolved && resolved !== search.section) {
+        void navigate({ to: "/admin", search: { ...search, tab: "settings", section: resolved }, replace: true });
+        return;
+      }
     }
     const owned = ownedSearch(tab, search);
     const same =
@@ -671,7 +722,7 @@ function Admin() {
     ? <ExperienceSwitcher value={experience} options={expOptions} onChange={chooseExperience} />
     : null;
   const workspace = TABS.find((t) => t.id === ownerTab) ?? current;
-  const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, navTier) : [];
+  const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, navTier, { reservationDepositEnabled }) : [];
   const recordParent = urlRecordId && (tab === "drivers" || tab === "vehicles") ? current : null;
 
   const navLink = (t: TabDef & { href?: string }, onClick?: () => void) => {
@@ -952,11 +1003,13 @@ function Admin() {
               <DriversPanel initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} canViewOnboarding={tierAllows(tier, "manager")} canIssueCardLink={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
             {tab === "vehicles" && <VehiclesPanel autoOpenAdd={urlAdd} openId={urlRecordId} canSeeMaintenanceDue={tierAllows(tier, "manager")} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
-            {tab === "active_rentals" && <ActiveRentalsPanel />}
             {tab === "bookings" && (
-              <BookingsPanel
+              <BookingsWorkspace
                 openId={urlRecordId}
+                canViewBoard={tierAllows(tier, "manager")}
                 canViewConversion={tierAllows(tier, "manager")}
+                canManageReservations={tierAllows(tier, "manager")}
+                view={search?.view}
                 listState={{
                   q: search?.q,
                   phase: search?.phase,

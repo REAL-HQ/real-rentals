@@ -125,7 +125,7 @@ export function buildRentAging(input: {
       renterName: name?.renterName || "Renter",
       renterHref: name?.applicationId ? `/admin?tab=drivers&id=${encodeURIComponent(name.applicationId)}` : null,
       rentalLabel: rentalId ? `Rental ${rentalId}` : "No Rental",
-      rentalHref: rentalId ? `/admin?tab=bookings&id=${encodeURIComponent(rentalId)}` : null,
+      rentalHref: rentalId ? `/admin?tab=bookings&view=past&id=${encodeURIComponent(rentalId)}` : null,
       amountDue,
       oldestUnpaid: oldest,
       lastPayment,

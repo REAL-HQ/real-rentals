@@ -111,9 +111,9 @@ describe("flag off", () => {
     expect(calls).toEqual(expect.arrayContaining(["charges.list", "refunds.list"]));
     expect(calls.every((call) => call === "charges.list" || call === "refunds.list")).toBe(true);
     expect(reader).not.toMatch(/\.(retrieve|create|update|del|delete|capture|confirm|cancel|refund|createPreview)\s*\(/);
-    expect(visibleWorkspaceTabs("payments", "manager").map((tab) => tab.id)).toContain("weekly_cash_flow");
-    expect(visibleWorkspaceTabs("payments", "owner").map((tab) => tab.id)).toContain("weekly_cash_flow");
+    expect(visibleWorkspaceTabs("payments", "manager").map((tab) => tab.id)).not.toContain("weekly_cash_flow");
+    expect(visibleWorkspaceTabs("payments", "owner").map((tab) => tab.id)).not.toContain("weekly_cash_flow");
     expect(visibleWorkspaceTabs("payments", "coordinator")).toEqual([]);
-    expect(railEntries("owner").map((entry) => entry.label)).not.toContain("Weekly Cash Flow");
+    expect(railEntries("owner").map((entry) => entry.label)).not.toContain("Cashflow");
   });
 });
