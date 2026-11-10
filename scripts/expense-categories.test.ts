@@ -155,7 +155,7 @@ describe("expense categories access", () => {
       .map((entry) => entry.label)
       .join(",");
     expect(rail).toBe(
-      "Overview,Drivers,Active,Payments,Vehicles,Fleet Inbox,Service,Issues,Expenses,Partners,Monthly Owner P&L",
+      "Overview,Drivers,Bookings,Payments,Vehicles,Inbox,Service,Issues,Expenses,Partners,P&L",
     );
     expect(rail).not.toContain("Expense Categories");
     const isolation = readFileSync(

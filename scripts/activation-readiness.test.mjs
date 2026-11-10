@@ -772,7 +772,7 @@ try {
     const ws = readFileSync("src/components/admin/SettingsWorkspace.tsx", "utf8");
     assert.match(ws, /current\.id === "rental_terms" \? <RentalActivationSettingsPanel \/>/);
     const nav = readFileSync("src/components/admin/nav-config.ts", "utf8");
-    assert.match(nav, /\{ id: "rental_terms", label: "Rental Terms", group: "RENTALS", minTier: "owner" \}/);
+    assert.match(nav, /\{ id: "rental_terms", label: "Terms", group: "RENTALS", minTier: "owner" \}/);
     for (const f of ["src/components/admin/ActivationRequirementList.tsx", "src/components/admin/RentalActivationSettingsPanel.tsx"])
       assert.doesNotMatch(readFileSync(f, "utf8"), /\buppercase\b|text-transform/);
     const docs = readFileSync("src/components/admin/ApplicantDocuments.tsx", "utf8");
