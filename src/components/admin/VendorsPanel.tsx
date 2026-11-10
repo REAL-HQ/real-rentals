@@ -113,43 +113,45 @@ export function VendorsPanel(props: { initialTypeFilter?: string } = {}) {
   const presentTypes = VENDOR_TYPES.filter((t) => vendors.some((v) => v.vendor_type === t.value));
 
   return (
-    <div className="space-y-4">
-      <div className="admin-sticky-bar flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm text-muted-foreground">
-          {filtered.length} of {vendors.length} vendor(s)
-        </span>
-        <div className="flex items-center gap-2">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search vendors…"
-            className="rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm w-48"
-          />
-          <button
-            onClick={() => setEditing("new")}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150"
-          >
-            <Plus className="w-4 h-4" /> Add Vendor
-          </button>
-        </div>
-      </div>
-
-      {presentTypes.length > 1 ? (
-        <div className="flex flex-wrap gap-1.5">
-          <FilterChip active={typeFilter === "all"} onClick={() => setTypeFilter("all")}>
-            All
-          </FilterChip>
-          {presentTypes.map((t) => (
-            <FilterChip
-              key={t.value}
-              active={typeFilter === t.value}
-              onClick={() => setTypeFilter(t.value)}
+    <div className="space-y-4" data-testid="vendors-panel">
+      {/* Chips live inside the sticky bar so the bar's negative margin cannot clip them. */}
+      <div className="admin-sticky-bar space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm text-muted-foreground">
+            {filtered.length} of {vendors.length} vendor(s)
+          </span>
+          <div className="flex items-center gap-2">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search vendors…"
+              className="rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm w-48"
+            />
+            <button
+              onClick={() => setEditing("new")}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity duration-150"
             >
-              {t.label}
-            </FilterChip>
-          ))}
+              <Plus className="w-4 h-4" /> Add Vendor
+            </button>
+          </div>
         </div>
-      ) : null}
+        {presentTypes.length > 1 ? (
+          <div className="flex flex-wrap gap-1.5" data-testid="vendor-type-chips">
+            <FilterChip active={typeFilter === "all"} onClick={() => setTypeFilter("all")}>
+              All
+            </FilterChip>
+            {presentTypes.map((t) => (
+              <FilterChip
+                key={t.value}
+                active={typeFilter === t.value}
+                onClick={() => setTypeFilter(t.value)}
+              >
+                {t.label}
+              </FilterChip>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
