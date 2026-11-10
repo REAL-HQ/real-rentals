@@ -198,9 +198,9 @@ export const listActiveRentals = createServerFn({ method: "POST" })
       today,
       rentals: list.map((rental) => {
         const app = rental.application_id ? appById.get(rental.application_id) : undefined;
-        const vehicle = vehicleById.get(rental.vehicle_id);
+        const vehicle = rental.vehicle_id ? vehicleById.get(rental.vehicle_id) : undefined;
         const name = [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(" ");
-        const vehicleLabel = [name || null, vehicle?.license_plate || null].filter(Boolean).join(" · ") || "Vehicle";
+        const vehicleLabel = [name || null, vehicle?.license_plate || null].filter(Boolean).join(" · ") || "Unknown";
         return {
           id: rental.id,
           driverId: rental.driver_id,
@@ -221,7 +221,7 @@ export const listActiveRentals = createServerFn({ method: "POST" })
             ok: true,
             rows: list.map((rental) => {
               const app = rental.application_id ? appById.get(rental.application_id) : undefined;
-              const vehicle = vehicleById.get(rental.vehicle_id);
+              const vehicle = rental.vehicle_id ? vehicleById.get(rental.vehicle_id) : undefined;
               return {
                 rentalId: rental.id,
                 dates: [
@@ -243,7 +243,7 @@ export const listActiveRentals = createServerFn({ method: "POST" })
     );
 
     return {
-      rows: rows.map((row) => ({ ...row, thumbnailPath: thumbnailFor.get(row.vehicleId) ?? null })),
+      rows: rows.map((row) => ({ ...row, thumbnailPath: row.vehicleId ? thumbnailFor.get(row.vehicleId) ?? null : null })),
       today,
       paymentsLoaded: paymentsRead.ok,
       issuesLoaded: issuesRead.ok,

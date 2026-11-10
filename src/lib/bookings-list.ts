@@ -164,6 +164,17 @@ export function vehicleLabelOf(
   return s || null;
 }
 
+/** Display name for a booking's car. A past rental may have no vehicle. */
+export const UNKNOWN_VEHICLE_LABEL = "Unknown";
+
+export function bookingVehicleName(b: {
+  unitNumber?: string | null;
+  vehicleLabel?: string | null;
+}): string {
+  const text = [b.unitNumber, b.vehicleLabel].filter(Boolean).join(" · ");
+  return text || UNKNOWN_VEHICLE_LABEL;
+}
+
 /**
  * What this booking cannot tell you yet, in the words the profile uses.
  *

@@ -83,7 +83,7 @@ export type ActiveRentalSource = {
   driverId: string;
   driverName: string;
   applicationId: string | null;
-  vehicleId: string;
+  vehicleId: string | null;
   vehicleLabel: string;
   startDate: string;
   weeklyRate: number | null;
@@ -119,7 +119,7 @@ export type ActiveRentalRow = {
   driverId: string;
   driverName: string;
   applicationId: string | null;
-  vehicleId: string;
+  vehicleId: string | null;
   vehicleLabel: string;
   thumbnailPath?: string | null;
   startDate: string;
@@ -159,14 +159,14 @@ function countsForRental(
     if (isIssueClosed(issue.status)) return false;
     if (issue.rentalId && issue.rentalId === rental.id) return true;
     if (issue.rentalId) return false;
-    return issue.driverId === rental.driverId || issue.vehicleId === rental.vehicleId;
+    return issue.driverId === rental.driverId || (!!rental.vehicleId && issue.vehicleId === rental.vehicleId);
   }).length;
   const seen = new Set<string>();
   let openIncidents = 0;
   for (const incident of incidents) {
     if (!isOpenIncidentStatus(incident.status)) continue;
     const onThisRental = incident.rentalId === rental.id;
-    const onThisVehicle = !incident.rentalId && incident.vehicleId === rental.vehicleId;
+    const onThisVehicle = !incident.rentalId && !!rental.vehicleId && incident.vehicleId === rental.vehicleId;
     if (!onThisRental && !onThisVehicle) continue;
     if (seen.has(incident.id)) continue;
     seen.add(incident.id);

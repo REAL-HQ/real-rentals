@@ -117,7 +117,7 @@ export type TurnaroundVehicle = {
 
 export type TurnaroundRental = {
   id: string;
-  vehicle_id: string;
+  vehicle_id: string | null;
   status: string | null;
   end_date: string | null;
 };
@@ -206,12 +206,14 @@ function isEnded(status: string | null | undefined): boolean {
 export function buildVehicleTurnaround(input: VehicleTurnaroundInput): VehicleTurnaroundBoard {
   const today = input.today;
   const activeVehicles = new Set(
-    input.rentals.filter((row) => String(row.status ?? "").toLowerCase() === "active").map((row) => row.vehicle_id),
+    input.rentals
+      .filter((row) => String(row.status ?? "").toLowerCase() === "active" && row.vehicle_id)
+      .map((row) => row.vehicle_id as string),
   );
 
   const lastEnd = new Map<string, string>();
   for (const rental of input.rentals) {
-    if (!isEnded(rental.status)) continue;
+    if (!rental.vehicle_id || !isEnded(rental.status)) continue;
     const end = dateOnly(rental.end_date);
     if (!end || end > today) continue;
     const previous = lastEnd.get(rental.vehicle_id);

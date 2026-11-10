@@ -328,14 +328,16 @@ export const cancelReservation = createServerFn({ method: "POST" })
       .eq("status", RESERVATION_STATUS);
     if (upd) throw new Error(upd.message);
 
-    const { data: still } = await supabaseAdmin
-      .from("rentals")
-      .select("id")
-      .eq("vehicle_id", row.vehicle_id)
-      .in("status", [RESERVATION_STATUS, "active"])
-      .limit(1);
-    if (!still?.length) {
-      await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).eq("status", "reserved");
+    if (row.vehicle_id) {
+      const { data: still } = await supabaseAdmin
+        .from("rentals")
+        .select("id")
+        .eq("vehicle_id", row.vehicle_id)
+        .in("status", [RESERVATION_STATUS, "active"])
+        .limit(1);
+      if (!still?.length) {
+        await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).eq("status", "reserved");
+      }
     }
     return { ok: true };
   });

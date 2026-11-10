@@ -179,7 +179,7 @@ export function ActiveRentalsPanel() {
             </thead>
             <tbody>
               {visible.map((row) => {
-                const [vehicleName, ...vehicleDetails] = row.vehicleLabel.split(" · ");
+                const [vehicleName, ...vehicleDetails] = (row.vehicleLabel || "Unknown").split(" · ");
                 const fee = fees.get(row.id);
                 const lateDue = (fee?.lateFee ?? 0) > 0 && !fee?.waived;
                 return (
@@ -257,11 +257,13 @@ export function ActiveRentalsPanel() {
                                 </Link>
                               </DropdownMenuItem>
                             ) : null}
-                            <DropdownMenuItem asChild>
-                              <Link to="/admin" search={{ tab: "vehicles", id: row.vehicleId }}>
-                                Vehicle
-                              </Link>
-                            </DropdownMenuItem>
+                            {row.vehicleId ? (
+                              <DropdownMenuItem asChild>
+                                <Link to="/admin" search={{ tab: "vehicles", id: row.vehicleId }}>
+                                  Vehicle
+                                </Link>
+                              </DropdownMenuItem>
+                            ) : null}
                             <DropdownMenuSeparator />
                             {fees.get(row.id)?.mode === "manual" ? (
                               <DropdownMenuItem onSelect={() => setDialog({ kind: "pay", row })}>Record Payment</DropdownMenuItem>

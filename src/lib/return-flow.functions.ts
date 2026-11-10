@@ -160,7 +160,7 @@ export const getReturnBalance = createServerFn({ method: "POST" })
       driverEmail,
       applicationId,
       vehicleId,
-      vehicleLabel,
+      vehicleLabel: vehicleLabel ?? "Unknown",
     };
   });
 
