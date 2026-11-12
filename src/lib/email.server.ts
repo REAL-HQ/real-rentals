@@ -1068,7 +1068,7 @@ export async function sendPortalInviteEmail(args: {
       <p>Once you're in you can:</p>
       <ul>
         <li>upload or replace your licence and other documents</li>
-        <li>insurance is included — after you sign, we set up the policy in your name</li>
+        <li>Insurance is included, with the policy in your name. One less bill to worry about.</li>
         <li>keep your contact details up to date</li>
         <li>read and sign your rental agreement</li>
       </ul>

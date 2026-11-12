@@ -403,8 +403,7 @@ export function InterviewTab({
       {show(5) && (
         <ScriptCard title="5. Insurance">
           <Script>
-            "Insurance is included. After you sign, we get the quote and set up the policy in your
-            name. I do not need a card from you to finish this call."
+            "Insurance is included, with the policy in your name. One less bill to worry about. I do not need a card from you to finish this call."
           </Script>
           <p className="text-xs text-muted-foreground">
             Optional. Record the policy here after it is issued. These answers are not required to

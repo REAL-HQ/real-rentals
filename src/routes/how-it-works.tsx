@@ -88,7 +88,7 @@ function HowItWorks() {
               { I: IdCard, t: "Valid US Driver's License", d: "Held For At Least One Year With No Major Restrictions." },
               { I: CarFront, t: "Clean Driving Record", d: "Reasonably Clean MVR. We'll Let You Know If You Qualify." },
               { I: Briefcase, t: "Active Gig Account", d: "Or Willingness To Sign Up For Uber, Lyft, DoorDash, Or Instacart." },
-              { I: Shield, t: "Insurance Included", d: "After You Sign Your Contract, We Handle Your Insurance Quote And Policy, Issued In Your Name." },
+              { I: Shield, t: "Insurance Included", d: "Insurance is included, with the policy in your name. One less bill to worry about." },
               { I: Wallet, t: "No Deposit", d: "$0 Security Deposit. We Keep A Payment Card On File For Tolls, Citations, Damage, And Unpaid Rent Per Your Rental Agreement." },
               { I: CreditCard, t: "Payment Method", d: "Debit Card, Credit Card, Or Cash App For Weekly Rent." },
             ].map((r, i) => (
