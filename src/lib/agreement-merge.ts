@@ -34,6 +34,19 @@ export const MERGE_FIELDS = [
   { key: "additional_drivers", label: "Approved additional drivers" },
   { key: "insurance_carrier", label: "Renter insurance carrier" },
   { key: "insurance_policy", label: "Policy # / carrier phone" },
+  // v1.14 (Insurance Included). Staff entries from Prepare Agreement, except
+  // toll_transponder (vehicle record); a blank one blocks sending.
+  { key: "start_datetime", label: "Rental start date & time" },
+  { key: "payment_schedule", label: "Payment schedule" },
+  { key: "amount_due", label: "Amount due each payment / due day" },
+  { key: "payment_method", label: "Payment method" },
+  { key: "platform_use", label: "Approved platform use" },
+  { key: "damage_waiver", label: "Damage Waiver choice" },
+  { key: "vehicle_owner", label: "Vehicle owner (registration)" },
+  { key: "license_inspected", label: "License inspected by / date" },
+  { key: "renter_policy", label: "Renter Policy company / policy #" },
+  { key: "renter_policy_dates", label: "Renter Policy effective date / claims phone" },
+  { key: "toll_transponder", label: "Toll transponder #" },
 ] as const;
 
 export type MergeData = Record<string, string>;

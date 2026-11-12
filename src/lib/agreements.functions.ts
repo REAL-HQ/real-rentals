@@ -8,10 +8,11 @@ import {
   renderTemplate,
   type MergeData,
 } from "@/lib/agreement-merge";
-import { fmtContractDate, fmtContractDateOnly, minTermEndIso, minTermWeeks } from "@/lib/agreement-dates";
+import { CONTRACT_TIME_ZONE, fmtContractDate, fmtContractDateOnly, minTermEndIso, minTermWeeks } from "@/lib/agreement-dates";
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
+import { applyRentalTerms } from "@/lib/agreement-rental-terms";
 import { STALE_PREVIEW_REFUSAL } from "@/lib/agreement-send-refusal";
 import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
 import { SWAP_ENABLED } from "@/lib/record-numbers";
@@ -249,7 +250,7 @@ async function buildMergeData(
   if (namedVehicleId) {
     const { data: v } = await admin
       .from("vehicles")
-      .select("id,year,make,model,trim,color,vin,unit_number,weekly_rate,deposit,license_plate,plate_state")
+      .select("id,year,make,model,trim,color,vin,unit_number,weekly_rate,deposit,license_plate,plate_state,toll_transponder_id")
       .eq("id", namedVehicleId)
       .maybeSingle();
     vehicle = v ?? null;
@@ -514,6 +515,29 @@ function insuranceBlockers(data: MergeData, blockers: AgreementBlocker[]) {
 }
 
 /**
+ * v1.14 Insurance Included: the rental terms staff enter (start time, payment
+ * schedule and method, platform use, Damage Waiver, Vehicle Owner, license
+ * inspection, Renter Policy), plus two things this wording cannot carry: a
+ * security deposit (Section 3.3 says there is none) and an additional driver
+ * (who must sign on this agreement, which eSign cannot capture yet).
+ */
+function insuranceIncludedTerms(prep: AgreementPrep | undefined, built: { data: MergeData; blockers: AgreementBlocker[]; app: any; vehicle: any; startIso: string | null }) {
+  const todayIso = new Intl.DateTimeFormat("en-CA", { timeZone: CONTRACT_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const rate = Number(built.app?.weekly_rent ?? built.vehicle?.weekly_rate);
+  const r = applyRentalTerms(prep?.rental, { startIso: built.startIso, weeklyRate: Number.isFinite(rate) && rate > 0 ? rate : null, todayIso });
+  Object.assign(built.data, r.merge);
+  // "(if any)" row: the transponder on the vehicle record, or plainly none on file.
+  // Set only here, so other templates' merge data and fingerprints are unchanged.
+  built.data.toll_transponder = String(built.vehicle?.toll_transponder_id ?? "").trim() || "None on file";
+  for (const b of r.blockers) built.blockers.push({ ...b, fix: undefined });
+  if (prep?.drivers.mode === "listed")
+    built.blockers.push({ field: "additional_drivers", label: "No additional drivers on this agreement", why: "v1.14 has an Additional Driver signature line, and eSign can capture only the renter's signature. Choose No Additional Drivers; add drivers later with the additional-driver form (Section 9)." });
+  const dep = Number(String(built.data.deposit_amount ?? "").replace(/[^0-9.]/g, ""));
+  if (dep > 0)
+    built.blockers.push({ field: "deposit_amount", label: "No security deposit", why: "v1.14 says there is no security deposit (Section 3.3). Choose No Deposit or Deposit Waived." });
+}
+
+/**
  * Designed (v1.6) templates print more fields than the legacy wording. Every
  * {{field}} the template actually uses must have a real value before sending;
  * pickup/return fields are literal "To Be Completed" text in the template, so
@@ -542,6 +566,14 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
     min_term_end: { label: "Minimum-term end date", why: "Needs the contract start date and the template's minimum term (weeks).", fix: pay },
     additional_drivers: { label: "Approved additional drivers (or None)", why: "Staff must state the approved additional drivers. This entry arrives with Driver Agreement Preparation; nothing is assumed until then." },
   };
+  // v1.14 rental terms come only from staff entries in Prepare Agreement.
+  const v114 = "Entered under Rental Terms in Prepare Agreement; nothing is assumed.";
+  for (const [k, label] of [
+    ["start_datetime", "Rental start date & time"], ["payment_schedule", "Payment schedule"], ["amount_due", "Amount due each payment"],
+    ["payment_method", "Payment method"], ["platform_use", "Approved Platform Use"], ["damage_waiver", "Damage Waiver choice"],
+    ["vehicle_owner", "Vehicle Owner"], ["license_inspected", "License inspected by / date"],
+    ["renter_policy", "Renter Policy company / policy #"], ["renter_policy_dates", "Renter Policy effective date / claims phone"],
+  ] as const) need[k] = { label, why: v114 };
   for (const [k, b] of Object.entries(need)) {
     if (used.has(k) && !String(data[k] ?? "").trim() && !blockers.some((x) => x.field === k)) blockers.push({ field: k, ...b });
   }
@@ -579,6 +611,7 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
       : r.reservationLine;
     if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, reservation_line: line });
   }
+  if (lib?.insuranceIncluded) insuranceIncludedTerms(prep, built);
   templateFieldBlockers(
     tplBody,
     built.data,

@@ -1,23 +1,27 @@
 // Agreement Template Library: independent agreement families, each with its
 // own key, version history and fingerprint. Client-safe (no server imports).
 //
-// The two built-in families are transcribed from the Owner-supplied PDFs:
+// The built-in families are transcribed from the Owner-supplied PDFs:
 //   no_insurance        "REAL RENTALS - Vehicle Rental Agreement (v1.10)"
 //   insurance_required  "REAL RENTALS - Vehicle Rental Agreement (v1.10.2, Insurance Required)"
+//   insurance_included  "REAL RENTALS Vehicle Rental Agreement (v1.14)" (agreement-v114.ts)
 // Wording is verbatim except: company placeholders ([Legal Entity Name],
 // [address], [phone], the support email) are merge fields from Settings →
 // Company; reusable values are [[terms]]; bullets/checkboxes the PDF font
-// cannot print became "-". Both start as Draft — Legal Review Required and
+// cannot print became "-". All start as Draft — Legal Review Required and
 // can never be sent until the Owner approves a saved version.
 
 import { V16_SOURCE, V16_TERM_DEFAULTS, writeTerms } from "@/lib/agreement-builder";
 import { parseLayout } from "@/lib/agreement-layout";
+import { V114_SOURCE, V114_TERM_DEFAULTS } from "@/lib/agreement-v114";
 
 export type LibraryTemplate = {
   key: string;
   name: string;
   displayVersion: string;
   insuranceRequired: boolean;
+  /** REAL RENTALS arranges the renter's policy (v1.14); staff enter its rental details in Prepare Agreement. */
+  insuranceIncluded?: boolean;
   sourceFile: string;
   source: string;
   terms: Record<string, string>;
@@ -97,7 +101,17 @@ export const LIBRARY: LibraryTemplate[] = [
     insuranceRequired: true, sourceFile: "REAL-RENTALS-Vehicle-Rental-Agreement-v1.10.2_insurance_required.pdf",
     source: V1102_INS_SOURCE, terms: V1102_TERM_DEFAULTS, body: writeTerms(V1102_INS_SOURCE, V1102_TERM_DEFAULTS), reservationStyle: "amount",
   },
+  {
+    key: "insurance_included", name: "Vehicle Rental Agreement — Insurance Included", displayVersion: "1.14",
+    insuranceRequired: false, insuranceIncluded: true, sourceFile: "REAL-RENTALS-Vehicle-Rental-Agreement-v1.14-Final.pdf",
+    source: V114_SOURCE, terms: V114_TERM_DEFAULTS, body: writeTerms(V114_SOURCE, V114_TERM_DEFAULTS), reservationStyle: "amount",
+  },
 ];
+
+/** "Insurance Included" / "Insurance Required" / "No Insurance Required". */
+export function insuranceLabel(t: LibraryTemplate): string {
+  return t.insuranceIncluded ? "Insurance Included" : t.insuranceRequired ? "Insurance Required" : "No Insurance Required";
+}
 
 export const LIBRARY_KEYS = LIBRARY.map((t) => t.key) as [string, ...string[]];
 

@@ -8,7 +8,7 @@ let fails = 0;
 const ok = (c: boolean, m: string) => { console.log(`${c ? "PASS" : "FAIL"} ${m}`); if (!c) fails++; };
 
 const ni = libraryTemplate("no_insurance")!, ir = libraryTemplate("insurance_required")!;
-ok(LIBRARY.length === 2 && new Set(LIBRARY.map((t) => t.key)).size === 2, "two independent template keys");
+ok(LIBRARY.length === 3 && new Set(LIBRARY.map((t) => t.key)).size === 3, "three independent template keys");
 ok(acknowledgmentsOf(ni.body).length === 13, "No Insurance: 13 acknowledgments");
 ok(acknowledgmentsOf(ir.body).length === 15, "Insurance Required: 15 acknowledgments");
 ok(acknowledgmentsOf(V16_BODY).length === 13, "existing v1.6 still 13");
@@ -27,7 +27,7 @@ for (const t of LIBRARY) {
   ok(terms.service_area === "" && terms.reservation_line === "", `${t.key}: blank rows stay blank (nothing invented)`);
   ok(JSON.stringify(readTerms(writeTerms(stripTerms(t.body), terms))) === JSON.stringify(terms), `${t.key}: terms roundtrip`);
   const r = renderTemplate(resolveTerms(t.body), { company_name: "Synthetic LLC" } as any);
-  ok(r.includes("Synthetic LLC d/b/a REAL RENTALS"), `${t.key}: company name merges from Settings`);
+  ok(r.includes(t.insuranceIncluded ? 'Synthetic LLC ("REAL RENTALS,"' : "Synthetic LLC d/b/a REAL RENTALS"), `${t.key}: company name merges from Settings`);
 }
 ok(readTerms(ir.body)!.insurance_notice_hours === "[24]" && readTerms(ni.body)!.insurance_notice_hours === undefined, "insurance-only term only in the insurance template");
 // Legacy v1.6 body is byte-identical (its fingerprint must not change).

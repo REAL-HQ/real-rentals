@@ -59,7 +59,7 @@
     "test:admin-reads-e2e": "node scripts/admin-reads-e2e.test.mjs",
     "test:dark-coverage": "node scripts/dark-flag-coverage.test.mjs",
     "test:webhook": "node scripts/payments-webhook-invariants.test.mjs && bun test scripts/payments-webhook-events.test.ts",
-    "test:m2": "bun scripts/m2-release-a-inert.test.ts && bun scripts/m2-approve-fallback.test.ts && bun scripts/m2-approval-compat-gate.test.ts && node scripts/m2-rehearsal-prerequisites.test.mjs && node scripts/m2-rehearsal-prerequisites.mjs --check && bun scripts/m2-content-sha.test.ts"
+    "test:m2": "bun scripts/m2-release-a-inert.test.ts && bun scripts/m2-approve-fallback.test.ts && bun scripts/m2-approval-compat-gate.test.ts && node scripts/m2-rehearsal-prerequisites.test.mjs && node scripts/m2-rehearsal-prerequisites.mjs --check && bun scripts/m2-content-sha.test.ts && bun scripts/agreement-library.test.ts && bun scripts/agreement-prep.test.ts && bun scripts/agreement-v114.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

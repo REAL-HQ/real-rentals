@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { previewAgreement, sendAgreement } from "@/lib/agreements.functions";
 import { EMPTY_PREP, type AgreementPrep, type AdditionalDriver } from "@/lib/agreement-prep";
-import { LIBRARY, DRAFT_STATUS_LABEL, acknowledgmentsOf } from "@/lib/agreement-library";
+import { EMPTY_RENTAL_TERMS, DAMAGE_WAIVER_WEEKLY, POLICY_PENDING, type RentalTerms } from "@/lib/agreement-rental-terms";
+import { LIBRARY, DRAFT_STATUS_LABEL, acknowledgmentsOf, insuranceLabel } from "@/lib/agreement-library";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
 type Res = {
@@ -59,10 +60,18 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const [staleRefusal, setStaleRefusal] = useState<string | null>(null);
   const [regen, setRegen] = useState(0);
   const key = useMemo(() => JSON.stringify({ prep, templateKey }), [prep, templateKey]);
+  const included = LIBRARY.find((t) => t.key === templateKey)?.insuranceIncluded === true;
   function chooseTemplate(k: string) {
     // Switching templates invalidates the previous preview and its fingerprint.
     setRes(null); setReviewedKey(""); setCompanyAck(false); setTemplateKey(k);
+    // Rental Terms exist only for v1.14; other templates never carry them (their fingerprints are unchanged).
+    const v114 = LIBRARY.find((t) => t.key === k)?.insuranceIncluded === true;
+    setPrep(({ rental, ...p }) => (v114 ? { ...p, rental: rental ?? EMPTY_RENTAL_TERMS } : p));
   }
+  const setRental = (patch: Partial<RentalTerms>) => setPrep((p) => ({ ...p, rental: { ...(p.rental ?? EMPTY_RENTAL_TERMS), ...patch } }));
+  const rt = prep.rental ?? EMPTY_RENTAL_TERMS;
+  const rentalBadge = ["rental_terms", "start_datetime", "payment_schedule", "payment_method", "platform_use", "damage_waiver", "vehicle_owner", "license_inspected", "renter_policy", "renter_policy_dates"]
+    .reduce((n, f) => n + (res?.blockers ?? []).filter((b) => b.field === f).length, 0);
 
   useEffect(() => {
     let stale = false;
@@ -137,7 +146,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
             <input type="radio" className="mt-0.5" checked={templateKey === t.key} onChange={() => chooseTemplate(t.key)} />
             <span className="min-w-0">
               <span className="font-medium">{t.name}</span> <span className="text-muted-foreground">v{t.displayVersion}</span><br />
-              <span className="text-muted-foreground">{t.insuranceRequired ? "Insurance Required" : "No Insurance Required"} · {acknowledgmentsOf(t.body).length} Initials</span><br />
+              <span className="text-muted-foreground">{insuranceLabel(t)} · {acknowledgmentsOf(t.body).length} Initials</span><br />
               <span className="text-warning-foreground rounded bg-warning/15 px-1.5 py-0.5 text-[10.5px]">{DRAFT_STATUS_LABEL} — Preview Only</span>
             </span>
           </label>
@@ -156,6 +165,45 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
         </dl>
         <p className="text-[11px] text-muted-foreground">Corrections are made in the driver's and vehicle's own records; this screen never invents values. Preparing an agreement never charges the card.</p>
       </Section>
+
+      {included && (
+        <Section title="Rental Terms (v1.14)" badge={rentalBadge}>
+          <label className="block">Pickup Time (Eastern)<input type="time" className={input} value={rt.startTime} onChange={(e) => setRental({ startTime: e.target.value })} /></label>
+          <p className="font-medium">Payment Schedule</p>
+          <Radio checked={rt.schedule === "weekly"} onChange={() => setRental({ schedule: "weekly" })} label="Weekly" />
+          <Radio checked={rt.schedule === "every_4_weeks"} onChange={() => setRental({ schedule: "every_4_weeks" })} label="Every 4 Weeks" />
+          <label className="block">Payment Method
+            <select className={input} value={rt.paymentMethod ?? ""} onChange={(e) => setRental({ paymentMethod: (e.target.value || null) as RentalTerms["paymentMethod"] })}>
+              <option value="">Choose…</option><option value="card_autopay">Card Autopay</option><option value="zelle">Zelle</option>
+              <option value="cash_app">Cash App</option><option value="venmo">Venmo</option><option value="other">Other</option>
+            </select>
+          </label>
+          {rt.paymentMethod === "other" && <input className={input} placeholder="Other payment method" value={rt.paymentMethodOther} onChange={(e) => setRental({ paymentMethodOther: e.target.value })} />}
+          {rt.paymentMethod === "card_autopay" && <p className="text-[11px] text-muted-foreground">Weekly autopay is off in the app: the Owner charges the card on file on each due day (Section 3.4).</p>}
+          <p className="font-medium">Approved Platform Use</p>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={rt.platforms.rideshare} onChange={(e) => setRental({ platforms: { ...rt.platforms, rideshare: e.target.checked } })} /> Rideshare (Uber, Lyft)</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={rt.platforms.delivery} onChange={(e) => setRental({ platforms: { ...rt.platforms, delivery: e.target.checked } })} /> Delivery</label>
+          <p className="font-medium">Optional Damage Waiver (${DAMAGE_WAIVER_WEEKLY} per week)</p>
+          <Radio checked={rt.damageWaiver === "accepted"} onChange={() => setRental({ damageWaiver: "accepted" })} label="Accepted (Added To Each Payment)" />
+          <Radio checked={rt.damageWaiver === "declined"} onChange={() => setRental({ damageWaiver: "declined" })} label="Declined" />
+          <label className="block">Vehicle Owner (Per Registration)<input className={input} value={rt.vehicleOwner} onChange={(e) => setRental({ vehicleOwner: e.target.value })} /></label>
+          <div className="grid grid-cols-[1fr_130px] gap-1.5">
+            <label className="block">License Inspected By<input className={input} placeholder="Staff full name" value={rt.licenseInspectedBy} onChange={(e) => setRental({ licenseInspectedBy: e.target.value })} /></label>
+            <label className="block">Date<input type="date" className={input} value={rt.licenseInspectedOn} onChange={(e) => setRental({ licenseInspectedOn: e.target.value })} /></label>
+          </div>
+          <p className="font-medium">Renter Policy</p>
+          <p className="text-[11px] text-muted-foreground">Leave blank if the policy is bound after signing (Section 5.1); the agreement then prints "{POLICY_PENDING}".</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <input className={input} placeholder="Insurance company" value={rt.policyCompany} onChange={(e) => setRental({ policyCompany: e.target.value })} />
+            <input className={input} placeholder="Policy #" value={rt.policyNumber} onChange={(e) => setRental({ policyNumber: e.target.value })} />
+            <input type="date" className={input} value={rt.policyEffective} onChange={(e) => setRental({ policyEffective: e.target.value })} aria-label="Policy effective date" />
+            <input className={input} placeholder="Claims phone" value={rt.policyClaimsPhone} onChange={(e) => setRental({ policyClaimsPhone: e.target.value })} />
+          </div>
+          <dl className="grid grid-cols-[minmax(0,45%)_minmax(0,1fr)] gap-x-3 gap-y-1">
+            {row("Amount Due / Due Day", m.amount_due)}{row("Toll Transponder", m.toll_transponder)}
+          </dl>
+        </Section>
+      )}
 
       <Section title="Authorized Drivers" badge={byField("additional_drivers")}>
         <Radio checked={prep.drivers.mode === "none"} onChange={() => setPrep((p) => ({ ...p, drivers: { mode: "none", list: [] } }))} label="No Additional Drivers (prints None Authorized)" />

@@ -6,6 +6,7 @@
 // the preview fingerprint, so Send refuses if anything changed after review.
 import { z } from "zod";
 import { fmtContractDate } from "@/lib/agreement-dates";
+import { RentalTermsSchema } from "@/lib/agreement-rental-terms";
 
 const name = z.string().trim().max(120);
 export const AdditionalDriverSchema = z.object({
@@ -23,6 +24,7 @@ export const PrepSchema = z.object({
     amount: z.number().nonnegative().max(25000).nullable(),
     reason: z.string().trim().max(300),
   }),
+  rental: RentalTermsSchema.optional(),
 });
 export type AgreementPrep = z.infer<typeof PrepSchema>;
 export type AdditionalDriver = z.infer<typeof AdditionalDriverSchema>;
