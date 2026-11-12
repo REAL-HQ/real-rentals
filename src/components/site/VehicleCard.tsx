@@ -5,14 +5,10 @@ import {
   Car,
   BadgeCheck,
   Users,
-  Wrench,
-  Infinity as InfinityIcon,
   ArrowRight,
   Fuel,
   Zap,
   Leaf,
-  Wallet,
-  Shield,
 } from "lucide-react";
 import { representativePhoto, type PublicVehicleCardModel } from "@/lib/marketing-fleet";
 import { inventoryCardModel, type PublicVehicle } from "@/lib/public-vehicle-card";
@@ -154,32 +150,6 @@ export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
       >
         Check Availability <ArrowRight className="w-4 h-4" />
       </button>
-      <div className="mt-4 pt-4 border-t border-border/60 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-foreground/80">
-        <span className="inline-flex items-center gap-1.5">
-          <BadgeCheck className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          No Credit Check
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Wallet className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          No Deposit
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          Insurance Included
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <InfinityIcon className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          Unlimited Miles
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          Maintenance Included
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Zap className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          Same Day Approval
-        </span>
-      </div>
     </>
   );
 

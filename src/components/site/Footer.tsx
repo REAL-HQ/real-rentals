@@ -13,23 +13,6 @@ const trustBar = [
   { label: "Same Day Approval", Icon: Zap },
 ];
 
-const badges = [
-  "No Credit Check",
-  "No Deposit",
-  "Insurance Included",
-  "Unlimited Miles",
-  "Maintenance Included",
-  "Same Day Approval",
-];
-
-const driverLinks = [
-  { to: "/fleet", label: "Fleet" },
-  { to: "/how-it-works", label: "How It Works" },
-  { to: "/apply", label: "Get My Quote" },
-  { to: "/faq", label: "FAQ" },
-  { to: "/how-it-works", label: "Requirements" },
-];
-
 const ownerLinks: { to: string; label: string; hash?: string }[] = [
   { to: "/partners", label: "How It Works" },
   { to: "/partners", hash: "faq", label: "Owner FAQ" },
@@ -79,31 +62,13 @@ export function Footer() {
       </div>
       )}
       <div className="container-real py-14 grid grid-cols-1 md:grid-cols-12 gap-10 text-sm">
-        <div className="md:col-span-4">
+        <div className="md:col-span-5">
           <Logo width={110} offset={false} />
           <p className="mt-5 text-muted-foreground max-w-sm">
             Rideshare-Ready Vehicles For Uber,<br />Lyft, DoorDash & Delivery Work.
           </p>
-          <ul className="mt-5 space-y-2">
-            {badges.map((b) => (
-              <li key={b} className="flex items-center gap-2 text-foreground/80">
-                <Check className="w-4 h-4 text-real-red" strokeWidth={2.5} />
-                <span>{b}</span>
-              </li>
-            ))}
-          </ul>
         </div>
-        <div className="md:col-span-2">
-          <div className="text-[11px] tracking-[0.2em] font-semibold text-muted-foreground uppercase mb-4">Drivers</div>
-          <ul className="space-y-2 text-muted-foreground">
-            {driverLinks.map((l, i) => (
-              <li key={`${l.label}-${i}`}>
-                <Link to={l.to} className="hover:text-foreground transition-colors">{l.label}</Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="md:col-span-3">
+        <div className="md:col-span-4">
           <div className="text-[11px] tracking-[0.2em] font-semibold text-muted-foreground uppercase mb-4">Fleet Owners</div>
           <ul className="space-y-2 text-muted-foreground">
             {ownerLinks.map((l, i) => (
