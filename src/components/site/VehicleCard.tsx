@@ -14,7 +14,7 @@ import {
   Wallet,
   Shield,
 } from "lucide-react";
-import type { PublicVehicleCardModel } from "@/lib/marketing-fleet";
+import { representativePhoto, type PublicVehicleCardModel } from "@/lib/marketing-fleet";
 import { inventoryCardModel, type PublicVehicle } from "@/lib/public-vehicle-card";
 import { VEHICLE_DETAIL_PAGE_ENABLED } from "@/lib/vehicle-detail";
 
@@ -29,9 +29,12 @@ import { VEHICLE_DETAIL_PAGE_ENABLED } from "@/lib/vehicle-detail";
  */
 export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
   // Some assets are served by the host rather than bundled. A broken-image
-  // icon on a paid landing page is worse than no image, so a failed load
-  // falls back to a neutral tile instead.
+  // icon on a paid landing page is worse than no image, so a missing or
+  // failed photo uses the same bundled type photo as the homepage cards.
   const [imageFailed, setImageFailed] = useState(false);
+  const representative = representativePhoto(model.bodyTypeLabel);
+  const photoSrc = model.image && !imageFailed ? model.image : representative;
+  const usingRepresentative = photoSrc === representative;
   // A real figure gets the large price treatment. "Rate confirmed on your
   // call" is not a price and must not sit in the price slot at price size —
   // it collides with the title and reads like one.
@@ -62,27 +65,28 @@ export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
             {model.availabilityNote}
           </span>
         )}
-        {model.image && !imageFailed ? (
-          <img
-            src={model.image}
-            alt={model.subtitle ? `${model.title} — ${model.subtitle}` : model.title}
-            className="car-img w-full h-full object-cover"
-            loading="lazy"
-            onError={() => setImageFailed(true)}
-            // The page is server rendered, so an image can finish failing
-            // before React hydrates and there is no error event left to
-            // catch. A mounted <img> that is complete with no intrinsic
-            // width is a load that already failed.
-            ref={(el) => {
-              if (el && el.complete && el.naturalWidth === 0) setImageFailed(true);
-            }}
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
-            <Car className="w-8 h-8" strokeWidth={1.5} />
-            <span className="text-sm font-medium">{model.bodyTypeLabel}</span>
-          </div>
-        )}
+        <img
+          src={photoSrc}
+          alt={
+            usingRepresentative
+              ? `${model.title}, representative ${model.bodyTypeLabel}`
+              : model.subtitle
+                ? `${model.title} — ${model.subtitle}`
+                : model.title
+          }
+          className="car-img w-full h-full object-cover"
+          loading="lazy"
+          onError={() => setImageFailed(true)}
+          // The page is server rendered, so an image can finish failing
+          // before React hydrates and there is no error event left to
+          // catch. A mounted <img> that is complete with no intrinsic
+          // width is a load that already failed. currentSrc stays empty
+          // until the browser actually requests the file, so an unstarted
+          // lazy image is not treated as broken.
+          ref={(el) => {
+            if (el && el.complete && el.naturalWidth === 0 && el.currentSrc) setImageFailed(true);
+          }}
+        />
       </div>
       <div className="mt-2 flex items-start justify-between gap-4">
         <div className="min-w-0">

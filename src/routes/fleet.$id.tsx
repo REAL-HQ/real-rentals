@@ -6,6 +6,7 @@ import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { Check, Gauge, Fuel, Calendar, Wrench } from "lucide-react";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
+import { representativePhoto } from "@/lib/marketing-fleet";
 import { PublicAvailabilityBadge } from "@/components/site/PublicAvailability";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { PUBLIC_AVAILABILITY_ENABLED, publicAvailability } from "@/lib/public-availability";
@@ -182,9 +183,12 @@ function VehicleDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mt-8">
           <FadeUp>
             <div className="rounded-2xl bg-soft overflow-hidden aspect-[4/3]">
-              {v.photos?.[0] && (
-                <img src={resolvePhotoUrl(v.photos[0]) ?? ""} alt={`${v.make} ${v.model}`} className="w-full h-full object-cover" />
-              )}
+              <ListingPhoto
+                src={resolvePhotoUrl(v.photos?.[0])}
+                fallback={representativePhoto(v.body_type)}
+                name={`${v.make} ${v.model}`}
+                bodyType={v.body_type}
+              />
             </div>
           </FadeUp>
           <FadeUp delay={80}>
@@ -254,5 +258,28 @@ function VehicleDetail() {
       </section>
       <div className="h-20" />
     </SiteLayout>
+  );
+}
+
+function ListingPhoto({
+  src,
+  fallback,
+  name,
+  bodyType,
+}: {
+  src: string | null;
+  fallback: string;
+  name: string;
+  bodyType: string | null;
+}) {
+  const [failed, setFailed] = useState(false);
+  const real = src && !failed ? src : null;
+  return (
+    <img
+      src={real ?? fallback}
+      alt={real ? name : `${name}, representative ${bodyType ?? "sedan"}`}
+      className="w-full h-full object-cover"
+      onError={() => setFailed(true)}
+    />
   );
 }
