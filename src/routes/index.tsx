@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Shield, Wrench, Infinity as InfinityIcon, Briefcase, ArrowRight, CalendarDays, FileText, Zap, ClipboardCheck, KeyRound, DollarSign, Users, MapPin, LifeBuoy, ScanSearch, Headphones, Car, Wallet } from "lucide-react";
+import { Shield, Wrench, Infinity as InfinityIcon, Briefcase, ArrowRight, CalendarDays, FileText, Zap, ClipboardCheck, KeyRound, DollarSign, Users, MapPin, LifeBuoy, ScanSearch, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SiteLayout } from "@/components/site/SiteLayout";
@@ -19,15 +19,10 @@ import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
 const FAQS = [
   { q: "What is required to get approved?", a: "You must be 21+, hold a valid US driver's license for at least one year, and have a reasonably clean driving record. No credit check required." },
   { q: "Is a security deposit required?", a: "No. We do not collect a security deposit. We do keep a payment card on file for tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
-  { q: "Who pays for tolls and tickets?", a: "You do. Any tolls, tickets, or citations during your rental are your responsibility. Unpaid items are transferred to the driver on record per your rental agreement, and an admin fee may apply per notice." },
+  { q: "Is insurance included?", a: "Yes. After you sign, Real Rentals gets the quote and sets up the policy in your name." },
   { q: "What is included in the weekly payment?", a: "Routine maintenance, a high-mileage allowance, 24/7 driver support, and insurance. After you sign your contract, we handle your insurance quote and policy, issued in your name. Gas and tolls are on you." },
-  { q: "Can I drive for Uber and Lyft?", a: "Most vehicles qualify for both Uber and Lyft on the same car. Some are delivery-focused, so each listing shows what it's approved for." },
-  { q: "Are maintenance and repairs included?", a: "Routine, scheduled maintenance is on us. Your rental agreement spells out exactly what's covered and what's driver-responsible." },
+  { q: "Can I drive for Uber, Lyft, and delivery apps?", a: "Most vehicles qualify for Uber and Lyft on the same car. DoorDash, Instacart, Uber Eats, and Amazon Flex are permitted. Some vehicles are delivery-focused, so each listing shows what it's approved for." },
   { q: "How quickly can I get approved?", a: "Most applications are reviewed the same day, with same-day pickup available." },
-  { q: "Do I need my own insurance?", a: "No. Insurance is included. After you sign your contract, we handle your insurance quote and policy, issued in your name." },
-  { q: "Can I use the vehicle for DoorDash and Instacart?", a: "Yes. DoorDash, Instacart, Uber Eats, and Amazon Flex are all permitted." },
-  { q: "What happens if my vehicle needs repairs?", a: "Contact support and we'll schedule a swap or service appointment to get you back on the road quickly." },
-  { q: "How do fleet partners earn money?", a: "Partners earn passive monthly income on a 50/50 split of rent collected. We handle drivers, screening, collections, and maintenance." },
 ];
 
 const STRUCTURED_DATA = {
@@ -259,16 +254,14 @@ function Index() {
           <FadeUp className="text-center mb-8">
             <h2 className="text-3xl md:text-5xl">Everything You Need. Nothing You Don't.</h2>
           </FadeUp>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
               { I: Wallet, t: "No Deposit", d: "$0 security deposit. We keep a payment card on file for tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
               { I: Shield, t: "Insurance Included", d: "Insurance is included. After you sign, we handle your quote and set up the policy in your name." },
+              { I: InfinityIcon, t: "Unlimited Miles", d: "Drive as much as gig work demands — your unlimited mileage terms are spelled out in your rental agreement." },
               { I: Wrench, t: "Maintenance Handled", d: "Routine maintenance is on us. You drive, we keep it running." },
-              { I: InfinityIcon, t: "Unlimited Miles", d: "Drive as much as gig work demands — your unlimited mileage terms are spelled out in your rental agreement (Roamly-verified)." },
               { I: Briefcase, t: "Built For Gig Work", d: "Uber, Lyft, DoorDash, Instacart, Amazon Flex and more." },
               { I: CalendarDays, t: "Flexible Payments", d: "Choose a weekly or monthly payment schedule that fits your driving goals." },
-              { I: Headphones, t: "Driver Support", d: "Our team is available to help with questions, vehicle issues, and rental support." },
-              { I: Car, t: "Inspected Vehicles", d: "Every vehicle is inspected and prepared for rideshare and delivery work before entering the fleet." },
             ].map((b, i) => (
               <FadeUp key={b.t} delay={i * 60}>
                 <div className="rounded-2xl bg-white p-7 h-full border border-border">
@@ -314,7 +307,7 @@ function Index() {
                 <ul className="mt-4 grid grid-cols-1 gap-3 text-sm">
                   {[
                     { I: Users, t: "Driver Acquisition" },
-                    { I: Shield, t: "Insurance Included" },
+                    { I: Shield, t: "Insurance Setup" },
                     { I: ScanSearch, t: "Screening" },
                     { I: DollarSign, t: "Collections" },
                     { I: MapPin, t: "GPS Tracking" },

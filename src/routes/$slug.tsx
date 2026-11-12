@@ -416,7 +416,7 @@ function CityFAQSection({ cityLabel, content }: { cityLabel: string; content: Co
   const defaults: FaqItem[] = [
     { q: "Do I need good credit to qualify?", a: "No. We don't run a credit check. Approval is based on your driving record and gig-platform eligibility." },
     { q: "How fast can I be on the road?", a: "Most drivers are approved the same day and picking up a vehicle within 24 to 48 hours." },
-    { q: "Do I need my own insurance?", a: "No. Insurance is included. After you sign your contract, we handle your insurance quote and policy, issued in your name." },
+    { q: "Is insurance included?", a: "Yes. After you sign, Real Rentals gets the quote and sets up the policy in your name." },
     { q: "Are miles unlimited?", a: "Yes. Drive as many miles as you need — there are no per-mile fees." },
     { q: "What if the car needs maintenance?", a: "Routine maintenance is included. If something comes up, we handle it so you can keep earning." },
     { q: "Who pays for tolls and tickets?", a: "You do. Any tolls, tickets, or citations during your rental are your responsibility. Unpaid items are transferred to the driver on record per your rental agreement, and an admin fee may apply per notice." },
