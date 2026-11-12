@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Shield, Wrench, Infinity as InfinityIcon, Briefcase, ArrowRight, CalendarDays, FileText, Zap, ClipboardCheck, KeyRound, DollarSign, Users, MapPin, BadgeCheck, LifeBuoy, ScanSearch, Headphones, Car, Wallet } from "lucide-react";
+import { Shield, Wrench, Infinity as InfinityIcon, Briefcase, ArrowRight, CalendarDays, FileText, Zap, ClipboardCheck, KeyRound, DollarSign, Users, MapPin, LifeBuoy, ScanSearch, Headphones, Car, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SiteLayout } from "@/components/site/SiteLayout";
@@ -261,13 +261,12 @@ function Index() {
           </FadeUp>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {[
-              { I: Shield, t: "Insurance Included", d: "After you sign your contract, we handle your insurance quote and policy, issued in your name." },
               { I: Wallet, t: "No Deposit", d: "$0 security deposit. We keep a payment card on file for tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
+              { I: Shield, t: "Insurance Included", d: "Insurance is included. After you sign, we handle your quote and set up the policy in your name." },
               { I: Wrench, t: "Maintenance Handled", d: "Routine maintenance is on us. You drive, we keep it running." },
               { I: InfinityIcon, t: "Unlimited Miles", d: "Drive as much as gig work demands — your unlimited mileage terms are spelled out in your rental agreement (Roamly-verified)." },
               { I: Briefcase, t: "Built For Gig Work", d: "Uber, Lyft, DoorDash, Instacart, Amazon Flex and more." },
               { I: CalendarDays, t: "Flexible Payments", d: "Choose a weekly or monthly payment schedule that fits your driving goals." },
-              { I: BadgeCheck, t: "Flexible Rental Terms", d: "No annual commitment required. Stay flexible and stay on the road." },
               { I: Headphones, t: "Driver Support", d: "Our team is available to help with questions, vehicle issues, and rental support." },
               { I: Car, t: "Inspected Vehicles", d: "Every vehicle is inspected and prepared for rideshare and delivery work before entering the fleet." },
             ].map((b, i) => (
