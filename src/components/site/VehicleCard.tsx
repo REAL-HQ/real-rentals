@@ -13,6 +13,7 @@ import {
   Leaf,
   Wallet,
   Headphones,
+  Shield,
 } from "lucide-react";
 import type { PublicVehicleCardModel } from "@/lib/marketing-fleet";
 import { inventoryCardModel, type PublicVehicle } from "@/lib/public-vehicle-card";
@@ -168,6 +169,10 @@ export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
         <span className="inline-flex items-center gap-1.5">
           <Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
           Maintenance Included
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
+          Insurance Included
         </span>
         <span className="inline-flex items-center gap-1.5">
           <Zap className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />

@@ -403,9 +403,13 @@ export function InterviewTab({
       {show(5) && (
         <ScriptCard title="5. Insurance">
           <Script>
-            "Do you have your own personal auto insurance policy right now? I'll need the carrier,
-            policy number, and their phone so we can verify."
+            "Insurance is included. After you sign, we get the quote and set up the policy in your
+            name. I do not need a card from you to finish this call."
           </Script>
+          <p className="text-xs text-muted-foreground">
+            Optional. Record the policy here after it is issued. These answers are not required to
+            finish the interview, send the contract, or hand over the car.
+          </p>
           <Field label="Has Personal Insurance">
             <BoolToggle
               value={s.has_personal_insurance}

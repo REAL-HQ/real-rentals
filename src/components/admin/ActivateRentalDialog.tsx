@@ -133,8 +133,7 @@ export function ActivateRentalDialog({
     [readiness],
   );
 
-  const insuranceNeedsAck =
-    !!readiness && readiness.insurance.status !== "verified" && readiness.insurance.exceptionAllowed;
+  const insuranceNeedsAck = false;
 
   const rateNum = Number(weeklyRate.replace(/[^\d.]/g, ""));
   const depositNum = Number(deposit.replace(/[^\d.]/g, "")) || 0;
@@ -264,7 +263,7 @@ export function ActivateRentalDialog({
                   <li key={b.code}>• {b.message}</li>
                 ))}
               </ul>
-              <p className="mt-2 text-xs text-warning-foreground">A Written Reason Covers Only The Interview And Pre-Delivery Inspection. Required License Files, Signed Agreement Review, And Insurance Requirements Still Apply.</p>
+              <p className="mt-2 text-xs text-warning-foreground">A Written Reason Covers Only The Interview And Pre-Delivery Inspection. Required License Files And Signed Agreement Review Still Apply.</p>
               <label className="mt-2.5 flex items-start gap-2 text-xs text-[#8A5A00]">
                 <input
                   type="checkbox"

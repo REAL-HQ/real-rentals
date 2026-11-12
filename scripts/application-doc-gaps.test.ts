@@ -100,7 +100,7 @@ describe("application document gaps", () => {
   });
 
   it("uses the shared required-document rule, and proof of address stays unknown", () => {
-    assert.equal(canonicalRequiredDoc({ category: "insurance", is_current: true, review_status: "uploaded" }), "insurance_card");
+    assert.equal(canonicalRequiredDoc({ category: "insurance", is_current: true, review_status: "uploaded" }), null);
     assert.equal(canonicalRequiredDoc({ category: "gig_profile", is_current: true, review_status: "verified" }), "driver_profile_screenshot");
     assert.equal(canonicalRequiredDoc({ category: "license_back", is_current: true, review_status: "rejected" }), null);
     assert.equal(canonicalRequiredDoc({ category: "trip_history", is_current: true, review_status: "uploaded" }), null);
@@ -113,7 +113,7 @@ describe("application document gaps", () => {
         { lead_id: "a", category: "license_back", review_status: "rejected" },
         { lead_id: "a", category: "gig_profile", is_current: false },
       ]),
-      { a: 2 },
+      { a: 1 },
     );
 
     const documents: GapDocument[] = [
@@ -156,8 +156,7 @@ describe("application document gaps", () => {
     assert.equal(slot(result, "open", "license_front")?.state, "present");
     assert.equal(slot(result, "open", "license_front")?.on, "2026-03-08");
     assert.equal(slot(result, "open", "license_back")?.state, "missing");
-    assert.equal(slot(result, "open", "insurance_card")?.state, "present");
-    assert.equal(slot(result, "open", "insurance_card")?.on, "2026-11-01");
+    assert.equal(slot(result, "open", "insurance_card"), undefined);
     assert.equal(slot(result, "open", "driver_profile_screenshot")?.state, "missing");
     assert.equal(slot(result, "open", "proof_of_address")?.state, "unknown");
     assert.equal(slot(result, "open", "proof_of_address")?.on, null);
@@ -442,8 +441,7 @@ describe("application document gaps read", () => {
       assert.equal(app?.slots.find((item) => item.key === "license_front")?.state, "present");
       assert.equal(app?.slots.find((item) => item.key === "license_front")?.on, "2026-03-08");
       assert.equal(app?.slots.find((item) => item.key === "license_back")?.state, "present");
-      assert.equal(app?.slots.find((item) => item.key === "insurance_card")?.state, "present");
-      assert.equal(app?.slots.find((item) => item.key === "insurance_card")?.on, "2026-11-01");
+      assert.equal(app?.slots.find((item) => item.key === "insurance_card"), undefined);
       assert.equal(app?.slots.find((item) => item.key === "driver_profile_screenshot")?.state, "missing");
       assert.equal(app?.slots.find((item) => item.key === "proof_of_address")?.state, "unknown");
     }

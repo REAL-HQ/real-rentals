@@ -44,12 +44,16 @@ describe("next steps dates", () => {
 });
 
 describe("approved and not renting", () => {
-  it("shows the four steps only for an approved driver with no active rental", () => {
+  it("shows license, agreement, and payment only for an approved driver with no active rental", () => {
     const shown = view();
     assert.equal(shown.show, true);
     assert.deepEqual(
+      shown.steps.map((s) => s.key),
+      ["license", "agreement", "payment"],
+    );
+    assert.deepEqual(
       shown.steps.map((s) => s.state),
-      ["done", "done", "done", "done"],
+      ["done", "done", "done"],
     );
     assert.equal(shown.pickupLine, PICKUP_LINE);
     assert.equal(/833-8280|18888338280/.test(PICKUP_LINE), false);
@@ -60,13 +64,13 @@ describe("approved and not renting", () => {
   });
 
   it("reads agreement and payment evidence that is already stored", () => {
-    assert.equal(view({ agreements: [] }).steps[2].state, "needed");
-    assert.equal(view({ agreements: [{ status: "voided", signedAt: null }] }).steps[2].state, "needed");
-    assert.equal(view({ agreements: [{ status: "sent", signedAt: null }] }).steps[2].state, "needed");
-    assert.equal(view({ agreements: null }).steps[2].state, "unknown");
-    assert.equal(view({ payment: { cardOnFile: false, subscription: false } }).steps[3].state, "needed");
-    assert.equal(view({ payment: { cardOnFile: false, subscription: true } }).steps[3].state, "done");
-    assert.equal(view({ payment: null }).steps[3].state, "unknown");
+    assert.equal(view({ agreements: [] }).steps[1].state, "needed");
+    assert.equal(view({ agreements: [{ status: "voided", signedAt: null }] }).steps[1].state, "needed");
+    assert.equal(view({ agreements: [{ status: "sent", signedAt: null }] }).steps[1].state, "needed");
+    assert.equal(view({ agreements: null }).steps[1].state, "unknown");
+    assert.equal(view({ payment: { cardOnFile: false, subscription: false } }).steps[2].state, "needed");
+    assert.equal(view({ payment: { cardOnFile: false, subscription: true } }).steps[2].state, "done");
+    assert.equal(view({ payment: null }).steps[2].state, "unknown");
 
     const bare = paymentFromRows(
       { card_last4: null, stripe_payment_method_id: null, card_on_file_at: null },

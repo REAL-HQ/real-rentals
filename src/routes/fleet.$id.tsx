@@ -36,7 +36,7 @@ export const Route = createFileRoute("/fleet/$id")({
       ? `Rent A ${name} For Uber, Lyft & Delivery | REAL RENTALS`
       : "Vehicle Details — REAL RENTALS";
     const description = name
-      ? `Rent a ${name} for rideshare and delivery${v?.weekly_rate ? ` from $${v.weekly_rate}/week` : ""}. Unlimited miles, maintenance included, no deposit.`
+      ? `Rent a ${name} for rideshare and delivery${v?.weekly_rate ? ` from $${v.weekly_rate}/week` : ""}. Insurance included, unlimited miles, maintenance included, no deposit.`
       : "View specs, pricing, and what's included with this rideshare-ready vehicle.";
     const url = `https://drivereal.com/fleet/${params.id}`;
     const scripts = [
@@ -234,7 +234,7 @@ function VehicleDetail() {
             <div className="mt-8">
               <div className="text-sm font-medium mb-3">What's included</div>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                {["No deposit — payment card on file", "Routine maintenance included", "24/7 driver support"].map((i) => (
+                {["Insurance included — set up in your name after you sign", "No deposit — payment card on file", "Routine maintenance included", "24/7 driver support"].map((i) => (
                   <li key={i} className="flex gap-2 items-start"><Check className="w-4 h-4 text-real-red mt-0.5" /> {i}</li>
                 ))}
               </ul>

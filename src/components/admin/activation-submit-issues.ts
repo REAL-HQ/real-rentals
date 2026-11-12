@@ -20,8 +20,7 @@ export function activationSubmitIssues(input: {
   if (input.pickupMileage == null || !(input.pickupMileage >= 0)) issues.push({ key: "mileage", message: "Enter Pickup Mileage Below (Odometer At Handover)." });
   if (!input.startDate) issues.push({ key: "date", message: "Choose A Start Date." });
   for (const blocker of input.readiness.blockers.filter((b) => isHardBlocker(b.code))) issues.push({ key: blocker.code, message: blocker.message });
-  const insurance = input.readiness.insurance;
-  if (insurance.status !== "verified" && insurance.exceptionAllowed && !input.insuranceAcknowledged) issues.push({ key: "insurance_ack", message: "Acknowledge The Separate Insurance Warning." });
+  void input.insuranceAcknowledged;
   const soft = input.readiness.blockers.some((b) => !isHardBlocker(b.code));
   if (soft && (!input.acknowledged || input.overrideReason.trim().length < MIN_OVERRIDE_REASON)) issues.push({ key: "reason", message: `Acknowledge The Exception And Enter A Reason (${MIN_OVERRIDE_REASON} Characters Minimum).` });
   return issues;

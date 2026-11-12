@@ -109,24 +109,15 @@ export function pickupChecklist(input: {
   }
 
   for (const category of EXPIRING_DOCUMENTS) {
+    if (category.key === "insurance") continue;
     const doc = newest(input.documents, category.key);
-    const applicationFile =
-      category.key === "license_front"
-        ? ownedPath(input.licensePhotoPath)
-        : category.key === "insurance"
-          ? ownedPath(input.insuranceDocPath)
-          : false;
+    const applicationFile = category.key === "license_front" ? ownedPath(input.licensePhotoPath) : false;
     const onFile = Boolean(doc) || applicationFile;
     if (!onFile) {
       items.push({ id: category.key, label: category.label, detail: DOCUMENT_DETAIL.missing });
       continue;
     }
-    const applicationDate =
-      category.key === "license_front"
-        ? input.licenseExpiration
-        : category.key === "insurance"
-          ? input.insuranceExpiresOn
-          : null;
+    const applicationDate = category.key === "license_front" ? input.licenseExpiration : null;
     const expiresAt = doc?.expiresAt || (!doc ? applicationDate : null);
     const tone = documentExpiryTone(expiresAt, now);
     if (tone === "expired" || tone === "soon") {

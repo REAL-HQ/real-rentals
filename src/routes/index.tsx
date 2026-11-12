@@ -20,11 +20,11 @@ const FAQS = [
   { q: "What is required to get approved?", a: "You must be 21+, hold a valid US driver's license for at least one year, and have a reasonably clean driving record. No credit check required." },
   { q: "Is a security deposit required?", a: "No. We do not collect a security deposit. We do keep a payment card on file for tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
   { q: "Who pays for tolls and tickets?", a: "You do. Any tolls, tickets, or citations during your rental are your responsibility. Unpaid items are transferred to the driver on record per your rental agreement, and an admin fee may apply per notice." },
-  { q: "What is included in the weekly payment?", a: "Routine maintenance, a high-mileage allowance, and 24/7 driver support. You carry your own auto insurance (rideshare/delivery coverage as applicable) — we'll walk you through exactly what's needed on your qualification call." },
+  { q: "What is included in the weekly payment?", a: "Routine maintenance, a high-mileage allowance, 24/7 driver support, and insurance. After you sign your contract, we handle your insurance quote and policy, issued in your name. Gas and tolls are on you." },
   { q: "Can I drive for Uber and Lyft?", a: "Most vehicles qualify for both Uber and Lyft on the same car. Some are delivery-focused, so each listing shows what it's approved for." },
   { q: "Are maintenance and repairs included?", a: "Routine, scheduled maintenance is on us. Your rental agreement spells out exactly what's covered and what's driver-responsible." },
   { q: "How quickly can I get approved?", a: "Most applications are reviewed the same day, with same-day pickup available." },
-  { q: "Do I need my own insurance?", a: "Yes. Drivers maintain their own auto insurance with rideshare or delivery coverage as applicable. Our team will explain exactly what's required on your qualification call and can point you to gig-friendly options." },
+  { q: "Do I need my own insurance?", a: "No. Insurance is included. After you sign your contract, we handle your insurance quote and policy, issued in your name." },
   { q: "Can I use the vehicle for DoorDash and Instacart?", a: "Yes. DoorDash, Instacart, Uber Eats, and Amazon Flex are all permitted." },
   { q: "What happens if my vehicle needs repairs?", a: "Contact support and we'll schedule a swap or service appointment to get you back on the road quickly." },
   { q: "How do fleet partners earn money?", a: "Partners earn passive monthly income on a 50/50 split of rent collected. We handle drivers, screening, collections, and maintenance." },
@@ -41,7 +41,7 @@ const STRUCTURED_DATA = {
       email: "team@drivereal.com",
       telephone: DEFAULT_BUSINESS_PHONE,
       description:
-        "Rideshare and delivery vehicle rentals for Uber, Lyft, DoorDash and gig drivers. Unlimited miles, no deposit, maintenance included.",
+        "Rideshare and delivery vehicle rentals for Uber, Lyft, DoorDash and gig drivers. Insurance included, unlimited miles, no deposit, maintenance included.",
     },
     {
       "@type": "WebSite",
@@ -95,10 +95,10 @@ function ContinueApplicationSlot() {
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Car Rentals For Uber, Lyft & Gig Apps | Unlimited Miles" },
-      { name: "description", content: "Rent. Drive. Earn. Rent A Vehicle For Uber, Lyft, DoorDash & Every Gig App.  No Deposit. Unlimited Miles. Maintenance Included. Fast Approval." },
-      { property: "og:title", content: "Car Rentals For Uber, Lyft & Gig Apps | Unlimited Miles" },
-      { property: "og:description", content: "Rent. Drive. Earn. Rent A Vehicle For Uber, Lyft, DoorDash & Every Gig App.  No Deposit. Unlimited Miles. Maintenance Included. Fast Approval." },
+      { title: "Car Rentals For Uber, Lyft & Gig Apps | Insurance Included" },
+      { name: "description", content: "Rent. Drive. Earn. Rent A Vehicle For Uber, Lyft, DoorDash & Every Gig App. Insurance Included. No Deposit. Unlimited Miles. Maintenance Included. Fast Approval." },
+      { property: "og:title", content: "Car Rentals For Uber, Lyft & Gig Apps | Insurance Included" },
+      { property: "og:description", content: "Rent. Drive. Earn. Rent A Vehicle For Uber, Lyft, DoorDash & Every Gig App. Insurance Included. No Deposit. Unlimited Miles. Maintenance Included. Fast Approval." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -162,7 +162,7 @@ function Index() {
           <>
             Rent a vehicle for Uber, Lyft, DoorDash and delivery work.
             <br />
-            Unlimited miles. No deposit. Maintenance included. Fast approval. Drive this week.
+              Unlimited miles. No deposit. Insurance included. Maintenance included. Fast approval. Drive this week.
           </>
         }
       />
@@ -261,6 +261,7 @@ function Index() {
           </FadeUp>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {[
+              { I: Shield, t: "Insurance Included", d: "After you sign your contract, we handle your insurance quote and policy, issued in your name." },
               { I: Wallet, t: "No Deposit", d: "$0 security deposit. We keep a payment card on file for tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
               { I: Wrench, t: "Maintenance Handled", d: "Routine maintenance is on us. You drive, we keep it running." },
               { I: InfinityIcon, t: "Unlimited Miles", d: "Drive as much as gig work demands — your unlimited mileage terms are spelled out in your rental agreement (Roamly-verified)." },

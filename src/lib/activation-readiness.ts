@@ -5,19 +5,17 @@
 // Client-safe: no server imports. The server gathers the facts and is the only
 // authority; the browser only renders what the server returned. The proposed
 // database wrapper (proposed/activation-insurance-setting) re-checks the hard
-// driver requirements and the insurance rule inside the activation transaction
-// with the same definitions as here.
+// driver requirements inside the activation transaction. That proposed SQL
+// still treats insurance as a hard rule. This module does not: insurance is
+// advisory, because Real Rentals sets the policy up after the contract is signed.
 //
 // Kinds of requirement:
 //   hard        — never overridable. Activation refuses, with or without a reason.
-//   acknowledge — insurance only, and only while the Owner setting
-//                 "Allow Activation Without Insurance Verification" is ON: the
-//                 operator must tick a separate insurance acknowledgement. A
-//                 soft-blocker reason never satisfies it.
+//   acknowledge — kept for the old insurance exception. Nothing uses it now.
 //   soft        — overridable only with a written reason (>= 5 characters), which
 //                 is recorded with the blockers in the immutable audit_log
 //                 (AGENTS.md "Rental activation overrides").
-//   advisory    — shown as incomplete, never blocks (the insurance card and the
+//   advisory    — shown as incomplete, never blocks (insurance, and the
 //                 gig profile / gig platform status: drivers may rent before
 //                 completing gig-platform registration).
 
@@ -393,7 +391,7 @@ export function activationRequirements(f: DriverReadinessFacts): ActivationRequi
       key: "insurance_verified",
       label: "Insurance Verified",
       met: ins.status === "verified",
-      enforcement: ins.exceptionAllowed ? "acknowledge" : "hard",
+      enforcement: "advisory",
       detail: insuranceStatusLabel(ins.status),
     },
     {
@@ -420,7 +418,9 @@ export function activationRequirements(f: DriverReadinessFacts): ActivationRequi
     {
       key: "insurance_document",
       label: "Insurance Card On File",
-      met: !missing.has("insurance"),
+      met: f.documents.some(
+        (d) => d.category === "insurance" && d.is_current === true && d.review_status !== "rejected",
+      ),
       enforcement: "advisory",
     },
     // No integration verifies a driver with Uber, Lyft or any platform, so this
@@ -470,12 +470,6 @@ export function driverRequirementBlockers(f: DriverReadinessFacts): ActivationBl
         "No signed rental agreement for this application. Send the agreement for eSignature, or upload the signed paper agreement to Documents and have an Owner or Manager verify it.",
     });
   }
-  if (f.insurance.status !== "verified" && !f.insurance.exceptionAllowed) {
-    out.push({
-      code: "insurance_not_verified",
-      message: `Insurance must be verified before activation (${insuranceStatusLabel(f.insurance.status)}). Verify it on the Screening tab.`,
-    });
-  }
   if (unmet("interview")) {
     out.push({ code: "no_interview", message: "The interview has not been completed." });
   }
@@ -489,10 +483,11 @@ export type ActivationDecision =
 /**
  * The server's decision on an activation attempt.
  *  1. Hard blockers refuse even with an override and a reason.
- *  2. Unverified insurance under the Owner exception needs the separate
- *     insurance acknowledgement; a soft-blocker reason does not count.
- *  3. Soft blockers need an explicit override and a written reason of at
+ *  2. Soft blockers need an explicit override and a written reason of at
  *     least MIN_OVERRIDE_REASON characters.
+ * Insurance is not a blocker. insuranceExceptionUsed stays true when the
+ * policy is not verified so an already-installed activation wrapper can
+ * receive the old acknowledgement and proceed when its Owner setting is on.
  */
 export function decideActivation(
   readiness: { blockers: readonly ActivationBlocker[]; insurance: InsuranceReadiness },
@@ -508,28 +503,6 @@ export function decideActivation(
   const hard = blockers.filter((b) => isHardBlocker(b.code));
   if (hard.length) return { ok: false, blockers: hard };
   const insuranceExceptionUsed = insurance.status !== "verified";
-  if (insuranceExceptionUsed) {
-    // Unverified insurance without the exception is a hard blocker above; this is the ON case.
-    if (!insurance.exceptionAllowed) {
-      return {
-        ok: false,
-        blockers: [
-          {
-            code: "insurance_not_verified",
-            message: "Insurance must be verified before activation.",
-          },
-        ],
-      };
-    }
-    if (input.insuranceExceptionAck !== true) {
-      return {
-        ok: false,
-        blockers: [
-          { code: "insurance_ack_required", message: insuranceExceptionWarning(insurance.status) },
-        ],
-      };
-    }
-  }
   if (blockers.length === 0) return { ok: true, overridden: [], insuranceExceptionUsed };
   if (!input.overrideBlockers) return { ok: false, blockers: [...blockers] };
   const reason = (input.overrideReason ?? "").trim();
@@ -571,7 +544,7 @@ export type PrimaryStep =
 /**
  * The drawer header's single next step. Unchanged order; a Coordinator, whom
  * the server refuses, is sent to the Rental tab instead of being offered
- * Activate Rental.
+ * Activate Rental. insuranceOk is ignored: insurance does not gate the next step.
  */
 export function primaryStep(input: {
   screeningDone: boolean;
@@ -581,9 +554,9 @@ export function primaryStep(input: {
   rentalActive: boolean;
   isManager: boolean;
 }): PrimaryStep {
+  void input.insuranceOk;
   if (!input.screeningDone) return "interview";
   if (!input.docsComplete) return "documents";
-  if (!input.insuranceOk) return "insurance";
   if (!input.approved) return "approve";
   if (!input.rentalActive) return input.isManager ? "activate" : "view_rental";
   return "view_rental";

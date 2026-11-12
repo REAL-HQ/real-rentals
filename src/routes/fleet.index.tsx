@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ComponentType } from "react";
-import { Wrench, BadgeCheck, Check, Infinity as InfinityIcon, Zap, Wallet, Headphones } from "lucide-react";
+import { Wrench, BadgeCheck, Check, Infinity as InfinityIcon, Zap, Wallet, Headphones, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
@@ -145,7 +145,7 @@ export const Route = createFileRoute("/fleet/")({
   head: () => ({
     meta: [
       { title: "The Fleet — REAL RENTALS" },
-      { name: "description", content: "Browse rideshare-ready vehicles. Filter by make, body type, and price. From $350/week." },
+      { name: "description", content: "Browse rideshare-ready vehicles. Insurance included. Filter by make, body type, and price. From $350/week." },
       { property: "og:title", content: "The Fleet — REAL RENTALS" },
       { property: "og:description", content: "Every car ready for Uber, Lyft, DoorDash, Instacart, and Amazon Flex." },
       { property: "og:type", content: "website" },
@@ -301,6 +301,7 @@ function FleetPage() {
             <span className="inline-flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />No Deposit</span>
             <span className="inline-flex items-center gap-1.5"><InfinityIcon className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Unlimited Miles</span>
             <span className="inline-flex items-center gap-1.5"><Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Maintenance Included</span>
+            <span className="inline-flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Insurance Included</span>
             <span className="inline-flex items-center gap-1.5"><Headphones className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />24/7 Driver Support</span>
             <span className="inline-flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Same Day Approval</span>
           </div>

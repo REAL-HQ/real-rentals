@@ -2000,8 +2000,7 @@ function DriverDetail({
       }]];
       return [];
     }
-    // Collecting the card is not verifying insurance; say so on that row.
-    if (r.key === "insurance_verified" && r.met !== true && presentation.tone === "yellow") presentation.label = "Upload Due · Verify Insurance";
+    if (r.key === "insurance_verified" && r.met !== true) presentation.label = "Optional · Record After Signing";
     if (r.key === "inspection" && presentation.tone === "yellow") presentation.label = "Upload Due · Written Override Required";
     // A payment confirmation records receipt only; it never creates a charge or starts a rental.
     if (r.key === "pickup" && presentation.tone === "yellow") {
@@ -2032,7 +2031,6 @@ function DriverDetail({
     documentsReceived: !vaultLoading && collectedDocuments.collected,
     documents: isManager ? addressed(licenseItems) : !missingRequiredCategories(vaultDocs).some((c) => c === "license_front" || c === "license_back"),
     profile: isManager ? addressed(profileItems) : !missingRequiredCategories(vaultDocs).includes("gig_profile"),
-    insuranceOnFile: !vaultLoading && !missingRequiredCategories(vaultDocs).includes("insurance"),
     approved, reserved: hasReservation, rentalActive: rentalActiveFlag,
     pickup: isManager && pickupItems.some((i) => i.status === "upload_due"),
     // Saved Yellow/Red evidence stays visible; only a real passed inspection or signed agreement is Green.

@@ -39,11 +39,6 @@ export const APPLY_PROFILE_ITEMS = [
     blurb: "A photo of the front, and confirmation it's current.",
   },
   {
-    key: "insurance",
-    title: "Insurance",
-    blurb: "Your insurance card or declaration page.",
-  },
-  {
     key: "gig_profile",
     title: "Gig Profile",
     blurb: "A screenshot of your driver profile showing your rating.",

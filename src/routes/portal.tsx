@@ -1656,7 +1656,7 @@ function PreRentalPanel({
           <FileText className="w-5 h-5 text-real-red" strokeWidth={1.75} />
           <div className="mt-3 font-semibold">Your Documents</div>
           <div className="mt-1 text-sm text-muted-foreground">
-            Upload or replace your licence and insurance, and read your rental agreement.
+            Upload or replace your licence, and read your rental agreement. Insurance is included.
           </div>
           <div className="mt-3 text-sm text-real-red font-medium inline-flex items-center gap-1">
             Upload Missing Documents <ArrowRight className="w-3.5 h-3.5" />

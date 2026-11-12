@@ -89,9 +89,9 @@ async function evaluateReadiness(
   }
 
   // Driver-side readiness, enforced here rather than only in the drawer:
-  // approval, licence front/back, a signed agreement and verified insurance
-  // (all hard; insurance may instead need the Owner-exception acknowledgement)
-  // and the interview (soft). Same sources the drawer reads: the Document Vault
+  // approval, licence front/back and a signed agreement (hard) and the
+  // interview (soft). Insurance is recorded for staff and does not block.
+  // Same sources the drawer reads: the Document Vault
   // (documents.driver_id = application id), driver_screenings, agreements and
   // the audited paper-agreement verifications in audit_log.
   const [docsRead, screeningRead, agreementsRead, auditsRead, evidenceRead] = await Promise.all([
@@ -248,10 +248,8 @@ async function evaluateReadiness(
     }
   }
 
-  if (app.insurance_status === "none") {
-    warnings.push("Applicant reported no personal insurance coverage.");
-  } else if (app.insurance_status === "expired") {
-    warnings.push("Applicant's insurance is expired.");
+  if (app.insurance_status === "none" || app.insurance_status === "expired") {
+    warnings.push("No renter policy is recorded yet. Set it up after the contract is signed; it does not block this rental.");
   }
   if (!app.sms_consent) warnings.push("No SMS consent — they will only get email updates.");
 
@@ -458,7 +456,11 @@ export const activateRental = createServerFn({ method: "POST" })
       _pickup_miles: data.pickupMileage ?? null,
       _actor: actor.userId,
     };
-    const ackSent = decision.insuranceExceptionUsed && data.insuranceExceptionAck === true;
+    // Insurance does not block activation. If activate_rental_checked_tx is
+    // already installed, it still applies the old insurance rule unless the
+    // Owner exception is on. Sending the acknowledgement whenever the policy
+    // is not verified lets that installed exception proceed without a checkbox.
+    const ackSent = readiness.insurance.status !== "verified";
     let rentalId: string | null = null;
     let auditError: string | null = null;
     const first = await (supabaseAdmin as any).rpc("activate_rental_checked_tx", {
@@ -476,24 +478,11 @@ export const activateRental = createServerFn({ method: "POST" })
     });
     let txErr = first.error as { code?: string; message?: string } | null;
     if (txErr?.code === "PGRST202") {
-      // The wrapper is not installed yet. Fail closed: insurance must be
-      // verified (no Owner exception without the in-transaction re-check), and
-      // overrides are refused (their audit must commit with the rental). Only
-      // then is the existing transaction used directly, and its audit entry is
-      // written right after it — not atomically. A failed audit write is
-      // returned to the operator (auditError), never swallowed.
-      if (readiness.insurance.status !== "verified") {
-        return {
-          ok: false,
-          blockers: [
-            {
-              code: "insurance_not_verified",
-              message:
-                "Insurance must be verified before activation. The Owner exception is unavailable until the activation database update is installed.",
-            },
-          ],
-        };
-      }
+      // The wrapper is not installed. activate_rental_tx does not check
+      // insurance, so a rental can start without a verified policy. Overrides
+      // are still refused (their audit must commit with the rental). The
+      // audit entry is written right after the rental — not atomically. A
+      // failed audit write is returned to the operator (auditError).
       if (overridden.length) {
         return {
           ok: false,

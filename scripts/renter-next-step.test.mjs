@@ -18,29 +18,31 @@ const base = { step: "activate", entry: "enabled", readiness: null, loading: fal
 const render = (model, r = null, extra = {}) => renderToStaticMarkup(h(NextStepCard, { model, readiness: r, onRun() {}, onActivate() {}, onRetry() {}, ...extra }));
 
 // Schrita/Damon/Regina shape: approved, agreement + docs fine, insurance NOT verified.
-const noInsurance = readiness([req("approved", true), req("signed_agreement", true), req("license_documents", true), req("insurance_verified", false, "hard", { detail: "Unverified" }), req("interview", true, "soft"), req("inspection", null, "soft"), req("insurance_document", false, "advisory")]);
+const noInsurance = readiness([req("approved", true), req("signed_agreement", true), req("license_documents", true), req("insurance_verified", false, "advisory", { detail: "Unverified" }), req("interview", true, "soft"), req("inspection", null, "soft"), req("insurance_document", false, "advisory")]);
 
-t("blocked on insurance: primary opens the insurance card, not activation", () => {
+t("unverified insurance does not block activation", () => {
   const m = nextStep({ ...base, readiness: noInsurance });
-  assert.equal(m.activation, "blocked");
-  assert.equal(m.label, "Verify Insurance");
-  assert.deepEqual(m.target, { kind: "section", tab: "screening", anchor: "profile-insurance" });
-  assert.deepEqual(m.blockers.map((b) => b.key), ["insurance_verified"], "advisory and soft items are not blockers");
+  assert.equal(m.activation, "ready");
+  assert.equal(m.label, "Activate Rental");
+  assert.deepEqual(m.target, { kind: "activate" });
+  assert.deepEqual(m.blockers, []);
 });
 t("blocked card still shows Activate Rental (findable) and names the blocker with its fix", () => {
-  const html = render(nextStep({ ...base, readiness: noInsurance }), noInsurance);
+  const blocked = readiness([req("approved", true), req("signed_agreement", true), req("license_documents", false), req("insurance_verified", false, "advisory", { detail: "Unverified" }), req("insurance_document", false, "advisory")]);
+  const html = render(nextStep({ ...base, readiness: blocked }), blocked);
   assert.match(html, /data-activation="blocked"/);
   assert.match(html, />(<svg[^]*?<\/svg>)? ?Activate Rental<\/button>/);
-  assert.match(html, /data-blocker="insurance_verified"[^]*Verify Insurance/);
+  assert.match(html, /data-blocker="license_documents"[^]*Review Documents/);
+  assert.doesNotMatch(html, /data-blocker="insurance_verified"/);
   assert.equal((html.match(/data-requirement="insurance_verified"/g) ?? []).length, 1);
   assert.equal((html.match(/data-requirement="license_documents"/g) ?? []).length, 1);
   assert.equal((html.match(/data-requirement="signed_agreement"/g) ?? []).length, 1);
   assert.equal((html.match(/data-requirement="insurance_document"/g) ?? []).length, 0);
 });
-t("blockers ordered: documents, insurance, approval, agreement", () => {
-  const r = readiness([req("signed_agreement", false), req("approved", false), req("insurance_verified", false), req("license_documents", false)]);
+t("blockers ordered: documents, approval, agreement; insurance is not one", () => {
+  const r = readiness([req("signed_agreement", false), req("approved", false), req("insurance_verified", false, "advisory"), req("license_documents", false)]);
   const m = nextStep({ ...base, step: "documents", readiness: r });
-  assert.deepEqual(m.blockers.map((b) => b.key), ["license_documents", "insurance_verified", "approved", "signed_agreement"]);
+  assert.deepEqual(m.blockers.map((b) => b.key), ["license_documents", "approved", "signed_agreement"]);
   assert.equal(m.label, "Review Documents");
   assert.equal(m.blockers.find((b) => b.key === "approved").target.kind, "approve");
   assert.equal(m.blockers.find((b) => b.key === "signed_agreement").target.anchor, "profile-agreements");
@@ -56,7 +58,7 @@ t("ready: Activate Rental is the one primary; no duplicate secondary", () => {
 t("interview unfinished still comes first", () => {
   const m = nextStep({ ...base, step: "interview", readiness: noInsurance });
   assert.deepEqual(m.target, { kind: "record_call" });
-  assert.equal(m.blockers[1].key, "insurance_verified");
+  assert.deepEqual(m.blockers.map((b) => b.key), ["local"]);
 });
 t("loading: primary disabled, Activate Rental disabled, no fake checklist", () => {
   const m = nextStep({ ...base, loading: true });

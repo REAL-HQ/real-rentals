@@ -184,7 +184,7 @@ describe("onboarding checklist", () => {
     assert.equal(byKey.license.state, "done");
     assert.equal(byKey.license.source, "Document Vault");
     assert.equal(byKey.license.at, "2026-04-03T15:00:00.000Z");
-    assert.equal(byKey.documents.label, "Documents 4/4");
+    assert.equal(byKey.documents.label, "Documents 3/3");
     assert.equal(byKey.documents.state, "done");
     assert.equal(byKey.card.source, "Application");
     assert.equal(byKey.agreement.state, "done");
@@ -290,7 +290,7 @@ describe("onboarding checklist", () => {
     });
     assert.equal(facts.find((step) => step.key === "license")?.state, "missing");
     assert.equal(facts.find((step) => step.key === "license")?.source, null);
-    assert.equal(facts.find((step) => step.key === "documents")?.label, "Documents 2/4");
+    assert.equal(facts.find((step) => step.key === "documents")?.label, "Documents 1/3");
     assert.equal(facts.find((step) => step.key === "documents")?.state, "missing");
     const load = read("src/lib/onboarding-checklist-load.ts");
     assert.match(load, /review_status/);
@@ -439,7 +439,7 @@ describe("onboarding checklist read", () => {
     const last = result.drivers[count - 1];
     assert.equal(first?.steps.find((step) => step.key === "license")?.state, "done");
     assert.equal(last?.steps.find((step) => step.key === "license")?.state, "done");
-    assert.equal(first?.steps.find((step) => step.key === "documents")?.label, "Documents 3/4");
+    assert.equal(first?.steps.find((step) => step.key === "documents")?.label, "Documents 2/3");
     assert.equal(first?.steps.find((step) => step.key === "id")?.state, "unknown");
     assert.equal(first?.steps.find((step) => step.key === "pickup")?.state, "unknown");
 

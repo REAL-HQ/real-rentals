@@ -22,7 +22,7 @@ export function PickupHandoffDialog({ packet, requirements, paymentVerified, onC
   const items = [
     { key: "appointment", label: "Confirmed Pickup", met: packet !== null },
     { key: "payment", label: "Applicable Payment Collected", met: paymentVerified },
-    ...requirements.filter((r) => ["inspection", "signed_agreement", "insurance_verified"].includes(r.key)),
+    ...requirements.filter((r) => ["inspection", "signed_agreement"].includes(r.key)),
   ];
   return createPortal(<div onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
     <ModalShell label="Key Handoff" size="md" z="z-[80]" onClose={onClose}>
