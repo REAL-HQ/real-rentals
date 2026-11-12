@@ -12,7 +12,6 @@ import {
   Zap,
   Leaf,
   Wallet,
-  Headphones,
   Shield,
 } from "lucide-react";
 import type { PublicVehicleCardModel } from "@/lib/marketing-fleet";
@@ -110,27 +109,29 @@ export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Great For</div>
         <div className="text-[12px] font-medium text-foreground mt-0.5">{model.greatFor}</div>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-sm text-muted-foreground">
+      <div className="mt-4 space-y-2 text-[13px] sm:text-sm text-muted-foreground">
         {model.kind === "inventory" && (
           <div className="flex items-center gap-2 min-w-0">
             <Car className="w-4 h-4 shrink-0" strokeWidth={1.75} />
             <span className="capitalize truncate">Type: {model.bodyTypeLabel}</span>
           </div>
         )}
-        <div className="flex items-center gap-2 min-w-0">
-          <Users className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-          <span className="truncate">Seats: {model.seatsLabel}</span>
-        </div>
-        <div className="flex items-center gap-2 min-w-0">
-          <DoorOpen className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-          <span className="truncate">Doors: {model.doorsLabel}</span>
-        </div>
-        <div className="flex items-center gap-2 min-w-0">
-          <fuelMeta.Icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-          <span className="truncate">{model.rangeLabel ?? fuelMeta.label}</span>
+        <div className="grid grid-cols-3 gap-x-1.5 sm:gap-x-3">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Users className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+            <span className="truncate">Seats: {model.seatsLabel}</span>
+          </div>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <DoorOpen className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+            <span className="truncate">Doors: {model.doorsLabel}</span>
+          </div>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <fuelMeta.Icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+            <span className="truncate">{model.rangeLabel ?? fuelMeta.label}</span>
+          </div>
         </div>
         {model.eligibility && (
-          <div className="col-span-2 flex items-start gap-2 min-w-0">
+          <div className="flex items-start gap-2 min-w-0">
             <BadgeCheck className="w-4 h-4 mt-0.5 shrink-0" strokeWidth={1.75} />
             <span className="truncate">Eligibility: {model.eligibility}</span>
           </div>
@@ -163,16 +164,12 @@ export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
           Unlimited Miles
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <Headphones className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          24/7 Support
+          <Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
+          Insurance Included
         </span>
         <span className="inline-flex items-center gap-1.5">
           <Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
           Maintenance Included
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          Insurance Included
         </span>
         <span className="inline-flex items-center gap-1.5">
           <Zap className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
