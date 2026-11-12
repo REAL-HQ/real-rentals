@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
 import { useSearch } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -162,7 +163,7 @@ export function InspectionsPanel() {
               <li key={r.id} className="p-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium truncate">{vName(r.vehicle_id)}</span>
+                    <VehiclePickerPhoto vehicleId={r.vehicle_id} className="h-8 w-11 rounded-md" iconClassName="h-3.5 w-3.5" /><span className="font-medium truncate">{vName(r.vehicle_id)}</span>
                     <StatusPill
                       status={
                         r.status === "passed"

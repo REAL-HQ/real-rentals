@@ -37,7 +37,6 @@ import {
 } from "@/lib/vehicles.functions";
 import { bodyTypeLabel } from "@/lib/vehicle-defaults";
 import { getVehicleFinance, saveVehicleFinance } from "@/lib/vehicle-finance.functions";
-import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { readStoredExperience } from "@/lib/experience";
 import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
@@ -48,6 +47,7 @@ import { VehicleEditorDrawer } from "./VehicleEditorDrawer";
 import { VehicleDocuments } from "./VehicleDocuments";
 import { ApplyTemplateDialog } from "./ApplyTemplateDialog";
 import { VehiclePhotos } from "./VehiclePhotos";
+import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
 import { VehicleService } from "./VehicleService";
 import { MaintenanceLogHistory } from "./MaintenanceLog";
 import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
@@ -166,7 +166,6 @@ export function VehicleProfile({
   }
 
   const v = p?.vehicle ?? {};
-  const photo = resolvePhotoUrl((v.photos as string[] | null)?.[0]);
 
   return (
     <div
@@ -201,13 +200,11 @@ export function VehicleProfile({
             <span className="text-[#111114] font-semibold truncate">{p?.unitLabel ?? "…"}</span>
           </nav>
           <div className="flex flex-wrap sm:flex-nowrap items-start gap-x-4 gap-y-3">
-            <div className="h-12 w-16 sm:h-16 sm:w-24 shrink-0 rounded-lg bg-[#F4F4F6] overflow-hidden grid place-items-center">
-              {photo ? (
-                <img src={photo} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <Car className="w-5 h-5 text-[#C4C4CB]" strokeWidth={1.75} />
-              )}
-            </div>
+            <VehiclePickerPhoto
+              vehicleId={vehicleId}
+              className="h-12 w-16 sm:h-16 sm:w-24 rounded-lg"
+              iconClassName="w-5 h-5"
+            />
 
             <div className="min-w-0 flex-1">
               {loading && !p ? (

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
@@ -376,6 +377,11 @@ function Overview({
         >
           {d.vehicle ? (
             <>
+              {d.vehicle.id ? (
+                <button type="button" onClick={() => onOpenVehicle(d.vehicle!.id as string)} className="mb-3 block" aria-label="Open Vehicle">
+                  <VehiclePickerPhoto vehicleId={d.vehicle.id as string} className="h-20 w-28 rounded-lg" iconClassName="h-5 w-5" />
+                </button>
+              ) : null}
               <Row label="Unit Number" value={d.vehicle.unitNumber} />
               <Row label="Vehicle" value={d.vehicle.label} />
               <Row label="Plate" value={d.vehicle.plate} mono />
