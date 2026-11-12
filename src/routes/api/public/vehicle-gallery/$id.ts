@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  galleryContentType,
   isGalleryImagePath,
   isPublicVehicleId,
   listingHasPublishedPhoto,
   pickGalleryFallback,
   type GalleryCandidate,
 } from "@/lib/gallery-photo";
+import { stripJpegMetadata } from "@/lib/jpeg-metadata";
 
 // One gallery original for a vehicle the public site already lists, and only
 // when that vehicle has no published listing photo. The path-based route
@@ -14,6 +14,11 @@ import {
 // published it. This route does not take a storage path, does not sign a
 // URL, and does not read inspection, checklist, document, or retouched rows.
 // The bucket stays private. Anon still cannot read vehicle_media.
+//
+// The bytes are a phone JPEG. Exif, XMP, comments, and other metadata
+// segments — including GPS — are removed before the response. A JPEG this
+// filter cannot clean, and every other format, is a 404 so the page shows
+// the bundled photo instead.
 
 function notFound(): Response {
   return new Response("Not found", { status: 404 });
@@ -56,10 +61,16 @@ export const Route = createFileRoute("/api/public/vehicle-gallery/$id")({
           .download(path);
         if (downloadError || !file) return notFound();
 
-        return new Response(await file.arrayBuffer(), {
+        const raw = new Uint8Array(await file.arrayBuffer());
+        const cleaned = stripJpegMetadata(raw);
+        if (!cleaned) return notFound();
+        const body = new ArrayBuffer(cleaned.byteLength);
+        new Uint8Array(body).set(cleaned);
+
+        return new Response(body, {
           headers: {
-            "Content-Type": galleryContentType(path, chosen?.mime_type),
-            "Cache-Control": "public, max-age=300",
+            "Content-Type": "image/jpeg",
+            "Cache-Control": "public, max-age=3600",
             "X-Content-Type-Options": "nosniff",
           },
         });
