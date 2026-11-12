@@ -65,7 +65,7 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
     const negative = t.startsWith("restrictive") || t.startsWith("not ") || t.startsWith("often") || t.startsWith("~$") || t.startsWith("call ") || t.startsWith("rental") || t === "varies" || t === "single platform";
     const positive = t === "yes" || t === "no" || t === "included" || t.startsWith("insurance included") || t.startsWith("unlimited") || t.startsWith("any ") || t.startsWith("as soon") || t.startsWith("local ") || t.startsWith("one low") || t.startsWith("no deposit");
     if (negative) return "text-red-500/80";
-    if (positive) return "text-green-600";
+    if (positive) return "text-emerald-700";
     return "text-muted-foreground";
   };
 
@@ -86,7 +86,7 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
                     <th className="text-left px-5 md:px-6 py-5 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground border-b border-border border-r bg-white w-[28%]">
                       Feature
                     </th>
-                    <th className="px-5 md:px-6 py-5 text-center text-sm font-bold uppercase tracking-wider text-white bg-real-red border-b border-real-red border-r w-[24%]">
+                    <th className="px-5 md:px-6 py-5 text-center text-sm font-bold uppercase tracking-wider text-white bg-emerald-600 border-b border-emerald-600 border-r w-[24%]">
                       {colReal}
                     </th>
                     <th className="px-5 md:px-6 py-5 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground border-b border-border border-r bg-white w-[24%]">
@@ -108,7 +108,7 @@ export function ComparisonSection({ siteId }: { siteId?: string }) {
                       <td className="px-5 md:px-6 py-5 md:py-6 text-[15px] font-semibold text-foreground border-b border-border border-r">
                         {row.feature}
                       </td>
-                      <td className={`px-5 md:px-6 py-5 md:py-6 text-center text-[15px] border-b border-border border-r bg-yellow-100 font-semibold ${cellToneClass(row.real)}`}>
+                      <td className={`px-5 md:px-6 py-5 md:py-6 text-center text-[15px] border-b border-border border-r bg-emerald-50 font-semibold ${cellToneClass(row.real)}`}>
                         {row.real}
                       </td>
                       <td className="px-5 md:px-6 py-5 md:py-6 text-center text-[14px] border-b border-border border-r text-foreground">
