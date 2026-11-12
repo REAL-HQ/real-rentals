@@ -357,7 +357,7 @@ function WhatYouNeedSection() {
     { Icon: IdCard, title: "Valid Driver's License", body: "Active U.S. driver's license, 21 or older. Out-of-state licenses welcome." },
     { Icon: CreditCard, title: "No Deposit", body: "$0 security deposit. A payment card on file covers tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
     { Icon: Smartphone, title: "Smartphone & Gig Account", body: "Active or pending account with Uber, Lyft, DoorDash, Instacart, or similar." },
-    { Icon: ShieldCheck, title: "Insurance Included", body: "After you sign your contract, we handle your insurance quote and policy, issued in your name." },
+    { Icon: ShieldCheck, title: "Insurance Included", body: "Insurance is included, with the policy in your name. One less bill to worry about." },
     { Icon: ShieldCheck, title: "Clean Recent Record", body: "Reasonable driving history. No major violations in the last 3 years." },
   ];
   return (
@@ -416,7 +416,7 @@ function CityFAQSection({ cityLabel, content }: { cityLabel: string; content: Co
   const defaults: FaqItem[] = [
     { q: "Do I need good credit to qualify?", a: "No. We don't run a credit check. Approval is based on your driving record and gig-platform eligibility." },
     { q: "How fast can I be on the road?", a: "Most drivers are approved the same day and picking up a vehicle within 24 to 48 hours." },
-    { q: "Is insurance included?", a: "Yes. After you sign, Real Rentals gets the quote and sets up the policy in your name." },
+    { q: "Is insurance included?", a: "Yes. Insurance is included, with the policy in your name. One less bill to worry about." },
     { q: "Are miles unlimited?", a: "Yes. Drive as many miles as you need — there are no per-mile fees." },
     { q: "What if the car needs maintenance?", a: "Routine maintenance is included. If something comes up, we handle it so you can keep earning." },
     { q: "Who pays for tolls and tickets?", a: "You do. Any tolls, tickets, or citations during your rental are your responsibility. Unpaid items are transferred to the driver on record per your rental agreement, and an admin fee may apply per notice." },

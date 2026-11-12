@@ -1290,8 +1290,7 @@ function DrivingStep({
         />
 
         <div className="rounded-xl border border-border bg-soft p-4 text-sm text-muted-foreground">
-          Insurance is included. After you sign your contract, we handle your insurance quote and
-          policy, issued in your name. You do not need to upload proof of insurance.
+          Insurance is included, with the policy in your name. One less bill to worry about. You do not need to upload proof of insurance.
         </div>
       </div>
       <NavRow
@@ -1362,8 +1361,7 @@ function ApplicationReceived({
           <div className="min-w-0">
             <h3 className="text-base font-semibold">Complete Your Driver Profile</h3>
             <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
-              Your licence and gig screenshots help us get you into a car. Insurance is included —
-              after you sign, we set up the policy in your name. Doing this now is optional, it
+              Your licence and gig screenshots help us get you into a car. Insurance is included, with the policy in your name. One less bill to worry about. Doing this now is optional, it
               saves as you go, and this link brings you back to it.
             </p>
           </div>

@@ -5,11 +5,11 @@ import { FadeUp } from "@/components/site/FadeUp";
 const faqs = [
   { q: "What is required to get approved?", a: "You must be 21+, hold a valid US driver's license for at least one year, have a reasonably clean driving record, and a payment method for weekly rent. No credit check required." },
   { q: "Is a security deposit required?", a: "No. We do not collect a security deposit. We do require a valid payment card on file to cover tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
-  { q: "What is included in the weekly payment?", a: "Routine maintenance, unlimited miles, 24/7 driver support, and insurance. After you sign your contract, we handle your insurance quote and policy, issued in your name. You handle fuel and cleanliness." },
+  { q: "What is included in the weekly payment?", a: "Routine maintenance, unlimited miles, and 24/7 driver support. Insurance is included, with the policy in your name. One less bill to worry about. You handle fuel and cleanliness." },
   { q: "Can I drive for Uber, Lyft, and delivery apps?", a: "Most vehicles qualify for Uber and Lyft on the same car. DoorDash, Instacart, Uber Eats, and Amazon Flex are permitted. Some vehicles are delivery-focused, so each listing shows what it's approved for." },
   { q: "Are maintenance and repairs included?", a: "Yes. Routine maintenance and most mechanical repairs are on us — oil changes, brakes, tires, and scheduled service." },
   { q: "How quickly can I get approved?", a: "Most applications are reviewed the same day, and many drivers pick up the same day or within 24 to 48 hours of applying." },
-  { q: "Is insurance included?", a: "Yes. After you sign, Real Rentals gets the quote and sets up the policy in your name." },
+  { q: "Is insurance included?", a: "Yes. Insurance is included, with the policy in your name. One less bill to worry about." },
   { q: "Who pays for tolls and tickets?", a: "You do. Any tolls, tickets, or citations during your rental are your responsibility. Unpaid items are transferred to the driver on record per your rental agreement, and an admin fee may apply per notice." },
   { q: "What happens if my vehicle needs repairs?", a: "Contact support, schedule a swap or service appointment, and we'll get you back on the road quickly. Most routine work is covered." },
   { q: "How do fleet partners earn money?", a: "Partners place vehicles into the Real Rentals fleet and earn passive monthly income on a 50/50 split of rent collected. We handle driver acquisition, screening, collections, GPS tracking, and maintenance." },

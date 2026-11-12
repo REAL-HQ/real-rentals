@@ -32,7 +32,7 @@ export function ApplyProgress({
           <h2 className="text-base font-semibold">What You'll Need</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             No documents needed to apply. Your licence and gig screenshots help us get you into a car.
-            Insurance is included. After you sign, we set up the policy in your name.
+            Insurance is included, with the policy in your name. One less bill to worry about.
           </p>
           <ul className="mt-2">
             {APPLY_PROFILE_ITEMS.map((item) => (

@@ -125,7 +125,7 @@ export function RenterPortalView({
       {has("insurance") ? (
         <Card title="Your Insurance">
           <p className="text-xs text-muted-foreground">
-            Insurance is included. After you sign your contract, we handle your insurance quote and policy, issued in your name.
+            Insurance is included, with the policy in your name. One less bill to worry about.
           </p>
           <div className="mt-3 space-y-2 text-sm">
             {ins.verified ? (

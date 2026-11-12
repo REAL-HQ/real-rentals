@@ -19,8 +19,8 @@ import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
 const FAQS = [
   { q: "What is required to get approved?", a: "You must be 21+, hold a valid US driver's license for at least one year, and have a reasonably clean driving record. No credit check required." },
   { q: "Is a security deposit required?", a: "No. We do not collect a security deposit. We do keep a payment card on file for tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
-  { q: "Is insurance included?", a: "Yes. After you sign, Real Rentals gets the quote and sets up the policy in your name." },
-  { q: "What is included in the weekly payment?", a: "Routine maintenance, a high-mileage allowance, 24/7 driver support, and insurance. After you sign your contract, we handle your insurance quote and policy, issued in your name. Gas and tolls are on you." },
+  { q: "Is insurance included?", a: "Yes. Insurance is included, with the policy in your name. One less bill to worry about." },
+  { q: "What is included in the weekly payment?", a: "Routine maintenance, a high-mileage allowance, and 24/7 driver support. Insurance is included, with the policy in your name. One less bill to worry about. Gas and tolls are on you." },
   { q: "Can I drive for Uber, Lyft, and delivery apps?", a: "Most vehicles qualify for Uber and Lyft on the same car. DoorDash, Instacart, Uber Eats, and Amazon Flex are permitted. Some vehicles are delivery-focused, so each listing shows what it's approved for." },
   { q: "How quickly can I get approved?", a: "Most applications are reviewed the same day, with same-day pickup available." },
 ];
@@ -257,7 +257,7 @@ function Index() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
               { I: Wallet, t: "No Deposit", d: "$0 security deposit. We keep a payment card on file for tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
-              { I: Shield, t: "Insurance Included", d: "Insurance is included. After you sign, we handle your quote and set up the policy in your name." },
+              { I: Shield, t: "Insurance Included", d: "Insurance is included, with the policy in your name. One less bill to worry about." },
               { I: InfinityIcon, t: "Unlimited Miles", d: "Drive as much as gig work demands — your unlimited mileage terms are spelled out in your rental agreement." },
               { I: Wrench, t: "Maintenance Handled", d: "Routine maintenance is on us. You drive, we keep it running." },
               { I: Briefcase, t: "Built For Gig Work", d: "Uber, Lyft, DoorDash, Instacart, Amazon Flex and more." },
