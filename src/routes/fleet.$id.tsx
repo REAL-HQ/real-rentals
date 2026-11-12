@@ -5,6 +5,7 @@ import type { Tables } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { Check, Gauge, Fuel, Calendar, Wrench } from "lucide-react";
+import { galleryFallbackUrl } from "@/lib/gallery-photo";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { representativePhoto } from "@/lib/marketing-fleet";
 import { PublicAvailabilityBadge } from "@/components/site/PublicAvailability";
@@ -184,7 +185,7 @@ function VehicleDetail() {
           <FadeUp>
             <div className="rounded-2xl bg-soft overflow-hidden aspect-[4/3]">
               <ListingPhoto
-                src={resolvePhotoUrl(v.photos?.[0])}
+                src={resolvePhotoUrl(v.photos?.[0]) ?? (v.id ? galleryFallbackUrl(v.id) : null)}
                 fallback={representativePhoto(v.body_type)}
                 name={`${v.make} ${v.model}`}
                 bodyType={v.body_type}
