@@ -98,7 +98,7 @@ export function HeroQuoteBar({
             </button>
           </div>
           <p className="mt-4 text-center text-xs md:text-sm text-muted-foreground">
-            Quick quote — unlimited miles, insurance included, maintenance included. We'll confirm your car on a fast call.
+            Quick quote — unlimited miles, insurance included, maintenance included, no deposit. We'll confirm your car on a fast call.
           </p>
           <p className="mt-2 text-center text-xs text-muted-foreground">
             Questions? Call{" "}
