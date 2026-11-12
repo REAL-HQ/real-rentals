@@ -158,7 +158,7 @@ function CityPage() {
   const headline = interpolate(asString(content.hero_headline) ?? `Drive For Uber, Lyft & Delivery Service Apps In ${site.title} This Week`, site, market);
   const subhead = interpolate(
     asString(content.hero_subhead) ??
-      "Rent a vehicle for Uber, Lyft, DoorDash and delivery work.\nUnlimited miles. Insurance included. No deposit. Maintenance included. Fast approval.",
+      "Rent a vehicle for Uber, Lyft, DoorDash and delivery work.\nUnlimited miles. Insurance included. Maintenance included. No deposit. Fast approval.",
     site,
     market,
   );

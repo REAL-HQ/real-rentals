@@ -157,7 +157,7 @@ function Index() {
           <>
             Rent a vehicle for Uber, Lyft, DoorDash and delivery work.
             <br />
-              Unlimited miles. Insurance included. No deposit. Maintenance included. Fast approval.
+              Unlimited miles. Insurance included. Maintenance included. No deposit. Fast approval.
           </>
         }
       />
