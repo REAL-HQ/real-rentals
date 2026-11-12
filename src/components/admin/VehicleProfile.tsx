@@ -184,8 +184,15 @@ export function VehicleProfile({
         onClick={(e) => e.stopPropagation()}
       >
         {/* ---- header ---------------------------------------------------- */}
-        <header className="bg-white border-b border-[#EDEDF0] px-5 sm:px-6 pt-4 pb-0">
-          <nav aria-label="Breadcrumb" className="mb-3 flex items-center gap-1.5 text-[13px] min-w-0">
+        <header className="relative bg-white border-b border-[#EDEDF0] px-5 sm:px-6 pt-4 pb-0">
+          <button
+            onClick={onClose}
+            className="absolute right-2 top-2 z-10 rounded-md p-1.5 text-[#9A9AA3] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
+            aria-label="Close"
+          >
+            <X className="w-4.5 h-4.5" />
+          </button>
+          <nav aria-label="Breadcrumb" className="mb-3 flex items-center gap-1.5 pr-8 text-[13px] min-w-0">
             <button onClick={onClose} className="inline-flex items-center gap-1.5 text-[#55555E] hover:text-[#111114] font-medium shrink-0">
               <ArrowLeft className="w-4 h-4" strokeWidth={1.75} />
               Vehicles
@@ -249,13 +256,6 @@ export function VehicleProfile({
                 className="inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-3 py-1.5 text-[12px] font-medium text-[#111114] hover:bg-[#FAFAFB] transition-colors disabled:opacity-50"
               >
                 <Share2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Share</span>
-              </button>
-              <button
-                onClick={onClose}
-                className="rounded-md p-1.5 text-[#9A9AA3] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
-                aria-label="Close"
-              >
-                <X className="w-4.5 h-4.5" />
               </button>
             </div>
           </div>
