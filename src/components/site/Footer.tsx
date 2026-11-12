@@ -84,7 +84,7 @@ export function Footer() {
             <li className="flex items-center gap-2"><Phone className="w-4 h-4" /> <PhoneLink placement="footer" className="inline-flex min-h-11 items-center hover:text-foreground" /></li>
             <li className="flex items-center gap-2"><Mail className="w-4 h-4" /> <a href="mailto:team@drivereal.com" className="hover:text-foreground">team@drivereal.com</a></li>
             <li className="flex items-center gap-2"><MapPin className="w-4 h-4" /> Tampa, Florida</li>
-            <li className="flex items-center gap-2"><Clock className="w-4 h-4" /> Mon–Sat, 9am – 7pm</li>
+            <li className="flex items-center gap-2"><Clock className="w-4 h-4" /> Mon–Fri, 9am – 5pm</li>
           </ul>
         </div>
       </div>
