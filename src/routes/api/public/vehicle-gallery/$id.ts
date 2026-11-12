@@ -6,6 +6,11 @@ import {
   pickGalleryFallback,
   type GalleryCandidate,
 } from "@/lib/gallery-photo";
+import {
+  readConfirmedCarMediaIds,
+  readVehicleListThumbnailMediaId,
+  vehicleListThumbnailKey,
+} from "@/lib/vehicle-thumbnail";
 import { stripJpegMetadata } from "@/lib/jpeg-metadata";
 
 // One gallery original for a vehicle the public site already lists, and only
@@ -42,7 +47,7 @@ export const Route = createFileRoute("/api/public/vehicle-gallery/$id")({
 
         const { data: rows, error: mediaError } = await supabaseAdmin
           .from("vehicle_media")
-          .select("kind,storage_bucket,storage_path,mime_type,is_primary,sort_order,created_at")
+          .select("id,kind,storage_bucket,storage_path,mime_type,is_primary,sort_order,created_at")
           .eq("vehicle_id", id)
           .eq("kind", "original")
           .eq("storage_bucket", "vehicle-photos")
@@ -52,7 +57,16 @@ export const Route = createFileRoute("/api/public/vehicle-gallery/$id")({
           .limit(50);
         if (mediaError || !rows) return notFound();
 
-        const chosen = pickGalleryFallback(rows as GalleryCandidate[]);
+        // Prefer the photo staff chose and confirmed as the car thumbnail.
+        const { data: thumb } = await supabaseAdmin
+          .from("app_settings")
+          .select("value")
+          .eq("key", vehicleListThumbnailKey(id))
+          .maybeSingle();
+        const selectedId = readVehicleListThumbnailMediaId(thumb?.value);
+        const preferredId =
+          selectedId && readConfirmedCarMediaIds(thumb?.value).includes(selectedId) ? selectedId : null;
+        const chosen = pickGalleryFallback(rows as GalleryCandidate[], preferredId);
         const path = chosen?.storage_path;
         if (!path || !isGalleryImagePath(path)) return notFound();
 
@@ -70,7 +84,7 @@ export const Route = createFileRoute("/api/public/vehicle-gallery/$id")({
         return new Response(body, {
           headers: {
             "Content-Type": "image/jpeg",
-            "Cache-Control": "public, max-age=3600",
+            "Cache-Control": "public, max-age=300",
             "X-Content-Type-Options": "nosniff",
           },
         });

@@ -17,6 +17,7 @@ export function galleryFallbackUrl(vehicleId: string): string {
 const IMAGE_EXT = new Set(["jpg", "jpeg", "png", "webp", "gif", "avif"]);
 
 export type GalleryCandidate = {
+  id?: string | null;
   kind?: string | null;
   storage_bucket?: string | null;
   storage_path?: string | null;
@@ -53,12 +54,19 @@ export function isGalleryImagePath(path: string): boolean {
  * gallery already uses. Retouches, other buckets, and unsafe paths are ignored.
  * `rows` must already be the originals for a single vehicle.
  */
-export function pickGalleryFallback(rows: readonly GalleryCandidate[]): GalleryCandidate | null {
+export function pickGalleryFallback(
+  rows: readonly GalleryCandidate[],
+  preferredId?: string | null,
+): GalleryCandidate | null {
   const usable = rows.filter((row) => {
     if (row.kind !== "original") return false;
     if (row.storage_bucket !== "vehicle-photos") return false;
     return typeof row.storage_path === "string" && isGalleryImagePath(row.storage_path);
   });
+  if (preferredId) {
+    const preferred = usable.find((row) => row.id === preferredId);
+    if (preferred) return preferred;
+  }
   usable.sort((a, b) => {
     const primary = Number(b.is_primary === true) - Number(a.is_primary === true);
     if (primary !== 0) return primary;

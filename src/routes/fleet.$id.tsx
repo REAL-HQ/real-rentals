@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
-import { Check, Gauge, Fuel, Calendar, Wrench } from "lucide-react";
+import { Check, Gauge, Fuel, Wrench } from "lucide-react";
 import { galleryFallbackUrl } from "@/lib/gallery-photo";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { representativePhoto } from "@/lib/marketing-fleet";
@@ -193,8 +193,7 @@ function VehicleDetail() {
             </div>
           </FadeUp>
           <FadeUp delay={80}>
-            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">{v.year}</div>
-            <h1 className="mt-3 text-4xl md:text-5xl font-semibold">{v.make} {v.model}</h1>
+            <h1 className="text-4xl md:text-5xl font-semibold">{v.make} {v.model}</h1>
             {PUBLIC_AVAILABILITY_ENABLED ? (
               <div className="mt-4">
                 <PublicAvailabilityBadge availability={publicAvailability(v)} />
@@ -221,7 +220,6 @@ function VehicleDetail() {
 
             <div className="mt-8 grid grid-cols-2 gap-4 text-sm">
               {[
-                { I: Calendar, l: "Year", v: v.year },
                 { I: Gauge, l: "MPG", v: v.mpg ?? "—" },
                 { I: Fuel, l: "Body", v: v.body_type ?? "—" },
                 { I: Wrench, l: "Status", v: v.status },

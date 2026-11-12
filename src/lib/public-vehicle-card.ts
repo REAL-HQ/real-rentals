@@ -31,7 +31,7 @@ export function inventoryCardModel(vehicle: PublicVehicle): PublicVehicleCardMod
     key: `inventory:${vehicle.id}`,
     kind: "inventory",
     title: name || "Vehicle",
-    subtitle: vehicle.year ? String(vehicle.year) : null,
+    subtitle: null,
     image: resolvePhotoUrl(vehicle.photos?.[0]) ?? galleryFallbackUrl(vehicle.id),
     priceLabel:
       vehicle.weekly_rate === null || vehicle.weekly_rate === undefined
@@ -45,7 +45,7 @@ export function inventoryCardModel(vehicle: PublicVehicle): PublicVehicleCardMod
     rangeLabel: vehicle.miles_per_tank ? `${vehicle.miles_per_tank} miles` : null,
     eligibility: uber.length > 0 ? uber.join(", ") : null,
     // Only a real unit can be in stock, and only when the back office says so.
-    availabilityNote: vehicle.status === "available" ? "Available now" : null,
+    availabilityNote: vehicle.status === "available" ? "Available" : null,
     href: { kind: "vehicle", id: vehicle.id },
     ctaHref: `/apply?vehicle=${vehicle.id}`,
   };
