@@ -160,12 +160,12 @@ export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
           No Deposit
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <InfinityIcon className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          Unlimited Miles
-        </span>
-        <span className="inline-flex items-center gap-1.5">
           <Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
           Insurance Included
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <InfinityIcon className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
+          Unlimited Miles
         </span>
         <span className="inline-flex items-center gap-1.5">
           <Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
