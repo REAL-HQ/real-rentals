@@ -222,12 +222,12 @@ function Partners() {
 
       {/* Benefit cards */}
       <section className="bg-soft py-20">
-        <div className="container-real grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-7">
+        <div className="container-real max-w-[1440px] grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-7 xl:gap-5">
           {BENEFITS.map((b, i) => (
             <FadeUp key={b.t} delay={i * 60}>
-              <div className="rounded-2xl bg-white p-7 h-full border border-border">
+              <div className="rounded-2xl bg-white p-7 xl:p-6 h-full border border-border">
                 <b.I className="w-6 h-6 text-real-red" strokeWidth={1.75} />
-                <div className="mt-5 text-lg font-semibold">{b.t}</div>
+                <div className="mt-5 whitespace-nowrap text-base font-semibold">{b.t}</div>
                 <div className="mt-2 text-sm text-muted-foreground leading-relaxed">{b.d}</div>
               </div>
             </FadeUp>
