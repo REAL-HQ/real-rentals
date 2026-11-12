@@ -22,6 +22,7 @@ export const PUBLIC_VEHICLE_DETAIL_COLUMNS =
 /** Existing public copy from the fleet detail page and listing cards. */
 export const RENTAL_REQUIREMENTS = [
   "No deposit — payment card on file",
+  "Insurance included",
   "Routine maintenance included",
   "24/7 driver support",
   "Unlimited Miles",

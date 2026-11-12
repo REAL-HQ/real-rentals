@@ -315,6 +315,7 @@ function Index() {
                 <ul className="mt-4 grid grid-cols-1 gap-3 text-sm">
                   {[
                     { I: Users, t: "Driver Acquisition" },
+                    { I: Shield, t: "Insurance Included" },
                     { I: ScanSearch, t: "Screening" },
                     { I: DollarSign, t: "Collections" },
                     { I: MapPin, t: "GPS Tracking" },

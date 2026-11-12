@@ -1,12 +1,13 @@
 import { PhoneLink } from "./PhoneLink";
 import { Phone } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Check, Mail, MapPin, Clock, Headphones, Wrench, Infinity as InfinityIcon, Zap, Wallet } from "lucide-react";
+import { Check, Mail, MapPin, Clock, Headphones, Wrench, Infinity as InfinityIcon, Zap, Wallet, Shield } from "lucide-react";
 import { Logo } from "./Logo";
 
 const trustBar = [
   { label: "No Credit Check", Icon: Check },
   { label: "No Deposit", Icon: Wallet },
+  { label: "Insurance Included", Icon: Shield },
   { label: "Unlimited Miles", Icon: InfinityIcon },
   { label: "24/7 Driver Support", Icon: Headphones },
   { label: "Maintenance Included", Icon: Wrench },
@@ -16,6 +17,7 @@ const trustBar = [
 const badges = [
   "No Credit Check",
   "No Deposit",
+  "Insurance Included",
   "Unlimited Miles",
   "24/7 Driver Support",
   "Maintenance Included",

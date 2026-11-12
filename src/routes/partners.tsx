@@ -31,6 +31,7 @@ const BENEFITS = [
 
 const TRUST = [
   { Icon: KeySquare, label: "You Keep the Title" },
+  { Icon: ShieldCheck, label: "Insurance Included" },
   { Icon: Cog, label: "Fully Managed" },
   { Icon: Satellite, label: "GPS Tracked" },
   { Icon: FileText, label: "Monthly Statements" },
