@@ -16,10 +16,10 @@ describe("Visible activation gates", () => {
     expect(activationSubmitIssues({ ...input, readiness: soft, overrideReason: "four" }).map((i) => i.key)).toEqual(["reason"]);
     expect(activationSubmitIssues({ ...input, readiness: soft, overrideReason: "Valid" })).toEqual([]);
   });
-  it("insurance exceptions still need their separate acknowledgement", () => {
+  it("an unverified policy does not add an activation issue", () => {
     const exception = { ...readiness, insurance: { ...readiness.insurance, status: "unverified" as const, exceptionAllowed: true } };
-    expect(activationSubmitIssues({ ...input, readiness: exception }).map((i) => i.key)).toEqual(["insurance_ack"]);
-    expect(activationSubmitIssues({ ...input, readiness: exception, insuranceAcknowledged: true })).toEqual([]);
+    expect(activationSubmitIssues({ ...input, readiness: exception })).toEqual([]);
+    expect(activationSubmitIssues({ ...input, readiness: exception, insuranceAcknowledged: false })).toEqual([]);
   });
   it("unknown readiness and missing pickup mileage cannot enable activation", () => {
     expect(activationSubmitIssues({ ...input, readiness: null }).map((i) => i.key)).toEqual(["readiness"]);

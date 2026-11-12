@@ -25,7 +25,7 @@ const faqs = [
   { q: "Do I need to live in Tampa to invest?", a: "No. Most of our fleet partners are out-of-state. We handle all local operations, driver handoffs, inspections, and maintenance." },
   { q: "What types of vehicles do you accept?", a: "Rideshare-eligible sedans, SUVs, and minivans — typically 2018 or newer with under 80,000 miles. We can advise on what's currently in demand." },
   { q: "How long until my vehicle is earning?", a: "Most vehicles are inspected, onboarded, and placed with a driver within one to two weeks of arriving in the fleet." },
-  { q: "What insurance is in place on my vehicle?", a: "Commercial rideshare insurance covers the vehicle while in service. We can share the policy details and certificate of insurance on request." },
+  { q: "What insurance is in place on my vehicle?", a: "After a renter signs, we handle the insurance quote and set up the policy in the renter's name. We can share the policy details on request." },
   { q: "Can I sell or pull my vehicle out of the fleet?", a: "Yes. With reasonable notice we'll transition the driver, retrieve the vehicle, and return it to you in the agreed condition." },
   { q: "How do I get started?", a: "Request the investor deck from the Investors page. A partner will follow up within one business day to walk through terms and next steps." },
 ];

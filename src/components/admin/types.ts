@@ -29,7 +29,6 @@ export type ScreeningStatus = (typeof SCREENING_STATUSES)[number];
 export const REQUIRED_DOC_TYPES = [
   "license_front",
   "license_back",
-  "insurance_card",
   "driver_profile_screenshot",
 ] as const;
 export type RequiredDocType = (typeof REQUIRED_DOC_TYPES)[number];

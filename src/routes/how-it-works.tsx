@@ -7,7 +7,7 @@ export const Route = createFileRoute("/how-it-works")({
   head: () => ({
     meta: [
       { title: "How It Works — REAL RENTALS" },
-      { name: "description", content: "Book, get approved, pick up your car, and start earning — usually within 48 hours." },
+      { name: "description", content: "Book, get approved, pick up your car, and start earning — usually within 48 hours. Insurance is included." },
       { property: "og:title", content: "How It Works — REAL RENTALS" },
       { property: "og:description", content: "From application to first ride in 48 hours." },
       { property: "og:type", content: "website" },
@@ -88,6 +88,7 @@ function HowItWorks() {
               { I: IdCard, t: "Valid US Driver's License", d: "Held For At Least One Year With No Major Restrictions." },
               { I: CarFront, t: "Clean Driving Record", d: "Reasonably Clean MVR. We'll Let You Know If You Qualify." },
               { I: Briefcase, t: "Active Gig Account", d: "Or Willingness To Sign Up For Uber, Lyft, DoorDash, Or Instacart." },
+              { I: Shield, t: "Insurance Included", d: "After You Sign Your Contract, We Handle Your Insurance Quote And Policy, Issued In Your Name." },
               { I: Wallet, t: "No Deposit", d: "$0 Security Deposit. We Keep A Payment Card On File For Tolls, Citations, Damage, And Unpaid Rent Per Your Rental Agreement." },
               { I: CreditCard, t: "Payment Method", d: "Debit Card, Credit Card, Or Cash App For Weekly Rent." },
             ].map((r, i) => (
@@ -122,6 +123,7 @@ function HowItWorks() {
               </div>
               <ul className="mt-6 space-y-4">
                 {[
+                  { I: Shield, t: "Insurance Included" },
                   { I: Wallet, t: "No Deposit" },
                   { I: Wrench, t: "Routine Maintenance & Oil Changes" },
                   { I: LifeBuoy, t: "24/7 Roadside Assistance" },

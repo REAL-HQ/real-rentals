@@ -12,7 +12,6 @@ import {
   Car,
   CalendarCheck,
   ChevronRight,
-  ShieldCheck,
   IdCard,
   Smartphone,
   MapPin,
@@ -52,8 +51,9 @@ import {
  * eligibility gate. Submitting it is the conversion: the application is real,
  * staff see it, readiness evaluates it.
  *
- * Part 2 — Complete Your Driver Profile is the paperwork: licence, insurance,
- * gig screenshots, trip history, address. It is optional, resumable, and its
+ * Part 2 — Complete Your Driver Profile is the paperwork: licence, gig
+ * screenshots, trip history, address. Insurance is included and is not asked
+ * for here. Part 2 is optional, resumable, and its
  * absence means "not finished yet", never "abandoned".
  *
  * There is one application row, one document vault and one wizard. Part 2 is a
@@ -126,7 +126,6 @@ function fieldsFor(phase: Phase, s: WizardState): Record<string, unknown> {
         trips_completed: s.trips_completed,
         rating: s.rating,
         drive_type: s.drive_type,
-        insurance_answer: s.insurance_answer,
       };
     default:
       return {};
@@ -182,12 +181,6 @@ const GIG_STATUS_OPTS = [
 const DRIVE_TYPE_OPTS = [
   { value: "full_time", label: "Full-Time" },
   { value: "part_time", label: "Part-Time" },
-] as const;
-
-const INSURANCE_OPTS = [
-  { value: "yes", label: "Yes" },
-  { value: "no", label: "No" },
-  { value: "not_sure", label: "Not Sure" },
 ] as const;
 
 const PLATFORM_OPTS = [
@@ -1194,7 +1187,7 @@ function DrivingStep({
   // and platforms are genuinely optional. A blank trip count means we do not
   // know it, and a driver who has not counted their trips is not turned away
   // at the door for it.
-  const canSubmit = !!state.gig_status && !!state.drive_type && !!state.insurance_answer;
+  const canSubmit = !!state.gig_status && !!state.drive_type;
   const toggle = (p: string) => {
     update(
       "platforms",
@@ -1296,25 +1289,10 @@ function DrivingStep({
           onChange={(v) => update("drive_type", v)}
         />
 
-        <Choice
-          label="Do You Have Full Coverage Insurance?"
-          hint="If you're not sure, say so — that's a real answer and we'll check it with you."
-          value={state.insurance_answer as (typeof INSURANCE_OPTS)[number]["value"] | null}
-          options={INSURANCE_OPTS}
-          onChange={(v) => update("insurance_answer", v)}
-        />
-        {state.insurance_answer === "no" && (
-          <div className="rounded-xl border border-border bg-soft p-4 text-sm text-muted-foreground">
-            No problem — coverage is not required to apply. Our team will walk you through the
-            options that work for your situation when we call.
-          </div>
-        )}
-        {state.insurance_answer === "not_sure" && (
-          <div className="rounded-xl border border-border bg-soft p-4 text-sm text-muted-foreground">
-            That's fine. Most policies say it on the card, and we'll work it out together — it does
-            not hold up your application.
-          </div>
-        )}
+        <div className="rounded-xl border border-border bg-soft p-4 text-sm text-muted-foreground">
+          Insurance is included. After you sign your contract, we handle your insurance quote and
+          policy, issued in your name. You do not need to upload proof of insurance.
+        </div>
       </div>
       <NavRow
         onBack={onBack}
@@ -1384,9 +1362,9 @@ function ApplicationReceived({
           <div className="min-w-0">
             <h3 className="text-base font-semibold">Complete Your Driver Profile</h3>
             <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
-              Your licence, insurance and gig screenshots are what we need before you can pick a car
-              up. Doing it now saves a round of back-and-forth later — but it is optional, it saves
-              as you go, and this link brings you back to it.
+              Your licence and gig screenshots help us get you into a car. Insurance is included —
+              after you sign, we set up the policy in your name. Doing this now is optional, it
+              saves as you go, and this link brings you back to it.
             </p>
           </div>
         </div>
@@ -1570,13 +1548,6 @@ function DriverProfile({
         done: state.license_photo_on_file && state.license_valid === true,
       },
       {
-        key: "insurance",
-        title: "Insurance",
-        blurb: "Your insurance card or declaration page.",
-        icon: <ShieldCheck className="h-5 w-5" />,
-        done: state.insurance_doc_on_file,
-      },
-      {
         key: "gig_profile",
         title: "Gig Profile",
         blurb: "A screenshot of your driver profile showing your rating.",
@@ -1677,27 +1648,6 @@ function DriverProfile({
                         }
                       />
                     </>
-                  )}
-
-                  {s.key === "insurance" && (
-                    <InsuranceSection
-                      token={token}
-                      state={state}
-                      update={update}
-                      persistUpload={persistUpload}
-                      busy={savingSection === s.key}
-                      onSave={() =>
-                        saveSection(s.key, {
-                          insurance_carrier: state.insurance_carrier,
-                          // Only sent when the applicant typed a replacement.
-                          ...(state.insurance_policy_number
-                            ? { insurance_policy_number: state.insurance_policy_number }
-                            : {}),
-                          insurance_expires_on: state.insurance_expires_on,
-                          insurance_rideshare_endorsement: state.insurance_rideshare_endorsement,
-                        })
-                      }
-                    />
                   )}
 
                   {s.key === "gig_profile" && (
@@ -1871,119 +1821,6 @@ function SectionSave({ busy, onSave }: { busy: boolean; onSave: () => void }) {
     </button>
   );
 }
-
-/**
- * Insurance, document first.
- *
- * The old version asked "do you have full coverage?" and then made the
- * applicant type a carrier, a policy number and an expiry date from a card
- * that was sitting in front of them — four fields of transcription before the
- * photo was even taken. Now the card goes up first and the fields are a short,
- * optional confirmation underneath it.
- *
- * EXTENSION POINT — nothing here extracts anything. When document extraction
- * exists it should prefill these inputs and leave them editable, and whatever
- * it produces stays self-reported until a staff member marks the document
- * verified in the vault. An extracted value must never be presented to the
- * applicant, or stored, as though we had confirmed it.
- */
-function InsuranceSection({
-  token,
-  state,
-  update,
-  persistUpload,
-  busy,
-  onSave,
-}: Omit<StepProps, "saving"> & {
-  token: string;
-  persistUpload: (
-    column: "license_photo_url" | "insurance_doc_url" | "profile_screenshot_url",
-    presence: "license_photo_on_file" | "insurance_doc_on_file" | "profile_screenshot_on_file",
-    path: string | null,
-  ) => Promise<void>;
-  busy: boolean;
-  onSave: () => void;
-}) {
-  const [replacingPolicy, setReplacingPolicy] = useState(false);
-  return (
-    <>
-      <DocumentCapture
-        title="Insurance Card"
-        hint="Photograph your insurance card or declaration page."
-        tips={["Show the policy number and the dates it covers"]}
-        kind="insurance"
-        token={token}
-        onFile={state.insurance_doc_on_file}
-        onChange={(v) => persistUpload("insurance_doc_url", "insurance_doc_on_file", v)}
-      />
-      {state.insurance_doc_on_file && (
-        <div className="space-y-4 rounded-xl border border-border bg-soft p-4">
-          <p className="text-[13px] text-muted-foreground leading-relaxed">
-            Got it. If you can read these off the card, it saves us a call — all optional.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <TextField
-              label="Insurance Carrier"
-              value={state.insurance_carrier ?? ""}
-              onChange={(v) => update("insurance_carrier", v || null)}
-            />
-            {/* Already given us a policy number? Then it stays where it is.
-                The server returns the last four so it can be recognised, not
-                the number itself — a resume link is a bearer credential and
-                should let somebody carry on, not read back everything they
-                have ever handed over. */}
-            {state.insurance_policy_on_file && !replacingPolicy ? (
-              <div className="block">
-                <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
-                  Policy Number
-                </span>
-                <div className="mt-1.5 flex items-center justify-between gap-3 rounded-lg border border-border bg-white px-3 py-2.5">
-                  <span className="text-sm">
-                    <span className="font-mono">••••{state.insurance_policy_last4}</span>
-                    <span className="ml-2 text-[11px] text-muted-foreground">Already Provided</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setReplacingPolicy(true)}
-                    className="shrink-0 inline-flex items-center min-h-[44px] px-2 -mr-2 text-[11px] font-semibold text-real-red hover:underline"
-                  >
-                    Update
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <TextField
-                label="Policy Number"
-                autoComplete="off"
-                value={state.insurance_policy_number ?? ""}
-                onChange={(v) => update("insurance_policy_number", v || null)}
-              />
-            )}
-          </div>
-          <label className="block">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
-              Policy Expiration Date
-            </span>
-            <input
-              type="date"
-              value={state.insurance_expires_on ?? ""}
-              onChange={(e) => update("insurance_expires_on", e.target.value || null)}
-              className="mt-1.5 w-full min-h-11 scroll-mb-28 rounded-lg border border-border bg-white px-3 text-base"
-            />
-          </label>
-          <YesNo
-            label="Does Your Policy Include A Rideshare Endorsement?"
-            value={state.insurance_rideshare_endorsement}
-            onChange={(v) => update("insurance_rideshare_endorsement", v)}
-            noLabel="Not Sure"
-          />
-        </div>
-      )}
-      <SectionSave busy={busy} onSave={onSave} />
-    </>
-  );
-}
-
 /**
  * Trip screenshots, without the browser ever holding a storage path it did
  * not create.

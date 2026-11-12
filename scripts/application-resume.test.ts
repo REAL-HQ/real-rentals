@@ -158,7 +158,7 @@ describe("application resume progress", () => {
     const driving = progressFromSnapshot({ ...filled, gigStatus: null, insuranceOnFile: false, address: null });
     assert.equal(driving.label, "Driving");
     assert.equal(driving.phase, "driving");
-    assert.deepEqual(driving.missingDocuments, ["Insurance", "Your Address"]);
+    assert.deepEqual(driving.missingDocuments, ["Your Address"]);
 
     const docs = progressFromSnapshot({ ...filled, licenseValid: null, profileOnFile: false });
     assert.equal(docs.step, 4);

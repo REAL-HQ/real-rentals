@@ -6,6 +6,7 @@ import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { Check, Gauge, Fuel, Calendar, Wrench } from "lucide-react";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
+import { representativePhoto } from "@/lib/marketing-fleet";
 import { PublicAvailabilityBadge } from "@/components/site/PublicAvailability";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { PUBLIC_AVAILABILITY_ENABLED, publicAvailability } from "@/lib/public-availability";
@@ -36,7 +37,7 @@ export const Route = createFileRoute("/fleet/$id")({
       ? `Rent A ${name} For Uber, Lyft & Delivery | REAL RENTALS`
       : "Vehicle Details — REAL RENTALS";
     const description = name
-      ? `Rent a ${name} for rideshare and delivery${v?.weekly_rate ? ` from $${v.weekly_rate}/week` : ""}. Unlimited miles, maintenance included, no deposit.`
+      ? `Rent a ${name} for rideshare and delivery${v?.weekly_rate ? ` from $${v.weekly_rate}/week` : ""}. Insurance included, unlimited miles, maintenance included, no deposit.`
       : "View specs, pricing, and what's included with this rideshare-ready vehicle.";
     const url = `https://drivereal.com/fleet/${params.id}`;
     const scripts = [
@@ -182,9 +183,12 @@ function VehicleDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mt-8">
           <FadeUp>
             <div className="rounded-2xl bg-soft overflow-hidden aspect-[4/3]">
-              {v.photos?.[0] && (
-                <img src={resolvePhotoUrl(v.photos[0]) ?? ""} alt={`${v.make} ${v.model}`} className="w-full h-full object-cover" />
-              )}
+              <ListingPhoto
+                src={resolvePhotoUrl(v.photos?.[0])}
+                fallback={representativePhoto(v.body_type)}
+                name={`${v.make} ${v.model}`}
+                bodyType={v.body_type}
+              />
             </div>
           </FadeUp>
           <FadeUp delay={80}>
@@ -234,7 +238,7 @@ function VehicleDetail() {
             <div className="mt-8">
               <div className="text-sm font-medium mb-3">What's included</div>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                {["No deposit — payment card on file", "Routine maintenance included", "24/7 driver support"].map((i) => (
+                {["Insurance included — set up in your name after you sign", "No deposit — payment card on file", "Routine maintenance included", "24/7 driver support"].map((i) => (
                   <li key={i} className="flex gap-2 items-start"><Check className="w-4 h-4 text-real-red mt-0.5" /> {i}</li>
                 ))}
               </ul>
@@ -254,5 +258,28 @@ function VehicleDetail() {
       </section>
       <div className="h-20" />
     </SiteLayout>
+  );
+}
+
+function ListingPhoto({
+  src,
+  fallback,
+  name,
+  bodyType,
+}: {
+  src: string | null;
+  fallback: string;
+  name: string;
+  bodyType: string | null;
+}) {
+  const [failed, setFailed] = useState(false);
+  const real = src && !failed ? src : null;
+  return (
+    <img
+      src={real ?? fallback}
+      alt={real ? name : `${name}, representative ${bodyType ?? "sedan"}`}
+      className="w-full h-full object-cover"
+      onError={() => setFailed(true)}
+    />
   );
 }

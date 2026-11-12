@@ -31,6 +31,7 @@ const BENEFITS = [
 
 const TRUST = [
   { Icon: KeySquare, label: "You Keep the Title" },
+  { Icon: ShieldCheck, label: "Insurance Included" },
   { Icon: Cog, label: "Fully Managed" },
   { Icon: Satellite, label: "GPS Tracked" },
   { Icon: FileText, label: "Monthly Statements" },
@@ -40,7 +41,7 @@ const FAQS = [
   { q: "Do I keep the title to my vehicle?", a: "Yes. The title stays in your name at all times. We operate the vehicle on your behalf under a written management agreement." },
   { q: "How do payouts work?", a: "Rent is collected weekly from the driver. After pass-through costs, you receive a monthly payout and a statement showing what was collected and what was deducted." },
   { q: "Who pays for maintenance and repairs?", a: "We coordinate routine maintenance and most repairs. Costs are itemized on your monthly statement and deducted before the payout." },
-  { q: "What about insurance?", a: "Insurance options are available through our commercial program. We'll walk through what's required and what's optional during your call." },
+  { q: "What about insurance?", a: "Insurance is included for the renter. After they sign their contract, we handle the insurance quote and set up the policy, issued in the renter's name." },
   { q: "How do you screen the drivers?", a: "Every driver passes a background check, MVR review, ID verification, and platform eligibility check before they're placed in a vehicle." },
   { q: "What if a driver stops paying or disappears?", a: "Every car is GPS-tracked. We handle collections and, if needed, recover the vehicle ourselves." },
   { q: "Can I pull my car out of the program?", a: "Yes. Cancel with reasonable notice and we'll transition the driver and return your vehicle in the agreed condition." },
@@ -300,7 +301,7 @@ function Partners() {
                   {submitting ? "Submitting…" : "Submit Vehicle"}
                 </button>
                 <p className="text-xs text-muted-foreground">
-                  You keep the title at all times · Insurance options available · Cancel with notice.
+                  You keep the title at all times · Insurance included for the renter · Cancel with notice.
                 </p>
               </div>
             </form>

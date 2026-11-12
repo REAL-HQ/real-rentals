@@ -54,11 +54,11 @@ describe("portal document eligibility", () => {
     assert.equal(items[0].label, "Driver's License (Front)");
   });
 
-  it("includes insurance due today, on day 30, and not on day 31", () => {
+  it("includes a license due today, on day 30, and not on day 31, and ignores insurance", () => {
     const due = (days: number) =>
       documentsNeedingUpdate(
         [
-          doc({ category: "license_front", expiresAt: addCalendarDays(TODAY, 90) }),
+          doc({ category: "license_front", expiresAt: addCalendarDays(TODAY, days) }),
           doc({ category: "license_back", expiresAt: addCalendarDays(TODAY, 90) }),
           doc({ category: "insurance", expiresAt: addCalendarDays(TODAY, days) }),
         ],
@@ -69,7 +69,7 @@ describe("portal document eligibility", () => {
     const day30 = due(PORTAL_DOCUMENT_UPDATE_WINDOW_DAYS);
     const day31 = due(31);
     assert.equal(today.length, 1);
-    assert.equal(today[0].category, "insurance");
+    assert.equal(today[0].category, "license_front");
     assert.equal(today[0].reason, "expiring");
     assert.equal(today[0].expiresOn, TODAY);
     assert.equal(day30.length, 1);
@@ -78,7 +78,7 @@ describe("portal document eligibility", () => {
     assert.deepEqual(day31, []);
   });
 
-  it("treats a missing insurance card as missing, and an undated current file as on file", () => {
+  it("does not ask for an insurance card, and treats an undated current license as on file", () => {
     const missing = documentsNeedingUpdate(
       [
         doc({ category: "license_front", expiresAt: addCalendarDays(TODAY, 90) }),
@@ -87,9 +87,7 @@ describe("portal document eligibility", () => {
       EMPTY_APPLICATION,
       TODAY,
     );
-    assert.deepEqual(categories(missing), ["insurance"]);
-    assert.equal(missing[0].reason, "missing");
-    assert.equal(missing[0].expiresOn, null);
+    assert.deepEqual(categories(missing), []);
 
     const undated = documentsNeedingUpdate(
       [
@@ -112,7 +110,7 @@ describe("portal document eligibility", () => {
       EMPTY_APPLICATION,
       TODAY,
     );
-    assert.deepEqual(categories(items), ["license_front", "license_back", "insurance"]);
+    assert.deepEqual(categories(items), ["license_front", "license_back"]);
     assert.ok(items.every((item) => item.reason === "missing"));
   });
 
@@ -129,8 +127,8 @@ describe("portal document eligibility", () => {
       },
       TODAY,
     );
-    assert.deepEqual(categories(soon), ["license_back", "insurance"]);
-    assert.equal(soon.find((item) => item.category === "insurance")?.reason, "expiring");
+    assert.deepEqual(categories(soon), ["license_back"]);
+    assert.equal(soon.some((item) => item.category === "insurance"), false);
 
     const synced = documentsNeedingUpdate(
       [
@@ -149,8 +147,7 @@ describe("portal document eligibility", () => {
       },
       TODAY,
     );
-    assert.deepEqual(categories(synced), ["insurance"]);
-    assert.equal(synced[0].reason, "expiring");
+    assert.deepEqual(categories(synced), []);
   });
 
   it("does not keep the old application date on a replacement that has no expiry", () => {

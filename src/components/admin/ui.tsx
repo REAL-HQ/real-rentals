@@ -9,6 +9,7 @@ import {
 } from "@/lib/readiness";
 import { fmtDate as formatDate } from "@/lib/date-format";
 import type { EvidenceTone } from "@/lib/checklist-evidence";
+import { REQUIRED_DOC_TYPES } from "@/components/admin/types";
 import { Button } from "@/components/ui/button";
 
 // ---- Design tokens (shared across admin) --------------------------------
@@ -854,7 +855,7 @@ export function ReadinessCell({
     <div className="flex flex-col items-start gap-0.5">
       <ReadinessStatePill state={result.state} short />
       <span className="text-[10px] text-muted-foreground tabular-nums">
-        {result.coverage}% Known · {docCount}/4
+        {result.coverage}% Known · {docCount}/{REQUIRED_DOC_TYPES.length}
       </span>
     </div>
   );

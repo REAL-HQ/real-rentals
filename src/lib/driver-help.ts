@@ -58,8 +58,8 @@ export const DRIVER_HELP_TOPICS: HelpTopic[] = [
   {
     title: "Upload Or Replace Documents",
     stated: [
-      "Keep your license and insurance current. Uploading a new file replaces the old one — we keep the history.",
-      "Upload or replace your licence and insurance, and read your rental agreement.",
+      "Keep your license current. Uploading a new file replaces the old one — we keep the history.",
+      "Upload or replace your licence, and read your rental agreement. Insurance is included. After you sign, we set up the policy in your name.",
       "Files must be under 15 MB.",
     ],
     todo: null,

@@ -41,7 +41,7 @@ describe("Documents receipt", () => {
     expect(project(events)).toMatchObject({ tone: "red", uploaded: true, collected: false });
   });
   it("document receipt does not complete screening, approval, inspection, agreement or Active", () => {
-    const life = driverLifecycle({ contacted: true, documentsReceived: true, screening: false, documents: false, profile: false, insuranceOnFile: false, approved: false, inspection: false, agreement: false, rentalActive: false });
+    const life = driverLifecycle({ contacted: true, documentsReceived: true, screening: false, documents: false, profile: false, approved: false, inspection: false, agreement: false, rentalActive: false });
     expect(life.stages.find((stage) => stage.key === "documents")?.state).toBe("done");
     for (const key of ["screening", "approved", "inspection", "agreement", "active"]) expect(life.stages.find((stage) => stage.key === key)?.state).not.toBe("done");
   });

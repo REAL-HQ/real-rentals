@@ -1,14 +1,14 @@
 import { PhoneLink } from "./PhoneLink";
 import { Phone } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Check, Mail, MapPin, Clock, Headphones, Wrench, Infinity as InfinityIcon, Zap, Wallet } from "lucide-react";
+import { Check, Mail, MapPin, Clock, Wrench, Infinity as InfinityIcon, Zap, Wallet, Shield } from "lucide-react";
 import { Logo } from "./Logo";
 
 const trustBar = [
   { label: "No Credit Check", Icon: Check },
   { label: "No Deposit", Icon: Wallet },
+  { label: "Insurance Included", Icon: Shield },
   { label: "Unlimited Miles", Icon: InfinityIcon },
-  { label: "24/7 Driver Support", Icon: Headphones },
   { label: "Maintenance Included", Icon: Wrench },
   { label: "Same Day Approval", Icon: Zap },
 ];
@@ -16,8 +16,8 @@ const trustBar = [
 const badges = [
   "No Credit Check",
   "No Deposit",
+  "Insurance Included",
   "Unlimited Miles",
-  "24/7 Driver Support",
   "Maintenance Included",
   "Same Day Approval",
 ];
@@ -46,7 +46,7 @@ export function Footer() {
       <div className="border-y border-border bg-soft">
         <div className="container-real py-4 flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-xs md:text-sm text-foreground/80">
           {trustBar.map(({ label, Icon }) => (
-            <span key={label} className="inline-flex items-center gap-1.5">
+            <span key={label} className="inline-flex items-center gap-1.5 whitespace-nowrap">
               <Icon className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />
               <span className="font-medium">{label}</span>
             </span>
