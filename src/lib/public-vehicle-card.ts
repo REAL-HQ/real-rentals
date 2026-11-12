@@ -7,6 +7,7 @@
  * allowed to know about `vehicles_public` and storage URLs.
  */
 import type { Tables } from "@/integrations/supabase/types";
+import { galleryFallbackUrl } from "@/lib/gallery-photo";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
 import type { PublicVehicleCardModel } from "@/lib/marketing-fleet";
 
@@ -31,7 +32,7 @@ export function inventoryCardModel(vehicle: PublicVehicle): PublicVehicleCardMod
     kind: "inventory",
     title: name || "Vehicle",
     subtitle: vehicle.year ? String(vehicle.year) : null,
-    image: resolvePhotoUrl(vehicle.photos?.[0]),
+    image: resolvePhotoUrl(vehicle.photos?.[0]) ?? galleryFallbackUrl(vehicle.id),
     priceLabel:
       vehicle.weekly_rate === null || vehicle.weekly_rate === undefined
         ? "Rate confirmed on your call"
