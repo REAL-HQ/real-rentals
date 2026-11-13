@@ -85,6 +85,7 @@ import {
   missingRequiredCategories,
   notifyActivationReadinessRefresh,
   primaryStep,
+  screeningRequirementsComplete,
 } from "@/lib/activation-readiness";
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
@@ -1948,14 +1949,16 @@ function DriverDetail({
         ? rentalActiveFlag || pickupPaid
       : field === "inspection"
         ? !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true
-        : false,
-    reviewRequired: field === "agreement" || field === "insurance",
+        : field === "income" || field === "insurance_quote" || field === "screening"
+          ? rentalTabReadiness?.requirements.some((r) => r.key === field && r.met === true) === true
+          : false,
+    reviewRequired: field === "agreement" || field === "insurance" || field === "insurance_quote" || field === "screening",
   })) : [];
   // One click on a checklist circle: Missing/Not Collected -> Upload Due (Yellow);
   // Upload Due -> Not Collected (Red). A file on record (Green) is never changed here.
   async function toggleEvidence(fields: EvidenceProjection[]) {
     if (evidenceSaving) return;
-    const open = fields.filter((f) => !f.uploaded && !f.complete);
+    const open = fields.filter((f) => !f.complete && (!f.uploaded || f.field === "insurance_quote" || f.field === "screening"));
     if (!open.length) return;
     const next: "collected" | "not_collected" = open.every((f) => f.status === "upload_due") ? "not_collected" : "collected";
     setEvidenceSaving(true);
@@ -2017,6 +2020,7 @@ function DriverDetail({
       return [];
     }
     if (r.key === "insurance_verified" && r.met !== true) presentation.label = "Optional · Record After Signing";
+    if ((r.key === "insurance_quote" || r.key === "screening") && presentation.tone === "yellow") presentation.label = presentation.fields.every((f) => f.uploaded) ? "Check Off Required" : "Upload Due";
     if (r.key === "inspection" && presentation.tone === "yellow") presentation.label = "Upload Due · Written Override Required";
     // A payment confirmation records receipt only; it never creates a charge or starts a rental.
     if (r.key === "pickup" && presentation.tone === "yellow") {
@@ -2025,36 +2029,30 @@ function DriverDetail({
     }
     if (r.key === "pickup" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Not Done";
     if (r.enforcement === "advisory" && r.key !== "pickup" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Advisory";
-    const toggleable = presentation.fields.some((f) => !f.uploaded && !f.complete) && !(r.key === "signed_agreement" && r.met === true && presentation.fields.every((f) => f.status !== "upload_due"));
+    const toggleable = presentation.fields.some((f) => !f.complete && (!f.uploaded || f.field === "insurance_quote" || f.field === "screening")) && !(r.key === "signed_agreement" && r.met === true && presentation.fields.every((f) => f.status !== "upload_due"));
     return [[r.key, toggleable ? { ...presentation, onToggle: r.key === "pickup" ? () => setPickupPaymentOpen(true) : () => void toggleEvidence(presentation.fields), busy: evidenceSaving, toggleLabel: r.key === "pickup" ? "Confirm Pickup Payment" : presentation.toggleLabel, toggleTitle: r.key === "pickup" ? "Confirm The Amount Received And Payment Method." : presentation.toggleTitle } : presentation]];
   })) : undefined;
-  const licenseItems = evidenceItems.filter((i) => i.field === "license_front" || i.field === "license_back");
-  const profileItems = evidenceItems.filter((i) => i.field === "gig_profile");
   const agreementItems = evidenceItems.filter((i) => i.field === "agreement");
   const inspectionItems = evidenceItems.filter((i) => i.field === "inspection");
   const pickupItems = evidenceItems.filter((i) => i.field === "pickup");
   const pickupEvidenceTone = evidenceTone(pickupItems);
-  const docsEvidenceTone = evidenceTone(licenseItems);
-  const profileEvidenceTone = evidenceTone(profileItems);
+  const screeningEvidenceTone = evidenceTone(evidenceItems.filter((i) => i.field === "insurance_quote" || i.field === "screening"));
   const agreementEvidenceTone = evidenceTone(agreementItems);
   const inspectionEvidenceTone = evidenceTone(inspectionItems);
-  const insuranceEvidenceTone = evidenceTone(evidenceItems.filter((i) => i.field === "insurance"));
   const addressed = (items: EvidenceProjection[]) => items.length > 0 && items.every((i) => i.status !== "missing");
   const actualInspection = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true;
   const actualAgreement = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true;
+  const screeningComplete = !rentalTabReadinessLoading && !rentalTabReadinessFailed && screeningRequirementsComplete(rentalTabReadiness?.requirements ?? []);
   const { stages: lifecycle, current: currentStage, percent: percentComplete } = driverLifecycle({
-    contacted, interviewComplete: screeningDone, screening: screeningDone,
+    contacted, interviewComplete: screeningDone, screening: screeningComplete,
     documentsReceived: !vaultLoading && collectedDocuments.collected,
-    documents: isManager ? addressed(licenseItems) : !missingRequiredCategories(vaultDocs).some((c) => c === "license_front" || c === "license_back"),
-    profile: isManager ? addressed(profileItems) : !missingRequiredCategories(vaultDocs).includes("gig_profile"),
     approved, reserved: hasReservation, rentalActive: rentalActiveFlag,
     pickup: isManager && pickupItems.some((i) => i.status === "upload_due"),
     // Saved Yellow/Red evidence stays visible; only a real passed inspection or signed agreement is Green.
     inspection: isManager ? actualInspection || addressed(inspectionItems) : actualInspection,
     agreement: isManager ? actualAgreement || addressed(agreementItems) : actualAgreement,
   });
-  const stageStartIso = currentStage?.key === "screening" ? driver.contacted_at ?? driver.created_at
-    : currentStage?.key === "docs" ? screening?.interview_completed_at ?? driver.created_at : driver.created_at;
+  const stageStartIso = currentStage?.key === "screening" ? driver.contacted_at ?? driver.created_at : driver.created_at;
   const timeInStage = stageStartIso ? formatDuration(Date.now() - new Date(stageStartIso).getTime()) : undefined;
 
   function readinessChanged() {
@@ -2608,9 +2606,7 @@ function DriverDetail({
               stages={lifecycle}
               evidenceTones={CHECKLIST_EVIDENCE_ENABLED ? {
                 documents: collectedDocuments.tone,
-                ...(docsEvidenceTone ? { docs: docsEvidenceTone } : {}),
-                ...(profileEvidenceTone ? { profile: profileEvidenceTone } : {}),
-                ...(insuranceEvidenceTone ? { insurance: insuranceEvidenceTone } : {}),
+                ...(screeningEvidenceTone ? { screening: screeningEvidenceTone } : {}),
                 ...(inspectionEvidenceTone ? { inspection: inspectionEvidenceTone } : {}),
                 ...(agreementEvidenceTone ? { agreement: agreementEvidenceTone } : {}),
                 ...(pickupEvidenceTone && pickupEvidenceTone !== "red" ? { pickup: pickupEvidenceTone } : {}),

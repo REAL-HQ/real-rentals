@@ -32,6 +32,11 @@ describe("Checklist file destinations", () => {
   it("license files stay distinct front and back categories", () => expect(checklistDocumentCategories("license_documents")).toEqual(["license_front", "license_back"]));
   it("signed paper evidence goes to the existing agreement category", () => expect(checklistDocumentCategories("signed_agreement")).toEqual(["agreement"]));
   it("insurance uploads do not become a verification action", () => expect(checklistDocumentCategories("insurance_verified")).toEqual(["insurance"]));
+  it("income, quote and screening evidence use separate private categories", () => {
+    expect(checklistDocumentCategories("income")).toEqual(["income"]);
+    expect(checklistDocumentCategories("insurance_quote")).toEqual(["insurance_quote"]);
+    expect(checklistDocumentCategories("screening")).toEqual(["screening"]);
+  });
   it("interview, approval, inspection and platform verification do not accept a file as completion", () => {
     for (const key of ["interview", "approved", "inspection", "gig_platform"] as const) expect(checklistDocumentCategories(key)).toEqual([]);
   });

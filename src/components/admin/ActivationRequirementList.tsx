@@ -69,7 +69,7 @@ export function ActivationRequirementList({
               aria-label={fileState.toggleLabel ?? (fileState.tone === "yellow" ? `${r.label}: Upload Due. Click To Mark Not Collected` : `Check Off ${r.label}`)}
               title={fileState.toggleTitle ?? (fileState.tone === "yellow" ? "Checked Off — Upload Due. Click To Mark Not Collected." : "Click To Check Off. Upload The File Later.")}
             >
-              {fileState.tone === "yellow" ? (
+              {fileState.tone === "yellow" && fileState.checkedOff ? (
                 <span className="grid h-6 w-6 place-items-center rounded-full border-2 border-warning bg-warning text-warning-foreground"><Check className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" /></span>
               ) : icon}
             </button>

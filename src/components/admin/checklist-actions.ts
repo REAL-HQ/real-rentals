@@ -11,13 +11,16 @@ export function checklistInspectionPhotos<T extends { vehicle_id: string; rental
 }
 
 /** Only file-backed requirements; never infer a review or completion from a file. */
-export function checklistDocumentCategories(key: ActivationRequirementKey): ("license_front" | "license_back" | "insurance" | "agreement" | "gig_profile")[] {
+export function checklistDocumentCategories(key: ActivationRequirementKey): ("license_front" | "license_back" | "insurance" | "agreement" | "gig_profile" | "income" | "insurance_quote" | "screening")[] {
   switch (key) {
     case "license_documents": return ["license_front", "license_back"];
     case "signed_agreement": return ["agreement"];
     case "insurance_verified":
     case "insurance_document": return ["insurance"];
     case "gig_profile": return ["gig_profile"];
+    case "income": return ["income"];
+    case "insurance_quote": return ["insurance_quote"];
+    case "screening": return ["screening"];
     default: return [];
   }
 }
@@ -31,6 +34,9 @@ export function checklistAction(requirement: ActivationRequirement): ChecklistAc
     case "license_documents":
     case "insurance_document":
     case "gig_profile":
+    case "income":
+    case "insurance_quote":
+    case "screening":
       return { label: requirement.met === true ? "View" : "+ Add", target: documentTarget };
     case "signed_agreement":
       // The same vault handles signed paper uploads and their audited review.

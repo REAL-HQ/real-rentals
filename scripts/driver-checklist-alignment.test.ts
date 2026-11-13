@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { activationRequirements, type DriverReadinessFacts } from "../src/lib/activation-readiness";
+import {
+  activationRequirements,
+  NEXT_STEP_REQUIREMENT_KEYS,
+  screeningRequirementsComplete,
+  type DriverReadinessFacts,
+} from "../src/lib/activation-readiness";
 import { attestationInput, projectEvidence, requirementEvidence } from "../src/lib/checklist-evidence";
 import { driverLifecycle } from "../src/lib/driver-lifecycle";
 
@@ -14,25 +19,61 @@ const facts: DriverReadinessFacts = {
   insurance: { status: "missing", exceptionAllowed: false, settingPresent: true, settingReadable: true },
 };
 
+const doc = (category: string) => ({
+  id: `${category}-1`, category, is_current: true, review_status: "uploaded", storage_path: `private/${category}`,
+});
+
 describe("Driver checklist alignment", () => {
-  it("uses Dolmar's nine Next Step labels and order", () => {
-    const items = activationRequirements(facts).filter((item) => !["insurance_document", "gig_platform"].includes(item.key));
-    expect(items.map((item) => item.label)).toEqual([
+  it("uses the twelve requested Next Step labels and order", () => {
+    const requirements = activationRequirements(facts);
+    const items = NEXT_STEP_REQUIREMENT_KEYS.map((key) => requirements.find((item) => item.key === key));
+    expect(items.map((item) => item?.label)).toEqual([
       "Interview Complete",
       "Driver's License Verified",
       "Gig Profile Verified",
+      "Income Verified",
       "Insurance Verified",
+      "Insurance Quote",
+      "Screening",
       "Application Approved",
-      "Pre-Inspection Passed",
       "Rental Agreement Signed",
+      "Pre-Inspection Passed",
       "Pickup Complete",
       "Rental Active",
     ]);
   });
 
-  it("adds Profile after License in the lifecycle", () => {
-    const result = driverLifecycle({ contacted: true, screening: true, documents: false, profile: false, approved: true, inspection: false, agreement: false, rentalActive: false });
-    expect(result.stages.map((stage) => stage.label)).toEqual(["Applied", "Contacted", "Documents", "Screening", "License", "Profile", "Approved", "Reserved", "Inspection", "Agreement", "Pickup", "Active"]);
+  it("removes License and Profile and places Agreement before Reserved", () => {
+    const result = driverLifecycle({ contacted: true, screening: true, approved: true, inspection: false, agreement: false, rentalActive: false });
+    expect(result.stages.map((stage) => stage.label)).toEqual([
+      "Applied", "Contacted", "Documents", "Screening", "Approved",
+      "Agreement", "Reserved", "Inspection", "Pickup", "Active",
+    ]);
+  });
+
+  it("income can be checked off without an upload but remains Upload Due", () => {
+    const checked = activationRequirements({ ...facts, evidence: { income: "collected" } }).find((item) => item.key === "income");
+    expect(checked).toMatchObject({ met: true, detail: "Upload Due", enforcement: "advisory" });
+    expect(activationRequirements({ ...facts, documents: [doc("income")] }).find((item) => item.key === "income")?.met).toBe(true);
+  });
+
+  it("Insurance Quote and Screening each require both a saved check-off and their own file", () => {
+    for (const key of ["insurance_quote", "screening"] as const) {
+      expect(activationRequirements({ ...facts, documents: [doc(key)] }).find((item) => item.key === key)?.met).toBe(false);
+      expect(activationRequirements({ ...facts, evidence: { [key]: "collected" } }).find((item) => item.key === key)?.met).toBe(false);
+      expect(activationRequirements({ ...facts, documents: [doc(key)], evidence: { [key]: "collected" } }).find((item) => item.key === key)?.met).toBe(true);
+    }
+  });
+
+  it("aggregate Screening turns Green only when both evidence rows are complete", () => {
+    const incomplete = activationRequirements({
+      ...facts, documents: [doc("insurance_quote"), doc("screening")], evidence: { insurance_quote: "collected" },
+    });
+    expect(screeningRequirementsComplete(incomplete)).toBe(false);
+    const complete = activationRequirements({
+      ...facts, documents: [doc("insurance_quote"), doc("screening")], evidence: { insurance_quote: "collected", screening: "collected" },
+    });
+    expect(screeningRequirementsComplete(complete)).toBe(true);
   });
 
   it("saves a file-free inspection check-off as Yellow, never Passed", () => {
@@ -40,20 +81,18 @@ describe("Driver checklist alignment", () => {
     const input = { applicationId, field: "inspection", expectedRevision: 0, idempotencyKey: applicationId, state: "collected", source: "other", note: "" } as const;
     expect(attestationInput.parse(input).field).toBe("inspection");
     const projection = projectEvidence({ applicationId, field: "inspection", events: [{ ...input, id: "event-1", revision: 1, supersedesId: null, actorId: applicationId, occurredAt: "2026-11-09T00:00:00Z" }], documents: [], itemComplete: false });
-    expect(projection).toMatchObject({ tone: "yellow", status: "upload_due", complete: false });
+    expect(projection).toMatchObject({ tone: "yellow", status: "upload_due", complete: false, checkedOff: true });
     expect(requirementEvidence("inspection", [projection])?.tone).toBe("yellow");
     expect(activationRequirements(facts).find((item) => item.key === "inspection")?.met).toBe(false);
   });
 
-  it("wires every requested Next Step status to a real in-place action", () => {
+  it("wires lifecycle colors to saved evidence rather than local checkmarks", () => {
     const source = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
-    for (const key of ["interview", "approved", "inspection", "pickup", "rental_active"]) {
-      expect(source).toContain(`r.key === "${key}"`);
-    }
-    expect(source).toContain('docs: docsEvidenceTone');
-    expect(source).toContain('profile: profileEvidenceTone');
-    expect(source).toContain('agreement: agreementEvidenceTone');
-    expect(source).toContain('inspection: inspectionEvidenceTone');
+    for (const key of ["interview", "approved", "inspection", "pickup", "rental_active"]) expect(source).toContain(`r.key === "${key}"`);
+    expect(source).toContain("screening: screeningComplete");
+    expect(source).toContain("documentsReceived: !vaultLoading && collectedDocuments.collected");
+    expect(source).toContain("agreement: agreementEvidenceTone");
+    expect(source).toContain("inspection: inspectionEvidenceTone");
   });
 });
 
@@ -66,7 +105,7 @@ describe("Pickup check-off", () => {
     expect(projection).toMatchObject({ tone: "yellow", status: "upload_due", complete: false });
     expect(requirementEvidence("pickup", [projection])?.tone).toBe("yellow");
     expect(activationRequirements(facts).find((item) => item.key === "rental_active")?.met).toBe(false);
-    const life = driverLifecycle({ contacted: true, documentsReceived: true, screening: true, documents: true, profile: true, approved: true, reserved: true, inspection: true, agreement: true, rentalActive: false, pickup: true });
+    const life = driverLifecycle({ contacted: true, documentsReceived: true, screening: true, approved: true, reserved: true, inspection: true, agreement: true, rentalActive: false, pickup: true });
     expect(life.stages.find((s) => s.key === "pickup")?.state).toBe("done");
     expect(life.stages.find((s) => s.key === "active")?.state).toBe("current");
   });

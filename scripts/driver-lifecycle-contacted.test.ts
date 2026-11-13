@@ -5,8 +5,6 @@ import { driverLifecycle } from "../src/lib/driver-lifecycle";
 const base = {
   contacted: false,
   screening: false,
-  documents: false,
-  profile: false,
   approved: false,
   inspection: false,
   agreement: false,
@@ -30,7 +28,7 @@ test("no interview and no contact leaves Contacted not done", () => {
 
 test("an interview completion completes Contacted only, never later stages", () => {
   const l = driverLifecycle({ ...base, interviewComplete: true });
-  for (const key of ["documents", "screening", "docs", "profile", "approved", "reserved", "inspection", "agreement", "pickup", "active"]) {
+  for (const key of ["documents", "screening", "approved", "agreement", "reserved", "inspection", "pickup", "active"]) {
     expect(stateOf(l, key)).not.toBe("done");
   }
 });

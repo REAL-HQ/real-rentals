@@ -121,7 +121,7 @@ async function evaluateReadiness(
       .from("checklist_evidence_events")
       .select("field,state,revision")
       .eq("application_id", applicationId)
-      .in("field", ["license_front", "license_back", "agreement"])
+      .in("field", ["license_front", "license_back", "agreement", "income", "insurance_quote", "screening"])
       .order("revision", { ascending: false }),
   ]);
   // A failed read must never read as "complete": refuse instead of guessing.
@@ -155,7 +155,7 @@ async function evaluateReadiness(
     hasPassedInspection: null,
     evidence: {},
   };
-  for (const row of (evidenceRead.data ?? []) as { field: "license_front" | "license_back" | "agreement"; state: "collected" | "not_collected" }[]) {
+  for (const row of (evidenceRead.data ?? []) as { field: "license_front" | "license_back" | "agreement" | "income" | "insurance_quote" | "screening"; state: "collected" | "not_collected" }[]) {
     if (!facts.evidence![row.field]) facts.evidence![row.field] = row.state;
   }
   blockers.push(...driverRequirementBlockers(facts));

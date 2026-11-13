@@ -7,11 +7,11 @@ import { REQUIRED_VAULT_CATEGORIES } from "./required-docs";
  *  activate_rental_checked_tx accepts them in the same transaction as the rental. */
 export const CHECKLIST_EVIDENCE_ENABLED = true;
 export const EVIDENCE_UPDATE_UNAVAILABLE = "Checklist Saving And Activation Exceptions Await The Approved Database Update.";
-export const EVIDENCE_FIELDS = ["license_front", "license_back", "insurance", "agreement", "gig_profile", "inspection", "pickup"] as const;
+export const EVIDENCE_FIELDS = ["license_front", "license_back", "insurance", "agreement", "gig_profile", "income", "insurance_quote", "screening", "inspection", "pickup"] as const;
 export const evidenceFieldSchema = z.enum(EVIDENCE_FIELDS);
 export type EvidenceField = z.infer<typeof evidenceFieldSchema>;
 export const EVIDENCE_FIELD_LABELS: Record<EvidenceField, string> = {
-  license_front: "License Front", license_back: "License Back", insurance: "Insurance", agreement: "Agreement", gig_profile: "Gig Profile", inspection: "Pre-Inspection", pickup: "Pickup",
+  license_front: "License Front", license_back: "License Back", insurance: "Insurance", agreement: "Agreement", gig_profile: "Gig Profile", income: "Income Proof", insurance_quote: "Insurance Quote", screening: "Screening", inspection: "Pre-Inspection", pickup: "Pickup",
 };
 
 export const PICKUP_PAYMENT_METHODS = ["Cash", "Stripe", "Zelle", "Cash App", "Venmo", "Bank Transfer", "Other"] as const;
@@ -38,6 +38,8 @@ export type EvidenceProjection = {
   status: "missing" | "upload_due" | "not_collected" | "uploaded" | "review_due" | "conflict";
   label: string;
   collected: boolean;
+  /** A saved staff check-off, distinct from collection inferred from a file. */
+  checkedOff: boolean;
   uploaded: boolean;
   complete: boolean;
   followUpOpen: boolean;
@@ -50,6 +52,9 @@ export function evidenceFields(key: ActivationRequirementKey): EvidenceField[] {
     case "insurance_verified":
     case "insurance_document": return ["insurance"];
     case "gig_profile": return ["gig_profile"];
+    case "income": return ["income"];
+    case "insurance_quote": return ["insurance_quote"];
+    case "screening": return ["screening"];
     case "inspection": return ["inspection"];
     case "pickup": return ["pickup"];
     default: return [];
@@ -81,7 +86,7 @@ export function projectEvidence(input: { applicationId: string; field: EvidenceF
   const event = latestEvidenceEvent(input.events, input.applicationId, input.field);
   const uploaded = input.documents.some((d) => d.category === input.field && d.is_current === true && d.review_status !== "rejected" && !!d.id && !!d.storage_path);
   const collected = event?.state === "not_collected" ? false : event?.state === "collected" || uploaded || input.itemComplete;
-  const base = { field: input.field, revision: event?.revision ?? 0, collected, uploaded, complete: input.itemComplete, followUpOpen: !uploaded && !input.itemComplete };
+  const base = { field: input.field, revision: event?.revision ?? 0, collected, checkedOff: event?.state === "collected", uploaded, complete: input.itemComplete, followUpOpen: !uploaded && !input.itemComplete };
   // Never discard an actual uploaded/signed file when a staff correction disagrees.
   if (event?.state === "not_collected" && (uploaded || input.itemComplete)) return { ...base, tone: "red", status: "conflict", label: "Needs Review" };
   if (input.itemComplete || (uploaded && !input.reviewRequired)) return { ...base, tone: "green", status: "uploaded", label: "On File" };
@@ -126,13 +131,13 @@ export function documentCollection(input: {
   };
 }
 
-export type EvidenceRequirementPresentation = { tone: EvidenceTone; label: string; fields: EvidenceProjection[]; onToggle?: () => void; busy?: boolean; toggleLabel?: string; toggleTitle?: string };
+export type EvidenceRequirementPresentation = { tone: EvidenceTone; label: string; fields: EvidenceProjection[]; checkedOff?: boolean; onToggle?: () => void; busy?: boolean; toggleLabel?: string; toggleTitle?: string };
 export type EvidencePresentationMap = Partial<Record<ActivationRequirementKey, EvidenceRequirementPresentation>>;
 export function requirementEvidence(key: ActivationRequirementKey, fields: readonly EvidenceProjection[]): EvidenceRequirementPresentation | undefined {
   const matching = fields.filter((f) => evidenceFields(key).includes(f.field));
   const tone = evidenceTone(matching);
   if (!tone) return undefined;
-  return { tone, label: matching.find((f) => f.tone === tone)?.label ?? "On File", fields: matching };
+  return { tone, label: matching.find((f) => f.tone === tone)?.label ?? "On File", fields: matching, checkedOff: matching.some((f) => f.checkedOff) };
 }
 
 /** Mock-only contract assessment. Never an activation authorization or replacement for decideActivation. */

@@ -30,5 +30,6 @@ export const REQUIRED_DOC_TYPES = [
   "license_front",
   "license_back",
   "driver_profile_screenshot",
+  "income",
 ] as const;
 export type RequiredDocType = (typeof REQUIRED_DOC_TYPES)[number];

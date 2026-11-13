@@ -80,6 +80,9 @@ export type ActivationRequirementKey =
   | "inspection"
   | "insurance_document"
   | "gig_profile"
+  | "income"
+  | "insurance_quote"
+  | "screening"
   | "gig_platform"
   | "pickup"
   | "rental_active";
@@ -322,7 +325,7 @@ export type DriverReadinessFacts = {
   /** null when no vehicle is chosen, so inspection cannot be judged. */
   hasPassedInspection: boolean | null;
   /** Latest saved staff check-off per file (checklist_evidence_events). */
-  evidence?: Partial<Record<"license_front" | "license_back" | "agreement", "collected" | "not_collected">>;
+  evidence?: Partial<Record<"license_front" | "license_back" | "agreement" | "income" | "insurance_quote" | "screening", "collected" | "not_collected">>;
   /** Pickup and Active come only from a real running rental, never a checkmark. */
   rentalActive?: boolean;
 };
@@ -352,11 +355,18 @@ export function hasSignedAgreement(f: DriverReadinessFacts): boolean {
   );
 }
 
-/** The nine operational rows shown in the profile's Next Step card, in Dolmar's order. */
+/** The operational rows shown in the profile's Next Step card, in Dolmar's order. */
 export const NEXT_STEP_REQUIREMENT_KEYS = [
-  "interview", "license_documents", "gig_profile", "insurance_verified", "approved",
-  "inspection", "signed_agreement", "pickup", "rental_active",
+  "interview", "license_documents", "gig_profile", "income", "insurance_verified",
+  "insurance_quote", "screening", "approved", "signed_agreement", "inspection", "pickup", "rental_active",
 ] as const satisfies readonly ActivationRequirementKey[];
+
+/** Both screening evidence rows must be checked off and have their own uploaded file. */
+export function screeningRequirementsComplete(requirements: readonly ActivationRequirement[]): boolean {
+  return (["insurance_quote", "screening"] as const).every(
+    (key) => requirements.some((requirement) => requirement.key === key && requirement.met === true),
+  );
+}
 
 /** The readiness checklist, in the order the work is done. */
 export function activationRequirements(f: DriverReadinessFacts): ActivationRequirement[] {
@@ -365,6 +375,11 @@ export function activationRequirements(f: DriverReadinessFacts): ActivationRequi
   const license = licenseCheck(f);
   const agreement = agreementCheck(f);
   const gigOnFile = !missing.has("gig_profile");
+  const currentFile = (category: "income" | "insurance_quote" | "screening") => f.documents.some(
+    (d) => d.category === category && d.is_current === true && d.review_status !== "rejected" && !!d.id && !!d.storage_path,
+  );
+  const incomeOnFile = currentFile("income");
+  const checkedFile = (field: "insurance_quote" | "screening") => currentFile(field) && f.evidence?.[field] === "collected";
   const rentalActive = f.rentalActive === true;
   return [
     {
@@ -388,11 +403,32 @@ export function activationRequirements(f: DriverReadinessFacts): ActivationRequi
       detail: "Screenshot Review Only · Platform Not Verified",
     },
     {
+      key: "income",
+      label: "Income Verified",
+      met: incomeOnFile || f.evidence?.income === "collected",
+      enforcement: "advisory",
+      ...(!incomeOnFile && f.evidence?.income === "collected" ? { detail: "Upload Due" } : {}),
+    },
+    {
       key: "insurance_verified",
       label: "Insurance Verified",
       met: ins.status === "verified",
       enforcement: "advisory",
       detail: insuranceStatusLabel(ins.status),
+    },
+    {
+      key: "insurance_quote",
+      label: "Insurance Quote",
+      met: checkedFile("insurance_quote"),
+      enforcement: "advisory",
+      detail: "Saved Check-Off And File Required",
+    },
+    {
+      key: "screening",
+      label: "Screening",
+      met: checkedFile("screening"),
+      enforcement: "advisory",
+      detail: "Saved Check-Off And File Required",
     },
     {
       key: "approved",
@@ -401,17 +437,17 @@ export function activationRequirements(f: DriverReadinessFacts): ActivationRequi
       enforcement: "hard",
     },
     {
-      key: "inspection",
-      label: "Pre-Inspection Passed",
-      met: f.hasPassedInspection,
-      enforcement: "soft",
-    },
-    {
       key: "signed_agreement",
       label: "Rental Agreement Signed",
       met: agreement === "file" || agreement === "staff_confirmed",
       enforcement: agreement === "not_collected" ? "soft" : "hard",
       ...(agreement === "staff_confirmed" ? { detail: "Upload Due" } : agreement === "not_collected" ? { detail: "Not Collected" } : {}),
+    },
+    {
+      key: "inspection",
+      label: "Pre-Inspection Passed",
+      met: f.hasPassedInspection,
+      enforcement: "soft",
     },
     { key: "pickup", label: "Pickup Complete", met: rentalActive, enforcement: "advisory" },
     { key: "rental_active", label: "Rental Active", met: rentalActive, enforcement: "advisory" },
