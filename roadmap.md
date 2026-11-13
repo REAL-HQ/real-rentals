@@ -105,3 +105,4 @@
 - [x] Test-only synthetic mode (dev-only flag, role-checked) + browser acceptance: Owner/Manager PASS, Driver/Coordinator/signed-out denied, logout/switch cache clear PASS
 - [x] Test mode restored to disabled; report at /mnt/documents/REAL_RENTALS_Stripe_Collections_Test_Activation_Report.md
 - [ ] Production activation: flip STRIPE_COLLECTIONS_ENABLED to true + Preview verify + publish (awaits user approval)
+- [x] Removed the Payment column from the Drivers list: the table now runs Name, Contact, Status, Phone, Email, Readiness, Applied and Open with wider columns; payment standing stays in each driver's profile and on Payments. Expanded earlier-submission rows were realigned to the same eight columns. Typecheck and build OK; signed-in Preview verified eight headers and eight cells per row with no runtime errors. No records, access or publication changes.

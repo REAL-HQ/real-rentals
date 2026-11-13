@@ -300,7 +300,6 @@ function useNow(intervalMs = 30000) {
 }
 
 
-type PayIndex = Record<string, PayCells>;
 function payCells(e: PayCells | undefined): PayCells { return e ?? NO_PAY_CELLS; }
 
 function panelTier(isOwner: boolean, isManager: boolean): StaffTier {
@@ -603,9 +602,6 @@ export function DriversPanel({
   const [screenings, setScreenings] = useState<Record<string, DriverScreeningRow>>({});
   const [docCounts, setDocCounts] = useState<Record<string, number>>({});
   const [docRows, setDocRows] = useState<ReadinessDocument[]>([]);
-  const [payIndex, setPayIndex] = useState<PayIndex>({});
-  const loadPay = useServerFn(getDriverPayStatuses);
-  useEffect(() => { void loadPay({ data: {} }).then(setPayIndex).catch(() => setPayIndex({})); }, [loadPay]);
   const runMerge = useServerFn(mergeDuplicateApplications);
   const acknowledge = useServerFn(acknowledgeApplication);
   const now = useNow();
@@ -1369,18 +1365,16 @@ setDocCounts(requiredDocCounts(rows));
           <table className="w-full table-fixed text-sm" data-testid="drivers-table">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Name</th>
-                <th className="w-[11%] text-left font-medium px-2 py-2.5 border-b border-border">Contact</th>
-                <th className="w-[10%] text-left font-medium px-2 py-2.5 border-b border-border">Status</th>
-                <th className="w-[11%] text-left font-medium px-2 py-2.5 border-b border-border">Phone</th>
-                <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Email</th>
-                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Readiness</th>
+                <th className="w-[16%] text-left font-medium px-2 py-2.5 border-b border-border">Name</th>
+                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Contact</th>
+                <th className="w-[11%] text-left font-medium px-2 py-2.5 border-b border-border">Status</th>
+                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Phone</th>
+                <th className="w-[16%] text-left font-medium px-2 py-2.5 border-b border-border">Email</th>
+                <th className="w-[13%] text-left font-medium px-2 py-2.5 border-b border-border">Readiness</th>
                 {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
                   <DriverDocExpiryHeader />
                 ) : null}
-                <th className="w-[10%] text-left font-medium px-2 py-2.5 border-b border-border">Payment</th>
-                <th className="hidden">Deposit</th>
-                <th className="w-[10%] text-left font-medium px-2 py-2.5 border-b border-border">Applied</th>
+                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Applied</th>
                 <th className="w-[8%] px-2 py-2.5 border-b border-border text-right sticky right-0 bg-[#FAFAFB]">Open</th>
               </tr>
             </thead>
@@ -1557,16 +1551,6 @@ setDocCounts(requiredDocCounts(rows));
                         />
                       </td>
                     ) : null}
-                    <td className="px-2 py-2.5 whitespace-nowrap text-muted-foreground">
-                      <span className="block truncate">{payCells(payIndex[a.id]).pay}</span>
-                      {(() => {
-                        const d = payCells(payIndex[a.id]).dep;
-                        return d.text && d.text !== "—" ? (
-                          <span className="block truncate text-[10px] opacity-70">Dep {d.text}</span>
-                        ) : null;
-                      })()}
-                    </td>
-                    <td className="hidden" aria-hidden="true" />
                     <td className="px-2 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
                       {a.created_at ? (
                         <>
@@ -1675,11 +1659,14 @@ setDocCounts(requiredDocCounts(rows));
                         className="cursor-pointer bg-soft/30 border-b border-border text-xs text-muted-foreground hover:bg-soft/60"
                       >
                         <td className="pl-10 pr-4 py-2 italic">↳ earlier submission</td>
+                        {/* A superseded submission has no conversation of its
+                            own: the contact status belongs to the person, and
+                            it is on their primary row above. */}
+                        <td className="px-4 py-2">—</td>
+                        <td className="px-4 py-2 capitalize">{h.status}</td>
                         <td className="px-4 py-2">{h.phone ? formatPhone(h.phone) : "—"}</td>
                         <td className="px-4 py-2">{h.email || "—"}</td>
                         <td className="px-4 py-2">—</td>
-                        <td className="px-4 py-2">{payCells(payIndex[h.id]).pay}</td>
-                        <td className="px-4 py-2">{payCells(payIndex[h.id]).dep.text}</td>
                         {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
                           <td className="px-4 py-2">
                             <DriverDocExpiryCell
@@ -1688,11 +1675,6 @@ setDocCounts(requiredDocCounts(rows));
                             />
                           </td>
                         ) : null}
-                        <td className="px-4 py-2 capitalize">{h.status}</td>
-                        {/* A superseded submission has no conversation of its
-                            own: the contact status belongs to the person, and
-                            it is on their primary row above. */}
-                        <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">
                           <div>{fmtDate(h.created_at!)}</div>
                           <div className="opacity-70">
@@ -1711,7 +1693,7 @@ setDocCounts(requiredDocCounts(rows));
               })}
               {grouped.length === 0 && (
                 <tr>
-                  <td colSpan={DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? 11 : 10} className="p-4">
+                  <td colSpan={DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? 9 : 8} className="p-4">
                     <EmptyState
                       title="No Drivers Yet"
                       hint="Drivers appear here as soon as someone completes the quote form or an application."
