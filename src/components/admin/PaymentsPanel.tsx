@@ -24,6 +24,7 @@ import { fmtDate as formatDate } from "@/lib/date-format";
 import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
 import { UnmatchedStripePayments } from "./UnmatchedStripePayments";
+import { UnmatchedRenterPayments } from "./RenterPayments";
 import { BILLING_DAY_CHANGE_ENABLED, BILLING_ONE_TIME_EXTENSION_ENABLED, BILLING_PM_UPDATE_LINK_ENABLED } from "@/lib/billing-controls-flag";
 import { BillingControls } from "./BillingControls";
 import type { StaffTier } from "@/lib/roles";
@@ -238,6 +239,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
       ) : (
       <>
       {STRIPE_UNMATCHED_PAYMENTS_ENABLED ? <UnmatchedStripePayments /> : null}
+      <UnmatchedRenterPayments />
       {(BILLING_PM_UPDATE_LINK_ENABLED || BILLING_DAY_CHANGE_ENABLED || BILLING_ONE_TIME_EXTENSION_ENABLED) ? <BillingControls /> : null}
       <div className="admin-sticky-bar mb-4 flex flex-col gap-2 pb-2 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2">
         <div className="flex gap-2 text-xs max-lg:min-w-0 max-lg:overflow-x-auto max-lg:pb-1 lg:flex-wrap">

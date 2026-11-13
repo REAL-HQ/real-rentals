@@ -162,6 +162,7 @@ import {
 import { AgreementsCard } from "./AgreementsCard";
 import { ContactStatusCell } from "./ContactStatusCell";
 import { RecordPaymentDialog } from "./RentPaymentActions";
+import { RenterPayments } from "./RenterPayments";
 import { ApprovedNotRentingList } from "./ApprovedNotRenting";
 import { listApprovedNotRenting } from "@/lib/booking-funnel.functions";
 import type { ApprovedNotRentingResult } from "@/lib/booking-funnel";
@@ -2860,6 +2861,7 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="payments" className="mt-0 space-y-4">
+                <RenterPayments driverId={driver.id} />
                 {isManager && <DriverStatement driverId={driver.id} />}
                 <Card title="Payment Terms" icon={<CreditCard className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
