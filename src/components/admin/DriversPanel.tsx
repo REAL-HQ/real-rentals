@@ -1298,7 +1298,7 @@ setDocCounts(requiredDocCounts(rows));
                 ) : null}
                 <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Payment</th>
                 <th className="hidden">Deposit</th>
-                <th className="hidden">Created</th>
+                <th className="w-[10%] text-left font-medium px-2 py-2.5 border-b border-border">Applied</th>
                 <th className="w-[8%] px-2 py-2.5 border-b border-border text-right sticky right-0 bg-[#FAFAFB]">Open</th>
               </tr>
             </thead>
@@ -1478,7 +1478,16 @@ setDocCounts(requiredDocCounts(rows));
                       })()}
                     </td>
                     <td className="hidden" aria-hidden="true" />
-                    <td className="hidden" aria-hidden="true" />
+                    <td className="px-2 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
+                      {a.created_at ? (
+                        <>
+                          <div>{fmtDate(a.created_at)}</div>
+                          <div className="text-[10px] opacity-70">
+                            {new Date(a.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                          </div>
+                        </>
+                      ) : "—"}
+                    </td>
                     <td className="px-2 py-2.5 text-right sticky right-0 bg-white" onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-soft text-muted-foreground">
