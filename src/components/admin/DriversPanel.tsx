@@ -1902,6 +1902,7 @@ function DriverDetail({
       return;
     }
     let cancelled = false;
+    setReservationDepositStatus(null);
     void Promise.all([
       loadOpenReservation({ data: { applicationId: driver.id } }),
       loadReservationDepositSettings(),
@@ -2661,6 +2662,7 @@ function DriverDetail({
                   readiness={rentalTabReadiness}
                   renderEvidence={renderChecklistEvidence}
                   evidence={evidencePresentation}
+                  reservationPaymentStatus={reservationDepositStatus}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onReserve={() => runTarget({ kind: "reserve" })}

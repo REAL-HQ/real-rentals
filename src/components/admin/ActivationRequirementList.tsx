@@ -53,7 +53,7 @@ export function ActivationRequirementList({
           const action = onRun ? blocker ? { label: blocker.fix, target: blocker.target } : checklistAction(r) : null;
           const fileState = evidence?.[r.key];
           const fileControls = renderEvidence?.(r.key);
-          const status = fileState?.label ?? (r.met === true ? "Complete" : r.met === null ? "Choose A Vehicle" : ENFORCEMENT_LABEL[r.enforcement]);
+          const status = fileState?.label ?? (r.key === "reservation_paid" ? r.detail ?? "Not Recorded" : r.met === true ? "Complete" : r.met === null ? "Choose A Vehicle" : ENFORCEMENT_LABEL[r.enforcement]);
           const completedIcon = (
             <span role="img" aria-label={fileState?.label ?? "Complete"} className="grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 border-success bg-success text-primary-foreground">
               <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />

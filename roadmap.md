@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Update Next Step presentation: Insurance Setup after the signed agreement, Reservation Paid before Inspection Setup; existing saved reservation status only, with payment View opening Payments. Signed-in desktop/phone order and navigation verified; 59 focused, 77 activation and 13 Next Step tests passed. No record, approval/activation-rule, payment or publication changes.
 - [x] Stop Approved from implicitly preparing an agreement; keep agreement sending explicit and remove the misleading missing-details toast.
 - [x] Send one short Approval Confirmation when an applicant first becomes Approved; keep login at Reserved, report delivery outcome, and test without sending real email.
 - [x] Let staff edit saved Call Complete notes later without changing completion metadata, interview answers, stage or verification history; test permissions and Preview without saving a real note.

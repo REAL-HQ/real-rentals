@@ -8,6 +8,7 @@ import {
 } from "../src/lib/activation-readiness";
 import { attestationInput, projectEvidence, requirementEvidence } from "../src/lib/checklist-evidence";
 import { driverLifecycle } from "../src/lib/driver-lifecycle";
+import { driverNextStepRequirements } from "../src/lib/driver-next-step-requirements";
 
 const facts: DriverReadinessFacts = {
   status: "approved",
@@ -24,23 +25,15 @@ const doc = (category: string) => ({
 });
 
 describe("Driver checklist alignment", () => {
-  it("uses the twelve requested Next Step labels and order", () => {
+  it("places insurance setup after the signed agreement and reservation payment before inspection", () => {
     const requirements = activationRequirements(facts);
-    const items = NEXT_STEP_REQUIREMENT_KEYS.map((key) => requirements.find((item) => item.key === key));
-    expect(items.map((item) => item?.label)).toEqual([
-      "Interview Complete",
-      "Driver's License Verified",
-      "Gig Profile Verified",
-      "Income Verified",
-      "Insurance Verified",
-      "Insurance Quote",
-      "Screening",
-      "Application Approved",
-      "Rental Agreement Signed",
-      "Pre-Inspection Passed",
-      "Pickup Complete",
-      "Rental Active",
+    const items = driverNextStepRequirements(requirements, "pending");
+    expect(items.map((item) => item.key)).toEqual([
+      "interview", "license_documents", "gig_profile", "income", "insurance_quote", "screening",
+      "approved", "signed_agreement", "insurance_verified", "reservation_paid", "inspection", "pickup", "rental_active",
     ]);
+    expect(items.map((item) => item.key)).toEqual(NEXT_STEP_REQUIREMENT_KEYS);
+    expect(requirements.some((item) => item.key === "reservation_paid")).toBe(false);
   });
 
   it("removes License and Profile and places Agreement before Reserved", () => {

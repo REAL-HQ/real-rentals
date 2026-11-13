@@ -51,6 +51,8 @@ export function checklistAction(requirement: ActivationRequirement): ChecklistAc
       return { label: "View", target: { kind: "section", tab: "application", anchor: "" } };
     case "gig_platform":
       return null;
+    case "reservation_paid":
+      return { label: "View", target: { kind: "section", tab: "payments", anchor: "" } };
     case "pickup":
       return { label: "Activate Rental", target: { kind: "activate" } };
     case "rental_active":
