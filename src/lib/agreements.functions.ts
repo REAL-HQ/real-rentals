@@ -607,6 +607,11 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
     license_plate: { label: "Vehicle license plate", why: "The v1.6 agreement identifies the vehicle by plate.", fix: vfix },
     card_on_file: { label: "Payment card on file", why: "The v1.6 agreement authorizes weekly charges to a card on file, and no other payment wording is legally approved yet. Ask the driver to save a card in Payments; preparing or sending the agreement never charges it.", fix: pay },
     min_term_end: { label: "Minimum-term end date", why: "Needs the contract start date and the template's minimum term (weeks).", fix: pay },
+    damage_waiver: { label: "Damage Waiver: Accepted or Declined", why: "This agreement prints the renter's Damage Waiver choice, and the renter initials it. Ask the renter and record the answer under Payment & Damage Waiver." },
+    payment_method: { label: "Payment method", why: "This agreement prints how the renter will pay rent. Choose it under Payment & Damage Waiver." },
+    payment_amount: { label: "Payment schedule (Weekly or Every 4 Weeks)", why: "The amount due each payment is calculated from the weekly rate, the Damage Waiver choice and the payment schedule. Choose all three." },
+    balance_due: { label: "Balance due at pickup", why: "Calculated as the first payment less the Reservation Fee. It needs the weekly rate, the Damage Waiver choice and the payment schedule." },
+    vehicle_owner: { label: "Vehicle owner as shown on the registration", why: "This agreement names the registered owner of the vehicle. Enter the name exactly as printed on the registration." },
     additional_drivers: { label: "Approved additional drivers (or None)", why: "Staff must state the approved additional drivers. This entry arrives with Driver Agreement Preparation; nothing is assumed until then." },
   };
   for (const [k, b] of Object.entries(need)) {
@@ -622,6 +627,10 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
  * The ONE generation step for preview and send: readiness, template,
  * rendered text and fingerprint.
  */
+function usesField(body: string, key: string): boolean {
+  return new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "i").test(body);
+}
+
 async function prepareAgreement(admin: any, applicationId: string, prep?: AgreementPrep, templateKey?: string, vehicleId?: string) {
   const built = await buildMergeData(admin, applicationId, vehicleId, prep);
   const lib = templateKey ? libraryTemplate(templateKey) : null;
@@ -639,7 +648,17 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "deposit_amount") built.blockers.splice(i, 1);
     built.blockers.push(...r.blockers);
     // v1.10+ prints the entered Reservation Fee amount (or "None"), not checkboxes.
-    const line = lib?.reservationStyle === "amount"
+    // A saved template that prints Balance Due (v1.14) uses the same style.
+    const amountStyle = lib?.reservationStyle === "amount" || usesField(tpl.body, "balance_due");
+    // v1.14 money rows: amount due each payment and the balance due at pickup.
+    if (usesField(tpl.body, "balance_due") || usesField(tpl.body, "payment_amount")) {
+      const { paymentRows, parseUsd } = await import("@/lib/agreement-prep");
+      const rows = paymentRows(prep, { weeklyRate: parseUsd(built.data.weekly_rate), waiverFee: parseUsd(terms?.damage_waiver_fee) });
+      built.data.payment_amount = rows.payment_amount;
+      built.data.balance_due = rows.balance_due;
+      built.blockers.push(...rows.blockers);
+    }
+    const line = amountStyle
       ? (prep.reservation.mode === "required" && (prep.reservation.amount ?? 0) > 0
           ? `$${Number(prep.reservation.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
           : "None")
@@ -758,6 +777,7 @@ async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepare
       merge,
       values: prep.editorValues,
       terms: readTerms(tpl.body),
+      templateFields: [...new Set([...tpl.body.matchAll(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi)].map((x) => x[1].toLowerCase()))],
       missing,
       blockers,
       vehicleId: namedVehicle ? prep.namedVehicleId : ((app.vehicle_id as string | null) ?? null),

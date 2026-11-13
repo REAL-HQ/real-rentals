@@ -16,11 +16,13 @@ import {
   Smartphone,
   MapPin,
   ListChecks,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentCapture } from "./DocumentCapture";
 import { Logo } from "./Logo";
 import { getApplicationForWizard, updateApplicationStep } from "@/lib/applications.functions";
+import { INSURANCE_CONSENT_ITEMS, INSURANCE_CONSENT_LABEL } from "@/lib/insurance-consent";
 import { uploadApplicantFile, UploadTooLarge } from "@/lib/applicant-upload";
 import { clearResumeToken } from "@/lib/resume-token";
 import { WelcomeBack } from "./WelcomeBack";
@@ -684,7 +686,8 @@ function WizardSteps({
           update={update}
           saving={saving}
           onBack={() => setPhase("rental")}
-          onSubmit={() => go("submitted", fieldsFor("driving", state))}
+          // Submit is only reachable with the Insurance Authorization ticked.
+          onSubmit={() => go("submitted", { ...fieldsFor("driving", state), insurance_consent: true })}
         />
       )}
       {phase === "submitted" && (
@@ -1187,7 +1190,10 @@ function DrivingStep({
   // and platforms are genuinely optional. A blank trip count means we do not
   // know it, and a driver who has not counted their trips is not turned away
   // at the door for it.
-  const canSubmit = !!state.gig_status && !!state.drive_type;
+  // Unchecked by default, and never restored from a previous visit: the
+  // authorization is an act the applicant performs when they submit.
+  const [insuranceConsent, setInsuranceConsent] = useState(false);
+  const canSubmit = !!state.gig_status && !!state.drive_type && insuranceConsent;
   const toggle = (p: string) => {
     update(
       "platforms",
@@ -1289,8 +1295,38 @@ function DrivingStep({
           onChange={(v) => update("drive_type", v)}
         />
 
-        <div className="rounded-xl border border-border bg-soft p-4 text-sm text-muted-foreground">
-          Insurance is included, with the policy in your name. One less bill to worry about. You do not need to upload proof of insurance.
+        <div className="rounded-xl border border-border bg-soft p-4">
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="h-5 w-5 text-real-red shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-foreground">Insurance Authorization</div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Insurance is included, with the policy in your name. One less bill to worry about. You do not need to upload proof of insurance.
+              </p>
+            </div>
+          </div>
+          <ol className="mt-3 space-y-2 text-[13px] leading-relaxed text-muted-foreground list-decimal pl-5">
+            {INSURANCE_CONSENT_ITEMS.map((item) => (
+              <li key={item.title}>
+                <span className="font-semibold text-foreground">{item.title}.</span> {item.text}
+              </li>
+            ))}
+          </ol>
+          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-white p-3 min-h-[44px]">
+            <input
+              type="checkbox"
+              checked={insuranceConsent}
+              onChange={(e) => setInsuranceConsent(e.target.checked)}
+              className="mt-0.5 h-5 w-5 shrink-0 accent-[#D03020]"
+              aria-describedby="insurance-consent-required"
+            />
+            <span className="text-sm font-medium text-foreground">{INSURANCE_CONSENT_LABEL}</span>
+          </label>
+          {!insuranceConsent && (
+            <p id="insurance-consent-required" className="mt-2 text-[12px] text-muted-foreground">
+              Check the box to submit your application.
+            </p>
+          )}
         </div>
       </div>
       <NavRow

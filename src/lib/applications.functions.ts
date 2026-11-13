@@ -89,6 +89,9 @@ const stepUpdateSchema = z.object({
     .optional(),
   // Part 1 — driving
   drive_type: z.enum(["full_time", "part_time"]).nullable().optional(),
+  // The applicant ticked the Insurance Authorization (insurance-consent.ts).
+  // Only ever `true`: it is evidence of an affirmative act, never a column.
+  insurance_consent: z.literal(true).optional(),
   insurance_answer: z.enum(["yes", "no", "not_sure"]).nullable().optional(),
   // Part 2 — licence
   license_valid: z.boolean().nullable().optional(),
@@ -632,7 +635,7 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     // Clean undefined keys so we never overwrite with NULL by accident
     const patch: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(fields)) {
-      if (k === "trip_screenshots_keep") continue;
+      if (k === "trip_screenshots_keep" || k === "insurance_consent") continue;
       if (v !== undefined) patch[k] = v;
     }
 
@@ -791,6 +794,25 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     // written, and the applicant gets the same answer as the early refusal.
     // Terminal: the wizard never retries this message.
     if (!row) throw new Error(APPLICATION_LOCKED_MESSAGE);
+
+    // Insurance Authorization evidence. Written only for an affirmative,
+    // unchecked-by-default tick, after the application itself is saved, with
+    // the wording and version taken from the server-side module (never from
+    // the browser) plus the request's IP and user agent. It lives in the
+    // append-only audit log, which no browser session can write or erase.
+    // logAudit swallows its own errors, so this can never fail a submission.
+    if (fields.insurance_consent === true) {
+      const { INSURANCE_CONSENT_ACTION, INSURANCE_CONSENT_SOURCE_WEB, INSURANCE_CONSENT_TEXT, INSURANCE_CONSENT_VERSION } =
+        await import("@/lib/insurance-consent");
+      const { logAudit } = await import("@/lib/audit.server");
+      await logAudit(null, {
+        action: INSURANCE_CONSENT_ACTION,
+        summary: `Applicant gave the Insurance Authorization (${INSURANCE_CONSENT_VERSION})`,
+        entityType: "application",
+        entityId: id,
+        metadata: { version: INSURANCE_CONSENT_VERSION, text: INSURANCE_CONSENT_TEXT, source: INSURANCE_CONSENT_SOURCE_WEB, step },
+      });
+    }
 
     // Mirror any files the applicant uploaded into the document vault so they
     // show up in the portal (where the renter can replace them) and in the
