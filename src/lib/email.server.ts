@@ -235,6 +235,7 @@ export function emailReason(workflow: string | undefined): string {
   if (!workflow) return "You received this email from REAL RENTALS about your account or rental.";
   if (STAFF_WORKFLOWS.has(workflow)) return "Internal REAL RENTALS team notification.";
   if (workflow === "approval_confirmation") return "You received this because your REAL RENTALS driver application was approved.";
+  if (workflow === "signup_confirm") return "You received this because you created a REAL RENTALS account.";
   if (workflow.startsWith("application")) return "You received this because you started a driver application with REAL RENTALS.";
   if (workflow.startsWith("esign")) return "You received this because a REAL RENTALS rental agreement was prepared for you.";
   if (workflow.startsWith("payment") || workflow.startsWith("rent_reminder") || workflow === "card_expiring") return "You received this because you have a rental account with REAL RENTALS.";
@@ -1156,6 +1157,15 @@ export async function sendPasswordResetEmail(args: { to: string; url: string }):
       <a href="${args.url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Set A New Password</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${args.url}</span></p>`);
   return sendEmail({ to: args.to, subject: "Set A New Password For Your REAL RENTALS Account", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "password_reset" } });
+}
+
+export async function sendSignupConfirmEmail(args: { to: string; url: string }): Promise<SendResult> {
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Confirm Your Email</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Confirm this email address to finish creating your REAL RENTALS account. The link works once and expires soon. If you did not create an account, you can ignore this email.</p>
+      <a href="${args.url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Confirm Your Email</a>
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${args.url}</span></p>`);
+  return sendEmail({ to: args.to, subject: "Confirm Your Email For Your REAL RENTALS Account", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "signup_confirm" } });
 }
 
 export async function sendPortalSignInEmail(args: { to: string; code: string; link: string; minutes: number }): Promise<SendResult> {
