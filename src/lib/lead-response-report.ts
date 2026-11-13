@@ -87,7 +87,7 @@ function median(values: number[]): number | null {
 
 /**
  * A lead is contacted when contact_status is not "new", or when contacted_at
- * is set. Unqualified leads are left out. The time is the earlier of
+ * is set. Unqualified and Declined leads are left out. The time is the earlier of
  * contacted_at and, once the status has left "new", contact_status_at.
  *
  * contact_status_at is the time the Contact Status cell was saved, not the
@@ -100,7 +100,7 @@ export function firstContact(row: RawLead): {
   beforeCreated: boolean;
 } {
   const status = typeof row?.contact_status === "string" ? row.contact_status : "new";
-  if (status === "unqualified") return { contacted: false, hours: null, beforeCreated: false };
+  if (status === "unqualified" || status === "declined") return { contacted: false, hours: null, beforeCreated: false };
   const contactedAt = stamp(row?.contacted_at);
   const statusAt = status !== "new" ? stamp(row?.contact_status_at) : null;
   const contacted = status !== "new" || contactedAt != null;
@@ -145,7 +145,7 @@ export function buildLeadResponseReport(
   const nowMs = now.getTime();
   const grouped = new Map<string, { hours: number[]; uncontactedOver24h: number; contactBeforeCreated: number }>();
   for (const row of rows) {
-    if (row?.contact_status === "unqualified") continue;
+    if (row?.contact_status === "unqualified" || row?.contact_status === "declined") continue;
     const source = sourceLabel(row?.source);
     const bucket = grouped.get(source) ?? { hours: [], uncontactedOver24h: 0, contactBeforeCreated: 0 };
     const contact = firstContact(row);
@@ -179,7 +179,7 @@ export function addDueFollowUps(
 ): void {
   const today = leadToday(now);
   for (const row of rows) {
-    if (row?.contact_status === "unqualified") continue;
+    if (row?.contact_status === "unqualified" || row?.contact_status === "declined") continue;
     const due = calendarDay(row?.contact_follow_up_on);
     if (due == null || due > today) continue;
     const source = sourceLabel(row?.source);
@@ -208,7 +208,7 @@ export function applyFollowUpCounts(
 }
 
 function activeContactStatuses(): string[] {
-  return CONTACT_STATUS_KEYS.filter((status) => status !== "unqualified");
+  return CONTACT_STATUS_KEYS.filter((status) => status !== "unqualified" && status !== "declined");
 }
 
 function dueFollowUps(admin: ResponseAdmin, statuses: string[], today: string, columns: string, exact: boolean) {

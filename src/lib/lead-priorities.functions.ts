@@ -44,7 +44,7 @@ export const getLeadPriorities = createServerFn({ method: "POST" })
         .in("status", ACTIVE_LEAD_STATUSES)
         .in(
           "contact_status",
-          CONTACT_STATUS_KEYS.filter((s) => s !== "unqualified"),
+          CONTACT_STATUS_KEYS.filter((s) => s !== "unqualified" && s !== "declined"),
         );
 
     // Mutually exclusive groups for All / New / Follow-up Due counters and pages.
