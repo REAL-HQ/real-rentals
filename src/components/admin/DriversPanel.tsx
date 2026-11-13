@@ -112,8 +112,10 @@ import {
 } from "@/components/ui/select";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -148,6 +150,7 @@ import {
   Wallet,
   CalendarDays,
   Link2 as LinkIcon,
+  ListFilter,
   Loader2,
 } from "lucide-react";
 import { issueCardOnFileLink, removeCardOnFile } from "@/lib/payments.functions";
@@ -1114,7 +1117,8 @@ setDocCounts(requiredDocCounts(rows));
     all: "All", new: "New", reviewing: "Reviewing", approved: "Approved", waitlist: "Waitlist",
     active: "Active", suspended: "Suspended", declined: "Declined", closed: "Closed",
   };
-  const FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active", "suspended", "declined", "closed"];
+  const PRIMARY_FILTER_ORDER = ["all", "new", "reviewing", "approved", "active"];
+  const MENU_FILTER_ORDER = ["waitlist", "suspended", "declined", "closed"];
   const filterCount = (s: string) => {
     if (s === "active" && activeReadFailed && activeRenters.size === 0) return "…";
     const count = applicationFilterCount(s, drivers, held, activeRenters, waitlistCount);
@@ -1126,28 +1130,54 @@ setDocCounts(requiredDocCounts(rows));
       expiryCounts[row.status] += 1;
     }
   }
-  const filterButtons = FILTER_ORDER.map((s) => (
+  const documentsExpiringCount = expiringFailed
+    ? "—"
+    : expiringDocs
+      ? (expiringDocs.defaultScope === "renting" ? expiringDocs.renting.length : expiringDocs.approved.length)
+      : "…";
+  const awaitingReservationCount = funnelFailed || !funnel ? (funnelLoading ? "…" : "—") : funnel.rows.length;
+  const filterLabelWithCount = (s: string) => {
+    if (s === "documents-expiring") return `Documents Expiring (${documentsExpiringCount})`;
+    if (s === "approved-not-renting") return `Approved, Awaiting Reservation (${awaitingReservationCount})`;
+    if (s === "stalled") return `Stalled (${stalledRows == null ? "…" : stalledRows.length})`;
+    return `${FILTER_LABEL[s] ?? s} (${filterCount(s)})`;
+  };
+  const filterButtons = PRIMARY_FILTER_ORDER.map((s) => (
     <button
       key={s}
+      type="button"
       onClick={() => setFilter(s)}
       className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === s ? "bg-black text-white" : "bg-white border border-border"}`}
     >
-      {FILTER_LABEL[s]} ({filterCount(s)})
+      {filterLabelWithCount(s)}
     </button>
   ));
+  const menuFilterButtons = MENU_FILTER_ORDER.map((s) => (
+    <DropdownMenuCheckboxItem
+      key={s}
+      checked={filter === s}
+      onCheckedChange={() => setFilter(s)}
+      className="bg-white text-xs text-foreground focus:bg-muted"
+    >
+      {filterLabelWithCount(s)}
+    </DropdownMenuCheckboxItem>
+  ));
   if (stalledOn) {
-    filterButtons.push(
-      <button
+    menuFilterButtons.push(
+      <DropdownMenuCheckboxItem
         key="stalled"
-        type="button"
         data-stalled-filter
-        onClick={() => setFilter("stalled")}
-        className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "stalled" ? "bg-black text-white" : "bg-white border border-border"}`}
+        checked={filter === "stalled"}
+        onCheckedChange={() => setFilter("stalled")}
+        className="bg-white text-xs text-foreground focus:bg-muted"
       >
         Stalled ({stalledRows == null ? "…" : stalledRows.length})
-      </button>,
+      </DropdownMenuCheckboxItem>,
     );
   }
+  const hiddenFilter = PRIMARY_FILTER_ORDER.includes(filter) ? null : filter;
+  const activeContact = CONTACT_STATUSES.find((cs) => cs.key === contactFilter);
+  const activeFilterCount = Number(hiddenFilter !== null) + Number(contactFilter !== "all") + Number(docFilter !== "all");
   return (
     <div className="max-lg:min-w-0">
       {deleteDialog}
@@ -1176,73 +1206,124 @@ setDocCounts(requiredDocCounts(rows));
       {ONBOARDING_CHECKLIST_ENABLED === true && (
         <OnboardingChecklist canView={canViewOnboarding} result={onboardingResult} failed={onboardingFailed} />
       )}
-      <div className="admin-sticky-bar mb-4 flex flex-col gap-2 text-xs">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-        {filterButtons}
-        {canManageWaitlist && (
-          <button
-            type="button"
-            data-documents-expiring-filter
-            onClick={() => setFilter("documents-expiring")}
-            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "documents-expiring" ? "bg-black text-white" : "bg-white border border-border"}`}
-          >
-            Documents Expiring ({expiringFailed ? "—" : expiringDocs ? (expiringDocs.defaultScope === "renting" ? expiringDocs.renting.length : expiringDocs.approved.length) : "…"})
-          </button>
-        )}
-        {canManageWaitlist && (
-          <button
-            type="button"
-            data-approved-not-renting-filter
-            onClick={() => setFilter("approved-not-renting")}
-            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "approved-not-renting" ? "bg-black text-white" : "bg-white border border-border"}`}
-          >
-            Approved, Awaiting Reservation (
-            {funnelFailed || !funnel ? (funnelLoading ? "…" : "—") : funnel.rows.length})
-          </button>
-        )}
-        {/*
-         * Contact Status filter. Reads "Contact: All" so it can never be
-         * mistaken for the application-status chips beside it.
-         */}
-        <select
-          aria-label="Contact Status"
-          data-contact-filter
-          value={contactFilter}
-          onChange={(e) => setContactFilter(e.target.value)}
-          className="shrink-0 rounded-md border border-border bg-white px-2 py-1.5 text-xs"
+      <div className="admin-sticky-bar mb-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-xs">
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1">
+          {filterButtons}
+          {hiddenFilter ? (
+            <button
+              type="button"
+              aria-label="Clear Status Filter"
+              title="Clear Status Filter"
+              onClick={() => setFilter("all")}
+              className="shrink-0 whitespace-nowrap rounded-md bg-black px-3 py-1.5 text-white"
+            >
+              {filterLabelWithCount(hiddenFilter)} ×
+            </button>
+          ) : null}
+          {activeContact ? (
+            <button
+              type="button"
+              aria-label="Clear Contact Filter"
+              title="Clear Contact Filter"
+              onClick={() => setContactFilter("all")}
+              className="shrink-0 whitespace-nowrap rounded-md border border-border bg-white px-3 py-1.5"
+            >
+              Contact: {activeContact.label} ×
+            </button>
+          ) : null}
+          {docFilter !== "all" ? (
+            <button
+              type="button"
+              aria-label="Clear Documents Filter"
+              title="Clear Documents Filter"
+              onClick={() => setDocFilter("all")}
+              className="shrink-0 whitespace-nowrap rounded-md border border-border bg-white px-3 py-1.5"
+            >
+              Documents ×
+            </button>
+          ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={activeFilterCount > 0 ? `Filters (${activeFilterCount})` : "Filters"}
+                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-white px-3 py-1.5 hover:bg-soft ${activeFilterCount > 0 ? "border-foreground" : ""}`}
+              >
+                <ListFilter className="h-3.5 w-3.5" /> Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-72 bg-white text-foreground">
+              <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">Status</DropdownMenuLabel>
+              {menuFilterButtons}
+              {canManageWaitlist ? (
+                <DropdownMenuCheckboxItem
+                  data-documents-expiring-filter
+                  checked={filter === "documents-expiring"}
+                  onCheckedChange={() => setFilter("documents-expiring")}
+                  className="bg-white text-xs text-foreground focus:bg-muted"
+                >
+                  Documents Expiring ({documentsExpiringCount})
+                </DropdownMenuCheckboxItem>
+              ) : null}
+              {canManageWaitlist ? (
+                <DropdownMenuCheckboxItem
+                  data-approved-not-renting-filter
+                  checked={filter === "approved-not-renting"}
+                  onCheckedChange={() => setFilter("approved-not-renting")}
+                  className="bg-white text-xs text-foreground focus:bg-muted"
+                >
+                  Approved, Awaiting Reservation ({awaitingReservationCount})
+                </DropdownMenuCheckboxItem>
+              ) : null}
+              <DropdownMenuSeparator />
+              <div className="px-2 py-1.5" onPointerDown={(event) => event.stopPropagation()}>
+                <label htmlFor="drivers-contact-filter" className="mb-1.5 block text-[11px] font-medium text-muted-foreground">Contact</label>
+                <select
+                  id="drivers-contact-filter"
+                  aria-label="Contact Status"
+                  data-contact-filter
+                  value={contactFilter}
+                  onChange={(e) => setContactFilter(e.target.value)}
+                  className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-xs text-foreground"
+                >
+                  <option value="all">All ({drivers.length})</option>
+                  {CONTACT_STATUSES.map((cs) => (
+                    <option key={cs.key} value={cs.key}>
+                      {cs.label} ({drivers.filter((a) => readContactStatus(a).state.status === cs.key).length})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+                <div className="px-2 py-1.5 [&_select]:w-full" onPointerDown={(event) => event.stopPropagation()}>
+                  <DriverDocExpiryFilter
+                    canView={canSeeSensitive}
+                    value={docFilter}
+                    onChange={setDocFilter}
+                    counts={expiryCounts}
+                    tncTracked={docExpiry?.tncTracked === true}
+                  />
+                </div>
+              ) : null}
+              {isOwner ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setShowDeleted(true)} className="bg-white text-xs text-foreground focus:bg-muted">
+                    Recently Deleted
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <button
+          type="button"
+          onClick={handleMerge}
+          disabled={merging}
+          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-white px-3 py-1.5 hover:bg-soft disabled:opacity-50"
         >
-          <option value="all">Contact: All ({drivers.length})</option>
-          {CONTACT_STATUSES.map((cs) => (
-            <option key={cs.key} value={cs.key}>
-              Contact: {cs.label} (
-              {drivers.filter((a) => readContactStatus(a).state.status === cs.key).length})
-            </option>
-          ))}
-        </select>
-        {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
-          <DriverDocExpiryFilter
-            canView={canSeeSensitive}
-            value={docFilter}
-            onChange={setDocFilter}
-            counts={expiryCounts}
-            tncTracked={docExpiry?.tncTracked === true}
-          />
-        ) : null}
-        {isOwner && (
-          <button type="button" className="shrink-0 px-3 py-1.5 rounded-md border text-xs" onClick={() => setShowDeleted(true)}>
-            Recently Deleted
-          </button>
-        )}
-        </div>
-        <div className="ml-auto">
-          <button
-            onClick={handleMerge}
-            disabled={merging}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50"
-          >
-            <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge Duplicates"}
-          </button>
-        </div>
+          <GitMerge className="h-3.5 w-3.5" /> {merging ? "Merging…" : "Merge Duplicates"}
+        </button>
       </div>
       {filter === "documents-expiring" ? (
         <DocumentsExpiringList
