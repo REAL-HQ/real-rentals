@@ -1117,8 +1117,8 @@ setDocCounts(requiredDocCounts(rows));
     all: "All", new: "New", reviewing: "Reviewing", approved: "Approved", waitlist: "Waitlist",
     active: "Active", suspended: "Suspended", declined: "Declined", closed: "Closed",
   };
-  const PRIMARY_FILTER_ORDER = ["all", "new", "reviewing", "approved", "active"];
-  const MENU_FILTER_ORDER = ["waitlist", "suspended", "declined", "closed"];
+  const PRIMARY_FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active"];
+  const MENU_FILTER_ORDER = ["suspended", "declined", "closed"];
   const filterCount = (s: string) => {
     if (s === "active" && activeReadFailed && activeRenters.size === 0) return "…";
     const count = applicationFilterCount(s, drivers, held, activeRenters, waitlistCount);
