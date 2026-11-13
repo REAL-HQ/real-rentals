@@ -760,8 +760,8 @@ export type InspectionToSign = {
 /**
  * The checkout inspection this renter is being asked to agree to.
  *
- * Condition photos and a completed checklist record what the car looked like
- * at handover, but only from our side. Until the renter signs that record, a
+ * Optional condition photos and a completed checklist record what the car looked
+ * like at handover, but only from our side. Until the renter signs that record, a
  * damage dispute is still our word against theirs.
  *
  * Returns the most recent passed pre-delivery inspection on the car they are

@@ -84,7 +84,7 @@ export function ActivationRequirementList({
           >
             {/* Status markers never navigate or pretend an unsaved attestation
                 is complete. Explicit review/upload actions remain separate. */}
-            <span className="flex min-w-0 items-center gap-2 px-1 py-2">{marker}<span className="min-w-0 break-words text-foreground">{r.label}{r.key === "inspection" && r.met !== true ? <span className="text-muted-foreground"> · Pickup Photos; Inspection Report Optional</span> : r.detail && r.met !== true ? <span className="text-muted-foreground"> · {r.detail}</span> : null}</span></span>
+            <span className="flex min-w-0 items-center gap-2 px-1 py-2">{marker}<span className="min-w-0 break-words text-foreground">{r.label}{r.key === "inspection" && r.met !== true ? <span className="text-muted-foreground"> · Pickup Photos Optional; Inspection Report Optional</span> : r.detail && r.met !== true ? <span className="text-muted-foreground"> · {r.detail}</span> : null}</span></span>
             <div className={embedded ? "ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5 max-sm:w-full" : `flex shrink-0 flex-col items-end gap-1 ${fileState ? "max-w-80 max-sm:w-full" : "max-w-36"}`}>
               <span className="text-right text-[10px] text-muted-foreground">{status}</span>
               {embedded ? fileControls : null}

@@ -24,7 +24,7 @@ export function driverNextStepRequirements(
     return [{
       ...requirement,
       label: key === "insurance_verified" ? "Insurance Setup"
-        : key === "inspection" ? "Inspection Setup" : requirement.label,
+        : key === "inspection" ? "Pickup Inspection" : requirement.label,
     }];
   });
 }

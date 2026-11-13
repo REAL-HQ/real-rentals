@@ -33,6 +33,7 @@ describe("Driver checklist alignment", () => {
       "approved", "signed_agreement", "insurance_verified", "reservation_paid", "inspection", "pickup", "rental_active",
     ]);
     expect(items.map((item) => item.key)).toEqual(NEXT_STEP_REQUIREMENT_KEYS);
+    expect(items.find((item) => item.key === "inspection")?.label).toBe("Pickup Inspection");
     expect(requirements.some((item) => item.key === "reservation_paid")).toBe(false);
   });
 

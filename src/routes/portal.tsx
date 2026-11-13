@@ -890,9 +890,9 @@ function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }
 /**
  * The renter's sign-off on the car's condition at handover.
  *
- * Our checklist and photos only record our side of it. Until the renter
- * agrees to that record, a damage dispute at return is our word against
- * theirs — so this puts the full inspection and every checkout photo in front
+ * Our checklist and any optional photos only record our side of it. Until the
+ * renter agrees to that record, a damage dispute at return is our word against
+ * theirs — so this puts the full inspection and any checkout photos in front
  * of them, with room to note anything they disagree with, before they sign.
  */
 function CheckoutSignOffCard() {
@@ -1077,7 +1077,7 @@ function CheckoutSignOffCard() {
                   className="mt-0.5"
                 />
                 <span>
-                  I have reviewed the photos and checklist above and agree this is the condition of
+                  I have reviewed the {data.media.length > 0 ? "photos and " : ""}checklist above and agree this is the condition of
                   the vehicle as I received it. Typing my name is my legal electronic signature.
                 </span>
               </label>
