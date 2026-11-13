@@ -40,7 +40,7 @@ describe("Driver checklist alignment", () => {
     const result = driverLifecycle({ contacted: true, screening: true, approved: true, inspection: false, agreement: false, rentalActive: false });
     expect(result.stages.map((stage) => stage.label)).toEqual([
       "Applied", "Contacted", "Documents", "Screening", "Approved",
-      "Agreement", "Reserved", "Inspection", "Pickup", "Active",
+      "Agreement", "Reserved", "Insurance", "Inspection", "Pickup", "Active",
     ]);
   });
 
@@ -98,7 +98,7 @@ describe("Pickup check-off", () => {
     expect(projection).toMatchObject({ tone: "yellow", status: "upload_due", complete: false });
     expect(requirementEvidence("pickup", [projection])?.tone).toBe("yellow");
     expect(activationRequirements(facts).find((item) => item.key === "rental_active")?.met).toBe(false);
-    const life = driverLifecycle({ contacted: true, documentsReceived: true, screening: true, approved: true, reserved: true, inspection: true, agreement: true, rentalActive: false, pickup: true });
+    const life = driverLifecycle({ contacted: true, documentsReceived: true, screening: true, approved: true, reserved: true, insuranceComplete: true, inspection: true, agreement: true, rentalActive: false, pickup: true });
     expect(life.stages.find((s) => s.key === "pickup")?.state).toBe("done");
     expect(life.stages.find((s) => s.key === "active")?.state).toBe("current");
   });

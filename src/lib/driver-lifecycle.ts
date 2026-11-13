@@ -7,6 +7,7 @@ export const DRIVER_LIFECYCLE_STAGES = [
   { key: "approved", label: "Approved" },
   { key: "agreement", label: "Agreement" },
   { key: "reserved", label: "Reserved" },
+  { key: "insurance", label: "Insurance" },
   { key: "inspection", label: "Inspection" },
   { key: "pickup", label: "Pickup" },
   { key: "active", label: "Active" },
@@ -19,6 +20,8 @@ export function driverLifecycle(facts: {
   approved: boolean; inspection: boolean; agreement: boolean; rentalActive: boolean;
   /** Existing reserved rental with confirmed pickup details; Active also completes this stage. */
   reserved?: boolean;
+  /** Existing authorized insurance readiness; reservation or activation never verifies insurance. */
+  insuranceComplete?: boolean;
   /** Saved staff pickup check-off (Yellow); Active still needs a real running rental. */
   pickup?: boolean;
   /** Aggregate receipt of license, gig-profile and income-proof files, not their verification. */
@@ -36,6 +39,7 @@ export function driverLifecycle(facts: {
     approved: facts.approved,
     agreement: facts.agreement,
     reserved: facts.rentalActive || facts.reserved === true,
+    insurance: facts.insuranceComplete === true,
     inspection: facts.inspection,
     pickup: facts.rentalActive || facts.pickup === true,
     active: facts.rentalActive,

@@ -28,7 +28,7 @@ test("no interview and no contact leaves Contacted not done", () => {
 
 test("an interview completion completes Contacted only, never later stages", () => {
   const l = driverLifecycle({ ...base, interviewComplete: true });
-  for (const key of ["documents", "screening", "approved", "agreement", "reserved", "inspection", "pickup", "active"]) {
+  for (const key of ["documents", "screening", "approved", "agreement", "reserved", "insurance", "inspection", "pickup", "active"]) {
     expect(stateOf(l, key)).not.toBe("done");
   }
 });

@@ -2044,10 +2044,13 @@ function DriverDetail({
   const actualInspection = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true;
   const actualAgreement = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true;
   const screeningComplete = !rentalTabReadinessLoading && !rentalTabReadinessFailed && screeningRequirementsComplete(rentalTabReadiness?.requirements ?? []);
+  const insuranceComplete = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.requirements.some((r) => r.key === "insurance_verified" && r.met === true) === true;
+  const insuranceEvidenceTone = insuranceComplete ? "green" : evidenceTone(evidenceItems.filter((i) => i.field === "insurance"));
   const { stages: lifecycle, current: currentStage, percent: percentComplete } = driverLifecycle({
     contacted, interviewComplete: screeningDone, screening: screeningComplete,
     documentsReceived: !vaultLoading && collectedDocuments.collected,
     approved, reserved: hasReservation, rentalActive: rentalActiveFlag,
+    insuranceComplete,
     pickup: isManager && pickupItems.some((i) => i.status === "upload_due"),
     // Saved Yellow/Red evidence stays visible; only a real passed inspection or signed agreement is Green.
     inspection: isManager ? actualInspection || addressed(inspectionItems) : actualInspection,
@@ -2608,6 +2611,7 @@ function DriverDetail({
               evidenceTones={CHECKLIST_EVIDENCE_ENABLED ? {
                 documents: collectedDocuments.tone,
                 ...(screeningEvidenceTone ? { screening: screeningEvidenceTone } : {}),
+                ...(insuranceEvidenceTone ? { insurance: insuranceEvidenceTone } : {}),
                 ...(inspectionEvidenceTone ? { inspection: inspectionEvidenceTone } : {}),
                 ...(agreementEvidenceTone ? { agreement: agreementEvidenceTone } : {}),
                 ...(pickupEvidenceTone && pickupEvidenceTone !== "red" ? { pickup: pickupEvidenceTone } : {}),
