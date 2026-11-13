@@ -1287,16 +1287,16 @@ setDocCounts(requiredDocCounts(rows));
           <table className="w-full table-fixed text-sm" data-testid="drivers-table">
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="w-[16%] text-left font-medium px-2 py-2.5 border-b border-border">Name</th>
-                <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Contact</th>
-                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Status</th>
-                <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Phone</th>
-                <th className="hidden">Email</th>
+                <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Name</th>
+                <th className="w-[11%] text-left font-medium px-2 py-2.5 border-b border-border">Contact</th>
+                <th className="w-[10%] text-left font-medium px-2 py-2.5 border-b border-border">Status</th>
+                <th className="w-[11%] text-left font-medium px-2 py-2.5 border-b border-border">Phone</th>
+                <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Email</th>
                 <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Readiness</th>
                 {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
                   <DriverDocExpiryHeader />
                 ) : null}
-                <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Payment</th>
+                <th className="w-[10%] text-left font-medium px-2 py-2.5 border-b border-border">Payment</th>
                 <th className="hidden">Deposit</th>
                 <th className="w-[10%] text-left font-medium px-2 py-2.5 border-b border-border">Applied</th>
                 <th className="w-[8%] px-2 py-2.5 border-b border-border text-right sticky right-0 bg-[#FAFAFB]">Open</th>
@@ -1441,8 +1441,15 @@ setDocCounts(requiredDocCounts(rows));
                         <span className="text-[11px] text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="hidden" aria-hidden="true">
-                      {a.email || ""}
+                    <td className="px-2 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      {a.email ? (
+                        <a href={`mailto:${a.email}`} title={a.email} className="flex items-center gap-1 min-w-0 text-[11px] text-muted-foreground hover:text-foreground hover:underline">
+                          <Mail className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{a.email}</span>
+                        </a>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       {canSeeSensitive ? (
