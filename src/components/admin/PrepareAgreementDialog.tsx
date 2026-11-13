@@ -5,7 +5,7 @@ import { ArrowLeft, ChevronDown, Loader2, Plus, ScanText, Send, Trash2 } from "l
 import { Button } from "@/components/ui/button";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { previewAgreement, sendAgreement } from "@/lib/agreements.functions";
-import { EMPTY_PREP, fillBlankAgreementDetails, type AgreementDetails, type AgreementPrep, type AdditionalDriver } from "@/lib/agreement-prep";
+import { EMPTY_PREP, PAYMENT_METHODS, PAYMENT_SCHEDULES, fillBlankAgreementDetails, type AgreementDetails, type AgreementPrep, type AdditionalDriver } from "@/lib/agreement-prep";
 import { defaultRentalEndIso } from "@/lib/agreement-dates";
 import { layoutToText } from "@/lib/agreement-layout";
 import { readAgreementLicense, readWrittenAgreement } from "@/lib/agreement-license.functions";
@@ -23,6 +23,8 @@ type Res = {
   merge: Record<string, string>;
   values: AgreementDetails;
   terms: Record<string, string> | null;
+  /** Merge fields the chosen template prints. */
+  templateFields?: string[];
   template: { label: string };
 };
 
@@ -102,6 +104,8 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const needsAck = (res?.companyMissing?.length ?? 0) > 0 && !companyAck;
   const canSend = !!res?.fingerprint && res.canSend && upToDate && !needsAck && !busy;
   const byField = (f: string) => (res?.blockers ?? []).filter((b) => b.field === f).length;
+  // v1.14 (Insurance Included) prints these; earlier templates never show the section.
+  const usesV114 = (res?.templateFields ?? []).some((f) => ["damage_waiver", "payment_amount", "payment_method", "balance_due", "vehicle_owner"].includes(f));
 
   const setDriver = (i: number, patch: Partial<AdditionalDriver>) =>
     setPrep((p) => ({ ...p, drivers: { ...p.drivers, list: p.drivers.list.map((d, j) => (j === i ? { ...d, ...patch } : d)) } }));
@@ -231,7 +235,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
             <input type="radio" className="mt-0.5" checked={templateKey === t.key} onChange={() => chooseTemplate(t.key)} />
             <span className="min-w-0">
               <span className="font-medium">{t.name}</span> <span className="text-muted-foreground">v{t.displayVersion}</span><br />
-              <span className="text-muted-foreground">{t.insuranceRequired ? "Insurance Required" : "No Insurance Required"} · {acknowledgmentsOf(t.body).length} Initials</span><br />
+              <span className="text-muted-foreground">{t.insuranceIncluded ? "Insurance Included" : t.insuranceRequired ? "Insurance Required" : "No Insurance Required"} · {acknowledgmentsOf(t.body).length} Initials</span><br />
               <span className="text-warning-foreground rounded bg-warning/15 px-1.5 py-0.5 text-[10.5px]">{DRAFT_STATUS_LABEL} — Preview Only</span>
             </span>
           </label>
@@ -332,10 +336,45 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
         {prep.reservation.mode === "required" && (
           <>
             <label className="block">Amount ($)<input type="number" min={0} step="0.01" className={input} value={prep.reservation.amount ?? ""} onChange={(e) => setPrep((p) => ({ ...p, reservation: { mode: "required", amount: e.target.value === "" ? null : Number(e.target.value) } }))} /></label>
-            <p className="text-[11px] text-muted-foreground">Terms (Section 2): due when pickup or delivery is scheduled and applied in full to the first week; non-refundable on no-show or cancellation less than {terms.reservation_cancel_hours ?? "—"} hours before; fully refunded otherwise. It is not a security deposit.</p>
+            {usesV114
+              ? <p className="text-[11px] text-muted-foreground">Terms (Section 4): due when the renter signs and applied in full to the first payment; non-refundable once the Renter Policy is set up or on a no-show; refunded in full if we cannot provide a vehicle. It is not a security deposit.</p>
+              : <p className="text-[11px] text-muted-foreground">Terms (Section 2): due when pickup or delivery is scheduled and applied in full to the first week; non-refundable on no-show or cancellation less than {terms.reservation_cancel_hours ?? "—"} hours before; fully refunded otherwise. It is not a security deposit.</p>}
           </>
         )}
       </Section>
+
+      {usesV114 && (
+        <Section title="Payment & Damage Waiver" badge={byField("damage_waiver") + byField("payment_method") + byField("payment_amount") + byField("vehicle_owner")}>
+          <p className="font-medium">Optional Damage Waiver{terms.damage_waiver_fee ? ` (${terms.damage_waiver_fee} Per Week)` : ""}</p>
+          <Radio checked={prep.damageWaiver === "accepted"} onChange={() => setPrep((p) => ({ ...p, damageWaiver: "accepted" }))} label="Accepted By Renter" />
+          <Radio checked={prep.damageWaiver === "declined"} onChange={() => setPrep((p) => ({ ...p, damageWaiver: "declined" }))} label="Declined By Renter" />
+          <p className="text-[11px] text-muted-foreground">Ask the renter before sending. The agreement prints the choice and the renter initials it when signing.</p>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <label>Payment Schedule
+              <select className={input} value={prep.payment?.schedule ?? ""} onChange={(e) => setPrep((p) => ({ ...p, payment: { schedule: (e.target.value || null) as any, method: p.payment?.method ?? null } }))}>
+                <option value="">Choose…</option>
+                {PAYMENT_SCHEDULES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+            <label>Payment Method
+              <select className={input} value={prep.payment?.method ?? ""} onChange={(e) => setPrep((p) => ({ ...p, payment: { schedule: p.payment?.schedule ?? null, method: (e.target.value || null) as any } }))}>
+                <option value="">Choose…</option>
+                {PAYMENT_METHODS.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </label>
+            <label className="col-span-2">Vehicle Owner (As Shown On The Registration)
+              <input className={input} value={prep.vehicleOwner ?? ""} onChange={(e) => setPrep((p) => ({ ...p, vehicleOwner: e.target.value }))} />
+            </label>
+          </div>
+          <dl className="grid grid-cols-[minmax(0,50%)_minmax(0,1fr)] gap-x-3 gap-y-1 border-t pt-2">
+            {row("Weekly Rate (Insurance Included)", m.weekly_rate)}
+            {row("Reservation Fee", prep.reservation.mode === "required" && prep.reservation.amount ? `$${prep.reservation.amount.toFixed(2)}` : "None")}
+            {row("Amount Due Each Payment", m.payment_amount)}
+            {row("Balance Due At Pickup", m.balance_due)}
+          </dl>
+          <p className="text-[11px] text-muted-foreground">Balance Due is the first payment less the Reservation Fee. Change the Reservation Fee above and the weekly rate under Rental Details.</p>
+        </Section>
+      )}
 
       <Section title="Security Deposit" badge={byField("deposit_amount")}>
         <Radio checked={prep.deposit.mode === "none"} onChange={() => setPrep((p) => ({ ...p, deposit: { mode: "none", amount: null, reason: "" } }))} label="No Deposit" />

@@ -95,7 +95,12 @@ export async function createInitialPaymentLink(
       .eq("id", agreementId)
       .maybeSingle();
     if (!ag?.application_id) return null;
-    const merge = (ag.merge_data ?? {}) as { weekly_rate?: string; deposit_amount?: string };
+    const merge = (ag.merge_data ?? {}) as {
+      weekly_rate?: string;
+      deposit_amount?: string;
+      balance_due?: string;
+      _prep?: string;
+    };
     const offer = initialPaymentFromMerge(merge);
     if (!offer) return null;
 
@@ -201,7 +206,10 @@ export async function createInitialPaymentLink(
               currency: "usd",
               unit_amount: Math.round(n.amount * 100),
               product_data: {
-                name: n.type === "deposit" ? "Security deposit" : "First week's rent",
+                name:
+                  n.type === "deposit"
+                    ? "Security deposit"
+                    : (offer.rentLineName ?? "First week's rent"),
               },
             },
           })),

@@ -942,7 +942,7 @@ function CheckoutSignOffCard() {
     >
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h3 className="font-semibold">Vehicle Condition at Pickup</h3>
+          <h3 className="font-semibold">Vehicle Inspection Report: Pickup</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {signed
               ? `You signed this on ${fmtDate(data.signedAt as string)}.`

@@ -34,6 +34,13 @@ export const MERGE_FIELDS = [
   { key: "additional_drivers", label: "Approved additional drivers" },
   { key: "insurance_carrier", label: "Renter insurance carrier" },
   { key: "insurance_policy", label: "Policy # / carrier phone" },
+  // v1.14 (Insurance Included). Entered by staff in Driver Agreement
+  // Preparation; a template that uses one blocks sending while it is empty.
+  { key: "balance_due", label: "Balance due at pickup" },
+  { key: "payment_amount", label: "Amount due each payment" },
+  { key: "payment_method", label: "Payment method" },
+  { key: "vehicle_owner", label: "Vehicle owner (registration)" },
+  { key: "damage_waiver", label: "Damage Waiver choice" },
 ] as const;
 
 export type MergeData = Record<string, string>;
