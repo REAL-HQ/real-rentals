@@ -57,7 +57,7 @@ export const DRIVER_GUIDES: readonly DriverGuide[] = [
   },
   {
     id: "breakdown",
-    title: "Breakdown Or Warning Light",
+    title: "Breakdown",
     summary:
       "The car will not start, stalls, overheats, leaks, makes a new noise, or shows a warning light.",
     source: "Rental Agreement, Section 12",
@@ -76,7 +76,7 @@ export const DRIVER_GUIDES: readonly DriverGuide[] = [
   },
   {
     id: "flat",
-    title: "Flat Or Damaged Tire",
+    title: "Flat Tire",
     summary: "A flat, a blowout, a nail in the tire, or a bent wheel.",
     source: "Rental Agreement, Sections 4 and 12",
     call: true,
@@ -91,7 +91,7 @@ export const DRIVER_GUIDES: readonly DriverGuide[] = [
   },
   {
     id: "lockout",
-    title: "Locked Out Or Lost Key",
+    title: "Lockout",
     summary: "Keys locked in the car, or a key or fob that is lost or damaged.",
     source: "Rental Agreement, Section 4",
     call: true,
@@ -105,7 +105,7 @@ export const DRIVER_GUIDES: readonly DriverGuide[] = [
   },
   {
     id: "theft",
-    title: "Theft, Break-In Or Vandalism",
+    title: "Theft",
     summary: "The car is stolen, broken into, or damaged on purpose.",
     source: "Rental Agreement, Section 8",
     call: true,
@@ -121,7 +121,7 @@ export const DRIVER_GUIDES: readonly DriverGuide[] = [
   },
   {
     id: "ticket",
-    title: "Ticket, Toll Or Citation",
+    title: "Tickets & Tolls",
     summary: "A parking ticket, a camera citation, a moving violation, or a toll notice.",
     source: "Rental Agreement, Sections 13 and 19",
     steps: [
@@ -135,7 +135,7 @@ export const DRIVER_GUIDES: readonly DriverGuide[] = [
   },
   {
     id: "insurance",
-    title: "Insurance Notice Or Problem",
+    title: "Insurance",
     summary:
       "A letter, text, or email from the insurance company, or a notice that the policy was cancelled or lapsed.",
     source: "Rental Agreement, Sections 5.7 and 6.3",
@@ -153,7 +153,7 @@ export const DRIVER_GUIDES: readonly DriverGuide[] = [
   },
   {
     id: "changes",
-    title: "Something Changed With You",
+    title: "Personal Changes",
     summary:
       "Your license, your record, your contact details, your household, or a platform account.",
     source: "Rental Agreement, Section 19",
@@ -169,7 +169,7 @@ export const DRIVER_GUIDES: readonly DriverGuide[] = [
   },
   {
     id: "payment",
-    title: "Payment Problem",
+    title: "Payments",
     summary: "A declined card, or a payment you cannot make on time.",
     source: "Rental Agreement, Sections 3 and 4",
     steps: [

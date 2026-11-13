@@ -10,6 +10,7 @@ const all = DRIVER_GUIDES.flatMap((g) => [g.title, g.summary, ...g.steps, ...(g.
 ok(DRIVER_GUIDES.length === 9 && new Set(DRIVER_GUIDES.map((g) => g.id)).size === 9, "nine guides with unique ids");
 ok(DRIVER_GUIDES.every((g) => g.steps.length >= 4 && /^Rental Agreement, Section/.test(g.source)), "every guide has steps and names its agreement section");
 ok(DRIVER_GUIDES[0].id === "accident" && DRIVER_GUIDES[0].steps[0] === "Call 911 if anyone is hurt.", "accident is first and starts with 911");
+ok(DRIVER_GUIDES.every((g) => g.title.split(/\s+/).filter((w) => w !== "&").length <= 2), "titles are one or two words");
 ok(!/\$\d/.test(all), "no fee amounts (fees live in the agreement)");
 ok(!/[–—]/.test(all), "no em or en dashes");
 // Deadlines must match the agreement wording they come from.
