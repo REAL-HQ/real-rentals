@@ -6,10 +6,21 @@ import { fmtDate, formatReservationTime } from "@/lib/date-format";
 
 /** Canonical renter-facing sender identity. The only place it is defined. */
 import { PORTAL_PAY_URL } from "@/lib/portal-pay-link";
+import { findDisallowedOutboundUrls, outboundRefusalMessage, publicAppUrl } from "@/lib/public-app-url";
 
 export const EMAIL_FROM = "REAL RENTALS <team@drivereal.com>";
 /** Canonical Reply-To for every renter/customer email. Never hello@ or go@. */
 export const EMAIL_REPLY_TO = "team@drivereal.com";
+
+/**
+ * Optional override for a dedicated sender such as notifications@drivereal.com.
+ * Unset by default so From stays team@drivereal.com. Changing it is a product
+ * decision and is not flipped by this code.
+ */
+export function resolvedEmailFrom(): string {
+  const override = (typeof process !== "undefined" && process.env && process.env.EMAIL_FROM_OVERRIDE) || "";
+  return override.trim() || EMAIL_FROM;
+}
 
 type SendArgs = {
   to: string | string[];
@@ -157,6 +168,12 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
     }
   }
   const text = htmlToText(html);
+  const blocked = findDisallowedOutboundUrls(subject, html, text)[0];
+  if (blocked) {
+    const error = outboundRefusalMessage(blocked);
+    console.error("[email] refused outbound link", { subject, url: blocked.url, reason: blocked.reason });
+    return { ok: false, error };
+  }
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.error("[email] RESEND_API_KEY missing; skipping send", { subject });
@@ -181,7 +198,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
         ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       },
       body: JSON.stringify({
-        from: from ?? EMAIL_FROM,
+        from: from ?? resolvedEmailFrom(),
         to: Array.isArray(to) ? to : [to],
         subject,
         html,
@@ -687,7 +704,7 @@ export async function sendPaymentFailedEmail(args: FailedArgs): Promise<SendResu
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, we tried to charge your ${escapeHtml(method)} <strong>${money(args.amount)}</strong> for ${escapeHtml(label)} and it was declined. Please update your card to avoid interruption.</p>
       <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>
       <p style="color:#444;font-size:14px;margin:16px 0 0;line-height:1.5">Already updated it? <a href="${PORTAL_PAY_URL}" style="color:#D03020;font-weight:600">Pay Now</a> from your driver portal.</p>`);
-  return sendEmail({ to: args.to, subject: `Your REAL RENTALS Payment Of ${money(args.amount)} Did Not Go Through`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
+  return sendEmail({ to: args.to, subject: `Your REAL RENTALS Payment Of ${money(args.amount)} Could Not Be Processed`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
 }
 
 async function sendInvoicePaymentFailedEmail(args: FailedArgs & { payInvoiceUrl: string }): Promise<SendResult> {
@@ -699,7 +716,7 @@ async function sendInvoicePaymentFailedEmail(args: FailedArgs & { payInvoiceUrl:
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, we tried to charge your ${escapeHtml(method)} <strong>${money(args.amount)}</strong> for ${escapeHtml(label)} and it was declined. Please pay this week's invoice below. You can use a different card on that page.</p>
       <a href="${escapeHtml(args.payInvoiceUrl)}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay This Week's Invoice</a>
       <p style="color:#444;font-size:14px;margin:16px 0 0;line-height:1.5">Please use only this button, not an older payment link, so you are not charged twice. To change the card for future weeks, <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="color:#D03020;font-weight:600">Update Card</a>.</p>`);
-  return sendEmail({ to: args.to, subject: `Your REAL RENTALS Payment Of ${money(args.amount)} Did Not Go Through`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
+  return sendEmail({ to: args.to, subject: `Your REAL RENTALS Payment Of ${money(args.amount)} Could Not Be Processed`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_failed" } });
 }
 
 /**
@@ -790,7 +807,7 @@ export async function sendPastDueReminderEmail(args: PastDueArgs): Promise<SendR
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your balance of <strong>${money(args.amount)}</strong> was due ${escapeHtml(when)} — that's ${args.daysLate} day${args.daysLate === 1 ? "" : "s"} ago. Please pay now to keep your rental active and avoid late fees.</p>
       <a href="${PORTAL_PAY_URL}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay Now</a>
       <p style="color:#888;font-size:12px;margin:16px 0 0;line-height:1.5">Sign in to your driver portal to pay. We'll show your current balance before you confirm.</p>`);
-  return sendEmail({ to: args.to, subject: `Past Due — ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_past_due" } });
+  return sendEmail({ to: args.to, subject: `Outstanding Balance Of ${money(args.amount)} On Your REAL RENTALS Account`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "payment_past_due" } });
 }
 
 type DueTomorrowArgs = { to: string; firstName: string | null; amount: number; dueDate: string; autopay?: boolean };
@@ -1046,15 +1063,14 @@ export async function sendPortalInviteEmail(args: {
   };
 }): Promise<void> {
   const name = escapeHtml(args.firstName || "there");
-  const site = process.env.PUBLIC_SITE_URL || "https://drivereal.com";
-  const url = escapeHtml(args.inviteUrl || `${site}/login`);
+  const url = escapeHtml(args.inviteUrl || publicAppUrl("/login"));
   const reservation = args.reservation;
   const appointment = reservation ? `
       <p><strong>Pickup:</strong> ${escapeHtml(fmtDate(reservation.pickupDate))}, ${escapeHtml(formatReservationTime(reservation.pickupTime))}<br>
       <strong>Location:</strong> ${escapeHtml(reservation.pickupLocation)}${reservation.vehicle ? `<br><strong>Vehicle:</strong> ${escapeHtml(reservation.vehicle)}` : ""}</p>` : "";
   await sendEmail({
     to: args.to,
-    subject: reservation ? "Your pickup is reserved — set up your driver portal" : "Your REAL RENTALS driver portal",
+    subject: reservation ? "Your Pickup Is Reserved — Set Up Your Driver Portal" : "Set Up Your REAL RENTALS Driver Portal",
     html: `
       <p>Hi ${name},</p>
       <p>${reservation ? "Your pickup is reserved." : "Your REAL RENTALS driver portal is ready."} Your driver portal is where
@@ -1090,7 +1106,7 @@ export async function sendAgreementEmail(args: AgreementSendArgs): Promise<SendR
       ${vehicleLine}
       <a href="${args.url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Review &amp; Sign Agreement</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${args.url}</span><br>This secure link expires in 30 days.</p>`);
-  return sendEmail({ to: args.to, subject: "Sign Your REAL RENTALS Rental Agreement", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signing_request" } });
+  return sendEmail({ to: args.to, subject: "Your REAL RENTALS Rental Agreement Is Ready To Sign", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signing_request" } });
 }
 
 export async function sendAgreementSignedEmail(args: {
@@ -1132,6 +1148,16 @@ export async function sendAgreementSignedOpsEmail(args: { driverName: string; ap
  * branded email (plain-text alternative added by sendEmail). Gmail sometimes
  * mangles or pre-clicks links, so the code is the fallback that always works.
  */
+
+export async function sendPasswordResetEmail(args: { to: string; url: string }): Promise<SendResult> {
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Set A New Password</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Use this link to set a new password for your REAL RENTALS account. It works once and expires soon. If you did not ask for this, you can ignore this email.</p>
+      <a href="${args.url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Set A New Password</a>
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${args.url}</span></p>`);
+  return sendEmail({ to: args.to, subject: "Set A New Password For Your REAL RENTALS Account", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "password_reset" } });
+}
+
 export async function sendPortalSignInEmail(args: { to: string; code: string; link: string; minutes: number }): Promise<SendResult> {
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:20px;color:#111">Your Sign-In Code</h1>

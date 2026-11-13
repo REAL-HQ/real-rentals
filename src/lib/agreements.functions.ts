@@ -16,6 +16,7 @@ import { recordFillsFromDetails, type AppliedFill } from "@/lib/agreement-fills"
 import { STALE_PREVIEW_REFUSAL } from "@/lib/agreement-send-refusal";
 import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
 import { SWAP_ENABLED } from "@/lib/record-numbers";
+import { publicAppOrigin } from "@/lib/public-app-url";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -63,7 +64,7 @@ const TIMELINE_LABELS: Record<string, string> = {
   "document.voided": "Voided",
 };
 
-const SITE_URL = () => process.env.PUBLIC_SITE_URL || "https://drivereal.com";
+const SITE_URL = () => publicAppOrigin();
 
 type Tier = "owner" | "manager" | "coordinator";
 /** Server-side tier check (Owner > Manager > Coordinator). */

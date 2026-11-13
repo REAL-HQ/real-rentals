@@ -12,6 +12,7 @@
 // caller cannot accidentally bypass it.
 
 import { resolveQuoSender, smsProviderStatus } from "@/lib/sms-provider.server";
+import { findDisallowedOutboundUrls, outboundRefusalMessage } from "@/lib/public-app-url";
 
 export type SmsResult =
   | { ok: true; id: string | null; skipped?: false }
@@ -137,6 +138,13 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
   const to = toE164(args.to);
   if (!to) {
     return { ok: false, skipped: true, reason: "invalid_phone" };
+  }
+
+  const blocked = findDisallowedOutboundUrls(args.body)[0];
+  if (blocked) {
+    const error = outboundRefusalMessage(blocked);
+    console.error("[sms] refused outbound link", { url: blocked.url, reason: blocked.reason });
+    return { ok: false, error };
   }
 
   // 1. Opt-out always wins, transactional or not.

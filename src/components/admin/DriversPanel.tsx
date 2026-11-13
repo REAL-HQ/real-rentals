@@ -154,6 +154,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { issueCardOnFileLink, removeCardOnFile } from "@/lib/payments.functions";
+import { publicAppUrl } from "@/lib/public-app-url";
 import {
   cardEmailHref,
   cardLinkFresh,
@@ -3621,7 +3622,7 @@ function useCardOnFileLink(applicationId: string) {
           throw new Error("Could not prepare the card link.");
         }
         const entry = {
-          link: `${window.location.origin}${res.path}`,
+          link: publicAppUrl(res.path),
           expiresAt: res.expiresAt,
         };
         rememberCachedCardLink(cardLinkCache, applicationId, entry);

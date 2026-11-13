@@ -290,12 +290,12 @@ export const DEFAULT_TEMPLATES: RentReminderTemplates = {
     },
     overdue: {
       sms: "Hi {{first_name}}, this is REAL RENTALS. Your weekly payment of {{amount}} due {{due_date}} did not go through. Pay this week's invoice here: {{link}}{{other_invoices_line}}{{late_fee_line}} Please use only this link so you are not charged twice." + STOP,
-      subject: "Payment Past Due",
+      subject: "Your Weekly Payment Is Past Due",
       email: "Hi {{first_name}}, your weekly payment of {{amount}} due {{due_date}} did not go through. Please pay this week's invoice using the button below (you can use a different card on that page).{{other_invoices_line}}{{late_fee_line}} Please use only this button so you are not charged twice.",
     },
     daily: {
       sms: "Hi {{first_name}}, this is REAL RENTALS. Your weekly payment of {{amount}} is {{days_late}} day(s) late. Pay this week's {{amount}} invoice here: {{link}}{{other_invoices_line}}{{late_fee_line}}" + STOP,
-      subject: "Rent Past Due: {{amount}} Invoice",
+      subject: "Your {{amount}} Weekly Invoice Is Still Open",
       email: "Hi {{first_name}}, your weekly payment of {{amount}} is {{days_late}} day(s) late. Please pay this week's {{amount}} invoice using the button below.{{other_invoices_line}}{{late_fee_line}}",
     },
   },
@@ -312,12 +312,12 @@ export const DEFAULT_TEMPLATES: RentReminderTemplates = {
     },
     overdue: {
       sms: "Hi {{first_name}}, this is REAL RENTALS. Your weekly rent of {{amount}} due {{due_date}} has not been paid.{{late_fee_line}} {{payment_instructions}}" + STOP,
-      subject: "Rent Past Due",
+      subject: "Your Weekly Rent Is Past Due",
       email: "Hi {{first_name}}, your weekly rent of {{amount}} due {{due_date}} has not been paid.{{late_fee_line}} {{payment_instructions}}",
     },
     daily: {
       sms: "Hi {{first_name}}, this is REAL RENTALS. Your rent is {{days_late}} day(s) late. You owe {{balance}}.{{late_fee_line}} {{payment_instructions}}" + STOP,
-      subject: "Past Due Balance: {{balance}}",
+      subject: "Your Outstanding Balance Is {{balance}}",
       email: "Hi {{first_name}}, your rent is {{days_late}} day(s) late. Your balance is {{balance}}.{{late_fee_line}} {{payment_instructions}}",
     },
   },

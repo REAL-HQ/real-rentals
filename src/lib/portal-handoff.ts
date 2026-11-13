@@ -4,15 +4,11 @@
  */
 
 import { isPortalHandoffStatus } from "@/lib/application-resume-flag";
+import { publicAppUrl } from "@/lib/public-app-url";
 
 /** Public sign-in URL, optionally with the email prefilled. No auto-login. */
 export function portalLoginUrl(email?: string | null): string {
-  const envSite =
-    (typeof process !== "undefined" && process.env && process.env.PUBLIC_SITE_URL) ||
-    (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_PUBLIC_SITE_URL) ||
-    "";
-  const site = envSite || "https://drivereal.com";
-  const base = `${String(site).replace(/\/$/, "")}/login`;
+  const base = publicAppUrl("/login");
   const trimmed = String(email ?? "").trim().toLowerCase();
   if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return base;
   return `${base}?email=${encodeURIComponent(trimmed)}`;

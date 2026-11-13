@@ -105,7 +105,7 @@ ok(
 );
 ok(!/provisionDriverAccount|sendPortalInviteEmail/.test(agreements), "agreement signing never provisions or emails a login");
 ok(
-  /redirectTo: `\$\{site\}\/set-password`/.test(account),
+  /recoveryUrlFromGenerateLink/.test(account) && /publicAppUrl\("\/set-password"\)/.test(account) && /auth\/confirm/.test(read("src/lib/public-app-url.ts")),
   "the recovery link opens /set-password",
 );
 
@@ -308,17 +308,18 @@ console.log("\nlosing a password is recoverable");
 
 ok(existsSync(LOGIN) && existsSync(SETPW), "a driver sign-in page and a set-password page exist");
 ok(
-  /resetPasswordForEmail/.test(login),
+  /requestPasswordReset/.test(login),
   "the driver page can send a reset link",
 );
 ok(
-  /resetPasswordForEmail/.test(admin),
+  /requestPasswordReset/.test(admin),
   "so can the staff page — it had no recovery either",
 );
 ok(
-  /redirectTo: `\$\{window\.location\.origin\}\/set-password`/.test(login) &&
-    /redirectTo: `\$\{window\.location\.origin\}\/set-password`/.test(admin),
-  "both land on the same set-password page",
+  /requestPasswordReset/.test(login) && /requestPasswordReset/.test(admin) &&
+    /auth\/confirm/.test(read("src/lib/public-app-url.ts")) &&
+    /token_hash/.test(setpw),
+  "both send a drivereal.com confirm link that lands on the same set-password page",
 );
 ok(
   /auth\.updateUser\(\{ password: pw \}\)/.test(setpw),
@@ -376,7 +377,7 @@ console.log("\nno uncontrolled public account creation");
 const adminSrc = read("src/routes/admin.tsx");
 ok(!/auth\.signUp/.test(adminSrc), "the back-office form offers no Create Account");
 ok(/signInWithPassword/.test(adminSrc), "but still signs people in");
-ok(/resetPasswordForEmail/.test(adminSrc), "and still resets passwords");
+ok(/requestPasswordReset/.test(adminSrc), "and still resets passwords");
 ok(
   /auth\.signUp/.test(read("src/routes/invite.tsx")),
   "team members still create their account from an invitation",

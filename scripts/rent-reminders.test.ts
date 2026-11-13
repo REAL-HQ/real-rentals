@@ -208,14 +208,14 @@ describe("late fees", () => {
     expect(r.sms).toContain("Pay this week's $350 invoice here: " + INVOICE_URL);
     expect(r.sms).toContain("Late fees of $150 ($50/day per your rental agreement) are owed separately and are not part of this invoice.");
     expect(r.sms).not.toContain("$500");
-    expect(r.subject).toBe("Rent Past Due: $350 Invoice");
+    expect(r.subject).toBe("Your $350 Weekly Invoice Is Still Open");
     expect(r.email).toContain("owed separately");
   });
   test("manual daily: the balance includes the late fees", () => {
     const r = renderReminder(DEFAULT_TEMPLATES, "daily", base({ mode: "manual", owing: true, rentOwed: 350 }), at("2026-11-12", 10))!;
     expect(r.sms).toContain("You owe $500.");
     expect(r.sms).toContain("$150 in late fees");
-    expect(r.subject).toBe("Past Due Balance: $500");
+    expect(r.subject).toBe("Your Outstanding Balance Is $500");
   });
   test("overdue notices state the $50/day fee from day one", () => {
     for (const mode of ["stripe", "manual"] as const) {
@@ -237,7 +237,7 @@ describe("late fees", () => {
     }
     const m = renderReminder(DEFAULT_TEMPLATES, "daily", base({ mode: "manual", owing: true, rentOwed: 350, waivers }), at("2026-11-12", 10))!;
     expect(m.sms).toContain("You owe $350.");
-    expect(m.subject).toBe("Past Due Balance: $350");
+    expect(m.subject).toBe("Your Outstanding Balance Is $350");
   });
   test("a waiver through a date keeps the line only while a fee is owed", () => {
     const through = [{ dueDate: "2026-11-09", waivedThrough: "2026-11-11" }];

@@ -407,7 +407,7 @@ async function handle(request: Request): Promise<Response> {
       const sentAgreement = await sendEmail({
         to,
         track: { workflow: "agreement_reminder" },
-        subject: "Reminder: Sign Your REAL RENTALS Rental Agreement",
+        subject: "Reminder: Your REAL RENTALS Agreement Is Ready To Sign",
         html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px">
           <h1 style="font-size:20px;color:#111">Your rental agreement is still waiting</h1>
           <p style="color:#444;font-size:15px;line-height:1.55">Hi ${(app?.full_name || "there").split(" ")[0]}, we still need your signature before we can hand over the keys. Sign in to your driver portal to review and sign.</p>

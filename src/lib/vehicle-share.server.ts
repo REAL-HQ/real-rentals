@@ -5,6 +5,7 @@ import {
   VEHICLE_SHARE_TOKEN_RE,
   type StoredVehicleSharePackage,
 } from "@/lib/vehicle-share";
+import { publicAppUrl } from "@/lib/public-app-url";
 
 export async function hashVehicleShareToken(token: string): Promise<string> {
   if (!VEHICLE_SHARE_TOKEN_RE.test(token)) throw new Error("Invalid vehicle share token.");
@@ -46,15 +47,7 @@ export async function loadVehicleShareByToken(
   }
 }
 
-export function vehicleShareUrl(origin: string, token: string): string {
+export function vehicleShareUrl(_origin: string | undefined, token: string): string {
   if (!VEHICLE_SHARE_TOKEN_RE.test(token)) throw new Error("Invalid vehicle share token.");
-  let url: URL;
-  try { url = new URL(origin); } catch { url = new URL("https://drivereal.com"); }
-  const host = url.hostname;
-  const publicHost = host === "drivereal.com" || host === "www.drivereal.com";
-  // Recipient links must never point at a staff-only local or Preview host.
-  if (!publicHost || url.protocol !== "https:") {
-    url = new URL("https://drivereal.com");
-  }
-  return `${url.origin}/share/vehicle/${token}`;
+  return publicAppUrl(`/share/vehicle/${token}`);
 }

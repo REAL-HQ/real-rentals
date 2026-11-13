@@ -1,4 +1,6 @@
 import { createFileRoute, useSearch as useRouterSearch, useNavigate, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { requestPasswordReset } from "@/lib/password-reset.functions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Nav } from "@/components/site/Nav";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,7 +42,6 @@ import {
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { MessagesOverlay } from "@/components/admin/MessagesOverlay";
 import { SettingsWorkspace } from "@/components/admin/SettingsWorkspace";
-import { useServerFn } from "@tanstack/react-start";
 import { listConversations } from "@/lib/messages.functions";
 import { getReservationDepositSettings } from "@/lib/reservations.functions";
 import { getAdminNotifications } from "@/lib/admin-overview.functions";
@@ -1108,6 +1109,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
  * onboarding handshake. A driver's account is made for them at Reserved.
  */
 function SignIn() {
+  const requestReset = useServerFn(requestPasswordReset);
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -1131,9 +1133,7 @@ function SignIn() {
     if (!email.trim()) return setErr("Enter your email first.");
     setErr(null);
     setLoading(true);
-    await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/set-password`,
-    });
+    await requestReset({ data: { email: email.trim() } });
     setLoading(false);
     // Same answer whether or not the address exists — this box must not
     // confirm who has a back-office account.
