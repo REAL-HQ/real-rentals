@@ -20,6 +20,7 @@ export const createServerFn = () => {
   const api = { middleware: () => api, inputValidator: () => api, handler: (fn) => fn };
   return api;
 };
+export const createServerOnlyFn = (fn) => fn;
 STUB
 cat > .docfn-build/stub/react-start/server.js <<'STUB'
 export const getRequest = () => ({ headers: new Map() });

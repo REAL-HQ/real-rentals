@@ -61,7 +61,15 @@ for (const s of statusWrites) {
 const allUpdates = statements.filter((s) => /\.update\(/.test(s.text));
 for (const s of allUpdates) {
   const isNoticeClaim = /\.update\(\{\s*notified_status:/.test(s.text);
-  if (isNoticeClaim) continue;
+  // Receipt and invoice links may be filled on an already-paid row. The patch
+  // is only Stripe identifier/URL columns — never status, amount, or paid_date.
+  const isReceiptLinkFill = /\.update\(\{\s*stripe_invoice_number:/.test(s.text)
+    && !BARE_STATUS.test(s.text)
+    && !/\bpaid_date:/.test(s.text)
+    && !/\bfailure_reason:/.test(s.text)
+    && !/\bbalance_due:/.test(s.text)
+    && !/(?<![_A-Za-z])amount:/.test(s.text);
+  if (isNoticeClaim || isReceiptLinkFill) continue;
   assert.match(s.text, /\.neq\('status',\s*'paid'\)/,
     `${FILE}:${s.line} updates payments without .neq('status','paid') — this can un-pay a collected row`);
   assert.match(s.text, /\.neq\('status',\s*'refunded'\)/,
