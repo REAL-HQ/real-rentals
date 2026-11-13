@@ -91,13 +91,13 @@ describe("Driver checklist alignment", () => {
 });
 
 describe("Pickup check-off", () => {
-  it("saves a staff pickup check-off as Yellow and never as an active rental", () => {
+  it("turns Pickup green after confirmed payment without activating the rental", () => {
     const applicationId = "22222222-2222-4222-8222-222222222222";
     const input = { applicationId, field: "pickup", expectedRevision: 0, idempotencyKey: applicationId, state: "collected", source: "other", note: "Payment Confirmed: Cash; Amount Received: $350.00" } as const;
     expect(attestationInput.parse(input).field).toBe("pickup");
     const projection = projectEvidence({ applicationId, field: "pickup", events: [{ ...input, id: "event-1", revision: 1, supersedesId: null, actorId: applicationId, occurredAt: "2026-11-09T00:00:00Z" }], documents: [], itemComplete: false });
-    expect(projection).toMatchObject({ tone: "yellow", status: "upload_due", complete: false });
-    expect(requirementEvidence("pickup", [projection])?.tone).toBe("yellow");
+    expect(projection).toMatchObject({ tone: "green", status: "confirmed", complete: true });
+    expect(requirementEvidence("pickup", [projection])?.tone).toBe("green");
     expect(activationRequirements(facts).find((item) => item.key === "rental_active")?.met).toBe(false);
     const life = driverLifecycle({ contacted: true, documentsReceived: true, screening: true, approved: true, reserved: true, insuranceComplete: true, inspection: true, agreement: true, rentalActive: false, pickup: true });
     expect(life.stages.find((s) => s.key === "pickup")?.state).toBe("done");

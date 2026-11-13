@@ -35,7 +35,7 @@ export type EvidenceProjection = {
   field: EvidenceField;
   revision: number;
   tone: EvidenceTone;
-  status: "missing" | "upload_due" | "not_collected" | "uploaded" | "review_due" | "conflict";
+  status: "missing" | "upload_due" | "not_collected" | "uploaded" | "review_due" | "conflict" | "confirmed";
   label: string;
   collected: boolean;
   /** A saved staff check-off, distinct from collection inferred from a file. */
@@ -86,9 +86,13 @@ export function projectEvidence(input: { applicationId: string; field: EvidenceF
   const event = latestEvidenceEvent(input.events, input.applicationId, input.field);
   const uploaded = input.documents.some((d) => d.category === input.field && d.is_current === true && d.review_status !== "rejected" && !!d.id && !!d.storage_path);
   const collected = event?.state === "not_collected" ? false : event?.state === "collected" || uploaded || input.itemComplete;
-  const base = { field: input.field, revision: event?.revision ?? 0, collected, checkedOff: event?.state === "collected", uploaded, complete: input.itemComplete, followUpOpen: !uploaded && !input.itemComplete };
+  const paymentConfirmed = input.field === "pickup" && event?.state === "collected" && pickupPaymentNote.safeParse(event.note).success;
+  const base = { field: input.field, revision: event?.revision ?? 0, collected, checkedOff: event?.state === "collected", uploaded, complete: input.itemComplete || paymentConfirmed, followUpOpen: !uploaded && !input.itemComplete && !paymentConfirmed };
   // Never discard an actual uploaded/signed file when a staff correction disagrees.
   if (event?.state === "not_collected" && (uploaded || input.itemComplete)) return { ...base, tone: "red", status: "conflict", label: "Needs Review" };
+  // A saved pickup-payment confirmation completes Pickup only; Rental Active
+  // still comes exclusively from the atomic rental lifecycle.
+  if (paymentConfirmed) return { ...base, tone: "green", status: "confirmed", label: "Payment Confirmed" };
   if (input.itemComplete || (uploaded && !input.reviewRequired)) return { ...base, tone: "green", status: "uploaded", label: "On File" };
   if (uploaded) return { ...base, tone: "yellow", status: "review_due", label: "Review Due" };
   if (collected) return { ...base, tone: "yellow", status: "upload_due", label: "Upload Due" };
