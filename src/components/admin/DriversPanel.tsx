@@ -1808,7 +1808,7 @@ function DriverDetail({
 }: {
   driver: Application;
   vehicles: Vehicle[];
-  onUpdate: (patch: Partial<Application>) => void;
+  onUpdate: (patch: Partial<Application>) => Promise<boolean>;
   onSaved: (patch: Partial<Application>) => void;
   onReserved?: () => void;
   onDelete: () => void;
@@ -2978,6 +2978,7 @@ function DriverDetail({
                       onSave={(v) => onUpdate({ weekly_rent: v as any })}
                     />
                   </div>
+                  <p className="mt-3 text-[11px] text-muted-foreground">Changes save when you click Save or click away.</p>
                 </Card>
                 <Card title="Contract Dates" icon={<CalendarDays className="w-4 h-4" />}>
                   {/* These are the agreement's dates, and only these. What the
@@ -3425,69 +3426,109 @@ function SelField({
     </div>
   );
 }
-function NumField({
-  label,
-  value,
-  onSave,
-}: {
-  label: string;
-  value: number | null;
-  onSave: (v: number | null) => void;
-}) {
-  return (
-    <div className="bg-soft rounded-md px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
-      <input
-        type="number"
-        defaultValue={value ?? ""}
-        onBlur={(e) => onSave(e.target.value === "" ? null : Number(e.target.value))}
-        className="w-full bg-white border border-border rounded-md px-2 py-1 text-sm"
-      />
-    </div>
-  );
+type EditableSaveResult = void | boolean | Promise<void | boolean>;
+type EditableSaveState = "idle" | "saving" | "saved" | "error";
+
+/** One save path for profile fields: explicit Save or click-away, with a real result. */
+function useEditableField<T>(onSave: (value: T | null) => EditableSaveResult, parse: (raw: string) => T | null) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dirtyRef = useRef(false);
+  const savingRef = useRef(false);
+  const [dirty, setDirty] = useState(false);
+  const [state, setState] = useState<EditableSaveState>("idle");
+
+  async function save() {
+    if (!dirtyRef.current || savingRef.current || !inputRef.current) return;
+    savingRef.current = true;
+    setState("saving");
+    try {
+      const result = await onSave(parse(inputRef.current.value));
+      if (result === false) {
+        setState("error");
+        return;
+      }
+      dirtyRef.current = false;
+      setDirty(false);
+      setState("saved");
+    } catch {
+      setState("error");
+    } finally {
+      savingRef.current = false;
+    }
+  }
+
+  return {
+    inputRef,
+    dirty,
+    state,
+    save,
+    changed: () => {
+      dirtyRef.current = true;
+      setDirty(true);
+      setState("idle");
+    },
+  };
 }
-function TxtField({
+
+function EditableField({
   label,
   value,
+  type,
   onSave,
+  parse,
 }: {
   label: string;
-  value: string | null;
-  onSave: (v: string | null) => void;
+  value: string | number | null;
+  type: "text" | "number" | "date";
+  onSave: (value: any) => EditableSaveResult;
+  parse: (raw: string) => any;
 }) {
+  const field = useEditableField(onSave, parse);
   return (
     <div className="bg-soft rounded-md px-3 py-2">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
-      <input
-        type="text"
-        defaultValue={value ?? ""}
-        onBlur={(e) => onSave(e.target.value.trim() || null)}
-        className="w-full bg-white border border-border rounded-md px-2 py-1 text-sm"
-      />
+      <div className="flex min-w-0 items-center gap-2">
+        <input
+          ref={field.inputRef}
+          type={type}
+          aria-label={label}
+          defaultValue={value ?? ""}
+          disabled={field.state === "saving"}
+          onChange={field.changed}
+          onBlur={() => void field.save()}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+          className="min-w-0 flex-1 bg-white border border-border rounded-md px-2 py-1 text-sm disabled:opacity-60"
+        />
+        {field.dirty ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 shrink-0 px-2.5 text-[11px]"
+            disabled={field.state === "saving"}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => void field.save()}
+          >
+            {field.state === "saving" ? "Saving…" : "Save"}
+          </Button>
+        ) : null}
+      </div>
+      {field.state === "saved" ? <div role="status" className="mt-1 text-[11px] text-success">Saved</div> : null}
+      {field.state === "error" ? <div role="status" className="mt-1 text-[11px] text-destructive">Not Saved</div> : null}
     </div>
   );
 }
 
-function DateField({
-  label,
-  value,
-  onSave,
-}: {
-  label: string;
-  value: string | null;
-  onSave: (v: string | null) => void;
-}) {
-  return (
-    <div className="bg-soft rounded-md px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
-      <input
-        type="date"
-        defaultValue={value ?? ""}
-        onBlur={(e) => onSave(e.target.value || null)}
-        className="w-full bg-white border border-border rounded-md px-2 py-1 text-sm"
-      />
-    </div>
-  );
+function NumField({ label, value, onSave }: { label: string; value: number | null; onSave: (v: number | null) => EditableSaveResult }) {
+  return <EditableField label={label} value={value} type="number" onSave={onSave} parse={(raw) => raw === "" ? null : Number(raw)} />;
+}
+
+function TxtField({ label, value, onSave }: { label: string; value: string | null; onSave: (v: string | null) => EditableSaveResult }) {
+  return <EditableField label={label} value={value} type="text" onSave={onSave} parse={(raw) => raw.trim() || null} />;
+}
+
+function DateField({ label, value, onSave }: { label: string; value: string | null; onSave: (v: string | null) => EditableSaveResult }) {
+  return <EditableField label={label} value={value} type="date" onSave={onSave} parse={(raw) => raw || null} />;
 }
 
 /** How the applicant's duration band reads to a person. */
