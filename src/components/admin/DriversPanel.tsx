@@ -2043,7 +2043,7 @@ function DriverDetail({
   const actualInspection = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true;
   const actualAgreement = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true;
   const { stages: lifecycle, current: currentStage, percent: percentComplete } = driverLifecycle({
-    contacted, screening: screeningDone,
+    contacted, interviewComplete: screeningDone, screening: screeningDone,
     documentsReceived: !vaultLoading && collectedDocuments.collected,
     documents: isManager ? addressed(licenseItems) : !missingRequiredCategories(vaultDocs).some((c) => c === "license_front" || c === "license_back"),
     profile: isManager ? addressed(profileItems) : !missingRequiredCategories(vaultDocs).includes("gig_profile"),

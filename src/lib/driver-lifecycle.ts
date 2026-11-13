@@ -25,9 +25,13 @@ export function driverLifecycle(facts: {
   pickup?: boolean;
   /** Aggregate receipt of required files, not their verification. */
   documentsReceived?: boolean;
+  /** Saved interview completion (driver_screenings.interview_completed_at). A
+   *  finished call proves we reached them, so Contacted is done even when no
+   *  contacted date was ever stamped. */
+  interviewComplete?: boolean;
 }) {
   const completed: Record<DriverLifecycleKey, boolean> = {
-    applied: true, contacted: facts.contacted, documents: facts.documentsReceived === true, screening: facts.screening,
+    applied: true, contacted: facts.contacted || facts.interviewComplete === true, documents: facts.documentsReceived === true, screening: facts.screening,
     docs: facts.documents, profile: facts.profile, approved: facts.approved,
     reserved: facts.rentalActive || facts.reserved === true, inspection: facts.inspection, agreement: facts.agreement,
     pickup: facts.rentalActive || facts.pickup === true, active: facts.rentalActive,
