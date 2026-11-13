@@ -379,11 +379,13 @@ ok(!/auth\.signUp/.test(adminSrc), "the back-office form offers no Create Accoun
 ok(/signInWithPassword/.test(adminSrc), "but still signs people in");
 ok(/requestPasswordReset/.test(adminSrc), "and still resets passwords");
 ok(
-  /auth\.signUp/.test(read("src/routes/invite.tsx")),
-  "team members still create their account from an invitation",
+  /requestEmailSignup/.test(read("src/routes/invite.tsx")) &&
+    !/auth\.signUp/.test(read("src/routes/invite.tsx")),
+  "team members still create their account from an invitation, through a drivereal.com confirm email",
 );
 ok(
-  /auth\.signUp/.test(read("src/routes/partner.tsx")),
+  /requestEmailSignup/.test(read("src/routes/partner.tsx")) &&
+    !/auth\.signUp/.test(read("src/routes/partner.tsx")),
   "partner onboarding keeps its sign-up — staff link the partner record afterwards",
 );
 

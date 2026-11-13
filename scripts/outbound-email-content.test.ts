@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import {
   PRODUCTION_ORIGIN,
   authConfirmUrl,
+  authUrlFromGenerateLink,
   findDisallowedOutboundUrls,
   inspectOutboundUrl,
   isPrivateOrLocalHost,
@@ -10,6 +11,7 @@ import {
   publicAppOrigin,
   publicAppUrl,
   recoveryUrlFromGenerateLink,
+  safeAuthNextPath,
 } from "../src/lib/public-app-url";
 import { portalLoginUrl } from "../src/lib/portal-handoff";
 import { vehicleShareUrl } from "../src/lib/vehicle-share.server";
@@ -80,6 +82,28 @@ describe("auth confirm links", () => {
     ).toBe("https://drivereal.com/auth/confirm?token_hash=hash-1&type=recovery");
     expect(recoveryUrlFromGenerateLink({ properties: { action_link: "https://supabase.co/auth/v1/verify?token=x" } })).toBeNull();
   });
+
+  test("can carry a safe next path and ignore open redirects", () => {
+    expect(safeAuthNextPath("/invite?token=abc")).toBe("/invite?token=abc");
+    expect(safeAuthNextPath("/partner")).toBe("/partner");
+    expect(safeAuthNextPath("/set-password")).toBe("/set-password");
+    expect(safeAuthNextPath("/portal")).toBe("/portal");
+    expect(safeAuthNextPath("/login")).toBe("/login");
+    expect(safeAuthNextPath("/admin")).toBe("/admin");
+    expect(safeAuthNextPath("//evil.example")).toBeNull();
+    expect(safeAuthNextPath("https://evil.example/")).toBeNull();
+    expect(safeAuthNextPath("/invite/../login")).toBe("/login");
+    expect(safeAuthNextPath("/oops")).toBeNull();
+    expect(safeAuthNextPath("invite")).toBeNull();
+    const url = authConfirmUrl("tok", "signup", "/partner");
+    expect(url).toBe("https://drivereal.com/auth/confirm?token_hash=tok&type=signup&next=%2Fpartner");
+    expect(authConfirmUrl("tok", "signup", "https://evil.example/")).toBe(
+      "https://drivereal.com/auth/confirm?token_hash=tok&type=signup",
+    );
+    expect(
+      authUrlFromGenerateLink({ properties: { hashed_token: "h2" } }, "signup", "/invite?token=zz"),
+    ).toBe("https://drivereal.com/auth/confirm?token_hash=h2&type=signup&next=%2Finvite%3Ftoken%3Dzz");
+  });
 });
 
 describe("call sites use the canonical origin", () => {
@@ -110,6 +134,35 @@ describe("call sites use the canonical origin", () => {
     const setPw = src("src/routes/set-password.tsx");
     expect(setPw).toContain("token_hash");
     expect(setPw).toContain("verifyOtp");
+  });
+
+  test("team invite and partner sign-up send a drivereal.com confirm link instead of client signUp", () => {
+    const invite = src("src/routes/invite.tsx");
+    const partner = src("src/routes/partner.tsx");
+    const signup = src("src/lib/auth-signup.server.ts");
+    const fn = src("src/lib/auth-signup.functions.ts");
+    const confirm = src("src/routes/auth/confirm.tsx");
+    const team = src("src/lib/team.functions.ts");
+    const email = src("src/lib/email.server.ts");
+    expect(invite).toContain("requestEmailSignup");
+    expect(partner).toContain("requestEmailSignup");
+    expect(invite).not.toContain("signUp(");
+    expect(partner).not.toContain("signUp(");
+    expect(invite).not.toContain("emailRedirectTo");
+    expect(partner).not.toContain("emailRedirectTo");
+    expect(invite).not.toContain("window.location.origin");
+    expect(partner).not.toContain("window.location.origin");
+    expect(fn).toContain("requestEmailSignup");
+    expect(signup).toContain('type: "signup"');
+    expect(signup).toContain("generateLink");
+    expect(signup).toContain("sendSignupConfirmEmail");
+    expect(signup).toContain("authUrlFromGenerateLink");
+    expect(confirm).toContain("safeAuthNextPath");
+    expect(confirm).toContain("next");
+    expect(team).toContain("publicAppUrl(`/invite?token=");
+    expect(team).not.toContain("SITE_URL");
+    expect(email).toContain("sendSignupConfirmEmail");
+    expect(email).toContain("Confirm Your Email For Your REAL RENTALS Account");
   });
 
   test("forgot-password flows send a drivereal.com confirm link instead of resetPasswordForEmail", () => {

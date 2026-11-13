@@ -148,21 +148,55 @@ export function publicAppUrl(pathAndQuery = "/"): string {
 
 export type AuthOtpType = "recovery" | "invite" | "magiclink" | "signup" | "email_change" | "email";
 
+const AUTH_NEXT_PATHS = new Set(["/invite", "/partner", "/set-password", "/portal", "/login", "/admin"]);
+
+/**
+ * A relative post-confirm path the app is allowed to send someone to.
+ * Rejects open redirects, protocols, and any path outside the auth allow-list.
+ */
+export function safeAuthNextPath(raw: string | null | undefined): string | null {
+  const value = String(raw ?? "").trim();
+  if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\") || /[a-z][a-z0-9+.-]*:/i.test(value)) {
+    return null;
+  }
+  let url: URL;
+  try {
+    url = new URL(value, PRODUCTION_ORIGIN);
+  } catch {
+    return null;
+  }
+  if (url.origin !== PRODUCTION_ORIGIN) return null;
+  if (!AUTH_NEXT_PATHS.has(url.pathname)) return null;
+  return `${url.pathname}${url.search}`;
+}
+
 /**
  * A drivereal.com confirm link from a generateLink hashed_token.
  * Never use action_link — that is the raw supabase.co /auth/v1/verify URL.
  */
-export function authConfirmUrl(tokenHash: string, type: AuthOtpType = "recovery"): string {
+export function authConfirmUrl(tokenHash: string, type: AuthOtpType = "recovery", next?: string | null): string {
   const hash = String(tokenHash || "").trim();
   if (!hash) throw new Error("Missing auth token.");
   const params = new URLSearchParams({ token_hash: hash, type });
+  const safe = safeAuthNextPath(next);
+  if (safe) params.set("next", safe);
   return publicAppUrl(`/auth/confirm?${params.toString()}`);
+}
+
+export function authUrlFromGenerateLink(
+  link: {
+    properties?: { hashed_token?: string | null; action_link?: string | null } | null;
+  } | null | undefined,
+  type: AuthOtpType = "recovery",
+  next?: string | null,
+): string | null {
+  const hash = String(link?.properties?.hashed_token ?? "").trim();
+  if (!hash) return null;
+  return authConfirmUrl(hash, type, next);
 }
 
 export function recoveryUrlFromGenerateLink(link: {
   properties?: { hashed_token?: string | null; action_link?: string | null } | null;
 } | null | undefined): string | null {
-  const hash = String(link?.properties?.hashed_token ?? "").trim();
-  if (!hash) return null;
-  return authConfirmUrl(hash, "recovery");
+  return authUrlFromGenerateLink(link, "recovery");
 }

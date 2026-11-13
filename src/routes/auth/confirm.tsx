@@ -3,19 +3,21 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/site/Logo";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import type { AuthOtpType } from "@/lib/public-app-url";
+import { safeAuthNextPath, type AuthOtpType } from "@/lib/public-app-url";
 
 /**
  * Public confirm route for hashed_token links in outbound email.
  * Calls verifyOtp on drivereal.com so recipients never visit supabase.co.
  *
- * Recovery / invite sessions continue to /set-password. Magic-link sessions
- * continue to /portal (or /login if verification fails).
+ * Recovery / invite sessions continue to /set-password. Signup and magic-link
+ * sessions follow a safe next path from the email (invite or partner), or
+ * fall back to /login and /portal.
  */
 export const Route = createFileRoute("/auth/confirm")({
-  validateSearch: (s: Record<string, unknown>): { token_hash?: string; type?: string } => ({
+  validateSearch: (s: Record<string, unknown>): { token_hash?: string; type?: string; next?: string } => ({
     token_hash: typeof s.token_hash === "string" ? s.token_hash : undefined,
     type: typeof s.type === "string" ? s.type : undefined,
+    next: typeof s.next === "string" ? s.next : undefined,
   }),
   head: () => ({
     meta: [{ title: "Confirm — REAL RENTALS" }, { name: "robots", content: "noindex" }],
@@ -37,8 +39,16 @@ function otpType(raw: string | undefined): AuthOtpType {
   return OTP_TYPES.has(t) ? t : "recovery";
 }
 
+function destination(kind: AuthOtpType, next: string | undefined): string {
+  const safe = safeAuthNextPath(next);
+  if (safe) return safe;
+  if (kind === "recovery" || kind === "invite") return "/set-password";
+  if (kind === "signup" || kind === "email_change") return "/login";
+  return "/portal";
+}
+
 function ConfirmPage() {
-  const { token_hash, type } = Route.useSearch();
+  const { token_hash, type, next } = Route.useSearch();
   const [err, setErr] = useState<string | null>(null);
   const tried = useRef(false);
 
@@ -58,14 +68,10 @@ function ConfirmPage() {
           setErr("That link is invalid or has expired.");
           return;
         }
-        if (kind === "recovery" || kind === "invite" || kind === "signup") {
-          window.location.replace("/set-password");
-          return;
-        }
-        window.location.replace("/portal");
+        window.location.replace(destination(kind, next));
       })
       .catch(() => setErr("That link is invalid or has expired."));
-  }, [token_hash, type]);
+  }, [token_hash, type, next]);
 
   if (err) {
     return (
