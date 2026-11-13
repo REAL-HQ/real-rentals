@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/site/Logo";
 import { Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
 import { requestPortalSignIn, verifyPortalSignIn } from "@/lib/portal-signin.functions";
+import { requestPasswordReset } from "@/lib/password-reset.functions";
 import { rememberPayIntent } from "@/lib/portal-pay-link";
 
 /**
@@ -49,6 +50,7 @@ function LoginPage() {
     navigate({ to: "/portal", replace, ...(pay === "balance" ? { search: { pay: "balance" } as any } : {}) });
   const request = useServerFn(requestPortalSignIn);
   const verify = useServerFn(verifyPortalSignIn);
+  const requestReset = useServerFn(requestPasswordReset);
   const [email, setEmail] = useState(emailPrefill ?? "");
   useEffect(() => {
     if (emailPrefill) setEmail(emailPrefill);
@@ -134,7 +136,7 @@ function LoginPage() {
     setErr(null);
     setLoading(true);
     if (mode === "forgot") {
-      await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/set-password` });
+      await requestReset({ data: { email: email.trim() } });
       setLoading(false);
       setMode("forgotSent");
       return;

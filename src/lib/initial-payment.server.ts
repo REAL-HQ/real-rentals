@@ -3,11 +3,12 @@
 // paid from payment_intent.metadata.paymentIds. Never throws out to signing.
 import { initialPaymentFromMerge, type InitialPaymentOffer } from "@/lib/initial-payment";
 import type { Actor } from "@/lib/roles.server";
+import { publicAppOrigin } from "@/lib/public-app-url";
 
 type Admin = typeof import("@/integrations/supabase/client.server").supabaseAdmin;
 
 const SETTINGS_KEY = "initial_payment_link";
-const SITE = () => (process.env.PUBLIC_SITE_URL || "https://drivereal.com").replace(/\/$/, "");
+const SITE = () => publicAppOrigin();
 
 export function checkoutStripeEnv(): "sandbox" | "live" | null {
   const named = process.env.STRIPE_CHECKOUT_ENV;

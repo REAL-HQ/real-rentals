@@ -188,7 +188,7 @@ describe("wiring", () => {
     assert.match(rentals, /event: "rental_started"/);
     assert.equal(rentals.match(/event: "rental_ended"/g)?.length, 2);
     assert.match(incidents, /event: "incident_logged", applicationId, rentalId, fresh: !data.id/);
-    assert.match(rentals, /subject: `You're approved — \$\{vehicleLabel\} is yours`/);
+    assert.match(rentals, /subject: `\$\{vehicleLabel\} Is Reserved For You`/);
     assert.match(rentals, /kind: "rental_activated"/);
     assert.match(rentals, /kind: "rental_started"/);
     assert.doesNotMatch(helper, /sendEmail\(|sendSms\(|TWILIO_|RESEND_/);
