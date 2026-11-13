@@ -150,6 +150,7 @@ If the Vehicle is in an accident, or is stolen, broken into, or vandalized, you 
 - cooperate with us, the insurers, and their investigators, and give truthful and complete information, including whether you were logged in to a Platform at the time; and
 - not admit fault, accept or offer money, settle, or arrange towing or repairs yourself.
 If you don't, an insurer may deny coverage, and you are responsible for what it would have paid. If the Vehicle is unsafe to drive, do not drive it; we will arrange towing.
+**Vehicle Damage Claims.** Only REAL RENTALS decides whether to make an insurance claim for damage to, or loss or theft of, the Vehicle. You may not make, or ask anyone to make, a claim for damage to the Vehicle under the Renter Policy or any other insurance without our written consent. This does not change your duty to report an accident, or to report and cooperate with any claim for injuries or damage to other people's property.
 
 ## 9. Authorized Drivers
 Only you may drive the Vehicle, unless we approve an additional driver in writing. An additional driver must meet Section 19, be listed on page 1, sign this Agreement as an additional driver, and be added to the Renter Policy before driving. You may not let anyone else drive the Vehicle or use it to work on any Platform account, even briefly. There may be no insurance if they do. You are responsible for every act of any person you allow to use the Vehicle.

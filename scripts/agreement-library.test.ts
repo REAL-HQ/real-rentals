@@ -69,6 +69,7 @@ ok(acknowledgmentsOf(editedIr).length === 15 && stripTerms(editedIr) === stripTe
   ok(miss.length === 1 && miss[0] === "service_area", "v1.14: only Service Area is left for the Owner to set");
   ok(!Object.values(V114_TERM_DEFAULTS).some((v) => /\[[^\]]*\]/.test(v)), "v1.14: no bracketed open values");
   ok(!/\[ \]|_{4,}|confirm/i.test(V114_SOURCE.replace(/\[\[[a-z0-9_]+\]\]/g, "")), "v1.14: no blanks, checkboxes or confirm wording");
+  ok(/\*\*Vehicle Damage Claims\.\*\* Only REAL RENTALS decides whether to make an insurance claim for damage to/.test(V114_SOURCE), "v1.14: only REAL RENTALS decides on vehicle-damage claims (Section 8)");
   ok(!/OneStepGPS|Approved Platform Use|declarations page to you/i.test(V114_SOURCE), "v1.14: removed items stay removed");
   ok(!/[\u2013\u2014]/.test(V114_SOURCE), "v1.14: no dashes the PDF font cannot print");
   ok(/no security deposit/i.test(V114_TERM_DEFAULTS.deposit_clause), "v1.14: no-deposit wording");
