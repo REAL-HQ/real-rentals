@@ -56,6 +56,9 @@ const ORDER: DocCategory[] = [
   "license_back",
   "insurance",
   "gig_profile",
+  "income",
+  "insurance_quote",
+  "screening",
   "trip_history",
   "other",
 ];
@@ -93,7 +96,7 @@ function isImageDoc(d: VaultDocument): boolean {
   return !/\.(pdf|mp3|wav|m4a|ogg|mp4|mov|webm|zip|docx?)$/i.test(d.file_name ?? "");
 }
 
-/** The four categories the screening pipeline treats as required. One list, shared with the server. */
+/** License sides, gig profile and income proof. One list, shared with the server. */
 export { REQUIRED_VAULT_CATEGORIES } from "@/lib/required-docs";
 
 function VerifyIdentityAction({ applicationId }: { applicationId: string }) {

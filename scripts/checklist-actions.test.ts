@@ -10,11 +10,14 @@ describe("Driver checklist actions", () => {
     expect(checklistDocumentCategories("signed_agreement")).toEqual(["agreement"]);
     expect(checklistDocumentCategories("insurance_verified")).toEqual(["insurance"]);
     expect(checklistDocumentCategories("gig_profile")).toEqual(["gig_profile"]);
+    expect(checklistDocumentCategories("income")).toEqual(["income"]);
+    expect(checklistDocumentCategories("insurance_quote")).toEqual(["insurance_quote"]);
+    expect(checklistDocumentCategories("screening")).toEqual(["screening"]);
     expect(checklistDocumentCategories("approved")).toEqual([]);
     expect(checklistDocumentCategories("gig_platform")).toEqual([]);
   });
   it("files and paper agreements open the existing document vault rather than completing readiness", () => {
-    for (const key of ["license_documents", "insurance_document", "gig_profile", "signed_agreement"] as const) {
+    for (const key of ["license_documents", "insurance_document", "gig_profile", "income", "insurance_quote", "screening", "signed_agreement"] as const) {
       const before = requirement(key);
       expect(checklistAction(before)?.target).toEqual({ kind: "section", tab: "documents", anchor: "profile-documents" });
       expect(before.met).toBe(false);

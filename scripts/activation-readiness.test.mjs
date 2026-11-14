@@ -217,11 +217,11 @@ try {
     install(world({ app: { status: "reviewing" }, documents: [doc("license_front")], screenings: [], agreements: [], inspections: [] }));
     const r = await readiness(MANAGER);
     const byKey = Object.fromEntries(r.requirements.map((q) => [q.key, q]));
-    assert.deepEqual(r.requirements.map((q) => q.key), ["interview", "license_documents", "gig_profile", "insurance_verified", "approved", "inspection", "signed_agreement", "pickup", "rental_active", "insurance_document", "gig_platform"]);
+    assert.deepEqual(r.requirements.map((q) => q.key), ["interview", "license_documents", "gig_profile", "income", "insurance_verified", "insurance_quote", "screening", "approved", "signed_agreement", "inspection", "pickup", "rental_active", "insurance_document", "gig_platform"]);
     for (const k of Object.keys(byKey)) assert.equal(byKey[k].met, false, k);
     assert.deepEqual(Object.fromEntries(r.requirements.map((q) => [q.key, q.enforcement])), {
       approved: "hard", license_documents: "hard", signed_agreement: "hard", insurance_verified: "advisory",
-      interview: "soft", inspection: "soft", pickup: "advisory", rental_active: "advisory", insurance_document: "advisory", gig_profile: "advisory", gig_platform: "advisory",
+      interview: "soft", inspection: "soft", pickup: "advisory", rental_active: "advisory", insurance_document: "advisory", gig_profile: "advisory", income: "advisory", insurance_quote: "advisory", screening: "advisory", gig_platform: "advisory",
     });
     assert.equal(byKey.insurance_verified.detail, "No Insurance Document");
     assert.deepEqual(codes(r.blockers), ["missing_documents", "no_interview", "no_passed_inspection", "no_signed_agreement", "not_approved"]);
@@ -742,12 +742,12 @@ try {
     assert.equal(rules.insuranceStatus({ verified: null, documents: [ins()], applicationExpiresOn: null, today: t }), "unverified");
   });
 
-  await test("missingRequiredCategories uses the shared list and does not require insurance", async () => {
+  await test("missingRequiredCategories includes income proof and does not require insurance", async () => {
     const shared = readFileSync("src/lib/required-docs.ts", "utf8");
-    assert.match(shared, /export const REQUIRED_VAULT_CATEGORIES = \["license_front", "license_back", "gig_profile"\] as const;/);
+    assert.match(shared, /export const REQUIRED_VAULT_CATEGORIES = \["license_front", "license_back", "gig_profile", "income"\] as const;/);
     const ui = readFileSync("src/components/admin/ApplicantDocuments.tsx", "utf8");
     assert.match(ui, /export \{ REQUIRED_VAULT_CATEGORIES \} from "@\/lib\/required-docs";/);
-    assert.deepEqual(rules.missingRequiredCategories([]), ["license_front", "license_back", "gig_profile"]);
+    assert.deepEqual(rules.missingRequiredCategories([]), ["license_front", "license_back", "gig_profile", "income"]);
   });
 
   // ------------------------------------------------------ UI visibility

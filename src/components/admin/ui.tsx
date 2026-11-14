@@ -745,9 +745,8 @@ export function Timeline({
 
 function fmtDate(iso?: string | null): string | null {
   if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return formatDate(d);
+  // Date-only strings stay calendar dates (no UTC shift); formatDate handles both.
+  return formatDate(iso) || null;
 }
 
 export function buildDriverTimeline(driver: any, screening?: any): TimelineStep[] {

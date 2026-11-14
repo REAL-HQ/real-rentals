@@ -23,6 +23,19 @@ ok(
   "an unreadable rate creates no charge",
 );
 
+// v1.14 (Insurance Included): only the Reservation Fee is due at signing.
+const prepJson = (mode: string, amount: number | null) => JSON.stringify({ reservation: { mode, amount } });
+const fee = initialPaymentFromMerge({ weekly_rate: "$375.00", deposit_amount: "$0", balance_due: "$325.00", _prep: prepJson("required", 50) });
+ok(fee?.total === 50 && fee.rent === 50 && fee.deposit === 0 && /Reservation Fee/.test(fee.rentLineName ?? ""), "v1.14 charges the Reservation Fee, not the first week");
+ok(
+  initialPaymentFromMerge({ weekly_rate: "$375.00", deposit_amount: "$0", balance_due: "$375.00", _prep: prepJson("not_required", null) }) == null,
+  "v1.14 with no Reservation Fee charges nothing at signing",
+);
+ok(
+  initialPaymentFromMerge({ weekly_rate: "$375.00", deposit_amount: "$0", balance_due: "$375.00", _prep: "not json" }) == null,
+  "v1.14 with unreadable choices creates no charge",
+);
+
 const saved = {
   STRIPE_CHECKOUT_ENV: process.env.STRIPE_CHECKOUT_ENV,
   STRIPE_SANDBOX_API_KEY: process.env.STRIPE_SANDBOX_API_KEY,

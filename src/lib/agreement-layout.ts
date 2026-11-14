@@ -7,6 +7,8 @@
 //
 //   # Title            #- Subtitle         ## Section heading (red accent)
 //   ### Sub-heading    ~ Italic note       > Indented quotation
+//   ! **Lead.** Text   statutory notice box (pastel red, 10.5 pt type)
+//   !+ **Lead.** Text  highlight box (pastel green)
 //   - Bullet           **Lead.** Paragraph with a bold lead-in
 //   |#45 Head A | Head B   table header; 45 = first column width in percent
 //   | Label | Value        table row (label column shaded when no header)
@@ -24,6 +26,7 @@ export type Row = { cells: [string, string]; initial?: boolean };
 export type Block =
   | { k: "title" | "subtitle" | "h2" | "h3" | "note" | "quote" | "bullet"; t: string }
   | { k: "p"; t: string; lead?: string }
+  | { k: "notice" | "highlight"; t: string; lead?: string }
   | { k: "table"; frac: number; header?: [string, string]; rows: Row[] }
   | { k: "sig"; agreementNumber: string }
   | { k: "page" }
@@ -68,6 +71,13 @@ export function parseLayout(body: string): Block[] {
     if (t.startsWith("~ ")) { out.push({ k: "note", t: t.slice(2) }); continue; }
     if (t.startsWith("> ")) { out.push({ k: "quote", t: t.slice(2) }); continue; }
     if (t.startsWith("- ")) { out.push({ k: "bullet", t: t.slice(2) }); continue; }
+    // Boxed blocks. "!+" must be tested before "!".
+    const box = t.match(/^(!\+|!) (.*)$/);
+    if (box) {
+      const inner = box[2].match(/^\*\*(.+?)\*\*\s*(.*)$/);
+      out.push({ k: box[1] === "!+" ? "highlight" : "notice", lead: inner?.[1], t: inner ? inner[2] : box[2] });
+      continue;
+    }
     const lead = t.match(/^\*\*(.+?)\*\*\s*(.*)$/);
     if (lead) { out.push({ k: "p", lead: lead[1], t: lead[2] }); continue; }
     out.push({ k: "p", t });
@@ -92,7 +102,7 @@ export function layoutToText(body: string): string {
       case "h2": out.push("", b.t.toUpperCase()); break;
       case "note": case "quote": out.push(b.t); break;
       case "bullet": out.push(`  - ${b.t}`); break;
-      case "p": out.push(b.lead ? `${b.lead} ${b.t}` : b.t); break;
+      case "p": case "notice": case "highlight": out.push(b.lead ? `${b.lead} ${b.t}` : b.t); break;
       case "table":
         if (b.header) out.push(`${b.header[0]} — ${b.header[1]}`);
         for (const r of b.rows) out.push(r.initial ? `[Initial] ${r.cells[1]}` : `${r.cells[0]}: ${r.cells[1] || "—"}`);

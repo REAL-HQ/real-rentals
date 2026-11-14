@@ -24,6 +24,9 @@ export const DOC_CATEGORIES = [
   { key: "license_back", label: "Driver's license (back)", expiring: true },
   { key: "insurance", label: "Insurance card", expiring: true },
   { key: "gig_profile", label: "Gig profile screenshot", expiring: false },
+  { key: "income", label: "Income proof", expiring: false },
+  { key: "insurance_quote", label: "Insurance quote", expiring: false },
+  { key: "screening", label: "Screening document", expiring: false },
   // Its own category, not a second gig_profile. Filing trip screenshots under
   // gig_profile meant each one superseded the applicant's actual gig profile
   // — and every trip screenshot before it — because registerDocument marks
@@ -110,6 +113,9 @@ const CategoryEnum = z.enum([
   "license_back",
   "insurance",
   "gig_profile",
+  "income",
+  "insurance_quote",
+  "screening",
   "trip_history",
   "agreement",
   "other",

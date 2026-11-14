@@ -201,8 +201,13 @@ describe("backfill and reminder safety", () => {
     assert.match(sql, /PREPARED, NOT RUN/i);
     assert.match(sql, /notified_status/);
     assert.match(sql, /'paid'/);
-    assert.match(sql, /NOT EXISTS \([\s\S]*p\.stripe_invoice_id = m\.invoice_id/);
+    assert.match(sql, /NOT EXISTS \([\s\S]*p\.stripe_invoice_id = s\.invoice_id/);
     assert.match(sql, /stripe_charge_id/);
+    // Existing rows only get empty receipt columns filled; nothing else changes.
+    const update = sql.slice(sql.indexOf("UPDATE public.payments"), sql.indexOf("-- 2)"));
+    assert.doesNotMatch(update, /\b(status|amount|rental_id|driver_id|due_date|paid_date)\s*=/);
+    // Nothing is inserted unless it ties to a rental or application.
+    assert.match(sql, /WHERE m\.rental_id IS NOT NULL OR m\.driver_id IS NOT NULL;/);
     assert.doesNotMatch(sql, /INSERT INTO public\.rent_reminder_log/i);
     assert.doesNotMatch(sql, /\bperform\s+net\.http/i);
   });

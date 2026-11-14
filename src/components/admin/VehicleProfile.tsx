@@ -1,6 +1,6 @@
 import { useUnsavedGuard, confirmLeaveIfUnsaved } from "@/lib/unsaved-changes";
 import type React from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { VehicleSuggestions } from "@/components/admin/VehicleSuggestions";
@@ -830,6 +830,13 @@ function SectionDrawer({
   const [f, setF] = useState<Record<string, any>>(() => ({ ...vehicle }));
   const [saving, setSaving] = useState(false);
   const [fieldError, setFieldError] = useState<{ field?: string; message: string } | null>(null);
+  const saveErrorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (fieldError) {
+      saveErrorRef.current?.focus({ preventScroll: true });
+      saveErrorRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [fieldError]);
 
   const [touched, setTouched] = useState(false);
   // WHICH fields were edited, not just whether any were. The drawer posts the
@@ -887,11 +894,11 @@ function SectionDrawer({
       toast.success(`Saved ${names(saved)}`);
       await onSaved();
     } catch (e) {
-      toast.error(
-        e instanceof Error && e.message === "Forbidden"
-          ? "Editing a vehicle is Manager-only."
-          : "Could not save.",
-      );
+      const message = e instanceof Error && e.message === "Forbidden"
+        ? "Editing a vehicle is Manager-only."
+        : "Could not save. Your changes are still here; please try again.";
+      setFieldError({ message });
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -906,8 +913,8 @@ function SectionDrawer({
       onClose={onClose}
       onSave={submit}
     >
-      {fieldError && !fieldError.field && (
-        <div className="rounded-md bg-[rgba(208,48,32,0.08)] px-3 py-2 text-[12px] text-[#D03020]">
+      {fieldError && (
+        <div ref={saveErrorRef} role="alert" tabIndex={-1} className="rounded-md bg-[rgba(208,48,32,0.08)] px-3 py-2 text-[12px] text-[#D03020]">
           {fieldError.message}
         </div>
       )}
@@ -957,6 +964,8 @@ function SectionDrawer({
               onChange={(v) => set("status", v)}
               vehicleStatus
               options={VEHICLE_STATUSES.map((s) => ({ value: s.value, label: s.label }))}
+              error={err("status")}
+              hint="Available and Reserved require rental-ready details, including a weekly rate above $0. Use Needs Setup to save details before the vehicle is ready."
             />
             <NumberField label="Seats" value={num("seats")} onChange={(v) => set("seats", v)} />
             <NumberField label="Doors" value={num("doors")} onChange={(v) => set("doors", v)} />

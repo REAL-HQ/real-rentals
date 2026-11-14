@@ -14,6 +14,9 @@ const LABELS: Partial<Record<DocCategory, string>> = {
   insurance: "Insurance Card",
   agreement: "Signed Agreement",
   gig_profile: "Gig Profile Screenshot",
+  income: "Income Proof",
+  insurance_quote: "Insurance Quote",
+  screening: "Screening Document",
 };
 
 export function DriverEvidenceUpload({ applicationId, category, documents, onUploaded, categories }: {
@@ -43,7 +46,7 @@ export function DriverEvidenceUpload({ applicationId, category, documents, onUpl
         { label: "Front", upload: (file, { onProgress }) => upload("license_front", file, onProgress) },
         { label: "Back", upload: (file, { onProgress }) => upload("license_back", file, onProgress) },
       ] : undefined}
-      hint={category === "agreement" ? "Signed Paper Copy · Owner/Manager Review Required" : category === "insurance" ? "Insurance Document · Verification Remains Separate" : undefined}
+      hint={category === "agreement" ? "Signed Paper Copy · Owner/Manager Review Required" : category === "insurance" ? "Insurance Document · Verification Remains Separate" : category === "insurance_quote" || category === "screening" ? "Upload The File And Check Off This Step To Complete It" : undefined}
       upload={(file, { onProgress }) => upload(category, file, onProgress)} onClose={() => setOpen(false)} /> : null}
   </>;
 }

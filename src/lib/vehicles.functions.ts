@@ -1118,7 +1118,7 @@ async function applySection(
       field: k,
       label: FIELD_LABEL[k] ?? k.replace(/_/g, " "),
     });
-    const intended = data.intended?.length
+    const intended = data.intended !== undefined
       ? [...new Set(data.intended)]
       : Object.keys(data.values).filter((k) => allowed.includes(k));
     const ignored: RefusedField[] = intended
@@ -1136,7 +1136,7 @@ async function applySection(
     // Which of the two actually moved, so the save can say "recorded" or
     // "already that" rather than "saved" for a value nobody changed.
     const titleMoved = new Set<string>();
-    if (canTitle && TITLE_KEYS.some((k) => k in data.values)) {
+    if (canTitle && TITLE_KEYS.some((k) => allowed.includes(k) && intended.includes(k) && k in data.values)) {
       const clean = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : null);
       const { data: wasTitle } = await supabaseAdmin
         .from("vehicle_titles")
@@ -1149,7 +1149,7 @@ async function applySection(
         updated_at: new Date().toISOString(),
       };
       for (const k of TITLE_KEYS)
-        if (k in data.values) {
+        if (allowed.includes(k) && intended.includes(k) && k in data.values) {
           row[k] = clean(data.values[k]);
           if ((wasTitle?.[k] ?? null) !== row[k]) titleMoved.add(k);
         }
@@ -1172,11 +1172,11 @@ async function applySection(
         summary: "Updated Owner-only title details",
         entityType: "vehicle",
         entityId: data.id,
-        metadata: { fields: TITLE_KEYS.filter((k) => k in data.values) },
+        metadata: { fields: TITLE_KEYS.filter((k) => allowed.includes(k) && intended.includes(k) && k in data.values) },
       });
     }
     for (const key of allowed) {
-      if (!(key in data.values)) continue;
+      if (!(key in data.values) || !intended.includes(key)) continue;
       if (TITLE_KEYS.includes(key)) continue;
       let v = data.values[key];
 
@@ -1330,10 +1330,21 @@ async function applySection(
       }
     }
 
-    const { error } = await supabaseAdmin
+    // Do not fire UPDATE OF status/weekly_rate guards for untouched values
+    // copied from the record. An unrelated plate/color edit is not a request
+    // to make the car Available or revalidate its existing rate.
+    for (const key of ["status", "weekly_rate"]) {
+      if (key in patch && !diffFields(before, patch, [key])[key]) delete patch[key];
+    }
+    if (!Object.keys(patch).length) {
+      return { ok: true, saved: [...titleMoved].map(named), unchanged: intended.filter((k) => allowed.includes(k)).map(named), ignored, rejected: [] };
+    }
+    const { data: persisted, error } = await supabaseAdmin
       .from("vehicles")
       .update(patch as any)
-      .eq("id", data.id);
+      .eq("id", data.id)
+      .select("*")
+      .maybeSingle();
     if (error) {
       const msg = String(error.message);
       const notReady = notReadyMessage(msg);
@@ -1352,7 +1363,11 @@ async function applySection(
       return { ok: false, error: msg };
     }
 
-    const changed = diffFields(before as any, patch, Object.keys(patch));
+    if (!persisted) return { ok: false, error: "No vehicle changes were saved. Refresh the record and try again." };
+    if (Object.keys(diffFields(patch, persisted, Object.keys(patch))).length) {
+      return { ok: false, error: "Some changes could not be confirmed. Your draft is still here; refresh the record before trying again." };
+    }
+    const changed = diffFields(before as any, persisted, Object.keys(patch));
     const changedKeys = Object.keys(changed);
     if (changedKeys.length) {
       const label = before.unit_number || `${before.year} ${before.make} ${before.model}`;

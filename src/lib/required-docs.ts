@@ -6,9 +6,10 @@ import { REQUIRED_DOC_TYPES, type RequiredDocType } from "@/components/admin/typ
  * Vault categories that must be on file before a driver is treated as
  * document-complete. Insurance is not one of them: Real Rentals sets up the
  * policy after the contract is signed. Staff can still file an insurance
- * document; it is optional and does not change this count.
+ * document; it is optional and does not change this count. Income proof is
+ * required for the Documents receipt summary but remains advisory for activation.
  */
-export const REQUIRED_VAULT_CATEGORIES = ["license_front", "license_back", "gig_profile"] as const;
+export const REQUIRED_VAULT_CATEGORIES = ["license_front", "license_back", "gig_profile", "income"] as const;
 export type RequiredVaultCategory = (typeof REQUIRED_VAULT_CATEGORIES)[number];
 
 /** Vault category -> the required-document name the list counts. */

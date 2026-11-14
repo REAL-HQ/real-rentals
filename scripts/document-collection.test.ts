@@ -3,7 +3,7 @@ import { documentCollection, proposeEvidenceEvent, type EvidenceEvent } from "..
 import { driverLifecycle } from "../src/lib/driver-lifecycle";
 
 const applicationId = "11111111-1111-4111-8111-111111111111";
-const categories = ["license_front", "license_back", "insurance", "gig_profile"] as const;
+const categories = ["license_front", "license_back", "gig_profile", "income"] as const;
 const documents = categories.map((category) => ({
   applicationId, id: category, category, is_current: true, review_status: "uploaded",
   storage_path: `synthetic/${category}`,
@@ -41,7 +41,7 @@ describe("Documents receipt", () => {
     expect(project(events)).toMatchObject({ tone: "red", uploaded: true, collected: false });
   });
   it("document receipt does not complete screening, approval, inspection, agreement or Active", () => {
-    const life = driverLifecycle({ contacted: true, documentsReceived: true, screening: false, documents: false, profile: false, approved: false, inspection: false, agreement: false, rentalActive: false });
+    const life = driverLifecycle({ contacted: true, documentsReceived: true, screening: false, approved: false, inspection: false, agreement: false, rentalActive: false });
     expect(life.stages.find((stage) => stage.key === "documents")?.state).toBe("done");
     for (const key of ["screening", "approved", "inspection", "agreement", "active"]) expect(life.stages.find((stage) => stage.key === key)?.state).not.toBe("done");
   });

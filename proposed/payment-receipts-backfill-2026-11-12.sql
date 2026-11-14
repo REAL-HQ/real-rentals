@@ -1,15 +1,25 @@
--- PREPARED, NOT RUN. Needs Dolmar's approval after the migration in this PR is applied.
--- One-time backfill of the 12 successful $350 payments since Oct 15, 2026.
--- Dates are America/New_York. $0 subscription-update invoices are left out.
--- Sends nothing: no email or SMS runs from this SQL. notified_status = 'paid'
--- marks each row as already noticed so a later Stripe replay cannot email,
--- text, or raise late fees or rent reminders.
--- Idempotent: skips any invoice or charge already in payments.
--- Unmatched rows (if a rental or application cannot be found at run time) are
--- still inserted with null rental_id/driver_id so staff can see them.
+-- PREPARED, NOT RUN. Needs Dolmar's approval, and only AFTER migration
+-- 20261113010000_payment_receipt_links.sql is applied.
+-- One-time receipt backfill for the 12 successful $350 Stripe payments since
+-- Oct 15, 2026 (dates America/New_York; $0 subscription-update invoices left out).
+--
+-- Re-checked read-only against production on Nov 14, 2026:
+--   * 10 of the 12 invoices already have a payments row (webhook or the
+--     Nov 14 links), including Heather 0b66655b (in_1UaHCP…) and James
+--     cf23fc42 (in_1Uazl0…). Those rows are UPDATED: only empty receipt
+--     columns are filled. Status, amount, dates, rental and driver are untouched.
+--   * Adam Waez's 2 invoices (QU0AFF6R-0001 Oct 15, QU0AFF6R-0002 Oct 22) have
+--     no row. Their subscription belongs to his closed rental 484b2643, so they
+--     are INSERTED on that rental (application e89c444c).
+--   * Nothing is inserted unless it ties to a rental or application (same rule
+--     as the webhook since PR 360). Expected result: 10 updated, 2 inserted.
+-- Sends nothing. notified_status = 'paid' on inserts so a Stripe replay cannot
+-- email, text, or raise late fees or rent reminders. Idempotent: re-running
+-- updates 0 and inserts 0.
 
 BEGIN;
 
+CREATE TEMP TABLE bf_src ON COMMIT DROP AS
 WITH src(
   invoice_id, invoice_number, amount, customer_id, subscription_id,
   known_rental_id, known_application_id, due_date, paid_date, paid_at,
@@ -28,48 +38,46 @@ WITH src(
   ('in_1URZk3GsNNO50lXb0Jsh1lYP', 'BUKZ1ZXD-0001', 350.00, 'cus_VSUjRxg343D7Yk', 'sub_1URZk6GsNNO50lXbXuQV3lAH', 'd8fbb519-db84-4b33-8669-7c62474d6bfd'::uuid, NULL, '2026-10-17'::date, '2026-10-17'::date, '2026-10-17T15:41:52+00:00'::timestamptz, 'ch_3URZk3GsNNO50lXb1gt6tkER', 'pi_3URZk3GsNNO50lXb1GhDspZV', 'https://invoice.stripe.com/i/acct_1TwBPNGsNNO50lXb/live_YWNjdF8xVHdCUE5Hc05OTzUwbFhiLF9WU1VqbVlmam92N082NXV0V2tJdlY3VWJReE96NWZ2LDE4NTA3MDM3OA0200RVlchb07?s=ap', 'https://pay.stripe.com/invoice/acct_1TwBPNGsNNO50lXb/live_YWNjdF8xVHdCUE5Hc05OTzUwbFhiLF9WU1VqbVlmam92N082NXV0V2tJdlY3VWJReE96NWZ2LDE4NTA3MDM3OA0200RVlchb07/pdf?s=ap', 'https://pay.stripe.com/receipts/invoices/CAcQARoXChVhY2N0XzFUd0JQTkdzTk5PNTBsWGIo7rLZ1wYyBjKE3OyGaDosFj_lqTdNy5ST6QRGPxjUZGi_ocitdW2wq3L2n25w9NxtpEi_V-DaQjwk2qQ?s=ap'),
   ('in_1UQwOfGsNNO50lXbRNtfEOYZ', 'ZYMDSLMB-0001', 350.00, 'cus_VRq4RFWitpMvSV', 'sub_1UQwOjGsNNO50lXbq8y8hkVs', '83668a8d-1868-45c5-bb20-38f54491ab6c'::uuid, NULL, '2026-10-15'::date, '2026-10-15'::date, '2026-10-15T21:41:12+00:00'::timestamptz, 'ch_3UQwOfGsNNO50lXb0nhQ4Upe', 'pi_3UQwOfGsNNO50lXb03Jeh1a9', 'https://invoice.stripe.com/i/acct_1TwBPNGsNNO50lXb/live_YWNjdF8xVHdCUE5Hc05OTzUwbFhiLF9WUnE0OHJaeVJiQUpsRFQ5UDFrVXZ4WmtsTFY3VGt3LDE4NTA3MDM3OA0200D6tVbRgR?s=ap', 'https://pay.stripe.com/invoice/acct_1TwBPNGsNNO50lXb/live_YWNjdF8xVHdCUE5Hc05OTzUwbFhiLF9WUnE0OHJaeVJiQUpsRFQ5UDFrVXZ4WmtsTFY3VGt3LDE4NTA3MDM3OA0200D6tVbRgR/pdf?s=ap', 'https://pay.stripe.com/receipts/invoices/CAcQARoXChVhY2N0XzFUd0JQTkdzTk5PNTBsWGIo77LZ1wYyBppniLTrkzosFoHtWRa21PvVnr8mWYvYMZk5BT2_3wnQu9a4IY6-lyC3ChExCgRbK6ujLyk?s=ap'),
   ('in_1UQvlOGsNNO50lXbeyKtZQRH', 'QU0AFF6R-0001', 350.00, 'cus_VRpPE4sSzNDYtb', 'sub_1UQvlRGsNNO50lXbo1ABcmTw', NULL, NULL, '2026-10-15'::date, '2026-10-15'::date, '2026-10-15T21:00:35+00:00'::timestamptz, 'ch_3UQvkQGsNNO50lXb1qd1u98C', 'pi_3UQvkQGsNNO50lXb1sTbUgEz', 'https://invoice.stripe.com/i/acct_1TwBPNGsNNO50lXb/live_YWNjdF8xVHdCUE5Hc05OTzUwbFhiLF9WUnBRZEFpOEluaWNQMnNUWkZJczF3QW9aWjM5cXhzLDE4NTA3MDM3OA020046i9tgZw?s=ap', 'https://pay.stripe.com/invoice/acct_1TwBPNGsNNO50lXb/live_YWNjdF8xVHdCUE5Hc05OTzUwbFhiLF9WUnBRZEFpOEluaWNQMnNUWkZJczF3QW9aWjM5cXhzLDE4NTA3MDM3OA020046i9tgZw/pdf?s=ap', 'https://pay.stripe.com/receipts/invoices/CAcQARoXChVhY2N0XzFUd0JQTkdzTk5PNTBsWGIo7rLZ1wYyBk3Ws7q8IjosFtWQSWZBJqg2KfcTSB9E1MV3Mv4byuS7lkxStQIoyXpuXMzi-aan2Qh8QmY?s=ap')
-),
-known_history(customer_id, subscription_id, rental_id) AS (
-  VALUES
-  ('cus_VXg511exteJySE', 'sub_1UWam8GsNNO50lXbvvIo4ZQI', '83668a8d-1868-45c5-bb20-38f54491ab6c'::uuid),
-  ('cus_VV4szDhyr4XZMQ', 'sub_1UU4kqGsNNO50lXb9QkjfqsU', '83668a8d-1868-45c5-bb20-38f54491ab6c'::uuid),
-  ('cus_VRq4RFWitpMvSV', 'sub_1UQwOjGsNNO50lXbq8y8hkVs', '83668a8d-1868-45c5-bb20-38f54491ab6c'::uuid),
-  ('cus_VSUjRxg343D7Yk', 'sub_1URZk6GsNNO50lXbXuQV3lAH', 'd8fbb519-db84-4b33-8669-7c62474d6bfd'::uuid),
-  ('cus_Vb8XvqNW6d4IcX', 'sub_1UZwGPGsNNO50lXbRCnRl4Yl', '49f6008f-bc8f-44f7-bd9a-82ded5e7d8af'::uuid),
-  ('cus_VYU4FFddyzX0cJ', 'sub_1UXN6dGsNNO50lXbRQy4GIOC', '49f6008f-bc8f-44f7-bd9a-82ded5e7d8af'::uuid)
-),
-matched AS (
-  SELECT
+)
+SELECT * FROM src;
+
+
+-- 1) Existing rows: fill empty receipt columns only.
+UPDATE public.payments p SET
+  stripe_invoice_number     = COALESCE(p.stripe_invoice_number, s.invoice_number),
+  stripe_customer_id        = COALESCE(p.stripe_customer_id, s.customer_id),
+  stripe_hosted_invoice_url = COALESCE(p.stripe_hosted_invoice_url, s.hosted_url),
+  stripe_invoice_pdf_url    = COALESCE(p.stripe_invoice_pdf_url, s.pdf_url),
+  stripe_receipt_url        = COALESCE(p.stripe_receipt_url, s.receipt_url),
+  stripe_paid_at            = COALESCE(p.stripe_paid_at, s.paid_at),
+  stripe_charge_id = CASE WHEN p.stripe_charge_id IS NULL AND NOT EXISTS (
+      SELECT 1 FROM public.payments o WHERE o.stripe_charge_id = s.charge_id AND o.id <> p.id)
+    THEN s.charge_id ELSE p.stripe_charge_id END,
+  stripe_payment_intent_id = CASE WHEN p.stripe_payment_intent_id IS NULL AND NOT EXISTS (
+      SELECT 1 FROM public.payments o WHERE o.stripe_payment_intent_id = s.payment_intent_id AND o.id <> p.id)
+    THEN s.payment_intent_id ELSE p.stripe_payment_intent_id END
+FROM bf_src s
+WHERE p.stripe_invoice_id = s.invoice_id
+  AND (p.stripe_hosted_invoice_url IS NULL OR p.stripe_receipt_url IS NULL
+       OR p.stripe_invoice_number IS NULL OR p.stripe_paid_at IS NULL);
+
+-- 2) Missing invoices: insert only when a rental or application is found.
+WITH matched AS (
+  SELECT DISTINCT ON (s.invoice_id)
     s.*,
-    COALESCE(
-      s.known_rental_id,
-      r_sub.id,
-      r_cus.id,
-      h.rental_id,
-      r_app.id
-    ) AS rental_id,
-    COALESCE(
-      r_sub.application_id,
-      r_cus.application_id,
-      r_hist.application_id,
-      r_app.application_id,
-      s.known_application_id,
-      a_cus.id
-    ) AS driver_id,
-    COALESCE(r_sub.vehicle_id, r_cus.vehicle_id, r_hist.vehicle_id, r_app.vehicle_id) AS vehicle_id
-  FROM src s
-  LEFT JOIN public.rentals r_sub
-    ON s.subscription_id IS NOT NULL AND r_sub.stripe_subscription_id = s.subscription_id
-  LEFT JOIN public.rentals r_cus
-    ON r_cus.stripe_customer_id = s.customer_id
-  LEFT JOIN known_history h
-    ON h.customer_id = s.customer_id OR (s.subscription_id IS NOT NULL AND h.subscription_id = s.subscription_id)
-  LEFT JOIN public.rentals r_hist
-    ON r_hist.id = h.rental_id
-  LEFT JOIN public.applications a_cus
-    ON a_cus.stripe_customer_id = s.customer_id
-  LEFT JOIN public.rentals r_app
-    ON r_app.application_id = COALESCE(s.known_application_id, a_cus.id)
+    COALESCE(s.known_rental_id, r_sub.id, r_cus.id) AS rental_id,
+    COALESCE(r_known.application_id, r_sub.application_id, r_cus.application_id, s.known_application_id) AS driver_id,
+    COALESCE(r_known.vehicle_id, r_sub.vehicle_id, r_cus.vehicle_id) AS vehicle_id
+  FROM bf_src s
+  LEFT JOIN public.rentals r_known ON r_known.id = s.known_rental_id
+  LEFT JOIN public.rentals r_sub ON s.subscription_id IS NOT NULL AND r_sub.stripe_subscription_id = s.subscription_id
+  LEFT JOIN public.rentals r_cus ON r_cus.stripe_customer_id = s.customer_id
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.payments p
+    WHERE p.stripe_invoice_id = s.invoice_id
+       OR p.stripe_charge_id = s.charge_id
+       OR p.stripe_payment_intent_id = s.payment_intent_id)
+  ORDER BY s.invoice_id, (r_sub.id IS NULL), (r_cus.status = 'active') DESC
 )
 INSERT INTO public.payments (
   type, status, amount, due_date, paid_date, payment_method, balance_due, notes,
@@ -86,16 +94,13 @@ SELECT
   m.charge_id, m.payment_intent_id, m.hosted_url,
   m.pdf_url, m.receipt_url, m.paid_at, 'paid'
 FROM matched m
-WHERE NOT EXISTS (
-  SELECT 1 FROM public.payments p
-  WHERE p.stripe_invoice_id = m.invoice_id
-     OR (m.charge_id IS NOT NULL AND p.stripe_charge_id = m.charge_id)
-);
+WHERE m.rental_id IS NOT NULL OR m.driver_id IS NOT NULL;
 
-SELECT p.driver_id, p.rental_id, p.stripe_invoice_id, p.stripe_invoice_number,
-       p.amount, p.due_date, p.paid_date, p.status, p.notified_status
-FROM public.payments p
-WHERE p.notes = 'Backfilled from Stripe 11/12/2026'
-ORDER BY p.paid_date, p.stripe_invoice_number;
+-- 3) Read-back: all 12 invoices, one row each, with receipt links.
+SELECT s.invoice_number, count(p.id) AS rows, max(left(p.rental_id::text, 8)) AS rental,
+       max(p.status) AS status, bool_and(p.stripe_hosted_invoice_url IS NOT NULL) AS has_links,
+       max(p.notes) AS notes
+FROM bf_src s LEFT JOIN public.payments p ON p.stripe_invoice_id = s.invoice_id
+GROUP BY s.invoice_number ORDER BY s.invoice_number;
 
 COMMIT;

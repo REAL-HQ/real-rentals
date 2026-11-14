@@ -6,6 +6,7 @@ import type { ActivationRequirementKey } from "@/lib/activation-readiness";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { EvidencePresentationMap } from "@/lib/checklist-evidence";
+import { driverNextStepRequirements } from "@/lib/driver-next-step-requirements";
 
 /**
  * The profile's one "what now" card. It shows the server's blockers with a
@@ -25,6 +26,7 @@ export function NextStepCard({
   onRetry,
   renderEvidence,
   evidence,
+  reservationPaymentStatus,
 }: {
   model: NextStep;
   readiness: ActivationReadiness | null;
@@ -39,6 +41,7 @@ export function NextStepCard({
   onRetry: () => void;
   renderEvidence?: (key: ActivationRequirementKey) => ReactNode;
   evidence?: EvidencePresentationMap;
+  reservationPaymentStatus?: string | null;
 }) {
   const { activation } = model;
   const primary = "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-[#D03020] px-3.5 text-[12px] font-semibold text-white hover:bg-[#B00000] disabled:cursor-not-allowed disabled:opacity-50";
@@ -145,7 +148,7 @@ export function NextStepCard({
         </ul>
       ) : null}
       {readiness ? (
-        <ActivationRequirementList embedded blockers={model.blockers} requirements={readiness.requirements} evidence={evidence} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} renderEvidence={renderEvidence} />
+        <ActivationRequirementList embedded blockers={model.blockers} requirements={driverNextStepRequirements(readiness.requirements, reservationPaymentStatus)} evidence={evidence} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} renderEvidence={renderEvidence} />
       ) : null}
     </section>
   );

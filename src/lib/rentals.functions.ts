@@ -4,6 +4,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { notReadyMessage } from "@/lib/vehicle-readiness";
+import { publicAppOrigin } from "@/lib/public-app-url";
 import {
   decideActivation,
   OWNER_APPROVED_RENTAL_REASON,
@@ -32,7 +33,7 @@ import {
 // matter with a small fleet and paid traffic: a vehicle cannot go out twice,
 // and a vehicle cannot go out un-inspected.
 
-const SITE_URL = () => process.env.PUBLIC_SITE_URL || "https://drivereal.com";
+const SITE_URL = () => publicAppOrigin();
 
 // Delegates to the shared tier check rather than repeating the role list.
 // Everything in this file is money, so the bar is Manager — a Coordinator is
@@ -121,7 +122,7 @@ async function evaluateReadiness(
       .from("checklist_evidence_events")
       .select("field,state,revision")
       .eq("application_id", applicationId)
-      .in("field", ["license_front", "license_back", "agreement"])
+      .in("field", ["license_front", "license_back", "agreement", "income", "insurance_quote", "screening"])
       .order("revision", { ascending: false }),
   ]);
   // A failed read must never read as "complete": refuse instead of guessing.
@@ -155,7 +156,7 @@ async function evaluateReadiness(
     hasPassedInspection: null,
     evidence: {},
   };
-  for (const row of (evidenceRead.data ?? []) as { field: "license_front" | "license_back" | "agreement"; state: "collected" | "not_collected" }[]) {
+  for (const row of (evidenceRead.data ?? []) as { field: "license_front" | "license_back" | "agreement" | "income" | "insurance_quote" | "screening"; state: "collected" | "not_collected" }[]) {
     if (!facts.evidence![row.field]) facts.evidence![row.field] = row.state;
   }
   blockers.push(...driverRequirementBlockers(facts));
@@ -565,7 +566,7 @@ export const activateRental = createServerFn({ method: "POST" })
       const { sendEmail } = await import("@/lib/email.server");
       await sendEmail({
         to: app.email as string,
-        subject: `You're approved — ${vehicleLabel} is yours`,
+        subject: `${vehicleLabel} Is Reserved For You`,
         html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
           <h1 style="font-size:20px">You're all set, ${escapeHtml(firstName)}</h1>
           <p style="font-size:15px;line-height:1.6">Your rental is active: <strong>${escapeHtml(vehicleLabel)}</strong>${
@@ -586,7 +587,7 @@ export const activateRental = createServerFn({ method: "POST" })
       const { sendSms } = await import("@/lib/sms.server");
       await sendSms({
         to: (app.phone as string) ?? "",
-        body: `REAL RENTALS: You're approved, ${firstName}! ${vehicleLabel} is reserved for you. Check your email to set up your driver portal. Reply STOP to opt out.`,
+        body: `REAL RENTALS: Hi ${firstName}, ${vehicleLabel} is reserved for you. Check your email to set up your driver portal. Reply STOP to opt out.`,
         kind: "rental_activated",
         applicationId: data.applicationId,
         rentalId: rental.id as string,
@@ -603,6 +604,16 @@ export const activateRental = createServerFn({ method: "POST" })
       body: `${vehicleLabel} — $${data.weeklyRate.toFixed(2)}/week.`,
       channels: ["in_app", "email"],
     });
+
+    // Link the renter's Stripe customer/subscription and record anything they
+    // already paid (first week paid before activation). Never blocks activation.
+    try {
+      const { linkRentalOnActivation, stripeForLinking } = await import("@/lib/stripe-link.server");
+      const stripe = await stripeForLinking();
+      if (stripe) await linkRentalOnActivation(supabaseAdmin, stripe, rental.id as string);
+    } catch (e) {
+      console.error("[activate] stripe link failed", e);
+    }
 
     // rental.activated was written inside activate_rental_checked_tx (or, without
     // the wrapper, immediately after activate_rental_tx with any failure returned).

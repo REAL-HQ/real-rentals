@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { acceptInvite } from "@/lib/team.functions";
+import { requestEmailSignup } from "@/lib/auth-signup.functions";
 import { Logo } from "@/components/site/Logo";
 import { toast } from "sonner";
 import { ShieldCheck, AlertTriangle, Loader2, Eye, EyeOff } from "lucide-react";
@@ -148,6 +149,8 @@ function InvitePage() {
  * their point of view.
  */
 function AuthStep() {
+  const { token } = Route.useSearch();
+  const requestSignup = useServerFn(requestEmailSignup);
   const [mode, setMode] = useState<"signup" | "signin">("signup");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
@@ -159,21 +162,20 @@ function AuthStep() {
     e.preventDefault();
     setErr(null);
     setBusy(true);
-    const { error } =
-      mode === "signin"
-        ? await supabase.auth.signInWithPassword({ email: email.trim(), password: pw })
-        : await supabase.auth.signUp({
-            email: email.trim(),
-            password: pw,
-            // Come back here, so the invitation is picked up straight after
-            // any email confirmation.
-            options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}${window.location.search}` },
-          });
-    setBusy(false);
-    if (error) return setErr(error.message);
-    if (mode === "signup") {
-      toast.success("Account created. If we asked you to confirm your email, do that and come back to this link.");
+    if (mode === "signin") {
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pw });
+      setBusy(false);
+      if (error) setErr(error.message);
+      return;
     }
+    const next = token ? `/invite?token=${token}` : "/invite";
+    const res = await requestSignup({ data: { email: email.trim(), password: pw, next } });
+    setBusy(false);
+    if (!res.ok) {
+      setErr(res.error);
+      return;
+    }
+    toast.success("Check your email to confirm your account. The link will bring you back here to finish the invitation.");
   }
 
   return (

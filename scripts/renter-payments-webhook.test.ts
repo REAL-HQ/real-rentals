@@ -197,20 +197,16 @@ describe("payments webhook receipts", () => {
     assert.equal((db._state.notifications ?? []).length, 0);
   });
 
-  it("stores an unmatched paid invoice for staff instead of dropping it", async () => {
+  it("does not store a paid invoice that no rental or application can be tied to", async () => {
+    // With Stripe auto-link (PR 360), an unknown invoice is warned about (and
+    // reported by the daily Stripe Link Check) but never written as a row.
     const db = fakeDb({ rentals: [], applications: [], payments: [], notifications: [] });
     const res = await postVerifiedPaymentWebhook({
       type: "invoice.paid",
       data: { object: paidInvoice({ id: "in_unmatched", customer: "cus_unknown", subscription: "sub_unknown" }) },
     }, db);
     assert.equal(res.status, 200);
-    assert.equal(db._state.payments.length, 1);
-    const row = db._state.payments[0];
-    assert.equal(row.rental_id, null);
-    assert.equal(row.driver_id, null);
-    assert.equal(row.status, "paid");
-    assert.equal(row.notified_status, "paid");
-    assert.equal(row.amount, 350);
+    assert.equal(db._state.payments.length, 0);
     assert.equal((db._state.notifications ?? []).length, 0);
   });
 

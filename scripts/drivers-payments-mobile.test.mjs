@@ -140,26 +140,6 @@ const pairs = [
     "driver header email at lg",
   ],
   [
-    "admin-sticky-bar flex flex-wrap items-center gap-2 mb-4 pb-2",
-    "admin-sticky-bar mb-4 flex flex-col gap-2 pb-2 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2",
-    "payments filter bar at lg",
-  ],
-  [
-    "flex flex-wrap gap-2 text-xs",
-    "flex gap-2 text-xs max-lg:min-w-0 max-lg:overflow-x-auto max-lg:pb-1 lg:flex-wrap",
-    "payments status chips at lg",
-  ],
-  [
-    "px-3 py-1.5 rounded-md capitalize",
-    "px-3 py-1.5 rounded-md capitalize max-lg:shrink-0 max-lg:whitespace-nowrap",
-    "payments status chip at lg",
-  ],
-  [
-    "h-8 w-40 bg-white text-foreground",
-    "h-8 w-40 bg-white text-foreground max-lg:w-full",
-    "payments sort control at lg",
-  ],
-  [
     "ml-auto rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium",
     "ml-auto rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium max-lg:ml-0 max-lg:flex-1",
     "manual payments button at lg",
@@ -206,8 +186,8 @@ const present = [
   [drivers, "Merge Duplicates", "merge duplicates stays"],
   [drivers, "w-full table-fixed text-sm", "the drivers table is fixed-width with no min-width scroll"],
   [drivers, "mt-1 flex flex-wrap items-center gap-3 text-[12px] text-[#55555E]", "driver phone and email stay on the record header"],
-  [payments, "admin-sticky-bar mb-4 flex flex-col gap-2 pb-2 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2", "payments filters stack only below lg"],
-  [payments, "flex gap-2 max-lg:w-full lg:contents", "payment actions share a row on a phone and rejoin the bar at lg"],
+  [payments, "admin-sticky-bar mb-4 grid grid-cols-1 gap-2 pb-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center", "payments controls stack only below lg"],
+  [payments, "flex shrink-0 items-center gap-2 max-lg:w-full", "payment actions share a row on a phone and rejoin the bar at lg"],
   [payments, "Manual Payments", "manual payments stays"],
   [payments, "+ Add Payment", "add payment stays"],
   [payments, '.from("payments")', "payments still reads the payments table"],
@@ -221,10 +201,9 @@ check(!drivers.includes("lg:overflow-x-auto lg:-mx-1"), "the drivers chip scroll
 check(!drivers.includes("max-lg:min-w-[56rem]"), "the drivers table has no phone min-width scroll");
 check(!payments.includes("admin-sticky-bar flex flex-wrap items-center gap-2 mb-4 pb-2"), "the old payments bar class is gone");
 check(!drivers.includes("text-transform") && !payments.includes("text-transform"), "neither screen adds a text-transform");
-check(payments.includes("rounded-md capitalize max-lg:shrink-0"), "the existing capitalize on status chips stays");
 check(!drivers.includes("max-lg:uppercase") && !payments.includes("max-lg:uppercase") && !drivers.includes("max-lg:capitalize") && !payments.includes("max-lg:capitalize"), "phone classes do not add a case transform");
 
-check(payments.includes("flex gap-2 max-lg:w-full lg:contents"), "payment phone wrappers use lg:contents so they add no box at lg");
+check(payments.includes("flex shrink-0 items-center gap-2 max-lg:w-full"), "payment phone actions keep one compact wrapper");
 
 const mounts = [
   ["<OnboardingChecklist", "onboarding checklist stays mounted"],

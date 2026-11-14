@@ -85,6 +85,7 @@ import {
   missingRequiredCategories,
   notifyActivationReadinessRefresh,
   primaryStep,
+  screeningRequirementsComplete,
 } from "@/lib/activation-readiness";
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
@@ -111,8 +112,10 @@ import {
 } from "@/components/ui/select";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -147,9 +150,11 @@ import {
   Wallet,
   CalendarDays,
   Link2 as LinkIcon,
+  ListFilter,
   Loader2,
 } from "lucide-react";
 import { issueCardOnFileLink, removeCardOnFile } from "@/lib/payments.functions";
+import { publicAppUrl } from "@/lib/public-app-url";
 import {
   cardEmailHref,
   cardLinkFresh,
@@ -297,7 +302,6 @@ function useNow(intervalMs = 30000) {
 }
 
 
-type PayIndex = Record<string, PayCells>;
 function payCells(e: PayCells | undefined): PayCells { return e ?? NO_PAY_CELLS; }
 
 function panelTier(isOwner: boolean, isManager: boolean): StaffTier {
@@ -600,9 +604,6 @@ export function DriversPanel({
   const [screenings, setScreenings] = useState<Record<string, DriverScreeningRow>>({});
   const [docCounts, setDocCounts] = useState<Record<string, number>>({});
   const [docRows, setDocRows] = useState<ReadinessDocument[]>([]);
-  const [payIndex, setPayIndex] = useState<PayIndex>({});
-  const loadPay = useServerFn(getDriverPayStatuses);
-  useEffect(() => { void loadPay({ data: {} }).then(setPayIndex).catch(() => setPayIndex({})); }, [loadPay]);
   const runMerge = useServerFn(mergeDuplicateApplications);
   const acknowledge = useServerFn(acknowledgeApplication);
   const now = useNow();
@@ -1114,7 +1115,8 @@ setDocCounts(requiredDocCounts(rows));
     all: "All", new: "New", reviewing: "Reviewing", approved: "Approved", waitlist: "Waitlist",
     active: "Active", suspended: "Suspended", declined: "Declined", closed: "Closed",
   };
-  const FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active", "suspended", "declined", "closed"];
+  const PRIMARY_FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active"];
+  const MENU_FILTER_ORDER = ["suspended", "declined", "closed"];
   const filterCount = (s: string) => {
     if (s === "active" && activeReadFailed && activeRenters.size === 0) return "…";
     const count = applicationFilterCount(s, drivers, held, activeRenters, waitlistCount);
@@ -1126,28 +1128,54 @@ setDocCounts(requiredDocCounts(rows));
       expiryCounts[row.status] += 1;
     }
   }
-  const filterButtons = FILTER_ORDER.map((s) => (
+  const documentsExpiringCount = expiringFailed
+    ? "—"
+    : expiringDocs
+      ? (expiringDocs.defaultScope === "renting" ? expiringDocs.renting.length : expiringDocs.approved.length)
+      : "…";
+  const awaitingReservationCount = funnelFailed || !funnel ? (funnelLoading ? "…" : "—") : funnel.rows.length;
+  const filterLabelWithCount = (s: string) => {
+    if (s === "documents-expiring") return `Documents Expiring (${documentsExpiringCount})`;
+    if (s === "approved-not-renting") return `Approved, Awaiting Reservation (${awaitingReservationCount})`;
+    if (s === "stalled") return `Stalled (${stalledRows == null ? "…" : stalledRows.length})`;
+    return `${FILTER_LABEL[s] ?? s} (${filterCount(s)})`;
+  };
+  const filterButtons = PRIMARY_FILTER_ORDER.map((s) => (
     <button
       key={s}
+      type="button"
       onClick={() => setFilter(s)}
       className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === s ? "bg-black text-white" : "bg-white border border-border"}`}
     >
-      {FILTER_LABEL[s]} ({filterCount(s)})
+      {filterLabelWithCount(s)}
     </button>
   ));
+  const menuFilterButtons = MENU_FILTER_ORDER.map((s) => (
+    <DropdownMenuCheckboxItem
+      key={s}
+      checked={filter === s}
+      onCheckedChange={() => setFilter(s)}
+      className="bg-white text-xs text-foreground focus:bg-muted"
+    >
+      {filterLabelWithCount(s)}
+    </DropdownMenuCheckboxItem>
+  ));
   if (stalledOn) {
-    filterButtons.push(
-      <button
+    menuFilterButtons.push(
+      <DropdownMenuCheckboxItem
         key="stalled"
-        type="button"
         data-stalled-filter
-        onClick={() => setFilter("stalled")}
-        className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "stalled" ? "bg-black text-white" : "bg-white border border-border"}`}
+        checked={filter === "stalled"}
+        onCheckedChange={() => setFilter("stalled")}
+        className="bg-white text-xs text-foreground focus:bg-muted"
       >
         Stalled ({stalledRows == null ? "…" : stalledRows.length})
-      </button>,
+      </DropdownMenuCheckboxItem>,
     );
   }
+  const hiddenFilter = PRIMARY_FILTER_ORDER.includes(filter) ? null : filter;
+  const activeContact = CONTACT_STATUSES.find((cs) => cs.key === contactFilter);
+  const activeFilterCount = Number(hiddenFilter !== null) + Number(contactFilter !== "all") + Number(docFilter !== "all");
   return (
     <div className="max-lg:min-w-0">
       {deleteDialog}
@@ -1176,73 +1204,124 @@ setDocCounts(requiredDocCounts(rows));
       {ONBOARDING_CHECKLIST_ENABLED === true && (
         <OnboardingChecklist canView={canViewOnboarding} result={onboardingResult} failed={onboardingFailed} />
       )}
-      <div className="admin-sticky-bar mb-4 flex flex-col gap-2 text-xs">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-        {filterButtons}
-        {canManageWaitlist && (
-          <button
-            type="button"
-            data-documents-expiring-filter
-            onClick={() => setFilter("documents-expiring")}
-            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "documents-expiring" ? "bg-black text-white" : "bg-white border border-border"}`}
-          >
-            Documents Expiring ({expiringFailed ? "—" : expiringDocs ? (expiringDocs.defaultScope === "renting" ? expiringDocs.renting.length : expiringDocs.approved.length) : "…"})
-          </button>
-        )}
-        {canManageWaitlist && (
-          <button
-            type="button"
-            data-approved-not-renting-filter
-            onClick={() => setFilter("approved-not-renting")}
-            className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md ${filter === "approved-not-renting" ? "bg-black text-white" : "bg-white border border-border"}`}
-          >
-            Approved, Awaiting Reservation (
-            {funnelFailed || !funnel ? (funnelLoading ? "…" : "—") : funnel.rows.length})
-          </button>
-        )}
-        {/*
-         * Contact Status filter. Reads "Contact: All" so it can never be
-         * mistaken for the application-status chips beside it.
-         */}
-        <select
-          aria-label="Contact Status"
-          data-contact-filter
-          value={contactFilter}
-          onChange={(e) => setContactFilter(e.target.value)}
-          className="shrink-0 rounded-md border border-border bg-white px-2 py-1.5 text-xs"
+      <div className="admin-sticky-bar mb-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-xs">
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1">
+          {filterButtons}
+          {hiddenFilter ? (
+            <button
+              type="button"
+              aria-label="Clear Status Filter"
+              title="Clear Status Filter"
+              onClick={() => setFilter("all")}
+              className="shrink-0 whitespace-nowrap rounded-md bg-black px-3 py-1.5 text-white"
+            >
+              {filterLabelWithCount(hiddenFilter)} ×
+            </button>
+          ) : null}
+          {activeContact ? (
+            <button
+              type="button"
+              aria-label="Clear Contact Filter"
+              title="Clear Contact Filter"
+              onClick={() => setContactFilter("all")}
+              className="shrink-0 whitespace-nowrap rounded-md border border-border bg-white px-3 py-1.5"
+            >
+              Contact: {activeContact.label} ×
+            </button>
+          ) : null}
+          {docFilter !== "all" ? (
+            <button
+              type="button"
+              aria-label="Clear Documents Filter"
+              title="Clear Documents Filter"
+              onClick={() => setDocFilter("all")}
+              className="shrink-0 whitespace-nowrap rounded-md border border-border bg-white px-3 py-1.5"
+            >
+              Documents ×
+            </button>
+          ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={activeFilterCount > 0 ? `Filters (${activeFilterCount})` : "Filters"}
+                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-white px-3 py-1.5 hover:bg-soft ${activeFilterCount > 0 ? "border-foreground" : ""}`}
+              >
+                <ListFilter className="h-3.5 w-3.5" /> Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-72 bg-white text-foreground">
+              <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">Status</DropdownMenuLabel>
+              {menuFilterButtons}
+              {canManageWaitlist ? (
+                <DropdownMenuCheckboxItem
+                  data-documents-expiring-filter
+                  checked={filter === "documents-expiring"}
+                  onCheckedChange={() => setFilter("documents-expiring")}
+                  className="bg-white text-xs text-foreground focus:bg-muted"
+                >
+                  Documents Expiring ({documentsExpiringCount})
+                </DropdownMenuCheckboxItem>
+              ) : null}
+              {canManageWaitlist ? (
+                <DropdownMenuCheckboxItem
+                  data-approved-not-renting-filter
+                  checked={filter === "approved-not-renting"}
+                  onCheckedChange={() => setFilter("approved-not-renting")}
+                  className="bg-white text-xs text-foreground focus:bg-muted"
+                >
+                  Approved, Awaiting Reservation ({awaitingReservationCount})
+                </DropdownMenuCheckboxItem>
+              ) : null}
+              <DropdownMenuSeparator />
+              <div className="px-2 py-1.5" onPointerDown={(event) => event.stopPropagation()}>
+                <label htmlFor="drivers-contact-filter" className="mb-1.5 block text-[11px] font-medium text-muted-foreground">Contact</label>
+                <select
+                  id="drivers-contact-filter"
+                  aria-label="Contact Status"
+                  data-contact-filter
+                  value={contactFilter}
+                  onChange={(e) => setContactFilter(e.target.value)}
+                  className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-xs text-foreground"
+                >
+                  <option value="all">All ({drivers.length})</option>
+                  {CONTACT_STATUSES.map((cs) => (
+                    <option key={cs.key} value={cs.key}>
+                      {cs.label} ({drivers.filter((a) => readContactStatus(a).state.status === cs.key).length})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
+                <div className="px-2 py-1.5 [&_select]:w-full" onPointerDown={(event) => event.stopPropagation()}>
+                  <DriverDocExpiryFilter
+                    canView={canSeeSensitive}
+                    value={docFilter}
+                    onChange={setDocFilter}
+                    counts={expiryCounts}
+                    tncTracked={docExpiry?.tncTracked === true}
+                  />
+                </div>
+              ) : null}
+              {isOwner ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setShowDeleted(true)} className="bg-white text-xs text-foreground focus:bg-muted">
+                    Recently Deleted
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <button
+          type="button"
+          onClick={handleMerge}
+          disabled={merging}
+          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-white px-3 py-1.5 hover:bg-soft disabled:opacity-50"
         >
-          <option value="all">Contact: All ({drivers.length})</option>
-          {CONTACT_STATUSES.map((cs) => (
-            <option key={cs.key} value={cs.key}>
-              Contact: {cs.label} (
-              {drivers.filter((a) => readContactStatus(a).state.status === cs.key).length})
-            </option>
-          ))}
-        </select>
-        {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
-          <DriverDocExpiryFilter
-            canView={canSeeSensitive}
-            value={docFilter}
-            onChange={setDocFilter}
-            counts={expiryCounts}
-            tncTracked={docExpiry?.tncTracked === true}
-          />
-        ) : null}
-        {isOwner && (
-          <button type="button" className="shrink-0 px-3 py-1.5 rounded-md border text-xs" onClick={() => setShowDeleted(true)}>
-            Recently Deleted
-          </button>
-        )}
-        </div>
-        <div className="ml-auto">
-          <button
-            onClick={handleMerge}
-            disabled={merging}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-border hover:bg-soft disabled:opacity-50"
-          >
-            <GitMerge className="w-3.5 h-3.5" /> {merging ? "Merging…" : "Merge Duplicates"}
-          </button>
-        </div>
+          <GitMerge className="h-3.5 w-3.5" /> {merging ? "Merging…" : "Merge Duplicates"}
+        </button>
       </div>
       {filter === "documents-expiring" ? (
         <DocumentsExpiringList
@@ -1289,17 +1368,15 @@ setDocCounts(requiredDocCounts(rows));
             <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="w-[16%] text-left font-medium px-2 py-2.5 border-b border-border">Name</th>
-                <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Contact</th>
-                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Status</th>
-                <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Phone</th>
-                <th className="hidden">Email</th>
-                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Readiness</th>
+                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Contact</th>
+                <th className="w-[11%] text-left font-medium px-2 py-2.5 border-b border-border">Status</th>
+                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Phone</th>
+                <th className="w-[16%] text-left font-medium px-2 py-2.5 border-b border-border">Email</th>
+                <th className="w-[13%] text-left font-medium px-2 py-2.5 border-b border-border">Readiness</th>
                 {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
                   <DriverDocExpiryHeader />
                 ) : null}
-                <th className="w-[14%] text-left font-medium px-2 py-2.5 border-b border-border">Payment</th>
-                <th className="hidden">Deposit</th>
-                <th className="hidden">Created</th>
+                <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Applied</th>
                 <th className="w-[8%] px-2 py-2.5 border-b border-border text-right sticky right-0 bg-[#FAFAFB]">Open</th>
               </tr>
             </thead>
@@ -1442,8 +1519,15 @@ setDocCounts(requiredDocCounts(rows));
                         <span className="text-[11px] text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="hidden" aria-hidden="true">
-                      {a.email || ""}
+                    <td className="px-2 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      {a.email ? (
+                        <a href={`mailto:${a.email}`} title={a.email} className="flex items-center gap-1 min-w-0 text-[11px] text-muted-foreground hover:text-foreground hover:underline">
+                          <Mail className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{a.email}</span>
+                        </a>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       {canSeeSensitive ? (
@@ -1469,17 +1553,16 @@ setDocCounts(requiredDocCounts(rows));
                         />
                       </td>
                     ) : null}
-                    <td className="px-2 py-2.5 whitespace-nowrap text-muted-foreground">
-                      <span className="block truncate">{payCells(payIndex[a.id]).pay}</span>
-                      {(() => {
-                        const d = payCells(payIndex[a.id]).dep;
-                        return d.text && d.text !== "—" ? (
-                          <span className="block truncate text-[10px] opacity-70">Dep {d.text}</span>
-                        ) : null;
-                      })()}
+                    <td className="px-2 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
+                      {a.created_at ? (
+                        <>
+                          <div>{fmtDate(a.created_at)}</div>
+                          <div className="text-[10px] opacity-70">
+                            {new Date(a.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                          </div>
+                        </>
+                      ) : "—"}
                     </td>
-                    <td className="hidden" aria-hidden="true" />
-                    <td className="hidden" aria-hidden="true" />
                     <td className="px-2 py-2.5 text-right sticky right-0 bg-white" onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-soft text-muted-foreground">
@@ -1578,11 +1661,14 @@ setDocCounts(requiredDocCounts(rows));
                         className="cursor-pointer bg-soft/30 border-b border-border text-xs text-muted-foreground hover:bg-soft/60"
                       >
                         <td className="pl-10 pr-4 py-2 italic">↳ earlier submission</td>
+                        {/* A superseded submission has no conversation of its
+                            own: the contact status belongs to the person, and
+                            it is on their primary row above. */}
+                        <td className="px-4 py-2">—</td>
+                        <td className="px-4 py-2 capitalize">{h.status}</td>
                         <td className="px-4 py-2">{h.phone ? formatPhone(h.phone) : "—"}</td>
                         <td className="px-4 py-2">{h.email || "—"}</td>
                         <td className="px-4 py-2">—</td>
-                        <td className="px-4 py-2">{payCells(payIndex[h.id]).pay}</td>
-                        <td className="px-4 py-2">{payCells(payIndex[h.id]).dep.text}</td>
                         {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
                           <td className="px-4 py-2">
                             <DriverDocExpiryCell
@@ -1591,11 +1677,6 @@ setDocCounts(requiredDocCounts(rows));
                             />
                           </td>
                         ) : null}
-                        <td className="px-4 py-2 capitalize">{h.status}</td>
-                        {/* A superseded submission has no conversation of its
-                            own: the contact status belongs to the person, and
-                            it is on their primary row above. */}
-                        <td className="px-4 py-2">—</td>
                         <td className="px-4 py-2">
                           <div>{fmtDate(h.created_at!)}</div>
                           <div className="opacity-70">
@@ -1614,7 +1695,7 @@ setDocCounts(requiredDocCounts(rows));
               })}
               {grouped.length === 0 && (
                 <tr>
-                  <td colSpan={DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? 11 : 10} className="p-4">
+                  <td colSpan={DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? 9 : 8} className="p-4">
                     <EmptyState
                       title="No Drivers Yet"
                       hint="Drivers appear here as soon as someone completes the quote form or an application."
@@ -1711,7 +1792,7 @@ function DriverDetail({
 }: {
   driver: Application;
   vehicles: Vehicle[];
-  onUpdate: (patch: Partial<Application>) => void;
+  onUpdate: (patch: Partial<Application>) => Promise<boolean>;
   onSaved: (patch: Partial<Application>) => void;
   onReserved?: () => void;
   onDelete: () => void;
@@ -1886,6 +1967,7 @@ function DriverDetail({
       return;
     }
     let cancelled = false;
+    setReservationDepositStatus(null);
     void Promise.all([
       loadOpenReservation({ data: { applicationId: driver.id } }),
       loadReservationDepositSettings(),
@@ -1933,14 +2015,16 @@ function DriverDetail({
         ? rentalActiveFlag || pickupPaid
       : field === "inspection"
         ? !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true
-        : false,
-    reviewRequired: field === "agreement" || field === "insurance",
+        : field === "income" || field === "insurance_quote" || field === "screening"
+          ? rentalTabReadiness?.requirements.some((r) => r.key === field && r.met === true) === true
+          : false,
+    reviewRequired: field === "agreement" || field === "insurance" || field === "insurance_quote" || field === "screening",
   })) : [];
   // One click on a checklist circle: Missing/Not Collected -> Upload Due (Yellow);
   // Upload Due -> Not Collected (Red). A file on record (Green) is never changed here.
   async function toggleEvidence(fields: EvidenceProjection[]) {
     if (evidenceSaving) return;
-    const open = fields.filter((f) => !f.uploaded && !f.complete);
+    const open = fields.filter((f) => !f.complete && (!f.uploaded || f.field === "insurance_quote" || f.field === "screening"));
     if (!open.length) return;
     const next: "collected" | "not_collected" = open.every((f) => f.status === "upload_due") ? "not_collected" : "collected";
     setEvidenceSaving(true);
@@ -2002,6 +2086,7 @@ function DriverDetail({
       return [];
     }
     if (r.key === "insurance_verified" && r.met !== true) presentation.label = "Optional · Record After Signing";
+    if ((r.key === "insurance_quote" || r.key === "screening") && presentation.tone === "yellow") presentation.label = presentation.fields.every((f) => f.uploaded) ? "Check Off Required" : "Upload Due";
     if (r.key === "inspection" && presentation.tone === "yellow") presentation.label = "Upload Due · Written Override Required";
     // A payment confirmation records receipt only; it never creates a charge or starts a rental.
     if (r.key === "pickup" && presentation.tone === "yellow") {
@@ -2010,36 +2095,33 @@ function DriverDetail({
     }
     if (r.key === "pickup" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Not Done";
     if (r.enforcement === "advisory" && r.key !== "pickup" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Advisory";
-    const toggleable = presentation.fields.some((f) => !f.uploaded && !f.complete) && !(r.key === "signed_agreement" && r.met === true && presentation.fields.every((f) => f.status !== "upload_due"));
+    const toggleable = presentation.fields.some((f) => !f.complete && (!f.uploaded || f.field === "insurance_quote" || f.field === "screening")) && !(r.key === "signed_agreement" && r.met === true && presentation.fields.every((f) => f.status !== "upload_due"));
     return [[r.key, toggleable ? { ...presentation, onToggle: r.key === "pickup" ? () => setPickupPaymentOpen(true) : () => void toggleEvidence(presentation.fields), busy: evidenceSaving, toggleLabel: r.key === "pickup" ? "Confirm Pickup Payment" : presentation.toggleLabel, toggleTitle: r.key === "pickup" ? "Confirm The Amount Received And Payment Method." : presentation.toggleTitle } : presentation]];
   })) : undefined;
-  const licenseItems = evidenceItems.filter((i) => i.field === "license_front" || i.field === "license_back");
-  const profileItems = evidenceItems.filter((i) => i.field === "gig_profile");
   const agreementItems = evidenceItems.filter((i) => i.field === "agreement");
   const inspectionItems = evidenceItems.filter((i) => i.field === "inspection");
   const pickupItems = evidenceItems.filter((i) => i.field === "pickup");
   const pickupEvidenceTone = evidenceTone(pickupItems);
-  const docsEvidenceTone = evidenceTone(licenseItems);
-  const profileEvidenceTone = evidenceTone(profileItems);
+  const screeningEvidenceTone = evidenceTone(evidenceItems.filter((i) => i.field === "insurance_quote" || i.field === "screening"));
   const agreementEvidenceTone = evidenceTone(agreementItems);
   const inspectionEvidenceTone = evidenceTone(inspectionItems);
-  const insuranceEvidenceTone = evidenceTone(evidenceItems.filter((i) => i.field === "insurance"));
   const addressed = (items: EvidenceProjection[]) => items.length > 0 && items.every((i) => i.status !== "missing");
   const actualInspection = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true;
   const actualAgreement = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true;
+  const screeningComplete = !rentalTabReadinessLoading && !rentalTabReadinessFailed && screeningRequirementsComplete(rentalTabReadiness?.requirements ?? []);
+  const insuranceComplete = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.requirements.some((r) => r.key === "insurance_verified" && r.met === true) === true;
+  const insuranceEvidenceTone = insuranceComplete ? "green" : evidenceTone(evidenceItems.filter((i) => i.field === "insurance"));
   const { stages: lifecycle, current: currentStage, percent: percentComplete } = driverLifecycle({
-    contacted, screening: screeningDone,
+    contacted, interviewComplete: screeningDone, screening: screeningComplete,
     documentsReceived: !vaultLoading && collectedDocuments.collected,
-    documents: isManager ? addressed(licenseItems) : !missingRequiredCategories(vaultDocs).some((c) => c === "license_front" || c === "license_back"),
-    profile: isManager ? addressed(profileItems) : !missingRequiredCategories(vaultDocs).includes("gig_profile"),
     approved, reserved: hasReservation, rentalActive: rentalActiveFlag,
+    insuranceComplete,
     pickup: isManager && pickupItems.some((i) => i.status === "upload_due"),
     // Saved Yellow/Red evidence stays visible; only a real passed inspection or signed agreement is Green.
     inspection: isManager ? actualInspection || addressed(inspectionItems) : actualInspection,
     agreement: isManager ? actualAgreement || addressed(agreementItems) : actualAgreement,
   });
-  const stageStartIso = currentStage?.key === "screening" ? driver.contacted_at ?? driver.created_at
-    : currentStage?.key === "docs" ? screening?.interview_completed_at ?? driver.created_at : driver.created_at;
+  const stageStartIso = currentStage?.key === "screening" ? driver.contacted_at ?? driver.created_at : driver.created_at;
   const timeInStage = stageStartIso ? formatDuration(Date.now() - new Date(stageStartIso).getTime()) : undefined;
 
   function readinessChanged() {
@@ -2593,8 +2675,7 @@ function DriverDetail({
               stages={lifecycle}
               evidenceTones={CHECKLIST_EVIDENCE_ENABLED ? {
                 documents: collectedDocuments.tone,
-                ...(docsEvidenceTone ? { docs: docsEvidenceTone } : {}),
-                ...(profileEvidenceTone ? { profile: profileEvidenceTone } : {}),
+                ...(screeningEvidenceTone ? { screening: screeningEvidenceTone } : {}),
                 ...(insuranceEvidenceTone ? { insurance: insuranceEvidenceTone } : {}),
                 ...(inspectionEvidenceTone ? { inspection: inspectionEvidenceTone } : {}),
                 ...(agreementEvidenceTone ? { agreement: agreementEvidenceTone } : {}),
@@ -2650,6 +2731,7 @@ function DriverDetail({
                   readiness={rentalTabReadiness}
                   renderEvidence={renderChecklistEvidence}
                   evidence={evidencePresentation}
+                  reservationPaymentStatus={reservationDepositStatus}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onReserve={() => runTarget({ kind: "reserve" })}
@@ -2881,6 +2963,7 @@ function DriverDetail({
                       onSave={(v) => onUpdate({ weekly_rent: v as any })}
                     />
                   </div>
+                  <p className="mt-3 text-[11px] text-muted-foreground">Changes save when you click Save or click away.</p>
                 </Card>
                 <Card title="Contract Dates" icon={<CalendarDays className="w-4 h-4" />}>
                   {/* These are the agreement's dates, and only these. What the
@@ -3328,69 +3411,109 @@ function SelField({
     </div>
   );
 }
-function NumField({
-  label,
-  value,
-  onSave,
-}: {
-  label: string;
-  value: number | null;
-  onSave: (v: number | null) => void;
-}) {
-  return (
-    <div className="bg-soft rounded-md px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
-      <input
-        type="number"
-        defaultValue={value ?? ""}
-        onBlur={(e) => onSave(e.target.value === "" ? null : Number(e.target.value))}
-        className="w-full bg-white border border-border rounded-md px-2 py-1 text-sm"
-      />
-    </div>
-  );
+type EditableSaveResult = void | boolean | Promise<void | boolean>;
+type EditableSaveState = "idle" | "saving" | "saved" | "error";
+
+/** One save path for profile fields: explicit Save or click-away, with a real result. */
+function useEditableField<T>(onSave: (value: T | null) => EditableSaveResult, parse: (raw: string) => T | null) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dirtyRef = useRef(false);
+  const savingRef = useRef(false);
+  const [dirty, setDirty] = useState(false);
+  const [state, setState] = useState<EditableSaveState>("idle");
+
+  async function save() {
+    if (!dirtyRef.current || savingRef.current || !inputRef.current) return;
+    savingRef.current = true;
+    setState("saving");
+    try {
+      const result = await onSave(parse(inputRef.current.value));
+      if (result === false) {
+        setState("error");
+        return;
+      }
+      dirtyRef.current = false;
+      setDirty(false);
+      setState("saved");
+    } catch {
+      setState("error");
+    } finally {
+      savingRef.current = false;
+    }
+  }
+
+  return {
+    inputRef,
+    dirty,
+    state,
+    save,
+    changed: () => {
+      dirtyRef.current = true;
+      setDirty(true);
+      setState("idle");
+    },
+  };
 }
-function TxtField({
+
+function EditableField({
   label,
   value,
+  type,
   onSave,
+  parse,
 }: {
   label: string;
-  value: string | null;
-  onSave: (v: string | null) => void;
+  value: string | number | null;
+  type: "text" | "number" | "date";
+  onSave: (value: any) => EditableSaveResult;
+  parse: (raw: string) => any;
 }) {
+  const field = useEditableField(onSave, parse);
   return (
     <div className="bg-soft rounded-md px-3 py-2">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
-      <input
-        type="text"
-        defaultValue={value ?? ""}
-        onBlur={(e) => onSave(e.target.value.trim() || null)}
-        className="w-full bg-white border border-border rounded-md px-2 py-1 text-sm"
-      />
+      <div className="flex min-w-0 items-center gap-2">
+        <input
+          ref={field.inputRef}
+          type={type}
+          aria-label={label}
+          defaultValue={value ?? ""}
+          disabled={field.state === "saving"}
+          onChange={field.changed}
+          onBlur={() => void field.save()}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+          className="min-w-0 flex-1 bg-white border border-border rounded-md px-2 py-1 text-sm disabled:opacity-60"
+        />
+        {field.dirty ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 shrink-0 px-2.5 text-[11px]"
+            disabled={field.state === "saving"}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => void field.save()}
+          >
+            {field.state === "saving" ? "Saving…" : "Save"}
+          </Button>
+        ) : null}
+      </div>
+      {field.state === "saved" ? <div role="status" className="mt-1 text-[11px] text-success">Saved</div> : null}
+      {field.state === "error" ? <div role="status" className="mt-1 text-[11px] text-destructive">Not Saved</div> : null}
     </div>
   );
 }
 
-function DateField({
-  label,
-  value,
-  onSave,
-}: {
-  label: string;
-  value: string | null;
-  onSave: (v: string | null) => void;
-}) {
-  return (
-    <div className="bg-soft rounded-md px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
-      <input
-        type="date"
-        defaultValue={value ?? ""}
-        onBlur={(e) => onSave(e.target.value || null)}
-        className="w-full bg-white border border-border rounded-md px-2 py-1 text-sm"
-      />
-    </div>
-  );
+function NumField({ label, value, onSave }: { label: string; value: number | null; onSave: (v: number | null) => EditableSaveResult }) {
+  return <EditableField label={label} value={value} type="number" onSave={onSave} parse={(raw) => raw === "" ? null : Number(raw)} />;
+}
+
+function TxtField({ label, value, onSave }: { label: string; value: string | null; onSave: (v: string | null) => EditableSaveResult }) {
+  return <EditableField label={label} value={value} type="text" onSave={onSave} parse={(raw) => raw.trim() || null} />;
+}
+
+function DateField({ label, value, onSave }: { label: string; value: string | null; onSave: (v: string | null) => EditableSaveResult }) {
+  return <EditableField label={label} value={value} type="date" onSave={onSave} parse={(raw) => raw || null} />;
 }
 
 /** How the applicant's duration band reads to a person. */
@@ -3501,7 +3624,7 @@ function useCardOnFileLink(applicationId: string) {
           throw new Error("Could not prepare the card link.");
         }
         const entry = {
-          link: `${window.location.origin}${res.path}`,
+          link: publicAppUrl(res.path),
           expiresAt: res.expiresAt,
         };
         rememberCachedCardLink(cardLinkCache, applicationId, entry);

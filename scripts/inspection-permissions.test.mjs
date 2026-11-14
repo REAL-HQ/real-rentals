@@ -386,6 +386,30 @@ ok(!/canInspect|isStaff/.test(
   code.slice(code.indexOf("export const getMyCheckoutInspection"), code.indexOf("export const signCheckoutInspection")),
 ), "the renter's read is gated by their own rental, not by a staff predicate");
 
+console.log("\\na renter can sign a passed inspection without uploading photos");
+seed();
+S.tables.condition_media = [];
+S.tables.inspection_template_items.push({
+  id: "ti-out-1", template_id: TPL_OUT, section: "Exterior", label: "Front bumper",
+  requires_photo: true, is_critical: false, sort_order: 1,
+});
+const photoFree = await call(I.startInspection, { vehicleId: V1, templateId: TPL_OUT }, "mgr-1");
+const photoFreeItem = S.tables.inspection_items.find((item) => item.inspection_id === photoFree.id);
+await call(I.setInspectionItem, { itemId: photoFreeItem.id, result: "pass" }, "mgr-1");
+const photoFreeCompletion = await call(I.completeInspection, { id: photoFree.id }, "mgr-1");
+ok(photoFreeCompletion.ok === true && photoFreeCompletion.status === "passed",
+  "a completed checklist passes without photo uploads");
+const photoFreeSignoff = await call(I.getMyCheckoutInspection, {}, U1);
+ok(photoFreeSignoff?.id === photoFree.id && photoFreeSignoff.media.length === 0,
+  "the renter can open the photo-free inspection for signature");
+const photoFreeSignature = await call(I.signCheckoutInspection, {
+  inspectionId: photoFree.id, signerName: "Dana Rivers", agree: true, notes: null,
+}, U1);
+ok(photoFreeSignature.ok === true, "the renter's photo-free signature is accepted");
+const photoFreeSigned = await call(I.getMyCheckoutInspection, {}, U1);
+ok(photoFreeSigned?.signedAt && photoFreeSigned.signatureName === "Dana Rivers",
+  "the photo-free signature is saved and readable");
+
 console.log("\\nand nothing in this module writes outside inspections and condition media");
 seed();
 await call(I.startInspection, { vehicleId: V1, templateId: TPL_IN }, "crd-1");

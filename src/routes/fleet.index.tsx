@@ -319,7 +319,7 @@ function FleetPage() {
                   navigate({
                     to: "/fleet",
                     search: (prev) => ({
-                      ...(prev.type ? { type: prev.type } : {}),
+                      ...(isMarketingCategory(prev.type) ? { type: prev.type } : {}),
                       ...fleetSearchParams(next),
                     }),
                   });

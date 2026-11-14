@@ -94,6 +94,7 @@ import { DriverReceipts } from "@/components/portal/DriverReceipts";
 import { DRIVER_RECEIPTS_ENABLED } from "@/lib/driver-receipts";
 import { getDriverReceipts } from "@/lib/driver-receipts.functions";
 import { DriverHelpLink } from "@/components/portal/DriverHelp";
+import { WhatToDoGuides } from "@/components/portal/WhatToDoGuides";
 import { DRIVER_HELP_ENABLED } from "@/lib/driver-help";
 import { MyCarCard } from "@/components/portal/MyCarCard";
 import { RenterPortalCard } from "@/components/portal/RenterPortalCard";
@@ -890,9 +891,9 @@ function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }
 /**
  * The renter's sign-off on the car's condition at handover.
  *
- * Our checklist and photos only record our side of it. Until the renter
- * agrees to that record, a damage dispute at return is our word against
- * theirs — so this puts the full inspection and every checkout photo in front
+ * Our checklist and any optional photos only record our side of it. Until the
+ * renter agrees to that record, a damage dispute at return is our word against
+ * theirs — so this puts the full inspection and any checkout photos in front
  * of them, with room to note anything they disagree with, before they sign.
  */
 function CheckoutSignOffCard() {
@@ -942,7 +943,7 @@ function CheckoutSignOffCard() {
     >
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h3 className="font-semibold">Vehicle Condition at Pickup</h3>
+          <h3 className="font-semibold">Vehicle Inspection Report: Pickup</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {signed
               ? `You signed this on ${fmtDate(data.signedAt as string)}.`
@@ -1077,7 +1078,7 @@ function CheckoutSignOffCard() {
                   className="mt-0.5"
                 />
                 <span>
-                  I have reviewed the photos and checklist above and agree this is the condition of
+                  I have reviewed the {data.media.length > 0 ? "photos and " : ""}checklist above and agree this is the condition of
                   the vehicle as I received it. Typing my name is my legal electronic signature.
                 </span>
               </label>
@@ -1392,6 +1393,7 @@ function IssuesViewInner() {
   return (
     <div className="w-full space-y-6">
       <RoadsideHelpForm onReported={() => refetch()} />
+      <WhatToDoGuides phone={businessPhone} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">Report an Issue</h3>

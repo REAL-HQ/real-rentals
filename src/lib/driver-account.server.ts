@@ -206,13 +206,13 @@ export async function provisionDriverAccount(
   let inviteUrl: string | null = null;
   if (created) {
     try {
-      const site = (process.env.PUBLIC_SITE_URL || "https://drivereal.com").replace(/\/$/, "");
+      const { publicAppUrl, recoveryUrlFromGenerateLink } = await import("@/lib/public-app-url");
       const { data: link } = await admin.auth.admin.generateLink({
         type: "recovery",
         email: target,
-        options: { redirectTo: `${site}/set-password` },
+        options: { redirectTo: publicAppUrl("/set-password") },
       });
-      inviteUrl = (link?.properties?.action_link as string) ?? null;
+      inviteUrl = recoveryUrlFromGenerateLink(link);
     } catch (e) {
       // The welcome email falls back to the portal URL, and the driver can
       // still use Forgot Password from there.

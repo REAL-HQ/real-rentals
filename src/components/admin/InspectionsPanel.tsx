@@ -15,6 +15,7 @@ import {
   Loader2,
   ArrowLeft,
   Car,
+  Printer,
 } from "lucide-react";
 import { StatusPill, EmptyState, MicroLabel } from "./ui";
 import { FileUploader } from "@/components/FileUploader";
@@ -26,8 +27,10 @@ import {
   completeInspection,
   createConditionUploadUrl,
   confirmConditionUpload,
+  CONDITION_ANGLES,
   type InspectionDetail,
 } from "@/lib/inspections.functions";
+import { inspectionReportHtml } from "@/lib/inspection-report";
 import { fmtDateTime } from "@/lib/date-format";
 import { roleLabel } from "@/lib/condition-photos";
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
@@ -413,6 +416,42 @@ export function InspectionRunner({
     }
   }
 
+  // The paper form of this same record: for a wet signature at the car, or a
+  // copy that shows the renter's electronic sign-off. Nothing is saved.
+  function printReport() {
+    if (!data) return;
+    const html = inspectionReportHtml(
+      {
+        inspectionType: data.inspection_type,
+        status: data.status,
+        vehicleLabel: vehicleLabel(data.vehicle_id),
+        odometer: data.odometer,
+        fuelLevel: data.fuel_level,
+        exteriorNotes: data.exterior_notes,
+        interiorNotes: data.interior_notes,
+        notes: data.notes,
+        inspectorName: data.inspector_name,
+        startedAt: data.started_at,
+        completedAt: data.completed_at,
+        renterSignatureName: data.driver_signature_name,
+        renterSignedAt: data.driver_signed_at,
+        renterNotes: data.driver_notes,
+        items: data.items,
+        photoAngles: data.media.map((m) => m.angle),
+        angles: CONDITION_ANGLES,
+      },
+      fmtDateTime,
+    );
+    const w = window.open("", "_blank");
+    if (!w) return void toast.error("Allow pop-ups for this site to print the report.");
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    // Give the new document a moment to lay out before the print dialog opens.
+    w.setTimeout(() => w.print(), 250);
+  }
+
   if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (!data) return null;
 
@@ -448,15 +487,24 @@ export function InspectionRunner({
               {fmtDateTime(data.started_at)}
             </p>
           </div>
-          {!readOnly ? (
+          <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={finish}
-              disabled={busy}
-              className="rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium disabled:opacity-40"
+              type="button"
+              onClick={printReport}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#EDEDF0] bg-white px-3 py-2 text-sm font-medium text-[#111114] hover:border-[#111114]/40"
             >
-              {busy ? "Finishing…" : "Complete Inspection"}
+              <Printer className="w-4 h-4" /> Print Inspection Report
             </button>
-          ) : null}
+            {!readOnly ? (
+              <button
+                onClick={finish}
+                disabled={busy}
+                className="rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium disabled:opacity-40"
+              >
+                {busy ? "Finishing…" : "Complete Inspection"}
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">

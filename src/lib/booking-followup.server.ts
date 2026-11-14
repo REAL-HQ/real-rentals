@@ -2,6 +2,7 @@
  * Reads the follow-up list. The first action is the flag refusal, before any
  * database read. This file does not insert, update, or send.
  */
+import { publicAppUrl } from "@/lib/public-app-url";
 import {
   assertBookingFollowupEnabled,
   buildBookingFollowups,
@@ -59,8 +60,7 @@ function asApplication(row: Record<string, unknown>): FollowupApplication {
 }
 
 function portalUrl(): string {
-  const origin = process.env.PUBLIC_SITE_URL || "https://drivereal.com";
-  return `${origin.replace(/\/$/, "")}/portal`;
+  return publicAppUrl("/portal");
 }
 
 function refuseIfTruncated(count: number): void {

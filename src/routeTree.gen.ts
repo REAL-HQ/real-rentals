@@ -29,6 +29,7 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SmsConsentRouteImport } from './routes/sms-consent'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as ThankYouRouteImport } from './routes/thank-you'
+import { Route as AuthConfirmRouteImport } from './routes/auth/confirm'
 import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
 import { Route as FleetIndexRouteImport } from './routes/fleet.index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
@@ -151,6 +152,11 @@ const TermsRoute = TermsRouteImport.update({
 const ThankYouRoute = ThankYouRouteImport.update({
   id: '/thank-you',
   path: '/thank-you',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthConfirmRoute = AuthConfirmRouteImport.update({
+  id: '/auth/confirm',
+  path: '/auth/confirm',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CardApplicationIdRoute = CardApplicationIdRouteImport.update({
@@ -299,6 +305,7 @@ export interface FileRoutesByFullPath {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/portal/help': typeof PortalHelpRoute
@@ -344,6 +351,7 @@ export interface FileRoutesByTo {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/portal/help': typeof PortalHelpRoute
@@ -390,6 +398,7 @@ export interface FileRoutesById {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/portal_/help': typeof PortalHelpRoute
@@ -437,6 +446,7 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/auth/confirm'
     | '/card/$applicationId'
     | '/fleet/$id'
     | '/portal/help'
@@ -482,6 +492,7 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/auth/confirm'
     | '/card/$applicationId'
     | '/fleet/$id'
     | '/portal/help'
@@ -527,6 +538,7 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/auth/confirm'
     | '/card/$applicationId'
     | '/fleet/$id'
     | '/portal_/help'
@@ -573,6 +585,7 @@ export interface RootRouteChildren {
   SmsConsentRoute: typeof SmsConsentRoute
   TermsRoute: typeof TermsRoute
   ThankYouRoute: typeof ThankYouRoute
+  AuthConfirmRoute: typeof AuthConfirmRoute
   CardApplicationIdRoute: typeof CardApplicationIdRoute
   FleetIdRoute: typeof FleetIdRoute
   PortalHelpRoute: typeof PortalHelpRoute
@@ -738,6 +751,13 @@ declare module '@tanstack/react-router' {
       path: '/thank-you'
       fullPath: '/thank-you'
       preLoaderRoute: typeof ThankYouRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/confirm': {
+      id: '/auth/confirm'
+      path: '/auth/confirm'
+      fullPath: '/auth/confirm'
+      preLoaderRoute: typeof AuthConfirmRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/card/$applicationId': {
@@ -925,6 +945,7 @@ const rootRouteChildren: RootRouteChildren = {
   SmsConsentRoute: SmsConsentRoute,
   TermsRoute: TermsRoute,
   ThankYouRoute: ThankYouRoute,
+  AuthConfirmRoute: AuthConfirmRoute,
   CardApplicationIdRoute: CardApplicationIdRoute,
   FleetIdRoute: FleetIdRoute,
   PortalHelpRoute: PortalHelpRoute,

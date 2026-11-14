@@ -11,7 +11,7 @@ import type {
 
 /** Where a fix lives on the profile: an existing tab plus the card inside it. */
 export type FixTarget =
-  | { kind: "section"; tab: "documents" | "screening" | "application" | "rental"; anchor: string }
+  | { kind: "section"; tab: "documents" | "screening" | "application" | "rental" | "payments"; anchor: string }
   | { kind: "interview" }
   | { kind: "record_call" }
   | { kind: "approve" }

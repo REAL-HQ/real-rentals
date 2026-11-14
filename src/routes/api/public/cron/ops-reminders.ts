@@ -407,7 +407,7 @@ async function handle(request: Request): Promise<Response> {
       const sentAgreement = await sendEmail({
         to,
         track: { workflow: "agreement_reminder" },
-        subject: "Reminder: Sign Your REAL RENTALS Rental Agreement",
+        subject: "Reminder: Your REAL RENTALS Agreement Is Ready To Sign",
         html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px">
           <h1 style="font-size:20px;color:#111">Your rental agreement is still waiting</h1>
           <p style="color:#444;font-size:15px;line-height:1.55">Hi ${(app?.full_name || "there").split(" ")[0]}, we still need your signature before we can hand over the keys. Sign in to your driver portal to review and sign.</p>
@@ -461,8 +461,27 @@ async function handle(request: Request): Promise<Response> {
     }
   }
 
+  // ---- Stripe Link Check (default OFF): paid Stripe money not recorded or not
+  // tied to a rental. Read-only; emails team@ at most once per ET day.
+  let stripeLinkCheck = "off";
+  if (on("stripe_link_reconciliation")) {
+    try {
+      const { runStripeLinkReconciliation, stripeForLinking } = await import("@/lib/stripe-link.server");
+      const stripe = await stripeForLinking();
+      if (!stripe) stripeLinkCheck = "stripe_unconfigured";
+      else {
+        const res = await runStripeLinkReconciliation(supabaseAdmin, { stripe });
+        stripeLinkCheck = res.sent ? "sent" : res.reason ?? "not_sent";
+      }
+    } catch (err) {
+      stripeLinkCheck = "error";
+      console.error("[ops-reminders] stripe link check failed", err);
+    }
+  }
+
   return Response.json({
     ok: true,
+    stripe_link_check: stripeLinkCheck,
     past_due_sent: pastDue,
     team_past_due_alerts: teamPastDue,
     due_tomorrow_sent: dueTomorrow,
