@@ -57,6 +57,18 @@ function cardExpiresSoon(m: number | null, y: number | null): boolean {
 }
 
 async function handleCheckoutCompleted(session: any, env: StripeEnv) {
+  if (session.mode === 'subscription' || session.mode === 'payment') {
+    // Link the renter's customer / subscription to the rental. The money is
+    // recorded from invoice.paid / payment_intent.succeeded, not here.
+    const { linkStripeObjectToRental } = await import('@/lib/stripe-link.server');
+    await linkStripeObjectToRental(getSupabase(), {
+      metadata: session.metadata ?? null,
+      clientReferenceId: session.client_reference_id ?? null,
+      customerId: stripeId(session.customer),
+      subscriptionId: session.mode === 'subscription' ? stripeId(session.subscription) : null,
+    });
+    return;
+  }
   if (session.mode !== 'setup') return;
   const applicationId = session.metadata?.applicationId;
   const rentalId = session.metadata?.rentalId as string | undefined;
@@ -343,8 +355,26 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
   const rawSub = typeof invoice.subscription === 'string' ? invoice.subscription
     : invoice.subscription?.id ?? invoice.parent?.subscription_details?.subscription;
   const subscriptionId = typeof rawSub === 'string' ? rawSub : null;
+  const { linkStripeObjectToRental } = await import('@/lib/stripe-link.server');
+  const ref = {
+    metadata: { ...(invoice.parent?.subscription_details?.metadata ?? {}), ...(invoice.metadata ?? {}) },
+    customerId: customerIdOf(invoice),
+    subscriptionId,
+  };
   if (!subscriptionId) {
-    await warnUnmatchedInvoice(admin, invoice, status, null);
+    // A one-off invoice (first week, final return): record it when its
+    // metadata or customer names exactly one active rental.
+    const linked = await linkStripeObjectToRental(admin, ref);
+    if (linked.kind !== 'link' && linked.kind !== 'already') {
+      await warnUnmatchedInvoice(admin, invoice, status, null);
+      return;
+    }
+    const one = await admin.from('rentals').select('id, application_id, vehicle_id').eq('id', linked.rentalId).maybeSingle();
+    if (one.error || !one.data) {
+      if (!one.error) await warnUnmatchedInvoice(admin, invoice, status, null);
+      return;
+    }
+    await recordInvoiceRow(admin, invoice, status, one.data, null);
     return;
   }
   const findRental = () => admin
@@ -354,8 +384,13 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     .maybeSingle();
   let rentalResult = await findRental();
   if (!rentalResult.error && !rentalResult.data) {
-    // Automations → Subscription Matching (off by default): link this
-    // subscription to its one renter, or flag a second subscription.
+    // 1. metadata (rentalId / applicationId), 2. the renter's customer id.
+    const linked = await linkStripeObjectToRental(admin, ref);
+    if (linked.kind === 'link' || linked.kind === 'already') rentalResult = await findRental();
+  }
+  if (!rentalResult.error && !rentalResult.data) {
+    // 3. Automations → Subscription Matching (off by default): link this
+    // subscription to its one renter by email/phone, or flag a second subscription.
     const linked = await linkOrFlagSubscription(admin, invoice, subscriptionId, status, { alert: webhookDeps.alert });
     if (linked.kind === 'linked') rentalResult = await findRental();
   }
@@ -363,7 +398,11 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     if (!rentalResult.error) await warnUnmatchedInvoice(admin, invoice, status, subscriptionId);
     return;
   }
-  const rental = rentalResult.data;
+  await recordInvoiceRow(admin, invoice, status, rentalResult.data, subscriptionId);
+}
+
+/** Record one invoice against a resolved rental, then the receipt / failure notices. */
+async function recordInvoiceRow(admin: any, invoice: any, status: 'paid' | 'failed', rental: any, subscriptionId: string | null) {
 
   // The week's rent is owed whether or not the card worked.
   const owed = Number(invoice.amount_due ?? invoice.amount_paid ?? 0) / 100;
@@ -581,6 +620,16 @@ async function handleChargeRefunded(charge: any) {
   }));
 }
 
+/** customer.subscription.created: link a new subscription to its rental by metadata or customer. */
+async function handleSubscriptionCreated(sub: any) {
+  const { linkStripeObjectToRental } = await import('@/lib/stripe-link.server');
+  await linkStripeObjectToRental(getSupabase(), {
+    metadata: sub.metadata ?? null,
+    customerId: stripeId(sub.customer),
+    subscriptionId: typeof sub.id === 'string' ? sub.id : null,
+  });
+}
+
 async function handleSubscriptionUpdated(sub: any) {
   const admin: any = getSupabase();
   await admin.from('rentals').update({
@@ -609,6 +658,9 @@ async function handleVerifiedPaymentEvent(event: { type: string; data: { object:
       break;
     case 'charge.refunded':
       await handleChargeRefunded(event.data.object);
+      break;
+    case 'customer.subscription.created':
+      await handleSubscriptionCreated(event.data.object);
       break;
     case 'customer.subscription.updated':
     case 'customer.subscription.deleted':

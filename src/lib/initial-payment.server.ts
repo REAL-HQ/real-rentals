@@ -180,21 +180,14 @@ export async function createInitialPaymentLink(
       const stripe = createStripeClient(env);
       const { data: app } = await admin
         .from("applications")
-        .select("email,full_name,stripe_customer_id")
+        .select("id,email,full_name,phone,stripe_customer_id")
         .eq("id", ag.application_id)
         .maybeSingle();
       let customerId = (app?.stripe_customer_id as string | null) ?? null;
       if (!customerId && app?.email) {
-        const customer = await stripe.customers.create({
-          email: app.email as string,
-          name: (app.full_name as string | null) ?? undefined,
-          metadata: { applicationId: ag.application_id as string },
-        });
-        customerId = customer.id;
-        await admin
-          .from("applications")
-          .update({ stripe_customer_id: customerId })
-          .eq("id", ag.application_id);
+        // One customer per application (reuses an existing Stripe customer for this renter).
+        const { ensureApplicationStripeCustomer } = await import("@/lib/stripe-link.server");
+        customerId = await ensureApplicationStripeCustomer(admin, stripe, { ...(app as any), id: ag.application_id as string });
       }
       const session = await stripe.checkout.sessions.create(
         {
@@ -214,6 +207,7 @@ export async function createInitialPaymentLink(
               },
             },
           })),
+          metadata: { applicationId: ag.application_id as string, agreementId },
           payment_intent_data: {
             metadata: {
               paymentIds: ids.join(","),

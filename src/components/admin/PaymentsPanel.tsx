@@ -75,11 +75,11 @@ const SORT_OPTIONS = [
 ] as const;
 const TYPES = ["rent", "deposit", "late_fee", "toll", "damage", "fee", "other"] as const;
 
+// Date-only values (due_date, paid_date) are calendar dates: formatDate reads
+// "2026-11-05" as Nov 5. new Date() would read it as UTC midnight, a day early in ET.
 function fmtDate(iso?: string | null) {
   if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return formatDate(d);
+  return formatDate(iso) || "—";
 }
 
 export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { initialFilter?: string; autoOpenAdd?: boolean; tier?: StaffTier | null } = {}) {

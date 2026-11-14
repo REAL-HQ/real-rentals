@@ -922,6 +922,32 @@ export async function sendTeamCollectionsPlanEmail(args: CollectionsPlanEmailArg
 
 
 
+export type StripeLinkReconciliationArgs = {
+  today: string;
+  missing: { id: string; customerEmail: string | null; amountPaid: number; paidOn: string | null; createdOn: string }[];
+  unlinkedCustomers: { customerId: string; email: string | null; invoiceIds: string[] }[];
+};
+
+/** Daily team alert: paid Stripe money the app has not recorded or cannot tie to a rental. */
+export async function sendTeamStripeLinkReconciliationEmail(args: StripeLinkReconciliationArgs): Promise<SendResult> {
+  const missingRows = args.missing.map((m) => `<li style="font-size:13px;color:#111;margin:0 0 4px">${escapeHtml(m.customerEmail ?? "No email")} · ${money(m.amountPaid)} · paid ${escapeHtml(fmtDate(m.paidOn ?? m.createdOn))} · <span style="color:#666">${escapeHtml(m.id)}</span></li>`).join("");
+  const customerRows = args.unlinkedCustomers.map((c) => `<li style="font-size:13px;color:#111;margin:0 0 4px">${escapeHtml(c.email ?? "No email")} · <span style="color:#666">${escapeHtml(c.customerId)}</span> · ${c.invoiceIds.length} paid invoice(s)</li>`).join("");
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:20px;color:#111;line-height:1.3">Stripe Payments To Link</h1>
+      <p style="color:#444;font-size:14px;line-height:1.55;margin:0 0 8px">Check for ${escapeHtml(fmtDate(args.today))} (ET). Nothing was changed. Link these in the app so reminders and balances are right.</p>
+      <h2 style="margin:18px 0 6px;font-size:15px;color:#111">Paid But Not Recorded · ${args.missing.length}</h2>
+      ${missingRows ? `<ul style="padding-left:18px;margin:0">${missingRows}</ul>` : `<p style="color:#888;font-size:13px;margin:0 0 8px">None</p>`}
+      <h2 style="margin:18px 0 6px;font-size:15px;color:#111">Customers Not Linked To A Rental · ${args.unlinkedCustomers.length}</h2>
+      ${customerRows ? `<ul style="padding-left:18px;margin:0">${customerRows}</ul>` : `<p style="color:#888;font-size:13px;margin:0 0 8px">None</p>`}
+      <a href="https://drivereal.com/admin?tab=payments" style="display:inline-block;margin-top:18px;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open Payments</a>`);
+  return sendEmail({
+    to: TEAM_ALERT_INBOX,
+    subject: `Stripe Payments To Link (${args.missing.length + args.unlinkedCustomers.length})`,
+    html,
+    track: { workflow: "stripe_link_reconciliation" },
+  });
+}
+
 type LicenseExpiryArgs = {
   to: string;
   firstName: string | null;

@@ -461,8 +461,27 @@ async function handle(request: Request): Promise<Response> {
     }
   }
 
+  // ---- Stripe Link Check (default OFF): paid Stripe money not recorded or not
+  // tied to a rental. Read-only; emails team@ at most once per ET day.
+  let stripeLinkCheck = "off";
+  if (on("stripe_link_reconciliation")) {
+    try {
+      const { runStripeLinkReconciliation, stripeForLinking } = await import("@/lib/stripe-link.server");
+      const stripe = await stripeForLinking();
+      if (!stripe) stripeLinkCheck = "stripe_unconfigured";
+      else {
+        const res = await runStripeLinkReconciliation(supabaseAdmin, { stripe });
+        stripeLinkCheck = res.sent ? "sent" : res.reason ?? "not_sent";
+      }
+    } catch (err) {
+      stripeLinkCheck = "error";
+      console.error("[ops-reminders] stripe link check failed", err);
+    }
+  }
+
   return Response.json({
     ok: true,
+    stripe_link_check: stripeLinkCheck,
     past_due_sent: pastDue,
     team_past_due_alerts: teamPastDue,
     due_tomorrow_sent: dueTomorrow,
