@@ -151,6 +151,9 @@ class Query {
       const refused = this._returningRefused();
       if (refused) return refused;
       const m = this._matching();
+      // Test-only seam for database guards, zero-row and readback failures.
+      const intercepted = S.interceptUpdate?.({ table: t, patch: clone(this.payload), rows: m.map(clone) });
+      if (intercepted) return intercepted;
       for (const r of m) { Object.assign(r, this.payload); S.log.push({ op: "update", table: t, row: clone(r), patch: clone(this.payload) }); }
       return { data: this._returning(m), error: null };
     }
@@ -197,8 +200,8 @@ class Query {
   async _gate() {
     if (S.gateTable === this.table && S.gate) await S.gate;
   }
-  async single() { await this._gate(); const r = this._run(); const d = Array.isArray(r.data) ? r.data[0] : r.data; return { data: d ?? null, error: d ? null : { message: "no rows" }, count: r.count }; }
-  async maybeSingle() { await this._gate(); const r = this._run(); const d = Array.isArray(r.data) ? r.data[0] : r.data; return { data: d ?? null, error: null, count: r.count }; }
+  async single() { await this._gate(); const r = this._run(); const d = Array.isArray(r.data) ? r.data[0] : r.data; return { data: d ?? null, error: r.error ?? (d ? null : { message: "no rows" }), count: r.count }; }
+  async maybeSingle() { await this._gate(); const r = this._run(); const d = Array.isArray(r.data) ? r.data[0] : r.data; return { data: d ?? null, error: r.error ?? null, count: r.count }; }
   then(res, rej) { return this._gate().then(() => this._run()).then(res, rej); }
 }
 

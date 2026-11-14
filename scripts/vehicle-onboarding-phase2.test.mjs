@@ -581,6 +581,46 @@ const before = JSON.stringify(S.tables.vehicles[0]);
 await call(getVehicleSuggestions, { vehicleId: V1 });
 ok(JSON.stringify(S.tables.vehicles[0]) === before, "reviewing changes nothing");
 
+// Regression: full-record drafts used to retrigger status/rate guards and
+// silently hide the resulting status-field error in Edit Details.
+console.log("\nEdit Details persists only edited fields and confirms the result");
+seedOne();
+Object.assign(S.tables.vehicles[0], { status: "onboarding", weekly_rate: null, color: null, body_type: null, license_plate: null, plate_state: null });
+const fullDraft = { ...S.tables.vehicles[0], color: "Silver", body_type: "sedan", license_plate: "syn789", plate_state: "fl", status: "available" };
+const guard = ({ table, patch, rows }) => {
+  if (table === "vehicles" && ("status" in patch || "weekly_rate" in patch)) {
+    const candidate = { ...rows[0], ...patch };
+    if (["available", "reserved"].includes(candidate.status) && !(Number(candidate.weekly_rate) > 0)) return { data: null, error: { message: "vehicle_not_rental_ready:weekly_rate" } };
+  }
+};
+S.interceptUpdate = guard;
+const blockedBefore = JSON.stringify(S.tables.vehicles[0]);
+let savedDetails = await call(updateVehicleSection, { id: V1, section: "identity", values: fullDraft, intended: ["color", "body_type", "license_plate", "plate_state", "status"] });
+ok(savedDetails.ok === false && savedDetails.field === "status" && savedDetails.error.includes("weekly rate"), `Available with no rate returns an actionable status error: ${JSON.stringify(savedDetails)}`);
+ok(JSON.stringify(S.tables.vehicles[0]) === blockedBefore, "a blocked update leaves all details unchanged, not partly saved");
+savedDetails = await call(updateVehicleSection, { id: V1, section: "identity", values: fullDraft, intended: ["color", "body_type", "license_plate", "plate_state"] });
+ok(savedDetails.ok && savedDetails.saved.length === 4, "the same valid identity edits save without an unrequested status change");
+const reread = await (await import(`../${OUT}/stub/supabase.js`)).supabaseAdmin.from("vehicles").select("*").eq("id", V1).maybeSingle();
+ok(reread.data.color === "Silver" && reread.data.body_type === "sedan" && reread.data.license_plate === "SYN789" && reread.data.plate_state === "FL", "a fresh read contains the normalized saved details");
+ok(reread.data.status === "onboarding" && reread.data.weekly_rate === null, "unrequested status and rate stay untouched");
+ok(!("status" in S.log.filter(x => x.op === "update" && x.table === "vehicles").at(-1).patch), "the update payload excludes unedited status");
+const unchangedLog = S.log.length;
+savedDetails = await call(updateVehicleSection, { id: V1, section: "identity", values: fullDraft, intended: [] });
+ok(savedDetails.ok && savedDetails.saved.length === 0 && S.log.length === unchangedLog, "an explicitly empty edit list is a no-op, not every field");
+Object.assign(S.tables.vehicles[0], { status: "available", weekly_rate: null });
+savedDetails = await call(updateVehicleSection, { id: V1, section: "identity", values: { ...S.tables.vehicles[0], color: "Blue" }, intended: ["color"] });
+ok(savedDetails.ok && S.tables.vehicles[0].color === "Blue", "unrelated details can save on a legacy Available record with no rate");
+S.interceptUpdate = () => ({ data: [], error: null });
+savedDetails = await call(updateVehicleSection, { id: V1, section: "identity", values: { color: "Red" }, intended: ["color"] });
+ok(!savedDetails.ok && savedDetails.error.includes("No vehicle changes"), "zero-row writes cannot report Saved");
+S.interceptUpdate = ({ rows }) => ({ data: rows, error: null });
+savedDetails = await call(updateVehicleSection, { id: V1, section: "identity", values: { color: "Red" }, intended: ["color"] });
+ok(!savedDetails.ok && savedDetails.error.includes("could not be confirmed"), "a mismatched readback cannot report Saved");
+S.interceptUpdate = undefined;
+const drawerSource = readFileSync("src/components/admin/VehicleProfile.tsx", "utf8");
+ok(drawerSource.includes('{fieldError && (') && drawerSource.includes('role="alert"'), "every save failure is visible in the drawer summary, including field-specific failures");
+ok(/label="Status"[\s\S]{0,280}error=\{err\("status"\)\}/.test(drawerSource), "the identity Status control shows its own error too");
+
 // =========================================================================
 // 3. FLEET-WIDE READINESS
 // =========================================================================
