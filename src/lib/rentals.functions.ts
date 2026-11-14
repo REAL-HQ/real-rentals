@@ -605,6 +605,16 @@ export const activateRental = createServerFn({ method: "POST" })
       channels: ["in_app", "email"],
     });
 
+    // Link the renter's Stripe customer/subscription and record anything they
+    // already paid (first week paid before activation). Never blocks activation.
+    try {
+      const { linkRentalOnActivation, stripeForLinking } = await import("@/lib/stripe-link.server");
+      const stripe = await stripeForLinking();
+      if (stripe) await linkRentalOnActivation(supabaseAdmin, stripe, rental.id as string);
+    } catch (e) {
+      console.error("[activate] stripe link failed", e);
+    }
+
     // rental.activated was written inside activate_rental_checked_tx (or, without
     // the wrapper, immediately after activate_rental_tx with any failure returned).
     return { ok: true, rentalId: rental.id as string, accountCreated: created, inviteUrl, ...(auditError ? { auditError } : {}) };

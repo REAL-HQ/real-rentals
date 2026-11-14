@@ -2144,9 +2144,8 @@ function MultiFileUpload({
 }
 
 function fmtDate(s: string) {
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  return formatDate(d);
+  // Date-only strings stay calendar dates (no UTC shift); formatDate handles both.
+  return formatDate(s) || s;
 }
 
 /** Panel loads only when APPLY_VEHICLE_PREFILL_ENABLED is exactly true. */

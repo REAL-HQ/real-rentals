@@ -243,7 +243,7 @@ export const createFinalInvoice = createServerFn({ method: "POST" })
       customer: customerId,
       collection_method: "send_invoice",
       days_until_due: 7,
-      metadata: { rentalId: data.rentalId, purpose: "final_return" },
+      metadata: { rentalId: data.rentalId, ...(rental.application_id ? { applicationId: String(rental.application_id) } : {}), purpose: "final_return" },
       auto_advance: false,
     });
     const finalized = await stripe.invoices.finalizeInvoice(invoice.id);

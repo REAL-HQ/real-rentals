@@ -1392,6 +1392,15 @@ export const approveApplication = createServerFn({ method: "POST" })
         if (!approved.ok) {
           return { ok: false, agreementSent: false, portalAccount: "deferred", error: approved.error };
         }
+        // One Stripe customer per renter from approval on, so every later
+        // checkout, invoice and subscription uses it. Never blocks approval.
+        try {
+          const { ensureCustomerAtApproval, stripeForLinking } = await import("@/lib/stripe-link.server");
+          const stripe = await stripeForLinking();
+          if (stripe) await ensureCustomerAtApproval(supabaseAdmin, stripe, data.id);
+        } catch (e) {
+          console.error("[approve] stripe customer not created", e);
+        }
       }
 
       // Approval records the vetting decision only. The existing Reserved

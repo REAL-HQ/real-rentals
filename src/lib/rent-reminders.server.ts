@@ -28,6 +28,8 @@ import {
   type RentalBillingState,
 } from "@/lib/rent-reminders";
 import { isHostedInvoiceUrl } from "@/lib/failed-payment-link";
+import { EARLY_PAYMENT_DAYS, type PaidInvoice } from "@/lib/stripe-link";
+import { dayDiff } from "@/lib/rent-reminders";
 
 export const RENT_REMINDER_TEMPLATES_KEY = "rent_reminder_templates";
 
@@ -43,7 +45,50 @@ export type ReminderDeps = {
   stripeSnapshot?: (subscriptionId: string) => Promise<StripeBillingSnapshot | null>;
   sendSms?: (a: any) => Promise<{ ok: boolean; skipped?: boolean; reason?: string; error?: string }>;
   sendEmail?: (a: { to: string; subject: string; text: string; link: string | null; linkLabel: string | null; workflow: string }) => Promise<{ ok: boolean; blocked?: string; error?: string }>;
+  /** Paid Stripe invoices for a customer (any subscription or one-off). Default: live Stripe. */
+  stripePaidInvoices?: (customerId: string) => Promise<PaidInvoice[]>;
 };
+
+/** Live read of a customer's paid invoices. */
+export async function livePaidInvoices(customerId: string): Promise<PaidInvoice[]> {
+  const { createStripeClient } = await import("@/lib/stripe.server");
+  const env = process.env.RENT_REMINDER_STRIPE_ENV === "sandbox" ? "sandbox" : "live";
+  const stripe: any = createStripeClient(env, { timeout: 8000 });
+  const { listPaidInvoices } = await import("@/lib/stripe-link.server");
+  return listPaidInvoices(stripe, { customer: customerId, createdGte: Math.floor(Date.now() / 1000) - 60 * 86400, max: 50 });
+}
+
+/**
+ * Amount already paid for the week starting dueDate: recorded paid rent rows
+ * billed for that week plus paid Stripe invoices for the renter's customer
+ * that are not already recorded. A renter whose week is covered is never reminded.
+ */
+export function paidForWeek(
+  dueDate: string,
+  weeklyRate: number,
+  rows: { amount: unknown; type?: unknown; status?: unknown; due_date?: unknown; stripe_invoice_id?: unknown }[],
+  invoices: PaidInvoice[],
+): number {
+  let total = 0;
+  const recorded = new Set<string>();
+  for (const r of rows) {
+    if (String(r.status ?? "") !== "paid" || String(r.type ?? "rent") !== "rent") continue;
+    if (r.stripe_invoice_id) recorded.add(String(r.stripe_invoice_id));
+    const due = typeof r.due_date === "string" ? r.due_date.slice(0, 10) : null;
+    if (due && weekWindow(due, dueDate)) total += Number(r.amount ?? 0);
+  }
+  for (const inv of invoices) {
+    if (recorded.has(inv.id)) continue;
+    if (weekWindow(inv.createdOn, dueDate)) total += inv.amountPaid;
+  }
+  void weeklyRate;
+  return Math.round(total * 100) / 100;
+}
+
+function weekWindow(billedOn: string, dueDate: string): boolean {
+  const d = dayDiff(dueDate, billedOn);
+  return d >= -EARLY_PAYMENT_DAYS && d <= 6;
+}
 
 export type ReminderRun = {
   ran: boolean;
@@ -202,6 +247,11 @@ export async function loadBillingStates(admin: any, deps: ReminderDeps, today: s
     waiversBy.set(w.rental_id, arr);
   }
   const stripeSnap = deps.stripeSnapshot ?? liveStripeSnapshot;
+  const paidInvoicesOf = deps.stripePaidInvoices ?? livePaidInvoices;
+  const paidRows = async (rentalId: string) => {
+    const p = await admin.from("payments").select("amount, status, type, due_date, stripe_invoice_id").eq("rental_id", rentalId).eq("status", "paid");
+    return p.error ? null : (p.data ?? []);
+  };
   const states: RentalBillingState[] = [];
   let errors = 0;
   for (const r of list) {
@@ -215,7 +265,18 @@ export async function loadBillingStates(admin: any, deps: ReminderDeps, today: s
       let snap: StripeBillingSnapshot | null = null;
       try { snap = await stripeSnap(r.stripe_subscription_id); } catch { errors++; continue; }
       if (!snap) continue; // canceled: nothing to remind about
-      const failed = snap.failedInvoices[0];
+      let failed = snap.failedInvoices[0];
+      if (failed) {
+        // A week paid another way (a second checkout, a cash payment recorded
+        // by staff) is not owed, even while its old invoice is still open.
+        const rows = await paidRows(r.id);
+        let invoices: PaidInvoice[] = [];
+        if (rows && r.stripe_customer_id) {
+          try { invoices = await paidInvoicesOf(r.stripe_customer_id); } catch { invoices = []; }
+        }
+        if (!rows) { errors++; continue; }
+        if (paidForWeek(failed.createdOn, base.weeklyRate, rows, invoices) + 0.005 >= base.weeklyRate && base.weeklyRate > 0) failed = undefined as any;
+      }
       if (failed) {
         // {{amount}} is the linked invoice's own amount; newer open invoices are listed separately.
         states.push({
@@ -234,9 +295,14 @@ export async function loadBillingStates(admin: any, deps: ReminderDeps, today: s
       const due = (r.next_payment_due as string | null) ?? null;
       let paid = 0;
       if (due) {
-        const p = await admin.from("payments").select("amount, status, type").eq("rental_id", r.id).eq("due_date", due).eq("status", "paid");
-        if (p.error) { errors++; continue; }
-        paid = (p.data ?? []).filter((x: any) => (x.type ?? "rent") === "rent").reduce((s: number, x: any) => s + Number(x.amount ?? 0), 0);
+        const rows = await paidRows(r.id);
+        if (!rows) { errors++; continue; }
+        let invoices: PaidInvoice[] = [];
+        if (r.stripe_customer_id) {
+          // Renter paid by Stripe without autopay (first-week invoice, one-off link).
+          try { invoices = await paidInvoicesOf(r.stripe_customer_id); } catch { errors++; continue; }
+        }
+        paid = paidForWeek(due, base.weeklyRate, rows, invoices);
       }
       const owed = manualOwed({ dueDate: due, today, weeklyRate: base.weeklyRate, paidTowardDue: paid });
       states.push({ ...base, mode: "manual", dueDate: due, owing: owed.owing, rentOwed: owed.rentOwed });
