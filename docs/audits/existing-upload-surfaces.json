@@ -25,7 +25,7 @@
       "props": {
         "variant": "\"inline\"",
         "label": "\"Add Files\"",
-        "context": "{`Other \u00b7 Application ${applicationId.slice(0, 8)}`}",
+        "context": "{`Other · Application ${applicationId.slice(0, 8)}`}",
         "accept": "\"image/*,application/pdf\"",
         "multiple": true,
         "disabled": "{running}",
@@ -63,7 +63,7 @@
       "props": {
         "title": "{`Drop ${title} Here`}",
         "label": "\"Browse Files\"",
-        "hint": "{options?.hint ?? hint ?? \"Images Or PDF \u00b7 15 MB Max\"}",
+        "hint": "{options?.hint ?? hint ?? \"Images Or PDF · 15 MB Max\"}",
         "accept": "{options?.accept ?? \"image/*,application/pdf\"}",
         "maxBytes": "{options?.maxBytes ?? 15 * 1024 * 1024}",
         "multiple": "{options?.multiple}",
@@ -85,7 +85,7 @@
         "title": "\"Drop The Receipt Here\"",
         "label": "{receipt ? \"Replace Receipt\" : \"Attach Receipt\"}",
         "hint": "\"Photo or PDF, up to 10 MB\"",
-        "context": "{`${vehicles.find((v) => v.id === vehicleId)?.label ?? \"Expense\"} \u00b7 Receipt`}",
+        "context": "{`${vehicles.find((v) => v.id === vehicleId)?.label ?? \"Expense\"} · Receipt`}",
         "accept": "\"image/*,application/pdf\"",
         "maxBytes": "{10 * 1024 * 1024}",
         "camera": true,
@@ -121,19 +121,21 @@
     },
     {
       "file": "src/components/admin/InspectionsPanel.tsx",
-      "line": 766,
+      "line": 816,
       "props": {
         "variant": "\"zone\"",
         "title": "{`Drop ${ANGLES.find((a) => a[0] === angle)?.[1]} Photos Or Video Here`}",
         "label": "{`Add ${ANGLES.find((a) => a[0] === angle)?.[1]} Photo Or Video`}",
-        "context": "{`${phase} \u00b7 ${ANGLES.find((a) => a[0] === angle)?.[1]}`}",
-        "accept": "\"image/*,video/mp4,video/quicktime\"",
-        "maxBytes": "{50 * 1024 * 1024}",
+        "context": "{`${phase} · ${ANGLES.find((a) => a[0] === angle)?.[1]}`}",
+        "accept": "{TRIP_MEDIA_ACCEPT}",
+        "maxBytes": "{TRIP_MEDIA_MAX_BYTES}",
+        "hint": "\"Drop several at once. JPEG, PNG, WebP, HEIC, MP4 or MOV · up to 50 MB each\"",
         "multiple": true,
         "camera": true,
         "upload": "{(file, { onProgress }) => uploadOne(file, onProgress)}",
-        "onAllDone": "{onChanged}"
-      }
+        "onSettled": "{onChanged}"
+      },
+      "propsUpdatedByTripMedia": true
     },
     {
       "file": "src/components/admin/ManualPaymentsWorkspace.tsx",
@@ -154,7 +156,7 @@
         "title": "\"Drop The Receipt Here\"",
         "label": "{receipt ? \"Replace Receipt\" : \"Attach Receipt\"}",
         "hint": "\"Optional. Photo or PDF, up to 10 MB.\"",
-        "context": "{`${vehicleLabel} \u00b7 Receipt`}",
+        "context": "{`${vehicleLabel} · Receipt`}",
         "accept": "\"image/*,application/pdf\"",
         "maxBytes": "{10 * 1024 * 1024}",
         "camera": true,
@@ -185,7 +187,7 @@
         "title": "\"Drop The Receipt Here\"",
         "label": "{receipt ? \"Replace Receipt\" : \"Attach Receipt\"}",
         "hint": "\"Screenshot Or PDF, Up To 10 MB\"",
-        "context": "{`${chosen?.label ?? \"Renter\"} \u00b7 Reimbursement Receipt`}",
+        "context": "{`${chosen?.label ?? \"Renter\"} · Reimbursement Receipt`}",
         "accept": "\"image/*,application/pdf\"",
         "maxBytes": "{10 * 1024 * 1024}",
         "camera": true,
@@ -229,7 +231,7 @@
         "maxBytes": "{MAX_TEMPLATE_BYTES}",
         "multiple": "{false}",
         "onFiles": "{onFiles}",
-        "label": "{busy ? \"Reading Agreement\u2026\" : \"Drop A PDF Or Word Agreement\"}",
+        "label": "{busy ? \"Reading Agreement…\" : \"Drop A PDF Or Word Agreement\"}",
         "hint": "\"PDF or .docx, up to 10 MB. The original is kept privately and is never sent.\""
       }
     },
@@ -243,9 +245,27 @@
         "camera": true,
         "disabled": "{busy}",
         "busy": "{busy}",
-        "title": "{busy ? \"Reading the Document\u2026\" : \"Photograph the Title or Registration\"}",
+        "title": "{busy ? \"Reading the Document…\" : \"Photograph the Title or Registration\"}",
         "hint": "\"Lay it flat, fill the frame, avoid glare. JPG, PNG or PDF up to 5MB. Nothing is saved until you confirm what was read.\""
       }
+    },
+    {
+      "file": "src/components/admin/TripMediaPanel.tsx",
+      "line": 194,
+      "props": {
+        "key": "{`${target.key}-${section.key}`}",
+        "variant": "\"zone\"",
+        "title": "{`Drop ${section.title} Photos Or Videos`}",
+        "label": "\"Choose Files\"",
+        "context": "{`${section.title} · ${ROLE_SUBSECTION.staff} · ${target.label}`}",
+        "hint": "\"JPEG, PNG, WebP, HEIC, MP4 or MOV · up to 50 MB each\"",
+        "accept": "{TRIP_MEDIA_ACCEPT}",
+        "maxBytes": "{TRIP_MEDIA_MAX_BYTES}",
+        "multiple": true,
+        "upload": "{(file, { onProgress }) => uploadOne(phase, target, file, onProgress)}",
+        "onAllDone": "{() => void refresh()}"
+      },
+      "addedByIntegrationMerge": true
     },
     {
       "file": "src/components/admin/VehicleDocUploadDialog.tsx",
@@ -254,7 +274,7 @@
         "multiple": "{read}",
         "accept": "\"image/*,application/pdf\"",
         "maxBytes": "{MAX_BYTES}",
-        "context": "{`${vehicleLabel} \u00b7 ${type?.label ?? \"Document\"}`}",
+        "context": "{`${vehicleLabel} · ${type?.label ?? \"Document\"}`}",
         "upload": "{async (file, { onProgress }) => {\n            if (read) await uploadRead(file, onProgress);\n            else {\n              onProgress(30);\n              await onSaveDirect(kind, file, type?.expires ? expires || null : null);\n              setSavedDirect((n) => n + 1);\n              onProgress(100);\n            }\n          }}",
         "onAllDone": "{() => {\n            if (read) refreshBatch();\n          }}"
       }
@@ -269,7 +289,7 @@
         "multiple": true,
         "camera": true,
         "maxBytes": "{MAX_BYTES}",
-        "context": "{`Vehicle ${vehicleId} \u00b7 Photos`}",
+        "context": "{`Vehicle ${vehicleId} · Photos`}",
         "upload": "{uploadOne}",
         "onAllDone": "{afterUpload}"
       }
@@ -297,7 +317,7 @@
         "multiple": "{false}",
         "camera": "{camera}",
         "title": "{title}",
-        "hint": "{note ? `${hint} \u00b7 ${note}` : hint}",
+        "hint": "{note ? `${hint} · ${note}` : hint}",
         "context": "{context}",
         "label": "\"Browse Files\""
       }
@@ -416,14 +436,14 @@
         "onFile": "{setFile}",
         "accept": "\"image/*,application/pdf\"",
         "title": "\"Add Receipt\"",
-        "hint": "\"Drag & drop or browse \u2014 stored privately\""
+        "hint": "\"Drag & drop or browse — stored privately\""
       }
     }
   ],
   "customWizardSurface": "src/components/site/ApplicationWizard.tsx: MultiFileUpload",
   "integrationMerge": {
-    "note": "Merged integration (via PR 325) on 2026-11-14: ApplicantDocuments uploader moved to DriverDocumentUploadDialog; RenterReimbursements and ReturnFlowDialog uploaders are new on integration. Props pinned as they arrived.",
-    "uploaderSourceSites": 24,
-    "uploaderFiles": 23
+    "note": "Merged integration (via PR 325) on 2026-11-14: ApplicantDocuments uploader moved to DriverDocumentUploadDialog; RenterReimbursements and ReturnFlowDialog uploaders are new on integration. Props pinned as they arrived. PR 314 (trip media) added TripMediaPanel and changed InspectionsPanel accept/size to the shared trip-media limits.",
+    "uploaderSourceSites": 25,
+    "uploaderFiles": 24
   }
 }
