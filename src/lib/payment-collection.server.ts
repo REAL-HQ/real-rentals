@@ -165,7 +165,7 @@ export async function collectRows(
         off_session: true,
         confirm: true,
         description: opts.description,
-        metadata: { ...opts.metadata, paymentIds: ids.join(","), attempt: String(attempt) },
+        metadata: { rentalId: opts.rentalId, ...opts.metadata, paymentIds: ids.join(","), attempt: String(attempt) },
       },
       { idempotencyKey: await attemptKey(ids, attempt) },
     );

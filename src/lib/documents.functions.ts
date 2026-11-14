@@ -18,10 +18,15 @@ import {
 export const DOC_BUCKET = "driver-docs";
 
 export const DOC_CATEGORIES = [
+  { key: "rental_application", label: "Rental application", expiring: false },
+  { key: "agreement", label: "Rental agreement", expiring: false },
   { key: "license_front", label: "Driver's license (front)", expiring: true },
   { key: "license_back", label: "Driver's license (back)", expiring: true },
   { key: "insurance", label: "Insurance card", expiring: true },
   { key: "gig_profile", label: "Gig profile screenshot", expiring: false },
+  { key: "income", label: "Income proof", expiring: false },
+  { key: "insurance_quote", label: "Insurance quote", expiring: false },
+  { key: "screening", label: "Screening document", expiring: false },
   // Its own category, not a second gig_profile. Filing trip screenshots under
   // gig_profile meant each one superseded the applicant's actual gig profile
   // — and every trip screenshot before it — because registerDocument marks
@@ -29,7 +34,6 @@ export const DOC_CATEGORIES = [
   // up as one document with three "previous versions", none of them the file
   // the label claimed.
   { key: "trip_history", label: "Trip history screenshot", expiring: false },
-  { key: "agreement", label: "Signed agreement", expiring: false },
   { key: "other", label: "Other document", expiring: false },
   // Owner-only. A recording of an insurance verification call carries a third
   // party's voice and policy details, so it is confined at the row level in
@@ -48,6 +52,15 @@ export const DOC_CATEGORIES = [
  * URLs with the service role and therefore bypass RLS entirely.
  */
 export const RESTRICTED_CATEGORIES: readonly string[] = ["verification_recording"];
+
+/** Contracts and applications are filed by the team or eSign, never by a driver upload. */
+export const STAFF_FILED_CATEGORIES: readonly string[] = ["rental_application", "agreement"];
+export const RENTAL_APPLICATION_DRIVER_UPLOAD_REFUSED =
+  "Rental applications are filed by the team and can't be uploaded from the portal.";
+
+export function driverCanUploadCategory(category: string): boolean {
+  return !STAFF_FILED_CATEGORIES.includes(category) && !RESTRICTED_CATEGORIES.includes(category);
+}
 
 /**
  * Categories where several files are current at once.
@@ -95,10 +108,14 @@ export type VaultDocument = {
 export type DocumentReviewStatus = "uploaded" | "verified" | "rejected";
 
 const CategoryEnum = z.enum([
+  "rental_application",
   "license_front",
   "license_back",
   "insurance",
   "gig_profile",
+  "income",
+  "insurance_quote",
+  "screening",
   "trip_history",
   "agreement",
   "other",
@@ -133,14 +150,16 @@ function safeExt(fileName: string, mime: string): string {
   return map[mime] || "bin";
 }
 
-async function withUrls(admin: any, rows: any[]): Promise<VaultDocument[]> {
+async function withUrls(admin: any, rows: any[], includeUrls = true): Promise<VaultDocument[]> {
   return Promise.all(
     rows.map(async (d) => {
       let url: string | null = null;
-      const { data: signed } = await admin.storage
-        .from(d.storage_bucket)
-        .createSignedUrl(d.storage_path, 60 * 15);
-      url = signed?.signedUrl ?? null;
+      if (includeUrls) {
+        const { data: signed } = await admin.storage
+          .from(d.storage_bucket)
+          .createSignedUrl(d.storage_path, 60 * 15);
+        url = signed?.signedUrl ?? null;
+      }
       return {
         id: d.id,
         category: d.category ?? "other",
@@ -164,7 +183,39 @@ async function withUrls(admin: any, rows: any[]): Promise<VaultDocument[]> {
 }
 
 const SELECT =
-  "id,kind,category,label,file_name,mime_type,size_bytes,expires_at,is_current,visibility,uploaded_by_role,created_at,storage_bucket,storage_path,review_status,review_note,reviewed_at";
+  "id,kind,category,label,notes,file_name,mime_type,size_bytes,expires_at,is_current,visibility,uploaded_by_role,created_at,storage_bucket,storage_path,review_status,review_note,reviewed_at";
+
+export type StoredDriverDocument = VaultDocument & { kind: string; notes: string | null };
+
+/**
+ * A driver's own written application and agreement history. These originals
+ * are often team-only in storage because staff filed them; ownership is
+ * established by the caller's authorized application ids before this helper
+ * is called. Staff notes never cross into the driver payload.
+ */
+export async function listStoredDriverDocuments(
+  admin: any,
+  applicationIds: string[],
+  includeUrls: boolean,
+): Promise<StoredDriverDocument[]> {
+  if (applicationIds.length === 0) return [];
+  const { data, error } = await admin
+    .from("documents")
+    .select(SELECT)
+    .in("driver_id", applicationIds)
+    .in("category", [...STAFF_FILED_CATEGORIES])
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  const rows = data ?? [];
+  const documents = await withUrls(admin, rows, includeUrls);
+  return documents.map((document, index) => ({
+    ...document,
+    kind: rows[index]?.kind ?? rows[index]?.category ?? "document",
+    notes: null,
+    review_note: null,
+    visibility: ["driver", "admin"],
+  }));
+}
 
 /**
  * Register an already-uploaded file as the current document in its category
@@ -689,6 +740,9 @@ async function refuseSignedAgreementReplace(
   if (!args.staff && args.category === "agreement") {
     throw new Error(SIGNED_AGREEMENT_DRIVER_UPLOAD_REFUSED);
   }
+  if (!args.staff && args.category === "rental_application") {
+    throw new Error(RENTAL_APPLICATION_DRIVER_UPLOAD_REFUSED);
+  }
   const { data: rows, error } = await admin
     .from("documents")
     .select("id,kind,category,storage_bucket,storage_path")
@@ -924,12 +978,15 @@ export const deleteDocument = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: doc, error: readError } = await supabaseAdmin
       .from("documents")
-      .select("id,kind,category,storage_bucket,storage_path")
+      .select("id,kind,category,storage_bucket,storage_path,uploaded_by_role")
       .eq("id", data.documentId)
       .maybeSingle();
     // Fail closed: a read that errored is not proof the document is ordinary.
     if (readError) throw new Error(readError.message);
     if (!doc) return { ok: true };
+    if (doc.uploaded_by_role === "driver") {
+      throw new Error("Driver-uploaded documents are permanent records and cannot be deleted.");
+    }
 
     // Signed-agreement evidence is refused before storage is touched, so a
     // refusal removes nothing. The storage object went first here, which is

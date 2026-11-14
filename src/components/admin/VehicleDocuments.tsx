@@ -38,13 +38,7 @@ export function VehicleDocuments({
   bare?: boolean;
   vehicleLabel?: string;
   canEdit?: boolean;
-  /**
-   * Called only when accepting extracted details has actually written vehicle
-   * fields, so the profile and its Readiness checklist can reload. Deliberately
-   * NOT called while polling, uploading, or on ordinary document-list changes:
-   * the profile is a separate, heavier read and re-fetching it every three
-   * seconds would be waste.
-   */
+  /** Reload profile data derived from saved paperwork or accepted details. */
   onVehicleChanged?: () => void;
 }) {
   const [uploadType, setUploadType] = useState<string | null>(null);
@@ -97,6 +91,11 @@ export function VehicleDocuments({
     }
   }, [load, vehicleId]);
 
+  const documentsChanged = useCallback(async () => {
+    await refresh();
+    onVehicleChanged?.();
+  }, [refresh, onVehicleChanged]);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -126,7 +125,7 @@ export function VehicleDocuments({
       toast.success(res.duplicate
         ? "That exact file was already on file — linked to this vehicle, not stored again."
         : "Document saved");
-      void refresh();
+      void documentsChanged();
     } catch (e: any) {
       console.error("[vehicle-docs] upload failed", e);
       throw new Error(e?.message || "Could not upload that document.");
@@ -146,7 +145,7 @@ export function VehicleDocuments({
         return;
       }
       toast.success("Deleted");
-      void refresh();
+      void documentsChanged();
     } catch (e: any) {
       toast.error(e?.message === "Forbidden" ? "Deleting paperwork is Manager-only." : "Could not delete.");
     }
@@ -210,6 +209,7 @@ export function VehicleDocuments({
           onClose={() => { setUploadType(null); void refresh(); }}
           onSaveDirect={upload}
           onChanged={() => void refresh()}
+          onDocumentChanged={() => void documentsChanged()}
           onVehicleChanged={onVehicleChanged}
         />
       )}

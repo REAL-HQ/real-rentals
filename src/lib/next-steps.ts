@@ -159,11 +159,6 @@ export function buildNextSteps(input: {
         label: "Driver License",
         state: credentialStep(input.licenseOnFile, input.licenseDates, todayEt),
       },
-      {
-        key: "insurance",
-        label: "Insurance",
-        state: credentialStep(input.insuranceOnFile, input.insuranceDates, todayEt),
-      },
       { key: "agreement", label: "Agreement", state: agreementStep(input.agreements) },
       { key: "payment", label: "Payment Method", state: paymentStep(input.payment) },
     ],

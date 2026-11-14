@@ -4,7 +4,7 @@ import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { supabase } from "@/integrations/supabase/client";
 import { createFleetOwnerSubmission, updateFleetOwnerPhotos } from "@/lib/partner-submissions.functions";
-import { Banknote, ShieldCheck, MapPin, Wrench, KeySquare, Cog, Satellite, FileText } from "lucide-react";
+import { Banknote, ShieldCheck, MapPin, Wrench, KeySquare, Cog, Satellite, FileText, Umbrella } from "lucide-react";
 import { FileUploader } from "@/components/FileUploader";
 
 export const Route = createFileRoute("/partners")({
@@ -25,12 +25,14 @@ export const Route = createFileRoute("/partners")({
 const BENEFITS = [
   { I: Banknote, t: "Monthly Payouts", d: "A transparent revenue split on every dollar of rent your car collects." },
   { I: ShieldCheck, t: "We Screen Drivers", d: "Background, MVR, identity, and platform checks on every renter." },
+  { I: Umbrella, t: "Insurance Included", d: "Every vehicle in our program is covered by insurance we include and set up." },
   { I: MapPin, t: "GPS & Recovery", d: "Every car is GPS-tracked, with recovery and asset protection included." },
   { I: Wrench, t: "Full-Service Ops", d: "Maintenance, registration help, claims, and collections — handled." },
 ];
 
 const TRUST = [
   { Icon: KeySquare, label: "You Keep the Title" },
+  { Icon: ShieldCheck, label: "Insurance Setup" },
   { Icon: Cog, label: "Fully Managed" },
   { Icon: Satellite, label: "GPS Tracked" },
   { Icon: FileText, label: "Monthly Statements" },
@@ -40,7 +42,7 @@ const FAQS = [
   { q: "Do I keep the title to my vehicle?", a: "Yes. The title stays in your name at all times. We operate the vehicle on your behalf under a written management agreement." },
   { q: "How do payouts work?", a: "Rent is collected weekly from the driver. After pass-through costs, you receive a monthly payout and a statement showing what was collected and what was deducted." },
   { q: "Who pays for maintenance and repairs?", a: "We coordinate routine maintenance and most repairs. Costs are itemized on your monthly statement and deducted before the payout." },
-  { q: "What about insurance?", a: "Insurance options are available through our commercial program. We'll walk through what's required and what's optional during your call." },
+  { q: "Is insurance included for my vehicle?", a: "Yes. We include insurance for every vehicle in our program. Once a renter signs their contract, we handle the insurance quote and set up the policy, issued in the renter's name." },
   { q: "How do you screen the drivers?", a: "Every driver passes a background check, MVR review, ID verification, and platform eligibility check before they're placed in a vehicle." },
   { q: "What if a driver stops paying or disappears?", a: "Every car is GPS-tracked. We handle collections and, if needed, recover the vehicle ourselves." },
   { q: "Can I pull my car out of the program?", a: "Yes. Cancel with reasonable notice and we'll transition the driver and return your vehicle in the agreed condition." },
@@ -220,12 +222,12 @@ function Partners() {
 
       {/* Benefit cards */}
       <section className="bg-soft py-20">
-        <div className="container-real grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-7">
+        <div className="container-real max-w-[1440px] grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-7 xl:gap-5">
           {BENEFITS.map((b, i) => (
             <FadeUp key={b.t} delay={i * 60}>
-              <div className="rounded-2xl bg-white p-7 h-full border border-border">
+              <div className="rounded-2xl bg-white p-7 xl:p-6 h-full border border-border">
                 <b.I className="w-6 h-6 text-real-red" strokeWidth={1.75} />
-                <div className="mt-5 text-lg font-semibold">{b.t}</div>
+                <div className="mt-5 whitespace-nowrap text-base font-semibold">{b.t}</div>
                 <div className="mt-2 text-sm text-muted-foreground leading-relaxed">{b.d}</div>
               </div>
             </FadeUp>
@@ -300,7 +302,7 @@ function Partners() {
                   {submitting ? "Submitting…" : "Submit Vehicle"}
                 </button>
                 <p className="text-xs text-muted-foreground">
-                  You keep the title at all times · Insurance options available · Cancel with notice.
+                  You keep the title at all times · Insurance included for the renter · Cancel with notice.
                 </p>
               </div>
             </form>

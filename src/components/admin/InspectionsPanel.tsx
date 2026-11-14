@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
 import { useSearch } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,6 +15,7 @@ import {
   Loader2,
   ArrowLeft,
   Car,
+  Printer,
 } from "lucide-react";
 import { StatusPill, EmptyState, MicroLabel } from "./ui";
 import { FileUploader } from "@/components/FileUploader";
@@ -25,8 +27,10 @@ import {
   completeInspection,
   createConditionUploadUrl,
   confirmConditionUpload,
+  CONDITION_ANGLES,
   type InspectionDetail,
 } from "@/lib/inspections.functions";
+import { inspectionReportHtml } from "@/lib/inspection-report";
 import { fmtDateTime } from "@/lib/date-format";
 import { roleLabel } from "@/lib/condition-photos";
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
@@ -162,7 +166,7 @@ export function InspectionsPanel() {
               <li key={r.id} className="p-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium truncate">{vName(r.vehicle_id)}</span>
+                    <VehiclePickerPhoto vehicleId={r.vehicle_id} className="h-8 w-11 rounded-md" iconClassName="h-3.5 w-3.5" /><span className="font-medium truncate">{vName(r.vehicle_id)}</span>
                     <StatusPill
                       status={
                         r.status === "passed"
@@ -412,6 +416,42 @@ export function InspectionRunner({
     }
   }
 
+  // The paper form of this same record: for a wet signature at the car, or a
+  // copy that shows the renter's electronic sign-off. Nothing is saved.
+  function printReport() {
+    if (!data) return;
+    const html = inspectionReportHtml(
+      {
+        inspectionType: data.inspection_type,
+        status: data.status,
+        vehicleLabel: vehicleLabel(data.vehicle_id),
+        odometer: data.odometer,
+        fuelLevel: data.fuel_level,
+        exteriorNotes: data.exterior_notes,
+        interiorNotes: data.interior_notes,
+        notes: data.notes,
+        inspectorName: data.inspector_name,
+        startedAt: data.started_at,
+        completedAt: data.completed_at,
+        renterSignatureName: data.driver_signature_name,
+        renterSignedAt: data.driver_signed_at,
+        renterNotes: data.driver_notes,
+        items: data.items,
+        photoAngles: data.media.map((m) => m.angle),
+        angles: CONDITION_ANGLES,
+      },
+      fmtDateTime,
+    );
+    const w = window.open("", "_blank");
+    if (!w) return void toast.error("Allow pop-ups for this site to print the report.");
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    // Give the new document a moment to lay out before the print dialog opens.
+    w.setTimeout(() => w.print(), 250);
+  }
+
   if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (!data) return null;
 
@@ -447,15 +487,24 @@ export function InspectionRunner({
               {fmtDateTime(data.started_at)}
             </p>
           </div>
-          {!readOnly ? (
+          <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={finish}
-              disabled={busy}
-              className="rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium disabled:opacity-40"
+              type="button"
+              onClick={printReport}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#EDEDF0] bg-white px-3 py-2 text-sm font-medium text-[#111114] hover:border-[#111114]/40"
             >
-              {busy ? "Finishing…" : "Complete Inspection"}
+              <Printer className="w-4 h-4" /> Print Inspection Report
             </button>
-          ) : null}
+            {!readOnly ? (
+              <button
+                onClick={finish}
+                disabled={busy}
+                className="rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium disabled:opacity-40"
+              >
+                {busy ? "Finishing…" : "Complete Inspection"}
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -664,6 +713,7 @@ export function ConditionUploader({
   title = "Condition Photos",
   hint,
   defaultAngle,
+  onDelete,
 }: {
   vehicleId: string;
   inspectionId?: string | null;
@@ -680,6 +730,7 @@ export function ConditionUploader({
     taken_at?: string | null;
     taken_at_source?: string | null;
     missing_exif_time?: boolean;
+    can_delete?: boolean;
   }>;
   readOnly?: boolean;
   onChanged: () => void;
@@ -687,10 +738,13 @@ export function ConditionUploader({
   /** Optional one-line help under the title. */
   hint?: string;
   defaultAngle?: string;
+  /** Enables deletion only on media the server marks can_delete. */
+  onDelete?: (id: string) => Promise<void>;
 }) {
   const startUpload = useServerFn(createConditionUploadUrl);
   const confirm = useServerFn(confirmConditionUpload);
   const [angle, setAngle] = useState(defaultAngle ?? (phase === "damage" ? "damage" : "front"));
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function uploadOne(file: File, onProgress: (pct: number) => void) {
     onProgress(10);
@@ -784,33 +838,53 @@ export function ConditionUploader({
             const when = m.taken_at ?? m.created_at;
             const missing = m.missing_exif_time ?? m.taken_at_source !== "exif";
             return (
-              <a
-                key={m.id}
-                href={m.url ?? "#"}
-                target="_blank"
-                rel="noreferrer"
-                className="group block overflow-hidden rounded-xl border border-[#EDEDF0]"
-              >
-                {m.media_type === "video" ? (
-                  <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center text-xs text-muted-foreground">
-                    Video
+              <div key={m.id} className="group relative overflow-hidden rounded-xl border border-[#EDEDF0]">
+                <a href={m.url ?? "#"} target="_blank" rel="noreferrer" className="block">
+                  {m.media_type === "video" ? (
+                    <div className="h-28 w-full bg-[#F6F6F8] flex items-center justify-center text-xs text-muted-foreground">
+                      Video
+                    </div>
+                  ) : (
+                    <img
+                      src={m.url ?? ""}
+                      alt={m.angle ?? "condition photo"}
+                      loading="lazy"
+                      className="h-28 w-full object-cover transition-transform group-hover:scale-[1.03]"
+                    />
+                  )}
+                  <div className="px-2 py-1.5 text-[11px] text-muted-foreground truncate">
+                    {(m.angle ?? "photo").replace(/_/g, " ")} · {roleLabel(m.captured_by_role)}
                   </div>
-                ) : (
-                  <img
-                    src={m.url ?? ""}
-                    alt={m.angle ?? "condition photo"}
-                    loading="lazy"
-                    className="h-28 w-full object-cover transition-transform group-hover:scale-[1.03]"
-                  />
-                )}
-                <div className="px-2 py-1.5 text-[11px] text-muted-foreground truncate">
-                  {(m.angle ?? "photo").replace(/_/g, " ")} · {roleLabel(m.captured_by_role)}
-                </div>
-                <div className="px-2 pb-1.5 text-[10px] text-muted-foreground truncate">
-                  {fmtDateTime(when)}
-                  {missing ? " · upload time" : ""}
-                </div>
-              </a>
+                  <div className="px-2 pb-1.5 text-[10px] text-muted-foreground truncate">
+                    {fmtDateTime(when)}
+                    {missing ? " · upload time" : ""}
+                  </div>
+                </a>
+                {onDelete && m.can_delete && !readOnly ? (
+                  <button
+                    type="button"
+                    aria-label={`Delete ${(m.angle ?? "condition").replace(/_/g, " ")} Photo`}
+                    title="Delete Photo"
+                    disabled={deletingId !== null}
+                    onClick={async () => {
+                      if (!window.confirm("Delete this uploaded photo? This cannot be undone.")) return;
+                      setDeletingId(m.id);
+                      try {
+                        await onDelete(m.id);
+                        toast.success("Photo deleted");
+                        onChanged();
+                      } catch (error) {
+                        toast.error(error instanceof Error ? error.message : "Could not delete photo");
+                      } finally {
+                        setDeletingId(null);
+                      }
+                    }}
+                    className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-white text-real-red shadow-sm transition hover:bg-soft disabled:opacity-50"
+                  >
+                    {deletingId === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                  </button>
+                ) : null}
+              </div>
             );
           })}
         </div>

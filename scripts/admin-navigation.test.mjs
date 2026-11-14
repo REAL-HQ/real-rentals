@@ -484,9 +484,8 @@ console.log("\nCLOSING ADD VEHICLE MUST NOT WIPE AN UNRELATED SELECTION");
 
 console.log("\nTHE SEARCH BOX MUST NOT LOSE FOCUS WHEN IT JUMPS TABS");
 {
-  // Typing on Overview navigates to Drivers. If that navigation remounts the
-  // header, the caret is gone and everything after the first character is
-  // typed into nothing.
+  // Typing shows cross-page matches without navigating or losing focus.
+  // Only selecting a result changes the page.
   await goto("/admin?tab=overview");
   const box = page.locator('input[placeholder*="earch"], header input').first();
   if (await box.count()) {
@@ -504,6 +503,13 @@ console.log("\nTHE SEARCH BOX MUST NOT LOSE FOCUS WHEN IT JUMPS TABS");
     console.log(`       after typing: focus=${state.isInput ? "input" : "LOST"} value="${state.value}" url=${state.url}`);
     ok(state.isInput, "the search input still has focus after the tab jump");
     ok(state.value === "kar", `  and kept every character (${state.value})`);
+    ok(state.url === "/admin?tab=overview", "typing does not leave the current page");
+    const match = page.locator("#admin-search-results").getByRole("link", { name: /Karen Pantoja/ });
+    await match.waitFor({ state: "visible" });
+    await match.click();
+    await page.waitForTimeout(1800);
+    ok((await view()).drawer, "selecting the search match opens their profile");
+    ok((await view()).url.includes(APP_B), "the profile is the selected search result");
   } else ok(false, "no search box found");
 }
 

@@ -5,23 +5,31 @@
 // Client-safe: no server imports. The server gathers the facts and is the only
 // authority; the browser only renders what the server returned. The proposed
 // database wrapper (proposed/activation-insurance-setting) re-checks the hard
-// driver requirements and the insurance rule inside the activation transaction
-// with the same definitions as here.
+// driver requirements inside the activation transaction. That proposed SQL
+// still treats insurance as a hard rule. This module does not: insurance is
+// advisory, because Real Rentals sets the policy up after the contract is signed.
 //
 // Kinds of requirement:
 //   hard        — never overridable. Activation refuses, with or without a reason.
-//   acknowledge — insurance only, and only while the Owner setting
-//                 "Allow Activation Without Insurance Verification" is ON: the
-//                 operator must tick a separate insurance acknowledgement. A
-//                 soft-blocker reason never satisfies it.
+//   acknowledge — kept for the old insurance exception. Nothing uses it now.
 //   soft        — overridable only with a written reason (>= 5 characters), which
 //                 is recorded with the blockers in the immutable audit_log
 //                 (AGENTS.md "Rental activation overrides").
-//   advisory    — shown as incomplete, never blocks (the insurance card and the
+//   advisory    — shown as incomplete, never blocks (insurance, and the
 //                 gig profile / gig platform status: drivers may rent before
 //                 completing gig-platform registration).
 
 import { REQUIRED_VAULT_CATEGORIES } from "@/lib/required-docs";
+
+/** Same-tab presentation refresh after a committed readiness-related change. */
+export const ACTIVATION_READINESS_REFRESH_EVENT = "rr:activation-readiness-refresh";
+
+export function notifyActivationReadinessRefresh({ applicationId }: { applicationId: string }) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(ACTIVATION_READINESS_REFRESH_EVENT, { detail: { applicationId } }),
+  );
+}
 
 export type ActivationBlockerCode =
   | "no_vehicle"
@@ -47,6 +55,10 @@ export type ActivationBlockerCode =
   | "insurance_ack_required"
   /** Interview not completed. Overridable with a written reason. */
   | "no_interview"
+  /** License marked Not Collected by staff. Overridable by a Manager/Owner with a written reason. */
+  | "license_not_collected"
+  /** Agreement marked Not Collected by staff. Overridable by a Manager/Owner with a written reason. */
+  | "agreement_not_collected"
   /** A soft blocker was acknowledged without a written reason. */
   | "override_reason_required"
   /** Another approval write held the lock; nothing was written. Safe to retry. */
@@ -68,7 +80,14 @@ export type ActivationRequirementKey =
   | "inspection"
   | "insurance_document"
   | "gig_profile"
-  | "gig_platform";
+  | "income"
+  | "insurance_quote"
+  | "screening"
+  | "gig_platform"
+  /** Profile-only reservation payment display; never an activation blocker. */
+  | "reservation_paid"
+  | "pickup"
+  | "rental_active";
 
 export type ActivationRequirement = {
   key: ActivationRequirementKey;
@@ -112,7 +131,7 @@ export type ActivationReadiness = {
  * Everything else — including any code added later — is hard: fail closed.
  */
 export const SOFT_ACTIVATION_BLOCKERS: ReadonlySet<ActivationBlockerCode> =
-  new Set<ActivationBlockerCode>(["no_passed_inspection", "no_interview"]);
+  new Set<ActivationBlockerCode>(["no_passed_inspection", "no_interview", "license_not_collected", "agreement_not_collected"]);
 
 export const MIN_OVERRIDE_REASON = 5;
 
@@ -307,7 +326,29 @@ export type DriverReadinessFacts = {
   insurance: InsuranceReadiness;
   /** null when no vehicle is chosen, so inspection cannot be judged. */
   hasPassedInspection: boolean | null;
+  /** Latest saved staff check-off per file (checklist_evidence_events). */
+  evidence?: Partial<Record<"license_front" | "license_back" | "agreement" | "income" | "insurance_quote" | "screening", "collected" | "not_collected">>;
+  /** Pickup and Active come only from a real running rental, never a checkmark. */
+  rentalActive?: boolean;
 };
+
+export type FileCheck = "file" | "staff_confirmed" | "not_collected" | "missing";
+
+/** Mirrors activate_rental_checked_tx: a file wins, then a saved check-off; Not Collected needs a reason. */
+export function licenseCheck(f: DriverReadinessFacts): FileCheck {
+  const missing = new Set(missingRequiredCategories(f.documents));
+  const sides = (["license_front", "license_back"] as const).map((c) => (missing.has(c) ? f.evidence?.[c] ?? null : "file"));
+  if (sides.every((s) => s === "file")) return "file";
+  if (sides.every((s) => s === "file" || s === "collected")) return "staff_confirmed";
+  if (sides.every((s) => s !== null)) return "not_collected";
+  return "missing";
+}
+
+export function agreementCheck(f: DriverReadinessFacts): FileCheck {
+  if (hasSignedAgreement(f)) return "file";
+  const state = f.evidence?.agreement;
+  return state === "collected" ? "staff_confirmed" : state === "not_collected" ? "not_collected" : "missing";
+}
 
 export function hasSignedAgreement(f: DriverReadinessFacts): boolean {
   return (
@@ -316,39 +357,33 @@ export function hasSignedAgreement(f: DriverReadinessFacts): boolean {
   );
 }
 
+/** The operational rows shown in the profile's Next Step card, in Dolmar's order. */
+export const NEXT_STEP_REQUIREMENT_KEYS = [
+  "interview", "license_documents", "gig_profile", "income", "insurance_quote", "screening",
+  "approved", "signed_agreement", "insurance_verified", "reservation_paid", "inspection", "pickup", "rental_active",
+] as const satisfies readonly ActivationRequirementKey[];
+
+/** Both screening evidence rows must be checked off and have their own uploaded file. */
+export function screeningRequirementsComplete(requirements: readonly ActivationRequirement[]): boolean {
+  return (["insurance_quote", "screening"] as const).every(
+    (key) => requirements.some((requirement) => requirement.key === key && requirement.met === true),
+  );
+}
+
 /** The readiness checklist, in the order the work is done. */
 export function activationRequirements(f: DriverReadinessFacts): ActivationRequirement[] {
   const missing = new Set(missingRequiredCategories(f.documents));
   const ins = f.insurance;
+  const license = licenseCheck(f);
+  const agreement = agreementCheck(f);
   const gigOnFile = !missing.has("gig_profile");
+  const currentFile = (category: "income" | "insurance_quote" | "screening") => f.documents.some(
+    (d) => d.category === category && d.is_current === true && d.review_status !== "rejected" && !!d.id && !!d.storage_path,
+  );
+  const incomeOnFile = currentFile("income");
+  const checkedFile = (field: "insurance_quote" | "screening") => currentFile(field) && f.evidence?.[field] === "collected";
+  const rentalActive = f.rentalActive === true;
   return [
-    {
-      key: "approved",
-      label: "Application Approved",
-      met: (ACTIVATABLE_STATUSES as readonly string[]).includes(
-        String(f.status ?? "").toLowerCase(),
-      ),
-      enforcement: "hard",
-    },
-    {
-      key: "license_documents",
-      label: "Driver's License (Front And Back)",
-      met: HARD_REQUIRED_CATEGORIES.every((c) => !missing.has(c)),
-      enforcement: "hard",
-    },
-    {
-      key: "signed_agreement",
-      label: "Rental Agreement Signed",
-      met: hasSignedAgreement(f),
-      enforcement: "hard",
-    },
-    {
-      key: "insurance_verified",
-      label: "Insurance Verified",
-      met: ins.status === "verified",
-      enforcement: ins.exceptionAllowed ? "acknowledge" : "hard",
-      detail: insuranceStatusLabel(ins.status),
-    },
     {
       key: "interview",
       label: "Interview Complete",
@@ -356,23 +391,74 @@ export function activationRequirements(f: DriverReadinessFacts): ActivationRequi
       enforcement: "soft",
     },
     {
-      key: "inspection",
-      label: "Passed Pre-Delivery Inspection",
-      met: f.hasPassedInspection,
-      enforcement: "soft",
-    },
-    {
-      key: "insurance_document",
-      label: "Insurance Card On File",
-      met: !missing.has("insurance"),
-      enforcement: "advisory",
+      key: "license_documents",
+      label: "Driver's License Verified",
+      met: license === "file" || license === "staff_confirmed",
+      enforcement: license === "not_collected" ? "soft" : "hard",
+      ...(license === "staff_confirmed" ? { detail: "Upload Due" } : license === "not_collected" ? { detail: "Not Collected" } : {}),
     },
     {
       key: "gig_profile",
-      label: gigOnFile
-        ? "Gig Profile Screenshot On File (Not Platform-Verified)"
-        : "Gig Profile Screenshot",
+      label: "Gig Profile Verified",
       met: gigOnFile,
+      enforcement: "advisory",
+      detail: "Screenshot Review Only · Platform Not Verified",
+    },
+    {
+      key: "income",
+      label: "Income Verified",
+      met: incomeOnFile || f.evidence?.income === "collected",
+      enforcement: "advisory",
+      ...(!incomeOnFile && f.evidence?.income === "collected" ? { detail: "Upload Due" } : {}),
+    },
+    {
+      key: "insurance_verified",
+      label: "Insurance Verified",
+      met: ins.status === "verified",
+      enforcement: "advisory",
+      detail: insuranceStatusLabel(ins.status),
+    },
+    {
+      key: "insurance_quote",
+      label: "Insurance Quote",
+      met: checkedFile("insurance_quote"),
+      enforcement: "advisory",
+      detail: "Saved Check-Off And File Required",
+    },
+    {
+      key: "screening",
+      label: "Screening",
+      met: checkedFile("screening"),
+      enforcement: "advisory",
+      detail: "Saved Check-Off And File Required",
+    },
+    {
+      key: "approved",
+      label: "Application Approved",
+      met: (ACTIVATABLE_STATUSES as readonly string[]).includes(String(f.status ?? "").toLowerCase()),
+      enforcement: "hard",
+    },
+    {
+      key: "signed_agreement",
+      label: "Rental Agreement Signed",
+      met: agreement === "file" || agreement === "staff_confirmed",
+      enforcement: agreement === "not_collected" ? "soft" : "hard",
+      ...(agreement === "staff_confirmed" ? { detail: "Upload Due" } : agreement === "not_collected" ? { detail: "Not Collected" } : {}),
+    },
+    {
+      key: "inspection",
+      label: "Pre-Inspection Passed",
+      met: f.hasPassedInspection,
+      enforcement: "soft",
+    },
+    { key: "pickup", label: "Pickup Complete", met: rentalActive, enforcement: "advisory" },
+    { key: "rental_active", label: "Rental Active", met: rentalActive, enforcement: "advisory" },
+    {
+      key: "insurance_document",
+      label: "Insurance Card On File",
+      met: f.documents.some(
+        (d) => d.category === "insurance" && d.is_current === true && d.review_status !== "rejected",
+      ),
       enforcement: "advisory",
     },
     // No integration verifies a driver with Uber, Lyft or any platform, so this
@@ -401,7 +487,10 @@ export function driverRequirementBlockers(f: DriverReadinessFacts): ActivationBl
       message: `Application is "${f.status}". Approve it before activating.`,
     });
   }
-  if (unmet("license_documents")) {
+  const license = licenseCheck(f);
+  if (license === "not_collected") {
+    out.push({ code: "license_not_collected", message: "Driver's license marked Not Collected. A Manager or Owner can activate with a written reason." });
+  } else if (unmet("license_documents")) {
     const missing = missingRequiredCategories(f.documents).filter((c) =>
       (HARD_REQUIRED_CATEGORIES as readonly string[]).includes(c),
     );
@@ -410,17 +499,13 @@ export function driverRequirementBlockers(f: DriverReadinessFacts): ActivationBl
       message: `Missing required documents: ${missing.map((c) => DOC_LABEL[c] ?? c).join(", ")}. Upload or replace them in Documents.`,
     });
   }
-  if (unmet("signed_agreement")) {
+  if (agreementCheck(f) === "not_collected") {
+    out.push({ code: "agreement_not_collected", message: "Rental agreement marked Not Collected. A Manager or Owner can activate with a written reason." });
+  } else if (unmet("signed_agreement")) {
     out.push({
       code: "no_signed_agreement",
       message:
         "No signed rental agreement for this application. Send the agreement for eSignature, or upload the signed paper agreement to Documents and have an Owner or Manager verify it.",
-    });
-  }
-  if (f.insurance.status !== "verified" && !f.insurance.exceptionAllowed) {
-    out.push({
-      code: "insurance_not_verified",
-      message: `Insurance must be verified before activation (${insuranceStatusLabel(f.insurance.status)}). Verify it on the Screening tab.`,
     });
   }
   if (unmet("interview")) {
@@ -436,10 +521,11 @@ export type ActivationDecision =
 /**
  * The server's decision on an activation attempt.
  *  1. Hard blockers refuse even with an override and a reason.
- *  2. Unverified insurance under the Owner exception needs the separate
- *     insurance acknowledgement; a soft-blocker reason does not count.
- *  3. Soft blockers need an explicit override and a written reason of at
+ *  2. Soft blockers need an explicit override and a written reason of at
  *     least MIN_OVERRIDE_REASON characters.
+ * Insurance is not a blocker. insuranceExceptionUsed stays true when the
+ * policy is not verified so an already-installed activation wrapper can
+ * receive the old acknowledgement and proceed when its Owner setting is on.
  */
 export function decideActivation(
   readiness: { blockers: readonly ActivationBlocker[]; insurance: InsuranceReadiness },
@@ -455,28 +541,6 @@ export function decideActivation(
   const hard = blockers.filter((b) => isHardBlocker(b.code));
   if (hard.length) return { ok: false, blockers: hard };
   const insuranceExceptionUsed = insurance.status !== "verified";
-  if (insuranceExceptionUsed) {
-    // Unverified insurance without the exception is a hard blocker above; this is the ON case.
-    if (!insurance.exceptionAllowed) {
-      return {
-        ok: false,
-        blockers: [
-          {
-            code: "insurance_not_verified",
-            message: "Insurance must be verified before activation.",
-          },
-        ],
-      };
-    }
-    if (input.insuranceExceptionAck !== true) {
-      return {
-        ok: false,
-        blockers: [
-          { code: "insurance_ack_required", message: insuranceExceptionWarning(insurance.status) },
-        ],
-      };
-    }
-  }
   if (blockers.length === 0) return { ok: true, overridden: [], insuranceExceptionUsed };
   if (!input.overrideBlockers) return { ok: false, blockers: [...blockers] };
   const reason = (input.overrideReason ?? "").trim();
@@ -518,7 +582,7 @@ export type PrimaryStep =
 /**
  * The drawer header's single next step. Unchanged order; a Coordinator, whom
  * the server refuses, is sent to the Rental tab instead of being offered
- * Activate Rental.
+ * Activate Rental. insuranceOk is ignored: insurance does not gate the next step.
  */
 export function primaryStep(input: {
   screeningDone: boolean;
@@ -528,9 +592,9 @@ export function primaryStep(input: {
   rentalActive: boolean;
   isManager: boolean;
 }): PrimaryStep {
+  void input.insuranceOk;
   if (!input.screeningDone) return "interview";
   if (!input.docsComplete) return "documents";
-  if (!input.insuranceOk) return "insurance";
   if (!input.approved) return "approve";
   if (!input.rentalActive) return input.isManager ? "activate" : "view_rental";
   return "view_rental";
@@ -576,10 +640,14 @@ export function checkedTxBlocker(msg: string): ActivationBlocker | null {
       message:
         "No passed pre-delivery inspection. Re-check readiness and override it with a written reason, or run the checklist.",
     };
+  if (msg.includes("override_required:license_not_collected"))
+    return { code: "license_not_collected", message: "Driver's license is marked Not Collected. Re-check readiness and override it with a written reason." };
+  if (msg.includes("override_required:agreement_not_collected"))
+    return { code: "agreement_not_collected", message: "Rental agreement is marked Not Collected. Re-check readiness and override it with a written reason." };
   if (msg.includes("override_not_allowed") || msg.includes("override_payload_invalid"))
     return {
       code: "override_reason_required",
-      message: "Only the interview and the pre-delivery inspection can be overridden.",
+      message: "Only the interview, the pre-delivery inspection and Not Collected files can be overridden.",
     };
   if (msg.includes("override_reason_required"))
     return { code: "override_reason_required", message: "Enter a reason for the override." };

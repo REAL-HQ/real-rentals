@@ -307,7 +307,7 @@ export function buildTollsTicketsLedger(input: TollsTicketsInput): TollsTicketsL
       vehicle: nameOf(input.vehicles, row.vehicleId, "Not Recorded"),
       notes: row.notes,
       reference: null,
-      link: `/admin?tab=incidents&issue=${row.id}`,
+      link: `/admin?tab=issues&filter=incident&issue=${row.id}`,
     });
   }
 

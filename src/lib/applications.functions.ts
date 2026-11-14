@@ -12,8 +12,14 @@ import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { applicationResumeAtomicEnabled, deliverApplicationRecovery } from "@/lib/application-recovery.server";
 import { z } from "zod";
 import { SAVE_BUSY_CODE, SAVE_BUSY_MESSAGE } from "@/lib/wizard-save";
+import type { ApprovalEmailStatus } from "@/lib/approval-email";
 
 const nullableString = z.string().trim().max(255).nullable().optional();
+
+/** Exact case-insensitive match. Escapes ILIKE wildcards so a typed % is not a pattern. */
+function literalIlike(value: string): string {
+  return value.replace(/[%_\\]/g, (ch) => `\\${ch}`);
+}
 const nullableUuid = z.string().uuid().nullable().optional();
 
 /*
@@ -83,6 +89,9 @@ const stepUpdateSchema = z.object({
     .optional(),
   // Part 1 — driving
   drive_type: z.enum(["full_time", "part_time"]).nullable().optional(),
+  // The applicant ticked the Insurance Authorization (insurance-consent.ts).
+  // Only ever `true`: it is evidence of an affirmative act, never a column.
+  insurance_consent: z.literal(true).optional(),
   insurance_answer: z.enum(["yes", "no", "not_sure"]).nullable().optional(),
   // Part 2 — licence
   license_valid: z.boolean().nullable().optional(),
@@ -190,10 +199,21 @@ async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: strin
   try {
     const { data: onFile } = await supabaseAdmin
       .from("applications")
-      .select("email, full_name")
+      .select("email, full_name, status, user_id")
       .eq("id", applicationId)
       .maybeSingle();
     if (!onFile?.email) return false;
+    const { shouldHandoffToPortal } = await import("@/lib/portal-handoff");
+    if (await shouldHandoffToPortal(supabaseAdmin, onFile)) {
+      const { sendPortalHandoffEmail } = await import("@/lib/email.server");
+      const r = await sendPortalHandoffEmail({
+        to: onFile.email,
+        firstName: onFile.full_name ?? null,
+        email: onFile.email,
+      });
+      if (!r.ok) console.error("[portal-handoff] provider refused", applicationId, r.error);
+      return r.ok;
+    }
     const { sendApplicationResumeEmail } = await import("@/lib/email.server");
     const r = await sendApplicationResumeEmail({ to: onFile.email, firstName: onFile.full_name ?? null, applicationId });
     if (!r.ok) console.error("[resume-link] provider refused", applicationId, r.error);
@@ -243,21 +263,14 @@ export const requestApplicationLink = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const emailLower = data.email.trim().toLowerCase();
-    const variants = Array.from(new Set([data.email.trim(), emailLower]));
-    const results = await Promise.all(
-      variants.map((e) =>
-        supabaseAdmin
-          .from("applications")
-          .select("id, primary_application_id, created_at")
-          .eq("email", e)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false })
-          .limit(1),
-      ),
-    );
-    const hit = results.flatMap((r) => r.data ?? []).sort((a: any, b: any) =>
-      String(b.created_at).localeCompare(String(a.created_at)),
-    )[0] as any;
+    const { data: emailRows } = await supabaseAdmin
+      .from("applications")
+      .select("id, primary_application_id, created_at")
+      .ilike("email", literalIlike(emailLower))
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const hit = emailRows?.[0] as any;
     let outcome: LinkOutcome | "none" = "none";
     if (hit) {
       outcome = (await sendRecoveryLink(supabaseAdmin, hit.primary_application_id ?? hit.id, { source: "link_request" })).outcome;
@@ -386,8 +399,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     const dupeCols =
       "id, email, primary_application_id, resubmission_count, resubmission_history, ai_flags, created_at";
     const emailLower = data.email.trim().toLowerCase();
-    const emailVariants = Array.from(new Set([data.email, emailLower, data.email.trim()]));
-    const [byPhone, ...byEmailResults] = await Promise.all([
+    const [byPhone, byEmail] = await Promise.all([
       supabaseAdmin
         .from("applications")
         .select(dupeCols)
@@ -395,17 +407,14 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(1),
-      ...emailVariants.map((e) =>
-        supabaseAdmin
-          .from("applications")
-          .select(dupeCols)
-          .eq("email", e)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false })
-          .limit(1),
-      ),
+      supabaseAdmin
+        .from("applications")
+        .select(dupeCols)
+        .ilike("email", literalIlike(emailLower))
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1),
     ]);
-    const byEmail = { data: byEmailResults.flatMap((r) => r.data ?? []) };
     // An email match wins; a phone-only match is handled as an identity conflict below.
     const newest = (rows: any[]) =>
       [...rows].sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))[0];
@@ -626,7 +635,7 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     // Clean undefined keys so we never overwrite with NULL by accident
     const patch: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(fields)) {
-      if (k === "trip_screenshots_keep") continue;
+      if (k === "trip_screenshots_keep" || k === "insurance_consent") continue;
       if (v !== undefined) patch[k] = v;
     }
 
@@ -785,6 +794,25 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     // written, and the applicant gets the same answer as the early refusal.
     // Terminal: the wizard never retries this message.
     if (!row) throw new Error(APPLICATION_LOCKED_MESSAGE);
+
+    // Insurance Authorization evidence. Written only for an affirmative,
+    // unchecked-by-default tick, after the application itself is saved, with
+    // the wording and version taken from the server-side module (never from
+    // the browser) plus the request's IP and user agent. It lives in the
+    // append-only audit log, which no browser session can write or erase.
+    // logAudit swallows its own errors, so this can never fail a submission.
+    if (fields.insurance_consent === true) {
+      const { INSURANCE_CONSENT_ACTION, INSURANCE_CONSENT_SOURCE_WEB, INSURANCE_CONSENT_TEXT, INSURANCE_CONSENT_VERSION } =
+        await import("@/lib/insurance-consent");
+      const { logAudit } = await import("@/lib/audit.server");
+      await logAudit(null, {
+        action: INSURANCE_CONSENT_ACTION,
+        summary: `Applicant gave the Insurance Authorization (${INSURANCE_CONSENT_VERSION})`,
+        entityType: "application",
+        entityId: id,
+        metadata: { version: INSURANCE_CONSENT_VERSION, text: INSURANCE_CONSENT_TEXT, source: INSURANCE_CONSENT_SOURCE_WEB, step },
+      });
+    }
 
     // Mirror any files the applicant uploaded into the document vault so they
     // show up in the portal (where the renter can replace them) and in the
@@ -1142,7 +1170,25 @@ export const reissueApplicantLink = createServerFn({ method: "POST" })
     const { revokeResumeTokens, issueResumeToken, resumeUrl } =
       await import("@/lib/resume-tokens.server");
 
+    const { data: app } = await supabaseAdmin
+      .from("applications")
+      .select("status,email,user_id")
+      .eq("id", data.id)
+      .maybeSingle();
+    const { shouldHandoffToPortal, portalLoginUrl } = await import("@/lib/portal-handoff");
     const revoked = await revokeResumeTokens(supabaseAdmin, data.id);
+    if (await shouldHandoffToPortal(supabaseAdmin, app as any)) {
+      const url = portalLoginUrl((app as any)?.email);
+      const { logAudit } = await import("@/lib/audit.server");
+      await logAudit(actor, {
+        action: "application.link_reissued",
+        summary: `Directed approved applicant to portal sign-in${revoked ? ` and revoked ${revoked}` : ""}`,
+        entityType: "application",
+        entityId: data.id,
+        metadata: { revoked, portal: true },
+      });
+      return { url, revoked };
+    }
     const url = resumeUrl(await issueResumeToken(supabaseAdmin, data.id));
 
     const { logAudit } = await import("@/lib/audit.server");
@@ -1235,12 +1281,9 @@ export const mergeDuplicateApplications = createServerFn({ method: "POST" })
   });
 
 /**
- * Approve an applicant and put the rental agreement in front of them.
- *
- * Approval and "send the contract" were previously two separate manual steps,
- * so an approved driver could sit waiting on a contract nobody remembered to
- * send. This does both, and is safe to call repeatedly: if an agreement is
- * already out for signature or already signed, it is not re-sent.
+ * Approve an applicant. Approval Confirmation is automatic on the first
+ * transition; a rental agreement is sent only when sendAgreement === true.
+ * Repeating an explicit send is safe when an agreement is already out or signed.
  */
 export const approveApplication = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -1260,12 +1303,9 @@ export const approveApplication = createServerFn({ method: "POST" })
       ok: boolean;
       agreementSent: boolean;
       agreementSkippedReason?: string;
-      /**
-       * What happened to their portal login. "created" means they were just
-       * emailed a set-password link; "existing" means they already had one.
-       * "failed" is reported rather than thrown — see below.
-       */
-      portalAccount: "created" | "existing" | "failed" | "conflict" | "no email";
+      /** Account provisioning and login delivery intentionally wait for Reserved. */
+      portalAccount: "deferred";
+      approvalEmail?: ApprovalEmailStatus;
       error?: string;
     }> => {
       // Manager, not staff. A Coordinator may read and work an application —
@@ -1286,14 +1326,14 @@ export const approveApplication = createServerFn({ method: "POST" })
         return {
           ok: false,
           agreementSent: false,
-          portalAccount: "failed",
+          portalAccount: "deferred",
           error: "Application not found",
         };
 
-      // Already approved: do not write status or application.approved again.
-      // The packet trigger refuses both, and a repeat call is how the
-      // agreement goes out after the first approval.
-      if (app.status !== "approved") {
+      // Already approved: do not write status, application.approved, or the
+      // one-time Approval Confirmation again. A repeat call manages only the agreement.
+      const newlyApproved = app.status !== "approved";
+      if (newlyApproved) {
         const { approveThroughPacket } = await import("@/lib/approval-rpc.server");
         const approved = await approveThroughPacket({
           applicationId: data.id,
@@ -1344,94 +1384,55 @@ export const approveApplication = createServerFn({ method: "POST" })
               summary: `Approved ${app.full_name ?? app.email ?? data.id}`,
               entityType: "application",
               entityId: data.id,
-              metadata: { previous_status: app.status, send_agreement: data.sendAgreement !== false },
+              metadata: { previous_status: app.status, send_agreement: data.sendAgreement === true },
             });
             return { error: null };
           },
         });
         if (!approved.ok) {
-          return { ok: false, agreementSent: false, portalAccount: "failed", error: approved.error };
+          return { ok: false, agreementSent: false, portalAccount: "deferred", error: approved.error };
         }
-      }
-
-      /*
-       * Give them a login now, not when a car is assigned.
-       *
-       * Approval is the point at which this is a person we intend to rent to,
-       * and it is the start of the window where they have to finish documents
-       * and sign a contract. Doing it at activation meant that whole window
-       * ran on emailed links with no account behind them.
-       *
-       * Deliberately never fatal. Approval has already been written and
-       * audited by this point; failing the call would leave the operator
-       * looking at an error for something that succeeded, and re-approving is
-       * the obvious response, which would re-send the agreement. The outcome
-       * is reported instead, and activateRental provisions again anyway, so a
-       * failure here self-repairs at the next step.
-       */
-      let portalAccount: "created" | "existing" | "failed" | "conflict" | "no email" = "no email";
-      let inviteUrl: string | null = null;
-      if (app.email) {
+        // One Stripe customer per renter from approval on, so every later
+        // checkout, invoice and subscription uses it. Never blocks approval.
         try {
-          const { provisionDriverAccount } = await import("@/lib/driver-account.server");
-          const account = await provisionDriverAccount(supabaseAdmin, {
-            applicationId: data.id,
-            email: app.email as string,
-            fullName: (app.full_name as string | null) ?? null,
-          });
-          portalAccount = account.conflict ? "conflict" : account.created ? "created" : "existing";
-          inviteUrl = account.inviteUrl;
+          const { ensureCustomerAtApproval, stripeForLinking } = await import("@/lib/stripe-link.server");
+          const stripe = await stripeForLinking();
+          if (stripe) await ensureCustomerAtApproval(supabaseAdmin, stripe, data.id);
         } catch (e) {
-          console.error("[approve] driver account provisioning failed", e);
-          portalAccount = "failed";
+          console.error("[approve] stripe customer not created", e);
         }
       }
 
-      // Only a brand-new account needs telling. Somebody who already had a
-      // login does not need a second "set your password" email, and a
-      // re-approval must not generate one at all.
-      if (portalAccount === "created" && app.email) {
-        try {
-          const { sendPortalInviteEmail } = await import("@/lib/email.server");
-          await sendPortalInviteEmail({
-            to: app.email as string,
-            firstName:
-              String(app.full_name ?? "there")
-                .trim()
-                .split(/\s+/)[0] || "there",
-            inviteUrl,
-          });
-        } catch (e) {
-          console.error("[approve] portal invite email failed", e);
+      // Approval records the vetting decision only. The existing Reserved
+      // workflow provisions the account and emails login details after staff
+      // confirm the pickup appointment; activation remains the safety net.
+      const portalAccount = "deferred" as const;
+      let approvalEmail: ApprovalEmailStatus = "not_sent";
+      if (newlyApproved) {
+        if (!app.email) approvalEmail = "no_email";
+        else {
+          try {
+            const { sendApprovalConfirmationEmail } = await import("@/lib/email.server");
+            const result = await sendApprovalConfirmationEmail({
+              to: String(app.email),
+              firstName: (app.full_name as string | null) ?? null,
+              applicationId: data.id,
+            });
+            approvalEmail = result.ok ? "sent" : result.blocked ?? "failed";
+          } catch {
+            // Approval is already durable; never undo it because a notice failed.
+            approvalEmail = "failed";
+          }
         }
       }
 
-      /*
-       * A conflicted identity does not get a contract.
-       *
-       * The approval itself stands — it is written and audited above, and it
-       * was a legitimate decision. But issuing the agreement now would put a
-       * signable contract on an application whose portal is reachable by the
-       * wrong account, and signMyAgreement derives ownership from exactly that
-       * link. Staff resolve the identity, then approve again; this function is
-       * safe to re-run and will send the agreement once the conflict is gone.
-       */
-      if (portalAccount === "conflict") {
-        return {
-          ok: true,
-          agreementSent: false,
-          agreementSkippedReason:
-            "the portal login for this application is in conflict — resolve it, then approve again",
-          portalAccount,
-        };
-      }
-
-      if (data.sendAgreement === false) {
+      if (data.sendAgreement !== true) {
         return {
           ok: true,
           agreementSent: false,
           agreementSkippedReason: "not requested",
           portalAccount,
+          approvalEmail,
         };
       }
       if (!app.email) {
@@ -1440,6 +1441,7 @@ export const approveApplication = createServerFn({ method: "POST" })
           agreementSent: false,
           agreementSkippedReason: "no email on file",
           portalAccount,
+          approvalEmail,
         };
       }
 
@@ -1451,12 +1453,13 @@ export const approveApplication = createServerFn({ method: "POST" })
           agreementSent: false,
           agreementSkippedReason: "an agreement is already out",
           portalAccount,
+          approvalEmail,
         };
       }
 
       try {
         await issueAgreement(supabaseAdmin, data.id, { createdBy: context.userId });
-        return { ok: true, agreementSent: true, portalAccount };
+        return { ok: true, agreementSent: true, portalAccount, approvalEmail };
       } catch (e) {
         // Approval already succeeded; report the send failure without undoing it.
         return {
@@ -1464,6 +1467,7 @@ export const approveApplication = createServerFn({ method: "POST" })
           agreementSent: false,
           agreementSkippedReason: e instanceof Error ? e.message : "could not send agreement",
           portalAccount,
+          approvalEmail,
         };
       }
     },
@@ -1514,14 +1518,29 @@ export const openResumeLink = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ token: z.string().min(20).max(200) }).parse(d))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { exchangeResumeToken } = await import("@/lib/resume-tokens.server");
-    // exchangeResumeToken is the gate: hash lookup, expiry, revocation, and
-    // single-use consume of a recovery credential before a session is issued.
-    // resolveResumeToken rejects recovery-lifetime tokens, so calling it here
-    // would refuse every emailed link.
+    const { exchangeResumeToken, inspectResumeToken } = await import("@/lib/resume-tokens.server");
+    const { shouldHandoffToPortal } = await import("@/lib/portal-handoff");
+    // Peek first: approved/active (or a linked driver) go to /login, and we
+    // never exchange a recovery link into a wizard session for them.
     try {
-      return { token: await exchangeResumeToken(supabaseAdmin, data.token) };
+      const peek = await inspectResumeToken(supabaseAdmin, data.token);
+      if (peek) {
+        const { data: app } = await supabaseAdmin
+          .from("applications")
+          .select("status,email,user_id")
+          .eq("id", peek.applicationId)
+          .maybeSingle();
+        if (await shouldHandoffToPortal(supabaseAdmin, app as any)) {
+          return {
+            token: null as string | null,
+            portal: { email: String((app as any)?.email ?? "").trim() },
+          };
+        }
+      }
+      // exchangeResumeToken is the gate: hash lookup, expiry, revocation, and
+      // single-use consume of a recovery credential before a session is issued.
+      return { token: await exchangeResumeToken(supabaseAdmin, data.token), portal: null as null };
     } catch {
-      return { token: null as string | null };
+      return { token: null as string | null, portal: null as null };
     }
   });

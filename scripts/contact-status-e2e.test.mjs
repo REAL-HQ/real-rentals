@@ -232,10 +232,10 @@ for (const [label, viewport] of [["desktop 1440x900", { width: 1440, height: 900
   console.log("\nthe dropdown");
   await openBadge(page, A1);
   const items = await page.locator("[data-contact-status-list] button").allInnerTexts();
-  ok(items.length === 9, `nine statuses are listed (${items.length})`);
+  ok(items.length === 10, `ten statuses are listed (${items.length})`);
   ok(items.join("|").includes("Voicemail") && items.join("|").includes("Unresponsive"), "including Voicemail and Unresponsive");
-  ok(!items.join("|").includes("Approved") && !items.join("|").includes("Declined"),
-    "and no application status is offered among them");
+  ok(items.join("|").includes("Declined") && !items.join("|").includes("Approved"),
+    "including the contact outcome Declined, but not the application-only Approved status");
 
   console.log("\nthe contextual popover shows only what the status uses");
   await pick(page, "Contacted");
@@ -252,6 +252,14 @@ for (const [label, viewport] of [["desktop 1440x900", { width: 1440, height: 900
   form = page.locator("[data-contact-status-form]");
   ok(await form.locator('input[type="date"]').count() === 0, "nor does Unqualified");
   ok(/Reason/.test(await form.innerText()), "  which asks for a reason instead");
+  await page.locator('[data-contact-status-form] button:has-text("Back")').click();
+  await pick(page, "Declined");
+  form = page.locator("[data-contact-status-form]");
+  ok(await form.locator('input[type="date"]').count() === 0, "Declined asks for no follow-up date");
+  ok(await form.locator("textarea").count() === 1, "Declined allows an optional note");
+  ok(!(await page.locator("[data-contact-status-save]").isDisabled()), "Declined can be saved without invented details");
+  await page.locator('[data-contact-status-form] button:has-text("Back")').click();
+  await pick(page, "Unqualified");
 
   console.log("\nSave is refused until the entry is usable");
   let save = page.locator("[data-contact-status-save]");

@@ -87,7 +87,7 @@ it("buckets outstanding invoice and payment balances and keeps the edges", () =>
   expect(row("rental:r-31")?.bucket).toBe("d30_plus");
   expect(row("rental:r-sum")).toMatchObject({
     bucket: "d15_30", amountDue: 30, oldestUnpaid: "2026-10-01", lastPayment: "2026-10-02",
-    renterName: "Ada Lovelace", renterHref: "/admin?tab=drivers&id=app-1", rentalHref: "/admin?tab=bookings&id=r-sum",
+    renterName: "Ada Lovelace", renterHref: "/admin?tab=drivers&id=app-1", rentalHref: "/admin?tab=bookings&view=past&id=r-sum",
   });
   expect(row("rental:r-blank")).toMatchObject({ amountDue: 40, bucket: "d1_7" });
   expect(row("rental:r-paid")).toBeUndefined();
@@ -103,7 +103,7 @@ it("buckets outstanding invoice and payment balances and keeps the edges", () =>
   const csv = rentAgingToCsv(report);
   expect(csv).toContain("1–7 Days,3,$48.00");
   expect(csv).toContain("30+ Days,2,$36.00");
-  expect(csv).toContain("/admin?tab=bookings&id=r-sum");
+  expect(csv).toContain("/admin?tab=bookings&view=past&id=r-sum");
   expect(csv).toContain("2026-10-01");
   expect(csv).toContain("2026-10-02");
 });
@@ -146,7 +146,7 @@ it("resolves the renter from the rental when the payment has no driver", async (
   if (!loaded.ok) return;
   const built = buildRentAging({ asOf: EVENING, charges: loaded.charges, names: loaded.names });
   expect(built.ok && built.report.rows[0]).toMatchObject({
-    renterName: "Ada Lovelace", rentalHref: "/admin?tab=bookings&id=r-linked", bucket: "d1_7", amountDue: 80,
+    renterName: "Ada Lovelace", rentalHref: "/admin?tab=bookings&view=past&id=r-linked", bucket: "d1_7", amountDue: 80,
   });
 });
 

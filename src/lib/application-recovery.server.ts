@@ -17,6 +17,21 @@ const reservation = z.discriminatedUnion("reserved", [
 ]);
 export type RecoveryOutcome = { outcome: "sent" | "recent" | "failed"; wait: number };
 
+/** Owner-approval script. It is not in supabase/migrations, so a deploy does not run it. */
+export const RECOVERY_MIGRATION_REQUIRED =
+  "proposed/application-resume-0023/request-application-resume-0023.sql";
+
+function recoveryRpcMissing(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const message = `${error.code ?? ""} ${error.message ?? ""}`.toLowerCase();
+  return (
+    error.code === "PGRST202" ||
+    error.code === "42883" ||
+    message.includes("reserve_application_recovery") ||
+    message.includes("finish_application_recovery")
+  );
+}
+
 /**
  * Default off. The live database does not have the 0023 functions until they
  * are applied, so a missing or any other value keeps today's history-based
@@ -27,7 +42,11 @@ export function applicationResumeAtomicEnabled(): boolean {
   return process.env.APPLICATION_RESUME_ATOMIC_ENABLED === "true";
 }
 
-async function callRpc(admin: Admin, fn: string, args: Record<string, unknown>): Promise<RpcResult> {
+async function callRpc(
+  admin: Admin,
+  fn: string,
+  args: Record<string, unknown>,
+): Promise<RpcResult> {
   return (
     admin as unknown as {
       rpc: (name: string, args: Record<string, unknown>) => Promise<RpcResult>;
@@ -48,7 +67,14 @@ export async function deliverApplicationRecovery(
     _application_id: applicationId,
     _token_hash: await hashResumeToken(token),
   });
-  if (error) throw new Error("Could not reserve recovery delivery");
+  if (error) {
+    if (recoveryRpcMissing(error)) {
+      console.error(
+        `[application-recovery] ${RECOVERY_MIGRATION_REQUIRED} is not installed; no resume email was sent`,
+      );
+    }
+    throw new Error("Could not reserve recovery delivery");
+  }
   const attempt = reservation.parse(data);
   if (!attempt.reserved) return { outcome: "recent", wait: attempt.retry_after_seconds };
   let result: Awaited<ReturnType<typeof sendApplicationResumeEmail>>;
@@ -69,7 +95,12 @@ export async function deliverApplicationRecovery(
     _provider_id: result.id ?? null,
   });
   // A failed acknowledgement never releases quota or triggers another send.
-  if (finishError)
+  if (recoveryRpcMissing(finishError)) {
+    console.error(
+      `[application-recovery] ${RECOVERY_MIGRATION_REQUIRED} is not installed; delivery was not recorded`,
+    );
+  } else if (finishError) {
     console.error("[resume-link] could not finalize reserved attempt", attempt.attempt_id);
+  }
   return { outcome: result.ok ? "sent" : "failed", wait: attempt.retry_after_seconds };
 }

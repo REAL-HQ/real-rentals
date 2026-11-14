@@ -10,8 +10,9 @@
 export const RENTER_PORTAL_ENABLED: boolean = true;
 
 /**
- * Company-provided insurance card slot. OFF: renters supply their own
- * insurance for now. Nothing reads company insurance while this is false.
+ * Extra company-policy card. Off. The active rental already shows the
+ * insurance documents staff file for the renter. Nothing reads this slot
+ * while it is false.
  */
 export const COMPANY_INSURANCE_SLOT_ENABLED: boolean = false;
 

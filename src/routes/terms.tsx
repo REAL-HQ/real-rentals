@@ -61,7 +61,7 @@ function TermsPage() {
 
           <div>
             <h2 className="text-xl font-semibold text-foreground">Insurance</h2>
-            <p className="mt-3">Insurance options are available with every rental. Coverage terms, limits, exclusions, and the named insured party are described in your rental agreement and any insurance enrollment documents. Coverage during commercial or rideshare use depends on the option selected; ask our team for current details before you sign.</p>
+            <p className="mt-3">Insurance is included. After you sign your rental contract, REAL RENTALS handles your insurance quote and sets up the policy, issued in your name. You do not need to bring or upload your own insurance to apply or to pick up the vehicle. The rental agreement is the contract for the rental. Ask our team before you sign if you want the current details.</p>
           </div>
 
           <div id="sms" className="scroll-mt-24">

@@ -107,9 +107,10 @@ describe("Overview wiring", () => {
     expect(overview).toMatch(/refreshKey=\{opsRefreshKey\}/);
     expect(payments).toContain("<StripeCollections");
     expect(payments).toContain("Stripe Collections");
-    expect(leads).toContain("Follow-up Due");
+    const cardCopy = readFileSync("src/lib/lead-card.ts", "utf8");
+    expect(LEAD_FILTER_LABELS.follow_up_due).toBe("Follow-Up Due");
     expect(leads).toContain("ReadinessStatePill");
-    expect(leads).toContain("Applied");
-    expect(leads).toContain("Last contact");
+    expect(cardCopy).toContain("Applied");
+    expect(cardCopy).toContain("Last contact");
   });
 });

@@ -84,6 +84,7 @@ export function MessagesOverlay({
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [fromId, setFromId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [chFilter, setChFilter] = useState<"all" | "email" | "sms">("all");
   const [tab, setTab] = useState<"details" | "rental">("details");
@@ -105,6 +106,7 @@ export function MessagesOverlay({
     try {
       const r = await get({ data: { applicationId: id } });
       setThread(r);
+      setFromId(r.person.smsDefaultFrom ?? null);
       setChannel(r.person.email_channel.available ? "email" : r.person.sms_channel.available ? "sms" : "email");
       const last = [...r.messages].reverse().find((m) => m.channel === "email" || m.channel === "sms");
       if (last && (last.channel === "email" ? r.person.email_channel.available : r.person.sms_channel.available)) setChannel(last.channel as "email" | "sms");
@@ -118,11 +120,22 @@ export function MessagesOverlay({
   }, [get, markRead, loadList]);
 
   useEffect(() => { if (open) void loadList(); }, [open, loadList]);
+  // Only re-run when the open target changes. Including loadThread in the
+  // deps re-fired every render (useServerFn identities), which left the
+  // pane stuck on "Loading…" for applicants with no prior thread.
   useEffect(() => {
     if (!open) return;
-    if (applicationId) { setComposing(false); setMobile("thread"); void loadThread(applicationId); }
-    else { setThread(null); setMobile("list"); }
-  }, [open, applicationId, loadThread]);
+    if (applicationId) {
+      setComposing(false);
+      setMobile("thread");
+      setThread(null);
+      void loadThread(applicationId);
+    } else {
+      setThread(null);
+      setMobile("list");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open + applicationId only
+  }, [open, applicationId]);
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [thread?.messages.length]);
   useEffect(() => {
     if (!open) return;
@@ -148,11 +161,12 @@ export function MessagesOverlay({
   }, [convs, filter, query, chFilter]);
 
   async function submit() {
-    if (!thread || !body.trim()) return;
+    if (!thread || !body.trim() || sending) return;
     setSending(true);
     try {
-      const r = await send({ data: { applicationId: thread.person.applicationId, channel, body: body.trim(), subject: channel === "email" ? subject.trim() || undefined : undefined } });
-      if (r.ok) { setBody(""); setSubject(""); toast.success(channel === "email" ? "Email sent" : "Text sent"); }
+      const r = await send({ data: { applicationId: thread.person.applicationId, channel, body: body.trim(), subject: channel === "email" ? subject.trim() || undefined : undefined, fromId: channel === "sms" && fromId ? fromId : undefined } });
+      if (r.ok) { setBody(""); setSubject(""); toast.success(channel === "email" ? "Email Sent" : "Text Sent"); }
+      else if (r.state === "test_mode") { setBody(""); toast(r.error ?? "Test Mode: text logged, not sent."); }
       else toast.error(r.error ?? "Message was not sent");
       await loadThread(thread.person.applicationId);
     } catch (e) {
@@ -290,7 +304,9 @@ export function MessagesOverlay({
             <button aria-label="Back to conversations" onClick={() => { onSelect(null); setMobile("list"); }} className="md:hidden w-11 h-11 -ml-2 grid place-items-center rounded-lg"><ArrowLeft className="w-5 h-5" /></button>
             <Avatar name={person?.name ?? "?"} id={applicationId} size={34} />
             <div className="min-w-0 flex-1">
-              <div className="text-[17px] font-semibold truncate text-[#111114]">{person?.name ?? "Loading…"}</div>
+              <div className="text-[17px] font-semibold truncate text-[#111114]">
+                {person?.name ?? (loadingThread ? "Loading…" : "Conversation")}
+              </div>
               <div className="text-[12px] text-[#77777F] truncate capitalize">{person?.status ?? ""}</div>
             </div>
             <button aria-label="Conversation info" onClick={() => { setShowInfo((v) => !v); setMobile("info"); }}
@@ -300,8 +316,24 @@ export function MessagesOverlay({
           <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4">
             {loadingThread && !thread ? (
               <div className="text-[12px] text-[#9A9AA3]">Loading…</div>
+            ) : !thread ? (
+              <div className="h-full grid place-items-center text-center px-6 text-[13px] text-[#9A9AA3]">
+                <div>
+                  <p className="font-medium text-[#55555E]">Could Not Open This Conversation</p>
+                  <p className="mt-1">Try New Message, or open the driver record and message from there.</p>
+                  <button
+                    type="button"
+                    onClick={() => { setComposing(true); onSelect(null); setMobile("thread"); }}
+                    className="mt-4 inline-flex h-9 items-center rounded-lg bg-[#111114] px-4 text-[13px] font-medium text-white"
+                  >
+                    New Message
+                  </button>
+                </div>
+              </div>
             ) : groups.length === 0 ? (
-              <div className="h-full grid place-items-center text-center text-[13px] text-[#9A9AA3]">No messages with {person?.name ?? "this person"} yet.</div>
+              <div className="h-full grid place-items-center text-center text-[13px] text-[#9A9AA3]">
+                No messages with {person?.name ?? "this person"} yet. Write the first one below.
+              </div>
             ) : (
               groups.map((g) => (
                 <div key={g.day} className="mb-3">
@@ -360,15 +392,25 @@ export function MessagesOverlay({
                           </button>
                         );
                       })}
-                      <button onClick={() => void submit()} disabled={sending || !body.trim() || !chAvail?.available}
-                        className="ml-auto h-9 px-4 rounded-lg bg-[#F59E0B] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#E08E06] disabled:opacity-40">
+                      {channel === "sms" && chAvail?.available && person.smsSenders.length > 1 && (
+                        <label className="ml-auto inline-flex items-center gap-1.5 text-[12px] text-[#55555E]" data-testid="sms-send-from">
+                          Send From
+                          <select value={fromId ?? person.smsSenders[0].id} onChange={(e) => setFromId(e.target.value)} disabled={sending}
+                            aria-label="Send From" className="h-8 rounded-lg border border-[#E4E4E8] bg-white px-2 text-[12px] text-[#111114] focus:outline-none focus:border-[#C4C4CB]">
+                            {person.smsSenders.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                          </select>
+                        </label>
+                      )}
+                      <button onClick={() => void submit()} disabled={sending || !body.trim() || !chAvail?.available || (channel === "sms" && body.length > 1600)}
+                        className={`${channel === "sms" && chAvail?.available && person.smsSenders.length > 1 ? "ml-2" : "ml-auto"} h-9 px-4 rounded-lg bg-[#F59E0B] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-[#E08E06] disabled:opacity-40`}>
                         {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send
                       </button>
                     </div>
                   </div>
                   {channel === "sms" && body.length > 0 && (
-                    <p className="mt-1.5 text-[11px] text-[#9A9AA3]">{body.length} characters · {body.length <= 160 ? 1 : Math.ceil(body.length / 153)} text segment{body.length > 160 ? "s" : ""}</p>
+                    <p className={`mt-1.5 text-[11px] ${body.length > 1600 ? "text-[#B42318]" : "text-[#9A9AA3]"}`}>{body.length} characters · {body.length <= 160 ? 1 : Math.ceil(body.length / 153)} text segment{body.length > 160 ? "s" : ""}{body.length > 1600 ? " · Limit is 1600" : ""}</p>
                   )}
+                  {channel === "sms" && chAvail?.available && person.smsNote && <p className="mt-1.5 text-[10px] text-[#9A9AA3]" data-testid="sms-sender-note">{person.smsNote}</p>}
                   {!person.sms_channel.available && person.sms_channel.reason && channel === "email" && (
                     <p className="mt-1.5 text-[11px] text-[#9A9AA3]">Text unavailable: {person.sms_channel.reason}</p>
                   )}

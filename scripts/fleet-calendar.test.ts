@@ -49,7 +49,7 @@ for (const tier of ["coordinator", "manager", "owner"] as const) {
   ok(!visibleTabs(tier).some((t) => t.id === "fleet_calendar"), `${tier} nav has no Fleet Calendar tab while the flag is off`);
   ok(!railEntries(tier).some((t) => t.id === "fleet_calendar"), `${tier} rail has no Fleet Calendar tab while the flag is off`);
 }
-ok(visibleTabs("owner").length === TABS.length, "owner still sees exactly the dark-build destinations");
+ok(visibleTabs("owner").filter((t) => t.id !== "owner_pnl").length === TABS.length && visibleTabs("owner").some((t) => t.id === "owner_pnl"), "owner still sees exactly the dark-build destinations plus Monthly Owner P&L");
 ok(admin.includes('FLEET_CALENDAR_ENABLED && tab === "fleet_calendar" && <FleetCalendar />'), "the panel mounts only while the flag is on");
 ok(panel.includes("if (!FLEET_CALENDAR_ENABLED) return null"), "the panel renders nothing while the flag is off");
 ok(
@@ -102,7 +102,7 @@ const built = buildFleetCalendar({
 const road = built.rows.find((row) => row.vehicleId === "road")!;
 const shop = built.rows.find((row) => row.vehicleId === "shop")!;
 ok(built.weekStart === "2026-10-19" && built.rows.length === 2 && !built.rows.some((row) => row.vehicleId === "old"), "the week snaps to Monday and archived vehicles drop out");
-ok(road.blocks.some((block) => block.kind === "rental" && block.search.tab === "bookings" && block.end === weekEnd), "the open rental links to Bookings and stays open through Sunday");
+ok(road.blocks.some((block) => block.kind === "rental" && block.search.tab === "bookings" && block.end === weekEnd), "the open rental links to Active and stays open through Sunday");
 ok(!road.blocks.some((block) => block.id === "done"), "the completed rental is not a block");
 ok(road.blocks.some((block) => block.id === "pick" && block.search.tab === "drivers"), "the pickup links to Drivers");
 ok(shop.blocks.some((block) => block.kind === "in_maintenance" && block.start === weekStart && block.end === weekEnd && block.search.id === "shop"), "In Maintenance covers the visible week and opens the vehicle");

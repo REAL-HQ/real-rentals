@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
@@ -26,8 +27,9 @@ import { listAuditLog, type AuditRow } from "@/lib/team.functions";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { Row, TwoCol } from "./VehicleProfileFields";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
-import { BOOKING_PHASE_LABEL, bookingDates } from "@/lib/bookings-list";
+import { BOOKING_PHASE_LABEL, bookingDates, bookingVehicleName } from "@/lib/bookings-list";
 import { persistedNumber } from "@/lib/record-numbers";
 import { RecordNumber } from "@/components/admin/RecordNumber";
 import { BookingVehicleHistory } from "@/components/admin/BookingVehicleHistory";
@@ -164,8 +166,7 @@ export function BookingDetails({
               <p className="mt-1 break-words text-[13px] text-[#55555E] lg:break-normal">
                 {b ? (
                   <>
-                    {[b.unitNumber, b.vehicleLabel].filter(Boolean).join(" · ") ||
-                      "Vehicle not linked"}
+                    {bookingVehicleName(b)}
                     <span className="mx-1.5 text-[#C4C4CB]">|</span>
                     {bookingDates(b.startDate, b.endDate, b.phase)}
                   </>
@@ -376,17 +377,22 @@ function Overview({
         >
           {d.vehicle ? (
             <>
+              {d.vehicle.id ? (
+                <button type="button" onClick={() => onOpenVehicle(d.vehicle!.id as string)} className="mb-3 block" aria-label="Open Vehicle">
+                  <VehiclePickerPhoto vehicleId={d.vehicle.id as string} className="h-20 w-28 rounded-lg" iconClassName="h-5 w-5" />
+                </button>
+              ) : null}
               <Row label="Unit Number" value={d.vehicle.unitNumber} />
               <Row label="Vehicle" value={d.vehicle.label} />
               <Row label="Plate" value={d.vehicle.plate} mono />
               <Row label="VIN" value={d.vehicle.vin} mono />
               <Row
                 label="Status"
-                value={d.vehicle.status ? <StatusPill status={d.vehicle.status} /> : null}
+                value={d.vehicle.status ? <VehicleStatusBadge status={d.vehicle.status} /> : null}
               />
             </>
           ) : (
-            <p className="text-[13px] text-[#55555E]">No vehicle is linked to this rental.</p>
+            <p className="text-[13px] text-[#55555E]">Unknown</p>
           )}
         </SectionCard>
 

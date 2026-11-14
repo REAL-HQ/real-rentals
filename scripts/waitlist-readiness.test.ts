@@ -11,7 +11,7 @@ describe("shared readiness", () => {
       { lead_id: "a", category: "insurance_card" },
       { lead_id: "a", category: "license_back", review_status: "rejected" },
       { lead_id: "a", category: "gig_profile", is_current: false },
-    ]), { a: 2 });
+    ]), { a: 1 });
   });
   it("shares Drivers computation", () => {
     const app = { id: "a", platforms: ["uber"], license_valid: true };

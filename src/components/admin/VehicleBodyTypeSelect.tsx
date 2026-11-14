@@ -1,13 +1,11 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Field } from "./VehicleProfileFields";
+import { bodyTypeLabel } from "@/lib/vehicle-defaults";
 
-// Display labels only. The database/API values deliberately remain lowercase.
-export const VEHICLE_BODY_TYPE_OPTIONS = [
-  ["sedan", "Sedan"], ["suv", "SUV"], ["xl", "XL"], ["truck", "Truck"],
-  ["van", "Van"], ["minivan", "Minivan"], ["coupe", "Coupe"],
-  ["hatchback", "Hatchback"], ["wagon", "Wagon"],
-  ["convertible", "Convertible"], ["other", "Other"],
-] as const;
+// Display labels come from the shared map; stored values stay lowercase.
+// Same order as BODY_TYPES in vehicles.functions (not imported: server module).
+const BODY_TYPE_ORDER = ["sedan", "suv", "xl", "truck", "van", "minivan", "coupe", "hatchback", "wagon", "convertible", "other"] as const;
+export const VEHICLE_BODY_TYPE_OPTIONS = BODY_TYPE_ORDER.map((b) => [b, bodyTypeLabel(b)] as const);
 
 export function VehicleBodyTypeSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return (

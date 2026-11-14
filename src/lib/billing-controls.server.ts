@@ -6,6 +6,7 @@ import {
   BILLING_PM_UPDATE_LINK_ENABLED,
   BILLING_PM_UPDATE_LINK_OFF,
 } from "./billing-controls-flag";
+import { publicAppUrl } from "@/lib/public-app-url";
 import {
   DRIVER_EMAIL_MISSING,
   LIVE_STRIPE_REFUSED,
@@ -87,8 +88,7 @@ export type BillingRental = {
 };
 
 export function billingReturnUrl(): string {
-  const origin = process.env.PUBLIC_SITE_URL || "https://drivereal.com";
-  return `${origin.replace(/\/$/, "")}/admin`;
+  return publicAppUrl("/admin");
 }
 
 export async function sandboxReads() {

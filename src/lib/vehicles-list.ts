@@ -2,8 +2,21 @@
 import { isRentalReady, rentalReadyItems } from "@/lib/vehicle-readiness";
 
 export const VEHICLE_LIST_PAGE_SIZE = 50;
-export const VEHICLE_SORTS = ["unit", "make", "rate", "newest"] as const;
+export const VEHICLE_SORTS = ["unit", "make", "year", "color", "rate", "newest"] as const;
 export type VehicleSort = (typeof VEHICLE_SORTS)[number];
+
+/** Sort the full filtered result before pagination, with missing values last. */
+export function vehicleSortOrders(raw: string) {
+  const primary = raw === "make" ? ["make", "model"]
+    : raw === "year" ? ["year"]
+    : raw === "color" ? ["color"]
+    : raw === "rate" ? ["weekly_rate"]
+    : raw === "newest" ? ["created_at"] : ["unit_number"];
+  return [
+    ...primary.map((column) => ({ column, options: { ascending: raw !== "newest", nullsFirst: false } })),
+    { column: "id", options: { ascending: true } },
+  ];
+}
 
 export type VehicleListRow = {
   id: string;
@@ -20,6 +33,8 @@ export type VehicleListRow = {
   weekly_rate: number | null;
   partner_id: string | null;
   photo: string | null;
+  /** Lead original in the private staff gallery; never a public photo URL. */
+  thumbnailPath?: string | null;
   on_rent: boolean;
   /** Where this car sits on the two gates the fleet is actually judged by. */
   readiness: ReadinessBand;
@@ -132,7 +147,7 @@ export function buildVehicleSearchOr(raw: string): string | null {
 
 /** Availability shown in the list: running rental first, then operational status. */
 export function availabilityLabel(row: Pick<VehicleListRow, "on_rent" | "status">): string {
-  if (row.on_rent) return "On Rent";
+  if (row.on_rent) return "Rented";
   if (row.status === "onboarding") return "Needs Setup";
   return (row.status ?? "—").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

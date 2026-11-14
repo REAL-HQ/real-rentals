@@ -1,18 +1,19 @@
-// The "x/4" document count shown next to readiness. One definition, used by
+// The document count shown next to readiness. One definition, used by
 // the Drivers list and the Waitlist so the two can never disagree.
 import { REQUIRED_DOC_TYPES, type RequiredDocType } from "@/components/admin/types";
 
 /**
- * The four vault categories the screening pipeline treats as required: the
- * drawer's "Documents x/4", the header's next step and activation readiness
- * (src/lib/activation-readiness.ts) all read this one list.
+ * Vault categories that must be on file before a driver is treated as
+ * document-complete. Insurance is not one of them: Real Rentals sets up the
+ * policy after the contract is signed. Staff can still file an insurance
+ * document; it is optional and does not change this count. Income proof is
+ * required for the Documents receipt summary but remains advisory for activation.
  */
-export const REQUIRED_VAULT_CATEGORIES = ["license_front", "license_back", "insurance", "gig_profile"] as const;
+export const REQUIRED_VAULT_CATEGORIES = ["license_front", "license_back", "gig_profile", "income"] as const;
 export type RequiredVaultCategory = (typeof REQUIRED_VAULT_CATEGORIES)[number];
 
 /** Vault category -> the required-document name the list counts. */
 export const VAULT_TO_REQUIRED: Record<string, string> = {
-  insurance: "insurance_card",
   gig_profile: "driver_profile_screenshot",
 };
 
@@ -21,7 +22,7 @@ type DocRow = { lead_id?: string | null; category?: string | null; review_status
 /**
  * The required-document name a vault row counts as, or null when it does not
  * count. Current and not rejected. requiredDocCounts turns this name into
- * the x/4 number on the Drivers list and the Waitlist.
+ * the document count on the Drivers list and the Waitlist.
  */
 export function canonicalRequiredDoc(row: {
   category?: string | null;

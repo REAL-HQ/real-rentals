@@ -1,8 +1,8 @@
 /**
- * Approved, Not Yet Renting.
+ * Approved, Awaiting Reservation.
  *
- * The people a manager still has to turn into a rental: an application whose
- * status is `approved`, and who has no rentals row in status `active`.
+ * Approved people with no reserved or active rental. Reserved drivers move to
+ * Bookings → Booked; active drivers move to their running rental.
  *
  * `approved` is the approval. There is no onboarded or ready-to-rent
  * application status — the check constraint is partial, new, complete,
@@ -161,16 +161,19 @@ function displayName(fullName: string | null): string {
 export function buildApprovedNotRenting(input: {
   applicants: FunnelApplicant[];
   activeRentalApplicationIds: Iterable<string>;
+  /** Reserved drivers move to Bookings → Booked until activation. */
+  reservedRentalApplicationIds?: Iterable<string>;
   approvedAtById: Record<string, string>;
   now: Date;
 }): ApprovedNotRentingResult {
   const todayEt = etCalendarDate(input.now);
   const renting = new Set(input.activeRentalApplicationIds);
+  const reserved = new Set(input.reservedRentalApplicationIds ?? []);
   const rows: ApprovedNotRentingRow[] = [];
   for (const a of input.applicants) {
     if (a.status !== APPROVED_NOT_RENTING_STATUS) continue;
     if (a.deletedAt) continue;
-    if (renting.has(a.id)) continue;
+    if (renting.has(a.id) || reserved.has(a.id)) continue;
     const approvedDay = calendarDay(input.approvedAtById[a.id], "instant");
     const days = approvedDay ? daysBetween(approvedDay, todayEt) : null;
     rows.push({

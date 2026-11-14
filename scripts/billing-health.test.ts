@@ -59,7 +59,7 @@ it("flags an active rental with no Stripe subscription", () => {
   expect(rows[0]?.applicationId).toBe("app-9");
   const csv = billingHealthToCsv({ mismatches: rows, warnings: [], activeRentals: 1, subscriptions: 0 });
   expect(csv).toContain('"Lovelace, ""Ada"""');
-  expect(csv).toContain("/admin?tab=bookings&id=rental-1");
+  expect(csv).toContain("/admin?tab=bookings&view=past&id=rental-1");
   expect(csv).toContain("/admin?tab=drivers&id=app-9");
   expect(csv).toContain(REASON_NO_SUBSCRIPTION);
 });
