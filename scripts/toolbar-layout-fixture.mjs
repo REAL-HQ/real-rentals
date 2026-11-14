@@ -19,6 +19,9 @@ const stubs = {
   "./AddVehicleDialog": `export const AddVehicleDialog = () => null;`,
   "./VehicleLifecycleDialog": `export const VehicleLifecycleDialog = () => null;`,
   "./MaintenanceDue": `export const MaintenanceDue = () => null;`,
+  "@/lib/vehicle-media.functions": `export const listVehicleMedia = () => {};`,
+  "./VehiclePhotos": `export const VehiclePhotoViewer = () => null;`,
+  "./VehicleStaffPhoto": `export const VehicleStaffPhoto = () => null;`,
   "./MaintenanceLog": `export const MaintenanceLogBadgeSource = ({children}) => children({}, false); export const MaintenanceLogBadge = () => null;`,
 };
 const panel = await build({ stdin: { contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {VehiclesPanel} from './src/components/admin/VehiclesPanel'; createRoot(document.getElementById('fixture-panel')).render(React.createElement(VehiclesPanel, globalThis.__toolbarProps));`, resolveDir: process.cwd(), loader: "tsx" }, bundle:true, format:"iife", platform:"browser", jsx:"automatic", alias:{"@":resolve("src")}, write:false, define:{"process.env.NODE_ENV":'"production"'}, plugins:[{name:"offline-fixture-only",setup(b){

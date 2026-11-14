@@ -57,12 +57,6 @@ const DRIVE_LABELS: Record<string, string> = {
   part_time: "Part-Time",
 };
 
-const INSURANCE_LABELS: Record<string, string> = {
-  yes: "Yes",
-  no: "No",
-  not_sure: "Not Sure",
-};
-
 export type ResumePhase = "rental" | "driving" | "documents";
 
 /** Answers and upload presence. Storage paths never belong here. */
@@ -215,7 +209,6 @@ export function snapshotFromWizard(row: {
 function documentChecks(snapshot: ResumeSnapshot): { label: string; done: boolean }[] {
   return [
     { label: "Driver's Licence", done: snapshot.licenseOnFile && snapshot.licenseValid === true },
-    { label: "Insurance", done: snapshot.insuranceOnFile },
     { label: "Gig Profile", done: snapshot.profileOnFile },
     { label: "Trip History", done: snapshot.tripCount > 0 },
     { label: "Your Address", done: Boolean(snapshot.address && snapshot.zip) },
@@ -227,7 +220,7 @@ export function progressFromSnapshot(snapshot: ResumeSnapshot): ResumeProgress {
     .filter((item) => !item.done)
     .map((item) => item.label);
   const rentalDone = Boolean(snapshot.vehicleSize && snapshot.pickupDate && snapshot.expectedDuration);
-  const drivingDone = Boolean(snapshot.gigStatus && snapshot.driveType && snapshot.insuranceAnswer);
+  const drivingDone = Boolean(snapshot.gigStatus && snapshot.driveType);
   const documentsDone = missingDocuments.length === 0;
 
   let step = 4;
@@ -296,7 +289,6 @@ export function savedAnswers(snapshot: ResumeSnapshot, progress: ResumeProgress)
       { label: "Gig Apps", value: snapshot.platforms.length ? snapshot.platforms.join(", ") : "Not Answered" },
       { label: "Gig Status", value: show(snapshot.gigStatus, GIG_LABELS) },
       { label: "How You Plan To Drive", value: show(snapshot.driveType, DRIVE_LABELS) },
-      { label: "Full Coverage Insurance", value: show(snapshot.insuranceAnswer, INSURANCE_LABELS) },
     ];
   }
   return documentChecks(snapshot).map((item) => ({

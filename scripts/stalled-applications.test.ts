@@ -80,7 +80,7 @@ describe("stalled rules", () => {
     assert.deepEqual(stalled.gaps, []);
   });
 
-  it("treats license and insurance together as documents", () => {
+  it("treats a license as documents and does not require insurance", () => {
     assert.equal(licenseOnFile(null, ["license_front"]), true);
     assert.equal(licenseOnFile("https://files/license.jpg", []), true);
     assert.equal(licenseOnFile(null, ["insurance"]), false);
@@ -92,6 +92,10 @@ describe("stalled rules", () => {
     );
     assert.equal(
       documentsOnFile({ licensePhotoUrl: "https://files/license.jpg", insuranceDocUrl: null, categories: [] }),
+      true,
+    );
+    assert.equal(
+      documentsOnFile({ licensePhotoUrl: null, insuranceDocUrl: "https://files/policy.pdf", categories: ["insurance"] }),
       false,
     );
   });

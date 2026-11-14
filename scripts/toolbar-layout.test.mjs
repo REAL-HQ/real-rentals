@@ -31,8 +31,9 @@ try {
    assert(layout.filters.y >= layout.primary.bottom - 1, `${label}: filters below primary row`);
    assert(layout.context.y >= layout.filters.bottom - 1, `${label}: context below filters`);
    assert.equal(layout.selects.length, 4, `${label}: four filter controls`);
-   for (const r of [...layout.actions, ...layout.selects, layout.search]) {
-    assert(Math.abs(r.height - 36) < 1, `${label}: consistent control height ${JSON.stringify(r)}`);
+   // Integration's compact vehicle toolbar uses 32px controls; all must match.
+  for (const r of [...layout.actions, ...layout.selects, layout.search]) {
+    assert(Math.abs(r.height - layout.search.height) < 1 && r.height >= 31, `${label}: consistent control height ${JSON.stringify(r)}`);
     assert(r.x >= 0 && r.right <= width + 1, `${label}: all controls reachable`);
    }
    for (let i=1;i<layout.selects.length;i++) assert(Math.abs(layout.selects[i].width-layout.selects[0].width)<1, `${label}: equal grid cells`);
@@ -68,15 +69,26 @@ try {
   assert.equal(await popup.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(255, 255, 255)', 'actual open popup is white');
   assert.equal(await popup.evaluate(el=>getComputedStyle(el).zIndex),'70','popup above z-60 drawer');
   const labels = await popup.getByRole('option').allTextContents();
-  assert.deepEqual(labels.map(x=>x.trim()), ['—','Sedan','SUV','XL','Truck','Van','Minivan','Coupe','Hatchback','Wagon','Convertible','Other']);
+  assert.deepEqual(labels.map(x=>x.trim()), ['—','Sedan','SUV','Minivan (XL)','Truck','Van','Minivan','Coupe','Hatchback','Wagon','Convertible','Other']);
   await page.getByRole('option',{name:'SUV',exact:true}).click();
   assert.equal(await page.getByLabel('Stored value').textContent(),'suv','visible SUV keeps stored lowercase enum');
   await trigger.focus(); await page.keyboard.press('ArrowDown');
   await popup.waitFor(); await page.keyboard.press('End'); await page.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Other'); await page.keyboard.press('Enter');
   assert.equal(await page.getByLabel('Stored value').textContent(),'other','keyboard selection uses unchanged value');
-  await trigger.click(); await page.keyboard.press('Escape');
+  await popup.waitFor({state:'hidden'});
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Body Type');
+  assert(await trigger.evaluate(el=>document.activeElement===el),'Enter selects, closes the menu and returns focus to the trigger');
+  // Keyboard-only Escape: open with the keyboard, Escape closes only the menu.
+  await page.keyboard.press('ArrowDown'); await popup.waitFor(); await page.keyboard.press('Escape');
   await popup.waitFor({state:'hidden'});
   assert(await page.getByText('Edit Vehicle Details',{exact:true}).isVisible(),'Escape closes menu, not editor');
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Body Type');
+  assert(await trigger.evaluate(el=>document.activeElement===el),'Escape returns focus to the trigger');
+  assert.equal(await page.getByLabel('Stored value').textContent(),'other','Escape leaves the value unchanged');
+  // A second Escape (menu closed) is the editor's to handle.
+  await trigger.click(); await page.keyboard.press('Escape');
+  await popup.waitFor({state:'hidden'});
+  assert(await page.getByText('Edit Vehicle Details',{exact:true}).isVisible(),'Escape after a click-open also closes menu, not editor');
   await trigger.click(); await page.getByRole('option',{name:'—',exact:true}).click();
   assert.equal(await page.getByLabel('Stored value').textContent(),'(empty)','unset round trips to empty stored value');
   await popup.waitFor({state:'hidden'});

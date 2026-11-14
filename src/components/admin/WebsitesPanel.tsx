@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Plus, X, Globe } from "lucide-react";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { StatusPill, EmptyState } from "./ui";
+import { Switch } from "@/components/ui/switch";
 
 type Site = {
   id: string;
@@ -122,10 +123,10 @@ export function WebsitesPanel() {
                     </div>
                   </td>
                   <td>
-                    <input
-                      type="checkbox"
+                    <Switch
+                      aria-label={`Show ${s.title} on homepage`}
                       checked={s.show_on_homepage}
-                      onChange={(e) => updateSite(s.id, { show_on_homepage: e.target.checked })}
+                      onCheckedChange={(v) => updateSite(s.id, { show_on_homepage: v })}
                     />
                   </td>
                   <td>

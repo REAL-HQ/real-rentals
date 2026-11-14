@@ -5,8 +5,10 @@ import { Loader2, Plus, AlertTriangle, Clock } from "lucide-react";
 import { getFleetMaintenance } from "@/lib/maintenance.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { SectionCard } from "./ui";
-import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, Field, inputCls } from "./modal";
+import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, Field } from "./modal";
 import { VehicleService } from "./VehicleService";
+import { VehicleCombobox, type VehicleComboboxVehicle } from "./VehicleCombobox";
+import { VEHICLE_COMBOBOX_SELECT } from "@/lib/vehicle-label";
 
 const TONE: Record<string, string> = {
   overdue: "bg-brand/10 text-brand", conflict: "bg-brand/10 text-brand", open: "bg-warning/15 text-warning-foreground",
@@ -66,20 +68,17 @@ export function FleetServiceCenter({ autoOpenAdd = false }: { autoOpenAdd?: bool
 }
 
 function PickVehicle({ onClose, onPick }: { onClose: () => void; onPick: (id: string) => void }) {
-  const [list, setList] = useState<any[]>([]);
+  const [list, setList] = useState<VehicleComboboxVehicle[]>([]);
   const [id, setId] = useState("");
   useEffect(() => {
-    supabase.from("vehicles").select("id,unit_number,year,make,model").is("archived_at", null).order("unit_number").then(({ data }) => setList(data ?? []));
+    supabase.from("vehicles").select(VEHICLE_COMBOBOX_SELECT).is("archived_at", null).order("unit_number").then(({ data }) => setList(data ?? []));
   }, []);
   return (
     <ModalShell onClose={onClose} label="Add Service" size="sm">
       <ModalHeader title="Add Service" subtitle="Choose the vehicle." onClose={onClose} />
       <ModalBody>
         <Field label="Vehicle" required>
-          <select className={inputCls} value={id} onChange={(e) => setId(e.target.value)}>
-            <option value="">Select A Vehicle</option>
-            {list.map((v) => <option key={v.id} value={v.id}>{v.unit_number} · {v.year} {v.make} {v.model}</option>)}
-          </select>
+          <VehicleCombobox vehicles={list} value={id || null} onChange={(next) => setId(next ?? "")} allowNone={false} placeholder="Select A Vehicle" aria-label="Vehicle" />
         </Field>
       </ModalBody>
       <ModalFooter><ModalButton onClick={onClose}>Cancel</ModalButton><ModalButton variant="primary" disabled={!id} onClick={() => onPick(id)}>Continue</ModalButton></ModalFooter>

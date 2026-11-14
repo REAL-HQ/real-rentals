@@ -1,5 +1,13 @@
 import type { ReactNode } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { MicroLabel } from "./ui";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 
 // The pieces the vehicle profile reads and writes with.
 //
@@ -183,6 +191,10 @@ export function DateInput({
   );
 }
 
+/** Radix refuses an empty item value, so the "not recorded" entry travels
+    under a sentinel and converts back to "" on the way out. */
+const NO_VALUE = "__none__";
+
 export function Choice({
   label,
   value,
@@ -190,6 +202,7 @@ export function Choice({
   options,
   hint,
   error,
+  vehicleStatus = false,
 }: {
   label: string;
   value: string;
@@ -197,20 +210,38 @@ export function Choice({
   options: Array<{ value: string; label: string }>;
   hint?: string;
   error?: string;
+  vehicleStatus?: boolean;
 }) {
+  const items = options.map((o) => ({
+    value: o.value === "" ? NO_VALUE : o.value,
+    label: o.label,
+  }));
+  const current = value === "" ? NO_VALUE : value;
+  const known = items.some((i) => i.value === current);
+  const entries =
+    known || value === "" ? items : [{ value: current, label: value }, ...items];
   return (
     <Field label={label} hint={hint} error={error}>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`${inputCls} ${error ? "border-[#D03020]" : ""}`}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      <Select value={current} onValueChange={(v) => onChange(v === NO_VALUE ? "" : v)}>
+        <SelectTrigger
+          className={`h-9 w-full rounded-md border bg-white px-2.5 text-[13px] text-[#111114] shadow-none focus:ring-0 ${
+            error ? "border-[#D03020]" : "border-[#EDEDF0] focus:border-[#D03020]"
+          }`}
+        >
+          <SelectValue placeholder="—" />
+        </SelectTrigger>
+        <SelectContent>
+          {entries.map((o) => (
+            <SelectItem
+              key={o.value}
+              value={o.value}
+              className="text-[13px] text-popover-foreground hover:bg-[#F5F5F7] focus:bg-[#F5F5F7] data-[highlighted]:bg-[#F5F5F7]"
+            >
+              {vehicleStatus && o.value !== NO_VALUE ? <VehicleStatusBadge status={o.value} label={o.label} /> : o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </Field>
   );
 }

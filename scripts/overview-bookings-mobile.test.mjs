@@ -234,7 +234,7 @@ check(overview.includes("getOverviewApplicants"), "overview still reads applican
 // The Hot Prospects card moved off Overview in the Overview cleanup (094e0f67); its row classes are gone with it.
 check(!/>\s*Hot Prospects\s*</.test(overview), "overview no longer renders the Hot Prospects card");
 check(!overview.includes("text-transform"), "overview does not add a text-transform");
-check(bookings.includes('aria-label="Search bookings"'), "the bookings search stays");
+check(bookings.includes('aria-label="Search rentals"'), "the bookings search stays");
 check(bookings.includes("max-lg:w-full") && !bookings.includes("flex w-full max-lg:min-w-0"), "the bookings filter group is full width only below lg");
 check(bookings.includes("lg:flex-row lg:items-center lg:gap-3"), "the bookings toolbar stacks only below lg");
 check(bookings.includes('data-testid="booking-phases"'), "the phase chips stay");

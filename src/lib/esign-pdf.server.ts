@@ -377,6 +377,23 @@ export async function layoutStructured(pdf: PDFDocument, o: LayoutOpts): Promise
     if (line.length) flush();
   };
   const cellLines = (t: string, f: PDFFont, size: number, w: number) => (t ? wrap(t, f, size, w) : [""]);
+  // Word-wrapped lines for a boxed block, with an optional bold lead-in.
+  const boxLines = (lead: string | undefined, t: string, max: number, size: number) => {
+    const words: { w: string; f: PDFFont }[] = [
+      ...(lead ? clean(lead).split(/ +/).filter(Boolean).map((w) => ({ w, f: bold })) : []),
+      ...clean(t).split(/ +/).filter(Boolean).map((w) => ({ w, f: font })),
+    ];
+    const space = font.widthOfTextAtSize(" ", size);
+    const lines: (typeof words)[] = [];
+    let line: typeof words = [], width = 0;
+    for (const it of words) {
+      const ww = it.f.widthOfTextAtSize(it.w, size);
+      if (line.length && width + space + ww > max) { lines.push(line); line = []; width = 0; }
+      width += (line.length ? space : 0) + ww; line.push(it);
+    }
+    if (line.length) lines.push(line);
+    return lines;
+  };
 
   const drawTable = (b: Extract<Block, { k: "table" }>) => {
     const c1 = Math.round(CW * b.frac), c2 = CW - c1, pad = 3.5, size = 8.5, lh = size * 1.32;
@@ -490,6 +507,31 @@ export async function layoutStructured(pdf: PDFDocument, o: LayoutOpts): Promise
         break;
       }
       case "p": rich(b.lead, b.t, SM, CW, BS, font); y -= 2; break;
+      case "notice":
+      case "highlight": {
+        // A boxed block, kept on one page. Statutory notices print at 10.5 pt
+        // (Florida s. 627.7263 requires at least 10-point type).
+        const notice = b.k === "notice";
+        const size = notice ? 10.5 : 9.5, pad = 8, lh = size * 1.4;
+        const lines = boxLines(b.lead, b.t, CW - pad * 2, size);
+        const h = lines.length * lh + pad * 2;
+        if (!fresh()) y -= 4;
+        ensure(h + 4);
+        page.drawRectangle({
+          x: SM, y: y - h, width: CW, height: h, borderWidth: 0.9,
+          color: notice ? rgb(0.992, 0.894, 0.902) : rgb(0.906, 0.965, 0.918),
+          borderColor: notice ? rgb(0.784, 0.063, 0.180) : rgb(0.118, 0.478, 0.196),
+        });
+        lines.forEach((line, j) => {
+          let cx = SM + pad;
+          for (const it of line) {
+            page.drawText(it.w, { x: cx, y: y - pad - size - j * lh + 1, size, font: it.f, color: ink });
+            cx += it.f.widthOfTextAtSize(it.w, size) + font.widthOfTextAtSize(" ", size);
+          }
+        });
+        y -= h + 6;
+        break;
+      }
       case "table": drawTable(b); break;
       case "sig": drawSig(b.agreementNumber); sigDone = true; break;
     }

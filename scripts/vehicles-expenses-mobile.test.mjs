@@ -90,6 +90,8 @@ function sameAtLg(before, after, label) {
 }
 
 const pairs = [
+  // The vehicles table scroller and its min width now apply at every width
+  // (the Open column was clipped at lg); scripts/vehicles-table-scroll.test.mjs guards them.
   [
     "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4",
     "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-lg:min-w-0",
@@ -236,7 +238,7 @@ const present = [
   [vehicles, 'className="min-w-0"', "the vehicles screen can shrink at every width"],
   [vehicles, "<AdminToolbar", "the vehicles toolbar uses the shared AdminToolbar (see scripts/admin-toolbar.test.mjs)"],
   [vehicles, "min-w-[64rem]", "the vehicles table keeps readable columns"],
-  [vehicles, 'aria-label="Vehicles table" tabIndex={0}', "table scroll region is keyboard accessible"],
+  [vehicles, 'role="region" aria-label="Vehicles table" tabIndex={0}', "table scroll region is keyboard accessible"],
   [vehicles, "data-testid=\"fleet-readiness\"", "fleet readiness stays in the filter row"],
   [vehicles, "fleet_inbox", "import to the fleet inbox stays"],
   [vehicles, "Add Vehicle", "add vehicle stays"],

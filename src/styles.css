@@ -66,7 +66,11 @@
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
   --color-warning-foreground: var(--warning-foreground);
+  --color-danger-soft: var(--danger-soft);
+  --color-status-occupied: var(--status-occupied);
+  --color-status-occupied-soft: var(--status-occupied-soft);
   --color-overlay: var(--overlay);
 }
 
@@ -99,7 +103,11 @@
   --success: oklch(0.55 0.14 155);
   --success-soft: oklch(0.96 0.04 155);
   --warning: oklch(0.8 0.15 85);
+  --warning-soft: oklch(0.97 0.04 95);
   --warning-foreground: oklch(0.42 0.1 70);
+  --danger-soft: oklch(0.96 0.035 27.5);
+  --status-occupied: oklch(0.43 0.075 195);
+  --status-occupied-soft: oklch(0.95 0.025 195);
   --overlay: oklch(0.15 0.005 286 / 0.5);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -121,8 +129,8 @@
   --foreground: oklch(0.984 0.003 247.858);
   --card: oklch(0.208 0.042 265.755);
   --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0 0);
   --primary: oklch(0.929 0.013 255.508);
   --primary-foreground: oklch(0.208 0.042 265.755);
   --secondary: oklch(0.279 0.041 260.031);
@@ -133,6 +141,11 @@
   --accent-foreground: oklch(0.984 0.003 247.858);
   --brand-soft: color-mix(in oklch, var(--real-red) 10%, var(--card));
   --brand-soft-border: color-mix(in oklch, var(--real-red) 25%, var(--card));
+  --success-soft: oklch(0.28 0.05 155);
+  --warning-soft: oklch(0.3 0.05 85);
+  --danger-soft: oklch(0.3 0.06 27.5);
+  --status-occupied: oklch(0.82 0.07 195);
+  --status-occupied-soft: oklch(0.3 0.04 195);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.984 0.003 247.858);
   --border: oklch(1 0 0 / 10%);
@@ -184,6 +197,15 @@
   .border-real-red { border-color: #D03020; }
   .bg-soft { background-color: #F5F5F7; }
 
+  /* Dropdowns stay light even when the browser or surrounding chrome is dark.
+     Native popup rendering varies by OS, so set the control and its options
+     explicitly instead of relying on a utility class on the closed select. */
+  select {
+    color-scheme: only light;
+    background-color: var(--popover) !important;
+    color: var(--popover-foreground) !important;
+  }
+
   /* Shared dropdown caret: every native select gets the same custom caret,
      12px from the right border, with reserved space so text never overlaps. */
   select:not([multiple]):not([size]),
@@ -191,13 +213,16 @@
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
-    color-scheme: light;
+    color-scheme: only light;
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1L6 6L11 1' stroke='%23111' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
     background-repeat: no-repeat;
     background-position: right 0.75rem center;
     padding-right: 2rem !important;
   }
-  select option, .select-soft option { background-color: #ffffff; color: #111111; }
+  select option, select optgroup, .select-soft option, .select-soft optgroup {
+    background-color: var(--popover) !important;
+    color: var(--popover-foreground) !important;
+  }
 
   .container-real {
     max-width: 1200px;
@@ -306,6 +331,11 @@
     padding-bottom: 16px;
     margin-bottom: -16px;
   }
+  /* Section pages need real separation below their sticky heading; unlike
+     table toolbars, they must not pull the next section under the paint. */
+  .admin-sticky-bar[data-admin-flow] {
+    margin-bottom: 0;
+  }
 }
 @media (max-width: 767px) {
   .admin-sticky-bar,
@@ -316,6 +346,9 @@
   }
   .admin-sticky-bar > * { flex-shrink: 0; }
   .admin-sticky-bar.flex-col > * { flex-shrink: 1; }
+  .admin-sticky-bar[data-admin-flow] {
+    overflow-x: visible;
+  }
   /* AdminToolbar wraps by the space it has; the phone side-scroll rule above
      would turn its row into a hidden horizontal strip. */
   .admin-sticky-bar[data-admin-toolbar] > .flex-wrap {

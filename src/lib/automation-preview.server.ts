@@ -13,6 +13,7 @@ export async function renderAutomationPreview(id: string): Promise<{ subject: st
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   const runs: Record<string, () => Promise<unknown>> = {
+    approval_confirmation: () => m.sendApprovalConfirmationEmail({ to: TO, firstName: "Jordan", applicationId: SAMPLE_APP }),
     recovery_24h: () => m.sendWizardRecoveryEmail({ to: TO, firstName: "Jordan", applicationId: SAMPLE_APP, variant: "24h" }),
     recovery_72h: () => m.sendWizardRecoveryEmail({ to: TO, firstName: "Jordan", applicationId: SAMPLE_APP, variant: "72h" }),
     recovery_abandoned: () => m.sendAbandonedRecoveryEmail({ to: TO, firstName: "Jordan", applicationId: SAMPLE_APP, market: "Atlanta", pickupDate: tomorrow }),

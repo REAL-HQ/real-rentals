@@ -31,6 +31,20 @@
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
+export const MINIMUM_RENTAL_WEEKS = 4;
+
+/** Today's date-only value in the business timezone, for staff-editable presets. */
+export function contractTodayIso(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CONTRACT_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
 /** A date-only ISO string, or null if it is not one. */
 export function parseDateOnly(v: unknown): { y: number; m: number; d: number } | null {
   if (typeof v !== "string") return null;
@@ -77,6 +91,16 @@ export function minTermEndIso(startIso: unknown, weeks: number): string | null {
  * The term is author-entered text ("4 weeks", "4"), so the digits are taken
  * out of it rather than trusting a shape.
  */
+export function defaultRentalEndIso(startIso: unknown): string | null {
+  return minTermEndIso(startIso, MINIMUM_RENTAL_WEEKS);
+}
+
+export function rentalEndBeforeMinimum(startIso: unknown, endIso: unknown): boolean {
+  if (typeof endIso !== "string" || !parseDateOnly(endIso)) return false;
+  const minimum = defaultRentalEndIso(startIso);
+  return Boolean(minimum && endIso < minimum);
+}
+
 export function minTermWeeks(raw: unknown): number {
   const n = Number(String(raw ?? "").replace(/[^0-9]/g, ""));
   return Number.isFinite(n) && n > 0 ? n : 0;

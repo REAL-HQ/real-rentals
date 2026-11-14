@@ -1,4 +1,6 @@
 import { createFileRoute, useSearch as useRouterSearch, useNavigate, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { requestPasswordReset } from "@/lib/password-reset.functions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Nav } from "@/components/site/Nav";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,7 +18,6 @@ import {
   History as HistoryIcon,
   Settings as SettingsGear,
   UserPlus,
-  Search,
   Bell,
   Menu,
   Plus,
@@ -35,14 +36,14 @@ import {
   WORKSPACE_TABS,
   visibleWorkspaceTabs,
   LEGACY_TABS,
+  resolveSettingsSection,
   type TabDef,
 } from "@/components/admin/nav-config";
 import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
-import { ShopsPanel } from "@/components/admin/ShopsPanel";
 import { MessagesOverlay } from "@/components/admin/MessagesOverlay";
 import { SettingsWorkspace } from "@/components/admin/SettingsWorkspace";
-import { useServerFn } from "@tanstack/react-start";
 import { listConversations } from "@/lib/messages.functions";
+import { getReservationDepositSettings } from "@/lib/reservations.functions";
 import { getAdminNotifications } from "@/lib/admin-overview.functions";
 import { OverviewPanel } from "@/components/admin/OverviewPanel";
 import { VendorsPanel } from "@/components/admin/VendorsPanel";
@@ -50,10 +51,9 @@ import { InspectionsPanel } from "@/components/admin/InspectionsPanel";
 import { ChargesPanel } from "@/components/admin/ChargesPanel";
 import { DepositsLedgerPanel } from "@/components/admin/DepositsLedgerPanel";
 import { WeeklyCashFlowPanel } from "@/components/admin/WeeklyCashFlowPanel";
-import { IncidentsPanel } from "@/components/admin/IncidentsPanel";
+import { IssuesPanel } from "@/components/admin/IssuesPanel";
 import { IncidentBoard } from "@/components/admin/IncidentBoard";
 import { INCIDENT_BOARD_ENABLED } from "@/lib/incident-board";
-import { DriverIssuesPanel } from "@/components/admin/DriverIssuesPanel";
 import { ExpensesPanel } from "@/components/admin/ExpensesPanel";
 import { UnifiedFinancePanel } from "@/components/admin/UnifiedFinancePanel";
 import { UNIFIED_FINANCE_ENDPOINT_ENABLED } from "@/lib/unified-finance-flag";
@@ -78,6 +78,10 @@ import { FinanceDepositLedgerPanel } from "@/components/admin/FinanceDepositLedg
 import { FINANCE_DEPOSIT_LEDGER_ENABLED } from "@/lib/finance-deposit-ledger-flag";
 import { StripeRiskMonitorPanel } from "@/components/admin/StripeRiskMonitorPanel";
 import { STRIPE_RISK_MONITOR_ENABLED } from "@/lib/stripe-risk-monitor-flag";
+import { STRIPE_MATCH_REPORT_ENABLED } from "@/lib/stripe-match-flag";
+import { COLLECTIONS_WATCH_ENABLED } from "@/lib/collections-watch-flag";
+import { DEPOSITS_LEDGER_ENABLED } from "@/lib/deposits-ledger-flag";
+import { WEEKLY_CASH_FLOW_ENABLED } from "@/lib/weekly-cash-flow-flag";
 import { StripePayoutReconPanel } from "@/components/admin/StripePayoutReconPanel";
 import { STRIPE_PAYOUT_RECON_ENABLED } from "@/lib/stripe-payout-recon-flag";
 import { ApplicantFunnelPanel } from "@/components/admin/ApplicantFunnelPanel";
@@ -114,9 +118,7 @@ import { ACCOUNTANT_EXPORT_ENABLED } from "@/lib/accountant-export-flag";
 import { TaxExportPanel } from "@/components/admin/TaxExportPanel";
 import { TAX_EXPORT_ENABLED } from "@/lib/tax-export-flag";
 import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
-import { AvailableCarsBoard } from "@/components/admin/AvailableCarsBoard";
-import { BookingsPanel } from "@/components/admin/BookingsPanel";
-import { ActiveRentalsPanel } from "@/components/admin/ActiveRentalsPanel";
+import { BookingsWorkspace } from "@/components/admin/BookingsWorkspace";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
 import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
@@ -130,6 +132,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { fmtDateTime } from "@/lib/date-format";
 import { displayPersonName, personInitials } from "@/lib/display-normalize";
+import { AdminGlobalSearch } from "@/components/admin/AdminGlobalSearch";
+import type { SearchKind } from "@/components/admin/admin-search";
 
 /** Deep-link parameters the Overview cards and applicant rows send. */
 type AdminSearch = {
@@ -151,9 +155,9 @@ type AdminSearch = {
   view?: string;
   /** Fleet-wide readiness filter: listing_ready | rental_ready | not_ready. */
   ready?: string;
-  /** Bookings list: active | completed | cancelled. */
+  /** Active → All Rentals: active | completed | cancelled. */
   phase?: string;
-  /** Bookings list: one vehicle's rentals. */
+  /** Active → All Rentals: one vehicle's rentals. */
   vehicle?: string;
   /** Incidents form prefilled from a driver issue. Does not create the incident. */
   issue?: string;
@@ -179,28 +183,26 @@ const PARAM_OWNER: Record<Exclude<keyof AdminSearch, "tab" | "msg">, readonly st
   // stripped the id back out of the URL a moment after the navigation, the
   // panel fell back to whichever vehicle sorted first, and a pre-delivery
   // inspection could be filed against the wrong one.
-  // "bookings" is here because a booking IS a record you open — the drawer is
-  // held by the same `id` the drivers and vehicles lists use.
+  // "bookings" opens a rental record on the Past tab.
   id: ["drivers", "vehicles", "inspections", "bookings"],
   // Payments is the only list that takes a filter from a link today.
-  filter: ["payments", "drivers"],
+  filter: ["payments", "drivers", "issues", "vendors"],
   // A creation flow opened from "+ Create".
   add: [...ADD_TABS],
   section: ["settings"],
-  // The Bookings list holds its own search, sort and page under the same
-  // names; a parameter not owned by its tab is stripped a moment after the
-  // navigation, which is how a filter silently resets itself.
+  // Active (All Rentals) holds search, sort, page, phase, and vehicle under
+  // the same names the old Bookings list used.
   q: ["vehicles", "bookings"],
   vstatus: ["vehicles"],
   body: ["vehicles"],
   partner: ["vehicles"],
   sort: ["vehicles", "bookings"],
   page: ["vehicles", "bookings"],
-  view: ["vehicles"],
+  view: ["vehicles", "bookings"],
   ready: ["vehicles"],
   phase: ["bookings"],
   vehicle: ["bookings"],
-  issue: ["incidents"],
+  issue: ["issues"],
 };
 
 /** The search for a tab's ROOT view: the tab, and nothing that belongs to a child. */
@@ -254,7 +256,15 @@ export const Route = createFileRoute("/admin")({
     return out;
   },
   head: () => ({
-    meta: [{ title: "Admin — REAL RENTALS" }, { name: "robots", content: "noindex" }],
+    meta: [
+      { title: "Admin — REAL RENTALS" },
+      { name: "description", content: "REAL RENTALS staff workspace for drivers, vehicles, rentals, and operations." },
+      { property: "og:title", content: "Admin — REAL RENTALS" },
+      { property: "og:description", content: "REAL RENTALS staff workspace for drivers, vehicles, rentals, and operations." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+      { name: "robots", content: "noindex" },
+    ],
   }),
   component: Admin,
 });
@@ -299,7 +309,7 @@ function Admin() {
   const urlRecordId = typeof search?.id === "string" ? search.id : null;
   const urlFilter = typeof search?.filter === "string" ? search.filter : null;
   const urlAdd = search?.add === "1";
-  const [globalSearch, setGlobalSearch] = useState("");
+  const [partnerSearch, setPartnerSearch] = useState("");
   const stickyRef = useRef<HTMLDivElement | null>(null);
   // Shared sticky layout: publish chrome + filter-row heights as CSS vars
   // (see "Back-office sticky layout standard" in styles.css). Re-measures
@@ -348,6 +358,18 @@ function Admin() {
   >([]);
   const [notifsFailed, setNotifsFailed] = useState(false);
   const [tier, setTier] = useState<StaffTier | null>(null);
+  const [reservationDepositEnabled, setReservationDepositEnabled] = useState(false);
+  const loadReservationDepositSettings = useServerFn(getReservationDepositSettings);
+  useEffect(() => {
+    if (!tier) return;
+    let cancelled = false;
+    void loadReservationDepositSettings().then((s) => {
+      if (!cancelled) setReservationDepositEnabled(s.enabled === true);
+    }).catch(() => {
+      if (!cancelled) setReservationDepositEnabled(false);
+    });
+    return () => { cancelled = true; };
+  }, [tier, loadReservationDepositSettings]);
   const navTabs = useMemo(() => visibleTabs(tier), [tier]);
 
   /*
@@ -473,6 +495,24 @@ function Admin() {
       if (!OWNER_FINANCE_SNAPSHOT_ENABLED || (tier && !tierAllows(tier, "owner"))) return "overview";
       return "owner_finance_snapshot";
     }
+    // Payments workspace extras: hidden while source flags are Off (Deposits returns with reservation deposits).
+    if (urlTab === "stripe_match") {
+      if (!STRIPE_MATCH_REPORT_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "stripe_match";
+    }
+    if (urlTab === "collections_watch") {
+      if (!COLLECTIONS_WATCH_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "collections_watch";
+    }
+    if (urlTab === "weekly_cash_flow") {
+      if (!WEEKLY_CASH_FLOW_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
+      return "weekly_cash_flow";
+    }
+    if (urlTab === "deposits_ledger") {
+      if (tier && !tierAllows(tier, "manager")) return "overview";
+      if (!DEPOSITS_LEDGER_ENABLED && !reservationDepositEnabled) return "overview";
+      return "deposits_ledger";
+    }
     // Rental Renewal Due is not in TABS. While the flag is off a direct link falls back to Overview.
     if (urlTab === "renewals_due") {
       if (!RENEWALS_DUE_ENABLED || (tier && !tierAllows(tier, "manager"))) return "overview";
@@ -481,7 +521,7 @@ function Admin() {
     if (!urlTab || !TABS.some((t) => t.id === urlTab)) return "overview";
     if (tier && !navTabs.some((t) => t.id === urlTab)) return "overview";
     return urlTab as Tab;
-  }, [urlTab, tier, navTabs]);
+  }, [urlTab, tier, navTabs, reservationDepositEnabled]);
 
   /*
    * Normalize the address bar to match what is on screen — replace, not
@@ -491,17 +531,6 @@ function Admin() {
    * ?tab=vehicles, say) that would otherwise hold a child view open or
    * filter a list nobody asked to filter.
    */
-  /**
-   * Go to a tab's root, for the few controls that cannot be links — a select
-   * handler, a search box reacting as you type. Same destination the sidebar
-   * links produce, so there is one way to reach a root view and not two.
-   */
-  const goRoot = useCallback(
-    (next: string, opts?: { replace?: boolean }) =>
-      void navigate({ to: "/admin", search: rootSearch(next), replace: opts?.replace }),
-    [navigate],
-  );
-
   useEffect(() => {
     // Old bookmarks (?tab=messages / automations / team) land on their new home.
     const legacy = urlTab ? LEGACY_TABS[urlTab] : undefined;
@@ -509,9 +538,28 @@ function Admin() {
       const next: AdminSearch = { tab: legacy.tab };
       if (legacy.section) next.section = legacy.section;
       if (legacy.filter) next.filter = legacy.filter;
+      if (legacy.vstatus) next.vstatus = legacy.vstatus;
       if (legacy.messages || search.msg) next.msg = search.msg ?? "inbox";
+      // Active Rentals → Bookings: keep the open rental and list filters, land on Past.
+      if (urlTab === "active_rentals") {
+        next.view = search.view === "board" || !search.view ? "active" : search.view === "all" ? "past" : search.view;
+        if (search.id) next.id = search.id;
+        if (search.q) next.q = search.q;
+        if (search.phase) next.phase = search.phase;
+        if (search.sort) next.sort = search.sort;
+        if (search.page) next.page = search.page;
+        if (search.vehicle) next.vehicle = search.vehicle;
+      }
       void navigate({ to: "/admin", search: next, replace: true });
       return;
+    }
+    // Old Settings section ids (Photo Enhancement, Photo Reading, eSign, Agreement Templates).
+    if (tab === "settings" && search.section) {
+      const resolved = resolveSettingsSection(search.section);
+      if (resolved && resolved !== search.section) {
+        void navigate({ to: "/admin", search: { ...search, tab: "settings", section: resolved }, replace: true });
+        return;
+      }
     }
     const owned = ownedSearch(tab, search);
     const same =
@@ -673,8 +721,13 @@ function Admin() {
   const switcher = experience && experience !== "driver"
     ? <ExperienceSwitcher value={experience} options={expOptions} onChange={chooseExperience} />
     : null;
-  const workspace = TABS.find((t) => t.id === ownerTab) ?? current;
-  const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, navTier) : [];
+  // Settings is off the rail, so it is not in TABS. Without a dedicated
+  // workspace the fallback is Overview, which left every Settings page
+  // showing that stale header.
+  const workspace = tab === "settings"
+    ? { id: "settings", label: "Settings", description: "" }
+    : (TABS.find((t) => t.id === ownerTab) ?? current);
+  const workspaceTabs = ownerTab in WORKSPACE_TABS ? visibleWorkspaceTabs(ownerTab, navTier, { reservationDepositEnabled }) : [];
   const recordParent = urlRecordId && (tab === "drivers" || tab === "vehicles") ? current : null;
 
   const navLink = (t: TabDef & { href?: string }, onClick?: () => void) => {
@@ -763,22 +816,9 @@ function Admin() {
               >
                 <Menu className="w-5 h-5" strokeWidth={1.75} />
               </button>
-              <div className="relative hidden sm:block w-[340px] max-w-full">
-                <Search className="w-[17px] h-[17px] text-[#9A9AA3] absolute left-3 top-1/2 -translate-y-1/2" strokeWidth={1.75} />
-                <input
-                  type="search"
-                  aria-label="Search drivers, vehicles and partners"
-                  placeholder="Search Drivers, Vehicles, Partners…"
-                  value={globalSearch}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setGlobalSearch(v);
-                    if (v && !["drivers", "vehicles", "partners"].includes(tab)) goRoot("drivers", { replace: true });
-                  }}
-                  className="w-full pl-10 pr-3 py-2 rounded-full bg-white border border-[#EDEDF0] focus:border-[#D03020]/40 focus:outline-none focus:ring-2 focus:ring-[#D03020]/20 text-[13px] text-[#111114] placeholder:text-[#9A9AA3]"
-                />
-              </div>
-              <div className="md:hidden text-[15px] font-semibold truncate">{current.label}</div>
+              <AdminGlobalSearch key={`${session.user.id}:${tier}`} userId={session.user.id}
+                allowed={(["drivers", "vehicles", "partners"] as SearchKind[]).filter((kind) => navTabs.some((item) => item.id === kind))}
+                onSelect={(result) => setPartnerSearch(result.kind === "partners" ? result.label : "")} />
             </div>
             <div className="flex items-center gap-1.5 md:gap-2">
               {createActions.length > 0 && (
@@ -928,10 +968,12 @@ function Admin() {
 
           <div className="px-4 md:px-8 pt-3 md:pt-4">
             {/* Driver and vehicle records carry their own "Drivers ←" / "Vehicles /" breadcrumb. */}
-            {tab !== "overview" && !recordParent && (
+            {tab !== "overview" && tab !== "issues" && !recordParent && (
               <div className="mb-3">
                 <h1 className="text-[22px] font-semibold tracking-tight text-[#111114]">{workspace.label}</h1>
-                <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
+                {workspace.description ? (
+                  <p className="text-[13px] text-[#55555E] mt-1">{workspace.description}</p>
+                ) : null}
               </div>
             )}
             {workspaceTabs.length > 1 && !recordParent && (
@@ -965,15 +1007,16 @@ function Admin() {
             {RENEWALS_DUE_ENABLED && tab === "renewals_due" && <RenewalsDue />}
             {REVENUE_FORECAST_ENABLED && tab === "revenue_forecast" && <RevenueForecastPanel />}
             {tab === "drivers" && (
-              <DriversPanel externalSearch={globalSearch} initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} canViewOnboarding={tierAllows(tier, "manager")} canIssueCardLink={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
+              <DriversPanel initialOpenId={urlRecordId ?? undefined} isOwner={tier === "owner"} isManager={tierAllows(tier, "manager")} canManageWaitlist={tierAllows(tier, "manager")} canViewOnboarding={tierAllows(tier, "manager")} canIssueCardLink={tierAllows(tier, "manager")} urlFilter={urlFilter ?? undefined} />
             )}
-            {tab === "vehicles" && <VehiclesPanel externalSearch={globalSearch} onClearExternalSearch={() => setGlobalSearch("")} autoOpenAdd={urlAdd} openId={urlRecordId} canSeeMaintenanceDue={tierAllows(tier, "manager")} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
-            {tab === "active_rentals" && <ActiveRentalsPanel />}
+            {tab === "vehicles" && <VehiclesPanel autoOpenAdd={urlAdd} openId={urlRecordId} canSeeMaintenanceDue={tierAllows(tier, "manager")} listState={{ q: search?.q, status: search?.vstatus, body: search?.body, partner: search?.partner, sort: search?.sort, page: search?.page, view: search?.view, ready: search?.ready }} />}
             {tab === "bookings" && (
-              <BookingsPanel
-                externalSearch={globalSearch}
+              <BookingsWorkspace
                 openId={urlRecordId}
+                canViewBoard={tierAllows(tier, "manager")}
                 canViewConversion={tierAllows(tier, "manager")}
+                canManageReservations={tierAllows(tier, "manager")}
+                view={search?.view}
                 listState={{
                   q: search?.q,
                   phase: search?.phase,
@@ -983,13 +1026,11 @@ function Admin() {
                 }}
               />
             )}
-            {tab === "available_cars" && <AvailableCarsBoard canAssign={tierAllows(tier, "manager")} />}
             {tab === "fleet_inbox" && <FleetInboxPanel isManager={tierAllows(tier, "manager")} />}
-            {tab === "partners" && <PartnersPanel externalSearch={globalSearch} />}
+            {tab === "partners" && <PartnersPanel externalSearch={partnerSearch} />}
             {tab === "payments" && <PaymentsPanel initialFilter={urlFilter ?? undefined} autoOpenAdd={urlAdd} tier={tier} />}
             {tab === "maintenance" && <MaintenancePanel autoOpenAdd={urlAdd} />}
-            {tab === "shops" && <ShopsPanel />}
-            {tab === "vendors" && <VendorsPanel />}
+            {tab === "vendors" && <VendorsPanel initialTypeFilter={urlFilter ?? "all"} />}
             {RENTER_PORTAL_ENABLED && tab === "vendors" && <RenterVendorsPanel />}
             {tab === "inspections" && <InspectionsPanel />}
             {tab === "charges" && <ChargesPanel />}
@@ -997,9 +1038,13 @@ function Admin() {
             {tab === "collections_watch" && <CollectionsWatchPanel />}
             {tab === "deposits_ledger" && <DepositsLedgerPanel />}
             {tab === "weekly_cash_flow" && <WeeklyCashFlowPanel />}
-            {tab === "incidents" && <IncidentsPanel seedIssueId={search.issue ?? null} />}
+            {tab === "issues" && (
+              <IssuesPanel
+                seedIssueId={search.issue ?? null}
+                initialSource={urlFilter === "driver" ? "driver" : urlFilter === "incident" ? "incident" : "all"}
+              />
+            )}
             {INCIDENT_BOARD_ENABLED && tab === "incident_board" && <IncidentBoard />}
-            {tab === "driver_issues" && <DriverIssuesPanel />}
             {tab === "expenses" && <ExpensesPanel autoOpenAdd={urlAdd} />}
             {UNIFIED_FINANCE_ENDPOINT_ENABLED && tab === "finance" && <UnifiedFinancePanel />}
             {TOLLS_TICKETS_LEDGER_ENABLED && tab === "tolls_tickets" && <TollsTickets />}
@@ -1055,15 +1100,16 @@ function AdminShell({ children }: { children: React.ReactNode }) {
  * grants a role, and NoAccess below is what an unroled account sees — but it
  * was still an uncontrolled way to occupy an email address, and it fed the
  * squat against driver provisioning: register with a pending applicant's
- * address, and approval would resolve their identity to your account.
+ * address, and Reserved would resolve their identity to your account.
  * provisionDriverAccount refuses that now; this removes the surface as well.
  *
  * Nothing legitimate depended on it. A new teammate gets an invitation and
  * creates their account at /invite, which is bound to the invited address.
  * A partner signs up at /partner, which is a deliberate step of that
- * onboarding handshake. A driver's account is made for them at approval.
+ * onboarding handshake. A driver's account is made for them at Reserved.
  */
 function SignIn() {
+  const requestReset = useServerFn(requestPasswordReset);
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -1087,9 +1133,7 @@ function SignIn() {
     if (!email.trim()) return setErr("Enter your email first.");
     setErr(null);
     setLoading(true);
-    await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/set-password`,
-    });
+    await requestReset({ data: { email: email.trim() } });
     setLoading(false);
     // Same answer whether or not the address exists — this box must not
     // confirm who has a back-office account.

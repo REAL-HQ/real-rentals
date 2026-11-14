@@ -120,7 +120,7 @@ export const openMyApplication = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: linked } = await supabaseAdmin
       .from("applications")
-      .select("id,status")
+      .select("id,status,email,user_id")
       .eq("user_id", context.userId)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
@@ -140,7 +140,7 @@ export const openMyApplication = createServerFn({ method: "POST" })
         if (decision === "linked" || decision === "already") {
           const { data: again } = await supabaseAdmin
             .from("applications")
-            .select("id,status")
+            .select("id,status,email,user_id")
             .eq("user_id", context.userId)
             .is("deleted_at", null)
             .order("created_at", { ascending: false })
@@ -151,9 +151,23 @@ export const openMyApplication = createServerFn({ method: "POST" })
       }
     }
     if (!app) throw new Error("No application is linked to this account.");
+    const { isPortalHandoffStatus } = await import("@/lib/application-resume-flag");
+    const { portalLoginUrl, shouldHandoffToPortal } = await import("@/lib/portal-handoff");
+    // Approved/active (or a linked driver) use the Documents vault in /portal,
+    // never a resume wizard token.
+    if (
+      isPortalHandoffStatus(app.status) ||
+      (await shouldHandoffToPortal(supabaseAdmin, app as any))
+    ) {
+      const { data: me } = await supabaseAdmin.auth.admin.getUserById(context.userId);
+      return {
+        path: "/portal",
+        documents: true as const,
+        loginPath: portalLoginUrl((me as any)?.user?.email ?? (app as any).email),
+      };
+    }
     // Flag off, this is exactly declined and closed. Flag on, the full
-    // resume-closed list blocks minting a token, and approved and complete
-    // stay open so Review My Application still works.
+    // resume-closed list blocks minting a token. Complete still opens for review.
     if (portalOpenRefused(app.status, APPLICATION_RESUME_ENABLED === true)) {
       throw new Error("This application is closed. Contact us to reopen it.");
     }

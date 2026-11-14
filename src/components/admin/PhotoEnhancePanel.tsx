@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { getPhotoEnhanceStatus, savePhotoEnhanceSettings } from "@/lib/photo-enhance.functions";
+import { Switch } from "@/components/ui/switch";
 import { fmtDateTime } from "@/lib/date-format";
 
 type Status = Awaited<ReturnType<typeof getPhotoEnhanceStatus>>;
@@ -37,10 +38,29 @@ export function PhotoEnhancePanel() {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-[#EDEDF0] bg-white p-5 space-y-4">
-        <label className="flex items-center gap-2 text-[14px] font-medium cursor-pointer">
-          <input type="checkbox" checked={data.enabled} disabled={busy || !owner} onChange={(e) => update(e.target.checked)} />
-          Photo Enhancement {data.enabled ? "On" : "Off"}
-        </label>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <label className="flex items-center gap-3 text-[14px] font-medium cursor-pointer">
+            <Switch
+              aria-label="Photo Enhancement enabled"
+              checked={data.enabled}
+              disabled={busy || !owner}
+              onCheckedChange={(v) => update(v)}
+            />
+            Photo Enhancement Is {data.enabled ? "On" : "Off"}
+          </label>
+          {owner && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => update(!data.enabled)}
+              className={data.enabled
+                ? "rounded-lg border border-border bg-background px-3 py-1.5 text-[13px] font-medium disabled:opacity-50"
+                : "rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-[13px] font-medium disabled:opacity-50"}
+            >
+              {data.enabled ? "Turn Off" : "Turn On"}
+            </button>
+          )}
+        </div>
         <p className="text-[12px] text-[#55555E] leading-relaxed">
           Photos are processed free on the device of the person who clicks Enhance. Enhanced corrects lighting,
           color, white balance and sharpness; the car itself is never redrawn. Results stay private until someone approves and then separately publishes them.

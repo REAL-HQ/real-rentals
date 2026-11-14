@@ -342,7 +342,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
   return (
     <div className="space-y-5 pb-24">
       <button onClick={onBack} className="inline-flex items-center gap-1 text-[13px] text-[#55555E] hover:text-[#111114] min-h-[44px]">
-        <ChevronLeft className="w-4 h-4" /> Fleet Inbox
+        <ChevronLeft className="w-4 h-4" /> Inbox
       </button>
       <div className="flex flex-wrap items-start gap-3 justify-between">
         <div>

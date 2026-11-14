@@ -97,8 +97,7 @@ export function pickupChecklist(input: PickupChecklistInput): PickupChecklist | 
   );
   const paid = depositPaid || rentPaid || input.depositHeld;
   const license = docApproved(input.documents, ["license_front", "license_back"]);
-  const insurance = docApproved(input.documents, ["insurance"]);
-  const docs = license && insurance;
+  const docs = license;
   const date = text(input.pickupDate);
   const time = text(input.pickupTime);
 
@@ -131,11 +130,9 @@ export function pickupChecklist(input: PickupChecklistInput): PickupChecklist | 
     },
     {
       id: "documents",
-      label: "License And Insurance Approved",
+      label: "License Approved",
       done: docs,
-      detail: docs
-        ? "License and insurance are approved."
-        : "License and insurance are not both approved.",
+      detail: docs ? "Your license is approved." : "Your license is not approved.",
       link: "documents",
       linkLabel: "Open Documents",
       date: null,

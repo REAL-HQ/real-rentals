@@ -217,14 +217,14 @@ try {
     install(world({ app: { status: "reviewing" }, documents: [doc("license_front")], screenings: [], agreements: [], inspections: [] }));
     const r = await readiness(MANAGER);
     const byKey = Object.fromEntries(r.requirements.map((q) => [q.key, q]));
-    assert.deepEqual(r.requirements.map((q) => q.key), ["approved", "license_documents", "signed_agreement", "insurance_verified", "interview", "inspection", "insurance_document", "gig_profile", "gig_platform"]);
+    assert.deepEqual(r.requirements.map((q) => q.key), ["interview", "license_documents", "gig_profile", "income", "insurance_verified", "insurance_quote", "screening", "approved", "signed_agreement", "inspection", "pickup", "rental_active", "insurance_document", "gig_platform"]);
     for (const k of Object.keys(byKey)) assert.equal(byKey[k].met, false, k);
     assert.deepEqual(Object.fromEntries(r.requirements.map((q) => [q.key, q.enforcement])), {
-      approved: "hard", license_documents: "hard", signed_agreement: "hard", insurance_verified: "hard",
-      interview: "soft", inspection: "soft", insurance_document: "advisory", gig_profile: "advisory", gig_platform: "advisory",
+      approved: "hard", license_documents: "hard", signed_agreement: "hard", insurance_verified: "advisory",
+      interview: "soft", inspection: "soft", pickup: "advisory", rental_active: "advisory", insurance_document: "advisory", gig_profile: "advisory", income: "advisory", insurance_quote: "advisory", screening: "advisory", gig_platform: "advisory",
     });
     assert.equal(byKey.insurance_verified.detail, "No Insurance Document");
-    assert.deepEqual(codes(r.blockers), ["insurance_not_verified", "missing_documents", "no_interview", "no_passed_inspection", "no_signed_agreement", "not_approved"]);
+    assert.deepEqual(codes(r.blockers), ["missing_documents", "no_interview", "no_passed_inspection", "no_signed_agreement", "not_approved"]);
   });
 
   await test("gig platform is shown separately and never as verified; gig profile is advisory", async () => {
@@ -232,7 +232,8 @@ try {
     const r = await readiness(MANAGER);
     const gp = r.requirements.find((q) => q.key === "gig_platform");
     assert.deepEqual([gp.label, gp.met, gp.enforcement], ["Gig Platform: Not Verified", false, "advisory"]);
-    assert.equal(r.requirements.find((q) => q.key === "gig_profile").label, "Gig Profile Screenshot On File (Not Platform-Verified)");
+    assert.equal(r.requirements.find((q) => q.key === "gig_profile").label, "Gig Profile Verified");
+    assert.equal(r.requirements.find((q) => q.key === "gig_profile").detail, "Screenshot Review Only · Platform Not Verified");
     install(world({ documents: [doc("license_front"), doc("license_back"), doc("insurance")] }));
     const r2 = await readiness(MANAGER);
     assert.deepEqual(r2.blockers, [], "no gig profile does not block");
@@ -268,10 +269,6 @@ try {
     ["signed agreement already used by an earlier rental", { agreements: [{ ...esign, rental_id: RENTAL }] }, "no_signed_agreement"],
     ["licence back missing", { documents: [doc("license_front"), doc("insurance"), doc("gig_profile")] }, "missing_documents"],
     ["licence front rejected", { documents: [doc("license_front", { review_status: "rejected" }), doc("license_back"), doc("insurance"), doc("gig_profile")] }, "missing_documents"],
-    ["insurance unverified, setting OFF", { screenings: notVerified }, "insurance_not_verified"],
-    ["insurance verified but expired, setting OFF", { app: { insurance_expires_on: "2020-01-01" } }, "insurance_not_verified"],
-    ["insurance unverified, setting row missing (reads OFF)", { settings: [], screenings: notVerified }, "insurance_not_verified"],
-    ["insurance unverified, setting value not a boolean (reads OFF)", { settings: [{ key: "rental_activation", value: { allow_activation_without_insurance_verification: "true" } }], screenings: notVerified }, "insurance_not_verified"],
   ];
   for (const [name, over, code] of HARD_CASES) {
     await test(`hard: ${name} → ${code} is refused even with an override, a reason and an insurance acknowledgement`, async () => {
@@ -299,19 +296,34 @@ try {
   const unverified = { screenings: notVerified };
   const settingOn = [{ key: "rental_activation", value: { allow_activation_without_insurance_verification: true } }];
 
-  await test("setting ON + unverified: refused without the insurance acknowledgement (a soft reason does not count)", async () => {
+  await test("setting ON + unverified: activation proceeds and the installed check is acknowledged without a checkbox", async () => {
     const db = install(world({ ...unverified, settings: settingOn }));
     const r = await readiness(MANAGER);
     assert.deepEqual(r.blockers, []);
     assert.deepEqual([r.insurance.status, r.insurance.exceptionAllowed], ["unverified", true]);
-    assert.equal(r.requirements.find((q) => q.key === "insurance_verified").enforcement, "acknowledge");
-    for (const extra of [{}, { overrideBlockers: true, overrideReason: reason }]) {
-      const res = await activate(MANAGER, extra);
-      assert.deepEqual(codes(res.blockers), ["insurance_ack_required"]);
-      assert.match(res.blockers[0].message, /does not mark insurance as verified/);
-    }
-    assert.equal(txCalls(db).length, 0);
+    assert.equal(r.requirements.find((q) => q.key === "insurance_verified").enforcement, "advisory");
+    const res = await activate(MANAGER, {});
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.equal(db.calls.rpc.find((c) => c.name === "activate_rental_checked_tx").args._insurance_exception_ack, true);
+    assert.equal(db.calls.updates.filter((u) => u.table === "driver_screenings").length, 0, "insurance never marked verified");
   });
+
+  for (const [name, over] of [
+    ["unverified, setting off", { screenings: notVerified }],
+    ["expired policy date", { app: { insurance_expires_on: "2020-01-01" } }],
+    ["setting row missing", { settings: [], screenings: notVerified }],
+    ["setting value not a boolean", { settings: [{ key: "rental_activation", value: { allow_activation_without_insurance_verification: "true" } }], screenings: notVerified }],
+  ]) {
+    await test(`insurance does not block activation: ${name}`, async () => {
+      const db = install(world(over));
+      const r = await readiness(MANAGER);
+      assert.equal(codes(r.blockers).includes("insurance_not_verified"), false);
+      assert.equal(r.requirements.find((q) => q.key === "insurance_verified").enforcement, "advisory");
+      const res = await activate(MANAGER, {});
+      assert.equal(res.ok, true, JSON.stringify(res));
+      assert.equal(db.calls.rpc.find((c) => c.name === "activate_rental_checked_tx").args._insurance_exception_ack, true);
+    });
+  }
 
   for (const [status, over] of [
     ["unverified", unverified],
@@ -360,13 +372,11 @@ try {
     assert.equal(globalThis.__audit.length, 0);
   });
 
-  await test("wrapper not installed (PGRST202): fail closed — exception unavailable, unverified refused", async () => {
+  await test("wrapper not installed (PGRST202): unverified insurance uses activate_rental_tx", async () => {
     const db = install(world({ ...unverified, settings: settingOn }), { activate_rental_checked_tx: undefined });
-    const res = await activate(MANAGER, { insuranceExceptionAck: true });
-    assert.equal(res.ok, false);
-    assert.deepEqual(codes(res.blockers), ["insurance_not_verified"]);
-    assert.match(res.blockers[0].message, /database update/);
-    assert.equal(db.calls.rpc.some((c) => c.name === "activate_rental_tx"), false, "the bare transaction is not used");
+    const res = await activate(MANAGER, {});
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.equal(db.calls.rpc.filter((c) => c.name === "activate_rental_tx").length, 1);
   });
 
   await test("wrapper not installed (PGRST202): verified insurance uses the existing activate_rental_tx", async () => {
@@ -579,7 +589,7 @@ try {
     globalThis.__fake.from = (t) => (t === "app_settings" ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: { message: "boom" } }) }) }) } : real(t));
     const r = await readiness(MANAGER);
     assert.deepEqual([r.insurance.exceptionAllowed, r.insurance.settingReadable], [false, false]);
-    assert.deepEqual(codes(r.blockers), ["insurance_not_verified"]);
+    assert.deepEqual(codes(r.blockers), []);
   });
 
   // ------------------------------------------------------ the Owner setting
@@ -683,22 +693,23 @@ try {
     install(world({ settings: settingOn, screenings: notVerified }));
     await assert.rejects(decideIns(COORD, true, async () => ({ data: { verified: true }, error: null })), /Forbidden/);
   });
-  await test("independence: verification rights do not imply exception use (setting OFF: Manager and Owner refused with unverified insurance)", async () => {
+  await test("independence: unverified insurance does not block a Manager or an Owner when the setting is off", async () => {
     for (const uid of [MANAGER, OWNER]) {
       const db = install(world({ screenings: notVerified }));
-      const res = await activate(uid, { insuranceExceptionAck: true, overrideBlockers: true, overrideReason: reason });
-      assert.deepEqual(codes(res.blockers), ["insurance_not_verified"]);
-      assert.equal(txCalls(db).length, 0);
+      const res = await activate(uid, {});
+      assert.equal(res.ok, true, JSON.stringify(res));
+      assert.equal(db.calls.rpc.find((c) => c.name === "activate_rental_checked_tx").args._insurance_exception_ack, true);
+      assert.equal(db.calls.updates.filter((u) => u.table === "driver_screenings").length, 0);
     }
   });
-  await test("independence: with the setting ON a Manager (not only the Owner) can use the exception with the acknowledgement", async () => {
+  await test("independence: with the setting ON a Manager (not only the Owner) can activate without a checkbox", async () => {
     for (const uid of [MANAGER, OWNER]) {
       const db = install(world({ settings: settingOn, screenings: notVerified }));
-      assert.deepEqual(codes((await activate(uid, {})).blockers), ["insurance_ack_required"]);
-      const res = await activate(uid, { insuranceExceptionAck: true });
-      assert.equal(res.ok, true);
+      const res = await activate(uid, {});
+      assert.equal(res.ok, true, JSON.stringify(res));
       assert.equal(db.calls.rpc.find((c) => c.name === "activate_rental_checked_tx").args._actor, uid);
-      assert.equal(db.calls.updates.filter((u) => u.table === "driver_screenings").length, 0, "the exception never marks insurance verified");
+      assert.equal(db.calls.rpc.find((c) => c.name === "activate_rental_checked_tx").args._insurance_exception_ack, true);
+      assert.equal(db.calls.updates.filter((u) => u.table === "driver_screenings").length, 0, "activation never marks insurance verified");
     }
   });
   await test("independence: a Coordinator cannot use the exception or activate even with the setting ON", async () => {
@@ -717,7 +728,7 @@ try {
     const insurance = { status: "verified", exceptionAllowed: false, settingPresent: true, settingReadable: true };
     const d = rules.decideActivation({ blockers: [{ code: "something_new", message: "x" }], insurance }, { overrideBlockers: true, overrideReason: "long enough" });
     assert.equal(d.ok, false);
-    assert.deepEqual([...rules.SOFT_ACTIVATION_BLOCKERS].sort(), ["no_interview", "no_passed_inspection"]);
+    assert.deepEqual([...rules.SOFT_ACTIVATION_BLOCKERS].sort(), ["agreement_not_collected", "license_not_collected", "no_interview", "no_passed_inspection"]);
   });
 
   await test("insuranceStatus precedence: expired > verified > missing > unverified", async () => {
@@ -731,12 +742,12 @@ try {
     assert.equal(rules.insuranceStatus({ verified: null, documents: [ins()], applicationExpiresOn: null, today: t }), "unverified");
   });
 
-  await test("missingRequiredCategories uses the shared four-category list", async () => {
+  await test("missingRequiredCategories includes income proof and does not require insurance", async () => {
     const shared = readFileSync("src/lib/required-docs.ts", "utf8");
-    assert.match(shared, /export const REQUIRED_VAULT_CATEGORIES = \["license_front", "license_back", "insurance", "gig_profile"\] as const;/);
+    assert.match(shared, /export const REQUIRED_VAULT_CATEGORIES = \["license_front", "license_back", "gig_profile", "income"\] as const;/);
     const ui = readFileSync("src/components/admin/ApplicantDocuments.tsx", "utf8");
     assert.match(ui, /export \{ REQUIRED_VAULT_CATEGORIES \} from "@\/lib\/required-docs";/);
-    assert.deepEqual(rules.missingRequiredCategories([]), ["license_front", "license_back", "insurance", "gig_profile"]);
+    assert.deepEqual(rules.missingRequiredCategories([]), ["license_front", "license_back", "gig_profile", "income"]);
   });
 
   // ------------------------------------------------------ UI visibility
@@ -753,24 +764,27 @@ try {
     assert.equal(rules.primaryStep({ ...ready, isManager: false }), "view_rental");
     assert.equal(rules.primaryStep({ ...ready, rentalActive: true, isManager: true }), "view_rental");
     assert.equal(rules.primaryStep({ ...ready, screeningDone: false, isManager: true }), "interview");
+    assert.equal(rules.primaryStep({ ...ready, insuranceOk: false, isManager: true }), "activate");
   });
 
   await test("UI wiring: one dialog; separate insurance acknowledgement; Owner-only setting in Rental Terms; Title Case", async () => {
     const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
     // Overview and Rental share one Next Step card; its Activate Rental opens this same dialog.
     assert.equal((panel.match(/<NextStepCard/g) ?? []).length, 2);
-    assert.match(panel, /else if \(t\.kind === "activate"\) \{ if \(!activateOpen\) setActivateOpen\(true\); \}/);
+    assert.match(panel, /else if \(t\.kind === "activate"\)/);
+    assert.match(panel, /if \(!activateOpen\) setActivateOpen\(true\)/);
     assert.match(readFileSync("src/lib/next-step.ts", "utf8"), /A driver becomes Active only when a rental starts/);
-    assert.equal((panel.match(/<ActivateRentalDialog/g) ?? []).length, 1, "one dialog, not a second activation path");
+    assert.equal((panel.match(/<ActivateRentalDialog/g) ?? []).length, 2, "list dialog and driver-profile dialog");
     const dialog = readFileSync("src/components/admin/ActivateRentalDialog.tsx", "utf8");
     assert.match(dialog, /isHardBlocker\(b\.code\)/);
     assert.match(dialog, /insuranceExceptionAck: insuranceNeedsAck && insuranceAck/);
-    assert.match(dialog, /\(!insuranceNeedsAck \|\| insuranceAck\)/);
+    assert.match(dialog, /insuranceAcknowledged: insuranceAck/);
+    assert.match(dialog, /!busy && submitIssues.length === 0/);
     assert.doesNotMatch(dialog, /\buppercase\b/);
     const ws = readFileSync("src/components/admin/SettingsWorkspace.tsx", "utf8");
     assert.match(ws, /current\.id === "rental_terms" \? <RentalActivationSettingsPanel \/>/);
     const nav = readFileSync("src/components/admin/nav-config.ts", "utf8");
-    assert.match(nav, /\{ id: "rental_terms", label: "Rental Terms", group: "RENTALS", minTier: "owner" \}/);
+    assert.match(nav, /\{ id: "rental_terms", label: "Terms", group: "RENTALS", minTier: "owner" \}/);
     for (const f of ["src/components/admin/ActivationRequirementList.tsx", "src/components/admin/RentalActivationSettingsPanel.tsx"])
       assert.doesNotMatch(readFileSync(f, "utf8"), /\buppercase\b|text-transform/);
     const docs = readFileSync("src/components/admin/ApplicantDocuments.tsx", "utf8");
@@ -786,7 +800,7 @@ try {
     assert.match(scr, /Request Verification/);
     const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
     assert.match(panel, /canDecide=\{isManager\}/);
-    assert.match(panel, /withoutInsuranceDecision\(base as Record<string, unknown>\)/);
+    assert.doesNotMatch(panel, /from\("driver_screenings"\)\s*\.upsert/);
   });
 
   await test("the rental transaction stays the only start path", async () => {

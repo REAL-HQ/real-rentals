@@ -133,7 +133,7 @@ const seed = (pay: Row[], settings: Row[] = [{ key: "automation_controls", value
 const paidEvent = (ids = P1) => ({ type: "payment_intent.succeeded", data: { object: { id: "pi_1", amount: 35000, metadata: { rentalId: RENTAL, reason: "rent", paymentIds: ids } } } });
 const failEvent = () => ({ type: "payment_intent.payment_failed", data: { object: { id: "pi_1", amount: 35000, metadata: { rentalId: RENTAL, reason: "rent", paymentIds: P1 }, last_payment_error: { message: "declined" } } } });
 const receipts = () => sent.filter((s) => s.startsWith("Payment Received")).length;
-const failures = () => sent.filter((s) => s.includes("Did Not Go Through")).length;
+const failures = () => sent.filter((s) => s.includes("Could Not Be Processed")).length;
 
 const teamAlerts = () => sentTo.filter((t) => !t.includes("r@example.com")).length;
 const bells = () => (db._state.notifications ?? []).length;

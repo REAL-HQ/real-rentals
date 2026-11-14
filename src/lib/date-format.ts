@@ -42,6 +42,14 @@ export function fmtDateTime(v: DateInput, ..._ignored: unknown[]): string {
   return `${fmtDate(d)}, ${t}`;
 }
 
+/** 09:05 → 9:05 AM; invalid or missing values remain Not Set. */
+export function formatReservationTime(raw: string | null | undefined): string {
+  const value = String(raw ?? "").trim();
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return "Not Set";
+  const hour = Number(value.slice(0, 2));
+  return `${hour % 12 || 12}:${value.slice(3)} ${hour >= 12 ? "PM" : "AM"}`;
+}
+
 /** 10/11/2026 */
 export function fmtDateNumeric(v: DateInput): string {
   if (typeof v === "string") {

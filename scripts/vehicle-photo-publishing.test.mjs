@@ -75,7 +75,7 @@ export const ownerView = (a) => (a?.tier ?? S.tier) === "owner";
 // bug is invisible, which is precisely how it shipped.
 writeFileSync(`${OUT}/stub/client.server.js`, `
 const S = (globalThis.__vphoto ??= {});
-S.rows ??= []; S.vehicles ??= []; S.removed ??= []; S.next ??= 1;
+S.rows ??= []; S.vehicles ??= []; S.settings ??= []; S.removed ??= []; S.next ??= 1;
 
 /** UNIQUE (vehicle_id) WHERE (is_primary AND published) */
 function violatesOnePrimary(rows) {
@@ -107,7 +107,7 @@ const matches = (q, r) =>
 
 function from(table) {
   const q = { eq: [], neq: [], isNull: [], order: null, desc: false };
-  const bag = () => (table === "vehicles" ? S.vehicles : S.rows);
+  const bag = () => (table === "vehicles" ? S.vehicles : table === "app_settings" ? S.settings : S.rows);
   const filters = (self) => ({
     eq: (c, v) => (q.eq.push([c, v]), self),
     neq: (c, v) => (q.neq.push([c, v]), self),
@@ -135,6 +135,15 @@ function from(table) {
       S.rows.push(row);
       return Promise.resolve({ data: row, error: null });
     } }) }),
+    upsert: (value) => {
+      const rows = Array.isArray(value) ? value : [value];
+      for (const row of rows) {
+        const existing = bag().find((r) => r.key === row.key);
+        if (existing) Object.assign(existing, row);
+        else bag().push({ ...row });
+      }
+      return Promise.resolve({ data: null, error: null });
+    },
     update: (patch) => {
       const w = { then: (res, rej) => {
         const hit = bag().filter((r) => matches(q, r));
@@ -190,10 +199,10 @@ execFileSync("npx", ["esbuild", "src/lib/vehicle-media.functions.ts",
 
 const mod = await import(`../${OUT}/media.mjs`);
 const S = (globalThis.__vphoto ??= {});
-S.tier ??= "owner"; S.rows ??= []; S.vehicles ??= []; S.removed ??= []; S.entries ??= []; S.next ??= 1;
+S.tier ??= "owner"; S.rows ??= []; S.vehicles ??= []; S.settings ??= []; S.removed ??= []; S.entries ??= []; S.next ??= 1;
 
 const reset = () => {
-  S.rows.length = 0; S.vehicles.length = 0; S.removed.length = 0; S.entries.length = 0; S.next = 1;
+  S.rows.length = 0; S.vehicles.length = 0; S.settings.length = 0; S.removed.length = 0; S.entries.length = 0; S.next = 1;
   S.vehicles.push({ id: VEHICLE, unit_number: "RR-SYN", year: 2013, make: "Ford", model: "Fusion", photos: [] });
   S.vehicles.push({ id: OTHER, unit_number: "RR-SYN2", year: 2015, make: "Toyota", model: "Camry", photos: [] });
 };
@@ -294,6 +303,48 @@ console.log("\nA SECOND VEHICLE IS UNAFFECTED");
   await patch(byPath(1).id, { published: true });
   const r = await patch(byPath(1, OTHER).id, { published: true });
   ok(r.ok, "each vehicle has its own lead image");
+}
+
+console.log("\nTHE STAFF LIST THUMBNAIL NEVER PUBLISHES OR REORDERS A PHOTO");
+{
+  reset();
+  S.tier = "owner";
+  await add(1); await add(2);
+  const before = S.rows.map((r) => ({ id: r.id, is_primary: r.is_primary, published: r.published, sort_order: r.sort_order }));
+  const result = await mod.setVehicleListThumbnail({
+    data: { vehicleId: VEHICLE, mediaId: byPath(2).id }, context: { userId: "staff-1" },
+  });
+  const after = S.rows.map((r) => ({ id: r.id, is_primary: r.is_primary, published: r.published, sort_order: r.sort_order }));
+  ok(result.ok, "an Owner can choose an original list thumbnail");
+  ok(JSON.stringify(after) === JSON.stringify(before), "public lead, publication and gallery order are byte-for-byte unchanged");
+  ok(S.settings.length === 1 && S.settings[0].value.mediaId === byPath(2).id, "the choice is stored independently for this vehicle");
+  ok(S.settings[0].value.carMediaIds.includes(byPath(2).id), "selection explicitly confirms the original shows the car");
+  ok(S.entries.some((e) => e.action === "vehicle.photo.list_thumbnail_selected"), "the staff choice is audited");
+}
+
+console.log("\nTHUMBNAIL SELECTION VALIDATES ROLE, VEHICLE AND ORIGINAL");
+{
+  reset();
+  S.tier = "manager";
+  await add(1); await add(1, OTHER);
+  const crossVehicle = await mod.setVehicleListThumbnail({
+    data: { vehicleId: VEHICLE, mediaId: byPath(1, OTHER).id }, context: { userId: "staff-2" },
+  });
+  ok(!crossVehicle.ok && S.settings.length === 0, "a photo from another vehicle is refused without a write");
+  S.rows.push({ id: "enhanced-1", vehicle_id: VEHICLE, kind: "ai_enhanced", storage_path: `${VEHICLE}/enhanced.jpg` });
+  const enhanced = await mod.setVehicleListThumbnail({
+    data: { vehicleId: VEHICLE, mediaId: "enhanced-1" }, context: { userId: "staff-2" },
+  });
+  ok(!enhanced.ok && S.settings.length === 0, "a retouched derivative cannot replace original evidence as the list thumbnail");
+  S.tier = "coordinator";
+  let refused = false;
+  try {
+    await mod.setVehicleListThumbnail({
+      data: { vehicleId: VEHICLE, mediaId: byPath(1).id }, context: { userId: "staff-3" },
+    });
+  } catch (e) { refused = e.message === "Forbidden"; }
+  ok(refused && S.settings.length === 0, "a Coordinator is refused server-side without a write");
+  S.tier = "owner";
 }
 
 rmSync(OUT, { recursive: true, force: true });

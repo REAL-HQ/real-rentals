@@ -1,3 +1,5 @@
+import { publicAppUrl } from "@/lib/public-app-url";
+
 /**
  * Renter notices for the end of a rental, an incident opened on that rental,
  * and a driver-issue status change.
@@ -81,8 +83,7 @@ function firstName(value: string): string {
 }
 
 function portalUrl(): string {
-  const origin = process.env.PUBLIC_SITE_URL || "https://drivereal.com";
-  return `${origin.replace(/\/$/, "")}/portal`;
+  return publicAppUrl("/portal");
 }
 
 function letter(heading: string, paragraphs: string): string {

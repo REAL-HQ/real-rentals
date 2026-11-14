@@ -31,14 +31,14 @@ export function DepositsLedgerPanel() {
       if (result.status === "disabled") setLoad({ kind: "disabled" });
       else if (result.status === "unavailable") setLoad({ kind: "unavailable", reason: result.reason });
       else setLoad({ kind: "ready", report: result.report });
-    }).catch(() => { if (!cancelled) setLoad({ kind: "unavailable", reason: "Deposits & Refunds Ledger could not be loaded" }); });
+    }).catch(() => { if (!cancelled) setLoad({ kind: "unavailable", reason: "Deposits could not be loaded" }); });
     return () => { cancelled = true; };
   }, [read, period]);
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Deposits & Refunds Ledger</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Deposits</h1>
         <p className="mt-1 text-sm text-muted-foreground">Stripe refunds for the selected Eastern Time period, deposits currently held in the app, and the period net. This screen does not settle a deposit or issue a refund.</p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -48,8 +48,8 @@ export function DepositsLedgerPanel() {
           </button>
         ))}
       </div>
-      {load.kind === "loading" && <p className="text-sm text-muted-foreground">Loading Deposits & Refunds Ledger…</p>}
-      {load.kind === "disabled" && <p className="text-sm text-muted-foreground">Deposits & Refunds Ledger Is Off.</p>}
+      {load.kind === "loading" && <p className="text-sm text-muted-foreground">Loading Deposits…</p>}
+      {load.kind === "disabled" && <p className="text-sm text-muted-foreground">Deposits Are Off.</p>}
       {load.kind === "unavailable" && <p className="text-sm text-muted-foreground">{load.reason}</p>}
       {load.kind === "ready" && (
         <div className="space-y-8">

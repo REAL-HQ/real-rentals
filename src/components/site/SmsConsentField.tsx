@@ -34,9 +34,9 @@ export function SmsConsentField({
         By checking this box, you agree to receive recurring transactional SMS messages from REAL RENTALS
         at the mobile number provided. Message frequency varies. Message and data rates may apply. Reply
         STOP to opt out or HELP for help. Consent is not a condition of renting a vehicle. View our{" "}
-        <Link to="/terms" hash="sms" className="inline-flex min-h-11 items-center underline hover:text-foreground">Terms</Link>{" "}
+        <Link to="/terms" hash="sms" className="whitespace-nowrap underline hover:text-foreground">Terms</Link>{" "}
         and{" "}
-        <Link to="/privacy" hash="sms" className="inline-flex min-h-11 items-center underline hover:text-foreground">Privacy Policy</Link>.
+        <Link to="/privacy" hash="sms" className="whitespace-nowrap underline hover:text-foreground">Privacy Policy</Link>.
       </p>
     </div>
   );

@@ -102,6 +102,8 @@ for (const [p, w] of [["day", "day"], ["week", "week"], ["month", "month"], ["re
 ok(parseMileage("1,500 miles per week").mode === "limited" && parseMileage("Unlimited miles").mode === "unlimited", "mileage read back");
 ok(excessFeeFor("Unlimited miles", "$0.25/mile") === "" && excessFeeFor("1,500 miles per week", "$0.25/mile") === "$0.25/mile", "unlimited never carries an excess fee");
 for (const t of LIBRARY) {
+  // v1.14 states unlimited miles in its wording and has no mileage-limit row.
+  if (t.insuranceIncluded) continue;
   ok(t.source.includes("| Service Area / Mileage Limit | [[service_area]]; [[mileage_allowance]]") && readTerms(t.body)!.mileage_allowance === "", `${t.key}: service area and mileage are separate values, both blank`);
   ok(!t.source.includes("excess_mileage_fee"), `${t.key}: excess-mileage fee not printed (no approved clause)`);
   const out = renderTemplate(writeTerms(t.source, { ...t.terms, service_area: "Florida only", mileage_allowance: "1,500 miles per week" }), {} as any);

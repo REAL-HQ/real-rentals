@@ -73,7 +73,11 @@ export function overdueAge(due: string, today: string): string | null {
     : null;
 }
 export function leadBucket(row: LeadRow, today: string): LeadBucket | null {
-  if (!ACTIVE_LEAD_STATUSES.includes(row.status) || row.contact_status === "unqualified")
+  if (
+    !ACTIVE_LEAD_STATUSES.includes(row.status) ||
+    row.contact_status === "unqualified" ||
+    row.contact_status === "declined"
+  )
     return null;
   const due = row.contact_follow_up_on;
   if (due && due < today) return "overdue";

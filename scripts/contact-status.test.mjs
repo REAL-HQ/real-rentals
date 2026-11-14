@@ -32,6 +32,7 @@ mkdirSync(OUT, { recursive: true });
 // is part of what is under test: a forged status or a malformed date must be
 // refused before the handler sees it.
 writeFileSync(`${OUT}/stub-start.js`, `
+export const createServerOnlyFn = (fn) => fn;
 export const createServerFn = () => {
   const api = {
     middleware: () => api,
@@ -171,8 +172,8 @@ async function refused(run) {
 }
 
 // =============================================== the vocabulary
-console.log("\nthe nine statuses, as the owner asked for them");
-const WANT = ["New", "Attempted", "Voicemail", "Contacted", "Interested", "Follow-Up", "Documents", "Unqualified", "Unresponsive"];
+console.log("\nthe ten statuses, including the requested Declined outcome");
+const WANT = ["New", "Attempted", "Voicemail", "Contacted", "Interested", "Follow-Up", "Documents", "Unqualified", "Declined", "Unresponsive"];
 ok(JSON.stringify(D.CONTACT_STATUSES.map((s) => s.label)) === JSON.stringify(WANT),
   `exactly these, in order: ${D.CONTACT_STATUSES.map((s) => s.label).join(", ")}`);
 ok(D.CONTACT_STATUSES.every((s) => s.label.split(/[\s]+/).length <= 2),
@@ -182,8 +183,8 @@ ok(D.CONTACT_STATUSES.every((s) => /^[A-Z]/.test(s.label) && s.label === s.label
 ok(D.DEFAULT_CONTACT_STATUS === "new", "a new applicant is New");
 ok(D.normalizeContactStatus("Follow-Up") === null && D.normalizeContactStatus("follow_up") === "follow_up",
   "the stored value is the key, and a label is not a key");
-ok(D.normalizeContactStatus("approved") === null && D.normalizeContactStatus("declined") === null,
-  "an APPLICATION status is not a contact status");
+ok(D.normalizeContactStatus("approved") === null && D.normalizeContactStatus("declined") === "declined",
+  "Declined is a contact outcome, while Approved remains only an application status");
 
 // =============================================== fields per status
 console.log("\na status asks only for what it uses");
@@ -191,6 +192,8 @@ ok(D.contactStatusForm("new").followUp === "off", "New asks for no follow-up dat
 ok(D.contactStatusForm("unqualified").followUp === "off", "nor does Unqualified");
 ok(D.contactStatusForm("follow_up").followUp === "required", "Follow-Up requires the date — that is the whole status");
 ok(D.contactStatusForm("unqualified").note === "required", "Unqualified requires the reason");
+ok(D.contactStatusForm("declined").note === "optional" && D.contactStatusForm("declined").followUp === "off",
+  "Declined takes an optional note and clears any follow-up");
 ok(["attempted", "voicemail", "contacted", "interested", "documents", "unresponsive"]
   .every((k) => D.contactStatusForm(k).note === "optional" && D.contactStatusForm(k).followUp === "optional"),
   "and the rest take an optional note and an optional date");
@@ -208,6 +211,8 @@ ok(D.contactStatusBlockers({ status: "nonsense" }).some((b) => b.field === "stat
   "a status nobody defined is blocked");
 ok(D.contactStatusBlockers({ status: "contacted", note: "x".repeat(1001) }).some((b) => b.field === "note"),
   "and a note longer than the column allows");
+ok(D.contactStatusBlockers({ status: "declined", note: "", followUpOn: "" }).length === 0,
+  "Declined can be saved without inventing a note or follow-up");
 
 console.log("\nvalues a status has no use for are cleared, not carried");
 const cleared = D.contactStatusPatch({ status: "unqualified", note: "No commercial insurance", followUpOn: "2026-10-14" });
@@ -215,6 +220,8 @@ ok(cleared.contact_follow_up_on === null,
   "moving to Unqualified drops the old follow-up date rather than leaving a call nobody will make");
 ok(D.contactStatusPatch({ status: "contacted", note: "   ", followUpOn: "" }).contact_status_note === null,
   "and a note of spaces is no note");
+ok(D.contactStatusPatch({ status: "declined", note: "", followUpOn: "2026-10-14" }).contact_follow_up_on === null,
+  "Declined does not leave a follow-up scheduled");
 
 console.log("\nreading the fields off a row");
 ok(D.readContactStatus({ contact_status: "interested" }).supported === true, "a row with the column is supported");
@@ -231,6 +238,13 @@ for (const [who, id] of [["an Owner", OWNER], ["a Manager", MANAGER], ["a Coordi
   ok(res?.state?.status === "contacted", `${who} can set it (${res?.state?.status})`);
   ok(app().contact_status === "contacted", `  and the row is saved`);
 }
+
+reset();
+const declined = await set(COORD, { applicationId: APP, status: "declined" });
+ok(declined.state.status === "declined" && app().contact_status === "declined",
+  "Declined saves through the existing audited staff action");
+ok(app().status === "reviewing" && declined.state.followUpOn === null,
+  "without changing the application lifecycle or adding a follow-up");
 
 console.log("\nnobody else can, and the check is on the server");
 reset();
@@ -339,9 +353,15 @@ ok(!/CREATE POLICY|DROP POLICY/i.test(sql),
   "no policy is created or dropped — applications already gates staff read/update, and a driver has SELECT only");
 ok(!/CREATE TRIGGER|DROP TRIGGER/i.test(sql), "and no trigger is added to the lifecycle");
 const checked = (sql.match(/applications_contact_status_check[\s\S]*?\)\s*\)/) ?? [""])[0];
-ok(D.CONTACT_STATUSES.every((s) => checked.includes(`'${s.key}'`)),
-  "the CHECK constraint lists all nine statuses");
+ok(D.CONTACT_STATUSES.filter((s) => s.key !== "declined").every((s) => checked.includes(`'${s.key}'`)),
+  "the historical CHECK constraint retains its original nine statuses");
 ok(/CREATE INDEX IF NOT EXISTS applications_contact_status_idx/.test(sql), "the filter has an index");
+const DECLINED_SQL = readFileSync("drizzle/migrations/0028_contact_status_declined.sql", "utf8");
+const declinedCheck = (DECLINED_SQL.match(/applications_contact_status_check[\s\S]*?\)\s*\)/) ?? [""])[0];
+ok(D.CONTACT_STATUSES.every((s) => declinedCheck.includes(`'${s.key}'`)),
+  "the additive migration CHECK lists all ten current statuses");
+ok(!/\bUPDATE\s+public\.applications\b/i.test(DECLINED_SQL) && !/\bstatus\s*=/i.test(DECLINED_SQL),
+  "adding Declined changes no existing application or Contact Status row");
 
 // =============================================== the UI keeps them apart
 console.log("\nthe Drivers list keeps the two columns separate");
