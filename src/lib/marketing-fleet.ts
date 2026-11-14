@@ -48,6 +48,19 @@ import sedanImage from "@/assets/cars/sedan.jpg";
 import suvImage from "@/assets/cars/suv.jpg";
 import minivanImage from "@/assets/cars/minivan.jpg";
 
+/**
+ * The same bundled photo the homepage uses for that vehicle type. A live unit
+ * with no published listing photo uses this instead of an empty tile. Sedan
+ * is the default because that is the type the public fleet is merchandising
+ * when the body type is missing or unfamiliar.
+ */
+export function representativePhoto(bodyType: string | null | undefined): string {
+  const key = (bodyType ?? "").trim().toLowerCase();
+  if (key.startsWith("suv")) return suvImage;
+  if (key === "xl" || key.includes("van")) return minivanImage;
+  return sedanImage;
+}
+
 /** The three vehicle types the public site merchandises. */
 export type MarketingCategory = "sedan" | "suv" | "xl";
 

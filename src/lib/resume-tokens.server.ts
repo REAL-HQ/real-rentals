@@ -1,4 +1,5 @@
 import { cardLinkFresh } from "@/lib/card-link-cache";
+import { isPortalHandoffStatus } from "@/lib/application-resume-flag";
 
 // Applicant resume credentials.
 //
@@ -305,6 +306,21 @@ export async function issueResumeToken(
     throw new Error("A resume link cannot last 72 hours.");
   }
   if (opts.ttlMs != null) assertAboveRecoveryWindow(opts.ttlMs);
+  // Approved/active applicants use /login → portal. Card links stay allowed.
+  // Soft on missing status column / test harnesses that only mock token rows —
+  // call sites (openResumeLink, requestApplicationLink) still divert those apps.
+  try {
+    const { data: appRow, error } = await admin
+      .from("applications")
+      .select("status")
+      .eq("id", applicationId)
+      .maybeSingle();
+    if (!error && isPortalHandoffStatus((appRow as { status?: string } | null)?.status)) {
+      throw new Error("This application is approved. Sign in to the driver portal instead.");
+    }
+  } catch (e) {
+    if (e instanceof Error && /Sign in to the driver portal/.test(e.message)) throw e;
+  }
   const ttl = opts.recovery
     ? RECOVERY_TOKEN_MINUTES * 60_000
     : opts.ttlMs ?? RESUME_TOKEN_DAYS * 86400_000;
@@ -397,6 +413,25 @@ async function acceptResumeRow(admin: AdminClient, row: TokenRow, generic: strin
   return row.application_id as string;
 }
 
+
+
+/**
+ * Read which application a live resume/recovery token unlocks, without
+ * exchanging or consuming it. Used to divert approved/active applicants to
+ * /login before minting a wizard session.
+ */
+export async function inspectResumeToken(
+  admin: AdminClient,
+  raw: string,
+): Promise<{ applicationId: string } | null> {
+  if (!raw || raw.length < 20 || raw.length > 200) return null;
+  if (raw.startsWith(CARD_TOKEN_PREFIX)) return null;
+  const row = await loadToken(admin, raw);
+  if (!row || row.revoked_at || isCardRow(row)) return null;
+  const expires = new Date(row.expires_at).getTime();
+  if (!Number.isFinite(expires) || expires <= Date.now()) return null;
+  return { applicationId: row.application_id as string };
+}
 
 /**
  * Open a link. A recovery link is consumed atomically (only the first open

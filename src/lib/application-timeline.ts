@@ -52,11 +52,10 @@ export function buildApplicationTimeline(input: {
 
   const missing: MissingItem[] = [];
   if (!input.licenseOnFile) missing.push({ key: "license", label: "Driver License" });
-  if (!input.insuranceOnFile) missing.push({ key: "insurance", label: "Insurance" });
   if (!input.identityClear) missing.push({ key: "identity", label: "Identity Review" });
 
   const submitted = status !== "partial";
-  const docsDone = input.licenseOnFile && input.insuranceOnFile;
+  const docsDone = input.licenseOnFile;
   const terminal = TERMINAL.has(status);
   const needsInfo = missing.length > 0 || terminal;
 

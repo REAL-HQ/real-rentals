@@ -581,6 +581,46 @@ const before = JSON.stringify(S.tables.vehicles[0]);
 await call(getVehicleSuggestions, { vehicleId: V1 });
 ok(JSON.stringify(S.tables.vehicles[0]) === before, "reviewing changes nothing");
 
+// Regression: full-record drafts used to retrigger status/rate guards and
+// silently hide the resulting status-field error in Edit Details.
+console.log("\nEdit Details persists only edited fields and confirms the result");
+seedOne();
+Object.assign(S.tables.vehicles[0], { status: "onboarding", weekly_rate: null, color: null, body_type: null, license_plate: null, plate_state: null });
+const fullDraft = { ...S.tables.vehicles[0], color: "Silver", body_type: "sedan", license_plate: "syn789", plate_state: "fl", status: "available" };
+const guard = ({ table, patch, rows }) => {
+  if (table === "vehicles" && ("status" in patch || "weekly_rate" in patch)) {
+    const candidate = { ...rows[0], ...patch };
+    if (["available", "reserved"].includes(candidate.status) && !(Number(candidate.weekly_rate) > 0)) return { data: null, error: { message: "vehicle_not_rental_ready:weekly_rate" } };
+  }
+};
+S.interceptUpdate = guard;
+const blockedBefore = JSON.stringify(S.tables.vehicles[0]);
+let savedDetails = await call(updateVehicleSection, { id: V1, section: "identity", values: fullDraft, intended: ["color", "body_type", "license_plate", "plate_state", "status"] });
+ok(savedDetails.ok === false && savedDetails.field === "status" && savedDetails.error.includes("weekly rate"), `Available with no rate returns an actionable status error: ${JSON.stringify(savedDetails)}`);
+ok(JSON.stringify(S.tables.vehicles[0]) === blockedBefore, "a blocked update leaves all details unchanged, not partly saved");
+savedDetails = await call(updateVehicleSection, { id: V1, section: "identity", values: fullDraft, intended: ["color", "body_type", "license_plate", "plate_state"] });
+ok(savedDetails.ok && savedDetails.saved.length === 4, "the same valid identity edits save without an unrequested status change");
+const reread = await (await import(`../${OUT}/stub/supabase.js`)).supabaseAdmin.from("vehicles").select("*").eq("id", V1).maybeSingle();
+ok(reread.data.color === "Silver" && reread.data.body_type === "sedan" && reread.data.license_plate === "SYN789" && reread.data.plate_state === "FL", "a fresh read contains the normalized saved details");
+ok(reread.data.status === "onboarding" && reread.data.weekly_rate === null, "unrequested status and rate stay untouched");
+ok(!("status" in S.log.filter(x => x.op === "update" && x.table === "vehicles").at(-1).patch), "the update payload excludes unedited status");
+const unchangedLog = S.log.length;
+savedDetails = await call(updateVehicleSection, { id: V1, section: "identity", values: fullDraft, intended: [] });
+ok(savedDetails.ok && savedDetails.saved.length === 0 && S.log.length === unchangedLog, "an explicitly empty edit list is a no-op, not every field");
+Object.assign(S.tables.vehicles[0], { status: "available", weekly_rate: null });
+savedDetails = await call(updateVehicleSection, { id: V1, section: "identity", values: { ...S.tables.vehicles[0], color: "Blue" }, intended: ["color"] });
+ok(savedDetails.ok && S.tables.vehicles[0].color === "Blue", "unrelated details can save on a legacy Available record with no rate");
+S.interceptUpdate = () => ({ data: [], error: null });
+savedDetails = await call(updateVehicleSection, { id: V1, section: "identity", values: { color: "Red" }, intended: ["color"] });
+ok(!savedDetails.ok && savedDetails.error.includes("No vehicle changes"), "zero-row writes cannot report Saved");
+S.interceptUpdate = ({ rows }) => ({ data: rows, error: null });
+savedDetails = await call(updateVehicleSection, { id: V1, section: "identity", values: { color: "Red" }, intended: ["color"] });
+ok(!savedDetails.ok && savedDetails.error.includes("could not be confirmed"), "a mismatched readback cannot report Saved");
+S.interceptUpdate = undefined;
+const drawerSource = readFileSync("src/components/admin/VehicleProfile.tsx", "utf8");
+ok(drawerSource.includes('{fieldError && (') && drawerSource.includes('role="alert"'), "every save failure is visible in the drawer summary, including field-specific failures");
+ok(/label="Status"[\s\S]{0,280}error=\{err\("status"\)\}/.test(drawerSource), "the identity Status control shows its own error too");
+
 // =========================================================================
 // 3. FLEET-WIDE READINESS
 // =========================================================================
@@ -632,6 +672,7 @@ ok(res3.readinessCounts.listing_ready === 1, `1 Listing Ready (got ${res3.readin
 ok(res3.readinessCounts.rental_ready === 1, `1 Rental Ready (got ${res3.readinessCounts.rental_ready})`);
 ok(res3.readinessCounts.not_ready === 1, `1 Needs Setup (got ${res3.readinessCounts.not_ready})`);
 ok(res3.rows.length === 3, "the archived car is out of the normal view");
+ok(res3.fleetTotal === 4, "the explicit whole-fleet total includes the archived car");
 ok(!Object.values(res3.readinessCounts).some((n) => n > 3), "  and out of the counts");
 
 console.log("\nan unapproved photo does not make a car listing ready");
@@ -646,6 +687,9 @@ seedFleet();
 const p1 = await listing({ pageSize: 1, page: 1 });
 const p2 = await listing({ pageSize: 1, page: 2 });
 ok(p1.rows.length === 1 && p2.rows.length === 1, "one row per page");
+ok(p1.fleetTotal === 4 && p2.fleetTotal === 4, "fleet total is independent of pagination");
+ok(L.vehicleRowNumber(p1.page, p1.pageSize, 0) === 1 && L.vehicleRowNumber(p2.page, p2.pageSize, 0) === 2, "row numbers continue across returned pages");
+ok(L.vehicleRowNumber(2, 50, 0) === 51 && L.vehicleRowNumber(2, 50, 49) === 100, "standard page offsets are 51–100, not unit identifiers");
 ok(p1.total === 3 && p2.total === 3, `the total is the fleet, not the page (${p1.total})`);
 ok(JSON.stringify(p1.readinessCounts) === JSON.stringify(res3.readinessCounts),
   "page 1 reports the same fleet-wide counts");
@@ -658,6 +702,7 @@ seedFleet();
 for (const band of ["listing_ready", "rental_ready", "not_ready"]) {
   const f = await listing({ ready: band });
   ok(f.rows.length === 1 && f.rows[0].readiness === band, `${band}: one matching car`);
+  ok(f.fleetTotal === 4, "  readiness filters do not hide the fleet total");
   ok(f.total === 1, `  and a total of 1, so the pager agrees (${f.total})`);
   ok(JSON.stringify(f.readinessCounts) === JSON.stringify(res3.readinessCounts),
     `  while the chips still count the whole fleet`);
@@ -668,6 +713,7 @@ seedFleet();
 S.tables.vehicles = S.tables.vehicles.filter((v) => v.id !== V1);
 let empty = await listing({ ready: "listing_ready" });
 ok(empty.rows.length === 0 && empty.total === 0, "no rows, and no claim of any");
+ok(empty.fleetTotal === 3, "empty readiness results still return the full fleet total");
 ok(empty.readinessCounts.listing_ready === 0, "  the count agrees");
 ok(Array.isArray(empty.statuses) && empty.statuses.length > 0, "  and the other filters still work");
 
@@ -677,6 +723,22 @@ const composed = await listing({ ready: "not_ready", status: "available" });
 ok(composed.rows.length === 0, "SYN-3 is Needs Setup but not Available, so nothing matches");
 ok(composed.readinessCounts.not_ready === 0,
   "and the chips count the filtered scope, not the whole table");
+
+console.log("\nfleet totals and ordinals survive search, archive and sort");
+seedFleet();
+for (const over of [{ q: "Toyota" }, { status: "archived" }, { body: "truck" }, { partner: V1 }, { sort: "newest", pageSize: 1, page: 2 }]) {
+  const f = await listing(over);
+  ok(f.fleetTotal === 4, `whole-table total is unchanged for ${JSON.stringify(over)}`);
+  if (f.rows.length) ok(L.vehicleRowNumber(f.page, f.pageSize, 0) === (f.page - 1) * f.pageSize + 1, "ordinal follows returned sort/filter position");
+}
+seedFleet();
+S.tables.vehicles = [];
+const noFleet = await listing();
+ok(noFleet.fleetTotal === 0 && noFleet.total === 0, "empty fleet reports a real zero");
+seedFleet();
+S.tables.vehicles = Array.from({ length: 10001 }, (_, i) => ({ ...S.tables.vehicles[0], id: `synthetic-${i}` }));
+const capped = await listing({ pageSize: 1 });
+ok(capped.fleetTotal === 10001, "exact fleet total exceeds both the 10,000 facet limit and 2,000 readiness cap");
 
 console.log("\nnonsense in the URL is not a filter");
 seedFleet();

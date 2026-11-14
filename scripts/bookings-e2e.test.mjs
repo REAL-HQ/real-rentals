@@ -214,7 +214,7 @@ function serverFn(name, input, canSeeMoney) {
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
 
-async function open(viewport, role, url = `${BASE}/admin?tab=bookings`, noTemplates = false) {
+async function open(viewport, role, url = `${BASE}/admin?tab=bookings&view=past`, noTemplates = false) {
   calls = [];
   inputs = [];
   const canSeeMoney = role === "team" || role === "admin";
@@ -339,7 +339,7 @@ async function run(label, viewport) {
   // ------------------------------- the filter survives the router's normalisation
   await clickPhase(page, "cancelled");
   let url = new URL(page.url());
-  ok(url.searchParams.get("tab") === "bookings", "the tab is still bookings after the chip click");
+  ok(url.searchParams.get("tab") === "bookings", "the tab is still Bookings after the chip click");
   ok(url.searchParams.get("phase") === "cancelled",
     `the phase survives in the URL (phase=${url.searchParams.get("phase")})`);
   // The strip happens a tick AFTER the navigation. Wait, then read again.
@@ -362,15 +362,15 @@ async function run(label, viewport) {
   ok(!new URL(page.url()).searchParams.get("phase"), "clicking the pressed chip clears the filter from the URL");
 
   // ---------------------------------------------- search
-  await page.getByLabel("Search bookings").fill("RR-002");
+  await page.getByLabel("Search rentals").fill("RR-002");
   await page.waitForTimeout(1600);
   ok(new URL(page.url()).searchParams.get("q") === "RR-002", "the search lands in the URL after the pause");
   ok(await shown(page) === 2, "  and narrows the list to that unit's two rentals");
-  await page.getByLabel("Search bookings").fill("nobody-by-this-name");
+  await page.getByLabel("Search rentals").fill("nobody-by-this-name");
   await page.waitForTimeout(1600);
   ok(await page.getByText("No Matching Bookings").count() === 1,
     "a search with no match says so, and does not show the empty-fleet message");
-  await page.getByLabel("Search bookings").fill("");
+  await page.getByLabel("Search rentals").fill("");
   await page.waitForTimeout(1600);
 
   // ---------------------------------------------- the drawer
@@ -444,7 +444,7 @@ async function run(label, viewport) {
 
   // Check-In: launched with the rental AND the vehicle, which is what keeps
   // the photos findable from the booking afterwards.
-  await page.goto(`${BASE}/admin?tab=bookings&id=${R1}`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/admin?tab=bookings&view=past&id=${R1}`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2200);
   inputs.length = 0;
   await page.locator('[data-testid="action-checkin"]').click();
@@ -466,7 +466,7 @@ async function run(label, viewport) {
   await page.waitForTimeout(800);
 
   // Message Driver reuses the existing overlay, on this applicant's thread.
-  await page.goto(`${BASE}/admin?tab=bookings&id=${R1}`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/admin?tab=bookings&view=past&id=${R1}`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2200);
   await page.locator('[data-testid="action-message"]').click();
   await page.waitForTimeout(1600);
@@ -475,7 +475,7 @@ async function run(label, viewport) {
   ok(new URL(page.url()).searchParams.get("id") === R1, "  without losing the booking underneath");
 
   // What is already on the rental, before you navigate anywhere.
-  await page.goto(`${BASE}/admin?tab=bookings&id=${R1}`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/admin?tab=bookings&view=past&id=${R1}`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2200);
   const ov = await page.locator("body").innerText();
   ok(await page.locator('[data-testid="booking-incidents"]').count() === 1, "the rental's incidents are listed");
@@ -488,7 +488,7 @@ async function run(label, viewport) {
     "Open Maintenance hands off to the existing panel rather than duplicating it");
 
   // ---------------------------------------------- the two links
-  await page.goto(`${BASE}/admin?tab=bookings&id=${R1}`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/admin?tab=bookings&view=past&id=${R1}`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2200);
   await page.locator('[data-booking-tab="overview"]').click();
   await page.waitForTimeout(900);
@@ -497,7 +497,7 @@ async function run(label, viewport) {
   let q = new URL(page.url()).searchParams;
   ok(q.get("tab") === "vehicles" && q.get("id") === V1, `the vehicle link opens that vehicle (id=${q.get("id")?.slice(0, 8)})`);
 
-  await page.goto(`${BASE}/admin?tab=bookings&id=${R1}`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/admin?tab=bookings&view=past&id=${R1}`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2200);
   await page.locator('[data-testid="open-driver"]').click();
   await page.waitForTimeout(1800);
@@ -595,7 +595,7 @@ async function runCoordinator(label, viewport) {
     "and nothing on their path reaches the delete");
   await page.keyboard.press("Escape");
   await page.waitForTimeout(800);
-  await page.goto(`${BASE}/admin?tab=bookings&id=${R1}`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/admin?tab=bookings&view=past&id=${R1}`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2200);
   ok(await page.locator('[data-testid="booking-incidents"]').count() === 1,
     "they can see the car was in an accident — they may be arranging the tow");

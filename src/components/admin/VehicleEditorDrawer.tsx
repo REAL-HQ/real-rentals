@@ -26,6 +26,7 @@ import {
   OWNERSHIP_TYPES,
   type VehicleProfile as Profile,
 } from "@/lib/vehicles.functions";
+import { bodyTypeLabel } from "@/lib/vehicle-defaults";
 import { getVehicleFinance, saveVehicleFinance } from "@/lib/vehicle-finance.functions";
 import { readStoredExperience } from "@/lib/experience";
 import { checkVin, normalizeVin } from "@/lib/vin";
@@ -442,7 +443,7 @@ export function VehicleEditorDrawer({
                 onChange={(x) => set("identity", "body_type", x)}
                 options={[
                   { value: "", label: "—" },
-                  ...BODY_TYPES.map((b) => ({ value: b, label: b })),
+                  ...BODY_TYPES.map((b) => ({ value: b, label: bodyTypeLabel(b) })),
                 ]}
               />
               <NumberField
@@ -479,6 +480,7 @@ export function VehicleEditorDrawer({
                 label="Status"
                 value={str("status")}
                 onChange={(x) => set("identity", "status", x)}
+                vehicleStatus
                 options={VEHICLE_STATUSES.map((s) => ({ value: s.value, label: s.label }))}
                 hint="Taking a car out of the fleet is refused while a rental is active."
               />

@@ -79,7 +79,7 @@ describe("application status tracker", () => {
     assert.equal(view.applyHref, "/apply");
     assert.equal(view.documentsHref, null);
     assert.ok(view.missing.includes("Submitted Date"));
-    assert.ok(view.missing.includes("Insurance Card Date"));
+    assert.equal(view.missing.includes("Insurance Card Date"), false);
     assert.ok(view.missing.includes("Documents Link"));
     assert.ok(view.missing.includes("Resume Link"));
     assert.deepEqual(view.omitted, [...TRACKER_OMITTED]);

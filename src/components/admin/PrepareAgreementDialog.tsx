@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { ArrowLeft, ChevronDown, Plus, Send, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Loader2, Plus, ScanText, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { previewAgreement, sendAgreement } from "@/lib/agreements.functions";
-import { EMPTY_PREP, type AgreementPrep, type AdditionalDriver } from "@/lib/agreement-prep";
+import { EMPTY_PREP, PAYMENT_METHODS, PAYMENT_SCHEDULES, fillBlankAgreementDetails, type AgreementDetails, type AgreementPrep, type AdditionalDriver } from "@/lib/agreement-prep";
+import { defaultRentalEndIso } from "@/lib/agreement-dates";
+import { layoutToText } from "@/lib/agreement-layout";
+import { readAgreementLicense, readWrittenAgreement } from "@/lib/agreement-license.functions";
 import { LIBRARY, DRAFT_STATUS_LABEL, acknowledgmentsOf } from "@/lib/agreement-library";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
 type Res = {
+  body: string | null;
   pdfBase64: string | null;
   fingerprint: string | null;
   canSend: boolean;
@@ -17,7 +21,10 @@ type Res = {
   blockers: Blocker[];
   companyMissing?: string[];
   merge: Record<string, string>;
+  values: AgreementDetails;
   terms: Record<string, string> | null;
+  /** Merge fields the chosen template prints. */
+  templateFields?: string[];
   template: { label: string };
 };
 
@@ -46,14 +53,19 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
 }) {
   const doPreview = useServerFn(previewAgreement);
   const doSend = useServerFn(sendAgreement);
+  const doReadLicense = useServerFn(readAgreementLicense);
+  const doReadAgreement = useServerFn(readWrittenAgreement);
   const [prep, setPrep] = useState<AgreementPrep>(EMPTY_PREP);
   const [res, setRes] = useState<Res | null>(null);
   const [reviewedKey, setReviewedKey] = useState<string>("");
   const [rendering, setRendering] = useState(false);
-  const [tab, setTab] = useState<"details" | "preview">("details");
   const [companyAck, setCompanyAck] = useState(false);
   const [busy, setBusy] = useState(false);
   const [templateKey, setTemplateKey] = useState<string>("");
+  const [licenseReading, setLicenseReading] = useState(false);
+  const [licenseReadAttempted, setLicenseReadAttempted] = useState(false);
+  const [agreementReading, setAgreementReading] = useState(false);
+  const [agreementReadAttempted, setAgreementReadAttempted] = useState(false);
   // Send refused because the preview went stale: kept on screen (a toast can
   // be missed) until staff regenerate the preview and review it again.
   const [staleRefusal, setStaleRefusal] = useState<string | null>(null);
@@ -70,7 +82,14 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
       setRendering(true);
       try {
         const r = (await doPreview({ data: { applicationId, prep, templateKey: (templateKey || undefined) as any } })) as Res;
-        if (!stale) { setRes(r); setReviewedKey(key); setStaleRefusal(null); }
+        if (!stale) {
+          setRes(r);
+          setReviewedKey(key);
+          setStaleRefusal(null);
+          if (!prep.details && r.values) {
+            setPrep((current) => current.details ? current : { ...current, details: r.values });
+          }
+        }
       } catch (e: any) {
         if (!stale) toast.error(e?.message ?? "Could not build the agreement");
       } finally { if (!stale) setRendering(false); }
@@ -85,9 +104,81 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const needsAck = (res?.companyMissing?.length ?? 0) > 0 && !companyAck;
   const canSend = !!res?.fingerprint && res.canSend && upToDate && !needsAck && !busy;
   const byField = (f: string) => (res?.blockers ?? []).filter((b) => b.field === f).length;
+  // v1.14 (Insurance Included) prints these; earlier templates never show the section.
+  const usesV114 = (res?.templateFields ?? []).some((f) => ["damage_waiver", "payment_amount", "payment_method", "balance_due", "vehicle_owner"].includes(f));
 
   const setDriver = (i: number, patch: Partial<AdditionalDriver>) =>
     setPrep((p) => ({ ...p, drivers: { ...p.drivers, list: p.drivers.list.map((d, j) => (j === i ? { ...d, ...patch } : d)) } }));
+
+  const values = prep.details ?? res?.values ?? null;
+  const updateDetails = (patch: Partial<AgreementDetails>) => {
+    if (!values) return;
+    setPrep((current) => ({ ...current, details: { ...(current.details ?? values), ...patch } }));
+  };
+
+  async function readAgreement() {
+    if (agreementReading || !values) return;
+    setAgreementReadAttempted(true);
+    setAgreementReading(true);
+    try {
+      const result = await doReadAgreement({ data: { applicationId } });
+      let added = 0;
+      setPrep((current) => {
+        const base = current.details ?? values;
+        const next = fillBlankAgreementDetails(base, result.details);
+        added = Object.keys(next).filter((key) => next[key as keyof AgreementDetails] !== base[key as keyof AgreementDetails]).length;
+        return { ...current, details: next };
+      });
+      if (added > 0) toast.success(`${added} Written Agreement ${added === 1 ? "Detail" : "Details"} Added — Review Before Saving`);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Could not read the written agreement. Enter the details manually.");
+    } finally {
+      setAgreementReading(false);
+    }
+  }
+
+  async function readLicense(manual: boolean) {
+    if (licenseReading || !values) return;
+    setLicenseReadAttempted(true);
+    setLicenseReading(true);
+    try {
+      const result = await doReadLicense({ data: { applicationId } });
+      let added = 0;
+      setPrep((current) => {
+        const base = current.details ?? values;
+        const next = fillBlankAgreementDetails(base, result.details);
+        added = Object.keys(next).filter((key) => next[key as keyof AgreementDetails] !== base[key as keyof AgreementDetails]).length;
+        return { ...current, details: next };
+      });
+      if (manual || added > 0) {
+        toast.success(added ? `${added} License ${added === 1 ? "Detail" : "Details"} Added — Review Before Sending` : "No New License Details Found");
+      }
+    } catch (error: any) {
+      if (manual) toast.error(error?.message ?? "Could not read the driver's license");
+    } finally {
+      setLicenseReading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!res?.values || agreementReadAttempted || agreementReading) return;
+    const current = prep.details ?? res.values;
+    if (Object.values(current).some((value) => !value.trim())) void readAgreement();
+    else setAgreementReadAttempted(true);
+    // One blank-only read per dialog opening; staff corrections always win.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res?.values, agreementReadAttempted]);
+
+  useEffect(() => {
+    if (!res?.values || licenseReadAttempted || licenseReading) return;
+    const current = prep.details ?? res.values;
+    const needsLicenseRead = [current.address, current.city, current.state, current.zip, current.dob, current.licenseNumber, current.licenseState, current.licenseExpiration]
+      .some((value) => !value.trim());
+    if (needsLicenseRead) void readLicense(false);
+    else setLicenseReadAttempted(true);
+    // One blank-only read per dialog opening; later edits are never overwritten.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res?.values, licenseReadAttempted]);
 
   async function send() {
     if (!canSend || !res?.fingerprint) return;
@@ -107,6 +198,13 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   }
 
   function fix(b: Blocker) {
+    const editableHere = new Set([
+      "driver_name", "driver_email", "driver_phone", "driver_address", "driver_dob",
+      "license_number", "license_state", "license_expiration", "license_plate",
+      "vehicle_vin", "vehicle_color", "weekly_rate", "card_on_file",
+      "insurance_carrier", "insurance_policy", "contract_start_date", "contract_end_date",
+    ]);
+    if (editableHere.has(b.field)) return null;
     if (!b.fix) return null;
     if ("vehicleId" in b.fix) return <a className="ml-1 font-semibold underline" href={`/admin?tab=vehicles&id=${b.fix.vehicleId}`} target="_blank" rel="noreferrer">Open Vehicle</a>;
     const t = b.fix.tab;
@@ -137,7 +235,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
             <input type="radio" className="mt-0.5" checked={templateKey === t.key} onChange={() => chooseTemplate(t.key)} />
             <span className="min-w-0">
               <span className="font-medium">{t.name}</span> <span className="text-muted-foreground">v{t.displayVersion}</span><br />
-              <span className="text-muted-foreground">{t.insuranceRequired ? "Insurance Required" : "No Insurance Required"} · {acknowledgmentsOf(t.body).length} Initials</span><br />
+              <span className="text-muted-foreground">{t.insuranceIncluded ? "Insurance Included" : t.insuranceRequired ? "Insurance Required" : "No Insurance Required"} · {acknowledgmentsOf(t.body).length} Initials</span><br />
               <span className="text-warning-foreground rounded bg-warning/15 px-1.5 py-0.5 text-[10.5px]">{DRAFT_STATUS_LABEL} — Preview Only</span>
             </span>
           </label>
@@ -146,15 +244,68 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
       </Section>
 
       <Section title="Rental Details">
-        <dl className="grid grid-cols-[minmax(0,40%)_minmax(0,1fr)] gap-x-3 gap-y-1">
-          {row("Driver", m.driver_name)}{row("Phone / Email", [m.driver_phone, m.driver_email].filter(Boolean).join(" / "))}
-          {row("License", m.license_number ? `${m.license_number} / ${m.license_state}` : "")}{row("Date of Birth", m.driver_dob)}
-          {row("Vehicle", m.vehicle)}{row("Color / VIN", m.vehicle_vin ? `${m.vehicle_color} / ${m.vehicle_vin}` : "")}{row("Plate", m.license_plate)}
-          {row("Start Date", m.start_date)}{row("Minimum Term", terms.min_term_weeks ? `${terms.min_term_weeks} weeks — ends ${m.min_term_end || "Not Set"}` : "")}
-          {row("Weekly Rate", m.weekly_rate)}{row("Payment Method", m.card_on_file)}
-          {row("Agreement Number", m.agreement_number)}{row("Template", res?.template.label)}
-        </dl>
-        <p className="text-[11px] text-muted-foreground">Corrections are made in the driver's and vehicle's own records; this screen never invents values. Preparing an agreement never charges the card.</p>
+        <div data-testid="agreement-missing-fields">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] text-muted-foreground">License autofill fills blanks only. Review every value against the original document.</p>
+          <Button type="button" size="sm" variant="outline" className="h-7 shrink-0 px-2 text-[11px]" disabled={licenseReading || !values} onClick={() => void readLicense(true)}>
+            {licenseReading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScanText className="h-3.5 w-3.5" />}
+            {licenseReading ? "Reading…" : "Read License"}
+          </Button>
+        </div>
+        {values ? (
+          <div className="space-y-4">
+            <div>
+              <p className="mb-2 font-medium">Driver</p>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="col-span-2">Full Name<input className={input} value={values.driverName} onChange={(e) => updateDetails({ driverName: e.target.value })} /></label>
+                <label>Email<input type="email" className={input} value={values.driverEmail} onChange={(e) => updateDetails({ driverEmail: e.target.value })} /></label>
+                <label>Phone<input className={input} value={values.driverPhone} onChange={(e) => updateDetails({ driverPhone: e.target.value })} /></label>
+                <label className="col-span-2">Street Address<input className={input} value={values.address} onChange={(e) => updateDetails({ address: e.target.value })} /></label>
+                <label>City<input className={input} value={values.city} onChange={(e) => updateDetails({ city: e.target.value })} /></label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label>State<input className={input} value={values.state} onChange={(e) => updateDetails({ state: e.target.value.toUpperCase() })} /></label>
+                  <label>ZIP<input className={input} value={values.zip} onChange={(e) => updateDetails({ zip: e.target.value })} /></label>
+                </div>
+                <label>Date Of Birth<input type="date" className={input} value={values.dob} onChange={(e) => updateDetails({ dob: e.target.value })} /></label>
+                <label>License Number<input className={input} value={values.licenseNumber} onChange={(e) => updateDetails({ licenseNumber: e.target.value })} /></label>
+                <label>Issuing State<input maxLength={2} className={input} value={values.licenseState} onChange={(e) => updateDetails({ licenseState: e.target.value.toUpperCase() })} /></label>
+                <label>License Expiration<input type="date" className={input} value={values.licenseExpiration} onChange={(e) => updateDetails({ licenseExpiration: e.target.value })} /></label>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 font-medium">Vehicle</p>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="col-span-2">Description<input className={input} value={values.vehicleDescription} onChange={(e) => updateDetails({ vehicleDescription: e.target.value })} /></label>
+                <label>Color<input className={input} value={values.vehicleColor} onChange={(e) => updateDetails({ vehicleColor: e.target.value })} /></label>
+                <label>Plate<input className={input} value={values.licensePlate} onChange={(e) => updateDetails({ licensePlate: e.target.value.toUpperCase() })} /></label>
+                <label className="col-span-2">VIN<input maxLength={17} className={`${input} font-mono`} value={values.vehicleVin} onChange={(e) => updateDetails({ vehicleVin: e.target.value.toUpperCase() })} /></label>
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="font-medium">Rental</p>
+                <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-[11px]" disabled={!values.startDate} onClick={() => updateDetails({ endDate: defaultRentalEndIso(values.startDate) ?? "" })}>Reset 4 Weeks</Button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label>Start Date<input type="date" className={input} value={values.startDate} onChange={(e) => updateDetails({ startDate: e.target.value, endDate: defaultRentalEndIso(e.target.value) ?? "" })} /></label>
+                <label>End Date<input type="date" min={defaultRentalEndIso(values.startDate) ?? undefined} className={input} value={values.endDate} onChange={(e) => updateDetails({ endDate: e.target.value })} /></label>
+                <label>Weekly Rate ($)<input type="number" min={0} step="0.01" className={input} value={values.weeklyRate} onChange={(e) => updateDetails({ weeklyRate: e.target.value })} /></label>
+                <label>Payment Method<input className={input} value={values.cardOnFile} onChange={(e) => updateDetails({ cardOnFile: e.target.value })} /></label>
+                <label>Insurance Carrier<input className={input} value={values.insuranceCarrier} onChange={(e) => updateDetails({ insuranceCarrier: e.target.value })} /></label>
+                <label>Policy Number<input className={input} value={values.insurancePolicy} onChange={(e) => updateDetails({ insurancePolicy: e.target.value })} /></label>
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">Four-week minimum. Changing Start presets End to four weeks later; staff can choose a later date. Minimum Term: {terms.min_term_weeks ? `${terms.min_term_weeks} weeks — ends ${m.min_term_end || "Not Set"}` : "Not Set"}.</p>
+            </div>
+
+            <dl className="grid grid-cols-[minmax(0,40%)_minmax(0,1fr)] gap-x-3 gap-y-1 border-t pt-3">
+              {row("Agreement Number", m.agreement_number)}{row("Template", res?.template.label)}
+            </dl>
+          </div>
+        ) : <p className="text-muted-foreground">Loading Details…</p>}
+        <p className="text-[11px] text-muted-foreground">Blank or invalid driver and vehicle fields are saved to the records when you send. A correction of a value already on file stays on this agreement only. The vehicle description, payment method and fleet rate are not written back. Preparing an agreement never charges the card.</p>
+        </div>
       </Section>
 
       <Section title="Authorized Drivers" badge={byField("additional_drivers")}>
@@ -185,10 +336,45 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
         {prep.reservation.mode === "required" && (
           <>
             <label className="block">Amount ($)<input type="number" min={0} step="0.01" className={input} value={prep.reservation.amount ?? ""} onChange={(e) => setPrep((p) => ({ ...p, reservation: { mode: "required", amount: e.target.value === "" ? null : Number(e.target.value) } }))} /></label>
-            <p className="text-[11px] text-muted-foreground">Terms (Section 2): due when pickup or delivery is scheduled and applied in full to the first week; non-refundable on no-show or cancellation less than {terms.reservation_cancel_hours ?? "—"} hours before; fully refunded otherwise. It is not a security deposit.</p>
+            {usesV114
+              ? <p className="text-[11px] text-muted-foreground">Terms (Section 4): due when the renter signs and applied in full to the first payment; non-refundable once the Renter Policy is set up or on a no-show; refunded in full if we cannot provide a vehicle. It is not a security deposit.</p>
+              : <p className="text-[11px] text-muted-foreground">Terms (Section 2): due when pickup or delivery is scheduled and applied in full to the first week; non-refundable on no-show or cancellation less than {terms.reservation_cancel_hours ?? "—"} hours before; fully refunded otherwise. It is not a security deposit.</p>}
           </>
         )}
       </Section>
+
+      {usesV114 && (
+        <Section title="Payment & Damage Waiver" badge={byField("damage_waiver") + byField("payment_method") + byField("payment_amount") + byField("vehicle_owner")}>
+          <p className="font-medium">Optional Damage Waiver{terms.damage_waiver_fee ? ` (${terms.damage_waiver_fee} Per Week)` : ""}</p>
+          <Radio checked={prep.damageWaiver === "accepted"} onChange={() => setPrep((p) => ({ ...p, damageWaiver: "accepted" }))} label="Accepted By Renter" />
+          <Radio checked={prep.damageWaiver === "declined"} onChange={() => setPrep((p) => ({ ...p, damageWaiver: "declined" }))} label="Declined By Renter" />
+          <p className="text-[11px] text-muted-foreground">Ask the renter before sending. The agreement prints the choice and the renter initials it when signing.</p>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <label>Payment Schedule
+              <select className={input} value={prep.payment?.schedule ?? ""} onChange={(e) => setPrep((p) => ({ ...p, payment: { schedule: (e.target.value || null) as any, method: p.payment?.method ?? null } }))}>
+                <option value="">Choose…</option>
+                {PAYMENT_SCHEDULES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+            <label>Payment Method
+              <select className={input} value={prep.payment?.method ?? ""} onChange={(e) => setPrep((p) => ({ ...p, payment: { schedule: p.payment?.schedule ?? null, method: (e.target.value || null) as any } }))}>
+                <option value="">Choose…</option>
+                {PAYMENT_METHODS.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </label>
+            <label className="col-span-2">Vehicle Owner (As Shown On The Registration)
+              <input className={input} value={prep.vehicleOwner ?? ""} onChange={(e) => setPrep((p) => ({ ...p, vehicleOwner: e.target.value }))} />
+            </label>
+          </div>
+          <dl className="grid grid-cols-[minmax(0,50%)_minmax(0,1fr)] gap-x-3 gap-y-1 border-t pt-2">
+            {row("Weekly Rate (Insurance Included)", m.weekly_rate)}
+            {row("Reservation Fee", prep.reservation.mode === "required" && prep.reservation.amount ? `$${prep.reservation.amount.toFixed(2)}` : "None")}
+            {row("Amount Due Each Payment", m.payment_amount)}
+            {row("Balance Due At Pickup", m.balance_due)}
+          </dl>
+          <p className="text-[11px] text-muted-foreground">Balance Due is the first payment less the Reservation Fee. Change the Reservation Fee above and the weekly rate under Rental Details.</p>
+        </Section>
+      )}
 
       <Section title="Security Deposit" badge={byField("deposit_amount")}>
         <Radio checked={prep.deposit.mode === "none"} onChange={() => setPrep((p) => ({ ...p, deposit: { mode: "none", amount: null, reason: "" } }))} label="No Deposit" />
@@ -229,25 +415,21 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
       {staleRefusal && (
         <div className="flex shrink-0 flex-col gap-2 border-b border-warning/40 bg-warning/10 px-3 py-2 text-[12px] sm:flex-row sm:items-center" role="alert" data-testid="stale-preview-refusal">
           <p className="min-w-0 flex-1">{staleRefusal}</p>
-          <Button size="sm" variant="outline" disabled={rendering} onClick={() => { setTab("preview"); setRegen((n) => n + 1); }}>
+          <Button size="sm" variant="outline" disabled={rendering} onClick={() => setRegen((n) => n + 1)}>
             {rendering ? "Regenerating…" : "Regenerate Preview"}
           </Button>
         </div>
       )}
-      <div className="flex shrink-0 border-b md:hidden" role="tablist">
-        {(["details", "preview"] as const).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`flex-1 py-2 text-[13px] ${tab === t ? "border-b-2 border-primary font-medium" : "text-muted-foreground"}`}>{t === "details" ? "Details" : "Preview"}</button>
-        ))}
-      </div>
-      <div className="flex min-h-0 flex-1">
-        <aside className={`${tab === "details" ? "block" : "hidden"} w-full overflow-y-auto bg-muted/20 md:block md:w-[35%] md:border-r`}>{details}</aside>
-        <section className={`${tab === "preview" ? "flex" : "hidden"} min-w-0 flex-1 flex-col md:flex`}>
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row" data-testid="prepare-layout">
+        <aside className="w-full overflow-y-auto bg-muted/20 md:w-[35%] md:border-r">{details}</aside>
+        <section className="flex min-w-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center gap-2 border-b bg-card px-3 py-2 text-[12px]">
             <span className="rounded bg-destructive/10 px-2 py-0.5 font-semibold text-destructive">PREVIEW — NOT SENT</span>
             {rendering && <span className="text-muted-foreground">Updating…</span>}
           </div>
           <div className="min-h-0 flex-1 overflow-auto bg-muted/40" data-testid="prep-preview">
             {res?.pdfBase64 ? <AgreementPdfViewer key={res.fingerprint ?? ""} base64={res.pdfBase64} /> :
+              res?.body ? <pre className="whitespace-pre-wrap p-6 font-serif text-[13px] leading-relaxed text-foreground">{layoutToText(res.body)}</pre> :
               <p className="p-6 text-[12px] text-muted-foreground">{res ? "The document appears once every item on the left is resolved — blanks never reach a signature." : "Building the agreement…"}</p>}
           </div>
         </section>

@@ -3,11 +3,16 @@
  *
  * No token is not a failed token. A bare /thank-you asks for an email.
  * A token we were given and could not open keeps the expired wording.
+ * An approved/active application sends people to /login instead of the wizard.
  */
 
-export type ThankYouView = "wait" | "missing" | "expired" | "wizard";
+export type ThankYouView = "wait" | "missing" | "expired" | "wizard" | "approved";
 
-export function thankYouView(token: string | null | undefined): ThankYouView {
+export function thankYouView(
+  token: string | null | undefined,
+  portal?: { email: string } | null,
+): ThankYouView {
+  if (portal) return "approved";
   if (token === undefined) return "wait";
   if (token === null) return "missing";
   if (token === "") return "expired";

@@ -218,14 +218,12 @@ export function insuranceOnFile(
   return categories.some((category) => /insurance/i.test(String(category ?? "")));
 }
 
-/** Documents are on file when both the license and the insurance file are present. */
+/** Documents are on file when the license is present. Insurance is not required. */
 export function documentsOnFile(input: {
   licensePhotoUrl?: string | null;
   insuranceDocUrl?: string | null;
   categories: Array<string | null | undefined>;
 }): boolean {
-  return (
-    licenseOnFile(input.licensePhotoUrl, input.categories) &&
-    insuranceOnFile(input.insuranceDocUrl, input.categories)
-  );
+  void input.insuranceDocUrl;
+  return licenseOnFile(input.licensePhotoUrl, input.categories);
 }

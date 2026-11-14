@@ -66,13 +66,6 @@ export function ActivityPanel() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Activity</h2>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Every action taken in the back office, and anything about to expire.
-        </p>
-      </div>
-
       {expiring.length > 0 && (
         <section className="rounded-xl border border-[#F59E0B] overflow-hidden">
           <div className="bg-[rgba(245,158,11,0.08)] px-4 py-2.5 flex items-center gap-2">

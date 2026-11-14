@@ -169,6 +169,41 @@
       "when": 1792545492197,
       "tag": "0023_application_resume_atomic_security",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794199725200,
+      "tag": "0024_checklist_evidence_checkoffs",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794201540896,
+      "tag": "0025_checklist_inspection_checkoffs",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794202859114,
+      "tag": "0026_checklist_pickup_checkoffs",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1794540183818,
+      "tag": "0027_driver_income_quote_screening_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1794545386349,
+      "tag": "0028_contact_status_declined",
+      "breakpoints": true
     }
   ]
 }

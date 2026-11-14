@@ -22,7 +22,7 @@ function PrivacyPage() {
       <section className="container-real py-14 md:py-20 max-w-3xl">
         <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-real-red">Legal</div>
         <h1 className="mt-3 text-4xl md:text-5xl font-semibold">Privacy Policy</h1>
-        <p className="mt-3 text-sm text-muted-foreground">Last updated: October 2026</p>
+        <p className="mt-3 text-sm text-muted-foreground">Last updated: November 2026</p>
 
         <div className="mt-10 space-y-8 text-foreground/85 leading-relaxed">
           <p>This Privacy Policy explains how REAL RENTALS ("we", "us", "our") collects, uses, and shares information when you visit our website or submit an application for a rental.</p>
@@ -48,7 +48,12 @@ function PrivacyPage() {
 
           <div>
             <h2 className="text-xl font-semibold text-foreground">Sharing</h2>
-            <p className="mt-3">We do not sell your personal information. We share data with service providers (hosting, analytics, communications) under contract, and with rental partners only as needed to fulfill your request.</p>
+            <p className="mt-3">We do not sell your personal information. We share data with service providers (hosting, analytics, communications) under contract, and with rental partners only as needed to fulfill your request. After you sign, we share the renter information needed to obtain your policy with the insurance carrier, so the policy can be issued in your name.</p>
+          </div>
+
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">Vehicle Location</h2>
+            <p className="mt-3">Vehicles in the fleet have GPS and telematics tracking. We use that information to locate a vehicle, support day-to-day operations, and recover a vehicle when the rental agreement allows it.</p>
           </div>
 
           <div>

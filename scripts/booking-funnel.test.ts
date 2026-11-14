@@ -92,6 +92,18 @@ describe("approved, not yet renting", () => {
     assert.equal(built.rows.find((r) => r.id === "fay"), undefined);
   });
 
+  it("moves reserved approved drivers out of the waiting list", () => {
+    const withReserved = buildApprovedNotRenting({
+      applicants,
+      activeRentalApplicationIds: ["fay"],
+      reservedRentalApplicationIds: ["ada"],
+      approvedAtById: {},
+      now: TODAY,
+    });
+    assert.equal(withReserved.rows.some((row) => row.id === "ada"), false);
+    assert.equal(withReserved.rows.some((row) => row.id === "bea"), true);
+  });
+
   it("counts Eastern days since the latest approval, and Unknown when there is none", () => {
     const ada = built.rows.find((r) => r.id === "ada")!;
     const bea = built.rows.find((r) => r.id === "bea")!;

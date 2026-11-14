@@ -24,6 +24,7 @@ export const CONTACT_STATUSES = [
   { key: "follow_up", label: "Follow-Up" },
   { key: "documents", label: "Documents" },
   { key: "unqualified", label: "Unqualified" },
+  { key: "declined", label: "Declined" },
   { key: "unresponsive", label: "Unresponsive" },
 ] as const;
 
@@ -70,6 +71,7 @@ export const CONTACT_STATUS_TONE: Record<ContactStatusKey, string> = {
   follow_up: "bg-amber-100 text-amber-800",
   documents: "bg-violet-100 text-violet-800",
   unqualified: "bg-rose-100 text-rose-800",
+  declined: "bg-rose-100 text-rose-800",
   unresponsive: "bg-gray-200 text-gray-700",
 };
 
@@ -157,6 +159,13 @@ export function contactStatusForm(status: ContactStatusKey): ContactStatusForm {
         followUp: "off",
         noteLabel: "Reason",
         hint: "Not a fit right now. This changes no application status.",
+      };
+    case "declined":
+      return {
+        note: "optional",
+        followUp: "off",
+        noteLabel: "Note",
+        hint: "They declined. This changes no application status.",
       };
     case "unresponsive":
       return {
