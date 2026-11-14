@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ComponentType } from "react";
-import { Wrench, BadgeCheck, Check, Infinity as InfinityIcon, Zap, Wallet, Headphones } from "lucide-react";
+import { Wrench, BadgeCheck, Check, Infinity as InfinityIcon, Zap, Wallet, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { SiteLayout } from "@/components/site/SiteLayout";
@@ -145,7 +145,7 @@ export const Route = createFileRoute("/fleet/")({
   head: () => ({
     meta: [
       { title: "The Fleet — REAL RENTALS" },
-      { name: "description", content: "Browse rideshare-ready vehicles. Filter by make, body type, and price. From $350/week." },
+      { name: "description", content: "Browse rideshare-ready vehicles. Insurance included. Filter by make, body type, and price. From $350/week." },
       { property: "og:title", content: "The Fleet — REAL RENTALS" },
       { property: "og:description", content: "Every car ready for Uber, Lyft, DoorDash, Instacart, and Amazon Flex." },
       { property: "og:type", content: "website" },
@@ -296,13 +296,13 @@ function FleetPage() {
         <FadeUp>
           <h1 className="text-2xl md:text-3xl font-semibold">Available Vehicles</h1>
           <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs md:text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5"><BadgeCheck className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Uber/Lyft Eligible</span>
-            <span className="inline-flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-real-red" strokeWidth={2.5} />No Credit Check</span>
-            <span className="inline-flex items-center gap-1.5"><Wallet className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />No Deposit</span>
-            <span className="inline-flex items-center gap-1.5"><InfinityIcon className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Unlimited Miles</span>
-            <span className="inline-flex items-center gap-1.5"><Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Maintenance Included</span>
-            <span className="inline-flex items-center gap-1.5"><Headphones className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />24/7 Driver Support</span>
-            <span className="inline-flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Same Day Approval</span>
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><BadgeCheck className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Uber/Lyft Eligible</span>
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><Check className="w-3.5 h-3.5 text-real-red" strokeWidth={2.5} />No Credit Check</span>
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><Wallet className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />No Deposit</span>
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><Shield className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Insurance Included</span>
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><InfinityIcon className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Unlimited Miles</span>
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Maintenance Included</span>
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><Zap className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />Same Day Approval</span>
           </div>
         </FadeUp>
       </section>
@@ -319,7 +319,7 @@ function FleetPage() {
                   navigate({
                     to: "/fleet",
                     search: (prev) => ({
-                      ...(prev.type ? { type: prev.type } : {}),
+                      ...(isMarketingCategory(prev.type) ? { type: prev.type } : {}),
                       ...fleetSearchParams(next),
                     }),
                   });

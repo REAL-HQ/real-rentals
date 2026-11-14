@@ -29,6 +29,7 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SmsConsentRouteImport } from './routes/sms-consent'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as ThankYouRouteImport } from './routes/thank-you'
+import { Route as AuthConfirmRouteImport } from './routes/auth/confirm'
 import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
 import { Route as FleetIndexRouteImport } from './routes/fleet.index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
@@ -36,17 +37,22 @@ import { Route as PortalHelpRouteImport } from './routes/portal_.help'
 import { Route as PortalRoadsideRouteImport } from './routes/portal_.roadside'
 import { Route as SignTokenRouteImport } from './routes/sign.$token'
 import { Route as VehiclesIdRouteImport } from './routes/vehicles.$id'
+import { Route as ShareVehicleTokenRouteImport } from './routes/share/vehicle/$token'
 import { Route as ApiPublicCronAutomationsRouteImport } from './routes/api/public/cron/automations'
 import { Route as ApiPublicCronEsignArchiveRetryRouteImport } from './routes/api/public/cron/esign-archive-retry'
 import { Route as ApiPublicCronFleetInboxRouteImport } from './routes/api/public/cron/fleet-inbox'
 import { Route as ApiPublicCronLateFeesRouteImport } from './routes/api/public/cron/late-fees'
 import { Route as ApiPublicCronOpsRemindersRouteImport } from './routes/api/public/cron/ops-reminders'
+import { Route as ApiPublicCronRentRemindersRouteImport } from './routes/api/public/cron/rent-reminders'
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
 import { Route as ApiPublicInboundEmailRouteImport } from './routes/api/public/inbound/email'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicResendWebhookRouteImport } from './routes/api/public/resend/webhook'
 import { Route as ApiPublicSmsInboundRouteImport } from './routes/api/public/sms/inbound'
+import { Route as ApiPublicSmsQuoRouteImport } from './routes/api/public/sms/quo'
+import { Route as ApiPublicVehicleGalleryIdRouteImport } from './routes/api/public/vehicle-gallery/$id'
 import { Route as ApiPublicVehiclePhotosSplatRouteImport } from './routes/api/public/vehicle-photos/$'
+import { Route as ShareVehiclePhotoTokenMediaIdRouteImport } from './routes/share/vehicle-photo/$token/$mediaId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -148,6 +154,11 @@ const ThankYouRoute = ThankYouRouteImport.update({
   path: '/thank-you',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthConfirmRoute = AuthConfirmRouteImport.update({
+  id: '/auth/confirm',
+  path: '/auth/confirm',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CardApplicationIdRoute = CardApplicationIdRouteImport.update({
   id: '/card/$applicationId',
   path: '/card/$applicationId',
@@ -183,6 +194,11 @@ const VehiclesIdRoute = VehiclesIdRouteImport.update({
   path: '/vehicles/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShareVehicleTokenRoute = ShareVehicleTokenRouteImport.update({
+  id: '/share/vehicle/$token',
+  path: '/share/vehicle/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicCronAutomationsRoute =
   ApiPublicCronAutomationsRouteImport.update({
     id: '/api/public/cron/automations',
@@ -209,6 +225,12 @@ const ApiPublicCronOpsRemindersRoute =
   ApiPublicCronOpsRemindersRouteImport.update({
     id: '/api/public/cron/ops-reminders',
     path: '/api/public/cron/ops-reminders',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicCronRentRemindersRoute =
+  ApiPublicCronRentRemindersRouteImport.update({
+    id: '/api/public/cron/rent-reminders',
+    path: '/api/public/cron/rent-reminders',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiPublicCronWizardRecoveryRoute =
@@ -238,10 +260,27 @@ const ApiPublicSmsInboundRoute = ApiPublicSmsInboundRouteImport.update({
   path: '/api/public/sms/inbound',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicSmsQuoRoute = ApiPublicSmsQuoRouteImport.update({
+  id: '/api/public/sms/quo',
+  path: '/api/public/sms/quo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicVehicleGalleryIdRoute =
+  ApiPublicVehicleGalleryIdRouteImport.update({
+    id: '/api/public/vehicle-gallery/$id',
+    path: '/api/public/vehicle-gallery/$id',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicVehiclePhotosSplatRoute =
   ApiPublicVehiclePhotosSplatRouteImport.update({
     id: '/api/public/vehicle-photos/$',
     path: '/api/public/vehicle-photos/$',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ShareVehiclePhotoTokenMediaIdRoute =
+  ShareVehiclePhotoTokenMediaIdRouteImport.update({
+    id: '/share/vehicle-photo/$token/$mediaId',
+    path: '/share/vehicle-photo/$token/$mediaId',
     getParentRoute: () => rootRouteImport,
   } as any)
 
@@ -266,6 +305,7 @@ export interface FileRoutesByFullPath {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/portal/help': typeof PortalHelpRoute
@@ -273,17 +313,22 @@ export interface FileRoutesByFullPath {
   '/sign/$token': typeof SignTokenRoute
   '/vehicles/$id': typeof VehiclesIdRoute
   '/fleet/': typeof FleetIndexRoute
+  '/share/vehicle/$token': typeof ShareVehicleTokenRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
   '/api/public/cron/esign-archive-retry': typeof ApiPublicCronEsignArchiveRetryRoute
   '/api/public/cron/fleet-inbox': typeof ApiPublicCronFleetInboxRoute
   '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
+  '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
+  '/api/public/sms/quo': typeof ApiPublicSmsQuoRoute
+  '/api/public/vehicle-gallery/$id': typeof ApiPublicVehicleGalleryIdRoute
   '/api/public/vehicle-photos/$': typeof ApiPublicVehiclePhotosSplatRoute
+  '/share/vehicle-photo/$token/$mediaId': typeof ShareVehiclePhotoTokenMediaIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -306,6 +351,7 @@ export interface FileRoutesByTo {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/portal/help': typeof PortalHelpRoute
@@ -313,17 +359,22 @@ export interface FileRoutesByTo {
   '/sign/$token': typeof SignTokenRoute
   '/vehicles/$id': typeof VehiclesIdRoute
   '/fleet': typeof FleetIndexRoute
+  '/share/vehicle/$token': typeof ShareVehicleTokenRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
   '/api/public/cron/esign-archive-retry': typeof ApiPublicCronEsignArchiveRetryRoute
   '/api/public/cron/fleet-inbox': typeof ApiPublicCronFleetInboxRoute
   '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
+  '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
+  '/api/public/sms/quo': typeof ApiPublicSmsQuoRoute
+  '/api/public/vehicle-gallery/$id': typeof ApiPublicVehicleGalleryIdRoute
   '/api/public/vehicle-photos/$': typeof ApiPublicVehiclePhotosSplatRoute
+  '/share/vehicle-photo/$token/$mediaId': typeof ShareVehiclePhotoTokenMediaIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -347,6 +398,7 @@ export interface FileRoutesById {
   '/sms-consent': typeof SmsConsentRoute
   '/terms': typeof TermsRoute
   '/thank-you': typeof ThankYouRoute
+  '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
   '/portal_/help': typeof PortalHelpRoute
@@ -354,17 +406,22 @@ export interface FileRoutesById {
   '/sign/$token': typeof SignTokenRoute
   '/vehicles/$id': typeof VehiclesIdRoute
   '/fleet/': typeof FleetIndexRoute
+  '/share/vehicle/$token': typeof ShareVehicleTokenRoute
   '/api/public/cron/automations': typeof ApiPublicCronAutomationsRoute
   '/api/public/cron/esign-archive-retry': typeof ApiPublicCronEsignArchiveRetryRoute
   '/api/public/cron/fleet-inbox': typeof ApiPublicCronFleetInboxRoute
   '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
+  '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
   '/api/public/sms/inbound': typeof ApiPublicSmsInboundRoute
+  '/api/public/sms/quo': typeof ApiPublicSmsQuoRoute
+  '/api/public/vehicle-gallery/$id': typeof ApiPublicVehicleGalleryIdRoute
   '/api/public/vehicle-photos/$': typeof ApiPublicVehiclePhotosSplatRoute
+  '/share/vehicle-photo/$token/$mediaId': typeof ShareVehiclePhotoTokenMediaIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -389,6 +446,7 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/auth/confirm'
     | '/card/$applicationId'
     | '/fleet/$id'
     | '/portal/help'
@@ -396,17 +454,22 @@ export interface FileRouteTypes {
     | '/sign/$token'
     | '/vehicles/$id'
     | '/fleet/'
+    | '/share/vehicle/$token'
     | '/api/public/cron/automations'
     | '/api/public/cron/esign-archive-retry'
     | '/api/public/cron/fleet-inbox'
     | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
+    | '/api/public/cron/rent-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
+    | '/api/public/sms/quo'
+    | '/api/public/vehicle-gallery/$id'
     | '/api/public/vehicle-photos/$'
+    | '/share/vehicle-photo/$token/$mediaId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -429,6 +492,7 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/auth/confirm'
     | '/card/$applicationId'
     | '/fleet/$id'
     | '/portal/help'
@@ -436,17 +500,22 @@ export interface FileRouteTypes {
     | '/sign/$token'
     | '/vehicles/$id'
     | '/fleet'
+    | '/share/vehicle/$token'
     | '/api/public/cron/automations'
     | '/api/public/cron/esign-archive-retry'
     | '/api/public/cron/fleet-inbox'
     | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
+    | '/api/public/cron/rent-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
+    | '/api/public/sms/quo'
+    | '/api/public/vehicle-gallery/$id'
     | '/api/public/vehicle-photos/$'
+    | '/share/vehicle-photo/$token/$mediaId'
   id:
     | '__root__'
     | '/'
@@ -469,6 +538,7 @@ export interface FileRouteTypes {
     | '/sms-consent'
     | '/terms'
     | '/thank-you'
+    | '/auth/confirm'
     | '/card/$applicationId'
     | '/fleet/$id'
     | '/portal_/help'
@@ -476,17 +546,22 @@ export interface FileRouteTypes {
     | '/sign/$token'
     | '/vehicles/$id'
     | '/fleet/'
+    | '/share/vehicle/$token'
     | '/api/public/cron/automations'
     | '/api/public/cron/esign-archive-retry'
     | '/api/public/cron/fleet-inbox'
     | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
+    | '/api/public/cron/rent-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
     | '/api/public/sms/inbound'
+    | '/api/public/sms/quo'
+    | '/api/public/vehicle-gallery/$id'
     | '/api/public/vehicle-photos/$'
+    | '/share/vehicle-photo/$token/$mediaId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -510,6 +585,7 @@ export interface RootRouteChildren {
   SmsConsentRoute: typeof SmsConsentRoute
   TermsRoute: typeof TermsRoute
   ThankYouRoute: typeof ThankYouRoute
+  AuthConfirmRoute: typeof AuthConfirmRoute
   CardApplicationIdRoute: typeof CardApplicationIdRoute
   FleetIdRoute: typeof FleetIdRoute
   PortalHelpRoute: typeof PortalHelpRoute
@@ -517,17 +593,22 @@ export interface RootRouteChildren {
   SignTokenRoute: typeof SignTokenRoute
   VehiclesIdRoute: typeof VehiclesIdRoute
   FleetIndexRoute: typeof FleetIndexRoute
+  ShareVehicleTokenRoute: typeof ShareVehicleTokenRoute
   ApiPublicCronAutomationsRoute: typeof ApiPublicCronAutomationsRoute
   ApiPublicCronEsignArchiveRetryRoute: typeof ApiPublicCronEsignArchiveRetryRoute
   ApiPublicCronFleetInboxRoute: typeof ApiPublicCronFleetInboxRoute
   ApiPublicCronLateFeesRoute: typeof ApiPublicCronLateFeesRoute
   ApiPublicCronOpsRemindersRoute: typeof ApiPublicCronOpsRemindersRoute
+  ApiPublicCronRentRemindersRoute: typeof ApiPublicCronRentRemindersRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
   ApiPublicInboundEmailRoute: typeof ApiPublicInboundEmailRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicResendWebhookRoute: typeof ApiPublicResendWebhookRoute
   ApiPublicSmsInboundRoute: typeof ApiPublicSmsInboundRoute
+  ApiPublicSmsQuoRoute: typeof ApiPublicSmsQuoRoute
+  ApiPublicVehicleGalleryIdRoute: typeof ApiPublicVehicleGalleryIdRoute
   ApiPublicVehiclePhotosSplatRoute: typeof ApiPublicVehiclePhotosSplatRoute
+  ShareVehiclePhotoTokenMediaIdRoute: typeof ShareVehiclePhotoTokenMediaIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -672,6 +753,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThankYouRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/confirm': {
+      id: '/auth/confirm'
+      path: '/auth/confirm'
+      fullPath: '/auth/confirm'
+      preLoaderRoute: typeof AuthConfirmRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/card/$applicationId': {
       id: '/card/$applicationId'
       path: '/card/$applicationId'
@@ -721,6 +809,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VehiclesIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/share/vehicle/$token': {
+      id: '/share/vehicle/$token'
+      path: '/share/vehicle/$token'
+      fullPath: '/share/vehicle/$token'
+      preLoaderRoute: typeof ShareVehicleTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/cron/automations': {
       id: '/api/public/cron/automations'
       path: '/api/public/cron/automations'
@@ -754,6 +849,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/cron/ops-reminders'
       fullPath: '/api/public/cron/ops-reminders'
       preLoaderRoute: typeof ApiPublicCronOpsRemindersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/cron/rent-reminders': {
+      id: '/api/public/cron/rent-reminders'
+      path: '/api/public/cron/rent-reminders'
+      fullPath: '/api/public/cron/rent-reminders'
+      preLoaderRoute: typeof ApiPublicCronRentRemindersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/cron/wizard-recovery': {
@@ -791,11 +893,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicSmsInboundRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/sms/quo': {
+      id: '/api/public/sms/quo'
+      path: '/api/public/sms/quo'
+      fullPath: '/api/public/sms/quo'
+      preLoaderRoute: typeof ApiPublicSmsQuoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/vehicle-gallery/$id': {
+      id: '/api/public/vehicle-gallery/$id'
+      path: '/api/public/vehicle-gallery/$id'
+      fullPath: '/api/public/vehicle-gallery/$id'
+      preLoaderRoute: typeof ApiPublicVehicleGalleryIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/vehicle-photos/$': {
       id: '/api/public/vehicle-photos/$'
       path: '/api/public/vehicle-photos/$'
       fullPath: '/api/public/vehicle-photos/$'
       preLoaderRoute: typeof ApiPublicVehiclePhotosSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/share/vehicle-photo/$token/$mediaId': {
+      id: '/share/vehicle-photo/$token/$mediaId'
+      path: '/share/vehicle-photo/$token/$mediaId'
+      fullPath: '/share/vehicle-photo/$token/$mediaId'
+      preLoaderRoute: typeof ShareVehiclePhotoTokenMediaIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -822,6 +945,7 @@ const rootRouteChildren: RootRouteChildren = {
   SmsConsentRoute: SmsConsentRoute,
   TermsRoute: TermsRoute,
   ThankYouRoute: ThankYouRoute,
+  AuthConfirmRoute: AuthConfirmRoute,
   CardApplicationIdRoute: CardApplicationIdRoute,
   FleetIdRoute: FleetIdRoute,
   PortalHelpRoute: PortalHelpRoute,
@@ -829,17 +953,22 @@ const rootRouteChildren: RootRouteChildren = {
   SignTokenRoute: SignTokenRoute,
   VehiclesIdRoute: VehiclesIdRoute,
   FleetIndexRoute: FleetIndexRoute,
+  ShareVehicleTokenRoute: ShareVehicleTokenRoute,
   ApiPublicCronAutomationsRoute: ApiPublicCronAutomationsRoute,
   ApiPublicCronEsignArchiveRetryRoute: ApiPublicCronEsignArchiveRetryRoute,
   ApiPublicCronFleetInboxRoute: ApiPublicCronFleetInboxRoute,
   ApiPublicCronLateFeesRoute: ApiPublicCronLateFeesRoute,
   ApiPublicCronOpsRemindersRoute: ApiPublicCronOpsRemindersRoute,
+  ApiPublicCronRentRemindersRoute: ApiPublicCronRentRemindersRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
   ApiPublicInboundEmailRoute: ApiPublicInboundEmailRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicResendWebhookRoute: ApiPublicResendWebhookRoute,
   ApiPublicSmsInboundRoute: ApiPublicSmsInboundRoute,
+  ApiPublicSmsQuoRoute: ApiPublicSmsQuoRoute,
+  ApiPublicVehicleGalleryIdRoute: ApiPublicVehicleGalleryIdRoute,
   ApiPublicVehiclePhotosSplatRoute: ApiPublicVehiclePhotosSplatRoute,
+  ShareVehiclePhotoTokenMediaIdRoute: ShareVehiclePhotoTokenMediaIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

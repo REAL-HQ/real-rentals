@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { listFleetAvailability } from "@/lib/fleet-availability.functions";
@@ -121,7 +122,7 @@ function GroupTable({ id, label, rows }: { id: FleetGroup; label: string; rows: 
                 <td className="px-3 py-2 font-mono whitespace-nowrap">{row.unit}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.vehicle}</td>
                 <td className="px-3 py-2 font-mono whitespace-nowrap">{row.plate}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{row.statusLabel}</td>
+                <td className="px-3 py-2 whitespace-nowrap"><VehicleStatusBadge status={row.statusLabel} label={row.statusLabel} /></td>
                 {rented && <td className="px-3 py-2 whitespace-nowrap">{row.driver}</td>}
                 {rented && <td className="px-3 py-2 whitespace-nowrap">{row.nextPaymentDue}</td>}
                 <td className="px-3 py-2 text-[#55555E]">{row.facts.length ? row.facts.join(", ") : "—"}</td>

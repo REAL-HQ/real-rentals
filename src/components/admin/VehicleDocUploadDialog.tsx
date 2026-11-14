@@ -65,6 +65,7 @@ export function VehicleDocUploadDialog({
   onClose,
   onSaveDirect,
   onChanged,
+  onDocumentChanged,
   onVehicleChanged,
 }: {
   vehicleId: string;
@@ -76,6 +77,8 @@ export function VehicleDocUploadDialog({
   /** Existing direct save path (no reading), keeps the manual expiry date. */
   onSaveDirect: (kind: string, file: File, expiresAt: string | null) => Promise<void>;
   onChanged: () => void;
+  /** Committed document save or completed read; never a refused proposal. */
+  onDocumentChanged?: () => void;
   /**
    * Fired only once accepting details has actually written vehicle fields, so
    * the profile and its Readiness checklist reload. Saving a document changes
@@ -199,6 +202,7 @@ export function VehicleDocUploadDialog({
         setStalled(false);
         if (remount) setReviewKey((k) => k + 1);
         onChanged();
+        onDocumentChanged?.();
       };
       void tick();
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -263,6 +267,7 @@ export function VehicleDocUploadDialog({
     }
     onProgress(100);
     onChanged();
+    onDocumentChanged?.();
   }
 
   // Re-watch whenever the upload queue drains, including when a file was added

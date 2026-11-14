@@ -1,5 +1,11 @@
 import { Check, Circle, Minus } from "lucide-react";
-import type { ActivationRequirement, RequirementEnforcement } from "@/lib/activation-readiness";
+import { NEXT_STEP_REQUIREMENT_KEYS, type ActivationRequirement, type ActivationRequirementKey, type RequirementEnforcement } from "@/lib/activation-readiness";
+import type { ReactNode } from "react";
+import type { FixTarget } from "@/lib/next-step";
+import type { Blocker } from "@/lib/next-step";
+import { Button } from "@/components/ui/button";
+import { checklistAction } from "./checklist-actions";
+import type { EvidencePresentationMap } from "@/lib/checklist-evidence";
 
 // Renders the server's readiness checklist. Nothing here decides anything:
 // the list, each state and each enforcement level come from
@@ -14,62 +20,80 @@ const ENFORCEMENT_LABEL: Record<RequirementEnforcement, string> = {
 
 export function ActivationRequirementList({
   requirements,
+  onRun,
+  renderEvidence,
+  evidence,
+  embedded = false,
+  blockers = [],
 }: {
   requirements: ActivationRequirement[];
+  onRun?: (target: FixTarget) => void;
+  renderEvidence?: (key: ActivationRequirementKey) => ReactNode;
+  evidence?: EvidencePresentationMap;
+  embedded?: boolean;
+  blockers?: Blocker[];
 }) {
   // Advisory items (insurance card, gig profile, gig platform) never block, so
   // they are not counted as outstanding.
   const open = requirements.filter((r) => r.met !== true && r.enforcement !== "advisory").length;
   return (
     <div
-      className="rounded-xl border border-[#EDEDF0] bg-white p-3"
+      className={embedded ? "mt-3" : "rounded-xl border border-border bg-card p-3"}
       aria-label="Activation Readiness"
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-semibold text-[#55555E]">Activation Readiness</div>
-        <div className="text-[11px] text-[#9A9AA3]">
+      {!embedded ? <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+        <div className="min-w-0 text-xs font-semibold text-muted-foreground">Activation Readiness</div>
+        <div className="shrink-0 text-[11px] text-muted-foreground">
           {open === 0 ? "Required Items Complete" : `${open} Required Incomplete`}
         </div>
-      </div>
-      <ul className="mt-2 space-y-1.5">
-        {requirements.map((r) => (
+      </div> : null}
+      <ul className="mt-2 divide-y divide-border">
+        {requirements.filter((r) => r.key !== "gig_platform" && r.key !== "insurance_document" && (!embedded || (NEXT_STEP_REQUIREMENT_KEYS as readonly ActivationRequirementKey[]).includes(r.key))).map((r) => {
+          const blocker = blockers.find((item) => item.key === r.key || (item.key === "local" && r.key === "interview" && item.target.kind === "record_call"));
+          const action = onRun ? blocker ? { label: blocker.fix, target: blocker.target } : checklistAction(r) : null;
+          const fileState = evidence?.[r.key];
+          const fileControls = renderEvidence?.(r.key);
+          const status = fileState?.label ?? (r.key === "reservation_paid" ? r.detail ?? "Not Recorded" : r.met === true ? "Complete" : r.met === null ? "Choose A Vehicle" : ENFORCEMENT_LABEL[r.enforcement]);
+          const completedIcon = (
+            <span role="img" aria-label={fileState?.label ?? "Complete"} className="grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 border-success bg-success text-primary-foreground">
+              <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+            </span>
+          );
+          const icon = fileState ? fileState.tone === "green" ? completedIcon : <Circle className={`h-6 w-6 shrink-0 ${fileState.tone === "red" ? "text-destructive" : "text-warning"}`} aria-label={fileState.label} /> : r.met === true ? completedIcon : r.met === null ? <Minus className="h-6 w-6 shrink-0 text-muted-foreground" aria-label="Not Checked Yet" /> : <Circle className={`h-6 w-6 shrink-0 ${r.enforcement === "hard" ? "text-destructive" : r.enforcement === "soft" || r.enforcement === "acknowledge" ? "text-warning-foreground" : "text-muted-foreground"}`} aria-label="Incomplete" />;
+          const marker = fileState?.onToggle ? (
+            <button
+              type="button"
+              disabled={fileState.busy}
+              onClick={fileState.onToggle}
+              className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+              aria-label={fileState.toggleLabel ?? (fileState.tone === "yellow" ? `${r.label}: Upload Due. Click To Mark Not Collected` : `Check Off ${r.label}`)}
+              title={fileState.toggleTitle ?? (fileState.tone === "yellow" ? "Checked Off — Upload Due. Click To Mark Not Collected." : "Click To Check Off. Upload The File Later.")}
+            >
+              {fileState.tone === "yellow" && fileState.checkedOff ? (
+                <span className="grid h-6 w-6 place-items-center rounded-full border-2 border-warning bg-warning text-warning-foreground"><Check className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" /></span>
+              ) : icon}
+            </button>
+          ) : icon;
+          return (
           <li
             key={r.key}
-            className="flex items-start justify-between gap-3 text-[13px]"
+            className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1 text-[13px] max-sm:grid-cols-1"
             data-requirement={r.key}
             data-met={String(r.met)}
+            data-blocker={blocker?.key}
           >
-            <span className="inline-flex items-start gap-1.5 min-w-0">
-              {r.met === true ? (
-                <Check
-                  className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[#1F7A3A]"
-                  aria-label="Complete"
-                />
-              ) : r.met === null ? (
-                <Minus
-                  className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[#9A9AA3]"
-                  aria-label="Not Checked Yet"
-                />
-              ) : (
-                <Circle
-                  className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${r.enforcement === "hard" ? "text-[#B00000]" : r.enforcement === "soft" || r.enforcement === "acknowledge" ? "text-[#8A5A00]" : "text-[#9A9AA3]"}`}
-                  aria-label="Incomplete"
-                />
-              )}
-              <span className={r.met === true ? "text-[#55555E]" : "text-[#111114]"}>
-                {r.label}
-                {r.detail && r.met !== true ? (
-                  <span className="text-[#9A9AA3]"> · {r.detail}</span>
-                ) : null}
-              </span>
-            </span>
-            {r.met !== true ? (
-              <span className="shrink-0 text-[11px] text-[#9A9AA3]">
-                {r.met === null ? "Choose A Vehicle" : ENFORCEMENT_LABEL[r.enforcement]}
-              </span>
-            ) : null}
+            {/* Status markers never navigate or pretend an unsaved attestation
+                is complete. Explicit review/upload actions remain separate. */}
+            <span className="flex min-w-0 items-center gap-2 px-1 py-2">{marker}<span className="min-w-0 break-words text-foreground">{r.label}{r.key === "inspection" && r.met !== true ? <span className="text-muted-foreground"> · Pickup Photos Optional; Inspection Report Optional</span> : r.detail && r.met !== true ? <span className="text-muted-foreground"> · {r.detail}</span> : null}</span></span>
+            <div className={embedded ? "ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5 max-sm:w-full" : `flex shrink-0 flex-col items-end gap-1 ${fileState ? "max-w-80 max-sm:w-full" : "max-w-36"}`}>
+              <span className="text-right text-[10px] text-muted-foreground">{status}</span>
+              {embedded ? fileControls : null}
+              {action && onRun && !fileControls ? <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => onRun(action.target)}>{action.label}</Button> : null}
+              {!embedded ? fileControls : null}
+            </div>
           </li>
-        ))}
+          );
+        })}
       </ul>
     </div>
   );

@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { SettingsPanel, SECTION_KEY } from "@/components/admin/SettingsPanel";
 import { AutomationsPanel } from "@/components/admin/AutomationsPanel";
 import { AutomationsCatalog } from "@/components/admin/AutomationsCatalog";
+import { RentReminderTemplates } from "@/components/admin/RentReminderTemplates";
 import { TeamPanel } from "@/components/admin/TeamPanel";
 import { VehicleDefaultsPanel } from "@/components/admin/VehicleDefaultsPanel";
 import { MaintenanceDefaultsPanel } from "@/components/admin/MaintenanceDefaultsPanel";
@@ -15,9 +16,10 @@ import { WebsitesPanel } from "@/components/admin/WebsitesPanel";
 import { ActivityPanel } from "@/components/admin/ActivityPanel";
 import { AgreementTemplatesPanel } from "@/components/admin/AgreementTemplatesPanel";
 import { RentalActivationSettingsPanel } from "@/components/admin/RentalActivationSettingsPanel";
+import { ReservationDepositSettingsPanel } from "@/components/admin/ReservationDepositSettingsPanel";
 import { PendingSignatures } from "@/components/admin/PendingSignatures";
 import { AGREEMENT_PENDING_SIGNATURE_ENABLED } from "@/lib/agreement-pending-signatures-flag";
-import { visibleSettingsSections } from "@/components/admin/nav-config";
+import { resolveSettingsSection, visibleSettingsSections } from "@/components/admin/nav-config";
 import type { StaffTier } from "@/lib/roles";
 
 const DESCRIPTIONS: Record<string, string> = {
@@ -27,13 +29,10 @@ const DESCRIPTIONS: Record<string, string> = {
   vehicle_defaults: "Set standard pricing for each vehicle type. These values pre-fill new vehicles and can always be changed before saving. Existing vehicles never change.",
   maintenance: "Company maintenance intervals by miles, time or both. A vehicle can override an interval from its Service tab.",
   safe_autofill: "Owner-only. Automatically fill blank, non-sensitive vehicle details from trusted documents. Off by default.",
-  photo_enhancement: "Owner-only. Free on-device lighting and studio backgrounds for listing photos. Off by default.",
-  photo_reading: "Owner-only. Reads details off a vehicle photograph — the one feature here that costs money. Off by default, with a daily limit enforced on the server.",
+  media: "Owner-only. Listing photo enhancement, studio backgrounds, and reading details off a photograph, plus who countersigns, agreement wording, versions and approval. Enhancement is free and on-device; reading costs money and has a daily limit. Changing the signer never alters documents already sent. Drafts never change what drivers receive.",
   rental_terms: "Minimum term, return notice, the terms text and rental activation rules.",
-  deposits: "Default deposit and refund window.",
+  deposits: "Default deposit, refund window, and optional reservation deposit.",
   applications: "Who qualifies to apply.",
-  agreement_templates: "Owner-only. Rental agreement wording, versions and approval. Drafts never change what drivers receive.",
-  esign: "Who countersigns agreements. Captured when a document is sent — changing it never alters documents already sent or signed.",
   payments: "Late fees, grace period and default payment method.",
   partners: "Default revenue share and contract term for vehicle partners.",
   notifications: "Where applicant alerts go, and whether email delivery is working.",
@@ -48,7 +47,8 @@ const DESCRIPTIONS: Record<string, string> = {
  */
 export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; section: string | null }) {
   const items = visibleSettingsSections(tier);
-  const current = items.find((s) => s.id === section) ?? items[0];
+  const resolved = resolveSettingsSection(section);
+  const current = items.find((s) => s.id === resolved) ?? items[0];
   const groups = Array.from(new Set(items.map((s) => s.group)));
   // Collapsible groups: only the first starts open; the group holding the
   // active section always opens so deep links never land on a hidden item.
@@ -56,7 +56,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
     () => new Set(groups.slice(1)),
   );
   if (!current) return <p className="text-[13px] text-[#55555E]">No settings are available for your role.</p>;
-  const wide = ["automations", "team", "website", "activity", "agreement_templates"].includes(current.id);
+  const wide = ["automations", "team", "website", "activity", "media"].includes(current.id);
   const toggleGroup = (g: string) =>
     setClosedGroups((prev) => {
       const next = new Set(prev);
@@ -113,30 +113,33 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           <p className="text-[13px] text-[#55555E] mt-0.5">{DESCRIPTIONS[current.id]}</p>
         </div>
         {current.id === "automations" ? (
-          <div className="space-y-8"><AutomationsCatalog /><AutomationsPanel /></div>
+          <div className="space-y-8"><AutomationsCatalog /><RentReminderTemplates /><AutomationsPanel /></div>
         ) : current.id === "vehicle_defaults" ? (
           <VehicleDefaultsPanel />
         ) : current.id === "safe_autofill" ? (
           <SafeAutofillPanel />
-        ) : current.id === "photo_enhancement" ? (
-          <div className="space-y-5"><PhotoEnhancePanel /><PhotoStudioSettingsCard /></div>
-        ) : current.id === "photo_reading" ? (
-          <PhotoReadingPanel />
+        ) : current.id === "media" ? (
+          <div className="space-y-8">
+            <div className="space-y-5"><PhotoEnhancePanel /><PhotoStudioSettingsCard /><PhotoReadingPanel /></div>
+            <div className="rounded-xl border border-[#EDEDF0] bg-white p-5">
+              <SettingsPanel only={SECTION_KEY.esign} />
+              {AGREEMENT_PENDING_SIGNATURE_ENABLED === true ? <PendingSignatures /> : null}
+            </div>
+            <AgreementTemplatesPanel />
+          </div>
         ) : current.id === "maintenance" ? (
           <MaintenanceDefaultsPanel />
         ) : current.id === "website" ? (
           <WebsitesPanel />
         ) : current.id === "activity" ? (
           <ActivityPanel />
-        ) : current.id === "agreement_templates" ? (
-          <AgreementTemplatesPanel />
         ) : current.id === "team" ? (
           <TeamPanel />
         ) : (
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-5">
             <SettingsPanel only={SECTION_KEY[current.id]} />
-            {current.id === "esign" && AGREEMENT_PENDING_SIGNATURE_ENABLED === true ? <PendingSignatures /> : null}
             {current.id === "rental_terms" ? <RentalActivationSettingsPanel /> : null}
+            {current.id === "deposits" ? <ReservationDepositSettingsPanel /> : null}
           </div>
         )}
       </section>

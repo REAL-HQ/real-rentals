@@ -56,7 +56,7 @@ export async function notifyManagersOfDriverIssue(args: DriverIssueAlert): Promi
     const prefs = await getLeadAlertPrefs();
     if (prefs.recipients.length) {
       const base = process.env.SITE_URL || "https://drivereal.com";
-      const href = `${base.replace(/\/$/, "")}/admin?tab=driver_issues`;
+      const href = `${base.replace(/\/$/, "")}/admin?tab=issues&filter=driver`;
       const html = `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
         <h1 style="font-size:18px">Driver issue reported</h1>
         <p style="font-size:15px;line-height:1.5"><strong>${escapeHtml(args.title)}</strong></p>

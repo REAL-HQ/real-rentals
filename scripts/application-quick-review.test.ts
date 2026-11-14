@@ -120,7 +120,6 @@ describe("application quick review", () => {
       [
         ["Driver's license (front)", "Expired"],
         ["Driver's license (back)", "Not Received"],
-        ["Insurance card", "Needs Replacement"],
         ["Gig profile screenshot", "Not Received"],
       ],
     );
@@ -207,7 +206,7 @@ describe("application quick review", () => {
       profileScreenshotUrl: "apps/gig.png",
       documents: [doc({ id: "back", category: "license_back", expiresAt: new Date(NOW + 90 * DAY).toISOString() })],
     }).missing.map((item) => item.label);
-    assert.deepEqual(missing, ["Interview Complete", "Insurance Verified", "MVR Authorized", "Card On File"]);
+    assert.deepEqual(missing, ["Interview Complete", "MVR Authorized", "Card On File"]);
   });
 });
 

@@ -28,31 +28,9 @@ async function findOrCreateStripeCustomer(
   stripe: ReturnType<typeof createStripeClient>,
   driver: { id: string; full_name?: string | null; email?: string | null; phone?: string | null; stripe_customer_id?: string | null },
 ): Promise<string> {
-  if (driver.stripe_customer_id) return driver.stripe_customer_id;
-
-  // Try to find a sibling application (same email) that already has a customer
-  if (driver.email) {
-    const { data: sibling } = await admin
-      .from('applications')
-      .select('stripe_customer_id')
-      .eq('email', driver.email)
-      .not('stripe_customer_id', 'is', null)
-      .limit(1)
-      .maybeSingle();
-    if (sibling?.stripe_customer_id) {
-      await admin.from('applications').update({ stripe_customer_id: sibling.stripe_customer_id }).eq('id', driver.id);
-      return sibling.stripe_customer_id;
-    }
-  }
-
-  const created = await stripe.customers.create({
-    ...(driver.email && { email: driver.email }),
-    ...(driver.full_name && { name: driver.full_name }),
-    ...(driver.phone && { phone: driver.phone }),
-    metadata: { applicationId: driver.id },
-  });
-  await admin.from('applications').update({ stripe_customer_id: created.id }).eq('id', driver.id);
-  return created.id;
+  // One customer per application, shared with approval and activation.
+  const { ensureApplicationStripeCustomer } = await import('@/lib/stripe-link.server');
+  return ensureApplicationStripeCustomer(admin, stripe, driver);
 }
 
 async function copyCardFromApplicationToRental(admin: any, rentalId: string, applicationId: string) {
@@ -313,7 +291,7 @@ export const startRentalAutopay = createServerFn({ method: 'POST' })
         billing_cycle_anchor: startTs,
         proration_behavior: 'none',
         collection_method: 'charge_automatically',
-        metadata: { rentalId: data.rentalId },
+        metadata: { rentalId: data.rentalId, ...(rental.application_id ? { applicationId: rental.application_id as string } : {}) },
       });
 
       await supabaseAdmin.from('rentals').update({

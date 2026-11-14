@@ -3,6 +3,8 @@ import { Link } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { SiteLayout } from "@/components/site/SiteLayout";
+import { galleryFallbackUrl } from "@/lib/gallery-photo";
+import { representativePhoto } from "@/lib/marketing-fleet";
 import {
   PUBLIC_VEHICLE_DETAIL_COLUMNS,
   presentPublicVehicle,
@@ -95,7 +97,7 @@ export function VehicleDetailView({ id }: { id: string }) {
           {photo ? (
             <img src={photo.src} alt={photo.alt} className="aspect-[4/3] w-full object-cover" />
           ) : (
-            <div className="flex aspect-[4/3] items-center justify-center text-sm text-muted-foreground">No Photo Listed</div>
+            <GalleryFallback id={vehicle.id} alt={vehicle.heading} />
           )}
         </div>
 
@@ -164,5 +166,20 @@ export function VehicleDetailView({ id }: { id: string }) {
         </div>
       </section>
     </SiteLayout>
+  );
+}
+
+function GalleryFallback({ id, alt }: { id: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <img src={representativePhoto(null)} alt={`${alt}, representative sedan`} className="aspect-[4/3] w-full object-cover" />;
+  }
+  return (
+    <img
+      src={galleryFallbackUrl(id)}
+      alt={alt}
+      className="aspect-[4/3] w-full object-cover"
+      onError={() => setFailed(true)}
+    />
   );
 }

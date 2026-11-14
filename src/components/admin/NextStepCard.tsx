@@ -1,7 +1,12 @@
-import { AlertCircle, Car, Loader2, RotateCw } from "lucide-react";
+import { Circle, Car, ClipboardList, Loader2, RotateCw } from "lucide-react";
 import type { ActivationReadiness } from "@/lib/activation-readiness";
 import type { NextStep } from "@/lib/next-step";
 import { ActivationRequirementList } from "./ActivationRequirementList";
+import type { ActivationRequirementKey } from "@/lib/activation-readiness";
+import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
+import type { EvidencePresentationMap } from "@/lib/checklist-evidence";
+import { driverNextStepRequirements } from "@/lib/driver-next-step-requirements";
 
 /**
  * The profile's one "what now" card. It shows the server's blockers with a
@@ -14,18 +19,60 @@ export function NextStepCard({
   readiness,
   onRun,
   onActivate,
+  onReserve,
+  onReturn,
+  canReserve = false,
+  canEditCallNotes = false,
   onRetry,
+  renderEvidence,
+  evidence,
+  reservationPaymentStatus,
 }: {
   model: NextStep;
   readiness: ActivationReadiness | null;
   onRun: (b: NextStep["blockers"][number]["target"]) => void;
   onActivate: () => void;
+  onReserve?: () => void;
+  onReturn?: () => void;
+  /** Soft hold available for an approved driver without an open reservation. */
+  canReserve?: boolean;
+  /** Completed-call notes stay editable even after the checklist collapses. */
+  canEditCallNotes?: boolean;
   onRetry: () => void;
+  renderEvidence?: (key: ActivationRequirementKey) => ReactNode;
+  evidence?: EvidencePresentationMap;
+  reservationPaymentStatus?: string | null;
 }) {
   const { activation } = model;
-  if (activation === "rental_active") return null;
   const primary = "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-[#D03020] px-3.5 text-[12px] font-semibold text-white hover:bg-[#B00000] disabled:cursor-not-allowed disabled:opacity-50";
   const secondary = "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-3 text-[12px] font-semibold text-[#55555E] hover:border-[#C4C4CB] hover:text-[#111114] disabled:cursor-not-allowed disabled:opacity-50";
+  if (activation === "rental_active") {
+    return (
+      <section aria-label="Next Step" data-testid="next-step" data-activation={activation} className="rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-[1_1_16rem]">
+            <h3 className="text-[14px] font-semibold text-[#111114]">Next Step</h3>
+            <p className="mt-0.5 text-[12px] text-[#55555E]">{model.note}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {canEditCallNotes ? (
+              <button type="button" onClick={() => onRun({ kind: "record_call" })} className={secondary} data-testid="edit-call-notes">
+                <ClipboardList className="h-3.5 w-3.5" /> Edit Notes
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => onReturn?.()}
+              className={primary}
+              data-testid="next-step-return"
+            >
+              <Car className="h-3.5 w-3.5" /> Return
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
   return (
     <section
       aria-label="Next Step"
@@ -57,45 +104,51 @@ export function NextStepCard({
               <Car className="h-3.5 w-3.5" /> Activate Rental
             </button>
           ) : null}
+          {canReserve && model.target.kind !== "reserve" && onReserve ? (
+            <button type="button" onClick={onReserve} className={secondary} data-testid="next-step-reserve">
+              <Car className="h-3.5 w-3.5" /> Reserved
+            </button>
+          ) : null}
+          <Button type="button" variant="outline" title="Optional Interview Script" className="h-9 shrink-0 gap-1.5 px-3 text-[12px]" onClick={() => onRun({ kind: "interview" })}>
+            <ClipboardList className="h-3.5 w-3.5" /> Interview Script
+          </Button>
           {model.target.kind !== "none" ? (
             <button
               type="button"
               data-testid="next-step-primary"
               disabled={model.busy}
-              onClick={() => (model.target.kind === "activate" ? onActivate() : onRun(model.target as any))}
+              onClick={() => (model.target.kind === "activate" ? onActivate() : model.target.kind === "reserve" ? onReserve?.() : onRun(model.target as any))}
               className={`${primary} max-sm:flex-1`}
             >
-              {model.target.kind === "activate" ? <Car className="h-3.5 w-3.5" /> : null}
+              {model.target.kind === "activate" || model.target.kind === "reserve" ? <Car className="h-3.5 w-3.5" /> : null}
               {model.label}
             </button>
           ) : null}
         </div>
       </div>
-      {model.blockers.length ? (
+      {!readiness && model.blockers.length ? (
         <ul className="mt-3 divide-y divide-[#F1F1F4] rounded-lg border border-[#F1F1F4]" aria-label="Blocking">
-          {model.blockers.map((b, i) => (
+          {model.blockers.map((b, i) => { const fileControls = b.key !== "local" ? renderEvidence?.(b.key) : null; return (
             <li key={`${b.key}-${i}`} data-blocker={b.key} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[13px]">
-              <span className="inline-flex min-w-0 items-start gap-1.5 text-[#111114]">
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#B00000]" />
+              <span className="flex min-h-10 min-w-0 items-center gap-2 px-1 text-left text-[13px] font-normal">
+                <Circle className="h-4 w-4 shrink-0 text-destructive" />
                 <span>
                   {b.label}
                   {b.detail ? <span className="text-[#9A9AA3]"> · {b.detail}</span> : null}
                 </span>
               </span>
-              <button type="button" onClick={() => onRun(b.target)} className={`${secondary} h-8`}>
-                {b.fix}
-              </button>
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+                {fileControls}
+                {!fileControls ? <button type="button" onClick={() => onRun(b.target)} className={`${secondary} h-8`}>
+                  {b.fix}
+                </button> : null}
+              </div>
             </li>
-          ))}
+          ); })}
         </ul>
       ) : null}
       {readiness ? (
-        <details className="mt-3 text-[12px]">
-          <summary className="cursor-pointer text-[#55555E] hover:text-[#111114]">Full Checklist</summary>
-          <div className="mt-2">
-            <ActivationRequirementList requirements={readiness.requirements} />
-          </div>
-        </details>
+        <ActivationRequirementList embedded blockers={model.blockers} requirements={driverNextStepRequirements(readiness.requirements, reservationPaymentStatus)} evidence={evidence} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} renderEvidence={renderEvidence} />
       ) : null}
     </section>
   );

@@ -199,14 +199,6 @@
       }
     },
     {
-      "file": "src/components/admin/FleetServiceCenter.tsx",
-      "ordinal": 1,
-      "props": {
-        "value": "{id}",
-        "onChange": "{(e) => setId(e.target.value)}"
-      }
-    },
-    {
       "file": "src/components/admin/ImportVehiclesStep.tsx",
       "ordinal": 1,
       "props": {
@@ -314,6 +306,15 @@
       }
     },
     {
+      "file": "src/components/admin/MessagesOverlay.tsx",
+      "ordinal": 3,
+      "props": {
+        "value": "{fromId ?? person.smsSenders[0].id}",
+        "onChange": "{(e) => setFromId(e.target.value)}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
       "file": "src/components/admin/OverviewPanel.tsx",
       "ordinal": 1,
       "props": {
@@ -354,6 +355,24 @@
       }
     },
     {
+      "file": "src/components/admin/PrepareAgreementDialog.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{prep.payment?.schedule ?? \"\"}",
+        "onChange": "{(e) => setPrep((p) => ({ ...p, payment: { schedule: (e.target.value || null) as any, method: p.payment?.method ?? null } }))}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
+      "file": "src/components/admin/PrepareAgreementDialog.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{prep.payment?.method ?? \"\"}",
+        "onChange": "{(e) => setPrep((p) => ({ ...p, payment: { schedule: p.payment?.schedule ?? null, method: (e.target.value || null) as any } }))}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
       "file": "src/components/admin/QuickAddVehicle.tsx",
       "ordinal": 1,
       "props": {
@@ -370,12 +389,111 @@
       }
     },
     {
+      "file": "src/components/admin/RentPaymentActions.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{method}",
+        "onChange": "{(e) => setMethod(e.target.value)}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
+      "file": "src/components/admin/RentPaymentActions.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{wholeWeek ? \"week\" : \"today\"}",
+        "onChange": "{(e) => setWholeWeek(e.target.value === \"week\")}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
+      "file": "src/components/admin/RenterReimbursements.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{rentalId}",
+        "onChange": "{(e) => setRentalId(e.target.value)}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
+      "file": "src/components/admin/RenterReimbursements.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{method}",
+        "onChange": "{(e) => setMethod(e.target.value)}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
+      "file": "src/components/admin/RenterReimbursements.tsx",
+      "ordinal": 3,
+      "props": {
+        "value": "{reason}",
+        "onChange": "{(e) => setReason(e.target.value)}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
       "file": "src/components/admin/RenterVendorsPanel.tsx",
       "ordinal": 1,
       "props": {
         "value": "{draft.category}",
         "onChange": "{(e) => set(\"category\", e.target.value)}"
       }
+    },
+    {
+      "file": "src/components/admin/ReservationsPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{method}",
+        "onChange": "{(e) => setMethod(e.target.value)}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
+      "file": "src/components/admin/ReserveCarDialog.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{personId}",
+        "onChange": "{(e) => setPersonId(e.target.value)}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
+      "file": "src/components/admin/ReserveCarDialog.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{depositRequired ? \"yes\" : \"no\"}",
+        "onChange": "{(e) => setDepositRequired(e.target.value === \"yes\")}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
+      "file": "src/components/admin/ReturnFlowDialog.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{fuelOrCharge}",
+        "onChange": "{(e) => setFuelOrCharge(e.target.value)}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
+      "file": "src/components/admin/ReturnFlowDialog.tsx",
+      "ordinal": 2,
+      "props": {
+        "value": "{angle}",
+        "onChange": "{(e) => setAngle(e.target.value)}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
+      "file": "src/components/admin/ReturnFlowDialog.tsx",
+      "ordinal": 3,
+      "props": {
+        "value": "{chargeKind}",
+        "onChange": "{(e) => setChargeKind(e.target.value as FinalChargeDraft[\"kind\"])}"
+      },
+      "addedAfterIntegrationMerge": true
     },
     {
       "file": "src/components/admin/ServiceAreaField.tsx",
@@ -451,14 +569,6 @@
       }
     },
     {
-      "file": "src/components/admin/VehicleProfileFields.tsx",
-      "ordinal": 1,
-      "props": {
-        "value": "{value}",
-        "onChange": "{(e) => onChange(e.target.value)}"
-      }
-    },
-    {
       "file": "src/components/admin/VehicleService.tsx",
       "ordinal": 1,
       "props": {
@@ -489,6 +599,15 @@
         "value": "{f.method}",
         "onChange": "{set(\"method\")}"
       }
+    },
+    {
+      "file": "src/components/admin/VehicleShareSendPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{fromId ?? options!.smsSenders![0].id}",
+        "onChange": "{(event) => setFromId(event.target.value)}"
+      },
+      "addedAfterIntegrationMerge": true
     },
     {
       "file": "src/components/admin/VendorsPanel.tsx",
@@ -563,5 +682,14 @@
         "onChange": "{(e) => onChange(e.target.value)}"
       }
     }
-  ]
+  ],
+  "removedAfterIntegrationMerge": {
+    "note": "Integration replaced these native selects with VehicleCombobox / the Radix Select before this PR merged; nothing left to migrate.",
+    "files": [
+      "src/components/admin/FleetServiceCenter.tsx",
+      "src/components/admin/VehicleProfileFields.tsx"
+    ]
+  },
+  "sourceSitesAfterIntegrationMerge": 82,
+  "callsiteFilesAfterIntegrationMerge": 51
 }

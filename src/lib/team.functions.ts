@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Json } from "@/integrations/supabase/types";
 import { requireOwner, getActor, TIER_LABELS, type StaffTier } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
+import { publicAppUrl } from "@/lib/public-app-url";
 
 // Team management: invite by email, accept, revoke, remove.
 //
@@ -65,10 +66,6 @@ function newToken(): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-}
-
-function siteOrigin(): string {
-  return process.env.SITE_URL || "https://drivereal.com";
 }
 
 function roleLabel(role: string): string {
@@ -232,7 +229,7 @@ export const inviteTeammate = createServerFn({ method: "POST" })
       return { ok: false, error: "Could not create the invitation. Please try again." };
     }
 
-    const link = `${siteOrigin()}/invite?token=${token}`;
+    const link = publicAppUrl(`/invite?token=${token}`);
     const label = roleLabel(data.role);
     const blurb = ASSIGNABLE_ROLES.find((r) => r.value === data.role)?.blurb ?? "";
 

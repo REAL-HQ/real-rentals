@@ -87,35 +87,35 @@ beforeEach(() => {
   controls.clearAutomationControlsCache();
 });
 
-const pastDue = () => email.sendPastDueReminderEmail({ to: "r@example.com", firstName: "R", amount: 350, dueDate: "2026-11-01", daysLate: 3 });
+const teamAlert = () => email.sendTeamPaymentAlertEmail({ event: "past_due", driverName: "R", amount: 350, dueDate: "2026-11-01", daysLate: 3, applicationId: "app1" });
 
 describe("direct sends: absent vs off vs unreadable", () => {
   test("missing row = legacy default on: sends", async () => {
-    const r = await pastDue();
+    const r = await teamAlert();
     expect(r.ok).toBe(true); expect(resend()).toBe(1);
   });
   test("Owner Off: not sent, no delivery row, reported blocked off", async () => {
-    db.settings.set(KEY, { off: { payment_past_due: { at: "t", by: "o" } } });
-    const r = await pastDue();
+    db.settings.set(KEY, { off: { payment_team_alert: { at: "t", by: "o" } } });
+    const r = await teamAlert();
     expect(r).toMatchObject({ ok: false, blocked: "off" }); expect(resend()).toBe(0); expect(deliveries().length).toBe(0);
   });
   for (const [label, setup] of [
     ["database error", () => { db.settingsError = "error"; }],
     ["client throws", () => { db.settingsError = "throw"; }],
     ["malformed row (not an object)", () => { db.settings.set(KEY, "garbage"); }],
-    ["malformed row (off is a list)", () => { db.settings.set(KEY, { off: ["payment_past_due"] }); }],
+    ["malformed row (off is a list)", () => { db.settings.set(KEY, { off: ["payment_team_alert"] }); }],
   ] as const) {
     test(`${label}: HELD — not sent, recorded failed (not delivered), retriable`, async () => {
       setup();
-      const r = await pastDue();
+      const r = await teamAlert();
       expect(r).toMatchObject({ ok: false, blocked: "held", retriable: true });
       expect(resend()).toBe(0);
-      expect(deliveries()).toEqual([expect.objectContaining({ workflow: "payment_past_due", state: "failed", provider_reason: controls.HELD_REASON })]);
+      expect(deliveries()).toEqual([expect.objectContaining({ workflow: "payment_team_alert", state: "failed", provider_reason: controls.HELD_REASON })]);
     });
   }
   test("a failed read is not cached: the next send after recovery goes out", async () => {
-    db.settingsError = "error"; await pastDue();
-    db.settingsError = null; const r = await pastDue();
+    db.settingsError = "error"; await teamAlert();
+    db.settingsError = null; const r = await teamAlert();
     expect(r.ok).toBe(true); expect(resend()).toBe(1);
   });
   test("Stripe-webhook templates (receipt, failed, card) honour Off and hold on failure", async () => {
@@ -154,11 +154,11 @@ describe("cron routes (handlers run against the in-memory database)", () => {
     T("payments").push({ id: "p1", driver_id: "app1", amount: 350, balance_due: 350, due_date: "2026-11-01", status: "overdue" });
     T("applications").push({ id: "app1", full_name: "R", email: "r@example.com", user_id: null });
   };
-  test("ops-reminders: on → past-due email goes and is logged (proves the fixture path)", async () => {
+  test("ops-reminders: on → team past-due alert goes and is logged (renter Past Due removed)", async () => {
     seedPastDue();
     const res = await ops.server.handlers.GET({ request: req() });
     expect(res.status).toBe(200); expect(resend()).toBeGreaterThan(0);
-    expect(T("outbound_messages").some((m) => String(m.kind).startsWith("payment_reminder:"))).toBe(true);
+    expect(T("outbound_messages").some((m) => String(m.kind).startsWith("payment_team_past_due:"))).toBe(true);
   });
   test("ops-reminders: everything Off → no email, no reminder logged, no bell", async () => {
     seedPastDue(); db.settings.set(KEY, allOff());
@@ -193,32 +193,32 @@ describe("previews", () => {
   });
   test("previews render while Off or unreadable", async () => {
     db.settingsError = "error";
-    const r = await (await import("@/lib/automation-preview.server")).renderAutomationPreview("past_due");
-    expect(r.subject).toContain("Past Due"); expect(deliveries().length).toBe(0);
+    const r = await (await import("@/lib/automation-preview.server")).renderAutomationPreview("team_alert");
+    expect(r.subject).toContain("Payment Past Due"); expect(deliveries().length).toBe(0);
   });
   test("Coordinator refused", async () => {
     tier = "coordinator";
-    await expect(fns.previewAutomationTemplate({ data: { id: "past_due" }, context: { userId: "c" } } as any)).rejects.toThrow("Forbidden");
+    await expect(fns.previewAutomationTemplate({ data: { id: "team_alert" }, context: { userId: "c" } } as any)).rejects.toThrow("Forbidden");
   });
 });
 
 describe("switches", () => {
   const set = (key: string, on: boolean) => fns.setAutomationOn({ data: { key, on }, context: { userId: "o" } } as any);
   test("Owner off/on: stored, audited, gate follows", async () => {
-    await set("payment_past_due", false);
-    expect(db.audit.at(-1)).toMatchObject({ action: "automation.turned_off", entityId: "payment_past_due", metadata: { from: true, to: false } });
-    expect((await pastDue()).blocked).toBe("off");
-    await set("payment_past_due", true);
-    expect((await pastDue()).ok).toBe(true);
+    await set("payment_team_alert", false);
+    expect(db.audit.at(-1)).toMatchObject({ action: "automation.turned_off", entityId: "payment_team_alert", metadata: { from: true, to: false } });
+    expect((await teamAlert()).blocked).toBe("off");
+    await set("payment_team_alert", true);
+    expect((await teamAlert()).ok).toBe(true);
   });
   test("rejected changes write nothing and audit nothing", async () => {
     db.settings.set(KEY, { off: { payment_receipt: { at: "t", by: "o" } } });
     const before = JSON.stringify([...db.settings]);
-    tier = "manager"; await expect(set("payment_past_due", false)).rejects.toThrow("Forbidden");
+    tier = "manager"; await expect(set("payment_team_alert", false)).rejects.toThrow("Forbidden");
     tier = "owner";
     await expect(set("document_expiring", true)).rejects.toThrow("can't be turned on");
     await expect(set("everything", false)).rejects.toThrow();
-    db.settingsError = "error"; await expect(set("payment_past_due", false)).rejects.toThrow("could not be read");
+    db.settingsError = "error"; await expect(set("payment_team_alert", false)).rejects.toThrow("could not be read");
     db.settingsError = null; db.settings.set("notifications", "garbage");
     await expect(set("lead_alert_new", false)).rejects.toThrow("malformed");
     db.settings.delete("notifications");
@@ -242,14 +242,14 @@ describe("overview is truthful", () => {
   test("loading writes nothing; workflow that is Off shows Off, not On", async () => {
     const o = await load();
     expect(o.rows.find((r) => r.key === "new_applicant_followup")!.on).toBe(false);
-    expect(o.rows.find((r) => r.key === "payment_past_due")!.on).toBe(true);
+    expect(o.rows.find((r) => r.key === "payment_team_alert")!.on).toBe(true);
     expect(db.settings.size).toBe(0); expect(db.audit.length).toBe(0);
     expect(o.controlsStatus).toBe("absent");
   });
   test("unreadable switches show Held/unknown, never on, and can't be toggled", async () => {
     db.settingsError = "error";
     const o = await load();
-    const r = o.rows.find((x) => x.key === "payment_past_due")!;
+    const r = o.rows.find((x) => x.key === "payment_team_alert")!;
     expect(r.on).toBeNull(); expect(r.canToggle).toBe(false); expect(o.controlsStatus).toBe("error");
     const { statusWords } = await import("@/components/admin/AutomationsCatalog");
     expect(statusWords(r).label).toBe("Held");
@@ -263,9 +263,9 @@ describe("overview is truthful", () => {
 
 describe("no cross-instance lag", () => {
   test("an Off written by another instance applies to the very next send (no cache)", async () => {
-    expect((await pastDue()).ok).toBe(true);
-    db.settings.set(KEY, { off: { payment_past_due: { at: "t", by: "elsewhere" } } }); // no cache clear
-    expect((await pastDue()).blocked).toBe("off");
+    expect((await teamAlert()).ok).toBe(true);
+    db.settings.set(KEY, { off: { payment_team_alert: { at: "t", by: "elsewhere" } } }); // no cache clear
+    expect((await teamAlert()).blocked).toBe("off");
   });
 });
 

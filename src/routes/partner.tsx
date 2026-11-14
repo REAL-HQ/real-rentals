@@ -16,6 +16,7 @@ import {
   type EarningsRow,
 } from "@/lib/partner.functions";
 import { resolvePhotoUrl } from "@/lib/photoUrl";
+import { requestEmailSignup } from "@/lib/auth-signup.functions";
 
 export const Route = createFileRoute("/partner")({
   head: () => ({ meta: [{ title: "Partner Portal — REAL RENTALS" }, { name: "robots", content: "noindex" }] }),
@@ -284,6 +285,7 @@ function EarningsTable({ rows, total, loading }: { rows: EarningsRow[]; total?: 
 
 // ---- Sign in (mirrors admin sign-in but lands at /partner) ----
 function PartnerSignIn() {
+  const requestSignup = useServerFn(requestEmailSignup);
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -294,13 +296,19 @@ function PartnerSignIn() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null); setLoading(true);
-    const fn = mode === "signin"
-      ? supabase.auth.signInWithPassword({ email, password: pw })
-      : supabase.auth.signUp({ email, password: pw, options: { emailRedirectTo: `${window.location.origin}/partner` } });
-    const { error } = await fn;
+    if (mode === "signin") {
+      const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+      setLoading(false);
+      if (error) setErr(error.message);
+      return;
+    }
+    const res = await requestSignup({ data: { email, password: pw, next: "/partner" } });
     setLoading(false);
-    if (error) return setErr(error.message);
-    if (mode === "signup") toast.success("Account created. Ask Real Rentals to link your partner record.");
+    if (!res.ok) {
+      setErr(res.error);
+      return;
+    }
+    toast.success("Check your email to confirm your account. The link will bring you back to the partner portal.");
   }
 
   return (

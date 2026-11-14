@@ -26,14 +26,14 @@ const render = (lead: ReturnType<typeof row>) =>
   renderToStaticMarkup(
     h(LeadCardBody, { lead, today: TODAY, name: h("a", null, "David Stellar"), status: h("span", { "data-status": "" }, lead.contactLabel), actions: h("div", null, "Call Text View Applicant") }),
   );
-const badge = (html: string) => html.match(/data-lead-badge[^>]*>([^<]*)</)![1];
+const badge = (html: string) => html.match(/data-lead-badge[^>]*>[\s\S]*?<\/span>([^<]*)<\/span>/)![1].trim();
 
 describe("compact lead cards", () => {
-  test("new lead: one short next step, no duplicate New, no filler", () => {
+  test("new lead: neutral treatment, one short next step, no duplicate New or filler", () => {
     const html = render(row("new"));
     expect(badge(html)).toBe("High");
-    expect(html).toContain('data-lead-tone="blue"');
-    expect(html).toContain("border-l-blue-600");
+    expect(html).not.toContain("blue");
+    expect(html).not.toContain("border-l-");
     expect(html).toContain(">Make first contact<");
     expect(html).toContain("Applied Today");
     for (const s of ["Awaiting first contact", "record the outcome", "Nothing recorded yet", "No contact logged", "Qualification", "Verified", "% Known"]) expect(html).not.toContain(s);
@@ -43,7 +43,7 @@ describe("compact lead cards", () => {
     expect(badge(html)).toBe("Overdue · Urgent");
     expect(html).toContain('data-status="">Contacted<');
     expect(html).toContain("3 days overdue");
-    expect(html).toContain("text-red-700");
+    expect(html).toContain("text-brand");
     expect(html).toContain("Last contact Today");
     expect(html).not.toContain("Applied");
   });
@@ -65,10 +65,13 @@ describe("compact lead cards", () => {
       expect(LEAD_TONES[b].label.length).toBeGreaterThan(0);
       expect(leadTiming({ bucket: b, created_at: now, contact_status_at: null, contact_follow_up_on: "2026-11-01" }, TODAY).length).toBeLessThanOrEqual(2);
     }
-    expect(new Set(LEAD_BUCKETS.map((b) => LEAD_TONES[b].key)).size).toBe(LEAD_BUCKETS.length);
+    expect(new Set(LEAD_BUCKETS.map((b) => LEAD_TONES[b].label)).size).toBe(LEAD_BUCKETS.length);
     expect(leadBadgeLabel("today", "Follow-Up", "Medium")).toBe("Due Today · Medium");
   });
-  test("no gradients", () => {
+  test("neutral cards never reintroduce the rejected blue accents or gradients", () => {
+    for (const src of [body, lib]) {
+      expect(src).not.toMatch(/blue|border-l-(?:blue|red|emerald|amber|violet|slate)/);
+    }
     for (const src of [ui, body, lib]) expect(src).not.toMatch(/bg-gradient|linear-gradient|bg-linear|\bfrom-\w+-\d|\bvia-\w+-\d/);
   });
   test("list keeps actions, status control and readiness, drops metrics", () => {

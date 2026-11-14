@@ -10,7 +10,7 @@ import {
 } from "@/lib/booking-funnel";
 
 /**
- * The Approved, Not Yet Renting read.
+ * The Approved, Awaiting Reservation read.
  *
  * Manager or Owner. supabaseAdmin bypasses RLS, so the tier is checked here.
  * The read is the applications row, the active-rental ids, and the approval
@@ -57,10 +57,10 @@ export const listApprovedNotRenting = createServerFn({ method: "POST" })
 
     const rentals = await supabaseAdmin
       .from("rentals")
-      .select("application_id")
-      .eq("status", "active");
-    if (rentals.error) fail(rentals.error, "Active rentals");
-    const activeIds = (rentals.data ?? [])
+      .select("application_id,status")
+      .in("status", ["active", "reserved"]);
+    if (rentals.error) fail(rentals.error, "Active and reserved rentals");
+    const activeIds = (rentals.data ?? []).filter((r) => r.status === "active")
       .map((r) => r.application_id)
       .filter((id): id is string => typeof id === "string" && id.length > 0);
 
@@ -82,9 +82,15 @@ export const listApprovedNotRenting = createServerFn({ method: "POST" })
       );
     }
 
+    const reservedIds = (rentals.data ?? [])
+      .filter((r) => r.status === "reserved")
+      .map((r) => r.application_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+
     return buildApprovedNotRenting({
       applicants,
       activeRentalApplicationIds: activeIds,
+      reservedRentalApplicationIds: reservedIds,
       approvedAtById,
       now: new Date(),
     });

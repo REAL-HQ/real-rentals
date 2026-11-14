@@ -17,6 +17,9 @@ function client(role = "service") {
       },
     },
     async rpc(name, args) {
+      if (globalThis.__rr.fail === "recovery-rpc-missing") {
+        return { data: null, error: { code: "PGRST202", message: "Could not find the function public.reserve_application_recovery" } };
+      }
       if (name === "reserve_application_recovery") {
         assert.match(args._token_hash, /^[a-f0-9]{64}$/);
         const app = db.applications.find((a) => a.id === args._application_id);
@@ -100,6 +103,11 @@ function client(role = "service") {
         },
         eq(k, v) {
           filters.push((r) => r[k] === v);
+          return q;
+        },
+        ilike(k, v) {
+          const needle = String(v).replace(/\\([%_\\])/g, "$1").toLowerCase();
+          filters.push((r) => String(r[k] ?? "").toLowerCase() === needle);
           return q;
         },
         gte(k, v) {
@@ -210,7 +218,7 @@ function reset() {
 }
 const stubs = {
   "@tanstack/react-start/server": "export const getRequest=()=>({headers:new Map()});",
-  "@tanstack/react-start": `export const createServerFn=()=>{let validate=x=>x,auth=false; const api={middleware:()=>{auth=true;return api},inputValidator:v=>{validate=v;return api},handler:fn=>async args=>{if(auth&&!args.context?.userId)throw Error('Unauthorized');return fn({...args,data:validate(args.data)})}};return api};`,
+  "@tanstack/react-start": `export const createServerFn=()=>{let validate=x=>x,auth=false; const api={middleware:()=>{auth=true;return api},inputValidator:v=>{validate=v;return api},handler:fn=>async args=>{if(auth&&!args.context?.userId)throw Error('Unauthorized');return fn({...args,data:validate(args.data)})}};return api}; export const createServerOnlyFn=(fn)=>fn;`,
   "@/integrations/supabase/auth-middleware": "export const requireSupabaseAuth={};",
   "@/integrations/supabase/client.server":
     "export const supabaseAdmin=new Proxy({}, {get:(_,p)=>globalThis.__rr.client[p]});",
@@ -315,6 +323,37 @@ try {
       "ai_flags",
     ])
       assert.deepEqual(db.applications[0][key], before[key]);
+  });
+  await test("a mixed-case stored email still resumes the same application", async () => {
+    db.applications[0].email = "Owner@Example.Invalid";
+    const result = await applications.savePartialApplication({
+      data: {
+        full_name: "Different Name",
+        email: "owner@example.invalid",
+        phone: "8135551234",
+        sms_consent: true,
+        source: "homepage",
+      },
+    });
+    assert.equal(result.token, null);
+    assert.equal(emails.length, 1);
+    assert.equal(emails[0].to, "Owner@Example.Invalid");
+    assert.equal(db.applications.length, 1);
+  });
+  await test("a missing recovery function sends no email", async () => {
+    globalThis.__rr.fail = "recovery-rpc-missing";
+    const result = await applications.savePartialApplication({
+      data: {
+        full_name: "Different Name",
+        email: "owner@example.invalid",
+        phone: "8135551234",
+        sms_consent: true,
+        source: "homepage",
+      },
+    });
+    assert.equal(result.linkStatus, "failed");
+    assert.equal(emails.length, 0);
+    assert.equal(db.applications.length, 1);
   });
   await test("phone-only conflict is durable, deduplicated and sends no email", async () => {
     const data = {
