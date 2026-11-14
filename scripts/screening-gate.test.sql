@@ -6,15 +6,15 @@
 -- whatever the UI believes. These fixtures prove it counts the document vault
 -- the same way the screen does: current, not rejected, right category.
 --
--- Expected results:
---   1 0/4 docs                                  BLOCKED (have 0)
---   2 1/4 docs                                  BLOCKED (have 1)
---   3 3/4 docs                                  BLOCKED (have 3)
---   4 4/4 docs, no recording                    BLOCKED (recording required)
---   5 4/4 docs + recording                      ALLOWED
---   6 4 rows, insurance REJECTED                BLOCKED (have 3)
---   7 4 rows, insurance SUPERSEDED              BLOCKED (have 3)
---   8 replacement current + previous superseded ALLOWED
+-- Expected results (insurance is not one of the required documents):
+--   1 0/3 docs                                  BLOCKED (have 0)
+--   2 1/3 docs                                  BLOCKED (have 1)
+--   3 2/3 docs                                  BLOCKED (have 2)
+--   4 3/3 docs, no recording                    BLOCKED (recording required)
+--   5 3/3 docs + recording                      ALLOWED
+--   6 insurance REJECTED                        ALLOWED
+--   7 insurance SUPERSEDED                      ALLOWED
+--   8 insurance_verified false                  ALLOWED
 --   9 recording superseded, no replacement      BLOCKED (recording required)
 
 BEGIN;
@@ -46,19 +46,21 @@ RETURNS void LANGUAGE sql AS $fn$
           'fixture/'||cat||'-'||md5(random()::text), cur, rev);
 $fn$;
 
-SELECT pg_temp.check(1,'0/4 docs');
-SELECT pg_temp.add('license_front');          SELECT pg_temp.check(2,'1/4 docs');
-SELECT pg_temp.add('license_back');
-SELECT pg_temp.add('insurance');              SELECT pg_temp.check(3,'3/4 docs');
-SELECT pg_temp.add('gig_profile');            SELECT pg_temp.check(4,'4/4 docs, no recording');
-SELECT pg_temp.add('verification_recording'); SELECT pg_temp.check(5,'4/4 + recording');
+SELECT pg_temp.check(1,'0/3 docs');
+SELECT pg_temp.add('license_front');          SELECT pg_temp.check(2,'1/3 docs');
+SELECT pg_temp.add('license_back');           SELECT pg_temp.check(3,'2/3 docs');
+SELECT pg_temp.add('gig_profile');            SELECT pg_temp.check(4,'3/3 docs, no recording');
+SELECT pg_temp.add('verification_recording'); SELECT pg_temp.check(5,'3/3 + recording');
+SELECT pg_temp.add('insurance');
 UPDATE public.documents SET review_status='rejected'
  WHERE driver_id='aaaaaaaa-0000-4000-8000-000000000001' AND category='insurance';
                                               SELECT pg_temp.check(6,'insurance REJECTED');
 UPDATE public.documents SET review_status='uploaded', is_current=false
  WHERE driver_id='aaaaaaaa-0000-4000-8000-000000000001' AND category='insurance';
                                               SELECT pg_temp.check(7,'insurance SUPERSEDED');
-SELECT pg_temp.add('insurance');              SELECT pg_temp.check(8,'replacement current + previous superseded');
+UPDATE public.driver_screenings SET insurance_verified=false
+ WHERE lead_id='aaaaaaaa-0000-4000-8000-000000000001';
+                                              SELECT pg_temp.check(8,'insurance_verified false');
 UPDATE public.documents SET is_current=false
  WHERE driver_id='aaaaaaaa-0000-4000-8000-000000000001' AND category='verification_recording';
                                               SELECT pg_temp.check(9,'recording superseded, no replacement');

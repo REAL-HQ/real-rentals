@@ -6,6 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { FileUploader } from "@/components/FileUploader";
 import {
   DOC_CATEGORIES,
+  STAFF_FILED_CATEGORIES,
+  driverCanUploadCategory,
   adminListDriverDocuments,
   createDocumentUploadUrl,
   confirmDocumentUpload,
@@ -15,11 +17,23 @@ import {
   type VaultDocument,
   type DocCategory,
 } from "@/lib/documents.functions";
-import { fmtDate } from "@/lib/date-format";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { documentExpiryTone } from "@/lib/document-expiry";
 import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
 
 const MAX_MB = 15;
+
+const DOC_TYPE_TITLES: Record<string, string> = {
+  rental_application: "Rental Application",
+  agreement: "Rental Agreement",
+  license_front: "Driver's License (Front)",
+  license_back: "Driver's License (Back)",
+  insurance: "Insurance Card",
+  gig_profile: "Gig Profile Screenshot",
+  trip_history: "Trip History Screenshot",
+  other: "Other Document",
+  verification_recording: "Verification Call Recording",
+};
 
 function fmtSize(n: number | null) {
   if (!n) return "";
@@ -33,16 +47,23 @@ function expiryTone(d: VaultDocument): "expired" | "soon" | null {
 }
 
 /**
- * Shared document vault. `mode="admin"` gives the team upload/replace/delete,
- * expiry tracking and team-only visibility; `mode="driver"` lets the renter
- * view and replace their own documents.
+ * Shared document vault. Every upload remains visible by category, with the
+ * newest file marked Latest and earlier files retained beneath it. Driver-sent
+ * files are permanent records; staff cannot delete them from this vault.
  */
 export function DocumentVault({
   mode,
   applicationId,
+  readOnly = false,
+  initialDocuments,
+  externalLoading = false,
 }: {
   mode: "admin" | "driver";
   applicationId?: string;
+  /** Staff driver preview supplies authorized metadata and never upload controls. */
+  readOnly?: boolean;
+  initialDocuments?: VaultDocument[];
+  externalLoading?: boolean;
 }) {
   const listAdmin = useServerFn(adminListDriverDocuments);
   const listMine = useServerFn(getMyVault);
@@ -51,12 +72,15 @@ export function DocumentVault({
   const patchMeta = useServerFn(updateDocumentMeta);
   const removeDoc = useServerFn(deleteDocument);
 
-  const [docs, setDocs] = useState<VaultDocument[]>([]);
+  const [fetchedDocs, setDocs] = useState<VaultDocument[]>([]);
   const [appId, setAppId] = useState<string | null>(applicationId ?? null);
-  const [loading, setLoading] = useState(true);
-  const [showHistory, setShowHistory] = useState(false);
+  const [loading, setLoading] = useState(initialDocuments === undefined);
+  const controlled = initialDocuments !== undefined;
+  const docs = initialDocuments ?? fetchedDocs;
+  const isLoading = controlled ? externalLoading : loading;
 
   async function refresh() {
+    if (controlled) return;
     try {
       if (mode === "admin" && applicationId) {
         setDocs(await listAdmin({ data: { applicationId } }));
@@ -76,7 +100,7 @@ export function DocumentVault({
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applicationId, mode]);
+  }, [applicationId, mode, controlled]);
 
   async function uploadDoc(category: DocCategory, internal: boolean, file: File) {
     if (file.size > MAX_MB * 1024 * 1024) throw new Error(`Files must be under ${MAX_MB} MB`);
@@ -113,11 +137,12 @@ export function DocumentVault({
   }
 
   const current = docs.filter((d) => d.is_current);
-  const history = docs.filter((d) => !d.is_current);
   const categories =
-    mode === "admin" ? DOC_CATEGORIES : DOC_CATEGORIES.filter((c) => c.key !== "agreement");
+    mode === "admin"
+      ? DOC_CATEGORIES
+      : DOC_CATEGORIES.filter((c) => c.key !== "verification_recording");
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center gap-2 text-[13px] text-[#55555E] py-6">
         <Loader2 className="w-4 h-4 animate-spin" /> Loading documents…
@@ -129,152 +154,145 @@ export function DocumentVault({
     <div className="space-y-3">
       <ul className="divide-y divide-[#EDEDF0] border border-[#EDEDF0] rounded-xl overflow-hidden bg-white">
         {categories.map((cat) => {
-          const doc = current.find((d) => d.category === cat.key) ?? null;
+          const versions = docs
+            .filter((d) => d.category === cat.key)
+            .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+          const doc = versions[0] ?? null;
+          const previous = versions.slice(1);
           const tone = doc ? expiryTone(doc) : null;
+          const title = DOC_TYPE_TITLES[cat.key] ?? cat.label;
           return (
-            <li key={cat.key} className="flex items-center gap-3 px-4 py-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-medium text-[#111114]">{cat.label}</span>
-                  {doc && !doc.visibility.includes("driver") ? (
-                    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-[#77777F] bg-[#F4F4F6] border border-[#E6E6EA] rounded-full px-2 py-0.5">
-                      <Lock className="w-3 h-3" /> Team only
-                    </span>
-                  ) : null}
-                  {tone ? (
-                    <span
-                      className={`inline-flex items-center gap-1 text-[10.5px] font-semibold rounded-full px-2 py-0.5 border ${
-                        tone === "expired"
-                          ? "bg-[#FDECEA] text-[#B3261E] border-[#F6CFCA]"
-                          : "bg-[#FFF8E5] text-[#8A6A00] border-[#F6E7B8]"
-                      }`}
-                    >
-                      <AlertTriangle className="w-3 h-3" />{" "}
-                      {tone === "expired" ? "Expired" : "Expiring soon"}
-                    </span>
-                  ) : null}
+            <li key={cat.key} className="px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] font-medium text-[#111114]">{title}</span>
+                    {doc ? (
+                      <span className="inline-flex items-center rounded-full border border-[#BFE3CC] bg-[#EAF6EE] px-2 py-0.5 text-[10.5px] font-semibold text-[#1F8A4C]">
+                        Latest
+                      </span>
+                    ) : null}
+                    {doc && !doc.visibility.includes("driver") ? (
+                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-[#77777F] bg-[#F4F4F6] border border-[#E6E6EA] rounded-full px-2 py-0.5">
+                        <Lock className="w-3 h-3" /> Team Only
+                      </span>
+                    ) : null}
+                    {tone ? (
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10.5px] font-semibold rounded-full px-2 py-0.5 border ${
+                          tone === "expired"
+                            ? "bg-[#FDECEA] text-[#B3261E] border-[#F6CFCA]"
+                            : "bg-[#FFF8E5] text-[#8A6A00] border-[#F6E7B8]"
+                        }`}
+                      >
+                        <AlertTriangle className="w-3 h-3" />{" "}
+                        {tone === "expired" ? "Expired" : "Expiring Soon"}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="text-[11.5px] text-[#77777F] mt-0.5">
+                    {doc
+                      ? `${doc.file_name ?? "Document"}${fmtSize(doc.size_bytes) ? ` · ${fmtSize(doc.size_bytes)}` : ""} · Uploaded ${fmtDateTime(doc.created_at)}${
+                          doc.expires_at ? ` · Expires ${fmtDate(doc.expires_at)}` : ""
+                        }`
+                      : "Not On File"}
+                  </div>
                 </div>
-                <div className="text-[11.5px] text-[#77777F] mt-0.5 truncate">
-                  {doc
-                    ? `${doc.file_name ?? "Document"} · ${fmtSize(doc.size_bytes)} · uploaded ${fmtDate(doc.created_at)}${
-                        doc.expires_at
-                          ? ` · expires ${fmtDate(doc.expires_at)}`
-                          : ""
-                      }`
-                    : "Not on file"}
-                </div>
-              </div>
 
-              {mode === "admin" && doc && cat.expiring ? (
-                <input
-                  type="date"
-                  defaultValue={doc.expires_at ? String(doc.expires_at).slice(0, 10) : ""}
-                  onChange={async (e) => {
-                    try {
-                      await patchMeta({
-                        data: { documentId: doc.id, expiresAt: e.target.value || null },
-                      });
-                      await refresh();
-                    } catch {
-                      toast.error("Could not save expiry");
-                    }
-                  }}
-                  className="rounded-md border border-[#DEDEE3] text-[11.5px] px-2 py-1 text-[#28282E]"
-                />
-              ) : null}
-
-              <div className="flex items-center gap-1.5 shrink-0">
-                {doc?.url ? (
-                  <a
-                    href={doc.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-1.5 rounded-md hover:bg-[#F4F4F6] text-[#55555E]"
-                    title="View"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                ) : null}
-                {/* No Replace over signed-agreement evidence, in any category;
-                    the server refuses it anyway (createDocumentUploadUrl). */}
-                {cat.key !== "agreement" && !signedAgreementLocked(current, cat.key) ? (
-                  <FileUploader
-                    variant="inline"
-                    label={doc ? "Replace" : "Upload"}
-                    accept="image/*,application/pdf"
-                    context={cat.label}
-                    upload={(file) => uploadDoc(cat.key as DocCategory, false, file)}
-                  />
-                ) : null}
-                {/* Signed agreements are permanent records: no Delete, and the
-                    server refuses it anyway (deleteDocument). */}
-                {mode === "admin" && doc && cat.key !== "agreement" && !doc.signed_agreement ? (
-                  <button
-                    onClick={async () => {
-                      if (!confirm("Delete this document permanently?")) return;
+                {mode === "admin" && !readOnly && doc && cat.expiring ? (
+                  <input
+                    type="date"
+                    defaultValue={doc.expires_at ? String(doc.expires_at).slice(0, 10) : ""}
+                    onChange={async (e) => {
                       try {
-                        await removeDoc({ data: { documentId: doc.id } });
-                        toast.success("Document deleted");
+                        await patchMeta({ data: { documentId: doc.id, expiresAt: e.target.value || null } });
                         await refresh();
-                      } catch (err) {
-                        toast.error(err instanceof Error ? err.message : "Could not delete");
+                      } catch {
+                        toast.error("Could not save expiry");
                       }
                     }}
-                    className="p-1.5 rounded-md hover:bg-[#FDECEA] text-[#B3261E]"
-                    title="Delete"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                    className="rounded-md border border-[#DEDEE3] text-[11.5px] px-2 py-1 text-[#28282E]"
+                  />
                 ) : null}
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {doc?.url ? (
+                    <a
+                      href={doc.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-1.5 rounded-md hover:bg-[#F4F4F6] text-[#55555E]"
+                      title="View"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  ) : null}
+                  {!readOnly && (mode === "admin" || driverCanUploadCategory(cat.key)) && !signedAgreementLocked(current, cat.key) ? (
+                    <FileUploader
+                      variant="inline"
+                      label="+ Add"
+                      accept="image/*,application/pdf"
+                      context={title}
+                      upload={(file) => uploadDoc(cat.key as DocCategory, false, file)}
+                    />
+                  ) : null}
+                  {mode === "admin" && !readOnly && doc && !STAFF_FILED_CATEGORIES.includes(cat.key) && !doc.signed_agreement && doc.uploaded_by_role !== "driver" ? (
+                    <button
+                      onClick={async () => {
+                        if (!confirm("Delete this document permanently?")) return;
+                        try {
+                          await removeDoc({ data: { documentId: doc.id } });
+                          toast.success("Document deleted");
+                          await refresh();
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : "Could not delete");
+                        }
+                      }}
+                      className="p-1.5 rounded-md hover:bg-[#FDECEA] text-[#B3261E]"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  ) : null}
+                </div>
               </div>
+
+              {previous.length ? (
+                <div className="mt-3 ml-3 border-l border-[#EDEDF0] pl-3">
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#77777F]">
+                    <History className="w-3.5 h-3.5" /> Previous Uploads
+                  </div>
+                  <ul className="mt-1 divide-y divide-[#EDEDF0]">
+                    {previous.map((d) => (
+                      <li key={d.id} className="flex items-center justify-between gap-3 py-2">
+                        <div className="min-w-0 text-[11.5px] text-[#55555E]">
+                          <div className="truncate">{d.label || d.file_name || "Document"}</div>
+                          <div className="mt-0.5 text-[10.5px] text-[#77777F]">Uploaded {fmtDateTime(d.created_at)}</div>
+                        </div>
+                        {d.url ? (
+                          <a href={d.url} target="_blank" rel="noreferrer" className="shrink-0 text-[11.5px] font-semibold text-[#D03020]">
+                            View
+                          </a>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </li>
           );
         })}
       </ul>
 
-      {mode === "admin" ? (
+      {mode === "admin" && !readOnly ? (
         <FileUploader
           variant="inline"
-          label="Upload Team-only Document"
+          label="Upload Team-Only Document"
           accept="image/*,application/pdf"
-          context="Team-only Document"
+          context="Team-Only Document"
           upload={(file) => uploadDoc("other", true, file)}
           className="text-[#55555E]"
         />
-      ) : null}
-
-      {history.length ? (
-        <div>
-          <button
-            onClick={() => setShowHistory((v) => !v)}
-            className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#55555E] hover:text-[#111114]"
-          >
-            <History className="w-3.5 h-3.5" /> {showHistory ? "Hide" : "Show"} previous versions (
-            {history.length})
-          </button>
-          {showHistory ? (
-            <ul className="mt-2 divide-y divide-[#EDEDF0] border border-[#EDEDF0] rounded-xl overflow-hidden bg-[#FAFAFB]">
-              {history.map((d) => (
-                <li key={d.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className="text-[12px] text-[#55555E] truncate">
-                    {d.label || d.file_name || d.category} ·{" "}
-                    {fmtDate(d.created_at)}
-                  </span>
-                  {d.url ? (
-                    <a
-                      href={d.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11.5px] font-semibold text-[#D03020]"
-                    >
-                      View
-                    </a>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
       ) : null}
     </div>
   );

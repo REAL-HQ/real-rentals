@@ -24,18 +24,18 @@ export function CollectionsWatchPanel() {
       if (result.status === "disabled") setLoad({ kind: "disabled" });
       else if (result.status === "unavailable") setLoad({ kind: "unavailable", reason: result.reason });
       else setLoad({ kind: "ready", report: result.report });
-    }).catch(() => { if (!cancelled) setLoad({ kind: "unavailable", reason: "Collections Watch could not be loaded" }); });
+    }).catch(() => { if (!cancelled) setLoad({ kind: "unavailable", reason: "Watch could not be loaded" }); });
     return () => { cancelled = true; };
   }, [read]);
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Collections Watch</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Watch</h1>
         <p className="mt-1 text-sm text-muted-foreground">Past due subscriptions, failed charges from the last 30 days, and invoices due in the next 7 days. Dates are Eastern Time. This screen does not retry a charge or send a notice.</p>
       </div>
-      {load.kind === "loading" && <p className="text-sm text-muted-foreground">Loading Collections Watch…</p>}
-      {load.kind === "disabled" && <p className="text-sm text-muted-foreground">Collections Watch Is Off.</p>}
+      {load.kind === "loading" && <p className="text-sm text-muted-foreground">Loading Watch…</p>}
+      {load.kind === "disabled" && <p className="text-sm text-muted-foreground">Watch Is Off.</p>}
       {load.kind === "unavailable" && <p className="text-sm text-muted-foreground">{load.reason}</p>}
       {load.kind === "ready" && (
         <div className="space-y-8">

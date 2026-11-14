@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
 import { FleetServiceCenter } from "./FleetServiceCenter";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -356,7 +357,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
             <tbody className="divide-y divide-border">
               {filtered.map((r) => (
                 <tr key={r.id}>
-                  <td className="px-4 py-2">{vName(r.vehicle_id)}</td>
+                  <td className="px-4 py-2"><span className="flex items-center gap-2"><VehiclePickerPhoto vehicleId={r.vehicle_id} className="h-8 w-11 rounded-md" iconClassName="h-3.5 w-3.5" /><span className="truncate">{vName(r.vehicle_id)}</span></span></td>
                   <td>
                     <select
                       value={r.status}

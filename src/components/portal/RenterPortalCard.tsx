@@ -22,7 +22,7 @@ const money = (n: number) => Number(n).toLocaleString("en-US", { style: "currenc
 const nyToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 
 /**
- * Plate/VIN for an assigned renter; registration, own insurance, photos and
+ * Plate/VIN for an assigned renter; registration, the policy we set up, photos and
  * receipts once active; photos/receipts for 1 year after return. Every value
  * here comes from public.renter_portal_summary, which already enforces this.
  */
@@ -75,6 +75,7 @@ export function RenterPortalView({
   previewDriverId?: string | null;
   readOnly?: boolean;
 }) {
+  void onOpenDocuments;
   const sections = renterSections(data.stage, {
     recordsVisible: recordsVisible(data.stage, data.returnedOn ?? null, nyToday()),
     companyInsurance: COMPANY_INSURANCE_SLOT_ENABLED,
@@ -124,24 +125,23 @@ export function RenterPortalView({
       {has("insurance") ? (
         <Card title="Your Insurance">
           <p className="text-xs text-muted-foreground">
-            You provide your own insurance for now. Your verified card stays valid until our team reviews a new upload.
+            Insurance is included, with the policy in your name. One less bill to worry about.
           </p>
           <div className="mt-3 space-y-2 text-sm">
             {ins.verified ? (
               <FileRow kind="insurance" id={ins.verified.id} label={`On file: ${ins.verified.label}`}
-                sub={ins.verified.expiresOn ? `Expires ${fmtDate(ins.verified.expiresOn)}` : "Verified"} previewDriverId={previewDriverId} />
+                sub={ins.verified.expiresOn ? `Expires ${fmtDate(ins.verified.expiresOn)}` : "On file"} previewDriverId={previewDriverId} />
             ) : (
-              <div className="text-muted-foreground">No verified insurance on file.</div>
+              <div className="text-muted-foreground">Your policy will show here after we set it up.</div>
             )}
             {ins.pending ? (
-              <FileRow kind="insurance" id={ins.pending.id} label={`Under review: ${ins.pending.label}`} sub="Waiting on our team" previewDriverId={previewDriverId} />
+              <FileRow kind="insurance" id={ins.pending.id} label={`On file: ${ins.pending.label}`} sub="Our team is finishing this" previewDriverId={previewDriverId} />
             ) : null}
           </div>
           {readOnly ? (
-            <p className="mt-3 text-xs text-muted-foreground">Uploads and contact edits are disabled in Driver Preview.</p>
+            <p className="mt-3 text-xs text-muted-foreground">Contact edits are disabled in Driver Preview.</p>
           ) : (
             <div className="mt-3 flex gap-3 text-sm">
-              <button type="button" className="text-real-red hover:underline" onClick={onOpenDocuments}>Upload new insurance</button>
               <button type="button" className="text-real-red hover:underline" onClick={onOpenSettings}>Update contact details</button>
             </div>
           )}

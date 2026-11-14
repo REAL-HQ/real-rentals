@@ -8,6 +8,7 @@ import {
   BOOKING_LIST_PAGE_SIZE,
   BOOKING_PHASE_LABEL,
   bookingDates,
+  bookingVehicleName,
   isBookingPhaseFilter,
   type BookingPhase,
   type BookingRow,
@@ -65,10 +66,10 @@ function DriverCell({ b }: { b: BookingRow }) {
 }
 
 function VehicleCell({ b }: { b: BookingRow }) {
-  if (!b.vehicleId) return <span className="text-muted-foreground">Not linked</span>;
+  if (!b.vehicleId) return <span className="text-muted-foreground">Unknown</span>;
   return (
     <span className="block min-w-0">
-      <span className="block truncate font-medium text-foreground">{b.unitNumber ?? "—"}</span>
+      <span className="block truncate font-medium text-foreground">{b.unitNumber ?? "Unknown"}</span>
       <span className="block truncate text-xs text-muted-foreground">{b.vehicleLabel ?? ""}</span>
     </span>
   );
@@ -79,18 +80,22 @@ export function BookingsPanel({
   openId = null,
   listState = {},
   canViewConversion = false,
+  /** Past tab: only completed / cancelled rentals. */
+  scope = "all",
 }: {
   externalSearch?: string;
   openId?: string | null;
   listState?: ListState;
   /** Owner and Manager. The conversion server function requires a manager, and the flag still has to be on. */
   canViewConversion?: boolean;
+  scope?: "past" | "all";
 } = {}) {
   const navigate = useNavigate();
 
   // List state lives in the URL so refresh, back and shared links keep it.
   const q = listState.q ?? "";
-  const phase = isBookingPhaseFilter(listState.phase) ? listState.phase : "all";
+  const rawPhase = isBookingPhaseFilter(listState.phase) ? listState.phase : "all";
+  const phase = scope === "past" && rawPhase === "active" ? "all" : rawPhase;
   const sort = listState.sort ?? "recent";
   const page = Math.max(1, Number(listState.page) || 1);
   const vehicleFilter = listState.vehicle ?? "";
@@ -105,7 +110,7 @@ export function BookingsPanel({
         vehicle: vehicleFilter,
         ...over,
       };
-      const out: Record<string, string> = { tab: "bookings" };
+      const out: Record<string, string> = { tab: "bookings", view: "past" };
       if (next.q) out.q = next.q;
       if (next.phase && next.phase !== "all") out.phase = next.phase;
       if (next.sort && next.sort !== "recent") out.sort = next.sort;
@@ -147,6 +152,7 @@ export function BookingsPanel({
   const params = {
     q: effectiveQ,
     phase,
+    scope,
     sort,
     page,
     pageSize: BOOKING_LIST_PAGE_SIZE,
@@ -174,7 +180,7 @@ export function BookingsPanel({
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           placeholder="Search driver, email, unit, plate, VIN…"
-          aria-label="Search bookings"
+          aria-label="Search rentals"
           className="w-full min-w-0 rounded-md border border-border bg-white px-3 py-2 text-sm lg:w-auto lg:min-w-[200px] lg:flex-1"
         />
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1 lg:contents">
@@ -183,7 +189,10 @@ export function BookingsPanel({
               numbers as you paged. */}
           {result && (
             <span className="inline-flex max-lg:shrink-0 items-center gap-2" data-testid="booking-phases">
-              {(["active", "completed", "cancelled"] as const).map((p) => {
+              {(scope === "past"
+                ? (["completed", "cancelled"] as const)
+                : (["active", "completed", "cancelled"] as const)
+              ).map((p) => {
                 const n = result.counts?.[p] ?? 0;
                 const on = phase === p;
                 return (
@@ -239,16 +248,15 @@ export function BookingsPanel({
 
       {rows.length > 0 && (
         <AdminTableScroll className="hidden md:block rounded-xl border border-border bg-white">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 font-medium">Driver</th>
-                <th className="px-3 py-2 font-medium">Vehicle</th>
-                <th className="px-3 py-2 font-medium">Dates</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                {money && <th className="px-3 py-2 font-medium">Weekly</th>}
-                {money && <th className="px-3 py-2 font-medium">Outstanding</th>}
-                <th className="px-3 py-2 font-medium sr-only">Open</th>
+                <th className="w-[22%] px-2 py-2 font-medium">Driver</th>
+                <th className="w-[20%] px-2 py-2 font-medium">Vehicle</th>
+                <th className="w-[24%] px-2 py-2 font-medium">Dates</th>
+                <th className="w-[12%] px-2 py-2 font-medium">Status</th>
+                {money ? <th className="w-[14%] px-2 py-2 font-medium">Rent</th> : null}
+                <th className="w-[8%] px-2 py-2 font-medium text-right sticky right-0 bg-[#FAFAFB]">Open</th>
               </tr>
             </thead>
             <tbody>
@@ -259,35 +267,34 @@ export function BookingsPanel({
                   data-booking={b.id}
                   className="border-t border-border cursor-pointer hover:bg-[#FAFAFB]"
                 >
-                  <td className="px-3 py-2 max-w-[220px]">
+                  <td className="px-2 py-2 align-top">
                     <DriverCell b={b} />
                   </td>
-                  <td className="px-3 py-2 max-w-[200px]">
+                  <td className="px-2 py-2 align-top">
                     <VehicleCell b={b} />
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
-                    {b.startDate ? fmtDate(b.startDate) : "Not recorded"}
-                    <span className="mx-1">→</span>
-                    {b.endDate ? fmtDate(b.endDate) : b.openEnded ? "Open-ended" : "Not recorded"}
+                  <td className="px-2 py-2 align-top text-muted-foreground">
+                    <span className="block">{b.startDate ? fmtDate(b.startDate) : "Not recorded"}</span>
+                    <span className="block text-xs">
+                      → {b.endDate ? fmtDate(b.endDate) : b.openEnded ? "Open-ended" : "Not recorded"}
+                    </span>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-2 py-2 align-top whitespace-nowrap">
                     <StatusPill status={b.phase} tone={PHASE_TONE[b.phase]}>
                       {BOOKING_PHASE_LABEL[b.phase]}
                     </StatusPill>
                   </td>
-                  {money && (
-                    <td className="px-3 py-2 whitespace-nowrap tabular-nums">
-                      {usd(b.weeklyRate)}
+                  {money ? (
+                    <td className="px-2 py-2 align-top tabular-nums">
+                      <span className="block">{usd(b.weeklyRate)}/wk</span>
+                      {(b.balanceDue ?? 0) > 0 ? (
+                        <span className="block text-xs font-medium text-[#D03020]">{usd(b.balanceDue)} due</span>
+                      ) : (
+                        <span className="block text-xs text-muted-foreground">Settled</span>
+                      )}
                     </td>
-                  )}
-                  {money && (
-                    <td
-                      className={`px-3 py-2 whitespace-nowrap tabular-nums ${(b.balanceDue ?? 0) > 0 ? "text-[#D03020] font-medium" : "text-muted-foreground"}`}
-                    >
-                      {(b.balanceDue ?? 0) > 0 ? usd(b.balanceDue) : "—"}
-                    </td>
-                  )}
-                  <td className="px-3 py-2 text-right">
+                  ) : null}
+                  <td className="px-2 py-2 text-right sticky right-0 bg-white">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -323,7 +330,7 @@ export function BookingsPanel({
                 </StatusPill>
               </div>
               <div className="mt-2 text-[13px] text-muted-foreground">
-                {[b.unitNumber, b.vehicleLabel].filter(Boolean).join(" · ") || "Vehicle not linked"}
+                {bookingVehicleName(b)}
               </div>
               <div className="mt-1 text-[13px] text-muted-foreground">
                 {bookingDates(b.startDate, b.endDate, b.phase)}
@@ -371,24 +378,28 @@ export function BookingsPanel({
       )}
 
       {listQuery.isError && (
-        <div className="mt-6 text-sm text-real-red">Could not load bookings.</div>
+        <div className="mt-6 text-sm text-real-red">Could not load rentals.</div>
       )}
       {result && total === 0 && !hasActiveFilters && !effectiveQ && (
         <EmptyState
           className="mt-6"
           icon={<CalendarCheck className="w-6 h-6" strokeWidth={1.75} />}
-          title="No Bookings Yet"
-          hint="A booking appears here when a rental is activated from an approved driver's record."
+          title={scope === "past" ? "No Past Rentals" : "No Rentals Yet"}
+          hint={
+            scope === "past"
+              ? "Completed and canceled rentals will show up here after they end."
+              : "A rental appears here when it is activated from an approved driver's record."
+          }
         />
       )}
       {result && total === 0 && (hasActiveFilters || !!effectiveQ) && (
         <EmptyState
           className="mt-6"
           icon={<CalendarCheck className="w-6 h-6" strokeWidth={1.75} />}
-          title="No Matching Bookings"
+          title="No Matching Rentals"
           hint={
             phase !== "all"
-              ? `No ${BOOKING_PHASE_LABEL[phase as BookingPhase].toLowerCase()} booking matches this view.`
+              ? `No ${BOOKING_PHASE_LABEL[phase as BookingPhase].toLowerCase()} rental matches this view.`
               : "Try clearing the filter or searching for a different driver, unit or plate."
           }
         />

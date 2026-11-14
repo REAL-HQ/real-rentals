@@ -13,12 +13,9 @@ import {
   Clock,
   Lock,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import {
   DOC_CATEGORIES,
   adminListDriverDocuments,
-  createDocumentUploadUrl,
-  confirmDocumentUpload,
   updateDocumentMeta,
   deleteDocument,
   setDocumentReview,
@@ -27,12 +24,16 @@ import {
 } from "@/lib/documents.functions";
 import { DocumentViewer, type ViewerDoc } from "./DocumentViewer";
 import { MicroLabel } from "./ui";
-import { FileUploader } from "@/components/FileUploader";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DriverDocumentUploadDialog } from "./DriverDocumentUploadDialog";
 import { DocumentBatchUpload } from "./DocumentBatchUpload";
-import { fmtDate } from "@/lib/date-format";
+import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { verifyApprovalIdentity } from "@/lib/identity-verification.functions";
 import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
+import { useDriverDocumentUpload } from "./use-driver-document-upload";
+import { displayTitleCase } from "@/lib/display-normalize";
 
 // Everything an applicant sent us, in one place, grouped the way somebody
 // looking at it actually thinks.
@@ -47,16 +48,18 @@ import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
 // arrived. Verified means a person looked at it. Those are different facts and
 // the readiness model depends on them staying apart.
 
-const MAX_MB = 15;
-
 /** Categories in the order a reviewer works through them. */
 const ORDER: DocCategory[] = [
+  "rental_application",
+  "agreement",
   "license_front",
   "license_back",
   "insurance",
   "gig_profile",
+  "income",
+  "insurance_quote",
+  "screening",
   "trip_history",
-  "agreement",
   "other",
 ];
 
@@ -93,7 +96,7 @@ function isImageDoc(d: VaultDocument): boolean {
   return !/\.(pdf|mp3|wav|m4a|ogg|mp4|mov|webm|zip|docx?)$/i.test(d.file_name ?? "");
 }
 
-/** The four categories the screening pipeline treats as required. One list, shared with the server. */
+/** License sides, gig profile and income proof. One list, shared with the server. */
 export { REQUIRED_VAULT_CATEGORIES } from "@/lib/required-docs";
 
 function VerifyIdentityAction({ applicationId }: { applicationId: string }) {
@@ -160,8 +163,6 @@ export function ApplicantDocuments({
   /** Re-read the vault after this component changes it. */
   onRefresh: () => Promise<void> | void;
 }) {
-  const startUpload = useServerFn(createDocumentUploadUrl);
-  const confirmUpload = useServerFn(confirmDocumentUpload);
   const patchMeta = useServerFn(updateDocumentMeta);
   const removeDoc = useServerFn(deleteDocument);
   const review = useServerFn(setDocumentReview);
@@ -169,10 +170,12 @@ export function ApplicantDocuments({
   const [busy, setBusy] = useState<string | null>(null);
   const [viewing, setViewing] = useState<ViewerDoc | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [uploadingCategory, setUploadingCategory] = useState<DocCategory | null>(null);
 
   const refresh = useCallback(async () => {
     await onRefresh();
   }, [onRefresh]);
+  const uploadDocument = useDriverDocumentUpload(applicationId, refresh);
 
   // One pass, not one find() per category.
   const { current, history } = useMemo(() => {
@@ -199,34 +202,8 @@ export function ApplicantDocuments({
   async function uploadCategory(category: DocCategory, file: File, onProgress: (pct: number) => void) {
     setBusy(category);
     try {
-      onProgress(10);
-      const signed = await startUpload({
-        data: {
-          applicationId,
-          category,
-          fileName: file.name,
-          mimeType: file.type || "application/octet-stream",
-        },
-      });
-      onProgress(40);
-      const { error } = await supabase.storage
-        .from(signed.bucket)
-        .uploadToSignedUrl(signed.path, signed.token, file);
-      if (error) throw new Error(error.message);
-      onProgress(80);
-      await confirmUpload({
-        data: {
-          applicationId: signed.applicationId!,
-          category,
-          path: signed.path,
-          fileName: file.name,
-          mimeType: file.type || null,
-          sizeBytes: file.size,
-        },
-      });
-      onProgress(100);
+      await uploadDocument(category, file, onProgress);
       toast.success("Document uploaded");
-      await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
       throw err;
@@ -452,21 +429,10 @@ export function ApplicantDocuments({
                     >
                       <ShieldCheck className="w-3 h-3" /> Permanent Record
                     </span>
-                  ) : (
-                    <FileUploader
-                      variant="inline"
-                      label={d ? "Replace" : "Upload"}
-                      context={`${meta.label} · Application ${applicationId.slice(0, 8)}`}
-                      accept="image/*,application/pdf"
-                      maxBytes={MAX_MB * 1024 * 1024}
-                      camera
-                      disabled={!!working}
-                      upload={(file, { onProgress }) => uploadCategory(key, file, onProgress)}
-                    />
-                  )}
+                  ) : null}
                   {/* Signed agreements are permanent records: no Delete, and
                       the server refuses it anyway (deleteDocument). */}
-                  {d && key !== "agreement" && !d.signed_agreement && (
+                  {d && key !== "agreement" && !d.signed_agreement && d.uploaded_by_role !== "driver" && (
                     <button
                       onClick={() => void drop(d)}
                       disabled={!!working}
@@ -477,6 +443,7 @@ export function ApplicantDocuments({
                     </button>
                   )}
                 </div>
+                {!locked ? <Button type="button" variant="outline" size="sm" className="mt-2 h-8 self-start text-xs" disabled={busy != null} aria-label={`Add ${displayTitleCase(meta.label).replace("(front)", "(Front)").replace("(back)", "(Back)")}`} onClick={() => setUploadingCategory(key)}><Plus className="h-3.5 w-3.5" /> Add</Button> : null}
               </div>
             </div>
           );
@@ -528,7 +495,7 @@ export function ApplicantDocuments({
 
       {showHistory && history.length > 0 && (
         <div>
-          <MicroLabel className="mb-2">Replaced versions</MicroLabel>
+          <MicroLabel className="mb-2">Previous Uploads</MicroLabel>
           <ul className="rounded-xl border border-[#EDEDF0] bg-white divide-y divide-[#F4F4F6]">
             {history.map((d) => (
               <li key={d.id} className="flex items-center gap-3 px-3 py-2 text-[12px]">
@@ -536,9 +503,9 @@ export function ApplicantDocuments({
                 <span className="min-w-0 flex-1 truncate text-[#55555E]">
                   {d.label ?? d.file_name}
                 </span>
-                <span className="text-[11px] text-[#9A9AA3] shrink-0">{fmtDate(d.created_at)}</span>
+                <span className="text-[11px] text-[#9A9AA3] shrink-0">{fmtDateTime(d.created_at)}</span>
                 <button
-                  onClick={() => open(d, `${d.label ?? d.file_name} (replaced)`)}
+                  onClick={() => open(d, `${d.label ?? d.file_name} (Previous Upload)`)}
                   className="text-[11px] font-medium text-[#55555E] hover:text-[#111114] shrink-0"
                 >
                   View
@@ -550,6 +517,12 @@ export function ApplicantDocuments({
       )}
 
       <DocumentViewer doc={viewing} onClose={() => setViewing(null)} />
+      {uploadingCategory && !signedAgreementLocked(docs, uploadingCategory) ? <DriverDocumentUploadDialog
+        label={displayTitleCase(DOC_CATEGORIES.find((c) => c.key === uploadingCategory)?.label ?? "Document").replace("(front)", "(Front)").replace("(back)", "(Back)")}
+        hint={uploadingCategory === "agreement" ? "Written Or Signed Copy · Owner/Manager Review Required" : uploadingCategory === "rental_application" ? "Written Or Completed Application · Owner/Manager Review Required" : undefined}
+        upload={(file, { onProgress }) => uploadCategory(uploadingCategory, file, onProgress)}
+        onClose={() => setUploadingCategory(null)}
+      /> : null}
     </div>
   );
 }

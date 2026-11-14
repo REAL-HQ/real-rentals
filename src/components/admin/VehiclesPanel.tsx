@@ -16,14 +16,17 @@ import {
 } from "@/lib/vehicles-list";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
-import { resolvePhotoUrl } from "@/lib/photoUrl";
+import { VehicleStaffPhoto } from "./VehicleStaffPhoto";
+import { listVehicleMedia, type VehicleMedia } from "@/lib/vehicle-media.functions";
 import { VehicleProfile } from "./VehicleProfile";
+import { VehiclePhotoViewer } from "./VehiclePhotos";
 import { AddVehicleDialog } from "./AddVehicleDialog";
 import { VehicleLifecycleDialog, type LifecycleMode } from "./VehicleLifecycleDialog";
 import { toast } from "sonner";
 import { Plus, Trash2, Car, ArrowRight, Copy, List, LayoutGrid, ChevronLeft, ChevronRight, Archive, RotateCcw, Wrench } from "lucide-react";
 import { displayVehicleWord } from "@/lib/display-normalize";
 import { EmptyState } from "./ui";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { MaintenanceDue } from "./MaintenanceDue";
 import { MAINTENANCE_DUE_ENABLED } from "@/lib/maintenance-due";
 import { MaintenanceLogBadge, MaintenanceLogBadgeSource } from "./MaintenanceLog";
@@ -35,49 +38,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-function PartnerAssignSelect({
-  value,
-  partners,
-  onChange,
-}: {
-  value: string | null;
-  partners: Array<{ id: string; name: string }>;
-  onChange: (pid: string | null) => void;
-}) {
-  const [q, setQ] = useState("");
-  const filtered = partners.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()));
-  return (
-    <Select
-      value={value ?? "__none__"}
-      onValueChange={(val) => onChange(val === "__none__" ? null : val)}
-    >
-      <SelectTrigger className="h-8 bg-white text-foreground text-xs">
-        <SelectValue placeholder="Unassigned" />
-      </SelectTrigger>
-      <SelectContent>
-        <div className="p-1 sticky top-0 bg-white z-10 border-b border-border">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.stopPropagation()}
-            placeholder="Search partners…"
-            className="w-full h-7 px-2 text-xs border border-border rounded-md outline-none focus:border-real-red"
-          />
-        </div>
-        <SelectItem value="__none__">Unassigned</SelectItem>
-        {filtered.map((p) => (
-          <SelectItem key={p.id} value={p.id}>
-            {p.name}
-          </SelectItem>
-        ))}
-        {filtered.length === 0 && (
-          <div className="px-3 py-2 text-xs text-muted-foreground">No matches</div>
-        )}
-      </SelectContent>
-    </Select>
-  );
-}
 
 type ListState = {
   q?: string;
@@ -91,20 +51,91 @@ type ListState = {
 };
 const VIEW_KEY = "rr.vehicles.view";
 
+/** Vehicles-only density: the full filter/action set fits a 100% desktop view. */
+const VEHICLE_TOOLBAR = {
+  search: "h-8 min-w-[9rem] flex-[1_1_9rem] max-w-[16rem] rounded-md border border-border bg-white px-2.5 text-[13px] max-sm:max-w-none max-sm:w-full",
+  select: "h-8 w-[7.75rem] shrink-0 bg-white text-[13px] text-foreground max-sm:w-full",
+  button: TOOLBAR.button.replace("h-9", "h-8").replace("px-3.5", "px-3").replace("text-sm", "text-[13px]"),
+  primary: TOOLBAR.primary.replace("h-9", "h-8").replace("px-3.5", "px-3").replace("text-sm", "text-[13px]"),
+  segmented: TOOLBAR.segmented.replace("h-9", "h-8"),
+  segment: TOOLBAR.segment.replace("px-2", "px-1.5").replace("text-xs", "text-[11px]"),
+} as const;
+
 function vehicleName(v: VehicleListRow) {
   return [v.year, displayVehicleWord(v.make ?? ""), displayVehicleWord(v.model ?? "")].filter(Boolean).join(" ");
+}
+
+/** The table's lead thumbnail and its on-demand, staff-only original gallery. */
+function VehicleListThumbnail({ vehicle }: { vehicle: VehicleListRow }) {
+  const loadMedia = useServerFn(listVehicleMedia);
+  const staffPath = vehicle.thumbnailPath ?? null;
+  const [opening, setOpening] = useState(false);
+  const [viewer, setViewer] = useState<{ items: VehicleMedia[]; index: number } | null>(null);
+  const name = vehicleName(vehicle);
+
+  async function openPhotos(event: React.MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+    if (opening) return;
+    setOpening(true);
+    try {
+      const result = await loadMedia({ data: { vehicleId: vehicle.id } });
+      const confirmed = new Set(result.confirmedCarPhotoIds ?? []);
+      const items = result.items.filter((item) => item.kind === "original" && confirmed.has(item.id));
+      if (!items.length) {
+        toast.error("No confirmed car photos are available for this vehicle.");
+        return;
+      }
+      const lead = items.findIndex((item) => item.storage_path === staffPath);
+      setViewer({ items, index: Math.max(0, lead) });
+    } catch {
+      toast.error("Could not load this vehicle's photos.");
+    } finally {
+      setOpening(false);
+    }
+  }
+
+  if (!staffPath) {
+    return (
+      <span className="grid h-9 w-12 place-items-center rounded-md border border-border bg-soft text-muted-foreground" title="No Vehicle Photo">
+        <Car className="h-4 w-4" aria-label="No Vehicle Photo" />
+      </span>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        disabled={opening}
+        onClick={openPhotos}
+        aria-label={`View Photos: ${name}`}
+        title={opening ? "Loading Photos…" : `View ${name} Photos`}
+        className="block h-9 w-12 overflow-hidden rounded-md border border-border bg-soft text-muted-foreground transition-colors hover:border-real-red disabled:cursor-wait"
+      >
+        <VehicleStaffPhoto path={staffPath} name={name} className="h-full w-full object-cover" />
+      </button>
+      {viewer && (
+        <VehiclePhotoViewer
+          items={viewer.items}
+          index={viewer.index}
+          onIndex={(index) => setViewer((current) => current ? { ...current, index } : null)}
+          onClose={() => setViewer(null)}
+        />
+      )}
+    </>
+  );
 }
 
 function CopyVin({ vin }: { vin: string | null }) {
   if (!vin) return <span className="text-muted-foreground">—</span>;
   return (
-    <span className="flex min-w-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+    <span className="flex min-w-0 items-center gap-1.5">
       <span className="truncate font-mono" title={vin}>…{vin.slice(-6)}</span>
       <button
         type="button"
         aria-label={`Copy full VIN ${vin}`}
         title={`Copy ${vin}`}
-        onClick={() => { void navigator.clipboard.writeText(vin); toast.success(`VIN copied: ${vin}`); }}
+        onClick={(event) => { event.stopPropagation(); void navigator.clipboard.writeText(vin); toast.success(`VIN copied: ${vin}`); }}
         className="grid h-6 w-6 shrink-0 place-items-center rounded text-muted-foreground hover:bg-white hover:text-foreground"
       >
         <Copy className="h-3.5 w-3.5" />
@@ -115,7 +146,7 @@ function CopyVin({ vin }: { vin: string | null }) {
 
 function Availability({ v }: { v: VehicleListRow }) {
   const label = availabilityLabel(v);
-  return <span className={v.on_rent || v.status === "onboarding" ? "font-medium text-foreground" : ""}>{label}</span>;
+  return <VehicleStatusBadge status={v.on_rent ? "on_rent" : v.status} label={label} />;
 }
 
 /**
@@ -126,9 +157,9 @@ function Availability({ v }: { v: VehicleListRow }) {
  * find out. Colour alone never carries the meaning — the words are there.
  */
 const READINESS_TONE: Record<ReadinessBand, string> = {
-  listing_ready: "bg-[rgba(32,160,96,0.10)] text-[#13613B]",
-  rental_ready: "bg-[rgba(240,192,64,0.14)] text-[#8A6410]",
-  not_ready: "bg-[rgba(208,48,32,0.08)] text-[#D03020]",
+  listing_ready: "bg-success-soft text-success",
+  rental_ready: "bg-warning-soft text-warning-foreground",
+  not_ready: "bg-danger-soft text-destructive",
 };
 const READINESS_DOT: Record<ReadinessBand, string> = {
   listing_ready: "bg-[#1C8F57]",
@@ -273,16 +304,6 @@ function FleetVehicles({
       .order("name")
       .then(({ data }) => setPartners(data || []));
   }, []);
-  const partnerName = (id: string | null) => (id ? partners.find((p) => p.id === id)?.name ?? "—" : "Unassigned");
-
-  async function assignPartner(v: VehicleListRow, partner_id: string | null) {
-    const { data, error } = await supabase.from("vehicles").update({ partner_id }).eq("id", v.id).select("id");
-    if (error) return toast.error(error.message);
-    // A role without edit rights is refused by the database with zero rows, not an error.
-    if (!data?.length) return toast.error("You don't have permission to change this vehicle.");
-    load();
-  }
-
   // No direct browser deletes: Archive / Restore / Delete Permanently all go
   // through audited server actions.
   const [lifecycle, setLifecycle] = useState<{ v: VehicleListRow; mode: LifecycleMode } | null>(null);
@@ -308,29 +329,24 @@ function FleetVehicles({
   const cardsGrid = (
     <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-lg:min-w-0 ${view === "list" ? "md:hidden" : ""}`}>
       {rows.map((v, index) => {
-        const img = resolvePhotoUrl(v.photo ?? undefined);
         return (
           <div key={v.id} onClick={() => setViewing(v.id)} className="rounded-2xl bg-soft overflow-hidden cursor-pointer transition-shadow hover:shadow-md max-lg:min-w-0">
-            <div className={`aspect-[4/3] bg-white items-center justify-center ${view === "list" ? "hidden" : "flex"}`}>
-              {img ? <img src={img} alt="" loading="lazy" className="w-full h-full object-cover" /> : <span className="text-xs text-muted-foreground">No photo</span>}
-            </div>
+            {view !== "list" && <div className="aspect-[4/3] bg-background flex items-center justify-center">
+              <VehicleStaffPhoto path={v.thumbnailPath ?? null} name={vehicleName(v)} className="w-full h-full object-cover" />
+            </div>}
             <div className="p-4">
               <div className="h-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><span className="mr-2 tabular-nums">#{rowNumber(index)}</span>{v.unit_number ?? ""}</div>
               <div className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</div>
               <dl className="mt-2.5 grid grid-cols-[44px_1fr] items-center gap-y-0.5 text-[13px] leading-6">
+                <dt className="text-muted-foreground">Color</dt>
+                <dd className="truncate">{displayVehicleWord(v.color ?? "") || <span className="text-muted-foreground">Not Set</span>}</dd>
                 <dt className="text-muted-foreground">Plate</dt>
                 <dd className="truncate font-mono">{v.license_plate || <span className="text-muted-foreground">—</span>}</dd>
                 <dt className="text-muted-foreground">VIN</dt>
                 <dd className="min-w-0"><CopyVin vin={v.vin} /></dd>
               </dl>
-              <div className="mt-2.5 text-[13px] text-muted-foreground">
-                <Rate v={v} /><span className="mx-1.5">·</span><Availability v={v} />
-              </div>
-              <div className="mt-2"><ReadinessPill v={v} /></div>
-              <div className="mt-3" onClick={(e) => e.stopPropagation()}>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Partner</div>
-                <PartnerAssignSelect value={v.partner_id} partners={partners} onChange={(pid) => assignPartner(v, pid)} />
-              </div>
+              <div className="mt-2.5 text-[13px] text-muted-foreground"><Rate v={v} /></div>
+              <div data-vehicle-status-row className="mt-2 flex items-center gap-1.5 whitespace-nowrap"><ReadinessPill v={v} /><Availability v={v} /></div>
               <div className="mt-3 flex gap-2 max-lg:flex-wrap" onClick={(e) => e.stopPropagation()}>
                 <button onClick={() => setViewing(v.id)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-sm">
                   Open Record <ArrowRight className="w-3.5 h-3.5" />
@@ -360,12 +376,6 @@ function FleetVehicles({
   return (
     <div className="max-lg:min-w-0">
       {remindersFailed ? <p className="mb-3 text-sm text-[#D03020]" data-testid="maintenance-log-error">Could not load maintenance reminders.</p> : null}
-      {view !== "due" && (
-        <p className="mb-3 text-sm text-muted-foreground" data-testid="vehicle-count">
-          {result?.fleetTotal != null ? `${result.fleetTotal} vehicles total (including archived)` : listQuery.isPending ? "Loading vehicle total…" : "Vehicle total unavailable"}
-          {result && hasActiveFilters && !listQuery.isPlaceholderData && <span> · {total} matching</span>}
-        </p>
-      )}
       <AdminToolbar
         filters={
           <>
@@ -374,24 +384,24 @@ function FleetVehicles({
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search unit, VIN, plate, year, make, model…"
             aria-label="Search vehicles"
-            className={TOOLBAR.search}
+            className={VEHICLE_TOOLBAR.search}
           />
           <Select value={statusFilter} onValueChange={(v) => setList({ status: v })}>
-            <SelectTrigger className={TOOLBAR.select} aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
-              {(result?.statuses ?? []).map((s) => <SelectItem key={s} value={s}>{availabilityLabel({ on_rent: false, status: s })}</SelectItem>)}
+              {(result?.statuses ?? []).map((s) => <SelectItem key={s} value={s}><VehicleStatusBadge status={s} label={availabilityLabel({ on_rent: false, status: s })} /></SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={bodyFilter} onValueChange={(v) => setList({ body: v })}>
-            <SelectTrigger className={TOOLBAR.select} aria-label="Body Type"><SelectValue placeholder="Body Type" /></SelectTrigger>
+            <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Body Type"><SelectValue placeholder="Body Type" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Body Types</SelectItem>
               {(result?.bodyTypes ?? []).map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={partnerFilter} onValueChange={(v) => setList({ partner: v })}>
-            <SelectTrigger className={TOOLBAR.select} aria-label="Partner"><SelectValue placeholder="Partner" /></SelectTrigger>
+            <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Partner"><SelectValue placeholder="Partner" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Partners</SelectItem>
               <SelectItem value="__none__">Unassigned</SelectItem>
@@ -399,10 +409,12 @@ function FleetVehicles({
             </SelectContent>
           </Select>
           <Select value={sort} onValueChange={(v) => setList({ sort: v })}>
-            <SelectTrigger className={TOOLBAR.select} aria-label="Sort"><SelectValue placeholder="Sort" /></SelectTrigger>
+            <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Sort"><SelectValue placeholder="Sort" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="unit">Sort: Unit</SelectItem>
               <SelectItem value="make">Sort: Make</SelectItem>
+              <SelectItem value="year">Sort: Year</SelectItem>
+              <SelectItem value="color">Sort: Color</SelectItem>
               <SelectItem value="rate">Sort: Rate</SelectItem>
               <SelectItem value="newest">Sort: Newest</SelectItem>
             </SelectContent>
@@ -417,31 +429,37 @@ function FleetVehicles({
         }
         actions={
           <>
-          <div className={`hidden md:inline-flex ${TOOLBAR.segmented}`} role="group" aria-label="View">
-            <button onClick={() => chooseView("list")} aria-pressed={view === "list"} className={`${TOOLBAR.segment} ${view === "list" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><List className="h-3.5 w-3.5" /> List</button>
-            <button onClick={() => chooseView("cards")} aria-pressed={view === "cards"} className={`${TOOLBAR.segment} ${view === "cards" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><LayoutGrid className="h-3.5 w-3.5" /> Cards</button>
+          <div className={`hidden md:inline-flex ${VEHICLE_TOOLBAR.segmented}`} role="group" aria-label="View">
+            <button onClick={() => chooseView("list")} aria-pressed={view === "list"} className={`${VEHICLE_TOOLBAR.segment} ${view === "list" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><List className="h-3.5 w-3.5" /> List</button>
+            <button onClick={() => chooseView("cards")} aria-pressed={view === "cards"} className={`${VEHICLE_TOOLBAR.segment} ${view === "cards" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><LayoutGrid className="h-3.5 w-3.5" /> Cards</button>
           </div>
           {dueAllowed && (
-            <button onClick={() => chooseView("due")} aria-pressed={view === "due"} className={`${TOOLBAR.button} text-xs ${view === "due" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><Wrench className="h-3.5 w-3.5" /> Maintenance Due</button>
+            <button onClick={() => chooseView("due")} aria-pressed={view === "due"} className={`${VEHICLE_TOOLBAR.button} text-xs ${view === "due" ? "bg-[#F1F1F4] font-medium" : "text-muted-foreground"}`}><Wrench className="h-3.5 w-3.5" /> Maintenance Due</button>
           )}
-          <button onClick={() => void navigate({ to: "/admin", search: { tab: "fleet_inbox" } as any })} className={TOOLBAR.button} title="Import vehicles through the Fleet Inbox">
+          <button onClick={() => void navigate({ to: "/admin", search: { tab: "fleet_inbox" } as any })} className={VEHICLE_TOOLBAR.button} title="Import vehicles through Inbox">
             Import
           </button>
-          <button onClick={() => setAdding(true)} className={TOOLBAR.primary}>
+          <button onClick={() => setAdding(true)} className={VEHICLE_TOOLBAR.primary}>
             <Plus className="w-4 h-4" /> Add Vehicle
           </button>
           </>
         }
-        footer={result ? (
-          <>
+        footer={(
+          <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            {view !== "due" && (
+              <p className="shrink-0 text-xs text-muted-foreground" data-testid="vehicle-count">
+                {result?.fleetTotal != null ? `${result.fleetTotal} Vehicles Total (Including Archived)` : listQuery.isPending ? "Loading Vehicle Total…" : "Vehicle Total Unavailable"}
+                {result && hasActiveFilters && !listQuery.isPlaceholderData && <span> · {total} Matching</span>}
+              </p>
+            )}
           {/* Fleet-wide readiness lives IN the one sticky filter row: the bar
               publishes its own height and overlaps the 16px below it, so a
               second row OUTSIDE the bar is covered and unclickable (the toolbar
               footer is inside it). Counts cover
               everything the current search and filters match, not the page,
               and each chip is the filter for its own band. */}
-            <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-2" data-testid="fleet-readiness">
-              <span className="whitespace-nowrap text-xs text-muted-foreground">Fleet readiness</span>
+            {result ? <span className="ml-auto inline-flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2" data-testid="fleet-readiness">
+              <span className="whitespace-nowrap text-xs text-muted-foreground">Fleet Readiness</span>
               {READINESS_BANDS.map((band) => {
                 const n = result.readinessCounts?.[band] ?? 0;
                 const active = readyFilter === band;
@@ -470,7 +488,7 @@ function FleetVehicles({
                   onClick={() => setList({ ready: "all" })}
                   className="whitespace-nowrap px-1 text-xs text-muted-foreground hover:text-foreground"
                 >
-                  Show all
+                  Show All
                 </button>
               )}
               {result.readinessPartial && (
@@ -478,12 +496,12 @@ function FleetVehicles({
                   className="whitespace-nowrap text-xs text-[#8A6410]"
                   title="Only the first 2,000 vehicles were graded."
                 >
-                  counted on the first 2,000 vehicles
+                  Counted On The First 2,000 Vehicles
                 </span>
               )}
-            </span>
-          </>
-        ) : null}
+            </span> : null}
+          </div>
+        )}
       />
 
       {view === "due" && dueAllowed && (
@@ -491,35 +509,35 @@ function FleetVehicles({
       )}
 
       {view !== "due" && view === "list" && rows.length > 0 && (
-        <div className="hidden md:block mt-4 max-lg:min-w-0 max-lg:overflow-x-auto rounded-xl border border-border bg-white lg:overflow-hidden">
-          <table className="w-full text-sm max-lg:min-w-[64rem]">
+        <div data-vehicles-table-scroller className="hidden md:block mt-3 min-w-0 overflow-x-auto overscroll-x-contain rounded-xl border border-border bg-white">
+          <table className="w-full min-w-[64rem] text-[13px] [&_th]:px-2.5 [&_th]:py-1.5 [&_td]:px-2.5 [&_td]:py-1">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
                 <th scope="col" className="w-10 px-3 py-2 font-medium" aria-label="Row number">#</th>
-                <th className="px-3 py-2 font-medium">Unit</th>
+                <th className="px-3 py-2 font-medium">Photo</th>
                 <th className="px-3 py-2 font-medium">Vehicle</th>
+                <th className="px-3 py-2 font-medium">Color</th>
                 <th className="px-3 py-2 font-medium">Plate</th>
                 <th className="px-3 py-2 font-medium">VIN</th>
-                <th className="px-3 py-2 font-medium">Availability</th>
                 <th className="px-3 py-2 font-medium">Readiness</th>
+                <th className="px-3 py-2 font-medium">Availability</th>
                 <th className="px-3 py-2 font-medium">Weekly Rate</th>
-                <th className="px-3 py-2 font-medium">Partner</th>
-                <th className="px-3 py-2 font-medium sr-only">Open</th>
+                <th data-vehicles-open-col className="sticky right-0 z-[1] bg-[#FAFAFB] border-l border-border px-3 py-2 font-medium"><span className="sr-only">Open</span></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((v, index) => (
-                <tr key={v.id} onClick={() => setViewing(v.id)} className="border-t border-border cursor-pointer hover:bg-[#FAFAFB]">
+                <tr key={v.id} onClick={() => setViewing(v.id)} className="group border-t border-border cursor-pointer hover:bg-[#FAFAFB]">
                   <td className="w-10 px-3 py-2 tabular-nums text-muted-foreground">{rowNumber(index)}</td>
-                  <td className="px-3 py-2 font-medium whitespace-nowrap">{v.unit_number ?? <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-3 py-2 whitespace-nowrap"><VehicleListThumbnail vehicle={v} /></td>
                   <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{displayVehicleWord(v.color ?? "") || <span className="text-muted-foreground">Not Set</span>}</td>
                   <td className="px-3 py-2 font-mono whitespace-nowrap">{v.license_plate || <span className="text-muted-foreground">—</span>}</td>
                   <td className="px-3 py-2"><CopyVin vin={v.vin} /></td>
-                  <td className="px-3 py-2 whitespace-nowrap"><Availability v={v} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><ReadinessPill v={v} /></td>
+                  <td className="px-3 py-2 whitespace-nowrap"><Availability v={v} /></td>
                   <td className="px-3 py-2 whitespace-nowrap"><Rate v={v} /></td>
-                  <td className="px-3 py-2 max-w-[160px] truncate">{partnerName(v.partner_id)}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td data-vehicles-open-col className="sticky right-0 z-[1] bg-white group-hover:bg-[#FAFAFB] border-l border-border px-3 py-2 text-right whitespace-nowrap">
                     <button onClick={(e) => { e.stopPropagation(); setViewing(v.id); }} className="inline-flex items-center gap-1 rounded-md bg-black text-white px-2.5 py-1 text-xs">
                       Open <ArrowRight className="w-3 h-3" />
                     </button>
@@ -558,7 +576,7 @@ function FleetVehicles({
                 ? `The top search “${topSearch}” is also applied here. Clear it to see every vehicle.`
                 : "Try clearing a filter or searching for a different make or model."
           }
-          action={hasActiveFilters ? <button onClick={clearAll} className={TOOLBAR.button}>Clear Filters</button> : undefined}
+          action={hasActiveFilters ? <button onClick={clearAll} className={VEHICLE_TOOLBAR.button}>Clear Filters</button> : undefined}
         />
       )}
 

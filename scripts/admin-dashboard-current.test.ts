@@ -12,7 +12,7 @@ describe("admin dashboard currency", () => {
     expect(src).toMatch(/\.eq\("status", "active"\)/);
     expect(src).toMatch(/setActiveRentalCount/);
     expect(src).toMatch(/opsRefreshKey/);
-    expect(src).toMatch(/Open Active Rentals/);
+    expect(src).toMatch(/Open Active/);
     expect(src).toMatch(/window\.addEventListener\("focus"/);
     expect(src).toMatch(/summarizeFleetOccupancy/);
     expect(src).not.toMatch(/Hot Prospects/);

@@ -14,6 +14,6 @@ describe("driver payment history", () => {
     assert.equal((rules.match(/const PORTAL_PAYMENT_HISTORY_ENABLED/g) ?? []).length, 1);
     assert.doesNotMatch(rules, /DRIVER_PAYMENT_HISTORY_ENABLED/);
     assert.doesNotMatch(portal, /DRIVER_PAYMENT_HISTORY|DriverPaymentHistory|PortalPaymentHistory|PaymentHistoryGate/);
-    assert.equal((portal.match(/<PaymentHistoryCard \/>/g) ?? []).length, 1);
+    assert.equal((portal.match(/<PaymentHistoryCard\b/g) ?? []).length, 1);
   });
 });

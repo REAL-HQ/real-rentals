@@ -14,6 +14,10 @@
  * for things it must refuse. It also checks that nothing anywhere hands out a
  * signed URL for that bucket, which would route around this file completely.
  *
+ * /api/public/vehicle-gallery/$id is a separate route. It may serve one
+ * gallery original when a public vehicle has no published listing photo, and
+ * it never accepts a storage path. This path route stays published-only.
+ *
  * Run: node scripts/vehicle-photo-public-route.test.mjs   (wired into npm test)
  */
 import { execFileSync } from "node:child_process";

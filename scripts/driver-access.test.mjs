@@ -1,14 +1,8 @@
 /**
- * An approved applicant must be able to sign in and finish their own paperwork.
- *
- * The account used to be created inside activateRental — the moment a vehicle
- * was assigned. That left the window between "approved" and "here are your
- * keys" with no login behind it, which is exactly the window where documents
- * and a signed agreement decide whether the rental happens at all.
- *
- * These assertions hold the new line: provisioning happens at approval, both
- * callers share one idempotent path, nothing driver-facing is gated on a
- * rental, and there is a way back in when a password is lost.
+ * An approved applicant waits without an account invitation until Reserved.
+ * Confirmed pickup provisioning and activation share one idempotent path,
+ * identity conflicts refuse access, and there is a way back in when a
+ * password is lost.
  */
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -29,6 +23,7 @@ const code = (src) =>
 const ACCOUNT = "src/lib/driver-account.server.ts";
 const APPS = "src/lib/applications.functions.ts";
 const RENTALS = "src/lib/rentals.functions.ts";
+const RESERVATIONS = "src/lib/reservations.functions.ts";
 const PORTAL = "src/routes/portal.tsx";
 const LOGIN = "src/routes/login.tsx";
 const SETPW = "src/routes/set-password.tsx";
@@ -38,6 +33,7 @@ const EMAIL = "src/lib/email.server.ts";
 const account = read(ACCOUNT);
 const apps = read(APPS);
 const rentals = read(RENTALS);
+const reservations = read(RESERVATIONS);
 const portal = read(PORTAL);
 const login = read(LOGIN);
 const setpw = read(SETPW);
@@ -68,7 +64,8 @@ ok(
 // satisfy a name check while quietly provisioning nobody.
 const IMPORTS_PROVISIONER =
   /const \{ provisionDriverAccount \} = await import\("@\/lib\/driver-account\.server"\)/;
-ok(IMPORTS_PROVISIONER.test(apps), "approval imports and calls the real provisioner");
+ok(!IMPORTS_PROVISIONER.test(apps), "approval does not provision or invite");
+ok(IMPORTS_PROVISIONER.test(reservations), "Reserved imports and calls the real provisioner");
 ok(
   IMPORTS_PROVISIONER.test(rentals),
   "activation does too, as the repair path for older approvals",
@@ -83,37 +80,33 @@ ok(
   "neither caller creates auth users directly",
 );
 
-/* ------------------------------------------- approval must not be undone -- */
-console.log("\nprovisioning never breaks an approval that already happened");
+/* ------------------------------------------- login waits for Reserved ---- */
+console.log("\napproval and signing never send account login details");
 
 const approveBody = apps.slice(
   apps.indexOf("export const approveApplication"),
   apps.indexOf("export const", apps.indexOf("export const approveApplication") + 10),
 );
 ok(approveBody.length > 500, "found the approveApplication handler");
+ok(!/provisionDriverAccount|sendPortalInviteEmail/.test(approveBody), "approval neither provisions nor emails a login");
+ok(/portalAccount = "deferred"/.test(approveBody), "approval explicitly defers account delivery to Reserved");
+ok(/newlyApproved[\s\S]*sendApprovalConfirmationEmail/.test(approveBody), "approval sends its separate confirmation only on a new approval");
+ok(/idempotencyKey: `approval-confirmation-\$\{args\.applicationId\}`/.test(email), "the approval confirmation has a stable per-application idempotency key");
+ok(/if \(data\.sendAgreement !== true\)/.test(approveBody) && !/data\.sendAgreement !== false/.test(approveBody), "approval never sends an agreement unless explicitly requested");
+ok(/export async function sendPortalInviteEmail/.test(email), "the Reserved invite email exists");
+ok(/reservation\?:/.test(email) && /pickupLocation/.test(email), "the login email can include confirmed pickup details");
+ok(/sendPortalInviteEmail/.test(reservations), "Reserved sends the account login email");
+const agreements = read("src/lib/agreements.functions.ts");
+const signAt = agreements.indexOf("export const signAgreement");
+const signBody = agreements.slice(signAt, agreements.indexOf("export const", signAt + 10));
 ok(
-  /try \{[\s\S]{0,400}provisionDriverAccount[\s\S]{0,400}\} catch/.test(approveBody),
-  "provisioning is wrapped — a failure is caught, not thrown",
+  signBody.indexOf('result === "already_signed"') < signBody.indexOf("sendSignedEmails"),
+  "a repeat signature returns before another login or payment email",
 );
+ok(!/provisionDriverAccount|sendPortalInviteEmail/.test(agreements), "agreement signing never provisions or emails a login");
 ok(
-  /portalAccount = "failed"/.test(approveBody),
-  "a failure is reported back to the operator instead",
-);
-ok(
-  approveBody.indexOf("logAudit") < approveBody.indexOf("provisionDriverAccount"),
-  "the approval is recorded and audited before provisioning is attempted",
-);
-ok(
-  /portalAccount === "created"/.test(approveBody),
-  "only a brand-new account triggers the set-password email",
-);
-ok(
-  /export async function sendPortalInviteEmail/.test(email),
-  "the invite email exists",
-);
-ok(
-  /portalAccount/.test(read("src/components/admin/DriversPanel.tsx")),
-  "the admin UI tells staff what happened to the login",
+  /recoveryUrlFromGenerateLink/.test(account) && /publicAppUrl\("\/set-password"\)/.test(account) && /auth\/confirm/.test(read("src/lib/public-app-url.ts")),
+  "the recovery link opens /set-password",
 );
 
 /* ---------------------------------- identity linking is never silent ----- */
@@ -142,20 +135,12 @@ ok(
   "and mints no set-password link for the new address",
 );
 ok(
-  /portalAccount = account\.conflict/.test(apps),
-  "approval reports the conflict rather than claiming a login was made",
-);
-ok(
-  /"conflict"/.test(read("src/components/admin/DriversPanel.tsx")),
-  "and staff are told, in the approval toast",
+  /if \(account\.conflict\) throw new Error/.test(reservations),
+  "Reserved refuses a conflicting identity instead of linking the reservation",
 );
 ok(
   /code: "account_conflict"/.test(rentals) && !/overrideBlockers[\s\S]{0,200}account_conflict/.test(rentals),
   "activation returns account_conflict directly, outside the overridable path",
-);
-ok(
-  /if \(portalAccount === "conflict"\)[\s\S]{0,420}agreementSent: false/.test(apps),
-  "a conflicted identity is never issued a signable agreement",
 );
 
 // Anyone can register an account for any address through the public sign-up
@@ -323,17 +308,18 @@ console.log("\nlosing a password is recoverable");
 
 ok(existsSync(LOGIN) && existsSync(SETPW), "a driver sign-in page and a set-password page exist");
 ok(
-  /resetPasswordForEmail/.test(login),
+  /requestPasswordReset/.test(login),
   "the driver page can send a reset link",
 );
 ok(
-  /resetPasswordForEmail/.test(admin),
+  /requestPasswordReset/.test(admin),
   "so can the staff page — it had no recovery either",
 );
 ok(
-  /redirectTo: `\$\{window\.location\.origin\}\/set-password`/.test(login) &&
-    /redirectTo: `\$\{window\.location\.origin\}\/set-password`/.test(admin),
-  "both land on the same set-password page",
+  /requestPasswordReset/.test(login) && /requestPasswordReset/.test(admin) &&
+    /auth\/confirm/.test(read("src/lib/public-app-url.ts")) &&
+    /token_hash/.test(setpw),
+  "both send a drivereal.com confirm link that lands on the same set-password page",
 );
 ok(
   /auth\.updateUser\(\{ password: pw \}\)/.test(setpw),
@@ -391,13 +377,15 @@ console.log("\nno uncontrolled public account creation");
 const adminSrc = read("src/routes/admin.tsx");
 ok(!/auth\.signUp/.test(adminSrc), "the back-office form offers no Create Account");
 ok(/signInWithPassword/.test(adminSrc), "but still signs people in");
-ok(/resetPasswordForEmail/.test(adminSrc), "and still resets passwords");
+ok(/requestPasswordReset/.test(adminSrc), "and still resets passwords");
 ok(
-  /auth\.signUp/.test(read("src/routes/invite.tsx")),
-  "team members still create their account from an invitation",
+  /requestEmailSignup/.test(read("src/routes/invite.tsx")) &&
+    !/auth\.signUp/.test(read("src/routes/invite.tsx")),
+  "team members still create their account from an invitation, through a drivereal.com confirm email",
 );
 ok(
-  /auth\.signUp/.test(read("src/routes/partner.tsx")),
+  /requestEmailSignup/.test(read("src/routes/partner.tsx")) &&
+    !/auth\.signUp/.test(read("src/routes/partner.tsx")),
   "partner onboarding keeps its sign-up — staff link the partner record afterwards",
 );
 

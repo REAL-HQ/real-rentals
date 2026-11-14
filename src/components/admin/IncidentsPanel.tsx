@@ -43,7 +43,7 @@ function money(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
-export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | null }) {
+export function IncidentsPanel({ seedIssueId = null, embedded = false }: { seedIssueId?: string | null; embedded?: boolean }) {
   const fetchList = useServerFn(listIncidents);
   const remove = useServerFn(deleteIncident);
   const fetchSeed = useServerFn(incidentSeedForIssue);
@@ -107,12 +107,21 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
       ? rows.filter((r) => (prepById.get(r.id) ?? 0) > 0)
       : rows;
 
+  const toolbarClass = embedded
+    ? "flex flex-wrap items-center justify-between gap-2"
+    : "admin-sticky-bar flex flex-wrap items-center justify-between gap-2";
+
   return (
     <IncidentAgingGate incidentIds={rows.map((row) => row.id)}>
-    <div className="space-y-4">
-      <div className="admin-sticky-bar flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>{rows.length} incident(s)</span>
+    <div className="space-y-4" data-testid="incidents-panel">
+      <div className={toolbarClass}>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {embedded ? (
+            <h2 className="text-[15px] font-semibold text-[#111114]">Incidents</h2>
+          ) : null}
+          <span className="text-sm text-muted-foreground">
+            {rows.length} incident{rows.length === 1 ? "" : "s"}
+          </span>
           {openCount > 0 ? <StatusPill tone="amber">{openCount} open</StatusPill> : null}
         </div>
         <button
@@ -134,7 +143,7 @@ export function IncidentsPanel({ seedIssueId = null }: { seedIssueId?: string | 
         <p className="text-[12px] text-[#55555E]">Remaining To Charge Is Capped</p>
       ) : null}
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1.5" data-testid="incident-status-chips">
         {["all", ...STATUSES].map((s) => (
           <button
             key={s}

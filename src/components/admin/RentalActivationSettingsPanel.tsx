@@ -12,7 +12,7 @@ import {
 } from "@/lib/rental-activation-settings";
 
 /**
- * Settings → Rentals → Rental Terms. Owner only: the section is Owner-only in the
+ * Settings → Rentals → Terms. Owner only: the section is Owner-only in the
  * menu, the server functions call requireOwner, and the database function checks
  * private.is_owner() again and audits every change (actor, old → new, time).
  */
@@ -37,7 +37,7 @@ export function RentalActivationSettingsPanel() {
     if (
       allow &&
       !window.confirm(
-        "Turn on Allow Activation Without Insurance Verification? Managers will be able to start a rental for a driver whose insurance is unverified, missing or expired after acknowledging a warning. Every other requirement still applies.",
+        "Turn on Allow Activation Without Insurance Verification? The app already lets a rental start without a verified policy. This switch only matters if the older activation database check is installed: On lets that check proceed, Off lets that check refuse. Every other requirement still applies.",
       )
     )
       return;
@@ -71,11 +71,11 @@ export function RentalActivationSettingsPanel() {
             {ALLOW_WITHOUT_INSURANCE_LABEL}
           </div>
           <p className="mt-1 text-[12px] text-[#55555E]">
-            Off (default): a rental cannot start until the driver&rsquo;s insurance is verified. On:
-            a Manager or Owner may start one with insurance unverified, missing or expired, only
-            after acknowledging a warning. Insurance is never marked verified by this, and approval,
-            license documents, the signed agreement and vehicle readiness are still required. Every
-            change is recorded in Activity.
+            The app does not wait on insurance before a rental starts. Record the policy on the
+            Screening tab after the contract is signed. If the older activation database check is
+            installed, Off lets that check refuse an unverified policy and On lets it proceed.
+            This never marks insurance verified. Approval, license documents, the signed agreement
+            and vehicle readiness are still required. Every change is recorded in Activity.
           </p>
           {failed ? (
             <p className="mt-2 text-[12px] text-[#8A1C10]">
@@ -88,8 +88,8 @@ export function RentalActivationSettingsPanel() {
           ) : null}
           {on ? (
             <p className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-[#8A1C10]">
-              <ShieldAlert className="w-3.5 h-3.5" /> On: Rentals Can Start Without Verified
-              Insurance.
+              <ShieldAlert className="w-3.5 h-3.5" /> On: An Installed Database Check Will Allow
+              An Unverified Policy.
             </p>
           ) : null}
         </div>

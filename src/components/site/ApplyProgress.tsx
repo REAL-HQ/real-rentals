@@ -31,8 +31,8 @@ export function ApplyProgress({
         <section className={`mt-3 mb-4 rounded-xl border border-border bg-white px-4 py-3 ${className}`}>
           <h2 className="text-base font-semibold">What You'll Need</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            No documents needed to apply. Your licence, insurance and gig screenshots are what we need
-            before you can pick a car up.
+            No documents needed to apply. Your licence and gig screenshots help us get you into a car.
+            Insurance is included, with the policy in your name. One less bill to worry about.
           </p>
           <ul className="mt-2">
             {APPLY_PROFILE_ITEMS.map((item) => (

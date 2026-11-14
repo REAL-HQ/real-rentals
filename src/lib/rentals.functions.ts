@@ -4,6 +4,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { notReadyMessage } from "@/lib/vehicle-readiness";
+import { publicAppOrigin } from "@/lib/public-app-url";
 import {
   decideActivation,
   OWNER_APPROVED_RENTAL_REASON,
@@ -32,7 +33,7 @@ import {
 // matter with a small fleet and paid traffic: a vehicle cannot go out twice,
 // and a vehicle cannot go out un-inspected.
 
-const SITE_URL = () => process.env.PUBLIC_SITE_URL || "https://drivereal.com";
+const SITE_URL = () => publicAppOrigin();
 
 // Delegates to the shared tier check rather than repeating the role list.
 // Everything in this file is money, so the bar is Manager — a Coordinator is
@@ -89,12 +90,12 @@ async function evaluateReadiness(
   }
 
   // Driver-side readiness, enforced here rather than only in the drawer:
-  // approval, licence front/back, a signed agreement and verified insurance
-  // (all hard; insurance may instead need the Owner-exception acknowledgement)
-  // and the interview (soft). Same sources the drawer reads: the Document Vault
+  // approval, licence front/back and a signed agreement (hard) and the
+  // interview (soft). Insurance is recorded for staff and does not block.
+  // Same sources the drawer reads: the Document Vault
   // (documents.driver_id = application id), driver_screenings, agreements and
   // the audited paper-agreement verifications in audit_log.
-  const [docsRead, screeningRead, agreementsRead, auditsRead] = await Promise.all([
+  const [docsRead, screeningRead, agreementsRead, auditsRead, evidenceRead] = await Promise.all([
     admin
       .from("documents")
       .select("id,category,is_current,review_status,expires_at,reviewed_at,storage_path")
@@ -116,9 +117,16 @@ async function evaluateReadiness(
       .eq("action", "document.verified")
       .eq("entity_type", "application")
       .eq("entity_id", applicationId),
+    // Saved staff check-offs (Upload Due / Not Collected); the newest per file wins.
+    admin
+      .from("checklist_evidence_events")
+      .select("field,state,revision")
+      .eq("application_id", applicationId)
+      .in("field", ["license_front", "license_back", "agreement", "income", "insurance_quote", "screening"])
+      .order("revision", { ascending: false }),
   ]);
   // A failed read must never read as "complete": refuse instead of guessing.
-  const readError = docsRead.error ?? screeningRead.error ?? agreementsRead.error ?? auditsRead.error;
+  const readError = docsRead.error ?? screeningRead.error ?? agreementsRead.error ?? auditsRead.error ?? evidenceRead.error;
   if (readError) throw new Error("Could not check activation readiness. Try again.");
   const docs = (docsRead.data ?? []) as DriverReadinessFacts["documents"];
   const screening = screeningRead.data;
@@ -146,7 +154,11 @@ async function evaluateReadiness(
     interviewCompletedAt: ((screening as any)?.interview_completed_at as string | null) ?? null,
     insurance,
     hasPassedInspection: null,
+    evidence: {},
   };
+  for (const row of (evidenceRead.data ?? []) as { field: "license_front" | "license_back" | "agreement" | "income" | "insurance_quote" | "screening"; state: "collected" | "not_collected" }[]) {
+    if (!facts.evidence![row.field]) facts.evidence![row.field] = row.state;
+  }
   blockers.push(...driverRequirementBlockers(facts));
 
   // An applicant already on an active rental should be edited, not re-activated.
@@ -158,6 +170,7 @@ async function evaluateReadiness(
       .eq("status", "active")
       .limit(1);
     if (existing && existing.length) {
+      facts.rentalActive = true;
       blockers.push({
         code: "already_active",
         message: "This driver already has an active rental.",
@@ -236,10 +249,8 @@ async function evaluateReadiness(
     }
   }
 
-  if (app.insurance_status === "none") {
-    warnings.push("Applicant reported no personal insurance coverage.");
-  } else if (app.insurance_status === "expired") {
-    warnings.push("Applicant's insurance is expired.");
+  if (app.insurance_status === "none" || app.insurance_status === "expired") {
+    warnings.push("No renter policy is recorded yet. Set it up after the contract is signed; it does not block this rental.");
   }
   if (!app.sms_consent) warnings.push("No SMS consent — they will only get email updates.");
 
@@ -360,8 +371,8 @@ export const activateRental = createServerFn({ method: "POST" })
       return { ok: false, blockers: [{ code: "no_email", message: "No email on file." }] };
 
     // 1. Auth account, driver role, application link. Normally already done
-    //    at approval — this is the repair path for an application approved
-    //    before that existed, or one whose provisioning failed at the time.
+    //    at Reserved — this is the repair path for an older reservation or
+    //    one whose provisioning failed at the time.
     const { provisionDriverAccount } = await import("@/lib/driver-account.server");
     const {
       userId,
@@ -446,7 +457,11 @@ export const activateRental = createServerFn({ method: "POST" })
       _pickup_miles: data.pickupMileage ?? null,
       _actor: actor.userId,
     };
-    const ackSent = decision.insuranceExceptionUsed && data.insuranceExceptionAck === true;
+    // Insurance does not block activation. If activate_rental_checked_tx is
+    // already installed, it still applies the old insurance rule unless the
+    // Owner exception is on. Sending the acknowledgement whenever the policy
+    // is not verified lets that installed exception proceed without a checkbox.
+    const ackSent = readiness.insurance.status !== "verified";
     let rentalId: string | null = null;
     let auditError: string | null = null;
     const first = await (supabaseAdmin as any).rpc("activate_rental_checked_tx", {
@@ -464,24 +479,11 @@ export const activateRental = createServerFn({ method: "POST" })
     });
     let txErr = first.error as { code?: string; message?: string } | null;
     if (txErr?.code === "PGRST202") {
-      // The wrapper is not installed yet. Fail closed: insurance must be
-      // verified (no Owner exception without the in-transaction re-check), and
-      // overrides are refused (their audit must commit with the rental). Only
-      // then is the existing transaction used directly, and its audit entry is
-      // written right after it — not atomically. A failed audit write is
-      // returned to the operator (auditError), never swallowed.
-      if (readiness.insurance.status !== "verified") {
-        return {
-          ok: false,
-          blockers: [
-            {
-              code: "insurance_not_verified",
-              message:
-                "Insurance must be verified before activation. The Owner exception is unavailable until the activation database update is installed.",
-            },
-          ],
-        };
-      }
+      // The wrapper is not installed. activate_rental_tx does not check
+      // insurance, so a rental can start without a verified policy. Overrides
+      // are still refused (their audit must commit with the rental). The
+      // audit entry is written right after the rental — not atomically. A
+      // failed audit write is returned to the operator (auditError).
       if (overridden.length) {
         return {
           ok: false,
@@ -550,7 +552,7 @@ export const activateRental = createServerFn({ method: "POST" })
 
     // 7. Welcome the driver. A brand-new account gets the set-password link
     //    minted during provisioning; an existing one — which is now the normal
-    //    case, because approval already made the account — just gets the
+    //    case, because Reserved already made the account — just gets the
     //    portal URL, since they already have a password.
     const inviteUrl = freshInviteUrl;
 
@@ -564,7 +566,7 @@ export const activateRental = createServerFn({ method: "POST" })
       const { sendEmail } = await import("@/lib/email.server");
       await sendEmail({
         to: app.email as string,
-        subject: `You're approved — ${vehicleLabel} is yours`,
+        subject: `${vehicleLabel} Is Reserved For You`,
         html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
           <h1 style="font-size:20px">You're all set, ${escapeHtml(firstName)}</h1>
           <p style="font-size:15px;line-height:1.6">Your rental is active: <strong>${escapeHtml(vehicleLabel)}</strong>${
@@ -585,7 +587,7 @@ export const activateRental = createServerFn({ method: "POST" })
       const { sendSms } = await import("@/lib/sms.server");
       await sendSms({
         to: (app.phone as string) ?? "",
-        body: `REAL RENTALS: You're approved, ${firstName}! ${vehicleLabel} is reserved for you. Check your email to set up your driver portal. Reply STOP to opt out.`,
+        body: `REAL RENTALS: Hi ${firstName}, ${vehicleLabel} is reserved for you. Check your email to set up your driver portal. Reply STOP to opt out.`,
         kind: "rental_activated",
         applicationId: data.applicationId,
         rentalId: rental.id as string,
@@ -602,6 +604,16 @@ export const activateRental = createServerFn({ method: "POST" })
       body: `${vehicleLabel} — $${data.weeklyRate.toFixed(2)}/week.`,
       channels: ["in_app", "email"],
     });
+
+    // Link the renter's Stripe customer/subscription and record anything they
+    // already paid (first week paid before activation). Never blocks activation.
+    try {
+      const { linkRentalOnActivation, stripeForLinking } = await import("@/lib/stripe-link.server");
+      const stripe = await stripeForLinking();
+      if (stripe) await linkRentalOnActivation(supabaseAdmin, stripe, rental.id as string);
+    } catch (e) {
+      console.error("[activate] stripe link failed", e);
+    }
 
     // rental.activated was written inside activate_rental_checked_tx (or, without
     // the wrapper, immediately after activate_rental_tx with any failure returned).

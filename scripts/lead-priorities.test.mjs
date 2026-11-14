@@ -109,6 +109,7 @@ state.rows = [
   row("g", "new", null, "closed"),
   row("h", "interested", null, "declined"),
   row("i", "unqualified", "2000-01-01"),
+  row("m", "declined", "2000-01-01"),
   { ...row("j", "new"), deleted_at: "2026-01-01" },
   row("k", "new", null, "active"),
   row("l", "new", null, "partial"),

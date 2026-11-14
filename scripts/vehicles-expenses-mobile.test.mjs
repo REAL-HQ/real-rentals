@@ -90,16 +90,8 @@ function sameAtLg(before, after, label) {
 }
 
 const pairs = [
-  [
-    "hidden md:block mt-4 rounded-xl border border-border bg-white overflow-hidden",
-    "hidden md:block mt-4 max-lg:min-w-0 max-lg:overflow-x-auto rounded-xl border border-border bg-white lg:overflow-hidden",
-    "vehicles table scroller at lg",
-  ],
-  [
-    "w-full text-sm",
-    "w-full text-sm max-lg:min-w-[64rem]",
-    "vehicles table min width at lg",
-  ],
+  // The vehicles table scroller and its min width now apply at every width
+  // (the Open column was clipped at lg); scripts/vehicles-table-scroll.test.mjs guards them.
   [
     "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4",
     "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-lg:min-w-0",
@@ -245,8 +237,7 @@ for (const [before, after, label] of pairs) {
 const present = [
   [vehicles, 'className="max-lg:min-w-0"', "the vehicles screen can shrink inside the admin column"],
   [vehicles, "<AdminToolbar", "the vehicles toolbar uses the shared AdminToolbar (see scripts/admin-toolbar.test.mjs)"],
-  [vehicles, "max-lg:min-w-[64rem]", "the vehicles table keeps a phone min width"],
-  [vehicles, "lg:overflow-hidden", "the vehicles table clips only from lg up"],
+  [vehicles, "min-w-[64rem]", "the vehicles table keeps its min width"],
   [vehicles, "data-testid=\"fleet-readiness\"", "fleet readiness stays in the filter row"],
   [vehicles, "fleet_inbox", "import to the fleet inbox stays"],
   [vehicles, "Add Vehicle", "add vehicle stays"],

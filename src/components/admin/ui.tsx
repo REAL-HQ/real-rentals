@@ -8,6 +8,9 @@ import {
   type ReadinessState,
 } from "@/lib/readiness";
 import { fmtDate as formatDate } from "@/lib/date-format";
+import type { EvidenceTone } from "@/lib/checklist-evidence";
+import { REQUIRED_DOC_TYPES } from "@/components/admin/types";
+import { Button } from "@/components/ui/button";
 
 // ---- Design tokens (shared across admin) --------------------------------
 // Canvas #FAFAFB · Card #FFFFFF · Border #EDEDF0 · Ink #111114 · Sub #55555E
@@ -273,6 +276,8 @@ export function LifecycleRail({
   blocker,
   className = "",
   onStageClick,
+  evidenceTones,
+  stageCheckoffs,
 }: {
   stages: LifecycleStage[];
   percent?: number;
@@ -281,71 +286,87 @@ export function LifecycleRail({
   className?: string;
   /** Only stages with a real destination get a handler; others stay static. */
   onStageClick?: Partial<Record<string, () => void>>;
+  /** Optional operational evidence color; never changes lifecycle completion or status. */
+  evidenceTones?: Partial<Record<string, EvidenceTone>>;
+  /** In-place receipt controls are separate from stage navigation. */
+  stageCheckoffs?: Partial<Record<string, { onToggle: () => void; disabled: boolean; checked: boolean; label: string; title: string }>>;
 }) {
-  const currentIdx = Math.max(
-    0,
-    stages.findIndex((s) => s.state === "current"),
-  );
+  const foundCurrent = stages.findIndex((s) => s.state === "current");
+  const currentIdx = foundCurrent >= 0 ? foundCurrent : Math.max(0, stages.length - 1);
   const current = stages[currentIdx] ?? stages[stages.length - 1];
   const upcoming = stages[currentIdx + 1];
   return (
-    <section className={`rounded-2xl border border-[#EDEDF0] bg-white p-5 shadow-sm ${className}`}>
+    <section className={`rounded-lg border border-border bg-card p-5 shadow-sm ${className}`}>
       <div className="flex items-baseline justify-between gap-3 mb-4">
         <div className="min-w-0">
-          <MicroLabel>Driver Lifecycle</MicroLabel>
-          <div className="mt-1 text-[15px] font-semibold text-[#111114] truncate">
+          <div className="text-[10px] font-semibold text-muted-foreground">Driver Lifecycle</div>
+          <div className="mt-1 text-[15px] font-semibold text-foreground truncate">
             {current?.label ?? "—"}
             {timeInStage && (
-              <span className="ml-2 text-[12px] font-normal text-[#9A9AA3]">
+              <span className="ml-2 text-[12px] font-normal text-muted-foreground">
                 · {timeInStage} in stage
               </span>
             )}
           </div>
           {blocker && (
-            <div className="text-[12px] text-[#D03020] mt-0.5 truncate">Blocker: {blocker}</div>
+            <div className="text-[12px] text-destructive mt-0.5 truncate">Blocker: {blocker}</div>
           )}
         </div>
         <div className="text-right shrink-0">
-          <div className="text-[22px] font-semibold text-[#111114] tabular-nums leading-none">
+          <div className="text-[22px] font-semibold text-foreground tabular-nums leading-none">
             {percent ?? 0}%
           </div>
           {upcoming && (
-            <div className="text-[11px] text-[#9A9AA3] mt-1">Next: {upcoming.label}</div>
+            <div className="text-[11px] text-muted-foreground mt-1">Next: {upcoming.label}</div>
           )}
         </div>
       </div>
-      <ol className="flex items-center gap-1.5 overflow-x-auto pb-1">
+      <ol className="flex w-full items-start overflow-x-auto pb-1 pt-1">
         {stages.map((s, i) => {
           const done = s.state === "done";
           const cur = s.state === "current";
-          return (
-            <li key={s.key} className="flex items-center gap-1.5 shrink-0">
-              <StageWrap onClick={onStageClick?.[s.key]} label={s.label}>
-                <span
-                  className={`h-6 w-6 rounded-full grid place-items-center border-2 text-[10px] font-semibold ${
-                    done
-                      ? "bg-[#50C060] border-[#50C060] text-white"
+          const evidenceTone = evidenceTones?.[s.key];
+          const checkoff = stageCheckoffs?.[s.key];
+          const marker = (
+            <span
+              className={`h-6 w-6 rounded-full grid place-items-center border-2 text-[10px] font-semibold ${
+                evidenceTone === "yellow"
+                  ? "bg-warning-soft border-warning text-warning-foreground"
+                  : evidenceTone === "red"
+                    ? "bg-destructive/10 border-destructive text-destructive"
+                    : done
+                      ? "bg-success border-success text-primary-foreground"
                       : cur
-                        ? "bg-white border-[#D03020] text-[#D03020] ring-4 ring-[#D03020]/10"
-                        : "bg-white border-[#EDEDF0] text-[#C4C4CB]"
-                  }`}
-                >
-                  {done ? <Check className="w-3 h-3" strokeWidth={2.5} /> : i + 1}
-                </span>
+                        ? "bg-card border-brand text-brand ring-4 ring-brand/10"
+                        : "bg-card border-border text-muted-foreground"
+              }`}
+            >
+              {(checkoff ? checkoff.checked && evidenceTone !== "red" : done && (!evidenceTone || evidenceTone === "green")) ? <Check className="w-3 h-3" strokeWidth={2.5} /> : i + 1}
+            </span>
+          );
+          return (
+            <li key={s.key} className="relative flex min-w-16 flex-1 basis-0 flex-col items-center">
+              {i < stages.length - 1 && (
+                <span aria-hidden="true"
+                  className={`pointer-events-none absolute left-[calc(50%+18px)] right-[calc(-50%+18px)] top-[11px] h-0.5 rounded ${done ? "bg-success" : "bg-border"}`}
+                />
+              )}
+              <StageWrap onClick={checkoff ? undefined : onStageClick?.[s.key]} label={s.label}>
+                {checkoff ? (
+                  <Button type="button" variant="ghost" size="icon" role="checkbox"
+                    aria-label={checkoff.label} aria-checked={checkoff.checked} title={checkoff.title}
+                    disabled={checkoff.disabled} onClick={checkoff.onToggle}
+                    className="h-6 w-6 rounded-full p-0 hover:bg-transparent disabled:opacity-100"
+                  >{marker}</Button>
+                ) : marker}
                 <span
                   className={`text-[10px] font-medium whitespace-nowrap ${
-                    cur ? "text-[#111114]" : done ? "text-[#55555E]" : "text-[#9A9AA3]"
+                    cur ? "text-foreground" : "text-muted-foreground"
                   }`}
                 >
                   {s.label}
                 </span>
               </StageWrap>
-              {i < stages.length - 1 && (
-                <span
-                  className="h-[2px] w-8 mt-[-14px] rounded"
-                  style={{ backgroundColor: done ? "#50C060" : "#EDEDF0" }}
-                />
-              )}
             </li>
           );
         })}
@@ -357,14 +378,15 @@ export function LifecycleRail({
 function StageWrap({ onClick, label, children }: { onClick?: () => void; label: string; children: ReactNode }) {
   if (!onClick) return <div className="flex flex-col items-center gap-1.5">{children}</div>;
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onClick}
       title={`Open ${label}`}
-      className="flex flex-col items-center gap-1.5 rounded-md px-1 hover:opacity-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/30"
+      aria-label={`Open ${label}`}
+      className="flex h-auto flex-col items-center gap-1.5 rounded-md px-1 py-0 hover:bg-transparent hover:opacity-75 focus-visible:ring-brand/30"
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -531,12 +553,14 @@ export function ReadinessSummary({
   actions,
   primary,
   remedyActions,
+  showNextSteps = true,
 }: {
   result: ReadinessResult;
   actions?: ReactNode;
   primary?: ReactNode;
   /** Buttons keyed by remedy, rendered inside Next Steps beside the gap they close. */
   remedyActions?: Partial<Record<string, ReactNode>>;
+  showNextSteps?: boolean;
 }) {
   const gaps = nextActions(result);
   return (
@@ -561,7 +585,7 @@ export function ReadinessSummary({
         )}
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#EDEDF0]">
+      <div className={`grid grid-cols-1 ${showNextSteps ? "md:grid-cols-3" : "md:grid-cols-2"} divide-y md:divide-y-0 md:divide-x divide-[#EDEDF0]`}>
         <div className="p-5">
           <MicroLabel className="mb-2">Positive Signals</MicroLabel>
           {result.positives.length === 0 ? (
@@ -608,7 +632,7 @@ export function ReadinessSummary({
           )}
         </div>
 
-        <div className="p-5">
+        {showNextSteps ? <div className="p-5">
           <MicroLabel className="mb-2">Next Steps</MicroLabel>
           {gaps.length === 0 ? (
             <div className="text-[12px] text-[#9A9AA3]">Nothing outstanding.</div>
@@ -631,7 +655,7 @@ export function ReadinessSummary({
               ))}
             </ul>
           )}
-        </div>
+        </div> : null}
       </div>
 
       {(actions || primary) && (
@@ -721,9 +745,8 @@ export function Timeline({
 
 function fmtDate(iso?: string | null): string | null {
   if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return formatDate(d);
+  // Date-only strings stay calendar dates (no UTC shift); formatDate handles both.
+  return formatDate(iso) || null;
 }
 
 export function buildDriverTimeline(driver: any, screening?: any): TimelineStep[] {
@@ -831,7 +854,7 @@ export function ReadinessCell({
     <div className="flex flex-col items-start gap-0.5">
       <ReadinessStatePill state={result.state} short />
       <span className="text-[10px] text-muted-foreground tabular-nums">
-        {result.coverage}% Known · {docCount}/4
+        {result.coverage}% Known · {docCount}/{REQUIRED_DOC_TYPES.length}
       </span>
     </div>
   );

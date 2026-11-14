@@ -89,12 +89,12 @@ export default function LeadPriorities({
   return (
     <section
       aria-labelledby="lead-priorities-title"
-      className="rounded-2xl border border-border bg-card p-4 text-card-foreground sm:p-5"
+      className="rounded-2xl border border-border bg-secondary p-4 text-card-foreground sm:p-5"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 id="lead-priorities-title" className="flex items-center gap-2 text-lg font-semibold">
-            <Flame aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
+            <Flame aria-hidden="true" className="h-5 w-5 shrink-0 text-destructive" />
             Lead Priorities
           </h2>
           <p className="text-sm text-muted-foreground">Who needs attention and what to do next</p>
@@ -137,23 +137,23 @@ export default function LeadPriorities({
             <div className="my-4 grid grid-cols-3 gap-2 sm:gap-3">
               {(
                 [
-                  ["New Leads", result.counts.new, "new" as LeadFilter],
-                  ["Overdue", result.counts.overdue, "follow_up_due" as LeadFilter],
-                  ["Hot Leads", result.counts.hot, "interested" as LeadFilter],
+                  ["New Leads", result.counts.new, "new" as LeadFilter, "border-border bg-card hover:bg-secondary", "text-card-foreground"],
+                  ["Hot Leads", result.counts.hot, "interested" as LeadFilter, "border-border bg-card hover:bg-secondary", "text-card-foreground"],
+                  ["Overdue", result.counts.overdue, "follow_up_due" as LeadFilter, "border-destructive/20 bg-destructive/10 hover:bg-destructive/15", "text-destructive"],
                 ] as const
-              ).map(([label, value, next]) => (
+              ).map(([label, value, next, cardTone, textTone]) => (
                 <Button
                   key={label}
                   type="button"
                   variant="outline"
                   aria-pressed={filter === next}
                   onClick={() => setLeadFilter(next)}
-                  className={`h-16 min-w-0 flex-col items-start justify-center gap-1 whitespace-normal rounded-lg bg-card px-3 py-2 text-left text-card-foreground shadow-none hover:bg-secondary hover:text-foreground ${
-                    filter === next ? "border-brand ring-1 ring-brand" : "border-border"
+                  className={`h-16 min-w-0 flex-col items-start justify-center gap-1 whitespace-normal rounded-lg px-3 py-2 text-left text-card-foreground shadow-none hover:text-foreground ${cardTone} ${
+                    filter === next ? "border-brand ring-1 ring-brand" : ""
                   }`}
                 >
-                  <span className="text-xs font-normal text-muted-foreground">{label}</span>
-                  <span className={`text-xl font-semibold leading-none tabular-nums ${next === "follow_up_due" && value > 0 ? "text-brand" : "text-card-foreground"}`}>{value}</span>
+                  <span className={`text-xs font-normal ${textTone}`}>{label}</span>
+                  <span className={`text-xl font-semibold leading-none tabular-nums ${textTone}`}>{value}</span>
                 </Button>
               ))}
             </div>

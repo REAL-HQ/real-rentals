@@ -22,7 +22,7 @@ function reasonLine(item: PortalDocumentUpdateItem): string {
 /**
  * Upload control for one license or insurance file.
  *
- * Same sequence as DocumentVault's driver Replace: a signed upload URL from
+ * Same sequence as DocumentVault's driver Add: a signed upload URL from
  * createDocumentUploadUrl, bytes to the bucket that function returns
  * (driver-docs), then confirmDocumentUpload. Confirm inserts a new current
  * row and supersedes the previous one. Nothing here deletes a row or an
@@ -76,7 +76,7 @@ export function DocumentUpdateCard({
     <section className="rounded-2xl border border-border bg-white p-5">
       <h2 className="font-semibold">Update Your Documents</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Your license or insurance needs a current file. Uploading keeps the previous one in your history.
+        Your license needs a current file. Uploading keeps the previous one in your history.
       </p>
       {readOnly ? (
         <p className="mt-4 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">

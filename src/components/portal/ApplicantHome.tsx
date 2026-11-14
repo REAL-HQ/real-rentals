@@ -53,7 +53,9 @@ export function ApplicantHome() {
                 has been changed.
               </div>
             )}
-            {data.application ? <ApplicationCard app={data.application} approved={data.stage === "approved"} /> : null}
+            {data.application ? (
+              <ApplicationCard app={data.application} approved={data.stage === "approved"} email={data.email} />
+            ) : null}
             {APPLICATION_TIMELINE_ENABLED && data.stage === "applicant" ? <ApplicationTimelineSection /> : null}
             {!data.application && data.waitlist ? <WaitlistCard w={data.waitlist} /> : null}
             {data.stage === "none" && !data.review && (
@@ -95,9 +97,11 @@ const DOC_LABEL: Record<string, string> = {
 function ApplicationCard({
   app,
   approved,
+  email,
 }: {
   app: { status: string; step: string | null; name: string | null; onWaitlist: boolean; documents: { category: string }[] };
   approved: boolean;
+  email: string;
 }) {
   const open = useServerFn(openMyApplication);
   const [busy, setBusy] = useState(false);
@@ -111,7 +115,7 @@ function ApplicationCard({
         ? "Closed"
         : "In Review";
 
-  async function go() {
+  async function goWizard() {
     setBusy(true);
     setErr(null);
     try {
@@ -123,29 +127,52 @@ function ApplicationCard({
     }
   }
 
+  async function goDocuments() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await open();
+      // Approved / driver-role responses point at /portal (Documents vault), not the wizard.
+      window.location.assign((r as any).documents ? "/portal" : r.path);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't open your documents.");
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="mt-8 space-y-4">
-      <div className="rounded-xl border border-border p-6">
+      <div className="rounded-xl border border-border bg-white p-6">
         <div className="text-xs text-muted-foreground">Status</div>
         <div className="mt-1 text-xl font-semibold">{status}</div>
         <div className="mt-4 text-sm text-muted-foreground">
           Progress: <span className="text-foreground font-medium">{STEP_LABEL[app.step ?? ""] ?? "Getting Started"}</span>
         </div>
         {approved ? (
-          <p className="mt-4 text-sm">
-            You're approved. Your rental, agreement and payments appear here as soon as the team finishes setting up your account —
-            we'll email you.
-          </p>
+          <>
+            <p className="mt-4 text-sm font-medium">Next Step: Sign In To Finish Setup</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              You're approved. Use your account to upload documents, sign your agreement, and finish setup. Your rental
+              appears here once the team assigns a vehicle.
+            </p>
+            <Link
+              to="/login"
+              search={email ? ({ email } as any) : ({} as any)}
+              className="mt-5 inline-flex min-h-11 items-center rounded-lg bg-real-red text-primary-foreground px-6 py-2.5 text-sm font-medium"
+            >
+              Sign In To Your Account
+            </Link>
+          </>
         ) : null}
-        {status !== "Closed" && (
-          <button type="button" onClick={go} disabled={busy} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg bg-real-red text-primary-foreground px-6 py-2.5 text-sm font-medium disabled:opacity-50">
+        {!approved && status !== "Closed" && (
+          <button type="button" onClick={goWizard} disabled={busy} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg bg-real-red text-primary-foreground px-6 py-2.5 text-sm font-medium disabled:opacity-50">
             {busy && <Loader2 className="w-4 h-4 animate-spin" />}
             {done ? "Review My Application" : "Continue Application"}
           </button>
         )}
         {err && <div className="mt-3 text-sm text-real-red">{err}</div>}
       </div>
-      <div className="rounded-xl border border-border p-6">
+      <div className="rounded-xl border border-border bg-white p-6">
         <div className="text-sm font-semibold">Documents On File</div>
         {app.documents.length ? (
           <ul className="mt-3 space-y-1 text-sm">
@@ -156,11 +183,15 @@ function ApplicationCard({
         ) : (
           <p className="mt-2 text-sm text-muted-foreground">Nothing uploaded yet.</p>
         )}
-        {status !== "Closed" && (
-          <button type="button" onClick={go} disabled={busy} className="mt-4 text-sm text-real-red font-medium hover:underline">
+        {approved ? (
+          <button type="button" onClick={goDocuments} disabled={busy} className="mt-4 text-sm text-real-red font-medium hover:underline disabled:opacity-50">
             Upload Missing Documents
           </button>
-        )}
+        ) : status !== "Closed" ? (
+          <button type="button" onClick={goWizard} disabled={busy} className="mt-4 text-sm text-real-red font-medium hover:underline disabled:opacity-50">
+            Upload Missing Documents
+          </button>
+        ) : null}
       </div>
     </div>
   );

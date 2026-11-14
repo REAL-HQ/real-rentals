@@ -46,6 +46,7 @@ import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import { CONDITION_SECTIONS, ROLE_SUBSECTION, groupConditionPhotos } from "@/lib/condition-photos";
 import {
   listConditionMedia,
+  deleteOwnConditionMedia,
   getMyCheckoutInspection,
   signCheckoutInspection,
 } from "@/lib/inspections.functions";
@@ -93,6 +94,7 @@ import { DriverReceipts } from "@/components/portal/DriverReceipts";
 import { DRIVER_RECEIPTS_ENABLED } from "@/lib/driver-receipts";
 import { getDriverReceipts } from "@/lib/driver-receipts.functions";
 import { DriverHelpLink } from "@/components/portal/DriverHelp";
+import { WhatToDoGuides } from "@/components/portal/WhatToDoGuides";
 import { DRIVER_HELP_ENABLED } from "@/lib/driver-help";
 import { MyCarCard } from "@/components/portal/MyCarCard";
 import { RenterPortalCard } from "@/components/portal/RenterPortalCard";
@@ -510,20 +512,25 @@ function DocumentsView() {
     queryKey: ["driver-documents"],
     queryFn: () => fetchDocs(),
   });
-  const shared = (data ?? []).filter((d) => d.kind === "rental_agreement" || d.kind === "receipt");
+  const shared = (data ?? []).filter((d) => d.kind === "receipt");
+  const portalDocuments = useMemo(() => data ?? [], [data]);
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="w-full space-y-5">
       <AgreementsView />
 
       <div className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">Your Documents</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Keep your license and insurance current. Uploading a new file replaces the old one — we
-          keep the history.
+          Every upload stays on file. The newest file in each category is marked Latest, with its upload date and time.
         </p>
         <div className="mt-4">
-          {docsPreviewId ? <ReadOnlyNote what="Uploads" /> : <DocumentVault mode="driver" />}
+          <DocumentVault
+            mode="driver"
+            readOnly={Boolean(docsPreviewId)}
+            initialDocuments={portalDocuments}
+            externalLoading={isLoading}
+          />
         </div>
       </div>
 
@@ -577,12 +584,12 @@ function AgreementsView() {
   // stay visible, neutrally, with no signing call to action.
   const rows = (data ?? [])
     .map((a) => ({ ...a, state: portalAgreementState(a) }))
-    .filter((a) => a.state !== "hidden");
+    .filter((a) => a.state === "awaiting_signature" || a.state === "signing");
   if (rows.length === 0) return null;
 
   return (
     <div className="rounded-2xl border border-border bg-white p-5">
-      <h3 className="font-semibold">Rental Agreements</h3>
+      <h3 className="font-semibold">Agreements To Sign</h3>
       <ul className="mt-3 divide-y divide-border">
         {rows.map((a) => (
           <li key={a.id} className="py-3">
@@ -884,9 +891,9 @@ function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }
 /**
  * The renter's sign-off on the car's condition at handover.
  *
- * Our checklist and photos only record our side of it. Until the renter
- * agrees to that record, a damage dispute at return is our word against
- * theirs — so this puts the full inspection and every checkout photo in front
+ * Our checklist and any optional photos only record our side of it. Until the
+ * renter agrees to that record, a damage dispute at return is our word against
+ * theirs — so this puts the full inspection and any checkout photos in front
  * of them, with room to note anything they disagree with, before they sign.
  */
 function CheckoutSignOffCard() {
@@ -936,7 +943,7 @@ function CheckoutSignOffCard() {
     >
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h3 className="font-semibold">Vehicle Condition at Pickup</h3>
+          <h3 className="font-semibold">Vehicle Inspection Report: Pickup</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {signed
               ? `You signed this on ${fmtDate(data.signedAt as string)}.`
@@ -1071,7 +1078,7 @@ function CheckoutSignOffCard() {
                   className="mt-0.5"
                 />
                 <span>
-                  I have reviewed the photos and checklist above and agree this is the condition of
+                  I have reviewed the {data.media.length > 0 ? "photos and " : ""}checklist above and agree this is the condition of
                   the vehicle as I received it. Typing my name is my legal electronic signature.
                 </span>
               </label>
@@ -1113,6 +1120,7 @@ function PicturesView() {
   const picsPreviewId = usePreviewDriver();
   const fetchPics = usePortalRead(getDriverPictures);
   const fetchCondition = usePreviewNull(listConditionMedia, [] as any);
+  const deletePhoto = useServerFn(deleteOwnConditionMedia);
   const fetchDashboard = usePortalRead(getDriverDashboard);
 
   const { data: dash } = useQuery({
@@ -1143,7 +1151,7 @@ function PicturesView() {
   }, [media]);
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="w-full space-y-5">
       <CheckoutSignOffCard />
 
       {vehicleId ? (
@@ -1189,6 +1197,7 @@ function PicturesView() {
                     phase={section.uploadPhase}
                     media={yours}
                     defaultAngle={section.key === "during" ? "damage" : "front"}
+                    onDelete={async (id) => { await deletePhoto({ data: { id } }); }}
                     onChanged={() => refetchCondition()}
                   />
                 )}
@@ -1277,7 +1286,7 @@ function SettingsView() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="w-full space-y-6">
       {isLoading ? (
         <div className="rounded-2xl border border-border bg-white p-5 text-sm text-muted-foreground">
           Loading…
@@ -1382,8 +1391,9 @@ function IssuesViewInner() {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="w-full space-y-6">
       <RoadsideHelpForm onReported={() => refetch()} />
+      <WhatToDoGuides phone={businessPhone} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <form onSubmit={submit} className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">Report an Issue</h3>
@@ -1527,7 +1537,7 @@ function ReferralsView() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="w-full space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <MetricTile label="Rewards Earned" value={fmt(earned)} sub="Paid out to date" />
         <MetricTile label="Referrals Pending" value={`${pending}`} sub="Awaiting first rental" />
@@ -1648,10 +1658,10 @@ function PreRentalPanel({
           <FileText className="w-5 h-5 text-real-red" strokeWidth={1.75} />
           <div className="mt-3 font-semibold">Your Documents</div>
           <div className="mt-1 text-sm text-muted-foreground">
-            Upload or replace your licence and insurance, and read your rental agreement.
+            Upload or replace your licence, and read your rental agreement. Insurance is included.
           </div>
           <div className="mt-3 text-sm text-real-red font-medium inline-flex items-center gap-1">
-            Open Documents <ArrowRight className="w-3.5 h-3.5" />
+            Upload Missing Documents <ArrowRight className="w-3.5 h-3.5" />
           </div>
         </button>
 
@@ -1873,7 +1883,7 @@ function DashboardView({
               Pay Now <ArrowRight className="w-4 h-4 ml-2" />
             </button>
             <div className="mt-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs p-3">
-              Pay On Time To Avoid A $50 Late Fee, Applied 3 Days After The Due Date.
+              Pay On Time To Avoid A $50 Late Fee.
             </div>
           </div>
         </div>
@@ -1891,7 +1901,7 @@ function DashboardView({
           <MetricTile
             label="Deposit Held"
             value={rental.deposit_amount == null ? "Not Set" : fmt(rental.deposit_amount)}
-            sub={rental.deposit_held == null ? "Not Set" : rental.deposit_held ? "On file" : "Not yet collected"}
+            sub={rental.deposit_held == null ? "Not Set" : rental.deposit_held ? "On File" : "None Collected"}
             tooltip="Your refundable deposit is held for the duration of your rental and refunded 14 to 30 days after your rental ends, less any unpaid balance."
           />
           <MetricTile
@@ -2269,8 +2279,8 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
         </div>
       )}
 
-      {PORTAL_PAYMENT_HISTORY_ENABLED === true && previewId == null ? (
-        <PaymentHistoryCard />
+      {PORTAL_PAYMENT_HISTORY_ENABLED === true ? (
+        <PaymentHistoryCard previewDriverId={previewId ?? undefined} />
       ) : (
       <div className="rounded-2xl border border-border bg-white p-5">
         <h3 className="font-semibold">All Payments</h3>
@@ -2334,7 +2344,7 @@ function UpdateCardButton() {
 function DepositView({ data }: { data: DriverDashboard }) {
   const r = data.rental;
   return (
-    <div className="rounded-2xl border border-border bg-white p-6 max-w-2xl">
+    <div className="w-full rounded-2xl border border-border bg-white p-6">
       <h3 className="font-semibold">Refundable Deposit</h3>
       <div className="mt-4 text-3xl font-semibold">{r?.deposit_amount == null ? "Not Set" : fmt(r.deposit_amount)}</div>
       <div className="mt-1 text-sm text-muted-foreground">
@@ -2496,7 +2506,7 @@ function DriverPreview({ tier }: { tier: StaffTier | null }) {
             <button type="button" onClick={() => setPicking(true)} className="min-h-9 rounded-lg bg-real-red px-3 text-sm font-medium text-white">Select Driver</button>
           </div>
         )}
-        <div className="p-6 md:p-10 max-w-3xl">
+        <div className="w-full p-6 md:p-10">
           {validId ? (
             previewError ? (
               <div className="text-sm text-real-red">{previewError}</div>

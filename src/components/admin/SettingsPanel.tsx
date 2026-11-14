@@ -6,6 +6,7 @@ import { getEmailDiagnostics, sendTestAlert, getEmailDeliveryStatus, type EmailD
 import { CheckCircle2, AlertTriangle, Send, Loader2, Plus, X, Info } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { saveSettingsSection, changedFields } from "@/lib/settings-save";
+import { Switch } from "@/components/ui/switch";
 import { useUnsavedGuard } from "@/lib/unsaved-changes";
 import { useBlocker } from "@tanstack/react-router";
 
@@ -23,7 +24,7 @@ const SECTIONS: {
     { key: "name", label: "Company Signer Name", type: "text" },
     { key: "title", label: "Title", type: "text" },
   ]},
-  { key: "rental_terms", title: "Rental Terms", fields: [
+  { key: "rental_terms", title: "Terms", fields: [
     { key: "min_term_weeks", label: "Minimum Term (Weeks)", type: "number" },
     { key: "notice_days", label: "Notice to Return (Days)", type: "number" },
     { key: "terms_text", label: "Terms Text", type: "textarea" },
@@ -32,7 +33,7 @@ const SECTIONS: {
     { key: "default_amount", label: "Default Deposit ($)", type: "number" },
     { key: "refund_days", label: "Refund Window (Days)", type: "number" },
   ]},
-  { key: "payment_settings", title: "Payment Settings", fields: [
+  { key: "payment_settings", title: "Payments", fields: [
     { key: "late_fee_amount", label: "Late Fee ($)", type: "number" },
     { key: "grace_days", label: "Grace Period (Days)", type: "number" },
     { key: "default_method", label: "Default Payment Method", type: "text" },
@@ -158,10 +159,11 @@ function SectionForm({ sec, saved, framed, onSaved }: {
             {f.type === "emails" ? (
               <EmailList label={f.label} value={draft[f.key] ?? ""} onChange={(v) => set(f.key, v)} />
             ) : f.type === "boolean" ? (
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <label className="flex items-center gap-3 text-sm cursor-pointer">
                 {/* Absent means on, matching how the server reads it. */}
-                <input type="checkbox" checked={draft[f.key] !== false} onChange={(e) => set(f.key, e.target.checked)} />
-                {f.label}
+                <Switch aria-label={f.label} checked={draft[f.key] !== false} onCheckedChange={(v) => set(f.key, v)} />
+                <span>{f.label}</span>
+                <span className="text-xs text-muted-foreground">{draft[f.key] !== false ? "On" : "Off"}</span>
               </label>
             ) : (
               <>

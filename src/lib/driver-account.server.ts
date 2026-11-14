@@ -147,8 +147,8 @@ export async function provisionDriverAccount(
    *
    * ensureAuthUser matches on the email string alone, and anyone can create an
    * account for any address through the public sign-up forms. Without this,
-   * registering with a pending applicant's email before we approve them meant
-   * the approval granted THAT account the driver role and pointed the
+   * registering with a pending applicant's email before we reserve them meant
+   * the reservation granted THAT account the driver role and pointed the
    * application at it — handing over the applicant's licence, insurance,
    * agreement (which signMyAgreement would then let them execute in the
    * applicant's name), payments and, later, the vehicle.
@@ -206,11 +206,13 @@ export async function provisionDriverAccount(
   let inviteUrl: string | null = null;
   if (created) {
     try {
+      const { publicAppUrl, recoveryUrlFromGenerateLink } = await import("@/lib/public-app-url");
       const { data: link } = await admin.auth.admin.generateLink({
         type: "recovery",
         email: target,
+        options: { redirectTo: publicAppUrl("/set-password") },
       });
-      inviteUrl = (link?.properties?.action_link as string) ?? null;
+      inviteUrl = recoveryUrlFromGenerateLink(link);
     } catch (e) {
       // The welcome email falls back to the portal URL, and the driver can
       // still use Forgot Password from there.

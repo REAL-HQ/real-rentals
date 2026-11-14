@@ -17,9 +17,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreVertical, ChevronDown, Check } from "lucide-react";
+import { MoreVertical, ChevronDown, Check, ListFilter } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
 import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
@@ -65,13 +67,19 @@ const STATUS_LABEL: Record<string, string> = {
   void: "Void",
   late: "Late",
 };
+const STATUS_FILTERS = ["all", "overdue", ...STATUSES.filter((status) => status !== "overdue")] as const;
+const SORT_OPTIONS = [
+  { value: "due_asc", label: "Due Date: Earliest" },
+  { value: "due_desc", label: "Due Date: Latest" },
+  { value: "amount_desc", label: "Amount: Highest" },
+] as const;
 const TYPES = ["rent", "deposit", "late_fee", "toll", "damage", "fee", "other"] as const;
 
+// Date-only values (due_date, paid_date) are calendar dates: formatDate reads
+// "2026-11-05" as Nov 5. new Date() would read it as UTC midnight, a day early in ET.
 function fmtDate(iso?: string | null) {
   if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return formatDate(d);
+  return formatDate(iso) || "—";
 }
 
 export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { initialFilter?: string; autoOpenAdd?: boolean; tier?: StaffTier | null } = {}) {
@@ -205,30 +213,89 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
     .filter((p) => OWED.has(p.status as string))
     .reduce((s, p) => s + (p.balance_due == null ? Number(p.amount || 0) : Number(p.balance_due)), 0);
 
+  const statusCount = (status: string) => {
+    if (status === "all") return payments.length;
+    if (status === "overdue") return payments.filter((payment) => OVERDUE_SET.has(payment.status as string)).length;
+    return payments.filter((payment) => payment.status === status).length;
+  };
+  const statusLabel = (status: string) => status === "all" ? "All" : STATUS_LABEL[status] ?? status.replace(/_/g, " ");
+
   return (
     <div className="max-lg:min-w-0">
-      <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Payments sections">
-        {(
-          [
-            ["ledger", "Payments"],
-            ["stripe", "Stripe Collections"],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={paymentsSection === key}
-            onClick={() => setPaymentsSection(key)}
-            className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-              paymentsSection === key
-                ? "bg-[#111114] text-white"
-                : "border border-border bg-white text-[#55555E] hover:border-[#D03020]"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="admin-sticky-bar mb-4 grid grid-cols-1 gap-2 pb-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="flex min-w-0 items-center gap-2">
+          <Select value={paymentsSection} onValueChange={(value) => setPaymentsSection(value as "ledger" | "stripe")}>
+            <SelectTrigger aria-label="Payment View" className="h-8 w-36 shrink-0 bg-white text-xs text-foreground">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ledger">Payments</SelectItem>
+              <SelectItem value="stripe">Stripe Collections</SelectItem>
+            </SelectContent>
+          </Select>
+          {paymentsSection === "ledger" ? (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={`Payment Filters${statusFilter === "all" ? "" : `: ${statusLabel(statusFilter)}`}`}
+                    title="Filter And Sort Payments"
+                    className={`inline-flex h-8 min-w-0 items-center gap-1.5 whitespace-nowrap rounded-md border bg-white px-3 text-xs font-medium text-foreground hover:bg-soft ${statusFilter === "all" ? "border-border" : "border-foreground"}`}
+                  >
+                    <ListFilter className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">Filters{statusFilter === "all" ? "" : `: ${statusLabel(statusFilter)} (${statusCount(statusFilter)})`}</span>
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64 bg-white text-foreground">
+                  <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">Payment Status</DropdownMenuLabel>
+                  {STATUS_FILTERS.map((status) => (
+                    <DropdownMenuItem
+                      key={status}
+                      onSelect={() => setStatusFilter(status)}
+                      className="flex items-center justify-between gap-3 bg-white text-xs text-foreground focus:bg-muted"
+                    >
+                      <span>{statusLabel(status)} ({statusCount(status)})</span>
+                      {statusFilter === status ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">Sort Payments</DropdownMenuLabel>
+                  {SORT_OPTIONS.map((option) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      onSelect={() => setSort(option.value)}
+                      className="flex items-center justify-between gap-3 bg-white text-xs text-foreground focus:bg-muted"
+                    >
+                      <span>{option.label}</span>
+                      {sort === option.value ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <div className="hidden whitespace-nowrap text-sm text-muted-foreground md:block">
+                Outstanding: <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
+              </div>
+            </>
+          ) : null}
+        </div>
+        {paymentsSection === "ledger" ? (
+          <div className="flex shrink-0 items-center gap-2 max-lg:w-full">
+            <button
+              onClick={() => setShowManual(true)}
+              className="ml-auto rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium max-lg:ml-0 max-lg:flex-1"
+            >
+              Manual Payments
+            </button>
+            <button
+              onClick={() => setShowAdd(true)}
+              className="rounded-md bg-[#D03020] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150 max-lg:flex-1"
+            >
+              + Add Payment
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {paymentsSection === "stripe" ? (
@@ -239,53 +306,6 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
       <>
       {STRIPE_UNMATCHED_PAYMENTS_ENABLED ? <UnmatchedStripePayments /> : null}
       {(BILLING_PM_UPDATE_LINK_ENABLED || BILLING_DAY_CHANGE_ENABLED || BILLING_ONE_TIME_EXTENSION_ENABLED) ? <BillingControls /> : null}
-      <div className="admin-sticky-bar mb-4 flex flex-col gap-2 pb-2 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2">
-        <div className="flex gap-2 text-xs max-lg:min-w-0 max-lg:overflow-x-auto max-lg:pb-1 lg:flex-wrap">
-          {(["all", "overdue", ...STATUSES.filter((x) => x !== "overdue")] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1.5 rounded-md capitalize max-lg:shrink-0 max-lg:whitespace-nowrap ${statusFilter === s ? "bg-black text-white" : "bg-white border border-border"}`}
-            >
-              {s.replace(/_/g, " ")}{" "}
-              {s !== "all" &&
-                `(${
-                  s === "overdue"
-                    ? payments.filter((p) => OVERDUE_SET.has(p.status as string)).length
-                    : payments.filter((p) => p.status === s).length
-                })`}
-            </button>
-          ))}
-        </div>
-        <Select value={sort} onValueChange={(v) => setSort(v as any)}>
-          <SelectTrigger className="h-8 w-40 bg-white text-foreground max-lg:w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="due_asc">Due date ↑</SelectItem>
-            <SelectItem value="due_desc">Due date ↓</SelectItem>
-            <SelectItem value="amount_desc">Amount ↓</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="text-sm text-muted-foreground">
-          Outstanding:{" "}
-          <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
-        </div>
-        <div className="flex gap-2 max-lg:w-full lg:contents">
-        <button
-          onClick={() => setShowManual(true)}
-          className="ml-auto rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium max-lg:ml-0 max-lg:flex-1"
-        >
-          Manual Payments
-        </button>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="rounded-md bg-[#D03020] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition-opacity duration-150 max-lg:flex-1"
-        >
-          + Add Payment
-        </button>
-        </div>
-      </div>
 
       {showManual && <ManualPaymentsWorkspace payments={payments} driverMap={driverMap} onClose={() => setShowManual(false)} />}
       <AdminTableScroll className="max-lg:min-w-0 rounded-2xl border border-[#EDEDF0] bg-white shadow-sm">
