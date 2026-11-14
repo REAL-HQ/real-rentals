@@ -1,27 +1,19 @@
 import type { ReactNode } from "react";
 
 /**
- * One filter/actions row for an admin list page.
- *
- * Why this exists: the Vehicles toolbar kept breaking because its layout
- * switched on VIEWPORT breakpoints (lg = 1024px window), but the admin column
- * is the window minus a 240px sidebar. At a 1024px window the "desktop" row
- * got ~830px, the filters wrapped inside a flex-1 box while the actions were
- * squeezed beside them, and every fix re-tuned lg: classes that a layout test
- * then froze. This row never asks the viewport: it wraps by the space it
- * actually has, so it is the same at any sidebar width.
- *
- * - Filters take the row first and wrap among themselves.
- * - Actions keep their size (never squashed, never truncated) and drop to
- *   their own line, right-aligned, when there's no room beside the filters.
- * - On a phone, controls go full width.
+ * Deliberate rows, not two flex siblings whose heights depend on wrapping.
+ * Search + actions share the first row. The four filters share a separate
+ * equal-width grid; readiness/search context stays in the final row.
+ * Container queries respond to the actual admin column, not the window.
  */
 export function AdminToolbar({
+  search,
   filters,
   actions,
   footer,
   className = "",
 }: {
+  search: ReactNode;
   filters: ReactNode;
   actions?: ReactNode;
   /** A full-width line under the controls, inside the same sticky bar. */
@@ -29,18 +21,15 @@ export function AdminToolbar({
   className?: string;
 }) {
   return (
-    <div className={`admin-sticky-bar mb-4 pb-2 min-w-0 ${className}`} data-admin-toolbar>
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="flex min-w-0 flex-[1_1_32rem] flex-wrap items-center gap-2" data-toolbar-filters>
-          {filters}
-        </div>
+    <div className={`admin-sticky-bar admin-list-toolbar mb-4 pb-2 min-w-0 ${className}`} data-admin-toolbar>
+      <div className="admin-toolbar-primary" data-toolbar-primary>
+        <div className="min-w-0" data-toolbar-search>{search}</div>
         {actions ? (
-          <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2 max-sm:w-full" data-toolbar-actions>
-            {actions}
-          </div>
+          <div className="admin-toolbar-actions" data-toolbar-actions>{actions}</div>
         ) : null}
       </div>
-      {footer ? <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">{footer}</div> : null}
+      <div className="admin-toolbar-filters" data-toolbar-filters>{filters}</div>
+      {footer ? <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2" data-toolbar-context>{footer}</div> : null}
     </div>
   );
 }
@@ -48,12 +37,12 @@ export function AdminToolbar({
 /** Shared control sizes: every control in a toolbar is 36px tall. */
 export const TOOLBAR = {
   search:
-    "h-9 min-w-[12rem] flex-[1_1_14rem] max-w-[22rem] rounded-md border border-border bg-white px-3 text-sm max-sm:max-w-none max-sm:w-full",
-  select: "h-9 w-[9.5rem] shrink-0 bg-white text-sm text-foreground max-sm:w-full",
+    "h-9 w-full min-w-0 rounded-md border border-border bg-white px-3 text-sm",
+  select: "h-9 w-full min-w-0 bg-white text-sm text-foreground",
   button:
-    "inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[#EDEDF0] bg-white px-3.5 text-sm font-medium hover:bg-[#FAFAFB] max-sm:flex-1",
+    "inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-[#EDEDF0] bg-white px-3.5 text-sm font-medium hover:bg-[#FAFAFB]",
   primary:
-    "inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-[#D03020] px-3.5 text-sm font-medium text-white transition-opacity hover:opacity-90 max-sm:flex-1",
+    "inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-[#D03020] px-3.5 text-sm font-medium text-white transition-opacity hover:opacity-90",
   segmented: "inline-flex h-9 shrink-0 items-center rounded-md border border-[#EDEDF0] bg-white p-0.5",
   segment: "inline-flex h-full items-center gap-1 rounded px-2 text-xs",
 } as const;

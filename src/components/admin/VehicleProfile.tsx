@@ -1,3 +1,4 @@
+import { VehicleBodyTypeSelect } from "./VehicleBodyTypeSelect";
 import { useUnsavedGuard, confirmLeaveIfUnsaved } from "@/lib/unsaved-changes";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -30,12 +31,10 @@ import {
   getVehicleProfile,
   updateVehicleSection,
   VEHICLE_STATUSES,
-  BODY_TYPES,
   OWNERSHIP_TYPES,
   type VehicleProfile as Profile,
   type VehicleSection,
 } from "@/lib/vehicles.functions";
-import { bodyTypeLabel } from "@/lib/vehicle-defaults";
 import { getVehicleFinance, saveVehicleFinance } from "@/lib/vehicle-finance.functions";
 import { readStoredExperience } from "@/lib/experience";
 import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
@@ -934,15 +933,7 @@ function SectionDrawer({
             <Text label="Model" value={str("model")} onChange={(v) => set("model", v)} />
             <Text label="Trim" value={str("trim")} onChange={(v) => set("trim", v)} />
             <Text label="Color" value={str("color")} onChange={(v) => set("color", v)} />
-            <Choice
-              label="Body Type"
-              value={str("body_type")}
-              onChange={(v) => set("body_type", v)}
-              options={[
-                { value: "", label: "—" },
-                ...BODY_TYPES.map((b) => ({ value: b, label: bodyTypeLabel(b) })),
-              ]}
-            />
+            <VehicleBodyTypeSelect value={str("body_type")} onChange={(v) => set("body_type", v)} />
             <Text
               label="License Plate"
               value={str("license_plate")}

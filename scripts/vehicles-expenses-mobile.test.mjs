@@ -235,9 +235,10 @@ for (const [before, after, label] of pairs) {
 }
 
 const present = [
-  [vehicles, 'className="max-lg:min-w-0"', "the vehicles screen can shrink inside the admin column"],
+  [vehicles, 'className="min-w-0"', "the vehicles screen can shrink at every width"],
   [vehicles, "<AdminToolbar", "the vehicles toolbar uses the shared AdminToolbar (see scripts/admin-toolbar.test.mjs)"],
-  [vehicles, "min-w-[64rem]", "the vehicles table keeps its min width"],
+  [vehicles, "min-w-[64rem]", "the vehicles table keeps readable columns"],
+  [vehicles, 'role="region" aria-label="Vehicles table" tabIndex={0}', "table scroll region is keyboard accessible"],
   [vehicles, "data-testid=\"fleet-readiness\"", "fleet readiness stays in the filter row"],
   [vehicles, "fleet_inbox", "import to the fleet inbox stays"],
   [vehicles, "Add Vehicle", "add vehicle stays"],

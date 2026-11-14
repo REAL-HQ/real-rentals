@@ -47,5 +47,7 @@ demo-data-backup-*.json
 .document-review-build
 .waitlist-aging-build
 
+# Synthetic UI fixture and headless layout screenshots
+.toolbar-layout-build/
 # Synthetic save regression fixture
 .vehicle-save-build/

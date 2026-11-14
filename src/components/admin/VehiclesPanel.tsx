@@ -374,11 +374,10 @@ function FleetVehicles({
   );
 
   return (
-    <div className="max-lg:min-w-0">
+    <div className="min-w-0">
       {remindersFailed ? <p className="mb-3 text-sm text-[#D03020]" data-testid="maintenance-log-error">Could not load maintenance reminders.</p> : null}
       <AdminToolbar
-        filters={
-          <>
+        search={
           <input
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
@@ -386,6 +385,9 @@ function FleetVehicles({
             aria-label="Search vehicles"
             className={VEHICLE_TOOLBAR.search}
           />
+        }
+        filters={
+          <>
           <Select value={statusFilter} onValueChange={(v) => setList({ status: v })}>
             <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
@@ -419,12 +421,6 @@ function FleetVehicles({
               <SelectItem value="newest">Sort: Newest</SelectItem>
             </SelectContent>
           </Select>
-          <TopSearchChip value={externalSearch} onClear={() => onClearExternalSearch?.()} />
-          {hasActiveFilters && (
-            <button onClick={clearAll} className="inline-flex h-9 shrink-0 items-center px-2 text-sm text-muted-foreground hover:text-foreground">
-              Clear
-            </button>
-          )}
           </>
         }
         actions={
@@ -446,6 +442,14 @@ function FleetVehicles({
         }
         footer={(
           <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <span className="inline-flex min-w-0 items-center gap-2">
+              <TopSearchChip value={externalSearch} onClear={() => onClearExternalSearch?.()} />
+              {hasActiveFilters && (
+                <button onClick={clearAll} className="inline-flex h-8 shrink-0 items-center px-2 text-sm text-muted-foreground hover:text-foreground">
+                  Clear
+                </button>
+              )}
+            </span>
             {view !== "due" && (
               <p className="shrink-0 text-xs text-muted-foreground" data-testid="vehicle-count">
                 {result?.fleetTotal != null ? `${result.fleetTotal} Vehicles Total (Including Archived)` : listQuery.isPending ? "Loading Vehicle Total…" : "Vehicle Total Unavailable"}
@@ -509,7 +513,7 @@ function FleetVehicles({
       )}
 
       {view !== "due" && view === "list" && rows.length > 0 && (
-        <div data-vehicles-table-scroller className="hidden md:block mt-3 min-w-0 overflow-x-auto overscroll-x-contain rounded-xl border border-border bg-white">
+        <div data-vehicles-table-scroller className="hidden md:block mt-3 min-w-0 overflow-x-auto overscroll-x-contain rounded-xl border border-border bg-white" role="region" aria-label="Vehicles table" tabIndex={0}>
           <table className="w-full min-w-[64rem] text-[13px] [&_th]:px-2.5 [&_th]:py-1.5 [&_td]:px-2.5 [&_td]:py-1">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
