@@ -536,6 +536,15 @@
       }
     },
     {
+      "file": "src/components/admin/TripMediaPanel.tsx",
+      "ordinal": 1,
+      "props": {
+        "value": "{targetKey}",
+        "onChange": "{(e) => setTargetKey(e.target.value)}"
+      },
+      "addedAfterIntegrationMerge": true
+    },
+    {
       "file": "src/components/admin/UnifiedFinancePanel.tsx",
       "ordinal": 1,
       "props": {
@@ -690,6 +699,6 @@
       "src/components/admin/VehicleProfileFields.tsx"
     ]
   },
-  "sourceSitesAfterIntegrationMerge": 82,
-  "callsiteFilesAfterIntegrationMerge": 51
+  "sourceSitesAfterIntegrationMerge": 83,
+  "callsiteFilesAfterIntegrationMerge": 52
 }

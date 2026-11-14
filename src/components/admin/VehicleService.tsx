@@ -330,7 +330,7 @@ function AddServiceDialog({ vehicleId, canCost, onClose, onSaved }: { vehicleId:
           </ModalSection>
         )}
         <ModalSection label="Receipt">
-          <UploadDropzone file={file} onFile={setFile} accept="image/*,application/pdf" title="Add Receipt" hint="Drag & drop or browse — stored privately" />
+          <UploadDropzone disabled={busy} file={file} onFile={setFile} accept="image/*,application/pdf" title="Add Receipt" hint="Drag & drop or browse — stored privately" />
         </ModalSection>
         <Field label="Notes"><textarea className={`${inputCls} h-20 py-2`} value={f.notes} onChange={set("notes")} /></Field>
       </ModalBody>

@@ -824,7 +824,7 @@ export function ConditionUploader({
             multiple
             camera
             upload={(file, { onProgress }) => uploadOne(file, onProgress)}
-            onAllDone={onChanged}
+            onSettled={onChanged}
           />
         </div>
       ) : null}

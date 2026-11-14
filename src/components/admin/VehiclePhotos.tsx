@@ -140,6 +140,10 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
 
   function afterUpload() {
     setUploadRevision((v) => v + 1);
+  }
+  // Runs after every batch, including partly failed ones, so photos that did
+  // upload appear without remounting (which would drop the failed items' Retry).
+  function refreshAfterUpload() {
     void refresh();
     window.dispatchEvent(new Event("vehicle-profile-refresh"));
   }
@@ -405,6 +409,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
             context={`Vehicle ${vehicleId} · Photos`}
             upload={uploadOne}
             onAllDone={afterUpload}
+            onSettled={refreshAfterUpload}
             listLayout="grid"
             className="mb-4 w-full"
           />

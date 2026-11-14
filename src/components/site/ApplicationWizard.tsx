@@ -1,3 +1,5 @@
+import { useFileDrop } from "@/components/use-file-drop";
+import { inspectFiles } from "@/components/FileUploader";
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -1710,6 +1712,7 @@ function DriverProfile({
                     <>
                       <MultiFileUpload
                         label="Trip / Delivery Totals"
+                        disabled={tripSaveBusy || savingSection === "trips"}
                         hint="A screenshot showing your lifetime trips or deliveries from any app. One per app is best."
                         token={token}
                         storedNames={state.trip_screenshot_names}
@@ -1874,8 +1877,10 @@ function MultiFileUpload({
   keep,
   added,
   onChange,
+  disabled = false,
 }: {
   label: string;
+  disabled?: boolean;
   hint?: string;
   token: string;
   storedNames: string[];
@@ -1885,6 +1890,11 @@ function MultiFileUpload({
   onChange: (added: string[], keep: string[]) => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const uploadLock = useRef(false);
+  const permitted = useRef(!disabled); permitted.current = !disabled;
+  useEffect(() => { permitted.current = !disabled; return () => { permitted.current = false; }; }, [disabled]);
+  const [dropIssues, setDropIssues] = useState<string[]>([]);
+  const off = disabled || uploading;
   const cameraInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const overrideWait = useRef<((ok: boolean) => void) | null>(null);
@@ -1917,23 +1927,36 @@ function MultiFileUpload({
    * MIME, signed upload — and only then retires the file it stands in for,
    * so a failed retake leaves the original in place.
    */
-  async function receive(files: FileList) {
+  async function receive(files: FileList | File[]) {
+    if (off || uploadLock.current) return;
     const target = replacing;
-    if (!target) return handleFiles(files);
-    setReplacing(null);
-    const before = added;
-    await handleFiles(files, (uploaded) => {
-      if (!uploaded.length) return null;
-      const nextAdded = target.stored
-        ? [...before, ...uploaded]
-        : [...before.filter((p) => p !== target.path), ...uploaded];
-      const nextKeep = target.stored ? keep.filter((n) => n !== target.name) : keep;
-      return { added: nextAdded, keep: nextKeep };
+    const selection = inspectFiles(Array.from(files), {
+      accept: "image/*,application/pdf", multiple: !target,
+      maxFiles: target ? 1 : Math.max(0, 10 - keep.length - added.length),
     });
+    setDropIssues(selection.issues);
+    selection.issues.forEach((message) => toast.error(message));
+    if (!selection.files.length) return;
+    uploadLock.current = true;
+    try {
+      if (!target) return await handleFiles(selection.files);
+      const before = added;
+      let replaced = false;
+      await handleFiles(selection.files, (uploaded) => {
+        if (!uploaded.length) return null;
+        replaced = true;
+        return {
+          added: target.stored ? [...before, ...uploaded] : [...before.filter((path) => path !== target.path), ...uploaded],
+          keep: target.stored ? keep.filter((name) => name !== target.name) : keep,
+        };
+      });
+      if (replaced) setReplacing(null);
+    } finally { uploadLock.current = false; }
   }
+  const { over, dropProps } = useFileDrop(receive, off);
 
   async function handleFiles(
-    files: FileList,
+    files: FileList | File[],
     resolve?: (uploaded: string[]) => { added: string[]; keep: string[] } | null,
   ) {
     // Only ten are kept, so only ten are uploaded. Slicing after the loop
@@ -1942,19 +1965,22 @@ function MultiFileUpload({
     // it — on the one screen where a slow connection already makes retries
     // likely.
     const room = resolve ? 1 : Math.max(0, 10 - (keep.length + added.length));
-    const chosen = Array.from(files).slice(0, room);
-    if (files.length > chosen.length) {
-      toast.info(
-        room === 0
-          ? "You already have ten screenshots. Remove one to add another."
-          : `Taking the first ${room} — ten screenshots is the most we need.`,
-      );
+    const chosen = Array.from(files);
+    if (chosen.length > room) {
+      const message = room === 0 ? "You Already Have Ten Screenshots. Remove One To Add Another." : `Choose Up To ${room} Files. No Files Were Uploaded.`;
+      setDropIssues([message]);
+      toast.error(message);
+      return;
     }
     if (!chosen.length) return;
     setUploading(true);
     const uploaded: string[] = [];
     try {
       for (const file of chosen) {
+        if (!permitted.current) {
+          setDropIssues(["Upload Paused. Remaining Files Were Not Uploaded. Choose Them Again When Available."]);
+          break;
+        }
         try {
           if (UPLOAD_PRECHECK_ENABLED === true) {
             const { reviewUpload } = await import("@/lib/upload-precheck");
@@ -1972,6 +1998,7 @@ function MultiFileUpload({
           uploaded.push(path);
         } catch (e) {
           console.error("[upload] failed", e);
+          setDropIssues((issues) => [...issues, e instanceof UploadTooLarge ? `${file.name}: ${e.message}` : `${file.name}: File Could Not Be Uploaded. Try Again.`]);
           toast.error(
             e instanceof UploadTooLarge
               ? `${file.name}: ${e.message}`
@@ -2004,7 +2031,7 @@ function MultiFileUpload({
   ].filter((r) => (r.stored ? keep.includes(r.name) : true));
 
   return (
-    <div>
+    <div {...dropProps} role="group" aria-label={label} aria-busy={uploading} aria-disabled={off} className={over ? "rounded-lg ring-2 ring-brand" : undefined}>
       <div className="text-xs tracking-wide text-muted-foreground font-semibold">
         {label}
       </div>
@@ -2022,7 +2049,9 @@ function MultiFileUpload({
         type="file"
         accept="image/*"
         capture="environment"
-        multiple
+        multiple={!replacing}
+        disabled={off}
+        data-file-drop="managed"
         className="hidden"
         onChange={(e) => {
           if (e.target.files?.length) void receive(e.target.files);
@@ -2033,7 +2062,9 @@ function MultiFileUpload({
         ref={fileInput}
         type="file"
         accept="image/*,application/pdf"
-        multiple
+        multiple={!replacing}
+        disabled={off}
+        data-file-drop="managed"
         className="hidden"
         onChange={(e) => {
           if (e.target.files?.length) void receive(e.target.files);
@@ -2043,7 +2074,7 @@ function MultiFileUpload({
       <div className="mt-2 grid grid-cols-2 gap-2">
         <button
           type="button"
-          disabled={uploading}
+          disabled={off}
           onClick={() => cameraInput.current?.click()}
           className="inline-flex items-center justify-center gap-2 min-h-[48px] rounded-xl bg-[#111114] text-white text-[14px] font-semibold disabled:opacity-50 active:scale-[0.99] transition-transform"
         >
@@ -2056,7 +2087,7 @@ function MultiFileUpload({
         </button>
         <button
           type="button"
-          disabled={uploading}
+          disabled={off}
           onClick={() => fileInput.current?.click()}
           className="inline-flex items-center justify-center gap-2 min-h-[48px] rounded-xl border border-border bg-white text-[#111114] text-[14px] font-semibold disabled:opacity-50 active:scale-[0.99] transition-transform"
         >
@@ -2064,6 +2095,8 @@ function MultiFileUpload({
           {replacing ? "Choose Different File" : "Choose File"}
         </button>
       </div>
+      <p role="status" className="mt-2 text-xs text-muted-foreground">{off ? "Upload Unavailable While Disabled Or Busy." : over ? (replacing ? "Release To Replace One File" : "Release To Add Files") : replacing ? "Drop One Replacement File Here Or Use The Chooser." : "Drop Screenshots Here Or Use The File Chooser. Up To Ten Total."}</p>
+      {dropIssues.length > 0 && <ul role="alert" className="mt-2 text-xs text-destructive">{dropIssues.map((message, i) => <li key={i}>{message}</li>)}</ul>}
       {replacing && (
         <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-[#FFF8E5] border border-[#F6E7B8] px-3 py-2">
           <span className="text-[12px] text-[#8A6A00] truncate">
@@ -2071,6 +2104,7 @@ function MultiFileUpload({
           </span>
           <button
             type="button"
+            disabled={off}
             onClick={() => setReplacing(null)}
             className="shrink-0 text-[12px] font-semibold text-[#8A6A00] underline"
           >
@@ -2097,7 +2131,9 @@ function MultiFileUpload({
                     is the first screenshot or the third attempt at it. */}
                 <button
                   type="button"
+                  disabled={off}
                   onClick={() => {
+                    if (off || uploadLock.current) return;
                     setReplacing({
                       name: r.name,
                       stored: r.stored,
@@ -2111,6 +2147,7 @@ function MultiFileUpload({
                 </button>
                 <button
                   type="button"
+                  disabled={off}
                   onClick={() =>
                     r.stored
                       ? onChange(

@@ -56,23 +56,27 @@ export function ImportVehiclesStep({ onDone }: { onDone: () => void }) {
   const hasRequired = ["year", "make", "model"].every((k) => mapping.includes(k));
 
   function read(file: File) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const grid = parseCsv(String(reader.result ?? ""));
-      if (grid.length < 2) return toast.error("That file has no data rows.");
-      const [head, ...rest] = grid;
-      if (rest.length > MAX_ROWS) {
-        toast.error(`That file has ${rest.length} rows. Import up to ${MAX_ROWS} at a time.`);
-        return;
-      }
-      setHeaders(head);
-      setBody(rest);
-      setMapping(guessMapping(head));
-      setVerdicts(null);
-      setDone(null);
-    };
-    reader.onerror = () => toast.error("Could not read that file.");
-    reader.readAsText(file);
+    return new Promise<void>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const grid = parseCsv(String(reader.result ?? ""));
+          if (grid.length < 2) return toast.error("That file has no data rows.");
+          const [head, ...rest] = grid;
+          if (rest.length > MAX_ROWS) {
+            toast.error(`That file has ${rest.length} rows. Import up to ${MAX_ROWS} at a time.`);
+            return;
+          }
+          setHeaders(head);
+          setBody(rest);
+          setMapping(guessMapping(head));
+          setVerdicts(null);
+          setDone(null);
+        } catch (error) { reject(error); } finally { resolve(); }
+      };
+      reader.onerror = () => reject(new Error("Could Not Read That File."));
+      reader.readAsText(file);
+    });
   }
 
   async function check() {

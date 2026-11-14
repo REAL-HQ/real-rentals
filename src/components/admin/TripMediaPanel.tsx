@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Supabase service-role rows, as elsewhere in src/lib */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Loader2, MapPin, Trash2 } from "lucide-react";
@@ -155,7 +156,7 @@ export function TripMediaPanel({ applicationId }: { applicationId: string }) {
             pictures.
           </p>
         ) : (
-          <select
+          <AppSelect
             aria-label="Trip"
             value={targetKey}
             onChange={(e) => setTargetKey(e.target.value)}
@@ -168,7 +169,7 @@ export function TripMediaPanel({ applicationId }: { applicationId: string }) {
                 {t.status ? ` · ${t.status}` : ""}
               </option>
             ))}
-          </select>
+          </AppSelect>
         )}
         {target && !target.rentalId && (
           <p className="text-[11px] text-[#55555E]">
