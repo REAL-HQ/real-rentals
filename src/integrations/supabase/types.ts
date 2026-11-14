@@ -4242,6 +4242,13 @@ export type Database = {
           rental_id: string | null
           status: string
           stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_pdf_url: string | null
+          stripe_receipt_url: string | null
+          stripe_charge_id: string | null
+          stripe_customer_id: string | null
+          stripe_paid_at: string | null
           stripe_payment_intent_id: string | null
           stripe_subscription_id: string | null
           type: string
@@ -4271,6 +4278,13 @@ export type Database = {
           rental_id?: string | null
           status?: string
           stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_receipt_url?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_paid_at?: string | null
           stripe_payment_intent_id?: string | null
           stripe_subscription_id?: string | null
           type?: string
@@ -4300,6 +4314,13 @@ export type Database = {
           rental_id?: string | null
           status?: string
           stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_pdf_url?: string | null
+          stripe_receipt_url?: string | null
+          stripe_charge_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_paid_at?: string | null
           stripe_payment_intent_id?: string | null
           stripe_subscription_id?: string | null
           type?: string

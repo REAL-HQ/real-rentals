@@ -86,6 +86,8 @@ export type PaidInvoice = {
   amountPaid: number; // dollars
   createdOn: string; // ET date the invoice was created (the week it bills)
   paidOn: string | null; // ET date it was paid
+  /** Stripe receipt / invoice links for the payments row (PR 356 columns). */
+  receipts?: Record<string, string | null>;
 };
 
 /** Normalise a Stripe invoice. Null unless it is paid with money actually collected. */
@@ -130,6 +132,8 @@ export function paymentRowForPaidInvoice(
     status: "paid",
     due_date: inv.createdOn,
     paid_date: inv.paidOn ?? inv.createdOn,
+    payment_method: "card",
+    ...(inv.receipts ?? {}),
     stripe_invoice_id: inv.id,
     stripe_subscription_id: inv.subscriptionId,
     notified_status: "paid",

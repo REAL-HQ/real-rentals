@@ -11,6 +11,7 @@
 //
 // Nothing here cancels, refunds, charges or edits anything in Stripe. The only
 // Stripe write is customers.create when no customer exists yet.
+import { extractPaymentReceiptFields } from "@/lib/renter-payments";
 import {
   matchStripeToRental,
   nextDueAfterPaidWeeks,
@@ -174,7 +175,7 @@ export async function listPaidInvoices(stripe: StripeLike, params: { customer?: 
     const data: any[] = page?.data ?? [];
     for (const inv of data) {
       const p = paidInvoiceOf(inv);
-      if (p) out.push(p);
+      if (p) out.push({ ...p, receipts: receiptColumns(inv) });
     }
     if (!page?.has_more || !data.length || out.length >= max) break;
     startingAfter = data[data.length - 1].id;
@@ -182,20 +183,45 @@ export async function listPaidInvoices(stripe: StripeLike, params: { customer?: 
   return out;
 }
 
-/** Insert payments rows for paid invoices. Duplicate invoice ids are skipped (unique index). */
+/** Receipt / invoice link columns for a payments row (empty values dropped). */
+function receiptColumns(invoice: any): Record<string, string | null> {
+  const fields = extractPaymentReceiptFields(invoice) as Record<string, string | null>;
+  const out: Record<string, string | null> = {};
+  for (const [k, v] of Object.entries(fields)) if (v != null && k !== "stripe_invoice_id" && k !== "stripe_subscription_id") out[k] = v;
+  return out;
+}
+
+/**
+ * Insert payments rows for paid invoices. Duplicate invoice ids are skipped
+ * (unique index). A row the webhook already stored before the rental existed
+ * (application-only, rental_id null) is attached to this rental instead.
+ */
 export async function importPaidInvoices(
   admin: Admin,
   rental: { id: string; application_id: string | null; vehicle_id: string | null },
   invoices: PaidInvoice[],
-): Promise<{ inserted: number; skipped: number }> {
+): Promise<{ inserted: number; skipped: number; attached?: number }> {
   let inserted = 0;
   let skipped = 0;
-  if (!invoices.length) return { inserted, skipped };
-  const existing = await admin.from("payments").select("stripe_invoice_id").in("stripe_invoice_id", invoices.map((i) => i.id));
+  let attached = 0;
+  if (!invoices.length) return { inserted, skipped, attached };
+  const existing = await admin.from("payments").select("id, stripe_invoice_id, rental_id, driver_id").in("stripe_invoice_id", invoices.map((i) => i.id));
   if (existing.error) throw new Error(existing.error.message);
-  const have = new Set((existing.data ?? []).map((r: any) => r.stripe_invoice_id));
+  const byInvoice = new Map<string, any>((existing.data ?? []).map((r: any) => [r.stripe_invoice_id, r]));
   for (const inv of invoices) {
-    if (have.has(inv.id)) { skipped++; continue; }
+    const row = byInvoice.get(inv.id);
+    if (row) {
+      const sameRenter = row.driver_id == null || row.driver_id === rental.application_id;
+      if (row.rental_id == null && sameRenter) {
+        const up = await admin.from("payments")
+          .update({ rental_id: rental.id, driver_id: rental.application_id, vehicle_id: rental.vehicle_id ?? null })
+          .eq("id", row.id)
+          .is("rental_id", null);
+        if (up.error) throw new Error(up.error.message);
+        attached++;
+      } else skipped++;
+      continue;
+    }
     const res = await admin.from("payments").insert(paymentRowForPaidInvoice(inv, rental));
     if (res.error) {
       if (res.error.code === "23505") { skipped++; continue; }
@@ -203,7 +229,7 @@ export async function importPaidInvoices(
     }
     inserted++;
   }
-  return { inserted, skipped };
+  return { inserted, skipped, attached };
 }
 
 export type ActivationLink = {

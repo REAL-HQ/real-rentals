@@ -110,6 +110,7 @@ function fakeDb(seed: Record<string, Row[]>) {
 function inv(over: Row = {}): Row {
   return {
     id: "in_h1", status: "paid", amount_paid: 35000, customer: "cus_heather", customer_email: "heatherbell863@gmail.com",
+    hosted_invoice_url: "https://invoice.stripe.com/i/h1",
     created: ts("2026-11-10T15:43:05Z"), status_transitions: { paid_at: ts("2026-11-10T15:43:20Z") },
     parent: { subscription_details: { subscription: "sub_heather", metadata: {} } }, metadata: {},
     ...over,
@@ -243,9 +244,25 @@ describe("server helpers", () => {
     const db = fakeDb({ payments: [] });
     const p = paidInvoiceOf(inv())!;
     const rental = { id: HEATHER, application_id: HEATHER_APP, vehicle_id: "v1" };
-    assert.deepEqual(await importPaidInvoices(db, rental, [p]), { inserted: 1, skipped: 0 });
-    assert.deepEqual(await importPaidInvoices(db, rental, [p]), { inserted: 0, skipped: 1 });
+    assert.deepEqual(await importPaidInvoices(db, rental, [p]), { inserted: 1, skipped: 0, attached: 0 });
+    assert.deepEqual(await importPaidInvoices(db, rental, [p]), { inserted: 0, skipped: 1, attached: 0 });
     assert.equal(db._state.payments.length, 1);
+  });
+
+  it("activation attaches a pre-activation webhook row instead of duplicating it", async () => {
+    // The webhook stored James's first week against his application before the rental existed.
+    const db = fakeDb({ payments: [{ id: "p-early", stripe_invoice_id: "in_j1", rental_id: null, driver_id: JAMES_APP, vehicle_id: null, status: "paid", amount: 350 }] });
+    const p = paidInvoiceOf(inv({ id: "in_j1", customer: "cus_james", parent: null }))!;
+    const rental = { id: JAMES, application_id: JAMES_APP, vehicle_id: "v2" };
+    assert.deepEqual(await importPaidInvoices(db, rental, [p]), { inserted: 0, skipped: 0, attached: 1 });
+    assert.equal(db._state.payments.length, 1);
+    assert.equal(db._state.payments[0].rental_id, JAMES);
+    assert.equal(db._state.payments[0].vehicle_id, "v2");
+    assert.deepEqual(await importPaidInvoices(db, rental, [p]), { inserted: 0, skipped: 1, attached: 0 });
+    // Another renter's unattached row is never taken.
+    const db2 = fakeDb({ payments: [{ id: "p-x", stripe_invoice_id: "in_j1", rental_id: null, driver_id: "someone-else" }] });
+    assert.deepEqual(await importPaidInvoices(db2, rental, [p]), { inserted: 0, skipped: 1, attached: 0 });
+    assert.equal(db2._state.payments[0].rental_id, null);
   });
 
   it("activation copies the customer, attaches its one subscription, imports paid weeks and moves the due date (Heather)", async () => {
@@ -267,6 +284,9 @@ describe("server helpers", () => {
     assert.equal(r.next_payment_due, "2026-11-17");
     assert.equal(db._state.payments.length, 1);
     assert.equal(db._state.payments[0].stripe_invoice_id, "in_h1");
+    // Imported rows carry the receipt links (PR 356) like webhook rows do.
+    assert.equal(db._state.payments[0].stripe_hosted_invoice_url, "https://invoice.stripe.com/i/h1");
+    assert.equal(db._state.payments[0].stripe_customer_id, "cus_heather");
     // Running it again adds nothing.
     await linkRentalOnActivation(db, stripe, HEATHER);
     assert.equal(db._state.payments.length, 1);
