@@ -81,6 +81,18 @@ build("src/lib/inspections.functions.ts", "inspections.mjs");
 const I = await import(`../${OUT}/inspections.mjs`);
 const SB = await import(`../${OUT}/stub/supabase.js`);
 const S = (globalThis.__fakeSb ??= { tables: {}, files: {}, log: [], defaults: {} });
+// Trip media (PR 314) reads the first bytes of an upload through its signed
+// URL. Serve the fake's signed:// URLs from the in-memory bucket.
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+  const u = String(url);
+  if (!u.startsWith("signed://")) return realFetch(url, init);
+  const key = decodeURIComponent(u.slice("signed://".length).split("?")[0]);
+  const bytes = S.files[key];
+  if (!bytes) return new Response(null, { status: 404 });
+  const body = Uint8Array.from(bytes);
+  return new Response(body, { status: 200, headers: { "content-length": String(body.length) } });
+};
 
 const ROLES = [
   { user_id: "own-1", role: "admin" },
@@ -180,6 +192,9 @@ for (const [who, label] of TIERS) {
   const up = await call(I.createConditionUploadUrl, { vehicleId: V1, fileName: "front.jpg", mimeType: "image/jpeg" }, who);
   ok(up.path.startsWith(`${V1}/`), `${label} gets an upload path pinned to THIS vehicle's folder`);
   ok(up.bucket === "condition-media", "  in the private condition bucket");
+  // The photo really arrives in storage before it is confirmed (PR 314 checks).
+  S.files[`condition-media/${up.path}`] = Array.from(
+    readFileSync(new URL("./fixtures/trip-media-synthetic-gps.jpg", import.meta.url)));
   await call(I.confirmConditionUpload, {
     vehicleId: V1, rentalId: R1, inspectionId: started.id, phase: "checkin", angle: "front",
     path: up.path, fileName: "front.jpg", mimeType: "image/jpeg", sizeBytes: 100,
