@@ -169,6 +169,7 @@ import {
 import { AgreementsCard } from "./AgreementsCard";
 import { ContactStatusCell } from "./ContactStatusCell";
 import { RecordPaymentDialog } from "./RentPaymentActions";
+import { RenterPayments } from "./RenterPayments";
 import { ApprovedNotRentingList } from "./ApprovedNotRenting";
 import { listApprovedNotRenting } from "@/lib/booking-funnel.functions";
 import type { ApprovedNotRentingResult } from "@/lib/booking-funnel";
@@ -217,6 +218,7 @@ import { getDocumentReviewAging } from "@/lib/document-review-aging.functions";
 import { DocumentReviewAging } from "./DocumentReviewAging";
 import { buildReadinessIndex } from "@/lib/readiness-index";
 import { ApplicantDocuments, REQUIRED_VAULT_CATEGORIES } from "./ApplicantDocuments";
+import { TripMediaPanel } from "./TripMediaPanel";
 import { adminListDriverDocuments, type VaultDocument } from "@/lib/documents.functions";
 import { InterviewDrawer } from "./InterviewDrawer";
 import { RecordCallDialog } from "./RecordCallDialog";
@@ -2522,6 +2524,7 @@ function DriverDetail({
     ["documents", "Documents"],
     ["screening", "Screening"],
     ["rental", "Rental"],
+    ["pictures", "Pictures"],
     ["payments", "Payments"],
     ["notes", "Notes"],
   ] as const;
@@ -2943,7 +2946,12 @@ function DriverDetail({
                   lookupLoading={rentalLookupLoading} lookupFailed={rentalLookupFailed} />
               </TabsContent>
 
+              <TabsContent value="pictures" className="mt-0 space-y-4">
+                <TripMediaPanel applicationId={driver.id} />
+              </TabsContent>
+
               <TabsContent value="payments" className="mt-0 space-y-4">
+                <RenterPayments driverId={driver.id} />
                 {isManager && <DriverStatement driverId={driver.id} />}
                 <Card title="Payment Terms" icon={<CreditCard className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

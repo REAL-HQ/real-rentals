@@ -27,6 +27,7 @@ import { fmtDate as formatDate } from "@/lib/date-format";
 import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
 import { UnmatchedStripePayments } from "./UnmatchedStripePayments";
+import { UnmatchedRenterPayments } from "./RenterPayments";
 import { BILLING_DAY_CHANGE_ENABLED, BILLING_ONE_TIME_EXTENSION_ENABLED, BILLING_PM_UPDATE_LINK_ENABLED } from "@/lib/billing-controls-flag";
 import { BillingControls } from "./BillingControls";
 import type { StaffTier } from "@/lib/roles";
@@ -306,6 +307,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
       ) : (
       <>
       {STRIPE_UNMATCHED_PAYMENTS_ENABLED ? <UnmatchedStripePayments /> : null}
+      <UnmatchedRenterPayments />
       {(BILLING_PM_UPDATE_LINK_ENABLED || BILLING_DAY_CHANGE_ENABLED || BILLING_ONE_TIME_EXTENSION_ENABLED) ? <BillingControls /> : null}
 
       {showManual && <ManualPaymentsWorkspace payments={payments} driverMap={driverMap} onClose={() => setShowManual(false)} />}
