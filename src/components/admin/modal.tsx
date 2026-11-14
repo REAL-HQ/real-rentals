@@ -25,7 +25,7 @@ export function ModalShell({
   const close = useRef(onClose);
   close.current = onClose;
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close.current(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !e.defaultPrevented) close.current(); };
     document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -76,7 +76,7 @@ export function ModalSection({ label, children, aside }: { label?: string; child
     <section className="space-y-3">
       {(label || aside) && (
         <div className="flex items-center justify-between">
-          {label && <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</div>}
+          {label && <div className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground">{label}</div>}
           {aside}
         </div>
       )}

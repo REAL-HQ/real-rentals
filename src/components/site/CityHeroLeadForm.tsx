@@ -161,7 +161,7 @@ export function CityHeroLeadForm({
 
       <div className="relative z-10 mx-auto w-full max-w-7xl grid grid-cols-1 lg:grid-cols-[1fr_minmax(380px,420px)] gap-10 lg:gap-16 items-center">
         <FadeUp className="text-center lg:text-left">
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">{eyebrow}</div>
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">{eyebrow}</div>
           <h1 className="mt-4 text-[40px] md:text-[56px] lg:text-[64px] leading-[1.02] font-semibold text-white drop-shadow-[0_2px_24px_rgba(0,0,0,0.6)]">
             {headline}
           </h1>
@@ -186,7 +186,7 @@ export function CityHeroLeadForm({
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-real-red/10">
                   <Check className="h-6 w-6 text-real-red" />
                 </div>
-                <h2 className="mt-4 text-2xl font-semibold">You're on the List</h2>
+                <h2 className="mt-4 text-2xl font-semibold">You're On The List</h2>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   We'll email you the moment a car opens up in {market?.name ?? site.title}. Cars go
                   to the next person on the list first — no deposit or obligation while you wait.
@@ -194,7 +194,7 @@ export function CityHeroLeadForm({
               </div>
             ) : (
               <>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-real-red">
+                <div className="text-[10px] font-semibold tracking-[0.24em] text-real-red">
                   {waitlistMode ? "Waitlist" : "Step 1 Of 3"}
                 </div>
                 <h2 className="mt-2 text-2xl font-semibold">
@@ -289,7 +289,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-[10px] tracking-wider text-muted-foreground">{label}</span>
       <input
         type={type}
         min={min}

@@ -309,7 +309,7 @@ async function run(label, viewport) {
   const { ctx, page, errors } = await open(viewport, "team");
 
   // ---------------------------------------------- the rail
-  const nav = page.locator('aside[aria-label="Main navigation"]');
+  const nav = page.locator('aside[aria-label="Main Navigation"]');
   const railVisible = await nav.isVisible().catch(() => false);
   if (railVisible) {
     const labels = (await nav.innerText()).split("\n").map((s) => s.trim()).filter(Boolean);

@@ -158,8 +158,8 @@ const pairs = [
     "overview stat card at lg",
   ],
   [
-    "text-[10px] uppercase tracking-[0.12em] font-semibold text-[#9A9AA3]",
-    "text-[9px] font-semibold uppercase leading-tight tracking-normal text-[#9A9AA3] sm:text-[10px] sm:tracking-[0.12em] lg:text-[10px] lg:leading-normal lg:tracking-[0.12em]",
+    "text-[10px] tracking-[0.12em] font-semibold text-[#9A9AA3]",
+    "text-[9px] font-semibold leading-tight tracking-normal text-[#9A9AA3] sm:text-[10px] sm:tracking-[0.12em] lg:text-[10px] lg:leading-normal lg:tracking-[0.12em]",
     "overview stat label at lg",
   ],
   [

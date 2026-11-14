@@ -32,7 +32,7 @@ assert.equal(existsSync("src/components/admin/IncidentChargePrep.tsx"), false);
 const gate = panel.indexOf("if (!INCIDENT_CHARGE_PREP_ENABLED) return null");
 const hook = panel.indexOf("useServerFn(listIncidentChargePrep)");
 assert.ok(gate !== -1 && hook !== -1 && gate < hook);
-assert.match(panel, /Remaining to Charge/);
+assert.match(panel, /Remaining To Charge/);
 assert.match(panel, /Could Not Load Remaining To Charge/);
 const prepCatch = panel.indexOf(".catch(");
 assert.ok(prepCatch !== -1 && panel.indexOf("onError(true)", prepCatch) > prepCatch);
@@ -40,7 +40,7 @@ assert.match(panel, /This Does Not Create a Charge\./);
 assert.doesNotMatch(panel, /Incident Charge Prep/);
 assert.doesNotMatch(panel, /function IncidentChargePrep\b/);
 assert.doesNotMatch(panel, /from "\.\/IncidentChargePrep"/);
-const label = panel.indexOf(">Remaining to Charge<");
+const label = panel.indexOf("Remaining To Charge");
 assert.ok(panel.lastIndexOf("INCIDENT_CHARGE_PREP_ENABLED", label) !== -1 && panel.lastIndexOf("INCIDENT_CHARGE_PREP_ENABLED", label) < label);
 
 const closed = "10000000-0000-4000-8000-000000000008";

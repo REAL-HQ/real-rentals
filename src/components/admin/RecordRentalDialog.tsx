@@ -45,18 +45,18 @@ export function RecordRentalDialog({driver,vehicles,onClose,onRecorded}:{driver:
    <p>Disabled until the database contracts and hosted acceptance are complete. No charges, subscriptions, messages or historical payment imports.</p>
    {pending?<p>Unresolved operation {pending.operationId}. Only this exact request may be reconciled; no new operation is allowed.</p>:<fieldset disabled={busy} className="space-y-3 mt-4">
     <label className="block"><MicroLabel>Vehicle</MicroLabel><div className="mt-1"><VehicleCombobox vehicles={vehicles as any} value={vehicleId||null} onChange={(id)=>setVehicle(id??'')} placeholder="Select verified vehicle" allowNone={false} aria-label="Vehicle" /></div></label>
-    <label><MicroLabel>Verified pickup timestamp with UTC offset</MicroLabel><input className={inputCls} placeholder="2026-10-15T10:00:00-04:00" value={startedAt} onChange={e=>setStart(e.target.value)}/></label>
+    <label><MicroLabel>Verified Pickup Timestamp With UTC Offset</MicroLabel><input className={inputCls} placeholder="2026-10-15T10:00:00-04:00" value={startedAt} onChange={e=>setStart(e.target.value)}/></label>
     <p>Date alone is insufficient. Do not infer a pickup time.</p>
-    <label><MicroLabel>Pickup mileage</MicroLabel><input className={inputCls} value={mileage} onChange={e=>setMiles(e.target.value)}/></label>
-    <label><MicroLabel>Weekly rate</MicroLabel><input className={inputCls} value={rate} onChange={e=>setRate(e.target.value)}/></label>
-    <label><MicroLabel>Deposit collected</MicroLabel><input className={inputCls} placeholder="Unknown" value={deposit} onChange={e=>setDeposit(e.target.value)}/></label>
+    <label><MicroLabel>Pickup Mileage</MicroLabel><input className={inputCls} value={mileage} onChange={e=>setMiles(e.target.value)}/></label>
+    <label><MicroLabel>Weekly Rate</MicroLabel><input className={inputCls} value={rate} onChange={e=>setRate(e.target.value)}/></label>
+    <label><MicroLabel>Deposit Collected</MicroLabel><input className={inputCls} placeholder="Unknown" value={deposit} onChange={e=>setDeposit(e.target.value)}/></label>
     <p>Blank means unknown; 0 means confirmed zero.</p>
-    <label><MicroLabel>Verified subscription evidence reference (optional)</MicroLabel><input className={inputCls} value={evidence} onChange={e=>setEvidence(e.target.value)}/></label>
+    <label><MicroLabel>Verified Subscription Evidence Reference (Optional)</MicroLabel><input className={inputCls} value={evidence} onChange={e=>setEvidence(e.target.value)}/></label>
     <p>The server must validate evidence. A typed reference is not verification.</p>
     <label><MicroLabel>Reason</MicroLabel><input className={inputCls} value={reason} onChange={e=>setReason(e.target.value)}/></label>
    </fieldset>}
    <p>Identity review, license, agreement, vehicle availability and subscription evidence are revalidated by the database transaction. No eligibility approval is inferred here.</p>
-   <label><MicroLabel>Type RECORD RENTAL to confirm</MicroLabel><input className={inputCls} value={confirm} onChange={e=>setConfirm(e.target.value)}/></label>
+   <label><MicroLabel>Type RECORD RENTAL To Confirm</MicroLabel><input className={inputCls} value={confirm} onChange={e=>setConfirm(e.target.value)}/></label>
    {(error||validationError)&&<p role="alert">{error||validationError}</p>}
   </ModalBody><ModalFooter><ModalButton variant="ghost" onClick={onClose}>Close</ModalButton><ModalButton variant="primary" disabled={!RECORD_RENTAL_CONTRACT_ENABLED||!actor||busy||!!error||!!validationError||confirm!=='RECORD RENTAL'} onClick={submit}>{pending?'Reconcile original operation':'Record Rental'}</ModalButton></ModalFooter>
  </ModalShell>;

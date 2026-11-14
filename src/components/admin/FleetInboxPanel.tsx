@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgreementFilingPanel } from "@/components/admin/AgreementFilingPanel";
 import { ConfirmDialog } from "./modal";
@@ -358,7 +359,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
           ["Existing matches", counts.matched], ["Conflicts", counts.conflicts], ["Couldn't classify", counts.unclassified],
         ].map(([l, n]) => (
           <div key={l as string} className="rounded-xl border border-[#EDEDF0] bg-white px-3 py-2.5">
-            <div className="text-[11px] uppercase tracking-wider text-[#9A9AA3]">{l}</div>
+            <div className="text-[11px] tracking-wider text-[#9A9AA3]">{l}</div>
             <div className="text-lg font-semibold text-[#111114]">{n}</div>
           </div>
         ))}
@@ -426,13 +427,13 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
                 <button onClick={async () => { const r = await analyze({ data: { itemId: it.id } }); if (!r.ok) toast.error(r.error); void load(); }} className="min-h-[36px] px-2 text-xs inline-flex items-center gap-1 text-[#D03020]"><RotateCw className="w-3.5 h-3.5" /> Retry Analysis</button>
               )}
               {!["duplicate", "analyzing", "applied"].includes(it.status) && (
-                <select aria-label="Classify manually" value="" onChange={async (e) => { if (!e.target.value) return; await classify({ data: { itemId: it.id, docClass: e.target.value } }); void load(); }}
+                <AppSelect aria-label="Classify Manually" value="" onChange={async (e) => { if (!e.target.value) return; await classify({ data: { itemId: it.id, docClass: e.target.value } }); void load(); }}
                   className="min-h-[36px] rounded-md border border-[#EDEDF0] bg-white text-xs px-2">
                   <option value="">Classify…</option>
                   {DOC_GROUPS.map((g) => (
                     <optgroup key={g.group} label={g.group}>{g.classes.map((c) => <option key={c} value={c}>{docClassLabel(c)}</option>)}</optgroup>
                   ))}
-                </select>
+                </AppSelect>
               )}
               {it.document_id && it.status !== "duplicate" && d.vehicles.length > 0 && (
                 <div className="min-w-[12rem] max-w-[16rem]">
@@ -446,7 +447,7 @@ function BatchView({ batchId, onBack, isManager }: { batchId: string; onBack: ()
                     }}
                     placeholder="Attach to vehicle…"
                     allowNone={false}
-                    aria-label="Attach to vehicle"
+                    aria-label="Attach To Vehicle"
                     triggerClassName="h-9 text-xs"
                   />
                 </div>
@@ -541,7 +542,7 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, batchVehicleHi
       <div className="flex flex-wrap items-start gap-2">
         <Car className="w-4 h-4 mt-0.5 text-[#9A9AA3]" />
         <div className="min-w-0 flex-1">
-          <div className="text-[11px] uppercase tracking-wider text-[#9A9AA3]">{heading}</div>
+          <div className="text-[11px] tracking-wider text-[#9A9AA3]">{heading}</div>
           <div className="text-[15px] font-semibold text-[#111114]">{title}</div>
           <div className="text-xs text-[#55555E] break-all">
             VIN {p.vin ?? "—"}{p.vin_check?.checkDigitValid === true ? " ✓" : ""}
@@ -641,7 +642,7 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, batchVehicleHi
                 value={dec.vehicleId ?? null}
                 onChange={(id) => setOne({ vehicleId: id ?? undefined })}
                 allowNone={false}
-                aria-label="Match vehicle"
+                aria-label="Match Vehicle"
                 triggerClassName="min-h-[44px] text-xs"
               />
             </div>
@@ -674,7 +675,7 @@ function ServiceSummary({ fields }: { fields: any }) {
   try { items = JSON.parse(f("service_items") ?? "[]"); } catch { items = []; }
   if (!items.length && f("service_description")) items = [{ description: String(f("service_description")), amount: null }];
   const Cell = ({ k, v }: { k: string; v?: string | null }) => (
-    <div><div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9A9AA3]">{k}</div><div className="text-[13px] text-[#111114]">{v || "Unknown"}</div></div>
+    <div><div className="text-[10px] font-semibold tracking-[0.08em] text-[#9A9AA3]">{k}</div><div className="text-[13px] text-[#111114]">{v || "Unknown"}</div></div>
   );
   return (
     <div className="mt-3 rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] p-3">

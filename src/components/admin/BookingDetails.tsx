@@ -121,7 +121,7 @@ export function BookingDetails({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -211,7 +211,7 @@ export function BookingDetails({
           ) : failed || !d ? (
             <EmptyState
               icon={<CalendarCheck className="w-6 h-6" strokeWidth={1.75} />}
-              title="This booking could not be loaded"
+              title="This Booking Could Not Be Loaded"
               hint="The rental may have been removed, or your account may not have access."
             />
           ) : (

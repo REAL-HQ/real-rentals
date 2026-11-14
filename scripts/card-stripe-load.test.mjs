@@ -156,7 +156,7 @@ const htmlPath = process.env.CARD_STRIPE_HTML;
 if (htmlPath) {
   const html = readFileSync(htmlPath, "utf8").replaceAll("\u0000", "");
   assert.equal(html.toLowerCase().includes("js.stripe.com"), false);
-  assert.equal(html.includes("Save Your Card on File"), false);
+  assert.equal(html.includes("Save Your Card On File"), false);
   assert.equal(html.toLowerCase().includes("googletagmanager"), false);
 }
 

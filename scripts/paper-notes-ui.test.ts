@@ -24,7 +24,7 @@ function render() {
  const nodes: any[] = [];
  function walk(n: any) { if (Array.isArray(n)) return n.forEach(walk); if (!n || typeof n !== "object") return; nodes.push(n); walk(n.props?.children); }
  walk(tree);
- return { textarea: nodes.find(n => n.type === "textarea"), save: nodes.find(n => n.type === "button" && n.props.children === "Upload and Register"), alert: nodes.find(n => n.props?.role === "alert"), counter: nodes.find(n => n.props?.id === "paper-notes-count-synthetic-app") };
+ return { textarea: nodes.find(n => n.type === "textarea"), save: nodes.find(n => n.type === "button" && n.props.children === "Upload And Register"), alert: nodes.find(n => n.props?.role === "alert"), counter: nodes.find(n => n.props?.id === "paper-notes-count-synthetic-app") };
 }
 let pass = 0;
 function check(name: string, condition: unknown) { assert.ok(condition, name); console.log("PASS " + name); pass++; }

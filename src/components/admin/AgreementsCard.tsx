@@ -280,7 +280,7 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-[13px] font-medium text-[#111114] truncate">{a.title}</span>
-                    <span className={`text-[10.5px] font-semibold uppercase tracking-wide rounded-full border px-2 py-0.5 ${toneFor(a.status)}`}>
+                    <span className={`text-[10.5px] font-semibold tracking-wide rounded-full border px-2 py-0.5 ${toneFor(a.status)}`}>
                       {a.status}
                     </span>
                   </div>

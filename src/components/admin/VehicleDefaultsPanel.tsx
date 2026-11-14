@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -89,9 +90,9 @@ export function VehicleDefaultsPanel() {
         <div className="rounded-xl border border-foreground/20 bg-card p-5 space-y-4">
           <div className="flex items-center gap-3">
             {isNew ? (
-              <select aria-label="Vehicle Type" value={draft.body_type} onChange={(e) => setDraft({ ...draft, body_type: e.target.value })} className="h-10 px-3 rounded-lg border border-input bg-background text-[14px]">
+              <AppSelect aria-label="Vehicle Type" value={draft.body_type} onChange={(e) => setDraft({ ...draft, body_type: e.target.value })} className="h-10 px-3 rounded-lg border border-input bg-background text-[14px]">
                 {unused.map((b) => <option key={b} value={b}>{bodyTypeLabel(b)}</option>)}
-              </select>
+              </AppSelect>
             ) : <div className="font-semibold text-[15px]">{bodyTypeLabel(draft.body_type)}</div>}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

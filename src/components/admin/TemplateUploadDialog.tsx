@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -16,14 +17,14 @@ const sel = "h-8 w-full rounded-md border bg-background px-1.5 text-[12px]";
 function TargetSelect({ value, onChange, label }: { value: Target; onChange: (t: Target) => void; label: string }) {
   const groups = [...new Set(TARGET_OPTIONS.map((o) => o.group))];
   return (
-    <select aria-label={`Mapping For ${label}`} className={sel} value={targetId(value)} onChange={(e) => onChange(JSON.parse(e.target.value))}>
+    <AppSelect aria-label={`Mapping For ${label}`} className={sel} value={targetId(value)} onChange={(e) => onChange(JSON.parse(e.target.value))}>
       {!TARGET_OPTIONS.some((o) => targetId(o.target) === targetId(value)) && <option value={targetId(value)}>Detected Value</option>}
       {groups.map((g) => (
         <optgroup key={g} label={g}>
           {TARGET_OPTIONS.filter((o) => o.group === g).map((o) => <option key={targetId(o.target)} value={targetId(o.target)}>{o.label}</option>)}
         </optgroup>
       ))}
-    </select>
+    </AppSelect>
   );
 }
 

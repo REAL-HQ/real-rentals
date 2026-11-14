@@ -37,7 +37,7 @@ export function LeadsPanel({ table, label }: { table: "contact_leads" | "investo
   return (
     <AdminTableScroll className="rounded-lg border border-border bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-soft text-[11px] uppercase tracking-wider text-muted-foreground">
+          <thead className="bg-soft text-[11px] tracking-wider text-muted-foreground">
             <tr>
               <th className="text-left font-medium px-4 py-2.5 border-b border-border">Name</th>
               <th className="text-left font-medium px-4 py-2.5 border-b border-border">Email</th>

@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Download, Handshake } from "lucide-react";
@@ -81,17 +82,17 @@ export function PartnerStatementPanel() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <select
+          <AppSelect
             value={partnerId}
             onChange={(event) => setPartnerId(event.target.value)}
             aria-label="Partner"
             className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
           >
-            <option value="">Choose a Partner</option>
+            <option value="">Choose A Partner</option>
             {partners.map((partner) => (
               <option key={partner.id} value={partner.id}>{partner.name}</option>
             ))}
-          </select>
+          </AppSelect>
           <div className="inline-flex rounded-lg border border-border overflow-hidden">
             {PARTNER_STATEMENT_PERIODS.map((item) => (
               <button

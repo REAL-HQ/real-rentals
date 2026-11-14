@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Loader2, MoreHorizontal } from "lucide-react";
@@ -104,13 +105,13 @@ function RecordDepositDialog({
             <input className={input} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} aria-label="Amount" />
           </Field>
           <Field label="Method">
-            <select className={input} value={method} onChange={(e) => setMethod(e.target.value)} aria-label="Method">
+            <AppSelect className={input} value={method} onChange={(e) => setMethod(e.target.value)} aria-label="Method">
               {MANUAL_METHODS.map((m) => (
                 <option key={m.value} value={m.value}>
                   {m.label}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </Field>
           <Field label="Reference">
             <input className={input} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Confirmation Or Note" aria-label="Reference" />

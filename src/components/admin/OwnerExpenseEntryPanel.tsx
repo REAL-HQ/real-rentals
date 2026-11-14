@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -132,16 +133,16 @@ export function OwnerExpenseEntryPanel() {
       </div>
       <label className="block text-sm">
         <span className="font-medium">Category</span>
-        <select value={category} onChange={(event) => setCategory(event.target.value as ExpenseCategory)} className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2">
+        <AppSelect aria-label="Category" value={category} onChange={(event) => setCategory(event.target.value as ExpenseCategory)} className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2">
           {EXPENSE_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-        </select>
+        </AppSelect>
       </label>
       <label className="block text-sm">
         <span className="font-medium">Vendor</span>
-        <select value={vendorId} onChange={(event) => setVendorId(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2">
+        <AppSelect aria-label="Vendor" value={vendorId} onChange={(event) => setVendorId(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2">
           <option value="">No Vendor</option>
           {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
-        </select>
+        </AppSelect>
       </label>
       <label className="block text-sm">
         <span className="font-medium">Description</span>

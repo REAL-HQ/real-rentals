@@ -35,7 +35,7 @@ export function DriverReceipts({ read }: { read: () => Promise<DriverReceipt[]> 
         {data && data.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No past payments.</p> : null}
         {data && data.length > 0 ? (
           <table className="mt-4 w-full text-sm">
-            <thead className="text-xs uppercase tracking-wider text-muted-foreground text-left">
+            <thead className="text-xs tracking-wider text-muted-foreground text-left">
               <tr>
                 <th className="py-2">Date</th>
                 <th>What It Was For</th>
@@ -67,7 +67,7 @@ export function DriverReceipts({ read }: { read: () => Promise<DriverReceipt[]> 
         <article className="driver-receipt rounded-2xl border border-border bg-white p-6">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-xs uppercase tracking-wider text-muted-foreground">Receipt</div>
+              <div className="text-xs tracking-wider text-muted-foreground">Receipt</div>
               {open.businessName ? <h3 className="mt-1 text-lg font-semibold">{open.businessName}</h3> : null}
             </div>
             <button type="button" onClick={() => window.print()} className="no-print rounded-lg border border-border px-3 py-1.5 text-sm font-medium">
@@ -99,7 +99,7 @@ function Field({ label, value }: { label: string; value: string | null }) {
   if (!value) return null;
   return (
     <div>
-      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</dt>
+      <dt className="text-[10px] tracking-wider text-muted-foreground">{label}</dt>
       <dd className="mt-1 font-medium">{value}</dd>
     </div>
   );

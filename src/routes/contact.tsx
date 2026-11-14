@@ -41,7 +41,7 @@ function Contact() {
     <SiteLayout>
       <section className="container-real pt-16 md:pt-24 pb-12">
         <FadeUp>
-          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Contact</div>
+          <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">Contact</div>
           <h1 className="mt-4 text-4xl md:text-6xl font-semibold">Let's Talk.</h1>
         </FadeUp>
       </section>
@@ -58,7 +58,7 @@ function Contact() {
               <Field label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} required />
               <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Message</label>
+                <label className="text-[10px] tracking-wider text-muted-foreground">Message</label>
                 <textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={5} className="mt-1 w-full bg-soft rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10" />
               </div>
               {error && <div className="text-sm text-real-red">{error}</div>}
@@ -82,7 +82,7 @@ function Contact() {
 function Field({ label, value, onChange, type = "text", required }: { label: string; value: string; onChange: (v: string) => void; type?: string; required?: boolean }) {
   return (
     <div>
-      <label className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</label>
+      <label className="text-[10px] tracking-wider text-muted-foreground">{label}</label>
       <input type={type} value={value} required={required} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full bg-soft rounded-lg px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10" />
     </div>
   );
@@ -98,7 +98,7 @@ function Item({ I, label, v, href, onClick }: { I: any; label: string; v: string
     <div className="flex gap-4 items-start">
       <div className="rounded-full bg-soft p-3"><I className="w-5 h-5 text-real-red" strokeWidth={1.75} /></div>
       <div>
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+        <div className="text-[10px] tracking-wider text-muted-foreground">{label}</div>
         {valueNode}
       </div>
     </div>

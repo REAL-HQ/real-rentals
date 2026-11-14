@@ -1,3 +1,4 @@
+import { enumDisplayLabel } from "@/lib/ui-display-labels";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Partner, FleetOwner, InvestorLead } from "./types";
@@ -69,8 +70,8 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
         <div className="flex flex-wrap gap-2 text-xs">
           {(["all", ...PARTNER_TYPES] as const).map(s => (
             <button key={s} onClick={() => setFilter(s)}
-              className={`px-3 py-1.5 rounded-md capitalize ${filter === s ? "bg-black text-white" : "bg-white border border-border"}`}>
-              {s.replace(/_/g, " ")} {s !== "all" && `(${partners.filter(p => p.partner_type === s).length})`}
+              className={`px-3 py-1.5 rounded-md ${filter === s ? "bg-black text-white" : "bg-white border border-border"}`}>
+              {enumDisplayLabel(s)} {s !== "all" && `(${partners.filter(p => p.partner_type === s).length})`}
             </button>
           ))}
         </div>
@@ -82,7 +83,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
           <div key={p.id} className="rounded-xl bg-soft p-4">
             <div className="flex flex-wrap items-start gap-3">
               <div className="flex-1 min-w-[240px]">
-                <div className="font-medium">{p.name} <span className="text-xs text-muted-foreground">· {p.partner_type.replace(/_/g, " ")}</span></div>
+                <div className="font-medium">{p.name} <span className="text-xs text-muted-foreground">· {enumDisplayLabel(p.partner_type)}</span></div>
                 <div className="text-xs text-muted-foreground">{p.email || "—"} · {p.phone || "—"}</div>
                 <div className="text-[11px] text-muted-foreground mt-1">
                   Capital: ${Number(p.capital_committed || 0).toLocaleString()} · Vehicles: {p.vehicles_contributed || 0} · Monthly: ${Number(p.monthly_payment || 0).toLocaleString()}
@@ -94,7 +95,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
               </Select>
               <Select value={p.partner_type} onValueChange={(partner_type) => update(p.id, { partner_type })}>
                 <SelectTrigger className="h-8 w-36 bg-white text-foreground"><SelectValue /></SelectTrigger>
-                <SelectContent>{PARTNER_TYPES.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
+                <SelectContent>{PARTNER_TYPES.map(s => <SelectItem key={s} value={s}>{enumDisplayLabel(s)}</SelectItem>)}</SelectContent>
               </Select>
               <button onClick={() => remove(p.id)} className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-real-red hover:text-white hover:border-real-red">Delete</button>
             </div>
@@ -113,7 +114,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
       </div>
 
       <div className="mt-10">
-        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">Legacy Submissions</h3>
+        <h3 className="text-sm font-semibold tracking-wider text-muted-foreground mb-3">Legacy Submissions</h3>
         <div className="space-y-2">
           {legacyOwners.map(o => (
             <div key={o.id} className="rounded-lg bg-white border border-border p-3 flex flex-wrap items-center gap-3 text-sm">
@@ -121,7 +122,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
                 <div className="font-medium">{o.full_name} <span className="text-xs text-muted-foreground">· Fleet owner</span></div>
                 <div className="text-xs text-muted-foreground">{o.email} · {o.year} {o.make} {o.model}</div>
               </div>
-              <button onClick={() => convertOwner(o)} className="rounded-md bg-black text-white px-3 py-1.5 text-xs">Convert to Partner</button>
+              <button onClick={() => convertOwner(o)} className="rounded-md bg-black text-white px-3 py-1.5 text-xs">Convert To Partner</button>
             </div>
           ))}
           {legacyInvestors.map(l => (
@@ -130,7 +131,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
                 <div className="font-medium">{l.name} <span className="text-xs text-muted-foreground">· Investor</span></div>
                 <div className="text-xs text-muted-foreground">{l.email} · {l.capital_range || "—"}</div>
               </div>
-              <button onClick={() => convertInvestor(l)} className="rounded-md bg-black text-white px-3 py-1.5 text-xs">Convert to Partner</button>
+              <button onClick={() => convertInvestor(l)} className="rounded-md bg-black text-white px-3 py-1.5 text-xs">Convert To Partner</button>
             </div>
           ))}
           {legacyOwners.length === 0 && legacyInvestors.length === 0 && (
@@ -147,7 +148,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
 function NumInput({ label, value, onSave }: { label: string; value: number | null; onSave: (v: number) => void }) {
   return (
     <div className="bg-white border border-border rounded-md px-2 py-1">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-[10px] tracking-wider text-muted-foreground">{label}</div>
       <input type="number" defaultValue={value ?? 0} onBlur={(e) => onSave(Number(e.target.value) || 0)}
         className="w-full text-sm outline-none" />
     </div>
@@ -166,7 +167,7 @@ function AddPartner({ onClose, onSave }: { onClose: () => void; onSave: (p: Part
           <input placeholder="Phone" value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full bg-soft rounded-md px-3 py-2" />
           <Select value={form.partner_type} onValueChange={(v) => setForm({ ...form, partner_type: v })}>
             <SelectTrigger className="bg-white text-foreground"><SelectValue /></SelectTrigger>
-            <SelectContent>{PARTNER_TYPES.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
+            <SelectContent>{PARTNER_TYPES.map(s => <SelectItem key={s} value={s}>{enumDisplayLabel(s)}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <div className="mt-5 flex justify-end gap-2">

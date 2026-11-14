@@ -53,17 +53,17 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
   };
 
   return (
-    <SectionCard title="Marketing photos (AI Studio)">
+    <SectionCard title="Marketing Photos (AI Studio)">
       {!st?.enabled && <p className="text-sm text-muted-foreground">Photo Studio is off. The Owner can turn it on in Settings.</p>}
       {st?.enabled && !st.configured && <p className="text-sm text-amber-700">The image provider is not configured yet.</p>}
       {st && <p className="text-xs text-muted-foreground">This month: ${(st.usage.monthCents / 100).toFixed(2)} of ${(st.monthlyCapCents / 100).toFixed(2)} · today {st.usage.todayImages}/{st.dailyImageLimit} images · {st.model}</p>}
       <div className="flex flex-wrap items-center gap-2 my-2">
         <Badge variant={setStatus === "approved" ? "default" : "secondary"}>Set: {setStatus}</Badge>
         {published && <Badge>On website</Badge>}
-        {canEdit && <Button size="sm" disabled={busy || !st?.enabled || originals.length === 0} onClick={() => run()}>{shots.length ? "Regenerate all" : "Generate shots"}</Button>}
+        {canEdit && <Button size="sm" disabled={busy || !st?.enabled || originals.length === 0} onClick={() => run()}>{shots.length ? "Regenerate All" : "Generate Shots"}</Button>}
         {st?.canPublish && setStatus === "approved" && (
           <Button size="sm" variant="outline" onClick={async () => { const r = await publish({ data: { vehicleId, published: !published } }); if (!r.ok) toast.error(r.error); await load(); }}>
-            {published ? "Take off website" : "Publish to website"}
+            {published ? "Take Off Website" : "Publish To Website"}
           </Button>
         )}
       </div>
@@ -93,8 +93,8 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
         })}
       </div>
       <div className="mt-4">
-        <MicroLabel>Originals (team only)</MicroLabel>
-        {originals.length === 0 ? <EmptyState title="No originals yet" hint="Car photos linked in Fleet Inbox appear here." /> : (
+        <MicroLabel>Originals (Team Only)</MicroLabel>
+        {originals.length === 0 ? <EmptyState title="No Originals Yet" hint="Car photos linked in Fleet Inbox appear here." /> : (
           <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mt-1">
             {originals.map((o: any) => (
               <a key={o.id} href={o.url ?? "#"} target="_blank" rel="noreferrer" className="block">

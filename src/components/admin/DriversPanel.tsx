@@ -1,3 +1,5 @@
+import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { AppSelect } from "@/components/ui/app-select";
 import { OnboardingChecklist } from "./OnboardingChecklist";
 import { getOnboardingChecklist } from "@/lib/onboarding-checklist.functions";
 import {
@@ -1277,7 +1279,7 @@ setDocCounts(requiredDocCounts(rows));
               <DropdownMenuSeparator />
               <div className="px-2 py-1.5" onPointerDown={(event) => event.stopPropagation()}>
                 <label htmlFor="drivers-contact-filter" className="mb-1.5 block text-[11px] font-medium text-muted-foreground">Contact</label>
-                <select
+                <AppSelect
                   id="drivers-contact-filter"
                   aria-label="Contact Status"
                   data-contact-filter
@@ -1291,7 +1293,7 @@ setDocCounts(requiredDocCounts(rows));
                       {cs.label} ({drivers.filter((a) => readContactStatus(a).state.status === cs.key).length})
                     </option>
                   ))}
-                </select>
+                </AppSelect>
               </div>
               {DRIVER_DOC_EXPIRY_ENABLED === true && driversLoaded && canSeeSensitive ? (
                 <div className="px-2 py-1.5 [&_select]:w-full" onPointerDown={(event) => event.stopPropagation()}>
@@ -1366,7 +1368,7 @@ setDocCounts(requiredDocCounts(rows));
       <AdminTableScroll className="max-lg:min-w-0 rounded-lg border border-border bg-white">
           {/* Fits 1280/100% and 1024: hide Email/Deposit/Created, sticky actions, no min-width scroll. */}
           <table className="w-full table-fixed text-sm" data-testid="drivers-table">
-            <thead className="bg-[#FAFAFB] text-[11px] uppercase tracking-wider text-muted-foreground">
+            <thead className="bg-[#FAFAFB] text-[11px] tracking-wider text-muted-foreground">
               <tr>
                 <th className="w-[16%] text-left font-medium px-2 py-2.5 border-b border-border">Name</th>
                 <th className="w-[12%] text-left font-medium px-2 py-2.5 border-b border-border">Contact</th>
@@ -1666,7 +1668,7 @@ setDocCounts(requiredDocCounts(rows));
                             own: the contact status belongs to the person, and
                             it is on their primary row above. */}
                         <td className="px-4 py-2">—</td>
-                        <td className="px-4 py-2 capitalize">{h.status}</td>
+                        <td className="px-4 py-2">{enumDisplayLabel(h.status)}</td>
                         <td className="px-4 py-2">{h.phone ? formatPhone(h.phone) : "—"}</td>
                         <td className="px-4 py-2">{h.email || "—"}</td>
                         <td className="px-4 py-2">—</td>
@@ -2460,7 +2462,7 @@ function DriverDetail({
   // Next Step card's fix buttons and the tabs, so they are not repeated here.
   const moreActions = (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9A9AA3] mr-1">Actions</span>
+      <span className="text-[10px] font-semibold tracking-[0.14em] text-[#9A9AA3] mr-1">Actions</span>
       <button className={btnSecondary} onClick={() => setTab("notes")}>
         <FileText className="w-3.5 h-3.5" /> Add Note
       </button>
@@ -2507,7 +2509,7 @@ function DriverDetail({
               </span>
               <span className="min-w-0 text-[#111114]">
                 {e.label}
-                {e.detail && <span className="text-[#9A9AA3] capitalize"> · {e.detail}</span>}
+                {e.detail && <span className="text-[#9A9AA3] "> · {e.detail}</span>}
               </span>
             </li>
           ))}
@@ -2628,7 +2630,7 @@ function DriverDetail({
                 </a>
               )}
               <DropdownMenu>
-                <DropdownMenuTrigger aria-label="More actions" className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors">
+                <DropdownMenuTrigger aria-label="More Actions" className="h-8 w-8 inline-flex items-center justify-center rounded-md text-[#55555E] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors">
                   <MoreVertical className="w-4 h-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 max-w-[calc(100vw-2rem)] [&>button]:gap-2 [&>*>svg]:mr-0 [&>*>svg]:size-4 [&>*>svg]:shrink-0">
@@ -2912,8 +2914,8 @@ function DriverDetail({
                   canEditCallNotes={Boolean(screening?.interview_completed_at)}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
                 /></div>
-                <button className={btnSecondary} disabled={!RECORD_RENTAL_CONTRACT_ENABLED} onClick={()=>setRecordOpen(true)}>Record Rental — pending acceptance</button>
-                {activeRentalId ? <button className={btnSecondary} disabled={!RECORD_RENTAL_CONTRACT_ENABLED} onClick={()=>setRecordCloseOpen(true)}>Close recorded rental — pending acceptance</button> : null}
+                <button className={btnSecondary} disabled={!RECORD_RENTAL_CONTRACT_ENABLED} onClick={()=>setRecordOpen(true)}>Record Rental — Pending Acceptance</button>
+                {activeRentalId ? <button className={btnSecondary} disabled={!RECORD_RENTAL_CONTRACT_ENABLED} onClick={()=>setRecordCloseOpen(true)}>Close Recorded Rental — Pending Acceptance</button> : null}
                 <div id="profile-vehicle" className="scroll-mt-48">
                 <Card title="Assigned Vehicle" icon={<Car className="w-4 h-4" />}>
                   <div className="rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] p-4 mb-3">
@@ -3216,7 +3218,7 @@ function StatCard({
 }) {
   return (
     <div className="rounded-xl border border-border bg-white p-4">
-      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+      <div className="flex items-center gap-2 text-[11px] tracking-wider text-muted-foreground">
         {icon}
         <span>{label}</span>
       </div>
@@ -3330,10 +3332,10 @@ function AISnapshotCard({ driver }: { driver: Application }) {
           {score ?? "—"}
         </span>
         <div className="leading-tight">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9A9AA3]">
+          <div className="text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3]">
             AI Score
           </div>
-          <div className="text-[12px] font-semibold text-[#111114] capitalize">
+          <div className="text-[12px] font-semibold text-[#111114] ">
             {tier ?? "Unscored"}
           </div>
         </div>
@@ -3371,7 +3373,7 @@ function AISnapshotCard({ driver }: { driver: Application }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mt-4">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">{title}</div>
+      <div className="text-[11px] tracking-wider text-muted-foreground mb-2">{title}</div>
       <div className="grid grid-cols-2 gap-3 text-sm">{children}</div>
     </div>
   );
@@ -3379,7 +3381,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, value }: { label: string; value: any }) {
   return (
     <div className="bg-soft rounded-md px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-[10px] tracking-wider text-muted-foreground">{label}</div>
       <div className="text-sm">{value ?? "—"}</div>
     </div>
   );
@@ -3401,7 +3403,7 @@ function SelField({
 }) {
   return (
     <div className="bg-soft rounded-md px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
+      <div className="text-[10px] tracking-wider text-muted-foreground mb-1">{label}</div>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="h-8 bg-white text-foreground" aria-label={label}>
           <SelectValue />
@@ -3409,7 +3411,7 @@ function SelField({
         <SelectContent>
           {options.map((o) => (
             <SelectItem key={o} value={o} disabled={disabledValues?.includes(o)}>
-              {labels?.[o] ?? o.replace(/_/g, " ")}
+              {labels?.[o] ?? enumDisplayLabel(o)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -3477,7 +3479,7 @@ function EditableField({
   const field = useEditableField(onSave, parse);
   return (
     <div className="bg-soft rounded-md px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{label}</div>
+      <div className="text-[10px] tracking-wider text-muted-foreground mb-1">{label}</div>
       <div className="flex min-w-0 items-center gap-2">
         <input
           ref={field.inputRef}
@@ -3567,8 +3569,8 @@ function ReissueLinkAction({ applicationId }: { applicationId: string }) {
   const [busy, setBusy] = useState(false);
   return (
     <DropdownMenuItem
-      title="Copy a fresh application link (older links are revoked)"
-      aria-label="Copy a fresh application link"
+      title="Copy A Fresh Application Link (Older Links Are Revoked)"
+      aria-label="Copy A Fresh Application Link"
       onSelect={async (e) => {
         e.preventDefault();
         if (busy) return;
@@ -3765,12 +3767,12 @@ function CardOnFileActions({ driver, onUpdate, canIssue }: { driver: any; onUpda
               )}
               {ready && driver.phone && (
                 <a href={cardTextHref(driver.phone, ready.link)} className={handoffItemClass}>
-                  <MessageSquare className="w-4 h-4 mr-2" /> Text Link to Driver
+                  <MessageSquare className="w-4 h-4 mr-2" /> Text Link To Driver
                 </a>
               )}
               {ready && driver.email && (
                 <a href={cardEmailHref(driver.email, ready.link)} className={handoffItemClass}>
-                  <Mail className="w-4 h-4 mr-2" /> Email Link to Driver
+                  <Mail className="w-4 h-4 mr-2" /> Email Link To Driver
                 </a>
               )}
             </>
@@ -3847,7 +3849,7 @@ function ChargeCardDialog({ driver, onClose }: { driver: any; onClose: () => voi
         className="bg-white rounded-2xl max-w-md w-full p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold mb-1">Charge Card on File</h2>
+        <h2 className="text-lg font-semibold mb-1">Charge Card On File</h2>
         <p className="text-xs text-muted-foreground mb-4">
           {driver.card_brand} ····{driver.card_last4} — {driver.full_name ? displayPersonName(driver.full_name) : ""}
         </p>
@@ -3885,7 +3887,7 @@ function ChargeCardDialog({ driver, onClose }: { driver: any; onClose: () => voi
             </Select>
           </label>
           <label className="block text-xs">
-            Note (optional)
+            Note (Optional)
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -3994,7 +3996,7 @@ function CardOnFileCard({
   return (
     <div className="rounded-xl border border-border bg-white p-5">
       <div className="flex items-center justify-between mb-3">
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        <div className="text-[10px] tracking-wider text-muted-foreground">
           Card On File
         </div>
         {hasCard ? (
@@ -4015,7 +4017,7 @@ function CardOnFileCard({
       </div>
       {hasCard ? (
         <div className="space-y-1.5 text-sm">
-          <div className="capitalize font-medium">
+          <div className="font-medium">
             {driver.card_brand} ····{driver.card_last4}
           </div>
           {driver.card_exp_month && driver.card_exp_year && (
@@ -4061,7 +4063,7 @@ function CardOnFileCard({
 }
 const DOC_ITEMS: { key: "license" | "gig_screenshot" | "insurance" | "other"; label: string }[] = [
   { key: "license", label: "License Photo" },
-  { key: "gig_screenshot", label: "Driving Profile Screenshot (Uber, Lyft, DoorDash, etc.)" },
+  { key: "gig_screenshot", label: "Driving Profile Screenshot (Uber, Lyft, DoorDash, Etc.)" },
   { key: "insurance", label: "Insurance Information" },
   { key: "other", label: "Other (Specify Below)" },
 ];
@@ -4172,7 +4174,7 @@ function RequestDocumentsAction({
               </label>
             ))}
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+              <div className="text-[10px] tracking-wider text-muted-foreground font-semibold mb-1.5">
                 Note (optional)
               </div>
               <Textarea

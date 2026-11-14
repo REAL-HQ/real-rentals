@@ -51,3 +51,7 @@ demo-data-backup-*.json
 .toolbar-layout-build/
 # Synthetic save regression fixture
 .vehicle-save-build/
+
+# Synthetic local UI audits and blocked-network browser candidates
+.ui-label-audit/
+.ui-label-browser/

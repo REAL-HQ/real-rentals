@@ -57,7 +57,7 @@ check(vehicles.includes("text-[13px]") && vehicles.includes("[&_td]:py-1") && ve
 // 5. Top search is visible and clearable.
 check(renderToStaticMarkup(h(TopSearchChip, { value: "  ", onClear() {} })) === "", "no chip when the top search is empty");
 const chip = renderToStaticMarkup(h(TopSearchChip, { value: " sch ", onClear() {} }));
-check(chip.includes("Top search:") && chip.includes("“sch”") && chip.includes('aria-label="Clear top search"'), "chip names the applied top search and offers Clear");
+check(chip.includes("Top search:") && chip.includes("“sch”") && chip.includes('aria-label="Clear Top Search"'), "chip names the applied top search and offers Clear");
 check(/const effectiveQ = \(externalSearch \|\| q\)\.trim\(\);/.test(vehicles), "top search still applies to Vehicles (shared search kept)");
 check(vehicles.includes("<TopSearchChip value={externalSearch}"), "Vehicles shows the top-search chip");
 check(/const hasActiveFilters = topSearch !== "" \|\|/.test(vehicles), "top search counts as an active filter (Clear shows)");
@@ -69,7 +69,7 @@ check(admin.includes('<VehiclesPanel externalSearch={globalSearch} onClearExtern
 
 // Ordinal is a separate first column; the table's old Unit cell is now a
 // private staff thumbnail/slideshow, while cards retain their unit identifier.
-check(/aria-label="Row number">#<\/th>\s*<th[^>]*>Photo/.test(vehicles), "narrow # column precedes Photo");
+check(/aria-label="Row Number">#<\/th>\s*<th[^>]*>Photo/.test(vehicles), "narrow # column precedes Photo");
 check(vehicles.includes("<VehicleListThumbnail vehicle={v} />"), "table unit cells are replaced by the vehicle thumbnail");
 check(vehicles.includes('{v.unit_number ?? ""}'), "unit identifiers stay unchanged in cards");
 check(vehicles.includes("async function openPhotos") && vehicles.includes("event.stopPropagation();") && vehicles.includes("<VehiclePhotoViewer"), "thumbnail clicks stop row navigation and open the shared slideshow");

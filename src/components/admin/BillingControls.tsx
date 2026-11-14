@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -117,9 +118,9 @@ function BillingControlsForm() {
           <h3 className="text-sm font-semibold">Change Billing Day</h3>
           <label className="mt-2 block text-sm">
             Billing Day
-            <select value={weekday} onChange={(event) => setWeekday(event.target.value)} className="mt-1 block h-8 rounded-md border border-border bg-white px-2 text-sm">
+            <AppSelect aria-label="Billing Day" value={weekday} onChange={(event) => setWeekday(event.target.value)} className="mt-1 block h-8 rounded-md border border-border bg-white px-2 text-sm">
               {WEEKDAYS.map((name, index) => <option key={name} value={String(index)}>{name}</option>)}
-            </select>
+            </AppSelect>
           </label>
           <div className="mt-2 flex flex-wrap gap-2">
             <button type="button" className="rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium" onClick={() => run(async () => {

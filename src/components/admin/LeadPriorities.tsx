@@ -158,7 +158,7 @@ export default function LeadPriorities({
               ))}
             </div>
 
-            <div className="mb-3 flex flex-wrap gap-2" role="tablist" aria-label="Lead filters">
+            <div className="mb-3 flex flex-wrap gap-2" role="tablist" aria-label="Lead Filters">
               {LEAD_FILTERS.map((key) => (
                 <Button
                   key={key}

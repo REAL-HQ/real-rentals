@@ -104,7 +104,7 @@ function SignPage() {
               href="/portal"
               className="inline-block mt-5 rounded-lg bg-[#D03020] text-white text-sm font-semibold px-5 py-2.5"
             >
-              Sign In to Your Portal
+              Sign In To Your Portal
             </a>
             <p className="mt-4 text-sm text-[#55555E]">
               Still need to sign? Contact our team at{" "}
@@ -132,7 +132,7 @@ function SignPage() {
                   href="/portal"
                   className="inline-block mt-5 rounded-lg bg-[#D03020] text-white text-sm font-semibold px-5 py-2.5"
                 >
-                  Go to Your Portal
+                  Go To Your Portal
                 </a>
               </>
             ) : (

@@ -357,7 +357,7 @@ export function BookingsPanel({
             <button
               disabled={page <= 1}
               onClick={() => setList({ page: String(page - 1) })}
-              aria-label="Previous page"
+              aria-label="Previous Page"
               className="rounded-md border border-border bg-white p-1.5 disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -368,7 +368,7 @@ export function BookingsPanel({
             <button
               disabled={page >= pages}
               onClick={() => setList({ page: String(page + 1) })}
-              aria-label="Next page"
+              aria-label="Next Page"
               className="rounded-md border border-border bg-white p-1.5 disabled:opacity-40"
             >
               <ChevronRight className="h-4 w-4" />

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Loader2, Paperclip, Plus, Trash2, X } from "lucide-react";
@@ -227,11 +228,11 @@ function ReimbursementForm({ onClose, onSaved }: { onClose: () => void; onSaved:
         </div>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <Field label="Renter" full>
-            <select value={rentalId} onChange={(e) => setRentalId(e.target.value)} className={input} aria-label="Renter">
+            <AppSelect value={rentalId} onChange={(e) => setRentalId(e.target.value)} className={input} aria-label="Renter">
               {choices.map((c) => (
                 <option key={c.rentalId} value={c.rentalId}>{c.label}</option>
               ))}
-            </select>
+            </AppSelect>
           </Field>
           <Field label="Amount ($)">
             <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className={input} aria-label="Amount" />
@@ -240,14 +241,14 @@ function ReimbursementForm({ onClose, onSaved }: { onClose: () => void; onSaved:
             <input type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} className={input} aria-label="Date Paid" />
           </Field>
           <Field label="Paid With">
-            <select value={method} onChange={(e) => setMethod(e.target.value)} className={input} aria-label="Paid With">
+            <AppSelect value={method} onChange={(e) => setMethod(e.target.value)} className={input} aria-label="Paid With">
               {REIMBURSEMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-            </select>
+            </AppSelect>
           </Field>
           <Field label="Reason">
-            <select value={reason} onChange={(e) => setReason(e.target.value)} className={input} aria-label="Reason">
+            <AppSelect value={reason} onChange={(e) => setReason(e.target.value)} className={input} aria-label="Reason">
               {REIMBURSEMENT_REASONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-            </select>
+            </AppSelect>
           </Field>
           <Field label="Reference" full>
             <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Confirmation Number" className={input} aria-label="Reference" />

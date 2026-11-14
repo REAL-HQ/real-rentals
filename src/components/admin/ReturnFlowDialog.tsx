@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
 import { Loader2, X, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -354,7 +355,7 @@ export function ReturnFlowDialog({
                 </div>
                 <div>
                   <MicroLabel>Fuel Or Charge</MicroLabel>
-                  <select
+                  <AppSelect
                     value={fuelOrCharge}
                     onChange={(e) => setFuelOrCharge(e.target.value)}
                     className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] bg-white px-3 py-2 text-sm"
@@ -366,7 +367,7 @@ export function ReturnFlowDialog({
                         {f.label}
                       </option>
                     ))}
-                  </select>
+                  </AppSelect>
                 </div>
               </div>
               <div>
@@ -434,7 +435,8 @@ export function ReturnFlowDialog({
               <p className="text-[13px] text-[#55555E]">Drag and drop or click to upload. Photos stay in the private condition bucket.</p>
               <div>
                 <MicroLabel>Angle</MicroLabel>
-                <select
+                <AppSelect
+                  aria-label="Angle"
                   value={angle}
                   onChange={(e) => setAngle(e.target.value)}
                   className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] bg-white px-3 py-2 text-sm"
@@ -444,7 +446,7 @@ export function ReturnFlowDialog({
                       {a.replace(/_/g, " ")}
                     </option>
                   ))}
-                </select>
+                </AppSelect>
               </div>
               <FileUploader upload={(file, ctx) => uploadOne(file, ctx.onProgress)} accept="image/*" multiple label="Return Photos" title="Return Photos" />
               {photos.length > 0 && (
@@ -514,7 +516,8 @@ export function ReturnFlowDialog({
                       className="w-full rounded-lg border border-[#EDEDF0] bg-white px-3 py-2 text-sm"
                     />
                     <div className="flex gap-2">
-                      <select
+                      <AppSelect
+                        aria-label="Charge Type"
                         value={chargeKind}
                         onChange={(e) => setChargeKind(e.target.value as FinalChargeDraft["kind"])}
                         className="rounded-lg border border-[#EDEDF0] bg-white px-2 py-2 text-sm"
@@ -523,7 +526,7 @@ export function ReturnFlowDialog({
                         <option value="cleaning">Cleaning</option>
                         <option value="toll">Toll</option>
                         <option value="other">Other</option>
-                      </select>
+                      </AppSelect>
                       <input
                         value={chargeCents}
                         onChange={(e) => setChargeCents(e.target.value)}

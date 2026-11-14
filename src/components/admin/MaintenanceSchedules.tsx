@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -424,21 +425,21 @@ function ScheduleForm({
       </div>
       <div>
         <MicroLabel>Category</MicroLabel>
-        <select
+        <AppSelect aria-label="Category"
           value={category}
           onChange={(e) => setCategory(e.target.value)}
           className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
         >
           {["routine", "safety", "compliance", "repair"].map((c) => (
             <option key={c} value={c}>
-              {c}
+              {({ routine: "Routine", safety: "Safety", compliance: "Compliance", repair: "Repair" } as Record<string, string>)[c]}
             </option>
           ))}
-        </select>
+        </AppSelect>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <MicroLabel>Every (miles)</MicroLabel>
+          <MicroLabel>Every (Miles)</MicroLabel>
           <input
             value={miles}
             onChange={(e) => setMiles(e.target.value)}
@@ -448,7 +449,7 @@ function ScheduleForm({
           />
         </div>
         <div>
-          <MicroLabel>Every (days)</MicroLabel>
+          <MicroLabel>Every (Days)</MicroLabel>
           <input
             value={days}
             onChange={(e) => setDays(e.target.value)}
@@ -553,7 +554,7 @@ function CompleteForm({
     <Modal title={`Log ${schedule.item}`} onClose={onClose}>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <MicroLabel>Date performed</MicroLabel>
+          <MicroLabel>Date Performed</MicroLabel>
           <input
             type="date"
             value={performedOn}
@@ -573,18 +574,18 @@ function CompleteForm({
       </div>
       <div>
         <MicroLabel>Vendor</MicroLabel>
-        <select
+        <AppSelect aria-label="Vendor"
           value={vendorId}
           onChange={(e) => setVendorId(e.target.value)}
           className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
         >
-          <option value="">Not recorded</option>
+          <option value="">Not Recorded</option>
           {vendors.map((v) => (
             <option key={v.id} value={v.id}>
               {v.name}
             </option>
           ))}
-        </select>
+        </AppSelect>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>

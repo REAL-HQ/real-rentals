@@ -110,7 +110,7 @@ function TxCard({ t, d, isManager, reload, openFile }: { t: any; d: any; isManag
         <div className="grid lg:grid-cols-2 gap-4">
           <div className="space-y-3">
             <div className="rounded-lg border border-[#EDEDF0] p-3">
-              <div className="text-[11px] uppercase tracking-wider text-[#9A9AA3] mb-1">Vehicle</div>
+              <div className="text-[11px] tracking-wider text-[#9A9AA3] mb-1">Vehicle</div>
               {matched ? <Field k="Matched" v={`${matched.unit_number ?? ""} · ${matched.year ?? ""} ${matched.make ?? ""} ${matched.model ?? ""} · by ${t.match_basis === "vin" ? "Exact VIN" : t.match_basis}`} /> : <Field k="Match" v="Vehicle Match Required" tone="warn" />}
               <Field k="Unit" v={op.unitNumber ? `${op.unitNumber} (from REAL RENTALS record)` : "—"} />
               <Field k="VIN" v={decisionText(op.identity?.vin)} tone={op.identity?.vin?.status === "conflict" ? "warn" : undefined} />
@@ -139,7 +139,7 @@ function TxCard({ t, d, isManager, reload, openFile }: { t: any; d: any; isManag
               )}
             </div>
             <div className="rounded-lg border border-[#EDEDF0] p-3">
-              <div className="text-[11px] uppercase tracking-wider text-[#9A9AA3] mb-1">Dates And Mileage</div>
+              <div className="text-[11px] tracking-wider text-[#9A9AA3] mb-1">Dates And Mileage</div>
               <Field k="Opened" v={op.dates?.opened ?? "—"} />
               <Field k="Completed" v={op.dates?.completed ? `${op.dates.completed} (${op.dates.completedSource})` : "Not Provided"} />
               <Field k="Mileage In" v={decisionText(op.mileage?.in)} tone={op.mileage?.in?.status === "conflict" ? "warn" : undefined} />
@@ -147,7 +147,7 @@ function TxCard({ t, d, isManager, reload, openFile }: { t: any; d: any; isManag
               <Field k="Proposed Mileage Observation" v={op.mileage?.status === "proposed" ? `${Number(op.mileage.canonical).toLocaleString("en-US")} mi · ${op.mileage.canonicalSource}` : op.mileage?.status === "review" ? "None — Review Required" : "None"} tone={op.mileage?.status === "review" ? "warn" : undefined} />
             </div>
             <div className="rounded-lg border border-[#EDEDF0] p-3">
-              <div className="text-[11px] uppercase tracking-wider text-[#9A9AA3] mb-1">Supporting Evidence</div>
+              <div className="text-[11px] tracking-wider text-[#9A9AA3] mb-1">Supporting Evidence</div>
               {(op.evidence ?? []).map((e: any) => (
                 <div key={e.itemId} className="flex items-center gap-2 py-1 text-[13px]">
                   <span className="flex-1 min-w-0 truncate">{e.fileName}</span>
@@ -160,7 +160,7 @@ function TxCard({ t, d, isManager, reload, openFile }: { t: any; d: any; isManag
           </div>
           <div className="space-y-3">
             <div className="rounded-lg border border-[#EDEDF0] p-3">
-              <div className="text-[11px] uppercase tracking-wider text-[#9A9AA3] mb-1">Service Operations ({(fin?.operations ?? op.operations ?? []).length})</div>
+              <div className="text-[11px] tracking-wider text-[#9A9AA3] mb-1">Service Operations ({(fin?.operations ?? op.operations ?? []).length})</div>
               {(fin?.operations ?? op.operations ?? []).map((o: any, n: number) => (
                 <div key={n} className="py-1.5 border-b last:border-0 border-[#F2F2F4]">
                   <button className="w-full flex items-start gap-2 text-left text-[13px]" onClick={() => setExpanded({ ...expanded, [n]: !expanded[n] })}>
@@ -181,7 +181,7 @@ function TxCard({ t, d, isManager, reload, openFile }: { t: any; d: any; isManag
             </div>
             {fin && (
               <div className="rounded-lg border border-[#EDEDF0] p-3">
-                <div className="text-[11px] uppercase tracking-wider text-[#9A9AA3] mb-1">Financial Summary (Manager / Owner)</div>
+                <div className="text-[11px] tracking-wider text-[#9A9AA3] mb-1">Financial Summary (Manager / Owner)</div>
                 {["labor", "parts", "misc", "shopSupplies", "tax", "warrantyCredit", "vendorCredit", "other"].filter((k) => fin.summary?.[k] != null).map((k) => <Field key={k} k={k === "shopSupplies" ? "Shop Supplies" : k === "warrantyCredit" ? "Warranty Credit" : k === "vendorCredit" ? "Vendor Credit" : k[0].toUpperCase() + k.slice(1)} v={usd(fin.summary[k])} />)}
                 <Field k="Invoice Total" v={`${usd(fin.summary?.total)}${fin.summarySource ? ` · from ${fin.summarySource}` : ""}`} />
                 <Field k="Reconciliation" v={REC[fin.reconciliation?.status] ?? "—"} tone={fin.reconciliation?.status === "reconciled" ? undefined : "warn"} />
@@ -197,7 +197,7 @@ function TxCard({ t, d, isManager, reload, openFile }: { t: any; d: any; isManag
               </div>
             )}
             <div className="rounded-lg border border-[#EDEDF0] p-3">
-              <div className="text-[11px] uppercase tracking-wider text-[#9A9AA3] mb-1">If Approved, This Creates</div>
+              <div className="text-[11px] tracking-wider text-[#9A9AA3] mb-1">If Approved, This Creates</div>
               <Field k="Vehicles Created" v={ap.vehiclesCreated ?? 0} />
               <Field k="Service Records" v={ap.serviceRecords ?? 0} />
               {fin && <Field k="Linked Expenses" v={ap.expenses ?? 0} />}

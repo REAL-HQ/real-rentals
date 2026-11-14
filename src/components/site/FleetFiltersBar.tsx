@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import type { FleetFilterState } from "@/lib/fleet-filters";
 
 const control =
@@ -27,7 +28,7 @@ export function FleetFiltersBar({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <label className="flex flex-col gap-1 text-sm">
           <span>Make</span>
-          <select
+          <AppSelect aria-label="Make"
             className={control}
             value={value.make}
             onChange={(event) => onChange({ ...value, make: event.target.value })}
@@ -38,7 +39,7 @@ export function FleetFiltersBar({
                 {make}
               </option>
             ))}
-          </select>
+          </AppSelect>
         </label>
         <label className="flex flex-col gap-1 text-sm">
           <span>Min Weekly Rate</span>
@@ -66,7 +67,7 @@ export function FleetFiltersBar({
         </label>
         <label className="flex flex-col gap-1 text-sm">
           <span>Sort</span>
-          <select
+          <AppSelect aria-label="Sort"
             className={control}
             value={value.sort}
             onChange={(event) => {
@@ -78,7 +79,7 @@ export function FleetFiltersBar({
             <option value="price_asc">Price: Low To High</option>
             <option value="price_desc">Price: High To Low</option>
             <option value="newest">Newest</option>
-          </select>
+          </AppSelect>
         </label>
         <label className="inline-flex min-h-11 items-center gap-3 rounded-lg border border-border bg-white px-3 text-sm">
           <input

@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -264,15 +265,15 @@ export function AgreementTemplatesPanel() {
               <DialogDescription>{mode === "approve" ? "Review every change below. Approval records your business sign-off; it does not mean the wording was legally reviewed." : `Changes from the chosen version to v${v.version}.`}</DialogDescription>
             </DialogHeader>
             <label className="text-[13px] flex items-center gap-2">Compare With
-              <select className="h-9 rounded-md border bg-background px-2" value={cmp ?? ""} onChange={(e) => setCmp(Number(e.target.value))}>
+              <AppSelect aria-label="Compare With" className="h-9 rounded-md border bg-background px-2" value={cmp ?? ""} onChange={(e) => setCmp(Number(e.target.value))}>
                 {d.versions.filter((x) => x.version !== v.version).map((x) => <option key={x.version} value={x.version}>v{x.version} — {statusLabel(x)}</option>)}
-              </select>
+              </AppSelect>
             </label>
             {other && <Diff from={other.body} to={v.body} />}
             {mode === "approve" && (<div className="space-y-3">
               <Button size="sm" variant="outline" onClick={openPreview}>View Full Document</Button>
               <label className="block text-[13px]">Effective Date<Input type="date" value={eff} onChange={(e) => setEff(e.target.value)} /></label>
-              <label className="block text-[13px]">Type APPROVE to confirm<Input value={typed} onChange={(e) => setTyped(e.target.value)} /></label>
+              <label className="block text-[13px]">Type APPROVE To Confirm<Input value={typed} onChange={(e) => setTyped(e.target.value)} /></label>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setMode(null)}>Cancel</Button>
                 <Button disabled={busy || typed !== "APPROVE" || !eff || d.issues.length > 0 || v.unknownFields.length > 0} onClick={approve}>Approve</Button>

@@ -336,7 +336,7 @@ function FleetVehicles({
               <VehicleStaffPhoto path={v.thumbnailPath ?? null} name={vehicleName(v)} className="w-full h-full object-cover" />
             </div>}
             <div className="p-4">
-              <div className="h-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><span className="mr-2 tabular-nums">#{rowNumber(index)}</span>{v.unit_number ?? ""}</div>
+              <div className="h-4 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground"><span className="mr-2 tabular-nums">#{rowNumber(index)}</span>{v.unit_number ?? ""}</div>
               <div className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</div>
               <dl className="mt-2.5 grid grid-cols-[44px_1fr] items-center gap-y-0.5 text-[13px] leading-6">
                 <dt className="text-muted-foreground">Color</dt>
@@ -354,15 +354,15 @@ function FleetVehicles({
                 </button>
                 {v.status === "archived" ? (
                   <>
-                    <button onClick={() => setLifecycle({ v, mode: "restore" })} aria-label="Restore vehicle" title="Restore Vehicle" className="rounded-md border border-border px-3 py-1.5 text-sm">
+                    <button onClick={() => setLifecycle({ v, mode: "restore" })} aria-label="Restore Vehicle" title="Restore Vehicle" className="rounded-md border border-border px-3 py-1.5 text-sm">
                       <RotateCcw className="w-3.5 h-3.5 text-muted-foreground" />
                     </button>
-                    <button onClick={() => setLifecycle({ v, mode: "delete" })} aria-label="Delete permanently" title="Delete Permanently" className="group rounded-md border border-border px-3 py-1.5 text-sm hover:border-real-red">
+                    <button onClick={() => setLifecycle({ v, mode: "delete" })} aria-label="Delete Permanently" title="Delete Permanently" className="group rounded-md border border-border px-3 py-1.5 text-sm hover:border-real-red">
                       <Trash2 className="w-3.5 h-3.5 text-muted-foreground group-hover:text-real-red" />
                     </button>
                   </>
                 ) : (
-                  <button onClick={() => setLifecycle({ v, mode: "archive" })} aria-label="Archive vehicle" title="Archive Vehicle" className="rounded-md border border-border px-3 py-1.5 text-sm">
+                  <button onClick={() => setLifecycle({ v, mode: "archive" })} aria-label="Archive Vehicle" title="Archive Vehicle" className="rounded-md border border-border px-3 py-1.5 text-sm">
                     <Archive className="w-3.5 h-3.5 text-muted-foreground" />
                   </button>
                 )}
@@ -384,7 +384,7 @@ function FleetVehicles({
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search Vehicles…"
             title="Search Unit, VIN, Plate, Year, Make, Or Model"
-            aria-label="Search vehicles"
+            aria-label="Search Vehicles"
             className={VEHICLE_TOOLBAR.search}
           />
         }
@@ -515,11 +515,11 @@ function FleetVehicles({
       )}
 
       {view !== "due" && view === "list" && rows.length > 0 && (
-        <div data-vehicles-table-scroller className="hidden md:block mt-3 min-w-0 overflow-x-auto overscroll-x-contain rounded-xl border border-border bg-white" role="region" aria-label="Vehicles table" tabIndex={0}>
+        <div data-vehicles-table-scroller className="hidden md:block mt-3 min-w-0 overflow-x-auto overscroll-x-contain rounded-xl border border-border bg-white" role="region" aria-label="Vehicles Table" tabIndex={0}>
           <table className="w-full min-w-[64rem] text-[13px] [&_th]:px-2.5 [&_th]:py-1.5 [&_td]:px-2.5 [&_td]:py-1">
             <thead className="bg-[#FAFAFB] text-left text-xs text-muted-foreground">
               <tr>
-                <th scope="col" className="w-10 px-3 py-2 font-medium" aria-label="Row number">#</th>
+                <th scope="col" className="w-10 px-3 py-2 font-medium" aria-label="Row Number">#</th>
                 <th className="px-3 py-2 font-medium">Photo</th>
                 <th className="px-3 py-2 font-medium">Vehicle</th>
                 <th className="px-3 py-2 font-medium">Color</th>
@@ -560,9 +560,9 @@ function FleetVehicles({
         <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground max-lg:flex-wrap max-lg:gap-y-2">
           <span>Showing {firstShown}–{lastShown} of {total}</span>
           <div className="flex items-center gap-2">
-            <button disabled={page <= 1} onClick={() => setList({ page: String(page - 1) })} aria-label="Previous page" className="rounded-md border border-border bg-white p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+            <button disabled={page <= 1} onClick={() => setList({ page: String(page - 1) })} aria-label="Previous Page" className="rounded-md border border-border bg-white p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
             <span>Page {page} of {pages}</span>
-            <button disabled={page >= pages} onClick={() => setList({ page: String(page + 1) })} aria-label="Next page" className="rounded-md border border-border bg-white p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+            <button disabled={page >= pages} onClick={() => setList({ page: String(page + 1) })} aria-label="Next Page" className="rounded-md border border-border bg-white p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
           </div>
         </div>
       )}

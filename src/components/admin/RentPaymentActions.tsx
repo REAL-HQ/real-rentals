@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -63,9 +64,9 @@ export function RecordPaymentDialog({
         <div className="grid gap-3">
           <Field label="Amount"><input className={input} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} aria-label="Amount" /></Field>
           <Field label="Method">
-            <select className={input} value={method} onChange={(e) => setMethod(e.target.value)} aria-label="Method">
+            <AppSelect className={input} value={method} onChange={(e) => setMethod(e.target.value)} aria-label="Method">
               {MANUAL_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-            </select>
+            </AppSelect>
           </Field>
           <Field label="Reference"><input className={input} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Confirmation Or Note" aria-label="Reference" /></Field>
           <Field label="Date Paid"><input className={input} type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} aria-label="Date Paid" /></Field>
@@ -113,10 +114,10 @@ export function WaiveLateFeeDialog({
             Week Due {dueDate ?? "Unknown"} · Late Fee Now {status ? money(status.lateFee) : "Unavailable"}. Nothing is sent to the renter.
           </p>
           <Field label="Waive">
-            <select className={input} value={wholeWeek ? "week" : "today"} onChange={(e) => setWholeWeek(e.target.value === "week")} aria-label="Waive">
+            <AppSelect className={input} value={wholeWeek ? "week" : "today"} onChange={(e) => setWholeWeek(e.target.value === "week")} aria-label="Waive">
               <option value="week">Whole Week</option>
               <option value="today">Through Today Only</option>
-            </select>
+            </AppSelect>
           </Field>
           <Field label="Reason"><input className={input} value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Reason" /></Field>
         </div>

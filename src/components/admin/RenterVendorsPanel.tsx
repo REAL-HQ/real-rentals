@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -52,26 +53,26 @@ export function RenterVendorsPanel() {
           <p className="text-xs text-muted-foreground">Shown in the renter portal. Only active rows are visible to renters.</p>
         </div>
         <button type="button" className="inline-flex items-center gap-1 text-sm text-real-red" onClick={() => setDraft({ ...EMPTY })}>
-          <Plus className="w-4 h-4" /> Add vendor
+          <Plus className="w-4 h-4" /> Add Vendor
         </button>
       </div>
 
       {draft ? (
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm border border-border rounded-xl p-4">
           <label className="flex flex-col gap-1">Category
-            <select className="border rounded px-2 py-1" value={draft.category} onChange={(e) => set("category", e.target.value)}>
+            <AppSelect aria-label="Category" className="border rounded px-2 py-1" value={draft.category} onChange={(e) => set("category", e.target.value)}>
               {VENDOR_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
+            </AppSelect>
           </label>
           {(["name", "phone", "website", "address", "logo_url"] as const).map((k) => (
-            <label key={k} className="flex flex-col gap-1 capitalize">{k.replace("_url", "").replace("_", " ")}
+            <label key={k} className="flex flex-col gap-1 ">{k.replace("_url", "").replace("_", " ")}
               <input className="border rounded px-2 py-1" value={(draft[k] as string) ?? ""} onChange={(e) => set(k, e.target.value)} />
             </label>
           ))}
           <label className="flex flex-col gap-1 sm:col-span-2">Notes
             <textarea className="border rounded px-2 py-1" rows={2} value={draft.notes ?? ""} onChange={(e) => set("notes", e.target.value)} />
           </label>
-          <label className="flex items-center gap-2"><input type="checkbox" checked={draft.is_active !== false} onChange={(e) => set("is_active", e.target.checked)} /> Visible to renters</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={draft.is_active !== false} onChange={(e) => set("is_active", e.target.checked)} /> Visible To Renters</label>
           <div className="flex items-center gap-3 sm:col-span-2">
             <VendorLogo vendor={{ name: draft.name || "?", logo_url: draft.logo_url ?? null }} />
             <button type="button" disabled={busy || !draft.website} className="inline-flex items-center gap-1 text-xs text-real-red disabled:opacity-50"
@@ -87,7 +88,7 @@ export function RenterVendorsPanel() {
                   setBusy(false);
                 }
               }}>
-              <Wand2 className="w-3.5 h-3.5" /> Get logo from website
+              <Wand2 className="w-3.5 h-3.5" /> Get Logo From Website
             </button>
             <div className="ml-auto flex gap-2">
               <button type="button" className="px-3 py-1 border rounded" onClick={() => setDraft(null)}>Cancel</button>
@@ -109,9 +110,9 @@ export function RenterVendorsPanel() {
                 <div className="font-medium truncate">{v.name}{v.is_active ? "" : " (hidden)"}</div>
                 <div className="text-xs text-muted-foreground">{vendorCategoryLabel(v.category)}{v.phone ? ` · ${v.phone}` : ""}</div>
               </div>
-              <button type="button" aria-label="Move up" disabled={busy || i === 0}
+              <button type="button" aria-label="Move Up" disabled={busy || i === 0}
                 onClick={() => run(() => order({ data: { ids: reorder(data.map((x) => x.id), v.id, -1) } }))}><ArrowUp className="w-4 h-4" /></button>
-              <button type="button" aria-label="Move down" disabled={busy || i === data.length - 1}
+              <button type="button" aria-label="Move Down" disabled={busy || i === data.length - 1}
                 onClick={() => run(() => order({ data: { ids: reorder(data.map((x) => x.id), v.id, 1) } }))}><ArrowDown className="w-4 h-4" /></button>
               <button type="button" aria-label="Edit" onClick={() => setDraft({ ...v })}><Pencil className="w-4 h-4" /></button>
               <button type="button" aria-label="Remove" disabled={busy}

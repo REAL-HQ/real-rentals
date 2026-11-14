@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -177,7 +178,7 @@ export function VendorsPanel(props: { initialTypeFilter?: string } = {}) {
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-semibold truncate">{v.name}</h3>
                     {v.preferred ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[#FDF3E7] text-[#8A5A00] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#FDF3E7] text-[#8A5A00] px-2 py-0.5 text-[10px] font-semibold tracking-wide">
                         <Star className="w-3 h-3 fill-current" /> Preferred
                       </span>
                     ) : null}
@@ -365,7 +366,7 @@ function VendorForm({
           <Txt label="Name" v={f.name} onChange={(s) => set("name", s)} />
           <div>
             <MicroLabel>Type</MicroLabel>
-            <select
+            <AppSelect aria-label="Vendor Type"
               value={f.vendor_type}
               onChange={(e) => set("vendor_type", e.target.value)}
               className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
@@ -375,7 +376,7 @@ function VendorForm({
                   {t.label}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </div>
           <Txt
             label="Contact Name"
@@ -391,7 +392,7 @@ function VendorForm({
           <Txt label="ZIP" v={f.zip ?? ""} onChange={(s) => set("zip", s || null)} />
           <div>
             <MicroLabel>Market</MicroLabel>
-            <select
+            <AppSelect aria-label="Market"
               value={f.market_id ?? ""}
               onChange={(e) => set("market_id", e.target.value || null)}
               className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
@@ -402,7 +403,7 @@ function VendorForm({
                   {m.name}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </div>
           <Txt label="Hours" v={f.hours ?? ""} onChange={(s) => set("hours", s || null)} />
           <Txt
@@ -412,18 +413,18 @@ function VendorForm({
           />
           <div>
             <MicroLabel>Rating</MicroLabel>
-            <select
+            <AppSelect aria-label="Rating"
               value={f.rating ?? ""}
               onChange={(e) => set("rating", e.target.value ? Number(e.target.value) : null)}
               className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
             >
-              <option value="">Not rated</option>
+              <option value="">Not Rated</option>
               {[5, 4, 3, 2, 1].map((n) => (
                 <option key={n} value={n}>
                   {"★".repeat(n)}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </div>
 
           <div className="sm:col-span-2">
@@ -458,7 +459,7 @@ function VendorForm({
               checked={f.preferred}
               onChange={(e) => set("preferred", e.target.checked)}
             />
-            Preferred vendor
+            Preferred Vendor
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input

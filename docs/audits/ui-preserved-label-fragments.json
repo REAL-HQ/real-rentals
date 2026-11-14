@@ -1,0 +1,117 @@
+[
+  {
+    "file": "src/components/admin/ActivateRentalDialog.tsx",
+    "kind": "text",
+    "before": "Use \u201cowner approved rental\u201d"
+  },
+  {
+    "file": "src/components/admin/AgreementTemplatesPanel.tsx",
+    "kind": "text",
+    "before": "Preview v"
+  },
+  {
+    "file": "src/components/admin/AgreementTemplatesPanel.tsx",
+    "kind": "text",
+    "before": "v"
+  },
+  {
+    "file": "src/components/admin/AgreementTemplatesPanel.tsx",
+    "kind": "text",
+    "before": "Retire v"
+  },
+  {
+    "file": "src/components/admin/AgreementTemplatesPanel.tsx",
+    "kind": "attribute",
+    "before": "Approval needs the template database update (pending migration after Codex 0022)."
+  },
+  {
+    "file": "src/components/admin/AgreementTemplatesPanel.tsx",
+    "kind": "text",
+    "before": "v"
+  },
+  {
+    "file": "src/components/admin/ApplicantDocuments.tsx",
+    "kind": "text",
+    "before": "of"
+  },
+  {
+    "file": "src/components/admin/ApplicantDocuments.tsx",
+    "kind": "text",
+    "before": "document types received"
+  },
+  {
+    "file": "src/components/admin/ApplicantDocuments.tsx",
+    "kind": "text",
+    "before": "replaced versions ("
+  },
+  {
+    "file": "src/components/admin/BulkReceiptUpload.tsx",
+    "kind": "text",
+    "before": "car(s)"
+  },
+  {
+    "file": "src/components/admin/DocumentVault.tsx",
+    "kind": "text",
+    "before": "previous versions ("
+  },
+  {
+    "file": "src/components/admin/FleetInboxPanel.tsx",
+    "kind": "expression",
+    "before": "s"
+  },
+  {
+    "file": "src/components/admin/FleetInboxPanel.tsx",
+    "kind": "text",
+    "before": "I confirm changing"
+  },
+  {
+    "file": "src/components/admin/FleetInboxPanel.tsx",
+    "kind": "text",
+    "before": "from"
+  },
+  {
+    "file": "src/components/admin/FleetInboxPanel.tsx",
+    "kind": "expression",
+    "before": "blank"
+  },
+  {
+    "file": "src/components/admin/FleetInboxPanel.tsx",
+    "kind": "text",
+    "before": "to"
+  },
+  {
+    "file": "src/components/admin/FleetInboxPanel.tsx",
+    "kind": "text",
+    "before": "based on this document"
+  },
+  {
+    "file": "src/components/admin/ImportVehiclesStep.tsx",
+    "kind": "text",
+    "before": "vehicle"
+  },
+  {
+    "file": "src/components/admin/ImportVehiclesStep.tsx",
+    "kind": "expression",
+    "before": "s"
+  },
+  {
+    "file": "src/components/admin/LeadPriorities.tsx",
+    "kind": "attribute",
+    "before": "Open Messages, then choose Text. Sending permissions and consent are checked there."
+  },
+  {
+    "file": "src/components/admin/TemplateUploadDialog.tsx",
+    "kind": "attribute",
+    "before": "Saving uploaded drafts needs the template database update (pending migration after Codex 0022)."
+  },
+  {
+    "file": "src/components/admin/TitleScanStep.tsx",
+    "kind": "text",
+    "before": "field"
+  },
+  {
+    "file": "src/components/admin/TitleScanStep.tsx",
+    "kind": "expression",
+    "before": "s"
+  }
+]

@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useRef, useState } from 'react';
 import { useServerFn } from '@tanstack/react-start';
 import { supabase } from '@/integrations/supabase/client';
@@ -22,8 +23,8 @@ export function RecordedRentalCloseout({rentalId,onClose,onSaved}:{rentalId:stri
   if(!r.ok)throw Error('Closeout rejected; reconcile the original operation');
   sessionStorage.removeItem(key(a));setPending(null);onSaved();
  }catch(e){if(g===generation.current&&who.current===a)setError(e instanceof Error?e.message:'Outcome unknown')}finally{if(g===generation.current&&who.current===a)setBusy(false)}}
- return <ModalShell onClose={onClose} size="lg" label="Close recorded rental"><ModalHeader title="Close recorded rental" onClose={onClose}/><ModalBody>
+ return <ModalShell onClose={onClose} size="lg" label="Close Recorded Rental"><ModalHeader title="Close Recorded Rental" onClose={onClose}/><ModalBody>
  <p>Disabled pending installation and acceptance. Existing safety checks decide whether the vehicle can be released.</p>
- {pending?<p>Reconcile operation {pending.operationId}. Its original inputs are preserved.</p>:<fieldset disabled={busy} className="space-y-3"><label>Verified return timestamp with offset<input className={inputCls} placeholder="2026-10-16T12:00:00-04:00" value={endedAt} onChange={e=>setEnd(e.target.value)}/></label><label>Return mileage<input className={inputCls} value={mileage} onChange={e=>setMiles(e.target.value)}/></label><label>Requested disposition<select className={inputCls} value={status} onChange={e=>setStatus(e.target.value as typeof status)}><option value="maintenance">Maintenance</option><option value="available">Available only if safety checks allow</option></select></label><label>Reason<input className={inputCls} value={reason} onChange={e=>setReason(e.target.value)}/></label></fieldset>}
+ {pending?<p>Reconcile operation {pending.operationId}. Its original inputs are preserved.</p>:<fieldset disabled={busy} className="space-y-3"><label>Verified Return Timestamp With Offset<input className={inputCls} placeholder="2026-10-16T12:00:00-04:00" value={endedAt} onChange={e=>setEnd(e.target.value)}/></label><label>Return Mileage<input className={inputCls} value={mileage} onChange={e=>setMiles(e.target.value)}/></label><label>Requested Disposition<AppSelect aria-label="Requested Disposition" className={inputCls} value={status} onChange={e=>setStatus(e.target.value as typeof status)}><option value="maintenance">Maintenance</option><option value="available">Available Only If Safety Checks Allow</option></AppSelect></label><label>Reason<input className={inputCls} value={reason} onChange={e=>setReason(e.target.value)}/></label></fieldset>}
  {(error||validationError)&&<p role="alert">{error||validationError}</p>}</ModalBody><ModalFooter><ModalButton variant="ghost" onClick={onClose}>Close</ModalButton><ModalButton disabled={!RECORD_RENTAL_CONTRACT_ENABLED||!actor||busy||!!error||!!validationError} onClick={submit}>{pending?'Reconcile original operation':'End recorded rental'}</ModalButton></ModalFooter></ModalShell>;
 }

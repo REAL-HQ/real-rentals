@@ -27,7 +27,7 @@ const read = (p) => readFileSync(p, "utf8");
 const SWITCH = read("src/components/ui/switch.tsx");
 const PANELS = [
   { name: "Photo Enhancement", file: "src/components/admin/PhotoEnhancePanel.tsx", label: "Photo Enhancement enabled" },
-  { name: "Photo Reading", file: "src/components/admin/PhotoReadingPanel.tsx", label: "Photo Reading enabled" },
+  { name: "Photo Reading", file: "src/components/admin/PhotoReadingPanel.tsx", label: "Photo Reading Enabled" },
 ];
 
 console.log("the shared switch");

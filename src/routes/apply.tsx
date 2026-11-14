@@ -409,7 +409,7 @@ function ContactStep({
           </p>
         ) : null}
         {APPLY_PROGRESS_ENABLED ? null : (
-          <div className="mt-8 text-xs tracking-[0.18em] font-semibold text-real-red uppercase mb-3">Step 1 Of 3</div>
+          <div className="mt-8 text-xs tracking-[0.18em] font-semibold text-real-red mb-3">Step 1 Of 3</div>
         )}
         <h1 className="text-3xl md:text-4xl font-semibold">Tell Us How To Reach You</h1>
         <p className="mt-3 text-muted-foreground">Two short questions after this, then you're done. No documents needed.</p>
@@ -506,7 +506,7 @@ function In({
 }) {
   return (
     <label className="block">
-      <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-xs tracking-wide text-muted-foreground">{label}</span>
       <input
         type={type}
         name={name}

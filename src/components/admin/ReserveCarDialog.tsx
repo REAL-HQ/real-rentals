@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -155,14 +156,14 @@ export function ReserveCarDialog({
         <div className="grid gap-3">
           {!applicationId ? (
             <Field label="Approved Driver">
-              <select className={input} value={personId} onChange={(e) => setPersonId(e.target.value)} aria-label="Approved Driver">
+              <AppSelect className={input} value={personId} onChange={(e) => setPersonId(e.target.value)} aria-label="Approved Driver">
                 <option value="">Select…</option>
                 {people.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.full_name || p.email || p.id}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </Field>
           ) : null}
           <Field label="Vehicle">
@@ -185,7 +186,7 @@ export function ReserveCarDialog({
           {depositOn ? (
             <>
               <Field label="Deposit Required">
-                <select
+                <AppSelect
                   className={input}
                   value={depositRequired ? "yes" : "no"}
                   onChange={(e) => setDepositRequired(e.target.value === "yes")}
@@ -193,7 +194,7 @@ export function ReserveCarDialog({
                 >
                   <option value="yes">Yes</option>
                   <option value="no">No</option>
-                </select>
+                </AppSelect>
               </Field>
               {depositRequired ? (
                 <Field label="Deposit Amount">

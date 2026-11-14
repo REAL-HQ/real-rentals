@@ -179,7 +179,7 @@ function VehicleDetail() {
     <SiteLayout>
       <section className="container-real pt-12 md:pt-20">
         <FadeUp>
-          <Link to="/fleet" className="text-sm text-muted-foreground hover:text-foreground">← Back to fleet</Link>
+          <Link to="/fleet" className="text-sm text-muted-foreground hover:text-foreground">← Back To Fleet</Link>
         </FadeUp>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mt-8">
           <FadeUp>
@@ -206,7 +206,7 @@ function VehicleDetail() {
                 <button
                   key={t}
                   onClick={() => setTerm(t)}
-                  className={`px-5 py-2 rounded-lg capitalize transition ${term === t ? "bg-white shadow text-foreground" : "text-muted-foreground"}`}
+                  className={`px-5 py-2 rounded-lg transition ${term === t ? "bg-white shadow text-foreground" : "text-muted-foreground"}`}
                 >
                   {t}
                 </button>
@@ -227,7 +227,7 @@ function VehicleDetail() {
                 <div key={s.l} className="flex items-center gap-3 rounded-xl bg-soft p-4">
                   <s.I className="w-5 h-5 text-real-red" strokeWidth={1.75} />
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{s.l}</div>
+                    <div className="text-[10px] tracking-wider text-muted-foreground">{s.l}</div>
                     <div className="font-medium">{s.l === "Status" ? <VehicleStatusBadge status={v.status} /> : String(s.v)}</div>
                   </div>
                 </div>

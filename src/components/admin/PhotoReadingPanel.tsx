@@ -51,7 +51,7 @@ export function PhotoReadingPanel() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="flex items-center gap-3 text-[14px] font-medium cursor-pointer">
             <Switch
-              aria-label="Photo Reading enabled"
+              aria-label="Photo Reading Enabled"
               checked={data.enabled}
               disabled={busy || !owner}
               onCheckedChange={(v) => update({ enabled: v })}

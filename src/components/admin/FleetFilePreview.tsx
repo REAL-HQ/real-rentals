@@ -101,8 +101,8 @@ export function FleetFileLightbox({
           <div className="flex gap-2">
             {items.length > 1 && (
               <>
-                <button type="button" onClick={() => go(-1)} aria-label="Previous file" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#EDEDF0]"><ChevronLeft className="h-4 w-4" /></button>
-                <button type="button" onClick={() => go(1)} aria-label="Next file" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#EDEDF0]"><ChevronRight className="h-4 w-4" /></button>
+                <button type="button" onClick={() => go(-1)} aria-label="Previous File" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#EDEDF0]"><ChevronLeft className="h-4 w-4" /></button>
+                <button type="button" onClick={() => go(1)} aria-label="Next File" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#EDEDF0]"><ChevronRight className="h-4 w-4" /></button>
               </>
             )}
           </div>

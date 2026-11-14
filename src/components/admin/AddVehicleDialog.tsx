@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useState } from "react";
 import { useVehicleDefaultPrefill } from "./useVehicleDefaults";
 import { bodyTypeLabel, DEFAULT_FIELD_LABELS } from "@/lib/vehicle-defaults";
@@ -183,19 +184,19 @@ function Chooser({ onPick }: { onPick: (m: Mode) => void }) {
       />
       <Option
         icon={ScanLine}
-        title="Start from a VIN"
+        title="Start From A VIN"
         hint="Paste or type the VIN and we'll look up the year, make, model and specs for you to confirm."
         onClick={() => onPick("vin")}
       />
       <Option
         icon={FileText}
-        title="Scan the Title"
+        title="Scan The Title"
         hint="Photograph the title or registration and check the details that come off it."
         onClick={() => onPick("scan")}
       />
       <Option
         icon={Upload}
-        title="Import a Spreadsheet"
+        title="Import A Spreadsheet"
         hint="Bring in a whole fleet from CSV, with column mapping and duplicate checks before anything is created."
         onClick={() => onPick("import")}
       />
@@ -224,7 +225,7 @@ function Option({
         <Icon className="w-4 h-4 text-[#D03020]" />
         <span className="font-medium text-sm">{title}</span>
         {soon && (
-          <span className="ml-auto text-[10px] uppercase tracking-wider rounded px-1.5 py-0.5 bg-[#F4F4F6] text-muted-foreground">
+          <span className="ml-auto text-[10px] tracking-wider rounded px-1.5 py-0.5 bg-[#F4F4F6] text-muted-foreground">
             {soon}
           </span>
         )}
@@ -451,7 +452,7 @@ function ManualForm({
                 onClick={applyDecoded}
                 className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-black text-white px-3 py-1.5 text-xs"
               >
-                <Check className="w-3.5 h-3.5" /> Use These for Anything Still Blank
+                <Check className="w-3.5 h-3.5" /> Use These For Anything Still Blank
               </button>
             </>
           )}
@@ -467,10 +468,10 @@ function ManualForm({
           <Field label="Trim"><input value={f.trim} onChange={(e) => set("trim", e.target.value)} className={inputCls()} /></Field>
           <Field label="Color"><input value={f.color} onChange={(e) => set("color", e.target.value)} className={inputCls()} /></Field>
           <Field label="Body Type">
-            <select value={f.body_type} onChange={(e) => set("body_type", e.target.value)} className={inputCls()}>
+            <AppSelect aria-label="Body Type" value={f.body_type} onChange={(e) => set("body_type", e.target.value)} className={inputCls()}>
               <option value="">—</option>
               {BODY_TYPES.map((b) => <option key={b} value={b}>{bodyTypeLabel(b)}</option>)}
-            </select>
+            </AppSelect>
           </Field>
           {(["weekly_rate", "monthly_rate", "deposit"] as const).map((k) => (
             <Field key={k} label={DEFAULT_FIELD_LABELS[k]}>
@@ -483,7 +484,7 @@ function ManualForm({
             <input value={f.license_plate} onChange={(e) => set("license_plate", e.target.value.toUpperCase())} className={inputCls(badField === "license_plate")} />
           </Field>
           <Field label="Plate State" bad={badField === "plate_state"}>
-            <select
+            <AppSelect aria-label="Plate State"
               value={f.plate_state}
               onChange={(e) => set("plate_state", e.target.value)}
               className={inputCls(badField === "plate_state")}
@@ -493,26 +494,26 @@ function ManualForm({
                   {o.label}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </Field>
         </div>
       </section>
 
       <section>
-        <Legend>Status &amp; ownership</Legend>
+        <Legend>Status &amp; Ownership</Legend>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Status">
-            <select value={f.status} onChange={(e) => set("status", e.target.value)} className={inputCls()}>
+            <AppSelect aria-label="Status" value={f.status} onChange={(e) => set("status", e.target.value)} className={inputCls()}>
               {VEHICLE_STATUSES.filter((s) => !["archived", "sold", "retired"].includes(s.value)).map((s) => (
                 <option key={s.value} value={s.value}>{s.label}</option>
               ))}
-            </select>
+            </AppSelect>
           </Field>
           <Field label="Ownership">
-            <select value={f.ownership_type} onChange={(e) => set("ownership_type", e.target.value)} className={inputCls()}>
+            <AppSelect aria-label="Ownership" value={f.ownership_type} onChange={(e) => set("ownership_type", e.target.value)} className={inputCls()}>
               <option value="">—</option>
               {OWNERSHIP_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            </AppSelect>
           </Field>
         </div>
       </section>
@@ -535,7 +536,7 @@ function ManualForm({
 }
 
 function Legend({ children }: { children: React.ReactNode }) {
-  return <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">{children}</div>;
+  return <div className="text-[10px] tracking-wider text-muted-foreground mb-2">{children}</div>;
 }
 
 function Field({

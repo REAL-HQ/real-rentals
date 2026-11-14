@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { ArrowLeft, ChevronDown, Loader2, Plus, ScanText, Send, Trash2 } from "lucide-react";
@@ -309,7 +310,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
       </Section>
 
       <Section title="Authorized Drivers" badge={byField("additional_drivers")}>
-        <Radio checked={prep.drivers.mode === "none"} onChange={() => setPrep((p) => ({ ...p, drivers: { mode: "none", list: [] } }))} label="No Additional Drivers (prints None Authorized)" />
+        <Radio checked={prep.drivers.mode === "none"} onChange={() => setPrep((p) => ({ ...p, drivers: { mode: "none", list: [] } }))} label="No Additional Drivers (Prints None Authorized)" />
         <Radio checked={prep.drivers.mode === "listed"} onChange={() => setPrep((p) => ({ ...p, drivers: { mode: "listed", list: p.drivers.list.length ? p.drivers.list : [{ name: "", licenseNumber: "", licenseState: "", licenseExpiration: "", verified: false }] } }))} label="Add Approved Driver" />
         {prep.drivers.mode === "listed" && prep.drivers.list.map((d, i) => (
           <div key={i} className="space-y-1.5 rounded-md border p-2">
@@ -351,16 +352,16 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
           <p className="text-[11px] text-muted-foreground">Ask the renter before sending. The agreement prints the choice and the renter initials it when signing.</p>
           <div className="grid grid-cols-2 gap-2 pt-1">
             <label>Payment Schedule
-              <select className={input} value={prep.payment?.schedule ?? ""} onChange={(e) => setPrep((p) => ({ ...p, payment: { schedule: (e.target.value || null) as any, method: p.payment?.method ?? null } }))}>
+              <AppSelect aria-label="Payment Schedule" className={input} value={prep.payment?.schedule ?? ""} onChange={(e) => setPrep((p) => ({ ...p, payment: { schedule: (e.target.value || null) as any, method: p.payment?.method ?? null } }))}>
                 <option value="">Choose…</option>
                 {PAYMENT_SCHEDULES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              </AppSelect>
             </label>
             <label>Payment Method
-              <select className={input} value={prep.payment?.method ?? ""} onChange={(e) => setPrep((p) => ({ ...p, payment: { schedule: p.payment?.schedule ?? null, method: (e.target.value || null) as any } }))}>
+              <AppSelect aria-label="Payment Method" className={input} value={prep.payment?.method ?? ""} onChange={(e) => setPrep((p) => ({ ...p, payment: { schedule: p.payment?.schedule ?? null, method: (e.target.value || null) as any } }))}>
                 <option value="">Choose…</option>
                 {PAYMENT_METHODS.map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
+              </AppSelect>
             </label>
             <label className="col-span-2">Vehicle Owner (As Shown On The Registration)
               <input className={input} value={prep.vehicleOwner ?? ""} onChange={(e) => setPrep((p) => ({ ...p, vehicleOwner: e.target.value }))} />
@@ -381,7 +382,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
         <Radio checked={prep.deposit.mode === "required"} onChange={() => setPrep((p) => ({ ...p, deposit: { mode: "required", amount: p.deposit.amount, reason: "" } }))} label="Deposit Required" />
         <Radio checked={prep.deposit.mode === "waived"} onChange={() => setPrep((p) => ({ ...p, deposit: { mode: "waived", amount: null, reason: p.deposit.reason } }))} label="Deposit Waived" />
         {prep.deposit.mode === "required" && <label className="block">Amount ($)<input type="number" min={0} step="0.01" className={input} value={prep.deposit.amount ?? ""} onChange={(e) => setPrep((p) => ({ ...p, deposit: { ...p.deposit, amount: e.target.value === "" ? null : Number(e.target.value) } }))} /></label>}
-        {prep.deposit.mode === "waived" && <label className="block">Reason (internal, not printed)<input className={input} value={prep.deposit.reason} onChange={(e) => setPrep((p) => ({ ...p, deposit: { ...p.deposit, reason: e.target.value } }))} /></label>}
+        {prep.deposit.mode === "waived" && <label className="block">Reason (Internal, Not Printed)<input className={input} value={prep.deposit.reason} onChange={(e) => setPrep((p) => ({ ...p, deposit: { ...p.deposit, reason: e.target.value } }))} /></label>}
         <p className="text-[11px] text-muted-foreground">No Deposit and Deposit Waived keep the approved no-deposit wording. Deposit Required needs an Owner-approved template with deposit wording.</p>
       </Section>
 
@@ -405,7 +406,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
         <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
           {res?.fingerprint && <span className="font-mono text-[10.5px] text-muted-foreground" title={res.fingerprint}>Fingerprint {res.fingerprint.slice(0, 12)}…</span>}
           {(res?.companyMissing?.length ?? 0) > 0 && (
-            <label className="flex items-center gap-1.5 text-[11px]"><input type="checkbox" checked={companyAck} onChange={(e) => setCompanyAck(e.target.checked)} /> Send with incomplete company details</label>
+            <label className="flex items-center gap-1.5 text-[11px]"><input type="checkbox" checked={companyAck} onChange={(e) => setCompanyAck(e.target.checked)} /> Send With Incomplete Company Details</label>
           )}
           <Button size="sm" disabled={!canSend} onClick={send} title={canSend ? undefined : "Resolve every item listed and wait for the preview to finish updating"}>
             <Send className="h-3.5 w-3.5" /> {busy ? "Sending…" : "Send For Signature"}

@@ -30,7 +30,7 @@ export function MaintenanceDefaultsPanel() {
       {rows.length === 0 && <EmptyState title="No Intervals Yet" hint={canEdit ? "Add an interval such as Oil Change, set by miles, months or both." : "An Owner sets company maintenance intervals."} />}
       {rows.length > 0 && (
         <div className="divide-y divide-border rounded-xl border border-border bg-card">
-          <div className="hidden grid-cols-[1fr_140px_140px_40px] gap-3 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground sm:grid"><span>Service</span><span>Every (Miles)</span><span>Every (Months)</span><span /></div>
+          <div className="hidden grid-cols-[1fr_140px_140px_40px] gap-3 px-4 py-2 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground sm:grid"><span>Service</span><span>Every (Miles)</span><span>Every (Months)</span><span /></div>
           {rows.map((r) => <Row key={r.id} r={r} canEdit={canEdit} onSave={commit} onDelete={async () => { await del({ data: { id: r.id } }); refresh(); }} />)}
         </div>
       )}

@@ -1,3 +1,4 @@
+import { enumDisplayLabel } from "@/lib/ui-display-labels";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -151,7 +152,7 @@ export function DepositDialog({
                   </div>
                   <div className="text-xs">
                     <StatusPill status="active">
-                      {summary.depositStatus.replace(/_/g, " ")}
+                      {enumDisplayLabel(summary.depositStatus)}
                     </StatusPill>
                   </div>
                 </div>
@@ -160,14 +161,14 @@ export function DepositDialog({
 
             {summary.suggestions.length > 0 && !settled ? (
               <div>
-                <MicroLabel>Outstanding on this rental</MicroLabel>
+                <MicroLabel>Outstanding On This Rental</MicroLabel>
                 <ul className="mt-1.5 space-y-1.5">
                   {summary.suggestions.map((s) => (
                     <li
                       key={`${s.kind}-${s.id}`}
                       className="flex items-center justify-between gap-3 rounded-lg border border-[#EDEDF0] px-3 py-2"
                     >
-                      <span className="text-sm capitalize min-w-0 truncate">{s.label}</span>
+                      <span className="text-sm min-w-0 truncate">{s.label}</span>
                       <span className="flex items-center gap-2 shrink-0">
                         <span className="text-sm tabular-nums">{money(s.amount)}</span>
                         <button
@@ -224,7 +225,7 @@ export function DepositDialog({
               <>
                 <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-end">
                   <div>
-                    <MicroLabel>Other deduction</MicroLabel>
+                    <MicroLabel>Other Deduction</MicroLabel>
                     <input
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
@@ -254,7 +255,7 @@ export function DepositDialog({
                 </div>
 
                 <div>
-                  <MicroLabel>Note to the renter (optional)</MicroLabel>
+                  <MicroLabel>Note To The Renter (Optional)</MicroLabel>
                   <textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
@@ -281,7 +282,7 @@ export function DepositDialog({
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium disabled:opacity-40"
             >
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              Settle &amp; refund {money(summary.refundDue)}
+              Settle &amp; Refund {money(summary.refundDue)}
             </button>
           ) : null}
         </div>

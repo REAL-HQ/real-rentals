@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -58,8 +59,8 @@ type LogRow = {
 };
 
 const TRIGGERS = [
-  { value: "application_submitted", label: "Someone Completes an Application" },
-  { value: "application_abandoned", label: "Someone Abandons the Application" },
+  { value: "application_submitted", label: "Someone Completes An Application" },
+  { value: "application_abandoned", label: "Someone Abandons The Application" },
   { value: "application_approved", label: "An Application Is Approved" },
   { value: "rental_started", label: "A Rental Starts" },
   { value: "rental_ended", label: "A Rental Ends" },
@@ -273,7 +274,7 @@ export function AutomationsPanel() {
                           ) : (
                             <Mail className="w-3.5 h-3.5" />
                           )}
-                          <span className="uppercase tracking-wide font-semibold">{s.channel}</span>
+                          <span className="tracking-wide font-semibold">{s.channel}</span>
                           <Clock className="w-3.5 h-3.5 ml-1" />
                           <span>{humanDelay(s.delay_minutes)} they apply</span>
                           {!s.is_active ? <span className="text-[#D03020]">· disabled</span> : null}
@@ -456,8 +457,8 @@ function WorkflowForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
           className="w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm"
         />
       </Field>
-      <Field label="When should it start?">
-        <select
+      <Field label="When Should It Start?">
+        <AppSelect aria-label="Trigger"
           value={trigger}
           onChange={(e) => setTrigger(e.target.value)}
           className="w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
@@ -467,7 +468,7 @@ function WorkflowForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
               {t.label}
             </option>
           ))}
-        </select>
+        </AppSelect>
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Quiet Hours Start">
@@ -487,7 +488,7 @@ function WorkflowForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
           checked={stopOnReply}
           onChange={(e) => setStopOnReply(e.target.checked)}
         />
-        Stop the sequence when they reply
+        Stop The Sequence When They Reply
       </label>
       <div className="flex justify-end gap-2 pt-2">
         <button onClick={onClose} className="rounded-lg border border-[#EDEDF0] px-4 py-2 text-sm">
@@ -595,7 +596,7 @@ function StepForm({
               key={c}
               type="button"
               onClick={() => setChannel(c)}
-              className={`rounded-lg border px-4 py-2 text-sm capitalize ${
+              className={`rounded-lg border px-4 py-2 text-sm ${
                 channel === c ? "border-[#D03020] bg-[#D03020] text-white" : "border-[#EDEDF0]"
               }`}
             >
@@ -605,7 +606,7 @@ function StepForm({
         </div>
       </Field>
 
-      <Field label="Send this long after the trigger">
+      <Field label="Send This Long After The Trigger">
         <div className="flex gap-2">
           <input
             type="number"
@@ -614,15 +615,15 @@ function StepForm({
             onChange={(e) => setAmount(e.target.value)}
             className="w-24 rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm"
           />
-          <select
+          <AppSelect aria-label="Delay Unit"
             value={unit}
             onChange={(e) => setUnit(e.target.value)}
             className="rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
           >
-            <option value="minutes">minutes</option>
-            <option value="hours">hours</option>
-            <option value="days">days</option>
-          </select>
+            <option value="minutes">Minutes</option>
+            <option value="hours">Hours</option>
+            <option value="days">Days</option>
+          </AppSelect>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">{humanDelay(delayMinutes)} they apply.</p>
       </Field>
@@ -721,7 +722,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function HourSelect({ value, onChange }: { value: number; onChange: (n: number) => void }) {
   return (
-    <select
+    <AppSelect aria-label="Hour"
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
       className="w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
@@ -731,6 +732,6 @@ function HourSelect({ value, onChange }: { value: number; onChange: (n: number) 
           {String(h).padStart(2, "0")}:00
         </option>
       ))}
-    </select>
+    </AppSelect>
   );
 }

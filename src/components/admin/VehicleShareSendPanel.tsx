@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Check, Copy, Loader2, Mail, MessageSquare, ShieldCheck } from "lucide-react";
@@ -154,9 +155,9 @@ export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
       {channel === "sms" && (options?.smsSenders?.length ?? 0) > 1 && (
         <div className="sm:ml-[192px]" data-testid="share-send-from">
           <label className="mb-1.5 block text-xs font-medium" htmlFor="vehicle-share-from">Send From</label>
-          <select id="vehicle-share-from" value={fromId ?? options!.smsSenders![0].id} onChange={(event) => setFromId(event.target.value)} disabled={!!busy} className={input}>
+          <AppSelect id="vehicle-share-from" value={fromId ?? options!.smsSenders![0].id} onChange={(event) => setFromId(event.target.value)} disabled={!!busy} className={input}>
             {options!.smsSenders!.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
+          </AppSelect>
         </div>
       )}
       <VehicleShareMessageEditor value={message} onChange={setMessage} disabled={!!busy} />

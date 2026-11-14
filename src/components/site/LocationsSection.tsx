@@ -60,14 +60,14 @@ export function LocationsSection() {
       <div className="container-real">
         <FadeUp className="mb-10 md:mb-12 flex items-end justify-between flex-wrap gap-4">
           <div>
-            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Our Locations</div>
+            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">Our Locations</div>
             <h2 className="mt-2 text-3xl md:text-5xl">Where We Operate.</h2>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => scrollBy(-1)} aria-label="Scroll left" className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-border hover:bg-soft transition active:scale-95">
+            <button onClick={() => scrollBy(-1)} aria-label="Scroll Left" className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-border hover:bg-soft transition active:scale-95">
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <button onClick={() => scrollBy(1)} aria-label="Scroll right" className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-border hover:bg-soft transition active:scale-95">
+            <button onClick={() => scrollBy(1)} aria-label="Scroll Right" className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-border hover:bg-soft transition active:scale-95">
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>
@@ -175,7 +175,7 @@ function WaitlistModal({ card, onClose }: { card: LocationCard; onClose: () => v
         {done ? (
           <div className="text-center py-6">
             <CheckCircle2 className="w-12 h-12 text-real-red mx-auto" />
-            <h3 className="mt-4 text-2xl font-semibold">You're on the List</h3>
+            <h3 className="mt-4 text-2xl font-semibold">You're On The List</h3>
             <p className="mt-2 text-muted-foreground text-sm">We'll Tell You When {card.city} Opens.</p>
             <button onClick={onClose} className="mt-6 rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium hover:opacity-90 transition active:scale-95">
               Close
@@ -183,7 +183,7 @@ function WaitlistModal({ card, onClose }: { card: LocationCard; onClose: () => v
           </div>
         ) : (
           <>
-            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red uppercase">Waitlist</div>
+            <div className="text-[11px] tracking-[0.25em] font-semibold text-real-red ">Waitlist</div>
             <h3 className="mt-2 text-2xl md:text-3xl font-semibold">Join The {card.city} Waitlist</h3>
             <p className="mt-2 text-sm text-muted-foreground">Be First To Know When We Launch In {card.city}.</p>
             <form onSubmit={submit} className="mt-5 space-y-3">
