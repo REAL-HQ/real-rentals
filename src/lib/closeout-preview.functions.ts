@@ -63,6 +63,7 @@ export const getRentalCloseoutPreview = createServerFn({ method: "POST" })
         .limit(1),
     );
     const inspection = inspectionRead.ok ? inspectionRead.rows[0] : undefined;
+    const vehicleId = rental.vehicle_id;
     const [items, rentalIncidents, payments, tolls, deductions, vehicleIncidents, vehicleRead] = await Promise.all([
       inspection
         ? rowsOf(() =>
@@ -102,17 +103,17 @@ export const getRentalCloseoutPreview = createServerFn({ method: "POST" })
           .eq("rental_id", data.rentalId)
           .limit(PAGE),
       ),
-      rental.vehicle_id
+      vehicleId
         ? rowsOf(() =>
             sb
               .from("incidents")
               .select("id,status,rental_id", { count: "exact" })
-              .eq("vehicle_id", rental.vehicle_id)
+              .eq("vehicle_id", vehicleId)
               .limit(PAGE),
           )
         : Promise.resolve({ ok: false as const }),
-      rental.vehicle_id
-        ? sb.from("vehicles").select("year,make,model,vin,weekly_rate,status").eq("id", rental.vehicle_id).maybeSingle()
+      vehicleId
+        ? sb.from("vehicles").select("year,make,model,vin,weekly_rate,status").eq("id", vehicleId).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
     ]);
 

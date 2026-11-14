@@ -5,16 +5,12 @@ import {
   Car,
   BadgeCheck,
   Users,
-  Wrench,
-  Infinity as InfinityIcon,
   ArrowRight,
   Fuel,
   Zap,
   Leaf,
-  Wallet,
-  Headphones,
 } from "lucide-react";
-import type { PublicVehicleCardModel } from "@/lib/marketing-fleet";
+import { representativePhoto, type PublicVehicleCardModel } from "@/lib/marketing-fleet";
 import { inventoryCardModel, type PublicVehicle } from "@/lib/public-vehicle-card";
 import { VEHICLE_DETAIL_PAGE_ENABLED } from "@/lib/vehicle-detail";
 
@@ -29,9 +25,12 @@ import { VEHICLE_DETAIL_PAGE_ENABLED } from "@/lib/vehicle-detail";
  */
 export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
   // Some assets are served by the host rather than bundled. A broken-image
-  // icon on a paid landing page is worse than no image, so a failed load
-  // falls back to a neutral tile instead.
+  // icon on a paid landing page is worse than no image, so a missing or
+  // failed photo uses the same bundled type photo as the homepage cards.
   const [imageFailed, setImageFailed] = useState(false);
+  const representative = representativePhoto(model.bodyTypeLabel);
+  const photoSrc = model.image && !imageFailed ? model.image : representative;
+  const usingRepresentative = photoSrc === representative;
   // A real figure gets the large price treatment. "Rate confirmed on your
   // call" is not a price and must not sit in the price slot at price size —
   // it collides with the title and reads like one.
@@ -62,27 +61,28 @@ export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
             {model.availabilityNote}
           </span>
         )}
-        {model.image && !imageFailed ? (
-          <img
-            src={model.image}
-            alt={model.subtitle ? `${model.title} — ${model.subtitle}` : model.title}
-            className="car-img w-full h-full object-cover"
-            loading="lazy"
-            onError={() => setImageFailed(true)}
-            // The page is server rendered, so an image can finish failing
-            // before React hydrates and there is no error event left to
-            // catch. A mounted <img> that is complete with no intrinsic
-            // width is a load that already failed.
-            ref={(el) => {
-              if (el && el.complete && el.naturalWidth === 0) setImageFailed(true);
-            }}
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
-            <Car className="w-8 h-8" strokeWidth={1.5} />
-            <span className="text-sm font-medium">{model.bodyTypeLabel}</span>
-          </div>
-        )}
+        <img
+          src={photoSrc}
+          alt={
+            usingRepresentative
+              ? `${model.title}, representative ${model.bodyTypeLabel}`
+              : model.subtitle
+                ? `${model.title} — ${model.subtitle}`
+                : model.title
+          }
+          className="car-img w-full h-full object-cover"
+          loading="lazy"
+          onError={() => setImageFailed(true)}
+          // The page is server rendered, so an image can finish failing
+          // before React hydrates and there is no error event left to
+          // catch. A mounted <img> that is complete with no intrinsic
+          // width is a load that already failed. currentSrc stays empty
+          // until the browser actually requests the file, so an unstarted
+          // lazy image is not treated as broken.
+          ref={(el) => {
+            if (el && el.complete && el.naturalWidth === 0 && el.currentSrc) setImageFailed(true);
+          }}
+        />
       </div>
       <div className="mt-2 flex items-start justify-between gap-4">
         <div className="min-w-0">
@@ -109,27 +109,29 @@ export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Great For</div>
         <div className="text-[12px] font-medium text-foreground mt-0.5">{model.greatFor}</div>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-sm text-muted-foreground">
+      <div className="mt-4 space-y-2 text-[13px] sm:text-sm text-muted-foreground">
         {model.kind === "inventory" && (
           <div className="flex items-center gap-2 min-w-0">
             <Car className="w-4 h-4 shrink-0" strokeWidth={1.75} />
             <span className="capitalize truncate">Type: {model.bodyTypeLabel}</span>
           </div>
         )}
-        <div className="flex items-center gap-2 min-w-0">
-          <Users className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-          <span className="truncate">Seats: {model.seatsLabel}</span>
-        </div>
-        <div className="flex items-center gap-2 min-w-0">
-          <DoorOpen className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-          <span className="truncate">Doors: {model.doorsLabel}</span>
-        </div>
-        <div className="flex items-center gap-2 min-w-0">
-          <fuelMeta.Icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-          <span className="truncate">{model.rangeLabel ?? fuelMeta.label}</span>
+        <div className="grid grid-cols-3 gap-x-1.5 sm:gap-x-3">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Users className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+            <span className="truncate">Seats: {model.seatsLabel}</span>
+          </div>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <DoorOpen className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+            <span className="truncate">Doors: {model.doorsLabel}</span>
+          </div>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <fuelMeta.Icon className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+            <span className="truncate">{model.rangeLabel ?? fuelMeta.label}</span>
+          </div>
         </div>
         {model.eligibility && (
-          <div className="col-span-2 flex items-start gap-2 min-w-0">
+          <div className="flex items-start gap-2 min-w-0">
             <BadgeCheck className="w-4 h-4 mt-0.5 shrink-0" strokeWidth={1.75} />
             <span className="truncate">Eligibility: {model.eligibility}</span>
           </div>
@@ -148,32 +150,6 @@ export function VehicleCard({ model }: { model: PublicVehicleCardModel }) {
       >
         Check Availability <ArrowRight className="w-4 h-4" />
       </button>
-      <div className="mt-4 pt-4 border-t border-border/60 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-foreground/80">
-        <span className="inline-flex items-center gap-1.5">
-          <BadgeCheck className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          No Credit Check
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Wallet className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          No Deposit
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <InfinityIcon className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          Unlimited Miles
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Headphones className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          24/7 Support
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Wrench className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          Maintenance Included
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Zap className="w-3.5 h-3.5 text-real-red" strokeWidth={2} />
-          Same Day Approval
-        </span>
-      </div>
     </>
   );
 

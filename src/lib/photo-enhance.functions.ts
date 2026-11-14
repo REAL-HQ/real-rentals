@@ -108,7 +108,7 @@ export const startPhotoEnhance = createServerFn({ method: "POST" })
     if (data.mode === "studio" && !STUDIO_ENABLED) return { ok: false, error: "Studio is not available yet. Use Enhanced." };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const s = await loadSettings(supabaseAdmin);
-    if (!s.enabled) return { ok: false, error: "Photo Enhancement is switched off. An Owner can turn it on in Settings → Photo Enhancement." };
+    if (!s.enabled) return { ok: false, error: "Photo Enhancement is switched off. An Owner can turn it on in Settings → Media." };
     const u = await usage(supabaseAdmin);
     if (u.today >= s.daily_limit) return { ok: false, error: `Daily limit reached (${s.daily_limit} photos). Try again tomorrow.` };
     const { data: src } = await supabaseAdmin.from("vehicle_media").select("id,vehicle_id,kind").eq("id", data.mediaId).maybeSingle();

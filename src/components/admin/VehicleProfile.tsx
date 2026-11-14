@@ -35,10 +35,11 @@ import {
   type VehicleProfile as Profile,
   type VehicleSection,
 } from "@/lib/vehicles.functions";
+import { bodyTypeLabel } from "@/lib/vehicle-defaults";
 import { getVehicleFinance, saveVehicleFinance } from "@/lib/vehicle-finance.functions";
-import { resolvePhotoUrl } from "@/lib/photoUrl";
 import { readStoredExperience } from "@/lib/experience";
 import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
+import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { Row, TwoCol, Text, Area, NumberField, DateInput, Choice } from "./VehicleProfileFields";
 import { VehicleEditDrawer } from "./VehicleEditDrawer";
 import { ShareVehicleDialog } from "./ShareVehicleDialog";
@@ -46,6 +47,7 @@ import { VehicleEditorDrawer } from "./VehicleEditorDrawer";
 import { VehicleDocuments } from "./VehicleDocuments";
 import { ApplyTemplateDialog } from "./ApplyTemplateDialog";
 import { VehiclePhotos } from "./VehiclePhotos";
+import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
 import { VehicleService } from "./VehicleService";
 import { MaintenanceLogHistory } from "./MaintenanceLog";
 import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
@@ -164,7 +166,6 @@ export function VehicleProfile({
   }
 
   const v = p?.vehicle ?? {};
-  const photo = resolvePhotoUrl((v.photos as string[] | null)?.[0]);
 
   return (
     <div
@@ -182,8 +183,15 @@ export function VehicleProfile({
         onClick={(e) => e.stopPropagation()}
       >
         {/* ---- header ---------------------------------------------------- */}
-        <header className="bg-white border-b border-[#EDEDF0] px-5 sm:px-6 pt-4 pb-0">
-          <nav aria-label="Breadcrumb" className="mb-3 flex items-center gap-1.5 text-[13px] min-w-0">
+        <header className="relative bg-white border-b border-[#EDEDF0] px-5 sm:px-6 pt-4 pb-0">
+          <button
+            onClick={onClose}
+            className="absolute right-2 top-2 z-10 rounded-md p-1.5 text-[#9A9AA3] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
+            aria-label="Close"
+          >
+            <X className="w-4.5 h-4.5" />
+          </button>
+          <nav aria-label="Breadcrumb" className="mb-3 flex items-center gap-1.5 pr-8 text-[13px] min-w-0">
             <button onClick={onClose} className="inline-flex items-center gap-1.5 text-[#55555E] hover:text-[#111114] font-medium shrink-0">
               <ArrowLeft className="w-4 h-4" strokeWidth={1.75} />
               Vehicles
@@ -192,13 +200,11 @@ export function VehicleProfile({
             <span className="text-[#111114] font-semibold truncate">{p?.unitLabel ?? "…"}</span>
           </nav>
           <div className="flex flex-wrap sm:flex-nowrap items-start gap-x-4 gap-y-3">
-            <div className="h-12 w-16 sm:h-16 sm:w-24 shrink-0 rounded-lg bg-[#F4F4F6] overflow-hidden grid place-items-center">
-              {photo ? (
-                <img src={photo} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <Car className="w-5 h-5 text-[#C4C4CB]" strokeWidth={1.75} />
-              )}
-            </div>
+            <VehiclePickerPhoto
+              vehicleId={vehicleId}
+              className="h-12 w-16 sm:h-16 sm:w-24 rounded-lg"
+              iconClassName="w-5 h-5"
+            />
 
             <div className="min-w-0 flex-1">
               {loading && !p ? (
@@ -209,7 +215,7 @@ export function VehicleProfile({
                     <h2 className="text-[19px] font-semibold text-[#111114] truncate">
                       {p?.unitLabel ?? "Vehicle"}
                     </h2>
-                    {v.status && <StatusPill status={String(v.status)} />}
+                    {v.status && <VehicleStatusBadge status={String(v.status)} />}
                     {!p?.isActive && (
                       <span className="text-[11px] text-[#9A9AA3]">Out of fleet</span>
                     )}
@@ -223,7 +229,7 @@ export function VehicleProfile({
                   <VehicleSuggestions
                     vehicleId={vehicleId}
                     canEdit={!!p?.canEdit}
-                    onApplied={refresh}
+                    onApplied={afterSave}
                     onCount={setPendingDetails}
                     openSignal={openSuggest}
                   />
@@ -243,16 +249,10 @@ export function VehicleProfile({
               <button
                 onClick={() => setSharing(true)}
                 disabled={!p}
+                aria-label="Share"
                 className="inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-3 py-1.5 text-[12px] font-medium text-[#111114] hover:bg-[#FAFAFB] transition-colors disabled:opacity-50"
               >
                 <Share2 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Share</span>
-              </button>
-              <button
-                onClick={onClose}
-                className="rounded-md p-1.5 text-[#9A9AA3] hover:text-[#111114] hover:bg-[#F4F4F6] transition-colors"
-                aria-label="Close"
-              >
-                <X className="w-4.5 h-4.5" />
               </button>
             </div>
           </div>
@@ -351,7 +351,7 @@ export function VehicleProfile({
                     // fields, so the profile — and the Readiness checklist it
                     // feeds — has to be re-read. Same refresh the header's
                     // suggestion pill already uses.
-                    onVehicleChanged={refresh}
+                    onVehicleChanged={afterSave}
                   />
                 </SectionCard>
               )}
@@ -382,7 +382,7 @@ export function VehicleProfile({
       {editing === "finance" && p && (
         <FinanceDrawer vehicleId={vehicleId} onClose={() => setEditing(null)} onSaved={afterSave} />
       )}
-      {sharing && <ShareVehicleDialog vehicleId={vehicleId} onClose={() => setSharing(false)} />}
+      {sharing && <ShareVehicleDialog vehicleId={vehicleId} canSend={!!p?.canEdit} onClose={() => setSharing(false)} />}
       {editorOpen && p && (
         <VehicleEditorDrawer
           profile={{ ...p, id: vehicleId }}
@@ -491,7 +491,7 @@ function Overview({
               <Row label="VIN" value={v.vin} mono />
               <Row label="Plate" value={plate} mono />
               <Row label="Mileage" value={miles(v.current_odometer)} />
-              <Row label="Status" value={v.status ? <StatusPill status={String(v.status)} /> : null} />
+              <Row label="Status" value={v.status ? <VehicleStatusBadge status={String(v.status)} /> : null} />
             </div>
           </TwoCol>
           {optional.length > 0 && (
@@ -940,7 +940,7 @@ function SectionDrawer({
               onChange={(v) => set("body_type", v)}
               options={[
                 { value: "", label: "—" },
-                ...BODY_TYPES.map((b) => ({ value: b, label: b })),
+                ...BODY_TYPES.map((b) => ({ value: b, label: bodyTypeLabel(b) })),
               ]}
             />
             <Text
@@ -962,6 +962,7 @@ function SectionDrawer({
               label="Status"
               value={str("status")}
               onChange={(v) => set("status", v)}
+              vehicleStatus
               options={VEHICLE_STATUSES.map((s) => ({ value: s.value, label: s.label }))}
               error={err("status")}
               hint="Available and Reserved require rental-ready details, including a weekly rate above $0. Use Needs Setup to save details before the vehicle is ready."
@@ -1504,7 +1505,7 @@ function ReadinessChecklist({ p, onEdit, onOpenTab, pendingDetails = 0, onReview
         <span data-testid="readiness-overall" className={`inline-flex items-center gap-1.5 rounded-full border border-[#EDEDF0] bg-white px-2.5 py-1 text-[12px] font-semibold ${st.text}`}>
           <span className={`h-2 w-2 rounded-full ${st.dot}`} /> {st.label}
         </span>
-        <span data-testid="readiness-availability" className="inline-flex items-center rounded-full bg-[#F4F4F6] px-2.5 py-1 text-[12px] font-medium text-[#111114]">{avail}</span>
+        <VehicleStatusBadge data-testid="readiness-availability" status={avail} label={avail} />
         <span className="text-[11px] text-[#9A9AA3]">Readiness never changes availability.</span>
       </div>
 

@@ -12,7 +12,7 @@ const ICONS = { owner: Crown, admin: Briefcase, driver: Car } as const;
 const HINTS: Record<Experience, string> = {
   owner: "Full Business View",
   admin: "Daily Operations",
-  driver: "Preview The Driver Portal",
+  driver: "Preview Driver Portal",
 };
 
 /** Compact account-style selector. View only — never changes permissions. */

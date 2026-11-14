@@ -54,6 +54,9 @@ const MIXED_LIVE = new Set([
   "waitlist.functions.ts",
   "applications.functions.ts",
   "documents.functions.ts",
+  // Return is live. RETURN_CHECKLIST_ENABLED only gates saving the optional
+  // checklist tables; completeReturn still ends the rental through end_rental_tx.
+  "return-flow.functions.ts",
 ]);
 
 // Modules whose flag check is the first statement in the handler: auth runs

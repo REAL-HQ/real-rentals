@@ -116,6 +116,12 @@ try {
     });
   for (const patch of [
     { license_number: "X" },
+    { dob: "1990-01-01" },
+    { years_licensed: 5 },
+    { platforms: ["Uber"] },
+    { weekly_hours: 40 },
+    { expected_duration: "3_months" },
+    { payment_method: "Cash App" },
     { notes: "private" },
     { weekly_rent: 350 },
     { background_check_status: "passed" },
@@ -136,9 +142,26 @@ try {
   for (const role of ["admin", "team"])
     await test(role + " existing profile permissions", async () => {
       reset(role);
-      const r = await invoke({ license_number: "SYNTHETIC", weekly_rent: 350 });
+      const r = await invoke({
+        license_number: "SYNTHETIC",
+        weekly_rent: 350,
+        dob: "1990-01-01",
+        license_expiration: "2030-01-01",
+        years_licensed: 5,
+        platforms: ["Uber", "Lyft"],
+        weekly_hours: 40,
+        expected_duration: "3_months",
+        payment_method: "Cash App",
+      });
       assert.equal(r.weekly_rent, 350);
       assert.equal(r.license_number, "SYNTHETIC");
+      assert.equal(r.dob, "1990-01-01");
+      assert.equal(r.license_expiration, "2030-01-01");
+      assert.equal(r.years_licensed, 5);
+      assert.deepEqual(r.platforms, ["Uber", "Lyft"]);
+      assert.equal(r.weekly_hours, 40);
+      assert.equal(r.expected_duration, "3_months");
+      assert.equal(r.payment_method, "Cash App");
       assert.ok(!JSON.stringify(fixture.audit).includes("SYNTHETIC"));
     });
   for (const extra of [

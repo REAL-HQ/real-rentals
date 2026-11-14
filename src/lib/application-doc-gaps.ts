@@ -2,7 +2,7 @@
  * Dark document-completeness list for open applications.
  *
  * Which upload counts is canonicalRequiredDoc in required-docs.ts — the same
- * rule as the Drivers "x/4" count. This file is only the gate and the shape
+ * rule as the Drivers document count. This file is only the gate and the shape
  * of the answer. APPLICATION_DOC_GAPS_ENABLED is the only declaration of the
  * gate. Nothing reads an environment variable to open it.
  */

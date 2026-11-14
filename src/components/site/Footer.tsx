@@ -1,33 +1,16 @@
 import { PhoneLink } from "./PhoneLink";
 import { Phone } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Check, Mail, MapPin, Clock, Headphones, Wrench, Infinity as InfinityIcon, Zap, Wallet } from "lucide-react";
+import { Check, Mail, MapPin, Clock, Wrench, Infinity as InfinityIcon, Zap, Wallet, Shield } from "lucide-react";
 import { Logo } from "./Logo";
 
 const trustBar = [
   { label: "No Credit Check", Icon: Check },
   { label: "No Deposit", Icon: Wallet },
+  { label: "Insurance Included", Icon: Shield },
   { label: "Unlimited Miles", Icon: InfinityIcon },
-  { label: "24/7 Driver Support", Icon: Headphones },
   { label: "Maintenance Included", Icon: Wrench },
   { label: "Same Day Approval", Icon: Zap },
-];
-
-const badges = [
-  "No Credit Check",
-  "No Deposit",
-  "Unlimited Miles",
-  "24/7 Driver Support",
-  "Maintenance Included",
-  "Same Day Approval",
-];
-
-const driverLinks = [
-  { to: "/fleet", label: "Fleet" },
-  { to: "/how-it-works", label: "How It Works" },
-  { to: "/apply", label: "Get My Quote" },
-  { to: "/faq", label: "FAQ" },
-  { to: "/how-it-works", label: "Requirements" },
 ];
 
 const ownerLinks: { to: string; label: string; hash?: string }[] = [
@@ -46,7 +29,7 @@ export function Footer() {
       <div className="border-y border-border bg-soft">
         <div className="container-real py-4 flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-xs md:text-sm text-foreground/80">
           {trustBar.map(({ label, Icon }) => (
-            <span key={label} className="inline-flex items-center gap-1.5">
+            <span key={label} className="inline-flex items-center gap-1.5 whitespace-nowrap">
               <Icon className="w-3.5 h-3.5 text-real-red" strokeWidth={2.25} />
               <span className="font-medium">{label}</span>
             </span>
@@ -79,31 +62,13 @@ export function Footer() {
       </div>
       )}
       <div className="container-real py-14 grid grid-cols-1 md:grid-cols-12 gap-10 text-sm">
-        <div className="md:col-span-4">
+        <div className="md:col-span-5">
           <Logo width={110} offset={false} />
           <p className="mt-5 text-muted-foreground max-w-sm">
             Rideshare-Ready Vehicles For Uber,<br />Lyft, DoorDash & Delivery Work.
           </p>
-          <ul className="mt-5 space-y-2">
-            {badges.map((b) => (
-              <li key={b} className="flex items-center gap-2 text-foreground/80">
-                <Check className="w-4 h-4 text-real-red" strokeWidth={2.5} />
-                <span>{b}</span>
-              </li>
-            ))}
-          </ul>
         </div>
-        <div className="md:col-span-2">
-          <div className="text-[11px] tracking-[0.2em] font-semibold text-muted-foreground uppercase mb-4">Drivers</div>
-          <ul className="space-y-2 text-muted-foreground">
-            {driverLinks.map((l, i) => (
-              <li key={`${l.label}-${i}`}>
-                <Link to={l.to} className="hover:text-foreground transition-colors">{l.label}</Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="md:col-span-3">
+        <div className="md:col-span-4">
           <div className="text-[11px] tracking-[0.2em] font-semibold text-muted-foreground uppercase mb-4">Fleet Owners</div>
           <ul className="space-y-2 text-muted-foreground">
             {ownerLinks.map((l, i) => (
@@ -119,7 +84,7 @@ export function Footer() {
             <li className="flex items-center gap-2"><Phone className="w-4 h-4" /> <PhoneLink placement="footer" className="inline-flex min-h-11 items-center hover:text-foreground" /></li>
             <li className="flex items-center gap-2"><Mail className="w-4 h-4" /> <a href="mailto:team@drivereal.com" className="hover:text-foreground">team@drivereal.com</a></li>
             <li className="flex items-center gap-2"><MapPin className="w-4 h-4" /> Tampa, Florida</li>
-            <li className="flex items-center gap-2"><Clock className="w-4 h-4" /> Mon–Sat, 9am – 7pm</li>
+            <li className="flex items-center gap-2"><Clock className="w-4 h-4" /> Mon–Fri, 9am – 5pm</li>
           </ul>
         </div>
       </div>

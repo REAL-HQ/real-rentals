@@ -110,7 +110,7 @@ describe("portal notices", () => {
     const text = notices.map((notice) => notice.text);
     assert.ok(text.includes("Driver's license (front) expires on Nov 1, 2026."));
     assert.ok(text.includes("Gig profile screenshot has expired."));
-    assert.ok(text.includes("Insurance card needs a replacement."));
+    assert.equal(text.some((line) => /insurance/i.test(line)), false);
     assert.equal(text.some((line) => /verification/i.test(line)), false);
     assert.equal(text.some((line) => /license \(back\)/i.test(line)), false);
     assert.ok(notices.filter((notice) => notice.id.startsWith("document")).every((notice) => notice.section === "documents"));

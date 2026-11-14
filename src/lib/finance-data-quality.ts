@@ -149,7 +149,7 @@ export function buildFinanceDataQuality(input: {
 
   for (const rental of input.rentals) {
     if (rental.status.trim().toLowerCase() !== "active") continue;
-    const link = { label: rental.label || `Rental ${rental.id}`, href: `/admin?tab=bookings&id=${encodeURIComponent(rental.id)}` };
+    const link = { label: rental.label || `Rental ${rental.id}`, href: `/admin?tab=bookings&view=past&id=${encodeURIComponent(rental.id)}` };
     if (rental.weeklyRate === null || rental.weeklyRate <= 0) {
       issues.push(issue("active_rental", rental.id, "rate", "This active rental has no weekly rate.", link, "Enter a weekly rate greater than zero."));
     }
@@ -163,7 +163,7 @@ export function buildFinanceDataQuality(input: {
 
   for (const rental of input.rentals) {
     if (!rental.depositHeld || rental.depositAmount !== null) continue;
-    const link = { label: rental.label || `Rental ${rental.id}`, href: `/admin?tab=bookings&id=${encodeURIComponent(rental.id)}` };
+    const link = { label: rental.label || `Rental ${rental.id}`, href: `/admin?tab=bookings&view=past&id=${encodeURIComponent(rental.id)}` };
     issues.push(issue(
       "held_deposit",
       rental.id,
@@ -224,7 +224,7 @@ function paymentLink(payment: QualityPayment): { label: string; href: string } {
   const driverId = text(payment.driverId);
   if (driverId) return { label, href: `/admin?tab=drivers&id=${encodeURIComponent(driverId)}` };
   const rentalId = text(payment.rentalId);
-  if (rentalId) return { label, href: `/admin?tab=bookings&id=${encodeURIComponent(rentalId)}` };
+  if (rentalId) return { label, href: `/admin?tab=bookings&view=past&id=${encodeURIComponent(rentalId)}` };
   return { label, href: "/admin?tab=payments" };
 }
 

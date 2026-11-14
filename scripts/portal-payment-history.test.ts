@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { PDFDocument } from "pdf-lib";
+import { createPaymentInvoicePdf } from "../src/lib/payment-invoice-pdf";
 import {
   PORTAL_PAYMENT_HISTORY_ENABLED,
   asEasternCalendarDate,
@@ -38,16 +40,16 @@ function row(over: Partial<HistoryRow> & { id: string }): HistoryRow {
 }
 
 describe("portal payment history", () => {
-  it("stays off and refuses before auth, ownership, and reads", () => {
-    assert.equal(PORTAL_PAYMENT_HISTORY_ENABLED, false);
+  it("uses the existing gate before auth, ownership, and reads", () => {
+    assert.equal(PORTAL_PAYMENT_HISTORY_ENABLED, true);
     assert.equal((rules.match(/const PORTAL_PAYMENT_HISTORY_ENABLED/g) ?? []).length, 1);
-    assert.match(rules, /export const PORTAL_PAYMENT_HISTORY_ENABLED: boolean = false as boolean/);
+    assert.match(rules, /export const PORTAL_PAYMENT_HISTORY_ENABLED: boolean = true as boolean/);
     assert.doesNotMatch(rules, /process\.env/);
     for (const source of [fn, panel, portal]) {
       assert.equal((source.match(/const PORTAL_PAYMENT_HISTORY_ENABLED/g) ?? []).length, 0);
     }
     assert.doesNotMatch(portal, /DRIVER_PAYMENT_HISTORY_ENABLED|DriverPaymentHistoryCard|PaymentHistoryGate|PortalPaymentHistory/);
-    assert.equal((portal.match(/<PaymentHistoryCard \/>/g) ?? []).length, 1);
+    assert.equal((portal.match(/<PaymentHistoryCard\b/g) ?? []).length, 1);
 
     const middleware = fn.match(/\.middleware\(\[([^\]]+)\]/);
     assert.equal(middleware?.[1].replace(/\s/g, ""), "portalPaymentHistoryGate,requireSupabaseAuth");
@@ -56,26 +58,30 @@ describe("portal payment history", () => {
     assert.doesNotMatch(gateBody, /requireSupabaseAuth|supabaseAdmin|context\.userId/);
     const handler = fn.slice(fn.indexOf(".handler"));
     const thrown = handler.indexOf("PORTAL_PAYMENT_HISTORY_ENABLED !== true");
-    const user = handler.indexOf("context.userId");
-    const read = handler.indexOf("readOwnPaymentHistory(context.supabase, userId)");
+    const user = handler.indexOf("portalScope(context, input");
+    const read = handler.indexOf("readOwnPaymentHistory(supabase, userId)");
     assert.ok(thrown !== -1 && user !== -1 && read !== -1 && thrown < user && user < read);
-    assert.doesNotMatch(fn, /previewDriverId|data\.id|input\.|supabaseAdmin|client\.server|rentals/);
+    assert.match(fn, /portalScope\(context, input, "payment_history"\)/);
+    assert.doesNotMatch(fn, /data\.id|supabaseAdmin|client\.server|rentals/);
     assert.doesNotMatch(rules, /\.from\("rentals"\)|\.in\("rental_id"/);
     assert.match(rules, /\.eq\("user_id", userId\)/);
     assert.match(rules, /\.in\("driver_id", group\)/);
     assert.match(rules, /HISTORY_CHUNK/);
     assert.match(rules, /HISTORY_READ_CAP \+ 1/);
     assert.doesNotMatch(fn, /sendEmail|sendSms|\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
-    assert.match(portal, /PORTAL_PAYMENT_HISTORY_ENABLED === true && previewId == null \? \(\s*<PaymentHistoryCard \/>/);
-    const historyBranch = portal.indexOf("PORTAL_PAYMENT_HISTORY_ENABLED === true && previewId == null");
+    assert.match(portal, /PORTAL_PAYMENT_HISTORY_ENABLED === true \? \(\s*<PaymentHistoryCard previewDriverId=\{previewId \?\? undefined\} \/>/);
+    const historyBranch = portal.indexOf("PORTAL_PAYMENT_HISTORY_ENABLED === true");
     const allPayments = portal.indexOf(">All Payments<");
     assert.ok(historyBranch !== -1 && allPayments > historyBranch);
     assert.equal((portal.match(/>All Payments</g) ?? []).length, 1);
     assert.doesNotMatch(portal, /<PaymentHistoryCard \/>\s*:\s*null/);
     assert.match(panel, /if \(PORTAL_PAYMENT_HISTORY_ENABLED !== true\) return null/);
-    assert.match(panel, /Download Receipt/);
+    assert.match(panel, /Invoice PDF/);
+    assert.match(panel, /Due Date/);
+    assert.match(panel, /Paid Date/);
+    assert.match(panel, /application\/pdf/);
     assert.match(panel, /Unknown/);
-    assert.doesNotMatch(panel, /reason\.message|previewDriverId|text-transform|uppercase/);
+    assert.doesNotMatch(panel, /reason\.message|text-transform|uppercase/);
     assert.doesNotMatch(portal, /from ["']@\/lib\/portal-payment-history\.functions["']/);
   });
 
@@ -112,6 +118,9 @@ describe("portal payment history", () => {
     assert.match(receipt, /Receipt cash/);
     assert.match(receipt, /Source: Cash/);
     assert.match(receipt, /Amount: \$200\.00/);
+    assert.match(receipt, /Due: Oct 1, 2026/);
+    assert.match(receipt, /Paid: Oct 1, 2026/);
+    assert.equal(history.payments[1]?.dueDate, "2026-10-01");
     assert.doesNotMatch(receipt, /bitcoin|card_last4|pi_|stripe|@/i);
 
     const capped = buildPortalPaymentHistory({ truncated: true, rows: [row({ id: "open", status: "past_due", balance_due: 80, payment_method: null, paid_date: null })] });
@@ -181,7 +190,7 @@ describe("portal payment history", () => {
             asked.push(`${table}:${JSON.stringify(filters)}`);
             if (table === "applications") {
               const user = filters.find((filter) => filter[0] === "eq" && filter[1] === "user_id" && filter[2] === "user-1");
-              return Promise.resolve({ data: user ? [{ id: ownApp }] : [], error: null });
+              return Promise.resolve({ data: user ? [{ id: ownApp, full_name: "Ada Lovelace" }] : [], error: null });
             }
             if (table === "payments") {
               const driver = filters.find((filter) => filter[0] === "in" && filter[1] === "driver_id");
@@ -198,11 +207,31 @@ describe("portal payment history", () => {
 
     const history = await readOwnPaymentHistory(client, "user-1");
     assert.deepEqual(history.charges.map((charge) => charge.id), ["mine"]);
+    assert.equal(history.driverName, "Ada Lovelace");
     assert.equal(history.balanceDueCents, 8000);
     assert.equal(asked.some((call) => call.startsWith("rentals")), false);
     assert.equal(asked.some((call) => call.includes("rental_id")), false);
     assert.match(asked.join("\n"), /applications:\[\[\"eq\",\"user_id\",\"user-1\"\],\[\"is\",\"deleted_at\",null\]\]/);
     assert.match(rules, /\.is\("deleted_at", null\)/);
     assert.match(asked.join("\n"), /payments:\[\[\"in\",\"driver_id\",\[\"app-own\"\]\]\]/);
+  });
+
+  it("does not turn an empty payment history into a proven zero balance", () => {
+    const empty = buildPortalPaymentHistory({ rows: [], truncated: false });
+    assert.equal(empty.balanceDueCents, null);
+    assert.equal(empty.balanceState, "unknown");
+  });
+
+  it("creates a real one-page invoice PDF from the stored due and paid dates", async () => {
+    const history = buildPortalPaymentHistory({ rows: [row({ id: "pdf-payment", due_date: "2026-10-01", paid_date: "2026-10-03" })], truncated: false });
+    const payment = history.payments[0];
+    assert.ok(payment);
+    const bytes = await createPaymentInvoicePdf(payment, "Ada Lovelace");
+    assert.equal(Buffer.from(bytes).subarray(0, 4).toString(), "%PDF");
+    const pdf = await PDFDocument.load(bytes);
+    assert.equal(pdf.getPageCount(), 1);
+    assert.equal(pdf.getTitle(), "REAL RENTALS Invoice pdf-payment");
+    assert.match(receiptText(payment), /Due: Oct 1, 2026/);
+    assert.match(receiptText(payment), /Paid: Oct 3, 2026/);
   });
 });

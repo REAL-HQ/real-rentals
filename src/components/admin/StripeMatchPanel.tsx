@@ -25,20 +25,20 @@ export function StripeMatchPanel() {
       if (result.status === "disabled") setLoad({ kind: "disabled" });
       else if (result.status === "unavailable") setLoad({ kind: "unavailable", reason: result.reason });
       else setLoad({ kind: "ready", report: result.report });
-    }).catch(() => { if (!cancelled) setLoad({ kind: "unavailable", reason: "Stripe Match could not be loaded" }); });
+    }).catch(() => { if (!cancelled) setLoad({ kind: "unavailable", reason: "Matching could not be loaded" }); });
     return () => { cancelled = true; };
   }, [read]);
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Stripe ↔ App Match</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Matching</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Live customers with an active or past due subscription. Last Paid is the latest succeeded charge in the last 90 days, in Eastern Time. This report does not save a link.
         </p>
       </div>
-      {load.kind === "loading" && <p className="text-sm text-muted-foreground">Loading Stripe Match…</p>}
-      {load.kind === "disabled" && <p className="text-sm text-muted-foreground">Stripe Match Is Off.</p>}
+      {load.kind === "loading" && <p className="text-sm text-muted-foreground">Loading Matching…</p>}
+      {load.kind === "disabled" && <p className="text-sm text-muted-foreground">Matching Is Off.</p>}
       {load.kind === "unavailable" && <p className="text-sm text-muted-foreground">{load.reason}</p>}
       {load.kind === "ready" && (
         <>

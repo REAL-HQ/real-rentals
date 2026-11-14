@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { getAutofillStatus, saveAutofillSettingsFn, undoAutofillFn } from "@/lib/safe-autofill.functions";
 import { fmtDateTime } from "@/lib/date-format";
+import { Switch } from "@/components/ui/switch";
 
 const LABEL: Record<string, string> = { trim: "Trim", body_type: "Body Type", color: "Color", fuel_type: "Fuel Type", seats: "Seats" };
 
@@ -35,10 +36,22 @@ export function SafeAutofillPanel() {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-[#EDEDF0] bg-white p-5 space-y-3">
-        <label className="flex items-center gap-2 text-[14px] font-medium cursor-pointer">
-          <input type="checkbox" checked={s.enabled} disabled={busy} onChange={(e) => update(e.target.checked)} />
-          Safe Autofill {s.enabled ? "On" : "Off"}
-        </label>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <label className="flex items-center gap-3 text-[14px] font-medium cursor-pointer">
+            <Switch aria-label="Autofill enabled" checked={s.enabled} disabled={busy} onCheckedChange={(v) => update(v)} />
+            Autofill Is {s.enabled ? "On" : "Off"}
+          </label>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => update(!s.enabled)}
+            className={s.enabled
+              ? "rounded-lg border border-border bg-background px-3 py-1.5 text-[13px] font-medium disabled:opacity-50"
+              : "rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-[13px] font-medium disabled:opacity-50"}
+          >
+            {s.enabled ? "Turn Off" : "Turn On"}
+          </button>
+        </div>
         <p className="text-[12px] text-[#55555E]">Fills only blank Trim, Body Type, Color, Fuel Type and Seats from a title or registration with an exact, valid VIN match, high confidence and no conflicting documents. VIN, plate, mileage, rates, deposit, status, title, finance, insurance and registration details always need approval. Applies to newly analyzed documents only.</p>
         <div className="flex flex-wrap items-end gap-2">
           <div>

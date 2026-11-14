@@ -264,6 +264,11 @@ try {
     );
   });
 
+  await test("a driver-uploaded document is permanent and cannot be deleted by an Owner", async () => {
+    const d = doc(13, { uploaded_by_role: "driver" });
+    await refused(d, "driver-uploaded retention", { message: /permanent records/ });
+  });
+
   await test("a Manager still cannot delete anything (Owner-only unchanged)", async () => {
     const d = doc(12);
     reset([d]);
@@ -299,10 +304,10 @@ try {
     const vault = readFileSync("src/components/admin/DocumentVault.tsx", "utf8");
     assert.match(
       vault,
-      /mode === "admin" && doc && cat\.key !== "agreement" && !doc\.signed_agreement \?/,
+      /mode === "admin" && !readOnly && doc && cat\.key !== "agreement" && !doc\.signed_agreement && doc\.uploaded_by_role !== "driver" \?/,
     );
     const applicant = readFileSync("src/components/admin/ApplicantDocuments.tsx", "utf8");
-    assert.match(applicant, /\{d && key !== "agreement" && !d\.signed_agreement && \(/);
+    assert.match(applicant, /\{d && key !== "agreement" && !d\.signed_agreement && d\.uploaded_by_role !== "driver" && \(/);
     // Exactly one Delete entry point in each, and it is the guarded one.
     assert.equal((vault.match(/removeDoc\(/g) ?? []).length, 1);
     assert.equal((applicant.match(/void drop\(/g) ?? []).length, 1);

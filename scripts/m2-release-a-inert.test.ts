@@ -116,13 +116,13 @@ assert(legacyRan.length === 1, "and the legacy write ran");
 
 // 4. Re-approving an already-approved application is handled in the caller, not
 //    here: the accepted release rewrote status and logged a second
-//    application.approved entry, Release A skips both and still re-sends the
-//    agreement. Pin the guard so the skip is deliberate.
+//    application.approved entry, Release A skips both and still allows an
+//    explicitly requested agreement. Pin the guard so the skip is deliberate.
 const approve = readFileSync(new URL("../src/lib/applications.functions.ts", import.meta.url), "utf8");
 const handler = approve.slice(approve.indexOf("export const approveApplication"));
-const guard = handler.indexOf('if (app.status !== "approved")');
+const guard = handler.indexOf('const newlyApproved = app.status !== "approved"');
 const packetCall = handler.indexOf("approveThroughPacket");
-assert(guard > 0, "the already-approved guard is present");
+assert(guard > 0 && handler.includes("if (newlyApproved)"), "the already-approved guard is present");
 assert(guard < packetCall, "the guard precedes the packet call, so an approved row writes no status and no audit");
 
 console.log(

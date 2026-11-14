@@ -39,9 +39,15 @@ const patchSchema = z
     weekly_rent: z.number().nonnegative().nullable().optional(),
     contract_start_date: date.optional(),
     contract_end_date: date.optional(),
+    dob: date.optional(),
     license_number: text.optional(),
     license_state: text.optional(),
     license_expiration: date.optional(),
+    years_licensed: z.number().int().nonnegative().max(100).nullable().optional(),
+    platforms: z.array(z.string().trim().min(1).max(100)).max(20).nullable().optional(),
+    weekly_hours: z.number().int().nonnegative().max(168).nullable().optional(),
+    expected_duration: text.optional(),
+    payment_method: text.optional(),
   })
   .strict()
   .refine((p) => Object.keys(p).length > 0, "No changes supplied");

@@ -38,7 +38,7 @@ describe("application status mapping", () => {
     assert.equal(byKey(partial, "documents")?.state, "upcoming");
     assert.deepEqual(
       partial.missing.map((m) => m.label),
-      ["Driver License", "Insurance", "Identity Review"],
+      ["Driver License", "Identity Review"],
     );
 
     const submitted = labels("new", { licenseOnFile: false, insuranceOnFile: true, identityClear: false });

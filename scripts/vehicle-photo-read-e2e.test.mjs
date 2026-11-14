@@ -95,6 +95,8 @@ function freshState() {
     readsByMedia: new Map(),   // mediaId -> itemId (duplicate protection)
     failMedia: new Set(),      // these report a read failure
     applied: [],               // "<proposalId>:<field>"
+    listThumbnailId: null,
+    thumbnailWrites: [],
     profileReads: 0,
     nextId: 1,
   };
@@ -177,7 +179,7 @@ function serverFn(name, input) {
         enabled: r.enabled, dailyLimit: r.dailyLimit, usedToday: r.usedToday, remainingToday: remaining,
         pausedReason: null, pausedAt: null, updatedAt: new Date().toISOString(), updatedBy: "owner-1",
         refusal: !r.enabled
-          ? "Photo Reading is switched off. An Owner can turn it on in Settings → Photo Reading."
+          ? "Photo Reading is switched off. An Owner can turn it on in Settings → Media."
           : remaining <= 0 ? `Today's limit of ${r.dailyLimit} photos has been reached. It resets at midnight UTC.` : null,
         isOwner: true,
       };
@@ -194,7 +196,15 @@ function serverFn(name, input) {
         })),
         canDelete: true,
         enhancement: { available: false, provider: null, reason: "Off" },
+        listThumbnailId: state.listThumbnailId,
       };
+    case /setVehicleListThumbnail/.test(name): {
+      const media = state.media.find((m) => m.id === input?.mediaId && m.kind === "original");
+      if (!media) return { ok: false, error: "Choose an original photo from this vehicle." };
+      state.listThumbnailId = media.id;
+      state.thumbnailWrites.push({ vehicleId: input?.vehicleId, mediaId: media.id });
+      return { ok: true };
+    }
     case /createImportBatch/.test(name): {
       const id = `batch-${state.nextId++}`;
       state.batches.set(id, { id, items: [] });
@@ -207,7 +217,7 @@ function serverFn(name, input) {
       if (m.kind !== "original") return { ok: false, mediaId, error: "Only original photographs can be read — an enhanced copy is not evidence." };
       if (state.readsByMedia.has(mediaId)) return { ok: true, mediaId, itemId: state.readsByMedia.get(mediaId), duplicate: true };
       const remaining = state.reading.dailyLimit - state.reading.usedToday;
-      if (!state.reading.enabled) return { ok: false, mediaId, error: "Photo Reading is switched off. An Owner can turn it on in Settings → Photo Reading." };
+      if (!state.reading.enabled) return { ok: false, mediaId, error: "Photo Reading is switched off. An Owner can turn it on in Settings → Media." };
       if (remaining <= 0) return { ok: false, mediaId, error: `Today's limit of ${state.reading.dailyLimit} photos has been reached. It resets at midnight UTC.` };
       state.reading.usedToday += 1;
       const b = state.batches.get(input?.batchId);
@@ -241,6 +251,9 @@ function serverFn(name, input) {
       return profilePayload();
     case /getPhotoEnhanceStatus/.test(name):
       return { enabled: false, dailyLimit: 20, usedToday: 0, isOwner: true };
+    case /listStudioMedia/.test(name): return { items: [] };
+    case /getPhotoStudioStatus/.test(name):
+      return { enabled: false, configured: false, canPublish: false, usage: { monthCents: 0, todayImages: 0 }, monthlyCapCents: 0, dailyImageLimit: 0, model: "off" };
     case /getVehicleDocAccess/.test(name): return { financeSlots: true };
     case /listVehicleDocs/.test(name): return [];
     case /listVehicleLinkedDocs/.test(name): return [];
@@ -330,6 +343,18 @@ async function runViewport(label, viewport) {
   // ------------------------------------------------- nothing read on arrival
   ok(state.batches.size === 0 && state.reading.usedToday === 0,
     "arriving on the tab reads nothing and spends nothing");
+
+  // ------------------------------------------- staff list thumbnail choice
+  const thumbnailButtons = page.getByRole("button", { name: "Use As Thumbnail", exact: true });
+  ok(await thumbnailButtons.count() === 3, "every original offers Use As Thumbnail; the retouched copy does not");
+  const profileReadsBeforeThumbnail = state.profileReads;
+  await thumbnailButtons.nth(1).click();
+  await page.getByRole("button", { name: "Current Thumbnail", exact: true }).waitFor();
+  ok(state.listThumbnailId === "m-2" && state.thumbnailWrites.length === 1,
+    "choosing a photo saves that original as the staff list thumbnail");
+  ok(await page.getByRole("button", { name: "Current Thumbnail", exact: true }).getAttribute("aria-pressed") === "true",
+    "the selected card is clearly marked Current Thumbnail");
+  ok(state.profileReads > profileReadsBeforeThumbnail, "the selection refreshes the open profile and Vehicles list");
 
   // ----------------------------------------------------------- choosing
   await page.getByRole("button", { name: "Choose Photos" }).click();

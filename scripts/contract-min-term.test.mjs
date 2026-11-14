@@ -51,6 +51,7 @@ export const createServerFn = () => {
   const api = { middleware: () => api, inputValidator: (v) => (api._v = v, api), handler: (fn) => Object.assign(fn, { _validate: api._v }) };
   return api;
 };
+export const createServerOnlyFn = (fn) => fn;
 `);
 writeFileSync(`${OUT}/stub-start-server.js`, `
 export const getRequest = () => ({ headers: new Map() });
@@ -314,10 +315,11 @@ ok(!/license valid on the start date/i.test(msg),
 ok(!/minimum-term end date/i.test(msg),
   "  with the minimum-term end date computed, so it is not among the blockers");
 
-// With no start date agreed at all, both of those are blocked rather than guessed.
+// Staff preparation now supplies an editable start preset and a four-week
+// end preset. The other contract safeguards still apply to those dates.
 msg = await refusal({ ...COMPLETE_APP, contract_start_date: null }, prepWith("2026-05-01"));
-ok(/contract start date/i.test(msg) && /minimum-term end date/i.test(msg),
-  `  and with no start date, the contract start date and minimum-term end date both block (${msg})`);
+ok(/license valid on the start date/i.test(msg) && !/contract start date/i.test(msg) && !/minimum-term end date/i.test(msg),
+  `  and with no stored start date, the editable preset applies without weakening license checks (${msg})`);
 
 // ================================================= the coupling is gone
 console.log("\\nno calculation reads a formatted date any more");

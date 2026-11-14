@@ -982,6 +982,7 @@ export type Database = {
           delay_minutes: number
           id: string
           is_active: boolean
+          skip_when_profile_complete: boolean
           step_order: number
           subject: string | null
           updated_at: string
@@ -994,6 +995,7 @@ export type Database = {
           delay_minutes?: number
           id?: string
           is_active?: boolean
+          skip_when_profile_complete?: boolean
           step_order?: number
           subject?: string | null
           updated_at?: string
@@ -1006,6 +1008,7 @@ export type Database = {
           delay_minutes?: number
           id?: string
           is_active?: boolean
+          skip_when_profile_complete?: boolean
           step_order?: number
           subject?: string | null
           updated_at?: string
@@ -1062,6 +1065,66 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      checklist_evidence_events: {
+        Row: {
+          actor_id: string
+          actor_role: string
+          application_id: string
+          created_at: string
+          field: string
+          id: string
+          idempotency_key: string
+          note: string
+          revision: number
+          source: string | null
+          state: string
+          supersedes_id: string | null
+        }
+        Insert: {
+          actor_id: string
+          actor_role: string
+          application_id: string
+          created_at?: string
+          field: string
+          id?: string
+          idempotency_key: string
+          note?: string
+          revision: number
+          source?: string | null
+          state: string
+          supersedes_id?: string | null
+        }
+        Update: {
+          actor_id?: string
+          actor_role?: string
+          application_id?: string
+          created_at?: string
+          field?: string
+          id?: string
+          idempotency_key?: string
+          note?: string
+          revision?: number
+          source?: string | null
+          state?: string
+          supersedes_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checklist_evidence_events_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_evidence_events_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "checklist_evidence_events"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       condition_media: {
         Row: {
@@ -4471,10 +4534,105 @@ export type Database = {
         }
         Relationships: []
       }
+      rent_late_fee_waivers: {
+        Row: {
+          amount_waived: number | null
+          created_at: string
+          due_date: string
+          id: string
+          reason: string | null
+          rental_id: string
+          updated_at: string
+          waived_by: string | null
+          waived_by_email: string | null
+          waived_through: string | null
+        }
+        Insert: {
+          amount_waived?: number | null
+          created_at?: string
+          due_date: string
+          id?: string
+          reason?: string | null
+          rental_id: string
+          updated_at?: string
+          waived_by?: string | null
+          waived_by_email?: string | null
+          waived_through?: string | null
+        }
+        Update: {
+          amount_waived?: number | null
+          created_at?: string
+          due_date?: string
+          id?: string
+          reason?: string | null
+          rental_id?: string
+          updated_at?: string
+          waived_by?: string | null
+          waived_by_email?: string | null
+          waived_through?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rent_late_fee_waivers_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rent_reminder_log: {
+        Row: {
+          channel: string
+          created_at: string
+          detail: string | null
+          due_date: string
+          id: string
+          outcome: string
+          rental_id: string
+          source: string
+          stage: string
+          updated_at: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          detail?: string | null
+          due_date: string
+          id?: string
+          outcome?: string
+          rental_id: string
+          source?: string
+          stage: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          detail?: string | null
+          due_date?: string
+          id?: string
+          outcome?: string
+          rental_id?: string
+          source?: string
+          stage?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rent_reminder_log_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rentals: {
         Row: {
           application_id: string | null
           autopay_active: boolean
+          balance_due_cents: number
           card_brand: string | null
           card_exp_month: number | null
           card_exp_year: number | null
@@ -4489,10 +4647,18 @@ export type Database = {
           deposit_status: string
           driver_id: string
           end_date: string | null
+          final_invoice_id: string | null
+          final_invoice_url: string | null
           id: string
           next_payment_due: string | null
           payment_status: string
           pickup_reading_id: string | null
+          reservation_deposit_amount: number
+          reservation_deposit_payment_id: string | null
+          reservation_deposit_required: boolean
+          reservation_deposit_status: string
+          reservation_note: string | null
+          return_photos_skipped_reason: string | null
           return_reading_id: string | null
           start_date: string
           status: string
@@ -4500,12 +4666,13 @@ export type Database = {
           stripe_payment_method_id: string | null
           stripe_subscription_id: string | null
           updated_at: string
-          vehicle_id: string
+          vehicle_id: string | null
           weekly_rate: number
         }
         Insert: {
           application_id?: string | null
           autopay_active?: boolean
+          balance_due_cents?: number
           card_brand?: string | null
           card_exp_month?: number | null
           card_exp_year?: number | null
@@ -4520,10 +4687,18 @@ export type Database = {
           deposit_status?: string
           driver_id: string
           end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
           id?: string
           next_payment_due?: string | null
           payment_status?: string
           pickup_reading_id?: string | null
+          reservation_deposit_amount?: number
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean
+          reservation_deposit_status?: string
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
           return_reading_id?: string | null
           start_date?: string
           status?: string
@@ -4531,12 +4706,13 @@ export type Database = {
           stripe_payment_method_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
-          vehicle_id: string
+          vehicle_id?: string | null
           weekly_rate?: number
         }
         Update: {
           application_id?: string | null
           autopay_active?: boolean
+          balance_due_cents?: number
           card_brand?: string | null
           card_exp_month?: number | null
           card_exp_year?: number | null
@@ -4551,10 +4727,18 @@ export type Database = {
           deposit_status?: string
           driver_id?: string
           end_date?: string | null
+          final_invoice_id?: string | null
+          final_invoice_url?: string | null
           id?: string
           next_payment_due?: string | null
           payment_status?: string
           pickup_reading_id?: string | null
+          reservation_deposit_amount?: number
+          reservation_deposit_payment_id?: string | null
+          reservation_deposit_required?: boolean
+          reservation_deposit_status?: string
+          reservation_note?: string | null
+          return_photos_skipped_reason?: string | null
           return_reading_id?: string | null
           start_date?: string
           status?: string
@@ -4562,7 +4746,7 @@ export type Database = {
           stripe_payment_method_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
-          vehicle_id?: string
+          vehicle_id?: string | null
           weekly_rate?: number
         }
         Relationships: [
@@ -4581,6 +4765,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "rentals_reservation_deposit_payment_id_fkey"
+            columns: ["reservation_deposit_payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "rentals_return_reading_id_fkey"
             columns: ["return_reading_id"]
             isOneToOne: false
@@ -4596,6 +4787,241 @@ export type Database = {
           },
           {
             foreignKeyName: "rentals_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      renter_reimbursements: {
+        Row: {
+          amount: number
+          application_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          method: string
+          notes: string | null
+          paid_on: string
+          reason: string
+          receipt_mime: string | null
+          receipt_name: string | null
+          receipt_path: string | null
+          reference: string | null
+          rental_id: string | null
+          source_expense_id: string | null
+          updated_at: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount: number
+          application_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          method: string
+          notes?: string | null
+          paid_on: string
+          reason: string
+          receipt_mime?: string | null
+          receipt_name?: string | null
+          receipt_path?: string | null
+          reference?: string | null
+          rental_id?: string | null
+          source_expense_id?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount?: number
+          application_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          method?: string
+          notes?: string | null
+          paid_on?: string
+          reason?: string
+          receipt_mime?: string | null
+          receipt_name?: string | null
+          receipt_path?: string | null
+          reference?: string | null
+          rental_id?: string | null
+          source_expense_id?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "renter_reimbursements_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "renter_reimbursements_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "renter_reimbursements_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "renter_reimbursements_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      return_checklist_items: {
+        Row: {
+          area: string
+          checklist_id: string
+          id: string
+          item_key: string
+          label: string
+          notes: string | null
+          result: string
+        }
+        Insert: {
+          area: string
+          checklist_id: string
+          id?: string
+          item_key: string
+          label: string
+          notes?: string | null
+          result: string
+        }
+        Update: {
+          area?: string
+          checklist_id?: string
+          id?: string
+          item_key?: string
+          label?: string
+          notes?: string | null
+          result?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "return_checklist_items_checklist_id_fkey"
+            columns: ["checklist_id"]
+            isOneToOne: false
+            referencedRelation: "return_checklists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      return_checklist_photos: {
+        Row: {
+          angle: string | null
+          checklist_id: string
+          created_at: string
+          id: string
+          storage_bucket: string
+          storage_path: string
+        }
+        Insert: {
+          angle?: string | null
+          checklist_id: string
+          created_at?: string
+          id?: string
+          storage_bucket?: string
+          storage_path: string
+        }
+        Update: {
+          angle?: string | null
+          checklist_id?: string
+          created_at?: string
+          id?: string
+          storage_bucket?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "return_checklist_photos_checklist_id_fkey"
+            columns: ["checklist_id"]
+            isOneToOne: false
+            referencedRelation: "return_checklists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      return_checklists: {
+        Row: {
+          condition_notes: string | null
+          created_at: string
+          deposit_decision_needed: boolean
+          deposit_decision_note: string | null
+          fuel_or_charge: string
+          id: string
+          keys_returned: boolean
+          odometer: number
+          photos_skipped_reason: string | null
+          recorded_by: string | null
+          rental_id: string
+          returned_at: string
+          tolls_tickets_note: string | null
+          vehicle_id: string
+        }
+        Insert: {
+          condition_notes?: string | null
+          created_at?: string
+          deposit_decision_needed?: boolean
+          deposit_decision_note?: string | null
+          fuel_or_charge: string
+          id?: string
+          keys_returned: boolean
+          odometer: number
+          photos_skipped_reason?: string | null
+          recorded_by?: string | null
+          rental_id: string
+          returned_at: string
+          tolls_tickets_note?: string | null
+          vehicle_id: string
+        }
+        Update: {
+          condition_notes?: string | null
+          created_at?: string
+          deposit_decision_needed?: boolean
+          deposit_decision_note?: string | null
+          fuel_or_charge?: string
+          id?: string
+          keys_returned?: boolean
+          odometer?: number
+          photos_skipped_reason?: string | null
+          recorded_by?: string | null
+          rental_id?: string
+          returned_at?: string
+          tolls_tickets_note?: string | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "return_checklists_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "return_checklists_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "return_checklists_vehicle_id_fkey"
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles_public"
@@ -6143,6 +6569,18 @@ export type Database = {
       next_unit_number: { Args: { _prefix?: string }; Returns: string }
       promote_waitlist_entry: { Args: { _entry: string }; Returns: Json }
       purge_application: { Args: { _id: string }; Returns: Json }
+      record_checklist_evidence: {
+        Args: {
+          _application_id: string
+          _expected_revision: number
+          _field: string
+          _idempotency_key: string
+          _note: string
+          _source: string
+          _state: string
+        }
+        Returns: Json
+      }
       rental_at_time: {
         Args: { _at: string; _vehicle_id: string }
         Returns: string

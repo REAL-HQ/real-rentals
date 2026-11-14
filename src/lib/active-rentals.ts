@@ -69,6 +69,34 @@ export function overdueDays(nextPaymentDue: string | null | undefined, today: st
   return Math.max(0, days);
 }
 
+/** Payment statuses that mean a week's rent is still owed. */
+export const UNPAID_PAYMENT_STATUSES = new Set(["failed", "overdue", "past_due", "late", "unpaid", "collections"]);
+
+/** Due date (YYYY-MM-DD) of the rental's oldest still-unpaid payment row, or null. */
+export function oldestUnpaidDue(rentalId: string, payments: PaymentFact[]): string | null {
+  let oldest: string | null = null;
+  for (const p of payments) {
+    if (p.rentalId !== rentalId) continue;
+    if (!UNPAID_PAYMENT_STATUSES.has(String(p.status ?? "").trim().toLowerCase())) continue;
+    const due = dateOnly(p.dueDate);
+    if (due && (oldest == null || due < oldest)) oldest = due;
+  }
+  return oldest;
+}
+
+/**
+ * Days overdue counted from the oldest unpaid week: an older failed charge is
+ * still owed after next_payment_due has moved on to a newer week. Falls back
+ * to next_payment_due when no unpaid row exists.
+ */
+export function rentalOverdueDays(nextPaymentDue: string | null | undefined, oldestUnpaid: string | null, today: string): number | null {
+  const fromDue = overdueDays(nextPaymentDue, today);
+  const fromUnpaid = oldestUnpaid ? overdueDays(oldestUnpaid, today) : null;
+  if (fromDue == null) return fromUnpaid;
+  if (fromUnpaid == null) return fromDue;
+  return Math.max(fromDue, fromUnpaid);
+}
+
 export function documentsExpiring(dates: Array<string | null | undefined>, today: string): boolean {
   return dates.some((value) => {
     const days = calendarDaysBetween(today, value);
@@ -83,7 +111,7 @@ export type ActiveRentalSource = {
   driverId: string;
   driverName: string;
   applicationId: string | null;
-  vehicleId: string;
+  vehicleId: string | null;
   vehicleLabel: string;
   startDate: string;
   weeklyRate: number | null;
@@ -119,8 +147,9 @@ export type ActiveRentalRow = {
   driverId: string;
   driverName: string;
   applicationId: string | null;
-  vehicleId: string;
+  vehicleId: string | null;
   vehicleLabel: string;
+  thumbnailPath?: string | null;
   startDate: string;
   weeksIn: number | null;
   weeklyRate: number | null;
@@ -158,14 +187,14 @@ function countsForRental(
     if (isIssueClosed(issue.status)) return false;
     if (issue.rentalId && issue.rentalId === rental.id) return true;
     if (issue.rentalId) return false;
-    return issue.driverId === rental.driverId || issue.vehicleId === rental.vehicleId;
+    return issue.driverId === rental.driverId || (!!rental.vehicleId && issue.vehicleId === rental.vehicleId);
   }).length;
   const seen = new Set<string>();
   let openIncidents = 0;
   for (const incident of incidents) {
     if (!isOpenIncidentStatus(incident.status)) continue;
     const onThisRental = incident.rentalId === rental.id;
-    const onThisVehicle = !incident.rentalId && incident.vehicleId === rental.vehicleId;
+    const onThisVehicle = !incident.rentalId && !!rental.vehicleId && incident.vehicleId === rental.vehicleId;
     if (!onThisRental && !onThisVehicle) continue;
     if (seen.has(incident.id)) continue;
     seen.add(incident.id);
@@ -202,7 +231,11 @@ export function buildActiveRentalRows(args: {
         weeksIn: weeksIn(rental.startDate, args.today),
         weeklyRate: rental.weeklyRate,
         nextPaymentDue: dateOnly(rental.nextPaymentDue),
-        overdueDays: overdueDays(rental.nextPaymentDue, args.today),
+        overdueDays: rentalOverdueDays(
+          rental.nextPaymentDue,
+          args.payments.ok ? oldestUnpaidDue(rental.id, args.payments.rows) : null,
+          args.today,
+        ),
         lastPaymentStatus: !args.payments.ok ? null : payment?.status?.trim() || null,
         lastPaymentViaStripe: !args.payments.ok || !payment
           ? null

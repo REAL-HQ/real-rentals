@@ -10,6 +10,7 @@ import { previewTemplateBody, saveTemplateDraft, unknownFieldsIn, type TemplateV
 import {
   TERM_FIELDS, ALL_TERM_FIELDS, TERM_GROUPS, V16_SOURCE, V16_TERM_DEFAULTS, readTerms, stripTerms, writeTerms, missingTerms, unknownTermsIn, termsIn, UNPRINTED_TERMS,
 } from "@/lib/agreement-builder";
+import { V114_SOURCE, V114_TERM_DEFAULTS } from "@/lib/agreement-v114";
 
 /** Library templates: fixed legal wording; only contract values are edited and saved as a Draft. */
 export type LibraryEdit = {
@@ -20,7 +21,7 @@ const isOpen = (v?: string) => /\[[^\]]*\]/.test(String(v ?? ""));
 const FIX_LINK: Record<string, string> = {
   "Legal Business Name": "/admin?tab=settings&section=company", "Business Address": "/admin?tab=settings&section=company",
   "Support Phone": "/admin?tab=settings&section=company", "Support Email": "/admin?tab=settings&section=company",
-  "Countersigner": "/admin?tab=settings&section=esign",
+  "Countersigner": "/admin?tab=settings&section=media",
 };
 import { Diff } from "@/components/admin/AgreementTemplatesPanel";
 
@@ -60,7 +61,10 @@ export function AgreementBuilder({
   const [terms, setTerms] = useState<Record<string, string>>(() => (library ? { ...library.terms } : { ...V16_TERM_DEFAULTS, ...(baseTerms ?? {}) }));
   const usedTerms = useMemo(() => new Set(termsIn(source)), [source]);
   // Reservation Fee is rental-specific (Prepare Agreement), never a template value.
-  const fieldList = library ? ALL_TERM_FIELDS.filter((f) => usedTerms.has(f.key) && f.key !== "reservation_line") : TERM_FIELDS;
+  // Later-family values (e.g. the Damage Waiver fee) appear only when the wording prints them.
+  const fieldList = library
+    ? ALL_TERM_FIELDS.filter((f) => usedTerms.has(f.key) && f.key !== "reservation_line")
+    : ALL_TERM_FIELDS.filter((f) => TERM_FIELDS.includes(f) || (usedTerms.has(f.key) && !UNPRINTED_TERMS.includes(f.key)));
   const hasMileage = usedTerms.has("mileage_allowance");
   const openValues = fieldList.filter((f) => isOpen(terms[f.key])).map((f) => f.key);
   const [tab, setTab] = useState<"details" | "preview">("details");
@@ -154,7 +158,7 @@ export function AgreementBuilder({
             </div>
           ))}
         </dl>
-        <p className="text-[11px] text-muted-foreground">Company details come from Settings → Company and Agreements & eSign. Edit them there.</p>
+        <p className="text-[11px] text-muted-foreground">Company details come from Settings → Company and Media. Edit them there.</p>
       </Section>
 
       {TERM_GROUPS.map((g) => {
@@ -191,6 +195,15 @@ export function AgreementBuilder({
           The full contract text. {"{{field}}"} values are filled per rental; [[term]] values come from the sections above. Any change saves as a new Draft.
         </p>
         {library && <p className="text-[11px] text-muted-foreground">This agreement's legal wording is fixed; only the contract values above can change.</p>}
+        {!library && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
+            <p className="text-[11px] text-muted-foreground">Vehicle Rental Agreement v1.14 (Insurance Included) is built in. Loading it replaces the wording and values below; nothing is saved or sent until you save a Draft and approve it.</p>
+            <Button type="button" size="sm" variant="outline" disabled={source === V114_SOURCE}
+              onClick={() => { setSource(V114_SOURCE); setTerms({ ...V114_TERM_DEFAULTS }); toast.success("v1.14 Wording Loaded — Review, Then Save Draft"); }}>
+              {source === V114_SOURCE ? "v1.14 Wording Loaded" : "Load v1.14 Wording"}
+            </Button>
+          </div>
+        )}
         <Textarea readOnly={!!library} value={source} onChange={(e) => setSource(e.target.value)} className="min-h-[60vh] font-mono text-[11px] leading-5" aria-label="Legal Wording" />
       </Section>
     </div>

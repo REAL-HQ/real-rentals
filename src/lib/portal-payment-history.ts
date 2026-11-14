@@ -7,8 +7,9 @@
  * and the server function import it from here.
  */
 import { decimalSourceCents } from "@/lib/unified-finance-live-mapping";
+import { fmtDate } from "@/lib/date-format";
 
-export const PORTAL_PAYMENT_HISTORY_ENABLED: boolean = false as boolean;
+export const PORTAL_PAYMENT_HISTORY_ENABLED: boolean = true as boolean;
 
 export const HISTORY_READ_CAP = 999;
 export const HISTORY_CHUNK = 50;
@@ -35,6 +36,11 @@ export function asEasternCalendarDate(value: string | null | undefined): string 
   const parsed = Date.parse(trimmed);
   if (Number.isNaN(parsed)) return null;
   return easternCalendarDate(new Date(parsed));
+}
+
+export function formatHistoryDate(value: string | null | undefined): string {
+  const calendarDate = asEasternCalendarDate(value);
+  return calendarDate ? fmtDate(calendarDate) || "Not Recorded" : "Not Recorded";
 }
 
 const CLOSED_CHARGE_STATUSES = ["paid", "refunded", "void", "waived"] as const;
@@ -91,10 +97,12 @@ export type HistoryPayment = {
   collectedCents: number | null;
   refundedCents: number | null;
   sourceLabel: string;
+  dueDate: string | null;
   paidDate: string | null;
 };
 
 export type PortalPaymentHistory = {
+  driverName: string | null;
   charges: HistoryCharge[];
   payments: HistoryPayment[];
   /** Cents when every open balance was valid. Null when unknown or not checked. */
@@ -191,6 +199,7 @@ export function verifiedPaymentSource(row: Pick<HistoryRow, "payment_method" | "
 export function buildPortalPaymentHistory(input: {
   rows: readonly HistoryRow[];
   truncated: boolean;
+  driverName?: string | null;
 }): PortalPaymentHistory {
   const seen = new Set<string>();
   const charges: HistoryCharge[] = [];
@@ -233,16 +242,18 @@ export function buildPortalPaymentHistory(input: {
         collectedCents,
         refundedCents: cents(row.refunded_amount ?? 0),
         sourceLabel: source,
+        dueDate: row.due_date,
         paidDate: row.paid_date,
       });
     }
   }
 
   return {
+    driverName: input.driverName?.trim() || null,
     charges,
     payments,
-    balanceDueCents: input.truncated || balanceUnknown ? null : balance,
-    balanceState: input.truncated ? "not_checked" : balanceUnknown ? "unknown" : "known",
+    balanceDueCents: input.truncated || balanceUnknown || input.rows.length === 0 ? null : balance,
+    balanceState: input.truncated ? "not_checked" : balanceUnknown || input.rows.length === 0 ? "unknown" : "known",
     truncated: input.truncated,
   };
 }
@@ -259,7 +270,8 @@ export function receiptText(payment: HistoryPayment): string {
     `Amount: ${formatHistoryCents(payment.amountCents)}`,
     `Collected: ${formatHistoryCents(payment.collectedCents)}`,
     `Refunded: ${formatHistoryCents(payment.refundedCents)}`,
-    payment.paidDate ? `Paid: ${asEasternCalendarDate(payment.paidDate) ?? "Not Recorded"}` : "Paid: Not Recorded",
+    `Due: ${payment.dueDate ? fmtDate(asEasternCalendarDate(payment.dueDate)) || "Not Recorded" : "Not Recorded"}`,
+    `Paid: ${payment.paidDate ? fmtDate(asEasternCalendarDate(payment.paidDate)) || "Not Recorded" : "Not Recorded"}`,
   ].join("\n");
 }
 
@@ -284,13 +296,14 @@ function chunks(ids: readonly string[]): string[][] {
 export async function readOwnPaymentHistory(client: PaymentHistoryClient, userId: string): Promise<PortalPaymentHistory> {
   const applications = await client
     .from("applications")
-    .select("id")
+    .select("id,full_name")
     .eq("user_id", userId)
     .is("deleted_at", null)
     .order("id", { ascending: true })
     .limit(HISTORY_READ_CAP + 1);
   if (applications.error) throw new Error("Payment history could not be loaded.");
-  const applicationRows = (applications.data ?? []) as { id?: string }[];
+  const applicationRows = (applications.data ?? []) as { id?: string; full_name?: string | null }[];
+  const driverName = applicationRows.find((row) => row.full_name?.trim())?.full_name?.trim() || null;
   const truncatedApplications = applicationRows.length > HISTORY_READ_CAP;
   const applicationIds = (truncatedApplications ? applicationRows.slice(0, HISTORY_READ_CAP) : applicationRows)
     .map((row) => row.id)
@@ -315,5 +328,6 @@ export async function readOwnPaymentHistory(client: PaymentHistoryClient, userId
   return buildPortalPaymentHistory({
     rows,
     truncated: truncatedApplications || truncatedPayments,
+    driverName,
   });
 }

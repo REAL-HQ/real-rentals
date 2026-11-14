@@ -3,7 +3,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Plus, X, Zap, MessageSquare, Mail, Clock, Trash2, Send } from "lucide-react";
 import { StatusPill, EmptyState, MicroLabel } from "./ui";
+import { WorkflowSwitch } from "./WorkflowSwitch";
 import { fmtDateTime } from "@/lib/date-format";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Workflow = {
   id: string;
@@ -26,7 +37,14 @@ type Step = {
   subject: string | null;
   body: string;
   is_active: boolean;
+  /** Undefined until the skip_when_profile_complete migration is applied. */
+  skip_when_profile_complete?: boolean;
 };
+
+/** True once the database has the skip_when_profile_complete column. */
+export function hasSkipColumn(rows: Array<Record<string, unknown>>): boolean {
+  return rows.some((r) => Object.prototype.hasOwnProperty.call(r, "skip_when_profile_complete"));
+}
 
 type LogRow = {
   id: string;
@@ -50,7 +68,15 @@ const TRIGGERS = [
   { value: "document_expiring", label: "A Document Is Expiring" },
 ];
 
-const TOKENS = ["first_name", "full_name", "city", "phone", "email"];
+const TOKENS = [
+  "first_name",
+  "full_name",
+  "city",
+  "phone",
+  "email",
+  "company_phone",
+  "resume_link",
+];
 
 /** Turn minutes into something an operator reads at a glance. */
 export function humanDelay(minutes: number): string {
@@ -95,21 +121,32 @@ export function AutomationsPanel() {
     load();
   }, []);
 
-  async function toggleActive(wf: Workflow) {
-    if (!wf.is_active) {
-      const count = steps.filter((s) => s.workflow_id === wf.id && s.is_active).length;
-      if (count === 0) {
-        return toast.error("Add at least one message before turning this on.");
-      }
-      if (!confirm(`Turn on "${wf.name}"? Real messages will start going out to applicants.`))
-        return;
+  // The workflow's is_active flag is the only switch the engine checks:
+  // enrollInWorkflows enrolls only into active workflows and the 5-minute
+  // sweep cancels any enrollment whose workflow is off. There is no other
+  // global gate, so the toggle shows is_active as-is and never claims more.
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirmOn, setConfirmOn] = useState<Workflow | null>(null);
+
+  function requestToggle(wf: Workflow, next: boolean) {
+    if (busyId) return;
+    if (!next) return void setActive(wf, false); // Turning off is immediate.
+    const count = steps.filter((s) => s.workflow_id === wf.id && s.is_active).length;
+    if (count === 0) {
+      return void toast.error("Add at least one message before turning this on.");
     }
+    setConfirmOn(wf); // Turning on sends to real people, so confirm first.
+  }
+
+  async function setActive(wf: Workflow, next: boolean) {
+    setBusyId(wf.id);
     const { error } = await supabase
       .from("automation_workflows")
-      .update({ is_active: !wf.is_active })
+      .update({ is_active: next })
       .eq("id", wf.id);
-    if (error) return toast.error(error.message);
-    toast.success(wf.is_active ? "Automation paused" : "Automation is live");
+    setBusyId(null);
+    if (error) return void toast.error(error.message);
+    toast.success(next ? `${wf.name} Is On` : `${wf.name} Is Off`);
     load();
   }
 
@@ -142,6 +179,31 @@ export function AutomationsPanel() {
         </button>
       </div>
 
+      <AlertDialog open={confirmOn !== null} onOpenChange={(o) => !o && setConfirmOn(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Turn On {confirmOn?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Real texts and emails will start going out to new applicants from now on. People who
+              applied before you turn it on are not messaged.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-[#D03020] text-white hover:bg-[#B82818]"
+              onClick={() => {
+                const wf = confirmOn;
+                setConfirmOn(null);
+                if (wf) void setActive(wf, true);
+              }}
+            >
+              Turn On
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : workflows.length === 0 ? (
@@ -166,7 +228,7 @@ export function AutomationsPanel() {
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold truncate">{wf.name}</h3>
                       <StatusPill status={wf.is_active ? "active" : "paused"}>
-                        {wf.is_active ? "Live" : "Paused"}
+                        {wf.is_active ? "Live" : "Off"}
                       </StatusPill>
                     </div>
                     {wf.description ? (
@@ -182,16 +244,12 @@ export function AutomationsPanel() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => toggleActive(wf)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${
-                        wf.is_active
-                          ? "border-[#EDEDF0] text-[#55555E] hover:border-[#D6D6DB]"
-                          : "border-transparent bg-[#D03020] text-white hover:opacity-90"
-                      }`}
-                    >
-                      {wf.is_active ? "Pause" : "Turn On"}
-                    </button>
+                    <WorkflowSwitch
+                      name={wf.name}
+                      on={wf.is_active}
+                      busy={busyId === wf.id}
+                      onChange={(next) => requestToggle(wf, next)}
+                    />
                     <button
                       onClick={() => removeWorkflow(wf.id)}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#EDEDF0] text-[#55555E] hover:text-[#D03020] hover:border-[#D6D6DB]"
@@ -219,6 +277,9 @@ export function AutomationsPanel() {
                           <Clock className="w-3.5 h-3.5 ml-1" />
                           <span>{humanDelay(s.delay_minutes)} they apply</span>
                           {!s.is_active ? <span className="text-[#D03020]">· disabled</span> : null}
+                          {s.skip_when_profile_complete ? (
+                            <span>· Skipped If Profile Is Complete</span>
+                          ) : null}
                         </div>
                         {s.subject ? (
                           <div className="mt-1 text-sm font-medium">{s.subject}</div>
@@ -473,6 +534,12 @@ function StepForm({
     return "minutes";
   });
   const [busy, setBusy] = useState(false);
+  // Only offered once the column exists, so saving never names a missing column.
+  const skipSupported = hasSkipColumn(step ? [step] : existing);
+  const [skipWhenComplete, setSkipWhenComplete] = useState(
+    step?.skip_when_profile_complete === true,
+  );
+  const skipPatch = skipSupported ? { skip_when_profile_complete: skipWhenComplete } : {};
 
   const delayMinutes = (() => {
     const n = Number(amount);
@@ -494,6 +561,7 @@ function StepForm({
           subject: channel === "email" ? subject.trim() || null : null,
           body: body.trim(),
           delay_minutes: delayMinutes,
+          ...skipPatch,
         })
         .eq("id", step.id);
       setBusy(false);
@@ -507,6 +575,7 @@ function StepForm({
         subject: channel === "email" ? subject.trim() || null : null,
         body: body.trim(),
         delay_minutes: delayMinutes,
+        ...skipPatch,
       });
       setBusy(false);
       if (error) return toast.error(error.message);
@@ -582,7 +651,32 @@ function StepForm({
             "Reply STOP to opt out" in the first message of a sequence.
           </p>
         ) : null}
+        {/\{\{\s*resume_link\s*\}\}/i.test(body) ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {"{{resume_link}}"} becomes the applicant's private link to finish their profile. It
+            works for 14 days{channel === "email" ? " and shows as a Finish My Profile button" : ""}
+            .
+          </p>
+        ) : null}
       </Field>
+
+      {skipSupported ? (
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={skipWhenComplete}
+            onChange={(e) => setSkipWhenComplete(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-[#D03020]"
+          />
+          <span>
+            Skip If Profile Is Complete
+            <span className="block text-xs text-muted-foreground">
+              Applicants who already finished their license, insurance and address don't get this
+              message. The next message still goes out on schedule.
+            </span>
+          </span>
+        </label>
+      ) : null}
 
       <div>
         <MicroLabel>Personalisation</MicroLabel>

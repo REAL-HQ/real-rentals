@@ -15,29 +15,34 @@ const t = (name, fn) => { fn(); n++; console.log("PASS", name); };
 const req = (key, met, enforcement = "hard", extra = {}) => ({ key, label: key, met, enforcement, ...extra });
 const readiness = (requirements) => ({ ready: false, blockers: [], warnings: [], requirements, insurance: { status: "unverified", exceptionAllowed: false, settingPresent: true, settingReadable: true }, vehicleId: null, suggestedWeeklyRate: null, suggestedDeposit: null, inspectionMileage: null, currentMileage: null });
 const base = { step: "activate", entry: "enabled", readiness: null, loading: false, failed: false };
-const render = (model, r = null) => renderToStaticMarkup(h(NextStepCard, { model, readiness: r, onRun() {}, onActivate() {}, onRetry() {} }));
+const render = (model, r = null, extra = {}) => renderToStaticMarkup(h(NextStepCard, { model, readiness: r, onRun() {}, onActivate() {}, onRetry() {}, ...extra }));
 
 // Schrita/Damon/Regina shape: approved, agreement + docs fine, insurance NOT verified.
-const noInsurance = readiness([req("approved", true), req("signed_agreement", true), req("license_documents", true), req("insurance_verified", false, "hard", { detail: "Unverified" }), req("interview", true, "soft"), req("inspection", null, "soft"), req("insurance_document", false, "advisory")]);
+const noInsurance = readiness([req("approved", true), req("signed_agreement", true), req("license_documents", true), req("insurance_verified", false, "advisory", { detail: "Unverified" }), req("interview", true, "soft"), req("inspection", null, "soft"), req("insurance_document", false, "advisory")]);
 
-t("blocked on insurance: primary opens the insurance card, not activation", () => {
+t("unverified insurance does not block activation", () => {
   const m = nextStep({ ...base, readiness: noInsurance });
-  assert.equal(m.activation, "blocked");
-  assert.equal(m.label, "Verify Insurance");
-  assert.deepEqual(m.target, { kind: "section", tab: "screening", anchor: "profile-insurance" });
-  assert.deepEqual(m.blockers.map((b) => b.key), ["insurance_verified"], "advisory and soft items are not blockers");
+  assert.equal(m.activation, "ready");
+  assert.equal(m.label, "Activate Rental");
+  assert.deepEqual(m.target, { kind: "activate" });
+  assert.deepEqual(m.blockers, []);
 });
 t("blocked card still shows Activate Rental (findable) and names the blocker with its fix", () => {
-  const html = render(nextStep({ ...base, readiness: noInsurance }), noInsurance);
+  const blocked = readiness([req("approved", true), req("signed_agreement", true), req("license_documents", false), req("insurance_verified", false, "advisory", { detail: "Unverified" }), req("insurance_document", false, "advisory")]);
+  const html = render(nextStep({ ...base, readiness: blocked }), blocked);
   assert.match(html, /data-activation="blocked"/);
   assert.match(html, />(<svg[^]*?<\/svg>)? ?Activate Rental<\/button>/);
-  assert.match(html, /data-blocker="insurance_verified"[^]*Verify Insurance/);
-  assert.match(html, /Full Checklist/);
+  assert.match(html, /data-blocker="license_documents"[^]*Review Documents/);
+  assert.doesNotMatch(html, /data-blocker="insurance_verified"/);
+  assert.equal((html.match(/data-requirement="insurance_verified"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-requirement="license_documents"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-requirement="signed_agreement"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-requirement="insurance_document"/g) ?? []).length, 0);
 });
-t("blockers ordered: documents, insurance, approval, agreement", () => {
-  const r = readiness([req("signed_agreement", false), req("approved", false), req("insurance_verified", false), req("license_documents", false)]);
+t("blockers ordered: documents, approval, agreement; insurance is not one", () => {
+  const r = readiness([req("signed_agreement", false), req("approved", false), req("insurance_verified", false, "advisory"), req("license_documents", false)]);
   const m = nextStep({ ...base, step: "documents", readiness: r });
-  assert.deepEqual(m.blockers.map((b) => b.key), ["license_documents", "insurance_verified", "approved", "signed_agreement"]);
+  assert.deepEqual(m.blockers.map((b) => b.key), ["license_documents", "approved", "signed_agreement"]);
   assert.equal(m.label, "Review Documents");
   assert.equal(m.blockers.find((b) => b.key === "approved").target.kind, "approve");
   assert.equal(m.blockers.find((b) => b.key === "signed_agreement").target.anchor, "profile-agreements");
@@ -52,8 +57,8 @@ t("ready: Activate Rental is the one primary; no duplicate secondary", () => {
 });
 t("interview unfinished still comes first", () => {
   const m = nextStep({ ...base, step: "interview", readiness: noInsurance });
-  assert.equal(m.label, "Continue Interview");
-  assert.equal(m.blockers[1].key, "insurance_verified");
+  assert.deepEqual(m.target, { kind: "record_call" });
+  assert.deepEqual(m.blockers.map((b) => b.key), ["local"]);
 });
 t("loading: primary disabled, Activate Rental disabled, no fake checklist", () => {
   const m = nextStep({ ...base, loading: true });
@@ -87,10 +92,16 @@ t("Coordinator: never gets an Activate action; disabled entry with an explanatio
   const local = nextStep({ ...base, entry: "manager_only", step: "insurance" });
   assert.equal(local.label, "Verify Insurance");
 });
-t("rental running: card hidden, header says View Rental", () => {
+t("rental running: Next Step offers Return", () => {
   const m = nextStep({ ...base, entry: "rental_active", readiness: noInsurance });
-  assert.equal(m.label, "View Rental");
-  assert.equal(render(m), "");
+  assert.equal(m.label, "Return");
+  assert.match(render(m), /data-testid="next-step-return"/);
+});
+t("active rental keeps completed call notes editable beside Return", () => {
+  const m = nextStep({ ...base, entry: "rental_active", readiness: noInsurance });
+  const html = render({ ...m, activation: "rental_active" }, null, { canEditCallNotes: true });
+  assert.match(html, /data-testid="edit-call-notes"[^>]*>.*Edit Notes/);
+  assert.match(html, /data-testid="next-step-return"/);
 });
 t("responsive controls: same 36px height, full width on a phone", () => {
   const html = render(nextStep({ ...base, readiness: noInsurance }), noInsurance);
@@ -103,11 +114,15 @@ t("wiring: header and card share the model; fixes open the exact card; guards st
   assert.match(p, /onClick: \(\) => runTarget\(next\.target\)/);
   for (const id of ["profile-insurance", "profile-documents", "profile-agreements", "profile-vehicle"]) assert.match(p, new RegExp(`id="${id}"`));
   assert.match(p, /if \(approving\) return;/);
-  assert.match(p, /if \(activationEntry !== "enabled" \|\| activateOpen\) return;/, "readiness only fetched for Manager+");
-  assert.equal((p.match(/<ActivateRentalDialog/g) ?? []).length, 1);
+  assert.match(p, /if \(!isManager \|\| activateOpen\) return;/, "readiness only fetched for Manager+");
+  assert.equal((p.match(/<ActivateRentalDialog/g) ?? []).length, 2, "one list dialog and one driver-profile dialog");
+  assert.match(p, /ReserveCarDialog/);
+  assert.match(p, /canReserve/);
+  assert.match(p, /kind === "reserve"/);
   assert.doesNotMatch(p, /StartRentalCard/);
   const d = readFileSync("src/components/admin/ActivateRentalDialog.tsx", "utf8");
-  assert.match(d, /async function submit\(\) \{\n    if \(busy\) return;/);
+  assert.match(d, /async function submit\(\) \{\n    if \(!canSubmit\) return;/);
+  assert.match(d, /const canSubmit = !busy && submitIssues.length === 0;/);
   assert.match(d, /const fresh = await check\(/, "server re-check on submit failure is kept");
   const lib = readFileSync("src/lib/next-step.ts", "utf8");
   assert.doesNotMatch(lib, /supabase|insurance_verified\s*[:=]\s*true|status:\s*"active"/, "the model writes nothing");

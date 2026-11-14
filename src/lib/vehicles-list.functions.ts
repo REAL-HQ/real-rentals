@@ -8,12 +8,13 @@ import {
   readinessBand,
   readinessGaps,
   VEHICLE_LIST_PAGE_SIZE,
-  VEHICLE_SORTS,
+  vehicleSortOrders,
   type ReadinessBand,
   type ReadinessCounts,
   type VehicleListRow,
   type VehicleListResult,
 } from "@/lib/vehicles-list";
+import { chooseVehicleThumbnailPaths, vehicleListThumbnailKey, type VehicleThumbnailMedia } from "@/lib/vehicle-thumbnail";
 
 // Vehicles List 1: one page of list columns, server-searched/filtered/sorted.
 // Only list columns are selected — never finance, title or acquisition data.
@@ -81,7 +82,6 @@ export const listVehicles = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<VehicleListResult> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const sort = (VEHICLE_SORTS as readonly string[]).includes(data.sort) ? data.sort : "unit";
 
     const ready = isReadinessFilter(data.ready) ? data.ready : "all";
 
@@ -153,15 +153,9 @@ export const listVehicles = createServerFn({ method: "POST" })
     }
 
     // Deterministic secondary key (id) keeps pages stable across equal values.
-    if (sort === "unit") query = query.order("unit_number", { ascending: true, nullsFirst: false });
-    else if (sort === "make")
-      query = query
-        .order("make", { ascending: true, nullsFirst: false })
-        .order("model", { ascending: true, nullsFirst: false });
-    else if (sort === "rate")
-      query = query.order("weekly_rate", { ascending: true, nullsFirst: false });
-    else query = query.order("created_at", { ascending: false, nullsFirst: false });
-    query = query.order("id", { ascending: true });
+    for (const { column, options } of vehicleSortOrders(data.sort)) {
+      query = query.order(column, options);
+    }
 
     const from = (data.page - 1) * data.pageSize;
     const [{ data: rows, count, error }, options] = await Promise.all([
@@ -172,14 +166,35 @@ export const listVehicles = createServerFn({ method: "POST" })
 
     const ids = (rows ?? []).map((r: any) => r.id);
     const onRent = new Set<string>();
+    let thumbnailFor = new Map<string, string>();
     if (ids.length) {
-      // On Rent = an actual running rental, never inferred from vehicle status.
-      const { data: running } = await supabaseAdmin
-        .from("rentals")
-        .select("vehicle_id")
-        .eq("status", "active")
-        .in("vehicle_id", ids);
+      const [{ data: running }, { data: media }, { data: thumbnailSettings }] = await Promise.all([
+        // On Rent = an actual running rental, never inferred from vehicle status.
+        supabaseAdmin
+          .from("rentals")
+          .select("vehicle_id")
+          .eq("status", "active")
+          .in("vehicle_id", ids),
+        // One staff-only read for the page's ORIGINAL photos. Only paths cross
+        // the RPC boundary; private bytes still require staff storage access.
+        supabaseAdmin
+          .from("vehicle_media")
+          .select("id,vehicle_id,storage_path")
+          .in("vehicle_id", ids)
+          .eq("kind", "original")
+          .order("is_primary", { ascending: false })
+          .order("sort_order", { ascending: true })
+          .order("created_at", { ascending: true }),
+        supabaseAdmin
+          .from("app_settings")
+          .select("key,value")
+          .in("key", ids.map((id: string) => vehicleListThumbnailKey(id))),
+      ]);
       for (const r of running ?? []) if ((r as any).vehicle_id) onRent.add((r as any).vehicle_id);
+      thumbnailFor = chooseVehicleThumbnailPaths(
+        (media ?? []) as VehicleThumbnailMedia[],
+        (thumbnailSettings ?? []) as Array<{ key: string; value: unknown }>,
+      );
     }
 
     return {
@@ -198,6 +213,7 @@ export const listVehicles = createServerFn({ method: "POST" })
         weekly_rate: r.weekly_rate == null ? null : Number(r.weekly_rate),
         partner_id: r.partner_id,
         photo: Array.isArray(r.photos) && r.photos.length ? r.photos[0] : null,
+        thumbnailPath: thumbnailFor.get(r.id) ?? null,
         on_rent: onRent.has(r.id),
         readiness: bandOf.get(r.id) ?? readinessBand(r, publishedFor.has(r.id)),
         readinessGaps: readinessGaps(r, publishedFor.has(r.id)),

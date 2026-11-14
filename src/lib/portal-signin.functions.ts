@@ -6,12 +6,9 @@ export const requestPortalSignIn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { requestSignIn } = await import("@/lib/portal-signin.server");
-    const { getRequest } = await import("@tanstack/react-start/server");
-    const req = getRequest();
-    const host = req ? new URL(req.url).origin : "https://drivereal.com";
-    const origin = /localhost|lovable\.app|drivereal\.com/.test(host) ? host : "https://drivereal.com";
+    const { publicAppOrigin } = await import("@/lib/public-app-url");
     try {
-      const r = await requestSignIn(supabaseAdmin, data.email, origin);
+      const r = await requestSignIn(supabaseAdmin, data.email, publicAppOrigin());
       return { ok: true as const, retryAfter: r.retryAfter };
     } catch {
       return { ok: true as const, retryAfter: 60 };

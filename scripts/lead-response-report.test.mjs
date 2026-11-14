@@ -95,6 +95,7 @@ const rows = [
   { source: "  ", created_at: "2026-10-19T16:00:00.000Z", contacted_at: null, contact_status: "new", contact_follow_up_on: "2026-10-21T00:00:00Z" },
   { source: "referral", created_at: "2026-10-21T14:00:00.000Z", contacted_at: "2026-10-21T15:30:00.000Z", contact_status: "new", contact_follow_up_on: null },
   { source: "minute", created_at: "2026-10-21T15:00:00.000Z", contacted_at: "2026-10-21T15:01:00.000Z", contact_status: "new", contact_follow_up_on: null },
+  { source: "declined", created_at: "2026-10-19T15:00:00.000Z", contacted_at: null, contact_status: "declined", contact_status_at: "2026-10-20T15:00:00.000Z", contact_follow_up_on: "2026-10-20" },
 ];
 const report = lib.buildLeadResponseReport(rows, now, false);
 const bySource = Object.fromEntries(report.sources.map((row) => [row.source, row]));
@@ -105,6 +106,7 @@ check(bySource.google.followUpsDue === 0, "the response sample does not pretend 
 check(bySource.Unknown.uncontactedOver24h === 1, "a blank source is Unknown");
 check(bySource.referral.medianHours === 1.5 && bySource.referral.uncontactedOver24h === 0, "a contacted referral keeps its own source");
 check(bySource.minute.medianHours === 1 / 60, "a one-minute median is not rounded to a tenth of an hour");
+check(bySource.declined == null, "Declined contact outcomes stay out of active-lead response reporting");
 check(lib.formatResponseHours(bySource.minute.medianHours) === "1 Minute", "minute formatting rounds only when the label is built");
 const due = new Map();
 lib.addDueFollowUps(due, rows, now);

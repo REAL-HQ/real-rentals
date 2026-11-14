@@ -11,10 +11,13 @@ import type {
 
 /** Where a fix lives on the profile: an existing tab plus the card inside it. */
 export type FixTarget =
-  | { kind: "section"; tab: "documents" | "screening" | "application" | "rental"; anchor: string }
+  | { kind: "section"; tab: "documents" | "screening" | "application" | "rental" | "payments"; anchor: string }
   | { kind: "interview" }
+  | { kind: "record_call" }
   | { kind: "approve" }
-  | { kind: "activate" };
+  | { kind: "activate" }
+  | { kind: "reserve" }
+  | { kind: "return" };
 
 export type Blocker = { key: ActivationRequirementKey | "local"; label: string; detail?: string; fix: string; target: FixTarget };
 
@@ -32,7 +35,7 @@ export type NextStep = {
 };
 
 const FIX: Partial<Record<ActivationRequirementKey, { fix: string; target: FixTarget }>> = {
-  interview: { fix: "Continue Interview", target: { kind: "interview" } },
+  interview: { fix: "Call Complete", target: { kind: "record_call" } },
   license_documents: { fix: "Review Documents", target: { kind: "section", tab: "documents", anchor: "profile-documents" } },
   insurance_verified: { fix: "Verify Insurance", target: { kind: "section", tab: "screening", anchor: "profile-insurance" } },
   insurance_document: { fix: "Open Insurance", target: { kind: "section", tab: "screening", anchor: "profile-insurance" } },
@@ -41,7 +44,7 @@ const FIX: Partial<Record<ActivationRequirementKey, { fix: string; target: FixTa
   inspection: { fix: "Choose Vehicle", target: { kind: "section", tab: "rental", anchor: "profile-vehicle" } },
 };
 /** Fix order: what must happen first comes first (approval sends the agreement). */
-const ORDER: ActivationRequirementKey[] = ["license_documents", "insurance_verified", "approved", "signed_agreement"];
+const ORDER: ActivationRequirementKey[] = ["interview", "license_documents", "gig_profile", "insurance_verified", "approved", "inspection", "signed_agreement", "pickup", "rental_active"];
 
 const LOCAL: Record<Exclude<PrimaryStep, "activate" | "view_rental">, Blocker> = {
   interview: { key: "local", label: "Interview not complete", ...FIX.interview! },
@@ -56,10 +59,15 @@ export function nextStep(input: {
   readiness: ActivationReadiness | null;
   loading: boolean;
   failed: boolean;
+  /** Approved (or active) with no open rental — offer Reserved. */
+  canReserve?: boolean;
+  /** Soft hold already on file. */
+  hasReservation?: boolean;
 }): NextStep {
   const { step, entry, readiness, loading, failed } = input;
+  const canReserve = input.canReserve === true && input.hasReservation !== true;
   if (entry === "rental_active") {
-    return { label: "View Rental", target: { kind: "rental" }, busy: false, blockers: [], activation: "rental_active", note: "Rental is running. Active comes from this rental." };
+    return { label: "Return", target: { kind: "return" }, busy: false, blockers: [], activation: "rental_active", note: "Rental is active. Use Return to record the car back, balances, and stop billing." };
   }
   // Coordinator: the server refuses them readiness and activation, so the
   // profile's own checklist decides the step and activation is explained.
@@ -88,6 +96,9 @@ export function nextStep(input: {
   if (blockers.length) {
     const first = blockers[0];
     return { label: first.fix, target: first.target, busy: false, blockers, activation: "blocked", note: `${unmet.length || 1} item${(unmet.length || 1) === 1 ? "" : "s"} before this renter can start a rental.` };
+  }
+  if (canReserve) {
+    return { label: "Reserved", target: { kind: "reserve" }, busy: false, blockers: [], activation: "ready", note: "Approved — confirm the pickup appointment and reserve a car. Account login details are sent when Reserved is saved." };
   }
   return { label: "Activate Rental", target: { kind: "activate" }, busy: false, blockers: [], activation: "ready", note: "Required items are complete. A driver becomes Active only when a rental starts; Activate Rental re-checks everything first." };
 }

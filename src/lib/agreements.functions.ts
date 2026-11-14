@@ -8,13 +8,15 @@ import {
   renderTemplate,
   type MergeData,
 } from "@/lib/agreement-merge";
-import { fmtContractDate, fmtContractDateOnly, minTermEndIso, minTermWeeks } from "@/lib/agreement-dates";
+import { contractTodayIso, defaultRentalEndIso, fmtContractDate, fmtContractDateOnly, minTermEndIso, minTermWeeks, rentalEndBeforeMinimum } from "@/lib/agreement-dates";
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
-import { applyPrep, PrepSchema, type AgreementPrep } from "@/lib/agreement-prep";
+import { applyPrep, PrepSchema, type AgreementDetails, type AgreementPrep } from "@/lib/agreement-prep";
+import { recordFillsFromDetails, type AppliedFill } from "@/lib/agreement-fills";
 import { STALE_PREVIEW_REFUSAL } from "@/lib/agreement-send-refusal";
 import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
 import { SWAP_ENABLED } from "@/lib/record-numbers";
+import { publicAppOrigin } from "@/lib/public-app-url";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
   const id = (d as any)?.previewDriverId;
@@ -62,7 +64,7 @@ const TIMELINE_LABELS: Record<string, string> = {
   "document.voided": "Voided",
 };
 
-const SITE_URL = () => process.env.PUBLIC_SITE_URL || "https://drivereal.com";
+const SITE_URL = () => publicAppOrigin();
 
 type Tier = "owner" | "manager" | "coordinator";
 /** Server-side tier check (Owner > Manager > Coordinator). */
@@ -123,6 +125,7 @@ async function buildMergeData(
   admin: any,
   applicationId: string,
   vehicleId?: string,
+  prep?: AgreementPrep,
 ): Promise<{
   data: MergeData;
   app: any;
@@ -131,6 +134,7 @@ async function buildMergeData(
   /** The contract start date as stored: a date-only ISO string, or null. */
   startIso: string | null;
   namedVehicleId: string | null;
+  editorValues: AgreementDetails;
 }> {
   const { data: app, error } = await admin
     .from("applications")
@@ -141,6 +145,28 @@ async function buildMergeData(
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!app) throw new Error("Driver not found");
+
+  // Per-agreement corrections stay in this fingerprinted snapshot. They do
+  // not overwrite the application, verify identity, or change a live rental.
+  const details = prep?.details;
+  if (details) {
+    Object.assign(app, {
+      full_name: details.driverName,
+      email: details.driverEmail,
+      phone: details.driverPhone,
+      address: details.address,
+      city: details.city,
+      state: details.state,
+      zip: details.zip,
+      dob: details.dob || null,
+      license_number: details.licenseNumber,
+      license_state: details.licenseState,
+      license_expiration: details.licenseExpiration || null,
+      weekly_rent: details.weeklyRate.trim() ? Number(details.weeklyRate) : null,
+      insurance_carrier: details.insuranceCarrier,
+      insurance_policy_number: details.insurancePolicy,
+    });
+  }
 
   // A LIVE rental is the authority on its own dates once it exists; before
   // activation the agreed contract dates on the application are.
@@ -168,8 +194,10 @@ async function buildMergeData(
   // the only field staff could fill being the one the code had decided to
   // ignore.
   const fromRental = Boolean(rental?.start_date);
-  const startDate = fromRental ? rental.start_date : (app.contract_start_date ?? null);
-  const endDate = (fromRental ? rental.end_date : null) ?? app.contract_end_date ?? null;
+  const storedStart = fromRental ? rental.start_date : (app.contract_start_date ?? null);
+  const storedEnd = (fromRental ? rental.end_date : null) ?? app.contract_end_date ?? null;
+  const startDate = prep ? (details?.startDate ?? storedStart ?? contractTodayIso()) : storedStart;
+  const endDate = prep ? (details?.endDate ?? storedEnd ?? defaultRentalEndIso(startDate)) : storedEnd;
 
   /*
    * Application intent is NOT contract data.
@@ -196,12 +224,22 @@ async function buildMergeData(
       label: "Scheduled end date",
       why: "The applicant only told us roughly how long they expect to need the vehicle. That cannot become a contractual return date.",
     });
-  if (startDate && endDate && endDate <= startDate)
+  if (startDate && endDate && endDate <= startDate) {
     blockers.push({
       field: "contract_end_date",
       label: "A scheduled end date after the start date",
       why: `The agreement would run from ${startDate} to ${endDate}, which ends on or before it begins.`,
     });
+  } else if (startDate && endDate) {
+    const minimumEnd = defaultRentalEndIso(startDate);
+    if (rentalEndBeforeMinimum(startDate, endDate) && minimumEnd) {
+      blockers.push({
+        field: "contract_end_date",
+        label: "Minimum four-week rental",
+        why: `The scheduled end date must be at least ${fmtContractDate(minimumEnd)}. Staff can choose a later date.`,
+      });
+    }
+  }
   // ---- Agreement Readiness: every value the contract renders must be real.
   // No placeholders, no defaults — a blank here would print "__________" in a
   // document someone signs. This is the ONE validator: preview, send, the
@@ -253,13 +291,20 @@ async function buildMergeData(
       .eq("id", namedVehicleId)
       .maybeSingle();
     vehicle = v ?? null;
+    if (vehicle && details) {
+      Object.assign(vehicle, {
+        color: details.vehicleColor,
+        vin: details.vehicleVin,
+        license_plate: details.licensePlate,
+      });
+    }
   }
   if (!vehicle) {
     blockers.push({ field: "vehicle", label: "Vehicle assignment", why: "Choose the vehicle this agreement covers.", fix: { tab: "rental" } });
   } else {
     const vfix = { vehicleId: vehicle.id as string };
     const { checkVin } = await import("@/lib/vin");
-    if (!vehicle.year || !vehicle.make || !vehicle.model)
+    if (!details?.vehicleDescription.trim() && (!vehicle.year || !vehicle.make || !vehicle.model))
       blockers.push({ field: "vehicle", label: "Vehicle year, make and model", why: "The agreement describes the vehicle.", fix: vfix });
     if (!vehicle.vin)
       blockers.push({ field: "vehicle_vin", label: "VIN", why: "The agreement identifies the vehicle by VIN.", fix: vfix });
@@ -301,9 +346,9 @@ async function buildMergeData(
     license_number: app.license_number ?? "",
     license_state: app.license_state ?? "",
     license_expiration: licenceExpiry,
-    vehicle: vehicle
+    vehicle: details?.vehicleDescription ?? (vehicle
       ? [vehicle.year, vehicle.make, vehicle.model, vehicle.trim].filter(Boolean).join(" ")
-      : "",
+      : ""),
     vehicle_color: vehicle?.color ?? "",
     // The real VIN, never a stand-in. (This used to print the first 8
     // characters of our internal record id under the heading "VIN".)
@@ -321,7 +366,7 @@ async function buildMergeData(
     license_plate: vehicle?.license_plate
       ? [String(vehicle.license_plate).toUpperCase(), vehicle.plate_state].filter(Boolean).join(" / ")
       : "",
-    card_on_file: app.card_last4 ? `${app.card_brand ? String(app.card_brand).toUpperCase() : "Card"} ending ${app.card_last4}` : "",
+    card_on_file: details?.cardOnFile ?? (app.card_last4 ? `${app.card_brand ? String(app.card_brand).toUpperCase() : "Card"} ending ${app.card_last4}` : ""),
     // Not stored anywhere yet: entered by staff in Driver Agreement Preparation.
     additional_drivers: "",
     // "If Any" rows: say plainly that nothing is on file rather than leave a blank.
@@ -337,7 +382,30 @@ async function buildMergeData(
   // The rendered start_date above is for the human. Calculations get the real
   // value: reading the formatted string back is what broke min_term_end and
   // the additional-driver licence check when the display format changed.
-  return { data, app, vehicle, blockers, startIso: startDate ?? null, namedVehicleId };
+  const editorValues = {
+    driverName: String(app.full_name ?? ""),
+    driverEmail: String(app.email ?? ""),
+    driverPhone: String(app.phone ?? ""),
+    address: String(app.address ?? ""),
+    city: String(app.city ?? ""),
+    state: String(app.state ?? ""),
+    zip: String(app.zip ?? ""),
+    dob: String(app.dob ?? ""),
+    licenseNumber: String(app.license_number ?? ""),
+    licenseState: String(app.license_state ?? ""),
+    licenseExpiration: String(app.license_expiration ?? ""),
+    vehicleDescription: data.vehicle,
+    vehicleColor: String(vehicle?.color ?? ""),
+    vehicleVin: String(vehicle?.vin ?? ""),
+    licensePlate: String(vehicle?.license_plate ?? ""),
+    startDate: startDate ?? "",
+    endDate: endDate ?? "",
+    weeklyRate: weekly == null ? "" : String(weekly),
+    cardOnFile: data.card_on_file,
+    insuranceCarrier: String(app.insurance_carrier ?? ""),
+    insurancePolicy: String(app.insurance_policy_number ?? ""),
+  };
+  return { data, app, vehicle, blockers, startIso: startDate ?? null, namedVehicleId, editorValues };
 }
 
 /** The only vehicle an override may name: the active rental's current car. */
@@ -540,6 +608,11 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
     license_plate: { label: "Vehicle license plate", why: "The v1.6 agreement identifies the vehicle by plate.", fix: vfix },
     card_on_file: { label: "Payment card on file", why: "The v1.6 agreement authorizes weekly charges to a card on file, and no other payment wording is legally approved yet. Ask the driver to save a card in Payments; preparing or sending the agreement never charges it.", fix: pay },
     min_term_end: { label: "Minimum-term end date", why: "Needs the contract start date and the template's minimum term (weeks).", fix: pay },
+    damage_waiver: { label: "Damage Waiver: Accepted or Declined", why: "This agreement prints the renter's Damage Waiver choice, and the renter initials it. Ask the renter and record the answer under Payment & Damage Waiver." },
+    payment_method: { label: "Payment method", why: "This agreement prints how the renter will pay rent. Choose it under Payment & Damage Waiver." },
+    payment_amount: { label: "Payment schedule (Weekly or Every 4 Weeks)", why: "The amount due each payment is calculated from the weekly rate, the Damage Waiver choice and the payment schedule. Choose all three." },
+    balance_due: { label: "Balance due at pickup", why: "Calculated as the first payment less the Reservation Fee. It needs the weekly rate, the Damage Waiver choice and the payment schedule." },
+    vehicle_owner: { label: "Vehicle owner as shown on the registration", why: "This agreement names the registered owner of the vehicle. Enter the name exactly as printed on the registration." },
     additional_drivers: { label: "Approved additional drivers (or None)", why: "Staff must state the approved additional drivers. This entry arrives with Driver Agreement Preparation; nothing is assumed until then." },
   };
   for (const [k, b] of Object.entries(need)) {
@@ -555,8 +628,12 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
  * The ONE generation step for preview and send: readiness, template,
  * rendered text and fingerprint.
  */
+function usesField(body: string, key: string): boolean {
+  return new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "i").test(body);
+}
+
 async function prepareAgreement(admin: any, applicationId: string, prep?: AgreementPrep, templateKey?: string, vehicleId?: string) {
-  const built = await buildMergeData(admin, applicationId, vehicleId);
+  const built = await buildMergeData(admin, applicationId, vehicleId, prep);
   const lib = templateKey ? libraryTemplate(templateKey) : null;
   if (templateKey && !lib) throw new Error("Unknown agreement template.");
   const tpl = lib ? await libraryWithDraft(admin, lib) : await activeTemplate(admin);
@@ -572,7 +649,17 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "deposit_amount") built.blockers.splice(i, 1);
     built.blockers.push(...r.blockers);
     // v1.10+ prints the entered Reservation Fee amount (or "None"), not checkboxes.
-    const line = lib?.reservationStyle === "amount"
+    // A saved template that prints Balance Due (v1.14) uses the same style.
+    const amountStyle = lib?.reservationStyle === "amount" || usesField(tpl.body, "balance_due");
+    // v1.14 money rows: amount due each payment and the balance due at pickup.
+    if (usesField(tpl.body, "balance_due") || usesField(tpl.body, "payment_amount")) {
+      const { paymentRows, parseUsd } = await import("@/lib/agreement-prep");
+      const rows = paymentRows(prep, { weeklyRate: parseUsd(built.data.weekly_rate), waiverFee: parseUsd(terms?.damage_waiver_fee) });
+      built.data.payment_amount = rows.payment_amount;
+      built.data.balance_due = rows.balance_due;
+      built.blockers.push(...rows.blockers);
+    }
+    const line = amountStyle
       ? (prep.reservation.mode === "required" && (prep.reservation.amount ?? 0) > 0
           ? `$${Number(prep.reservation.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
           : "None")
@@ -680,7 +767,7 @@ async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepare
       pdfBase64 = btoa(bin);
     }
     return {
-      body: blockers.length ? null : prep.body,
+      body: prep.body,
       pdfBase64,
       fingerprint: blockers.length ? null : prep.fingerprint,
       template: tpl.meta,
@@ -689,7 +776,9 @@ async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepare
       companyMissing: prep.companyMissing,
       companyFallback: prep.companyFallback,
       merge,
+      values: prep.editorValues,
       terms: readTerms(tpl.body),
+      templateFields: [...new Set([...tpl.body.matchAll(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi)].map((x) => x[1].toLowerCase()))],
       missing,
       blockers,
       vehicleId: namedVehicle ? prep.namedVehicleId : ((app.vehicle_id as string | null) ?? null),
@@ -759,6 +848,12 @@ export async function issueAgreement(
   if (opts.fingerprint !== undefined && prep.companyMissing.length && opts.companyAck !== true)
     throw new Error(`Company details are incomplete (${prep.companyMissing.join(", ")}). Confirm you want to send with the current fallback values.`);
 
+  // After the fingerprint matches, save only the blank or invalid driver and
+  // vehicle fields the reviewed details filled. A failure here sends nothing.
+  if (opts.prep?.details) {
+    await persistReviewedGaps(admin, applicationId, opts.prep.details, vehicleOverride ? prep.namedVehicleId : null, opts.createdBy ?? null);
+  }
+
   const token = randomToken();
   const tokenHash = await hashToken(token);
   const expires = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
@@ -825,6 +920,78 @@ export async function issueAgreement(
   });
 
   return { id: row.id as string, url, delivery };
+}
+
+const APPLICATION_FILL_COLUMNS = new Set([
+  "full_name", "email", "phone", "address", "city", "state", "zip", "dob",
+  "license_number", "license_state", "license_expiration", "weekly_rent",
+  "contract_start_date", "contract_end_date", "insurance_carrier", "insurance_policy_number",
+]);
+const VEHICLE_FILL_COLUMNS = new Set(["vin", "color", "license_plate"]);
+
+/** Writes reviewed gap-fills onto empty or invalid fields. Does not insert the agreement. */
+async function persistReviewedGaps(
+  admin: any,
+  applicationId: string,
+  details: AgreementDetails,
+  namedVehicleId: string | null,
+  actorId: string | null,
+) {
+  const { data: source } = await admin.from("applications").select("*").eq("id", applicationId).is("deleted_at", null).maybeSingle();
+  if (!source) throw new Error("Application not found");
+  const vehicleId = namedVehicleId || (source.vehicle_id as string | null) || null;
+  let vehicle: Record<string, unknown> | null = null;
+  if (vehicleId) {
+    const { data } = await admin.from("vehicles").select("*").eq("id", vehicleId).is("archived_at", null).maybeSingle();
+    vehicle = (data as Record<string, unknown> | null) ?? null;
+  }
+  const { data: openRental } = await admin
+    .from("rentals")
+    .select("id")
+    .eq("application_id", applicationId)
+    .is("end_date", null)
+    .limit(1);
+  const datesFromRental = Array.isArray(openRental) && openRental.length > 0;
+  const applied = recordFillsFromDetails(source as Record<string, unknown>, vehicle, details, {
+    datesFromRental,
+    startIso: (source.contract_start_date as string | null) ?? null,
+    endIso: (source.contract_end_date as string | null) ?? null,
+  });
+  for (const fill of applied) {
+    if (fill.table === "vehicles" && fill.column === "vin") {
+      const { data: dup } = await admin.from("vehicles").select("id").eq("vin", fill.value).neq("id", fill.id).is("archived_at", null).limit(1);
+      if (dup?.length) throw new Error("Another vehicle already has this VIN.");
+    }
+    if (fill.table === "vehicles" && fill.column === "license_plate") {
+      const { data: dup } = await admin.from("vehicles").select("id").eq("license_plate", fill.value).neq("id", fill.id).is("archived_at", null).limit(1);
+      if (dup?.length) throw new Error("Another vehicle already has this license plate.");
+    }
+  }
+  const appPatch: Record<string, string | number> = {};
+  const vehiclePatch: Record<string, string | number> = {};
+  for (const fill of applied) {
+    if (fill.table === "applications" && APPLICATION_FILL_COLUMNS.has(fill.column)) appPatch[fill.column] = fill.value;
+    if (fill.table === "vehicles" && VEHICLE_FILL_COLUMNS.has(fill.column)) vehiclePatch[fill.column] = fill.value;
+  }
+  if (Object.keys(appPatch).length) {
+    const { error } = await admin.from("applications").update(appPatch).eq("id", applicationId).is("deleted_at", null);
+    if (error) throw new Error(error.message);
+  }
+  if (vehicle && Object.keys(vehiclePatch).length) {
+    const { error } = await admin.from("vehicles").update(vehiclePatch).eq("id", vehicle.id).is("archived_at", null);
+    if (error) throw new Error(error.message);
+  }
+  if (applied.length) {
+    const { logAudit } = await import("@/lib/audit.server");
+    const actor = actorId ? await (await import("@/lib/roles.server")).getActor(actorId) : null;
+    await logAudit(actor, {
+      action: "agreement.fields_saved",
+      summary: "Blank or invalid driver and vehicle fields saved from the reviewed agreement",
+      entityType: "application",
+      entityId: applicationId,
+      metadata: { fields: applied.map((f: AppliedFill) => `${f.table}.${f.column}`) },
+    });
+  }
 }
 
 /**
@@ -1089,14 +1256,24 @@ async function agreementPortalAccess(admin: any, applicationId: string | null): 
   return !!data?.user_id;
 }
 
-async function sendSignedEmails(admin: any, id: string, signerName: string) {
+async function sendSignedEmails(admin: any, id: string, signerName: string): Promise<boolean> {
   const { data: ag } = await admin
     .from("agreements")
     .select("application_id,signer_email,merge_data")
     .eq("id", id)
     .maybeSingle();
-  if (!ag) return;
+  if (!ag) return false;
   const merge = (ag.merge_data ?? {}) as MergeData;
+  // Signing never creates a login or sends account details. Reserved handles
+  // that after the pickup appointment is confirmed; existing logins still work.
+  const portalAccess = await agreementPortalAccess(admin, ag.application_id as string | null);
+  let payment: { url: string; amount: number; tiedToRenter: boolean; label: string } | null = null;
+  try {
+    const { createInitialPaymentLink } = await import("@/lib/initial-payment.server");
+    payment = await createInitialPaymentLink(admin, id, null);
+  } catch (e) {
+    console.error("[agreement] initial payment link failed", e);
+  }
   try {
     const { sendAgreementSignedEmail, sendAgreementSignedOpsEmail } = await import("@/lib/email.server");
     if (ag.signer_email) {
@@ -1104,7 +1281,8 @@ async function sendSignedEmails(admin: any, id: string, signerName: string) {
         to: ag.signer_email as string,
         firstName: merge.driver_name ?? signerName,
         vehicle: merge.vehicle || null,
-        portalAccess: await agreementPortalAccess(admin, ag.application_id as string | null),
+        portalAccess,
+        payment,
       });
     }
     await sendAgreementSignedOpsEmail({
@@ -1115,6 +1293,7 @@ async function sendSignedEmails(admin: any, id: string, signerName: string) {
   } catch (e) {
     console.error("[agreement] signed emails failed", e);
   }
+  return portalAccess;
 }
 
 function claimError(result: string): never {
@@ -1157,10 +1336,11 @@ export const signAgreement = createServerFn({ method: "POST" })
       authMethod: "email_link",
       adoption: data.adoption ?? null,
     });
-    const portalAccess = await agreementPortalAccess(supabaseAdmin, ag.application_id as string | null);
-    if (result === "already_signed") return { ok: true, alreadySigned: true, portalAccess };
+    if (result === "already_signed") {
+      return { ok: true, alreadySigned: true, portalAccess: await agreementPortalAccess(supabaseAdmin, ag.application_id as string | null) };
+    }
     if (result !== "won") claimError(result);
-    await sendSignedEmails(supabaseAdmin, ag.id as string, data.signerName);
+    const portalAccess = await sendSignedEmails(supabaseAdmin, ag.id as string, data.signerName);
     return { ok: true, alreadySigned: false, portalAccess };
   });
 

@@ -15,7 +15,7 @@ assert(c2.find((x) => x.key === "registration")!.value === "Date Missing", "miss
 assert(overallReadiness(c) === "not_ready", "overall");
 const ok = vehicleReadinessChecks({ ...base, registration_expires_on: "2027-06-01", insurance_expires_on: "2027-06-01" }, { ...f, lastPreDeliveryPassedAt: "2026-10-01T00:00:00Z", schedules: [{ item: "Oil", next_due_on: "2027-03-01", next_due_miles: null }] }, ["registration", "insurance_card"], t);
 assert(overallReadiness(ok) === "ready", "fully ready even without photos");
-assert(vehicleAvailability("available", true) === "On Rent" && vehicleAvailability("onboarding", false) === "Onboarding", "availability independent");
+assert(vehicleAvailability("available", true) === vehicleAvailability("rented", false) && vehicleAvailability("onboarding", false) === "Onboarding", "availability independent");
 assert(listingPhotoCheck(0, 2).status === "info", "photos separate");
 const s = vehicleReadinessChecks(base, { ...f, openIncidents: [{ type: "x", severity: "minor", drivable: false }] }, [], t);
 assert(s.find((x) => x.key === "safety")!.status === "not_ready", "not drivable blocks");

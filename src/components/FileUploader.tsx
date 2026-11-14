@@ -49,6 +49,8 @@ export type FileUploaderProps = {
   context?: string;
   label?: string;
   className?: string;
+  /** Grid gives multi-photo uploads full-width thumbnail cards instead of a narrow vertical queue. */
+  listLayout?: "list" | "grid";
   children?: ReactNode;
 };
 
@@ -120,7 +122,7 @@ export function useUploadQueue(upload: UploadFn | undefined, onAllDone?: () => v
   return { items, add, remove, retry, retryAll, clearDone, start: run, busy: items.some((x) => x.status === "uploading") };
 }
 
-function Thumb({ file }: { file: File }) {
+function Thumb({ file, large = false }: { file: File; large?: boolean }) {
   // Local preview only — the stored file is never touched. The URL is created
   // and revoked inside one effect so a re-run (Strict Mode, remount) can never
   // leave the <img> pointing at an already-revoked URL (the broken thumbnail).
@@ -133,24 +135,31 @@ function Thumb({ file }: { file: File }) {
     setFailed(false);
     return () => URL.revokeObjectURL(u);
   }, [file]);
+  const size = large ? "aspect-[4/3] w-full" : "h-10 w-10";
   return url && !failed
-    ? <img src={url} alt="" onError={() => setFailed(true)} className="h-10 w-10 shrink-0 rounded object-cover" />
-    : <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted"><FileText className="h-5 w-5 text-muted-foreground" /></span>;
+    ? <img src={url} alt="" onError={() => setFailed(true)} className={`${size} shrink-0 rounded object-cover`} />
+    : <span className={`flex ${size} shrink-0 items-center justify-center rounded bg-muted`}><FileText className="h-5 w-5 text-muted-foreground" /></span>;
 }
 
 /** File rows with preview, size, status, progress, Retry and Remove. */
-export function FileList({ items, onRemove, onRetry }: {
+export function FileList({ items, onRemove, onRetry, layout = "list" }: {
   items: { id: string; file: File; status?: Item["status"]; progress?: number; error?: string }[];
   onRemove?: (id: string) => void; onRetry?: (id: string) => void;
+  layout?: "list" | "grid";
 }) {
   if (!items.length) return null;
+  const grid = layout === "grid";
   return (
-    <ul className="mt-3 space-y-2 text-left" aria-live="polite">
+    <ul className={grid
+      ? "mx-auto mt-3 grid w-full max-w-6xl grid-cols-2 gap-3 text-left sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+      : "mt-3 space-y-2 text-left"} aria-live="polite">
       {items.map((it) => (
-        <li key={it.id} className="flex items-center gap-3 rounded-lg border border-border bg-card p-2">
-          <Thumb file={it.file} />
+        <li key={it.id} className={grid
+          ? "relative flex min-w-0 flex-col gap-2 rounded-lg border border-border bg-card p-2"
+          : "flex items-center gap-3 rounded-lg border border-border bg-card p-2"}>
+          <Thumb file={it.file} large={grid} />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-foreground">{it.file.name}</div>
+            <div className="truncate text-sm font-medium text-foreground" title={it.file.name}>{it.file.name}</div>
             <div className="text-xs text-muted-foreground">
               {fmtBytes(it.file.size)}
               {it.status === "ready" && " · Ready"}
@@ -162,15 +171,23 @@ export function FileList({ items, onRemove, onRetry }: {
               <div className="mt-1 h-1 overflow-hidden rounded bg-muted"><div className="h-full bg-brand transition-all" style={{ width: `${it.progress ?? 0}%` }} /></div>
             )}
           </div>
-          {it.status === "uploading" && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Uploading" />}
-          {it.status === "done" && <CheckCircle2 className="h-4 w-4 text-success" aria-label="Uploaded" />}
+          {it.status === "uploading" && (
+            <span className={grid ? "absolute right-3 top-3 rounded-md bg-card/95 p-1 shadow-sm" : undefined}>
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Uploading" />
+            </span>
+          )}
+          {it.status === "done" && (
+            <span className={grid ? "absolute right-3 top-3 rounded-md bg-card/95 p-1 shadow-sm" : undefined}>
+              <CheckCircle2 className="h-4 w-4 text-success" aria-label="Uploaded" />
+            </span>
+          )}
           {it.status === "error" && onRetry && (
-            <button type="button" onClick={() => onRetry(it.id)} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted">
+            <button type="button" onClick={() => onRetry(it.id)} className={`inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted ${grid ? "justify-center" : ""}`}>
               <RotateCcw className="h-3 w-3" /> Retry
             </button>
           )}
           {it.status !== "uploading" && it.status !== "done" && onRemove && (
-            <button type="button" onClick={() => onRemove(it.id)} aria-label={`Remove ${it.file.name}`} className="rounded-md p-1 text-muted-foreground hover:bg-muted">
+            <button type="button" onClick={() => onRemove(it.id)} aria-label={`Remove ${it.file.name}`} className={`rounded-md p-1 text-muted-foreground hover:bg-muted ${grid ? "absolute right-3 top-3 bg-card/95 shadow-sm" : ""}`}>
               <X className="h-4 w-4" />
             </button>
           )}
@@ -183,7 +200,7 @@ export function FileList({ items, onRemove, onRetry }: {
 export function FileUploader({
   onFiles, upload, autoStart = true, submitLabel, onAllDone, value, onChange,
   accept = "", multiple = false, maxBytes, maxFiles, camera = false, disabled, busy,
-  variant = "zone", title = "Drop Files Here", hint, context, label = "Browse Files", className = "", children,
+  variant = "zone", title = "Drop Files Here", hint, context, label = "Browse Files", className = "", listLayout = "list", children,
 }: FileUploaderProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const camRef = useRef<HTMLInputElement>(null);
@@ -221,7 +238,7 @@ export function FileUploader({
   const staged = value && onChange ? value.map((file, i) => ({ id: `${i}:${fileKey(file)}`, file })) : [];
   const list = upload
     ? <>
-        <FileList items={q.items} onRemove={q.remove} onRetry={q.retry} />
+        <FileList items={q.items} onRemove={q.remove} onRetry={q.retry} layout={listLayout} />
         {!autoStart && q.items.some((x) => x.status === "ready") && (
           <div className="mt-3 flex justify-end">
             <button type="button" disabled={q.busy || disabled} onClick={() => void q.start()} className="inline-flex min-h-[40px] items-center gap-2 rounded-md bg-brand px-4 text-sm font-medium text-brand-foreground disabled:opacity-50">
@@ -234,7 +251,7 @@ export function FileUploader({
         )}
       </>
     : staged.length
-      ? <FileList items={staged} onRemove={(id) => onChange!(value!.filter((_, i) => staged[i].id !== id))} />
+      ? <FileList items={staged} onRemove={(id) => onChange!(value!.filter((_, i) => staged[i].id !== id))} layout={listLayout} />
       : null;
 
   if (variant === "attach" || variant === "inline") {

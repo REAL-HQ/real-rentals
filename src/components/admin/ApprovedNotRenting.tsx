@@ -43,8 +43,8 @@ export function ApprovedNotRentingList({
   if (populationEmpty) {
     return (
       <EmptyState
-        title="No Approved Drivers Waiting To Rent"
-        hint="Approved applicants appear here until they have an active rental."
+        title="No Approved Drivers Waiting For A Reservation"
+        hint="Approved applicants appear here until their pickup is reserved."
       />
     );
   }

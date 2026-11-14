@@ -223,7 +223,7 @@ function rentalRow(
     id: rental.id,
     renterName: lookupName(rental.applicationId, rental.driverId, names),
     rentalLabel: "Rental",
-    rentalHref: `/admin?tab=bookings&id=${rental.id}`,
+    rentalHref: `/admin?tab=bookings&view=past&id=${rental.id}`,
     collected: collected.amount,
     collectedDate: collected.date,
     method: collected.method,
