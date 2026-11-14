@@ -3,7 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { tierAllows, tierFromRoles, type StaffTier } from "@/lib/roles";
-import { parseConditionExif } from "@/lib/condition-exif";
+import { tripMediaType } from "@/lib/trip-media";
 
 export const CONDITION_BUCKET = "condition-media";
 
@@ -64,9 +64,12 @@ export type ConditionMedia = {
   gps_lng: number | null;
   /** True when EXIF datetime was missing at upload (or unknown for legacy rows). */
   missing_exif_time: boolean;
-  /** True only for the signed-in driver's own removable portal upload. */
-  can_delete: boolean;
   url: string | null;
+  /** When the file reached us. Separate from taken_at, which is the camera's. */
+  uploaded_at?: string;
+  application_id?: string | null;
+  file_name?: string | null;
+  mime_type?: string | null;
 };
 
 export type InspectionItem = {
@@ -140,7 +143,7 @@ async function staffTier(supabase: unknown, userId: string): Promise<StaffTier |
   return tierFromRoles(((data ?? []) as Array<{ role: unknown }>).map((r) => String(r.role)));
 }
 
-/** Owner or Manager. Staff deletion of any condition evidence; drivers use the separate own-upload guard below. */
+/** Owner or Manager. Unchanged: the gate on destroying condition evidence. */
 async function isStaff(supabase: unknown, userId: string): Promise<boolean> {
   return tierAllows(await staffTier(supabase, userId), "manager");
 }
@@ -177,13 +180,16 @@ function safeExt(fileName: string, mime: string): string {
 async function signMedia(
   admin: any,
   rows: any[],
-  opts: { includeGps: boolean; canDelete?: (media: any) => boolean },
+  opts: { includeGps: boolean; renter?: boolean },
 ): Promise<ConditionMedia[]> {
   return Promise.all(
     rows.map(async (m) => {
-      const { data: signed } = await admin.storage
-        .from(m.storage_bucket)
-        .createSignedUrl(m.storage_path, 60 * 30);
+      // A renter is only ever signed the metadata-free share copy, never the
+      // original (whose EXIF can carry GPS). No share copy, no URL.
+      const path = opts.renter ? ((m.share_path as string | null) ?? null) : (m.storage_path as string);
+      const { data: signed } = path
+        ? await admin.storage.from(m.storage_bucket).createSignedUrl(path, 60 * 30)
+        : { data: null };
       const takenAt = (m.taken_at as string | null) ?? (m.created_at as string);
       const source = (m.taken_at_source as string | null) ?? (m.taken_at ? "exif" : "upload");
       return {
@@ -201,8 +207,11 @@ async function signMedia(
         gps_lat: opts.includeGps && m.gps_lat != null ? Number(m.gps_lat) : null,
         gps_lng: opts.includeGps && m.gps_lng != null ? Number(m.gps_lng) : null,
         missing_exif_time: source !== "exif",
-        can_delete: opts.canDelete?.(m) === true,
         url: signed?.signedUrl ?? null,
+        uploaded_at: m.created_at,
+        application_id: opts.renter ? null : (m.application_id ?? null),
+        file_name: opts.renter ? null : (m.file_name ?? null),
+        mime_type: m.mime_type ?? null,
       };
     }),
   );
@@ -215,37 +224,13 @@ async function signMedia(
 async function activeRentalFor(supabase: any, userId: string) {
   const { data } = await supabase
     .from("rentals")
-    .select("id,vehicle_id")
+    .select("id,vehicle_id,application_id")
     .eq("driver_id", userId)
     .eq("status", "active")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   return data ?? null;
-}
-
-/** A driver can remove only their own unlinked upload on their current rental. */
-export function driverCanDeleteConditionMedia(
-  media: {
-    vehicle_id?: string | null;
-    rental_id?: string | null;
-    inspection_id?: string | null;
-    incident_id?: string | null;
-    captured_by?: string | null;
-    captured_by_role?: string | null;
-  },
-  userId: string,
-  rental: { id: string; vehicle_id: string } | null,
-): boolean {
-  return Boolean(
-    rental
-    && media.vehicle_id === rental.vehicle_id
-    && media.rental_id === rental.id
-    && media.captured_by === userId
-    && media.captured_by_role === "driver"
-    && !media.inspection_id
-    && !media.incident_id
-  );
 }
 
 // ------------------------------------------------------------- condition media
@@ -264,18 +249,24 @@ export const createConditionUploadUrl = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const operator = await canInspect(context.supabase, context.userId);
 
+    if (!tripMediaType(data.fileName, data.mimeType)) throw new Error("This file type isn't supported");
     let vehicleId = data.vehicleId ?? null;
+    let folder: string;
     if (!operator) {
       // A driver may only ever upload against the car they are renting, no
-      // matter what vehicle id the client sends.
+      // matter what vehicle id the client sends — and into that rental's
+      // folder, which confirm checks again.
       const rental = await activeRentalFor(context.supabase, context.userId);
       if (!rental?.vehicle_id) throw new Error("No active rental on file");
       vehicleId = rental.vehicle_id as string;
+      folder = `${vehicleId}/rental/${rental.id}`;
+    } else {
+      if (!vehicleId) throw new Error("Missing vehicle");
+      folder = vehicleId;
     }
-    if (!vehicleId) throw new Error("Missing vehicle");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const path = `${vehicleId}/${crypto.randomUUID()}.${safeExt(data.fileName, data.mimeType)}`;
+    const path = `${folder}/${crypto.randomUUID()}.${safeExt(data.fileName, data.mimeType)}`;
     const { data: signed, error } = await supabaseAdmin.storage
       .from(CONDITION_BUCKET)
       .createSignedUploadUrl(path);
@@ -303,61 +294,43 @@ export const confirmConditionUpload = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const operator = await canInspect(context.supabase, context.userId);
+    const mime = tripMediaType(data.fileName ?? data.path, data.mimeType);
+    if (!mime) throw new Error("This file type isn't supported");
 
     let rentalId = data.rentalId ?? null;
+    let applicationId: string | null = null;
     if (!operator) {
       const rental = await activeRentalFor(context.supabase, context.userId);
       if (!rental || rental.vehicle_id !== data.vehicleId) throw new Error("Forbidden");
       rentalId = rental.id as string;
+      applicationId = (rental.application_id as string | null) ?? null;
+      // A renter's file must sit in their own rental's folder.
+      if (!data.path.startsWith(`${data.vehicleId}/rental/${rentalId}/`)) throw new Error("Invalid upload path");
     }
     // The upload path is derived from the vehicle id server-side; re-check it
     // so a tampered path cannot file a photo under someone else's car.
     if (!data.path.startsWith(`${data.vehicleId}/`)) throw new Error("Invalid upload path");
+    // Staff trip uploads have their own confirm, which checks the applicant.
+    if (data.path.startsWith(`${data.vehicleId}/trip/`)) throw new Error("Invalid upload path");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const isVideo = (data.mimeType ?? "").startsWith("video/");
-
-    // Read original bytes from storage and parse EXIF BEFORE any re-encode.
-    const uploadNow = new Date();
-    let exif: Awaited<ReturnType<typeof parseConditionExif>> = {
-      takenAt: uploadNow,
-      takenAtSource: "upload",
-      gpsLat: null,
-      gpsLng: null,
-      missingExifTime: true,
-    };
-    if (!isVideo) {
-      const { data: blob, error: dlErr } = await supabaseAdmin.storage
-        .from(CONDITION_BUCKET)
-        .download(data.path);
-      if (!dlErr && blob) {
-        const buf = new Uint8Array(await blob.arrayBuffer());
-        exif = await parseConditionExif(buf, uploadNow);
-      }
-    }
-
-    const { error } = await supabaseAdmin.from("condition_media").insert({
-      vehicle_id: data.vehicleId,
-      rental_id: rentalId,
-      inspection_id: data.inspectionId ?? null,
+    const { storeConditionMedia } = await import("@/lib/trip-media.server");
+    const saved = await storeConditionMedia(supabaseAdmin, {
+      vehicleId: data.vehicleId,
+      rentalId,
+      applicationId,
+      inspectionId: operator ? (data.inspectionId ?? null) : null,
       phase: data.phase,
       angle: data.angle ?? null,
-      media_type: isVideo ? "video" : "photo",
-      storage_bucket: CONDITION_BUCKET,
-      storage_path: data.path,
-      file_name: data.fileName ?? null,
-      mime_type: data.mimeType ?? null,
-      size_bytes: data.sizeBytes ?? null,
-      captured_by: context.userId,
-      captured_by_role: operator ? "staff" : "driver",
+      path: data.path,
+      fileName: data.fileName ?? null,
+      mimeType: mime,
+      sizeBytes: data.sizeBytes ?? null,
       caption: data.caption ?? null,
-      taken_at: (exif.takenAt ?? uploadNow).toISOString(),
-      taken_at_source: exif.takenAtSource,
-      gps_lat: exif.gpsLat,
-      gps_lng: exif.gpsLng,
+      capturedBy: context.userId,
+      capturedByRole: operator ? "staff" : "driver",
     });
-    if (error) throw new Error(error.message);
-    return { ok: true, missingExifTime: exif.missingExifTime };
+    return { ok: true, missingExifTime: saved.missingExifTime };
   });
 
 export const listConditionMedia = createServerFn({ method: "POST" })
@@ -371,11 +344,12 @@ export const listConditionMedia = createServerFn({ method: "POST" })
     const operator = await canInspect(context.supabase, context.userId);
 
     let vehicleId = data.vehicleId ?? null;
-    let driverRental: { id: string; vehicle_id: string } | null = null;
+    let renterRental: string | null = null;
     if (!operator) {
-      driverRental = await activeRentalFor(context.supabase, context.userId);
-      if (!driverRental?.vehicle_id) return [];
-      vehicleId = driverRental.vehicle_id as string;
+      const rental = await activeRentalFor(context.supabase, context.userId);
+      if (!rental?.vehicle_id) return [];
+      vehicleId = rental.vehicle_id as string;
+      renterRental = rental.id as string;
     }
     if (!vehicleId) return [];
 
@@ -386,14 +360,14 @@ export const listConditionMedia = createServerFn({ method: "POST" })
       .eq("vehicle_id", vehicleId)
       .order("created_at", { ascending: false })
       .limit(200);
-    if (data.rentalId) q = q.eq("rental_id", data.rentalId);
+    // A renter sees their own rental's media only — never another booking's
+    // on the same car, whatever rentalId the client sends.
+    if (renterRental) q = q.eq("rental_id", renterRental);
+    else if (data.rentalId) q = q.eq("rental_id", data.rentalId);
 
     const { data: rows } = await q;
-    // Precise GPS is staff-only; renters see time but not coordinates.
-    return signMedia(supabaseAdmin, rows ?? [], {
-      includeGps: !!operator,
-      canDelete: operator ? undefined : (media) => driverCanDeleteConditionMedia(media, context.userId, driverRental),
-    });
+    // Precise GPS is staff-only; renters get the metadata-free copy only.
+    return signMedia(supabaseAdmin, rows ?? [], { includeGps: !!operator, renter: !operator });
   });
 
 export const deleteConditionMedia = createServerFn({ method: "POST" })
@@ -406,58 +380,15 @@ export const deleteConditionMedia = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row } = await supabaseAdmin
       .from("condition_media")
-      .select("id,storage_bucket,storage_path")
+      .select("id,storage_bucket,storage_path,share_path")
       .eq("id", data.id)
       .maybeSingle();
     if (row) {
       await supabaseAdmin.storage
         .from(row.storage_bucket as string)
-        .remove([row.storage_path as string]);
+        .remove([row.storage_path as string, ...(row.share_path ? [row.share_path as string] : [])]);
       await supabaseAdmin.from("condition_media").delete().eq("id", data.id);
     }
-    return { ok: true };
-  });
-
-export const deleteOwnConditionMedia = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const rental = await activeRentalFor(context.supabase, context.userId);
-    if (!rental) throw new Error("Forbidden");
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: row, error: readError } = await supabaseAdmin
-      .from("condition_media")
-      .select("id,vehicle_id,rental_id,inspection_id,incident_id,captured_by,captured_by_role,storage_bucket,storage_path")
-      .eq("id", data.id)
-      .maybeSingle();
-    if (readError) throw new Error(readError.message);
-    if (!row || !driverCanDeleteConditionMedia(row, context.userId, rental)) throw new Error("Forbidden");
-
-    const { error: storageError } = await supabaseAdmin.storage
-      .from(row.storage_bucket as string)
-      .remove([row.storage_path as string]);
-    if (storageError) throw new Error(storageError.message);
-    const { error: deleteError } = await supabaseAdmin
-      .from("condition_media")
-      .delete()
-      .eq("id", data.id)
-      .eq("captured_by", context.userId)
-      .eq("captured_by_role", "driver")
-      .eq("rental_id", rental.id)
-      .is("inspection_id", null)
-      .is("incident_id", null);
-    if (deleteError) throw new Error(deleteError.message);
-
-    await supabaseAdmin.from("audit_log").insert({
-      actor_user_id: context.userId,
-      actor_email: typeof context.claims.email === "string" ? context.claims.email : null,
-      actor_role: "driver",
-      action: "condition_media.deleted_by_driver",
-      entity_type: "condition_media",
-      entity_id: data.id,
-      summary: "Driver deleted their own uploaded condition photo",
-      metadata: { rental_id: rental.id, vehicle_id: rental.vehicle_id },
-    });
     return { ok: true };
   });
 
@@ -793,12 +724,27 @@ export const getMyCheckoutInspection = createServerFn({ method: "GET" })
         .select("section,label,result,notes")
         .eq("inspection_id", inspection.id)
         .order("sort_order"),
-      supabaseAdmin
-        .from("condition_media")
-        .select("*")
-        .eq("vehicle_id", rental.vehicle_id)
-        .eq("phase", "checkout")
-        .order("created_at"),
+      // This rental's pickup, or the pre-delivery inspection being signed —
+      // never another renter's pickup on the same car. Two reads, merged,
+      // rather than an interpolated .or() filter.
+      Promise.all([
+        supabaseAdmin
+          .from("condition_media")
+          .select("*")
+          .eq("vehicle_id", rental.vehicle_id)
+          .eq("phase", "checkout")
+          .eq("rental_id", rental.id),
+        supabaseAdmin
+          .from("condition_media")
+          .select("*")
+          .eq("vehicle_id", rental.vehicle_id)
+          .eq("phase", "checkout")
+          .eq("inspection_id", inspection.id),
+      ]).then(([a, b]) => {
+        const seen = new Map<string, any>();
+        for (const m of [...(a.data ?? []), ...(b.data ?? [])]) seen.set(m.id, m);
+        return { data: [...seen.values()].sort((x, y) => String(x.created_at).localeCompare(String(y.created_at))) };
+      }),
       supabaseAdmin
         .from("vehicles")
         .select("year,make,model,license_plate")
@@ -824,7 +770,7 @@ export const getMyCheckoutInspection = createServerFn({ method: "GET" })
       signatureName: (inspection.driver_signature_name as string | null) ?? null,
       driverNotes: (inspection.driver_notes as string | null) ?? null,
       items: (items ?? []) as InspectionToSign["items"],
-      media: await signMedia(supabaseAdmin, media ?? [], { includeGps: false }),
+      media: await signMedia(supabaseAdmin, media ?? [], { includeGps: false, renter: true }),
     };
   });
 

@@ -54,7 +54,8 @@ export const getRenterPortalFileUrl = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => {
     const o = (input ?? {}) as { kind?: unknown; id?: unknown; previewDriverId?: unknown };
-    if (o.kind !== "photo" && o.kind !== "registration" && o.kind !== "insurance") throw new Error("Invalid file");
+    if (o.kind !== "photo" && o.kind !== "registration" && o.kind !== "insurance")
+      throw new Error("Invalid file");
     return {
       kind: o.kind as "photo" | "registration" | "insurance",
       id: uuid(o.id, "file"),
@@ -76,10 +77,30 @@ export const getRenterPortalFileUrl = createServerFn({ method: "POST" })
       row = (rows as { storage_bucket: string; storage_path: string }[] | null)?.[0] ?? null;
     } else {
       const { authorizeRenterPortalFileForDriver } = await import("@/lib/renter-portal.server");
-      row = await authorizeRenterPortalFileForDriver(scope.supabase, scope.userId, data.kind, data.id);
+      row = await authorizeRenterPortalFileForDriver(
+        scope.supabase,
+        scope.userId,
+        data.kind,
+        data.id,
+      );
+    }
+    // Photos: whatever the RPC returned only proves the caller may open this
+    // id. The file signed is always the server's metadata-free share copy,
+    // looked up here — never an original, whichever RPC version is live.
+    if (data.kind === "photo" && row) {
+      const { data: m } = await supabaseAdmin
+        .from("condition_media")
+        .select("storage_bucket,share_path")
+        .eq("id", data.id)
+        .maybeSingle();
+      row = m?.share_path
+        ? { storage_bucket: m.storage_bucket as string, storage_path: m.share_path as string }
+        : null;
     }
     if (!row?.storage_bucket || !row.storage_path) throw new Error("File not available");
-    const signed = await supabaseAdmin.storage.from(row.storage_bucket).createSignedUrl(row.storage_path, 600);
+    const signed = await supabaseAdmin.storage
+      .from(row.storage_bucket)
+      .createSignedUrl(row.storage_path, 600);
     if (signed.error || !signed.data?.signedUrl) throw new Error("Could not open file");
     return { url: signed.data.signedUrl };
   });
@@ -88,23 +109,32 @@ export const getRenterPortalFileUrl = createServerFn({ method: "POST" })
 export const getRenterVendors = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => ({ previewDriverId: previewId(input) }))
-  .handler(async ({ data, context }): Promise<{ vendors: RenterVendor[]; view: VendorView | null }> => {
-    assertEnabled();
-    const { portalScope } = await import("@/lib/driver-preview.server");
-    const scope = await portalScope(context, data, "renter-vendors");
-    const sb = scope.preview ? scope.supabase : (context.supabase as any);
-    const [v, p] = await Promise.all([
-      sb
-        .from("renter_vendors")
-        .select("id,category,name,phone,website,address,notes,logo_url,sort_order,is_active")
-        .eq("is_active", true)
-        .order("sort_order")
-        .order("name"),
-      sb.from("renter_portal_prefs").select("vendor_view").eq("user_id", scope.userId).maybeSingle(),
-    ]);
-    if (v.error) throw new Error(v.error.message);
-    return { vendors: (v.data ?? []) as RenterVendor[], view: parseVendorView(p.data?.vendor_view) };
-  });
+  .handler(
+    async ({ data, context }): Promise<{ vendors: RenterVendor[]; view: VendorView | null }> => {
+      assertEnabled();
+      const { portalScope } = await import("@/lib/driver-preview.server");
+      const scope = await portalScope(context, data, "renter-vendors");
+      const sb = scope.preview ? scope.supabase : (context.supabase as any);
+      const [v, p] = await Promise.all([
+        sb
+          .from("renter_vendors")
+          .select("id,category,name,phone,website,address,notes,logo_url,sort_order,is_active")
+          .eq("is_active", true)
+          .order("sort_order")
+          .order("name"),
+        sb
+          .from("renter_portal_prefs")
+          .select("vendor_view")
+          .eq("user_id", scope.userId)
+          .maybeSingle(),
+      ]);
+      if (v.error) throw new Error(v.error.message);
+      return {
+        vendors: (v.data ?? []) as RenterVendor[],
+        view: parseVendorView(p.data?.vendor_view),
+      };
+    },
+  );
 
 export const setRenterVendorView = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -117,9 +147,11 @@ export const setRenterVendorView = createServerFn({ method: "POST" })
     assertEnabled();
     const { refuseStaffPortalWrite } = await import("@/lib/driver-preview.server");
     await refuseStaffPortalWrite(context.userId);
-    const { error } = await (context.supabase as any)
-      .from("renter_portal_prefs")
-      .upsert({ user_id: context.userId, vendor_view: data.view, updated_at: new Date().toISOString() });
+    const { error } = await (context.supabase as any).from("renter_portal_prefs").upsert({
+      user_id: context.userId,
+      vendor_view: data.view,
+      updated_at: new Date().toISOString(),
+    });
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -151,7 +183,12 @@ export const adminSaveRenterVendor = createServerFn({ method: "POST" })
     await staff(context.userId);
     const row = { ...data, updated_at: new Date().toISOString(), updated_by: context.userId };
     const q = data.id
-      ? (context.supabase as any).from("renter_vendors").update(row).eq("id", data.id).select("id").single()
+      ? (context.supabase as any)
+          .from("renter_vendors")
+          .update(row)
+          .eq("id", data.id)
+          .select("id")
+          .single()
       : (context.supabase as any).from("renter_vendors").insert(row).select("id").single();
     const { data: saved, error } = await q;
     if (error) throw new Error(error.message);
@@ -160,10 +197,15 @@ export const adminSaveRenterVendor = createServerFn({ method: "POST" })
 
 export const adminDeleteRenterVendor = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => ({ id: uuid((input as { id?: unknown } | null)?.id, "vendor") }))
+  .inputValidator((input: unknown) => ({
+    id: uuid((input as { id?: unknown } | null)?.id, "vendor"),
+  }))
   .handler(async ({ data, context }) => {
     await staff(context.userId);
-    const { error } = await (context.supabase as any).from("renter_vendors").delete().eq("id", data.id);
+    const { error } = await (context.supabase as any)
+      .from("renter_vendors")
+      .delete()
+      .eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -178,7 +220,10 @@ export const adminReorderRenterVendors = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await staff(context.userId);
     for (let i = 0; i < data.ids.length; i++) {
-      const { error } = await (context.supabase as any).from("renter_vendors").update({ sort_order: (i + 1) * 10 }).eq("id", data.ids[i]);
+      const { error } = await (context.supabase as any)
+        .from("renter_vendors")
+        .update({ sort_order: (i + 1) * 10 })
+        .eq("id", data.ids[i]);
       if (error) throw new Error(error.message);
     }
     return { ok: true };

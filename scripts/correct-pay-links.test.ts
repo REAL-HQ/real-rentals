@@ -235,6 +235,8 @@ describe("webhook: subscription matching", () => {
     const db = fakeDb(seed({ sub: null }));
     await postVerifiedPaymentWebhook({ type: "invoice.payment_failed", data: { object: failedInvoice({ subscription: "sub_new" }) } }, db, "live", { now: NOON_ET });
     expect(db._state.rentals[0].stripe_subscription_id).toBeNull();
+    // Subscription matching stays off and nothing ties this invoice to a
+    // rental or application, so it is warned about, not written.
     expect(db._state.payments.length).toBe(0);
   });
 
@@ -255,7 +257,10 @@ describe("webhook: subscription matching", () => {
     expect(alerts[0]).toMatchObject({ existingSubscriptionId: "sub_live", newSubscriptionId: "sub_dup", rentalId: RENTAL });
     expect(db._state.rentals[0].stripe_subscription_id).toBe("sub_live");
     expect(db._state.notifications.filter((n: Row) => n.title === "Possible Duplicate Subscription").length).toBe(1);
-    expect(db._state.payments.length).toBe(0);
+    // Staff get the duplicate-subscription alert; the charge is not tied to the
+    // rental by customer or metadata, so no payments row (and no receipt).
+    expect(db._state.payments.filter((p: Row) => p.stripe_invoice_id === "in_dup").length).toBe(0);
+    expect(db._state.notifications.filter((n: Row) => n.title === "Weekly Rent Paid").length).toBe(0);
   });
 });
 

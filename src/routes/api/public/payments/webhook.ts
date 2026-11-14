@@ -7,6 +7,8 @@ import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatc
 import { holdIfHeld, type HeldNoticeInput } from '@/lib/held-payment-notices.server';
 import { failedInvoiceLink } from '@/lib/failed-payment-link';
 import { easternDateOf } from '@/lib/rent-reminders';
+import { dueDateOf, extractPaymentReceiptFields, paidDateOf, shouldNotifyRenter } from '@/lib/renter-payments';
+import { resolveStripePaymentMatch } from '@/lib/renter-payments-match.server';
 import { linkOrFlagSubscription, renderWebhookReminder, sendFailedPaymentText, webhookReminderSlot, type SmsSender } from '@/lib/failed-payment-notice.server';
 
 /** Test seam for the outbound text and staff alert; the route never sets it. */
@@ -350,59 +352,45 @@ async function alertPossibleDoubleCollection(amount: number): Promise<void> {
   }
 }
 
+
+function subscriptionIdOfInvoice(invoice: any): string | null {
+  const raw = typeof invoice.subscription === 'string' ? invoice.subscription
+    : invoice.subscription?.id ?? invoice.parent?.subscription_details?.subscription;
+  return typeof raw === 'string' ? raw : null;
+}
+
 async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed') {
   const admin: any = getSupabase();
-  const rawSub = typeof invoice.subscription === 'string' ? invoice.subscription
-    : invoice.subscription?.id ?? invoice.parent?.subscription_details?.subscription;
-  const subscriptionId = typeof rawSub === 'string' ? rawSub : null;
+  const subscriptionId = subscriptionIdOfInvoice(invoice);
+  const receipts = extractPaymentReceiptFields(invoice);
+  // 1. Stripe auto-link (PR 360): tie this customer / subscription to its
+  // rental by metadata (rentalId / applicationId), then by customer id. Only
+  // fills empty columns; a different subscription is never overwritten.
   const { linkStripeObjectToRental } = await import('@/lib/stripe-link.server');
-  const ref = {
+  await linkStripeObjectToRental(admin, {
     metadata: { ...(invoice.parent?.subscription_details?.metadata ?? {}), ...(invoice.metadata ?? {}) },
     customerId: customerIdOf(invoice),
     subscriptionId,
-  };
-  if (!subscriptionId) {
-    // A one-off invoice (first week, final return): record it when its
-    // metadata or customer names exactly one active rental.
-    const linked = await linkStripeObjectToRental(admin, ref);
-    if (linked.kind !== 'link' && linked.kind !== 'already') {
-      await warnUnmatchedInvoice(admin, invoice, status, null);
-      return;
-    }
-    const one = await admin.from('rentals').select('id, application_id, vehicle_id').eq('id', linked.rentalId).maybeSingle();
-    if (one.error || !one.data) {
-      if (!one.error) await warnUnmatchedInvoice(admin, invoice, status, null);
-      return;
-    }
-    await recordInvoiceRow(admin, invoice, status, one.data, null);
+  });
+  // 2. Receipt matcher (PR 356): subscription, customer, application metadata,
+  // prior payments. 3. Subscription Matching by contact (off by default).
+  const match = await resolveStripePaymentMatch(admin, invoice, {
+    afterSubscriptionMiss: subscriptionId
+      ? async () => {
+          await linkOrFlagSubscription(admin, invoice, subscriptionId, status, { alert: webhookDeps.alert });
+        }
+      : undefined,
+  });
+  // An invoice we cannot tie to any rental or application is not written:
+  // staff get the unmatched warning (and the daily Stripe Link Check) instead.
+  if (!match.rentalId && !match.driverId) {
+    await warnUnmatchedInvoice(admin, invoice, status, subscriptionId);
     return;
   }
-  const findRental = () => admin
-    .from('rentals')
-    .select('id, application_id, vehicle_id')
-    .eq('stripe_subscription_id', subscriptionId)
-    .maybeSingle();
-  let rentalResult = await findRental();
-  if (!rentalResult.error && !rentalResult.data) {
-    // 1. metadata (rentalId / applicationId), 2. the renter's customer id.
-    const linked = await linkStripeObjectToRental(admin, ref);
-    if (linked.kind === 'link' || linked.kind === 'already') rentalResult = await findRental();
-  }
-  if (!rentalResult.error && !rentalResult.data) {
-    // 3. Automations → Subscription Matching (off by default): link this
-    // subscription to its one renter by email/phone, or flag a second subscription.
-    const linked = await linkOrFlagSubscription(admin, invoice, subscriptionId, status, { alert: webhookDeps.alert });
-    if (linked.kind === 'linked') rentalResult = await findRental();
-  }
-  if (rentalResult.error || !rentalResult.data) {
-    if (!rentalResult.error) await warnUnmatchedInvoice(admin, invoice, status, subscriptionId);
-    return;
-  }
-  await recordInvoiceRow(admin, invoice, status, rentalResult.data, subscriptionId);
-}
-
-/** Record one invoice against a resolved rental, then the receipt / failure notices. */
-async function recordInvoiceRow(admin: any, invoice: any, status: 'paid' | 'failed', rental: any, subscriptionId: string | null) {
+  const notify = shouldNotifyRenter(match);
+  const rental = match.rentalId
+    ? { id: match.rentalId, application_id: match.driverId, vehicle_id: match.vehicleId }
+    : null;
 
   // The week's rent is owed whether or not the card worked.
   const owed = Number(invoice.amount_due ?? invoice.amount_paid ?? 0) / 100;
@@ -410,22 +398,56 @@ async function recordInvoiceRow(admin: any, invoice: any, status: 'paid' | 'fail
   const failure = 'Weekly rent charge failed';
 
   // One row per invoice (unique index). A duplicate insert is ignored.
+  // Matched rentals stay on the existing pending → paid/failed notice path.
+  // Application-only, unmatched, or ambiguous rows are stored as a terminal
+  // status with notified_status already set so they cannot trigger receipts,
+  // rent reminders, late fees, or staff payment notices.
   must(await admin.from('payments').insert({
-    rental_id: rental.id,
-    driver_id: rental.application_id,
-    vehicle_id: rental.vehicle_id ?? null,
+    rental_id: match.rentalId,
+    driver_id: match.driverId,
+    vehicle_id: match.vehicleId,
     amount,
     balance_due: status === 'paid' ? 0 : owed,
     type: 'rent',
     reason: 'rent',
-    status: 'pending',
+    status: notify ? 'pending' : (status === 'paid' ? 'paid' : 'failed'),
+    notified_status: notify ? null : status,
+    failure_reason: !notify && status === 'failed' ? failure : null,
+    paid_date: !notify && status === 'paid' ? paidDateOf(invoice, receipts) : null,
+    payment_method: 'card',
     // The week this invoice bills starts when Stripe created it (ET), the same
     // date the rent reminders and late-fee waivers use. invoice.period_start is
     // the previous period for renewals, which made weeks look days later.
-    due_date: invoice.created ? easternDateOf(Number(invoice.created)) : invoice.period_start ? new Date(invoice.period_start * 1000).toISOString().slice(0, 10) : today(),
+    due_date: invoice.created ? easternDateOf(Number(invoice.created)) : invoice.period_start ? new Date(invoice.period_start * 1000).toISOString().slice(0, 10) : dueDateOf(invoice),
     stripe_invoice_id: invoice.id,
     stripe_subscription_id: subscriptionId,
+    stripe_invoice_number: receipts.stripe_invoice_number,
+    stripe_hosted_invoice_url: receipts.stripe_hosted_invoice_url,
+    stripe_invoice_pdf_url: receipts.stripe_invoice_pdf_url,
+    stripe_receipt_url: receipts.stripe_receipt_url,
+    stripe_charge_id: receipts.stripe_charge_id,
+    stripe_customer_id: receipts.stripe_customer_id,
+    stripe_payment_intent_id: receipts.stripe_payment_intent_id,
+    stripe_paid_at: receipts.stripe_paid_at,
   }));
+
+  // Fill receipt links on a replay without changing status or notified_status.
+  // Also attach a later match onto a previously unmatched row (nulls only).
+  must(await admin.from('payments').update({
+    stripe_invoice_number: receipts.stripe_invoice_number,
+    stripe_hosted_invoice_url: receipts.stripe_hosted_invoice_url,
+    stripe_invoice_pdf_url: receipts.stripe_invoice_pdf_url,
+    stripe_receipt_url: receipts.stripe_receipt_url,
+    stripe_charge_id: receipts.stripe_charge_id,
+    stripe_customer_id: receipts.stripe_customer_id,
+    stripe_payment_intent_id: receipts.stripe_payment_intent_id,
+    stripe_paid_at: receipts.stripe_paid_at,
+    stripe_subscription_id: subscriptionId,
+  }).eq('stripe_invoice_id', invoice.id));
+
+  // Application-only (paid before activation), ambiguous, or another
+  // subscription: stored without notices; activation attaches it later.
+  if (!notify || !rental) return;
 
   const patch = status === 'paid'
     ? { status: 'paid', paid_date: today(), balance_due: 0, amount, failure_reason: null }
