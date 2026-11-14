@@ -158,7 +158,7 @@ describe("application resume progress", () => {
     const driving = progressFromSnapshot({ ...filled, gigStatus: null, insuranceOnFile: false, address: null });
     assert.equal(driving.label, "Driving");
     assert.equal(driving.phase, "driving");
-    assert.deepEqual(driving.missingDocuments, ["Insurance", "Your Address"]);
+    assert.deepEqual(driving.missingDocuments, ["Your Address"]);
 
     const docs = progressFromSnapshot({ ...filled, licenseValid: null, profileOnFile: false });
     assert.equal(docs.step, 4);
@@ -286,10 +286,11 @@ describe("waitlist promotion resume", () => {
     assert.equal(portalOpenRefused("Declined", false), false);
     assert.equal(portalOpenRefused(" closed", false), false);
     assert.equal(portalOpenRefused("closed ", false), false);
-    for (const status of ["approved", "complete"]) {
-      assert.equal(portalOpenRefused(status, false), false);
-      assert.equal(portalOpenRefused(status, true), false);
-    }
+    // Complete stays reviewable via resume; approved/active use /login → portal.
+    assert.equal(portalOpenRefused("complete", false), false);
+    assert.equal(portalOpenRefused("complete", true), false);
+    assert.equal(portalOpenRefused("approved", false), false);
+    assert.equal(portalOpenRefused("approved", true), true);
     for (const status of ["active", "suspended", "duplicate"]) {
       assert.equal(portalOpenRefused(status, false), false);
       assert.equal(portalOpenRefused(status, true), true);

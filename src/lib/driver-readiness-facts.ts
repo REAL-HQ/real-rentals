@@ -349,7 +349,7 @@ export function readinessFacts(input: ReadinessInput): ReadinessFact[] {
 }
 
 export function nextMissingFact(facts: readonly ReadinessFact[]): string {
-  const missing = facts.find((item) => item.state === "missing");
+  const missing = facts.find((item) => item.state === "missing" && item.key !== "insurance");
   if (missing) return missing.label;
   if (facts.some((item) => item.state === "unknown")) return "Unknown";
   return "Complete";

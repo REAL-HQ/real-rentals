@@ -4,6 +4,7 @@
 // The two built-in families are transcribed from the Owner-supplied PDFs:
 //   no_insurance        "REAL RENTALS - Vehicle Rental Agreement (v1.10)"
 //   insurance_required  "REAL RENTALS - Vehicle Rental Agreement (v1.10.2, Insurance Required)"
+//   insurance_included  "REAL RENTALS - Vehicle Rental Agreement (v1.14)" (agreement-v114.ts)
 // Wording is verbatim except: company placeholders ([Legal Entity Name],
 // [address], [phone], the support email) are merge fields from Settings →
 // Company; reusable values are [[terms]]; bullets/checkboxes the PDF font
@@ -12,6 +13,7 @@
 
 import { V16_SOURCE, V16_TERM_DEFAULTS, writeTerms } from "@/lib/agreement-builder";
 import { parseLayout } from "@/lib/agreement-layout";
+import { V114_SOURCE, V114_TERM_DEFAULTS } from "@/lib/agreement-v114";
 
 export type LibraryTemplate = {
   key: string;
@@ -24,6 +26,8 @@ export type LibraryTemplate = {
   body: string;
   /** Reservation Fee row prints the entered amount (or "None"), not checkboxes. */
   reservationStyle: "amount";
+  /** REAL RENTALS arranges the renter's policy: no renter insurance is asked for. */
+  insuranceIncluded?: boolean;
 };
 
 /** Exact substitution that fails loudly if the source text is not found. */
@@ -96,6 +100,11 @@ export const LIBRARY: LibraryTemplate[] = [
     key: "insurance_required", name: "Vehicle Rental Agreement — Insurance Required", displayVersion: "1.10.2",
     insuranceRequired: true, sourceFile: "REAL-RENTALS-Vehicle-Rental-Agreement-v1.10.2_insurance_required.pdf",
     source: V1102_INS_SOURCE, terms: V1102_TERM_DEFAULTS, body: writeTerms(V1102_INS_SOURCE, V1102_TERM_DEFAULTS), reservationStyle: "amount",
+  },
+  {
+    key: "insurance_included", name: "Vehicle Rental Agreement — Insurance Included", displayVersion: "1.14",
+    insuranceRequired: false, insuranceIncluded: true, sourceFile: "REAL-RENTALS-Vehicle-Rental-Agreement-v1.14-Final.pdf",
+    source: V114_SOURCE, terms: V114_TERM_DEFAULTS, body: writeTerms(V114_SOURCE, V114_TERM_DEFAULTS), reservationStyle: "amount",
   },
 ];
 

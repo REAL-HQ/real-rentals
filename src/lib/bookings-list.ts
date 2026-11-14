@@ -1,3 +1,4 @@
+export { pastRentalBadge } from "@/lib/return-flow";
 // Browser-safe shapes and helpers for Bookings (List + Details).
 //
 // A booking, in this phase, IS a rental. There is no bookings table and no
@@ -68,6 +69,36 @@ export const PHASE_STATUSES: Record<Exclude<BookingPhaseFilter, "all">, readonly
   completed: ["ended", "completed", "closed", "returned", "finished"],
 };
 
+/** Statuses that belong on the Past tab (ended or cancelled — never active/reserved). */
+export const PAST_STATUS_VALUES: readonly string[] = [
+  ...PHASE_STATUSES.completed,
+  ...PHASE_STATUSES.cancelled,
+];
+
+/**
+ * Server-side status filter for the Bookings list.
+ * Returns null when every non-reserved rental is in scope (legacy "all").
+ * Past scope never includes active or reserved rows.
+ */
+export function statusesForBookingList(input: {
+  scope?: "past" | "all" | null;
+  phase: BookingPhaseFilter;
+}): readonly string[] | null {
+  const scope = input.scope === "past" ? "past" : "all";
+  if (scope === "past") {
+    if (input.phase === "completed") return PHASE_STATUSES.completed;
+    if (input.phase === "cancelled") return PHASE_STATUSES.cancelled;
+    // "all" or a mistaken "active" under Past → completed + cancelled only.
+    return PAST_STATUS_VALUES;
+  }
+  if (input.phase === "all") return null;
+  return PHASE_STATUSES[input.phase];
+}
+
+export function isPastPhase(phase: BookingPhase): boolean {
+  return phase === "completed" || phase === "cancelled";
+}
+
 export type BookingRow = {
   id: string;
   source: BookingSource;
@@ -131,6 +162,17 @@ export function vehicleLabelOf(
   if (!v) return null;
   const s = [v.year, v.make, v.model].filter(Boolean).join(" ").trim();
   return s || null;
+}
+
+/** Display name for a booking's car. A past rental may have no vehicle. */
+export const UNKNOWN_VEHICLE_LABEL = "Unknown";
+
+export function bookingVehicleName(b: {
+  unitNumber?: string | null;
+  vehicleLabel?: string | null;
+}): string {
+  const text = [b.unitNumber, b.vehicleLabel].filter(Boolean).join(" · ");
+  return text || UNKNOWN_VEHICLE_LABEL;
 }
 
 /**

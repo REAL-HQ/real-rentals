@@ -11,7 +11,7 @@ import { Eye, EyeOff, Loader2, ShieldCheck, AlertTriangle } from "lucide-react";
  * visitor here already holding a recovery session. So the only thing this page
  * has to do is wait for that session to exist and then set a password on it.
  *
- * It handles the invite sent at approval and the Forgot Password link from
+ * It handles the invite sent at Reserved and the Forgot Password link from
  * /login identically — an invite is a recovery link for an account that has
  * never had a password, which is the same transaction.
  */
@@ -35,20 +35,31 @@ function SetPasswordPage() {
 
   useEffect(() => {
     let settled = false;
+    const params = new URLSearchParams(window.location.search);
+    const tokenHash = (params.get("token_hash") || "").trim();
+    const type = (params.get("type") || "recovery") as "recovery" | "invite" | "signup" | "magiclink" | "email" | "email_change";
+
+    const ready = () => {
+      settled = true;
+      setPhase("ready");
+    };
+
+    // A drivereal.com confirm/reset link carries token_hash. Verify it here
+    // so the page works even if the visitor skipped /auth/confirm.
+    if (tokenHash) {
+      supabase.auth.verifyOtp({ token_hash: tokenHash, type }).then(({ error }) => {
+        if (error) setPhase("no-session");
+        else ready();
+      });
+    }
 
     // The session may already be established by the time this mounts, or it
     // may arrive moments later as the client parses the link. Listen for both.
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        settled = true;
-        setPhase("ready");
-      }
+      if (data.session) ready();
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (session) {
-        settled = true;
-        setPhase("ready");
-      }
+      if (session) ready();
     });
 
     // A link that was already used, or has expired, leaves no session at all.

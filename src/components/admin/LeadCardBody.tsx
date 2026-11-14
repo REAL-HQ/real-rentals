@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { CalendarDays } from "lucide-react";
 import { LEAD_NEXT_STEP, LEAD_TONES, leadBadgeLabel, leadTiming } from "@/lib/lead-card";
 import type { PriorityLead } from "@/lib/lead-priorities";
 
@@ -24,24 +23,29 @@ export function LeadCardBody({
 }) {
   const tone = LEAD_TONES[lead.bucket];
   const timing = leadTiming(lead, today);
+  const isHighPriority = lead.priority === "High";
   return (
-    <div
-      data-lead-tone={tone.key}
-      className={`flex h-full flex-col gap-2.5 rounded-lg border border-l-4 border-border bg-card p-4 text-card-foreground ${tone.accent}`}
-    >
-      <div className="flex min-w-0 items-start justify-between gap-2">
-        <div className="min-w-0 flex-1 break-words text-base font-semibold leading-5">{name}</div>
-        <span data-lead-badge className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone.badge}`}>
+    <div className="flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4 text-card-foreground">
+      <div className="min-w-0 break-words text-base font-semibold leading-5">{name}</div>
+      <p data-lead-next className="text-[13px] font-medium leading-5 text-card-foreground">
+        {LEAD_NEXT_STEP[lead.bucket]}
+      </p>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        {status}
+        <span
+          data-lead-badge
+          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${
+            isHighPriority ? "bg-destructive/10 text-destructive" : tone.badge
+          }`}
+        >
+          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${lead.bucket === "overdue" || isHighPriority ? "bg-brand" : "bg-muted-foreground/40"}`} />
           {leadBadgeLabel(lead.bucket, lead.contactLabel, lead.priority)}
         </span>
       </div>
-      <p data-lead-next className="text-sm font-medium text-card-foreground">{LEAD_NEXT_STEP[lead.bucket]}</p>
-      <div className="flex flex-wrap items-center gap-2">{status}</div>
       {draft}
       <p data-lead-timing className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs leading-4 text-muted-foreground">
-        <CalendarDays aria-hidden="true" className="h-3 w-3 shrink-0" />
         {timing.map((t, i) => (
-          <span key={t} className={i === 0 && lead.bucket === "overdue" ? "font-semibold text-red-700 dark:text-red-400" : undefined}>
+          <span key={t} className={i === 0 && lead.bucket === "overdue" ? "font-medium text-brand" : undefined}>
             {i > 0 ? "· " : ""}
             {t}
           </span>

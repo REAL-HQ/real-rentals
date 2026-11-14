@@ -388,7 +388,7 @@ ok(/Check Availability/.test(card), "CTA still reads Check Availability");
 // server rendered, so the error can land before React hydrates.
 ok(
   /onError=\{\(\) => setImageFailed\(true\)\}/.test(card),
-  "a failed image swaps to a neutral tile",
+  "a failed listing photo swaps to the representative type photo",
 );
 ok(
   /el\.complete && el\.naturalWidth === 0/.test(card),

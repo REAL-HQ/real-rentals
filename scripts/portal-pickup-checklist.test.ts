@@ -94,7 +94,6 @@ describe("pickup checklist", () => {
       [
         ["license_front", "Expired"],
         ["license_back", "Not on file"],
-        ["insurance", "Expiring soon"],
       ],
     );
     assert.equal(items[0].label, "Driver's license (front)");

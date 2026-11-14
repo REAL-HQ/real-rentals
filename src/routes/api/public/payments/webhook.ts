@@ -1,10 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { createClient } from '@supabase/supabase-js';
 import { type StripeEnv, verifyWebhook, createStripeClient } from '@/lib/stripe.server';
-import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail, sendTeamPaymentAlertEmail } from '@/lib/email.server';
+import { sendPaymentReceiptEmail, sendPaymentFailedEmail, sendCardExpiringEmail, sendTeamPaymentAlertEmail, sendRentReminderEmail } from '@/lib/email.server';
 import { doubleCollectionMessage } from '@/lib/payment-overlap';
 import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatched';
 import { holdIfHeld, type HeldNoticeInput } from '@/lib/held-payment-notices.server';
+import { failedInvoiceLink } from '@/lib/failed-payment-link';
+import { easternDateOf } from '@/lib/rent-reminders';
+import { linkOrFlagSubscription, renderWebhookReminder, sendFailedPaymentText, webhookReminderSlot, type SmsSender } from '@/lib/failed-payment-notice.server';
+
+/** Test seam for the outbound text and staff alert; the route never sets it. */
+export type WebhookDeps = { sendSms?: SmsSender; alert?: (a: any) => Promise<unknown>; now?: Date };
+let webhookDeps: WebhookDeps = {};
 
 let _supabase: ReturnType<typeof createClient> | null = null;
 let webhookAdmin: any = null;
@@ -24,7 +31,7 @@ async function driverForRental(rentalId: string | undefined) {
   const admin: any = getSupabase();
   const { data } = await admin
     .from('rentals')
-    .select('application_id, vehicles:vehicle_id(license_plate), applications:application_id(email, full_name, card_brand, card_last4, card_exp_month, card_exp_year)')
+    .select('application_id, vehicles:vehicle_id(license_plate), applications:application_id(email, phone, full_name, card_brand, card_last4, card_exp_month, card_exp_year)')
     .eq('id', rentalId)
     .maybeSingle();
   if (!data?.applications?.email) return null;
@@ -33,6 +40,7 @@ async function driverForRental(rentalId: string | undefined) {
     applicationId: (data.application_id as string | null) ?? null,
     plate: (data.vehicles?.license_plate as string | null) ?? null,
     name: (data.applications.full_name as string | null) ?? null,
+    phone: (data.applications.phone as string | null) ?? null,
     brand: data.applications.card_brand as string | null,
     last4: data.applications.card_last4 as string | null,
     expMonth: data.applications.card_exp_month as number | null,
@@ -49,6 +57,18 @@ function cardExpiresSoon(m: number | null, y: number | null): boolean {
 }
 
 async function handleCheckoutCompleted(session: any, env: StripeEnv) {
+  if (session.mode === 'subscription' || session.mode === 'payment') {
+    // Link the renter's customer / subscription to the rental. The money is
+    // recorded from invoice.paid / payment_intent.succeeded, not here.
+    const { linkStripeObjectToRental } = await import('@/lib/stripe-link.server');
+    await linkStripeObjectToRental(getSupabase(), {
+      metadata: session.metadata ?? null,
+      clientReferenceId: session.client_reference_id ?? null,
+      customerId: stripeId(session.customer),
+      subscriptionId: session.mode === 'subscription' ? stripeId(session.subscription) : null,
+    });
+    return;
+  }
   if (session.mode !== 'setup') return;
   const applicationId = session.metadata?.applicationId;
   const rentalId = session.metadata?.rentalId as string | undefined;
@@ -335,20 +355,54 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
   const rawSub = typeof invoice.subscription === 'string' ? invoice.subscription
     : invoice.subscription?.id ?? invoice.parent?.subscription_details?.subscription;
   const subscriptionId = typeof rawSub === 'string' ? rawSub : null;
+  const { linkStripeObjectToRental } = await import('@/lib/stripe-link.server');
+  const ref = {
+    metadata: { ...(invoice.parent?.subscription_details?.metadata ?? {}), ...(invoice.metadata ?? {}) },
+    customerId: customerIdOf(invoice),
+    subscriptionId,
+  };
   if (!subscriptionId) {
-    await warnUnmatchedInvoice(admin, invoice, status, null);
+    // A one-off invoice (first week, final return): record it when its
+    // metadata or customer names exactly one active rental.
+    const linked = await linkStripeObjectToRental(admin, ref);
+    if (linked.kind !== 'link' && linked.kind !== 'already') {
+      await warnUnmatchedInvoice(admin, invoice, status, null);
+      return;
+    }
+    const one = await admin.from('rentals').select('id, application_id, vehicle_id').eq('id', linked.rentalId).maybeSingle();
+    if (one.error || !one.data) {
+      if (!one.error) await warnUnmatchedInvoice(admin, invoice, status, null);
+      return;
+    }
+    await recordInvoiceRow(admin, invoice, status, one.data, null);
     return;
   }
-  const rentalResult = await admin
+  const findRental = () => admin
     .from('rentals')
     .select('id, application_id, vehicle_id')
     .eq('stripe_subscription_id', subscriptionId)
     .maybeSingle();
+  let rentalResult = await findRental();
+  if (!rentalResult.error && !rentalResult.data) {
+    // 1. metadata (rentalId / applicationId), 2. the renter's customer id.
+    const linked = await linkStripeObjectToRental(admin, ref);
+    if (linked.kind === 'link' || linked.kind === 'already') rentalResult = await findRental();
+  }
+  if (!rentalResult.error && !rentalResult.data) {
+    // 3. Automations → Subscription Matching (off by default): link this
+    // subscription to its one renter by email/phone, or flag a second subscription.
+    const linked = await linkOrFlagSubscription(admin, invoice, subscriptionId, status, { alert: webhookDeps.alert });
+    if (linked.kind === 'linked') rentalResult = await findRental();
+  }
   if (rentalResult.error || !rentalResult.data) {
     if (!rentalResult.error) await warnUnmatchedInvoice(admin, invoice, status, subscriptionId);
     return;
   }
-  const rental = rentalResult.data;
+  await recordInvoiceRow(admin, invoice, status, rentalResult.data, subscriptionId);
+}
+
+/** Record one invoice against a resolved rental, then the receipt / failure notices. */
+async function recordInvoiceRow(admin: any, invoice: any, status: 'paid' | 'failed', rental: any, subscriptionId: string | null) {
 
   // The week's rent is owed whether or not the card worked.
   const owed = Number(invoice.amount_due ?? invoice.amount_paid ?? 0) / 100;
@@ -365,7 +419,10 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     type: 'rent',
     reason: 'rent',
     status: 'pending',
-    due_date: invoice.period_start ? new Date(invoice.period_start * 1000).toISOString().slice(0, 10) : today(),
+    // The week this invoice bills starts when Stripe created it (ET), the same
+    // date the rent reminders and late-fee waivers use. invoice.period_start is
+    // the previous period for renewals, which made weeks look days later.
+    due_date: invoice.created ? easternDateOf(Number(invoice.created)) : invoice.period_start ? new Date(invoice.period_start * 1000).toISOString().slice(0, 10) : today(),
     stripe_invoice_id: invoice.id,
     stripe_subscription_id: subscriptionId,
   }));
@@ -473,12 +530,44 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
         await holdIfHeld(admin, card, invNotice('card_expiring'));
       }
     } else {
-      const failed = await sendPaymentFailedEmail({
-        to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
-        brand: driver.brand, last4: driver.last4,
-      });
-      await holdIfHeld(admin, failed, invNotice('payment_failed'));
+      // The failed invoice's own page, never a generic payment link: paying
+      // it settles this week on the SAME subscription (no second one).
+      // Shares the rent-reminder ledger: if today's reminder email for this
+      // week already went out, send nothing; with Rent Reminder: Overdue on,
+      // the email uses that editable template (with the late fee).
+      const slot = await webhookReminderSlot(admin, rental.id, invoice, 'email', webhookDeps.now ?? new Date());
+      const link = failedInvoiceLink(invoice);
+      let rendered: Awaited<ReturnType<typeof renderWebhookReminder>> = null;
+      if (slot.kind === 'claimed' && slot.useReminderTemplate && link) {
+        rendered = await renderWebhookReminder(admin, slot, {
+          invoice, amount, rentalId: rental.id, applicationId: rental.application_id ?? null,
+          firstName: driver.name ?? null, phone: driver.phone ?? null,
+        }, link, webhookDeps.now ?? new Date());
+      }
+      if (slot.kind !== 'taken') {
+        const failed = rendered && slot.kind === 'claimed'
+          ? await sendRentReminderEmail({
+              to: driver.email, subject: rendered.subject, text: rendered.email, link: rendered.link,
+              linkLabel: rendered.linkLabel, workflow: slot.ledgerStage === 'overdue' ? 'rent_reminder_overdue' : 'rent_reminder_daily',
+            })
+          : await sendPaymentFailedEmail({
+              to: driver.email, firstName: driver.name, amount, reason: 'weekly rent',
+              brand: driver.brand, last4: driver.last4,
+              payInvoiceUrl: link,
+            });
+        await holdIfHeld(admin, failed, invNotice('payment_failed'));
+      }
     }
+  }
+  if (status !== 'paid') {
+    // Automations → Payment Failed Text (off by default). Same claim as above,
+    // so one text per Stripe attempt.
+    const text = await sendFailedPaymentText(admin, {
+      invoice, amount, rentalId: rental.id, vehicleId: rental.vehicle_id ?? null,
+      applicationId: rental.application_id ?? null,
+      firstName: driver?.name ?? null, phone: driver?.phone ?? null,
+    }, { sendSms: webhookDeps.sendSms, now: webhookDeps.now });
+    if (!text.sent && text.reason !== 'off') console.info('[payments] failed-payment text not sent', { invoice: invoice.id, reason: text.reason });
   }
   if (status !== 'paid') await alertTeamPaymentFailed(driver, amount, 'weekly rent', rental.id, invNotice('payment_team_alert'));
 }
@@ -531,6 +620,16 @@ async function handleChargeRefunded(charge: any) {
   }));
 }
 
+/** customer.subscription.created: link a new subscription to its rental by metadata or customer. */
+async function handleSubscriptionCreated(sub: any) {
+  const { linkStripeObjectToRental } = await import('@/lib/stripe-link.server');
+  await linkStripeObjectToRental(getSupabase(), {
+    metadata: sub.metadata ?? null,
+    customerId: stripeId(sub.customer),
+    subscriptionId: typeof sub.id === 'string' ? sub.id : null,
+  });
+}
+
 async function handleSubscriptionUpdated(sub: any) {
   const admin: any = getSupabase();
   await admin.from('rentals').update({
@@ -560,6 +659,9 @@ async function handleVerifiedPaymentEvent(event: { type: string; data: { object:
     case 'charge.refunded':
       await handleChargeRefunded(event.data.object);
       break;
+    case 'customer.subscription.created':
+      await handleSubscriptionCreated(event.data.object);
+      break;
     case 'customer.subscription.updated':
     case 'customer.subscription.deleted':
       await handleSubscriptionUpdated(event.data.object);
@@ -578,9 +680,12 @@ export async function postVerifiedPaymentWebhook(
   event: { type: string; data: { object: any } },
   admin: any,
   env: StripeEnv = 'live',
+  deps: WebhookDeps = {},
 ): Promise<Response> {
   const previous = webhookAdmin;
+  const previousDeps = webhookDeps;
   webhookAdmin = admin;
+  webhookDeps = deps;
   try {
     await handleVerifiedPaymentEvent(event, env);
     return Response.json({ received: true });
@@ -589,6 +694,7 @@ export async function postVerifiedPaymentWebhook(
     return new Response('Webhook error', { status: 400 });
   } finally {
     webhookAdmin = previous;
+    webhookDeps = previousDeps;
   }
 }
 

@@ -12,7 +12,15 @@
 // its own errors: a failed audit write is worth a console line, not a failed
 // rental activation.
 
+import { createServerOnlyFn } from "@tanstack/react-start";
 import type { Actor } from "@/lib/roles.server";
+
+// Server-only: stripped from browser bundles so the request-helper import
+// never enters the client graph (it would fail the browser build).
+const currentRequest = createServerOnlyFn(async () => {
+  const { getRequest } = await import("@tanstack/react-start/server");
+  return getRequest();
+});
 
 export type AuditEntry = {
   /** Past-tense, dotted: 'application.approved', 'role.granted'. */
@@ -35,8 +43,7 @@ export async function logAudit(actor: Actor | null, entry: AuditEntry): Promise<
     let ip: string | null = null;
     let userAgent: string | null = null;
     try {
-      const { getRequest } = await import("@tanstack/react-start/server");
-      const req = getRequest();
+      const req = await currentRequest();
       ip =
         req?.headers?.get("cf-connecting-ip") ??
         req?.headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ??

@@ -21,7 +21,6 @@ export const PORTAL_DOCUMENT_TIME_ZONE = "America/New_York";
 export const PORTAL_DOCUMENT_UPDATE_SLOTS = [
   { category: "license_front", label: "Driver's License (Front)" },
   { category: "license_back", label: "Driver's License (Back)" },
-  { category: "insurance", label: "Insurance Card" },
 ] as const;
 
 export type PortalDocumentUpdateCategory = (typeof PORTAL_DOCUMENT_UPDATE_SLOTS)[number]["category"];
@@ -48,8 +47,9 @@ export type DocumentOnFile = {
 /**
  * Apply-flow files that may not have a vault row yet.
  *
- * license_photo_url is the front of the license. insurance_doc_url is the
- * insurance card. The wizard never collects the back of the license, so
+ * license_photo_url is the front of the license. insurance_doc_url is kept
+ * for a policy the team records later; renters are not asked to replace it.
+ * The wizard never collects the back of the license, so
  * license_back has no application column. A full http URL is a legacy value
  * the vault refuses to treat as an object we own.
  */
@@ -142,14 +142,10 @@ const APPLICATION_FILE: Record<
     path: () => null,
     expiry: () => null,
   },
-  insurance: {
-    path: (facts) => ownedPath(facts.insuranceDocPath),
-    expiry: (facts) => facts.insuranceExpiresOn,
-  },
 };
 
 /**
- * License front, license back, and insurance that are missing, already
+ * License front and license back that are missing, already
  * expired, or due within 30 Eastern calendar days (today and day 30 included).
  *
  * A current driver-visible file with no date is on file. It is not treated as

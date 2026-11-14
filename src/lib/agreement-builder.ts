@@ -93,6 +93,7 @@ export const EXTRA_TERM_FIELDS: TermField[] = [
   { key: "mileage_allowance", label: "Mileage Allowance", group: "Restrictions" },
   { key: "service_area_config", label: "Service Area Selection (Not Printed)", group: "Restrictions" },
   { key: "excess_mileage_fee", label: "Excess-Mileage Fee (Not Printed — Needs Approved Clause)", group: "Restrictions" },
+  { key: "damage_waiver_fee", label: "Damage Waiver Fee (Per Week)", group: "Pricing & Deposit" },
 ];
 /** Saved with a library draft but never printed: no approved clause exists yet. */
 export const UNPRINTED_TERMS = ["excess_mileage_fee", "service_area_config"];

@@ -49,6 +49,8 @@ demo-data-backup-*.json
 
 # Synthetic UI fixture and headless layout screenshots
 .toolbar-layout-build/
+# Synthetic save regression fixture
+.vehicle-save-build/
 
 # Synthetic local UI audits and blocked-network browser candidates
 .ui-label-audit/

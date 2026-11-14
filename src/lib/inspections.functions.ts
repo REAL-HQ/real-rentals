@@ -64,6 +64,8 @@ export type ConditionMedia = {
   gps_lng: number | null;
   /** True when EXIF datetime was missing at upload (or unknown for legacy rows). */
   missing_exif_time: boolean;
+  /** True only for the signed-in driver's own removable portal upload. */
+  can_delete: boolean;
   url: string | null;
 };
 
@@ -138,7 +140,7 @@ async function staffTier(supabase: unknown, userId: string): Promise<StaffTier |
   return tierFromRoles(((data ?? []) as Array<{ role: unknown }>).map((r) => String(r.role)));
 }
 
-/** Owner or Manager. Unchanged: the gate on destroying condition evidence. */
+/** Owner or Manager. Staff deletion of any condition evidence; drivers use the separate own-upload guard below. */
 async function isStaff(supabase: unknown, userId: string): Promise<boolean> {
   return tierAllows(await staffTier(supabase, userId), "manager");
 }
@@ -175,7 +177,7 @@ function safeExt(fileName: string, mime: string): string {
 async function signMedia(
   admin: any,
   rows: any[],
-  opts: { includeGps: boolean },
+  opts: { includeGps: boolean; canDelete?: (media: any) => boolean },
 ): Promise<ConditionMedia[]> {
   return Promise.all(
     rows.map(async (m) => {
@@ -199,6 +201,7 @@ async function signMedia(
         gps_lat: opts.includeGps && m.gps_lat != null ? Number(m.gps_lat) : null,
         gps_lng: opts.includeGps && m.gps_lng != null ? Number(m.gps_lng) : null,
         missing_exif_time: source !== "exif",
+        can_delete: opts.canDelete?.(m) === true,
         url: signed?.signedUrl ?? null,
       };
     }),
@@ -219,6 +222,30 @@ async function activeRentalFor(supabase: any, userId: string) {
     .limit(1)
     .maybeSingle();
   return data ?? null;
+}
+
+/** A driver can remove only their own unlinked upload on their current rental. */
+export function driverCanDeleteConditionMedia(
+  media: {
+    vehicle_id?: string | null;
+    rental_id?: string | null;
+    inspection_id?: string | null;
+    incident_id?: string | null;
+    captured_by?: string | null;
+    captured_by_role?: string | null;
+  },
+  userId: string,
+  rental: { id: string; vehicle_id: string } | null,
+): boolean {
+  return Boolean(
+    rental
+    && media.vehicle_id === rental.vehicle_id
+    && media.rental_id === rental.id
+    && media.captured_by === userId
+    && media.captured_by_role === "driver"
+    && !media.inspection_id
+    && !media.incident_id
+  );
 }
 
 // ------------------------------------------------------------- condition media
@@ -344,10 +371,11 @@ export const listConditionMedia = createServerFn({ method: "POST" })
     const operator = await canInspect(context.supabase, context.userId);
 
     let vehicleId = data.vehicleId ?? null;
+    let driverRental: { id: string; vehicle_id: string } | null = null;
     if (!operator) {
-      const rental = await activeRentalFor(context.supabase, context.userId);
-      if (!rental?.vehicle_id) return [];
-      vehicleId = rental.vehicle_id as string;
+      driverRental = await activeRentalFor(context.supabase, context.userId);
+      if (!driverRental?.vehicle_id) return [];
+      vehicleId = driverRental.vehicle_id as string;
     }
     if (!vehicleId) return [];
 
@@ -362,7 +390,10 @@ export const listConditionMedia = createServerFn({ method: "POST" })
 
     const { data: rows } = await q;
     // Precise GPS is staff-only; renters see time but not coordinates.
-    return signMedia(supabaseAdmin, rows ?? [], { includeGps: !!operator });
+    return signMedia(supabaseAdmin, rows ?? [], {
+      includeGps: !!operator,
+      canDelete: operator ? undefined : (media) => driverCanDeleteConditionMedia(media, context.userId, driverRental),
+    });
   });
 
 export const deleteConditionMedia = createServerFn({ method: "POST" })
@@ -384,6 +415,49 @@ export const deleteConditionMedia = createServerFn({ method: "POST" })
         .remove([row.storage_path as string]);
       await supabaseAdmin.from("condition_media").delete().eq("id", data.id);
     }
+    return { ok: true };
+  });
+
+export const deleteOwnConditionMedia = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const rental = await activeRentalFor(context.supabase, context.userId);
+    if (!rental) throw new Error("Forbidden");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: row, error: readError } = await supabaseAdmin
+      .from("condition_media")
+      .select("id,vehicle_id,rental_id,inspection_id,incident_id,captured_by,captured_by_role,storage_bucket,storage_path")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (readError) throw new Error(readError.message);
+    if (!row || !driverCanDeleteConditionMedia(row, context.userId, rental)) throw new Error("Forbidden");
+
+    const { error: storageError } = await supabaseAdmin.storage
+      .from(row.storage_bucket as string)
+      .remove([row.storage_path as string]);
+    if (storageError) throw new Error(storageError.message);
+    const { error: deleteError } = await supabaseAdmin
+      .from("condition_media")
+      .delete()
+      .eq("id", data.id)
+      .eq("captured_by", context.userId)
+      .eq("captured_by_role", "driver")
+      .eq("rental_id", rental.id)
+      .is("inspection_id", null)
+      .is("incident_id", null);
+    if (deleteError) throw new Error(deleteError.message);
+
+    await supabaseAdmin.from("audit_log").insert({
+      actor_user_id: context.userId,
+      actor_email: typeof context.claims.email === "string" ? context.claims.email : null,
+      actor_role: "driver",
+      action: "condition_media.deleted_by_driver",
+      entity_type: "condition_media",
+      entity_id: data.id,
+      summary: "Driver deleted their own uploaded condition photo",
+      metadata: { rental_id: rental.id, vehicle_id: rental.vehicle_id },
+    });
     return { ok: true };
   });
 
@@ -686,8 +760,8 @@ export type InspectionToSign = {
 /**
  * The checkout inspection this renter is being asked to agree to.
  *
- * Condition photos and a completed checklist record what the car looked like
- * at handover, but only from our side. Until the renter signs that record, a
+ * Optional condition photos and a completed checklist record what the car looked
+ * like at handover, but only from our side. Until the renter signs that record, a
  * damage dispute is still our word against theirs.
  *
  * Returns the most recent passed pre-delivery inspection on the car they are
