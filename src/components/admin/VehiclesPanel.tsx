@@ -53,8 +53,9 @@ const VIEW_KEY = "rr.vehicles.view";
 
 /** Vehicles-only density: the full filter/action set fits a 100% desktop view. */
 const VEHICLE_TOOLBAR = {
-  search: "h-8 min-w-[9rem] flex-[1_1_9rem] max-w-[16rem] rounded-md border border-border bg-white px-2.5 text-[13px] max-sm:max-w-none max-sm:w-full",
-  select: "h-8 w-[7.75rem] shrink-0 bg-white text-[13px] text-foreground max-sm:w-full",
+  // The compact AdminToolbar sizes the search and filter cells; controls fill them.
+  search: "h-8 w-full min-w-0 rounded-md border border-border bg-white px-2.5 text-[13px]",
+  select: "h-8 w-full min-w-0 bg-white text-[13px] text-foreground",
   button: TOOLBAR.button.replace("h-9", "h-8").replace("px-3.5", "px-3").replace("text-sm", "text-[13px]"),
   primary: TOOLBAR.primary.replace("h-9", "h-8").replace("px-3.5", "px-3").replace("text-sm", "text-[13px]"),
   segmented: TOOLBAR.segmented.replace("h-9", "h-8"),
@@ -376,12 +377,13 @@ function FleetVehicles({
   return (
     <div className="min-w-0">
       {remindersFailed ? <p className="mb-3 text-sm text-[#D03020]" data-testid="maintenance-log-error">Could not load maintenance reminders.</p> : null}
-      <AdminToolbar
+      <AdminToolbar compact
         search={
           <input
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search unit, VIN, plate, year, make, model…"
+            placeholder="Search Vehicles…"
+            title="Search Unit, VIN, Plate, Year, Make, Or Model"
             aria-label="Search vehicles"
             className={VEHICLE_TOOLBAR.search}
           />
@@ -391,21 +393,21 @@ function FleetVehicles({
           <Select value={statusFilter} onValueChange={(v) => setList({ status: v })}>
             <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="all">Status: All</SelectItem>
               {(result?.statuses ?? []).map((s) => <SelectItem key={s} value={s}><VehicleStatusBadge status={s} label={availabilityLabel({ on_rent: false, status: s })} /></SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={bodyFilter} onValueChange={(v) => setList({ body: v })}>
             <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Body Type"><SelectValue placeholder="Body Type" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Body Types</SelectItem>
+              <SelectItem value="all">Body: All</SelectItem>
               {(result?.bodyTypes ?? []).map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={partnerFilter} onValueChange={(v) => setList({ partner: v })}>
             <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Partner"><SelectValue placeholder="Partner" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Partners</SelectItem>
+              <SelectItem value="all">Partner: All</SelectItem>
               <SelectItem value="__none__">Unassigned</SelectItem>
               {partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
             </SelectContent>
