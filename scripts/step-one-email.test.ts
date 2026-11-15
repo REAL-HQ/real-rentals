@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { AUTOMATIONS, isAutomationOn, isDefaultOff, settingKeyForEmailWorkflow } from "@/lib/automation-catalog";
 import {
-  STEP1_EMAIL_COPY, STEP1_EMAIL_KEY, STEP1_EMAIL_WORKFLOW, renderStepOneEmail, sendStepOneThankYouEmail,
+  STEP1_EMAIL_BRAND, STEP1_EMAIL_COPY, STEP1_EMAIL_KEY, STEP1_EMAIL_LINE, STEP1_EMAIL_WORKFLOW, renderStepOneEmail, sendStepOneThankYouEmail,
 } from "@/lib/step-one-email.server";
 
 const URL = "https://drivereal.com/apply?resume=TEST";
@@ -99,9 +99,42 @@ describe("Step 1 thank-you email copy", () => {
       "You're in Line. Finish Step 2 Now to Hold Your Spot.", "What You Get", "Have These Ready", "Why We Ask for Each Item",
       "INSURANCE INCLUDED. We pay for it, at no extra cost to you.", "Gig App Profile Screenshot Showing Your # of Trips/Deliveries and Rating",
       "Optional: Earnings Screenshots or Other Proof of Income", "this is the main one", "It takes about 5 minutes.",
-      "Continue to Step 2", "Questions? Call or text us at (813) 212-4174", "The Drive Real Team",
+      "Continue to Step 2", "Questions? Call or text us at (888) 833-8280", "The Real Rentals Team",
+      "What Happens Next", "Thanks for applying with REAL RENTALS.",
     ]) expect(text).toContain(s);
-    expect(html).toContain('href="tel:+18132124174"');
+    expect(html).toContain('href="tel:+18888338280"');
+  });
+  test("same brand and main line as the live site and every other message", () => {
+    expect(STEP1_EMAIL_BRAND).toBe("REAL RENTALS");
+    expect(text).toContain("REAL RENTALS");
+    expect(/drive\s*real(?!\.com)/i.test(text)).toBe(false);
+    expect(/813|212-4174/.test(html)).toBe(false);
+  });
+  test("matches the thank-you page: same steps, checklist, brand and line (when the page is in the tree)", async () => {
+    let page: any = null;
+    try { page = await import("@/lib/step-one-thank-you"); } catch { /* PR 362 not in this tree */ }
+    if (!page) return;
+    const P = page.STEP_ONE_THANK_YOU;
+    expect(STEP1_EMAIL_COPY.steps).toEqual(P.steps);
+    expect([...STEP1_EMAIL_COPY.ready]).toEqual([...P.ready]);
+    expect(P.brand).toBe(STEP1_EMAIL_BRAND);
+    expect(page.STEP_ONE_LINE.display).toBe(STEP1_EMAIL_LINE.display);
+  });
+  test("does not contradict the follow-up texts and emails (when that copy is in the tree)", async () => {
+    let f: any = null;
+    try { f = await import("@/lib/applicant-followup-copy"); } catch { /* PR 365 not in this tree */ }
+    if (!f) return;
+    const all = f.APPLICANT_FOLLOWUP_COPY.map((x: any) => `${x.subject ?? ""} ${x.body}`).join(" ");
+    // Every follow-up asks for the same main document, with earnings optional, as this email does.
+    expect(all).toMatch(/gig app profile/i);
+    expect(text).toMatch(/Gig App Profile Screenshot/);
+    expect(text).toMatch(/Optional: Earnings/);
+    // Neither side asks for an insurance card or claims consent was already given.
+    for (const t of [all, text]) {
+      expect(t).not.toMatch(/insurance card|already agreed|already consented/i);
+    }
+    // One phone number across both: the follow-ups use {{company_phone}} (the 888 line).
+    expect(all).not.toMatch(/813|212-4174/);
   });
   test("blueprint placeholders are resolved, and no broker or carrier is named", () => {
     expect(text).not.toMatch(/\[X\]|\[confirm/i);
