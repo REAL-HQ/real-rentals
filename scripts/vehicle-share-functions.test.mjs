@@ -131,6 +131,7 @@ const sentEmail = await mod.sendVehicleSharePackage({ data: { packageId: created
 ok(sentEmail.ok && S.emails.length === 1 && S.emails[0].track.workflow === "vehicle_share", "email uses the canonical sender and the reviewed package");
 ok(S.emails[0].html.includes(created.url) && S.emails[0].html.includes("For your insurance"), "the email contains the secure link and staff note");
 ok(!S.emails[0].html.includes("localhost"), "an email sent from Preview never contains a localhost recipient link");
+ok(S.emails[0].html.includes("vehicle photos and vehicle details") && !/insurance details/i.test(S.emails[0].html), "the photo email says vehicle details, never insurance details, before pickup");
 const sentSms = await mod.sendVehicleSharePackage({ data: { packageId: created.id, token: created.token, channel: "sms", recipient: "(555) 555-1234" }, context });
 ok(sentSms.ok && S.sms.length === 1 && S.sms[0].requireConsent === false && S.sms[0].vehicleId === V, "transactional text uses the canonical sender, vehicle attribution and opt-out enforcement");
 ok(S.sms[0].body.includes(created.url) && S.sms[0].body.includes("STOP"), "the text contains the private link and opt-out wording");
