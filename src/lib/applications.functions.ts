@@ -564,6 +564,11 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     // they can never get back to.
     const { issueResumeToken } = await import("@/lib/resume-tokens.server");
     const token = await issueResumeToken(supabaseAdmin, row.id);
+    // The applications trigger queued a FLEET lead_created alert; try it now.
+    // Sends nothing until FLEET_WEBHOOK_URL/KEY are set. Never blocks.
+    void import("@/lib/fleet-webhook.server")
+      .then(({ dispatchFleetWebhooks }) => dispatchFleetWebhooks(supabaseAdmin, { limit: 5 }, { timeoutMs: 5000 }))
+      .catch((e) => console.error("[fleet-webhook] inline dispatch failed", e));
     // Fire-and-forget lead alert email. Never block the form submission.
     try {
       const { sendLeadAlertEmail } = await import("@/lib/email.server");
