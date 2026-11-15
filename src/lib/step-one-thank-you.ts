@@ -10,11 +10,15 @@
  *  - Never name an insurance broker or carrier.
  */
 
-/** Tampa ad-lead line (Quo Primary, PNcX8a0PLJ). Each new city gets its own later. */
-export const STEP_ONE_LINE = { display: "(813) 212-4174", e164: "+18132124174" } as const;
+/**
+ * The main business line, the same number as the site header, every other
+ * applicant message and the follow-up texts (texts default to it).
+ */
+export const STEP_ONE_LINE = { display: "(888) 833-8280", e164: "+18888338280" } as const;
 
 export const STEP_ONE_THANK_YOU = {
-  brand: "DRIVE REAL",
+  /** Same applicant-facing brand as the live site header and every other message. */
+  brand: "REAL RENTALS",
   progress: "Step 1 of 2 Done",
   headline: "You're In! Application Received",
   intro: "Cars are limited and go first come, first served. Finish Step 2 to hold your spot.",
