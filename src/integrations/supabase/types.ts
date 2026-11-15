@@ -414,6 +414,38 @@ export type Database = {
           },
         ]
       }
+      application_status_changes: {
+        Row: {
+          application_id: string
+          changed_at: string
+          from_status: string | null
+          id: string
+          to_status: string
+        }
+        Insert: {
+          application_id: string
+          changed_at?: string
+          from_status?: string | null
+          id?: string
+          to_status: string
+        }
+        Update: {
+          application_id?: string
+          changed_at?: string
+          from_status?: string | null
+          id?: string
+          to_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_status_changes_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       application_waitlist_holds: {
         Row: {
           added_at: string
@@ -2778,6 +2810,65 @@ export type Database = {
           },
         ]
       }
+      fleet_webhook_deliveries: {
+        Row: {
+          application_id: string | null
+          attempts: number
+          created_at: string
+          dedupe_key: string
+          delivered_at: string | null
+          event_type: string
+          id: string
+          last_error: string | null
+          last_status_code: number | null
+          next_attempt_at: string
+          payload: Json
+          quo_event_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          application_id?: string | null
+          attempts?: number
+          created_at?: string
+          dedupe_key: string
+          delivered_at?: string | null
+          event_type: string
+          id?: string
+          last_error?: string | null
+          last_status_code?: number | null
+          next_attempt_at?: string
+          payload?: Json
+          quo_event_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          application_id?: string | null
+          attempts?: number
+          created_at?: string
+          dedupe_key?: string
+          delivered_at?: string | null
+          event_type?: string
+          id?: string
+          last_error?: string | null
+          last_status_code?: number | null
+          next_attempt_at?: string
+          payload?: Json
+          quo_event_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_webhook_deliveries_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inbound_emails: {
         Row: {
           attachments: Json
@@ -4241,15 +4332,15 @@ export type Database = {
           refunded_at: string | null
           rental_id: string | null
           status: string
-          stripe_invoice_id: string | null
-          stripe_invoice_number: string | null
-          stripe_hosted_invoice_url: string | null
-          stripe_invoice_pdf_url: string | null
-          stripe_receipt_url: string | null
           stripe_charge_id: string | null
           stripe_customer_id: string | null
+          stripe_hosted_invoice_url: string | null
+          stripe_invoice_id: string | null
+          stripe_invoice_number: string | null
+          stripe_invoice_pdf_url: string | null
           stripe_paid_at: string | null
           stripe_payment_intent_id: string | null
+          stripe_receipt_url: string | null
           stripe_subscription_id: string | null
           type: string
           updated_at: string
@@ -4277,15 +4368,15 @@ export type Database = {
           refunded_at?: string | null
           rental_id?: string | null
           status?: string
-          stripe_invoice_id?: string | null
-          stripe_invoice_number?: string | null
-          stripe_hosted_invoice_url?: string | null
-          stripe_invoice_pdf_url?: string | null
-          stripe_receipt_url?: string | null
           stripe_charge_id?: string | null
           stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
           stripe_paid_at?: string | null
           stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
           stripe_subscription_id?: string | null
           type?: string
           updated_at?: string
@@ -4313,15 +4404,15 @@ export type Database = {
           refunded_at?: string | null
           rental_id?: string | null
           status?: string
-          stripe_invoice_id?: string | null
-          stripe_invoice_number?: string | null
-          stripe_hosted_invoice_url?: string | null
-          stripe_invoice_pdf_url?: string | null
-          stripe_receipt_url?: string | null
           stripe_charge_id?: string | null
           stripe_customer_id?: string | null
+          stripe_hosted_invoice_url?: string | null
+          stripe_invoice_id?: string | null
+          stripe_invoice_number?: string | null
+          stripe_invoice_pdf_url?: string | null
           stripe_paid_at?: string | null
           stripe_payment_intent_id?: string | null
+          stripe_receipt_url?: string | null
           stripe_subscription_id?: string | null
           type?: string
           updated_at?: string
@@ -4524,6 +4615,86 @@ export type Database = {
           used_at?: string | null
         }
         Relationships: []
+      }
+      quo_events: {
+        Row: {
+          application_id: string | null
+          body: string | null
+          call_id: string | null
+          conversation_id: string | null
+          created_at: string
+          direction: string | null
+          duration_seconds: number | null
+          event_type: string
+          from_e164: string | null
+          id: string
+          line_e164: string
+          line_label: string
+          occurred_at: string | null
+          phone_number_id: string
+          quo_event_id: string
+          quo_resource_id: string | null
+          raw: Json
+          recording_url: string | null
+          to_e164: string | null
+          transcript: string | null
+          voicemail_url: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          body?: string | null
+          call_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          direction?: string | null
+          duration_seconds?: number | null
+          event_type: string
+          from_e164?: string | null
+          id?: string
+          line_e164: string
+          line_label: string
+          occurred_at?: string | null
+          phone_number_id: string
+          quo_event_id: string
+          quo_resource_id?: string | null
+          raw?: Json
+          recording_url?: string | null
+          to_e164?: string | null
+          transcript?: string | null
+          voicemail_url?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          body?: string | null
+          call_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          direction?: string | null
+          duration_seconds?: number | null
+          event_type?: string
+          from_e164?: string | null
+          id?: string
+          line_e164?: string
+          line_label?: string
+          occurred_at?: string | null
+          phone_number_id?: string
+          quo_event_id?: string
+          quo_resource_id?: string | null
+          raw?: Json
+          recording_url?: string | null
+          to_e164?: string | null
+          transcript?: string | null
+          voicemail_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quo_events_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       referrals: {
         Row: {
@@ -4818,6 +4989,24 @@ export type Database = {
           },
         ]
       }
+      renter_portal_prefs: {
+        Row: {
+          updated_at: string
+          user_id: string
+          vendor_view: string
+        }
+        Insert: {
+          updated_at?: string
+          user_id: string
+          vendor_view?: string
+        }
+        Update: {
+          updated_at?: string
+          user_id?: string
+          vendor_view?: string
+        }
+        Relationships: []
+      }
       renter_reimbursements: {
         Row: {
           amount: number
@@ -4906,6 +5095,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      renter_vendors: {
+        Row: {
+          address: string | null
+          category: string
+          created_at: string
+          id: string
+          is_active: boolean
+          logo_url: string | null
+          name: string
+          notes: string | null
+          phone: string | null
+          sort_order: number
+          updated_at: string
+          updated_by: string | null
+          website: string | null
+        }
+        Insert: {
+          address?: string | null
+          category: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          logo_url?: string | null
+          name: string
+          notes?: string | null
+          phone?: string | null
+          sort_order?: number
+          updated_at?: string
+          updated_by?: string | null
+          website?: string | null
+        }
+        Update: {
+          address?: string | null
+          category?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          logo_url?: string | null
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          sort_order?: number
+          updated_at?: string
+          updated_by?: string | null
+          website?: string | null
+        }
+        Relationships: []
       }
       return_checklist_items: {
         Row: {
@@ -6255,13 +6492,6 @@ export type Database = {
       }
       waitlist: {
         Row: {
-          sms_consent: boolean
-          sms_consent_at: string | null
-          sms_consent_page: string | null
-          sms_consent_phone: string | null
-          sms_consent_source: string | null
-          sms_consent_text: string | null
-          sms_consent_version: string | null
           city: string | null
           created_at: string
           driver_status: string | null
@@ -6277,6 +6507,13 @@ export type Database = {
           promoted_at: string | null
           review_flagged_at: string | null
           review_reason: string | null
+          sms_consent: boolean
+          sms_consent_at: string | null
+          sms_consent_page: string | null
+          sms_consent_phone: string | null
+          sms_consent_source: string | null
+          sms_consent_text: string | null
+          sms_consent_version: string | null
           source: string
           state: string | null
           status: string
@@ -6287,13 +6524,6 @@ export type Database = {
           utm_term: string | null
         }
         Insert: {
-          sms_consent?: boolean
-          sms_consent_at?: string | null
-          sms_consent_page?: string | null
-          sms_consent_phone?: string | null
-          sms_consent_source?: string | null
-          sms_consent_text?: string | null
-          sms_consent_version?: string | null
           city?: string | null
           created_at?: string
           driver_status?: string | null
@@ -6309,6 +6539,13 @@ export type Database = {
           promoted_at?: string | null
           review_flagged_at?: string | null
           review_reason?: string | null
+          sms_consent?: boolean
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
           source?: string
           state?: string | null
           status?: string
@@ -6319,13 +6556,6 @@ export type Database = {
           utm_term?: string | null
         }
         Update: {
-          sms_consent?: boolean
-          sms_consent_at?: string | null
-          sms_consent_page?: string | null
-          sms_consent_phone?: string | null
-          sms_consent_source?: string | null
-          sms_consent_text?: string | null
-          sms_consent_version?: string | null
           city?: string | null
           created_at?: string
           driver_status?: string | null
@@ -6341,6 +6571,13 @@ export type Database = {
           promoted_at?: string | null
           review_flagged_at?: string | null
           review_reason?: string | null
+          sms_consent?: boolean
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
           source?: string
           state?: string | null
           status?: string
@@ -6369,6 +6606,24 @@ export type Database = {
       }
     }
     Views: {
+      lead_activity: {
+        Row: {
+          activity_type: string | null
+          application_id: string | null
+          direction: string | null
+          line_e164: string | null
+          line_label: string | null
+          occurred_at: string | null
+          phone_number_id: string | null
+          recording_url: string | null
+          source_id: string | null
+          source_table: string | null
+          status: string | null
+          summary: string | null
+          template: string | null
+        }
+        Relationships: []
+      }
       vehicles_public: {
         Row: {
           badges: string[] | null
@@ -6629,6 +6884,13 @@ export type Database = {
       rental_at_time: {
         Args: { _at: string; _vehicle_id: string }
         Returns: string
+      }
+      renter_portal_file: {
+        Args: { _id: string; _kind: string }
+        Returns: {
+          storage_bucket: string
+          storage_path: string
+        }[]
       }
       renter_portal_summary: { Args: never; Returns: Json }
       reserve_application_recovery: {
