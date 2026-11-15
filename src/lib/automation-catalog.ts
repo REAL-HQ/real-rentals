@@ -84,7 +84,7 @@ export const AUTOMATIONS: AutomationDef[] = [
     control: { kind: "setting" },
     previews: ["step1_thank_you"],
     defaultOn: false,
-    note: "Off until turned on. Explains Step 2, what to have ready and why, with a Continue to Step 2 link. Never names the insurance company.",
+    note: "Off until turned on. Explains Step 2, what to have ready and why, with a Continue to Step 2 link. When it goes out, the follow-up's 5-minute welcome email is skipped for that applicant (within 24 hours) so nobody gets two; the follow-up texts and later emails are unchanged. Never names the insurance company.",
   },
   {
     key: "application_recovery",

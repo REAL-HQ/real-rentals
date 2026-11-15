@@ -11,9 +11,12 @@ const URL = "https://drivereal.com/apply?resume=TEST";
 function harness(controls: any) {
   const sent: any[] = [];
   const minted: string[] = [];
+  const logged: any[] = [];
   return {
-    sent, minted,
+    sent, minted, logged,
     deps: {
+      admin: { from: (t: string) => ({ insert: async (r: any) => { logged.push({ table: t, ...r }); return { error: null }; } }) },
+      now: () => new Date("2026-11-15T12:00:00.000Z"),
       loadControls: async () => controls,
       mintLink: async (id: string) => { minted.push(id); return URL; },
       sendEmail: async (a: any) => { sent.push(a); return { ok: true }; },
@@ -59,6 +62,20 @@ describe("Step 1 thank-you email switch", () => {
     expect(m.html).toContain(`href="${URL}"`);
     expect(m.html).toContain("Hi Jordan,");
     expect(h.minted).toEqual(["app-1"]);
+    // Logged on the lead, which is what lets the follow-up skip its 5-minute email.
+    expect(h.logged).toEqual([{ table: "outbound_messages", channel: "email", to_address: "lead@example.com", subject: m.subject,
+      body: STEP1_EMAIL_COPY.headline, status: "sent", provider: "resend", kind: "step1_thank_you", application_id: "app-1", sent_at: "2026-11-15T12:00:00.000Z" }]);
+  });
+
+  test("off, held or failed: nothing logged, so the 5-minute email still goes out", async () => {
+    for (const c of [{ status: "absent", value: { off: {} } }, { status: "error", value: null }]) {
+      const h = harness(c);
+      await sendStepOneThankYouEmail(args, h.deps as any);
+      expect(h.logged).toEqual([]);
+    }
+    const h = harness(ON);
+    await sendStepOneThankYouEmail(args, { ...h.deps, sendEmail: async () => ({ ok: false, error: "x" }) } as any);
+    expect(h.logged).toEqual([]);
   });
 
   test("no email address: nothing sent", async () => {
@@ -90,6 +107,9 @@ describe("Step 1 thank-you email copy", () => {
     expect(text).not.toMatch(/\[X\]|\[confirm/i);
     expect(text).not.toMatch(/progressive|geico|state farm|allstate|hagerty|buckle|broker|carrier|underwrit/i);
     expect(text).not.toContain("Hi ,");
+    // Sent at Step 1, before the consent step: must not claim consent was already given.
+    expect(text).not.toMatch(/already agreed/i);
+    expect(text).toContain("You'll confirm this in a short consent step.");
   });
   test("every blueprint list has its four items", () => {
     expect(STEP1_EMAIL_COPY.get.length).toBe(4);
@@ -109,5 +129,27 @@ describe("Step 1 wiring", () => {
   test("Back Office preview renders without minting a token", () => {
     const s = readFileSync("src/lib/automation-preview.server.ts", "utf8");
     expect(s).toMatch(/step1_thank_you:[\s\S]*mintLink: async \(\) => PREVIEW_LINK/);
+  });
+});
+
+describe("one welcome email, not two", () => {
+  test("the 5-minute follow-up EMAIL is skipped only when the thank-you went out in the last 24 hours", async () => {
+    const { shouldSkipForStepOneEmail } = await import("@/lib/automations.server");
+    const now = new Date("2026-11-15T12:10:00Z");
+    const sent = "2026-11-15T12:00:00Z";
+    expect(shouldSkipForStepOneEmail({ channel: "email", delay_minutes: 5 }, sent, now)).toBe(true);
+    // Texts and later steps always go.
+    expect(shouldSkipForStepOneEmail({ channel: "sms", delay_minutes: 5 }, sent, now)).toBe(false);
+    expect(shouldSkipForStepOneEmail({ channel: "email", delay_minutes: 1440 }, sent, now)).toBe(false);
+    expect(shouldSkipForStepOneEmail({ channel: "email", delay_minutes: 2880 }, sent, now)).toBe(false);
+    // No thank-you (switch off or failed) → the 5-minute email goes as today.
+    expect(shouldSkipForStepOneEmail({ channel: "email", delay_minutes: 5 }, null, now)).toBe(false);
+    // Thank-you long ago (applicant came back days later) → the 5-minute email is a fresh confirmation.
+    expect(shouldSkipForStepOneEmail({ channel: "email", delay_minutes: 5 }, "2026-11-13T12:00:00Z", now)).toBe(false);
+  });
+  test("the engine applies it before sending, alongside the profile-complete skip", () => {
+    const s = readFileSync("src/lib/automations.server.ts", "utf8");
+    expect(s).toMatch(/const skipThis =\s*shouldSkipForCompleteProfile\(step as any, app\) \|\|\s*\(step\.channel === "email" &&\s*shouldSkipForStepOneEmail\(/);
+    expect(s).toMatch(/\.eq\("kind", STEP1_EMAIL_LOG_KIND\)/);
   });
 });

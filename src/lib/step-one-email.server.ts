@@ -42,8 +42,10 @@ export const STEP1_EMAIL_COPY = {
     "Gig app profile screenshot: this is the main one. Your number of trips/deliveries and your rating show you're an active driver, so we can approve you faster.",
     "Optional proof of income (earnings screenshots or other income): helps confirm the weekly rent will work for you.",
   ],
+  // Blueprint said "You already agreed to this in the consent form", but this
+  // email goes out at Step 1, before the applicant reaches the consent step.
   privacy:
-    "You already agreed to this in the consent form. We use your info only to verify you and set up your insurance. It's stored securely and never sold.",
+    "You'll confirm this in a short consent step. We use your info only to verify you and set up your insurance. It's stored securely and never sold.",
   cta: "Click the button below to continue to Step 2. It takes about 5 minutes.",
   button: "Continue to Step 2",
   signOff: `Questions? Call or text us at ${STEP1_EMAIL_LINE.display}.`,
@@ -88,6 +90,7 @@ type Deps = {
   loadControls?: typeof loadAutomationControls;
   sendEmail?: (a: { to: string; subject: string; html: string; replyTo?: string; track?: { workflow: string } }) => Promise<{ ok: boolean; error?: string }>;
   mintLink?: (applicationId: string) => Promise<string>;
+  now?: () => Date;
 };
 
 export type StepOneEmailOutcome = "sent" | "off" | "held" | "no_email" | "failed";
@@ -113,7 +116,26 @@ export async function sendStepOneThankYouEmail(
     const send = deps.sendEmail ?? (await import("@/lib/email.server")).sendEmail;
     const { EMAIL_REPLY_TO } = await import("@/lib/email.server");
     const res = await send({ to: args.to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: STEP1_EMAIL_WORKFLOW } });
-    return res.ok ? "sent" : "failed";
+    if (!res.ok) return "failed";
+    // Logged on the lead. The follow-up workflow reads this row to skip its
+    // 5-minute email, so the applicant never gets two welcome emails.
+    try {
+      const admin = deps.admin ?? (await import("@/integrations/supabase/client.server")).supabaseAdmin;
+      await admin.from("outbound_messages").insert({
+        channel: "email",
+        to_address: args.to,
+        subject,
+        body: STEP1_EMAIL_COPY.headline,
+        status: "sent",
+        provider: "resend",
+        kind: "step1_thank_you",
+        application_id: args.applicationId,
+        sent_at: (deps.now ?? (() => new Date()))().toISOString(),
+      });
+    } catch (e) {
+      console.error("[step1-email] log failed", e);
+    }
+    return "sent";
   } catch (e) {
     console.error("[step1-email] failed", e);
     return "failed";

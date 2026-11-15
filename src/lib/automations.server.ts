@@ -38,6 +38,44 @@ export function shouldSkipForCompleteProfile(
 }
 
 /**
+ * The Step 1 thank-you email (step-one-email.server.ts) already welcomed this
+ * applicant and asked for Step 2, so an early follow-up EMAIL (delay up to
+ * STEP1_EMAIL_REPLACES_DELAY_MINUTES, i.e. the 5-minute "We Got Your
+ * Application" email) is skipped when that thank-you went out in the last
+ * STEP1_EMAIL_WINDOW_HOURS. Texts and the later day 1/2/3 steps are never
+ * affected. When the thank-you is switched off (or failed), nothing was
+ * logged, and the 5-minute email goes out exactly as before.
+ */
+export const STEP1_EMAIL_REPLACES_DELAY_MINUTES = 60;
+export const STEP1_EMAIL_WINDOW_HOURS = 24;
+export const STEP1_EMAIL_LOG_KIND = "step1_thank_you";
+export function shouldSkipForStepOneEmail(
+  step: { channel?: string | null; delay_minutes?: number | null },
+  thankYouSentAt: string | null | undefined,
+  now: Date,
+): boolean {
+  if (step.channel !== "email") return false;
+  if (Number(step.delay_minutes ?? Infinity) > STEP1_EMAIL_REPLACES_DELAY_MINUTES) return false;
+  if (!thankYouSentAt) return false;
+  const age = now.getTime() - Date.parse(thankYouSentAt);
+  return Number.isFinite(age) && age >= 0 && age <= STEP1_EMAIL_WINDOW_HOURS * 3600_000;
+}
+
+async function stepOneEmailSentAt(admin: any, applicationId: string | null | undefined): Promise<string | null> {
+  if (!applicationId) return null;
+  const { data } = await admin
+    .from("outbound_messages")
+    .select("sent_at")
+    .eq("application_id", applicationId)
+    .eq("channel", "email")
+    .eq("kind", STEP1_EMAIL_LOG_KIND)
+    .eq("status", "sent")
+    .order("sent_at", { ascending: false })
+    .limit(1);
+  return Array.isArray(data) && data[0]?.sent_at ? String(data[0].sent_at) : null;
+}
+
+/**
  * Could this step actually reach the applicant? Checked before minting a
  * resume link so an unsendable step never creates a credential (each mint
  * counts toward the per-application cap of live session links).
@@ -307,7 +345,10 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
 
       // The applicant already finished Part 2: this nudge doesn't apply to
       // them. Send nothing, but move on to the next step as if it were sent.
-      const skipThis = shouldSkipForCompleteProfile(step as any, app);
+      const skipThis =
+        shouldSkipForCompleteProfile(step as any, app) ||
+        (step.channel === "email" &&
+          shouldSkipForStepOneEmail(step as any, await stepOneEmailSentAt(supabaseAdmin, enrollment.application_id), now));
 
       // Quiet hours are a courtesy about being woken up, so they gate SMS and
       // not email. Holding email too would mean someone who applies at 10pm
