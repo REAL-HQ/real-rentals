@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
+import { markStepOneJustSubmitted } from "@/lib/step-one-thank-you";
 import { useNavigate, Link } from "@tanstack/react-router";
 import { SmsConsentField } from "@/components/site/SmsConsentField";
 import { ArrowRight, Check } from "lucide-react";
@@ -146,6 +147,7 @@ export function CityHeroLeadForm({
         setReturning({ email: form.email, status: data.linkStatus ?? "sent", retryAfterSeconds: data.retryAfterSeconds ?? 120 });
         return;
       }
+      markStepOneJustSubmitted();
       navigate({ to: "/thank-you", search: { t: data.token } });
     } catch (error: any) {
       toast.error(error?.message || "Could not submit your application. Please try again.");
