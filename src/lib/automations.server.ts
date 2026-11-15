@@ -18,7 +18,7 @@ import { sendSms, renderTemplate, toE164 } from "@/lib/sms.server";
 /** Placeholder that becomes the applicant's own 14-day resume link. */
 export const RESUME_LINK_TOKEN = /\{\{\s*resume_link\s*\}\}/i;
 
-/** Wizard step an applicant lands on once Part 2 (license, insurance, address) is done. */
+/** Wizard step an applicant lands on once Step 2 (their documents) is done. */
 export const PROFILE_COMPLETE_STEP = "profile_complete";
 
 /** Does this step body ask for a resume link? Only then is a token minted. */
