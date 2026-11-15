@@ -331,3 +331,46 @@ describe("source guards", () => {
     expect(mig).not.toMatch(/\b(UPDATE|DELETE|DROP)\b/);
   });
 });
+
+describe("Step 1 thank-you email replaces the 5-minute email", () => {
+  const steps = [
+    { channel: "email", subject: "We Got Your Application, {{first_name}}", body: "Finish here: {{resume_link}}", delay_minutes: 5 },
+    { channel: "sms", body: "Hi {{first_name}}: {{resume_link}} Reply STOP to opt out.", delay_minutes: 5 },
+  ];
+  const thankYou = (minsAgo: number) => ({
+    channel: "email", kind: "step1_thank_you", status: "sent", application_id: "app1",
+    sent_at: new Date(Date.now() - minsAgo * 60_000).toISOString(),
+  });
+
+  it("thank-you went out minutes ago: the 5-minute email is skipped (no link minted), the sequence moves on", async () => {
+    seed({ currentStep: "submitted", steps });
+    db.outbound_messages = [thankYou(3)];
+    const r = await eng.runDueAutomations();
+    expect(sentEmail).toHaveLength(0);
+    expect(mintCount).toBe(0);
+    expect(r.skipped).toBe(1);
+    expect(enrollment().current_step).toBe(1);
+    expect(enrollment().status).toBe("active");
+  });
+
+  it("the 5-minute TEXT still goes when it is the next step", async () => {
+    seed({ currentStep: "submitted", steps: [steps[1]] });
+    db.outbound_messages = [thankYou(3)];
+    await eng.runDueAutomations();
+    expect(sentSms).toHaveLength(1);
+  });
+
+  it("no thank-you on file (switch off): the 5-minute email goes exactly as before", async () => {
+    seed({ currentStep: "submitted", steps });
+    await eng.runDueAutomations();
+    expect(sentEmail).toHaveLength(1);
+    expect(sentEmail[0].subject).toBe("We Got Your Application, Jordan");
+  });
+
+  it("thank-you from days ago: the 5-minute email goes (fresh confirmation)", async () => {
+    seed({ currentStep: "submitted", steps });
+    db.outbound_messages = [thankYou(3 * 24 * 60)];
+    await eng.runDueAutomations();
+    expect(sentEmail).toHaveLength(1);
+  });
+});
