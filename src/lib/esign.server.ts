@@ -92,6 +92,13 @@ export async function completeSigning(
   });
 
   const archived = await archiveDocument(admin, ag, null);
+  // FLEET: renter signed. Never blocks or fails the signature.
+  try {
+    const { notifyFleetAgreementSigned } = await import("@/lib/fleet-webhook.server");
+    await notifyFleetAgreementSigned(admin, args.id);
+  } catch (e) {
+    console.error("[esign] FLEET notify failed", e);
+  }
   return { result: "won", archived };
 }
 

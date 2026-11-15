@@ -5,6 +5,7 @@
  *   lead_created, stage_changed            (queued by a DB trigger on applications)
  *   quo_message_received, quo_call,
  *   quo_voicemail, quo_transcript          (queued by the Quo webhook)
+ *   agreement_signed_by_renter             (queued by esign completeSigning)
  *
  * Disabled until FLEET_WEBHOOK_URL (https) and FLEET_WEBHOOK_KEY are set.
  * While disabled, queued rows are marked 'skipped' (nothing is sent and no
@@ -32,7 +33,8 @@ type Admin = any;
 
 export const FLEET_LEAD_EVENTS = ["lead_created", "stage_changed"] as const;
 export const FLEET_QUO_EVENTS = ["quo_message_received", "quo_call", "quo_voicemail", "quo_transcript"] as const;
-export type FleetEvent = (typeof FLEET_LEAD_EVENTS)[number] | (typeof FLEET_QUO_EVENTS)[number];
+export const FLEET_AGREEMENT_EVENTS = ["agreement_signed_by_renter"] as const;
+export type FleetEvent = (typeof FLEET_LEAD_EVENTS)[number] | (typeof FLEET_QUO_EVENTS)[number] | (typeof FLEET_AGREEMENT_EVENTS)[number];
 
 export const FLEET_MAX_ATTEMPTS = 8;
 /** Wait before attempt n+1 after n failed attempts. */
@@ -171,6 +173,76 @@ export async function buildLeadPayload(
     last_text_sent: last,
   };
   return payload;
+}
+
+// ---------------------------------------------------------------- agreement payload
+
+const AGREEMENT_COLS =
+  "id,application_id,rental_id,vehicle_id,status,signer_name,signed_at,sent_at,auth_method,company_signer_name,company_signer_title,merge_data,archive_status,document_id,voided_at";
+
+/**
+ * agreement_signed_by_renter. There is no separate countersign step on the
+ * site: the company signature (Settings → Company eSign Signer) is captured
+ * on the row when the agreement is sent and printed on the PDF as
+ * pre-applied. The payload says so, so FLEET never has to countersign.
+ */
+export async function buildAgreementSignedPayload(admin: Admin, agreementId: string, site = "https://drivereal.com") {
+  const { data: ag } = await admin.from("agreements").select(AGREEMENT_COLS).eq("id", agreementId).maybeSingle();
+  if (!ag || ag.status !== "signed" || !ag.signed_at || ag.voided_at) return null;
+  const appId: string | null = ag.application_id ?? null;
+  const [{ data: app }, rentalRes] = await Promise.all([
+    appId ? admin.from("applications").select("id,full_name,vehicle_id").eq("id", appId).maybeSingle() : Promise.resolve({ data: null }),
+    ag.rental_id
+      ? admin.from("rentals").select("id,vehicle_id").eq("id", ag.rental_id).limit(1)
+      : appId
+        ? admin.from("rentals").select("id,vehicle_id").eq("application_id", appId).is("end_date", null).order("created_at", { ascending: false }).limit(1)
+        : Promise.resolve({ data: [] }),
+  ]);
+  const rental = Array.isArray(rentalRes?.data) ? rentalRes.data[0] ?? null : null;
+  const vehicleId: string | null = ag.vehicle_id ?? rental?.vehicle_id ?? app?.vehicle_id ?? null;
+  const { data: v } = vehicleId
+    ? await admin.from("vehicles").select("id,year,make,model,license_plate,unit_number").eq("id", vehicleId).maybeSingle()
+    : { data: null };
+  const merge = (ag.merge_data ?? {}) as Record<string, any>;
+  const label = v ? [v.year, v.make, v.model].filter(Boolean).join(" ") || null : (merge.vehicle || null);
+  return {
+    event: "agreement_signed_by_renter",
+    agreement_id: ag.id,
+    lead_id: appId,
+    rental_id: rental?.id ?? null,
+    renter_name: ag.signer_name ?? app?.full_name ?? merge.driver_name ?? null,
+    vehicle: { id: vehicleId, label, plate: v?.license_plate ?? null, unit_number: v?.unit_number ?? null },
+    signed_at: ag.signed_at,
+    signed_via: ag.auth_method ?? null,
+    signed_pdf_ready: ag.archive_status === "archived" && !!ag.document_id,
+    countersign: {
+      required: false,
+      status: "pre_applied_at_send",
+      name: ag.company_signer_name ?? null,
+      title: ag.company_signer_title ?? null,
+      applied_at: ag.sent_at ?? null,
+    },
+    admin_url: appId ? `${site}/admin?tab=drivers&id=${encodeURIComponent(appId)}` : `${site}/admin`,
+  } as Record<string, unknown>;
+}
+
+/** Queue + send now (the minute cron retries). Never throws: signing must not fail on this. */
+export async function notifyFleetAgreementSigned(admin: Admin, agreementId: string, deps: DispatchDeps = {}): Promise<string | null> {
+  try {
+    const payload = await buildAgreementSignedPayload(admin, agreementId);
+    if (!payload) return null;
+    const id = await enqueueFleetEvent(admin, {
+      event_type: "agreement_signed_by_renter",
+      dedupe_key: `agreement_signed_by_renter:${agreementId}`,
+      application_id: (payload.lead_id as string | null) ?? null,
+      payload,
+    });
+    if (id) await dispatchFleetWebhooks(admin, { ids: [id] }, { timeoutMs: 5000, ...deps });
+    return id;
+  } catch (e) {
+    console.error("[fleet-webhook] agreement_signed_by_renter failed", String((e as Error)?.message ?? e));
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------- queue + dispatch
