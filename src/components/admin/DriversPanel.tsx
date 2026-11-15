@@ -1,4 +1,5 @@
 import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { LeadActivity } from "./LeadActivity";
 import { AppSelect } from "@/components/ui/app-select";
 import { OnboardingChecklist } from "./OnboardingChecklist";
 import { getOnboardingChecklist } from "@/lib/onboarding-checklist.functions";
@@ -2526,6 +2527,7 @@ function DriverDetail({
     ["rental", "Rental"],
     ["pictures", "Pictures"],
     ["payments", "Payments"],
+    ["activity", "Activity"],
     ["notes", "Notes"],
   ] as const;
 
@@ -3006,6 +3008,10 @@ function DriverDetail({
                   </p>
                 </Card>
                 <CardOnFileCard driver={driver} onUpdate={onSaved} canIssue={canIssueCardLink} />
+              </TabsContent>
+
+              <TabsContent value="activity" className="mt-0">
+                <LeadActivity applicationId={driver.id} />
               </TabsContent>
 
               <TabsContent value="notes" className="mt-0">

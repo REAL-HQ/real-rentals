@@ -31,6 +31,7 @@ function fakeDb(seed: Record<string, Row[]>) {
       eq: (c: string, v: any) => { filters.push((r) => r[c] === v); return q; },
       in: (c: string, v: any[]) => { filters.push((r) => v.includes(r[c])); return q; },
       gte: (c: string, v: any) => { filters.push((r) => String(r[c]) >= String(v)); return q; },
+      ilike: () => q,
       or: (expr: string) => {
         expect(expr).toBe("kind.is.null,kind.not.like.inbound_*");
         filters.push((r) => r.kind == null || !String(r.kind).startsWith("inbound_"));
@@ -103,7 +104,7 @@ const quo = await import("@/lib/quo.server");
 const provider = await import("@/lib/sms-provider.server");
 
 function setEnv(env: Record<string, string | undefined>) {
-  for (const k of ["QUO_API_KEY", "QUO_PHONE_NUMBER_ID", "QUO_FROM_NUMBERS", "SMS_DRY_RUN", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "TWILIO_MESSAGING_SERVICE_SID", "QUO_WEBHOOK_KEY"]) delete process.env[k];
+  for (const k of ["QUO_API_KEY", "QUO_PHONE_NUMBER_ID", "QUO_FROM_NUMBERS", "SMS_DRY_RUN", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "TWILIO_MESSAGING_SERVICE_SID", "QUO_WEBHOOK_KEY", "QUO_INBOUND_NUMBER_IDS"]) delete process.env[k];
   Object.assign(process.env, env);
 }
 
@@ -430,8 +431,9 @@ describe("Quo webhook", () => {
     expect((await handleQuoWebhook(await signed(received("hi", "PNnotOurs")), { admin: db, processInbound })).status).toBe(200);
     const noLine = { type: "message.received", data: { resource: { id: "ACz", text: "hi" }, context: { senderIdentifier: "+15555550123" } } };
     expect((await handleQuoWebhook(await signed(noLine), { admin: db, processInbound })).status).toBe(200);
-    // A narrowed allowlist also narrows the webhook.
-    setEnv({ QUO_WEBHOOK_KEY: SECRET, QUO_FROM_NUMBERS: "PNrZULvFMn" });
+    // The accepted inbound lines are QUO_INBOUND_NUMBER_IDS (default both);
+    // QUO_FROM_NUMBERS only narrows sending (Automation Blueprint, Nov 14).
+    setEnv({ QUO_WEBHOOK_KEY: SECRET, QUO_INBOUND_NUMBER_IDS: "PNrZULvFMn" });
     expect((await handleQuoWebhook(await signed(received("hi", "PNcX8a0PLJ")), { admin: db, processInbound })).status).toBe(200);
   });
 
