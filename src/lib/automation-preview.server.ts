@@ -13,6 +13,11 @@ export async function renderAutomationPreview(id: string): Promise<{ subject: st
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   const runs: Record<string, () => Promise<unknown>> = {
+    step1_thank_you: async () => {
+      const { sendStepOneThankYouEmail } = await import("@/lib/step-one-email.server");
+      // Preview: the switch is bypassed (capture is on, so nothing sends) and no token is minted.
+      return sendStepOneThankYouEmail({ applicationId: SAMPLE_APP, to: TO, firstName: "Jordan" }, { loadControls: async () => ({ status: "ok", value: { on: { step1_thank_you_email: true }, off: {} } }) as any, mintLink: async () => PREVIEW_LINK });
+    },
     approval_confirmation: () => m.sendApprovalConfirmationEmail({ to: TO, firstName: "Jordan", applicationId: SAMPLE_APP }),
     recovery_24h: () => m.sendWizardRecoveryEmail({ to: TO, firstName: "Jordan", applicationId: SAMPLE_APP, variant: "24h" }),
     recovery_72h: () => m.sendWizardRecoveryEmail({ to: TO, firstName: "Jordan", applicationId: SAMPLE_APP, variant: "72h" }),

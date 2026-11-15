@@ -564,6 +564,14 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     // they can never get back to.
     const { issueResumeToken } = await import("@/lib/resume-tokens.server");
     const token = await issueResumeToken(supabaseAdmin, row.id);
+    // Step 1 thank-you email to the applicant. Off until an Owner turns on
+    // "Step 1 Thank-You Email" in Back Office → Automations. Never blocks.
+    try {
+      const { sendStepOneThankYouEmail } = await import("@/lib/step-one-email.server");
+      void sendStepOneThankYouEmail({ applicationId: row.id, to: emailLower, firstName: data.full_name ?? null });
+    } catch (e) {
+      console.error("[step1-email] setup failed", e);
+    }
     // Fire-and-forget lead alert email. Never block the form submission.
     try {
       const { sendLeadAlertEmail } = await import("@/lib/email.server");
