@@ -7,6 +7,7 @@
 // payments recorded against it), pick the one stage owed now, claim it in
 // rent_reminder_log (unique per rental + due date + stage + channel), then
 // text and email. A claim that already exists means it was sent: skip.
+import { activePaymentPause } from "@/lib/payment-text-pause.server";
 import { gateFor, loadAutomationControls } from "@/lib/automation-controls.server";
 import {
   DEFAULT_TEMPLATES,
@@ -44,6 +45,7 @@ export type ReminderDeps = {
   now?: Date;
   stripeSnapshot?: (subscriptionId: string) => Promise<StripeBillingSnapshot | null>;
   sendSms?: (a: any) => Promise<{ ok: boolean; skipped?: boolean; reason?: string; error?: string }>;
+  pauseCheck?: typeof activePaymentPause;
   sendEmail?: (a: { to: string; subject: string; text: string; link: string | null; linkLabel: string | null; workflow: string }) => Promise<{ ok: boolean; blocked?: string; error?: string }>;
   /** Paid Stripe invoices for a customer (any subscription or one-off). Default: live Stripe. */
   stripePaidInvoices?: (customerId: string) => Promise<PaidInvoice[]>;
@@ -334,6 +336,10 @@ export async function runRentReminders(admin: any, deps: ReminderDeps = {}): Pro
   for (const s of states) {
     run.examined++;
     if (!s.dueDate) { bump(run, "no_due_date"); continue; }
+    // A payment deal (staff or FLEET) pauses this renter's automatic notices.
+    const pause = await (deps.pauseCheck ?? activePaymentPause)(admin, s.rentalId, now);
+    if (pause === "unavailable") { bump(run, "pause_unavailable"); continue; }
+    if (pause.paused) { bump(run, "paused"); continue; }
     let priorNoticeOn: string | null = null;
     if (s.owing) {
       const prior = await recentInvoiceNotice(admin, s, now);

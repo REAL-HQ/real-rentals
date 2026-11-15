@@ -44,6 +44,8 @@ function fakeDb(seed: Record<string, Row[]>) {
       update(p: Row) { op = "update"; patch = p; return b; },
       upsert(r: Row, o: any) { op = "upsert"; inserted = r; upsertOpts = o; return b; },
       lt(c: string, v: any) { filters.push((r) => r[c] < v); return b; },
+      gt(c: string, v: any) { filters.push((r) => r[c] > v); return b; },
+      is(c: string, v: any) { filters.push((r) => (r[c] ?? null) === v); return b; },
       eq(c: string, v: any) { filters.push((r) => r[c] === v); return b; },
       neq(c: string, v: any) { filters.push((r) => r[c] !== v); return b; },
       in(c: string, vs: any[]) { filters.push((r) => vs.includes(r[c])); return b; },

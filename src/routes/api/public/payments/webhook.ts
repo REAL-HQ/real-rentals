@@ -324,11 +324,17 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
         await holdIfHeld(admin, card, notice('card_expiring'));
       }
     } else {
+      const { activePaymentPause } = await import('@/lib/payment-text-pause.server');
+      const pause = await activePaymentPause(admin, rentalId);
+      if (pause === 'unavailable' || pause.paused) {
+        console.info('[payments] failed-payment email paused', { rental: rentalId });
+      } else {
       const failedNotice = await sendPaymentFailedEmail({
         to: driver.email, firstName: driver.name, amount, reason,
         brand: driver.brand, last4: driver.last4,
       });
       await holdIfHeld(admin, failedNotice, notice('payment_failed'));
+      }
     }
   }
   if (status !== 'paid') await alertTeamPaymentFailed(driver, amount, reason, rentalId, notice('payment_team_alert'));
@@ -557,7 +563,12 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
       // Shares the rent-reminder ledger: if today's reminder email for this
       // week already went out, send nothing; with Rent Reminder: Overdue on,
       // the email uses that editable template (with the late fee).
-      const slot = await webhookReminderSlot(admin, rental.id, invoice, 'email', webhookDeps.now ?? new Date());
+      // A payment deal (staff or FLEET) pauses this renter's automatic notices.
+      const { activePaymentPause } = await import('@/lib/payment-text-pause.server');
+      const pause = await activePaymentPause(admin, rental.id, webhookDeps.now ?? new Date());
+      const slot = pause === 'unavailable' || pause.paused
+        ? ({ kind: 'taken' } as const)
+        : await webhookReminderSlot(admin, rental.id, invoice, 'email', webhookDeps.now ?? new Date());
       const link = failedInvoiceLink(invoice);
       let rendered: Awaited<ReturnType<typeof renderWebhookReminder>> = null;
       if (slot.kind === 'claimed' && slot.useReminderTemplate && link) {
