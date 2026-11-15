@@ -13,20 +13,30 @@ import { gateFor, loadAutomationControls } from "@/lib/automation-controls.serve
 
 export const STEP1_EMAIL_KEY = "step1_thank_you_email";
 export const STEP1_EMAIL_WORKFLOW = "application_step1_thank_you";
-/** Tampa ad-lead line (Quo Primary, PNcX8a0PLJ). */
-export const STEP1_EMAIL_LINE = { display: "(813) 212-4174", tel: "tel:+18132124174" } as const;
+/** The main business line: same number as the site header, the thank-you page and the follow-up texts. */
+export const STEP1_EMAIL_LINE = { display: "(888) 833-8280", tel: "tel:+18888338280" } as const;
+/** Same applicant-facing brand as the live site and every other message. */
+export const STEP1_EMAIL_BRAND = "REAL RENTALS";
 
 export const STEP1_EMAIL_COPY = {
   subject: "Step 2: Finish Your Application to Lock In Your Spot",
   headline: "You're in Line. Finish Step 2 Now to Hold Your Spot.",
   intro:
-    "Thanks for applying with Drive Real. We have a limited number of cars, and they go first come, first served. Priority goes to drivers who send a complete application, because that's how we verify you quickly and set up your insurance.",
+    "Thanks for applying with REAL RENTALS. We have a limited number of cars, and they go first come, first served. Priority goes to drivers who send a complete application, because that's how we verify you quickly and set up your insurance.",
   getTitle: "What You Get",
   get: [
     "INSURANCE INCLUDED. We pay for it, at no extra cost to you. It's already included in your weekly rental rate, with your name on the card.",
     "A car ready for Uber, Lyft and delivery apps",
     "Simple 4-week rentals you can renew",
     "A real team behind you if anything goes wrong on the road",
+  ],
+  // Same four steps, in the same words, as the thank-you page.
+  nextTitle: "What Happens Next",
+  steps: [
+    { title: "Upload Your Documents", note: "Step 2, about 5 minutes" },
+    { title: "Quick Background Check", note: "Usually same day" },
+    { title: "Short Call With Our Team", note: "Answer your questions" },
+    { title: "Pick Your Car and Pickup Time", note: "Tampa pickup location" },
   ],
   readyTitle: "Have These Ready",
   ready: [
@@ -49,7 +59,7 @@ export const STEP1_EMAIL_COPY = {
   cta: "Click the button below to continue to Step 2. It takes about 5 minutes.",
   button: "Continue to Step 2",
   signOff: `Questions? Call or text us at ${STEP1_EMAIL_LINE.display}.`,
-  team: "The Drive Real Team",
+  team: "The Real Rentals Team",
 } as const;
 
 function esc(v: string): string {
@@ -66,11 +76,12 @@ export function renderStepOneEmail(args: { firstName: string | null; continueUrl
 <html><body style="margin:0;background:#f5f5f5;font-family:-apple-system,Segoe UI,Roboto,sans-serif">
   <div style="max-width:560px;margin:0 auto;padding:24px">
     <div style="background:#fff;border-radius:12px;padding:28px;border:1px solid #eee">
-      <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#D03020;font-weight:700">DRIVE REAL</div>
+      <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#D03020;font-weight:700">${STEP1_EMAIL_BRAND}</div>
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${esc(c.headline)}</h1>
       ${name ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 8px">Hi ${esc(name)},</p>` : ""}
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0">${esc(c.intro)}</p>
       ${h2(c.getTitle)}${list(c.get)}
+      ${h2(c.nextTitle)}<ol style="margin:0;padding-left:20px;color:#333;font-size:15px;line-height:1.55">${c.steps.map((s) => `<li style="margin:0 0 6px"><strong>${esc(s.title)}</strong>: ${esc(s.note)}</li>`).join("")}</ol>
       ${h2(c.readyTitle)}${list(c.ready)}
       ${h2(c.whyTitle)}${list(c.why)}
       <p style="color:#666;font-size:13px;line-height:1.55;margin:10px 0 0">${esc(c.privacy)}</p>
