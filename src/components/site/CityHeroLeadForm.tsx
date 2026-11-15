@@ -121,7 +121,14 @@ export function CityHeroLeadForm({
       if (waitlistMode) {
         // No cars right now: collect a waitlist spot instead of an
         // application. Queue positions stay internal — never shown here.
-        const res = await join({ data: { ...shared, source: "fleet_waitlist" } });
+        const res = await join({
+          data: {
+            ...shared,
+            source: "fleet_waitlist",
+            sms_consent: form.sms_consent,
+            consent_page: typeof window !== "undefined" ? window.location.pathname : null,
+          },
+        });
         if (res.ok) {
           setJoined(true);
           toast.success("You're on the waitlist — we'll email you as soon as a car opens up.");
@@ -236,11 +243,9 @@ export function CityHeroLeadForm({
                     No cars are available right now, so we're taking a waitlist. You'll get an email
                     the moment it's your turn — before the car is offered to anyone else.
                   </p>
-                ) : (
-                  <>
-                    <SmsConsentField className="mt-5" checked={form.sms_consent} onChange={(v) => update("sms_consent", v)} />
-                  </>
-                )}
+                ) : null}
+                {/* Same optional opt-in in both modes, so waitlist leads can get the follow-up texts once promoted. */}
+                <SmsConsentField className="mt-5" checked={form.sms_consent} onChange={(v) => update("sms_consent", v)} />
 
                 <button
                   type="button"
