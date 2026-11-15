@@ -672,8 +672,8 @@ function StepForm({
           <span>
             Skip If Profile Is Complete
             <span className="block text-xs text-muted-foreground">
-              Applicants who already finished their license, insurance and address don't get this
-              message. The next message still goes out on schedule.
+              Applicants who already finished Step 2 don't get this message. The next message
+              still goes out on schedule.
             </span>
           </span>
         </label>
