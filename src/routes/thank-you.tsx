@@ -8,6 +8,8 @@ import { WelcomeBack } from "@/components/site/WelcomeBack";
 import { thankYouView } from "@/lib/secure-link-copy";
 import { Logo } from "@/components/site/Logo";
 import { portalLoginUrl } from "@/lib/portal-handoff";
+import { StepOneThankYou } from "@/components/site/StepOneThankYou";
+import { clearStepOneJustSubmitted, stepOneJustSubmitted } from "@/lib/step-one-thank-you";
 
 export const Route = createFileRoute("/thank-you")({
   // `t` is a resume token, not an application id. The id used to travel here
@@ -46,6 +48,12 @@ function ThankYouPage() {
   const raw = useResumeToken(t);
   const open = useServerFn(openResumeLink);
   const [state, setState] = useState<OpenState>({ kind: "wait" });
+  // Right after Step 1 the applicant sees the short thank-you page first;
+  // "Upload Documents" opens Step 2 below. Resumed links go straight to Step 2.
+  const [welcome, setWelcome] = useState(false);
+  useEffect(() => {
+    setWelcome(stepOneJustSubmitted());
+  }, []);
 
   useEffect(() => {
     if (raw === undefined) return;
@@ -127,6 +135,17 @@ function ThankYouPage() {
   }
 
   if (state.kind !== "wizard") return null;
+  if (welcome) {
+    return (
+      <StepOneThankYou
+        onContinue={() => {
+          clearStepOneJustSubmitted();
+          setWelcome(false);
+          if (typeof window !== "undefined") window.scrollTo(0, 0);
+        }}
+      />
+    );
+  }
   return (
     // Matches /apply: one logo, carried by the wizard's own panel.
     <div className="min-h-screen bg-background">

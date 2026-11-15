@@ -1,4 +1,5 @@
 import { createFileRoute, Link, Navigate, redirect, useNavigate } from "@tanstack/react-router";
+import { markStepOneJustSubmitted } from "@/lib/step-one-thank-you";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -392,6 +393,7 @@ function ContactStep({
         setReturning({ email: form.email, status: data.linkStatus ?? "sent", retryAfterSeconds: data.retryAfterSeconds ?? 120 });
         return;
       }
+      markStepOneJustSubmitted();
       navigate({ to: "/thank-you", search: { t: data.token } });
     } catch (e: any) {
       toast.error(e?.message ?? "Could not save. Please try again.");
