@@ -54,12 +54,19 @@ describe("Step 1 thank-you page", () => {
     expect(gig).toBeLessThan(earn);
   });
 
-  test("Tampa contact line and buttons point at (813) 212-4174", () => {
-    expect(STEP_ONE_LINE.e164).toBe("+18132124174");
-    expect(text).toContain("Questions? Call or text (813) 212-4174");
-    expect(html).toContain('href="sms:+18132124174"');
-    expect(html).toContain('href="tel:+18132124174"');
+  test("contact line and Text Us point at the main (888) 833-8280 line", () => {
+    expect(STEP_ONE_LINE.e164).toBe("+18888338280");
+    expect(text).toContain("Questions? Call or text (888) 833-8280");
+    expect(html).toContain('href="sms:+18888338280"');
+    expect(html).toContain('href="tel:+18888338280"');
+    expect(/813|212-4174/.test(text + html)).toBe(false);
     expect((html.match(/>Upload Documents</g) ?? []).length).toBe(2);
+  });
+
+  test("same brand as the live site and every other message", () => {
+    expect(C.brand).toBe("REAL RENTALS");
+    expect(text).toContain("REAL RENTALS");
+    expect(/drive\s*real(?!\.com)/i.test(text)).toBe(false);
   });
 
   test("never names an insurance broker or carrier", () => {
