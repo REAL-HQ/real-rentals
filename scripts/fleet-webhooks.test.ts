@@ -368,9 +368,13 @@ describe("migration (PGlite)", () => {
       VALUES ('EV2','message.received','PNrZULvFMn','+18888338280','REAL Rentals 888',$1,'incoming','Yes please', now())`, [id]);
     await pg.query(`INSERT INTO messages (application_id, body, direction, delivery_state) VALUES ($1,'Yes please','inbound','delivered'), ($1,'Old text','inbound','delivered')`, [id]);
     await pg.query(`INSERT INTO email_deliveries (workflow, recipient, state) VALUES ('application_resume','j@x.com','delivered')`);
+    // The Step 1 thank-you is logged on the lead and tracked for delivery: listed once.
+    await pg.query(`INSERT INTO outbound_messages (channel, to_address, subject, status, kind, application_id, sent_at) VALUES ('email','j@x.com','Step 2: Finish Your Application','sent','step1_thank_you',$1, now())`, [id]);
+    await pg.query(`INSERT INTO email_deliveries (workflow, recipient, state) VALUES ('application_step1_thank_you','J@x.com','delivered')`);
     const act = (await pg.query<any>(`SELECT activity_type, direction, summary, line_label, phone_number_id, recording_url, source_table FROM lead_activity WHERE application_id=$1`, [id])).rows;
     const types = act.map((a) => a.activity_type).sort();
-    expect(types).toEqual(["email", "status_change", "status_change", "status_change", "text", "text", "text", "voicemail"]);
+    expect(types).toEqual(["email", "email", "status_change", "status_change", "status_change", "text", "text", "text", "voicemail"]);
+    expect(act.filter((a) => a.activity_type === "email").map((a) => a.source_table).sort()).toEqual(["email_deliveries", "outbound_messages"]);
     expect(act.find((a) => a.activity_type === "voicemail")).toMatchObject({ line_label: "Primary 813", phone_number_id: "PNcX8a0PLJ", recording_url: "https://x/vm.mp3", summary: "Hi there" });
     expect(act.find((a) => a.source_table === "outbound_messages")).toMatchObject({ line_label: "REAL Rentals 888", phone_number_id: "PNrZULvFMn", direction: "outbound" });
     // The Quo text and its threaded copy show once; the older thread-only text still shows.

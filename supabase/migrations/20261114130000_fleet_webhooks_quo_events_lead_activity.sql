@@ -166,6 +166,12 @@ CREATE OR REPLACE VIEW public.lead_activity WITH (security_invoker = true) AS
          NULL, NULL, NULL, NULL, 'email_deliveries', e.id::text
     FROM public.email_deliveries e
     JOIN public.applications a ON lower(a.email) = lower(e.recipient)
+   -- The Step 1 thank-you is logged on the lead AND tracked here: show it once.
+   WHERE NOT (e.workflow = 'application_step1_thank_you' AND EXISTS (
+     SELECT 1 FROM public.outbound_messages o
+      WHERE o.application_id = a.id AND o.channel = 'email' AND o.kind = 'step1_thank_you'
+        AND lower(o.to_address) = lower(e.recipient)
+        AND abs(extract(epoch FROM (coalesce(o.sent_at, o.created_at) - e.created_at))) < 600))
   UNION ALL
   SELECT s.application_id, s.changed_at, 'status_change', NULL,
          coalesce(s.from_status || ' → ', '') || s.to_status, s.to_status, NULL,
