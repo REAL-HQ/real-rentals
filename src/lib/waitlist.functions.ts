@@ -68,11 +68,15 @@ export const joinWaitlist = createServerFn({ method: "POST" })
         gclid: z.string().max(300).nullish(),
         landing_page: z.string().max(500).nullish(),
         referrer: z.string().max(500).nullish(),
+        // Optional, unchecked-by-default SMS opt-in (same field as Step 1).
+        sms_consent: z.boolean().optional(),
+        consent_page: z.string().max(300).nullish(),
       })
       .parse(d),
   )
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const consentEvidence = await waitlistConsentEvidence(data);
 
     // One spot per address. Say success either way so a repeat click or a
     // second submission from the same person is not a second queue entry —
@@ -101,6 +105,7 @@ export const joinWaitlist = createServerFn({ method: "POST" })
       utm_content: data.utm_content ?? null,
       utm_term: data.utm_term ?? null,
       gclid: data.gclid ?? null,
+      ...consentEvidence,
       // landing_page/referrer are captured for applications but the waitlist
       // table has no such columns — accepted in the payload, not persisted.
     });
@@ -764,3 +769,25 @@ export const resolveWaitlistConflict = createServerFn({ method: "POST" })
     if (!r.ok) return { ok: false as const, error: CONFLICT_ERRORS[r.error ?? ""] ?? "Could not link these records." };
     return { ok: true as const, applicationId: r.application_id!, already: !!r.already };
   });
+
+/**
+ * SMS consent evidence for a waitlist row, built the same way as Step 1's:
+ * only an affirmative opt-in writes evidence, and the wording and version
+ * come from the server-side module, never from the browser. Carried onto the
+ * application by promote_waitlist_entry, which is what the site's follow-up
+ * texts check (applications.sms_consent).
+ */
+export async function waitlistConsentEvidence(data: { sms_consent?: boolean; consent_page?: string | null; phone: string }, now: () => Date = () => new Date()) {
+  if (data.sms_consent !== true) return { sms_consent: false };
+  const { SMS_CONSENT_TEXT, SMS_CONSENT_VERSION, SMS_CONSENT_SOURCE_WEB } = await import("@/lib/sms-consent");
+  const { businessPhoneE164 } = await import("@/lib/company");
+  return {
+    sms_consent: true,
+    sms_consent_at: now().toISOString(),
+    sms_consent_source: SMS_CONSENT_SOURCE_WEB,
+    sms_consent_version: SMS_CONSENT_VERSION,
+    sms_consent_text: SMS_CONSENT_TEXT,
+    sms_consent_phone: businessPhoneE164(data.phone),
+    sms_consent_page: data.consent_page ?? null,
+  };
+}

@@ -6255,6 +6255,13 @@ export type Database = {
       }
       waitlist: {
         Row: {
+          sms_consent: boolean
+          sms_consent_at: string | null
+          sms_consent_page: string | null
+          sms_consent_phone: string | null
+          sms_consent_source: string | null
+          sms_consent_text: string | null
+          sms_consent_version: string | null
           city: string | null
           created_at: string
           driver_status: string | null
@@ -6280,6 +6287,13 @@ export type Database = {
           utm_term: string | null
         }
         Insert: {
+          sms_consent?: boolean
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
           city?: string | null
           created_at?: string
           driver_status?: string | null
@@ -6305,6 +6319,13 @@ export type Database = {
           utm_term?: string | null
         }
         Update: {
+          sms_consent?: boolean
+          sms_consent_at?: string | null
+          sms_consent_page?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
+          sms_consent_version?: string | null
           city?: string | null
           created_at?: string
           driver_status?: string | null
