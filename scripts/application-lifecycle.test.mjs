@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import assert from "node:assert/strict";
 const out = mkdtempSync(join(tmpdir(), "rr-lifecycle-"));
 const id = "11111111-1111-4111-8111-111111111111";
+const CLOSE_REASON = "unable_to_qualify";
 let passed = 0;
 try {
   writeFileSync(
@@ -89,7 +90,8 @@ try {
       assert.equal(r.status, "reviewing");
       assert.equal(fixture.writes, 1);
       assert.equal(fixture.audit.length, 1);
-      assert.ok(r.contacted_at);
+      // A status change is not contact (t306s1653): contacted_at stays blank.
+      assert.equal(r.contacted_at, null);
       assert.deepEqual(Object.keys(r).sort(), ["contacted_at", "id", "status"]);
       assert.equal(fixture.row.contact_status, "follow_up");
     });
@@ -187,6 +189,29 @@ try {
     fixture.row.contacted_at = "2026-01-01T00:00:00.000Z";
     const r = await invoke({ contacted_at: "2099-01-01T00:00:00.000Z" });
     assert.equal(r.contacted_at, "2026-01-01T00:00:00.000Z");
+  });
+  for (const status of ["reviewing", "declined", "closed", "suspended"])
+    await test("status change to " + status + " never fills a blank contacted_at", async () => {
+      reset("admin");
+      const patch = status === "closed" ? { status, closure_reason: CLOSE_REASON } : { status };
+      const r = await invoke(patch);
+      assert.equal(r.status, status);
+      assert.equal(r.contacted_at, null);
+      assert.equal(fixture.row.contacted_at, null);
+      assert.ok(!fixture.audit[0].entry.metadata.fields.includes("contacted_at"));
+    });
+  await test("status change keeps an existing contacted_at untouched", async () => {
+    reset("admin");
+    fixture.row.contacted_at = "2026-01-01T00:00:00.000Z";
+    const r = await invoke({ status: "reviewing" });
+    assert.equal(r.contacted_at, "2026-01-01T00:00:00.000Z");
+  });
+  await test("explicit Mark Contacted fills a blank contacted_at with server time", async () => {
+    reset();
+    const before = Date.now();
+    const r = await invoke({ contacted_at: "2099-01-01T00:00:00.000Z" });
+    const at = Date.parse(r.contacted_at);
+    assert.ok(at >= before - 1000 && at <= Date.now() + 1000, "server time, not the client's");
   });
   await test("Coordinator permitted operational contact fields", async () => {
     reset();
