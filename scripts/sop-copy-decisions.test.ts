@@ -39,7 +39,7 @@ describe("copy", () => {
   test("D13 portal invite: P36 wording, license spelled the US way", () => {
     const e = read("src/lib/email.server.ts");
     const inv = e.slice(e.indexOf("export async function sendPortalInviteEmail"), e.indexOf("export async function sendAgreementEmail"));
-    for (const t of ["Your pickup is booked.", "Before You Come", "Bring your driver's license.", "If you're 15+ minutes late, the car may go to another driver.", "Your insurance card is handed to you at pickup, not before.", "Set up your rideshare account after pickup, once your rental is paid.", "Reservation Fee goes toward your first week's rent.", "Your Pickup Is Booked: "]) expect(inv).toContain(t);
+    for (const t of ["Your pickup is booked.", "Before You Come", "Bring your driver's license.", "If you're 30+ minutes late, the car may go to another driver.", "Your insurance card is handed to you at pickup, not before.", "Set up your rideshare account after pickup, once your rental is paid.", "Reservation Fee goes toward your first week's rent.", "Your Pickup Is Booked: "]) expect(inv).toContain(t);
     expect(inv).not.toMatch(/licence/);
   });
   test("D9 24h/72h reminders use the 14-day link; D10 the 3-hour email is dropped", () => {

@@ -429,7 +429,7 @@ export const AUTOMATIONS: AutomationDef[] = [
     control: { kind: "setting" },
     previews: [],
     defaultOn: false,
-    note: "Off until turned on (SOP D14). Needs proposed/renter-reminders-v1.sql (once-per-rental claim table).",
+    note: "Off until turned on (SOP D14; approved for go-live, card t310s1681). Needs proposed/renter-reminders-v1.sql (once-per-rental claim table).",
   },
   {
     key: "rental_lifecycle",

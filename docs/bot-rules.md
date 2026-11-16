@@ -68,3 +68,43 @@ When FLEET approves and sends its own approval text (P12), it passes
 `"approval_text_sent": true` to `/api/public/fleet/applicant-decision`, and the
 site does not send the Approval Confirmation email. Without that flag the email
 goes as before.
+
+## Reservation Fee and deposit wording (Dolmar, t309u)
+
+- Never call the $50 Reservation Fee a "deposit", in any text, call or email.
+  It is applied to rent (the first week). Say "Reservation Fee".
+- A deposit is a different thing: the per-car security deposit, refunded at the
+  end of the rental (when one is collected) and used to cover fees during it.
+  Say "security deposit" only for that.
+- Never ask for a card before the agreement is signed. After signing, the
+  renter pays the $50 through the Stripe link in the Agreement Signed email, and
+  that card is saved on file for the rental balance. Bots never take card
+  numbers by text or phone.
+
+## Late pickup (D25, 30 minutes per t309u)
+
+The car is held until 30 minutes after the scheduled pickup time. After that
+it may be released and the $50 Reservation Fee is kept. The site sends the
+release text itself (Late Pickup Release switch, off until go-live); bots do
+not send their own. Approved wording:
+
+> Real Rentals: We held your car until 30 minutes after your 10:00 AM ET pickup, and it has now been released. Your $50 Reservation Fee is non-refundable for a missed pickup. To rebook, reply here or call (888) 833-8280. Reply STOP to opt out.
+
+## Service area and GPS (t311u, card t310s1681)
+
+Rentals stay within a 100-mile radius of Tampa. FLEET posts each tracker
+reading to `/api/public/fleet/gps-readings` (twice a day); the site alerts the
+team when a car is more than 100 miles from Tampa, a tracker has had no signal
+for 24 hours, or a rented car has not moved for 48 hours (switch
+`team_alerts.gps`, off until go-live).
+
+## Background checks (D27, card t310s1681)
+
+A pending background check or driving record is a note, never a blocker.
+FLEET may pass clear checks; any flag goes to staff.
+
+## Approved for later go-live (card t310s1681)
+
+The day-2 email skip for complete applicants (`proposed/day2-email-skip-complete.sql`)
+and the Rental Ended Notice (Automations switch, off) are approved; both stay
+off until the publish Dolmar signs off on.

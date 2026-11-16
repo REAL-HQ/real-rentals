@@ -1144,7 +1144,7 @@ export async function sendPortalInviteEmail(args: {
       <p><strong>Before You Come</strong></p>
       <ul>
         <li>Bring your driver's license.</li>
-        <li>Arrive on time. If you're 15+ minutes late, the car may go to another driver.</li>
+        <li>Arrive on time. If you're 30+ minutes late, the car may go to another driver.</li>
         <li>Your insurance card is handed to you at pickup, not before.</li>
         <li>Set up your rideshare account after pickup, once your rental is paid.</li>
       </ul>
