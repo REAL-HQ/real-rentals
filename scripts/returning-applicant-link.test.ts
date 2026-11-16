@@ -86,6 +86,13 @@ describe("returning applicant panel", () => {
     expect(f.text).toContain("We couldn't send the email to d•••@gmail.com just now.");
     expect(f.html).not.toContain("<input");
   });
+  test("closed/declined match says a NEW application starts from the link", () => {
+    const r = render({ email: EMAIL, fresh: true, initial: { status: "sent", retryAfterSeconds: 64 }, onBack: () => {} });
+    expect(r.text).toContain("Looks like you've applied with us before.");
+    expect(r.text).toContain("we sent a secure link to d•••@gmail.com. Open it to start your new application.");
+    expect(r.html).not.toContain("<input");
+    expect(r.text).not.toContain("pick up where you left off");
+  });
   test("no back link without onBack", () => {
     expect(render({ email: EMAIL, initial: { status: "sent", retryAfterSeconds: 0 } }).text).not.toContain("Use A Different Email");
   });
@@ -122,7 +129,7 @@ describe("wiring", () => {
   test("both lead forms pass the typed email and a way back", () => {
     for (const f of ["src/routes/apply.tsx", "src/components/site/CityHeroLeadForm.tsx"]) {
       const src = readFileSync(f, "utf8");
-      expect(src).toContain("<WelcomeBack email={returning.email} initial={returning} onBack={() => setReturning(null)} />");
+      expect(src).toContain("<WelcomeBack email={returning.email} initial={returning} fresh={returning.fresh} onBack={() => setReturning(null)} />");
     }
   });
 });

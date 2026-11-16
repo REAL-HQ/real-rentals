@@ -67,7 +67,10 @@ export type ReturningStatus = "sent" | "recent" | "failed" | "requested";
 
 export const RETURNING_HEADING = "Welcome Back";
 
-export function returningBody(masked: string): string {
+export function returningBody(masked: string, fresh = false): string {
+  if (fresh) {
+    return `Looks like you've applied with us before. To keep your information safe, we sent a secure link to ${masked}. Open it to start your new application.`;
+  }
   return `Looks like you've already started an application with us. We sent a secure link to ${masked} to pick up where you left off.`;
 }
 

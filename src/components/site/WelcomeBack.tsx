@@ -33,6 +33,7 @@ export function WelcomeBack({
   missing = false,
   initial,
   onBack,
+  fresh = false,
 }: {
   email?: string;
   dark?: boolean;
@@ -44,6 +45,8 @@ export function WelcomeBack({
   initial?: { status: LinkStatus; retryAfterSeconds: number };
   /** Return to the form (e.g. to fix a typo). */
   onBack?: () => void;
+  /** The match was closed/declined: the link starts a new application. */
+  fresh?: boolean;
 }) {
   const requestLink = useServerFn(requestApplicationLink);
   const [value, setValue] = useState(email ?? "");
@@ -83,7 +86,7 @@ export function WelcomeBack({
     return (
       <div role="status" aria-live="polite" className={`rounded-2xl p-6 ${dark ? "bg-black/60 text-white" : "bg-soft"}`} data-secure-link="returning">
         <h2 className="text-xl font-semibold">{RETURNING_HEADING}</h2>
-        <p className={`mt-2 text-sm leading-relaxed ${muted}`}>{returningBody(masked)}</p>
+        <p className={`mt-2 text-sm leading-relaxed ${muted}`}>{returningBody(masked, fresh)}</p>
         <p
           className={`mt-3 text-sm leading-relaxed ${shown === "failed" ? "text-real-red font-medium" : muted}`}
           data-returning-status={shown}
