@@ -759,6 +759,14 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     const terms = readTerms(tplBody);
     if (terms) tplBody = writeTerms(stripTerms(tplBody), { ...terms, reservation_line: AMENDMENT_NO_FEE_LINE });
     if (usesField(tplBody, "balance_due")) (built.data as any).balance_due = AMENDMENT_NOTHING_DUE_LINE;
+    // Already-active rental with no saved card (e.g. week 1 paid by invoice):
+    // the card is saved at the next payment, so print that instead of blocking
+    // (Dolmar, t327s1775). Never charges or saves anything here.
+    if (usesField(tplBody, "card_on_file") && !String(built.data.card_on_file ?? "").trim()) {
+      const { AMENDMENT_CARD_NEXT_PAYMENT_LINE } = await import("@/lib/rental-amendment");
+      built.data.card_on_file = AMENDMENT_CARD_NEXT_PAYMENT_LINE;
+      for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "card_on_file") built.blockers.splice(i, 1);
+    }
   }
   templateFieldBlockers(
     tplBody,

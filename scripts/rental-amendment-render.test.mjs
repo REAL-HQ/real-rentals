@@ -127,6 +127,11 @@ ok(writes.length === 0, "still nothing written");
 const forced = await AG.amendmentSendCheck(fakeAdmin(tables()), APP_ID, { weeklyRate: 375, notice: "N", vehicleId: VEH_ID, templateKey: RA.AMENDMENT_TEMPLATE_KEY,
   prep: { ...v114prep, reservation: { mode: "required", amount: 50 }, deposit: { mode: "required", amount: 200, reason: "" } } });
 ok(!/Required: \$50/.test(forced.body) && !forced.blockers.some((b) => b.field === "reservation_fee" || b.field === "deposit_amount"), "a fee or deposit slipped into the prep is still dropped");
+const nc = tables(); nc.applications[0].card_brand = null; nc.applications[0].card_last4 = null;
+const noCard = await AG.amendmentSendCheck(fakeAdmin(nc), APP_ID, { weeklyRate: 375, notice: "N", vehicleId: VEH_ID, prep: v114prep, templateKey: RA.AMENDMENT_TEMPLATE_KEY });
+ok(!noCard.blockers.length && noCard.body.includes("Saved at next payment"), `no card on file: prints "Saved at next payment", no blocker (${JSON.stringify(noCard.blockers)})`);
+const plainNoCard = await AG.agreementSendCheck(fakeAdmin(nc), APP_ID);
+ok(!plainNoCard.body?.includes("Saved at next payment"), "a first-time agreement never gets the next-payment card line");
 const unknown = await AG.amendmentSendCheck(fakeAdmin(tables()), APP_ID, { weeklyRate: 375, notice: "N", vehicleId: VEH_ID, prep: RA.amendmentPrep(null, {}), templateKey: RA.AMENDMENT_TEMPLATE_KEY });
 ok(unknown.blockers.some((b) => b.field === "damage_waiver") && unknown.blockers.some((b) => b.field === "payment_method"), "nothing guessed: an older agreement without v1.14 choices blocks until they are given");
 
