@@ -126,6 +126,7 @@ describe("charge after signing", () => {
     expect(wh).toMatch(/session\.mode === 'payment' && session\.metadata\?\.reason === 'reservation_fee'[\s\S]*saveReservationFeeCard/);
     expect(wh).toMatch(/upsertPaymentFromPaymentIntent\(event\.data\.object, 'paid'\);\s*await holdReservationAfterFee/);
     expect(readFileSync("src/lib/email.server.ts", "utf8")).toMatch(/Reservation Fee<\/a>/);
+    expect(readFileSync("src/lib/email.server.ts", "utf8")).toMatch(/feeUnpaid \? "One Last Step: Reserve Your Car" : "Agreement Signed — You're All Set"/);
   });
   test("the Reservation Fee is never called a deposit in renter copy (t309u)", () => {
     const lines = [
@@ -138,26 +139,22 @@ describe("charge after signing", () => {
     ];
     for (const l of lines) expect(String(l)).not.toMatch(/deposit/i);
   });
-  test("paid: row first (type fee, not rent), one off-session charge, the reservation held as applied; repeat is a no-op", async () => {
+  test("a returning renter with a saved card still gets the Stripe link; the saved card is never charged (card t315s1710)", async () => {
     const db = fakeDb({ ...seed(), rentals: [{ id: "r1", application_id: "app1", status: "reserved", reservation_deposit_status: "pending" }] }); const s = stripe();
     const o = await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: s, ...noAudit });
-    expect(o.status).toBe("paid");
-    expect(s.calls.length).toBe(1);
-    expect(s.calls[0].a).toMatchObject({ amount: 5000, off_session: true, confirm: true });
-    expect(s.calls[0].o.idempotencyKey).toMatch(/^reservation-fee:payments-\d+:attempt:1$/);
-    expect(db.state.payments[0]).toMatchObject({ type: "fee", status: "paid", balance_due: 0, rental_id: "r1" });
-    expect(db.state.rentals[0]).toMatchObject({ reservation_deposit_status: "applied", reservation_deposit_amount: 50 });
-    expect((await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: s, ...noAudit })).status).toBe("already_paid");
-    expect(s.calls.length).toBe(1);
-    expect(rf.reservationFeeEmailLine(o)).toBe("Your $50.00 Reservation Fee was charged to your card ending in 4242 and is applied in full to your first week. Your car is now held for your pickup.");
+    expect(o.status).toBe("checkout");
+    expect(s.calls.length).toBe(0); // no off-session PaymentIntent
+    expect(s.sessions.length).toBe(1);
+    expect(s.sessions[0].a).toMatchObject({ mode: "payment", customer: "cus_1", payment_intent_data: { setup_future_usage: "off_session" } });
+    expect(db.state.rentals[0].reservation_deposit_status).toBe("pending");
+    expect(readFileSync("src/lib/reservation-fee.server.ts", "utf8")).not.toMatch(/off_session: true/);
   });
-  test("declined: failed, car not held; unknown error stays pending (never retried blind)", async () => {
-    const db = fakeDb(seed());
-    expect((await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: stripe("decline"), ...noAudit })).status).toBe("failed");
-    expect(db.state.payments[0].status).toBe("failed");
-    const db2 = fakeDb(seed());
-    expect((await rfs.chargeReservationFeeAfterSigning(db2, "ag1", { settings: ON, stripe: stripe("unknown"), ...noAudit })).status).toBe("pending");
-    expect(db2.state.payments[0].status).toBe("pending");
+  test("a fee already paid holds the car and is never charged again", async () => {
+    const db = fakeDb({ ...seed(), rentals: [{ id: "r1", application_id: "app1", status: "reserved", reservation_deposit_status: "pending" }], payments: [{ id: "p1", driver_id: "app1", type: "fee", reason: "reservation_fee", status: "paid", amount: 50, notes: "reservation_fee:ag1" }] }); const s = stripe();
+    const o = await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: s, ...noAudit });
+    expect(o.status).toBe("already_paid");
+    expect(s.calls.length + s.sessions.length).toBe(0);
+    expect(db.state.rentals[0]).toMatchObject({ reservation_deposit_status: "applied", reservation_deposit_amount: 50 });
   });
 });
 

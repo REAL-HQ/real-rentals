@@ -81,11 +81,11 @@ A reservation is fully confirmed when all are true:
 1. the rental is Reserved (`rentals.status = 'reserved'`);
 2. the applicant is Approved or Active;
 3. a pickup date, time and location are set;
-4. the reservation deposit is not pending (not required, paid, waived or applied);
+4. the Reservation Fee is not pending (not required, paid, waived or applied);
 5. the rental agreement is signed and not voided (setting; On by default).
 
 It is checked after a reservation is saved (staff or FLEET), after a
-reservation deposit is recorded, after the renter signs, and every minute by
+Reservation Fee is recorded, after the renter signs, and every minute by
 the fleet-webhooks cron as a safety net.
 
 On the first confirmation of a rental:
