@@ -48,6 +48,7 @@ import { Route as ApiPublicCronRentRemindersRouteImport } from './routes/api/pub
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
 import { Route as ApiPublicFleetApplicantDecisionRouteImport } from './routes/api/public/fleet/applicant-decision'
 import { Route as ApiPublicFleetApplicantsRouteImport } from './routes/api/public/fleet/applicants'
+import { Route as ApiPublicFleetAssignVehicleRouteImport } from './routes/api/public/fleet/assign-vehicle'
 import { Route as ApiPublicFleetLicenseFactsRouteImport } from './routes/api/public/fleet/license-facts'
 import { Route as ApiPublicFleetPaymentTextPauseRouteImport } from './routes/api/public/fleet/payment-text-pause'
 import { Route as ApiPublicFleetPickupSlotsRouteImport } from './routes/api/public/fleet/pickup-slots'
@@ -264,6 +265,12 @@ const ApiPublicFleetApplicantsRoute =
     path: '/api/public/fleet/applicants',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetAssignVehicleRoute =
+  ApiPublicFleetAssignVehicleRouteImport.update({
+    id: '/api/public/fleet/assign-vehicle',
+    path: '/api/public/fleet/assign-vehicle',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetLicenseFactsRoute =
   ApiPublicFleetLicenseFactsRouteImport.update({
     id: '/api/public/fleet/license-facts',
@@ -373,6 +380,7 @@ export interface FileRoutesByFullPath {
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
+  '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
@@ -426,6 +434,7 @@ export interface FileRoutesByTo {
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
+  '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
@@ -480,6 +489,7 @@ export interface FileRoutesById {
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
+  '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
@@ -535,6 +545,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/wizard-recovery'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
+    | '/api/public/fleet/assign-vehicle'
     | '/api/public/fleet/license-facts'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
@@ -588,6 +599,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/wizard-recovery'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
+    | '/api/public/fleet/assign-vehicle'
     | '/api/public/fleet/license-facts'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
@@ -641,6 +653,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/wizard-recovery'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
+    | '/api/public/fleet/assign-vehicle'
     | '/api/public/fleet/license-facts'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
@@ -695,6 +708,7 @@ export interface RootRouteChildren {
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
   ApiPublicFleetApplicantDecisionRoute: typeof ApiPublicFleetApplicantDecisionRoute
   ApiPublicFleetApplicantsRoute: typeof ApiPublicFleetApplicantsRoute
+  ApiPublicFleetAssignVehicleRoute: typeof ApiPublicFleetAssignVehicleRoute
   ApiPublicFleetLicenseFactsRoute: typeof ApiPublicFleetLicenseFactsRoute
   ApiPublicFleetPaymentTextPauseRoute: typeof ApiPublicFleetPaymentTextPauseRoute
   ApiPublicFleetPickupSlotsRoute: typeof ApiPublicFleetPickupSlotsRoute
@@ -984,6 +998,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetApplicantsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/assign-vehicle': {
+      id: '/api/public/fleet/assign-vehicle'
+      path: '/api/public/fleet/assign-vehicle'
+      fullPath: '/api/public/fleet/assign-vehicle'
+      preLoaderRoute: typeof ApiPublicFleetAssignVehicleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/license-facts': {
       id: '/api/public/fleet/license-facts'
       path: '/api/public/fleet/license-facts'
@@ -1111,6 +1132,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
   ApiPublicFleetApplicantDecisionRoute: ApiPublicFleetApplicantDecisionRoute,
   ApiPublicFleetApplicantsRoute: ApiPublicFleetApplicantsRoute,
+  ApiPublicFleetAssignVehicleRoute: ApiPublicFleetAssignVehicleRoute,
   ApiPublicFleetLicenseFactsRoute: ApiPublicFleetLicenseFactsRoute,
   ApiPublicFleetPaymentTextPauseRoute: ApiPublicFleetPaymentTextPauseRoute,
   ApiPublicFleetPickupSlotsRoute: ApiPublicFleetPickupSlotsRoute,
