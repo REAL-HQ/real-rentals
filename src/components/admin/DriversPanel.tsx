@@ -249,6 +249,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { DocumentsExpiringList } from "./DocumentsExpiring";
 import { FleetNeedsStaffBanner } from "./FleetNeedsStaffBanner";
+import { BotTextPauseBanner } from "./BotTextPauseBanner";
 import { listFleetNeedsStaff, type FleetNeedsStaffFlag } from "@/lib/fleet-review.functions";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
 import type { ExpiryScope } from "@/lib/document-expiry";
@@ -2606,6 +2607,7 @@ function DriverDetail({
         {/* Header + record navigation scroll with the profile */}
         <div className="bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">
           <FleetNeedsStaffBanner applicationId={driver.id} canResolve={isManager || isOwner} />
+          <BotTextPauseBanner applicationId={driver.id} />
           {/* Identity: its own box, with the record tabs directly below it */}
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex max-lg:flex-wrap">

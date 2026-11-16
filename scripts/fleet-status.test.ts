@@ -155,6 +155,18 @@ describe("endpoint", () => {
     expect((await s.handleFleetStatus(req({ action: "lead", lead_id: "nope" }), { admin: db, env, now: () => NOW })).status).toBe(400);
     expect((await s.handleFleetStatus(req({ action: "lead", lead_id: "99999999-9999-4999-8999-999999999999" }), { admin: db, env, now: () => NOW })).status).toBe(404);
   });
+  test("lead: staff-text pause shown to FLEET (bots_paused), next step unchanged (light pause, not a handoff)", async () => {
+    const db = seed();
+    db.state.applications.find((a: any) => a.id === L2).phone = "(813) 555-0142";
+    (db.state as any).bot_text_pauses = [{ phone_key: "8135550142", paused_until: "2026-11-18T15:00:00Z", cleared_at: null, reason: "staff_text", last_staff_text_at: "2026-11-16T14:30:00Z" }];
+    const { lead } = (await (await s.handleFleetStatus(req({ action: "lead", lead_id: L2 }), { admin: db, env, now: () => NOW })).json()) as any;
+    expect(lead.bot_text_pause).toEqual({ paused: true, until: "2026-11-18T15:00:00.000Z", since: "2026-11-16T14:30:00Z", reason: "staff_texting" });
+    expect(lead.bots_paused).toBe(true);
+    expect(lead.next).toMatchObject({ step: "sign_agreement", owner: "renter" });
+    const other = (await (await s.handleFleetStatus(req({ action: "lead", lead_id: L3 }), { admin: db, env, now: () => NOW })).json()) as any;
+    expect(other.lead.bot_text_pause).toBeNull();
+    expect(other.lead.bots_paused).toBe(false);
+  });
   test("balance by lead or rental", async () => {
     const db = seed();
     const a = (await (await s.handleFleetStatus(req({ action: "balance", lead_id: L3 }), { admin: db, env, now: () => NOW })).json()) as any;

@@ -131,6 +131,23 @@ describe("runRenterReminders", () => {
     const two = await runRenterReminders(db, { ...deps, now: () => at(t) });
     expect(two.outcomes).toEqual([]);
   });
+  test("staff-text pause: a paused renter gets no reminder and nothing is claimed; others still get theirs", async () => {
+    const w: any = world();
+    w.bot_text_pauses = [{ phone_key: "8135550101", paused_until: "2026-11-18T19:00:00Z", cleared_at: null }];
+    const db = fakeDb(w);
+    const sms: any[] = [];
+    const deps = { gates: { pickup: "send", agreement: "send" } as const, sendSms: async (a: any) => (sms.push(a), { ok: true, id: "m" }), sendEmail: async () => ({ ok: true }) };
+    const t = "2026-11-16T19:05:00Z";
+    const out = await runRenterReminders(db, { ...deps, now: () => at(t) });
+    expect(out.outcomes.map((o) => `${o.kind}:${o.channel}:${o.status}`)).toEqual(["pickup_reminder_booked:none:paused_staff_texting", "agreement_sign_four_hour:sms:sent"]);
+    expect(sms.map((x) => x.applicationId)).toEqual(["a2"]);
+    expect(w.renter_reminder_sends.some((r: any) => String(r.key).startsWith("pickup:"))).toBe(false);
+    // Pause cleared inside the window: the booked text still goes.
+    w.bot_text_pauses[0].cleared_at = "2026-11-16T19:06:00Z";
+    const db2 = fakeDb(w);
+    const again = await runRenterReminders(db2, { ...deps, now: () => at("2026-11-16T19:10:00Z") });
+    expect(again.outcomes.find((o) => o.kind === "pickup_reminder_booked")?.status).toBe("sent");
+  });
   test("signed agreements and quiet hours send nothing", async () => {
     const w = world();
     w.agreements[0].signed_at = "2026-11-16T16:00:00Z";

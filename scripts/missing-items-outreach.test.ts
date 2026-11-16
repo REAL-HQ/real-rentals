@@ -319,6 +319,28 @@ describe("engine", () => {
     const r3 = await runMissingItemsOutreach(db.admin, { mode: "ongoing" }, { ...h.d, now: () => new Date(NOW.getTime() + 5 * 86_400_000) });
     expect(r3.sent).toBe(0);
   });
+  test("staff-text pause: a paused person gets nothing and nothing is claimed; the send goes once the pause ends", async () => {
+    const db = fakeDb(SEED());
+    const h = deps();
+    db.tables.applications.find((a: any) => a.id === "a2").phone = "(404) 555-0177";
+    db.tables.bot_text_pauses = [{ phone_key: "4045550134", paused_until: new Date(NOW.getTime() + 48 * 3_600_000).toISOString(), cleared_at: null }];
+    const r = await runMissingItemsOutreach(db.admin, { mode: "backfill" }, h.d);
+    expect(r.skipped.staff_text_pause).toBe(1);
+    expect(h.emails.map((e) => e.to)).toEqual(["sam@example.com"]);
+    expect(h.texts.length).toBe(0);
+    expect(db.tables.applicant_outreach_log.map((l: any) => l.application_id)).toEqual(["a2"]);
+    db.tables.bot_text_pauses[0].cleared_at = NOW.toISOString();
+    const r2 = await runMissingItemsOutreach(db.admin, { mode: "backfill" }, h.d);
+    expect(r2.sent).toBe(1);
+    expect(h.texts.map((t) => t.applicationId)).toEqual(["a1"]);
+  });
+  test("staff-text pause unreadable: the whole run holds", async () => {
+    const db = fakeDb(SEED());
+    const h = deps();
+    const r = await runMissingItemsOutreach(db.admin, { mode: "backfill" }, { ...h.d, pausedPhones: async () => "unavailable" as const });
+    expect(r.held).toBe("staff_text_pause_unreadable");
+    expect(h.emails.length + h.texts.length).toBe(0);
+  });
   test("two overlapping runs cannot double-send: the claim wins", async () => {
     const db = fakeDb(SEED());
     const h = deps();
@@ -543,6 +565,17 @@ describe("auto-close after 14 days with no reply", () => {
     expect(r.skipped.responded).toBe(1);
     expect(db.writes.length).toBe(0);
     expect(JSON.stringify(r.samples)).not.toContain("jordan@example.com");
+  });
+  test("staff-text pause: no auto-close and no come-back message while staff are texting", async () => {
+    const db = fakeDb(closeSeed());
+    const h = deps("send");
+    db.tables.applications.find((a: any) => a.id === "a2").phone = "(404) 555-0177";
+    (db.tables as any).bot_text_pauses = [{ phone_key: "4045550134", paused_until: new Date(NOW.getTime() + 3_600_000).toISOString(), cleared_at: null }];
+    const r = await runMissingItemsAutoClose(db.admin, {}, h.d);
+    expect(r.closed).toBe(0);
+    expect(r.skipped.staff_text_pause).toBe(1);
+    expect(db.tables.applications.find((a: any) => a.id === "a1").status).toBe("new");
+    expect(h.emails.length + h.texts.length).toBe(0);
   });
   test("on: closes (not declines) once, sends one come-back message; the link reopens it", async () => {
     const db = fakeDb(closeSeed());

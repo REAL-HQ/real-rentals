@@ -323,6 +323,26 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
         continue;
       }
 
+      // Staff are texting this person from Quo (staff-text-pause.server.ts):
+      // hold the sequence, text and email alike, and pick it up where it left
+      // off when the pause ends. Unreadable = try again on the next sweep.
+      if (app?.phone) {
+        const { activeStaffTextPause } = await import("@/lib/staff-text-pause.server");
+        const pause = await activeStaffTextPause(supabaseAdmin, app.phone, now);
+        if (pause === "unavailable") {
+          result.skipped++;
+          continue;
+        }
+        if (pause.paused) {
+          await supabaseAdmin
+            .from("automation_enrollments")
+            .update({ next_run_at: pause.until })
+            .eq("id", enrollment.id);
+          result.skipped++;
+          continue;
+        }
+      }
+
       // "*" rather than a column list: skip_when_profile_complete arrives with
       // a migration, and naming it before that migration is applied would make
       // this read fail, which would look like "no more steps" and end the

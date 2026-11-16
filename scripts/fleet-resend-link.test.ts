@@ -75,6 +75,17 @@ describe("gates", () => {
     expect((await call({ kind: "signing", lead_id: L1 }, d)).status).toBe(423);
     expect(calls.deliver.length).toBe(0);
   });
+  test("staff texting the person (staff-text pause) holds the bot: 423 staff_texting; others unaffected", async () => {
+    const db = seed({ bot_text_pauses: [{ phone_key: "8135550101", paused_until: "2026-11-18T15:00:00Z", cleared_at: null, reason: "staff_text", last_staff_text_at: "2026-11-16T14:00:00Z" }] });
+    const { d, calls } = deps(db);
+    const out = await call({ kind: "signing", lead_id: L1 }, d);
+    expect(out).toMatchObject({ status: 423, json: { reason: "staff_texting", bot_text_pause: { until: "2026-11-18T15:00:00.000Z" } } });
+    expect(calls.deliver.length).toBe(0);
+    expect((await call({ kind: "upload", lead_id: L2 }, d)).status).toBe(200);
+    // Expired pause no longer holds.
+    const later = deps(db, new Date("2026-11-18T16:00:00Z"));
+    expect((await call({ kind: "signing", lead_id: L1 }, later.d)).status).toBe(200);
+  });
   test("auth and kind", async () => {
     const { d } = deps(seed());
     expect((await r.handleFleetResendLink(req({ kind: "signing", lead_id: L1 }, null), d)).status).toBe(401);

@@ -61,6 +61,11 @@ export async function sendFailedPaymentText(
     const pause = await activePaymentPause(admin, input.rentalId, deps.now ?? new Date());
     if (pause === "unavailable") return { sent: false, reason: "pause_unavailable" };
     if (pause.paused) return { sent: false, reason: "paused" };
+    // Staff are texting this renter from Quo (staff-text-pause.server.ts).
+    const { activeStaffTextPause } = await import("@/lib/staff-text-pause.server");
+    const staff = await activeStaffTextPause(admin, input.phone, deps.now ?? new Date());
+    if (staff === "unavailable") return { sent: false, reason: "pause_unavailable" };
+    if (staff.paused) return { sent: false, reason: "staff_text_pause" };
   }
   const link = failedInvoiceLink(input.invoice);
   if (!link) return { sent: false, reason: "no_link" };

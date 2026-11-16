@@ -15,6 +15,7 @@
  *   - the Automations switch "FLEET Link Resends" (fleet_link_resends) is not On  → 409 switched_off (Off by default)
  *   - outside 8 AM–9 PM ET                                                        → 409 quiet_hours
  *   - the person is handed off to staff (bots paused)                              → 423
+ *   - staff texted the person from Quo and the bot pause is on (staff_texting)      → 423
  *   - signing: the agreement is not sent/viewed (draft, being signed, signed, voided),
  *     was prepared without required details, was (re)sent under 4 hours ago, or
  *     FLEET already resent it 3 times in 7 days (staff should call)               → 409 / 429
@@ -78,6 +79,11 @@ async function common(admin: Admin, deps: ResendDeps, now: Date, leadId: string 
     const h = await activeHandoff(admin, leadId);
     if (h === "unavailable") return fleetJson(503, { ok: false, error: "Could not check for a staff handoff; nothing sent." });
     if (h) return fleetJson(423, { ok: false, error: "This person is handed off to staff; bots are paused.", reason: "staff_handling", handoff: { decision_id: h.id, reason: h.reason } });
+    // A person on the team texted them from Quo: bots hold until the pause ends.
+    const { activeStaffTextPauseForLead } = await import("@/lib/staff-text-pause.server");
+    const p = await activeStaffTextPauseForLead(admin, leadId, now);
+    if (p === "unavailable") return fleetJson(503, { ok: false, error: "Could not check whether staff are texting this person; nothing sent." });
+    if (p.paused) return fleetJson(423, { ok: false, error: "Staff are texting this person; bots are paused.", reason: "staff_texting", bot_text_pause: { until: p.until, since: p.since } });
   }
   return null;
 }

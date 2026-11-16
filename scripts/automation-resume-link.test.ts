@@ -374,3 +374,33 @@ describe("Step 1 thank-you email replaces the 5-minute email", () => {
     expect(sentEmail).toHaveLength(1);
   });
 });
+
+describe("staff-text bot pause (staff-text-pause.server.ts)", () => {
+  const steps = [
+    { channel: "sms", body: "Hi {{first_name}}, finish here: {{resume_link}} Reply STOP to opt out." },
+    { channel: "email", subject: "Hi {{first_name}}", body: "Finish here: {{resume_link}}" },
+  ];
+  it("a paused person gets nothing; the sequence waits until the pause ends", async () => {
+    seed({ currentStep: "submitted", steps });
+    const until = new Date(Date.now() + 48 * 3600_000).toISOString();
+    db.bot_text_pauses = [{ phone_key: "8135550100", paused_until: until, cleared_at: null, reason: "staff_text" }];
+    const r = await eng.runDueAutomations();
+    expect(sentSms).toHaveLength(0);
+    expect(sentEmail).toHaveLength(0);
+    expect(mintCount).toBe(0);
+    expect(r.skipped).toBe(1);
+    expect(enrollment().current_step).toBe(0);
+    expect(enrollment().status).toBe("active");
+    expect(enrollment().next_run_at).toBe(until);
+  });
+  it("a cleared or expired pause sends as before", async () => {
+    seed({ currentStep: "submitted", steps: [steps[0]] });
+    db.bot_text_pauses = [{ phone_key: "8135550100", paused_until: new Date(Date.now() + 3600_000).toISOString(), cleared_at: new Date().toISOString() }];
+    await eng.runDueAutomations();
+    expect(sentSms).toHaveLength(1);
+    seed({ currentStep: "submitted", steps: [steps[0]] });
+    db.bot_text_pauses = [{ phone_key: "8135550100", paused_until: new Date(Date.now() - 1000).toISOString(), cleared_at: null }];
+    await eng.runDueAutomations();
+    expect(sentSms).toHaveLength(1);
+  });
+});

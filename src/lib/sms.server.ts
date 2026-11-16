@@ -13,6 +13,7 @@
 
 import { resolveQuoSender, smsProviderStatus } from "@/lib/sms-provider.server";
 import { findDisallowedOutboundUrls, outboundRefusalMessage } from "@/lib/public-app-url";
+import { activeStaffTextPause, isBotOutreachKind } from "@/lib/staff-text-pause.server";
 
 export type SmsResult =
   | { ok: true; id: string | null; skipped?: false }
@@ -199,6 +200,30 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
         step_id: args.stepId ?? null,
       });
       return { ok: false, skipped: true, reason: "no_consent" };
+    }
+  }
+
+  // 2b. Staff are texting this person from Quo: automatic bot outreach holds
+  //     (staff-text-pause.server.ts). Each bot sender checks first; this is the
+  //     backstop. Staff texts, receipts and alerts are never held. A read
+  //     failure here does not block (the senders already fail closed).
+  if (isBotOutreachKind(args.kind)) {
+    const pause = await activeStaffTextPause(supabaseAdmin, to);
+    if (pause !== "unavailable" && pause.paused) {
+      await logMessage(supabaseAdmin, {
+        channel: "sms",
+        to_address: to,
+        body: args.body,
+        status: "skipped",
+        error: `bots paused: staff texting (until ${pause.until})`,
+        kind: args.kind ?? null,
+        application_id: args.applicationId ?? null,
+        rental_id: args.rentalId ?? null,
+        workflow_id: args.workflowId ?? null,
+        enrollment_id: args.enrollmentId ?? null,
+        step_id: args.stepId ?? null,
+      });
+      return { ok: false, skipped: true, reason: "bot_paused" };
     }
   }
 

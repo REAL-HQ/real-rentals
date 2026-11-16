@@ -46,6 +46,8 @@ export type ReminderDeps = {
   stripeSnapshot?: (subscriptionId: string) => Promise<StripeBillingSnapshot | null>;
   sendSms?: (a: any) => Promise<{ ok: boolean; skipped?: boolean; reason?: string; error?: string }>;
   pauseCheck?: typeof activePaymentPause;
+  /** Staff-text pause (staff-text-pause.server.ts), by the renter's phone. */
+  staffPauseCheck?: (admin: any, phone: string | null, now: Date) => Promise<import("@/lib/staff-text-pause.server").PauseState>;
   sendEmail?: (a: { to: string; subject: string; text: string; link: string | null; linkLabel: string | null; workflow: string }) => Promise<{ ok: boolean; blocked?: string; error?: string }>;
   /** Paid Stripe invoices for a customer (any subscription or one-off). Default: live Stripe. */
   stripePaidInvoices?: (customerId: string) => Promise<PaidInvoice[]>;
@@ -340,6 +342,11 @@ export async function runRentReminders(admin: any, deps: ReminderDeps = {}): Pro
     const pause = await (deps.pauseCheck ?? activePaymentPause)(admin, s.rentalId, now);
     if (pause === "unavailable") { bump(run, "pause_unavailable"); continue; }
     if (pause.paused) { bump(run, "paused"); continue; }
+    // Staff are texting this renter from Quo: rent and late-fee notices hold.
+    // Nothing is claimed, so the stage owed goes out once the pause ends.
+    const staffPause = await (deps.staffPauseCheck ?? (async (a: any, phone: string | null, at: Date) => (await import("@/lib/staff-text-pause.server")).activeStaffTextPause(a, phone, at)))(admin, s.phone ?? null, now);
+    if (staffPause === "unavailable") { bump(run, "staff_pause_unavailable"); continue; }
+    if (staffPause.paused) { bump(run, "staff_text_pause"); continue; }
     let priorNoticeOn: string | null = null;
     if (s.owing) {
       const prior = await recentInvoiceNotice(admin, s, now);

@@ -46,6 +46,13 @@ One renter's journey:
 - `agreement` (latest live one: status, sent/viewed/signed times, link expiry,
   email and text delivery status), `rental`, `balance` (as below),
   `needs_staff`, `bot_pause`, `last_inbound` (last Quo event), `last_outbound`.
+- `bot_text_pause`: `{ paused: true, until, since, reason: "staff_texting" }`
+  while a person on the team is texting this lead from Quo, else `null`
+  ([staff-text-pause.md](staff-text-pause.md)). `bots_paused` is `true` when
+  either `bot_pause` (handoff) or `bot_text_pause` is set. **While
+  `bots_paused` is true FLEET sends this person nothing from Quo**: no texts,
+  no calls, no link resends. A staff-text pause is light: `next` is unchanged
+  and nothing is flagged. Unreadable counts as paused (`until: null`).
 
 ## `{ "action": "balance", "rental_id": "…" }` (or `"lead_id"`)
 

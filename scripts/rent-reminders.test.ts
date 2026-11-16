@@ -700,6 +700,25 @@ describe("payment text pause (deal)", () => {
     expect(calls).toHaveLength(0);
     expect(db._state.rent_reminder_log ?? []).toHaveLength(0);
   });
+  test("staff-text pause: rent and late-fee notices and the failed-payment text hold, nothing claimed", async () => {
+    const staffPause = [{ phone_key: "3212870986", paused_until: "2026-11-11T17:00:00Z", cleared_at: null, reason: "staff_text" }];
+    const db = fakeDb({ ...seed({ on: ["payment_failed_text", ...RENT_REMINDER_SWITCHES] }), bot_text_pauses: staffPause });
+    const sp = spies();
+    const run = await runRentReminders(db, sp.deps(at("2026-11-09", 12), failedSnap("2026-11-09")));
+    expect(sp.sms.filter((x) => x.rentalId === R_STRIPE)).toHaveLength(0);
+    expect(run.skipped.staff_text_pause).toBe(1);
+    expect((db._state.rent_reminder_log ?? []).filter((r: any) => r.rental_id === R_STRIPE)).toHaveLength(0);
+    const calls: any[] = [];
+    const invoice = { id: "in_failed", status: "open", hosted_invoice_url: INVOICE_URL, created: Math.floor(at("2026-11-09", 12).getTime() / 1000) };
+    const out = await sendFailedPaymentText(db, { invoice, amount: 350, rentalId: R_STRIPE, applicationId: APP_S, firstName: "Regina", phone: "3212870986" }, { sendSms: async (a: any) => { calls.push(a); return { ok: true }; }, now: at("2026-11-09", 12, 43) });
+    expect(out).toEqual({ sent: false, reason: "staff_text_pause" });
+    expect(calls).toHaveLength(0);
+    // Unreadable staff pause holds too.
+    const sp2 = spies();
+    const r2 = await runRentReminders(fakeDb(seed({ on: [...RENT_REMINDER_SWITCHES] })), { ...sp2.deps(at("2026-11-09", 12), failedSnap("2026-11-09")), staffPauseCheck: async () => "unavailable" as const });
+    expect(r2.skipped.staff_pause_unavailable).toBeGreaterThan(0);
+    expect(sp2.sms.length + sp2.email.length).toBe(0);
+  });
   test("the Stripe webhook failed-payment emails check the pause first", () => {
     const w = readFileSync("src/routes/api/public/payments/webhook.ts", "utf8");
     expect(w).toMatch(/activePaymentPause\(admin, rental\.id[\s\S]{0,200}\? \(\{ kind: 'taken' \} as const\)\s*: await webhookReminderSlot\(admin, rental\.id, invoice, 'email'/);

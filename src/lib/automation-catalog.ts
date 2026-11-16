@@ -469,6 +469,19 @@ export const AUTOMATIONS: AutomationDef[] = [
     defaultOn: false,
     note: "Off until turned on. Same wording renters already get: the staff Resend signing email and text, and the Missing Items step-1 message. Texts come from the 888 line, need SMS consent and respect STOP. Refused while someone is handed off to staff.",
   },
+  {
+    key: "staff_text_pause",
+    title: "Pause Bots When Staff Text",
+    audience: "Team",
+    channels: ["SMS", "Email"],
+    trigger: "A person on the team texts someone from the 888 or 813 Quo line (not the site's or FLEET's own texts).",
+    cadence: "Sends nothing. Holds that person's automatic messages for 48 hours after the latest staff text: missing-items messages, the Follow-Up, pickup and agreement reminders, rent and late-fee notices, and FLEET link resends. FLEET is told to hold its own texts too.",
+    emailWorkflows: [],
+    control: { kind: "setting" },
+    previews: [],
+    defaultOn: false,
+    note: "Off until turned on. A light pause, not a Needs Staff flag. Staff can resume the bots or add 48 hours on the driver profile. Staff texts, receipts, team alerts and roadside replies are never held.",
+  },
 ];
 
 export const AUTOMATION_KEYS = AUTOMATIONS.map((a) => a.key);
