@@ -52,6 +52,7 @@ import { Route as ApiPublicFleetMissingItemsRouteImport } from './routes/api/pub
 import { Route as ApiPublicFleetPaymentTextPauseRouteImport } from './routes/api/public/fleet/payment-text-pause'
 import { Route as ApiPublicFleetPickupSlotsRouteImport } from './routes/api/public/fleet/pickup-slots'
 import { Route as ApiPublicFleetSendAgreementRouteImport } from './routes/api/public/fleet/send-agreement'
+import { Route as ApiPublicFleetStatusRouteImport } from './routes/api/public/fleet/status'
 import { Route as ApiPublicInboundEmailRouteImport } from './routes/api/public/inbound/email'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicResendWebhookRouteImport } from './routes/api/public/resend/webhook'
@@ -288,6 +289,11 @@ const ApiPublicFleetSendAgreementRoute =
     path: '/api/public/fleet/send-agreement',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetStatusRoute = ApiPublicFleetStatusRouteImport.update({
+  id: '/api/public/fleet/status',
+  path: '/api/public/fleet/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicInboundEmailRoute = ApiPublicInboundEmailRouteImport.update({
   id: '/api/public/inbound/email',
   path: '/api/public/inbound/email',
@@ -377,6 +383,7 @@ export interface FileRoutesByFullPath {
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -430,6 +437,7 @@ export interface FileRoutesByTo {
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -484,6 +492,7 @@ export interface FileRoutesById {
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -539,6 +548,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/status'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -592,6 +602,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/status'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -645,6 +656,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/status'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -699,6 +711,7 @@ export interface RootRouteChildren {
   ApiPublicFleetPaymentTextPauseRoute: typeof ApiPublicFleetPaymentTextPauseRoute
   ApiPublicFleetPickupSlotsRoute: typeof ApiPublicFleetPickupSlotsRoute
   ApiPublicFleetSendAgreementRoute: typeof ApiPublicFleetSendAgreementRoute
+  ApiPublicFleetStatusRoute: typeof ApiPublicFleetStatusRoute
   ApiPublicInboundEmailRoute: typeof ApiPublicInboundEmailRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicResendWebhookRoute: typeof ApiPublicResendWebhookRoute
@@ -1012,6 +1025,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetSendAgreementRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/status': {
+      id: '/api/public/fleet/status'
+      path: '/api/public/fleet/status'
+      fullPath: '/api/public/fleet/status'
+      preLoaderRoute: typeof ApiPublicFleetStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/inbound/email': {
       id: '/api/public/inbound/email'
       path: '/api/public/inbound/email'
@@ -1115,6 +1135,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicFleetPaymentTextPauseRoute: ApiPublicFleetPaymentTextPauseRoute,
   ApiPublicFleetPickupSlotsRoute: ApiPublicFleetPickupSlotsRoute,
   ApiPublicFleetSendAgreementRoute: ApiPublicFleetSendAgreementRoute,
+  ApiPublicFleetStatusRoute: ApiPublicFleetStatusRoute,
   ApiPublicInboundEmailRoute: ApiPublicInboundEmailRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicResendWebhookRoute: ApiPublicResendWebhookRoute,
