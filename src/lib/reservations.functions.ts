@@ -192,123 +192,144 @@ export const listReservations = createServerFn({ method: "GET" })
     };
   });
 
+export const CreateReservationInput = z.object({
+  applicationId: UUID,
+  vehicleId: UUID,
+  pickupDate: z.string().max(32),
+  pickupTime: z.string().max(5),
+  pickupLocation: z.string().trim().min(3).max(180),
+  note: z.string().max(140).optional(),
+  depositRequired: z.boolean().optional(),
+  depositAmount: z.number().min(0).max(10000).optional(),
+});
+export type CreateReservationData = z.infer<typeof CreateReservationInput>;
+
 export const createReservation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) =>
-    z
-      .object({
-        applicationId: UUID,
-        vehicleId: UUID,
-        pickupDate: z.string().max(32),
-        pickupTime: z.string().max(5),
-        pickupLocation: z.string().trim().min(3).max(180),
-        note: z.string().max(140).optional(),
-        depositRequired: z.boolean().optional(),
-        depositAmount: z.number().min(0).max(10000).optional(),
-      })
-      .parse(d),
-  )
+  .inputValidator((d: unknown) => CreateReservationInput.parse(d))
   .handler(async ({ context, data }): Promise<{ id: string; loginEmail: string }> => {
     await requireManager(context.userId);
-    const pickup = reservationPickupDate(data.pickupDate);
-    if (!pickup) throw new Error("Pick A Real Pickup Date.");
-    const reservationNote = writeReservationDetails({
-      pickupTime: data.pickupTime,
-      pickupLocation: data.pickupLocation,
-      note: data.note,
-    });
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const settings = await loadDepositSettings(supabaseAdmin);
-    const deposit = resolveReservationDeposit({
-      settings,
-      overrideRequired: data.depositRequired,
-      overrideAmount: data.depositAmount,
-    });
-
-    const { data: app, error: appErr } = await supabaseAdmin
-      .from("applications")
-      .select("id,status,user_id,full_name,email")
-      .eq("id", data.applicationId)
-      .maybeSingle();
-    if (appErr) throw new Error(appErr.message);
-    if (!app) throw new Error("Applicant Not Found.");
-    // Safer: block until approved (no held emails for unapproved drivers).
-    const appStatus = String(app.status ?? "").toLowerCase();
-    if (!["approved", "active"].includes(appStatus)) {
-      throw new Error("Only An Approved Applicant Or Active Renter Can Hold A Reservation.");
-    }
-    if (!app.user_id) {
-      // Provision so driver_id NOT NULL can be satisfied; invite may follow.
-      try {
-        const { provisionDriverAccount } = await import("@/lib/driver-account.server");
-        const account = await provisionDriverAccount(supabaseAdmin, {
-          applicationId: data.applicationId,
-          email: String(app.email ?? ""),
-          fullName: (app.full_name as string | null) ?? null,
-        });
-        if (account.conflict) throw new Error("This Application’s Login Identity Conflicts With The Email On File. Resolve It Before Reserving.");
-        if (!account.userId) throw new Error("Could Not Create A Portal Login For This Person.");
-        app.user_id = account.userId;
-      } catch (e) {
-        throw new Error(e instanceof Error ? e.message : "This Person Needs A Portal Login Before A Car Can Be Reserved.");
-      }
-    }
-
-    const { data: vehicle, error: vehErr } = await supabaseAdmin
-      .from("vehicles")
-      .select("id,status,archived_at,weekly_rate,year,make,model")
-      .eq("id", data.vehicleId)
-      .maybeSingle();
-    if (vehErr) throw new Error(vehErr.message);
-    if (!vehicle) throw new Error("Vehicle Not Found.");
-    if (vehicle.archived_at) throw new Error("That Vehicle Is Archived.");
-    const vStatus = String(vehicle.status ?? "").toLowerCase();
-    if (["sold", "retired", "archived", "rented"].includes(vStatus)) {
-      throw new Error("That Vehicle Is Not Free To Reserve.");
-    }
-
-    const { data: busyActive } = await supabaseAdmin.from("rentals").select("id").eq("vehicle_id", data.vehicleId).eq("status", "active").limit(1);
-    if (busyActive?.length) throw new Error("That Vehicle Already Has An Active Rental.");
-    const { data: busyReserved } = await supabaseAdmin.from("rentals").select("id").eq("vehicle_id", data.vehicleId).eq("status", RESERVATION_STATUS).limit(1);
-    if (busyReserved?.length) throw new Error("That Vehicle Is Already Reserved.");
-    const { data: driverReserved } = await supabaseAdmin.from("rentals").select("id").eq("driver_id", app.user_id).eq("status", RESERVATION_STATUS).limit(1);
-    if (driverReserved?.length) throw new Error("This Person Already Has A Reserved Car. Cancel It First.");
-
-    const weekly = typeof vehicle.weekly_rate === "number" ? vehicle.weekly_rate : 0;
-    const insertRow: Record<string, unknown> = {
-      driver_id: app.user_id,
-      vehicle_id: data.vehicleId,
-      application_id: data.applicationId,
-      start_date: pickup,
-      status: RESERVATION_STATUS,
-      weekly_rate: weekly,
-      deposit_amount: deposit.required ? deposit.amount : 0,
-      deposit_held: false,
-      deposit_status: deposit.required ? "none" : "none",
-      reservation_note: reservationNote,
-      reservation_deposit_required: deposit.required,
-      reservation_deposit_amount: deposit.amount,
-      reservation_deposit_status: deposit.status,
-    };
-
-    const { data: inserted, error: insErr } = await supabaseAdmin.from("rentals").insert(insertRow as never).select("id").single();
-    if (insErr) {
-      if (/rentals_one_reserved_per_vehicle/i.test(insErr.message)) throw new Error("That Vehicle Is Already Reserved.");
-      if (/rentals_one_reserved_per_driver/i.test(insErr.message)) throw new Error("This Person Already Has A Reserved Car.");
-      if (/reservation_/i.test(insErr.message)) throw new Error("Reservations Need The Rental Reservations Migration Applied First.");
-      throw new Error(insErr.message);
-    }
-
-    await supabaseAdmin.from("vehicles").update({ status: "reserved" }).eq("id", data.vehicleId).neq("status", "rented");
-
-    const loginEmail = await maybeSendBookingLoginEmail(supabaseAdmin, data.applicationId, {
-      pickupDate: pickup,
-      pickupTime: data.pickupTime,
-      pickupLocation: data.pickupLocation.trim(),
-      vehicle: [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ").trim() || null,
-    });
-    return { id: inserted.id, loginEmail };
+    return createReservationCore(supabaseAdmin, data);
   });
+
+/**
+ * The one Reserved code path, shared by staff (createReservation, manager
+ * only) and FLEET (/api/public/fleet/pickup-slots). Callers authorize first.
+ */
+export async function createReservationCore(admin: any, data: CreateReservationData): Promise<{ id: string; loginEmail: string }> {
+  const pickup = reservationPickupDate(data.pickupDate);
+  if (!pickup) throw new Error("Pick A Real Pickup Date.");
+  const reservationNote = writeReservationDetails({
+    pickupTime: data.pickupTime,
+    pickupLocation: data.pickupLocation,
+    note: data.note,
+  });
+  const settings = await loadDepositSettings(admin);
+  const deposit = resolveReservationDeposit({
+    settings,
+    overrideRequired: data.depositRequired,
+    overrideAmount: data.depositAmount,
+  });
+
+  const { data: app, error: appErr } = await admin
+    .from("applications")
+    .select("id,status,user_id,full_name,email")
+    .eq("id", data.applicationId)
+    .maybeSingle();
+  if (appErr) throw new Error(appErr.message);
+  if (!app) throw new Error("Applicant Not Found.");
+  // Safer: block until approved (no held emails for unapproved drivers).
+  const appStatus = String(app.status ?? "").toLowerCase();
+  if (!["approved", "active"].includes(appStatus)) {
+    throw new Error("Only An Approved Applicant Or Active Renter Can Hold A Reservation.");
+  }
+  if (!app.user_id) {
+    // Provision so driver_id NOT NULL can be satisfied; invite may follow.
+    try {
+      const { provisionDriverAccount } = await import("@/lib/driver-account.server");
+      const account = await provisionDriverAccount(admin, {
+        applicationId: data.applicationId,
+        email: String(app.email ?? ""),
+        fullName: (app.full_name as string | null) ?? null,
+      });
+      if (account.conflict) throw new Error("This Application’s Login Identity Conflicts With The Email On File. Resolve It Before Reserving.");
+      if (!account.userId) throw new Error("Could Not Create A Portal Login For This Person.");
+      app.user_id = account.userId;
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : "This Person Needs A Portal Login Before A Car Can Be Reserved.");
+    }
+  }
+
+  const { data: vehicle, error: vehErr } = await admin
+    .from("vehicles")
+    .select("id,status,archived_at,weekly_rate,year,make,model")
+    .eq("id", data.vehicleId)
+    .maybeSingle();
+  if (vehErr) throw new Error(vehErr.message);
+  if (!vehicle) throw new Error("Vehicle Not Found.");
+  if (vehicle.archived_at) throw new Error("That Vehicle Is Archived.");
+  const vStatus = String(vehicle.status ?? "").toLowerCase();
+  if (["sold", "retired", "archived", "rented"].includes(vStatus)) {
+    throw new Error("That Vehicle Is Not Free To Reserve.");
+  }
+
+  const { data: busyActive } = await admin.from("rentals").select("id").eq("vehicle_id", data.vehicleId).eq("status", "active").limit(1);
+  if (busyActive?.length) throw new Error("That Vehicle Already Has An Active Rental.");
+  const { data: busyReserved } = await admin.from("rentals").select("id").eq("vehicle_id", data.vehicleId).eq("status", RESERVATION_STATUS).limit(1);
+  if (busyReserved?.length) throw new Error("That Vehicle Is Already Reserved.");
+  const { data: driverReserved } = await admin.from("rentals").select("id").eq("driver_id", app.user_id).eq("status", RESERVATION_STATUS).limit(1);
+  if (driverReserved?.length) throw new Error("This Person Already Has A Reserved Car. Cancel It First.");
+
+  // One booking per pickup slot (date + time), for staff and FLEET alike.
+  const { data: sameDay } = await admin.from("rentals").select("id,reservation_note").eq("status", RESERVATION_STATUS).eq("start_date", pickup).limit(50);
+  if ((sameDay ?? []).some((r: any) => readReservationDetails(r.reservation_note).pickupTime === data.pickupTime)) {
+    throw new Error("That Pickup Slot Is Already Booked.");
+  }
+
+  const weekly = typeof vehicle.weekly_rate === "number" ? vehicle.weekly_rate : 0;
+  const insertRow: Record<string, unknown> = {
+    driver_id: app.user_id,
+    vehicle_id: data.vehicleId,
+    application_id: data.applicationId,
+    start_date: pickup,
+    status: RESERVATION_STATUS,
+    weekly_rate: weekly,
+    deposit_amount: deposit.required ? deposit.amount : 0,
+    deposit_held: false,
+    deposit_status: deposit.required ? "none" : "none",
+    reservation_note: reservationNote,
+    reservation_deposit_required: deposit.required,
+    reservation_deposit_amount: deposit.amount,
+    reservation_deposit_status: deposit.status,
+  };
+
+  const { data: inserted, error: insErr } = await admin.from("rentals").insert(insertRow as never).select("id").single();
+  if (insErr) {
+    if (/rentals_one_reserved_per_vehicle/i.test(insErr.message)) throw new Error("That Vehicle Is Already Reserved.");
+    if (/rentals_one_reserved_per_driver/i.test(insErr.message)) throw new Error("This Person Already Has A Reserved Car.");
+    if (/rentals_one_reserved_per_pickup_slot/i.test(insErr.message)) throw new Error("That Pickup Slot Is Already Booked.");
+    if (/reservation_/i.test(insErr.message)) throw new Error("Reservations Need The Rental Reservations Migration Applied First.");
+    throw new Error(insErr.message);
+  }
+
+  await admin.from("vehicles").update({ status: "reserved" }).eq("id", data.vehicleId).neq("status", "rented");
+
+  const loginEmail = await maybeSendBookingLoginEmail(admin, data.applicationId, {
+    pickupDate: pickup,
+    pickupTime: data.pickupTime,
+    pickupLocation: data.pickupLocation.trim(),
+    vehicle: [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ").trim() || null,
+  });
+  // Fully confirmed? (reservation-confirmation.server.ts) Never fails the booking.
+  try {
+    const { maybeConfirmReservation } = await import("@/lib/reservation-confirmation.server");
+    await maybeConfirmReservation(admin, { rentalId: inserted.id });
+  } catch (e) {
+    console.error("[reservation] confirmation check failed", String((e as Error)?.message ?? e));
+  }
+  return { id: inserted.id, loginEmail };
+}
 
 export const cancelReservation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -462,6 +483,12 @@ export const recordReservationDeposit = createServerFn({ method: "POST" })
       } as never)
       .eq("id", resRow.id);
     if (upd) throw new Error("Deposit Payment Saved, But The Reservation Could Not Be Updated.");
+    try {
+      const { maybeConfirmReservation } = await import("@/lib/reservation-confirmation.server");
+      await maybeConfirmReservation(supabaseAdmin, { rentalId: resRow.id });
+    } catch (e) {
+      console.error("[reservation] confirmation check failed", String((e as Error)?.message ?? e));
+    }
     return { paymentId: ins.data.id };
   });
 

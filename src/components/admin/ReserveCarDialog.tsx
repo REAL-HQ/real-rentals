@@ -10,6 +10,8 @@ import {
   listApprovedForReservation,
   listVehiclesForReservation,
 } from "@/lib/reservations.functions";
+import { listPickupSlots } from "@/lib/pickup-schedule.functions";
+import type { PickupSlot } from "@/lib/pickup-schedule";
 import type { ReservationDepositSettings } from "@/lib/reservation-deposit-settings";
 import { easternParts } from "@/lib/rent-reminders";
 
@@ -53,6 +55,9 @@ export function ReserveCarDialog({
   const loadVehicles = useServerFn(listVehiclesForReservation);
   const loadPeople = useServerFn(listApprovedForReservation);
   const loadSettings = useServerFn(getReservationDepositSettings);
+  const loadSlots = useServerFn(listPickupSlots);
+  const [slots, setSlots] = useState<PickupSlot[]>([]);
+  const [fieldRep, setFieldRep] = useState<string | null>(null);
   const [resolvedSettings, setResolvedSettings] = useState<ReservationDepositSettings | null>(settings ?? null);
   const [vehicles, setVehicles] = useState<Array<{ id: string; unit_number: string | null; year: number | null; make: string | null; model: string | null; status: string | null }>>([]);
   const [people, setPeople] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
@@ -86,6 +91,18 @@ export function ReserveCarDialog({
         .then(applySettings)
         .catch(() => applySettings(null));
     }
+    // Pickup Schedule: prefill the earliest open slot and the default location.
+    loadSlots()
+      .then(({ slots: open, settings: schedule }) => {
+        setSlots(open);
+        setFieldRep(schedule.fieldRep.name);
+        if (open[0]) {
+          setPickupDate(open[0].date);
+          setPickupTime(open[0].time);
+        }
+        if (schedule.defaultLocation) setPickupLocation((cur) => cur || schedule.defaultLocation || "");
+      })
+      .catch(() => setSlots([]));
     loadVehicles()
       .then(setVehicles)
       .catch(() => setVehicles([]));
@@ -94,7 +111,7 @@ export function ReserveCarDialog({
         .then(setPeople)
         .catch(() => setPeople([]));
     }
-  }, [open, applicationId, settings, loadVehicles, loadPeople, loadSettings]);
+  }, [open, applicationId, settings, loadVehicles, loadPeople, loadSettings, loadSlots]);
 
   const submit = async () => {
     const appId = applicationId || personId;
@@ -169,6 +186,29 @@ export function ReserveCarDialog({
           <Field label="Vehicle">
             <VehicleCombobox vehicles={vehicles} value={vehicleId} onChange={setVehicleId} allowNone={false} />
           </Field>
+          {slots.length ? (
+            <Field label={`Open Pickup Slots${fieldRep ? ` (Field Rep: ${fieldRep})` : ""}`}>
+              <div className="flex flex-wrap gap-2" aria-label="Open Pickup Slots">
+                {slots.slice(0, 9).map((s) => {
+                  const on = s.date === pickupDate && s.time === pickupTime;
+                  return (
+                    <button
+                      key={s.start_at}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => {
+                        setPickupDate(s.date);
+                        setPickupTime(s.time);
+                      }}
+                      className={`h-8 rounded-md border px-2 text-xs ${on ? "border-[#D03020] bg-[#FDEDEB] text-[#8A1C10]" : "border-[#D6D6DB] bg-white text-[#111114]"}`}
+                    >
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Pickup Date">
               <input className={input} type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} aria-label="Pickup Date" required />

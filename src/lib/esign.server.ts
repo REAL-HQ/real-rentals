@@ -99,6 +99,15 @@ export async function completeSigning(
   } catch (e) {
     console.error("[esign] FLEET notify failed", e);
   }
+  // A signed agreement may complete a reservation (reservation_confirmed).
+  try {
+    if (ag?.application_id) {
+      const { maybeConfirmReservation } = await import("@/lib/reservation-confirmation.server");
+      await maybeConfirmReservation(admin, { applicationId: ag.application_id });
+    }
+  } catch (e) {
+    console.error("[esign] reservation confirmation check failed", e);
+  }
   return { result: "won", archived };
 }
 

@@ -29,7 +29,15 @@ async function handle(request: Request): Promise<Response> {
   } catch (e) {
     console.error("[fleet-webhooks] ready-for-review sweep failed", String((e as Error)?.message ?? e));
   }
+  // Safety net for reservation_confirmed (reservation-confirmation.server.ts).
+  let reservationsConfirmed = 0;
+  try {
+    const { sweepReservationConfirmations } = await import("@/lib/reservation-confirmation.server");
+    reservationsConfirmed = await sweepReservationConfirmations(supabaseAdmin);
+  } catch (e) {
+    console.error("[fleet-webhooks] reservation confirmation sweep failed", String((e as Error)?.message ?? e));
+  }
   const { dispatchFleetWebhooks } = await import("@/lib/fleet-webhook.server");
   const result = await dispatchFleetWebhooks(supabaseAdmin, { limit: 50 });
-  return Response.json({ ok: true, readyQueued, ...result });
+  return Response.json({ ok: true, readyQueued, reservationsConfirmed, ...result });
 }
