@@ -45,7 +45,7 @@ import {
 
 export const OUTREACH_LOG_TABLE = "applicant_outreach_log";
 const APP_COLUMNS =
-  "id,full_name,status,email,phone,sms_consent,sms_opt_out_at,license_photo_url,profile_screenshot_url,income_proof_url,vehicle_size,pickup_date,expected_duration,gig_status,drive_type,created_at,updated_at,deleted_at,primary_application_id,legal_hold";
+  "id,full_name,status,email,phone,sms_consent,sms_opt_out_at,license_photo_url,profile_screenshot_url,income_proof_url,trip_screenshots,vehicle_size,pickup_date,expected_duration,gig_status,drive_type,created_at,updated_at,deleted_at,primary_application_id,legal_hold";
 const PREVIEW_LINK = "https://drivereal.com/thank-you?t=PRIVATE-14-DAY-LINK";
 
 export type OutreachDeps = {
@@ -152,7 +152,7 @@ export async function runMissingItemsOutreach(
   const since = new Date(now.getTime() - settings.minGapHours * 3_600_000).toISOString();
   const [docs, log, enroll, recent, screens, opt] = ids.length
     ? await Promise.all([
-        readIn(admin, "documents", "driver_id,category,review_status,is_current", "driver_id", ids, (q) => q.in("category", ["license_front", "gig_profile", "income"])),
+        readIn(admin, "documents", "driver_id,category,review_status,is_current", "driver_id", ids, (q) => q.in("category", ["license_front", "gig_profile", "income", "trip_history"])),
         readIn(admin, OUTREACH_LOG_TABLE, "application_id,missing_key,step,source,created_at", "application_id", ids),
         readIn(admin, "automation_enrollments", "application_id", "application_id", ids, (q) => q.eq("status", "active")),
         readIn(admin, "outbound_messages", "application_id,created_at", "application_id", ids, (q) => q.gte("created_at", since)),
@@ -347,7 +347,7 @@ export async function runMissingItemsAutoClose(
   const minLast = new Date(now.getTime() - 400 * 86_400_000).toISOString();
   const [docs, enroll, screens, opt, tokens, docsNew, quo, inbound] = appIds.length
     ? await Promise.all([
-        readIn(admin, "documents", "driver_id,category,review_status,is_current", "driver_id", appIds, (q) => q.in("category", ["license_front", "gig_profile", "income"])),
+        readIn(admin, "documents", "driver_id,category,review_status,is_current", "driver_id", appIds, (q) => q.in("category", ["license_front", "gig_profile", "income", "trip_history"])),
         readIn(admin, "automation_enrollments", "application_id", "application_id", appIds, (q) => q.eq("status", "active")),
         readIn(admin, "driver_screenings", "lead_id,disqualified", "lead_id", appIds, (q) => q.eq("disqualified", true)),
         admin.from("sms_opt_outs").select("phone").limit(5000).then((r: any) => { if (r.error) throw new Error(r.error.message); return r.data ?? []; }),

@@ -144,6 +144,8 @@ export type OutreachApp = {
   license_photo_url?: string | null;
   profile_screenshot_url?: string | null;
   income_proof_url?: string | null;
+  /** Trip-history / gig earnings screenshots from the application (storage paths). */
+  trip_screenshots?: unknown;
   vehicle_size?: string | null;
   pickup_date?: string | null;
   expected_duration?: string | null;
@@ -158,6 +160,9 @@ export type OutreachApp = {
 export type OutreachDoc = { category?: string | null; review_status?: string | null; is_current?: boolean | null };
 
 const ownFile = (v: unknown) => typeof v === "string" && v.trim() !== "" && !v.startsWith("http");
+
+/** Vault categories that count as proof of income (t306s1653). */
+export const INCOME_PROOF_CATEGORIES = ["income", "trip_history"] as const;
 
 /** What this applicant still owes us, in a fixed order. */
 export function missingItems(app: OutreachApp, docs: readonly OutreachDoc[]): MissingItemKey[] {
@@ -175,7 +180,11 @@ export function missingItems(app: OutreachApp, docs: readonly OutreachDoc[]): Mi
   if (!detailsDone) out.push("application_details");
   if (!have.has("license_front") && !ownFile(app.license_photo_url)) out.push("license_front");
   if (!have.has("gig_profile") && !ownFile(app.profile_screenshot_url)) out.push("gig_profile");
-  if (!have.has("income") && !ownFile(app.income_proof_url)) out.push("income");
+  // A gig earnings or trip-history screenshot counts as proof of income
+  // (Dolmar, t306s1653): those applicants are never asked for it.
+  const tripShot = Array.isArray(app.trip_screenshots) && app.trip_screenshots.some(ownFile);
+  const incomeOnFile = INCOME_PROOF_CATEGORIES.some((c) => have.has(c)) || ownFile(app.income_proof_url) || tripShot;
+  if (!incomeOnFile) out.push("income");
   // Date of birth and licence expiry are never asked for: FLEET reads them
   // from the licence photo.
   return out;
