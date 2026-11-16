@@ -2,7 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { requestUploadUrl } from "@/lib/applications.functions";
 import { maxMbFor, optimizeImage } from "@/lib/image-optimize";
 
-export type UploadKind = "license" | "insurance" | "gig_profile" | "trip_history";
+export type UploadKind = "license" | "insurance" | "gig_profile" | "trip_history" | "income";
 
 const EXT_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
