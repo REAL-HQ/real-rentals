@@ -222,6 +222,15 @@ describe("portal payment history", () => {
     assert.equal(empty.balanceState, "unknown");
   });
 
+  it("does not show a paid date on an unpaid charge even if paid_date is set", () => {
+    const history = buildPortalPaymentHistory({
+      rows: [row({ id: "failed", status: "failed", balance_due: 350, net_collected: 0, payment_method: "card", paid_date: "2026-11-16" })],
+      truncated: false,
+    });
+    assert.equal(history.charges[0]?.paidDate, null);
+    assert.equal(history.payments.length, 0);
+  });
+
   it("creates a real one-page invoice PDF from the stored due and paid dates", async () => {
     const history = buildPortalPaymentHistory({ rows: [row({ id: "pdf-payment", due_date: "2026-10-01", paid_date: "2026-10-03" })], truncated: false });
     const payment = history.payments[0];

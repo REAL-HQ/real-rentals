@@ -6,6 +6,7 @@ import {
   extractPaymentReceiptFields,
   formatPaymentAmount,
   formatPaymentDateEt,
+  formatRenterPaymentDate,
   isSuccessfulPaymentAmount,
   matchRenterPayment,
   paidDateOf,
@@ -59,6 +60,46 @@ describe("extractPaymentReceiptFields", () => {
     assert.equal(fields.stripe_subscription_id, "sub_1UaHCfGsNNO50lXb8na9TVzS");
     assert.equal(fields.stripe_charge_id, "py_3UaH9iGsNNO50lXb0TLOUrbz");
     assert.equal(fields.stripe_receipt_url, "https://pay.stripe.com/receipts/py");
+  });
+
+  it("does not treat invoice.created as a paid time on an open or failed invoice", () => {
+    const failed = extractPaymentReceiptFields({
+      id: "in_1UcS37GsNNO50lXbmWqL9CBh",
+      number: "BUKZ1ZXD-0006",
+      created: 1763302948,
+      amount_paid: 0,
+      amount_due: 35000,
+      status: "open",
+      status_transitions: { paid_at: null },
+      charge: { id: "ch_failed", created: 1763303000, status: "failed", paid: false },
+    });
+    assert.equal(failed.stripe_paid_at, null);
+    assert.equal(paidDateOf({
+      created: 1763302948,
+      status_transitions: { paid_at: null },
+      charge: { id: "ch_failed", created: 1763303000, status: "failed", paid: false },
+    }, failed), null);
+  });
+
+  it("uses a succeeded charge created time only when Stripe omitted paid_at", () => {
+    const fields = extractPaymentReceiptFields({
+      id: "in_paid_no_transition",
+      created: 1763302948,
+      status: "paid",
+      status_transitions: { paid_at: null },
+      charge: { id: "ch_ok", created: 1763304000, status: "succeeded", paid: true },
+    });
+    assert.equal(fields.stripe_paid_at, new Date(1763304000 * 1000).toISOString());
+  });
+
+  it("does not invent a paid time from an unexpanded charge id", () => {
+    const fields = extractPaymentReceiptFields({
+      id: "in_open",
+      created: 1763302948,
+      status: "open",
+      charge: "ch_3onlyid",
+    });
+    assert.equal(fields.stripe_paid_at, null);
   });
 });
 
@@ -189,6 +230,29 @@ describe("display and filters", () => {
     assert.equal(item.invoiceNumber, "M5F0G0N6-0001");
   });
 
+  it("hides paid at and paid date unless the row is paid or refunded", () => {
+    const failed = toRenterPaymentListItem({
+      id: "p-failed",
+      paid_date: "2026-11-16",
+      stripe_paid_at: "2026-11-16T15:42:28.000Z",
+      amount: 350,
+      status: "failed",
+      stripe_invoice_number: "BUKZ1ZXD-0006",
+    });
+    assert.equal(failed.paidAt, null);
+    assert.equal(failed.paidDate, null);
+    assert.equal(formatRenterPaymentDate(failed), "—");
+    const paid = toRenterPaymentListItem({
+      id: "p-paid",
+      paid_date: "2026-11-12",
+      stripe_paid_at: "2026-11-12T15:23:43.000Z",
+      amount: 350,
+      status: "paid",
+    });
+    assert.equal(paid.paidAt, "2026-11-12T15:23:43.000Z");
+    assert.equal(formatRenterPaymentDate(paid), "Nov 12, 2026");
+  });
+
   it("uses the invoice paid_at timestamp for the Eastern date", () => {
     assert.equal(paidDateOf(invoice), "2026-11-12");
     assert.equal(subscriptionIdOf({ parent: { subscription_details: { subscription: "sub_x" } } }), "sub_x");
@@ -196,6 +260,20 @@ describe("display and filters", () => {
 });
 
 describe("backfill and reminder safety", () => {
+  it("prepares a cleanup that only nulls unpaid stripe_paid_at and is not run", () => {
+    const sql = readFileSync("proposed/stripe-paid-at-unpaid-cleanup-2026-11-16.sql", "utf8");
+    assert.match(sql, /PREPARED, NOT RUN/i);
+    assert.match(sql, /payments_stripe_paid_at_unpaid_backup_20261116/);
+    assert.match(sql, /SET stripe_paid_at = NULL/);
+    assert.match(sql, /status IS DISTINCT FROM 'paid'/);
+    assert.match(sql, /status IS DISTINCT FROM 'refunded'/);
+    assert.match(sql, /Rollback after COMMIT/);
+    assert.doesNotMatch(sql, /\b(status|paid_date|amount|balance_due|notified_status)\s*=/);
+    assert.doesNotMatch(sql, /^\s*COMMIT;/m);
+    assert.doesNotMatch(sql, /INSERT INTO public\.rent_reminder_log/i);
+    assert.doesNotMatch(sql, /\bperform\s+net\.http/i);
+  });
+
   it("prepares a backfill that is idempotent, marked already noticed, and not run", () => {
     const sql = readFileSync("proposed/payment-receipts-backfill-2026-11-12.sql", "utf8");
     assert.match(sql, /PREPARED, NOT RUN/i);

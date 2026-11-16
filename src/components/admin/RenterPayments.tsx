@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { getRenterPayments, getUnmatchedRenterPayments } from "@/lib/renter-payments.functions";
 import {
   formatPaymentAmount,
-  formatPaymentDateEt,
+  formatRenterPaymentDate,
   type RenterPaymentListItem,
 } from "@/lib/renter-payments";
 
@@ -111,7 +111,7 @@ export function PaymentsTable({ payments }: { payments: RenterPaymentListItem[] 
         <tbody>
           {payments.map((row) => (
             <tr key={row.id} className="border-b align-top">
-              <td className="py-2 pr-3 whitespace-nowrap text-[#111114]">{formatPaymentDateEt(row.paidDate, row.paidAt)}</td>
+              <td className="py-2 pr-3 whitespace-nowrap text-[#111114]">{formatRenterPaymentDate(row)}</td>
               <td className="py-2 pr-3 whitespace-nowrap tabular-nums text-[#111114]">{formatPaymentAmount(row.amount)}</td>
               <td className="py-2 pr-3 whitespace-nowrap text-[#111114]">{row.invoiceNumber || "—"}</td>
               <td className="py-2 pr-3 whitespace-nowrap">
