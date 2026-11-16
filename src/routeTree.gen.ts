@@ -33,6 +33,7 @@ import { Route as AuthConfirmRouteImport } from './routes/auth/confirm'
 import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
 import { Route as FleetIndexRouteImport } from './routes/fleet.index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
+import { Route as PickupRentalIdRouteImport } from './routes/pickup.$rentalId'
 import { Route as PortalHelpRouteImport } from './routes/portal_.help'
 import { Route as PortalRoadsideRouteImport } from './routes/portal_.roadside'
 import { Route as SignTokenRouteImport } from './routes/sign.$token'
@@ -181,6 +182,11 @@ const FleetIndexRoute = FleetIndexRouteImport.update({
 const FleetIdRoute = FleetIdRouteImport.update({
   id: '/fleet/$id',
   path: '/fleet/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PickupRentalIdRoute = PickupRentalIdRouteImport.update({
+  id: '/pickup/$rentalId',
+  path: '/pickup/$rentalId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PortalHelpRoute = PortalHelpRouteImport.update({
@@ -371,6 +377,7 @@ export interface FileRoutesByFullPath {
   '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/pickup/$rentalId': typeof PickupRentalIdRoute
   '/portal/help': typeof PortalHelpRoute
   '/portal/roadside': typeof PortalRoadsideRoute
   '/sign/$token': typeof SignTokenRoute
@@ -426,6 +433,7 @@ export interface FileRoutesByTo {
   '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/pickup/$rentalId': typeof PickupRentalIdRoute
   '/portal/help': typeof PortalHelpRoute
   '/portal/roadside': typeof PortalRoadsideRoute
   '/sign/$token': typeof SignTokenRoute
@@ -482,6 +490,7 @@ export interface FileRoutesById {
   '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/pickup/$rentalId': typeof PickupRentalIdRoute
   '/portal_/help': typeof PortalHelpRoute
   '/portal_/roadside': typeof PortalRoadsideRoute
   '/sign/$token': typeof SignTokenRoute
@@ -539,6 +548,7 @@ export interface FileRouteTypes {
     | '/auth/confirm'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/pickup/$rentalId'
     | '/portal/help'
     | '/portal/roadside'
     | '/sign/$token'
@@ -594,6 +604,7 @@ export interface FileRouteTypes {
     | '/auth/confirm'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/pickup/$rentalId'
     | '/portal/help'
     | '/portal/roadside'
     | '/sign/$token'
@@ -649,6 +660,7 @@ export interface FileRouteTypes {
     | '/auth/confirm'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/pickup/$rentalId'
     | '/portal_/help'
     | '/portal_/roadside'
     | '/sign/$token'
@@ -705,6 +717,7 @@ export interface RootRouteChildren {
   AuthConfirmRoute: typeof AuthConfirmRoute
   CardApplicationIdRoute: typeof CardApplicationIdRoute
   FleetIdRoute: typeof FleetIdRoute
+  PickupRentalIdRoute: typeof PickupRentalIdRoute
   PortalHelpRoute: typeof PortalHelpRoute
   PortalRoadsideRoute: typeof PortalRoadsideRoute
   SignTokenRoute: typeof SignTokenRoute
@@ -905,6 +918,13 @@ declare module '@tanstack/react-router' {
       path: '/fleet/$id'
       fullPath: '/fleet/$id'
       preLoaderRoute: typeof FleetIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pickup/$rentalId': {
+      id: '/pickup/$rentalId'
+      path: '/pickup/$rentalId'
+      fullPath: '/pickup/$rentalId'
+      preLoaderRoute: typeof PickupRentalIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/portal_/help': {
@@ -1137,6 +1157,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthConfirmRoute: AuthConfirmRoute,
   CardApplicationIdRoute: CardApplicationIdRoute,
   FleetIdRoute: FleetIdRoute,
+  PickupRentalIdRoute: PickupRentalIdRoute,
   PortalHelpRoute: PortalHelpRoute,
   PortalRoadsideRoute: PortalRoadsideRoute,
   SignTokenRoute: SignTokenRoute,
