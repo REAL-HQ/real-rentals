@@ -45,6 +45,7 @@ import { Route as ApiPublicCronFleetWebhooksRouteImport } from './routes/api/pub
 import { Route as ApiPublicCronLateFeesRouteImport } from './routes/api/public/cron/late-fees'
 import { Route as ApiPublicCronOpsRemindersRouteImport } from './routes/api/public/cron/ops-reminders'
 import { Route as ApiPublicCronRentRemindersRouteImport } from './routes/api/public/cron/rent-reminders'
+import { Route as ApiPublicCronRenterRemindersRouteImport } from './routes/api/public/cron/renter-reminders'
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
 import { Route as ApiPublicFleetApplicantDecisionRouteImport } from './routes/api/public/fleet/applicant-decision'
 import { Route as ApiPublicFleetApplicantsRouteImport } from './routes/api/public/fleet/applicants'
@@ -247,6 +248,12 @@ const ApiPublicCronRentRemindersRoute =
     path: '/api/public/cron/rent-reminders',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicCronRenterRemindersRoute =
+  ApiPublicCronRenterRemindersRouteImport.update({
+    id: '/api/public/cron/renter-reminders',
+    path: '/api/public/cron/renter-reminders',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicCronWizardRecoveryRoute =
   ApiPublicCronWizardRecoveryRouteImport.update({
     id: '/api/public/cron/wizard-recovery',
@@ -377,6 +384,7 @@ export interface FileRoutesByFullPath {
   '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
+  '/api/public/cron/renter-reminders': typeof ApiPublicCronRenterRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
@@ -431,6 +439,7 @@ export interface FileRoutesByTo {
   '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
+  '/api/public/cron/renter-reminders': typeof ApiPublicCronRenterRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
@@ -486,6 +495,7 @@ export interface FileRoutesById {
   '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
+  '/api/public/cron/renter-reminders': typeof ApiPublicCronRenterRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
@@ -542,6 +552,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/rent-reminders'
+    | '/api/public/cron/renter-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
@@ -596,6 +607,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/rent-reminders'
+    | '/api/public/cron/renter-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
@@ -650,6 +662,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/rent-reminders'
+    | '/api/public/cron/renter-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
@@ -705,6 +718,7 @@ export interface RootRouteChildren {
   ApiPublicCronLateFeesRoute: typeof ApiPublicCronLateFeesRoute
   ApiPublicCronOpsRemindersRoute: typeof ApiPublicCronOpsRemindersRoute
   ApiPublicCronRentRemindersRoute: typeof ApiPublicCronRentRemindersRoute
+  ApiPublicCronRenterRemindersRoute: typeof ApiPublicCronRenterRemindersRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
   ApiPublicFleetApplicantDecisionRoute: typeof ApiPublicFleetApplicantDecisionRoute
   ApiPublicFleetApplicantsRoute: typeof ApiPublicFleetApplicantsRoute
@@ -977,6 +991,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCronRentRemindersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/cron/renter-reminders': {
+      id: '/api/public/cron/renter-reminders'
+      path: '/api/public/cron/renter-reminders'
+      fullPath: '/api/public/cron/renter-reminders'
+      preLoaderRoute: typeof ApiPublicCronRenterRemindersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/cron/wizard-recovery': {
       id: '/api/public/cron/wizard-recovery'
       path: '/api/public/cron/wizard-recovery'
@@ -1129,6 +1150,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicCronLateFeesRoute: ApiPublicCronLateFeesRoute,
   ApiPublicCronOpsRemindersRoute: ApiPublicCronOpsRemindersRoute,
   ApiPublicCronRentRemindersRoute: ApiPublicCronRentRemindersRoute,
+  ApiPublicCronRenterRemindersRoute: ApiPublicCronRenterRemindersRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
   ApiPublicFleetApplicantDecisionRoute: ApiPublicFleetApplicantDecisionRoute,
   ApiPublicFleetApplicantsRoute: ApiPublicFleetApplicantsRoute,
