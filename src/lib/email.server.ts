@@ -501,6 +501,28 @@ async function recoveryLinkNote(): Promise<string> {
   return `For your security this link works once and expires ${RECOVERY_TOKEN_MINUTES} minutes after this email was sent. If it has expired, open it anyway and enter your email — we'll send a fresh link to the address on your application.`;
 }
 
+/** Placeholder or test first names that should never greet a renter. */
+const PLACEHOLDER_FIRST_NAMES = new Set(["esign", "test", "testing", "delete", "sample", "demo", "unknown", "n/a", "na", "none", "null", "applicant", "driver", "customer"]);
+
+function firstWord(raw: string | null | undefined): string {
+  return String(raw ?? "").trim().split(/\s+/)[0] ?? "";
+}
+
+/**
+ * The first name to greet a returning applicant with, or null for a neutral
+ * greeting. The name on file wins only when it agrees with the name just
+ * typed into the form (or no name was typed). When they disagree we greet
+ * nobody by name: the email goes to the address on file, and the person who
+ * typed the form has not proven they own it, so neither name is safe to show.
+ */
+export function resumeGreetingName(onFile: string | null | undefined, submitted?: string | null): string | null {
+  const a = firstWord(onFile);
+  if (!a || PLACEHOLDER_FIRST_NAMES.has(a.toLowerCase())) return null;
+  const b = firstWord(submitted);
+  if (b && b.toLowerCase() !== a.toLowerCase()) return null;
+  return a;
+}
+
 /**
  * "We already have your application — here's your link."
  *
@@ -512,13 +534,15 @@ async function recoveryLinkNote(): Promise<string> {
 export async function sendApplicationResumeEmail(args: {
   to: string;
   firstName: string | null;
+  /** The name just typed into the lead form, when this send came from it. */
+  submittedName?: string | null;
   applicationId: string;
   /** Pre-minted recovery token. Omitted on the history path, which mints its own. */
   token?: string;
   /** Reservation id. Present only when the atomic path already reserved the attempt. */
   attemptId?: string;
 }): Promise<SendResult> {
-  const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  const name = resumeGreetingName(args.firstName, args.submittedName);
   // Short-lived, single-use recovery link (see resume-tokens.server.ts).
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { issueResumeToken, resumeUrl: buildUrl, RECOVERY_TOKEN_MINUTES } = await import("@/lib/resume-tokens.server");
@@ -526,7 +550,7 @@ export async function sendApplicationResumeEmail(args: {
     args.token ?? (await issueResumeToken(supabaseAdmin, args.applicationId, { recovery: true })),
   );
   const html = shell(`
-      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Continue Your Application, ${escapeHtml(name)}</h1>
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Continue Your Application${name ? `, ${escapeHtml(name)}` : ""}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Here's your secure link to pick up exactly where you left off. Your answers and documents are saved. For your security the link works once and expires in ${RECOVERY_TOKEN_MINUTES} minutes — you can always request a new one.</p>
       <a href="${resumeUrl}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Open My Application</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${resumeUrl}</span></p>

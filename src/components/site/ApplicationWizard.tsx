@@ -35,7 +35,7 @@ import { APPLY_PROGRESS_ENABLED } from "@/lib/apply-progress";
 import { UPLOAD_PRECHECK_ENABLED } from "@/lib/upload-precheck";
 import { APPLY_VEHICLE_PREFILL_ENABLED } from "@/lib/apply-vehicle-prefill";
 import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
-import { APPLICATION_LOCKED_MESSAGE } from "@/lib/application-edit-status";
+import { APPLICATION_LOCKED_MESSAGE, APPLICATION_LOCKED_NEXT_STEP } from "@/lib/application-edit-status";
 import {
   createSaveSequencer,
   isApplicationLockedError,
@@ -771,25 +771,33 @@ function LinkExpired({ message }: { message: string }) {
  */
 function ApplicationLocked() {
   return (
-    <div className="mx-auto max-w-lg px-6 py-24 text-center">
+    <div className="mx-auto max-w-lg px-6 py-24 text-center" data-application-locked>
       <h1 className="text-2xl font-semibold">Your Application Is Already Submitted</h1>
       <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
         {APPLICATION_LOCKED_MESSAGE}
       </p>
+      <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{APPLICATION_LOCKED_NEXT_STEP}</p>
       <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+        <Link
+          to="/apply"
+          className="inline-flex items-center justify-center rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:opacity-90"
+        >
+          Start A New Application
+        </Link>
         <a
           href="mailto:team@drivereal.com"
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-real-red px-6 py-3 text-sm font-semibold text-white hover:opacity-90"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40"
         >
           <Mail className="h-4 w-4" /> Contact Us
         </a>
-        <Link
-          to="/"
-          className="inline-flex items-center justify-center rounded-lg border border-border bg-white px-6 py-3 text-sm font-medium hover:border-foreground/40"
-        >
-          Back To Home
-        </Link>
       </div>
+      <p className="mt-4 text-xs text-muted-foreground">
+        Already approved?{" "}
+        <Link to="/login" className="underline underline-offset-4">
+          Sign In To Your Account
+        </Link>{" "}
+        · Call (888) 833-8280
+      </p>
     </div>
   );
 }
