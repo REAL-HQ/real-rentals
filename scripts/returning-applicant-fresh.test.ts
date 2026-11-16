@@ -32,6 +32,7 @@ function query(table: string) {
   const q: any = {
     select: () => q,
     eq: (k: string, v: any) => (filters.push((r) => r[k] === v), q),
+    in: (k: string, vs: any[]) => (filters.push((r) => vs.includes(r[k])), q),
     is: (k: string, v: any) => (filters.push((r) => (r[k] ?? null) === v), q),
     ilike: (k: string, v: string) => (filters.push((r) => String(r[k] ?? "").toLowerCase() === v.replace(/\\(.)/g, "$1").toLowerCase()), q),
     order: (k: string, o?: { ascending?: boolean }) => Object.assign(q, { _sort: { k, asc: o?.ascending !== false } }),
