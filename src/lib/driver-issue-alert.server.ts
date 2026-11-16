@@ -6,7 +6,7 @@
 // inbox. SMS, only for a roadside kind, reuses sendSms and the company phone
 // already in Settings. No new provider.
 
-import { driverIssueAlertPlan } from "@/lib/driver-issues";
+import { driverIssueAlertPlan, isRoadsideKind } from "@/lib/driver-issues";
 import { ROADSIDE_SMS_ALERTS_ENABLED } from "@/lib/roadside-sms-flag";
 
 export const DRIVER_ISSUE_ALERTS_ENABLED = process.env.DRIVER_ISSUE_ALERTS_ENABLED === "true";
@@ -44,7 +44,39 @@ export async function deliverRoadsideStaffSms(
   return { sent: 1, skipped: null };
 }
 
+/**
+ * Overnight roadside (Dolmar, t299s1618; SOP D17): from 6 PM to 6 AM ET there is
+ * no tow partner yet, so a roadside request alerts the team (email + field rep
+ * text) through the team alert switch "roadside_overnight" (OFF by default).
+ * Independent of the daytime email/SMS flags above.
+ */
+export async function alertOvernightRoadside(args: DriverIssueAlert, now = new Date(), deps: import("@/lib/team-alerts.server").TeamAlertDeps & { admin?: any } = {}) {
+  if (!isRoadsideKind(args.kind)) return { status: "not_roadside" as const };
+  const { isOvernightEt } = await import("@/lib/team-alerts");
+  if (!isOvernightEt(now)) return { status: "daytime" as const };
+  const admin = deps.admin ?? (await import("@/integrations/supabase/client.server")).supabaseAdmin;
+  const { sendTeamAlert } = await import("@/lib/team-alerts.server");
+  const base = process.env.SITE_URL || "https://drivereal.com";
+  return sendTeamAlert(admin, {
+    kind: "roadside_overnight",
+    dedupeKey: args.issueId ?? `${args.rentalId ?? "no-rental"}:${now.toISOString().slice(0, 13)}`,
+    title: `After-Hours Roadside: ${args.title}`,
+    lines: [
+      `Type: ${args.kind} · Urgency: ${args.severity}`,
+      "Filed between 6 PM and 6 AM ET. There is no tow partner overnight yet: call the renter back from the portal record and arrange help.",
+    ],
+    link: `${base.replace(/\/$/, "")}/admin?tab=issues&filter=driver`,
+    rentalId: args.rentalId,
+    vehicleId: args.vehicleId,
+  }, deps);
+}
+
 export async function notifyManagersOfDriverIssue(args: DriverIssueAlert): Promise<void> {
+  try {
+    await alertOvernightRoadside(args);
+  } catch (e) {
+    console.error("[driver-issue] overnight roadside alert failed", e);
+  }
   const plan = driverIssueAlertPlan(
     { emailEnabled: DRIVER_ISSUE_ALERTS_ENABLED, smsEnabled: ROADSIDE_SMS_ALERTS_ENABLED },
     args,

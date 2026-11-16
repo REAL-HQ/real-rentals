@@ -6,13 +6,11 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
 import {
   createReservation,
-  getReservationDepositSettings,
   listApprovedForReservation,
   listVehiclesForReservation,
 } from "@/lib/reservations.functions";
 import { listPickupSlots } from "@/lib/pickup-schedule.functions";
 import type { PickupSlot } from "@/lib/pickup-schedule";
-import type { ReservationDepositSettings } from "@/lib/reservation-deposit-settings";
 import { easternParts } from "@/lib/rent-reminders";
 
 const input = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm";
@@ -40,7 +38,6 @@ export function ReserveCarDialog({
   onOpenChange,
   applicationId,
   driverName,
-  settings,
   onSaved,
 }: {
   open: boolean;
@@ -48,17 +45,14 @@ export function ReserveCarDialog({
   /** When set (driver profile), the person is locked in. */
   applicationId?: string | null;
   driverName?: string | null;
-  settings?: ReservationDepositSettings | null;
   onSaved: () => void;
 }) {
   const create = useServerFn(createReservation);
   const loadVehicles = useServerFn(listVehiclesForReservation);
   const loadPeople = useServerFn(listApprovedForReservation);
-  const loadSettings = useServerFn(getReservationDepositSettings);
   const loadSlots = useServerFn(listPickupSlots);
   const [slots, setSlots] = useState<PickupSlot[]>([]);
   const [fieldRep, setFieldRep] = useState<string | null>(null);
-  const [resolvedSettings, setResolvedSettings] = useState<ReservationDepositSettings | null>(settings ?? null);
   const [vehicles, setVehicles] = useState<Array<{ id: string; unit_number: string | null; year: number | null; make: string | null; model: string | null; status: string | null }>>([]);
   const [people, setPeople] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
   const [personId, setPersonId] = useState(applicationId ?? "");
@@ -67,9 +61,6 @@ export function ReserveCarDialog({
   const [pickupTime, setPickupTime] = useState("09:30");
   const [pickupLocation, setPickupLocation] = useState("");
   const [note, setNote] = useState("");
-  const depositOn = resolvedSettings?.enabled === true;
-  const [depositRequired, setDepositRequired] = useState(depositOn);
-  const [depositAmount, setDepositAmount] = useState(depositOn && settings ? String(settings.defaultAmount || "") : "");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -80,17 +71,6 @@ export function ReserveCarDialog({
     setPickupTime("09:30");
     setPickupLocation("");
     setNote("");
-    const applySettings = (s: ReservationDepositSettings | null) => {
-      setResolvedSettings(s);
-      setDepositRequired(s?.enabled === true);
-      setDepositAmount(s?.enabled && s.defaultAmount > 0 ? String(s.defaultAmount) : "");
-    };
-    if (settings) applySettings(settings);
-    else {
-      loadSettings()
-        .then(applySettings)
-        .catch(() => applySettings(null));
-    }
     // Pickup Schedule: prefill the earliest open slot and the default location.
     loadSlots()
       .then(({ slots: open, settings: schedule }) => {
@@ -111,7 +91,7 @@ export function ReserveCarDialog({
         .then(setPeople)
         .catch(() => setPeople([]));
     }
-  }, [open, applicationId, settings, loadVehicles, loadPeople, loadSettings, loadSlots]);
+  }, [open, applicationId, loadVehicles, loadPeople, loadSlots]);
 
   const submit = async () => {
     const appId = applicationId || personId;
@@ -137,8 +117,6 @@ export function ReserveCarDialog({
           pickupTime,
           pickupLocation: pickupLocation.trim(),
           note: note.trim() || undefined,
-          depositRequired: depositOn ? depositRequired : false,
-          depositAmount: depositOn && depositRequired ? Number(depositAmount) || 0 : 0,
         },
       });
       const emailNote =
@@ -223,32 +201,6 @@ export function ReserveCarDialog({
           <Field label="Note">
             <input className={input} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" aria-label="Note" maxLength={140} />
           </Field>
-          {depositOn ? (
-            <>
-              <Field label="Deposit Required">
-                <AppSelect
-                  className={input}
-                  value={depositRequired ? "yes" : "no"}
-                  onChange={(e) => setDepositRequired(e.target.value === "yes")}
-                  aria-label="Deposit Required"
-                >
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </AppSelect>
-              </Field>
-              {depositRequired ? (
-                <Field label="Deposit Amount">
-                  <input
-                    className={input}
-                    inputMode="decimal"
-                    value={depositAmount}
-                    onChange={(e) => setDepositAmount(e.target.value)}
-                    aria-label="Deposit Amount"
-                  />
-                </Field>
-              ) : null}
-            </>
-          ) : null}
         </div>
         <DialogFooter>
           <button type="button" className={secondary} onClick={() => onOpenChange(false)}>

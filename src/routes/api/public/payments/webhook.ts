@@ -58,7 +58,63 @@ function cardExpiresSoon(m: number | null, y: number | null): boolean {
   return exp <= soon;
 }
 
+/** Card fields from a Stripe PaymentMethod, as stored on applications/rentals. */
+function cardFieldsOf(pm: any) {
+  const card = pm?.card;
+  return {
+    stripe_payment_method_id: pm.id,
+    card_brand: card?.brand ?? null,
+    card_last4: card?.last4 ?? null,
+    card_exp_month: card?.exp_month ?? null,
+    card_exp_year: card?.exp_year ?? null,
+    card_on_file_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * $50 Reservation Fee Checkout (reservation-fee.server.ts, Dolmar t309u): the
+ * card is collected after signing and saved on file for the rental balance
+ * (setup_future_usage off_session). Save it on the application like a setup
+ * session would. The fee row itself is marked paid by payment_intent.succeeded.
+ */
+async function saveReservationFeeCard(session: any, env: StripeEnv) {
+  const applicationId = session.metadata?.applicationId as string | undefined;
+  const piId = stripeId(session.payment_intent);
+  if (!applicationId || !piId) return;
+  const stripe = createStripeClient(env);
+  const pi: any = await stripe.paymentIntents.retrieve(piId, { expand: ['payment_method'] });
+  const pm: any = pi?.payment_method;
+  if (!pm || typeof pm === 'string') return;
+  const customerId = stripeId(session.customer) ?? stripeId(pi.customer);
+  const admin: any = getSupabase();
+  must(await admin.from('applications').update({ ...(customerId ? { stripe_customer_id: customerId } : {}), ...cardFieldsOf(pm) }).eq('id', applicationId));
+  await admin.from('notifications').insert({
+    driver_id: null,
+    title: 'Card Saved',
+    body: `${pm.card?.brand ?? 'Card'} ····${pm.card?.last4 ?? ''} saved on file (Reservation Fee)`,
+    kind: 'payment',
+    read: false,
+  }).select().maybeSingle().then(() => {}, () => {});
+}
+
+/** A paid Reservation Fee holds the car right away (the cron also catches it on pickup day). */
+async function holdReservationAfterFee(pi: any) {
+  if (pi?.metadata?.reason !== 'reservation_fee') return;
+  const applicationId = pi.metadata?.applicationId as string | undefined;
+  if (!applicationId) return;
+  try {
+    const { paidReservationFee, holdReservationForFee } = await import('@/lib/reservation-fee.server');
+    const fee = await paidReservationFee(getSupabase(), applicationId);
+    if (fee) await holdReservationForFee(getSupabase(), applicationId, fee);
+  } catch (e) {
+    console.error('[webhook] reservation fee hold failed', e);
+  }
+}
+
 async function handleCheckoutCompleted(session: any, env: StripeEnv) {
+  if (session.mode === 'payment' && session.metadata?.reason === 'reservation_fee') {
+    await saveReservationFeeCard(session, env);
+  }
   if (session.mode === 'subscription' || session.mode === 'payment') {
     // Link the renter's customer / subscription to the rental. The money is
     // recorded from invoice.paid / payment_intent.succeeded, not here.
@@ -678,6 +734,7 @@ async function handleVerifiedPaymentEvent(event: { type: string; data: { object:
       break;
     case 'payment_intent.succeeded':
       await upsertPaymentFromPaymentIntent(event.data.object, 'paid');
+      await holdReservationAfterFee(event.data.object);
       break;
     case 'payment_intent.payment_failed':
       await upsertPaymentFromPaymentIntent(event.data.object, 'failed');

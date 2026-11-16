@@ -32,6 +32,7 @@ Held while paused (text and email from these senders):
 | Pickup reminders, agreement-signing texts | skipped, not claimed; sent if the pause ends inside the step's window |
 | Rent reminders and late-fee notices (due, late, overdue, daily) | skipped, nothing claimed; the stage owed goes out after the pause |
 | Payment Failed Text | not sent (`staff_text_pause`) |
+| Late Pickup Release text/email | the car is still released and staff still get the team alert; the renter is not messaged (staff tell them) |
 | FLEET `resend-link` | `423`, `reason: "staff_texting"` |
 | FLEET's own Quo texts and calls | FLEET reads `bots_paused` in `/fleet/status` and sends nothing |
 
@@ -39,7 +40,7 @@ Never held: staff texts (site or Quo), receipts and confirmations, team
 alerts, roadside replies, STOP/HELP replies, anything staff trigger by hand
 (send agreement, activation notice, vehicle share). `sendSms` also refuses any
 automatic bot kind (`automation`, `missing_items*`, `rent_reminder_*`,
-`payment_failed`, `pickup_reminder_*`, `agreement_sign_*`) to a paused number
+`payment_failed`, `pickup_reminder_*`, `agreement_sign_*`, `late_pickup_release`) to a paused number
 as a backstop (`reason: "bot_paused"`, logged as skipped).
 
 ## Staff text or bot text?

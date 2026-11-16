@@ -36,7 +36,7 @@ const FLEET_ACTOR = "FLEET (automated)";
 
 export type PickupDeps = FleetDeps & {
   settings?: PickupScheduleSettings;
-  reserve?: (admin: any, data: { applicationId: string; vehicleId: string; pickupDate: string; pickupTime: string; pickupLocation: string; note?: string }) => Promise<{ id: string; loginEmail: string }>;
+  reserve?: (admin: any, data: { applicationId: string; vehicleId: string; pickupDate: string; pickupTime: string; pickupLocation: string; note?: string; requireReservationFee?: boolean }) => Promise<{ id: string; loginEmail: string }>;
 };
 
 /** slotKey(date, time) for every reserved rental from `fromDate` on. */
@@ -130,7 +130,8 @@ export async function handleFleetPickupSlots(request: Request, deps: PickupDeps 
   let res: { id: string; loginEmail: string };
   try {
     const reserve = deps.reserve ?? (async (a: any, d: any) => (await import("@/lib/reservations.functions")).createReservationCore(a, d));
-    res = await reserve(admin, { applicationId: leadId, vehicleId, pickupDate: slot.date, pickupTime: slot.time, pickupLocation: location, note });
+    // The car is held only once the $50 Reservation Fee is paid (t299s1618; no-op while that switch is off).
+    res = await reserve(admin, { applicationId: leadId, vehicleId, pickupDate: slot.date, pickupTime: slot.time, pickupLocation: location, note, requireReservationFee: true });
   } catch (e) {
     const msg = String((e as Error)?.message ?? e).slice(0, 200);
     return fleetJson(409, { ok: false, error: msg });

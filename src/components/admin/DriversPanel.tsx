@@ -2354,7 +2354,7 @@ function DriverDetail({
     else if (t.kind === "reserve") { if (!reserveOpen) setReserveOpen(true); }
     else if (t.kind === "activate") {
       if (reservationBlocksStart({ depositStatus: reservationDepositStatus, blockStartWhenPending })) {
-        toast.error("Reservation Deposit Is Still Pending. Record It Or Turn Off Block Start When Pending In Settings → Deposits.");
+        toast.error("The Reservation Payment Is Still Pending. Record It Or Turn Off Block Start When Pending In Settings → Deposits.");
         return;
       }
       if (!activateOpen) setActivateOpen(true);
