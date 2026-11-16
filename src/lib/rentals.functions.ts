@@ -627,6 +627,14 @@ export async function activateRentalCore(
     } catch (e) {
       console.error("[activate] stripe link failed", e);
     }
+    // A paid $50 Reservation Fee is credited to week 1 (Dolmar, t299s1618).
+    // Switch reservation_fee_auto, OFF by default. Never blocks activation.
+    try {
+      const { applyReservationFeeCredit } = await import("@/lib/reservation-fee.server");
+      await applyReservationFeeCredit(supabaseAdmin, rental.id as string);
+    } catch (e) {
+      console.error("[activate] reservation fee credit failed", e);
+    }
 
     // rental.activated was written inside activate_rental_checked_tx (or, without
     // the wrapper, immediately after activate_rental_tx with any failure returned).

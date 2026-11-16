@@ -201,6 +201,8 @@ export const CreateReservationInput = z.object({
   note: z.string().max(140).optional(),
   depositRequired: z.boolean().optional(),
   depositAmount: z.number().min(0).max(10000).optional(),
+  /** FLEET only: refuse until the Reservation Fee is paid (when that switch is on). */
+  requireReservationFee: z.boolean().optional(),
 });
 export type CreateReservationData = z.infer<typeof CreateReservationInput>;
 
@@ -226,11 +228,28 @@ export async function createReservationCore(admin: any, data: CreateReservationD
     note: data.note,
   });
   const settings = await loadDepositSettings(admin);
-  const deposit = resolveReservationDeposit({
+  let deposit = resolveReservationDeposit({
     settings,
     overrideRequired: data.depositRequired,
     overrideAmount: data.depositAmount,
   });
+  // $50 Reservation Fee (Dolmar, t299s1618): with reservation_fee_auto ON the
+  // car is held only once the fee is paid. A paid fee is recorded on the
+  // reservation as applied (credited to week 1, never a security deposit);
+  // an unpaid one shows as pending, so the reservation is not confirmed yet.
+  let feePaymentId: string | null = null;
+  let feeOn = false;
+  {
+    const { loadReservationFeeSettings, paidReservationFee } = await import("@/lib/reservation-fee.server");
+    const fee = await loadReservationFeeSettings(admin);
+    if (fee.enabled) {
+      feeOn = true;
+      const paid = await paidReservationFee(admin, data.applicationId);
+      if (data.requireReservationFee && !paid) throw new Error("The Reservation Fee Is Not Paid Yet. The Car Is Held Once It Is Paid.");
+      deposit = { required: true, amount: paid ? paid.amount : fee.amount, status: paid ? "applied" : "pending" } as typeof deposit;
+      feePaymentId = paid?.id ?? null;
+    }
+  }
 
   const { data: app, error: appErr } = await admin
     .from("applications")
@@ -295,13 +314,15 @@ export async function createReservationCore(admin: any, data: CreateReservationD
     start_date: pickup,
     status: RESERVATION_STATUS,
     weekly_rate: weekly,
-    deposit_amount: deposit.required ? deposit.amount : 0,
+    // The Reservation Fee is not a security deposit.
+    deposit_amount: deposit.required && !feeOn ? deposit.amount : 0,
     deposit_held: false,
     deposit_status: deposit.required ? "none" : "none",
     reservation_note: reservationNote,
     reservation_deposit_required: deposit.required,
     reservation_deposit_amount: deposit.amount,
     reservation_deposit_status: deposit.status,
+    ...(feePaymentId ? { reservation_deposit_payment_id: feePaymentId } : {}),
   };
 
   const { data: inserted, error: insErr } = await admin.from("rentals").insert(insertRow as never).select("id").single();

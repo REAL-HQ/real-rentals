@@ -3,7 +3,7 @@
 -- go-ahead, after proposed/team-alerts-v1.sql and the publish.
 -- Turn on only the kinds he approved; each line is independent.
 UPDATE public.app_settings SET value = jsonb_set(value, '{roadside_overnight,enabled}', 'true') WHERE key = 'team_alerts';
-UPDATE public.app_settings SET value = jsonb_set(value, '{late_pickup,enabled}', 'true') WHERE key = 'team_alerts';
+-- late_pickup: not needed; the "Late Pickup Release" switch always alerts staff when it releases.
 UPDATE public.app_settings SET value = jsonb_set(value, '{bot_handoff,enabled}', 'true') WHERE key = 'team_alerts';
 -- GPS: only after the trackers are mapped to cars (see docs/gps-alerts.md).
 -- UPDATE public.app_settings SET value = jsonb_set(value, '{gps,enabled}', 'true') WHERE key = 'team_alerts';

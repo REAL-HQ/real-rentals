@@ -1142,10 +1142,14 @@ export async function sendAgreementSignedEmail(args: {
   vehicle: string | null;
   portalAccess: boolean;
   payment?: { url: string; amount: number; tiedToRenter: boolean; label: string } | null;
+  /** The Reservation Fee was charged automatically (reservation-fee.ts). */
+  reservationFeeLine?: string | null;
 }): Promise<void> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   const money = args.payment ? args.payment.amount.toLocaleString("en-US", { style: "currency", currency: "USD" }) : "";
-  const pay = args.payment
+  const pay = args.reservationFeeLine
+    ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml(args.reservationFeeLine)}</p>`
+    : args.payment
     ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Pay <strong>${escapeHtml(money)}</strong> for ${escapeHtml(args.payment.label)}. ${args.payment.tiedToRenter ? "This link is for your rental and expires within 24 hours." : "This is a shared payment page and is not tied to your rental automatically."}</p>
       <a href="${escapeHtml(args.payment.url)}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay ${escapeHtml(money)}</a>`
     : "";

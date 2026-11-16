@@ -67,7 +67,9 @@ A YES text reply is enough to send the agreement. FLEET texts the terms from
 the line the applicant uses (888 by default), only to applicants with text
 consent, using this template (needs Dolmar's OK before first use):
 
-> Real Rentals: Your quote is ready: {vehicle} at ${weekly_rate}/week, {no deposit | ${deposit} deposit}, starting {Wed, Nov 18} with pickup at 3500 E Hillsborough Ave, Tampa, FL 33610. Rent is paid weekly. Reply YES to accept and we'll send your rental agreement to sign. Reply STOP to opt out.
+> Real Rentals: Your quote is ready: {vehicle} at ${weekly_rate}/week, {no deposit | ${deposit} deposit}, starting {Wed, Nov 18} with pickup at 3500 E Hillsborough Ave, Tampa, FL 33610. Rent is paid weekly.{ A $50 Reservation Fee is charged to your card on file when you sign and applied to your first week.} Reply YES to accept and we'll send your rental agreement to sign. Reply STOP to opt out.
+
+The weekly rate includes `(includes ${surcharge}/week for your insurance quote)` when the insurance quote is over $350/month (docs/fleet-assign-vehicle.md), and the Reservation Fee sentence appears only while `reservation_fee_auto` is on (docs/reservation-fee.md). `/fleet/assign-vehicle` returns the exact text as `quote_text`.
 
 When the YES arrives (FLEET gets it as `quo_message_received`), call
 send-agreement with `channel: "sms"`, `message_id` = the Quo message id of the

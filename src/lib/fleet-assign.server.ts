@@ -69,7 +69,12 @@ async function quoteFor(admin: Admin, deps: AssignDeps, a: { vehicle: string; we
     const s = deps.settings ?? (await (await import("@/lib/reservation-confirmation.server")).loadPickupSchedule(admin));
     location = String((s as any)?.defaultLocation ?? "").trim() || DEFAULT_LOCATION;
   } catch { /* default location */ }
-  if (fee === undefined) fee = 0;
+  if (fee === undefined) {
+    try {
+      const f = await (await import("@/lib/reservation-fee.server")).loadReservationFeeSettings(admin);
+      fee = f.enabled ? f.amount : 0;
+    } catch { fee = 0; }
+  }
   return fleetQuoteText({ vehicle: a.vehicle, weekly: a.weekly, surcharge: a.surcharge, deposit: a.deposit, startDate: a.startDate, location, reservationFee: fee });
 }
 
