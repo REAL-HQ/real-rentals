@@ -20,6 +20,7 @@ export function FleetNeedsStaffBanner({ applicationId, canResolve, flags }: { ap
     return () => { cancelled = true; };
   }, [applicationId, flags, load]);
   if (!flag) return null;
+  const handoff = flag.escalationCodes.some((c) => c.startsWith("handoff:"));
   async function clear() {
     if (!flag || busy) return;
     setBusy(true);
@@ -36,8 +37,8 @@ export function FleetNeedsStaffBanner({ applicationId, canResolve, flags }: { ap
   }
   return (
     <div role="status" data-fleet-needs-staff className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-[#F5C2BC] bg-[#FDF1EF] px-4 py-3 text-sm text-[#7A1B12]">
-      <span className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white">Needs Staff</span>
-      <span className="min-w-0 flex-1">FLEET Sent This To Staff: {flag.reason}</span>
+      <span className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white">{handoff ? "Handoff" : "Needs Staff"}</span>
+      <span className="min-w-0 flex-1">{handoff ? "Bots Paused, Staff Must Handle: " : "FLEET Sent This To Staff: "}{flag.reason}</span>
       {canResolve ? (
         <button type="button" disabled={busy} onClick={() => void clear()} className="inline-flex h-8 items-center rounded-md border border-[#D6D6DB] bg-white px-3 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB] disabled:opacity-50">
           {busy ? "Clearing…" : "Mark Handled"}
