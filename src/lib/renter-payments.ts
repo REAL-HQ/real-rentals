@@ -125,10 +125,6 @@ export function paymentIntentIdOf(invoice: any): string | null {
  */
 export function extractPaymentReceiptFields(invoice: any, charge?: any): PaymentReceiptFields {
   const chargeObj = coerceCharge(charge) ?? coerceCharge(invoice);
-  const paidAt =
-    unixToIso(invoice?.status_transitions?.paid_at) ??
-    unixToIso(chargeObj?.created) ??
-    unixToIso(invoice?.created);
   return {
     stripe_invoice_id: text(invoice?.id) && String(invoice.id).startsWith("in_") ? String(invoice.id) : null,
     stripe_invoice_number: text(invoice?.number),
@@ -139,7 +135,7 @@ export function extractPaymentReceiptFields(invoice: any, charge?: any): Payment
     stripe_customer_id: idOf(invoice?.customer) ?? idOf(chargeObj?.customer),
     stripe_payment_intent_id: paymentIntentIdOf(invoice) ?? idOf(chargeObj?.payment_intent),
     stripe_subscription_id: subscriptionIdOf(invoice),
-    stripe_paid_at: paidAt,
+    stripe_paid_at: stripePaidAtFrom(invoice, chargeObj),
   };
 }
 
@@ -184,9 +180,29 @@ function coerceCharge(value: unknown): any | null {
     if (obj.object === "charge" || (typeof obj.id === "string" && (obj.id.startsWith("ch_") || obj.id.startsWith("py_")))) {
       return obj;
     }
+    if (obj.charge) return coerceCharge(obj.charge);
     if (obj.latest_charge) return coerceCharge(obj.latest_charge);
     if (obj.charges?.data?.[0]) return coerceCharge(obj.charges.data[0]);
   }
+  return null;
+}
+
+function isSucceededCharge(charge: any): boolean {
+  if (!charge || typeof charge !== "object") return false;
+  if (charge.status === "succeeded") return true;
+  if (charge.paid === true && (charge.status == null || charge.status === "paid" || charge.status === "succeeded")) return true;
+  return false;
+}
+
+/**
+ * When Stripe actually collected this invoice or charge.
+ * Uses status_transitions.paid_at, or the created time of a succeeded charge.
+ * Never falls back to invoice.created — that timestamp exists on open and failed invoices too.
+ */
+function stripePaidAtFrom(invoice: any, chargeObj?: any): string | null {
+  const paidAt = unixToIso(invoice?.status_transitions?.paid_at);
+  if (paidAt) return paidAt;
+  if (isSucceededCharge(chargeObj)) return unixToIso(chargeObj?.created);
   return null;
 }
 
@@ -314,20 +330,27 @@ export function matchRenterPayment(
 }
 
 /** Paid_date for a Stripe invoice in America/New_York, matching rent-reminder weeks. */
-export function paidDateOf(invoice: any, fields: PaymentReceiptFields = extractPaymentReceiptFields(invoice)): string {
+export function paidDateOf(invoice: any, fields: PaymentReceiptFields = extractPaymentReceiptFields(invoice)): string | null {
   if (fields.stripe_paid_at) {
     const unix = Math.floor(Date.parse(fields.stripe_paid_at) / 1000);
     if (Number.isFinite(unix) && unix > 0) return easternDateOf(unix);
   }
   if (invoice?.status_transitions?.paid_at) return easternDateOf(Number(invoice.status_transitions.paid_at));
-  if (invoice?.created) return easternDateOf(Number(invoice.created));
-  return easternDateOf(Math.floor(Date.now() / 1000));
+  const chargeObj = coerceCharge(invoice) ?? coerceCharge(invoice?.charge);
+  if (isSucceededCharge(chargeObj) && chargeObj?.created) return easternDateOf(Number(chargeObj.created));
+  return null;
 }
 
 export function dueDateOf(invoice: any): string {
   if (invoice?.created) return easternDateOf(Number(invoice.created));
   if (invoice?.period_start) return new Date(Number(invoice.period_start) * 1000).toISOString().slice(0, 10);
-  return paidDateOf(invoice);
+  return easternDateOf(Math.floor(Date.now() / 1000));
+}
+
+/** True when a payments row was actually collected (including a later refund). */
+export function isRecordedPaidStatus(status: string | null | undefined): boolean {
+  const value = String(status ?? "").toLowerCase();
+  return value === "paid" || value === "refunded";
 }
 
 /** Receipt emails and renter notices stay limited to a matched rental, as before. */
@@ -346,6 +369,11 @@ export function shouldNotifyRenter(match: PaymentMatch): boolean {
 
 export function isSuccessfulPaymentAmount(amount: number): boolean {
   return Number.isFinite(amount) && amount > 0;
+}
+
+export function formatRenterPaymentDate(row: Pick<RenterPaymentListItem, "paidDate" | "paidAt" | "status">): string {
+  if (!isRecordedPaidStatus(row.status)) return "—";
+  return formatPaymentDateEt(row.paidDate, row.paidAt);
 }
 
 export function formatPaymentDateEt(isoDate: string | null, isoTimestamp?: string | null): string {
@@ -388,10 +416,11 @@ export function toRenterPaymentListItem(row: {
   rental_id?: string | null;
   driver_id?: string | null;
 }): RenterPaymentListItem {
+  const recordedPaid = isRecordedPaidStatus(row.status);
   return {
     id: row.id,
-    paidDate: row.paid_date ?? null,
-    paidAt: row.stripe_paid_at ?? null,
+    paidDate: recordedPaid ? (row.paid_date ?? null) : null,
+    paidAt: recordedPaid ? (row.stripe_paid_at ?? null) : null,
     amount: Number(row.amount ?? 0),
     invoiceNumber: row.stripe_invoice_number ?? null,
     receiptUrl: row.stripe_receipt_url ?? null,

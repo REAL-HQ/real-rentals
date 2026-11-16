@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   formatPaymentAmount,
   formatPaymentDateEt,
+  formatRenterPaymentDate,
   toRenterPaymentListItem,
   type RenterPaymentListItem,
 } from "../src/lib/renter-payments.ts";
@@ -14,7 +15,7 @@ function renderPaymentsHtml(title: string, payments: RenterPaymentListItem[]): s
     const invoice = row.invoiceUrl ? `<a href="${row.invoiceUrl}">Invoice</a>` : "—";
     const pdf = row.invoicePdfUrl ? `<a href="${row.invoicePdfUrl}">Pdf</a>` : "—";
     return `<tr>
-      <td>${formatPaymentDateEt(row.paidDate, row.paidAt)}</td>
+      <td>${formatRenterPaymentDate(row)}</td>
       <td>${formatPaymentAmount(row.amount)}</td>
       <td>${row.invoiceNumber || "—"}</td>
       <td>${receipt}</td>
@@ -48,7 +49,7 @@ describe("renter Payments UI", () => {
     assert.match(ui, /label="Receipt"/);
     assert.match(ui, /label="Invoice"/);
     assert.match(ui, /label="Pdf"/);
-    assert.match(ui, /formatPaymentDateEt/);
+    assert.match(ui, /formatRenterPaymentDate/);
     assert.match(ui, /formatPaymentAmount/);
     assert.doesNotMatch(ui, /gradient|from-\[|to-\[|bg-gradient/);
     assert.match(ui, /bg-white/);
@@ -80,5 +81,21 @@ describe("renter Payments UI", () => {
     assert.doesNotMatch(html, /gradient/);
     mkdirSync("/tmp/renter-payments-preview", { recursive: true });
     writeFileSync("/tmp/renter-payments-preview/payments.html", html);
+  });
+
+  it("does not show a paid date for a failed payment even if stripe_paid_at is set", () => {
+    const payments = [toRenterPaymentListItem({
+      id: "p-failed",
+      paid_date: "2026-11-16",
+      stripe_paid_at: "2026-11-16T15:42:28.000Z",
+      amount: 350,
+      status: "failed",
+      stripe_invoice_number: "BUKZ1ZXD-0006",
+    })];
+    assert.equal(payments[0].paidAt, null);
+    assert.equal(formatRenterPaymentDate(payments[0]), "—");
+    const html = renderPaymentsHtml("Payments", payments);
+    assert.doesNotMatch(html, /Nov 16, 2026/);
+    assert.match(html, /—/);
   });
 });
