@@ -19,6 +19,14 @@ Never asked: date of birth and license expiry (FLEET reads them from the
 license photo), license back (optional), insurance (included), background check or
 MVR (staff only), address and trip screenshots (not required by FLEET's review).
 
+## Insurance line
+
+Every message says insurance is now included in the weekly rental (step 1 opens
+with it; reminders and the auto-close note carry one short line). Approved
+wording only (`INSURANCE_LINE_*` in missing-items.ts): never "no extra cost" or
+"no surprise fees", never a broker or carrier name. Copy lives in code, not
+app_settings, so changing it needs a publish.
+
 ## Who
 
 Statuses `new` and `reviewing` (configurable). Never partial (the Unfinished
