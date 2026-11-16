@@ -64,7 +64,7 @@ function fakeDb(seed: Record<string, Row[]>) {
       neq(c: string, v: any) { filters.push((r) => r[c] !== v); return b; },
       in(c: string, vs: any[]) { filters.push((r) => vs.includes(r[c])); return b; },
       or(expr: string) { filters.push(orPredicate(expr)); return b; },
-      gte() { return b; }, lte() { return b; }, gt() { return b; },
+      gte() { return b; }, lte() { return b; }, gt() { return b; }, is(c: string, v: any) { filters.push((r) => (r[c] ?? null) === v); return b; },
       maybeSingle() { single = true; return b; },
       single() { single = true; return b; },
       limit() { return b; },

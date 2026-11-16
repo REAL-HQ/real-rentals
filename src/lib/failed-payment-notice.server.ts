@@ -56,6 +56,12 @@ export async function sendFailedPaymentText(
 ): Promise<FailedTextOutcome> {
   const gate = gateFor(await loadAutomationControls(admin), "payment_failed_text");
   if (gate !== "send") return { sent: false, reason: gate };
+  {
+    const { activePaymentPause } = await import("@/lib/payment-text-pause.server");
+    const pause = await activePaymentPause(admin, input.rentalId, deps.now ?? new Date());
+    if (pause === "unavailable") return { sent: false, reason: "pause_unavailable" };
+    if (pause.paused) return { sent: false, reason: "paused" };
+  }
   const link = failedInvoiceLink(input.invoice);
   if (!link) return { sent: false, reason: "no_link" };
   if (!input.phone) return { sent: false, reason: "no_phone" };

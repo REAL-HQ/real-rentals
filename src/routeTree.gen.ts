@@ -46,6 +46,7 @@ import { Route as ApiPublicCronLateFeesRouteImport } from './routes/api/public/c
 import { Route as ApiPublicCronOpsRemindersRouteImport } from './routes/api/public/cron/ops-reminders'
 import { Route as ApiPublicCronRentRemindersRouteImport } from './routes/api/public/cron/rent-reminders'
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
+import { Route as ApiPublicFleetPaymentTextPauseRouteImport } from './routes/api/public/fleet/payment-text-pause'
 import { Route as ApiPublicInboundEmailRouteImport } from './routes/api/public/inbound/email'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicResendWebhookRouteImport } from './routes/api/public/resend/webhook'
@@ -246,6 +247,12 @@ const ApiPublicCronWizardRecoveryRoute =
     path: '/api/public/cron/wizard-recovery',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetPaymentTextPauseRoute =
+  ApiPublicFleetPaymentTextPauseRouteImport.update({
+    id: '/api/public/fleet/payment-text-pause',
+    path: '/api/public/fleet/payment-text-pause',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicInboundEmailRoute = ApiPublicInboundEmailRouteImport.update({
   id: '/api/public/inbound/email',
   path: '/api/public/inbound/email',
@@ -329,6 +336,7 @@ export interface FileRoutesByFullPath {
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
+  '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -376,6 +384,7 @@ export interface FileRoutesByTo {
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
+  '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -424,6 +433,7 @@ export interface FileRoutesById {
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
+  '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -473,6 +483,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/rent-reminders'
     | '/api/public/cron/wizard-recovery'
+    | '/api/public/fleet/payment-text-pause'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -520,6 +531,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/rent-reminders'
     | '/api/public/cron/wizard-recovery'
+    | '/api/public/fleet/payment-text-pause'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -567,6 +579,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/rent-reminders'
     | '/api/public/cron/wizard-recovery'
+    | '/api/public/fleet/payment-text-pause'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -615,6 +628,7 @@ export interface RootRouteChildren {
   ApiPublicCronOpsRemindersRoute: typeof ApiPublicCronOpsRemindersRoute
   ApiPublicCronRentRemindersRoute: typeof ApiPublicCronRentRemindersRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
+  ApiPublicFleetPaymentTextPauseRoute: typeof ApiPublicFleetPaymentTextPauseRoute
   ApiPublicInboundEmailRoute: typeof ApiPublicInboundEmailRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicResendWebhookRoute: typeof ApiPublicResendWebhookRoute
@@ -886,6 +900,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCronWizardRecoveryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/payment-text-pause': {
+      id: '/api/public/fleet/payment-text-pause'
+      path: '/api/public/fleet/payment-text-pause'
+      fullPath: '/api/public/fleet/payment-text-pause'
+      preLoaderRoute: typeof ApiPublicFleetPaymentTextPauseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/inbound/email': {
       id: '/api/public/inbound/email'
       path: '/api/public/inbound/email'
@@ -983,6 +1004,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicCronOpsRemindersRoute: ApiPublicCronOpsRemindersRoute,
   ApiPublicCronRentRemindersRoute: ApiPublicCronRentRemindersRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
+  ApiPublicFleetPaymentTextPauseRoute: ApiPublicFleetPaymentTextPauseRoute,
   ApiPublicInboundEmailRoute: ApiPublicInboundEmailRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicResendWebhookRoute: ApiPublicResendWebhookRoute,

@@ -67,6 +67,8 @@ function fakeDb(seed: Record<string, Row[]>) {
       update(p: Row) { op = "update"; patch = p; return b; },
       eq(c: string, v: any) { filters.push((r) => r[c] === v); return b; },
       in(c: string, vs: any[]) { filters.push((r) => vs.includes(r[c])); return b; },
+      is(c: string, v: any) { filters.push((r) => (r[c] ?? null) === v); return b; },
+      gt(c: string, v: any) { filters.push((r) => String(r[c]) > String(v)); return b; },
       maybeSingle() { single = true; return b; },
       single() { single = true; return b; },
       limit() { return b; }, order() { return b; },
@@ -658,5 +660,49 @@ describe("wiring", () => {
     expect(sql).toMatch(/UNIQUE \(rental_id, due_date, stage, channel\)/i);
     expect(sql).toMatch(/private\.is_manager\(\)/);
     expect(sql).toMatch(/REVOKE ALL ON public\.rent_reminder_log FROM anon/i);
+  });
+});
+
+describe("payment text pause (deal)", () => {
+  const pause = (rentalId: string, until: string, extra: Record<string, any> = {}) => ({ id: `p-${rentalId}`, rental_id: rentalId, starts_at: "2026-11-01T00:00:00Z", pause_until: until, reason: "Deal: pays by Friday", cancelled_at: null, ...extra });
+  test("a paused renter gets no reminder; others still do; nothing claimed for the paused one", async () => {
+    const db = fakeDb({ ...seed({ on: [...RENT_REMINDER_SWITCHES] }), payment_text_pauses: [pause(R_STRIPE, "2026-11-21T04:59:59Z")] });
+    const sp = spies();
+    const run = await runRentReminders(db, sp.deps(at("2026-11-09", 12), failedSnap("2026-11-09")));
+    expect(sp.sms.filter((s) => s.rentalId === R_STRIPE)).toHaveLength(0);
+    expect(run.skipped.paused).toBe(1);
+    expect((db._state.rent_reminder_log ?? []).filter((r: any) => r.rental_id === R_STRIPE)).toHaveLength(0);
+  });
+  test("an expired or cancelled pause does not hold anything", async () => {
+    for (const p of [pause(R_STRIPE, "2026-11-08T00:00:00Z"), pause(R_STRIPE, "2026-11-30T00:00:00Z", { cancelled_at: "2026-11-05T00:00:00Z" })]) {
+      const db = fakeDb({ ...seed({ on: [...RENT_REMINDER_SWITCHES] }), payment_text_pauses: [p] });
+      const sp = spies();
+      const run = await runRentReminders(db, sp.deps(at("2026-11-09", 12), failedSnap("2026-11-09")));
+      expect(run.skipped.paused ?? 0).toBe(0);
+    }
+  });
+  test("an unreadable pause table holds the notice (pause_unavailable); a missing table means not paused", async () => {
+    const sp = spies();
+    const db = fakeDb(seed({ on: [...RENT_REMINDER_SWITCHES] }));
+    const r1 = await runRentReminders(db, { ...sp.deps(at("2026-11-09", 12), failedSnap("2026-11-09")), pauseCheck: async () => "unavailable" as const });
+    expect(r1.skipped.pause_unavailable).toBeGreaterThan(0);
+    expect(sp.sms.length + sp.email.length).toBe(0);
+    const { activePaymentPause } = await import("../src/lib/payment-text-pause.server");
+    const missing = { from: () => ({ select: () => ({ eq: () => ({ is: () => ({ gt: async () => ({ data: null, error: { code: "PGRST205", message: "Could not find the table 'public.payment_text_pauses' in the schema cache" } }) }) }) }) }) };
+    expect(await activePaymentPause(missing, R_STRIPE)).toEqual({ paused: false });
+  });
+  test("the Stripe failed-payment text is held during a pause and claims no ledger slot", async () => {
+    const db = fakeDb({ ...seed({ on: ["payment_failed_text", ...RENT_REMINDER_SWITCHES] }), payment_text_pauses: [pause(R_STRIPE, "2026-11-21T04:59:59Z")] });
+    const calls: any[] = [];
+    const invoice = { id: "in_failed", status: "open", hosted_invoice_url: INVOICE_URL, created: Math.floor(at("2026-11-09", 12).getTime() / 1000) };
+    const out = await sendFailedPaymentText(db, { invoice, amount: 350, rentalId: R_STRIPE, applicationId: APP_S, firstName: "Regina", phone: "3212870986" }, { sendSms: async (a: any) => { calls.push(a); return { ok: true }; }, now: at("2026-11-09", 12, 43) });
+    expect(out).toEqual({ sent: false, reason: "paused" });
+    expect(calls).toHaveLength(0);
+    expect(db._state.rent_reminder_log ?? []).toHaveLength(0);
+  });
+  test("the Stripe webhook failed-payment emails check the pause first", () => {
+    const w = readFileSync("src/routes/api/public/payments/webhook.ts", "utf8");
+    expect(w).toMatch(/activePaymentPause\(admin, rental\.id[\s\S]{0,200}\? \(\{ kind: 'taken' \} as const\)\s*: await webhookReminderSlot\(admin, rental\.id, invoice, 'email'/);
+    expect(w).toMatch(/const pause = await activePaymentPause\(admin, rentalId\);\s*if \(pause === 'unavailable' \|\| pause\.paused\) \{[\s\S]{0,120}\} else \{\s*const failedNotice = await sendPaymentFailedEmail/);
   });
 });
