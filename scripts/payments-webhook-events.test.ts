@@ -59,6 +59,7 @@ function fakeDb(seed: Record<string, Row[]>) {
       eq(c: string, v: any) { filters.push((r) => r[c] === v); return b; },
       neq(c: string, v: any) { filters.push((r) => r[c] !== v); return b; },
       in(c: string, vs: any[]) { filters.push((r) => vs.includes(r[c])); return b; },
+      is(c: string, v: any) { filters.push((r) => (r[c] ?? null) === v); return b; },
       or(expr: string) { filters.push(orPredicate(expr)); return b; },
       maybeSingle() { single = true; return b; },
       limit() { return b; },
@@ -101,6 +102,19 @@ const pi = (over: Row = {}): Row => ({
 const ok = async (r: Response) => { assert.equal(r.status, 200); return r; };
 
 describe("payments webhook — simulated Stripe events", () => {
+  it("a paid $50 Reservation Fee (Checkout after signing) is marked paid and holds the reserved car right away", async () => {
+    const db = fakeDb({
+      payments: [{ id: P1, driver_id: "app1", type: "fee", reason: "reservation_fee", status: "unpaid", amount: 50, balance_due: 50, notes: "reservation_fee:ag1", failure_reason: null, notified_status: null, rental_id: null }],
+      rentals: [{ id: RENTAL, application_id: "app1", status: "reserved", reservation_deposit_status: "pending", reservation_deposit_required: true }],
+    });
+    const event = { type: "payment_intent.succeeded", data: { object: pi({ amount: 5000, metadata: { reason: "reservation_fee", applicationId: "app1", agreementId: "ag1", paymentIds: P1 } }) } };
+    await ok(await postVerifiedPaymentWebhook(event, db, "live"));
+    assert.equal(db._state.payments[0].status, "paid");
+    assert.equal(db._state.rentals[0].reservation_deposit_status, "applied", "the car was not held once the fee was paid");
+    assert.equal(db._state.rentals[0].reservation_deposit_payment_id, P1);
+    assert.equal(db._state.payments[0].rental_id, RENTAL);
+  });
+
   it("duplicate payment_intent.succeeded pays the row once and the replay changes nothing", async () => {
     const db = fakeDb({ payments: [{ id: P1, status: "pending", balance_due: 350, failure_reason: null, notified_status: null }] });
     const event = { type: "payment_intent.succeeded", data: { object: pi({ metadata: { rentalId: RENTAL, reason: "rent", paymentIds: P1 } }) } };
