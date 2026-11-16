@@ -98,12 +98,13 @@ export function buildReservationConfirmedPayload(f: NonNullable<Awaited<ReturnTy
     },
     agreement: f.agreement ? { id: f.agreement.id, signed_at: f.agreement.signed_at } : null,
     admin_url: appId ? `${site}/admin?tab=drivers&id=${encodeURIComponent(appId)}` : `${site}/admin`,
+    pickup_checklist_url: `${site}/pickup/${f.rental.id}`,
   } as Record<string, any>;
 }
 
 export function staffSmsBody(p: Record<string, any>): string {
   const parts = [`REAL RENTALS pickup confirmed: ${p.renter_name ?? "Renter"}`, p.vehicle?.label ?? "vehicle TBD", p.pickup?.label ?? p.pickup?.date];
-  return `${parts.join(", ")}. ${p.admin_url}`.slice(0, 300);
+  return `${parts.join(", ")}. Pickup checklist: ${p.pickup_checklist_url ?? p.admin_url}`.slice(0, 300);
 }
 
 export function staffEmail(p: Record<string, any>): { subject: string; html: string } {
@@ -117,6 +118,7 @@ export function staffEmail(p: Record<string, any>): { subject: string; html: str
       ${row("Location", p.pickup?.location ?? "")}
       ${row("Field rep", p.field_rep?.name ?? "")}
     </table>
+    ${p.pickup_checklist_url ? `<p style="margin-top:16px"><a href="${esc(p.pickup_checklist_url)}">Open Pickup Checklist</a> (on your phone at pickup)</p>` : ""}
     <p style="margin-top:16px"><a href="${esc(p.admin_url)}" style="display:inline-block;background:#D03020;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600">Open In Admin</a></p>
   </div>`;
   return { subject: `Pickup Confirmed: ${p.renter_name ?? "Renter"}, ${p.pickup?.label ?? p.pickup?.date ?? ""}`.slice(0, 180), html };

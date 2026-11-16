@@ -61,7 +61,7 @@ export type {
  * sees all of it at once instead of fixing one thing, retrying, and hitting
  * the next.
  */
-async function evaluateReadiness(
+export async function evaluateReadiness(
   admin: any,
   applicationId: string,
   vehicleIdOverride?: string | null,
@@ -299,10 +299,7 @@ export type ActivateResult = {
   auditError?: string;
 };
 
-export const activateRental = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) =>
-    z
+const ActivateRentalInput = z
       .object({
         applicationId: z.string().uuid(),
         vehicleId: z.string().uuid(),
@@ -333,11 +330,27 @@ export const activateRental = createServerFn({ method: "POST" })
          * access change); recorded in the activation audit.
          */
         suppressWelcome: z.boolean().optional(),
-      })
-      .parse(d),
-  )
-  .handler(async ({ data, context }): Promise<ActivateResult> => {
-    const actor = await assertStaff(context.supabase, context.userId);
+      });
+export type ActivateRentalInput = z.input<typeof ActivateRentalInput>;
+
+export const activateRental = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => ActivateRentalInput.parse(d))
+  .handler(async ({ data, context }): Promise<ActivateResult> =>
+    activateRentalCore(await assertStaff(context.supabase, context.userId), data),
+  );
+
+/**
+ * The whole Activate Rental path (readiness, account, activate_rental_checked_tx,
+ * welcome, Stripe link). The server function above and the pickup checklist
+ * (pickup-handover.functions.ts) both call it, so there is one activation path.
+ * `actor` must come from requireManager; the database checks it again.
+ */
+export async function activateRentalCore(
+  actor: Awaited<ReturnType<typeof assertStaff>>,
+  input: ActivateRentalInput,
+): Promise<ActivateResult> {
+    const data = ActivateRentalInput.parse(input);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const readiness = await evaluateReadiness(supabaseAdmin, data.applicationId, data.vehicleId);
@@ -618,7 +631,7 @@ export const activateRental = createServerFn({ method: "POST" })
     // rental.activated was written inside activate_rental_checked_tx (or, without
     // the wrapper, immediately after activate_rental_tx with any failure returned).
     return { ok: true, rentalId: rental.id as string, accountCreated: created, inviteUrl, ...(auditError ? { auditError } : {}) };
-  });
+}
 
 export const endRental = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

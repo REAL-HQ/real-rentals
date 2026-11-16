@@ -18,6 +18,8 @@
 import { REQUIRED_VAULT_CATEGORIES, requirementCategory } from "@/lib/required-docs";
 
 export const FLEET_ACTOR_LABEL = "FLEET (automated)";
+/** How a date FLEET read off the license photo is labelled everywhere. Never "verified". */
+export const LICENSE_READING_LABEL = "Read by FLEET from license photo";
 
 /** Stages an applicant is "awaiting review" in (submitted, not yet decided). */
 export const FLEET_REVIEW_STAGES = ["new", "reviewing", "complete"] as const;
@@ -69,6 +71,8 @@ export type FleetReviewInput = {
   openNeedsStaff: { reason: string; created_at: string | null } | null;
   /** Other applications with the same phone or email that were declined or closed. */
   priorDeclined: number;
+  /** The latest FLEET reading of the license photo, if any (fleet-license-facts). */
+  licenseReading?: { applied?: string[] | null } | null;
   now: Date;
 };
 
@@ -185,8 +189,11 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   // Today the call happens after approval, so a missing interview is a note.
   if (!s.interview_completed_at) note("no_interview", "Screening interview not recorded yet.");
   if (input.readinessState === "needs_attention") flag("readiness_attention", "Readiness says Needs Attention.");
-  for (const c of docs.missing_advisory) flag(`missing_${c}`, `Advisory document missing: ${c.replace(/_/g, " ")}.`);
+  // Missing income proof is requested from the applicant (missing-documents
+  // outreach), not sent to staff (Dolmar, t298s1611).
+  for (const c of docs.missing_advisory) note(`requested_${c}`, `Advisory document not on file yet (requested from the applicant): ${c.replace(/_/g, " ")}.`);
   if (docs.unreviewed.length) note("docs_unreviewed", `Not yet reviewed by staff: ${docs.unreviewed.join(", ")}.`);
+  if (input.licenseReading?.applied?.length) note("license_read_by_fleet", `${LICENSE_READING_LABEL} (${input.licenseReading.applied.join(", ")}); not verified, the field rep confirms the license at pickup.`);
   if (age === null) flag("no_dob", "No date of birth on file.");
   else if (age < T.youngDriverAge) flag("young_driver", `Driver is ${age}.`);
   if (licDays !== null && licDays >= 0 && licDays <= T.licenseExpiryDays) flag("license_expiring", `License expires in ${licDays} days.`);
@@ -201,7 +208,10 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   const gig = String(app.gig_status ?? "").toLowerCase();
   if (gig && !gig.startsWith("yes")) flag("not_driving_yet", `Gig status: ${app.gig_status}.`);
   if (String(s.gig_account_status ?? "") === "deactivated") flag("gig_deactivated", "Gig account deactivated.");
-  if (Number(app.resubmission_count ?? 0) > 0) flag("resubmitted", `Applied ${Number(app.resubmission_count) + 1} times.`);
+  // "Applied before" matters only when an earlier application was declined or
+  // closed (prior_declined below). Re-sending the same open application is a
+  // note (Dolmar, t298s1611).
+  if (Number(app.resubmission_count ?? 0) > 0) note("resubmitted", `Submitted the form ${Number(app.resubmission_count) + 1} times.`);
   if (input.priorDeclined > 0) flag("prior_declined", `${input.priorDeclined} earlier application(s) with the same phone or email were declined or closed.`);
   for (const [k, label] of [["background_check_status", "Background check"], ["mvr_status", "Driving record (MVR)"]] as const) {
     const v = String(app[k] ?? "").trim();
