@@ -115,6 +115,7 @@ function seed() {
     quo_events: [],
     outbound_messages: [],
     driver_screenings: [],
+    app_settings: [], // the review list reads the RentID switch (fleet-rentid.server.ts)
   });
 }
 

@@ -60,6 +60,7 @@ import { Route as ApiPublicFleetMissingItemsRouteImport } from './routes/api/pub
 import { Route as ApiPublicFleetPaymentTextPauseRouteImport } from './routes/api/public/fleet/payment-text-pause'
 import { Route as ApiPublicFleetPickupSlotsRouteImport } from './routes/api/public/fleet/pickup-slots'
 import { Route as ApiPublicFleetResendLinkRouteImport } from './routes/api/public/fleet/resend-link'
+import { Route as ApiPublicFleetScreeningResultRouteImport } from './routes/api/public/fleet/screening-result'
 import { Route as ApiPublicFleetSendAgreementRouteImport } from './routes/api/public/fleet/send-agreement'
 import { Route as ApiPublicFleetStatusRouteImport } from './routes/api/public/fleet/status'
 import { Route as ApiPublicFleetTeamAlertRouteImport } from './routes/api/public/fleet/team-alert'
@@ -345,6 +346,12 @@ const ApiPublicFleetResendLinkRoute =
     path: '/api/public/fleet/resend-link',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetScreeningResultRoute =
+  ApiPublicFleetScreeningResultRouteImport.update({
+    id: '/api/public/fleet/screening-result',
+    path: '/api/public/fleet/screening-result',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetSendAgreementRoute =
   ApiPublicFleetSendAgreementRouteImport.update({
     id: '/api/public/fleet/send-agreement',
@@ -458,6 +465,7 @@ export interface FileRoutesByFullPath {
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
+  '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
   '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/fleet/team-alert': typeof ApiPublicFleetTeamAlertRoute
@@ -522,6 +530,7 @@ export interface FileRoutesByTo {
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
+  '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
   '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/fleet/team-alert': typeof ApiPublicFleetTeamAlertRoute
@@ -587,6 +596,7 @@ export interface FileRoutesById {
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
+  '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
   '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/fleet/team-alert': typeof ApiPublicFleetTeamAlertRoute
@@ -653,6 +663,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/resend-link'
+    | '/api/public/fleet/screening-result'
     | '/api/public/fleet/send-agreement'
     | '/api/public/fleet/status'
     | '/api/public/fleet/team-alert'
@@ -717,6 +728,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/resend-link'
+    | '/api/public/fleet/screening-result'
     | '/api/public/fleet/send-agreement'
     | '/api/public/fleet/status'
     | '/api/public/fleet/team-alert'
@@ -781,6 +793,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/resend-link'
+    | '/api/public/fleet/screening-result'
     | '/api/public/fleet/send-agreement'
     | '/api/public/fleet/status'
     | '/api/public/fleet/team-alert'
@@ -846,6 +859,7 @@ export interface RootRouteChildren {
   ApiPublicFleetPaymentTextPauseRoute: typeof ApiPublicFleetPaymentTextPauseRoute
   ApiPublicFleetPickupSlotsRoute: typeof ApiPublicFleetPickupSlotsRoute
   ApiPublicFleetResendLinkRoute: typeof ApiPublicFleetResendLinkRoute
+  ApiPublicFleetScreeningResultRoute: typeof ApiPublicFleetScreeningResultRoute
   ApiPublicFleetSendAgreementRoute: typeof ApiPublicFleetSendAgreementRoute
   ApiPublicFleetStatusRoute: typeof ApiPublicFleetStatusRoute
   ApiPublicFleetTeamAlertRoute: typeof ApiPublicFleetTeamAlertRoute
@@ -1218,6 +1232,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetResendLinkRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/screening-result': {
+      id: '/api/public/fleet/screening-result'
+      path: '/api/public/fleet/screening-result'
+      fullPath: '/api/public/fleet/screening-result'
+      preLoaderRoute: typeof ApiPublicFleetScreeningResultRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/send-agreement': {
       id: '/api/public/fleet/send-agreement'
       path: '/api/public/fleet/send-agreement'
@@ -1350,6 +1371,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicFleetPaymentTextPauseRoute: ApiPublicFleetPaymentTextPauseRoute,
   ApiPublicFleetPickupSlotsRoute: ApiPublicFleetPickupSlotsRoute,
   ApiPublicFleetResendLinkRoute: ApiPublicFleetResendLinkRoute,
+  ApiPublicFleetScreeningResultRoute: ApiPublicFleetScreeningResultRoute,
   ApiPublicFleetSendAgreementRoute: ApiPublicFleetSendAgreementRoute,
   ApiPublicFleetStatusRoute: ApiPublicFleetStatusRoute,
   ApiPublicFleetTeamAlertRoute: ApiPublicFleetTeamAlertRoute,

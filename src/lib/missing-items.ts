@@ -8,8 +8,12 @@
  *
  * The items mirror what FLEET's review treats as missing (fleet-review.ts):
  *   license_front  hard document (blocks FLEET approval)
- *   gig_profile    hard document (blocks FLEET approval)
- *   income         advisory document (sends the applicant to staff)
+ *   gig_profile    hard document for gig drivers ("Yes, already driving" or a
+ *                  blank answer). Not asked of applicants who answered
+ *                  Not yet / No / Pending (notDrivingGigYet).
+ *   income         advisory for gig drivers; required (and asked for) for
+ *                  applicants not driving yet, as an income document or an
+ *                  earnings screenshot.
  *   dob            "no_dob" escalation
  *   license_expiration  "no_license_expiry" escalation
  * The back of the license is optional and never asked for. Insurance is
@@ -20,6 +24,8 @@
  * them on: "missing_items_outreach" (ongoing) and "missing_items_backfill"
  * (the one-time message to existing applicants; it can never send twice).
  */
+
+import { notDrivingGigYet } from "@/lib/fleet-review";
 
 export const MISSING_ITEMS_SETTINGS_KEY = "missing_items_outreach";
 export const MISSING_ITEMS_AUTOMATION_KEY = "missing_items_outreach";
@@ -53,6 +59,17 @@ export const MISSING_ITEM_COPY: Record<MissingItemKey, { email: string; sms: str
     sms: "proof of income (gig work or any other source)",
   },
 };
+
+/** Not-yet / No / Pending drivers: ask for income proof instead of a gig profile screenshot. */
+export const MISSING_ITEM_COPY_NOT_YET_INCOME = {
+  email: "Proof of income (an income document or an earnings screenshot)",
+  sms: "proof of income (an income document or an earnings screenshot)",
+};
+
+export function itemCopy(key: MissingItemKey, opts?: { notDrivingYet?: boolean }): { email: string; sms: string } {
+  if (key === "income" && opts?.notDrivingYet) return MISSING_ITEM_COPY_NOT_YET_INCOME;
+  return MISSING_ITEM_COPY[key];
+}
 
 export type OutreachSettings = {
   /** Hours since the applicant's last activity before the first message. */
@@ -179,7 +196,10 @@ export function missingItems(app: OutreachApp, docs: readonly OutreachDoc[]): Mi
     answered(app.gig_status) && answered(app.drive_type);
   if (!detailsDone) out.push("application_details");
   if (!have.has("license_front") && !ownFile(app.license_photo_url)) out.push("license_front");
-  if (!have.has("gig_profile") && !ownFile(app.profile_screenshot_url)) out.push("gig_profile");
+  // Gig drivers (or a blank gig answer) still need a gig-profile screenshot.
+  // Not yet / No / Pending drivers are asked for proof of income instead
+  // (Dolmar, t348u / t350u). They have no gig profile to screenshot.
+  if (!notDrivingGigYet(app) && !have.has("gig_profile") && !ownFile(app.profile_screenshot_url)) out.push("gig_profile");
   // A gig earnings or trip-history screenshot counts as proof of income
   // (Dolmar, t306s1653): those applicants are never asked for it.
   const tripShot = Array.isArray(app.trip_screenshots) && app.trip_screenshots.some(ownFile);
@@ -309,6 +329,8 @@ export type CopyVars = {
    * one-time message) and the Auto-Close switch is on: the copy says when.
    */
   closeInDays?: number | null;
+  /** When true, income wording asks for an income document or earnings screenshot, not a gig profile. */
+  notDrivingYet?: boolean;
 };
 
 export function firstNameOf(full: string | null | undefined): string {
@@ -317,8 +339,8 @@ export function firstNameOf(full: string | null | undefined): string {
   return f.charAt(0).toUpperCase() + f.slice(1).toLowerCase();
 }
 
-function smsList(items: readonly MissingItemKey[]): string {
-  const parts = items.map((k) => MISSING_ITEM_COPY[k].sms);
+function smsList(items: readonly MissingItemKey[], notDrivingYet?: boolean): string {
+  const parts = items.map((k) => itemCopy(k, { notDrivingYet }).sms);
   if (parts.length <= 1) return parts.join("");
   return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }
@@ -339,7 +361,7 @@ export const OUTREACH_SUBJECTS: Record<1 | 2 | 3, string> = {
 };
 
 export function outreachEmail(step: 1 | 2 | 3, v: CopyVars): { subject: string; body: string } {
-  const list = v.items.map((k) => `• ${MISSING_ITEM_COPY[k].email}`).join("\n");
+  const list = v.items.map((k) => `• ${itemCopy(k, { notDrivingYet: v.notDrivingYet }).email}`).join("\n");
   const opener =
     step === 1
       ? `Big news, ${v.firstName}: insurance is now INCLUDED in your weekly rental, rideshare endorsement and all. No shopping around for coverage. Just grab the keys and start earning. You're almost there: finish your application and you could be driving this week.
@@ -372,7 +394,7 @@ REAL RENTALS`;
 }
 
 export function outreachSms(step: 1 | 2 | 3, v: CopyVars): string {
-  const need = smsList(v.items);
+  const need = smsList(v.items, v.notDrivingYet);
   if (step === 1) {
     const close = v.closeInDays ? ` No reply in ${v.closeInDays} days and we'll close your application.` : "";
     return `Hi ${v.firstName}, it's REAL RENTALS. Big news: insurance with a rideshare endorsement is now INCLUDED in your weekly rental. No shopping for coverage, just grab the keys and start earning. To finish qualifying and get your quote, we still need your ${need}. ${v.items.length === 1 ? "Add it here" : "Add them here"}: ${v.link}${close} Reply STOP to opt out.`;

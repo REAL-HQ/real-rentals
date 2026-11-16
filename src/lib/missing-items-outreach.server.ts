@@ -42,6 +42,7 @@ import {
   type OutreachLogRow,
   type OutreachSettings,
 } from "@/lib/missing-items";
+import { notDrivingGigYet } from "@/lib/fleet-review";
 
 export const OUTREACH_LOG_TABLE = "applicant_outreach_log";
 const APP_COLUMNS =
@@ -253,7 +254,7 @@ export async function runMissingItemsOutreach(
   if (dryRun) {
     const pick = batch.slice(0, Math.max(0, opts.sampleCount ?? 3));
     summary.samples = pick.map((p) => {
-      const vars = { firstName: "[First Name]", items: p.items, link: PREVIEW_LINK, companyPhone: phone, closeInDays: closeInDays(p.step) };
+      const vars = { firstName: "[First Name]", items: p.items, link: PREVIEW_LINK, companyPhone: phone, closeInDays: closeInDays(p.step), notDrivingYet: notDrivingGigYet(p.app) };
       return { step: p.step, contact: redactContact(p.app), items: p.items, email: p.email ? outreachEmail(p.step, vars) : null, sms: p.sms ? outreachSms(p.step, vars) : null };
     });
     return summary;
@@ -299,7 +300,7 @@ async function sendOne(admin: any, p: PlannedSend, mode: "ongoing" | "backfill",
     throw e;
   }
 
-  const vars = { firstName: firstNameOf(p.app.full_name), items: p.items, link, companyPhone, closeInDays };
+  const vars = { firstName: firstNameOf(p.app.full_name), items: p.items, link, companyPhone, closeInDays, notDrivingYet: notDrivingGigYet(p.app) };
   const channels: string[] = [];
   const errors: string[] = [];
   const { sendRenterEmail, sendRenterSms } = await import("@/lib/driver-contacts.server");

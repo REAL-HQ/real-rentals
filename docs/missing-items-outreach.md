@@ -10,8 +10,8 @@ an Owner turns a switch on in Back Office → Automations.
 |---|---|---|
 | application_details | A few quick answers about the car you want (about 2 minutes) | Rental or Driving page never answered (vehicle, pickup date, duration, gig status, full/part time) |
 | license_front | A photo of the front of your driver's license | No current, non-rejected license_front document or upload |
-| gig_profile | A screenshot of your gig app profile showing your rating and your number of trips or deliveries | Same, gig_profile |
-| income | Proof of income from gig work or any other source, like a recent earnings summary, pay stub, or bank statement. This just helps us make sure the rental is a good fit and comfortable for your budget. | Same, income (new wizard upload) |
+| gig_profile | A screenshot of your gig app profile showing your rating and your number of trips or deliveries | Gig drivers ("Yes, already driving") or a blank gig answer, when no current gig_profile is on file. Not asked of Not yet / No / Pending applicants. |
+| income | Gig drivers: proof of income from gig work or any other source (earnings summary, pay stub, or bank statement). Not yet / No / Pending: "Proof of income (an income document or an earnings screenshot)". | Missing income document, trip-history / earnings screenshot, or income_proof_url. For not-yet drivers this replaces the gig-profile ask (Dolmar, t348u / t350u). |
 
 A current, non-rejected trip-history / gig earnings screenshot (vault category `trip_history`, or a saved `applications.trip_screenshots` path) counts as proof of income (Dolmar, t306s1653): those applicants are never asked for income.
 

@@ -22,7 +22,7 @@ function seed(extra: Record<string, any[]> = {}) {
   return fakeDb({
     applications: [
       { id: L1, full_name: "ana test", status: "approved", email: "ana@example.com", phone: "8135550101", sms_consent: true, deleted_at: null },
-      { id: L2, full_name: "ben test", status: "new", email: "ben@example.com", phone: "8135550102", sms_consent: true, deleted_at: null, vehicle_size: "sedan", pickup_date: "2026-11-18", expected_duration: "1-3 months", gig_status: "active", drive_type: "uber" },
+      { id: L2, full_name: "ben test", status: "new", email: "ben@example.com", phone: "8135550102", sms_consent: true, deleted_at: null, vehicle_size: "sedan", pickup_date: "2026-11-18", expected_duration: "1-3 months", gig_status: "Yes, already driving", drive_type: "uber" },
     ],
     agreements: [{ id: AG, application_id: L1, status: "sent", sent_at: "2026-11-16T08:00:00Z", signer_email: "ana@example.com", merge_data: { ...fullMerge, driver_name: "Ana Test", vehicle: "2017 Ford Fusion" }, voided_at: null, created_at: "2026-11-16T08:00:00Z", token_hash: "old" }],
     esign_recipients: [{ id: "rc1", document_id: AG, role: "signer", token_hash: "old" }],
@@ -143,6 +143,16 @@ describe("upload", () => {
     expect(calls.sms[0].body).toContain("https://drivereal.com/thank-you?t=TEST");
     expect(calls.audit[0].action).toBe("application.upload_link_resent");
     expect(db.state.outbound_messages[0]).toMatchObject({ kind: "missing_items_resend", channel: "email" });
+  });
+  test("not-yet drivers are asked for income proof, not a gig screenshot", async () => {
+    const db = seed();
+    db.state.applications[1].gig_status = "Not yet, ready to start";
+    const { d, calls } = deps(db);
+    const out = await call({ kind: "upload", lead_id: L2 }, d);
+    expect(out.status).toBe(200);
+    expect(out.json.missing).toEqual(["income"]);
+    expect(calls.sms[0].body).toContain("proof of income (an income document or an earnings screenshot)");
+    expect(calls.sms[0].body).not.toContain("gig profile screenshot");
   });
   test("a missing-items message in the last 24 hours: 429; nothing missing or closed: 409", async () => {
     const db = seed({ outbound_messages: [{ id: "m1", application_id: L2, kind: "missing_items", created_at: "2026-11-16T05:00:00Z" }] });

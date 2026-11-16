@@ -35,6 +35,34 @@ export const FLEET_ADVISORY_DOC_CATEGORIES = REQUIRED_VAULT_CATEGORIES.filter(
   (c) => !(FLEET_HARD_DOC_CATEGORIES as readonly string[]).includes(c),
 );
 
+/**
+ * Applicants who answered that they are not driving for a gig app yet ("Not
+ * yet, ready to start", "No", "Pending"). They have no gig profile to
+ * screenshot, so requiring one kept them out of FLEET's review list forever
+ * (the Nov 16 2026 skip: James Spence, Jonathan Simmons). A blank answer is
+ * not "not driving": the application is unfinished and keeps the gig rules.
+ */
+export function notDrivingGigYet(app: Record<string, any> | null | undefined): boolean {
+  const g = String(app?.gig_status ?? "").trim().toLowerCase();
+  return g !== "" && !g.startsWith("yes");
+}
+
+/**
+ * The documents FLEET needs before it may review/approve this applicant.
+ * Gig drivers: license front + gig profile (income advisory).
+ * Not driving yet: license front + proof of income, because there is no gig
+ * track record to stand in for it (Dolmar, t339u). The gig profile is not
+ * asked for, required or advised.
+ */
+export const FLEET_NO_TRACK_RECORD_DOC_CATEGORIES = ["license_front", "income"] as const;
+export function hardDocCategoriesFor(app: Record<string, any> | null | undefined): readonly string[] {
+  return notDrivingGigYet(app) ? FLEET_NO_TRACK_RECORD_DOC_CATEGORIES : FLEET_HARD_DOC_CATEGORIES;
+}
+function advisoryDocCategoriesFor(app: Record<string, any> | null | undefined): readonly string[] {
+  if (notDrivingGigYet(app)) return [];
+  return FLEET_ADVISORY_DOC_CATEGORIES;
+}
+
 /** Recorded screening outcomes that block an automated approval. */
 const BAD_CHECK = /^(fail|failed|flag|flagged|consider|adverse|rejected|declined|suspended|denied)$/i;
 const GOOD_CHECK = /^(pass|passed|clear|cleared|approved|ok)$/i;
@@ -73,6 +101,12 @@ export type FleetReviewInput = {
   priorDeclined: number;
   /** The latest FLEET reading of the license photo, if any (fleet-license-facts). */
   licenseReading?: { applied?: string[] | null } | null;
+  /**
+   * app_settings.fleet_rentid.require_for_approval (OFF by default). When on,
+   * FLEET may approve only after a RentID result recorded both checks as
+   * passed (background_check_status and mvr_status). See fleet-rentid.server.ts.
+   */
+  rentidRequired?: boolean;
   now: Date;
 };
 
@@ -95,6 +129,14 @@ export type FleetReviewAssessment = {
   /** True when a background or MVR result is flagged: send to staff, never approve. */
   screening_flagged: boolean;
   ready_for_review: boolean;
+  /**
+   * True when the applicant is not driving for a gig app yet. There is no
+   * trip/rating track record, so the server refuses FLEET's approve while any
+   * escalation exists (strict approval): FLEET may approve only a clean file.
+   */
+  no_track_record: boolean;
+  /** The documents this applicant needs before FLEET may approve (depends on gig status). */
+  required_documents: string[];
 };
 
 function ageOn(dob: unknown, now: Date): number | null {
@@ -121,7 +163,9 @@ function numberOrNull(v: unknown): number | null {
 }
 
 /** Current, non-rejected vault categories, plus the per-category review picture. */
-export function docPicture(docs: readonly FleetDoc[]) {
+export function docPicture(docs: readonly FleetDoc[], app?: Record<string, any> | null) {
+  const hard = app === undefined ? FLEET_HARD_DOC_CATEGORIES : hardDocCategoriesFor(app);
+  const advisory = app === undefined ? FLEET_ADVISORY_DOC_CATEGORIES : advisoryDocCategoriesFor(app);
   const have = new Set<string>();
   const reviewed = new Set<string>();
   const rejected = new Set<string>();
@@ -137,24 +181,29 @@ export function docPicture(docs: readonly FleetDoc[]) {
   }
   // A later good upload replaces a rejected one.
   for (const c of have) rejected.delete(c);
-  const missing_required = FLEET_HARD_DOC_CATEGORIES.filter((c) => !have.has(c));
-  const missing_advisory = FLEET_ADVISORY_DOC_CATEGORIES.filter((c) => !have.has(c));
-  const unreviewed = [...FLEET_HARD_DOC_CATEGORIES].filter((c) => have.has(c) && !reviewed.has(c));
+  const missing_required = hard.filter((c) => !have.has(c));
+  const missing_advisory = advisory.filter((c) => !have.has(c));
+  const unreviewed = [...hard].filter((c) => have.has(c) && !reviewed.has(c) && !(c === "income" && [...reviewed].some((r) => requirementCategory(r) === "income")));
   return { have: [...have].sort(), missing_required: [...missing_required], missing_advisory: [...missing_advisory], unreviewed, rejected: [...rejected].sort() };
 }
 
-/** The submitted application with the hard documents on file: what review needs. */
+/**
+ * The submitted application with the hard documents on file: what review
+ * needs. The hard documents depend on gig status (hardDocCategoriesFor), so
+ * `app` must carry gig_status; without it the gig-driver rule applies.
+ */
 export function readyForReview(app: Record<string, any>, docs: readonly FleetDoc[]): boolean {
   if (!app || app.deleted_at) return false;
   if (!(FLEET_REVIEW_STAGES as readonly string[]).includes(String(app.status ?? "").toLowerCase())) return false;
-  return docPicture(docs).missing_required.length === 0;
+  return docPicture(docs, app).missing_required.length === 0;
 }
 
 export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   const { app, now } = input;
   const s = input.screening ?? {};
   const status = String(app.status ?? "").toLowerCase();
-  const docs = docPicture(input.docs);
+  const docs = docPicture(input.docs, app);
+  const noTrackRecord = notDrivingGigYet(app);
   const blockers: ReviewItem[] = [];
   const esc: ReviewItem[] = [];
   const notes: ReviewItem[] = [];
@@ -198,6 +247,15 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   if (licDays !== null && licDays < 0) block("license_expired", "Driver's license is expired.");
   if (app.license_valid === false) block("license_invalid", "Applicant reported the license is not valid.");
   if (input.openNeedsStaff) block("open_needs_staff", `Waiting on staff: ${input.openNeedsStaff.reason}`);
+  // RentID gate (switch OFF by default): both checks must be recorded as
+  // passed before FLEET approves. Waiting on a check keeps the applicant in
+  // FLEET's list (see `ready` below) but refuses approve.
+  if (input.rentidRequired) {
+    for (const [k, label] of [["background_check_status", "Criminal record (RentID)"], ["mvr_status", "License status (RentID)"]] as const) {
+      const v = String(app[k] ?? "").trim();
+      if (!GOOD_CHECK.test(v) && !BAD_CHECK.test(v)) block(`rentid_${k}_required`, `${label} must be recorded as passed before FLEET can approve (now: ${v || "not recorded"}).`);
+    }
+  }
 
   // ---- default escalation checklist (FLEET's call)
   // Today the call happens after approval, so a missing interview is a note.
@@ -215,13 +273,23 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   const flags = Array.isArray(app.ai_flags) ? app.ai_flags.filter(Boolean) : [];
   if (flags.length) flag("ai_flags", `Application analysis flags: ${flags.map(String).join("; ")}.`);
   const rating = numberOrNull(app.rating ?? s.driver_rating);
+  // A rating someone does report still counts against them if it is low.
   if (rating !== null && rating > 0 && rating < T.minRating) flag("low_rating", `Gig rating ${rating} (minimum ${T.minRating.toFixed(1)}).`);
-  const trips = numberOrNull(app.trips_completed ?? s.trip_count);
-  if (trips === null) note("no_trips", `Trip count not known; confirm ${T.minTrips}+ trips and a ${T.minRating.toFixed(1)}+ rating on the gig screenshot before approving, otherwise send to staff.`);
-  else if (trips < T.minTrips) flag("few_trips", `${trips} trips completed (minimum ${T.minTrips}).`);
-  if (rating === null || rating <= 0) note("no_rating", `Gig rating not known; confirm ${T.minRating.toFixed(1)}+ on the gig screenshot before approving, otherwise send to staff.`);
-  const gig = String(app.gig_status ?? "").toLowerCase();
-  if (gig && !gig.startsWith("yes")) flag("not_driving_yet", `Gig status: ${app.gig_status}.`);
+  if (noTrackRecord) {
+    // Not driving for a gig app yet (Dolmar, t339u): no longer a reason to send
+    // to staff by itself. The 200-trip / 4.0 minimums cannot apply to someone
+    // with no trips, so they are replaced, not waived: proof of income is a
+    // required document (a hard blocker above) and approve is strict, meaning
+    // the server refuses it while ANY escalation exists (date of birth with
+    // age 25+, license expiry known and more than 30 days out, no analysis
+    // flags, no earlier declined application, checks pending or passed).
+    note("no_track_record", `Not driving for a gig app yet (${app.gig_status}). Trip and rating minimums do not apply; FLEET may approve only a clean file: proof of income on file, date of birth on file and ${T.youngDriverAge}+, license expiry on file and more than ${T.licenseExpiryDays} days out, no flags, no earlier declined application, background and driving record pending or passed.`);
+  } else {
+    const trips = numberOrNull(app.trips_completed ?? s.trip_count);
+    if (trips === null) note("no_trips", `Trip count not known; confirm ${T.minTrips}+ trips and a ${T.minRating.toFixed(1)}+ rating on the gig screenshot before approving, otherwise send to staff.`);
+    else if (trips < T.minTrips) flag("few_trips", `${trips} trips completed (minimum ${T.minTrips}).`);
+    if (rating === null || rating <= 0) note("no_rating", `Gig rating not known; confirm ${T.minRating.toFixed(1)}+ on the gig screenshot before approving, otherwise send to staff.`);
+  }
   if (String(s.gig_account_status ?? "") === "deactivated") flag("gig_deactivated", "Gig account deactivated.");
   // "Applied before" matters only when an earlier application was declined or
   // closed (prior_declined below). Re-sending the same open application is a
@@ -238,7 +306,10 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   }
   if (s.has_personal_insurance === true && s.insurance_name_matches_license === false) flag("insurance_name", "Insurance name does not match the license.");
 
-  const ready = blockers.length === 0 || (blockers.every((b) => b.code === "open_needs_staff"));
+  // Blockers that do not hide the applicant from FLEET's list: an open staff
+  // flag (filtered separately) and a RentID result still to come.
+  const waiting = (code: string) => code === "open_needs_staff" || /^rentid_.*_required$/.test(code);
+  const ready = blockers.every((b) => waiting(b.code));
   return {
     submitted,
     docs,
@@ -248,5 +319,7 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
     recommendation: screeningFlagged ? "needs_staff" : blockers.length ? "not_ready" : esc.length ? "needs_staff" : "approve",
     screening_flagged: screeningFlagged,
     ready_for_review: ready && readyForReview(app, input.docs),
+    no_track_record: noTrackRecord,
+    required_documents: [...hardDocCategoriesFor(app)],
   };
 }

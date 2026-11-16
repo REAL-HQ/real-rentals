@@ -7,8 +7,8 @@ import { PGlite } from "@electric-sql/pglite";
 import { AUTOMATIONS, isAutomationOn, isDefaultOff, settingKeyForEmailWorkflow } from "@/lib/automation-catalog";
 import {
   DEFAULT_OUTREACH_SETTINGS, MISSING_ITEMS_AUTOMATION_KEY, MISSING_ITEMS_BACKFILL_KEY, MISSING_ITEMS_BACKFILL_WORKFLOW,
-  MISSING_ITEMS_EMAIL_WORKFLOW, MISSING_ITEM_COPY, MISSING_ITEM_KEYS, canText, decideOutreach,
-  decideAutoClose, comeBackEmail, comeBackSms, MISSING_ITEMS_AUTOCLOSE_KEY, MISSING_ITEMS_AUTOCLOSE_WORKFLOW, missingItems, missingKey, outreachEmail, outreachSms, readOutreachSettings, redactContact,
+  MISSING_ITEMS_EMAIL_WORKFLOW, MISSING_ITEM_COPY, MISSING_ITEM_COPY_NOT_YET_INCOME, MISSING_ITEM_KEYS, canText, decideOutreach,
+  decideAutoClose, comeBackEmail, comeBackSms, MISSING_ITEMS_AUTOCLOSE_KEY, MISSING_ITEMS_AUTOCLOSE_WORKFLOW, itemCopy, missingItems, missingKey, outreachEmail, outreachSms, readOutreachSettings, redactContact,
   type DecisionInput, type OutreachApp, type OutreachLogRow,
 } from "@/lib/missing-items";
 import { easternHour, isSuppressedEmail, handleFleetMissingItems, reopenAutoClosed, runMissingItemsAutoClose, runMissingItemsOutreach } from "@/lib/missing-items-outreach.server";
@@ -20,7 +20,7 @@ const app = (o: Partial<OutreachApp> = {}): OutreachApp => ({
   id: "a1", full_name: "jordan sample", status: "new", email: "jordan@example.com", phone: "(404) 555-0134",
   sms_consent: true, sms_opt_out_at: null, dob: null, license_expiration: null, license_photo_url: null,
   profile_screenshot_url: null, income_proof_url: null,
-  vehicle_size: "Sedan", pickup_date: "2026-11-20", expected_duration: "1_month", gig_status: "active", drive_type: "full_time", created_at: daysAgo(10), updated_at: daysAgo(5),
+  vehicle_size: "Sedan", pickup_date: "2026-11-20", expected_duration: "1_month", gig_status: "Yes, already driving", drive_type: "full_time", created_at: daysAgo(10), updated_at: daysAgo(5),
   deleted_at: null, primary_application_id: null, legal_hold: false, ...o,
 });
 const decide = (o: Partial<DecisionInput> = {}) => {
@@ -639,5 +639,73 @@ describe("bounced and mistyped emails are not mailed again", () => {
     expect(h.emails.length).toBe(0);
     expect(h.texts.length).toBe(1);
     expect(r.channels).toEqual({ email_only: 0, email_and_sms: 0, sms_only: 1 });
+  });
+});
+
+describe("not-yet gig drivers are asked for income proof, not a gig screenshot (Dolmar, t348u/t350u)", () => {
+  const incomeOnly = ["license_front", "income"] as const;
+  const notYetVars = {
+    firstName: "Jordan",
+    items: [...incomeOnly],
+    link: "https://drivereal.com/thank-you?t=X",
+    companyPhone: "(888) 833-8280",
+    notDrivingYet: true,
+  };
+
+  test("Not yet / No / Pending skip the gig profile and are asked for income; Yes and blank still need the gig profile", () => {
+    for (const g of ["Not yet, ready to start", "No", "Pending"]) {
+      expect(missingItems(app({ gig_status: g }), [])).toEqual(["license_front", "income"]);
+      expect(missingItems(app({ gig_status: g, license_photo_url: "a1/x.jpg" }), [])).toEqual(["income"]);
+      expect(missingItems(app({ gig_status: g, license_photo_url: "a1/x.jpg", income_proof_url: "a1/z.pdf" }), [])).toEqual([]);
+      expect(missingItems(app({ gig_status: g, license_photo_url: "a1/x.jpg", profile_screenshot_url: "a1/y.jpg" }), [])).toEqual(["income"]);
+    }
+    expect(missingItems(app({ gig_status: "Yes, already driving" }), [])).toEqual(["license_front", "gig_profile", "income"]);
+    expect(missingItems(app({ gig_status: "" }), [])).toContain("gig_profile");
+    expect(missingItems(app({ gig_status: null }), [])).toContain("gig_profile");
+  });
+
+  test("an income document or earnings screenshot satisfies income; the gig profile is still not asked for", () => {
+    const base = app({ gig_status: "Not yet, ready to start", license_photo_url: "a1/x.jpg" });
+    expect(missingItems(base, [])).toEqual(["income"]);
+    expect(missingItems({ ...base, income_proof_url: "a1/z.pdf" }, [])).toEqual([]);
+    expect(missingItems(base, [{ category: "income", is_current: true, review_status: "uploaded" }])).toEqual([]);
+    expect(missingItems(base, [{ category: "trip_history", is_current: true, review_status: "uploaded" }])).toEqual([]);
+    expect(missingItems({ ...base, trip_screenshots: ["a1/earn.jpg"] }, [])).toEqual([]);
+  });
+
+  test("texts, emails, day-3 and day-7 reminders, and the auto-close note use the not-yet income wording", () => {
+    const smsNeed = "proof of income (an income document or an earnings screenshot)";
+    const emailNeed = "Proof of income (an income document or an earnings screenshot)";
+    expect(itemCopy("income", { notDrivingYet: true })).toEqual(MISSING_ITEM_COPY_NOT_YET_INCOME);
+    expect(itemCopy("income")).toEqual(MISSING_ITEM_COPY.income);
+    expect(itemCopy("gig_profile", { notDrivingYet: true })).toEqual(MISSING_ITEM_COPY.gig_profile);
+
+    for (const step of [1, 2, 3] as const) {
+      const sms = outreachSms(step, notYetVars);
+      const email = outreachEmail(step, notYetVars);
+      expect(sms).toContain(smsNeed);
+      expect(sms).not.toContain("gig profile screenshot");
+      expect(sms.toLowerCase()).not.toContain("bristol");
+      expect(email.body).toContain(`• ${emailNeed}`);
+      expect(email.body).not.toContain("gig app profile");
+      expect(email.body.toLowerCase()).not.toContain("bristol");
+    }
+    // Day-3 is step 2, day-7 / last reminder is step 3; auto-close note is closeInDays on the last message.
+    const lastSms = outreachSms(3, { ...notYetVars, closeInDays: 14 });
+    const lastEmail = outreachEmail(3, { ...notYetVars, closeInDays: 14 });
+    expect(lastSms).toContain(smsNeed);
+    expect(lastSms).toContain("No reply in 14 days and we'll close your application.");
+    expect(lastSms).not.toContain("gig profile screenshot");
+    expect(lastEmail.body).toContain(`• ${emailNeed}`);
+    expect(lastEmail.body).toContain("If we don't hear from you in the next 14 days, we'll close your application.");
+    expect(lastEmail.body).not.toContain("gig app profile");
+  });
+
+  test("gig drivers keep the approved gig-profile and income wording", () => {
+    const gigVars = { firstName: "Jordan", items: ["gig_profile", "income"] as const, link: notYetVars.link, companyPhone: notYetVars.companyPhone };
+    expect(outreachSms(1, gigVars)).toContain("gig profile screenshot (rating + trips)");
+    expect(outreachSms(1, gigVars)).toContain("proof of income (gig work or any other source)");
+    expect(outreachEmail(1, gigVars).body).toContain("A screenshot of your gig app profile showing your rating and your number of trips or deliveries");
+    expect(outreachEmail(1, gigVars).body).toContain("Proof of income from gig work or any other source");
   });
 });

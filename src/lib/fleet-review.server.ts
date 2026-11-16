@@ -36,6 +36,7 @@ import {
 import { computeReadiness } from "@/lib/readiness";
 import { fleetContactsFor, listDriverContacts } from "@/lib/driver-contacts.server";
 import { last10Digits, normalizeDriverEmail } from "@/lib/driver-contacts";
+import { readRentidSettings } from "@/lib/fleet-rentid.server";
 
 type Admin = any;
 const SITE = () => String(process.env.SITE_URL || "https://drivereal.com").replace(/\/$/, "");
@@ -136,7 +137,7 @@ export async function buildReviewPacket(admin: Admin, leadId: string, opts: { in
   const app = appRes.data as Record<string, any> | null;
   if (!app) return null;
   const { latestLicenseReading } = await import("@/lib/fleet-license.server");
-  const [docsRes, scrRes, agRes, flags, prior, decisionsRes, licenseReading] = await Promise.all([
+  const [docsRes, scrRes, agRes, flags, prior, decisionsRes, licenseReading, rentid] = await Promise.all([
     admin.from("documents").select(DOC_SELECT).eq("driver_id", leadId),
     admin.from("driver_screenings").select(SCREENING_SELECT).eq("lead_id", leadId).limit(1),
     admin.from("agreements").select("id,status,sent_at,signed_at,voided_at").eq("application_id", leadId),
@@ -144,6 +145,7 @@ export async function buildReviewPacket(admin: Admin, leadId: string, opts: { in
     priorDeclinedCount(admin, app),
     admin.from("fleet_review_decisions").select("id,decision,reason,decided_by,created_at,resolved_at,resolution_note").eq("application_id", leadId).order("created_at", { ascending: false }).limit(10),
     latestLicenseReading(admin, leadId).catch(() => null),
+    readRentidSettings(admin),
   ]);
   const docs = ((docsRes.data ?? []) as any[]).filter((d) => d.is_current !== false);
   const screening = Array.isArray(scrRes.data) ? scrRes.data[0] ?? null : null;
@@ -151,7 +153,7 @@ export async function buildReviewPacket(admin: Admin, leadId: string, opts: { in
   const open = flags.get(leadId) ?? null;
   const assessment = assessForFleet({
     app, screening, docs: docs as FleetDoc[], disqualifiers: readiness.disqualifiers, readinessState: readiness.state,
-    openNeedsStaff: open, priorDeclined: prior, licenseReading, now,
+    openNeedsStaff: open, priorDeclined: prior, licenseReading, rentidRequired: rentid.require_for_approval, now,
   });
 
   let documents: any[] = docs.map((d) => ({
@@ -250,10 +252,11 @@ export async function listAwaitingReview(admin: Admin, opts: { readyOnly?: boole
   if (res.error) throw new Error("Could not read applications.");
   const apps = ((res.data ?? []) as any[]).filter((a) => !a.primary_application_id);
   const ids = apps.map((a) => a.id);
-  const [docsRes, scrRes, flags] = await Promise.all([
+  const [docsRes, scrRes, flags, rentid] = await Promise.all([
     ids.length ? admin.from("documents").select("driver_id,category,review_status,is_current,created_at").in("driver_id", ids) : Promise.resolve({ data: [] }),
     ids.length ? admin.from("driver_screenings").select(SCREENING_SELECT).in("lead_id", ids) : Promise.resolve({ data: [] }),
     openNeedsStaff(admin, ids),
+    readRentidSettings(admin),
   ]);
   const docsBy = new Map<string, any[]>();
   for (const d of (docsRes.data ?? []) as any[]) {
@@ -267,7 +270,7 @@ export async function listAwaitingReview(admin: Admin, opts: { readyOnly?: boole
     const screening = scrBy.get(app.id) ?? null;
     const readiness = computeReadiness(app, screening, docs);
     const open = flags.get(app.id) ?? null;
-    const a = assessForFleet({ app, screening, docs, disqualifiers: readiness.disqualifiers, readinessState: readiness.state, openNeedsStaff: open, priorDeclined: 0, now });
+    const a = assessForFleet({ app, screening, docs, disqualifiers: readiness.disqualifiers, readinessState: readiness.state, openNeedsStaff: open, priorDeclined: 0, rentidRequired: rentid.require_for_approval, now });
     return {
       lead_id: app.id,
       name: app.full_name ?? null,
@@ -279,6 +282,7 @@ export async function listAwaitingReview(admin: Admin, opts: { readyOnly?: boole
       hard_blockers: a.hard_blockers.map((b) => b.code),
       escalations: a.escalations.map((e) => e.code),
       docs_missing: a.docs.missing_required,
+      no_track_record: a.no_track_record,
       admin_url: adminUrlFor(app.id),
     };
   });
@@ -412,6 +416,15 @@ export async function handleFleetApplicantDecision(request: Request, deps: Decis
   if (a.hard_blockers.length) {
     return fleetJson(409, { ok: false, error: "Approval refused: hard blockers exist. Fix them or send needs_staff.", hard_blockers: a.hard_blockers });
   }
+  // Not driving for a gig app yet: no trip/rating record, so FLEET approves
+  // only a clean file. Any escalation means staff decide (Dolmar, t339u).
+  if (a.no_track_record && a.escalations.length) {
+    return fleetJson(409, {
+      ok: false,
+      error: "Approval refused: this applicant is not driving for a gig app yet, so FLEET can approve only a clean file. Send needs_staff with these reasons.",
+      escalations: a.escalations,
+    });
+  }
   const approve: ApproveCore = deps.approve ?? (await import("@/lib/applications.functions")).approveApplicationCore;
   const res = await approve({
     admin,
@@ -473,7 +486,8 @@ export async function sweepReadyForReview(admin: Admin, opts: { now?: Date; wind
   if (!ids.size) return [];
   const list = [...ids].slice(0, 200);
   const [apps, docs, existing] = await Promise.all([
-    admin.from("applications").select("id,full_name,phone,email,status,deleted_at,primary_application_id,created_at").in("id", list),
+    // gig_status decides which documents count as "ready" (hardDocCategoriesFor).
+    admin.from("applications").select("id,full_name,phone,email,status,deleted_at,primary_application_id,created_at,gig_status").in("id", list),
     admin.from("documents").select("driver_id,category,review_status,is_current").in("driver_id", list),
     admin.from("fleet_webhook_deliveries").select("dedupe_key").in("dedupe_key", list.map((id) => `application_ready_for_review:${id}`)),
   ]);

@@ -22,9 +22,21 @@ the payment-text pause:
 duplicate. With `ready_only` (the default) only applicants with the required
 documents on file and no open Needs Staff flag are listed.
 
+The required documents depend on the gig answer (`hardDocCategoriesFor`):
+
+| Gig answer | Required before review |
+| --- | --- |
+| "Yes, already driving" (or blank) | license front + gig-profile screenshot |
+| "Not yet, ready to start", "No", "Pending" | license front + proof of income (an income document or a trip/earnings screenshot) |
+
+Until Nov 16 2026 the gig-profile screenshot was required from everyone, so
+applicants who are not driving yet (and have no gig profile) never appeared
+in this list and never got the alert. `ready_only: false` shows them with
+`docs_missing` (usually `income`).
+
 Reply: `{ ok, total, rows: [{ lead_id, name, status, applied_at, ready_for_review,
 needs_staff_open, recommendation, hard_blockers[], escalations[], docs_missing[],
-admin_url }] }`. The list is a summary; `get` is authoritative.
+no_track_record, admin_url }] }`. The list is a summary; `get` is authoritative.
 
 ## 2. Get one applicant's review packet
 
@@ -90,25 +102,46 @@ returns `approval_email`).
 ## Hard blockers (approve refused)
 
 Not submitted (Partial), a stage other than New/Reviewing/Complete, already
-approved, deleted, legal hold, a duplicate, no email, missing license front,
-license back or gig-profile screenshot, a document staff rejected and nobody
+approved, deleted, legal hold, a duplicate, no email, a missing required
+document (license front, plus the gig-profile screenshot for gig drivers or
+proof of income for applicants not driving yet), a document staff rejected and nobody
 replaced, any readiness disqualifier (under 21, license not active, DUI, gig
 account deactivated, card not in the driver's name, insurance name mismatch,
 license reported invalid), screening marked disqualified, a background or MVR
 result recorded as failed/flagged/consider, under 21 by date of birth, expired
-license, and an open Needs Staff flag.
+license, and an open Needs Staff flag. With the RentID switch on
+(`docs/fleet-rentid.md`), both checks must also be recorded as passed.
+
+### Not driving for a gig app yet (Dolmar, t339u)
+
+"Not yet" is no longer a reason to send to staff by itself. The 200-trip /
+4.0-rating bar cannot apply to someone with no trips, so for these applicants
+(`no_track_record: true`) it is replaced, not waived:
+
+- proof of income is a required document (hard blocker `missing_income`);
+- approve is strict: the server refuses it (409, with the escalations) while
+  ANY escalation exists. So FLEET can approve only when the date of birth is on
+  file and the driver is 25+, the license expiry is on file and more than 30
+  days out, there are no analysis flags, no earlier declined/closed
+  application, readiness is not Needs Attention, and background/MVR are
+  pending or passed;
+- a gig rating they do report still escalates if under 4.0.
+
+Gig drivers are unchanged: escalations stay FLEET's call.
 
 ## Default escalation checklist (proposed; FLEET decides)
 
 Send `needs_staff` when any of these is true:
 
-1. Income proof missing.
+1. Income proof missing (gig drivers: requested from the applicant, a note;
+   not driving yet: a hard blocker).
 2. Driver under 25, or no date of birth.
 3. License expires within 30 days, or no expiration date.
 4. Gig rating under 4.0, or fewer than 200 trips (Dolmar, t299s1618; was 100).
    Unknown trips or rating: FLEET confirms 200+ and 4.0+ on the gig
    screenshot before approving, otherwise sends to staff.
-5. Not driving gig yet ("Not yet" / "No"), or the gig account is deactivated.
+5. The gig account is deactivated. (Not driving gig yet is no longer an
+   escalation by itself; see "Not driving for a gig app yet".)
 6. The application analysis raised flags.
 7. Readiness says Needs Attention.
 8. Applied more than once, or an earlier application with the same phone or
@@ -128,8 +161,8 @@ and background/MVR still pending.
 ## Alert: application_ready_for_review
 
 Sent once per applicant the first time they are submitted (New, Reviewing or
-Complete) with the license front, license back and gig-profile screenshot on
-file. The every-minute FLEET cron looks at applications updated, and documents
+Complete) with the required documents on file (license front plus the
+gig-profile screenshot, or plus proof of income when not driving yet). The every-minute FLEET cron looks at applications updated, and documents
 added, in the last 3 hours. Payload: `lead_id, name, phone, email, stage,
 applied_at, ready_at, next, admin_url`. Applicants who were ready before this
 shipped do not get an alert; use `list`.
