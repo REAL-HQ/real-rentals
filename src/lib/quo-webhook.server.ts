@@ -1,6 +1,6 @@
 // Quo webhook handler (see routes/api/public/sms/quo.ts). Split out so tests
 // can drive it with a fake database and a signed request.
-import { verifyQuoWebhook } from "@/lib/quo.server";
+import { parseQuoWebhookKeys, verifyQuoWebhook } from "@/lib/quo.server";
 import { quoInboundLineFor, recordQuoEvent, type QuoLine } from "@/lib/quo-events.server";
 import { toE164 } from "@/lib/sms.server";
 
@@ -34,8 +34,9 @@ async function logAndForward(admin: any, event: any, line: QuoLine, deps: Deps):
 const ok = () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
 
 export async function handleQuoWebhook(request: Request, deps: Deps = {}): Promise<Response> {
-  const secret = String(process.env.QUO_WEBHOOK_KEY ?? "").trim();
-  if (!secret) {
+  // One key, or a comma-separated list (one per Quo webhook).
+  const secret = parseQuoWebhookKeys(process.env.QUO_WEBHOOK_KEY);
+  if (!secret.length) {
     console.error("[sms-quo] QUO_WEBHOOK_KEY missing; rejecting webhook");
     return new Response("not configured", { status: 503 });
   }

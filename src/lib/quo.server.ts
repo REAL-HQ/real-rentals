@@ -164,28 +164,51 @@ export async function signQuoWebhook(secret: string, id: string, timestamp: stri
   return btoa(String.fromCharCode(...new Uint8Array(mac)));
 }
 
+/**
+ * QUO_WEBHOOK_KEY may hold one signing key or several separated by commas
+ * (Quo issues a separate whsec_ key per webhook: messages, calls, call
+ * summaries, transcripts). Blank entries and surrounding spaces are ignored.
+ */
+export function parseQuoWebhookKeys(raw: unknown): string[] {
+  const seen = new Set<string>();
+  for (const part of String(raw ?? "").split(",")) {
+    const k = part.trim();
+    if (k) seen.add(k);
+  }
+  return [...seen];
+}
+
 export async function verifyQuoWebhook(
-  secret: string,
+  secret: string | string[],
   headers: { id: string | null; timestamp: string | null; signature: string | null },
   rawBody: string,
   nowSeconds: number = Math.floor(Date.now() / 1000),
 ): Promise<boolean> {
   const { id, timestamp, signature } = headers;
-  if (!secret || !id || !timestamp || !signature) return false;
+  // A single string is treated like the env value (comma-separated allowed).
+  const secrets = Array.isArray(secret) ? secret.map((k) => String(k ?? "").trim()).filter(Boolean) : parseQuoWebhookKeys(secret);
+  if (!secrets.length || !id || !timestamp || !signature) return false;
   const ts = Number(timestamp);
   if (!Number.isFinite(ts) || Math.abs(nowSeconds - ts) > MAX_WEBHOOK_AGE_SECONDS) return false;
-  let expected: string;
-  try {
-    expected = await signQuoWebhook(secret, id, timestamp, rawBody);
-  } catch {
-    return false;
-  }
-  return signature
+  const sigs = signature
     .split(" ")
     .map((s) => s.trim())
     .filter(Boolean)
-    .some((entry) => {
-      const [version, sig] = entry.split(",");
-      return version === "v1" && !!sig && constantTimeEqual(sig, expected);
-    });
+    .map((entry) => entry.split(","))
+    .filter(([version, sig]) => version === "v1" && !!sig)
+    .map(([, sig]) => sig);
+  if (!sigs.length) return false;
+  // Check every key against every v1 entry without stopping early, so timing
+  // does not reveal which configured key (if any) matched.
+  let matched = false;
+  for (const key of secrets) {
+    let expected: string;
+    try {
+      expected = await signQuoWebhook(key, id, timestamp, rawBody);
+    } catch {
+      continue; // a malformed key never matches; the others still count
+    }
+    for (const sig of sigs) if (constantTimeEqual(sig, expected)) matched = true;
+  }
+  return matched;
 }
