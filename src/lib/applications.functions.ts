@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { applicantPhone } from "@/lib/applicant-validation";
+import { applicantPhoneForSubmit, applicantPhoneLookupValues } from "@/lib/us-phone";
 import { APPROVAL_SOURCE_STATUSES, APPROVAL_STATUS_NOT_APPROVABLE } from "@/lib/approval-source-statuses";
 import {
   APPLICANT_EDITABLE_STATUSES,
@@ -197,7 +198,7 @@ function linkWaitSeconds(history: unknown[]): number {
   const daily = day.length >= LINK_DAILY_MAX ? Math.ceil((day[day.length - LINK_DAILY_MAX] + 86400_000 - now) / 1000) : 0;
   return Math.max(0, short, daily);
 }
-async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: string): Promise<boolean> {
+async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: string, submittedName?: string | null): Promise<boolean> {
   try {
     const { data: onFile } = await supabaseAdmin
       .from("applications")
@@ -217,13 +218,16 @@ async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: strin
       return r.ok;
     }
     const { sendApplicationResumeEmail } = await import("@/lib/email.server");
-    const r = await sendApplicationResumeEmail({ to: onFile.email, firstName: onFile.full_name ?? null, applicationId });
+    const r = await sendApplicationResumeEmail({ to: onFile.email, firstName: onFile.full_name ?? null, submittedName, applicationId });
     if (!r.ok) console.error("[resume-link] provider refused", applicationId, r.error);
     return r.ok;
   } catch (e) {
     console.error("[resume-link] send failed", applicationId, e);
     return false;
   }
+}
+function submittedNameOf(entry: Record<string, unknown>): string | null {
+  return typeof entry.submitted_full_name === "string" ? entry.submitted_full_name : null;
 }
 /** Append a history entry, send if not throttled, record the true outcome. */
 async function sendRecoveryLink(
@@ -244,7 +248,7 @@ async function sendRecoveryLink(
   const history = Array.isArray(row.resubmission_history) ? (row.resubmission_history as unknown[]) : [];
   const pending = linkWaitSeconds(history);
   const throttled = pending > 0;
-  const ok = throttled ? false : await emailLinkToAddressOnFile(supabaseAdmin, primaryId);
+  const ok = throttled ? false : await emailLinkToAddressOnFile(supabaseAdmin, primaryId, submittedNameOf(entry));
   history.push({ at: new Date().toISOString(), ...entry, link_sent: ok, link_failed: !throttled && !ok });
   await supabaseAdmin
     .from("applications")
@@ -300,7 +304,7 @@ async function sendAtomicRecoveryLink(
 ): Promise<{ outcome: LinkOutcome; wait: number }> {
   let result: { outcome: LinkOutcome; wait: number };
   try {
-    result = await deliverApplicationRecovery(supabaseAdmin, primaryId);
+    result = await deliverApplicationRecovery(supabaseAdmin, primaryId, { submittedName: submittedNameOf(entry) });
   } catch {
     result = { outcome: "failed", wait: LINK_RETRY_SECONDS };
   }
@@ -368,8 +372,12 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       })
       .parse(data),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data: raw }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Store a valid US number as E.164 so later lookups (Quo, outreach,
+    // toE164) see a contiguous digit run. Duplicate detection also matches
+    // common typings of the same number, not only an exact string.
+    const data = { ...raw, phone: applicantPhoneForSubmit(raw.phone) };
     // ---- Duplicate detection: same phone OR email within the last 30 days ----
     //
     // Two queries, not one `.or()`.
@@ -405,7 +413,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       supabaseAdmin
         .from("applications")
         .select(dupeCols)
-        .eq("phone", data.phone)
+        .in("phone", applicantPhoneLookupValues(data.phone))
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(1),
@@ -421,6 +429,9 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     const newest = (rows: any[]) =>
       [...rows].sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))[0];
     const existing = newest(byEmail.data ?? []) ?? newest(byPhone.data ?? []);
+    // Set when the email matched a closed, merged or declined application:
+    // a new application is created below and its link is emailed instead.
+    let reapplyOf: { id: string; status: string; review: boolean } | null = null;
     if (existing) {
       const primaryId = existing.primary_application_id ?? existing.id;
 
@@ -495,6 +506,26 @@ export const savePartialApplication = createServerFn({ method: "POST" })
           linkStatus: "review" as const, linkOk: true, retryAfterSeconds: 0,
         };
       }
+      // Same email. Resume it only if there is something to resume: a closed,
+      // merged or declined application opened "Already Submitted" with no way
+      // forward (t316u). See src/lib/returning-applicant.ts.
+      const [{ data: primaryRow }, { data: autoClaims }] = await Promise.all([
+        supabaseAdmin.from("applications").select("status").eq("id", primaryId).maybeSingle(),
+        supabaseAdmin
+          .from("applicant_autoclose")
+          .select("id")
+          .eq("application_id", primaryId)
+          .is("reopened_at", null)
+          .limit(1),
+      ]);
+      const { returningAction } = await import("@/lib/returning-applicant");
+      const action = returningAction((primaryRow as any)?.status, (autoClaims ?? []).length > 0);
+      if (action !== "resume") {
+        reapplyOf = { id: primaryId, status: String((primaryRow as any)?.status ?? ""), review: action === "fresh_review" };
+      }
+    }
+    if (existing && !reapplyOf) {
+      const primaryId = existing.primary_application_id ?? existing.id;
       // Bounded history (25) — an anonymous caller must not grow JSONB without
       // limit. Submitted, not applied: staff decide whether it's the same person.
       const { outcome, wait } = await sendRecoveryLink(
@@ -557,18 +588,57 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         status: "partial",
         current_step: "rental",
         ...consentEvidence,
+        ...(reapplyOf
+          ? {
+              resubmission_history: [
+                { at: new Date().toISOString(), source: data.source, previous_application_id: reapplyOf.id, previous_status: reapplyOf.status },
+              ],
+            }
+          : {}),
       } as any)
       .select("id")
       .single();
     if (error) throw new Error(error.message);
 
+    let freshLink: { outcome: LinkOutcome; wait: number } | null = null;
+    if (reapplyOf) {
+      // Returning applicant whose earlier application is closed, merged or
+      // declined. Never hand the anonymous caller a token: email the link for
+      // the NEW application to the address they typed (which is the address
+      // on both records). Clicking it proves they own that email.
+      const prevId = reapplyOf.id;
+      const { data: prev } = await supabaseAdmin
+        .from("applications").select("resubmission_history").eq("id", prevId).maybeSingle();
+      const prevHistory = Array.isArray((prev as any)?.resubmission_history)
+        ? ((prev as any).resubmission_history as unknown[])
+        : [];
+      prevHistory.push({ at: new Date().toISOString(), source: data.source, reapplied_as: row.id });
+      await supabaseAdmin
+        .from("applications")
+        .update({ resubmission_history: boundedRecoveryHistory(prevHistory) } as any)
+        .eq("id", prevId);
+      if (reapplyOf.review) {
+        // A decision is staff's: the new application waits on an open review.
+        const { REAPPLIED_AFTER_DECLINE } = await import("@/lib/returning-applicant");
+        const { error: revErr } = await supabaseAdmin.from("application_identity_reviews").insert({
+          application_id: row.id, kind: REAPPLIED_AFTER_DECLINE,
+          submitted_full_name: data.full_name, submitted_email: emailLower,
+          submitted_phone: data.phone, source: data.source ?? null,
+        });
+        if (revErr && (revErr as any).code !== "23505") console.error("reapply review insert failed", revErr.message);
+      }
+      freshLink = await sendRecoveryLink(supabaseAdmin, row.id, { source: data.source, reapplied_from: prevId });
+    }
+
     // Minted before anything else can fail. Without it the applicant has a row
     // they can never get back to.
+    // Not for a returning applicant (freshLink): they get the emailed link,
+    // never a token, and the link email is the only email they need now.
     const { issueResumeToken } = await import("@/lib/resume-tokens.server");
-    const token = await issueResumeToken(supabaseAdmin, row.id);
+    const token = freshLink ? null : await issueResumeToken(supabaseAdmin, row.id);
     // Step 1 thank-you email to the applicant. Off until an Owner turns on
     // "Step 1 Thank-You Email" in Back Office → Automations. Never blocks.
-    try {
+    if (!freshLink) try {
       const { sendStepOneThankYouEmail } = await import("@/lib/step-one-email.server");
       void sendStepOneThankYouEmail({ applicationId: row.id, to: emailLower, firstName: data.full_name ?? null });
     } catch (e) {
@@ -608,6 +678,17 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       }).catch((e) => console.error("[lead-email] new failed", e));
     } catch (e) {
       console.error("[lead-email] new setup failed", e);
+    }
+    if (freshLink) {
+      return {
+        id: null as string | null,
+        token: null as string | null,
+        existing: true as const,
+        fresh: true as const,
+        linkStatus: freshLink.outcome as "sent" | "recent" | "failed" | "review",
+        linkOk: freshLink.outcome !== "failed",
+        retryAfterSeconds: freshLink.wait,
+      };
     }
     return {
       id: row.id as string | null,

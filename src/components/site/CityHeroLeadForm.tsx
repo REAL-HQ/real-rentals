@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { markStepOneJustSubmitted } from "@/lib/step-one-thank-you";
 import { useNavigate, Link } from "@tanstack/react-router";
 import { SmsConsentField } from "@/components/site/SmsConsentField";
+import { applicantPhoneForSubmit, formatUsPhoneInput } from "@/lib/us-phone";
 import { ArrowRight, Check } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -44,7 +45,7 @@ export function CityHeroLeadForm({
 
   const navigate = useNavigate();
   const saveApplication = useServerFn(savePartialApplication);
-  const [returning, setReturning] = useState<{ email: string; status: LinkStatus; retryAfterSeconds: number } | null>(null);
+  const [returning, setReturning] = useState<{ email: string; status: LinkStatus; retryAfterSeconds: number; fresh?: boolean } | null>(null);
   const getAvail = useServerFn(getAvailability);
   const join = useServerFn(joinWaitlist);
   // How many cars the team says are open right now, set in the back office.
@@ -110,7 +111,7 @@ export function CityHeroLeadForm({
     setSubmitting(true);
     const shared = {
       full_name: form.full_name,
-      phone: form.phone,
+      phone: applicantPhoneForSubmit(form.phone),
       email: form.email,
       pickup_date: form.pickup_date || null,
       market_id: site.market_id,
@@ -151,7 +152,7 @@ export function CityHeroLeadForm({
       if (!data.token) {
         // We matched an application that already exists. The link goes to the
         // address on that record, not to whoever filled this form in.
-        setReturning({ email: form.email, status: data.linkStatus ?? "sent", retryAfterSeconds: data.retryAfterSeconds ?? 120 });
+        setReturning({ email: form.email, status: data.linkStatus ?? "sent", retryAfterSeconds: data.retryAfterSeconds ?? 120, fresh: "fresh" in data && data.fresh === true });
         return;
       }
       markStepOneJustSubmitted();
@@ -189,7 +190,7 @@ export function CityHeroLeadForm({
         <FadeUp delay={80} className="w-full">
           <div ref={cardRef} className="bg-white rounded-2xl shadow-2xl shadow-black/40 p-5 md:p-6 text-left text-foreground">
             {returning !== null ? (
-              <WelcomeBack email={returning.email} initial={returning} onBack={() => setReturning(null)} />
+              <WelcomeBack email={returning.email} initial={returning} fresh={returning.fresh} onBack={() => setReturning(null)} />
             ) : joined ? (
               <div className="py-8 text-center">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-real-red/10">
@@ -223,7 +224,7 @@ export function CityHeroLeadForm({
                 <input tabIndex={-1} autoComplete="off" value={hp} onChange={(e) => setHp(e.target.value)} className="hidden" aria-hidden />
                 <div className="mt-6 grid grid-cols-1 gap-4">
                   <Field label="Full Name" value={form.full_name} error={errors.full_name} onChange={(value) => update("full_name", value)} />
-                  <Field label="Phone" value={form.phone} error={errors.phone} onChange={(value) => update("phone", value)} />
+                  <Field label="Phone" type="tel" value={form.phone} error={errors.phone} onChange={(value) => update("phone", formatUsPhoneInput(value))} />
                   <Field label="Email" type="email" value={form.email} error={errors.email} onChange={(value) => update("email", value)} />
 
                   {/* Pick-up only. A return date here was an exact contractual
@@ -299,10 +300,13 @@ function Field({
       <span className="text-[10px] tracking-wider text-muted-foreground">{label}</span>
       <input
         type={type}
+        inputMode={type === "tel" ? "tel" : undefined}
+        autoComplete={type === "tel" ? "tel" : type === "email" ? "email" : undefined}
         min={min}
         max={max}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => onChange(type === "tel" ? formatUsPhoneInput(event.target.value) : event.target.value)}
+        onBlur={type === "tel" ? (event) => onChange(formatUsPhoneInput(event.target.value)) : undefined}
         className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm ${error ? "border-real-red" : "border-border"}`}
       />
       {error && <div className="mt-1 text-xs text-real-red">{error}</div>}

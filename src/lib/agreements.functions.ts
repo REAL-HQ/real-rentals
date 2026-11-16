@@ -10,7 +10,7 @@ import {
 } from "@/lib/agreement-merge";
 import { contractTodayIso, defaultRentalEndIso, fmtContractDate, fmtContractDateOnly, minTermEndIso, minTermWeeks, rentalEndBeforeMinimum } from "@/lib/agreement-dates";
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
-import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
+import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, DEFAULT_LIBRARY_KEY, OWNER_APPROVED_LIBRARY, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementDetails, type AgreementPrep } from "@/lib/agreement-prep";
 import { recordFillsFromDetails, type AppliedFill } from "@/lib/agreement-fills";
 import { STALE_PREVIEW_REFUSAL } from "@/lib/agreement-send-refusal";
@@ -126,6 +126,7 @@ async function buildMergeData(
   applicationId: string,
   vehicleId?: string,
   prep?: AgreementPrep,
+  amendmentRate?: number,
 ): Promise<{
   data: MergeData;
   app: any;
@@ -167,6 +168,11 @@ async function buildMergeData(
       insurance_policy_number: details.insurancePolicy,
     });
   }
+
+  // An amended agreement for an active rental (rental-amendment.server.ts)
+  // prints the proposed weekly rate. In memory only: the rental and the
+  // application keep today's rate until the renter signs.
+  if (amendmentRate != null) app.weekly_rent = amendmentRate;
 
   // A LIVE rental is the authority on its own dates once it exists; before
   // activation the agreed contract dates on the application are.
@@ -548,14 +554,23 @@ function templateSendRefusal(meta: TemplateMeta): string | null {
   return null;
 }
 
-/** A built-in library template, always an unapproved draft until saved and approved. */
+/**
+ * The agreement new sends use when no saved template is active: v1.14
+ * (Insurance Included). Dolmar, Nov 16 2026 (t319u): "the v1.14 agreement is
+ * the latest agreement we have. add those fees to that agreement." Signed
+ * agreements keep the text they were signed with.
+ */
+export { DEFAULT_LIBRARY_KEY, OWNER_APPROVED_LIBRARY };
+
+/** A built-in library template: an unapproved draft unless the Owner approved the family for sending. */
 function libraryAsActive(lib: LibraryTemplate): { body: string; meta: TemplateMeta } {
+  const ok = OWNER_APPROVED_LIBRARY[lib.key];
   return {
     body: lib.body,
     meta: {
-      id: null, key: lib.key, name: lib.name, version: 1, approvalStatus: "draft",
-      label: `${lib.name} v${lib.displayVersion} — ${DRAFT_STATUS_LABEL}`,
-      effectiveDate: null, approvedAt: null, versioningActive: false, schemaReady: false,
+      id: null, key: lib.key, name: lib.name, version: 1, approvalStatus: ok ? "approved" : "draft",
+      label: ok ? `${lib.name} v${lib.displayVersion} — Owner Approved ${ok.at}` : `${lib.name} v${lib.displayVersion} — ${DRAFT_STATUS_LABEL}`,
+      effectiveDate: ok ? ok.at : null, approvedAt: ok ? ok.at : null, versioningActive: false, schemaReady: false,
     },
   };
 }
@@ -567,6 +582,40 @@ async function libraryWithDraft(admin: any, lib: LibraryTemplate) {
   const t = libraryAsActive(lib);
   if (!last) return t;
   return { body: writeTerms(lib.source, last.terms), meta: { ...t.meta, version: last.n + 1, label: `${t.meta.label} (Draft Values #${last.n})` } };
+}
+
+/** Standard choices for a v1.14 send nobody prepared by hand. */
+async function autoSendPrep(admin: any, applicationId: string): Promise<AgreementPrep> {
+  const { withAutoSendDefaults } = await import("@/lib/agreement-prep");
+  const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
+  const fee = await loadReservationFeeSettings(admin);
+  const { data: app } = await admin.from("applications").select("deposit_amount,vehicle_id").eq("id", applicationId).maybeSingle();
+  let dep = app?.deposit_amount == null ? null : Number(app.deposit_amount);
+  if (dep == null && app?.vehicle_id) {
+    const { data: v } = await admin.from("vehicles").select("deposit").eq("id", app.vehicle_id).maybeSingle();
+    dep = v?.deposit == null ? null : Number(v.deposit);
+  }
+  return withAutoSendDefaults({
+    drivers: { mode: "none", list: [] },
+    reservation: fee.enabled ? { mode: "required", amount: fee.amount } : { mode: "not_required", amount: null },
+    deposit: dep != null && dep > 0 ? { mode: "required", amount: dep, reason: "" } : { mode: "none", amount: null, reason: "" },
+  });
+}
+
+/**
+ * v1.14 "Vehicle Owner (as shown on the registration)" when staff did not type
+ * one: the vehicle partner's name for a partner car, otherwise REAL RENTALS'
+ * legal name (Settings -> Company). Staff can always type the exact name.
+ */
+async function registeredOwnerFallback(admin: any, vehicleId: string | null, companyName: string): Promise<string> {
+  if (vehicleId) {
+    const { data: v } = await admin.from("vehicles").select("partner_id").eq("id", vehicleId).maybeSingle();
+    if (v?.partner_id) {
+      const { data: p } = await admin.from("partners").select("name").eq("id", v.partner_id).maybeSingle();
+      if (String(p?.name ?? "").trim()) return String(p.name).trim();
+    }
+  }
+  return companyName.trim();
 }
 
 /** Insurance Required templates: carrier/policy on file AND a staff verification. */
@@ -632,11 +681,40 @@ function usesField(body: string, key: string): boolean {
   return new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "i").test(body);
 }
 
-async function prepareAgreement(admin: any, applicationId: string, prep?: AgreementPrep, templateKey?: string, vehicleId?: string) {
-  const built = await buildMergeData(admin, applicationId, vehicleId, prep);
-  const lib = templateKey ? libraryTemplate(templateKey) : null;
-  if (templateKey && !lib) throw new Error("Unknown agreement template.");
-  const tpl = lib ? await libraryWithDraft(admin, lib) : await activeTemplate(admin);
+/** An amended agreement: the proposed rate plus the notice printed at the top. */
+export type AgreementAmendmentRender = {
+  weeklyRate: number;
+  notice: string;
+  /** No-fee preparation (rental-amendment.ts amendmentPrep). Forced to no Reservation Fee / no deposit here too. */
+  prep?: AgreementPrep;
+  /** Library template family; the amendment flow passes v1.14 (AMENDMENT_TEMPLATE_KEY). */
+  templateKey?: string;
+};
+
+async function prepareAgreement(admin: any, applicationId: string, prep?: AgreementPrep, templateKey?: string, vehicleId?: string, amendment?: AgreementAmendmentRender) {
+  // An amendment renders only with its own forced no-fee preparation and template.
+  if (amendment) {
+    const { forceNoFee } = await import("@/lib/rental-amendment");
+    prep = amendment.prep ? forceNoFee(amendment.prep) : undefined;
+    templateKey = amendment.templateKey ?? templateKey;
+  }
+  // No template named: a saved, active template wins; otherwise v1.14 (t319u).
+  let key = templateKey;
+  let saved: { body: string; meta: TemplateMeta } | null = null;
+  if (!key) {
+    const active = await activeTemplate(admin);
+    if (active.meta.id || active.meta.versioningActive) saved = active;
+    else key = DEFAULT_LIBRARY_KEY;
+  }
+  const lib = key ? libraryTemplate(key) : null;
+  if (key && !lib) throw new Error("Unknown agreement template.");
+  // A v1.14 send nobody prepared by hand (approval auto-send, FLEET's check)
+  // gets the standard choices: the Reservation Fee when its switch is on, no
+  // additional drivers, the deposit on file, no Damage Waiver, weekly card autopay.
+  // Never for an amendment: it carries its own no-fee preparation.
+  if (!prep && !amendment && lib?.key === DEFAULT_LIBRARY_KEY) prep = await autoSendPrep(admin, applicationId);
+  const built = await buildMergeData(admin, applicationId, vehicleId, prep, amendment?.weeklyRate);
+  const tpl = lib ? await libraryWithDraft(admin, lib) : (saved as { body: string; meta: TemplateMeta });
   let tplBody = tpl.body;
   if (prep) {
     const terms = readTerms(tpl.body);
@@ -662,9 +740,33 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     const line = amountStyle
       ? (prep.reservation.mode === "required" && (prep.reservation.amount ?? 0) > 0
           ? `$${Number(prep.reservation.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-          : "None")
+          : prep.reservation.mode === "not_applicable" ? "Not Applicable" : "None")
       : r.reservationLine;
+    // v1.14 values with no record behind them yet.
+    if (usesField(tpl.body, "vehicle_owner") && !String(built.data.vehicle_owner ?? "").trim())
+      built.data.vehicle_owner = await registeredOwnerFallback(admin, built.namedVehicleId ?? (built.app?.vehicle_id as string | null) ?? null, String(built.data.company_name ?? ""));
+    if (usesField(tpl.body, "card_on_file") && !String(built.data.card_on_file ?? "").trim() && prep.reservation.mode === "required" && (prep.reservation.amount ?? 0) > 0)
+      built.data.card_on_file = "Saved when you pay the Reservation Fee right after signing";
     if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, reservation_line: line });
+  }
+  // An updated agreement for an already-active rental: no Reservation Fee, no
+  // new deposit and nothing due now. The renter already paid week 1, and the
+  // new rate applies only to rent weeks billed after they sign.
+  if (amendment) {
+    const { AMENDMENT_NO_FEE_LINE, AMENDMENT_NO_DEPOSIT_LINE, AMENDMENT_NOTHING_DUE_LINE } = await import("@/lib/rental-amendment");
+    built.data.deposit_amount = AMENDMENT_NO_DEPOSIT_LINE;
+    for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "deposit_amount") built.blockers.splice(i, 1);
+    const terms = readTerms(tplBody);
+    if (terms) tplBody = writeTerms(stripTerms(tplBody), { ...terms, reservation_line: AMENDMENT_NO_FEE_LINE });
+    if (usesField(tplBody, "balance_due")) (built.data as any).balance_due = AMENDMENT_NOTHING_DUE_LINE;
+    // Already-active rental with no saved card (e.g. week 1 paid by invoice):
+    // the card is saved at the next payment, so print that instead of blocking
+    // (Dolmar, t327s1775). Never charges or saves anything here.
+    if (usesField(tplBody, "card_on_file") && !String(built.data.card_on_file ?? "").trim()) {
+      const { AMENDMENT_CARD_NEXT_PAYMENT_LINE } = await import("@/lib/rental-amendment");
+      built.data.card_on_file = AMENDMENT_CARD_NEXT_PAYMENT_LINE;
+      for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "card_on_file") built.blockers.splice(i, 1);
+    }
   }
   templateFieldBlockers(
     tplBody,
@@ -679,8 +781,15 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     for (const k of missingTerms(readTerms(tplBody) ?? {}, stripTerms(tplBody)))
       built.blockers.push({ field: `term_${k}`, label: `Template value: ${ALL_TERM_FIELDS.find((f) => f.key === k)?.label ?? k}`, why: "This template leaves the value blank. The Owner sets it in the Agreement Template Library before the template can be approved." });
   }
-  const numberingPending = /\{\{\s*agreement_number\s*\}\}/i.test(resolveTerms(tplBody));
-  const body = renderTemplate(tplBody, built.data);
+  // Agreement numbers are assigned when the agreement is sent (issueAgreement);
+  // the preview prints "Assigned When Sent".
+  const numberingPending = false;
+  let body = renderTemplate(tplBody, built.data);
+  if (amendment) {
+    const { insertAmendmentNotice } = await import("@/lib/rental-amendment");
+    const { LAYOUT_MARKER } = await import("@/lib/agreement-layout");
+    body = insertAmendmentNotice(body, amendment.notice, LAYOUT_MARKER);
+  }
   if (/\[ \] Required: \$_+/.test(body))
     built.blockers.push({ field: "reservation_fee", label: "Reservation Fee marked Required or Not Required", why: "The agreement's Reservation Fee row still shows both unchecked boxes. Staff entry for this rental arrives with Driver Agreement Preparation." });
   const fingerprint = await agreementFingerprint(tpl.meta, body, built.data);
@@ -785,6 +894,13 @@ async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepare
       email: (app.email as string | null) ?? null,
       name: (app.full_name as string | null) ?? null,
       generatedAt: new Date().toISOString(),
+      // Lets the staff dialog start with the Reservation Fee the switch sets.
+      reservationFeeAuto: await (async () => {
+        try {
+          const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
+          return await loadReservationFeeSettings(admin);
+        } catch { return { enabled: false, amount: 0 }; }
+      })(),
     };
 }
 
@@ -819,15 +935,30 @@ export async function previewNamedAgreement(admin: any, applicationId: string, v
 export async function issueAgreement(
   admin: any,
   applicationId: string,
-  opts: { fingerprint?: string; createdBy?: string | null; companyAck?: boolean; prep?: AgreementPrep; templateKey?: string; vehicleId?: string } = {},
+  opts: {
+    fingerprint?: string;
+    createdBy?: string | null;
+    companyAck?: boolean;
+    prep?: AgreementPrep;
+    templateKey?: string;
+    vehicleId?: string;
+    /** Updated agreement for an active rental (rental-amendment.server.ts). */
+    amendment?: AgreementAmendmentRender & { vehicleId: string | null; rentalId: string; metadata: Record<string, unknown> };
+  } = {},
 ): Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }> {
   // Same generation step as the preview — the stored text is re-rendered here
   // on the server, never taken from the browser. A vehicle override exists
   // only while swap is on. With the flag off this is the application vehicle.
-  const vehicleOverride = SWAP_ENABLED ? opts.vehicleId : undefined;
-  const prep = await prepareAgreement(admin, applicationId, opts.prep, opts.templateKey, vehicleOverride);
+  // An amendment names the active rental's own car (checked server-side by
+  // rentalVehicleForAgreement), whatever the swap flag says.
+  const amendment = opts.amendment;
+  // An amendment never takes staff preparation from the caller (Reservation
+  // Fee, deposit, edited details): it renders with its own no-fee preparation.
+  if (amendment && opts.prep) throw new Error("An updated agreement for an active rental cannot carry a Reservation Fee, deposit or first payment.");
+  const vehicleOverride = amendment ? (amendment.vehicleId ?? undefined) : SWAP_ENABLED ? opts.vehicleId : undefined;
+  const prep = await prepareAgreement(admin, applicationId, opts.prep, opts.templateKey, vehicleOverride, amendment);
   const { data: merge, app, blockers, tpl, body } = prep;
-  const lib = opts.templateKey ? libraryTemplate(opts.templateKey) : null;
+  const lib = tpl.meta.key ? libraryTemplate(tpl.meta.key) : null;
   if (!app.email) throw new Error("This driver has no email on file");
   // A contract with a guessed start date or a blank address is not a contract
   // worth sending, and an applicant who signs one has signed terms nobody
@@ -860,9 +991,16 @@ export async function issueAgreement(
 
   const { getCompanySigner } = await import("@/lib/esign.server");
   const company = await getCompanySigner(admin);
+  // The agreement number is assigned now, from the new row's id (no number
+  // is consumed by previews): RRA-YYYYMMDD-XXXXXX.
+  const agreementId = crypto.randomUUID();
+  const agreementNumber = `RRA-${new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date()).replace(/-/g, "")}-${agreementId.slice(0, 6).toUpperCase()}`;
+  const numbered = body.split(AGREEMENT_NUMBER_PLACEHOLDER).join(agreementNumber);
+  const numberedMerge = merge.agreement_number === AGREEMENT_NUMBER_PLACEHOLDER ? { ...merge, agreement_number: agreementNumber } : merge;
   const { data: row, error } = await admin
     .from("agreements")
     .insert({
+      id: agreementId,
       source: "rental",
       company_signer_name: company.name,
       company_signer_title: company.title,
@@ -874,9 +1012,12 @@ export async function issueAgreement(
       // agreement could not say which template version or preview it came
       // from. Written once, at insert; signing merges metadata.signature into
       // this object (esign.server.ts) and never replaces it.
-      metadata: templateEvidence(tpl.meta, prep.fingerprint, Boolean(lib)),
-      body,
-      merge_data: merge,
+      metadata: amendment
+        ? { ...templateEvidence(tpl.meta, prep.fingerprint, Boolean(lib)), amendment: amendment.metadata }
+        : templateEvidence(tpl.meta, prep.fingerprint, Boolean(lib)),
+      ...(amendment ? { title: "Rental Agreement (Amended)", rental_id: amendment.rentalId } : {}),
+      body: numbered,
+      merge_data: numberedMerge,
       status: "sent",
       token_hash: tokenHash,
       token_expires_at: expires,
@@ -902,8 +1043,10 @@ export async function issueAgreement(
   {
     const { logAudit } = await import("@/lib/audit.server");
     const actor = opts.createdBy ? await (await import("@/lib/roles.server")).getActor(opts.createdBy) : null;
-    await logAudit(actor, { action: "document.created", summary: "Rental agreement created", entityType: "esign_document", entityId: row.id as string });
-    await logAudit(actor, { action: "document.sent", summary: "Rental agreement sent for signature", entityType: "esign_document", entityId: row.id as string });
+    const what = amendment ? "Updated rental agreement (amendment)" : "Rental agreement";
+    const meta = amendment ? { metadata: amendment.metadata } : {};
+    await logAudit(actor, { action: "document.created", summary: `${what} created`, entityType: "esign_document", entityId: row.id as string, ...meta });
+    await logAudit(actor, { action: "document.sent", summary: `${what} sent for signature`, entityType: "esign_document", entityId: row.id as string, ...meta });
   }
 
   const url = `${SITE_URL()}/sign/${token}`;
@@ -1022,6 +1165,31 @@ export async function agreementSendCheck(admin: any, applicationId: string): Pro
     vehicleId: prep.namedVehicleId,
     vehicleLabel: prep.data.vehicle || null,
   };
+}
+
+/** Whether a rendered body prints a Reservation Fee amount above $0. */
+const AMENDMENT_FEE_PRINTED = (body: string) => /Reservation Fee[^\n]{0,40}\$\s*[1-9]/i.test(body);
+
+/**
+ * What an amended agreement (active rental, new weekly rate) would print and
+ * what would stop it sending. Read-only. Same generation step as the send.
+ */
+export async function amendmentSendCheck(
+  admin: any,
+  applicationId: string,
+  amendment: AgreementAmendmentRender & { vehicleId: string | null },
+): Promise<{ blockers: { field: string; label: string; why: string }[]; weeklyRate: number | null; vehicleLabel: string | null; body: string; merge: { deposit_amount: string; balance_due: string; reservation: boolean } }> {
+  const prep = await prepareAgreement(admin, applicationId, undefined, undefined, amendment.vehicleId ?? undefined, amendment);
+  const blockers = prep.blockers.map((b) => ({ field: b.field, label: b.label, why: b.why }));
+  const refusal = templateSendRefusal(prep.tpl.meta) ?? (prep.numberingPending ? NUMBERING_PENDING : null);
+  if (refusal) blockers.push({ field: "template", label: "Approved agreement template", why: refusal });
+  if (!prep.app?.email) blockers.push({ field: "driver_email", label: "Driver email", why: "The signing link is emailed." });
+  if (prep.body.includes(BLANK)) blockers.push({ field: "body", label: "Blank fields", why: "The agreement still contains blank fields." });
+  // Belt and braces: an amended agreement must never print a fee or deposit due.
+  if (/\[ \] Required:|\[x\] Required:|Reservation Fee:?\s*\$[1-9]/i.test(prep.body))
+    blockers.push({ field: "reservation_fee", label: "No Reservation Fee on an updated agreement", why: "The template prints a Reservation Fee amount; an active rental's updated agreement must not." });
+  const n = Number(prep.app?.weekly_rent);
+  return { blockers, weeklyRate: Number.isFinite(n) && n > 0 ? n : null, vehicleLabel: prep.data.vehicle || null, body: prep.body, merge: { deposit_amount: String(prep.data.deposit_amount ?? ""), balance_due: String((prep.data as any).balance_due ?? ""), reservation: AMENDMENT_FEE_PRINTED(prep.body) } };
 }
 
 /**
@@ -1289,11 +1457,30 @@ async function agreementPortalAccess(admin: any, applicationId: string | null): 
 async function sendSignedEmails(admin: any, id: string, signerName: string): Promise<boolean> {
   const { data: ag } = await admin
     .from("agreements")
-    .select("application_id,signer_email,merge_data")
+    .select("application_id,signer_email,merge_data,metadata")
     .eq("id", id)
     .maybeSingle();
   if (!ag) return false;
   const merge = (ag.merge_data ?? {}) as MergeData;
+  // An updated agreement for an active rental (rental-amendment.server.ts):
+  // no Reservation Fee and no first-week payment link. The renter's email
+  // says when the new rate starts.
+  const amendment = ((ag.metadata ?? {}) as any).amendment as { new_weekly_rate?: number; effective_date?: string } | undefined;
+  if (amendment) {
+    const portal = await agreementPortalAccess(admin, ag.application_id as string | null);
+    try {
+      const { sendAgreementSignedEmail, sendAgreementSignedOpsEmail } = await import("@/lib/email.server");
+      const { data: am } = await admin.from("rental_rate_amendments").select("apply_on,new_weekly_rate").eq("agreement_id", id).maybeSingle();
+      const rate = Number(am?.new_weekly_rate ?? amendment.new_weekly_rate);
+      const on = String(am?.apply_on ?? amendment.effective_date ?? "");
+      const line = rate > 0 && on ? `Your new weekly rate of $${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })} starts ${fmtContractDate(on)}. Rent before then stays the same.` : null;
+      if (ag.signer_email) await sendAgreementSignedEmail({ to: ag.signer_email as string, firstName: merge.driver_name ?? signerName, vehicle: merge.vehicle || null, portalAccess: portal, amendmentLine: line });
+      await sendAgreementSignedOpsEmail({ driverName: signerName, applicationId: ag.application_id as string, vehicle: merge.vehicle || null, amendment: true });
+    } catch (e) {
+      console.error("[agreement] amendment signed emails failed", e);
+    }
+    return portal;
+  }
   // Signing never creates a login or sends account details. Reserved handles
   // that after the pickup appointment is confirmed; existing logins still work.
   const portalAccess = await agreementPortalAccess(admin, ag.application_id as string | null);
@@ -1474,3 +1661,6 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     await sendSignedEmails(supabaseAdmin, data.agreementId, data.signerName);
     return { ok: true, alreadySigned: false };
   });
+
+/** For scripts/v114-default-agreement.test.ts: the one generation step, read-only. */
+export const prepareAgreementForTest = prepareAgreement;

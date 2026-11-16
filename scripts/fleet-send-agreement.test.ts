@@ -77,7 +77,8 @@ describe("send-agreement endpoint", () => {
     const db = fakeDb(seed());
     const r = await call(db, { lead_id: A, idempotency_key: "agr-A-1", terms_confirmation: conf() });
     expect(r.status).toBe(201);
-    expect(r.issued).toEqual([{ id: A, o: { createdBy: null } }]);
+    expect(r.issued).toHaveLength(1);
+    expect(r.issued[0]).toMatchObject({ id: A, o: { createdBy: null, prep: { reservation: { mode: "not_required" }, damageWaiver: "declined", payment: { method: "Card Autopay" } } } });
     expect(JSON.stringify(r.body)).not.toContain("/sign/");
     expect(db.state.agreement_terms_confirmations[0]).toMatchObject({ application_id: A, channel: "call", call_id: "ACcall1", weekly_rate: 325, deposit: 0, start_date: "2026-11-18", vehicle_id: V, recorded_by: "FLEET (automated)", agreement_id: "agr-1" });
     expect(r.audits[0]).toMatchObject({ action: "agreement.fleet_sent", entityId: A, metadata: { decided_by: "FLEET (automated)", agreement_id: "agr-1" } });
