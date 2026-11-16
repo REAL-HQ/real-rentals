@@ -62,8 +62,13 @@ const APP = {
   contract_start_date: "2026-10-01", contract_end_date: "2027-04-01",
 };
 const VEHICLE = { id: VEH_ID, year: 2020, make: "Ford", model: "Fusion", trim: "SE", color: "White", vin: "1HGCM82633A004352", unit_number: "40", weekly_rate: 350, deposit: 0, license_plate: "ED40NC", plate_state: "FL" };
+// A saved, active plain template (a saved template wins over the v1.14 default).
+const PLAIN_TPL = {
+  id: "55555555-5555-4555-8555-555555555555", name: "Rental Agreement", version: 2, is_active: true, approval_status: "approved",
+  body: "VEHICLE RENTAL AGREEMENT\nRenter: {{driver_name}}\nVehicle: {{vehicle}}\nWeekly rental rate: {{weekly_rate}}\nSecurity deposit: {{deposit_amount}}",
+};
 const tables = () => ({
-  applications: [{ ...APP }], vehicles: [{ ...VEHICLE }], markets: [], app_settings: [], agreement_templates: [],
+  applications: [{ ...APP }], vehicles: [{ ...VEHICLE }], markets: [], app_settings: [], agreement_templates: [{ ...PLAIN_TPL }],
   rentals: [{ id: "r1", application_id: APP_ID, status: "active", start_date: "2026-10-01", end_date: null, vehicle_id: VEH_ID, created_at: "2026-10-01" }],
 });
 
@@ -116,8 +121,8 @@ ok(row("Balance Due") === "$0.00 (rental already active)", `v1.14 Balance Due: $
 ok(/^\$375\.00 weekly/.test(row("Amount Due Each Payment (Weekly or Every 4 Weeks)")), `v1.14 each payment: $375.00 weekly (got "${row("Amount Due Each Payment (Weekly or Every 4 Weeks)")}")`);
 ok(!/\|[^|\n]*\$50\.00/.test(v.body.split("## 3")[0]) && !/Required: \$50/.test(v.body), "no $50 Reservation Fee amount on page 1");
 ok(v.body.includes("**Amendment.** Amendment notice."), "v1.14 shows the amendment box");
-// The bare library draft is not Owner-approved here; the approved live v1.14 clears this gate.
-ok(v.blockers.every((b) => b.field === "template"), `v1.14: no blockers besides the Owner-approval gate (${JSON.stringify(v.blockers.filter((b) => b.field !== "template"))})`);
+// v1.14 is Owner-approved for sending (#405, t319u).
+ok(!v.blockers.length, `v1.14 has no blockers (${JSON.stringify(v.blockers)})`);
 ok(writes.length === 0, "still nothing written");
 const forced = await AG.amendmentSendCheck(fakeAdmin(tables()), APP_ID, { weeklyRate: 375, notice: "N", vehicleId: VEH_ID, templateKey: RA.AMENDMENT_TEMPLATE_KEY,
   prep: { ...v114prep, reservation: { mode: "required", amount: 50 }, deposit: { mode: "required", amount: 200, reason: "" } } });
