@@ -19,7 +19,7 @@
 //                 gig profile / gig platform status: drivers may rent before
 //                 completing gig-platform registration).
 
-import { REQUIRED_VAULT_CATEGORIES } from "@/lib/required-docs";
+import { REQUIRED_VAULT_CATEGORIES, requirementCategory } from "@/lib/required-docs";
 
 /** Same-tab presentation refresh after a committed readiness-related change. */
 export const ACTIVATION_READINESS_REFRESH_EVENT = "rr:activation-readiness-refresh";
@@ -185,7 +185,7 @@ export function missingRequiredCategories(docs: readonly VaultDocFact[]): string
   const present = new Set<string>();
   for (const d of docs) {
     if (d.is_current !== true || d.review_status === "rejected" || !d.category) continue;
-    present.add(d.category);
+    present.add(requirementCategory(d.category));
   }
   return REQUIRED_VAULT_CATEGORIES.filter((c) => !present.has(c));
 }
@@ -378,7 +378,7 @@ export function activationRequirements(f: DriverReadinessFacts): ActivationRequi
   const agreement = agreementCheck(f);
   const gigOnFile = !missing.has("gig_profile");
   const currentFile = (category: "income" | "insurance_quote" | "screening") => f.documents.some(
-    (d) => d.category === category && d.is_current === true && d.review_status !== "rejected" && !!d.id && !!d.storage_path,
+    (d) => (category === "income" ? requirementCategory(d.category) === "income" : d.category === category) && d.is_current === true && d.review_status !== "rejected" && !!d.id && !!d.storage_path,
   );
   const incomeOnFile = currentFile("income");
   const checkedFile = (field: "insurance_quote" | "screening") => currentFile(field) && f.evidence?.[field] === "collected";
@@ -593,6 +593,10 @@ export function primaryStep(input: {
   isManager: boolean;
 }): PrimaryStep {
   void input.insuranceOk;
+  // Once approved, the next real work is the agreement and the rental, not
+  // the interview (FLEET approves before any call; Dolmar, t306s1653). An
+  // unlogged interview stays a soft, overridable item in the checklist.
+  if (input.approved && !input.rentalActive) return input.isManager ? "activate" : "view_rental";
   if (!input.screeningDone) return "interview";
   if (!input.docsComplete) return "documents";
   if (!input.approved) return "approve";

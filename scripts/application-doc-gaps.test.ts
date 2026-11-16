@@ -103,7 +103,9 @@ describe("application document gaps", () => {
     assert.equal(canonicalRequiredDoc({ category: "insurance", is_current: true, review_status: "uploaded" }), null);
     assert.equal(canonicalRequiredDoc({ category: "gig_profile", is_current: true, review_status: "verified" }), "driver_profile_screenshot");
     assert.equal(canonicalRequiredDoc({ category: "license_back", is_current: true, review_status: "rejected" }), null);
-    assert.equal(canonicalRequiredDoc({ category: "trip_history", is_current: true, review_status: "uploaded" }), null);
+    // A trip-history / gig earnings screenshot is income proof (Dolmar, t306s1653).
+    assert.equal(canonicalRequiredDoc({ category: "trip_history", is_current: true, review_status: "uploaded" }), "income");
+    assert.equal(canonicalRequiredDoc({ category: "trip_history", is_current: true, review_status: "rejected" }), null);
     assert.equal(canonicalRequiredDoc({ category: "proof_of_address", is_current: true, review_status: "uploaded" }), null);
     assert.deepEqual(
       requiredDocCounts([
