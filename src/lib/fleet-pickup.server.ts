@@ -142,5 +142,9 @@ export async function handleFleetPickupSlots(request: Request, deps: PickupDeps 
     entityId: res.id,
     metadata: { decided_by: FLEET_ACTOR, application_id: leadId, vehicle_id: vehicleId, pickup_date: slot.date, pickup_time: slot.time, idempotency_key: idem },
   }).catch(() => {});
+  {
+    const { recordFleetLifecycleStep } = await import("@/lib/fleet-lifecycle.server");
+    await recordFleetLifecycleStep(audit, { applicationId: leadId, step: "reserved", evidence: `Pickup booked ${pickup.label}.`, source: "pickup-slots", at: now, extra: { rental_id: res.id } });
+  }
   return fleetJson(201, { ok: true, rental_id: res.id, lead_id: leadId, vehicle_id: vehicleId, pickup, login_email: res.loginEmail });
 }

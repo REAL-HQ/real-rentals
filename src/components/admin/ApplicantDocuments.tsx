@@ -34,6 +34,7 @@ import { verifyApprovalIdentity } from "@/lib/identity-verification.functions";
 import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
 import { useDriverDocumentUpload } from "./use-driver-document-upload";
 import { displayTitleCase } from "@/lib/display-normalize";
+import { REQUIRED_VAULT_CATEGORIES } from "@/lib/required-docs";
 
 // Everything an applicant sent us, in one place, grouped the way somebody
 // looking at it actually thinks.
@@ -284,12 +285,23 @@ export function ApplicantDocuments({
   }
 
   const received = ORDER.filter((c) => current.has(c)).length;
+  // The count staff act on: only the required files (license front, gig
+  // profile, income proof). "3 of 11 types" read as 8 things missing when
+  // only one was.
+  const requiredMissing = REQUIRED_VAULT_CATEGORIES.filter((c) => {
+    const d = current.get(c);
+    return !d || d.review_status === "rejected";
+  });
+  const requiredReceived = REQUIRED_VAULT_CATEGORIES.length - requiredMissing.length;
+  const docLabel = (c: string) => DOC_CATEGORIES.find((x) => x.key === c)?.label ?? c.replace(/_/g, " ");
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <MicroLabel>
-          {received} of {ORDER.length} document types received
+          {requiredReceived} of {REQUIRED_VAULT_CATEGORIES.length} required received
+          {requiredMissing.length > 0 ? ` · Missing: ${requiredMissing.map((c) => displayTitleCase(docLabel(c))).join(", ")}` : " · All required on file"}
+          {` · ${received} ${received === 1 ? "type" : "types"} on file`}
         </MicroLabel>
         {history.length > 0 && (
           <button
