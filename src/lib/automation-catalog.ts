@@ -129,7 +129,7 @@ export const AUTOMATIONS: AutomationDef[] = [
     title: "Approval Confirmation",
     audience: "Applicants",
     channels: ["Email"],
-    trigger: "A Manager or Owner approves an applicant.",
+    trigger: "A Manager, Owner or FLEET approves an applicant.",
     cadence: "Once when the applicant first becomes Approved. Re-approving to manage an agreement does not resend it.",
     emailWorkflows: ["approval_confirmation"],
     control: { kind: "setting" },

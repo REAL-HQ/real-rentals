@@ -101,7 +101,7 @@ Send `needs_staff` when any of these is true:
 1. Income proof missing.
 2. Driver under 25, or no date of birth.
 3. License expires within 30 days, or no expiration date.
-4. Gig rating under 4.7, or fewer than 100 trips.
+4. Gig rating under 4.0, or fewer than 100 trips.
 5. Not driving gig yet ("Not yet" / "No"), or the gig account is deactivated.
 6. The application analysis raised flags.
 7. Readiness says Needs Attention.
