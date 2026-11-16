@@ -24,7 +24,9 @@ describe("Approval Confirmation", () => {
     expect(message.to).toEqual(["renter@example.com"]);
     expect(message.subject).toBe("Your REAL RENTALS Application Is Approved");
     expect(message.workflow).toBe("approval_confirmation");
-    expect(message.html).toContain("Hi Jordan, your qualification and verification checks are complete.");
+    expect(message.html).toContain("Hi Jordan, you're approved to move forward. Next, we'll confirm your rental terms by phone and send your agreement.");
+    // Background/MVR checks are often still pending at approval: never claim they are done.
+    expect(message.html).not.toMatch(/checks are complete|verification/i);
     expect(message.html).toContain("Our team will be in touch to assign a vehicle and schedule your pickup.");
     expect(message.html).toContain("No vehicle is reserved yet.");
     expect(message.html).toContain("driver portal login and pickup details once your reservation is confirmed");
