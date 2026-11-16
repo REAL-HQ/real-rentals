@@ -18,6 +18,15 @@ export async function renderAutomationPreview(id: string): Promise<{ subject: st
       // Preview: the switch is bypassed (capture is on, so nothing sends) and no token is minted.
       return sendStepOneThankYouEmail({ applicationId: SAMPLE_APP, to: TO, firstName: "Jordan" }, { loadControls: async () => ({ status: "ok", value: { on: { step1_thank_you_email: true }, off: {} } }) as any, mintLink: async () => PREVIEW_LINK });
     },
+    missing_items_1: () => missingItemsPreview(m, 1),
+    missing_items_2: () => missingItemsPreview(m, 2),
+    missing_items_3: () => missingItemsPreview(m, 3),
+    missing_items_closed: async () => {
+      const { comeBackEmail, MISSING_ITEMS_AUTOCLOSE_WORKFLOW } = await import("@/lib/missing-items");
+      const { renderAutomationEmailHtml } = await import("@/lib/automations.server");
+      const { subject, body } = comeBackEmail({ firstName: "Jordan", link: PREVIEW_LINK, companyPhone: "{{company_phone}}" });
+      return m.sendEmail({ to: TO, subject, html: renderAutomationEmailHtml(body, PREVIEW_LINK), track: { workflow: MISSING_ITEMS_AUTOCLOSE_WORKFLOW } });
+    },
     approval_confirmation: () => m.sendApprovalConfirmationEmail({ to: TO, firstName: "Jordan", applicationId: SAMPLE_APP }),
     recovery_24h: () => m.sendWizardRecoveryEmail({ to: TO, firstName: "Jordan", applicationId: SAMPLE_APP, variant: "24h" }),
     recovery_72h: () => m.sendWizardRecoveryEmail({ to: TO, firstName: "Jordan", applicationId: SAMPLE_APP, variant: "72h" }),
@@ -41,4 +50,11 @@ export async function renderAutomationPreview(id: string): Promise<{ subject: st
   if (!first) return { subject: null, html: null, reason: "This template did not render." };
   void PREVIEW_LINK;
   return { subject: first.subject, html: first.html };
+}
+
+async function missingItemsPreview(m: typeof import("@/lib/email.server"), step: 1 | 2 | 3) {
+  const { outreachEmail, MISSING_ITEMS_EMAIL_WORKFLOW, MISSING_ITEM_KEYS } = await import("@/lib/missing-items");
+  const { renderAutomationEmailHtml } = await import("@/lib/automations.server");
+  const { subject, body } = outreachEmail(step, { firstName: "Jordan", items: [...MISSING_ITEM_KEYS], link: PREVIEW_LINK, companyPhone: "{{company_phone}}" });
+  return m.sendEmail({ to: TO, subject, html: renderAutomationEmailHtml(body, PREVIEW_LINK), track: { workflow: MISSING_ITEMS_EMAIL_WORKFLOW } });
 }

@@ -15,6 +15,23 @@ The site sends FLEET one signed JSON POST per event. Nothing is sent until
 | `quo_transcript` | `call.transcript.completed` |
 | `agreement_signed_by_renter` | a renter signs a rental agreement (email link or portal), once per agreement |
 | `application_ready_for_review` | an applicant is first submitted with the required documents on file (cron sweep, once per applicant; see docs/fleet-applicant-review.md) |
+| `reservation_confirmed` | a pickup is booked and confirmed (see docs/fleet-pickup-schedule.md) |
+| `documents_uploaded` | a file lands on an applicant or renter (once per document) * |
+| `payment_succeeded` | a payment row turns paid (once per payment) * |
+| `payment_failed` | a payment attempt fails (once per attempt) * |
+| `agreement_delivery_failed` | a signing link reached nobody (no email or text went out) * |
+| `pickup_checklist_completed` | the field rep submitted the pickup checklist * |
+| `rental_activated` | a rental started * |
+| `rental_returned` | the return checklist was completed * |
+| `rental_ended` | a rental was ended * |
+
+\* Lifecycle events. **Off** until `app_settings.fleet_lifecycle_events` is
+`{"enabled": true}` (`proposed/fleet-lifecycle-events-on.sql`), and they need
+`proposed/fleet-lifecycle-events-v1.sql` (event names in the queue's CHECK
+constraint). A sweep in the every-minute cron looks back 30 minutes and queues
+each one once, so turning it on never replays history and no payment, e-sign,
+activation or return code path changes. Payment rows touched again after 3 days
+(receipt backfills, the late-fee sweep) are not re-announced.
 
 Lead events carry: `lead_id, name, phone (E.164), email, stage, previous_stage
 (stage_changed only), current_stage, sms_consent, consent_timestamp, source,
@@ -39,6 +56,22 @@ already on the signed PDF. The queue row needs
 `application_ready_for_review` carries: `lead_id, name, phone, email, stage,
 applied_at, ready_at, next, admin_url`. It needs
 `proposed/fleet-applicant-review-v1.sql` applied first.
+
+Lifecycle payloads (ids, names and amounts, never phone numbers):
+
+- `documents_uploaded`: `lead_id, name, stage, document {id, category, label,
+  uploaded_by_role, uploaded_at}, docs {received, missing, optional_missing},
+  still_missing (what the missing-items message would ask for), next, admin_url`.
+- `payment_succeeded` / `payment_failed`: `payment_id, rental_id, lead_id, name,
+  type, amount, late_fees, due_date, autopay, balance {total_owed, overdue_owed,
+  late_fees_owed, open_rows…}, admin_url`, plus `paid_at`, or `failure_reason,
+  attempts, last_attempt_at, invoice_url`.
+- `agreement_delivery_failed`: `agreement_id, lead_id, name, status,
+  email_status, sms_status, failed_at, next, admin_url`.
+- `pickup_checklist_completed`, `rental_activated`, `rental_returned`,
+  `rental_ended`: `rental_id, lead_id, name, vehicle_id, rental_status,
+  start_date, end_date, weekly_rate, at, by_role, summary, admin_url`
+  (`rental_returned` adds `balance_due` in dollars).
 
 Every body also has `event`, `delivery_id` and `sent_at`.
 
