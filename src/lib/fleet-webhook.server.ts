@@ -36,11 +36,13 @@ export const FLEET_LEAD_EVENTS = ["lead_created", "stage_changed"] as const;
 export const FLEET_QUO_EVENTS = ["quo_message_received", "quo_call", "quo_voicemail", "quo_transcript"] as const;
 export const FLEET_AGREEMENT_EVENTS = ["agreement_signed_by_renter"] as const;
 export const FLEET_REVIEW_EVENTS = ["application_ready_for_review"] as const;
+export const FLEET_RESERVATION_EVENTS = ["reservation_confirmed"] as const;
 export type FleetEvent =
   | (typeof FLEET_LEAD_EVENTS)[number]
   | (typeof FLEET_QUO_EVENTS)[number]
   | (typeof FLEET_AGREEMENT_EVENTS)[number]
-  | (typeof FLEET_REVIEW_EVENTS)[number];
+  | (typeof FLEET_REVIEW_EVENTS)[number]
+  | (typeof FLEET_RESERVATION_EVENTS)[number];
 
 export const FLEET_MAX_ATTEMPTS = 8;
 /** Wait before attempt n+1 after n failed attempts. */
