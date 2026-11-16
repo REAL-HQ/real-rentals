@@ -1,1 +1,0 @@
-export const sendSms = async () => ({ ok: false, skipped: true, reason: "capture_only" });
