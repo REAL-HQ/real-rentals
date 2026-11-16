@@ -196,21 +196,32 @@ async function deliver(
   email: { subject: string; html: string; workflow: string } | null,
   rentalId: string | null,
 ): Promise<ReminderOutcome> {
-  const res = app.phone ? await deps.sendSms({ to: app.phone, body: sms, kind, applicationId: app.id, rentalId }) : { ok: false, skipped: true, reason: "no_phone" };
-  if (res?.ok) {
+  const { sendRenterSms, sendRenterEmail, renterEmailTargets } = await import("@/lib/driver-contacts.server");
+  const fan = await sendRenterSms({
+    admin, applicationId: app.id, body: sms, kind, rentalId, sendSms: deps.sendSms, app,
+  });
+  const res = fan.results.find((r) => r?.ok) ?? fan.results[0] ?? { ok: false, skipped: true, reason: "no_phone" };
+  if (fan.sent > 0) {
     await finish(admin, key, "sms", "sent", null);
     return { key, kind, channel: "sms", status: "sent", body: sms };
   }
-  const consentRefusal = res?.skipped && ["no_consent", "opted_out", "invalid_phone", "no_phone"].includes(String(res.reason));
+  const consentReasons = ["no_consent", "no_consent_for_number", "opted_out", "invalid_phone", "no_phone", "not_enabled"];
+  const consentRefusal = fan.targets.every((t) => !t.canText) || (res?.skipped && consentReasons.includes(String(res.reason)));
   if (!consentRefusal) {
     await finish(admin, key, "sms", "failed", String(res?.error ?? res?.reason ?? "send failed").slice(0, 300));
     return { key, kind, channel: "sms", status: "failed" };
   }
-  if (!email || !app.email) {
-    await finish(admin, key, "none", "skipped", `text not allowed (${res.reason}); no email fallback`);
+  const emails = email ? await renterEmailTargets(admin, app.id, app) : [];
+  if (!email || !emails.length) {
+    await finish(admin, key, "none", "skipped", `text not allowed (${res.reason ?? "no_phone"}); no email fallback`);
     return { key, kind, channel: "none", status: "skipped" };
   }
-  const er = await deps.sendEmail({ to: app.email, subject: email.subject, html: email.html, track: { workflow: email.workflow }, idempotencyKey: `renter-reminder:${key}` });
+  const mail = await sendRenterEmail({
+    admin, applicationId: app.id, subject: email.subject, html: email.html,
+    track: { workflow: email.workflow }, idempotencyKey: `renter-reminder:${key}`,
+    sendEmail: deps.sendEmail, app,
+  });
+  const er = mail.results.find((r) => r?.ok) ?? mail.results[0] ?? {};
   const status = er?.ok ? "sent" : er?.blocked ? `blocked:${er.blocked}` : "failed";
   await finish(admin, key, "email", status, er?.ok ? null : String(er?.error ?? "send failed").slice(0, 300));
   return { key, kind, channel: "email", status };

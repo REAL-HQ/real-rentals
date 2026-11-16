@@ -422,6 +422,26 @@ export async function deliverSigningLink(
     }
   }
 
+  const extraEmails: string[] = [];
+  const extraPhones: string[] = [];
+  if (args.applicationId) {
+    try {
+      const { renterEmailTargets, renterSmsTargets } = await import("@/lib/driver-contacts.server");
+      const emails = await renterEmailTargets(admin, args.applicationId, { email: args.email });
+      const phones = await renterSmsTargets(admin, args.applicationId);
+      const primaryEmail = (args.email ?? "").trim().toLowerCase();
+      for (const e of emails) if (e !== primaryEmail) extraEmails.push(e);
+      const primaryPhone = args.phone;
+      for (const p of phones) {
+        if (!p.canText) continue;
+        const same = primaryPhone && String(p.e164).replace(/\D/g, "").slice(-10) === String(primaryPhone).replace(/\D/g, "").slice(-10);
+        if (!same) extraPhones.push(p.e164);
+      }
+    } catch {
+      // Table missing or unreadable: send only to the primary, as before.
+    }
+  }
+
   let sms: ChannelStatus = "not_attempted";
   let smsError: string | null = "No phone on file";
   if (args.phone) {
@@ -439,6 +459,36 @@ export async function deliverSigningLink(
     } catch (e) {
       sms = "failed";
       smsError = (e instanceof Error ? e.message : "SMS send failed").slice(0, 300);
+    }
+  }
+
+  if (extraEmails.length) {
+    try {
+      const { sendAgreementEmail } = await import("@/lib/email.server");
+      for (const to of extraEmails) {
+        const r = await sendAgreementEmail({ to, firstName: args.name, url: args.url, vehicle: args.vehicle });
+        if (r.ok && email !== "sent") { email = "sent"; emailError = null; }
+      }
+    } catch (e) {
+      if (email !== "sent") {
+        email = "failed";
+        emailError = (e instanceof Error ? e.message : "Email send failed").slice(0, 300);
+      }
+    }
+  }
+  if (extraPhones.length) {
+    try {
+      const { sendSms } = await import("@/lib/sms.server");
+      const body = `REAL RENTALS: Your rental agreement is ready to sign: ${args.url} Reply STOP to opt out.`;
+      for (const to of extraPhones) {
+        const r: any = await sendSms({ to, body, kind: "agreement_sent", applicationId: args.applicationId ?? undefined });
+        if (r.ok && sms !== "sent") { sms = "sent"; smsError = null; }
+      }
+    } catch (e) {
+      if (sms !== "sent") {
+        sms = "failed";
+        smsError = (e instanceof Error ? e.message : "SMS send failed").slice(0, 300);
+      }
     }
   }
 

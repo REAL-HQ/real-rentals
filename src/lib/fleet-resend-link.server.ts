@@ -185,20 +185,23 @@ async function resendUpload(admin: Admin, body: Record<string, any>, deps: Resen
 
   let email: "sent" | "failed" | "not_attempted" = "not_attempted";
   let sms: "sent" | "failed" | "not_attempted" = "not_attempted";
-  const to = String(app.email ?? "").trim();
-  if (/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(to)) {
-    const { subject, body: text } = outreachEmail(1, vars);
-    const html = (await import("@/lib/automations.server")).renderAutomationEmailHtml(text, link);
-    const send = deps.sendEmail ?? (async (x) => (await import("@/lib/email.server")).sendEmail(x));
-    const r = await send({ to, subject, html, track: { workflow: UPLOAD_RESEND_WORKFLOW } });
-    email = r.ok ? "sent" : "failed";
-    if (r.ok) await admin.from("outbound_messages").insert({ channel: "email", to_address: to, subject, body: text, status: "sent", provider: "resend", kind: UPLOAD_RESEND_KIND, application_id: leadId });
-  }
-  if (app.phone && app.sms_consent === true && !app.sms_opt_out_at) {
-    const send = deps.sendSms ?? (async (x) => (await import("@/lib/sms.server")).sendSms(x) as any);
-    const r = await send({ to: String(app.phone), body: outreachSms(1, vars), kind: UPLOAD_RESEND_KIND, applicationId: leadId });
-    sms = r.ok ? "sent" : r.skipped ? "not_attempted" : "failed";
-  }
+  const { sendRenterEmail, sendRenterSms } = await import("@/lib/driver-contacts.server");
+  const { subject, body: text } = outreachEmail(1, vars);
+  const html = (await import("@/lib/automations.server")).renderAutomationEmailHtml(text, link);
+  const sendEmail = deps.sendEmail ?? (async (x) => (await import("@/lib/email.server")).sendEmail(x));
+  const mail = await sendRenterEmail({
+    admin, applicationId: leadId, subject, html, track: { workflow: UPLOAD_RESEND_WORKFLOW }, sendEmail, app,
+  });
+  if (mail.sent > 0) {
+    email = "sent";
+    for (const to of mail.targets) {
+      await admin.from("outbound_messages").insert({ channel: "email", to_address: to, subject, body: text, status: "sent", provider: "resend", kind: UPLOAD_RESEND_KIND, application_id: leadId });
+    }
+  } else if (mail.targets.length) email = "failed";
+  const sendSms = deps.sendSms ?? (async (x) => (await import("@/lib/sms.server")).sendSms(x) as any);
+  const texts = await sendRenterSms({ admin, applicationId: leadId, body: outreachSms(1, vars), kind: UPLOAD_RESEND_KIND, sendSms, app });
+  if (texts.sent > 0) sms = "sent";
+  else if (texts.results.some((r) => r && r.ok === false && !r.skipped)) sms = "failed";
   await fleetAudit(deps)({ action: "application.upload_link_resent", summary: "Upload link resent by FLEET (automated)", entityType: "application", entityId: leadId, metadata: { by: "FLEET", items, email, sms } });
   return fleetJson(200, { ok: true, kind: "upload", lead_id: leadId, missing: items, email, sms, delivered: email === "sent" || sms === "sent" });
 }

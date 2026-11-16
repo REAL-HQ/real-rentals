@@ -213,7 +213,7 @@ describe("site wiring", () => {
 
   test("the follow-up texts themselves are untouched (still kind automation, still consent-gated)", () => {
     const a = readFileSync("src/lib/automations.server.ts", "utf8");
-    expect(a).toMatch(/sendSms\(\{[\s\S]{0,200}kind: "automation"/);
+    expect(a).toMatch(/sendRenterSms\(\{[\s\S]{0,400}kind: "automation"/);
     expect(a).not.toMatch(/requireConsent:\s*false/);
   });
 });

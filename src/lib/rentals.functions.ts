@@ -577,10 +577,9 @@ export async function activateRentalCore(
 
     if (sendWelcome) try {
       const { sendEmail } = await import("@/lib/email.server");
-      await sendEmail({
-        to: app.email as string,
-        subject: `Your ${vehicleLabel} Rental Is Active`,
-        html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
+      const { sendRenterEmail } = await import("@/lib/driver-contacts.server");
+      const { supabaseAdmin: welcomeAdmin } = await import("@/integrations/supabase/client.server");
+      const welcomeHtml = `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
           <h1 style="font-size:20px">You're all set, ${escapeHtml(firstName)}</h1>
           <p style="font-size:15px;line-height:1.6">Your rental is active: <strong>${escapeHtml(vehicleLabel)}</strong>${
             vehicle?.license_plate ? ` (${escapeHtml(vehicle.license_plate)})` : ""
@@ -590,7 +589,14 @@ export async function activateRentalCore(
             ${created ? "Set Your Password" : "Open Driver Portal"}
           </a>
           <p style="color:#888;font-size:12px;margin-top:20px">Take photos of the car at pickup in the portal — it protects you if there's ever a question about damage.</p>
-        </div>`,
+        </div>`;
+      await sendRenterEmail({
+        admin: welcomeAdmin,
+        applicationId: data.applicationId,
+        subject: `Your ${vehicleLabel} Rental Is Active`,
+        html: welcomeHtml,
+        sendEmail,
+        app,
       });
     } catch (e) {
       console.error("[activate] welcome email failed", e);
@@ -598,13 +604,17 @@ export async function activateRentalCore(
 
     if (sendWelcome) try {
       const { sendSms } = await import("@/lib/sms.server");
-      await sendSms({
-        to: (app.phone as string) ?? "",
+      const { sendRenterSms } = await import("@/lib/driver-contacts.server");
+      const { supabaseAdmin: welcomeSmsAdmin } = await import("@/integrations/supabase/client.server");
+      await sendRenterSms({
+        admin: welcomeSmsAdmin,
+        applicationId: data.applicationId,
         body: `REAL RENTALS: Hi ${firstName}, your ${vehicleLabel} rental is now active. Check your email to set up your driver portal and see your payment schedule. Reply STOP to opt out.`,
         kind: "rental_activated",
-        applicationId: data.applicationId,
         rentalId: rental.id as string,
         vehicleId: data.vehicleId,
+        sendSms,
+        app,
       });
     } catch (e) {
       console.error("[activate] welcome sms failed", e);
