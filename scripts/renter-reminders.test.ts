@@ -96,8 +96,8 @@ function world() {
   return {
     rentals: [{ id: "r1", status: "reserved", application_id: "a1", vehicle_id: "v1", start_date: "2026-11-18", reservation_note: note("09:30"), created_at: "2026-11-16T15:00:00Z" }],
     applications: [
-      { id: "a1", full_name: "Sam Lee", phone: "8135550101", email: "sam@example.com" },
-      { id: "a2", full_name: "Kim Ray", phone: "8135550102", email: "kim@example.com" },
+      { id: "a1", full_name: "Sam Lee", phone: "8135550101", email: "sam@example.com", sms_consent: true, sms_opt_out_at: null },
+      { id: "a2", full_name: "Kim Ray", phone: "8135550102", email: "kim@example.com", sms_consent: false, sms_opt_out_at: null },
     ],
     vehicles: [{ id: "v1", year: 2017, make: "Ford", model: "Fusion" }],
     agreements: [{ id: "g1", status: "sent", application_id: "a2", rental_id: null, sent_at: "2026-11-16T15:00:00Z", signed_at: null, voided_at: null, token_expires_at: "2026-11-30T00:00:00Z", signer_email: null }],

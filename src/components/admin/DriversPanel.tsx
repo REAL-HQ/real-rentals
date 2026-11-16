@@ -73,6 +73,7 @@ import { NextStepCard } from "./NextStepCard";
 import { ReturnFlowDialog } from "./ReturnFlowDialog";
 import { RETURN_FLOW_ENABLED } from "@/lib/return-flow";
 import { DriverRentalDetails } from "./DriverRentalDetails";
+import { DriverContactsEditor } from "./DriverContactsEditor";
 import { nextStep, type FixTarget } from "@/lib/next-step";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { DepositDialog } from "./DepositDialog";
@@ -2865,6 +2866,15 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="application" className="mt-0 space-y-4">
+                <Card title="Contact" icon={<Phone className="w-4 h-4" />}>
+                  <DriverContactsEditor
+                    applicationId={driver.id}
+                    primaryPhone={driver.phone}
+                    primaryEmail={driver.email}
+                    canEdit={isManager}
+                    onPrimaryChange={(patch) => onUpdate(patch)}
+                  />
+                </Card>
                 <Card title="Driver Info" icon={<UserIcon className="w-4 h-4" />}>
                   {isManager ? (
                     <>
@@ -2878,7 +2888,6 @@ function DriverDetail({
                         <TxtField label="City" value={driver.city} onSave={(v) => onUpdate({ city: v })} />
                         <TxtField label="State" value={driver.state} onSave={(v) => onUpdate({ state: v })} />
                         <TxtField label="ZIP" value={driver.zip} onSave={(v) => onUpdate({ zip: v })} />
-                        <TxtField label="Phone" value={driver.phone} onSave={(v) => { if (v) onUpdate({ phone: v }); }} />
                         <TxtField
                           label="Platforms"
                           value={(driver.platforms ?? screening?.gig_apps)?.join(", ") || null}

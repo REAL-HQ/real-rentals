@@ -368,21 +368,32 @@ export async function runRentReminders(admin: any, deps: ReminderDeps = {}): Pro
       // The autopay heads-up never carries a link of any kind.
       if (state.mode === "stripe" && d.stage === "due_tomorrow" && (msg.link || /https?:\/\//i.test(`${msg.sms} ${msg.email}`))) { bump(run, "no_safe_link"); continue; }
 
+      const applicationId = s.applicationId;
+      if (!applicationId) { bump(run, channel === "sms" ? "no_phone" : "no_email"); continue; }
       const key = { rentalId: s.rentalId, dueDate: d.dueDate, stage: d.ledgerStage, channel };
       const claim = await claimReminder(admin, { ...key, source: "scheduler", at: now });
       if (claim !== "claimed") { bump(run, claim === "taken" ? "already_sent" : "ledger_unavailable"); continue; }
       try {
         if (channel === "sms") {
-          const res = await sendSms({
-            to: s.phone!, body: msg.sms, kind: `rent_reminder_${d.stage}`, applicationId: s.applicationId, rentalId: s.rentalId,
-            requireConsent: false, fromId: smsFrom, noticeTimeout: true,
+          const { sendRenterSms } = await import("@/lib/driver-contacts.server");
+          const fan = await sendRenterSms({
+            admin, applicationId, body: msg.sms, kind: `rent_reminder_${d.stage}`,
+            rentalId: s.rentalId, requireConsent: false, fromId: smsFrom, noticeTimeout: true,
+            sendSms, app: { phone: s.phone },
           });
-          await finish(admin, key, res.ok ? "sent" : `skipped:${res.reason ?? res.error ?? "unknown"}`);
-          if (res.ok) run.sms++; else bump(run, `sms_${res.reason ?? "failed"}`);
+          const res = fan.results.find((r) => r?.ok) ?? fan.results[0] ?? { ok: false, reason: "no_phone" };
+          await finish(admin, key, fan.sent > 0 ? "sent" : `skipped:${res.reason ?? res.error ?? "unknown"}`);
+          if (fan.sent > 0) run.sms++; else bump(run, `sms_${res.reason ?? "failed"}`);
         } else {
-          const res = await sendMail({ to: s.email!, subject: msg.subject, text: msg.email, link: msg.link, linkLabel: msg.linkLabel, workflow: STAGE_WORKFLOW[d.stage] });
-          await finish(admin, key, res.ok ? "sent" : `skipped:${res.blocked ?? res.error ?? "unknown"}`);
-          if (res.ok) run.email++; else bump(run, "email_not_sent");
+          const { sendRenterEmail } = await import("@/lib/driver-contacts.server");
+          const htmlOrText = async (a: { to: string }) => sendMail({ to: a.to, subject: msg.subject, text: msg.email, link: msg.link, linkLabel: msg.linkLabel, workflow: STAGE_WORKFLOW[d.stage] });
+          const fan = await sendRenterEmail({
+            admin, applicationId, subject: msg.subject, html: msg.email,
+            sendEmail: htmlOrText, app: { email: s.email },
+          });
+          const res = fan.results.find((r) => r?.ok) ?? fan.results[0] ?? { ok: false };
+          await finish(admin, key, fan.sent > 0 ? "sent" : `skipped:${res.blocked ?? res.error ?? "unknown"}`);
+          if (fan.sent > 0) run.email++; else bump(run, "email_not_sent");
         }
       } catch (err) {
         await finish(admin, key, "error", String((err as Error)?.message ?? err));

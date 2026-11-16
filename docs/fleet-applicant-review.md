@@ -36,6 +36,7 @@ Reply `{ ok, packet }` with:
 
 | key | what |
 |---|---|
+| `contacts` | every phone and email on the profile (`phones[]` / `emails[]`, with `is_primary`, `receives_messages`, and `sms_ok` per number). `answers.phone` / `answers.email` stay the primary |
 | `answers` | the application answers (license number masked to the last 4; payment ids, consent text and card ids left out) |
 | `documents[]` | every current vault document: category, file name, type, size, `review_status`, review note, upload time, expiry. `url` is null unless `include_urls: true`, then a signed link valid for 15 minutes (the back office's own signer) |
 | `gig_evidence` | platforms, gig status, trips, rating, screenshot counts, gig-profile and trip-history document counts |

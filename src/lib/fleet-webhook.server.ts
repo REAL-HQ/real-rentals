@@ -31,6 +31,7 @@
 import { REQUIRED_DOC_TYPES } from "@/components/admin/types";
 import { canonicalRequiredDoc } from "@/lib/required-docs";
 import { toE164 } from "@/lib/sms.server";
+import { fleetContactsFor } from "@/lib/driver-contacts.server";
 
 type Env = Record<string, string | undefined>;
 type Admin = any;
@@ -184,6 +185,7 @@ export async function buildLeadPayload(
     name: app.full_name ?? null,
     phone: toE164(app.phone),
     email: app.email ?? null,
+    contacts: await fleetContactsFor(admin, app.id, app),
     stage: a.stage ?? app.status,
     ...(a.event === "stage_changed" ? { previous_stage: a.previousStage ?? null } : {}),
     current_stage: app.status,

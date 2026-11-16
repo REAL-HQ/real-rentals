@@ -13,6 +13,7 @@
 
 import { resolveQuoSender, smsProviderStatus } from "@/lib/sms-provider.server";
 import { findDisallowedOutboundUrls, outboundRefusalMessage } from "@/lib/public-app-url";
+import { contactSmsDecision, isDriverContactsTableMissing, samePhone } from "@/lib/driver-contacts";
 
 export type SmsResult =
   | { ok: true; id: string | null; skipped?: false }
@@ -182,23 +183,58 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
   if (requireConsent && args.applicationId) {
     const { data: app } = await supabaseAdmin
       .from("applications")
-      .select("sms_consent,sms_opt_out_at")
+      .select("phone,sms_consent,sms_opt_out_at,sms_consent_phone")
       .eq("id", args.applicationId)
       .maybeSingle();
-    if (!app?.sms_consent || app?.sms_opt_out_at) {
+    const isPrimary = samePhone(app?.phone, to);
+    let consentedAt: string | null = null;
+    let receivesMessages = isPrimary;
+    const contactRes = await supabaseAdmin
+      .from("driver_contacts")
+      .select("value,is_primary,receives_messages,consented_at")
+      .eq("application_id", args.applicationId)
+      .eq("kind", "phone");
+    if (!contactRes.error) {
+      const row = ((contactRes.data ?? []) as any[]).find((c) => samePhone(c.value, to));
+      if (row) {
+        consentedAt = row.consented_at ?? null;
+        receivesMessages = row.is_primary || row.receives_messages;
+      } else if (!isPrimary) {
+        receivesMessages = false;
+      }
+    } else if (!isDriverContactsTableMissing(contactRes.error) && !isPrimary) {
+      receivesMessages = false;
+    }
+    const decision = contactSmsDecision({
+      e164: to,
+      isPrimary,
+      receivesMessages: isPrimary || receivesMessages,
+      optedOut: false, // already checked via sms_opt_outs above
+      app: app ?? {},
+      consentedAt,
+    });
+    if (!decision.canText) {
+      const error =
+        decision.reason === "opted_out"
+          ? "applicant opted out"
+          : decision.reason === "no_consent_for_number"
+            ? "no SMS consent for this number"
+            : decision.reason === "not_enabled"
+              ? "number is not set to receive messages"
+              : "no SMS consent on file";
       await logMessage(supabaseAdmin, {
         channel: "sms",
         to_address: to,
         body: args.body,
         status: "skipped",
-        error: app?.sms_opt_out_at ? "applicant opted out" : "no SMS consent on file",
+        error,
         kind: args.kind ?? null,
         application_id: args.applicationId,
         workflow_id: args.workflowId ?? null,
         enrollment_id: args.enrollmentId ?? null,
         step_id: args.stepId ?? null,
       });
-      return { ok: false, skipped: true, reason: "no_consent" };
+      return { ok: false, skipped: true, reason: decision.reason };
     }
   }
 

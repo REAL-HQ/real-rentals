@@ -302,25 +302,31 @@ async function sendOne(admin: any, p: PlannedSend, mode: "ongoing" | "backfill",
   const vars = { firstName: firstNameOf(p.app.full_name), items: p.items, link, companyPhone, closeInDays };
   const channels: string[] = [];
   const errors: string[] = [];
-  if (p.email && p.app.email) {
+  const { sendRenterEmail, sendRenterSms } = await import("@/lib/driver-contacts.server");
+  if (p.email) {
     const { subject, body } = outreachEmail(p.step, vars);
     const { renderAutomationEmailHtml } = await import("@/lib/automations.server");
     const send = deps.sendEmail ?? (async (a) => (await import("@/lib/email.server")).sendEmail(a));
-    const r = await send({ to: String(p.app.email).trim(), subject, html: renderAutomationEmailHtml(body, link), track: { workflow: mode === "backfill" ? MISSING_ITEMS_BACKFILL_WORKFLOW : MISSING_ITEMS_EMAIL_WORKFLOW } });
-    if (r.ok) {
+    const mail = await sendRenterEmail({
+      admin, applicationId: p.app.id, subject, html: renderAutomationEmailHtml(body, link),
+      track: { workflow: mode === "backfill" ? MISSING_ITEMS_BACKFILL_WORKFLOW : MISSING_ITEMS_EMAIL_WORKFLOW },
+      sendEmail: send, app: p.app,
+    });
+    if (mail.sent > 0) {
       channels.push("email");
-      await admin.from("outbound_messages").insert({
-        channel: "email", to_address: String(p.app.email).trim(), subject, body, status: "sent", provider: "resend",
-        kind: MISSING_ITEMS_KIND, application_id: p.app.id,
-      });
-    } else errors.push(`email: ${r.blocked ?? r.error ?? "failed"}`);
+      for (const to of mail.targets) {
+        await admin.from("outbound_messages").insert({
+          channel: "email", to_address: to, subject, body, status: "sent", provider: "resend",
+          kind: MISSING_ITEMS_KIND, application_id: p.app.id,
+        });
+      }
+    } else if (mail.targets.length) errors.push("email: failed");
   }
-  if (p.sms && p.app.phone) {
+  if (p.sms) {
     const send = deps.sendSms ?? (async (a) => (await import("@/lib/sms.server")).sendSms(a));
-    // Default sender is the main 888 line; sendSms re-checks consent and STOP.
-    const r = await send({ to: String(p.app.phone), body: outreachSms(p.step, vars), kind: MISSING_ITEMS_KIND, applicationId: p.app.id });
-    if (r.ok) channels.push("sms");
-    else errors.push(`sms: ${(r as any).reason ?? (r as any).error ?? "failed"}`);
+    const texts = await sendRenterSms({ admin, applicationId: p.app.id, body: outreachSms(p.step, vars), kind: MISSING_ITEMS_KIND, sendSms: send, app: p.app });
+    if (texts.sent > 0) channels.push("sms");
+    else if (texts.targets.length) errors.push(`sms: ${texts.results[0]?.reason ?? texts.results[0]?.error ?? "failed"}`);
   }
   if (claimId) await admin.from(OUTREACH_LOG_TABLE).update({ channels, error: errors.join("; ") || null }).eq("id", claimId);
   return channels.length > 0;
@@ -469,21 +475,27 @@ async function closeOne(admin: any, p: { app: OutreachApp; email: boolean; sms: 
   try {
     const link = await (deps.mintLink ?? defaultMintLink)(admin, p.app.id);
     const v = { firstName: firstNameOf(p.app.full_name), link, companyPhone };
-    if (p.email && p.app.email) {
+    const { sendRenterEmail, sendRenterSms } = await import("@/lib/driver-contacts.server");
+    if (p.email) {
       const { subject, body } = comeBackEmail(v);
       const { renderAutomationEmailHtml } = await import("@/lib/automations.server");
       const send = deps.sendEmail ?? (async (a) => (await import("@/lib/email.server")).sendEmail(a));
-      const r = await send({ to: String(p.app.email).trim(), subject, html: renderAutomationEmailHtml(body, link), track: { workflow: MISSING_ITEMS_AUTOCLOSE_WORKFLOW } });
-      if (r.ok) {
+      const mail = await sendRenterEmail({
+        admin, applicationId: p.app.id, subject, html: renderAutomationEmailHtml(body, link),
+        track: { workflow: MISSING_ITEMS_AUTOCLOSE_WORKFLOW }, sendEmail: send, app: p.app,
+      });
+      if (mail.sent > 0) {
         channels.push("email");
-        await admin.from("outbound_messages").insert({ channel: "email", to_address: String(p.app.email).trim(), subject, body, status: "sent", provider: "resend", kind: MISSING_ITEMS_AUTOCLOSE_KIND, application_id: p.app.id });
-      } else errors.push(`email: ${r.blocked ?? r.error ?? "failed"}`);
+        for (const to of mail.targets) {
+          await admin.from("outbound_messages").insert({ channel: "email", to_address: to, subject, body, status: "sent", provider: "resend", kind: MISSING_ITEMS_AUTOCLOSE_KIND, application_id: p.app.id });
+        }
+      } else if (mail.targets.length) errors.push("email: failed");
     }
-    if (p.sms && p.app.phone) {
+    if (p.sms) {
       const send = deps.sendSms ?? (async (a) => (await import("@/lib/sms.server")).sendSms(a));
-      const r = await send({ to: String(p.app.phone), body: comeBackSms(v), kind: MISSING_ITEMS_AUTOCLOSE_KIND, applicationId: p.app.id });
-      if (r.ok) channels.push("sms");
-      else errors.push(`sms: ${(r as any).reason ?? (r as any).error ?? "failed"}`);
+      const texts = await sendRenterSms({ admin, applicationId: p.app.id, body: comeBackSms(v), kind: MISSING_ITEMS_AUTOCLOSE_KIND, sendSms: send, app: p.app });
+      if (texts.sent > 0) channels.push("sms");
+      else if (texts.targets.length) errors.push(`sms: ${texts.results[0]?.reason ?? texts.results[0]?.error ?? "failed"}`);
     }
   } catch (e) {
     errors.push(`link: ${e instanceof Error ? e.message : String(e)}`);

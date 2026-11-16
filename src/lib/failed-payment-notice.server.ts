@@ -79,6 +79,25 @@ export async function sendFailedPaymentText(
   }
   const send: SmsSender = deps.sendSms ?? (async (a) => (await import("@/lib/sms.server")).sendSms(a) as any);
   try {
+    if (input.applicationId) {
+      const { sendRenterSms } = await import("@/lib/driver-contacts.server");
+      const fan = await sendRenterSms({
+        admin,
+        applicationId: input.applicationId,
+        body,
+        kind: "payment_failed",
+        rentalId: input.rentalId,
+        vehicleId: input.vehicleId ?? null,
+        requireConsent: false,
+        fromId: process.env.PAYMENT_FAILED_SMS_FROM?.trim() || null,
+        noticeTimeout: true,
+        sendSms: send,
+        app: { phone: input.phone },
+      });
+      if (fan.sent > 0) return { sent: true };
+      const res = fan.results[0] ?? {};
+      return { sent: false, reason: res.reason ?? res.error ?? "send_failed" };
+    }
     const res = await send({
       to: input.phone,
       body,
@@ -87,7 +106,6 @@ export async function sendFailedPaymentText(
       rentalId: input.rentalId,
       vehicleId: input.vehicleId ?? null,
       requireConsent: false,
-      // 888 (default line) unless PAYMENT_FAILED_SMS_FROM names another allowlisted Quo number, e.g. 813.
       fromId: process.env.PAYMENT_FAILED_SMS_FROM?.trim() || null,
       noticeTimeout: true,
     });

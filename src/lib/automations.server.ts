@@ -377,10 +377,11 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
         // the ordinary 14-day, multi-use session link (not the 30-minute
         // recovery link), because people open these messages hours later.
         let resumeLink: string | null = null;
+        const { canReachRenter } = await import("@/lib/driver-contacts.server");
         if (
           wantsResumeLink(step.body) &&
           enrollment.application_id &&
-          canReach(step.channel, app)
+          await canReachRenter(supabaseAdmin, step.channel, app)
         ) {
           const { issueResumeToken, resumeUrl } = await import("@/lib/resume-tokens.server");
           try {
@@ -407,39 +408,46 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
           resume_link: resumeLink ?? "",
         };
         const body = renderTemplate(step.body, vars);
+        const applicationId = enrollment.application_id;
+        if (!applicationId) {
+          result.skipped++;
+          continue;
+        }
         if (step.channel === "sms") {
-          if (!app?.phone || !toE164(app.phone)) {
-            result.skipped++;
-          } else {
-            const sent = await sendSms({
-              to: app.phone,
-              body,
-              kind: "automation",
-              applicationId: enrollment.application_id,
-              rentalId: enrollment.rental_id,
-              workflowId: workflow.id,
-              enrollmentId: enrollment.id,
-              stepId: step.id,
-            });
-            if (sent.ok) result.sent++;
-            else result.skipped++;
-          }
+          const { sendRenterSms } = await import("@/lib/driver-contacts.server");
+          const fan = await sendRenterSms({
+            admin: supabaseAdmin,
+            applicationId,
+            body,
+            kind: "automation",
+            rentalId: enrollment.rental_id,
+            workflowId: workflow.id,
+            enrollmentId: enrollment.id,
+            stepId: step.id,
+            sendSms,
+            app,
+          });
+          if (fan.sent > 0) result.sent++;
+          else result.skipped++;
         } else {
-          if (!app?.email) {
-            result.skipped++;
-          } else {
-            const subject = renderTemplate(
-              step.subject || "A quick update from REAL RENTALS",
-              vars,
-            );
-            await sendEmail({
-              to: app.email,
-              subject,
-              html: renderAutomationEmailHtml(body, resumeLink),
-            });
+          const { sendRenterEmail } = await import("@/lib/driver-contacts.server");
+          const subject = renderTemplate(
+            step.subject || "A quick update from REAL RENTALS",
+            vars,
+          );
+          const html = renderAutomationEmailHtml(body, resumeLink);
+          const fan = await sendRenterEmail({
+            admin: supabaseAdmin,
+            applicationId,
+            subject,
+            html,
+            sendEmail,
+            app,
+          });
+          for (const to of fan.targets) {
             await supabaseAdmin.from("outbound_messages").insert({
               channel: "email",
-              to_address: app.email,
+              to_address: to,
               subject,
               body,
               status: "sent",
@@ -452,8 +460,9 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
               step_id: step.id,
               sent_at: new Date().toISOString(),
             });
-            result.sent++;
           }
+          if (fan.sent > 0) result.sent++;
+          else result.skipped++;
         }
       }
 
