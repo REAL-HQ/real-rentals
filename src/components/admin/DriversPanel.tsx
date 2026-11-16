@@ -246,6 +246,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { DocumentsExpiringList } from "./DocumentsExpiring";
+import { FleetNeedsStaffBanner } from "./FleetNeedsStaffBanner";
+import { listFleetNeedsStaff, type FleetNeedsStaffFlag } from "@/lib/fleet-review.functions";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
 import type { ExpiryScope } from "@/lib/document-expiry";
 
@@ -510,6 +512,17 @@ export function DriversPanel({
   const loadHolds = useServerFn(listWaitlistHolds);
   const holdFn = useServerFn(setWaitlistHold);
   const [held, setHeld] = useState<Set<string>>(new Set());
+  // FLEET's Needs Staff queue (fleet_review_decisions). Empty until installed.
+  const loadNeedsStaff = useServerFn(listFleetNeedsStaff);
+  const [needsStaffFlags, setNeedsStaffFlags] = useState<FleetNeedsStaffFlag[] | null>(null);
+  const needsStaff = useMemo(() => new Map((needsStaffFlags ?? []).map((f) => [f.applicationId, f])), [needsStaffFlags]);
+  useEffect(() => {
+    let cancelled = false;
+    loadNeedsStaff()
+      .then((r) => { if (!cancelled) setNeedsStaffFlags(r.flags); })
+      .catch(() => { if (!cancelled) setNeedsStaffFlags([]); });
+    return () => { cancelled = true; };
+  }, [loadNeedsStaff]);
   // Active filter and its count use one set. While Record Rental is
   // uninstalled that set is every rentals.status = 'active' row, so an
   // existing renter is not dropped for a missing pickup reading or payment.
@@ -861,6 +874,8 @@ setDocCounts(requiredDocCounts(rows));
         ? drivers
         : filter === "waitlist"
           ? drivers.filter((a) => held.has(a.id))
+          : filter === "needs_staff"
+            ? drivers.filter((a) => needsStaff.has(a.id))
           : filter === "active"
             ? drivers.filter((a) => activeRenters.has(a.id))
             : drivers.filter((a) => a.status === filter && !held.has(a.id))
@@ -892,7 +907,7 @@ setDocCounts(requiredDocCounts(rows));
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters]);
+  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters, needsStaff]);
 
   const funnelRows = useMemo(() => {
     const q = externalSearch.trim().toLowerCase();
@@ -1118,11 +1133,13 @@ setDocCounts(requiredDocCounts(rows));
   const FILTER_LABEL: Record<string, string> = {
     all: "All", new: "New", reviewing: "Reviewing", approved: "Approved", waitlist: "Waitlist",
     active: "Active", suspended: "Suspended", declined: "Declined", closed: "Closed",
+    needs_staff: "Needs Staff",
   };
   const PRIMARY_FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active"];
-  const MENU_FILTER_ORDER = ["suspended", "declined", "closed"];
+  const MENU_FILTER_ORDER = ["needs_staff", "suspended", "declined", "closed"];
   const filterCount = (s: string) => {
     if (s === "active" && activeReadFailed && activeRenters.size === 0) return "…";
+    if (s === "needs_staff") return needsStaffFlags == null ? "…" : drivers.filter((a) => needsStaff.has(a.id)).length;
     const count = applicationFilterCount(s, drivers, held, activeRenters, waitlistCount);
     return count == null ? "…" : count;
   };
@@ -1415,6 +1432,15 @@ setDocCounts(requiredDocCounts(rows));
                         campaign={a.utm_campaign}
                         className="ml-2 align-middle"
                       />
+                      {needsStaff.has(a.id) ? (
+                        <span
+                          data-fleet-needs-staff-pill
+                          title={`FLEET: ${needsStaff.get(a.id)?.reason ?? ""}`}
+                          className="ml-2 inline-flex items-center rounded bg-[#D03020] px-1.5 py-0.5 align-middle text-[10px] font-semibold text-white"
+                        >
+                          Needs Staff
+                        </span>
+                      ) : null}
                       {dupeCount > 0 && (
                         <button
                           onClick={(e) => {
@@ -2536,6 +2562,7 @@ function DriverDetail({
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         {/* Header + record navigation scroll with the profile */}
         <div className="bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">
+          <FleetNeedsStaffBanner applicationId={driver.id} canResolve={isManager || isOwner} />
           {/* Identity: its own box, with the record tabs directly below it */}
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex max-lg:flex-wrap">
