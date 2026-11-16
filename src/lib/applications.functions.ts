@@ -637,10 +637,13 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     const { issueResumeToken } = await import("@/lib/resume-tokens.server");
     const token = freshLink ? null : await issueResumeToken(supabaseAdmin, row.id);
     // Step 1 thank-you email to the applicant. Off until an Owner turns on
-    // "Step 1 Thank-You Email" in Back Office → Automations. Never blocks.
+    // "Step 1 Thank-You Email" in Back Office → Automations. Awaited on
+    // purpose (same reason as enrollInWorkflows / syncApplicationUploads): a
+    // fire-and-forget send is killed when the Cloudflare Worker returns the
+    // response. Errors still must not fail the applicant's submission.
     if (!freshLink) try {
       const { sendStepOneThankYouEmail } = await import("@/lib/step-one-email.server");
-      void sendStepOneThankYouEmail({ applicationId: row.id, to: emailLower, firstName: data.full_name ?? null });
+      await sendStepOneThankYouEmail({ applicationId: row.id, to: emailLower, firstName: data.full_name ?? null });
     } catch (e) {
       console.error("[step1-email] setup failed", e);
     }
@@ -982,14 +985,19 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
       }
       // Start any active post-application follow-up sequence. Enrollment is
       // idempotent, so a re-submitted wizard never double-texts the applicant.
+      // Awaited on purpose (same reason as syncApplicationUploads above). This
+      // handler runs on Cloudflare Workers; a fire-and-forget enroll was killed
+      // when the response returned, so real applicants were never enrolled in
+      // New Applicant Follow-Up (prod had one test row). Errors still must not
+      // fail the applicant's submission.
       try {
         const { enrollInWorkflows } = await import("@/lib/automations.server");
-        void enrollInWorkflows({
+        await enrollInWorkflows({
           trigger: "application_submitted",
           applicationId: row.id,
-        }).catch((e) => console.error("[automations] enroll on submit failed", e));
+        });
       } catch (e) {
-        console.error("[automations] enroll setup failed", e);
+        console.error("[automations] enroll on submit failed", e);
       }
     }
     return { ok: true };
