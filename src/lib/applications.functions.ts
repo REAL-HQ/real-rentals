@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { applicantPhone } from "@/lib/applicant-validation";
+import { applicantPhoneForSubmit, applicantPhoneLookupValues } from "@/lib/us-phone";
 import { APPROVAL_SOURCE_STATUSES, APPROVAL_STATUS_NOT_APPROVABLE } from "@/lib/approval-source-statuses";
 import {
   APPLICANT_EDITABLE_STATUSES,
@@ -368,8 +369,12 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       })
       .parse(data),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data: raw }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Store a valid US number as E.164 so later lookups (Quo, outreach,
+    // toE164) see a contiguous digit run. Duplicate detection also matches
+    // common typings of the same number, not only an exact string.
+    const data = { ...raw, phone: applicantPhoneForSubmit(raw.phone) };
     // ---- Duplicate detection: same phone OR email within the last 30 days ----
     //
     // Two queries, not one `.or()`.
@@ -405,7 +410,7 @@ export const savePartialApplication = createServerFn({ method: "POST" })
       supabaseAdmin
         .from("applications")
         .select(dupeCols)
-        .eq("phone", data.phone)
+        .in("phone", applicantPhoneLookupValues(data.phone))
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(1),
