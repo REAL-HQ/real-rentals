@@ -52,6 +52,7 @@ import { Route as ApiPublicFleetAmendAgreementRouteImport } from './routes/api/p
 import { Route as ApiPublicFleetApplicantDecisionRouteImport } from './routes/api/public/fleet/applicant-decision'
 import { Route as ApiPublicFleetApplicantsRouteImport } from './routes/api/public/fleet/applicants'
 import { Route as ApiPublicFleetAssignVehicleRouteImport } from './routes/api/public/fleet/assign-vehicle'
+import { Route as ApiPublicFleetDriverDocumentRouteImport } from './routes/api/public/fleet/driver-document'
 import { Route as ApiPublicFleetGpsReadingsRouteImport } from './routes/api/public/fleet/gps-readings'
 import { Route as ApiPublicFleetHandoffRouteImport } from './routes/api/public/fleet/handoff'
 import { Route as ApiPublicFleetLicenseFactsRouteImport } from './routes/api/public/fleet/license-facts'
@@ -297,6 +298,12 @@ const ApiPublicFleetAssignVehicleRoute =
     path: '/api/public/fleet/assign-vehicle',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetDriverDocumentRoute =
+  ApiPublicFleetDriverDocumentRouteImport.update({
+    id: '/api/public/fleet/driver-document',
+    path: '/api/public/fleet/driver-document',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetGpsReadingsRoute =
   ApiPublicFleetGpsReadingsRouteImport.update({
     id: '/api/public/fleet/gps-readings',
@@ -443,6 +450,7 @@ export interface FileRoutesByFullPath {
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/driver-document': typeof ApiPublicFleetDriverDocumentRoute
   '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
@@ -506,6 +514,7 @@ export interface FileRoutesByTo {
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/driver-document': typeof ApiPublicFleetDriverDocumentRoute
   '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
@@ -570,6 +579,7 @@ export interface FileRoutesById {
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/driver-document': typeof ApiPublicFleetDriverDocumentRoute
   '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
@@ -635,6 +645,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/driver-document'
     | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/handoff'
     | '/api/public/fleet/license-facts'
@@ -698,6 +709,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/driver-document'
     | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/handoff'
     | '/api/public/fleet/license-facts'
@@ -761,6 +773,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/driver-document'
     | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/handoff'
     | '/api/public/fleet/license-facts'
@@ -825,6 +838,7 @@ export interface RootRouteChildren {
   ApiPublicFleetApplicantDecisionRoute: typeof ApiPublicFleetApplicantDecisionRoute
   ApiPublicFleetApplicantsRoute: typeof ApiPublicFleetApplicantsRoute
   ApiPublicFleetAssignVehicleRoute: typeof ApiPublicFleetAssignVehicleRoute
+  ApiPublicFleetDriverDocumentRoute: typeof ApiPublicFleetDriverDocumentRoute
   ApiPublicFleetGpsReadingsRoute: typeof ApiPublicFleetGpsReadingsRoute
   ApiPublicFleetHandoffRoute: typeof ApiPublicFleetHandoffRoute
   ApiPublicFleetLicenseFactsRoute: typeof ApiPublicFleetLicenseFactsRoute
@@ -1148,6 +1162,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetAssignVehicleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/driver-document': {
+      id: '/api/public/fleet/driver-document'
+      path: '/api/public/fleet/driver-document'
+      fullPath: '/api/public/fleet/driver-document'
+      preLoaderRoute: typeof ApiPublicFleetDriverDocumentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/gps-readings': {
       id: '/api/public/fleet/gps-readings'
       path: '/api/public/fleet/gps-readings'
@@ -1321,6 +1342,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicFleetApplicantDecisionRoute: ApiPublicFleetApplicantDecisionRoute,
   ApiPublicFleetApplicantsRoute: ApiPublicFleetApplicantsRoute,
   ApiPublicFleetAssignVehicleRoute: ApiPublicFleetAssignVehicleRoute,
+  ApiPublicFleetDriverDocumentRoute: ApiPublicFleetDriverDocumentRoute,
   ApiPublicFleetGpsReadingsRoute: ApiPublicFleetGpsReadingsRoute,
   ApiPublicFleetHandoffRoute: ApiPublicFleetHandoffRoute,
   ApiPublicFleetLicenseFactsRoute: ApiPublicFleetLicenseFactsRoute,
