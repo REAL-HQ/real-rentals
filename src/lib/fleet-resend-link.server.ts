@@ -26,6 +26,7 @@
 import { fleetAdmin, fleetAudit, fleetJson, fleetRequestBody, idempotencyKey, UUID_RE, type FleetDeps } from "@/lib/fleet-api.server";
 import { withinTextingHours } from "@/lib/failed-payment-link";
 import { firstNameOf, missingItems, outreachEmail, outreachSms, MISSING_ITEMS_KIND } from "@/lib/missing-items";
+import { notDrivingGigYet } from "@/lib/fleet-review";
 
 type Admin = any;
 export const FLEET_LINK_RESENDS_KEY = "fleet_link_resends";
@@ -181,7 +182,7 @@ async function resendUpload(admin: Admin, body: Record<string, any>, deps: Resen
   });
   const link = await mint(admin, leadId);
   const companyPhone = await (deps.companyPhone ?? (async (adm: Admin) => (await (await import("@/lib/company.server")).getBusinessPhone(adm)).display))(admin);
-  const vars = { firstName: firstNameOf(app.full_name), items, link, companyPhone, closeInDays: null };
+  const vars = { firstName: firstNameOf(app.full_name), items, link, companyPhone, closeInDays: null, notDrivingYet: notDrivingGigYet(app) };
 
   let email: "sent" | "failed" | "not_attempted" = "not_attempted";
   let sms: "sent" | "failed" | "not_attempted" = "not_attempted";
