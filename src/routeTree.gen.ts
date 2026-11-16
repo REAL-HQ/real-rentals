@@ -51,11 +51,14 @@ import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/pu
 import { Route as ApiPublicFleetApplicantDecisionRouteImport } from './routes/api/public/fleet/applicant-decision'
 import { Route as ApiPublicFleetApplicantsRouteImport } from './routes/api/public/fleet/applicants'
 import { Route as ApiPublicFleetAssignVehicleRouteImport } from './routes/api/public/fleet/assign-vehicle'
+import { Route as ApiPublicFleetHandoffRouteImport } from './routes/api/public/fleet/handoff'
 import { Route as ApiPublicFleetLicenseFactsRouteImport } from './routes/api/public/fleet/license-facts'
 import { Route as ApiPublicFleetMissingItemsRouteImport } from './routes/api/public/fleet/missing-items'
 import { Route as ApiPublicFleetPaymentTextPauseRouteImport } from './routes/api/public/fleet/payment-text-pause'
 import { Route as ApiPublicFleetPickupSlotsRouteImport } from './routes/api/public/fleet/pickup-slots'
+import { Route as ApiPublicFleetResendLinkRouteImport } from './routes/api/public/fleet/resend-link'
 import { Route as ApiPublicFleetSendAgreementRouteImport } from './routes/api/public/fleet/send-agreement'
+import { Route as ApiPublicFleetStatusRouteImport } from './routes/api/public/fleet/status'
 import { Route as ApiPublicInboundEmailRouteImport } from './routes/api/public/inbound/email'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicResendWebhookRouteImport } from './routes/api/public/resend/webhook'
@@ -285,6 +288,11 @@ const ApiPublicFleetAssignVehicleRoute =
     path: '/api/public/fleet/assign-vehicle',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetHandoffRoute = ApiPublicFleetHandoffRouteImport.update({
+  id: '/api/public/fleet/handoff',
+  path: '/api/public/fleet/handoff',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicFleetLicenseFactsRoute =
   ApiPublicFleetLicenseFactsRouteImport.update({
     id: '/api/public/fleet/license-facts',
@@ -309,12 +317,23 @@ const ApiPublicFleetPickupSlotsRoute =
     path: '/api/public/fleet/pickup-slots',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetResendLinkRoute =
+  ApiPublicFleetResendLinkRouteImport.update({
+    id: '/api/public/fleet/resend-link',
+    path: '/api/public/fleet/resend-link',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetSendAgreementRoute =
   ApiPublicFleetSendAgreementRouteImport.update({
     id: '/api/public/fleet/send-agreement',
     path: '/api/public/fleet/send-agreement',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetStatusRoute = ApiPublicFleetStatusRouteImport.update({
+  id: '/api/public/fleet/status',
+  path: '/api/public/fleet/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicInboundEmailRoute = ApiPublicInboundEmailRouteImport.update({
   id: '/api/public/inbound/email',
   path: '/api/public/inbound/email',
@@ -403,11 +422,14 @@ export interface FileRoutesByFullPath {
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
+  '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -460,11 +482,14 @@ export interface FileRoutesByTo {
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
+  '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -518,11 +543,14 @@ export interface FileRoutesById {
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
+  '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -577,11 +605,14 @@ export interface FileRouteTypes {
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/handoff'
     | '/api/public/fleet/license-facts'
     | '/api/public/fleet/missing-items'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
+    | '/api/public/fleet/resend-link'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/status'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -634,11 +665,14 @@ export interface FileRouteTypes {
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/handoff'
     | '/api/public/fleet/license-facts'
     | '/api/public/fleet/missing-items'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
+    | '/api/public/fleet/resend-link'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/status'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -691,11 +725,14 @@ export interface FileRouteTypes {
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/handoff'
     | '/api/public/fleet/license-facts'
     | '/api/public/fleet/missing-items'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
+    | '/api/public/fleet/resend-link'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/status'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -749,11 +786,14 @@ export interface RootRouteChildren {
   ApiPublicFleetApplicantDecisionRoute: typeof ApiPublicFleetApplicantDecisionRoute
   ApiPublicFleetApplicantsRoute: typeof ApiPublicFleetApplicantsRoute
   ApiPublicFleetAssignVehicleRoute: typeof ApiPublicFleetAssignVehicleRoute
+  ApiPublicFleetHandoffRoute: typeof ApiPublicFleetHandoffRoute
   ApiPublicFleetLicenseFactsRoute: typeof ApiPublicFleetLicenseFactsRoute
   ApiPublicFleetMissingItemsRoute: typeof ApiPublicFleetMissingItemsRoute
   ApiPublicFleetPaymentTextPauseRoute: typeof ApiPublicFleetPaymentTextPauseRoute
   ApiPublicFleetPickupSlotsRoute: typeof ApiPublicFleetPickupSlotsRoute
+  ApiPublicFleetResendLinkRoute: typeof ApiPublicFleetResendLinkRoute
   ApiPublicFleetSendAgreementRoute: typeof ApiPublicFleetSendAgreementRoute
+  ApiPublicFleetStatusRoute: typeof ApiPublicFleetStatusRoute
   ApiPublicInboundEmailRoute: typeof ApiPublicInboundEmailRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicResendWebhookRoute: typeof ApiPublicResendWebhookRoute
@@ -1060,6 +1100,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetAssignVehicleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/handoff': {
+      id: '/api/public/fleet/handoff'
+      path: '/api/public/fleet/handoff'
+      fullPath: '/api/public/fleet/handoff'
+      preLoaderRoute: typeof ApiPublicFleetHandoffRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/license-facts': {
       id: '/api/public/fleet/license-facts'
       path: '/api/public/fleet/license-facts'
@@ -1088,11 +1135,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetPickupSlotsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/resend-link': {
+      id: '/api/public/fleet/resend-link'
+      path: '/api/public/fleet/resend-link'
+      fullPath: '/api/public/fleet/resend-link'
+      preLoaderRoute: typeof ApiPublicFleetResendLinkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/send-agreement': {
       id: '/api/public/fleet/send-agreement'
       path: '/api/public/fleet/send-agreement'
       fullPath: '/api/public/fleet/send-agreement'
       preLoaderRoute: typeof ApiPublicFleetSendAgreementRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fleet/status': {
+      id: '/api/public/fleet/status'
+      path: '/api/public/fleet/status'
+      fullPath: '/api/public/fleet/status'
+      preLoaderRoute: typeof ApiPublicFleetStatusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/inbound/email': {
@@ -1197,11 +1258,14 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicFleetApplicantDecisionRoute: ApiPublicFleetApplicantDecisionRoute,
   ApiPublicFleetApplicantsRoute: ApiPublicFleetApplicantsRoute,
   ApiPublicFleetAssignVehicleRoute: ApiPublicFleetAssignVehicleRoute,
+  ApiPublicFleetHandoffRoute: ApiPublicFleetHandoffRoute,
   ApiPublicFleetLicenseFactsRoute: ApiPublicFleetLicenseFactsRoute,
   ApiPublicFleetMissingItemsRoute: ApiPublicFleetMissingItemsRoute,
   ApiPublicFleetPaymentTextPauseRoute: ApiPublicFleetPaymentTextPauseRoute,
   ApiPublicFleetPickupSlotsRoute: ApiPublicFleetPickupSlotsRoute,
+  ApiPublicFleetResendLinkRoute: ApiPublicFleetResendLinkRoute,
   ApiPublicFleetSendAgreementRoute: ApiPublicFleetSendAgreementRoute,
+  ApiPublicFleetStatusRoute: ApiPublicFleetStatusRoute,
   ApiPublicInboundEmailRoute: ApiPublicInboundEmailRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicResendWebhookRoute: ApiPublicResendWebhookRoute,
