@@ -36,6 +36,7 @@ type SendCheck = Awaited<ReturnType<typeof import("@/lib/agreements.functions").
 export type AgreementDeps = FleetDeps & {
   check?: (admin: Admin, applicationId: string) => Promise<SendCheck>;
   hasOpenOrSigned?: (admin: Admin, applicationId: string) => Promise<boolean>;
+  verifySms?: typeof verifySmsConfirmation;
   issue?: (admin: Admin, applicationId: string, opts: { createdBy: null }) => Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }>;
 };
 
@@ -84,6 +85,42 @@ export function parseTermsConfirmation(raw: any, now: Date): { ok: true; value: 
   const vehicleId = String(raw.vehicle_id ?? "").trim();
   if (!UUID_RE.test(vehicleId)) return { ok: false, error: "terms_confirmation.vehicle_id must be the vehicle's id (UUID)." };
   return { ok: true, value: { confirmed_at: new Date(t).toISOString(), channel, call_id: callId, message_id: messageId, summary, weekly_rate: weekly, deposit, start_date: start, vehicle_id: vehicleId } };
+}
+
+/** A short affirmative reply ("YES", "Yes I confirm", "ok"), with no hedge or refusal in it. */
+const AFFIRMATIVE = /^\s*(y|ya|yes|yess+|yeah|yep|yup|ok|okay|confirm|confirmed|i confirm|i agree|agree|agreed|sounds good|deal|correct)\b/i;
+const NEGATIVE = /\b(no|not|nope|don'?t|dont|can'?t|cant|stop|cancel|wait|later|change|question|how|what|why)\b|\?/i;
+export function isYesReply(body: unknown): boolean {
+  const t = String(body ?? "").trim();
+  return t.length > 0 && t.length <= 160 && AFFIRMATIVE.test(t) && !NEGATIVE.test(t);
+}
+const last10 = (p: unknown) => String(p ?? "").replace(/\D/g, "").slice(-10);
+
+/**
+ * A text confirmation must be a real inbound text on one of our Quo lines,
+ * from this applicant's phone, that reads as a plain YES, received no more
+ * than 10 minutes after FLEET says it was confirmed and within the last 7
+ * days. Looked up by the Quo message id FLEET passes as message_id.
+ */
+export async function verifySmsConfirmation(admin: Admin, appPhone: unknown, conf: TermsConfirmation, now: Date): Promise<{ ok: true; occurred_at: string | null } | { ok: false; status: number; error: string }> {
+  const res = await admin.from("quo_events").select("id,event_type,quo_resource_id,direction,from_e164,body,occurred_at,created_at")
+    .eq("quo_resource_id", conf.message_id).eq("event_type", "message.received").limit(1);
+  if (res.error) {
+    if (tableMissing(res.error, "quo_events")) return { ok: false, status: 503, error: "Text history is not set up (quo_events). Nothing was sent." };
+    return { ok: false, status: 503, error: "Could not read the text history. Nothing was sent." };
+  }
+  const m = Array.isArray(res.data) ? res.data[0] : null;
+  if (!m) return { ok: false, status: 409, error: "No inbound text with that message_id was received on our lines. Nothing was sent." };
+  if (m.direction && m.direction !== "incoming") return { ok: false, status: 409, error: "That message_id is not a text from the applicant. Nothing was sent." };
+  const mine = last10(appPhone);
+  if (mine.length !== 10 || last10(m.from_e164) !== mine) return { ok: false, status: 409, error: "That text did not come from this applicant's phone number. Nothing was sent." };
+  if (!isYesReply(m.body)) return { ok: false, status: 409, error: "That text is not a plain YES. Nothing was sent: ask again, or hand it to staff." };
+  const at = Date.parse(String(m.occurred_at ?? m.created_at ?? ""));
+  if (Number.isFinite(at)) {
+    if (now.getTime() - at > MAX_CONFIRMATION_AGE_DAYS * 86400_000) return { ok: false, status: 409, error: `That YES is older than ${MAX_CONFIRMATION_AGE_DAYS} days. Confirm the terms again.` };
+    if (Math.abs(Date.parse(conf.confirmed_at) - at) > 10 * 60_000) return { ok: false, status: 400, error: "terms_confirmation.confirmed_at must be the time the YES text arrived." };
+  }
+  return { ok: true, occurred_at: Number.isFinite(at) ? new Date(at).toISOString() : null };
 }
 
 /** Differences between what was confirmed and what the agreement will print. */
@@ -137,7 +174,7 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
     }
   }
 
-  const app = await admin.from("applications").select("id,status,full_name,email,deleted_at").eq("id", leadId).maybeSingle();
+  const app = await admin.from("applications").select("id,status,full_name,email,phone,deleted_at").eq("id", leadId).maybeSingle();
   if (app.error) return fleetJson(503, { ok: false, error: "Could not read the applicant." });
   if (!app.data || app.data.deleted_at) return fleetJson(404, { ok: false, error: "Applicant not found." });
   if (String(app.data.status) !== "approved") return fleetJson(409, { ok: false, error: `Only an Approved applicant can be sent an agreement (this one is ${app.data.status}).` });
@@ -162,6 +199,12 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
       mismatches,
       agreement_terms: { weekly_rate: check.weeklyRate, deposit: check.deposit, start_date: check.startDate, vehicle_id: check.vehicleId, vehicle: check.vehicleLabel },
     });
+  }
+
+  // A YES text must be a real inbound text from this applicant (t298s1611).
+  if (conf.value.channel === "sms") {
+    const sms = await (deps.verifySms ?? verifySmsConfirmation)(admin, app.data.phone, conf.value, now);
+    if (!sms.ok) return fleetJson(sms.status, { ok: false, error: sms.error });
   }
 
   // Store the confirmation first; no record, no send.

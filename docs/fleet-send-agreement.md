@@ -60,3 +60,26 @@ Storage: `public.agreement_terms_confirmations`
 (`proposed/agreement-terms-confirmations-v1.sql`). Audit actions:
 `agreement.fleet_sent`, `agreement.fleet_send_failed`, labelled
 "FLEET (automated)".
+
+## Confirming by text (YES reply, Dolmar t298s1611)
+
+A YES text reply is enough to send the agreement. FLEET texts the terms from
+the line the applicant uses (888 by default), only to applicants with text
+consent, using this template (needs Dolmar's OK before first use):
+
+> Real Rentals: Your quote is ready: {vehicle} at ${weekly_rate}/week, {no deposit | ${deposit} deposit}, starting {Wed, Nov 18} with pickup at 3500 E Hillsborough Ave, Tampa, FL 33610. Rent is paid weekly. Reply YES to accept and we'll send your rental agreement to sign. Reply STOP to opt out.
+
+When the YES arrives (FLEET gets it as `quo_message_received`), call
+send-agreement with `channel: "sms"`, `message_id` = the Quo message id of the
+YES (`quo.resource_id` in the event), `confirmed_at` = when it arrived, and
+`summary` = the terms text it answered. The site checks, before anything is
+stored or sent:
+
+- the id is an inbound `message.received` text logged on our lines (`quo_events`);
+- it came from this applicant's phone number (last 10 digits);
+- it reads as a plain YES (yes, y, yep, ok, confirmed, I agree, ...) with no
+  question mark or "no / not / wait / change / stop / how / what" in it;
+- it arrived within the last 7 days and within 10 minutes of `confirmed_at`.
+
+Anything else is refused (`409`, or `400` for the time) and nothing is sent:
+ask again, or hand it to staff. A call confirmation works as before.
