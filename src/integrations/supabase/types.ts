@@ -44,6 +44,74 @@ export type Database = {
         }
         Relationships: []
       }
+      agreement_terms_confirmations: {
+        Row: {
+          agreement_id: string | null
+          agreement_sent_at: string | null
+          application_id: string
+          call_id: string | null
+          channel: string
+          confirmed_at: string
+          created_at: string
+          deposit: number
+          id: string
+          idempotency_key: string | null
+          message_id: string | null
+          recorded_by: string
+          start_date: string
+          summary: string
+          vehicle_id: string
+          vehicle_label: string | null
+          weekly_rate: number
+        }
+        Insert: {
+          agreement_id?: string | null
+          agreement_sent_at?: string | null
+          application_id: string
+          call_id?: string | null
+          channel: string
+          confirmed_at: string
+          created_at?: string
+          deposit: number
+          id?: string
+          idempotency_key?: string | null
+          message_id?: string | null
+          recorded_by: string
+          start_date: string
+          summary: string
+          vehicle_id: string
+          vehicle_label?: string | null
+          weekly_rate: number
+        }
+        Update: {
+          agreement_id?: string | null
+          agreement_sent_at?: string | null
+          application_id?: string
+          call_id?: string | null
+          channel?: string
+          confirmed_at?: string
+          created_at?: string
+          deposit?: number
+          id?: string
+          idempotency_key?: string | null
+          message_id?: string | null
+          recorded_by?: string
+          start_date?: string
+          summary?: string
+          vehicle_id?: string
+          vehicle_label?: string | null
+          weekly_rate?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agreement_terms_confirmations_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agreements: {
         Row: {
           application_id: string | null
@@ -245,6 +313,94 @@ export type Database = {
           value?: Json
         }
         Relationships: []
+      }
+      applicant_autoclose: {
+        Row: {
+          application_id: string
+          channels: string[]
+          closed_at: string
+          error: string | null
+          id: string
+          last_message_at: string | null
+          prior_status: string
+          reopened: boolean | null
+          reopened_at: string | null
+        }
+        Insert: {
+          application_id: string
+          channels?: string[]
+          closed_at?: string
+          error?: string | null
+          id?: string
+          last_message_at?: string | null
+          prior_status: string
+          reopened?: boolean | null
+          reopened_at?: string | null
+        }
+        Update: {
+          application_id?: string
+          channels?: string[]
+          closed_at?: string
+          error?: string | null
+          id?: string
+          last_message_at?: string | null
+          prior_status?: string
+          reopened?: boolean | null
+          reopened_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "applicant_autoclose_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      applicant_outreach_log: {
+        Row: {
+          application_id: string
+          channels: string[]
+          created_at: string
+          error: string | null
+          id: string
+          items: string[]
+          missing_key: string
+          source: string
+          step: number
+        }
+        Insert: {
+          application_id: string
+          channels?: string[]
+          created_at?: string
+          error?: string | null
+          id?: string
+          items?: string[]
+          missing_key: string
+          source: string
+          step: number
+        }
+        Update: {
+          application_id?: string
+          channels?: string[]
+          created_at?: string
+          error?: string | null
+          id?: string
+          items?: string[]
+          missing_key?: string
+          source?: string
+          step?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "applicant_outreach_log_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       applicant_upload_grants: {
         Row: {
@@ -529,6 +685,7 @@ export type Database = {
           how_heard: string | null
           id: string
           incident_count: number
+          income_proof_url: string | null
           insurance_answer: string | null
           insurance_carrier: string | null
           insurance_doc_url: string | null
@@ -656,6 +813,7 @@ export type Database = {
           how_heard?: string | null
           id?: string
           incident_count?: number
+          income_proof_url?: string | null
           insurance_answer?: string | null
           insurance_carrier?: string | null
           insurance_doc_url?: string | null
@@ -783,6 +941,7 @@ export type Database = {
           how_heard?: string | null
           id?: string
           incident_count?: number
+          income_proof_url?: string | null
           insurance_answer?: string | null
           insurance_carrier?: string | null
           insurance_doc_url?: string | null
@@ -2713,6 +2872,59 @@ export type Database = {
           year?: number
         }
         Relationships: []
+      }
+      fleet_review_decisions: {
+        Row: {
+          application_id: string
+          assessment: Json
+          created_at: string
+          decided_by: string
+          decision: string
+          escalation_codes: string[]
+          id: string
+          idempotency_key: string | null
+          reason: string
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+        }
+        Insert: {
+          application_id: string
+          assessment?: Json
+          created_at?: string
+          decided_by?: string
+          decision: string
+          escalation_codes?: string[]
+          id?: string
+          idempotency_key?: string | null
+          reason: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Update: {
+          application_id?: string
+          assessment?: Json
+          created_at?: string
+          decided_by?: string
+          decision?: string
+          escalation_codes?: string[]
+          id?: string
+          idempotency_key?: string | null
+          reason?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_review_decisions_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       fleet_service_transactions: {
         Row: {
@@ -5206,6 +5418,50 @@ export type Database = {
           website?: string | null
         }
         Relationships: []
+      }
+      reservation_confirmations: {
+        Row: {
+          application_id: string | null
+          confirmed_at: string
+          created_at: string
+          email_status: string | null
+          notice_status: string
+          notified_at: string | null
+          payload: Json
+          rental_id: string
+          sms_status: string | null
+        }
+        Insert: {
+          application_id?: string | null
+          confirmed_at?: string
+          created_at?: string
+          email_status?: string | null
+          notice_status: string
+          notified_at?: string | null
+          payload?: Json
+          rental_id: string
+          sms_status?: string | null
+        }
+        Update: {
+          application_id?: string | null
+          confirmed_at?: string
+          created_at?: string
+          email_status?: string | null
+          notice_status?: string
+          notified_at?: string | null
+          payload?: Json
+          rental_id?: string
+          sms_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reservation_confirmations_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: true
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       return_checklist_items: {
         Row: {

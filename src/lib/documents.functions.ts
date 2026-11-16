@@ -377,6 +377,12 @@ export const APPLICATION_UPLOAD_FIELDS: Array<{
     label: "Gig profile (from application)",
     bucket: "profile-screenshots",
   },
+  {
+    column: "income_proof_url",
+    category: "income",
+    label: "Proof of income (from application)",
+    bucket: "license-uploads",
+  },
 ];
 
 /** Trip screenshots are an array on the application, not a single column. */

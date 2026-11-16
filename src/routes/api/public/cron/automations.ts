@@ -39,6 +39,26 @@ async function handle(request: Request): Promise<Response> {
 
   const result = await runDueAutomations();
 
+  // Missing-Items Outreach (Automations switch, Off by default). Runs after the
+  // follow-up sweep so an applicant still in that sequence is skipped.
+  let missingItems: unknown = null;
+  try {
+    const { runMissingItemsOutreach } = await import("@/lib/missing-items-outreach.server");
+    const r = await runMissingItemsOutreach(supabaseAdmin, { mode: "ongoing" });
+    missingItems = r.held ? { held: r.held } : { sent: r.sent, failed: r.failed, planned: r.planned };
+  } catch (err) {
+    console.error("[missing-items] sweep failed", err);
+  }
+  // Missing-Items Auto-Close (its own switch, Off by default).
+  let missingItemsAutoClose: unknown = null;
+  try {
+    const { runMissingItemsAutoClose } = await import("@/lib/missing-items-outreach.server");
+    const r = await runMissingItemsAutoClose(supabaseAdmin);
+    missingItemsAutoClose = r.held ? { held: r.held } : { closed: r.closed, failed: r.failed };
+  } catch (err) {
+    console.error("[missing-items] auto-close failed", err);
+  }
+
   // Renter payment notices held while the Automations switches were unreadable.
   let heldNotices: unknown = null;
   try {
@@ -51,5 +71,5 @@ async function handle(request: Request): Promise<Response> {
   } catch (err) {
     console.error("[held-notices] retry failed", err);
   }
-  return Response.json({ ok: true, ...result, heldNotices });
+  return Response.json({ ok: true, ...result, heldNotices, missingItems, missingItemsAutoClose });
 }
