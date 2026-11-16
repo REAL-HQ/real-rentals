@@ -236,7 +236,7 @@ describe("FLEET pickup-slots endpoint", () => {
   test("book: through the staff Reserved core with the default location; audited", async () => {
     const r = await call(fakeDb(seed()), { action: "book", lead_id: A, start_at: "2026-11-17T09:30:00-05:00" });
     expect(r.status).toBe(201);
-    expect(r.calls[0]).toEqual({ applicationId: A, vehicleId: V, pickupDate: "2026-11-17", pickupTime: "09:30", pickupLocation: "123 Main St, Tampa, FL", note: undefined });
+    expect(r.calls[0]).toEqual({ applicationId: A, vehicleId: V, pickupDate: "2026-11-17", pickupTime: "09:30", pickupLocation: "123 Main St, Tampa, FL", note: undefined, requireReservationFee: true });
     expect(r.audits[0]).toMatchObject({ action: "reservation.fleet_booked", entityId: "new-rental" });
   });
   test("book refusals: not approved, off schedule, taken, missing auth", async () => {

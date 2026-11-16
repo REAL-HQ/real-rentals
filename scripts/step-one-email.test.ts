@@ -96,7 +96,7 @@ describe("Step 1 thank-you email copy", () => {
   const text = html.replace(/<[^>]+>/g, " ").replace(/&#39;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ");
   test("blueprint sections and wording", () => {
     for (const s of [
-      "You're in Line. Finish Step 2 Now to Hold Your Spot.", "What You Get", "Have These Ready", "Why We Ask for Each Item",
+      "You're In Line. Finish Step 2 Now to Hold Your Spot.", "What You Get", "Have These Ready", "Why We Ask for Each Item",
       "INSURANCE INCLUDED. We pay for it, at no extra cost to you.", "Gig App Profile Screenshot Showing Your # of Trips/Deliveries and Rating",
       "Optional: Earnings Screenshots or Other Proof of Income", "this is the main one", "It takes about 5 minutes.",
       "Continue to Step 2", "Questions? Call or text us at (888) 833-8280", "The Real Rentals Team",

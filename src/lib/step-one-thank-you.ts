@@ -23,6 +23,8 @@ export const STEP_ONE_THANK_YOU = {
   headline: "You're In! Application Received",
   intro: "Cars are limited and go first come, first served. Finish Step 2 to hold your spot.",
   primaryCta: "Upload Documents",
+  /** D8 (decided Nov 16): helper line under the button. */
+  primaryHelper: "5 quick questions, then upload.",
   secondaryCta: "Text Us",
   insuranceTitle: "Insurance Included in Your Weekly Rate",
   insuranceBody: "We pay for it. No extra cost to you.",
@@ -53,6 +55,7 @@ export function stepOneThankYouStrings(): string[] {
     c.headline,
     c.intro,
     c.primaryCta,
+    c.primaryHelper,
     c.secondaryCta,
     c.insuranceTitle,
     c.insuranceBody,

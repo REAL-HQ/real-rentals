@@ -6,13 +6,10 @@ import { Loader2, MoreHorizontal } from "lucide-react";
 import {
   cancelReservation,
   listReservations,
-  recordReservationDeposit,
+  recordReservationFee,
 } from "@/lib/reservations.functions";
 import type { ReservationRow } from "@/lib/reservations";
-import {
-  RESERVATION_DEPOSIT_STATUS_LABEL,
-  type ReservationDepositSettings,
-} from "@/lib/reservation-deposit-settings";
+import { RESERVATION_DEPOSIT_STATUS_LABEL } from "@/lib/reservation-deposit-settings";
 import { MANUAL_METHODS, easternParts, money } from "@/lib/rent-reminders";
 import { fmtDate, formatReservationTime } from "@/lib/date-format";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -37,7 +34,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function RecordDepositDialog({
+function RecordReservationFeeDialog({
   open,
   onOpenChange,
   row,
@@ -48,7 +45,8 @@ function RecordDepositDialog({
   row: ReservationRow;
   onSaved: () => void;
 }) {
-  const save = useServerFn(recordReservationDeposit);
+  const save = useServerFn(recordReservationFee);
+  const chargeLabel = "Reservation Fee";
   const [amount, setAmount] = useState(row.depositAmount > 0 ? String(row.depositAmount) : "");
   const [method, setMethod] = useState<string>(MANUAL_METHODS[0].value);
   const [reference, setReference] = useState("");
@@ -81,11 +79,11 @@ function RecordDepositDialog({
           paidOn,
         },
       });
-      toast.success("Deposit Recorded");
+      toast.success(`${chargeLabel} Recorded`);
       onOpenChange(false);
       onSaved();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could Not Record The Deposit");
+      toast.error(e instanceof Error ? e.message : `Could Not Record The ${chargeLabel}`);
     } finally {
       setBusy(false);
     }
@@ -95,10 +93,10 @@ function RecordDepositDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-white">
         <DialogHeader>
-          <DialogTitle>Record Deposit: {row.driverName ?? "Driver"}</DialogTitle>
+          <DialogTitle>Record {chargeLabel}: {row.driverName ?? "Driver"}</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-[#55555E]">
-          Manual only (Cash App, Venmo, Zelle, cash, card). Stripe deposit links are not built yet.
+          Paid outside the Stripe link (Cash App, Venmo, Zelle, cash). The Reservation Fee is applied to week 1; it is not a deposit. An open Stripe link for this renter is closed first.
         </p>
         <div className="grid gap-3">
           <Field label="Amount">
@@ -125,7 +123,7 @@ function RecordDepositDialog({
             Cancel
           </button>
           <button type="button" className={primary} disabled={busy} onClick={() => void submit()}>
-            {busy ? "Saving…" : "Record Deposit"}
+            {busy ? "Saving…" : `Record ${chargeLabel}`}
           </button>
         </DialogFooter>
       </DialogContent>
@@ -137,7 +135,10 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
   const load = useServerFn(listReservations);
   const cancel = useServerFn(cancelReservation);
   const [rows, setRows] = useState<ReservationRow[]>([]);
-  const [settings, setSettings] = useState<ReservationDepositSettings | null>(null);
+  // The $50 Reservation Fee lives in the reservation_deposit_* columns when its
+  // switch is on; it is never called a deposit (Dolmar, t309u).
+  const [feeOn, setFeeOn] = useState(false);
+  const chargeLabel = "Reservation Fee";
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [reserveOpen, setReserveOpen] = useState(false);
@@ -150,7 +151,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
     load()
       .then((r) => {
         setRows(r.rows);
-        setSettings(r.settings);
+        setFeeOn((r as { reservationFeeOn?: boolean }).reservationFeeOn === true);
       })
       .catch(() => setFailed(true))
       .finally(() => setLoading(false));
@@ -181,7 +182,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
           <h2 className="text-[15px] font-semibold text-[#111114]">Booked</h2>
           <p className="text-sm text-[#55555E]">
             Holds before Start.
-            {settings?.enabled ? ` Deposit ${money(settings.defaultAmount)}` : " Deposit Off"}.
+            {feeOn ? " Reservation Fee (applied to week 1)" : " Reservation Fee Off"}.
           </p>
         </div>
         {canManage ? (
@@ -210,7 +211,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                 <th className="px-3 py-2 font-medium">Vehicle</th>
                 <th className="px-3 py-2 font-medium">Pickup</th>
                 <th className="px-3 py-2 font-medium">Location</th>
-                <th className="px-3 py-2 font-medium">Deposit</th>
+                <th className="px-3 py-2 font-medium">{chargeLabel}</th>
                 <th className="px-3 py-2 font-medium">Note</th>
                 {canManage ? <th className="px-3 py-2 font-medium" /> : null}
               </tr>
@@ -256,8 +257,8 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="bg-white">
-                          {(row.depositStatus === "pending" || row.depositStatus === "not_required") && (
-                            <DropdownMenuItem onSelect={() => setDepositRow(row)}>Record Deposit</DropdownMenuItem>
+                          {feeOn && (row.depositStatus === "pending" || row.depositStatus === "not_required") && (
+                            <DropdownMenuItem onSelect={() => setDepositRow(row)}>Record {chargeLabel}</DropdownMenuItem>
                           )}
                           <DropdownMenuItem onSelect={() => void onCancel(row)}>Cancel Reservation</DropdownMenuItem>
                         </DropdownMenuContent>
@@ -275,12 +276,11 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
         <ReserveCarDialog
           open={reserveOpen}
           onOpenChange={setReserveOpen}
-          settings={settings}
           onSaved={refresh}
         />
       ) : null}
       {depositRow ? (
-        <RecordDepositDialog
+        <RecordReservationFeeDialog
           open={!!depositRow}
           onOpenChange={(v) => !v && setDepositRow(null)}
           row={depositRow}

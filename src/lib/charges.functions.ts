@@ -497,9 +497,9 @@ export const rebillCharges = createServerFn({ method: "POST" })
             .join("");
           await sendEmail({
             to: app.email as string,
-            subject: `Tolls & charges on your rental — $${total.toFixed(2)}`,
+            subject: `Tolls & Charges on Your Rental — $${total.toFixed(2)}`,
             html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
-              <h1 style="font-size:19px">Charges on your rental</h1>
+              <h1 style="font-size:19px">Charges on Your Rental</h1>
               <p style="font-size:15px;line-height:1.6">These were incurred on the vehicle while it was rented to you and are now due.</p>
               <table style="width:100%;border-top:1px solid #eee;border-bottom:1px solid #eee;margin:12px 0;font-size:14px">${lines}</table>
               <p style="font-size:16px"><strong>Total due: $${total.toFixed(2)}</strong> by ${due}</p>
