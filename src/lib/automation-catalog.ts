@@ -428,6 +428,19 @@ export const AUTOMATIONS: AutomationDef[] = [
     control: { kind: "code", reason: "Built but switched off in the server environment. Needs a release to turn on." },
     previews: [],
   },
+  {
+    key: "fleet_link_resends",
+    title: "FLEET Link Resends",
+    audience: "Applicants",
+    channels: ["SMS", "Email"],
+    trigger: "FLEET asks the site to resend an applicant's upload link (files still missing) or a renter's agreement signing link (sent, not signed).",
+    cadence: "Only when FLEET asks. Signing link: not within 4 hours of the last send, at most 3 FLEET resends a week. Upload link: not within 24 hours of any missing-items message. 8 AM–9 PM ET only.",
+    emailWorkflows: ["fleet_upload_link_resend"],
+    control: { kind: "setting" },
+    previews: ["missing_items_1"],
+    defaultOn: false,
+    note: "Off until turned on. Same wording renters already get: the staff Resend signing email and text, and the Missing Items step-1 message. Texts come from the 888 line, need SMS consent and respect STOP. Refused while someone is handed off to staff.",
+  },
 ];
 
 export const AUTOMATION_KEYS = AUTOMATIONS.map((a) => a.key);
