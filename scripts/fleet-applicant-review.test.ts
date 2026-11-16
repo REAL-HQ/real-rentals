@@ -123,10 +123,28 @@ describe("rules", () => {
     expect(codes(goodApp(A, { status: "declined" }))).toContain("stage_not_reviewable");
     expect(codes(goodApp(A, { status: "active" }))).toContain("stage_not_reviewable");
   });
+  test("applied before: only an earlier declined or closed application escalates (t298s1611)", () => {
+    const resub = rules.assessForFleet({ ...base, app: goodApp(A, { resubmission_count: 2 }), docs: docsFor(A) });
+    expect(resub.escalations.map((e) => e.code)).not.toContain("resubmitted");
+    expect(resub.notes.map((e) => e.code)).toContain("resubmitted");
+    expect(resub.recommendation).toBe("approve");
+    const prior = rules.assessForFleet({ ...base, app: goodApp(A, { resubmission_count: 2 }), docs: docsFor(A), priorDeclined: 1 });
+    expect(prior.escalations.map((e) => e.code)).toContain("prior_declined");
+    expect(prior.recommendation).toBe("needs_staff");
+  });
+  test("no income document alone does not send to staff", () => {
+    const a = rules.assessForFleet({ ...base, app: goodApp(A), docs: docsFor(A, ["license_front", "gig_profile"]) });
+    expect(a.hard_blockers).toEqual([]);
+    expect(a.escalations).toEqual([]);
+    expect(a.recommendation).toBe("approve");
+  });
   test("income is advisory; escalations are FLEET's call", () => {
     const a = rules.assessForFleet({ ...base, app: goodApp(A, { dob: "2003-01-01", rating: 3.9, trips_completed: 20, ai_flags: ["name mismatch"] }), docs: docsFor(A, ["license_front", "license_back", "gig_profile"]), priorDeclined: 1 });
     expect(a.hard_blockers).toEqual([]);
-    expect(a.escalations.map((e) => e.code)).toEqual(expect.arrayContaining(["missing_income", "young_driver", "low_rating", "few_trips", "ai_flags", "prior_declined"]));
+    expect(a.escalations.map((e) => e.code)).toEqual(expect.arrayContaining(["young_driver", "low_rating", "few_trips", "ai_flags", "prior_declined"]));
+    // Missing income proof is requested, not sent to staff (t298s1611).
+    expect(a.escalations.map((e) => e.code)).not.toContain("missing_income");
+    expect(a.notes.map((e) => e.code)).toContain("requested_income");
     // Rating threshold is 4.0 (Dolmar, t294u): 4.0 to 4.69 with 100+ trips is not escalated for rating or trips.
     expect(rules.FLEET_ESCALATION_DEFAULTS.minRating).toBe(4.0);
     const ok = rules.assessForFleet({ ...base, app: goodApp(A, { rating: 4.5, trips_completed: 150 }), docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]) });

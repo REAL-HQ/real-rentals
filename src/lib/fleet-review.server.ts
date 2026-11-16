@@ -98,13 +98,15 @@ export async function buildReviewPacket(admin: Admin, leadId: string, opts: { in
   if (appRes.error) throw new Error("Could not read the application.");
   const app = appRes.data as Record<string, any> | null;
   if (!app) return null;
-  const [docsRes, scrRes, agRes, flags, prior, decisionsRes] = await Promise.all([
+  const { latestLicenseReading } = await import("@/lib/fleet-license.server");
+  const [docsRes, scrRes, agRes, flags, prior, decisionsRes, licenseReading] = await Promise.all([
     admin.from("documents").select(DOC_SELECT).eq("driver_id", leadId),
     admin.from("driver_screenings").select(SCREENING_SELECT).eq("lead_id", leadId).limit(1),
     admin.from("agreements").select("id,status,sent_at,signed_at,voided_at").eq("application_id", leadId),
     openNeedsStaff(admin, [leadId]),
     priorDeclinedCount(admin, app),
     admin.from("fleet_review_decisions").select("id,decision,reason,decided_by,created_at,resolved_at,resolution_note").eq("application_id", leadId).order("created_at", { ascending: false }).limit(10),
+    latestLicenseReading(admin, leadId).catch(() => null),
   ]);
   const docs = ((docsRes.data ?? []) as any[]).filter((d) => d.is_current !== false);
   const screening = Array.isArray(scrRes.data) ? scrRes.data[0] ?? null : null;
@@ -112,7 +114,7 @@ export async function buildReviewPacket(admin: Admin, leadId: string, opts: { in
   const open = flags.get(leadId) ?? null;
   const assessment = assessForFleet({
     app, screening, docs: docs as FleetDoc[], disqualifiers: readiness.disqualifiers, readinessState: readiness.state,
-    openNeedsStaff: open, priorDeclined: prior, now,
+    openNeedsStaff: open, priorDeclined: prior, licenseReading, now,
   });
 
   let documents: any[] = docs.map((d) => ({
@@ -138,6 +140,9 @@ export async function buildReviewPacket(admin: Admin, leadId: string, opts: { in
     admin_url: adminUrlFor(app.id),
     answers: { ...answers, license_number_masked: maskLicense(license_number) },
     documents,
+    // What FLEET read off the license photo (label "Read by FLEET from license
+    // photo"). Never a verification: the field rep confirms at pickup.
+    license_reading: licenseReading,
     gig_evidence: {
       platforms: app.platforms ?? null,
       gig_status: app.gig_status ?? null,
