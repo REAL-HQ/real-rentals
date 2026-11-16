@@ -174,7 +174,7 @@ function firstNameOf(full: unknown): string {
 async function claim(admin: Admin, row: Record<string, unknown>): Promise<boolean | null> {
   const { error } = await admin.from("renter_reminder_sends").insert(row);
   if (!error) return true;
-  if (tableMissing(error)) return null;
+  if (tableMissing(error, "renter_reminder_sends")) return null;
   if (String(error.code) === "23505" || /duplicate key/i.test(String(error.message))) return false;
   throw new Error(String(error.message));
 }
