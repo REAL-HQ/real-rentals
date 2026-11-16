@@ -70,7 +70,7 @@ function seed(over: Record<string, any> = {}): Record<string, Row[]> {
       company_signer_name: "Dolmar Cross", company_signer_title: "Authorized Representative",
       merge_data: { vehicle: "2022 Toyota Camry" }, archive_status: "archived", document_id: "doc-1", voided_at: null, ...over,
     }],
-    rentals: [{ id: "rent-1", application_id: APP, vehicle_id: VEH, end_date: null, created_at: "2026-11-15T19:00:00.000Z" }],
+    rentals: [{ id: "rent-1", application_id: APP, vehicle_id: VEH, status: "reserved", end_date: "2027-02-15", created_at: "2026-11-15T19:00:00.000Z" }],
     vehicles: [{ id: VEH, year: 2022, make: "Toyota", model: "Camry", license_plate: "ABC1234", unit_number: "R12" }],
     fleet_webhook_deliveries: [],
   };
