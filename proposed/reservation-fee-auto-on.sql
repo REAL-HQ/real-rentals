@@ -1,8 +1,10 @@
 -- PROPOSED, NOT APPLIED. Needs Dolmar's approval, after the code is published.
--- Turns on the $50 Reservation Fee (src/lib/reservation-fee.server.ts, t299s1618):
+-- Turns on the $50 Reservation Fee (src/lib/reservation-fee.server.ts, t299s1618, t309u):
 --   * FLEET's agreements record a Required $50 Reservation Fee;
---   * right after signing, the fee is charged to the card on file (only when the
---     signed agreement text prints a Reservation Fee);
+--   * the card is collected only AFTER signing (t309u): Stripe Checkout takes the
+--     $50 and saves that card on file for the rental balance (a card already on
+--     file is charged); only when the signed agreement text prints a Reservation Fee;
+--   * the Reservation Fee is never called a deposit (it is applied to rent);
 --   * the car is held only once it is paid (FLEET cannot book the pickup before);
 --   * at activation it is credited to week 1 (Stripe customer balance credit);
 --   * kept if the renter is 30+ minutes late and the car is released

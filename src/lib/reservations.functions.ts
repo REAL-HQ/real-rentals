@@ -156,10 +156,17 @@ export const saveReservationDepositSettings = createServerFn({ method: "POST" })
 
 export const listReservations = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ rows: ReservationRow[]; settings: ReservationDepositSettings }> => {
+  .handler(async ({ context }): Promise<{ rows: ReservationRow[]; settings: ReservationDepositSettings; reservationFeeOn: boolean }> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const settings = await loadDepositSettings(supabaseAdmin);
+    // With the $50 Reservation Fee on, these columns hold the Reservation Fee,
+    // so staff screens say "Reservation Fee", never "Deposit" (Dolmar, t309u).
+    let reservationFeeOn = false;
+    try {
+      const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
+      reservationFeeOn = (await loadReservationFeeSettings(supabaseAdmin)).enabled;
+    } catch { /* off */ }
     const { data, error } = await supabaseAdmin
       .from("rentals")
       .select(
@@ -169,11 +176,11 @@ export const listReservations = createServerFn({ method: "GET" })
       .order("start_date", { ascending: true })
       .limit(500);
     if (error) {
-      if (/reservation_/i.test(error.message)) return { rows: [], settings };
+      if (/reservation_/i.test(error.message)) return { rows: [], settings, reservationFeeOn };
       throw new Error(error.message);
     }
     const list = (data ?? []) as any[];
-    if (!list.length) return { rows: [], settings };
+    if (!list.length) return { rows: [], settings, reservationFeeOn };
     const appIds = [...new Set(list.map((r) => r.application_id).filter(Boolean))] as string[];
     const vehicleIds = [...new Set(list.map((r) => r.vehicle_id))];
     const [apps, vehicles] = await Promise.all([
@@ -188,6 +195,7 @@ export const listReservations = createServerFn({ method: "GET" })
     const vehBy = new Map((vehicles.data ?? []).map((v: any) => [v.id, v]));
     return {
       settings,
+      reservationFeeOn,
       rows: list.map((r) => mapRow(r, r.application_id ? appBy.get(r.application_id) : null, vehBy.get(r.vehicle_id))),
     };
   });

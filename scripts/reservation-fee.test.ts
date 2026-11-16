@@ -49,7 +49,7 @@ const ON = { enabled: true, amount: 50 };
 const PREP = JSON.stringify({ reservation: { mode: "required", amount: 50 } });
 const BODY = "… Reservation Fee: $50, applied to your first payment …";
 function stripe(mode: "ok" | "decline" | "unknown" = "ok") {
-  const calls: any[] = []; const credits: any[] = [];
+  const calls: any[] = []; const credits: any[] = []; const sessions: any[] = [];
   return {
     calls, credits,
     paymentIntents: { create: async (a: any, o: any) => {
@@ -58,12 +58,14 @@ function stripe(mode: "ok" | "decline" | "unknown" = "ok") {
       if (mode === "unknown") throw new Error("socket hang up");
       return { id: "pi_1", status: "succeeded" };
     } },
+    sessions,
+    checkout: { sessions: { create: async (a: any, o: any) => { sessions.push({ a, o }); return { id: `cs_${sessions.length}`, url: `https://checkout.stripe.com/c/pay/cs_${sessions.length}` }; } } },
     customers: { createBalanceTransaction: async (c: string, a: any, o: any) => { credits.push({ c, a, o }); return { id: "cbtxn_1" }; } },
   };
 }
-const seed = (o: { card?: boolean; body?: string; prep?: string | null } = {}) => ({
+const seed = (o: { card?: boolean; customer?: boolean; body?: string; prep?: string | null } = {}) => ({
   agreements: [{ id: "ag1", application_id: "app1", status: "signed", body: o.body ?? BODY, merge_data: o.prep === null ? {} : { _prep: o.prep ?? PREP }, vehicle_id: "v1" }],
-  applications: [{ id: "app1", full_name: "Test Renter", email: "t@example.com", phone: "+15555550100", status: "approved", vehicle_id: "v1", stripe_customer_id: o.card === false ? null : "cus_1", stripe_payment_method_id: o.card === false ? null : "pm_1", card_last4: "4242" }],
+  applications: [{ id: "app1", full_name: "Test Renter", email: "t@example.com", phone: "+15555550100", status: "approved", vehicle_id: "v1", stripe_customer_id: o.card === false && o.customer === false ? null : "cus_1", stripe_payment_method_id: o.card === false ? null : "pm_1", card_last4: "4242" }],
   rentals: [] as Row[], payments: [] as Row[],
 });
 const noAudit = { audit: async () => {} };
@@ -93,12 +95,48 @@ describe("charge after signing", () => {
     expect((await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: s, ...noAudit })).status).toBe("no_fee_on_agreement");
     expect(s.calls.length).toBe(0);
   });
-  test("no card on file: row recorded unpaid, no charge, car not held", async () => {
-    const db = fakeDb(seed({ card: false })); const s = stripe();
+  test("no card on file (the normal case, t309u): card collected AFTER signing by Stripe Checkout that saves it on file; no off-session charge", async () => {
+    const db = fakeDb({ ...seed({ card: false }), rentals: [{ id: "r1", application_id: "app1", status: "reserved", reservation_deposit_status: "pending" }] }); const s = stripe();
     const o = await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: s, ...noAudit });
+    expect(o.status).toBe("checkout");
+    expect(s.calls.length).toBe(0);
+    expect(s.sessions.length).toBe(1);
+    const a = s.sessions[0].a;
+    expect(a).toMatchObject({ mode: "payment", customer: "cus_1", payment_intent_data: { setup_future_usage: "off_session", metadata: { reason: "reservation_fee", applicationId: "app1", agreementId: "ag1" } } });
+    expect(a.line_items[0].price_data).toMatchObject({ unit_amount: 5000, currency: "usd", product_data: { name: "Reservation Fee (applied to your first week)" } });
+    expect(a.payment_intent_data.metadata.paymentIds).toBe(db.state.payments[0].id);
+    expect(db.state.payments[0]).toMatchObject({ type: "fee", reason: "reservation_fee", amount: 50, status: "unpaid" });
+    expect(db.state.rentals[0].reservation_deposit_status).toBe("pending"); // not held until paid
+    expect(db.state.agreements[0].metadata.reservation_fee_checkout.url).toBe((o as any).url);
+    expect(rf.reservationFeePayLink(o)).toEqual({ url: (o as any).url, amount: 50 });
+    expect(rf.reservationFeeEmailLine(o)).toBe("Next step: pay your $50.00 Reservation Fee by card with the button below. It is applied in full to your first week, and the card you use is saved on file for your rental balance. Your car is held as soon as it is paid. This link is for your rental and expires within 24 hours.");
+    // A re-run never makes a second checkout or charges.
+    const again = await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: s, ...noAudit });
+    expect(again).toMatchObject({ status: "checkout", url: (o as any).url });
+    expect(s.sessions.length + s.calls.length).toBe(1);
+  });
+  test("no card and card payments not configured: row recorded unpaid, nothing charged", async () => {
+    const db = fakeDb(seed({ card: false })); 
+    const o = await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: null, ...noAudit });
     expect(o.status).toBe("no_card");
     expect(db.state.payments[0]).toMatchObject({ type: "fee", reason: "reservation_fee", amount: 50, status: "unpaid" });
-    expect(s.calls.length).toBe(0);
+  });
+  test("the payments webhook saves the Reservation Fee card on file and holds the car once paid", () => {
+    const wh = readFileSync("src/routes/api/public/payments/webhook.ts", "utf8");
+    expect(wh).toMatch(/session\.mode === 'payment' && session\.metadata\?\.reason === 'reservation_fee'[\s\S]*saveReservationFeeCard/);
+    expect(wh).toMatch(/upsertPaymentFromPaymentIntent\(event\.data\.object, 'paid'\);\s*await holdReservationAfterFee/);
+    expect(readFileSync("src/lib/email.server.ts", "utf8")).toMatch(/Reservation Fee<\/a>/);
+  });
+  test("the Reservation Fee is never called a deposit in renter copy (t309u)", () => {
+    const lines = [
+      rf.reservationFeeEmailLine({ status: "paid", amount: 50, paymentId: "p", last4: "4242" }),
+      rf.reservationFeeEmailLine({ status: "pending", amount: 50, paymentId: "p", last4: null }),
+      rf.reservationFeeEmailLine({ status: "checkout", amount: 50, paymentId: "p", url: "https://x" }),
+      lp.latePickupSms({ time: "10:00", feeKept: 50 }),
+      lp.latePickupEmail({ firstName: "T", time: "10:00", feeKept: 50 }).html,
+      ir.fleetQuoteText({ vehicle: "Car", weekly: 300, surcharge: 0, deposit: 0, startDate: "2026-11-20", location: "the shop", reservationFee: 50 }).replace("no security deposit", ""),
+    ];
+    for (const l of lines) expect(String(l)).not.toMatch(/deposit/i);
   });
   test("paid: row first (type fee, not rent), one off-session charge, the reservation held as applied; repeat is a no-op", async () => {
     const db = fakeDb({ ...seed(), rentals: [{ id: "r1", application_id: "app1", status: "reserved", reservation_deposit_status: "pending" }] }); const s = stripe();
@@ -151,7 +189,8 @@ describe("FLEET wiring", () => {
   test("quote text names the fee only when it is on", () => {
     const base = { vehicle: "2021 Toyota Camry", weekly: 300, surcharge: 0, deposit: 0, startDate: "2026-11-20", location: "the shop" };
     expect(ir.fleetQuoteText(base)).not.toMatch(/Reservation Fee/);
-    expect(ir.fleetQuoteText({ ...base, reservationFee: 50 })).toMatch(/A \$50 Reservation Fee is charged to your card on file when you sign and applied to your first week\./);
+    expect(ir.fleetQuoteText({ ...base, reservationFee: 50 })).toMatch(/After you sign, you'll pay a \$50 Reservation Fee by card to hold the car\. It is applied to your first week, and that card is saved on file for your rental balance\./);
+    expect(ir.fleetQuoteText({ ...base, deposit: 250 })).toMatch(/\$250 security deposit/);
   });
   test("FLEET pickup booking requires the fee; signing charges before the pay link", () => {
     expect(readFileSync("src/lib/fleet-pickup.server.ts", "utf8")).toMatch(/requireReservationFee: true/);
