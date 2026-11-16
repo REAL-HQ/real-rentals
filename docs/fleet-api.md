@@ -19,6 +19,7 @@ Base: `https://drivereal.com/api/public/fleet/`
 | `assign-vehicle` | list available cars; put one on an approved applicant at its listed rate | fleet-assign-vehicle.md (PR 377) |
 | `send-agreement` | send the agreement after the renter confirmed terms (call or YES text) | [fleet-send-agreement.md](fleet-send-agreement.md) |
 | `amend-agreement` | send an updated agreement to an ACTIVE rental (e.g. a new weekly rate the renter agreed to); generated from v1.14 with no Reservation Fee or new deposit; the rate changes only after they sign (switch, Off) | [fleet-amend-agreement.md](fleet-amend-agreement.md) |
+| `driver-document` | file a document onto a driver's profile, team only, never verified (switch, Off) | [below](#driver-document) |
 | `pickup-slots` | open pickup slots; book one | [fleet-pickup-schedule.md](fleet-pickup-schedule.md) |
 | `resend-link` | resend the signing link or the missing-files upload link (switch, Off) | [fleet-resend-link.md](fleet-resend-link.md) |
 | `handoff` | hand a person to staff (complaint, injury, payment dispute, ...); bots pause | [fleet-handoff.md](fleet-handoff.md) |
@@ -36,3 +37,55 @@ Events the site sends FLEET (signed webhooks): [fleet-webhooks.md](fleet-webhook
   renter signs the updated agreement, and Stripe is never changed by FLEET.)
 - Propose a weekly rate outside $200–$1,000 (staff only).
 - Complete the pickup checklist, activate a rental, record a return, end a rental.
+- File a signed agreement or a rental application (eSign and staff only), or
+  verify, approve or reject any document.
+
+## driver-document
+
+`POST https://drivereal.com/api/public/fleet/driver-document`. Off until the
+Automations switch **Document Uploads (FLEET)** (`fleet_document_uploads`) is On;
+while Off: `409 {"reason":"switched_off"}`, nothing saved.
+
+```json
+{
+  "lead_id": "<application id>",
+  "category": "other",
+  "file_name": "REAL RENTALS AGREEMENT.pdf",
+  "content_base64": "<the file, base64; a data: prefix is accepted>",
+  "label": "Original v1.13 agreement (superseded)",
+  "expires_at": "2029-01-21",
+  "idempotency_key": "doc-<lead_id>-1"
+}
+```
+
+- `category`: `license_front`, `license_back`, `insurance`, `gig_profile`,
+  `income`, `insurance_quote`, `screening`, `trip_history`, `other` (the staff
+  upload categories). `agreement` and `rental_application` are refused (eSign
+  and staff only); `verification_recording` is Owner only. An old or paper
+  agreement goes under `other` with a `label`: `other` is multi-file, replaces
+  nothing and never counts as the current signed agreement.
+- `label` optional, up to 140 characters. `expires_at` optional, only for
+  `license_front`, `license_back`, `insurance` (`YYYY-MM-DD`).
+- The type is read from the file's bytes: PDF, JPEG, PNG, WebP or HEIC, up to
+  20 MB decoded (`415` / `413` otherwise). The name and any claimed type are
+  not trusted.
+- Saved exactly like a staff upload: bucket `driver-docs`, path
+  `<lead_id>/internal/<category>-<uuid>.<ext>`, documents row with
+  visibility team only (`["admin"]`), `review_status` "uploaded". Nothing is
+  verified or approved, nothing on the application changes and the driver is
+  not told. A new file in a single-file category (e.g. `license_front`)
+  replaces the current one like a staff upload, except a file staff already
+  verified is never replaced (`409 {"reason":"verified_on_file"}`).
+- Idempotent: the same `idempotency_key`, or the same bytes for the same driver
+  and category, returns `200 {"duplicate":true,"document_id":…}` without saving
+  again. A key reused for a different file is `409`.
+- Audited as `document.fleet_upload` (category, label, sha256, size, key).
+
+Reply `201`:
+
+```json
+{ "ok": true, "lead_id": "…", "document_id": "…", "category": "other",
+  "label": "…", "file_name": "…", "mime_type": "application/pdf",
+  "size_bytes": 123456, "sha256": "…", "visibility": ["admin"],
+  "review_status": "uploaded", "verified": false, "next": "…" }
+```

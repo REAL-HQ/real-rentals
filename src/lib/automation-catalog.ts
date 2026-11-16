@@ -509,6 +509,19 @@ export const AUTOMATIONS: AutomationDef[] = [
     defaultOn: false,
     note: "Off until turned on. Needs proposed/rental-rate-amendments-v1.sql. Sends the same agreement and signing link staff send, with the new rate and an amendment notice. The new rate starts only after the renter signs, from the effective date or the next rent week, never back-dated; Stripe is never changed automatically. A rate increase needs the renter's logged consent (a real text on our lines, or a call). Refused while someone is handed off to staff. Staff can always send one from the rental page (Send Updated Agreement).",
   },
+  {
+    key: "fleet_document_uploads",
+    title: "Document Uploads (FLEET)",
+    audience: "Team",
+    channels: [],
+    trigger: "FLEET files a document onto a driver's profile, for example a license photo or an old paper agreement sent to the team inbox.",
+    cadence: "Only when FLEET asks. PDF, JPEG, PNG, WebP or HEIC, up to 20 MB. A repeat of the same file is not saved twice.",
+    emailWorkflows: [],
+    control: { kind: "setting" },
+    previews: [],
+    defaultOn: false,
+    note: "Off until turned on. Files are team only and saved as not reviewed; nothing is verified or approved and the driver is not told. Signed agreements and rental applications are never filed this way (eSign and staff only); an old agreement goes under Other and never counts as the current one. A file staff already verified is never replaced. Every upload is in the audit log.",
+  },
 ];
 
 export const AUTOMATION_KEYS = AUTOMATIONS.map((a) => a.key);
