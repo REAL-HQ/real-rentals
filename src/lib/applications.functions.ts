@@ -982,14 +982,19 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
       }
       // Start any active post-application follow-up sequence. Enrollment is
       // idempotent, so a re-submitted wizard never double-texts the applicant.
+      // Awaited on purpose (same reason as syncApplicationUploads above). This
+      // handler runs on Cloudflare Workers; a fire-and-forget enroll was killed
+      // when the response returned, so real applicants were never enrolled in
+      // New Applicant Follow-Up (prod had one test row). Errors still must not
+      // fail the applicant's submission.
       try {
         const { enrollInWorkflows } = await import("@/lib/automations.server");
-        void enrollInWorkflows({
+        await enrollInWorkflows({
           trigger: "application_submitted",
           applicationId: row.id,
-        }).catch((e) => console.error("[automations] enroll on submit failed", e));
+        });
       } catch (e) {
-        console.error("[automations] enroll setup failed", e);
+        console.error("[automations] enroll on submit failed", e);
       }
     }
     return { ok: true };

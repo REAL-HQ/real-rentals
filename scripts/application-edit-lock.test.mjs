@@ -83,7 +83,7 @@ const fakeAdmin = {
 
 const stubs = {
   "@tanstack/react-start/server": "export const getRequest=()=>({headers:new Map()});",
-  "@tanstack/react-start": `export const createServerFn=()=>{let validate=x=>x;const api={middleware:()=>api,inputValidator:v=>{validate=v;return api},handler:fn=>async args=>fn({...args,data:validate(args.data)})};return api};`,
+  "@tanstack/react-start": `export const createServerFn=()=>{let validate=x=>x;const api={middleware:()=>api,inputValidator:v=>{validate=v;return api},handler:fn=>async args=>fn({...args,data:validate(args.data)})};return api}; export const createServerOnlyFn=fn=>fn;`,
   "@/integrations/supabase/auth-middleware": "export const requireSupabaseAuth={};",
   "@/integrations/supabase/client.server":
     "export const supabaseAdmin=new Proxy({}, {get:(_,p)=>globalThis.__lock.admin[p]});",
@@ -94,7 +94,7 @@ const stubs = {
   "@/lib/email.server":
     "export const sendLeadAlertEmail=async()=>{globalThis.__lock.emails++}; export const sendApplicationResumeEmail=async()=>({ok:true});",
   "@/lib/scoring.functions": "export const runScoring=async()=>{};",
-  "@/lib/automations.server": "export const enrollInWorkflows=async()=>{};",
+  "@/lib/automations.server": "export const enrollInWorkflows=async(a)=>globalThis.__lock.enroll(a);",
   "@/lib/application-recovery.server":
     "export const applicationResumeAtomicEnabled=()=>false; export const deliverApplicationRecovery=async()=>({outcome:'failed',wait:0});",
 };
@@ -117,6 +117,18 @@ globalThis.__lock = {
     synced++;
   },
   emails: 0,
+  enroll: async (args) => {
+    const rec = { args, finished: false };
+    globalThis.__lock.enrolls.push(rec);
+    if (globalThis.__lock.enrollDelayMs) {
+      await new Promise((r) => setTimeout(r, globalThis.__lock.enrollDelayMs));
+    }
+    if (globalThis.__lock.enrollError) throw new Error(globalThis.__lock.enrollError);
+    rec.finished = true;
+  },
+  enrolls: [],
+  enrollDelayMs: 0,
+  enrollError: null,
 };
 
 async function load(file) {
@@ -152,6 +164,9 @@ function reset(status) {
   synced = 0;
   afterFirstRead = null;
   globalThis.__lock.emails = 0;
+  globalThis.__lock.enrolls = [];
+  globalThis.__lock.enrollDelayMs = 0;
+  globalThis.__lock.enrollError = null;
   db = {
     applications: [
       {
@@ -276,6 +291,41 @@ try {
     reset("partial");
     await apps.updateApplicationStep({ data: { token: TOKEN, step: "submitted" } });
     assert.equal(db.applications[0].status, "new");
+    assert.equal(globalThis.__lock.enrolls.length, 1, "follow-up enrollment runs on submit");
+    assert.deepEqual(globalThis.__lock.enrolls[0].args, {
+      trigger: "application_submitted",
+      applicationId: APP,
+    });
+    assert.equal(globalThis.__lock.enrolls[0].finished, true);
+  });
+
+  await test("follow-up enrollment is awaited so a Worker teardown cannot drop it", async () => {
+    reset("partial");
+    globalThis.__lock.enrollDelayMs = 40;
+    const started = Date.now();
+    await apps.updateApplicationStep({ data: { token: TOKEN, step: "submitted" } });
+    const elapsed = Date.now() - started;
+    assert.equal(db.applications[0].status, "new");
+    assert.equal(globalThis.__lock.enrolls.length, 1);
+    assert.equal(globalThis.__lock.enrolls[0].finished, true, "handler waited for enroll to finish");
+    assert.ok(elapsed >= 35, `expected to wait for enroll, elapsed ${elapsed}ms`);
+  });
+
+  await test("a failed enroll does not fail the applicant's submission", async () => {
+    reset("partial");
+    globalThis.__lock.enrollError = "enroll boom";
+    const result = await apps.updateApplicationStep({ data: { token: TOKEN, step: "submitted" } });
+    assert.deepEqual(result, { ok: true });
+    assert.equal(db.applications[0].status, "new");
+    assert.equal(globalThis.__lock.enrolls.length, 1);
+    assert.equal(globalThis.__lock.enrolls[0].finished, false);
+  });
+
+  await test("the submit path awaits enrollInWorkflows instead of fire-and-forget", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("src/lib/applications.functions.ts", "utf8");
+    assert.equal(src.includes("void enrollInWorkflows"), false);
+    assert.equal(src.includes("await enrollInWorkflows({"), true);
   });
 
   await test("a decision landing between the read and the write still wins", async () => {
