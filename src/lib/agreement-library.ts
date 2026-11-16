@@ -140,3 +140,15 @@ export function lineDiff(a: string, b: string): { t: "same" | "del" | "add"; lin
   while (j < m) out.push({ t: "add", line: B[j++] });
   return out;
 }
+
+/**
+ * The agreement new sends use when no saved template is active: v1.14
+ * (Insurance Included). Dolmar, Nov 16 2026 (t319u): "the v1.14 agreement is
+ * the latest agreement we have. add those fees to that agreement." Signed
+ * agreements keep the text they were signed with.
+ */
+export const DEFAULT_LIBRARY_KEY = "insurance_included";
+/** Library families the Owner approved for sending (an Owner approval, not a legal review). */
+export const OWNER_APPROVED_LIBRARY: Record<string, { at: string; by: string }> = {
+  insurance_included: { at: "2026-11-16", by: "Dolmar Cross (Owner), t319u" },
+};

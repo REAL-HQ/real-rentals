@@ -10,7 +10,7 @@ import { EMPTY_PREP, PAYMENT_METHODS, PAYMENT_SCHEDULES, fillBlankAgreementDetai
 import { defaultRentalEndIso } from "@/lib/agreement-dates";
 import { layoutToText } from "@/lib/agreement-layout";
 import { readAgreementLicense, readWrittenAgreement } from "@/lib/agreement-license.functions";
-import { LIBRARY, DRAFT_STATUS_LABEL, acknowledgmentsOf } from "@/lib/agreement-library";
+import { LIBRARY, DRAFT_STATUS_LABEL, OWNER_APPROVED_LIBRARY, acknowledgmentsOf } from "@/lib/agreement-library";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
 type Res = {
@@ -27,6 +27,7 @@ type Res = {
   /** Merge fields the chosen template prints. */
   templateFields?: string[];
   template: { label: string };
+  reservationFeeAuto?: { enabled: boolean; amount: number };
 };
 
 function Section({ title, children, open = true, badge }: { title: string; children: React.ReactNode; open?: boolean; badge?: number }) {
@@ -71,6 +72,8 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   // be missed) until staff regenerate the preview and review it again.
   const [staleRefusal, setStaleRefusal] = useState<string | null>(null);
   const [regen, setRegen] = useState(0);
+  // The Reservation Fee switch preselects Required (once); staff can still change it.
+  const [feeDefaulted, setFeeDefaulted] = useState(false);
   const key = useMemo(() => JSON.stringify({ prep, templateKey }), [prep, templateKey]);
   function chooseTemplate(k: string) {
     // Switching templates invalidates the previous preview and its fingerprint.
@@ -89,6 +92,14 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
           setStaleRefusal(null);
           if (!prep.details && r.values) {
             setPrep((current) => current.details ? current : { ...current, details: r.values });
+          }
+          if (!feeDefaulted) {
+            setFeeDefaulted(true);
+            const fee = r.reservationFeeAuto;
+            if (fee?.enabled && fee.amount > 0) {
+              setPrep((current) => current.reservation.mode === "not_required" && current.reservation.amount == null
+                ? { ...current, reservation: { mode: "required", amount: fee.amount } } : current);
+            }
           }
         }
       } catch (e: any) {
@@ -229,7 +240,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
       <Section title="Agreement Template">
         <label className="flex cursor-pointer items-start gap-2 rounded-md border p-2">
           <input type="radio" className="mt-0.5" checked={templateKey === ""} onChange={() => chooseTemplate("")} />
-          <span><span className="font-medium">Current Agreement In Use</span><br /><span className="text-muted-foreground">The template Send uses today.</span></span>
+          <span><span className="font-medium">Current Agreement In Use</span><br /><span className="text-muted-foreground">{templateKey === "" && res?.template?.label ? res.template.label : "The template Send uses today (Vehicle Rental Agreement v1.14, Owner Approved)."}</span></span>
         </label>
         {LIBRARY.map((t) => (
           <label key={t.key} className="flex cursor-pointer items-start gap-2 rounded-md border p-2">
@@ -237,7 +248,9 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
             <span className="min-w-0">
               <span className="font-medium">{t.name}</span> <span className="text-muted-foreground">v{t.displayVersion}</span><br />
               <span className="text-muted-foreground">{t.insuranceIncluded ? "Insurance Included" : t.insuranceRequired ? "Insurance Required" : "No Insurance Required"} · {acknowledgmentsOf(t.body).length} Initials</span><br />
-              <span className="text-warning-foreground rounded bg-warning/15 px-1.5 py-0.5 text-[10.5px]">{DRAFT_STATUS_LABEL} — Preview Only</span>
+              {OWNER_APPROVED_LIBRARY[t.key]
+                ? <span className="rounded bg-success-soft px-1.5 py-0.5 text-[10.5px] text-success">Owner Approved {OWNER_APPROVED_LIBRARY[t.key].at}</span>
+                : <span className="text-warning-foreground rounded bg-warning/15 px-1.5 py-0.5 text-[10.5px]">{DRAFT_STATUS_LABEL} — Preview Only</span>}
             </span>
           </label>
         ))}

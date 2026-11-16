@@ -18,7 +18,7 @@
  *      (Company eSign Signer) and is not touched here.
  * Audited as "FLEET (automated)". Idempotent on idempotency_key.
  */
-import type { AgreementPrep } from "@/lib/agreement-prep";
+import { withAutoSendDefaults, type AgreementPrep } from "@/lib/agreement-prep";
 import {
   cleanText,
   fleetAdmin,
@@ -48,13 +48,14 @@ export type AgreementDeps = FleetDeps & {
  * your first payment", and signing charges it (reservation-fee.server.ts).
  * Off: no prep, exactly as before.
  */
-export function fleetAgreementPrep(fee: { enabled: boolean; amount: number }, deposit: number | null): AgreementPrep | undefined {
-  if (!fee.enabled) return undefined;
-  return {
+export function fleetAgreementPrep(fee: { enabled: boolean; amount: number }, deposit: number | null): AgreementPrep {
+  // v1.14 is the agreement sent (Dolmar t319u). FLEET's quote has no Damage
+  // Waiver and rent is weekly by card, so those are the defaults it prints.
+  return withAutoSendDefaults({
     drivers: { mode: "none", list: [] },
-    reservation: { mode: "required", amount: fee.amount },
+    reservation: fee.enabled ? { mode: "required", amount: fee.amount } : { mode: "not_required", amount: null },
     deposit: deposit && deposit > 0 ? { mode: "required", amount: deposit, reason: "" } : { mode: "none", amount: null, reason: "" },
-  };
+  });
 }
 
 const MAX_CONFIRMATION_AGE_DAYS = 7;
@@ -244,7 +245,7 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
     const issue = deps.issue ?? (await import("@/lib/agreements.functions")).issueAgreement;
     const fee = deps.reservationFee ?? (await (await import("@/lib/reservation-fee.server")).loadReservationFeeSettings(admin));
     const prep = fleetAgreementPrep(fee, check.deposit);
-    sent = await issue(admin, leadId, prep ? { createdBy: null, prep } : { createdBy: null });
+    sent = await issue(admin, leadId, { createdBy: null, prep });
   } catch (e) {
     const msg = String((e as Error)?.message ?? e).slice(0, 300);
     await audit({ action: "agreement.fleet_send_failed", summary: `Agreement not sent by ${FLEET_ACTOR_LABEL}: ${msg}`, entityType: "application", entityId: leadId, metadata: { confirmation_id: confirmationId } });

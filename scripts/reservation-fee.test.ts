@@ -179,7 +179,7 @@ describe("week 1 credit", () => {
 
 describe("FLEET wiring", () => {
   test("agreement prep only when the switch is on", () => {
-    expect(fa.fleetAgreementPrep({ enabled: false, amount: 50 }, 0)).toBeUndefined();
+    expect(fa.fleetAgreementPrep({ enabled: false, amount: 50 }, 0)).toMatchObject({ reservation: { mode: "not_required" }, damageWaiver: "declined", payment: { schedule: "weekly", method: "Card Autopay" } });
     expect(fa.fleetAgreementPrep(ON, 0)).toMatchObject({ reservation: { mode: "required", amount: 50 }, deposit: { mode: "none" } });
     expect(fa.fleetAgreementPrep(ON, 250)).toMatchObject({ deposit: { mode: "required", amount: 250 } });
   });
