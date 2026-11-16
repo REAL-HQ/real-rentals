@@ -1308,183 +1308,214 @@ export const approveApplication = createServerFn({ method: "POST" })
       })
       .parse(d),
   )
-  .handler(
-    async ({
+  .handler(async ({ data, context }): Promise<ApproveApplicationResult> => {
+    // Manager, not staff. A Coordinator may read and work an application —
+    // that is the vetting job — but approving it commits the business and
+    // fires off the rental agreement, so it stays with someone trusted with
+    // money.
+    const { requireManager } = await import("@/lib/roles.server");
+    const actor = await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    return approveApplicationCore({
+      admin: supabaseAdmin,
       data,
-      context,
-    }): Promise<{
-      ok: boolean;
-      agreementSent: boolean;
-      agreementSkippedReason?: string;
-      /** Account provisioning and login delivery intentionally wait for Reserved. */
-      portalAccount: "deferred";
-      approvalEmail?: ApprovalEmailStatus;
-      error?: string;
-    }> => {
-      // Manager, not staff. A Coordinator may read and work an application —
-      // that is the vetting job — but approving it commits the business and
-      // fires off the rental agreement, so it stays with someone trusted with
-      // money.
-      const { requireManager } = await import("@/lib/roles.server");
-      const actor = await requireManager(context.userId);
+      actor,
+      createdBy: context.userId,
+      rpc: (name, params) =>
+        (
+          context.supabase as unknown as {
+            rpc: (
+              fn: string,
+              args: Record<string, unknown>,
+            ) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>;
+          }
+        ).rpc(name, params),
+    });
+  });
 
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+export type ApproveApplicationResult = {
+  ok: boolean;
+  agreementSent: boolean;
+  agreementSkippedReason?: string;
+  /** Account provisioning and login delivery intentionally wait for Reserved. */
+  portalAccount: "deferred";
+  approvalEmail?: ApprovalEmailStatus;
+  error?: string;
+};
 
-      const { data: app } = await supabaseAdmin
-        .from("applications")
-        .select("id,status,email,full_name,contacted_at")
-        .eq("id", data.id)
-        .maybeSingle();
-      if (!app)
+/**
+ * The one approval code path. Staff Approve (above) and FLEET's automated
+ * approval (src/lib/fleet-review.server.ts) both run exactly this: the same
+ * gate, the same status write, the same application.approved audit, the same
+ * Stripe customer and the same one-time Approval Confirmation. Never touches
+ * insurance, screening or verification fields.
+ *
+ * `rpc` is the caller's session RPC (staff: the manager JWT). FLEET has no
+ * session, so on a database with the approval packet installed its rpc
+ * refuses and nothing is written; staff then approve by hand.
+ * `decidedBy` labels an automated decision in the audit entry.
+ */
+export async function approveApplicationCore(args: {
+  admin: any;
+  data: { id: string; sendAgreement?: boolean };
+  actor: any;
+  createdBy: string | null;
+  rpc: (
+    name: string,
+    params: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: { code?: string | null; message?: string | null } | null }>;
+  decidedBy?: { label: string; reason: string } | null;
+}): Promise<ApproveApplicationResult> {
+  const { admin: supabaseAdmin, data, actor, rpc } = args;
+  const auditSuffix = args.decidedBy ? ` (${args.decidedBy.label})` : "";
+  const auditExtra = args.decidedBy ? { decided_by: args.decidedBy.label, reason: args.decidedBy.reason } : {};
+
+  const { data: app } = await supabaseAdmin
+    .from("applications")
+    .select("id,status,email,full_name,contacted_at")
+    .eq("id", data.id)
+    .maybeSingle();
+  if (!app)
+    return {
+      ok: false,
+      agreementSent: false,
+      portalAccount: "deferred",
+      error: "Application not found",
+    };
+
+  // Already approved: do not write status, application.approved, or the
+  // one-time Approval Confirmation again. A repeat call manages only the agreement.
+  const newlyApproved = app.status !== "approved";
+  if (newlyApproved) {
+    const { approveThroughPacket } = await import("@/lib/approval-rpc.server");
+    const approved = await approveThroughPacket({
+      applicationId: data.id,
+      readVersion: async () => {
+        const read = await (supabaseAdmin as any)
+          .from("applications")
+          .select("approval_evidence_version")
+          .eq("id", data.id)
+          .maybeSingle();
+        const row = read.data as { approval_evidence_version?: number | null } | null;
         return {
-          ok: false,
-          agreementSent: false,
-          portalAccount: "deferred",
-          error: "Application not found",
+          version: row?.approval_evidence_version ?? null,
+          error: read.error,
         };
-
-      // Already approved: do not write status, application.approved, or the
-      // one-time Approval Confirmation again. A repeat call manages only the agreement.
-      const newlyApproved = app.status !== "approved";
-      if (newlyApproved) {
-        const { approveThroughPacket } = await import("@/lib/approval-rpc.server");
-        const approved = await approveThroughPacket({
-          applicationId: data.id,
-          readVersion: async () => {
-            const read = await (supabaseAdmin as any)
-              .from("applications")
-              .select("approval_evidence_version")
-              .eq("id", data.id)
-              .maybeSingle();
-            const row = read.data as { approval_evidence_version?: number | null } | null;
-            return {
-              version: row?.approval_evidence_version ?? null,
-              error: read.error,
-            };
-          },
-          rpc: (name, params) =>
-            (
-              context.supabase as unknown as {
-                rpc: (
-                  fn: string,
-                  args: Record<string, unknown>,
-                ) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>;
-              }
-            ).rpc(name, params),
-          legacy: async () => {
-            // The packet refuses active and suspended. This fallback runs only
-            // when that function is not installed. Once an owner has approved
-            // the flag-on build, the same refusal applies here too.
-            if (DOCUMENT_CONTENT_SHA256_ENABLED && IDENTITY_VERIFICATION_ENABLED) {
-              const status = String(app.status ?? "").toLowerCase();
-              if (status === "active" || status === "suspended") {
-                return { error: { message: APPROVAL_STATUS_NOT_APPROVABLE } };
-              }
-              if (!(APPROVAL_SOURCE_STATUSES as readonly string[]).includes(status)) {
-                return { error: { message: "application_state_invalid" } };
-              }
-            }
-            const patch: Record<string, unknown> = { status: "approved" };
-            if (!app.contacted_at) patch.contacted_at = new Date().toISOString();
-            const { error: updErr } = await supabaseAdmin
-              .from("applications")
-              .update(patch as any)
-              .eq("id", data.id);
-            if (updErr) return { error: updErr };
-            const { logAudit } = await import("@/lib/audit.server");
-            await logAudit(actor, {
-              action: "application.approved",
-              summary: `Approved ${app.full_name ?? app.email ?? data.id}`,
-              entityType: "application",
-              entityId: data.id,
-              metadata: { previous_status: app.status, send_agreement: data.sendAgreement === true },
-            });
-            return { error: null };
-          },
-        });
-        if (!approved.ok) {
-          return { ok: false, agreementSent: false, portalAccount: "deferred", error: approved.error };
-        }
-        // One Stripe customer per renter from approval on, so every later
-        // checkout, invoice and subscription uses it. Never blocks approval.
-        try {
-          const { ensureCustomerAtApproval, stripeForLinking } = await import("@/lib/stripe-link.server");
-          const stripe = await stripeForLinking();
-          if (stripe) await ensureCustomerAtApproval(supabaseAdmin, stripe, data.id);
-        } catch (e) {
-          console.error("[approve] stripe customer not created", e);
-        }
-      }
-
-      // Approval records the vetting decision only. The existing Reserved
-      // workflow provisions the account and emails login details after staff
-      // confirm the pickup appointment; activation remains the safety net.
-      const portalAccount = "deferred" as const;
-      let approvalEmail: ApprovalEmailStatus = "not_sent";
-      if (newlyApproved) {
-        if (!app.email) approvalEmail = "no_email";
-        else {
-          try {
-            const { sendApprovalConfirmationEmail } = await import("@/lib/email.server");
-            const result = await sendApprovalConfirmationEmail({
-              to: String(app.email),
-              firstName: (app.full_name as string | null) ?? null,
-              applicationId: data.id,
-            });
-            approvalEmail = result.ok ? "sent" : result.blocked ?? "failed";
-          } catch {
-            // Approval is already durable; never undo it because a notice failed.
-            approvalEmail = "failed";
+      },
+      rpc,
+      legacy: async () => {
+        // The packet refuses active and suspended. This fallback runs only
+        // when that function is not installed. Once an owner has approved
+        // the flag-on build, the same refusal applies here too.
+        if (DOCUMENT_CONTENT_SHA256_ENABLED && IDENTITY_VERIFICATION_ENABLED) {
+          const status = String(app.status ?? "").toLowerCase();
+          if (status === "active" || status === "suspended") {
+            return { error: { message: APPROVAL_STATUS_NOT_APPROVABLE } };
+          }
+          if (!(APPROVAL_SOURCE_STATUSES as readonly string[]).includes(status)) {
+            return { error: { message: "application_state_invalid" } };
           }
         }
-      }
+        const patch: Record<string, unknown> = { status: "approved" };
+        if (!app.contacted_at) patch.contacted_at = new Date().toISOString();
+        const { error: updErr } = await supabaseAdmin
+          .from("applications")
+          .update(patch as any)
+          .eq("id", data.id);
+        if (updErr) return { error: updErr };
+        const { logAudit } = await import("@/lib/audit.server");
+        await logAudit(actor, {
+          action: "application.approved",
+          summary: `Approved ${app.full_name ?? app.email ?? data.id}${auditSuffix}`,
+          entityType: "application",
+          entityId: data.id,
+          metadata: { previous_status: app.status, send_agreement: data.sendAgreement === true, ...auditExtra },
+        });
+        return { error: null };
+      },
+    });
+    if (!approved.ok) {
+      return { ok: false, agreementSent: false, portalAccount: "deferred", error: approved.error };
+    }
+    // One Stripe customer per renter from approval on, so every later
+    // checkout, invoice and subscription uses it. Never blocks approval.
+    try {
+      const { ensureCustomerAtApproval, stripeForLinking } = await import("@/lib/stripe-link.server");
+      const stripe = await stripeForLinking();
+      if (stripe) await ensureCustomerAtApproval(supabaseAdmin, stripe, data.id);
+    } catch (e) {
+      console.error("[approve] stripe customer not created", e);
+    }
+  }
 
-      if (data.sendAgreement !== true) {
-        return {
-          ok: true,
-          agreementSent: false,
-          agreementSkippedReason: "not requested",
-          portalAccount,
-          approvalEmail,
-        };
-      }
-      if (!app.email) {
-        return {
-          ok: true,
-          agreementSent: false,
-          agreementSkippedReason: "no email on file",
-          portalAccount,
-          approvalEmail,
-        };
-      }
-
-      const { hasOpenOrSignedAgreement, issueAgreement } =
-        await import("@/lib/agreements.functions");
-      if (await hasOpenOrSignedAgreement(supabaseAdmin, data.id)) {
-        return {
-          ok: true,
-          agreementSent: false,
-          agreementSkippedReason: "an agreement is already out",
-          portalAccount,
-          approvalEmail,
-        };
-      }
-
+  // Approval records the vetting decision only. The existing Reserved
+  // workflow provisions the account and emails login details after staff
+  // confirm the pickup appointment; activation remains the safety net.
+  const portalAccount = "deferred" as const;
+  let approvalEmail: ApprovalEmailStatus = "not_sent";
+  if (newlyApproved) {
+    if (!app.email) approvalEmail = "no_email";
+    else {
       try {
-        await issueAgreement(supabaseAdmin, data.id, { createdBy: context.userId });
-        return { ok: true, agreementSent: true, portalAccount, approvalEmail };
-      } catch (e) {
-        // Approval already succeeded; report the send failure without undoing it.
-        return {
-          ok: true,
-          agreementSent: false,
-          agreementSkippedReason: e instanceof Error ? e.message : "could not send agreement",
-          portalAccount,
-          approvalEmail,
-        };
+        const { sendApprovalConfirmationEmail } = await import("@/lib/email.server");
+        const result = await sendApprovalConfirmationEmail({
+          to: String(app.email),
+          firstName: (app.full_name as string | null) ?? null,
+          applicationId: data.id,
+        });
+        approvalEmail = result.ok ? "sent" : result.blocked ?? "failed";
+      } catch {
+        // Approval is already durable; never undo it because a notice failed.
+        approvalEmail = "failed";
       }
-    },
-  );
+    }
+  }
+
+  if (data.sendAgreement !== true) {
+    return {
+      ok: true,
+      agreementSent: false,
+      agreementSkippedReason: "not requested",
+      portalAccount,
+      approvalEmail,
+    };
+  }
+  if (!app.email) {
+    return {
+      ok: true,
+      agreementSent: false,
+      agreementSkippedReason: "no email on file",
+      portalAccount,
+      approvalEmail,
+    };
+  }
+
+  const { hasOpenOrSignedAgreement, issueAgreement } =
+    await import("@/lib/agreements.functions");
+  if (await hasOpenOrSignedAgreement(supabaseAdmin, data.id)) {
+    return {
+      ok: true,
+      agreementSent: false,
+      agreementSkippedReason: "an agreement is already out",
+      portalAccount,
+      approvalEmail,
+    };
+  }
+
+  try {
+    await issueAgreement(supabaseAdmin, data.id, { createdBy: args.createdBy });
+    return { ok: true, agreementSent: true, portalAccount, approvalEmail };
+  } catch (e) {
+    // Approval already succeeded; report the send failure without undoing it.
+    return {
+      ok: true,
+      agreementSent: false,
+      agreementSkippedReason: e instanceof Error ? e.message : "could not send agreement",
+      portalAccount,
+      approvalEmail,
+    };
+  }
+}
 
 // ---------------------------------------------------------- acknowledgement
 

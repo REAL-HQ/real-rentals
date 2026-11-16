@@ -150,7 +150,8 @@ function safeExt(fileName: string, mime: string): string {
   return map[mime] || "bin";
 }
 
-async function withUrls(admin: any, rows: any[], includeUrls = true): Promise<VaultDocument[]> {
+/** Signs 15-minute storage URLs for vault rows (staff reads, and FLEET's review packet when asked). */
+export async function withUrls(admin: any, rows: any[], includeUrls = true): Promise<VaultDocument[]> {
   return Promise.all(
     rows.map(async (d) => {
       let url: string | null = null;

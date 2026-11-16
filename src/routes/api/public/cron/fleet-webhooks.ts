@@ -20,7 +20,16 @@ async function handle(request: Request): Promise<Response> {
   const { data: expectedToken, error: tokenErr } = await supabaseAdmin.rpc("get_cron_token", { _name: "fleet-webhooks" });
   if (tokenErr || !expectedToken) return new Response("token config missing", { status: 500 });
   if (!provided || provided !== expectedToken) return new Response("unauthorized", { status: 401 });
+  // Queue application_ready_for_review for applicants who just became
+  // reviewable (fleet-review.server.ts). A failure here never blocks sending.
+  let readyQueued = 0;
+  try {
+    const { sweepReadyForReview } = await import("@/lib/fleet-review.server");
+    readyQueued = (await sweepReadyForReview(supabaseAdmin)).length;
+  } catch (e) {
+    console.error("[fleet-webhooks] ready-for-review sweep failed", String((e as Error)?.message ?? e));
+  }
   const { dispatchFleetWebhooks } = await import("@/lib/fleet-webhook.server");
   const result = await dispatchFleetWebhooks(supabaseAdmin, { limit: 50 });
-  return Response.json({ ok: true, ...result });
+  return Response.json({ ok: true, readyQueued, ...result });
 }

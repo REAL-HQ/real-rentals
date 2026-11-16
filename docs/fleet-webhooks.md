@@ -14,6 +14,7 @@ The site sends FLEET one signed JSON POST per event. Nothing is sent until
 | `quo_voicemail` | `call.voicemail.completed` |
 | `quo_transcript` | `call.transcript.completed` |
 | `agreement_signed_by_renter` | a renter signs a rental agreement (email link or portal), once per agreement |
+| `application_ready_for_review` | an applicant is first submitted with the required documents on file (cron sweep, once per applicant; see docs/fleet-applicant-review.md) |
 
 Lead events carry: `lead_id, name, phone (E.164), email, stage, previous_stage
 (stage_changed only), current_stage, sms_consent, consent_timestamp, source,
@@ -34,6 +35,10 @@ admin_url`. There is no countersign step to call: the company signature is
 captured when the agreement is sent (Settings, Company eSign Signer) and is
 already on the signed PDF. The queue row needs
 `proposed/fleet-agreement-signed-event-v1.sql` applied first.
+
+`application_ready_for_review` carries: `lead_id, name, phone, email, stage,
+applied_at, ready_at, next, admin_url`. It needs
+`proposed/fleet-applicant-review-v1.sql` applied first.
 
 Every body also has `event`, `delivery_id` and `sent_at`.
 
