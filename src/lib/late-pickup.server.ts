@@ -43,6 +43,8 @@ export type LatePickupDeps = {
   audit?: (e: any) => Promise<void>;
   feeEnabled?: boolean;
   dryRun?: boolean;
+  /** Staff-text pause check by the renter's phone. True = do not message the renter. */
+  staffPaused?: (admin: Admin, phone: string | null, now: Date) => Promise<boolean>;
 };
 
 export function latePickupSms(f: { time: string; feeKept: number | null }): string {
@@ -161,7 +163,17 @@ export async function runLatePickups(admin: Admin, deps: LatePickupDeps = {}): P
 
     // 5. Renter.
     let renter = "skipped";
-    if (app && textingHours(now)) {
+    // Staff are texting this renter from Quo (staff-text-pause.server.ts): the
+    // release still happens and the team alert above still goes, but the bot
+    // does not text or email the renter; staff tell them.
+    const staffPaused = app && textingHours(now)
+      ? await (deps.staffPaused ?? (async (a: Admin, phone: string | null, at: Date) => {
+          const m = await import("@/lib/staff-text-pause.server");
+          return m.holds(await m.activeStaffTextPause(a, phone, at));
+        }))(admin, app.phone ?? null, now).catch(() => true)
+      : false;
+    if (staffPaused) renter = "paused_staff_texting";
+    else if (app && textingHours(now)) {
       const sendSms = deps.sendSms ?? (async (a: any) => (await import("@/lib/sms.server")).sendSms(a));
       const sendEmail = deps.sendEmail ?? (async (a: any) => (await import("@/lib/email.server")).sendEmail(a));
       const sms = latePickupSms({ time: d.pickupTime, feeKept });

@@ -250,6 +250,14 @@ describe("late pickup release", () => {
     expect(x.alerts[0].title).toMatch(/was 30\+ minutes late \(10:00 AM ET\)/);
     expect(lp.latePickupEmail({ firstName: "T", time: "10:00", feeKept: 50 }).html).toMatch(/until 30 minutes after your 10:00 AM ET pickup/);
   });
+  test("staff are texting the renter (staff-text pause): released and staff alerted, but no renter text or email", async () => {
+    const db = fakeDb(lateSeed({ bot_text_pauses: [{ phone_key: "5555550100", paused_until: "2026-11-21T15:00:00Z", cleared_at: null }] })); const x = io();
+    const out = await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:31:00Z") });
+    expect(out.outcomes).toEqual([{ rental_id: "r1", status: "released", detail: "paused_staff_texting" }]);
+    expect(db.state.rentals[0].status).toBe("cancelled");
+    expect(x.alerts.map((a) => a.kind)).toEqual(["late_pickup"]);
+    expect(x.sms.length + x.emails.length).toBe(0);
+  });
   test("the rep started the pickup checklist: never released", async () => {
     const db = fakeDb(lateSeed({ pickup_handovers: [{ rental_id: "r1" }] })); const x = io();
     await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:45:00Z") });

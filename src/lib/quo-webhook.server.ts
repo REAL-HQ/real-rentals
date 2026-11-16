@@ -10,6 +10,9 @@ type Deps = {
   now?: number;
   /** Sends one queued FLEET delivery right away. Default: the shared signed sender. */
   dispatch?: (admin: any, ids: string[]) => Promise<unknown>;
+  /** Staff-text pause switch ("staff_text_pause"). Default: Back Office → Automations. */
+  staffPauseGate?: (admin: any) => Promise<"send" | "off" | "held">;
+  staffPauseSettings?: import("@/lib/staff-text-pause.server").StaffTextPauseSettings;
 };
 
 /**
@@ -123,6 +126,21 @@ export async function handleQuoWebhook(request: Request, deps: Deps = {}): Promi
     return ok();
   }
 
-  // message.delivered and anything else: nothing to change ("sent" already).
+  // An outgoing text was delivered from one of our lines. If a person on the
+  // team sent it (not the site, not FLEET), pause bot outreach to that person
+  // (staff-text-pause.server.ts; switch Off by default). Never fails the hook.
+  if (type === "message.delivered") {
+    const { handleQuoOutbound } = await import("@/lib/staff-text-pause.server");
+    const r = await handleQuoOutbound(admin, event, line, {
+      now: deps.now ? new Date(deps.now * 1000) : undefined,
+      gate: deps.staffPauseGate,
+      settings: deps.staffPauseSettings,
+      toE164,
+    });
+    if (r.paused?.length) console.log("[sms-quo] staff text: bots paused", { count: r.paused.length, why: r.why });
+    return ok();
+  }
+
+  // Anything else: nothing to change ("sent" already).
   return ok();
 }

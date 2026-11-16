@@ -56,6 +56,18 @@ export type OutreachDeps = {
   companyPhone?: (admin: any) => Promise<string>;
   /** Automations switches: "send" | "off" | "held". */
   gate?: (admin: any, key: string) => Promise<"send" | "off" | "held">;
+  /** Phones (last 10 digits) whose bot outreach is paused because staff texted them. Default: bot_text_pauses. */
+  pausedPhones?: (admin: any, now: Date) => Promise<Set<string> | "unavailable">;
+};
+
+async function pausedPhoneKeys(admin: any, deps: OutreachDeps, now: Date): Promise<Set<string> | "unavailable"> {
+  const read = deps.pausedPhones ?? (async (a: any, at: Date) => (await import("@/lib/staff-text-pause.server")).activePauseKeys(a, at));
+  return read(admin, now).catch(() => "unavailable" as const);
+}
+const phoneKey10 = (phone: unknown): string | null => {
+  const d = String(phone ?? "").replace(/\D/g, "");
+  const ten = d.length === 11 && d.startsWith("1") ? d.slice(1) : d;
+  return ten.length === 10 ? ten : null;
 };
 
 export type PlannedSend = { app: OutreachApp; items: MissingItemKey[]; step: 1 | 2 | 3; key: string; email: boolean; sms: boolean };
@@ -183,8 +195,19 @@ export async function runMissingItemsOutreach(
     holdNewSequences = !!bfErr || !(Array.isArray(bfRows) && bfRows.length > 0) || backfillGate !== "off";
   }
 
+  // Staff are texting this person from Quo: no bot outreach until the pause
+  // ends (staff-text-pause.server.ts). Nothing is claimed, so the step goes
+  // out on a later run once the pause is over.
+  const paused = await pausedPhoneKeys(admin, deps, now);
+  if (paused === "unavailable") return { ...summary, ok: false, held: "staff_text_pause_unreadable" };
+
   const plan: PlannedSend[] = [];
   for (const app of list) {
+    const pk = phoneKey10(app.phone);
+    if (pk && paused.has(pk)) {
+      summary.skipped.staff_text_pause = (summary.skipped.staff_text_pause ?? 0) + 1;
+      continue;
+    }
     const items = missingItems(app, docsBy.get(app.id) ?? []);
     const d = decideOutreach({
       app, items, log: (logBy.get(app.id) ?? []) as OutreachLogRow[], activeEnrollment: enrolled.has(app.id),
@@ -375,8 +398,14 @@ export async function runMissingItemsAutoClose(
     if (e) inboundBy.set(e, latest(inboundBy.get(e) ?? null, m.created_at) as string);
   }
 
+  // Staff are texting this person: no auto-close (and no come-back message) while paused.
+  const paused = await pausedPhoneKeys(admin, deps, now);
+  if (paused === "unavailable") return { ...out, ok: false, held: "staff_text_pause_unreadable" };
+
   const plan: { app: OutreachApp; email: boolean; sms: boolean; lastMessageAt: string }[] = [];
   for (const a of apps) {
+    const pk = phoneKey10(a.phone);
+    if (pk && paused.has(pk)) { out.skipped.staff_text_pause = (out.skipped.staff_text_pause ?? 0) + 1; continue; }
     const e = toUsE164(a.phone);
     const last = latest(response.get(a.id) ?? null, e ? inboundBy.get(e) ?? null : null);
     const d = decideAutoClose({

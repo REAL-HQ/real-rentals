@@ -181,7 +181,8 @@ export async function leadStatus(admin: Admin, leadId: string, now: Date) {
   if (a.error) throw new Error("Could not read the application.");
   const app = a.data;
   if (!app) return null;
-  const [docs, agreements, rentals, payments, quoIn, outMsg, needsStaff, botPause] = await Promise.all([
+  const { activeStaffTextPause } = await import("@/lib/staff-text-pause.server");
+  const [docs, agreements, rentals, payments, quoIn, outMsg, needsStaff, botPause, staffText] = await Promise.all([
     admin.from("documents").select("category,review_status,is_current,created_at").eq("driver_id", leadId),
     admin.from("agreements").select(AGR_COLS).eq("application_id", leadId),
     admin.from("rentals").select(RENTAL_COLS).eq("application_id", leadId),
@@ -190,6 +191,7 @@ export async function leadStatus(admin: Admin, leadId: string, now: Date) {
     admin.from("outbound_messages").select("channel,kind,status,sent_at,created_at").eq("application_id", leadId).order("created_at", { ascending: false }).limit(1),
     needsStaffFor(admin, leadId),
     botPauseFor(admin, leadId),
+    activeStaffTextPause(admin, app.phone ?? null, now),
   ]);
   const j = computeJourney({ app, docs: arr(docs), agreements: arr(agreements), rentals: arr(rentals), payments: arr(payments), needsStaff, botPause, now });
   const rentalPayments = j.rental ? arr(payments).filter((p) => !p.rental_id || p.rental_id === j.rental!.id) : arr(payments);
@@ -208,6 +210,10 @@ export async function leadStatus(admin: Admin, leadId: string, now: Date) {
     next: j.next,
     needs_staff: needsStaff,
     bot_pause: botPause,
+    // Staff texted this person from Quo: FLEET sends nothing (texts included)
+    // until `until`. Light pause, not a handoff; next step is unchanged.
+    bot_text_pause: staffText === "unavailable" ? { paused: true, until: null, since: null, reason: "pause status unreadable" } : staffText.paused ? { paused: true, until: staffText.until, since: staffText.since, reason: "staff_texting" } : null,
+    bots_paused: !!botPause || staffText === "unavailable" || staffText.paused,
     agreement: j.agreement
       ? { agreement_id: j.agreement.id, status: j.agreement.status, sent_at: j.agreement.sent_at ?? null, viewed_at: j.agreement.viewed_at ?? null, signed_at: j.agreement.signed_at ?? null, link_expires_at: j.agreement.token_expires_at ?? null, email_status: j.agreement.email_status ?? null, sms_status: j.agreement.sms_status ?? null }
       : null,

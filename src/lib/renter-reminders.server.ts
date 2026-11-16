@@ -44,7 +44,14 @@ export type ReminderDeps = {
   sendEmail?: (a: { to: string; subject: string; html: string; track: { workflow: string }; idempotencyKey: string }) => Promise<any>;
   gates?: { pickup: "send" | "off" | "held"; agreement: "send" | "off" | "held" };
   dryRun?: boolean;
+  /** Staff-text pause check (staff-text-pause.server.ts). True = hold this person's reminders. */
+  staffPaused?: (admin: Admin, phone: string | null, now: Date) => Promise<boolean>;
 };
+
+async function defaultStaffPaused(admin: Admin, phone: string | null, now: Date): Promise<boolean> {
+  const { activeStaffTextPause, holds } = await import("@/lib/staff-text-pause.server");
+  return holds(await activeStaffTextPause(admin, phone, now));
+}
 
 /** Minutes since midnight in ET plus the ET date. */
 function etClock(at: Date): { date: string; minutes: number } {
@@ -230,6 +237,7 @@ export async function runRenterReminders(admin: Admin, deps: ReminderDeps = {}):
   };
   const outcomes: ReminderOutcome[] = [];
   const texting = textingHours(now);
+  const staffPaused = deps.staffPaused ?? defaultStaffPaused;
 
   if (gates.pickup === "send" && texting) {
     const { data: rentals } = await admin
@@ -260,6 +268,9 @@ export async function runRenterReminders(admin: Admin, deps: ReminderDeps = {}):
         const key = `pickup:${r.id}:${r.start_date}T${d.pickupTime}:${step}`;
         const kind = `pickup_reminder_${step}`;
         const sms = pickupSms(step, facts);
+        // Staff are texting this renter: hold (unclaimed, so it can still go
+        // out inside its window if the pause ends).
+        if (await staffPaused(admin, app.phone ?? null, now).catch(() => true)) { outcomes.push({ key, kind, channel: "none", status: "paused_staff_texting" }); continue; }
         if (deps.dryRun) { outcomes.push({ key, kind, channel: "sms", status: "would_send", body: sms }); continue; }
         const c = await claim(admin, { key, kind, application_id: app.id, rental_id: r.id, status: "claimed" });
         if (c === null) return { ok: false, reason: "renter_reminder_sends table missing; nothing sent", outcomes };
@@ -289,6 +300,7 @@ export async function runRenterReminders(admin: Admin, deps: ReminderDeps = {}):
         const key = `agreement:${a.id}:${step}`;
         const kind = `agreement_sign_${step}`;
         const sms = agreementSms(step);
+        if (await staffPaused(admin, app.phone ?? null, now).catch(() => true)) { outcomes.push({ key, kind, channel: "none", status: "paused_staff_texting" }); continue; }
         if (deps.dryRun) { outcomes.push({ key, kind, channel: "sms", status: "would_send", body: sms }); continue; }
         const c = await claim(admin, { key, kind, application_id: app.id, rental_id: a.rental_id ?? null, agreement_id: a.id, status: "claimed" });
         if (c === null) return { ok: false, reason: "renter_reminder_sends table missing; nothing sent", outcomes };

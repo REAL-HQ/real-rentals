@@ -50,6 +50,9 @@ Reply: `{ ok, kind, lead_id, missing, email, sms, delivered }`.
   are always checked.
 - A person handed off to staff (`/fleet/handoff`) gets nothing: `423`,
   `reason: "staff_handling"`.
+- A person staff are texting from Quo (staff-text pause, see
+  [staff-text-pause.md](staff-text-pause.md)) gets nothing until the pause ends:
+  `423`, `reason: "staff_texting"`, `bot_text_pause: { until, since }`.
 - Switch Off: `409`, `reason: "switched_off"`. Switches unreadable: `503`.
 - Every resend is audited as FLEET (`document.resent` with `by: FLEET`, or
   `application.upload_link_resent`).
