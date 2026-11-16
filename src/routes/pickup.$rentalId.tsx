@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FileUploader, type UploadCtx } from "@/components/FileUploader";
 import { createConditionUploadUrl, confirmConditionUpload } from "@/lib/inspections.functions";
 import { getPickupHandover, submitPickupHandover } from "@/lib/pickup-handover.functions";
 import { FUEL_LEVELS } from "@/lib/pickup-handover";
@@ -42,21 +43,18 @@ function PickupPage() {
   }, [load, rentalId]);
   useEffect(() => { void refresh(); }, [refresh]);
 
-  async function uploadLicensePhoto(file: File) {
+  async function uploadLicensePhoto(file: File, ctx: UploadCtx) {
     if (!view) return;
-    setBusy(true);
     setError(null);
-    try {
-      const signed = await startUpload({ data: { vehicleId: view.vehicleId, fileName: file.name, mimeType: file.type || "image/jpeg" } });
-      const stored = await supabase.storage.from(signed.bucket).uploadToSignedUrl(signed.path, signed.token, file, { contentType: file.type });
-      if (stored.error) throw stored.error;
-      await confirmUpload({ data: { vehicleId: view.vehicleId, rentalId: view.rentalId, phase: "checkout", angle: "other", caption: view.licensePhotoCaption, path: signed.path, fileName: file.name, mimeType: file.type, sizeBytes: file.size } });
-      await refresh();
-    } catch (e) {
-      setError(String((e as Error)?.message ?? e));
-    } finally {
-      setBusy(false);
-    }
+    const signed = await startUpload({ data: { vehicleId: view.vehicleId, fileName: file.name, mimeType: file.type || "image/jpeg" } });
+    if (!signed.path.startsWith(`${view.vehicleId}/`)) throw new Error("Photo destination could not be confirmed.");
+    ctx.onProgress(40);
+    const stored = await supabase.storage.from(signed.bucket).uploadToSignedUrl(signed.path, signed.token, file, { contentType: file.type });
+    if (stored.error) throw stored.error;
+    ctx.onProgress(80);
+    await confirmUpload({ data: { vehicleId: view.vehicleId, rentalId: view.rentalId, phase: "checkout", angle: "other", caption: view.licensePhotoCaption, path: signed.path, fileName: file.name, mimeType: file.type, sizeBytes: file.size } });
+    ctx.onProgress(100);
+    await refresh();
   }
 
   async function onSubmit() {
@@ -119,7 +117,7 @@ function PickupPage() {
           <section className="space-y-2">
             <h2 className="font-medium">1. Photo of the renter holding their license</h2>
             {view.licensePhoto ? <p className="text-sm text-green-700">Photo saved.</p> : null}
-            <Input type="file" accept="image/*" capture="environment" disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadLicensePhoto(f); }} />
+            <FileUploader upload={uploadLicensePhoto} autoStart accept="image/*" camera multiple={false} maxFiles={1} disabled={busy} variant="inline" title={view.licensePhoto ? "Retake Photo" : "Take Photo"} />
           </section>
           <section className="space-y-2">
             <h2 className="font-medium">2. Odometer</h2>
