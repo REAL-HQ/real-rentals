@@ -44,10 +44,10 @@ export const FLEET_ESCALATION_DEFAULTS = {
   /** Under this age (from date of birth) -> staff look. 21+ is the hard floor. */
   youngDriverAge: 25,
   minAge: 21,
-  /** Gig rating below this -> staff look. */
+  /** Gig rating below this -> staff look (Dolmar, t299s1618). */
   minRating: 4.0,
-  /** Fewer completed trips than this -> staff look. */
-  minTrips: 100,
+  /** Fewer completed trips than this -> staff look (Dolmar, t299s1618: 200 trips and a 4.0 rating). */
+  minTrips: 200,
   /** License expiring within this many days -> staff look (expired = blocker). */
   licenseExpiryDays: 30,
 } as const;
@@ -85,8 +85,15 @@ export type FleetReviewAssessment = {
   escalations: ReviewItem[];
   /** Facts worth knowing that do not, by default, need staff. */
   notes: ReviewItem[];
-  /** What the default checklist suggests. FLEET decides. */
+  /**
+   * What the default checklist suggests. FLEET decides, except that a flagged
+   * background or driving-record result always goes to staff (Dolmar,
+   * t299s1618): FLEET cannot approve it (hard blocker) and the recommendation
+   * is needs_staff, never not_ready.
+   */
   recommendation: "approve" | "needs_staff" | "not_ready";
+  /** True when a background or MVR result is flagged: send to staff, never approve. */
+  screening_flagged: boolean;
   ready_for_review: boolean;
 };
 
@@ -174,9 +181,16 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   }
   for (const d of input.disqualifiers) block("disqualifier", d);
   if (s.disqualified === true) block("screening_disqualified", `Screening marked disqualified${s.disqualification_reason ? `: ${s.disqualification_reason}` : ""}.`);
+  // A flagged or declined result is never FLEET's call: blocked here and sent
+  // to staff (screening_flagged). A clear result, with the gig bar met, FLEET
+  // may pass (Dolmar, t299s1618).
+  let screeningFlagged = false;
   for (const [k, label] of [["background_check_status", "Background check"], ["mvr_status", "Driving record (MVR)"]] as const) {
     const v = String(app[k] ?? "").trim();
-    if (v && BAD_CHECK.test(v)) block(`${k}_${v.toLowerCase()}`, `${label} recorded as ${v}.`);
+    if (v && BAD_CHECK.test(v)) {
+      screeningFlagged = true;
+      block(`${k}_${v.toLowerCase()}`, `${label} recorded as ${v}. Staff decide flagged results; FLEET sends this to staff.`);
+    }
   }
   const age = ageOn(app.dob, now);
   if (age !== null && age < T.minAge) block("under_21", `Driver is ${age} (minimum ${T.minAge}).`);
@@ -201,10 +215,11 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   const flags = Array.isArray(app.ai_flags) ? app.ai_flags.filter(Boolean) : [];
   if (flags.length) flag("ai_flags", `Application analysis flags: ${flags.map(String).join("; ")}.`);
   const rating = numberOrNull(app.rating ?? s.driver_rating);
-  if (rating !== null && rating > 0 && rating < T.minRating) flag("low_rating", `Gig rating ${rating}.`);
+  if (rating !== null && rating > 0 && rating < T.minRating) flag("low_rating", `Gig rating ${rating} (minimum ${T.minRating.toFixed(1)}).`);
   const trips = numberOrNull(app.trips_completed ?? s.trip_count);
-  if (trips === null) note("no_trips", "Trip count not known; check the gig screenshot.");
-  else if (trips < T.minTrips) flag("few_trips", `${trips} trips completed.`);
+  if (trips === null) note("no_trips", `Trip count not known; confirm ${T.minTrips}+ trips and a ${T.minRating.toFixed(1)}+ rating on the gig screenshot before approving, otherwise send to staff.`);
+  else if (trips < T.minTrips) flag("few_trips", `${trips} trips completed (minimum ${T.minTrips}).`);
+  if (rating === null || rating <= 0) note("no_rating", `Gig rating not known; confirm ${T.minRating.toFixed(1)}+ on the gig screenshot before approving, otherwise send to staff.`);
   const gig = String(app.gig_status ?? "").toLowerCase();
   if (gig && !gig.startsWith("yes")) flag("not_driving_yet", `Gig status: ${app.gig_status}.`);
   if (String(s.gig_account_status ?? "") === "deactivated") flag("gig_deactivated", "Gig account deactivated.");
@@ -228,7 +243,8 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
     hard_blockers: blockers,
     escalations: esc,
     notes,
-    recommendation: blockers.length ? "not_ready" : esc.length ? "needs_staff" : "approve",
+    recommendation: screeningFlagged ? "needs_staff" : blockers.length ? "not_ready" : esc.length ? "needs_staff" : "approve",
+    screening_flagged: screeningFlagged,
     ready_for_review: ready && readyForReview(app, input.docs),
   };
 }

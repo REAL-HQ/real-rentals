@@ -31,7 +31,38 @@ Assign:
 - An applicant who already has this car: `200 duplicate: true` (a new
   `start_date` updates the start date). A different car: `409` (staff change it).
 
-Reply `201 { ok, lead_id, vehicle_id, vehicle, weekly_rate, deposit, start_date, next }`.
+Reply `201 { ok, lead_id, vehicle_id, vehicle, weekly_rate, listed_weekly_rate,
+insurance_surcharge_weekly, insurance_quote_monthly, deposit, start_date, quote_text, next }`.
+`quote_text` is the exact YES text to send (needs Dolmar's OK before first use).
+
+## Insurance quote over $350/month (Dolmar, t299s1618)
+
+Send `"insurance_quote_monthly": 412.50` with `assign` once the quote is in.
+The weekly rate includes insurance up to $350/month. Above that:
+
+    surcharge/week = (monthly quote - 350) x 12 / 52, rounded UP to the next $5
+    weekly_rate    = the car's listed weekly rate + surcharge/week
+
+| Quote/month | Surcharge/week | On a $325 car |
+| --- | --- | --- |
+| $350 or less | $0 | $325 |
+| $400 | $15 ($11.54) | $340 |
+| $450 | $25 ($23.08) | $350 |
+| $500 | $35 ($34.62) | $360 |
+| $600 | $60 ($57.69) | $385 |
+
+- Switch `app_settings.insurance_rate_adjust` (`proposed/insurance-rate-adjust-on.sql`).
+  **Off by default**: a quote over $350 is refused `409 { needs_staff: true,
+  would_offer }` and nothing changes; send `needs_staff`.
+- On: the car is assigned at the higher rate (the agreement prints it) and
+  `quote_text` reads "... at $350/week (includes $25/week for your insurance
+  quote) ...". Quotes over `max_auto_monthly` ($1,000) still go to staff.
+- A quote that arrives after the car was assigned re-prices it from the listed
+  rate (`duplicate: true, rate_updated: true`), but never once an agreement is
+  out or signed (409; staff change it).
+- The quote amount is recorded only in the audit entry
+  (`application.fleet_vehicle_assigned` / `application.fleet_rate_insurance_adjusted`).
+  Nothing marks anyone insured, and no insurance company is named.
 Errors `400`, `401`, `404`, `409` (not approved, no free car, car taken, closed
 day, already has another car), `503`.
 

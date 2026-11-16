@@ -145,15 +145,43 @@ describe("rules", () => {
     // Missing income proof is requested, not sent to staff (t298s1611).
     expect(a.escalations.map((e) => e.code)).not.toContain("missing_income");
     expect(a.notes.map((e) => e.code)).toContain("requested_income");
-    // Rating threshold is 4.0 (Dolmar, t294u): 4.0 to 4.69 with 100+ trips is not escalated for rating or trips.
+    // Gig bar is 200 trips and a 4.0 rating (Dolmar, t299s1618; was 100 trips, t294u).
     expect(rules.FLEET_ESCALATION_DEFAULTS.minRating).toBe(4.0);
-    const ok = rules.assessForFleet({ ...base, app: goodApp(A, { rating: 4.5, trips_completed: 150 }), docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]) });
+    expect(rules.FLEET_ESCALATION_DEFAULTS.minTrips).toBe(200);
+    const ok = rules.assessForFleet({ ...base, app: goodApp(A, { rating: 4.5, trips_completed: 200 }), docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]) });
     expect(ok.escalations.map((e) => e.code)).not.toContain("low_rating");
     expect(ok.escalations.map((e) => e.code)).not.toContain("few_trips");
-    const edge = rules.assessForFleet({ ...base, app: goodApp(A, { rating: 4.0, trips_completed: 99 }), docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]) });
+    const was100 = rules.assessForFleet({ ...base, app: goodApp(A, { rating: 4.5, trips_completed: 150 }), docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]) });
+    expect(was100.escalations.map((e) => e.code)).toContain("few_trips");
+    expect(was100.recommendation).toBe("needs_staff");
+    const edge = rules.assessForFleet({ ...base, app: goodApp(A, { rating: 4.0, trips_completed: 199 }), docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]) });
     expect(edge.escalations.map((e) => e.code)).not.toContain("low_rating");
     expect(edge.escalations.map((e) => e.code)).toContain("few_trips");
     expect(a.recommendation).toBe("needs_staff");
+  });
+});
+
+describe("background checks (Dolmar, t299s1618)", () => {
+  const base = { screening: null, disqualifiers: [], readinessState: "promising_more_info", openNeedsStaff: null, priorDeclined: 0, now: NOW };
+  test("a clear check with the gig bar met: FLEET may pass", () => {
+    const a = rules.assessForFleet({ ...base, app: goodApp(A, { background_check_status: "clear", mvr_status: "passed" }), docs: docsFor(A) });
+    expect(a.hard_blockers).toEqual([]);
+    expect(a.escalations).toEqual([]);
+    expect(a.screening_flagged).toBe(false);
+    expect(a.recommendation).toBe("approve");
+  });
+  test("any flagged background or MVR result goes to staff, never not_ready or approve", () => {
+    for (const [k, v] of [["background_check_status", "consider"], ["background_check_status", "flagged"], ["mvr_status", "failed"], ["background_check_status", "declined"]]) {
+      const a = rules.assessForFleet({ ...base, app: goodApp(A, { [k]: v }), docs: docsFor(A) });
+      expect(a.screening_flagged).toBe(true);
+      expect(a.recommendation).toBe("needs_staff");
+      expect(a.hard_blockers.map((b) => b.code)).toContain(`${k}_${v}`);
+    }
+  });
+  test("unknown trips or rating is a note telling FLEET to confirm the 200 / 4.0 bar", () => {
+    const a = rules.assessForFleet({ ...base, app: goodApp(A, { trips_completed: null, rating: null }), docs: docsFor(A) });
+    expect(a.notes.map((n) => n.code)).toEqual(expect.arrayContaining(["no_trips", "no_rating"]));
+    expect(a.notes.find((n) => n.code === "no_trips")!.message).toContain("200+");
   });
 });
 

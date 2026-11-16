@@ -6,7 +6,7 @@
  *   { "action": "list" }
  *     -> the cars FLEET may assign, earliest available first.
  *   { "action": "assign", "lead_id": "…", "vehicle_id"?: "…", "start_date"?: "2026-11-18",
- *     "idempotency_key"?: "…" }
+ *     "idempotency_key"?: "…", "insurance_quote_monthly"?: 412.5 }
  *     -> puts the car on the application: vehicle_id, weekly_rent = the car's
  *        listed weekly rate, deposit_amount = the car's listed deposit ($0
  *        when none is listed), and the contract start date when sent (must be
@@ -22,15 +22,56 @@
  * same moment cannot both win. A car already assigned to someone else, or an
  * applicant who already has a different car, is refused (staff change it).
  *
+ * Insurance quote over $350/month (Dolmar, t299s1618): with the
+ * insurance_rate_adjust switch ON, weekly_rent = listed rate + ceil5((quote -
+ * 350) x 12 / 52) (src/lib/insurance-rate.ts) and the reply carries the
+ * quote text with that rate. With it OFF (the default), or a quote over the
+ * ceiling, the assignment is refused with needs_staff so staff price it.
+ * The quote amount is only recorded in the audit entry; nothing marks anyone
+ * insured and no insurance company is named.
+ *
  * Nothing here reserves the car, sends anything, or touches insurance,
  * screening or verification. Audited as "FLEET (automated)".
  */
 import { fleetAdmin, fleetAudit, fleetJson, fleetRequestBody, idempotencyKey, UUID_RE, type FleetDeps } from "@/lib/fleet-api.server";
 import { FLEET_ACTOR_LABEL } from "@/lib/fleet-review";
 import { isCalendarDate, type PickupScheduleSettings } from "@/lib/pickup-schedule";
+import {
+  fleetQuoteText,
+  insuranceAdjustedRate,
+  INSURANCE_RATE_SETTINGS_KEY,
+  readInsuranceRateSettings,
+  type InsuranceRateSettings,
+} from "@/lib/insurance-rate";
 
 type Admin = any;
-export type AssignDeps = FleetDeps & { settings?: PickupScheduleSettings };
+export type AssignDeps = FleetDeps & {
+  settings?: PickupScheduleSettings;
+  insurance?: InsuranceRateSettings;
+  /** The Reservation Fee the quote text mentions (0 = none). */
+  reservationFee?: number;
+  hasOpenOrSigned?: (admin: Admin, leadId: string) => Promise<boolean>;
+};
+
+const DEFAULT_LOCATION = "3500 E Hillsborough Ave, Tampa, FL 33610";
+
+async function loadInsuranceSettings(admin: Admin): Promise<InsuranceRateSettings> {
+  const r = await admin.from("app_settings").select("value").eq("key", INSURANCE_RATE_SETTINGS_KEY).maybeSingle();
+  if (r.error) throw new Error("settings");
+  return readInsuranceRateSettings(r.data?.value);
+}
+
+async function quoteFor(admin: Admin, deps: AssignDeps, a: { vehicle: string; weekly: number; surcharge: number; deposit: number; startDate: string | null }) {
+  if (!a.startDate) return null;
+  let location = DEFAULT_LOCATION;
+  let fee = deps.reservationFee;
+  try {
+    const s = deps.settings ?? (await (await import("@/lib/reservation-confirmation.server")).loadPickupSchedule(admin));
+    location = String((s as any)?.defaultLocation ?? "").trim() || DEFAULT_LOCATION;
+  } catch { /* default location */ }
+  if (fee === undefined) fee = 0;
+  return fleetQuoteText({ vehicle: a.vehicle, weekly: a.weekly, surcharge: a.surcharge, deposit: a.deposit, startDate: a.startDate, location, reservationFee: fee });
+}
 
 const VEHICLE_SELECT = "id,year,make,model,trim,color,unit_number,status,archived_at,weekly_rate,deposit,created_at,license_plate,vin";
 
@@ -101,6 +142,39 @@ export async function handleFleetAssignVehicle(request: Request, deps: AssignDep
   if (idem === "invalid") return fleetJson(400, { ok: false, error: "idempotency_key must be 1-120 characters." });
   const startDate = body.start_date == null || body.start_date === "" ? null : String(body.start_date).trim();
   if (startDate && !isCalendarDate(startDate)) return fleetJson(400, { ok: false, error: "start_date must be YYYY-MM-DD." });
+  let quote: number | null = null;
+  if (body.insurance_quote_monthly != null && body.insurance_quote_monthly !== "") {
+    quote = Number(body.insurance_quote_monthly);
+    if (!Number.isFinite(quote) || quote < 0 || quote > 100000) return fleetJson(400, { ok: false, error: "insurance_quote_monthly must be the monthly quote in dollars." });
+    quote = Math.round(quote * 100) / 100;
+  }
+  let insurance: InsuranceRateSettings | null = null;
+  if (quote !== null) {
+    try {
+      insurance = deps.insurance ?? (await loadInsuranceSettings(admin));
+    } catch {
+      return fleetJson(503, { ok: false, error: "Database unavailable." });
+    }
+  }
+  /** The weekly rate to offer on a car, or a refusal that sends the applicant to staff. */
+  const priced = (listed: number): { ok: true; weekly: number; surcharge: number } | { ok: false; response: Response } => {
+    if (quote === null || !insurance || quote <= insurance.includedMonthly) return { ok: true, weekly: listed, surcharge: 0 };
+    const r = insuranceAdjustedRate(listed, quote, insurance.includedMonthly);
+    if (!insurance.enabled || quote > insurance.maxAutoMonthly) {
+      return {
+        ok: false,
+        response: fleetJson(409, {
+          ok: false,
+          needs_staff: true,
+          error: !insurance.enabled
+            ? `Insurance quote $${quote}/month is over $${insurance.includedMonthly}/month and automatic higher rates are off. Send needs_staff so staff price it. Nothing was changed.`
+            : `Insurance quote $${quote}/month is over the $${insurance.maxAutoMonthly}/month automatic ceiling. Send needs_staff. Nothing was changed.`,
+          would_offer: { listed_weekly: r.listed, insurance_surcharge_weekly: r.surcharge, weekly_rate: r.weekly },
+        }),
+      };
+    }
+    return { ok: true, weekly: r.weekly, surcharge: r.surcharge };
+  };
 
   const appRes = await admin.from("applications").select("id,status,deleted_at,vehicle_id,weekly_rent,deposit_amount,contract_start_date,full_name").eq("id", leadId).maybeSingle();
   if (appRes.error) return fleetJson(503, { ok: false, error: "Database unavailable." });
@@ -137,14 +211,38 @@ export async function handleFleetAssignVehicle(request: Request, deps: AssignDep
     const v = same.data;
     const patch: Record<string, unknown> = {};
     if (startDate && String(app.contract_start_date ?? "") !== startDate) patch.contract_start_date = startDate;
+    let surcharge = 0;
+    if (quote !== null && v && Number(v.weekly_rate) > 0) {
+      // A quote that arrives after the car was assigned re-prices it from the listed rate.
+      const p = priced(Number(v.weekly_rate));
+      if (!p.ok) return p.response;
+      surcharge = p.surcharge;
+      if (Number(app.weekly_rent ?? 0) !== p.weekly) {
+        const open = deps.hasOpenOrSigned ?? (await import("@/lib/agreements.functions")).hasOpenOrSignedAgreement;
+        if (await open(admin, leadId)) return fleetJson(409, { ok: false, error: "An agreement is already out or signed; staff change the rate. Nothing was changed." });
+        patch.weekly_rent = p.weekly;
+      }
+    }
     if (Object.keys(patch).length) {
       const up = await admin.from("applications").update(patch).eq("id", leadId);
-      if (up.error) return fleetJson(503, { ok: false, error: "Could not update the start date." });
+      if (up.error) return fleetJson(503, { ok: false, error: "Could not update the applicant." });
+    }
+    const weekly = Number(patch.weekly_rent ?? app.weekly_rent ?? v?.weekly_rate ?? 0) || null;
+    const deposit = app.deposit_amount ?? v?.deposit ?? null;
+    const start = startDate ?? app.contract_start_date ?? null;
+    if (patch.weekly_rent !== undefined) {
+      await fleetAudit(deps)({
+        action: "application.fleet_rate_insurance_adjusted",
+        summary: `Weekly rate set by ${FLEET_ACTOR_LABEL} to $${patch.weekly_rent} for a $${quote}/month insurance quote`.slice(0, 300),
+        entityType: "application", entityId: leadId,
+        metadata: { decided_by: FLEET_ACTOR_LABEL, listed_weekly: Number(v?.weekly_rate), insurance_quote_monthly: quote, insurance_surcharge_weekly: surcharge, weekly_rate: patch.weekly_rent },
+      }).catch(() => {});
     }
     return fleetJson(200, {
       ok: true, duplicate: true, lead_id: leadId, vehicle_id: app.vehicle_id, vehicle: v ? vehicleLabel(v) : null,
-      weekly_rate: app.weekly_rent ?? v?.weekly_rate ?? null, deposit: app.deposit_amount ?? v?.deposit ?? null,
-      start_date: startDate ?? app.contract_start_date ?? null, start_date_updated: !!patch.contract_start_date,
+      weekly_rate: weekly, deposit, insurance_surcharge_weekly: surcharge, insurance_quote_monthly: quote,
+      start_date: start, start_date_updated: !!patch.contract_start_date, rate_updated: patch.weekly_rent !== undefined,
+      quote_text: v && weekly ? await quoteFor(admin, deps, { vehicle: vehicleLabel(v), weekly, surcharge, deposit: Number(deposit ?? 0), startDate: start }) : null,
     });
   }
 
@@ -157,7 +255,9 @@ export async function handleFleetAssignVehicle(request: Request, deps: AssignDep
     });
   }
 
-  const patch: Record<string, unknown> = { vehicle_id: car.vehicle_id, weekly_rent: car.weekly_rate, deposit_amount: car.deposit };
+  const price = priced(car.weekly_rate);
+  if (!price.ok) return price.response;
+  const patch: Record<string, unknown> = { vehicle_id: car.vehicle_id, weekly_rent: price.weekly, deposit_amount: car.deposit };
   if (startDate) patch.contract_start_date = startDate;
   // Conditional: only while the applicant still has no car.
   const up = await admin.from("applications").update(patch).eq("id", leadId).is("vehicle_id", null).eq("status", "approved").select("id");
@@ -181,19 +281,23 @@ export async function handleFleetAssignVehicle(request: Request, deps: AssignDep
   const audit = fleetAudit(deps);
   await audit({
     action: "application.fleet_vehicle_assigned",
-    summary: `Car assigned by ${FLEET_ACTOR_LABEL}: ${car.vehicle} at its listed $${car.weekly_rate}/week${car.deposit ? `, $${car.deposit} deposit` : ", no deposit"}${startDate ? `, start ${startDate}` : ""}`.slice(0, 300),
+    summary: `Car assigned by ${FLEET_ACTOR_LABEL}: ${car.vehicle} at ${price.surcharge ? `$${price.weekly}/week (listed $${car.weekly_rate} + $${price.surcharge} for a $${quote}/month insurance quote)` : `its listed $${car.weekly_rate}/week`}${car.deposit ? `, $${car.deposit} deposit` : ", no deposit"}${startDate ? `, start ${startDate}` : ""}`.slice(0, 300),
     entityType: "application",
     entityId: leadId,
-    metadata: { decided_by: FLEET_ACTOR_LABEL, vehicle_id: car.vehicle_id, weekly_rate: car.weekly_rate, deposit: car.deposit, start_date: startDate, idempotency_key: idem, earliest_available: !wanted || cars[0]?.vehicle_id === car.vehicle_id },
+    metadata: { decided_by: FLEET_ACTOR_LABEL, vehicle_id: car.vehicle_id, weekly_rate: price.weekly, listed_weekly: car.weekly_rate, insurance_quote_monthly: quote, insurance_surcharge_weekly: price.surcharge, deposit: car.deposit, start_date: startDate, idempotency_key: idem, earliest_available: !wanted || cars[0]?.vehicle_id === car.vehicle_id },
   }).catch(() => {});
   return fleetJson(201, {
     ok: true,
     lead_id: leadId,
     vehicle_id: car.vehicle_id,
     vehicle: car.vehicle,
-    weekly_rate: car.weekly_rate,
+    weekly_rate: price.weekly,
+    listed_weekly_rate: car.weekly_rate,
+    insurance_surcharge_weekly: price.surcharge,
+    insurance_quote_monthly: quote,
     deposit: car.deposit,
     start_date: startDate,
+    quote_text: await quoteFor(admin, deps, { vehicle: car.vehicle, weekly: price.weekly, surcharge: price.surcharge, deposit: car.deposit, startDate }),
     next: startDate
       ? "Text the terms (car, weekly rate, deposit, start date) and send the agreement after a YES."
       : "Send start_date (a day with an open pickup slot) before the agreement: the agreement prints the start date.",

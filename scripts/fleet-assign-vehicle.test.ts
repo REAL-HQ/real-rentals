@@ -142,8 +142,67 @@ describe("assign-vehicle", () => {
   });
   test("source never touches insurance, screening or verification and never reserves", () => {
     const s = readFileSync("src/lib/fleet-assign.server.ts", "utf8");
-    expect(s).not.toMatch(/(insurance_|background_check|mvr_status|verified)\w*\s*:/);
+    // The insurance quote amount is reported back and audited, never written as an insurance field.
+    expect(s).not.toMatch(/(insurance_status|insurance_verified|insurance_carrier|full_coverage|background_check|mvr_status|verified)\w*\s*:/);
+    expect(s).not.toMatch(/patch\.insurance|insurance_quote_monthly:\s*quote\s*[,}]\s*\)\s*\.eq/);
     expect(s).not.toMatch(/createReservationCore|from\("rentals"\)\.insert/);
+  });
+});
+
+describe("insurance quote over $350/month (Dolmar, t299s1618)", () => {
+  const rate = () => import("@/lib/insurance-rate");
+  test("formula: listed + ceil5((quote - 350) x 12 / 52)", async () => {
+    const r = await rate();
+    expect(r.insuranceSurchargeWeekly(350)).toBe(0);
+    expect(r.insuranceSurchargeWeekly(300)).toBe(0);
+    expect(r.insuranceSurchargeWeekly(351)).toBe(5);     // $0.23 -> $5
+    expect(r.insuranceSurchargeWeekly(371.66)).toBe(5);  // $4.998
+    expect(r.insuranceSurchargeWeekly(371.67)).toBe(10); // $5.0008 -> $10
+    expect(r.insuranceSurchargeWeekly(450)).toBe(25);    // $23.08
+    expect(r.insuranceSurchargeWeekly(500)).toBe(35);    // $34.62
+    expect(r.insuranceSurchargeWeekly(600)).toBe(60);    // $57.69
+    expect(r.insuranceAdjustedRate(325, 450)).toEqual({ listed: 325, surcharge: 25, weekly: 350 });
+    // Always covers the quote: surcharge x 52 / 12 >= quote - 350.
+    for (let q = 351; q < 1000; q += 7.31) expect(r.insuranceSurchargeWeekly(q) * 52 / 12).toBeGreaterThanOrEqual(q - 350 - 1e-9);
+  });
+  test("switch off (default): a quote over $350 is refused with needs_staff and nothing changes", async () => {
+    const db = fakeDb(seed());
+    const r = await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A, start_date: "2026-11-18", insurance_quote_monthly: 450 }), deps(db));
+    expect(r.status).toBe(409);
+    const j = await r.json();
+    expect(j).toMatchObject({ needs_staff: true, would_offer: { listed_weekly: 350, insurance_surcharge_weekly: 25, weekly_rate: 375 } });
+    expect(db.state.applications[0].vehicle_id).toBe(null);
+  });
+  test("a quote at or under $350 assigns at the listed rate either way", async () => {
+    const db = fakeDb(seed());
+    const j = await (await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A, start_date: "2026-11-18", insurance_quote_monthly: 340 }), deps(db))).json();
+    expect(j).toMatchObject({ weekly_rate: 350, insurance_surcharge_weekly: 0 });
+  });
+  test("switch on: assigns at the higher rate, the agreement prints it, and the quote text says so", async () => {
+    const db = fakeDb(seed());
+    audits.length = 0;
+    const on = { enabled: true, includedMonthly: 350, maxAutoMonthly: 1000 };
+    const r = await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A, start_date: "2026-11-18", insurance_quote_monthly: 450 }), { ...deps(db), insurance: on });
+    const j = await r.json();
+    expect(r.status).toBe(201);
+    expect(j).toMatchObject({ weekly_rate: 375, listed_weekly_rate: 350, insurance_surcharge_weekly: 25 });
+    expect(db.state.applications[0].weekly_rent).toBe(375);
+    expect(j.quote_text).toBe("Real Rentals: Your quote is ready: 2019 Ford Fusion at $375/week (includes $25/week for your insurance quote), no deposit, starting Wed, Nov 18 with pickup at 3500 E Hillsborough Ave, Tampa, FL 33610. Rent is paid weekly. Reply YES to accept and we'll send your rental agreement to sign. Reply STOP to opt out.");
+    expect(audits[0].metadata).toMatchObject({ insurance_quote_monthly: 450, insurance_surcharge_weekly: 25, weekly_rate: 375 });
+    // Over the ceiling still goes to staff.
+    const db2 = fakeDb(seed());
+    expect((await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A, insurance_quote_monthly: 1200 }), { ...deps(db2), insurance: on })).status).toBe(409);
+    // A later quote re-prices an assigned car, but not once an agreement is out.
+    const re = await (await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A, insurance_quote_monthly: 500 }), { ...deps(db), insurance: on, hasOpenOrSigned: async () => false })).json();
+    expect(re).toMatchObject({ duplicate: true, rate_updated: true, weekly_rate: 385 });
+    const locked = await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A, insurance_quote_monthly: 600 }), { ...deps(db), insurance: on, hasOpenOrSigned: async () => true });
+    expect(locked.status).toBe(409);
+    expect(db.state.applications[0].weekly_rent).toBe(385);
+  });
+  test("quote text without a surcharge, and with the Reservation Fee line", async () => {
+    const r = await rate();
+    expect(r.fleetQuoteText({ vehicle: "2017 Ford Fusion", weekly: 325, surcharge: 0, deposit: 0, startDate: "2026-11-18", location: "3500 E Hillsborough Ave, Tampa, FL 33610", reservationFee: 50 }))
+      .toBe("Real Rentals: Your quote is ready: 2017 Ford Fusion at $325/week, no deposit, starting Wed, Nov 18 with pickup at 3500 E Hillsborough Ave, Tampa, FL 33610. Rent is paid weekly. A $50 Reservation Fee is charged to your card on file when you sign and applied to your first week. Reply YES to accept and we'll send your rental agreement to sign. Reply STOP to opt out.");
   });
 });
 
