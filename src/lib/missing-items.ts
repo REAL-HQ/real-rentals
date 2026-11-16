@@ -39,7 +39,7 @@ export const MISSING_ITEM_COPY: Record<MissingItemKey, { email: string; sms: str
   // Leads that never got past the first page (waitlist, landing pages): the
   // wizard needs these answers before the upload step, and to quote.
   application_details: {
-    email: "A few quick answers about the car you want and how you drive (about 2 minutes)",
+    email: "A few quick answers about the car you want (about 2 minutes)",
     sms: "answers about the car you want",
   },
   license_front: { email: "A photo of the front of your driver's license", sms: "license photo (front)" },
@@ -48,8 +48,9 @@ export const MISSING_ITEM_COPY: Record<MissingItemKey, { email: string; sms: str
     sms: "gig profile screenshot (rating + trips)",
   },
   income: {
-    email: "Proof of income, like a recent weekly earnings summary from your gig app or a pay stub",
-    sms: "proof of income",
+    email:
+      "Proof of income from gig work or any other source, like a recent earnings summary, pay stub, or bank statement. This just helps us make sure the rental is a good fit and comfortable for your budget.",
+    sms: "proof of income (gig work or any other source)",
   },
 };
 
@@ -217,6 +218,12 @@ export type DecisionInput = {
   now: Date;
   settings: OutreachSettings;
   mode: "ongoing" | "backfill";
+  /**
+   * Ongoing only: do not start a new sequence (step 1) yet. Set until the
+   * one-time message has gone out (backfill rows exist and the One-Time switch
+   * is back Off), so the Follow-Up can never beat the one-time send.
+   */
+  holdNewSequences?: boolean;
 };
 
 export type Decision =
@@ -265,6 +272,7 @@ export function decideOutreach(i: DecisionInput): Decision {
   if (mine.some((r) => r.source === "backfill")) return { send: false, reason: "backfill_sent_once" };
   const sent = mine.map((r) => r.step);
   if (!sent.length) {
+    if (i.holdNewSequences) return { send: false, reason: "waiting_for_one_time_message" };
     const sequences = new Set(i.log.filter((r) => r.source === "ongoing").map((r) => r.missing_key)).size;
     if (sequences >= i.settings.maxSequences) return { send: false, reason: "max_sequences" };
     if (age > i.settings.maxAgeDays) return { send: false, reason: "too_old" };
@@ -346,7 +354,8 @@ REAL RENTALS`;
 export function outreachSms(step: 1 | 2 | 3, v: CopyVars): string {
   const need = smsList(v.items);
   if (step === 1) {
-    return `Hi ${v.firstName}, it's REAL RENTALS. Still interested in renting a car? To finish qualifying you and get your quote, we still need your ${need}. ${v.items.length === 1 ? "Add it here" : "Add them here"}: ${v.link} Reply STOP to opt out.`;
+    const close = v.closeInDays ? ` No reply in ${v.closeInDays} days and we'll close your application.` : "";
+    return `Hi ${v.firstName}, it's REAL RENTALS. Still interested in renting a car? To finish qualifying you and get your quote, we still need your ${need}. ${v.items.length === 1 ? "Add it here" : "Add them here"}: ${v.link}${close} Reply STOP to opt out.`;
   }
   if (step === 2) {
     return `Hi ${v.firstName}, REAL RENTALS here. Still want a car? We still need your ${need} to finish your application and quote: ${v.link} Not interested? Just reply. Reply STOP to opt out.`;

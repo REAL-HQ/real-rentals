@@ -174,12 +174,21 @@ export async function runMissingItemsOutreach(
   const dq = new Set(screens.map((r: any) => r.lead_id));
   const optedOut = new Set<string>((opt as any[]).map((r) => toUsE164(r.phone)).filter(Boolean) as string[]);
 
+  // The Follow-Up never starts a sequence before the one-time message has gone
+  // out: that needs at least one backfill row and the One-Time switch back Off.
+  let holdNewSequences = false;
+  if (opts.mode === "ongoing") {
+    const { data: bfRows, error: bfErr } = await admin.from(OUTREACH_LOG_TABLE).select("id").eq("source", "backfill").limit(1);
+    const backfillGate = await (deps.gate ?? defaultGate)(admin, MISSING_ITEMS_BACKFILL_KEY).catch(() => "held" as const);
+    holdNewSequences = !!bfErr || !(Array.isArray(bfRows) && bfRows.length > 0) || backfillGate !== "off";
+  }
+
   const plan: PlannedSend[] = [];
   for (const app of list) {
     const items = missingItems(app, docsBy.get(app.id) ?? []);
     const d = decideOutreach({
       app, items, log: (logBy.get(app.id) ?? []) as OutreachLogRow[], activeEnrollment: enrolled.has(app.id),
-      lastOutboundAt: lastOut.get(app.id) ?? null, disqualified: dq.has(app.id), optedOut, now, settings, mode: opts.mode,
+      lastOutboundAt: lastOut.get(app.id) ?? null, disqualified: dq.has(app.id), optedOut, now, settings, mode: opts.mode, holdNewSequences,
     });
     if (!d.send) {
       summary.skipped[d.reason] = (summary.skipped[d.reason] ?? 0) + 1;

@@ -157,7 +157,8 @@ describe("copy", () => {
   });
   test("one item reads naturally", () => {
     const one = { ...vars, items: ["income" as const] };
-    expect(outreachSms(1, one)).toContain("we still need your proof of income. Add it here:");
+    expect(outreachSms(1, one)).toContain("we still need your proof of income (gig work or any other source). Add it here:");
+    expect(outreachEmail(1, one).body).toContain("• Proof of income from gig work or any other source, like a recent earnings summary, pay stub, or bank statement. This just helps us make sure the rental is a good fit and comfortable for your budget.");
     expect(outreachEmail(1, one).body).toContain("Add it here:");
   });
   test("redaction hides contacts", () => {
@@ -243,13 +244,14 @@ const SEED = () => ({
   sms_opt_outs: [],
 });
 
-function deps(gate: "send" | "off" | "held" = "send") {
+type Gate = "send" | "off" | "held";
+function deps(gate: Gate = "send", per: Record<string, Gate> = {}) {
   const emails: any[] = [], texts: any[] = [], links: string[] = [];
   return {
     emails, texts, links,
     d: {
       now: () => NOW,
-      gate: async () => gate,
+      gate: async (_a: any, key: string) => per[key] ?? gate,
       mintLink: async (_a: any, id: string) => { links.push(id); return `https://drivereal.com/thank-you?t=T-${id}`; },
       companyPhone: async () => "(888) 833-8280",
       sendEmail: async (a: any) => { emails.push(a); return { ok: true }; },
@@ -329,12 +331,47 @@ describe("engine", () => {
   test("ongoing respects the batch limit", async () => {
     const seed = SEED();
     seed.app_settings[0].value = { ...S, batchLimit: 1 };
+    // The one-time message has gone out (someone else) and its switch is Off.
+    seed.applicant_outreach_log.push({ id: "bf", application_id: "zz", missing_key: "income", step: 1, source: "backfill", created_at: NOW.toISOString() } as any);
     const db = fakeDb(seed);
-    const h = deps();
+    const h = deps("send", { missing_items_backfill: "off" });
     const r = await runMissingItemsOutreach(db.admin, { mode: "ongoing" }, h.d);
     expect(r.eligible).toBe(2);
     expect(r.sent).toBe(1);
     expect(h.emails[0].track.workflow).toBe(MISSING_ITEMS_EMAIL_WORKFLOW);
+  });
+  test("Follow-Up never starts message 1 before the one-time message has gone out", async () => {
+    // No backfill yet: held even with every switch on.
+    const db = fakeDb(SEED());
+    const h = deps("send", { missing_items_backfill: "off" });
+    const r = await runMissingItemsOutreach(db.admin, { mode: "ongoing" }, h.d);
+    expect(r.sent).toBe(0);
+    expect(r.skipped.waiting_for_one_time_message).toBe(2);
+    expect(h.emails.length + h.texts.length + db.writes.length).toBe(0);
+    // Backfill under way (One-Time switch still on): still held.
+    const seed = SEED();
+    seed.applicant_outreach_log.push({ id: "bf", application_id: "zz", missing_key: "income", step: 1, source: "backfill", created_at: NOW.toISOString() } as any);
+    const db2 = fakeDb(seed);
+    const h2 = deps("send");
+    const r2 = await runMissingItemsOutreach(db2.admin, { mode: "ongoing" }, h2.d);
+    expect(r2.sent).toBe(0);
+    expect(r2.skipped.waiting_for_one_time_message).toBe(2);
+    // Backfill done and switched off: the Follow-Up picks up whoever it missed.
+    const h3 = deps("send", { missing_items_backfill: "off" });
+    const r3 = await runMissingItemsOutreach(db2.admin, { mode: "ongoing" }, h3.d);
+    expect(r3.sent).toBe(2);
+  });
+  test("backfill with Auto-Close on: step-1 email and text carry the 14-day close line", async () => {
+    const db = fakeDb(SEED());
+    const h = deps("send");
+    await runMissingItemsOutreach(db.admin, { mode: "backfill" }, h.d);
+    const t = h.texts.find((x) => x.applicationId === "a1");
+    expect(t.body).toMatch(/^Hi Jordan, it's REAL RENTALS\. Still interested in renting a car\? To finish qualifying you and get your quote, we still need your .+\. Add (it|them) here: https:\/\/drivereal\.com\/thank-you\?t=T-a1 No reply in 14 days and we'll close your application\. Reply STOP to opt out\.$/);
+    const e = h.emails.find((x) => x.to === "jordan@example.com");
+    expect(e.html).toContain("Finish My Profile");
+    expect(e.html).toContain("The link is private to you and works for 14 days.");
+    expect(e.html).toMatch(/If we don(&#39;|&#x27;|')t hear from you in the next 14 days, we(&#39;|&#x27;|')ll close your application\./);
+    expect(e.html).toContain("Questions? Reply to this email or call us at (888) 833-8280.");
   });
 });
 

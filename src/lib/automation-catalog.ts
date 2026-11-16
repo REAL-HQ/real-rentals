@@ -91,7 +91,7 @@ export const AUTOMATIONS: AutomationDef[] = [
     title: "Missing Items Follow-Up",
     audience: "Applicants",
     channels: ["SMS", "Email"],
-    trigger: "An applicant (New or In Review) is still missing something they can send us: license photo (front), gig profile screenshot, proof of income, date of birth or license expiration date.",
+    trigger: "An applicant (New or In Review) is still missing something they can send us: a few quick answers about the car they want, license photo (front), gig profile screenshot, or proof of income (gig work or any other source).",
     cadence: "After 24 hours with no activity, then a reminder at 3 days and a last one at 7 days, then it stops. Starts over only if what's missing changes (at most 2 rounds). 9 AM–8 PM ET, at most 25 per run. Defaults in app_settings 'missing_items_outreach'.",
     emailWorkflows: ["application_missing_items"],
     cronJob: "automations-every-5-min",

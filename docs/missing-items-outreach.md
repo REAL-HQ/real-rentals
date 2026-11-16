@@ -8,10 +8,10 @@ an Owner turns a switch on in Back Office → Automations.
 
 | Key | Email wording | When |
 |---|---|---|
-| application_details | A few quick answers about the car you want and how you drive | Rental or Driving page never answered (vehicle, pickup date, duration, gig status, full/part time) |
+| application_details | A few quick answers about the car you want (about 2 minutes) | Rental or Driving page never answered (vehicle, pickup date, duration, gig status, full/part time) |
 | license_front | A photo of the front of your driver's license | No current, non-rejected license_front document or upload |
 | gig_profile | A screenshot of your gig app profile showing your rating and your number of trips or deliveries | Same, gig_profile |
-| income | Proof of income, like a recent weekly earnings summary from your gig app or a pay stub | Same, income (new wizard upload) |
+| income | Proof of income from gig work or any other source, like a recent earnings summary, pay stub, or bank statement. This just helps us make sure the rental is a good fit and comfortable for your budget. | Same, income (new wizard upload) |
 
 Never asked: date of birth and license expiry (FLEET reads them from the
 license photo), license back (optional), insurance (included), background check or
@@ -33,7 +33,11 @@ US number, no `sms_opt_out_at` and not in `sms_opt_outs`; sent by `sendSms`
 
 ## Ongoing schedule (switch "Missing Items Follow-Up", key missing_items_outreach)
 
-Runs inside the 5-minute automations cron. Defaults (app_settings
+Runs inside the 5-minute automations cron. It never starts a new sequence
+(message 1) until the one-time message has gone out: at least one backfill row
+in `applicant_outreach_log` and the One-Time switch back Off. Applicants who got
+the one-time message are not re-chased for the same missing set; they move to
+Auto-Close 14 days later. Defaults (app_settings
 `missing_items_outreach`):
 
 | Setting | Default | Meaning |

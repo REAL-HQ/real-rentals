@@ -1606,7 +1606,7 @@ function DriverProfile({
       {
         key: "income",
         title: "Proof Of Income",
-        blurb: "A recent weekly earnings summary from your gig app, or a pay stub.",
+        blurb: "From gig work or any other source: a recent earnings summary, pay stub, or bank statement.",
         icon: <Wallet className="h-5 w-5" />,
         done: state.income_proof_on_file,
       },
