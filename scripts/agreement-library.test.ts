@@ -66,7 +66,10 @@ ok(acknowledgmentsOf(editedIr).length === 15 && stripTerms(editedIr) === stripTe
   ok(acknowledgmentsOf(ii.body).length === 16, "v1.14: 16 initials (Damage Waiver choice + 15 sections)");
   ok(/Damage Waiver/.test(acknowledgmentsOf(ii.body)[0]) && /\{\{damage_waiver\}\}/.test(acknowledgmentsOf(ii.body)[0]), "v1.14: renter initials the Damage Waiver choice");
   const miss = missingTerms(V114_TERM_DEFAULTS, V114_SOURCE);
-  ok(miss.length === 1 && miss[0] === "service_area", "v1.14: only Service Area is left for the Owner to set");
+  ok(miss.length === 0, "v1.14: every term is set (Service Area: 100-mile radius of Tampa, Dolmar Nov 16 2026)");
+  ok(V114_TERM_DEFAULTS.service_area === "100-mile radius of Tampa, FL", "v1.14: Service Area is a 100-mile radius of Tampa");
+  ok(/Unlimited miles within 100 miles of Tampa are included/.test(V114_SOURCE) && !/within Florida\. No mileage|Unlimited miles within Florida/.test(V114_SOURCE), "v1.14: unlimited miles within 100 miles of Tampa (10.1)");
+  ok(/We hold the Vehicle until 30 minutes after your scheduled pickup time; if you have not arrived by then, we may release the Vehicle and the pickup counts as a no-show\./.test(V114_SOURCE), "v1.14: 30-minute pickup hold line");
   ok(!Object.values(V114_TERM_DEFAULTS).some((v) => /\[[^\]]*\]/.test(v)), "v1.14: no bracketed open values");
   ok(!/\[ \]|_{4,}|confirm/i.test(V114_SOURCE.replace(/\[\[[a-z0-9_]+\]\]/g, "")), "v1.14: no blanks, checkboxes or confirm wording");
   ok(/\*\*Vehicle Damage Claims\.\*\* Only REAL RENTALS decides whether to make an insurance claim for damage to/.test(V114_SOURCE), "v1.14: only REAL RENTALS decides on vehicle-damage claims (Section 8)");

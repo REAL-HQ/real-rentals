@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
   DEFAULT_RESERVATION_DEPOSIT_SETTINGS,
@@ -174,8 +174,16 @@ describe("migration + server source guards", () => {
     assert.match(mig, /DO NOT apply to production/i);
     assert.match(mig, /"enabled":false/);
     const fn = readFileSync("src/lib/reservations.functions.ts", "utf8");
-    assert.match(fn, /recordReservationDeposit/);
-    assert.match(fn, /stripeReservationDepositHook/);
+    // The optional Reservation Deposit setting is retired (card t315s1710).
+    assert.match(fn, /recordReservationFee/);
+    assert.equal(/recordReservationDeposit|saveReservationDepositSettings|Applied From Reservation Deposit/.test(fn), false);
+    assert.match(fn, /async function loadDepositSettings\(_admin: any\): Promise<ReservationDepositSettings> \{\n  return \{ \.\.\.DEFAULT_RESERVATION_DEPOSIT_SETTINGS \};/);
+    assert.equal(existsSync("src/components/admin/ReservationDepositSettingsPanel.tsx"), false);
+    const dlg = readFileSync("src/components/admin/ReserveCarDialog.tsx", "utf8");
+    assert.equal(/Deposit Required|Deposit Amount/.test(dlg), false);
+    const panel = readFileSync("src/components/admin/ReservationsPanel.tsx", "utf8");
+    assert.equal(/"Deposit"|Record Deposit|Deposit Off/.test(panel), false);
+    assert.equal(/optional reservation deposit/.test(readFileSync("src/components/admin/SettingsWorkspace.tsx", "utf8")), false);
     assert.equal(fn.includes("buy.stripe.com"), false);
     assert.match(fn, /booking_login_email/);
     assert.match(fn, /maybeSendBookingLoginEmail/);

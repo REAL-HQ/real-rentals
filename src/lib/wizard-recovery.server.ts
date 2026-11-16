@@ -97,6 +97,11 @@ export type WizardRecoveryDeps = {
   }) => Promise<SendResult | void>;
   now?: () => number;
   log?: (message: string, ...rest: unknown[]) => void;
+  /**
+   * The 3-hour Abandoned Quote email (M04). Dropped (SOP D10, decided Nov 16
+   * 2026): the Step 1 thank-you email covers it. Off unless a caller passes true.
+   */
+  abandonedQuoteEmail?: boolean;
 };
 
 export type WizardRecoveryReport = {
@@ -328,7 +333,7 @@ export async function runWizardRecovery(
     return false;
   }
 
-  for (const row of batchAbandoned ?? []) {
+  for (const row of deps.abandonedQuoteEmail === true ? batchAbandoned ?? [] : []) {
     const sent = await claimAndSend(
       row,
       "recovery_sent_at",

@@ -1382,6 +1382,8 @@ export async function approveApplicationCore(args: {
     params: Record<string, unknown>,
   ) => Promise<{ data: unknown; error: { code?: string | null; message?: string | null } | null }>;
   decidedBy?: { label: string; reason: string } | null;
+  /** D30 (decided Nov 16 2026): FLEET sent its own approval text, so the approval email is skipped. */
+  skipApprovalEmail?: boolean;
 }): Promise<ApproveApplicationResult> {
   const { admin: supabaseAdmin, data, actor, rpc } = args;
   const auditSuffix = args.decidedBy ? ` (${args.decidedBy.label})` : "";
@@ -1471,7 +1473,8 @@ export async function approveApplicationCore(args: {
   // confirm the pickup appointment; activation remains the safety net.
   const portalAccount = "deferred" as const;
   let approvalEmail: ApprovalEmailStatus = "not_sent";
-  if (newlyApproved) {
+  if (newlyApproved && args.skipApprovalEmail === true) approvalEmail = "bot_text";
+  else if (newlyApproved) {
     if (!app.email) approvalEmail = "no_email";
     else {
       try {
@@ -1480,6 +1483,7 @@ export async function approveApplicationCore(args: {
           to: String(app.email),
           firstName: (app.full_name as string | null) ?? null,
           applicationId: data.id,
+          agreementComing: data.sendAgreement === true,
         });
         approvalEmail = result.ok ? "sent" : result.blocked ?? "failed";
       } catch {
