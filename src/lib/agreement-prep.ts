@@ -60,7 +60,9 @@ export const PAYMENT_METHODS = ["Card Autopay", "Zelle", "Cash App", "Venmo", "O
 export const PrepSchema = z.object({
   details: AgreementDetailsSchema.optional(),
   drivers: z.object({ mode: z.enum(["none", "listed"]), list: z.array(AdditionalDriverSchema).max(4) }),
-  reservation: z.object({ mode: z.enum(["not_required", "required"]), amount: z.number().nonnegative().max(10000).nullable() }),
+  // "not_applicable": an updated agreement for a renter whose rental is already
+  // running (no Reservation Fee is taken; v1.14 prints "Not Applicable").
+  reservation: z.object({ mode: z.enum(["not_required", "required", "not_applicable"]), amount: z.number().nonnegative().max(10000).nullable() }),
   deposit: z.object({
     mode: z.enum(["none", "required", "waived"]),
     amount: z.number().nonnegative().max(25000).nullable(),
@@ -85,6 +87,21 @@ export const EMPTY_PREP: AgreementPrep = {
 };
 
 export type PrepBlocker = { field: string; label: string; why: string };
+
+/**
+ * v1.14 choices for a send nobody prepared by hand (FLEET, approval
+ * auto-send): Damage Waiver declined (the quoted weekly rate has no waiver),
+ * paid weekly by card autopay (the card is saved on file with the Reservation
+ * Fee). Anything a caller already chose is kept. The renter initials the
+ * Damage Waiver choice when signing.
+ */
+export function withAutoSendDefaults(prep: AgreementPrep): AgreementPrep {
+  return {
+    ...prep,
+    damageWaiver: prep.damageWaiver ?? "declined",
+    payment: { schedule: prep.payment?.schedule ?? "weekly", method: prep.payment?.method ?? "Card Autopay" },
+  };
+}
 
 const usd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 

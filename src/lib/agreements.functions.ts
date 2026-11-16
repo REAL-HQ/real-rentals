@@ -10,7 +10,7 @@ import {
 } from "@/lib/agreement-merge";
 import { contractTodayIso, defaultRentalEndIso, fmtContractDate, fmtContractDateOnly, minTermEndIso, minTermWeeks, rentalEndBeforeMinimum } from "@/lib/agreement-dates";
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
-import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, type LibraryTemplate } from "@/lib/agreement-library";
+import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, DEFAULT_LIBRARY_KEY, OWNER_APPROVED_LIBRARY, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementDetails, type AgreementPrep } from "@/lib/agreement-prep";
 import { recordFillsFromDetails, type AppliedFill } from "@/lib/agreement-fills";
 import { STALE_PREVIEW_REFUSAL } from "@/lib/agreement-send-refusal";
@@ -548,14 +548,23 @@ function templateSendRefusal(meta: TemplateMeta): string | null {
   return null;
 }
 
-/** A built-in library template, always an unapproved draft until saved and approved. */
+/**
+ * The agreement new sends use when no saved template is active: v1.14
+ * (Insurance Included). Dolmar, Nov 16 2026 (t319u): "the v1.14 agreement is
+ * the latest agreement we have. add those fees to that agreement." Signed
+ * agreements keep the text they were signed with.
+ */
+export { DEFAULT_LIBRARY_KEY, OWNER_APPROVED_LIBRARY };
+
+/** A built-in library template: an unapproved draft unless the Owner approved the family for sending. */
 function libraryAsActive(lib: LibraryTemplate): { body: string; meta: TemplateMeta } {
+  const ok = OWNER_APPROVED_LIBRARY[lib.key];
   return {
     body: lib.body,
     meta: {
-      id: null, key: lib.key, name: lib.name, version: 1, approvalStatus: "draft",
-      label: `${lib.name} v${lib.displayVersion} — ${DRAFT_STATUS_LABEL}`,
-      effectiveDate: null, approvedAt: null, versioningActive: false, schemaReady: false,
+      id: null, key: lib.key, name: lib.name, version: 1, approvalStatus: ok ? "approved" : "draft",
+      label: ok ? `${lib.name} v${lib.displayVersion} — Owner Approved ${ok.at}` : `${lib.name} v${lib.displayVersion} — ${DRAFT_STATUS_LABEL}`,
+      effectiveDate: ok ? ok.at : null, approvedAt: ok ? ok.at : null, versioningActive: false, schemaReady: false,
     },
   };
 }
@@ -567,6 +576,40 @@ async function libraryWithDraft(admin: any, lib: LibraryTemplate) {
   const t = libraryAsActive(lib);
   if (!last) return t;
   return { body: writeTerms(lib.source, last.terms), meta: { ...t.meta, version: last.n + 1, label: `${t.meta.label} (Draft Values #${last.n})` } };
+}
+
+/** Standard choices for a v1.14 send nobody prepared by hand. */
+async function autoSendPrep(admin: any, applicationId: string): Promise<AgreementPrep> {
+  const { withAutoSendDefaults } = await import("@/lib/agreement-prep");
+  const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
+  const fee = await loadReservationFeeSettings(admin);
+  const { data: app } = await admin.from("applications").select("deposit_amount,vehicle_id").eq("id", applicationId).maybeSingle();
+  let dep = app?.deposit_amount == null ? null : Number(app.deposit_amount);
+  if (dep == null && app?.vehicle_id) {
+    const { data: v } = await admin.from("vehicles").select("deposit").eq("id", app.vehicle_id).maybeSingle();
+    dep = v?.deposit == null ? null : Number(v.deposit);
+  }
+  return withAutoSendDefaults({
+    drivers: { mode: "none", list: [] },
+    reservation: fee.enabled ? { mode: "required", amount: fee.amount } : { mode: "not_required", amount: null },
+    deposit: dep != null && dep > 0 ? { mode: "required", amount: dep, reason: "" } : { mode: "none", amount: null, reason: "" },
+  });
+}
+
+/**
+ * v1.14 "Vehicle Owner (as shown on the registration)" when staff did not type
+ * one: the vehicle partner's name for a partner car, otherwise REAL RENTALS'
+ * legal name (Settings -> Company). Staff can always type the exact name.
+ */
+async function registeredOwnerFallback(admin: any, vehicleId: string | null, companyName: string): Promise<string> {
+  if (vehicleId) {
+    const { data: v } = await admin.from("vehicles").select("partner_id").eq("id", vehicleId).maybeSingle();
+    if (v?.partner_id) {
+      const { data: p } = await admin.from("partners").select("name").eq("id", v.partner_id).maybeSingle();
+      if (String(p?.name ?? "").trim()) return String(p.name).trim();
+    }
+  }
+  return companyName.trim();
 }
 
 /** Insurance Required templates: carrier/policy on file AND a staff verification. */
@@ -633,10 +676,22 @@ function usesField(body: string, key: string): boolean {
 }
 
 async function prepareAgreement(admin: any, applicationId: string, prep?: AgreementPrep, templateKey?: string, vehicleId?: string) {
+  // No template named: a saved, active template wins; otherwise v1.14 (t319u).
+  let key = templateKey;
+  let saved: { body: string; meta: TemplateMeta } | null = null;
+  if (!key) {
+    const active = await activeTemplate(admin);
+    if (active.meta.id || active.meta.versioningActive) saved = active;
+    else key = DEFAULT_LIBRARY_KEY;
+  }
+  const lib = key ? libraryTemplate(key) : null;
+  if (key && !lib) throw new Error("Unknown agreement template.");
+  // A v1.14 send nobody prepared by hand (approval auto-send, FLEET's check)
+  // gets the standard choices: the Reservation Fee when its switch is on, no
+  // additional drivers, the deposit on file, no Damage Waiver, weekly card autopay.
+  if (!prep && lib?.key === DEFAULT_LIBRARY_KEY) prep = await autoSendPrep(admin, applicationId);
   const built = await buildMergeData(admin, applicationId, vehicleId, prep);
-  const lib = templateKey ? libraryTemplate(templateKey) : null;
-  if (templateKey && !lib) throw new Error("Unknown agreement template.");
-  const tpl = lib ? await libraryWithDraft(admin, lib) : await activeTemplate(admin);
+  const tpl = lib ? await libraryWithDraft(admin, lib) : (saved as { body: string; meta: TemplateMeta });
   let tplBody = tpl.body;
   if (prep) {
     const terms = readTerms(tpl.body);
@@ -662,8 +717,13 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     const line = amountStyle
       ? (prep.reservation.mode === "required" && (prep.reservation.amount ?? 0) > 0
           ? `$${Number(prep.reservation.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-          : "None")
+          : prep.reservation.mode === "not_applicable" ? "Not Applicable" : "None")
       : r.reservationLine;
+    // v1.14 values with no record behind them yet.
+    if (usesField(tpl.body, "vehicle_owner") && !String(built.data.vehicle_owner ?? "").trim())
+      built.data.vehicle_owner = await registeredOwnerFallback(admin, built.namedVehicleId ?? (built.app?.vehicle_id as string | null) ?? null, String(built.data.company_name ?? ""));
+    if (usesField(tpl.body, "card_on_file") && !String(built.data.card_on_file ?? "").trim() && prep.reservation.mode === "required" && (prep.reservation.amount ?? 0) > 0)
+      built.data.card_on_file = "Saved when you pay the Reservation Fee right after signing";
     if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, reservation_line: line });
   }
   templateFieldBlockers(
@@ -679,7 +739,9 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     for (const k of missingTerms(readTerms(tplBody) ?? {}, stripTerms(tplBody)))
       built.blockers.push({ field: `term_${k}`, label: `Template value: ${ALL_TERM_FIELDS.find((f) => f.key === k)?.label ?? k}`, why: "This template leaves the value blank. The Owner sets it in the Agreement Template Library before the template can be approved." });
   }
-  const numberingPending = /\{\{\s*agreement_number\s*\}\}/i.test(resolveTerms(tplBody));
+  // Agreement numbers are assigned when the agreement is sent (issueAgreement);
+  // the preview prints "Assigned When Sent".
+  const numberingPending = false;
   const body = renderTemplate(tplBody, built.data);
   if (/\[ \] Required: \$_+/.test(body))
     built.blockers.push({ field: "reservation_fee", label: "Reservation Fee marked Required or Not Required", why: "The agreement's Reservation Fee row still shows both unchecked boxes. Staff entry for this rental arrives with Driver Agreement Preparation." });
@@ -785,6 +847,13 @@ async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepare
       email: (app.email as string | null) ?? null,
       name: (app.full_name as string | null) ?? null,
       generatedAt: new Date().toISOString(),
+      // Lets the staff dialog start with the Reservation Fee the switch sets.
+      reservationFeeAuto: await (async () => {
+        try {
+          const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
+          return await loadReservationFeeSettings(admin);
+        } catch { return { enabled: false, amount: 0 }; }
+      })(),
     };
 }
 
@@ -827,7 +896,7 @@ export async function issueAgreement(
   const vehicleOverride = SWAP_ENABLED ? opts.vehicleId : undefined;
   const prep = await prepareAgreement(admin, applicationId, opts.prep, opts.templateKey, vehicleOverride);
   const { data: merge, app, blockers, tpl, body } = prep;
-  const lib = opts.templateKey ? libraryTemplate(opts.templateKey) : null;
+  const lib = tpl.meta.key ? libraryTemplate(tpl.meta.key) : null;
   if (!app.email) throw new Error("This driver has no email on file");
   // A contract with a guessed start date or a blank address is not a contract
   // worth sending, and an applicant who signs one has signed terms nobody
@@ -860,9 +929,16 @@ export async function issueAgreement(
 
   const { getCompanySigner } = await import("@/lib/esign.server");
   const company = await getCompanySigner(admin);
+  // The agreement number is assigned now, from the new row's id (no number
+  // is consumed by previews): RRA-YYYYMMDD-XXXXXX.
+  const agreementId = crypto.randomUUID();
+  const agreementNumber = `RRA-${new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date()).replace(/-/g, "")}-${agreementId.slice(0, 6).toUpperCase()}`;
+  const numbered = body.split(AGREEMENT_NUMBER_PLACEHOLDER).join(agreementNumber);
+  const numberedMerge = merge.agreement_number === AGREEMENT_NUMBER_PLACEHOLDER ? { ...merge, agreement_number: agreementNumber } : merge;
   const { data: row, error } = await admin
     .from("agreements")
     .insert({
+      id: agreementId,
       source: "rental",
       company_signer_name: company.name,
       company_signer_title: company.title,
@@ -875,8 +951,8 @@ export async function issueAgreement(
       // from. Written once, at insert; signing merges metadata.signature into
       // this object (esign.server.ts) and never replaces it.
       metadata: templateEvidence(tpl.meta, prep.fingerprint, Boolean(lib)),
-      body,
-      merge_data: merge,
+      body: numbered,
+      merge_data: numberedMerge,
       status: "sent",
       token_hash: tokenHash,
       token_expires_at: expires,
@@ -1474,3 +1550,6 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     await sendSignedEmails(supabaseAdmin, data.agreementId, data.signerName);
     return { ok: true, alreadySigned: false };
   });
+
+/** For scripts/v114-default-agreement.test.ts: the one generation step, read-only. */
+export const prepareAgreementForTest = prepareAgreement;

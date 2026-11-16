@@ -11,8 +11,10 @@
 //   - the Damage Waiver Accepted / Declined boxes print the choice staff recorded
 //     with the renter, and the renter initials that choice;
 //   - Key Rental Terms and What's Included are tables instead of boxes.
-// It starts as a Draft and can never be sent until the Owner approves a saved
-// version.
+// Owner-approved for sending Nov 16 2026 (Dolmar, t319u): it is the agreement
+// new sends use (agreements.functions.ts DEFAULT_LIBRARY_KEY). Reservation Fee
+// row wording added the same day (card after signing via the Stripe link,
+// card saved on file, never a deposit).
 
 import { TERM_FIELDS } from "@/lib/agreement-builder";
 
@@ -80,7 +82,7 @@ This table lists everything you may be charged. Where it says "actual," we charg
 | Rent | Weekly Rate shown above, paid in advance
 | Insurance (Renter Policy premium) | Included in the Weekly Rate, subject to Section 5.5
 | Taxes and government surcharges | Included in the Weekly Rate. Nothing is added.
-| Reservation Fee (only if an amount is entered on page 1) | Amount shown on page 1, due when you sign this Agreement and applied in full to your first payment. Non-refundable once we set up the Renter Policy, or if you do not show for your scheduled pickup. We hold the Vehicle until 30 minutes after your scheduled pickup time; if you have not arrived by then, we may release the Vehicle and the pickup counts as a no-show. Refunded in full if we cannot provide a vehicle. It is not a security deposit.
+| Reservation Fee (only if an amount is entered on page 1) | Amount shown on page 1, paid by card right after you sign this Agreement, through the secure payment link we send you, and applied in full to your first payment. The card you use is saved on file for your rental balance (Section 3.3). The Reservation Fee is not a security deposit. Non-refundable once we set up the Renter Policy, or if you do not show for your scheduled pickup. We hold the Vehicle until 30 minutes after your scheduled pickup time; if you have not arrived by then, we may release the Vehicle and the pickup counts as a no-show. Refunded in full if we cannot provide a vehicle. It is not a security deposit.
 | Balance due at pickup | Your first payment, less any Reservation Fee you paid, as shown on page 1
 | Late payment | [[fee_late_payment]]
 | Declined or returned payment | [[fee_returned_payment]]
