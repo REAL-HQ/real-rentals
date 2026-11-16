@@ -147,13 +147,20 @@ describe("copy", () => {
       expect(email.body).toContain(vars.link);
       expect(email.body).toContain("14 days");
       for (const k of ALL) expect(email.body).toContain(MISSING_ITEM_COPY[k].email);
-      for (const t of [sms, email.body, email.subject]) expect(t.toLowerCase()).not.toMatch(/insur|broker|carrier/);
+      for (const t of [sms, email.body, email.subject]) {
+        expect(t.toLowerCase()).not.toMatch(/broker|carrier|no extra cost|no surprise fee|free insurance|insured/);
+        expect(t.toLowerCase()).not.toMatch(/\bproof of insurance|insurance (card|proof|document)/); // never asks for insurance
+      }
+      // The approved insurance line is in every step, text and email.
+      expect(sms).toMatch(/insurance (with a rideshare endorsement )?is now INCLUDED in your weekly rental\./i);
+      expect(email.body).toMatch(/insurance is now INCLUDED in your weekly rental, rideshare endorsement and all\./);
     }
   });
-  test("asks whether they're still interested and mentions the quote", () => {
-    expect(outreachEmail(1, vars).body).toMatch(/still interested/i);
-    expect(outreachEmail(1, vars).body).toMatch(/quote/);
-    expect(outreachSms(1, vars)).toMatch(/Still interested/);
+  test("step 1 opens with the approved insurance news, then the list and the quote", () => {
+    const e = outreachEmail(1, vars).body;
+    expect(e).toContain("Hi Jordan,\n\nBig news, Jordan: insurance is now INCLUDED in your weekly rental, rideshare endorsement and all. No shopping around for coverage. Just grab the keys and start earning. You're almost there: finish your application and you could be driving this week.\n\nTo finish qualifying you and get you a quote to rent the car, we still need:\n\n•");
+    expect(outreachSms(1, vars)).toMatch(/^Hi Jordan, it's REAL RENTALS\. Big news: insurance with a rideshare endorsement is now INCLUDED in your weekly rental\. No shopping for coverage, just grab the keys and start earning\. To finish qualifying and get your quote, we still need your /);
+    expect(outreachEmail(2, vars).body).toMatch(/still interested/i);
   });
   test("one item reads naturally", () => {
     const one = { ...vars, items: ["income" as const] };
@@ -366,7 +373,7 @@ describe("engine", () => {
     const h = deps("send");
     await runMissingItemsOutreach(db.admin, { mode: "backfill" }, h.d);
     const t = h.texts.find((x) => x.applicationId === "a1");
-    expect(t.body).toMatch(/^Hi Jordan, it's REAL RENTALS\. Still interested in renting a car\? To finish qualifying you and get your quote, we still need your .+\. Add (it|them) here: https:\/\/drivereal\.com\/thank-you\?t=T-a1 No reply in 14 days and we'll close your application\. Reply STOP to opt out\.$/);
+    expect(t.body).toMatch(/^Hi Jordan, it's REAL RENTALS\. Big news: insurance with a rideshare endorsement is now INCLUDED in your weekly rental\. No shopping for coverage, just grab the keys and start earning\. To finish qualifying and get your quote, we still need your .+\. Add (it|them) here: https:\/\/drivereal\.com\/thank-you\?t=T-a1 No reply in 14 days and we'll close your application\. Reply STOP to opt out\.$/);
     const e = h.emails.find((x) => x.to === "jordan@example.com");
     expect(e.html).toContain("Finish My Profile");
     expect(e.html).toContain("The link is private to you and works for 14 days.");
@@ -503,7 +510,9 @@ describe("auto-close after 14 days with no reply", () => {
     const e = comeBackEmail(v);
     expect(e.body).toMatch(/come back anytime and pick up right where you left off/);
     expect(e.body).toContain(v.link);
-    expect(e.body.toLowerCase()).not.toMatch(/declin|insur/);
+    expect(e.body.toLowerCase()).not.toMatch(/declin|broker|carrier|no extra cost|no surprise fee/);
+    expect(e.body).toContain("insurance is now INCLUDED in your weekly rental, rideshare endorsement and all.");
+    expect(comeBackSms(v)).toContain("Insurance is now INCLUDED in your weekly rental.");
     expect(comeBackSms(v)).toContain("Reply STOP to opt out.");
     expect(comeBackSms(v)).toContain(v.link);
     expect(outreachEmail(3, { ...vars, closeInDays: 14 }).body).toContain("If we don't hear from you in the next 14 days, we'll close your application.");

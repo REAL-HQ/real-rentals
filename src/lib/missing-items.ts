@@ -314,6 +314,15 @@ function smsList(items: readonly MissingItemKey[]): string {
   return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }
 
+/**
+ * Insurance is now included in the weekly rental. Approved wording only:
+ * never "no extra cost" or "no surprise fees" (the weekly rate can rise on a
+ * high insurance quote, and the reservation and late fees still apply), and
+ * never a broker or carrier name.
+ */
+export const INSURANCE_LINE_SMS = "Insurance is now INCLUDED in your weekly rental.";
+export const INSURANCE_LINE_EMAIL = "Good news: insurance is now INCLUDED in your weekly rental, rideshare endorsement and all.";
+
 export const OUTREACH_SUBJECTS: Record<1 | 2 | 3, string> = {
   1: "What We Still Need For Your REAL RENTALS Application",
   2: "Still Interested In A REAL RENTALS Car?",
@@ -324,10 +333,12 @@ export function outreachEmail(step: 1 | 2 | 3, v: CopyVars): { subject: string; 
   const list = v.items.map((k) => `• ${MISSING_ITEM_COPY[k].email}`).join("\n");
   const opener =
     step === 1
-      ? "Thanks for applying to rent a car with REAL RENTALS. Are you still interested? You're close. To finish qualifying you and get you a quote to rent the car, we still need:"
+      ? `Big news, ${v.firstName}: insurance is now INCLUDED in your weekly rental, rideshare endorsement and all. No shopping around for coverage. Just grab the keys and start earning. You're almost there: finish your application and you could be driving this week.
+
+To finish qualifying you and get you a quote to rent the car, we still need:`
       : step === 2
-        ? "Just checking in. Are you still interested in renting a car with REAL RENTALS? Your application is still open. To finish qualifying you and get you a quote, we still need:"
-        : "This is our last reminder about your REAL RENTALS application. If you still want a car, we just need these to finish qualifying you and get you a quote:";
+        ? `Just checking in. Are you still interested in renting a car with REAL RENTALS? ${INSURANCE_LINE_EMAIL} Your application is still open. To finish qualifying you and get you a quote, we still need:`
+        : `This is our last reminder about your REAL RENTALS application. ${INSURANCE_LINE_EMAIL} If you still want a car, we just need these to finish qualifying you and get you a quote:`;
   const closer = v.closeInDays
     ? `If we don't hear from you in the next ${v.closeInDays} days, we'll close your application. You can come back anytime and pick up where you left off.`
     : step === 3
@@ -355,12 +366,12 @@ export function outreachSms(step: 1 | 2 | 3, v: CopyVars): string {
   const need = smsList(v.items);
   if (step === 1) {
     const close = v.closeInDays ? ` No reply in ${v.closeInDays} days and we'll close your application.` : "";
-    return `Hi ${v.firstName}, it's REAL RENTALS. Still interested in renting a car? To finish qualifying you and get your quote, we still need your ${need}. ${v.items.length === 1 ? "Add it here" : "Add them here"}: ${v.link}${close} Reply STOP to opt out.`;
+    return `Hi ${v.firstName}, it's REAL RENTALS. Big news: insurance with a rideshare endorsement is now INCLUDED in your weekly rental. No shopping for coverage, just grab the keys and start earning. To finish qualifying and get your quote, we still need your ${need}. ${v.items.length === 1 ? "Add it here" : "Add them here"}: ${v.link}${close} Reply STOP to opt out.`;
   }
   if (step === 2) {
-    return `Hi ${v.firstName}, REAL RENTALS here. Still want a car? We still need your ${need} to finish your application and quote: ${v.link} Not interested? Just reply. Reply STOP to opt out.`;
+    return `Hi ${v.firstName}, REAL RENTALS here. ${INSURANCE_LINE_SMS} Still want a car? We still need your ${need} to finish your application and quote: ${v.link} Not interested? Just reply. Reply STOP to opt out.`;
   }
-  return `Hi ${v.firstName}, last reminder from REAL RENTALS: send your ${need} here to get your rental quote: ${v.link} ${v.closeInDays ? `No reply in ${v.closeInDays} days and we'll close your application.` : "Plans changed? Just reply."} Reply STOP to opt out.`;
+  return `Hi ${v.firstName}, last reminder from REAL RENTALS. ${INSURANCE_LINE_SMS} Send your ${need} here to get your rental quote: ${v.link} ${v.closeInDays ? `No reply in ${v.closeInDays} days and we'll close your application.` : "Plans changed? Just reply."} Reply STOP to opt out.`;
 }
 
 // --------------------------------------------------------------- auto-close
@@ -373,7 +384,7 @@ export function comeBackEmail(v: Pick<CopyVars, "firstName" | "link" | "companyP
 
 We haven't heard back from you, so we've closed your REAL RENTALS application for now. No problem at all.
 
-Whenever you're ready to rent a car, come back anytime and pick up right where you left off: ${v.link}
+Good to know: insurance is now INCLUDED in your weekly rental, rideshare endorsement and all. Whenever you're ready to rent a car, come back anytime and pick up right where you left off: ${v.link}
 
 Your answers and uploads are saved. The link is private to you and works for 14 days. After that, just reply to this email and we'll send you a new one.
 
@@ -384,7 +395,7 @@ REAL RENTALS`;
 }
 
 export function comeBackSms(v: Pick<CopyVars, "firstName" | "link">): string {
-  return `Hi ${v.firstName}, it's REAL RENTALS. We haven't heard back, so we've closed your application for now. Come back anytime and pick up where you left off: ${v.link} Reply STOP to opt out.`;
+  return `Hi ${v.firstName}, it's REAL RENTALS. We haven't heard back, so we've closed your application for now. Insurance is now INCLUDED in your weekly rental. Come back anytime and pick up where you left off: ${v.link} Reply STOP to opt out.`;
 }
 
 export type AutoCloseInput = {
