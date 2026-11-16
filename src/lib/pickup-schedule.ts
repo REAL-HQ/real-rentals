@@ -1,8 +1,11 @@
 /**
  * Pickup schedule (client-safe, pure). Stored in app_settings under
- * PICKUP_SCHEDULE_SETTINGS_KEY. Defaults: Monday to Friday, 9:00, 10:00 and
- * 11:00 AM Eastern, one hour each (last ends at noon), one booking per slot,
- * earliest first.
+ * PICKUP_SCHEDULE_SETTINGS_KEY. Defaults: Monday to Friday, 9:30, 10:30 and
+ * 11:30 AM Eastern, one hour each, one booking per slot, earliest first.
+ *
+ * Closed dates: US federal holidays (and the weekday they are observed on when
+ * they fall on a weekend), Christmas Eve and New Year's Eve are always
+ * blocked, plus any date in blockedDates. The Friday after Thanksgiving is open.
  *
  * A booked slot is a rentals row with status "reserved" whose start_date and
  * reservation_note pickup_time match the slot (see reservations.ts).
@@ -37,11 +40,13 @@ export type PickupScheduleSettings = {
   defaultLocation: string | null;
   fieldRep: { name: string };
   notify: PickupNotifySettings;
+  /** Extra closed dates (YYYY-MM-DD, Eastern), on top of the built-in holidays. */
+  blockedDates: string[];
 };
 
 export const DEFAULT_PICKUP_SCHEDULE: PickupScheduleSettings = {
   days: [1, 2, 3, 4, 5],
-  startTimes: ["09:00", "10:00", "11:00"],
+  startTimes: ["09:30", "10:30", "11:30"],
   slotMinutes: 60,
   minNoticeMinutes: 120,
   horizonDays: 14,
@@ -54,6 +59,7 @@ export const DEFAULT_PICKUP_SCHEDULE: PickupScheduleSettings = {
     emails: ["DolmarCross@gmail.com", "Team@DriveReal.com"],
     requireSignedAgreement: true,
   },
+  blockedDates: [],
 };
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -119,6 +125,11 @@ export function validatePickupSchedule(input: unknown): { ok: true; value: Picku
   if (rawEmails.some((e: string) => !EMAIL.test(e))) errors.push("Every email recipient must be a valid address.");
   const emails = uniq(rawEmails.filter((e: string) => EMAIL.test(e)));
   if (emails.length > 10) errors.push("At most 10 email recipients.");
+  const rawBlocked = v.blockedDates == null ? [] : Array.isArray(v.blockedDates) ? v.blockedDates.map((d: unknown) => String(d).trim()) : null;
+  if (rawBlocked === null) errors.push("Blocked dates must be a list of YYYY-MM-DD dates.");
+  else if (rawBlocked.some((d: string) => !isCalendarDate(d))) errors.push("Blocked dates must be YYYY-MM-DD dates.");
+  const blockedDates = uniq((rawBlocked ?? []).filter(isCalendarDate)).sort();
+  if (blockedDates.length > 200) errors.push("At most 200 blocked dates.");
   const enabled = n.enabled === true;
   if (enabled && !sms.length && !emails.length) errors.push("Turn on notifications only with at least one recipient.");
   if (errors.length) return { ok: false, errors };
@@ -129,6 +140,7 @@ export function validatePickupSchedule(input: unknown): { ok: true; value: Picku
       defaultLocation: loc || null,
       fieldRep: { name: repName },
       notify: { enabled, sms, emails, requireSignedAgreement: n.requireSignedAgreement !== false },
+      blockedDates,
     },
   };
 }
@@ -145,6 +157,92 @@ export function readPickupSchedule(value: unknown): PickupScheduleSettings {
   };
   const r = validatePickupSchedule(merged);
   return r.ok ? r.value : structuredClone(DEFAULT_PICKUP_SCHEDULE);
+}
+
+// -------------------------------------------------------------- holidays
+
+/** A real YYYY-MM-DD calendar date. */
+export function isCalendarDate(raw: unknown): raw is string {
+  const s = String(raw ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T12:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
+
+function ymd(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/** The nth (1-based) weekday of a month; n = -1 is the last one. */
+function nthWeekday(year: number, month: number, weekday: number, n: number): string {
+  if (n > 0) {
+    const first = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+    return ymd(year, month, 1 + ((weekday - first + 7) % 7) + (n - 1) * 7);
+  }
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const last = new Date(Date.UTC(year, month - 1, lastDay)).getUTCDay();
+  return ymd(year, month, lastDay - ((last - weekday + 7) % 7));
+}
+
+/**
+ * Built-in closed dates for a year: the 11 US federal holidays, the weekday a
+ * weekend federal holiday is observed on (Saturday -> Friday, Sunday ->
+ * Monday), Christmas Eve and New Year's Eve. Not the Friday after Thanksgiving.
+ */
+export function builtInHolidays(year: number): Map<string, string> {
+  const out = new Map<string, string>();
+  const fixed: [number, number, string][] = [
+    [1, 1, "New Year's Day"],
+    [6, 19, "Juneteenth"],
+    [7, 4, "Independence Day"],
+    [11, 11, "Veterans Day"],
+    [12, 25, "Christmas Day"],
+  ];
+  for (const [m, d, name] of fixed) {
+    const date = ymd(year, m, d);
+    out.set(date, name);
+    const wd = new Date(`${date}T12:00:00Z`).getUTCDay();
+    if (wd === 6 || wd === 0) {
+      const obs = addDays(date, wd === 6 ? -1 : 1);
+      if (!out.has(obs)) out.set(obs, `${name} (Observed)`);
+    }
+  }
+  out.set(nthWeekday(year, 1, 1, 3), "Martin Luther King Jr. Day");
+  out.set(nthWeekday(year, 2, 1, 3), "Presidents Day");
+  out.set(nthWeekday(year, 5, 1, -1), "Memorial Day");
+  out.set(nthWeekday(year, 9, 1, 1), "Labor Day");
+  out.set(nthWeekday(year, 10, 1, 2), "Columbus Day / Indigenous Peoples' Day");
+  out.set(nthWeekday(year, 11, 4, 4), "Thanksgiving");
+  for (const [m, d, name] of [[12, 24, "Christmas Eve"], [12, 31, "New Year's Eve"]] as [number, number, string][]) {
+    const date = ymd(year, m, d);
+    if (!out.has(date)) out.set(date, name);
+  }
+  // New Year's Day on a Saturday is observed the Friday before (Dec 31, already closed).
+  return out;
+}
+
+/** Why a date is closed for pickups ("Thanksgiving", "Blocked"), or null when it is open. */
+export function blockedDateReason(s: Pick<PickupScheduleSettings, "blockedDates">, date: string): string | null {
+  if (!isCalendarDate(date)) return null;
+  const holiday = builtInHolidays(Number(date.slice(0, 4))).get(date);
+  if (holiday) return holiday;
+  if ((s.blockedDates ?? []).includes(date)) return "Blocked";
+  return null;
+}
+
+export function isBlockedDate(s: Pick<PickupScheduleSettings, "blockedDates">, date: string): boolean {
+  return blockedDateReason(s, date) != null;
+}
+
+/** Closed dates from `from` through `days` days ahead, for display. */
+export function upcomingBlockedDates(s: Pick<PickupScheduleSettings, "blockedDates">, from: string, days: number): { date: string; reason: string }[] {
+  const out: { date: string; reason: string }[] = [];
+  for (let i = 0; i < days; i++) {
+    const date = addDays(from, i);
+    const reason = blockedDateReason(s, date);
+    if (reason) out.push({ date, reason });
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------ time
@@ -194,7 +292,8 @@ export function slotLabel(date: string, time: string): string {
 
 /**
  * Open slots, earliest first. `booked` holds slotKey(date, time) of reserved
- * rentals. Slots starting within minNoticeMinutes of `now` are skipped.
+ * rentals. Slots starting within minNoticeMinutes of `now` are skipped, and
+ * so are holidays and blocked dates.
  */
 export function openPickupSlots(s: PickupScheduleSettings, now: Date, booked: ReadonlySet<string>, opts: { days?: number; limit?: number } = {}): PickupSlot[] {
   const horizon = Math.min(Math.max(1, opts.days ?? s.horizonDays), 60);
@@ -206,6 +305,7 @@ export function openPickupSlots(s: PickupScheduleSettings, now: Date, booked: Re
     const date = addDays(today, i);
     const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
     if (!s.days.includes(weekday)) continue;
+    if (isBlockedDate(s, date)) continue;
     for (const time of s.startTimes) {
       if (out.length >= limit) break;
       if (booked.has(slotKey(date, time))) continue;

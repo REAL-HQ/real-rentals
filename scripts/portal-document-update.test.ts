@@ -110,7 +110,8 @@ describe("portal document eligibility", () => {
       EMPTY_APPLICATION,
       TODAY,
     );
-    assert.deepEqual(categories(items), ["license_front", "license_back"]);
+    // The back is optional: never listed as missing.
+    assert.deepEqual(categories(items), ["license_front"]);
     assert.ok(items.every((item) => item.reason === "missing"));
   });
 
@@ -127,7 +128,7 @@ describe("portal document eligibility", () => {
       },
       TODAY,
     );
-    assert.deepEqual(categories(soon), ["license_back"]);
+    assert.deepEqual(categories(soon), []);
     assert.equal(soon.some((item) => item.category === "insurance"), false);
 
     const synced = documentsNeedingUpdate(

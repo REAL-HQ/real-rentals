@@ -157,8 +157,8 @@ export function isHardBlocker(code: string): boolean {
 /** Application statuses activate_rental_tx accepts. Mirrors the database check. */
 export const ACTIVATABLE_STATUSES = ["approved", "active"] as const;
 
-/** Licence front and back: required for every renter, never overridable. */
-export const HARD_REQUIRED_CATEGORIES = ["license_front", "license_back"] as const;
+/** Licence front: required for every renter, never overridable. The back is optional. */
+export const HARD_REQUIRED_CATEGORIES = ["license_front"] as const;
 
 const DOC_LABEL: Record<string, string> = {
   license_front: "Driver's License (Front)",
@@ -337,7 +337,7 @@ export type FileCheck = "file" | "staff_confirmed" | "not_collected" | "missing"
 /** Mirrors activate_rental_checked_tx: a file wins, then a saved check-off; Not Collected needs a reason. */
 export function licenseCheck(f: DriverReadinessFacts): FileCheck {
   const missing = new Set(missingRequiredCategories(f.documents));
-  const sides = (["license_front", "license_back"] as const).map((c) => (missing.has(c) ? f.evidence?.[c] ?? null : "file"));
+  const sides = HARD_REQUIRED_CATEGORIES.map((c) => (missing.has(c) ? f.evidence?.[c] ?? null : "file"));
   if (sides.every((s) => s === "file")) return "file";
   if (sides.every((s) => s === "file" || s === "collected")) return "staff_confirmed";
   if (sides.every((s) => s !== null)) return "not_collected";
@@ -624,7 +624,7 @@ export function checkedTxBlocker(msg: string): ActivationBlocker | null {
   if (msg.includes("missing_documents"))
     return {
       code: "missing_documents",
-      message: "The driver's license (front and back) is missing or was rejected.",
+      message: "The driver's license (front) is missing or was rejected.",
     };
   if (msg.includes("application_not_found"))
     return { code: "not_approved", message: "Application not found." };

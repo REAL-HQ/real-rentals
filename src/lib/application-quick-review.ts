@@ -17,8 +17,8 @@ export const APPLICATION_QUICK_REVIEW_ENABLED: boolean = false;
 /** Statuses still awaiting an approval decision. `partial` is the overview's Pending count. */
 export const PENDING_REVIEW_STATUSES = ["partial", "new", "complete", "reviewing"] as const;
 
-/** Categories the open application drawer treats as required. Insurance is optional. */
-const REQUIRED_KEYS = ["license_front", "license_back", "gig_profile", "income"] as const;
+/** Categories the open application drawer treats as required. Insurance and the license back are optional. */
+const REQUIRED_KEYS = ["license_front", "gig_profile", "income"] as const;
 
 const EXPIRY_LABEL = { expired: "Expired", soon: "Expiring soon" } as const;
 

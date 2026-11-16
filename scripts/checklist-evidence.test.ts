@@ -39,7 +39,9 @@ describe("Confirmed evidence states (isolated rules only)", () => {
   });
   it("aggregates red over yellow over green without changing requirements", () => {
     expect(evidenceTone([yellow, red])).toBe("red"); expect(evidenceTone([yellow, project([first], [doc])])).toBe("yellow"); expect(evidenceTone([])).toBeNull();
-    expect(requirementEvidence("license_documents", [yellow, { ...red, field: "license_back" }])?.tone).toBe("red");
+    expect(requirementEvidence("license_documents", [yellow, red])?.tone).toBe("red");
+    // Only the front counts for the license requirement; the back is optional.
+    expect(requirementEvidence("license_documents", [yellow, { ...red, field: "license_back" }])?.tone).toBe("yellow");
     expect(requirementEvidence("interview", [yellow])).toBeUndefined();
   });
   it("does not use another driver or sibling category's attestation", () => {

@@ -8,7 +8,7 @@
 -- (slots, location, field rep, recipients) is kept.
 BEGIN;
 INSERT INTO public.app_settings (key, value)
-VALUES ('pickup_schedule', '{"days": [1, 2, 3, 4, 5], "startTimes": ["09:00", "10:00", "11:00"], "slotMinutes": 60, "minNoticeMinutes": 120, "horizonDays": 14, "timezone": "America/New_York", "defaultLocation": "3500 E Hillsborough Ave, Tampa, FL 33610", "fieldRep": {"name": "Dolmar Cross"}, "notify": {"enabled": true, "sms": ["+18134768508"], "emails": ["DolmarCross@gmail.com", "Team@DriveReal.com"], "requireSignedAgreement": true}}'::jsonb)
+VALUES ('pickup_schedule', '{"days": [1, 2, 3, 4, 5], "startTimes": ["09:30", "10:30", "11:30"], "slotMinutes": 60, "minNoticeMinutes": 120, "horizonDays": 14, "timezone": "America/New_York", "defaultLocation": "3500 E Hillsborough Ave, Tampa, FL 33610", "fieldRep": {"name": "Dolmar Cross"}, "notify": {"enabled": true, "sms": ["+18134768508"], "emails": ["DolmarCross@gmail.com", "Team@DriveReal.com"], "requireSignedAgreement": true}, "blockedDates": []}'::jsonb)
 ON CONFLICT (key) DO UPDATE
   SET value = jsonb_set(public.app_settings.value, '{notify,enabled}', 'true'::jsonb, true),
       updated_at = now();

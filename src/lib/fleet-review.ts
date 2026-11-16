@@ -25,9 +25,10 @@ export const FLEET_REVIEW_STAGES = ["new", "reviewing", "complete"] as const;
 /**
  * Vault categories FLEET needs before it may approve. Income proof is advisory
  * (required-docs.ts: "remains advisory for activation"), so a missing income
- * document is an escalation, not a blocker.
+ * document is an escalation, not a blocker. The back of the license is an
+ * optional upload and is neither a blocker nor an escalation.
  */
-export const FLEET_HARD_DOC_CATEGORIES = ["license_front", "license_back", "gig_profile"] as const;
+export const FLEET_HARD_DOC_CATEGORIES = ["license_front", "gig_profile"] as const;
 export const FLEET_ADVISORY_DOC_CATEGORIES = REQUIRED_VAULT_CATEGORIES.filter(
   (c) => !(FLEET_HARD_DOC_CATEGORIES as readonly string[]).includes(c),
 );
@@ -159,7 +160,12 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   if (app.primary_application_id) block("duplicate", "This is a duplicate of another application.");
   if (!String(app.email ?? "").trim()) block("no_email", "No email on file.");
   for (const c of docs.missing_required) block(`missing_${c}`, `Missing required document: ${c.replace(/_/g, " ")}.`);
-  for (const c of docs.rejected) block(`rejected_${c}`, `A ${c.replace(/_/g, " ")} document was rejected by staff and not replaced.`);
+  for (const c of docs.rejected) {
+    const msg = `A ${c.replace(/_/g, " ")} document was rejected by staff and not replaced.`;
+    // The license back is optional: a rejected one is not a blocker, but staff look at it.
+    if (c === "license_back") flag(`rejected_${c}`, msg);
+    else block(`rejected_${c}`, msg);
+  }
   for (const d of input.disqualifiers) block("disqualifier", d);
   if (s.disqualified === true) block("screening_disqualified", `Screening marked disqualified${s.disqualification_reason ? `: ${s.disqualification_reason}` : ""}.`);
   for (const [k, label] of [["background_check_status", "Background check"], ["mvr_status", "Driving record (MVR)"]] as const) {

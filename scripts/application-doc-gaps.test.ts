@@ -155,7 +155,8 @@ describe("application document gaps", () => {
     assert.equal(result.applications[1]?.name, "Unnamed Applicant");
     assert.equal(slot(result, "open", "license_front")?.state, "present");
     assert.equal(slot(result, "open", "license_front")?.on, "2026-03-08");
-    assert.equal(slot(result, "open", "license_back")?.state, "missing");
+    // The back is optional: not a slot, never "missing".
+    assert.equal(slot(result, "open", "license_back"), undefined);
     assert.equal(slot(result, "open", "insurance_card"), undefined);
     assert.equal(slot(result, "open", "driver_profile_screenshot")?.state, "missing");
     assert.equal(slot(result, "open", "proof_of_address")?.state, "unknown");
@@ -440,7 +441,7 @@ describe("application document gaps read", () => {
     for (const app of [newest, oldest]) {
       assert.equal(app?.slots.find((item) => item.key === "license_front")?.state, "present");
       assert.equal(app?.slots.find((item) => item.key === "license_front")?.on, "2026-03-08");
-      assert.equal(app?.slots.find((item) => item.key === "license_back")?.state, "present");
+      assert.equal(app?.slots.find((item) => item.key === "license_back"), undefined);
       assert.equal(app?.slots.find((item) => item.key === "insurance_card"), undefined);
       assert.equal(app?.slots.find((item) => item.key === "driver_profile_screenshot")?.state, "missing");
       assert.equal(app?.slots.find((item) => item.key === "proof_of_address")?.state, "unknown");

@@ -26,9 +26,10 @@ export const SCREENING_STATUSES = [
 ] as const;
 export type ScreeningStatus = (typeof SCREENING_STATUSES)[number];
 
+// The back of the license is an optional upload (Nov 15, 2026): only the
+// front is required, so license_back is not on this list.
 export const REQUIRED_DOC_TYPES = [
   "license_front",
-  "license_back",
   "driver_profile_screenshot",
   "income",
 ] as const;

@@ -110,8 +110,8 @@ export function pickupAt(date: string | null | undefined, time: string | null | 
   return `${date}T${hh}:${m[2]}:00${off}`;
 }
 
-/** What FLEET reads as Step 2 documents. Income is optional (blueprint). */
-export const FLEET_REQUIRED_DOCS = ["license_front", "license_back", "gig_profile_screenshot", "home_address"] as const;
+/** What FLEET reads as Step 2 documents. Income is optional (blueprint); the license back is not required. */
+export const FLEET_REQUIRED_DOCS = ["license_front", "gig_profile_screenshot", "home_address"] as const;
 export const FLEET_OPTIONAL_DOCS = ["income"] as const;
 const SITE_TO_FLEET_DOC: Record<string, string> = { driver_profile_screenshot: "gig_profile_screenshot" };
 

@@ -119,7 +119,6 @@ describe("application quick review", () => {
       review.missing.filter((item) => ["license_front", "license_back", "insurance", "gig_profile"].includes(item.id)).map((item) => [item.label, item.detail]),
       [
         ["Driver's license (front)", "Expired"],
-        ["Driver's license (back)", "Not Received"],
         ["Gig profile screenshot", "Not Received"],
       ],
     );

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { getPickupSchedule, savePickupSchedule } from "@/lib/pickup-schedule.functions";
 import {
   DEFAULT_PICKUP_SCHEDULE,
+  upcomingBlockedDates,
   validatePickupSchedule,
   WEEKDAY_LABELS,
   type PickupScheduleSettings,
@@ -25,6 +26,7 @@ export function PickupScheduleSettingsPanel() {
   const [times, setTimes] = useState(DEFAULT_PICKUP_SCHEDULE.startTimes.join(", "));
   const [sms, setSms] = useState(DEFAULT_PICKUP_SCHEDULE.notify.sms.join("\n"));
   const [emails, setEmails] = useState(DEFAULT_PICKUP_SCHEDULE.notify.emails.join("\n"));
+  const [blocked, setBlocked] = useState(DEFAULT_PICKUP_SCHEDULE.blockedDates.join("\n"));
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -33,6 +35,7 @@ export function PickupScheduleSettingsPanel() {
     setTimes(s.startTimes.join(", "));
     setSms(s.notify.sms.join("\n"));
     setEmails(s.notify.emails.join("\n"));
+    setBlocked(s.blockedDates.join("\n"));
   };
 
   useEffect(() => {
@@ -45,7 +48,7 @@ export function PickupScheduleSettingsPanel() {
     };
   }, [load]);
 
-  const candidate = { ...draft, startTimes: list(times), notify: { ...draft.notify, sms: list(sms), emails: list(emails) } };
+  const candidate = { ...draft, startTimes: list(times), blockedDates: list(blocked), notify: { ...draft.notify, sms: list(sms), emails: list(emails) } };
   const check = validatePickupSchedule(candidate);
 
   async function persist() {
@@ -112,6 +115,21 @@ export function PickupScheduleSettingsPanel() {
           Default Pickup Location
           <input className={input} value={draft.defaultLocation ?? ""} onChange={(e) => setDraft({ ...draft, defaultLocation: e.target.value || null })} placeholder="Street Address, City, State" aria-label="Default Pickup Location" maxLength={180} />
         </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-xs font-medium text-muted-foreground">
+            Blocked Dates (YYYY-MM-DD, one per line)
+            <textarea className={`${input} min-h-16`} value={blocked} onChange={(e) => setBlocked(e.target.value)} placeholder="2026-12-26" aria-label="Blocked Dates" />
+          </label>
+          <div className="text-xs text-muted-foreground" data-testid="pickup-closed-dates">
+            <div className="mb-1 font-medium">Closed (Next 60 Days)</div>
+            <p className="mb-1 text-[11px]">Federal holidays, Christmas Eve and New Year&apos;s Eve are always closed.</p>
+            <ul className="text-[12px] text-[#55555E]">
+              {upcomingBlockedDates(check.ok ? check.value : draft, new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date()), 60).map((b) => (
+                <li key={b.date}>{b.date} · {b.reason}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
         <div className="rounded-lg border border-[#EDEDF0] p-3">
           <div className="flex items-start justify-between gap-4">
             <div>

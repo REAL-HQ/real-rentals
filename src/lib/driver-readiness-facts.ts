@@ -43,7 +43,7 @@ export type ReadinessFact = {
 };
 
 export const READINESS_FACT_LABELS: Record<Exclude<ReadinessFactKey, "documents">, string> = {
-  license: "License (Front And Back)",
+  license: "License (Front)",
   card: "Card On File",
   agreement: "Agreement Signed",
   pickup: "Pickup Scheduled",
@@ -195,12 +195,12 @@ function countedDoc(doc: ReadinessDocument): string | null {
 function licenseFact(id: string, documents: readonly ReadinessDocument[]): ReadinessFact {
   const mine = documents.filter((doc) => doc.driver_id === id && countedDoc(doc) != null);
   const front = mine.filter((doc) => countedDoc(doc) === "license_front");
-  const back = mine.filter((doc) => countedDoc(doc) === "license_back");
-  if (front.length === 0 || back.length === 0) {
+  // Only the front is required (the back is an optional upload).
+  if (front.length === 0) {
     return fact("license", READINESS_FACT_LABELS.license, "missing", null, null);
   }
   let at: string | null = null;
-  for (const doc of [...front, ...back]) at = later(at, docTime(doc));
+  for (const doc of front) at = later(at, docTime(doc));
   return fact("license", READINESS_FACT_LABELS.license, "done", "Document Vault", at);
 }
 

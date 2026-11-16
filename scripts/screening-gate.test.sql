@@ -46,11 +46,11 @@ RETURNS void LANGUAGE sql AS $fn$
           'fixture/'||cat||'-'||md5(random()::text), cur, rev);
 $fn$;
 
-SELECT pg_temp.check(1,'0/3 docs');
-SELECT pg_temp.add('license_front');          SELECT pg_temp.check(2,'1/3 docs');
-SELECT pg_temp.add('license_back');           SELECT pg_temp.check(3,'2/3 docs');
-SELECT pg_temp.add('gig_profile');            SELECT pg_temp.check(4,'3/3 docs, no recording');
-SELECT pg_temp.add('verification_recording'); SELECT pg_temp.check(5,'3/3 + recording');
+SELECT pg_temp.check(1,'0/2 docs');
+SELECT pg_temp.add('license_front');          SELECT pg_temp.check(2,'front only (1/2)');
+SELECT pg_temp.add('license_back');           SELECT pg_temp.check(3,'front + optional back, no gig (1/2)');
+SELECT pg_temp.add('gig_profile');            SELECT pg_temp.check(4,'2/2 docs, no recording');
+SELECT pg_temp.add('verification_recording'); SELECT pg_temp.check(5,'2/2 + recording');
 SELECT pg_temp.add('insurance');
 UPDATE public.documents SET review_status='rejected'
  WHERE driver_id='aaaaaaaa-0000-4000-8000-000000000001' AND category='insurance';
