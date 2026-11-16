@@ -103,10 +103,18 @@ describe("GPS rules", () => {
     expect(gps.matchVehicle({ device: "#1" }, [car()])).toBe(null);
     expect(gps.matchVehicle({ device: "8/26 #2" }, [car()])).toBe(null);
   });
-  test("outside the service area: out of Florida, or more than 150 miles from the shop", () => {
+  test("outside the service area: more than 100 miles from Tampa (t311u)", () => {
+    expect(gps.GPS_RULES.maxMilesFromShop).toBe(100);
+    expect(gps.GPS_RULES.offlineHours).toBe(24);
     expect(gps.evaluateGps({ address: "100 Main St, Valdosta, GA 31601" }, car(), NOW).map((f) => f.rule)).toContain("outside_area");
     expect(gps.evaluateGps({ address: "1 Davis Islands Brg, Tampa, FL 33606" }, car(), NOW).map((f) => f.rule)).not.toContain("outside_area");
     expect(gps.evaluateGps({ lat: 30.33, lng: -81.66 }, car(), NOW).map((f) => f.rule)).toContain("outside_area"); // Jacksonville ~170 mi
+    expect(gps.evaluateGps({ lat: 29.65, lng: -82.32 }, car(), NOW).map((f) => f.rule)).toContain("outside_area"); // Gainesville ~115 mi, inside FL
+    expect(gps.evaluateGps({ lat: 25.76, lng: -80.19 }, car(), NOW).map((f) => f.rule)).toContain("outside_area"); // Miami ~200 mi
+    expect(gps.evaluateGps({ lat: 28.54, lng: -81.38 }, car(), NOW).map((f) => f.rule)).not.toContain("outside_area"); // Orlando ~75 mi
+    expect(gps.evaluateGps({ lat: 27.34, lng: -82.53 }, car(), NOW).map((f) => f.rule)).not.toContain("outside_area"); // Sarasota ~45 mi
+    const msg = gps.evaluateGps({ lat: 29.65, lng: -82.32, address: "Gainesville, FL 32601" }, car(), NOW)[0].message;
+    expect(msg).toMatch(/outside the 100-mile service area around Tampa/);
   });
   test("offline: no report for 24 hours or the tracker says no power", () => {
     expect(gps.evaluateGps({ last_report_at: "2026-11-15T12:00:00Z" }, car(), NOW).map((f) => f.rule)).toContain("offline");

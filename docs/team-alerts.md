@@ -7,9 +7,9 @@ anything shaped like a phone number from the alert text).
 
 | Kind | When | Built in |
 | --- | --- | --- |
-| `gps` | Outside service area, tracker offline, no movement 48 hours | docs/gps-alerts.md |
+| `gps` | Outside the service area (more than 100 miles from Tampa), tracker offline (no signal for 24 hours), no movement 48 hours | docs/gps-alerts.md |
 | `roadside_overnight` | A roadside request (portal Roadside form, or a bot) between 6 PM and 6 AM ET, until a tow partner is added (D17) | driver-issue-alert.server.ts, fleet-team-alert.server.ts |
-| `late_pickup` | A reservation released 15 minutes after a missed pickup | late-pickup.server.ts — always sent when "Late Pickup Release" is on (that switch governs it; a release never happens without telling staff) |
+| `late_pickup` | A reservation released 30 minutes after a missed pickup (Dolmar t309u; was 15) | late-pickup.server.ts — always sent when "Late Pickup Release" is on (that switch governs it; a release never happens without telling staff) |
 | `bot_handoff` | A bot hands a person to staff: complaint, injury, payment dispute, asked for a person, outside the approved templates, no answer in 15 minutes (D29) | fleet-team-alert.server.ts |
 
 Switch: `app_settings.team_alerts` = `{ "<kind>": { "enabled": true|false } }`.

@@ -5,7 +5,7 @@ the field rep, +18134768508):
 
 | Alert | Rule (src/lib/gps-alerts.ts) |
 | --- | --- |
-| Outside service area | The car's state is not Florida, or it is more than 150 miles from the shop (3500 E Hillsborough Ave). |
+| Outside service area | The car is more than 100 miles from Tampa (measured from the shop, 3500 E Hillsborough Ave), Dolmar t311u. A reading with only an address counts as outside when its state is not Florida. |
 | Tracker offline | No report for 24 hours, or the tracker says no power / not reporting. |
 | No movement for 48 hours | A car on an active rental has been stopped 48 hours or more. |
 
@@ -48,8 +48,8 @@ showed and that nothing was done to the car.
    that routine's instructions; no new access).
 2. Staff label the two unlabelled trackers (`#1`, `8/26 #2`) with the plate, or
    fill `gps_device_id` on those cars.
-3. Dolmar confirms the service area (Florida, 150 miles from the shop) and the
-   offline window (24 hours).
+3. Done: Dolmar confirmed the service area (100-mile radius of Tampa, t311u),
+   the offline window (24 hours with no signal) and that FLEET posts the readings (card t310s1681).
 4. `proposed/team-alerts-v1.sql`, then the `gps` line in `proposed/team-alerts-on.sql`.
 
 Better later: the tracker provider's API (an API key from the account owner)
