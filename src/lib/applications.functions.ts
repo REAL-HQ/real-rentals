@@ -197,7 +197,7 @@ function linkWaitSeconds(history: unknown[]): number {
   const daily = day.length >= LINK_DAILY_MAX ? Math.ceil((day[day.length - LINK_DAILY_MAX] + 86400_000 - now) / 1000) : 0;
   return Math.max(0, short, daily);
 }
-async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: string): Promise<boolean> {
+async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: string, submittedName?: string | null): Promise<boolean> {
   try {
     const { data: onFile } = await supabaseAdmin
       .from("applications")
@@ -217,13 +217,16 @@ async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: strin
       return r.ok;
     }
     const { sendApplicationResumeEmail } = await import("@/lib/email.server");
-    const r = await sendApplicationResumeEmail({ to: onFile.email, firstName: onFile.full_name ?? null, applicationId });
+    const r = await sendApplicationResumeEmail({ to: onFile.email, firstName: onFile.full_name ?? null, submittedName, applicationId });
     if (!r.ok) console.error("[resume-link] provider refused", applicationId, r.error);
     return r.ok;
   } catch (e) {
     console.error("[resume-link] send failed", applicationId, e);
     return false;
   }
+}
+function submittedNameOf(entry: Record<string, unknown>): string | null {
+  return typeof entry.submitted_full_name === "string" ? entry.submitted_full_name : null;
 }
 /** Append a history entry, send if not throttled, record the true outcome. */
 async function sendRecoveryLink(
@@ -244,7 +247,7 @@ async function sendRecoveryLink(
   const history = Array.isArray(row.resubmission_history) ? (row.resubmission_history as unknown[]) : [];
   const pending = linkWaitSeconds(history);
   const throttled = pending > 0;
-  const ok = throttled ? false : await emailLinkToAddressOnFile(supabaseAdmin, primaryId);
+  const ok = throttled ? false : await emailLinkToAddressOnFile(supabaseAdmin, primaryId, submittedNameOf(entry));
   history.push({ at: new Date().toISOString(), ...entry, link_sent: ok, link_failed: !throttled && !ok });
   await supabaseAdmin
     .from("applications")
@@ -300,7 +303,7 @@ async function sendAtomicRecoveryLink(
 ): Promise<{ outcome: LinkOutcome; wait: number }> {
   let result: { outcome: LinkOutcome; wait: number };
   try {
-    result = await deliverApplicationRecovery(supabaseAdmin, primaryId);
+    result = await deliverApplicationRecovery(supabaseAdmin, primaryId, { submittedName: submittedNameOf(entry) });
   } catch {
     result = { outcome: "failed", wait: LINK_RETRY_SECONDS };
   }
