@@ -5,6 +5,7 @@
  *   POST /api/public/fleet/license-facts
  *   { "lead_id": "…", "document_id": "<the license_front document FLEET read>",
  *     "dob": "1990-02-03", "license_expiration": "2029-05-01",
+ *     "license_number": "C123456789012", "license_state": "FL",
  *     "confidence": 0.95, "idempotency_key": "license-<lead_id>-1" }
  *
  * Bearer FLEET_API_KEY (src/lib/fleet-api.server.ts). Every reading is stored
@@ -33,7 +34,8 @@ import {
 import { FLEET_ACTOR_LABEL, LICENSE_READING_LABEL } from "@/lib/fleet-review";
 
 type Admin = any;
-export const LICENSE_FIELDS = ["dob", "license_expiration"] as const;
+export const LICENSE_FIELDS = ["dob", "license_expiration", "license_number", "license_state"] as const;
+const US_STATES = new Set("AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY PR".split(" "));
 type Field = (typeof LICENSE_FIELDS)[number];
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -47,6 +49,14 @@ export function isoDate(v: unknown): string | null {
   return s;
 }
 const day = (v: unknown) => (v == null ? null : String(v).slice(0, 10));
+/** Compare a stored value to a reading: dates by day, the number without spaces/dashes. */
+const norm = (f: string, v: unknown): string | null => {
+  if (v == null || String(v).trim() === "") return null;
+  if (f === "dob" || f === "license_expiration") return day(v);
+  if (f === "license_number") return String(v).toUpperCase().replace(/[\s-]/g, "");
+  return String(v).trim().toUpperCase();
+};
+const maskNo = (v: string) => (v.length <= 4 ? "****" : `${"*".repeat(Math.min(8, v.length - 4))}${v.slice(-4)}`);
 
 export function validateReading(body: Record<string, any>, now: Date): { ok: true; values: Partial<Record<Field, string>>; confidence: number | null } | { ok: false; error: string } {
   const values: Partial<Record<Field, string>> = {};
@@ -64,7 +74,19 @@ export function validateReading(body: Record<string, any>, now: Date): { ok: tru
     if (d < "2000-01-01" || d > "2100-12-31") return { ok: false, error: "license_expiration is out of range." };
     values.license_expiration = d;
   }
-  if (!Object.keys(values).length) return { ok: false, error: "Send dob and/or license_expiration." };
+  // The agreement prints the license number and issuing state (it names the
+  // only person allowed to drive), and the application never asks for them.
+  if (body.license_number != null && body.license_number !== "") {
+    const n = String(body.license_number).toUpperCase().replace(/[\s-]/g, "");
+    if (!/^[A-Z0-9]{4,20}$/.test(n)) return { ok: false, error: "license_number must be 4-20 letters or digits." };
+    values.license_number = n;
+  }
+  if (body.license_state != null && body.license_state !== "") {
+    const st = String(body.license_state).trim().toUpperCase();
+    if (!US_STATES.has(st)) return { ok: false, error: "license_state must be a two-letter US state code." };
+    values.license_state = st;
+  }
+  if (!Object.keys(values).length) return { ok: false, error: "Send at least one of dob, license_expiration, license_number, license_state." };
   let confidence: number | null = null;
   if (body.confidence != null && body.confidence !== "") {
     const c = Number(body.confidence);
@@ -77,7 +99,7 @@ export function validateReading(body: Record<string, any>, now: Date): { ok: tru
 /** The latest reading for an applicant (null when none, or the table is not installed). */
 export async function latestLicenseReading(admin: Admin, leadId: string) {
   const res = await admin.from("fleet_license_readings")
-    .select("id,document_id,dob,license_expiration,applied_fields,conflicts,confidence,source_label,read_by,created_at")
+    .select("id,document_id,dob,license_expiration,license_number,license_state,applied_fields,conflicts,confidence,source_label,read_by,created_at")
     .eq("application_id", leadId).order("created_at", { ascending: false }).limit(1);
   if (res.error || !Array.isArray(res.data) || !res.data.length) return null;
   const r = res.data[0];
@@ -86,6 +108,8 @@ export async function latestLicenseReading(admin: Admin, leadId: string) {
     document_id: r.document_id ?? null,
     dob: day(r.dob),
     license_expiration: day(r.license_expiration),
+    license_number_masked: r.license_number ? maskNo(String(r.license_number)) : null,
+    license_state: r.license_state ?? null,
     applied: Array.isArray(r.applied_fields) ? r.applied_fields : [],
     conflicts: r.conflicts ?? [],
     confidence: r.confidence ?? null,
@@ -126,7 +150,7 @@ export async function handleFleetLicenseFacts(request: Request, deps: FleetDeps 
     }
   }
 
-  const appRes = await admin.from("applications").select("id,status,deleted_at,dob,license_expiration").eq("id", leadId).maybeSingle();
+  const appRes = await admin.from("applications").select("id,status,deleted_at,dob,license_expiration,license_number,license_state").eq("id", leadId).maybeSingle();
   if (appRes.error) return fleetJson(503, { ok: false, error: "Could not read the applicant." });
   const app = appRes.data;
   if (!app) return fleetJson(404, { ok: false, error: "Applicant not found." });
@@ -140,27 +164,28 @@ export async function handleFleetLicenseFacts(request: Request, deps: FleetDeps 
   if (doc.is_current === false || doc.review_status === "rejected") return fleetJson(409, { ok: false, error: "That license photo was replaced or rejected; read the current one." });
 
   // Values earlier FLEET readings put on the application (those FLEET may correct).
-  const priorRes = await admin.from("fleet_license_readings").select("dob,license_expiration,applied_fields").eq("application_id", leadId);
+  const priorRes = await admin.from("fleet_license_readings").select("dob,license_expiration,license_number,license_state,applied_fields").eq("application_id", leadId);
   if (priorRes.error) {
     if (tableMissing(priorRes.error, "fleet_license_readings")) return fleetJson(503, { ok: false, error: "License readings are not set up yet (fleet_license_readings). Nothing was changed." });
     return fleetJson(503, { ok: false, error: "Could not read license readings." });
   }
-  const fleetWrote: Record<Field, Set<string>> = { dob: new Set(), license_expiration: new Set() };
+  const fleetWrote: Record<Field, Set<string>> = { dob: new Set(), license_expiration: new Set(), license_number: new Set(), license_state: new Set() };
   for (const r of (priorRes.data ?? []) as any[]) {
-    for (const f of LICENSE_FIELDS) if ((r.applied_fields ?? []).includes(f) && r[f]) fleetWrote[f].add(day(r[f])!);
+    for (const f of LICENSE_FIELDS) if ((r.applied_fields ?? []).includes(f) && r[f]) fleetWrote[f].add(norm(f, r[f])!);
   }
 
   const applied: Field[] = [];
   const unchanged: Field[] = [];
-  const conflicts: { field: Field; on_file: string; read: string }[] = [];
+  const conflicts: { field: Field; on_file: string | null; read: string | null }[] = [];
   const patch: Record<string, string> = {};
   for (const f of LICENSE_FIELDS) {
     const read = v.values[f];
     if (!read) continue;
-    const current = day(app[f]);
+    const current = norm(f, app[f]);
     if (current === read) unchanged.push(f);
     else if (!current || fleetWrote[f].has(current)) { applied.push(f); patch[f] = read; }
-    else conflicts.push({ field: f, on_file: current, read });
+    // The license number is never echoed in full.
+    else conflicts.push(f === "license_number" ? { field: f, on_file: maskNo(current), read: maskNo(read) } : { field: f, on_file: current, read });
   }
 
   const ins = await admin.from("fleet_license_readings").insert({
@@ -168,6 +193,8 @@ export async function handleFleetLicenseFacts(request: Request, deps: FleetDeps 
     document_id: documentId,
     dob: v.values.dob ?? null,
     license_expiration: v.values.license_expiration ?? null,
+    license_number: v.values.license_number ?? null,
+    license_state: v.values.license_state ?? null,
     applied_fields: applied,
     conflicts,
     confidence: v.confidence,
@@ -185,7 +212,7 @@ export async function handleFleetLicenseFacts(request: Request, deps: FleetDeps 
     const up = await admin.from("applications").update(patch).eq("id", leadId);
     if (up.error) return fleetJson(503, { ok: false, error: "The reading was stored but the application could not be updated. Retry with a new idempotency_key.", reading_id: ins.data.id });
   }
-  const labels: Record<Field, string> = { dob: "date of birth", license_expiration: "license expiry" };
+  const labels: Record<Field, string> = { dob: "date of birth", license_expiration: "license expiry", license_number: "license number", license_state: "license state" };
   await audit({
     action: "application.fleet_license_read",
     summary: `${LICENSE_READING_LABEL} (not verified): ${[...applied, ...unchanged].map((f) => labels[f]).join(", ") || "nothing applied"}${conflicts.length ? `; differs from what is on file: ${conflicts.map((c) => labels[c.field]).join(", ")}` : ""}.`.slice(0, 300),

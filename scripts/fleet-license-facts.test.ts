@@ -154,6 +154,19 @@ describe("license-facts endpoint", () => {
     expect(k.applied).toEqual(["license_expiration"]);
     expect(db.state.applications.find((x: Row) => x.id === A)!.license_expiration).toBe("2030-05-01");
   });
+  test("license number and state: filled when empty, validated, never echoed in full", async () => {
+    const db = fakeDb(seed({ license_number: "Z9999999" }));
+    for (const bad of [{ ...good, license_number: "x!" }, { ...good, license_state: "ZZ" }]) expect((await lic.handleFleetLicenseFacts(req(bad), deps(db))).status).toBe(400);
+    const j = await (await lic.handleFleetLicenseFacts(req({ ...good, license_number: "c123-456-789", license_state: "fl" }), deps(db))).json();
+    expect(j.applied).toEqual(["dob", "license_expiration", "license_state"]);
+    expect(j.conflicts).toEqual([{ field: "license_number", on_file: "****9999", read: "******6789" }]);
+    const a = db.state.applications.find((x: Row) => x.id === A)!;
+    expect(a.license_number).toBe("Z9999999");
+    expect(a.license_state).toBe("FL");
+    expect(JSON.stringify(j)).not.toContain("C123456789");
+    const p = await srv.buildReviewPacket(db, A, { now: NOW });
+    expect(p!.license_reading!.license_number_masked).toBe("******6789");
+  });
   test("an expired license read off the photo becomes a hard blocker; under 25 escalates", async () => {
     const db = fakeDb(seed());
     const j = await (await lic.handleFleetLicenseFacts(req({ ...good, dob: "2003-06-01", license_expiration: "2026-10-01" }), deps(db))).json();

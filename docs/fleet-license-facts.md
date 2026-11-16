@@ -11,15 +11,21 @@ field rep confirms the license at pickup.
 ```json
 { "lead_id": "…", "document_id": "<license_front document id from the packet>",
   "dob": "1990-02-03", "license_expiration": "2029-05-01",
+  "license_number": "C123456789012", "license_state": "FL",
   "confidence": 0.95, "note": "optional", "idempotency_key": "license-<lead_id>-1" }
 ```
 
 1. Get the packet with `include_urls: true` and open the `license_front` URL (15 minutes).
-2. Send what you can read clearly. Either date may be left out. If you are not
+2. Send what you can read clearly. Any field may be left out. The license
+   number and issuing state are needed because the rental agreement prints
+   them (it names the only person allowed to drive) and the application never
+   asks for them; without them FLEET's agreement send is refused. If you are not
    sure of a date, leave it out (the applicant then goes to staff as today).
 3. Rules: `document_id` must be this applicant's current, not-rejected
    `license_front`. `dob` must be 16 to 100 years ago; `license_expiration`
-   between 2000 and 2100.
+   between 2000 and 2100; `license_number` 4-20 letters/digits (spaces and dashes
+   dropped); `license_state` a two-letter US code. The license number is never
+   returned in full (masked to the last 4).
 4. A date is copied onto the application only into an empty field or one an
    earlier FLEET reading filled. A value staff or the applicant entered is
    never overwritten: it comes back in `conflicts`, and FLEET sends `needs_staff`.
