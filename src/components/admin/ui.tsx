@@ -267,7 +267,8 @@ export function MetricCard({
 export type LifecycleStage = {
   key: string;
   label: string;
-  state: "done" | "current" | "upcoming";
+  /** "open": not complete, but the applicant has moved past it (never checked). */
+  state: "done" | "current" | "upcoming" | "open";
 };
 
 export function LifecycleRail({
@@ -279,6 +280,7 @@ export function LifecycleRail({
   onStageClick,
   evidenceTones,
   stageCheckoffs,
+  stageNotes,
 }: {
   stages: LifecycleStage[];
   percent?: number;
@@ -291,7 +293,10 @@ export function LifecycleRail({
   evidenceTones?: Partial<Record<string, EvidenceTone>>;
   /** In-place receipt controls are separate from stage navigation. */
   stageCheckoffs?: Partial<Record<string, { onToggle: () => void; disabled: boolean; checked: boolean; label: string; title: string }>>;
+  /** Who completed a stage when it was not staff, e.g. "By FLEET" (from the audit log). */
+  stageNotes?: Partial<Record<string, { caption: string; title: string }>>;
 }) {
+  const openStages = stages.filter((s) => s.state === "open");
   const foundCurrent = stages.findIndex((s) => s.state === "current");
   const currentIdx = foundCurrent >= 0 ? foundCurrent : Math.max(0, stages.length - 1);
   const current = stages[currentIdx] ?? stages[stages.length - 1];
@@ -309,6 +314,11 @@ export function LifecycleRail({
               </span>
             )}
           </div>
+          {openStages.length > 0 && (
+            <div className="text-[12px] text-warning-foreground mt-0.5 truncate" title="These steps are not done yet. They do not hold up the next step.">
+              Still Open: {openStages.map((s) => s.label).join(", ")}
+            </div>
+          )}
           {blocker && (
             <div className="text-[12px] text-destructive mt-0.5 truncate">Blocker: {blocker}</div>
           )}
@@ -326,7 +336,9 @@ export function LifecycleRail({
         {stages.map((s, i) => {
           const done = s.state === "done";
           const cur = s.state === "current";
-          const evidenceTone = evidenceTones?.[s.key];
+          const isOpen = s.state === "open";
+          const note = stageNotes?.[s.key];
+          const evidenceTone = evidenceTones?.[s.key] ?? (isOpen ? "yellow" : undefined);
           const checkoff = stageCheckoffs?.[s.key];
           const marker = (
             <span
@@ -367,6 +379,11 @@ export function LifecycleRail({
                 >
                   {s.label}
                 </span>
+                {note && (
+                  <span className="text-[9px] font-medium text-muted-foreground whitespace-nowrap" title={note.title}>
+                    {note.caption}
+                  </span>
+                )}
               </StageWrap>
             </li>
           );
