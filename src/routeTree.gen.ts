@@ -51,10 +51,12 @@ import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/pu
 import { Route as ApiPublicFleetApplicantDecisionRouteImport } from './routes/api/public/fleet/applicant-decision'
 import { Route as ApiPublicFleetApplicantsRouteImport } from './routes/api/public/fleet/applicants'
 import { Route as ApiPublicFleetAssignVehicleRouteImport } from './routes/api/public/fleet/assign-vehicle'
+import { Route as ApiPublicFleetGpsReadingsRouteImport } from './routes/api/public/fleet/gps-readings'
 import { Route as ApiPublicFleetLicenseFactsRouteImport } from './routes/api/public/fleet/license-facts'
 import { Route as ApiPublicFleetPaymentTextPauseRouteImport } from './routes/api/public/fleet/payment-text-pause'
 import { Route as ApiPublicFleetPickupSlotsRouteImport } from './routes/api/public/fleet/pickup-slots'
 import { Route as ApiPublicFleetSendAgreementRouteImport } from './routes/api/public/fleet/send-agreement'
+import { Route as ApiPublicFleetTeamAlertRouteImport } from './routes/api/public/fleet/team-alert'
 import { Route as ApiPublicInboundEmailRouteImport } from './routes/api/public/inbound/email'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicResendWebhookRouteImport } from './routes/api/public/resend/webhook'
@@ -284,6 +286,12 @@ const ApiPublicFleetAssignVehicleRoute =
     path: '/api/public/fleet/assign-vehicle',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetGpsReadingsRoute =
+  ApiPublicFleetGpsReadingsRouteImport.update({
+    id: '/api/public/fleet/gps-readings',
+    path: '/api/public/fleet/gps-readings',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetLicenseFactsRoute =
   ApiPublicFleetLicenseFactsRouteImport.update({
     id: '/api/public/fleet/license-facts',
@@ -308,6 +316,11 @@ const ApiPublicFleetSendAgreementRoute =
     path: '/api/public/fleet/send-agreement',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetTeamAlertRoute = ApiPublicFleetTeamAlertRouteImport.update({
+  id: '/api/public/fleet/team-alert',
+  path: '/api/public/fleet/team-alert',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicInboundEmailRoute = ApiPublicInboundEmailRouteImport.update({
   id: '/api/public/inbound/email',
   path: '/api/public/inbound/email',
@@ -396,10 +409,12 @@ export interface FileRoutesByFullPath {
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/team-alert': typeof ApiPublicFleetTeamAlertRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -452,10 +467,12 @@ export interface FileRoutesByTo {
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/team-alert': typeof ApiPublicFleetTeamAlertRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -509,10 +526,12 @@ export interface FileRoutesById {
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/team-alert': typeof ApiPublicFleetTeamAlertRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -567,10 +586,12 @@ export interface FileRouteTypes {
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/license-facts'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/team-alert'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -623,10 +644,12 @@ export interface FileRouteTypes {
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/license-facts'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/team-alert'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -679,10 +702,12 @@ export interface FileRouteTypes {
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/license-facts'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/team-alert'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -736,10 +761,12 @@ export interface RootRouteChildren {
   ApiPublicFleetApplicantDecisionRoute: typeof ApiPublicFleetApplicantDecisionRoute
   ApiPublicFleetApplicantsRoute: typeof ApiPublicFleetApplicantsRoute
   ApiPublicFleetAssignVehicleRoute: typeof ApiPublicFleetAssignVehicleRoute
+  ApiPublicFleetGpsReadingsRoute: typeof ApiPublicFleetGpsReadingsRoute
   ApiPublicFleetLicenseFactsRoute: typeof ApiPublicFleetLicenseFactsRoute
   ApiPublicFleetPaymentTextPauseRoute: typeof ApiPublicFleetPaymentTextPauseRoute
   ApiPublicFleetPickupSlotsRoute: typeof ApiPublicFleetPickupSlotsRoute
   ApiPublicFleetSendAgreementRoute: typeof ApiPublicFleetSendAgreementRoute
+  ApiPublicFleetTeamAlertRoute: typeof ApiPublicFleetTeamAlertRoute
   ApiPublicInboundEmailRoute: typeof ApiPublicInboundEmailRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicResendWebhookRoute: typeof ApiPublicResendWebhookRoute
@@ -1046,6 +1073,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetAssignVehicleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/gps-readings': {
+      id: '/api/public/fleet/gps-readings'
+      path: '/api/public/fleet/gps-readings'
+      fullPath: '/api/public/fleet/gps-readings'
+      preLoaderRoute: typeof ApiPublicFleetGpsReadingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/license-facts': {
       id: '/api/public/fleet/license-facts'
       path: '/api/public/fleet/license-facts'
@@ -1072,6 +1106,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/fleet/send-agreement'
       fullPath: '/api/public/fleet/send-agreement'
       preLoaderRoute: typeof ApiPublicFleetSendAgreementRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fleet/team-alert': {
+      id: '/api/public/fleet/team-alert'
+      path: '/api/public/fleet/team-alert'
+      fullPath: '/api/public/fleet/team-alert'
+      preLoaderRoute: typeof ApiPublicFleetTeamAlertRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/inbound/email': {
@@ -1176,10 +1217,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicFleetApplicantDecisionRoute: ApiPublicFleetApplicantDecisionRoute,
   ApiPublicFleetApplicantsRoute: ApiPublicFleetApplicantsRoute,
   ApiPublicFleetAssignVehicleRoute: ApiPublicFleetAssignVehicleRoute,
+  ApiPublicFleetGpsReadingsRoute: ApiPublicFleetGpsReadingsRoute,
   ApiPublicFleetLicenseFactsRoute: ApiPublicFleetLicenseFactsRoute,
   ApiPublicFleetPaymentTextPauseRoute: ApiPublicFleetPaymentTextPauseRoute,
   ApiPublicFleetPickupSlotsRoute: ApiPublicFleetPickupSlotsRoute,
   ApiPublicFleetSendAgreementRoute: ApiPublicFleetSendAgreementRoute,
+  ApiPublicFleetTeamAlertRoute: ApiPublicFleetTeamAlertRoute,
   ApiPublicInboundEmailRoute: ApiPublicInboundEmailRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicResendWebhookRoute: ApiPublicResendWebhookRoute,

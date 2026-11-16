@@ -43,6 +43,10 @@ export type RoadsideKind = (typeof ROADSIDE_TYPES)[number]["kind"];
 
 const ROADSIDE_KINDS = new Set<string>(ROADSIDE_TYPES.map((t) => t.kind));
 
+export function isRoadsideKind(kind: string | null | undefined): boolean {
+  return ROADSIDE_KINDS.has(String(kind ?? "").trim().toLowerCase());
+}
+
 export function isPinnedIssue(issue: { kind?: string | null; severity?: string | null }): boolean {
   const kind = String(issue.kind ?? "").trim().toLowerCase();
   const severity = String(issue.severity ?? "").trim().toLowerCase();
