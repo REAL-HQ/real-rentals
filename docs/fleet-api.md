@@ -12,7 +12,7 @@ Base: `https://drivereal.com/api/public/fleet/`
 
 | endpoint | does | doc |
 |---|---|---|
-| `status` | read: whole-journey digest, one lead's journey and next step, a renter's balance | [fleet-status.md](fleet-status.md) |
+| `status` | read: whole-journey digest, one lead's journey and next step, lookup by any phone/email, a renter's balance | [fleet-status.md](fleet-status.md) |
 | `applicants` | read: review queue and one applicant's review packet | [fleet-applicant-review.md](fleet-applicant-review.md) |
 | `applicant-decision` | approve (no hard blockers) or needs_staff | [fleet-applicant-review.md](fleet-applicant-review.md) |
 | `license-facts` | save DOB / expiry / number / state read off the license photo (never "verified") | fleet-license-facts.md (PR 376) |

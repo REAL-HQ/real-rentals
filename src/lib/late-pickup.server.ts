@@ -164,13 +164,19 @@ export async function runLatePickups(admin: Admin, deps: LatePickupDeps = {}): P
     if (app && textingHours(now)) {
       const sendSms = deps.sendSms ?? (async (a: any) => (await import("@/lib/sms.server")).sendSms(a));
       const sendEmail = deps.sendEmail ?? (async (a: any) => (await import("@/lib/email.server")).sendEmail(a));
+      const { sendRenterSms, sendRenterEmail } = await import("@/lib/driver-contacts.server");
       const sms = latePickupSms({ time: d.pickupTime, feeKept });
-      const res = app.phone ? await sendSms({ to: app.phone, body: sms, kind: "late_pickup_release", applicationId: app.id, rentalId: r.id }) : { ok: false, skipped: true, reason: "no_phone" };
-      if (res?.ok) renter = "sms";
-      else if (res?.skipped && app.email) {
+      const fan = await sendRenterSms({ admin, applicationId: app.id, body: sms, kind: "late_pickup_release", rentalId: r.id, sendSms, app });
+      if (fan.sent > 0) renter = "sms";
+      else if (fan.skipped && app.email) {
         const first = String(app.full_name ?? "").trim().split(/\s+/)[0] || "there";
-        const e = await sendEmail({ to: app.email, ...latePickupEmail({ firstName: first, time: d.pickupTime, feeKept }), track: { workflow: "late_pickup_release" }, idempotencyKey: `late-release:${r.id}` });
-        renter = e?.ok ? "email" : "failed";
+        const mail = latePickupEmail({ firstName: first, time: d.pickupTime, feeKept });
+        const e = await sendRenterEmail({
+          admin, applicationId: app.id, subject: mail.subject, html: mail.html,
+          track: { workflow: "late_pickup_release" }, idempotencyKey: `late-release:${r.id}`,
+          sendEmail, app,
+        });
+        renter = e.sent > 0 ? "email" : "failed";
       } else renter = "failed";
     }
     await admin.from("renter_reminder_sends").update({ status: "released", channel: renter, detail: feeKept ? `fee kept $${feeKept}` : null }).eq("key", key);

@@ -132,20 +132,10 @@ export function normalizeQuoEvent(event: any, line: QuoLine): NormalizedQuoEvent
   };
 }
 
-/** Newest non-deleted application whose phone ends in the same 10 digits. */
+/** Newest non-deleted application whose primary or extra phone ends in the same 10 digits. */
 export async function matchLeadByPhone(admin: any, e164: string | null): Promise<string | null> {
-  const digits = String(e164 ?? "").replace(/\D/g, "").slice(-10);
-  if (digits.length !== 10) return null;
-  const { data } = await admin
-    .from("applications")
-    .select("id,phone,created_at,deleted_at,status")
-    .ilike("phone", `%${digits.slice(-4)}`)
-    .order("created_at", { ascending: false })
-    .limit(50);
-  const hit = (Array.isArray(data) ? data : []).find(
-    (a: any) => !a.deleted_at && a.status !== "duplicate" && String(a.phone ?? "").replace(/\D/g, "").slice(-10) === digits,
-  );
-  return hit ? String(hit.id) : null;
+  const { matchLeadByPhone: match } = await import("@/lib/driver-contacts.server");
+  return match(admin, e164);
 }
 
 export function fleetPayloadForQuo(ev: NormalizedQuoEvent, leadId: string | null, receivedAt: string) {

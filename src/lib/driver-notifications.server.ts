@@ -212,18 +212,32 @@ export async function deliverDriverNoticeChannels(
   if (notice.email) {
     try {
       const sendEmail = deps.sendEmail ?? (await import("@/lib/email.server")).sendEmail;
-      const r = await sendEmail({
-        to: notice.email,
-        subject: notice.emailSubject,
-        html: notice.emailHtml,
-        noticeTimeout: true,
-        signal: deps.signal,
-      });
-      if (!r.ok) {
-        console.error("[driver-notifications] email failed", notice.kind, r.error ?? "not sent");
-        result.email = "failed";
+      if (notice.applicationId) {
+        const { sendRenterEmail } = await import("@/lib/driver-contacts.server");
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const mail = await sendRenterEmail({
+          admin: supabaseAdmin,
+          applicationId: notice.applicationId,
+          subject: notice.emailSubject,
+          html: notice.emailHtml,
+          sendEmail: (a) => sendEmail({ ...a, noticeTimeout: true, signal: deps.signal }),
+          app: { email: notice.email },
+        });
+        result.email = mail.sent > 0 ? "sent" : mail.targets.length ? "failed" : "skipped";
       } else {
-        result.email = "sent";
+        const r = await sendEmail({
+          to: notice.email,
+          subject: notice.emailSubject,
+          html: notice.emailHtml,
+          noticeTimeout: true,
+          signal: deps.signal,
+        });
+        if (!r.ok) {
+          console.error("[driver-notifications] email failed", notice.kind, r.error ?? "not sent");
+          result.email = "failed";
+        } else {
+          result.email = "sent";
+        }
       }
     } catch (err) {
       if (deps.signal?.aborted) return result;
@@ -236,16 +250,19 @@ export async function deliverDriverNoticeChannels(
   if (notice.phone && notice.applicationId) {
     try {
       const sendSms = deps.sendSms ?? (await import("@/lib/sms.server")).sendSms;
-      const sms = await sendSms({
-        to: notice.phone,
+      const { sendRenterSms } = await import("@/lib/driver-contacts.server");
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const texts = await sendRenterSms({
+        admin: supabaseAdmin,
+        applicationId: notice.applicationId,
         body: notice.smsBody,
         kind: notice.kind,
-        applicationId: notice.applicationId,
         rentalId: notice.rentalId,
         noticeTimeout: true,
-        signal: deps.signal,
+        sendSms: (a) => sendSms({ ...a, signal: deps.signal }),
+        app: { phone: notice.phone },
       });
-      result.sms = sms.ok ? "sent" : sms.skipped ? "skipped" : "failed";
+      result.sms = texts.sent > 0 ? "sent" : texts.targets.some((t) => t.canText) ? "failed" : "skipped";
     } catch (err) {
       if (deps.signal?.aborted) return result;
       console.error("[driver-notifications] sms failed", notice.kind, err);

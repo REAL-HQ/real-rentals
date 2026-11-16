@@ -39,14 +39,11 @@ export async function processInboundSms(args: InboundSmsArgs): Promise<InboundSm
     sent_at: new Date().toISOString(),
   });
 
-  // Match the number back to applications so we can act on their record.
-  const digits = from.replace(/^\+1/, "");
-  const { data: apps } = await supabaseAdmin
-    .from("applications")
-    .select("id,phone")
-    .ilike("phone", `%${digits.slice(-10)}%`)
-    .limit(10);
-  const appIds = (apps ?? []).map((a: any) => a.id as string);
+  // Match the number back to applications (primary or any extra contact).
+  const { findApplicationsByPhone, recordContactSmsConsent, isPrimaryPhone } = await import("@/lib/driver-contacts.server");
+  const matchedApps = await findApplicationsByPhone(supabaseAdmin, from);
+  const apps = matchedApps.map((a) => ({ id: a.id, phone: a.phone }));
+  const appIds = apps.map((a) => a.id);
 
   // Thread every inbound text into the staff Messages conversation for the
   // matched person (most recent application wins when duplicates exist).
@@ -67,11 +64,17 @@ export async function processInboundSms(args: InboundSmsArgs): Promise<InboundSm
     await supabaseAdmin
       .from("sms_opt_outs")
       .upsert({ phone: from, reason: "inbound STOP" }, { onConflict: "phone" });
-    if (appIds.length) {
+    // Opt-out is per number. STOP on the primary still opts the application
+    // out and cancels automations. STOP on an extra only blocks that number.
+    const primaryIds = apps.filter((a) => isPrimaryPhone(a, from)).map((a) => a.id);
+    for (const id of appIds) {
+      await recordContactSmsConsent(supabaseAdmin, id, from, "stop");
+    }
+    if (primaryIds.length) {
       await supabaseAdmin
         .from("applications")
         .update({ sms_opt_out_at: new Date().toISOString(), sms_consent: false })
-        .in("id", appIds);
+        .in("id", primaryIds);
       await supabaseAdmin
         .from("automation_enrollments")
         .update({
@@ -79,7 +82,7 @@ export async function processInboundSms(args: InboundSmsArgs): Promise<InboundSm
           cancelled_reason: "recipient replied STOP",
           next_run_at: null,
         })
-        .in("application_id", appIds)
+        .in("application_id", primaryIds)
         .eq("status", "active");
     }
     // The provider (Twilio Advanced Opt-Out / Quo) confirms STOP itself; stay silent.
@@ -88,7 +91,14 @@ export async function processInboundSms(args: InboundSmsArgs): Promise<InboundSm
 
   if (intent === "start") {
     await supabaseAdmin.from("sms_opt_outs").delete().eq("phone", from);
-    if (appIds.length) {
+    const primaryIds = apps.filter((a) => isPrimaryPhone(a, from)).map((a) => a.id);
+    for (const id of appIds) {
+      await recordContactSmsConsent(supabaseAdmin, id, from, "start");
+    }
+    // START on the primary restores application-level consent. START on an
+    // extra records consent for that number only and does not overwrite
+    // the primary's consent evidence.
+    if (primaryIds.length) {
       await supabaseAdmin
         .from("applications")
         .update({
@@ -102,7 +112,7 @@ export async function processInboundSms(args: InboundSmsArgs): Promise<InboundSm
           sms_consent_phone: from,
           sms_consent_page: null,
         } as any)
-        .in("id", appIds);
+        .in("id", primaryIds);
     }
     return { intent };
   }

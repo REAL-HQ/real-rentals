@@ -24,6 +24,13 @@ export function fakeDb(seed: Record<string, Row[]>, opts: { unique?: Record<stri
       lt: (c: string, v: any) => { f.push((r) => r[c] != null && String(r[c]) < String(v)); return q; },
       lte: (c: string, v: any) => { f.push((r) => r[c] != null && String(r[c]) <= String(v)); return q; },
       in: (c: string, v: any[]) => { f.push((r) => v.includes(r[c])); return q; },
+      ilike: (c: string, v: any) => {
+        const raw = String(v ?? "");
+        const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".");
+        const re = new RegExp(`^${escaped}$`, "i");
+        f.push((r) => re.test(String(r[c] ?? "")));
+        return q;
+      },
       not: (c: string, o: string, v: string) => {
         if (o === "in") { const list = v.replace(/^\(|\)$/g, "").split(","); f.push((r) => !list.includes(String(r[c]))); }
         else if (o === "is") f.push((r) => (r[c] ?? null) !== null);

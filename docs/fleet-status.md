@@ -47,6 +47,29 @@ One renter's journey:
   email and text delivery status), `rental`, `balance` (as below),
   `needs_staff`, `bot_pause`, `last_inbound` (last Quo event), `last_outbound`.
 
+`phone` and `email` are the primary contacts. `contacts` lists every phone and email on the profile:
+
+```json
+"contacts": {
+  "phones": [
+    { "value": "+15550100000", "label": null, "is_primary": true, "receives_messages": true, "sms_ok": true, "sms_reason": null }
+  ],
+  "emails": [
+    { "value": "driver@example.com", "label": null, "is_primary": true, "receives_messages": true }
+  ]
+}
+```
+
+`sms_ok` is true only when that exact number can be texted (consent + not opted out). Extra numbers are opted in for messages only when staff turns "also send messages here" on, and they get texts only with consent coverage for that number.
+
+## `{ "action": "lookup", "phone": "…" }` (or `"email"`)
+
+Match a driver by any phone or email on file, including extras. Reply:
+
+`lead_id, name, phone, email, stage, matched { kind, value, is_primary }, contacts`
+
+`phone` / `email` on the reply are still the primary. `matched` is the contact that hit.
+
 ## `{ "action": "balance", "rental_id": "…" }` (or `"lead_id"`)
 
 With `lead_id` the active rental is used, else the newest one.
@@ -61,5 +84,5 @@ nothing. Overdue means due before today's Eastern date.
 Charging, waiving and payment deals stay with staff. A deal's text pause is
 `/api/public/fleet/payment-text-pause`.
 
-Errors: `400` (bad action or id), `401`, `404`, `405` (not POST), `503`
+Errors: `400` (bad action, id, or a lookup with no phone/email), `401`, `404`, `405` (not POST), `503`
 (key not configured or a read failed).

@@ -119,6 +119,10 @@ describe("lead payload", () => {
     const p = await fw.buildLeadPayload(db, { event: "stage_changed", applicationId: APP, stage: "reviewing", previousStage: "new" });
     expect(p).toEqual({
       event: "stage_changed", lead_id: APP, name: "Jordan Test", phone: "+18135550142", email: "jordan@example.com",
+      contacts: {
+        phones: [{ value: "+18135550142", label: null, is_primary: true, receives_messages: true, sms_ok: true, sms_reason: null }],
+        emails: [{ value: "jordan@example.com", label: null, is_primary: true, receives_messages: true }],
+      },
       stage: "reviewing", previous_stage: "new", current_stage: "reviewing",
       sms_consent: true, consent_timestamp: "2026-11-14T15:00:00.000Z", source: "homepage",
       docs: { received: ["license_front", "gig_profile_screenshot", "home_address"], missing: [], optional_missing: ["income"] },

@@ -4,6 +4,7 @@
  *   POST /api/public/fleet/status   (Bearer FLEET_API_KEY, JSON)
  *     { "action": "digest" }                         queues across the whole journey
  *     { "action": "lead", "lead_id": "…" }           one renter's journey + next step
+ *     { "action": "lookup", "phone"|"email": "…" }   match a driver by any contact
  *     { "action": "balance", "rental_id"|"lead_id" } what a renter owes, row by row
  *
  * Read-only. Writes nothing, sends nothing, mints no links. Every "next step"
@@ -13,6 +14,7 @@
  * See docs/fleet-status.md.
  */
 import { cleanText, fleetAdmin, fleetJson, fleetRequestBody, tableMissing, UUID_RE, type FleetDeps } from "@/lib/fleet-api.server";
+import { fleetContactsFor, lookupLeadByContact } from "@/lib/driver-contacts.server";
 import { missingItems, type MissingItemKey } from "@/lib/missing-items";
 import { readReservationDetails } from "@/lib/reservations";
 
@@ -31,7 +33,7 @@ export type NextStep = { step: string; owner: Owner; detail: string; api: string
 
 const APP_COLS =
   "id,full_name,email,phone,status,created_at,updated_at,contacted_at,reviewed_at,vehicle_id,weekly_rent,deposit_amount,deposit_status,deposit_paid," +
-  "contract_start_date,pickup_date,pickup_time,background_check_status,insurance_status,card_on_file_at,card_last4,sms_consent,sms_opt_out_at," +
+  "contract_start_date,pickup_date,pickup_time,background_check_status,insurance_status,card_on_file_at,card_last4,sms_consent,sms_opt_out_at,sms_consent_phone," +
   "license_photo_url,profile_screenshot_url,income_proof_url,vehicle_size,expected_duration,gig_status,drive_type,deleted_at,primary_application_id,legal_hold";
 const AGR_COLS = "id,application_id,rental_id,status,sent_at,viewed_at,signed_at,voided_at,token_expires_at,email_status,sms_status,created_at";
 const RENTAL_COLS =
@@ -195,11 +197,13 @@ export async function leadStatus(admin: Admin, leadId: string, now: Date) {
   const rentalPayments = j.rental ? arr(payments).filter((p) => !p.rental_id || p.rental_id === j.rental!.id) : arr(payments);
   const lastIn = arr(quoIn)[0] ?? null;
   const lastOut = arr(outMsg)[0] ?? null;
+  const contacts = await fleetContactsFor(admin, leadId, app);
   return {
     lead_id: app.id,
     name: app.full_name ?? null,
     email: app.email ?? null,
     phone: app.phone ?? null,
+    contacts,
     stage: app.status,
     applied_at: app.created_at ?? null,
     sms_ok: app.sms_consent === true && !app.sms_opt_out_at,
@@ -372,6 +376,11 @@ export async function handleFleetStatus(request: Request, deps: FleetDeps = {}):
       if (!lead) return fleetJson(404, { ok: false, error: "Lead not found." });
       return fleetJson(200, { ok: true, lead });
     }
+    if (action === "lookup") {
+      const found = await lookupLeadByContact(admin, body);
+      if (found.status !== 200) return fleetJson(found.status, { ok: false, error: found.error });
+      return fleetJson(200, { ok: true, ...found.body });
+    }
     if (action === "balance") {
       const r = await rentalBalance(admin, { rental_id: body.rental_id, lead_id: body.lead_id }, now);
       if (r.status !== 200) return fleetJson(r.status, { ok: false, error: r.error });
@@ -382,5 +391,5 @@ export async function handleFleetStatus(request: Request, deps: FleetDeps = {}):
     console.error("[fleet-status] read failed", String((e as Error)?.message ?? e));
     return fleetJson(503, { ok: false, error: "Could not read status." });
   }
-  return fleetJson(400, { ok: false, error: "action must be digest, lead or balance." });
+  return fleetJson(400, { ok: false, error: "action must be digest, lead, lookup or balance." });
 }

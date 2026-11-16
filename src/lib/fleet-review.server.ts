@@ -34,6 +34,8 @@ import {
   type FleetDoc,
 } from "@/lib/fleet-review";
 import { computeReadiness } from "@/lib/readiness";
+import { fleetContactsFor, listDriverContacts } from "@/lib/driver-contacts.server";
+import { last10Digits, normalizeDriverEmail } from "@/lib/driver-contacts";
 import { readRentidSettings } from "@/lib/fleet-rentid.server";
 
 type Admin = any;
@@ -84,12 +86,47 @@ function digits(p: unknown): string {
 }
 
 async function priorDeclinedCount(admin: Admin, app: Record<string, any>): Promise<number> {
-  const phone = digits(app.phone);
-  const email = String(app.email ?? "").trim().toLowerCase();
-  if (phone.length !== 10 && !email) return 0;
+  const phones = new Set<string>();
+  const emails = new Set<string>();
+  const p = last10Digits(app.phone) ?? (digits(app.phone).length === 10 ? digits(app.phone) : "");
+  if (p) phones.add(p);
+  const e = normalizeDriverEmail(app.email);
+  if (e) emails.add(e);
+  try {
+    for (const c of await listDriverContacts(admin, app.id)) {
+      if (c.kind === "phone") {
+        const d = last10Digits(c.value);
+        if (d) phones.add(d);
+      } else {
+        const v = normalizeDriverEmail(c.value);
+        if (v) emails.add(v);
+      }
+    }
+  } catch {
+    // table missing or unreadable: fall through with the primary only
+  }
+  if (!phones.size && !emails.size) return 0;
   const res = await admin.from("applications").select("id,phone,email,status").in("status", ["declined", "closed"]).limit(1000);
   if (res.error) return 0;
-  return (res.data ?? []).filter((r: any) => r.id !== app.id && ((phone.length === 10 && digits(r.phone) === phone) || (email && String(r.email ?? "").trim().toLowerCase() === email))).length;
+  const hits = new Set<string>();
+  for (const r of (res.data ?? []) as any[]) {
+    if (r.id === app.id) continue;
+    if ((last10Digits(r.phone) && phones.has(last10Digits(r.phone)!)) || (normalizeDriverEmail(r.email) && emails.has(normalizeDriverEmail(r.email)!))) {
+      hits.add(r.id);
+    }
+  }
+  const ids = ((res.data ?? []) as any[]).map((r) => r.id).filter((id: string) => id !== app.id);
+  if (ids.length) {
+    const extra = await admin.from("driver_contacts").select("application_id,kind,value").in("application_id", ids);
+    if (!extra.error) {
+      for (const c of (extra.data ?? []) as any[]) {
+        if (c.application_id === app.id) continue;
+        if (c.kind === "phone" && last10Digits(c.value) && phones.has(last10Digits(c.value)!)) hits.add(c.application_id);
+        if (c.kind === "email" && normalizeDriverEmail(c.value) && emails.has(normalizeDriverEmail(c.value)!)) hits.add(c.application_id);
+      }
+    }
+  }
+  return hits.size;
 }
 
 /** Everything FLEET needs to decide one applicant. Null when not found. */
@@ -135,11 +172,13 @@ export async function buildReviewPacket(admin: Admin, leadId: string, opts: { in
 
   const { license_number, insurance_carrier, insurance_doc_url, profile_screenshot_url, trip_screenshots, ...answers } = app;
   const tripShots = Array.isArray(trip_screenshots) ? trip_screenshots.length : 0;
+  const contacts = await fleetContactsFor(admin, leadId, app);
   return {
     lead_id: app.id,
     name: app.full_name ?? null,
     status: app.status ?? null,
     admin_url: adminUrlFor(app.id),
+    contacts,
     answers: { ...answers, license_number_masked: maskLicense(license_number) },
     documents,
     // What FLEET read off the license photo (label "Read by FLEET from license
@@ -473,6 +512,7 @@ export async function sweepReadyForReview(admin: Admin, opts: { now?: Date; wind
         name: app.full_name ?? null,
         phone: toE164(app.phone),
         email: app.email ?? null,
+        contacts: await fleetContactsFor(admin, app.id, app),
         stage: app.status,
         applied_at: app.created_at ?? null,
         ready_at: now.toISOString(),

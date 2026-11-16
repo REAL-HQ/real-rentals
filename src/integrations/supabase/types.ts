@@ -1767,6 +1767,56 @@ export type Database = {
           },
         ]
       }
+      driver_contacts: {
+        Row: {
+          application_id: string
+          consented_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_primary: boolean
+          kind: string
+          label: string | null
+          receives_messages: boolean
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          application_id: string
+          consented_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_primary?: boolean
+          kind: string
+          label?: string | null
+          receives_messages?: boolean
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          application_id?: string
+          consented_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_primary?: boolean
+          kind?: string
+          label?: string | null
+          receives_messages?: boolean
+          updated_at?: string
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_contacts_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       driver_screenings: {
         Row: {
           accidents_last_3yr: number | null
