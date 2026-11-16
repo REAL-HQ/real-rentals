@@ -54,12 +54,15 @@ describe("computeJourney next step", () => {
     expect(r.next.detail).toContain("6h ago");
     const signed = [{ id: "a1", status: "signed", sent_at: "2026-11-16T09:00:00Z", signed_at: "2026-11-16T10:00:00Z", created_at: "2026-11-16T09:00:00Z" }];
     expect(j(withCar, { agreements: signed }).next.step).toBe("book_pickup");
-    const booked = { ...withCar, pickup_time: "09:30", card_on_file_at: "2026-11-16T10:00:00Z" };
-    const rentals = [{ id: R3, status: "reserved", reservation_deposit_required: true, reservation_deposit_status: "pending", created_at: "2026-11-16T10:00:00Z" }];
+    const booked = { ...withCar, card_on_file_at: "2026-11-16T10:00:00Z" };
+    const note = JSON.stringify({ reservation_details: 1, pickup_time: "09:30", pickup_location: "3500 E Hillsborough Ave, Tampa, FL 33610" });
+    const rentals = [{ id: R3, status: "reserved", start_date: "2026-11-18", reservation_note: note, reservation_deposit_required: true, reservation_deposit_status: "pending", created_at: "2026-11-16T10:00:00Z" }];
     expect(j(booked, { agreements: signed, rentals }).next.step).toBe("reservation_fee");
     const paid = [{ ...rentals[0], reservation_deposit_status: "paid" }];
     const done = j(booked, { agreements: signed, rentals: paid });
     expect(done.next).toMatchObject({ step: "pickup", owner: "staff" });
+    expect(done.next.detail).toContain("2026-11-18 09:30");
+    expect(done.steps.pickup_booked).toMatchObject({ done: true, date: "2026-11-18", time: "09:30", requested_date: "2026-11-18" });
     expect(done.steps.insurance.owner).toBe("staff");
   });
   test("voided agreements are ignored", () => {
@@ -102,7 +105,7 @@ function seed() {
     ],
     documents: docs(L1, ["license_front"]),
     agreements: [{ id: "ag2", application_id: L2, status: "sent", sent_at: "2026-11-15T15:00:00Z", created_at: "2026-11-15T15:00:00Z", voided_at: null, email_status: "sent", sms_status: "not_attempted" }],
-    rentals: [{ id: R3, application_id: L3, status: "active", start_date: "2026-11-01", end_date: "2027-02-01", autopay_active: false, payment_status: "past_due", weekly_rate: 300, created_at: "2026-11-01T00:00:00Z" }],
+    rentals: [{ id: "r-res", application_id: L2, status: "reserved", start_date: "2026-11-17", reservation_note: JSON.stringify({ reservation_details: 1, pickup_time: "10:30" }), created_at: "2026-11-16T00:00:00Z" }, { id: R3, application_id: L3, status: "active", start_date: "2026-11-01", end_date: "2027-02-01", autopay_active: false, payment_status: "past_due", weekly_rate: 300, created_at: "2026-11-01T00:00:00Z" }],
     payments: [
       { id: "p1", driver_id: L3, rental_id: R3, type: "rent", status: "failed", amount: 300, late_fees: 150, due_date: "2026-11-12", last_attempt_at: "2026-11-12T13:00:00Z" },
       { id: "p0", driver_id: L3, rental_id: R3, type: "rent", status: "paid", amount: 300, due_date: "2026-11-05" },
@@ -133,6 +136,7 @@ describe("endpoint", () => {
     expect(digest.queues.agreements_unsigned.agreements[0]).toMatchObject({ agreement_id: "ag2", hours_since_sent: 24 });
     expect(digest.rentals.past_due.rentals[0]).toMatchObject({ rental_id: R3, overdue_owed: 450, late_fees_owed: 150 });
     expect(digest.rentals.failed_payments_7d).toBe(1);
+    expect(digest.queues.pickups_next_2_days.pickups).toEqual([{ lead_id: L2, name: "Test 2222", date: "2026-11-17", time: "10:30", rental_id: "r-res" }]);
     expect(digest.staff_actions.map((a: any) => a.kind)).toContain("insurance_verification");
     expect(JSON.stringify(digest)).not.toMatch(/"phone"/);
     expect(JSON.stringify(db.state)).toBe(before); // read-only

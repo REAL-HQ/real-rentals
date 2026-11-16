@@ -14,6 +14,7 @@
  */
 import { cleanText, fleetAdmin, fleetJson, fleetRequestBody, tableMissing, UUID_RE, type FleetDeps } from "@/lib/fleet-api.server";
 import { missingItems, type MissingItemKey } from "@/lib/missing-items";
+import { readReservationDetails } from "@/lib/reservations";
 
 type Admin = any;
 const SITE = () => String(process.env.SITE_URL || "https://drivereal.com").replace(/\/$/, "");
@@ -35,7 +36,7 @@ const APP_COLS =
 const AGR_COLS = "id,application_id,rental_id,status,sent_at,viewed_at,signed_at,voided_at,token_expires_at,email_status,sms_status,created_at";
 const RENTAL_COLS =
   "id,application_id,vehicle_id,status,start_date,end_date,weekly_rate,autopay_active,payment_status,card_last4,card_on_file_at,next_payment_due," +
-  "reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,balance_due_cents,created_at";
+  "reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,balance_due_cents,reservation_note,created_at";
 const PAY_COLS = "id,driver_id,rental_id,type,amount,late_fees,balance_due,due_date,paid_date,status,failure_reason,attempt_count,last_attempt_at,stripe_hosted_invoice_url,created_at";
 
 const easternDate = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(d);
@@ -114,7 +115,12 @@ export function computeJourney(i: JourneyInput) {
   const rental = active ?? reserved ?? rentals[0] ?? null;
   const fee = reservationFeeState(app, reserved ?? active, i.payments);
   const cardOnFile = !!(app.card_on_file_at || rental?.card_on_file_at);
-  const pickupBooked = !!(reserved && app.pickup_date && app.pickup_time);
+  // A booked pickup is a Reserved rental: its start_date is the pickup day and the
+  // time lives in reservation_note (reservations.ts). applications.pickup_date is
+  // only the day the applicant asked for on the form.
+  const pickupBooked = !!reserved;
+  const pickupDate: string | null = reserved?.start_date ?? null;
+  const pickupTime: string | null = reserved ? readReservationDetails(reserved.reservation_note).pickupTime : null;
 
   const steps = {
     applied: { done: true, at: app.created_at ?? null },
@@ -125,7 +131,7 @@ export function computeJourney(i: JourneyInput) {
     agreement_sent: { done: !!agreement?.sent_at, at: agreement?.sent_at ?? null },
     agreement_signed: { done: !!signed, at: signed?.signed_at ?? null },
     reservation_fee: { done: fee === "paid" || fee === "waived" || fee === "not_required", state: fee },
-    pickup_booked: { done: pickupBooked, date: app.pickup_date ?? null, time: app.pickup_time ?? null },
+    pickup_booked: { done: pickupBooked, date: pickupDate, time: pickupTime, requested_date: app.pickup_date ?? null },
     card_on_file: { done: cardOnFile, last4: app.card_last4 ?? rental?.card_last4 ?? null },
     insurance: { done: String(app.insurance_status ?? "").toLowerCase() === "verified", status: app.insurance_status ?? null, owner: "staff" as const },
     active: { done: !!active, rental_id: active?.id ?? null, since: active?.start_date ?? null },
@@ -149,7 +155,7 @@ export function computeJourney(i: JourneyInput) {
     if (!pickupBooked) return { step: "book_pickup", owner: "fleet", detail: "Signed; no pickup booked.", api: "POST /api/public/fleet/pickup-slots" };
     if (fee === "due") return { step: "reservation_fee", owner: "renter", detail: "Reservation fee not paid yet.", api: null };
     if (!cardOnFile) return { step: "card_on_file", owner: "renter", detail: "No card on file.", api: null };
-    return { step: "pickup", owner: "staff", detail: `Field rep hands over the car ${app.pickup_date} ${app.pickup_time} (pickup checklist, then activation).`, api: null };
+    return { step: "pickup", owner: "staff", detail: `Field rep hands over the car ${pickupDate ?? "?"} ${pickupTime ?? ""} (pickup checklist, then activation).`, api: null };
   })();
 
   return { steps, next, agreement, rental, reservation_fee: fee };
@@ -254,7 +260,7 @@ export async function fleetDigest(admin: Admin, now: Date) {
   const since24 = new Date(now.getTime() - 86400_000).toISOString();
   const since7d = new Date(now.getTime() - 7 * 86400_000).toISOString();
   const [appsRes, agrRes, rentRes, payRes, nsRes, whRes] = await Promise.all([
-    admin.from("applications").select("id,full_name,status,vehicle_id,pickup_date,pickup_time,created_at,insurance_status,primary_application_id").in("status", [...OPEN_STAGES, "active"]).is("deleted_at", null).limit(2000),
+    admin.from("applications").select("id,full_name,status,vehicle_id,created_at,insurance_status,primary_application_id").in("status", [...OPEN_STAGES, "active"]).is("deleted_at", null).limit(2000),
     admin.from("agreements").select(AGR_COLS).in("status", [...OPEN_AGREEMENT, "signed"]).is("voided_at", null).limit(2000),
     admin.from("rentals").select(RENTAL_COLS).in("status", ["active", "reserved", "pending", "upcoming", "closed"]).limit(2000),
     admin.from("payments").select(PAY_COLS).not("status", "in", `(${SETTLED_PAYMENT.join(",")})`).limit(2000),
@@ -281,9 +287,10 @@ export async function fleetDigest(admin: Admin, now: Date) {
   const unsigned = agreements.filter((g) => OPEN_AGREEMENT.includes(g.status) && byId.has(g.application_id));
   const signedIds = new Set(agreements.filter((g) => g.status === "signed").map((g) => g.application_id));
   const signedNoPickup = approved.filter((a) => signedIds.has(a.id) && !reservedBy.has(a.id));
-  const pickups = approved
-    .filter((a) => reservedBy.has(a.id) && a.pickup_date && a.pickup_date >= today && a.pickup_date <= in2)
-    .sort((x, y) => `${x.pickup_date} ${x.pickup_time}`.localeCompare(`${y.pickup_date} ${y.pickup_time}`));
+  const pickups = rentals
+    .filter((r) => ["reserved", "pending", "upcoming"].includes(r.status) && r.start_date && r.start_date >= today && r.start_date <= in2)
+    .map((r) => ({ r, time: readReservationDetails(r.reservation_note).pickupTime }))
+    .sort((x, y) => `${x.r.start_date} ${x.time ?? ""}`.localeCompare(`${y.r.start_date} ${y.time ?? ""}`));
 
   const payments = arr(payRes);
   const active = rentals.filter((r) => r.status === "active");
@@ -330,7 +337,7 @@ export async function fleetDigest(admin: Admin, now: Date) {
         agreements: cap(unsigned.map((g) => ({ agreement_id: g.id, lead_id: g.application_id, name: name(g.application_id), status: g.status, hours_since_sent: hoursSince(g.sent_at, now), email_status: g.email_status ?? null, sms_status: g.sms_status ?? null }))),
       },
       signed_no_pickup: { count: signedNoPickup.length, leads: cap(signedNoPickup.map((a) => ({ lead_id: a.id, name: a.full_name }))) },
-      pickups_next_2_days: { count: pickups.length, pickups: cap(pickups.map((a) => ({ lead_id: a.id, name: a.full_name, date: a.pickup_date, time: a.pickup_time, rental_id: reservedBy.get(a.id)?.id ?? null }))) },
+      pickups_next_2_days: { count: pickups.length, pickups: cap(pickups.map((p) => ({ lead_id: p.r.application_id ?? null, name: name(p.r.application_id), date: p.r.start_date, time: p.time, rental_id: p.r.id }))) },
     },
     rentals: {
       active: active.length,
