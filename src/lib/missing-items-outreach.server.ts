@@ -96,6 +96,33 @@ async function readIn(admin: any, table: string, cols: string, field: string, id
   return rows;
 }
 
+/** Common misspellings of big mail domains, plus reserved test domains. These never deliver. */
+const UNDELIVERABLE_DOMAINS = new Set([
+  "gkail.com", "gmail.vom", "gmail.con", "gmail.co", "gmial.com", "gmai.com", "gamil.com", "gnail.com", "fmail.com",
+  "yaho.com", "yahoo.con", "hotmal.com", "hotmail.con", "outlok.com", "icloud.con",
+]);
+
+export function isSuppressedEmail(raw: unknown, bad: ReadonlySet<string>): boolean {
+  const e = String(raw ?? "").trim().toLowerCase();
+  const dom = e.split("@")[1] ?? "";
+  if (!dom) return false;
+  if (bad.has(e)) return true;
+  if (UNDELIVERABLE_DOMAINS.has(dom)) return true;
+  return dom.endsWith(".invalid") || dom.endsWith(".test");
+}
+
+/** Recipients with a bounced or complained delivery on record. Fails open to an empty set (the provider still bounces). */
+async function loadSuppressedEmails(admin: any): Promise<Set<string>> {
+  try {
+    const { data, error } = await admin.from("email_deliveries").select("recipient").in("state", ["bounced", "complained"]).limit(5000);
+    if (error) throw new Error(error.message);
+    return new Set((data ?? []).map((r: any) => String(r.recipient ?? "").trim().toLowerCase()).filter(Boolean));
+  } catch (err) {
+    console.error("[missing-items] could not read bounced emails", err);
+    return new Set();
+  }
+}
+
 export function easternHour(at: Date): number {
   return Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }).format(at));
 }
@@ -160,6 +187,9 @@ export async function runMissingItemsOutreach(
         admin.from("sms_opt_outs").select("phone").limit(5000).then((r: any) => { if (r.error) throw new Error(r.error.message); return r.data ?? []; }),
       ])
     : [[], [], [], [], [], []];
+  // Addresses that already bounced or complained. Mailing them again hurts the
+  // sender's reputation for everyone, so their email is dropped (texts still go).
+  const badEmails = ids.length ? await loadSuppressedEmails(admin) : new Set<string>();
 
   const by = <T extends Record<string, any>>(rows: T[], k: string) => {
     const m = new Map<string, T[]>();
@@ -194,7 +224,13 @@ export async function runMissingItemsOutreach(
       summary.skipped[d.reason] = (summary.skipped[d.reason] ?? 0) + 1;
       continue;
     }
-    plan.push({ app, items, step: d.step, key: d.key, email: d.email, sms: d.sms });
+    let email = d.email;
+    if (email && isSuppressedEmail(app.email, badEmails)) {
+      email = false;
+      summary.skipped.email_suppressed = (summary.skipped.email_suppressed ?? 0) + 1;
+      if (!d.sms) continue;
+    }
+    plan.push({ app, items, step: d.step, key: d.key, email, sms: d.sms });
   }
   summary.eligible = plan.length;
   const cap = Math.max(1, Math.min(opts.limit ?? (opts.mode === "ongoing" ? settings.batchLimit : 50), 500));
