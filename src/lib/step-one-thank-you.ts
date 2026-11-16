@@ -35,7 +35,7 @@ export const STEP_ONE_THANK_YOU = {
   ],
   readyTitle: "Have These Ready",
   ready: [
-    "Driver's License (Front and Back)",
+    "Driver's License (Front)",
     "Gig App Profile Screenshot Showing Your # of Trips/Deliveries and Rating",
     "Your Current Home Address",
     "Optional: Earnings Screenshots or Other Proof of Income",

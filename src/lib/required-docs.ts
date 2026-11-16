@@ -9,7 +9,9 @@ import { REQUIRED_DOC_TYPES, type RequiredDocType } from "@/components/admin/typ
  * document; it is optional and does not change this count. Income proof is
  * required for the Documents receipt summary but remains advisory for activation.
  */
-export const REQUIRED_VAULT_CATEGORIES = ["license_front", "license_back", "gig_profile", "income"] as const;
+export const REQUIRED_VAULT_CATEGORIES = ["license_front", "gig_profile", "income"] as const;
+/** Accepted and stored, never required: only the front of the license is required. */
+export const OPTIONAL_VAULT_CATEGORIES = ["license_back"] as const;
 export type RequiredVaultCategory = (typeof REQUIRED_VAULT_CATEGORIES)[number];
 
 /** Vault category -> the required-document name the list counts. */
@@ -35,6 +37,21 @@ export function canonicalRequiredDoc(row: {
   const canonical = VAULT_TO_REQUIRED[cat] ?? cat;
   if (!REQUIRED_DOC_TYPES.includes(canonical as RequiredDocType)) return null;
   return canonical;
+}
+
+/**
+ * Like canonicalRequiredDoc, but an optional license back that was uploaded
+ * still counts as a file staff can review. Never used for completeness.
+ */
+export function canonicalReviewDoc(row: {
+  category?: string | null;
+  review_status?: string | null;
+  is_current?: boolean | null;
+}): string | null {
+  const required = canonicalRequiredDoc(row);
+  if (required) return required;
+  if (row.is_current === false || row.review_status === "rejected") return null;
+  return (row.category ?? "").trim() === "license_back" ? "license_back" : null;
 }
 
 /** Distinct current, non-rejected required documents per applicant. */

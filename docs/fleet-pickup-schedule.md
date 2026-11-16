@@ -8,7 +8,7 @@ defaults apply:
 | Setting | Default |
 | --- | --- |
 | Days | Monday to Friday |
-| Start times (Eastern) | 9:00, 10:00, 11:00 AM (last pickup ends at noon) |
+| Start times (Eastern) | 9:30, 10:30, 11:30 AM (last pickup ends at 12:30 PM) |
 | Slot length | 60 minutes (start times must be at least this far apart) |
 | Minimum notice | 120 minutes |
 | Booking window | 14 days |
@@ -18,6 +18,20 @@ defaults apply:
 | Text to | +18134768508 |
 | Email to | DolmarCross@gmail.com, Team@DriveReal.com |
 | Require a signed agreement | On |
+| Blocked dates | None (holidays below are always closed) |
+
+Closed dates. No slots are offered or bookable on:
+
+- the US federal holidays: New Year's Day, Martin Luther King Jr. Day,
+  Presidents Day, Memorial Day, Juneteenth, Independence Day, Labor Day,
+  Columbus Day / Indigenous Peoples' Day, Veterans Day, Thanksgiving and
+  Christmas Day; when one falls on a Saturday the Friday before is closed,
+  and when one falls on a Sunday the Monday after is closed;
+- Christmas Eve (Dec 24) and New Year's Eve (Dec 31);
+- any date in `blockedDates` (YYYY-MM-DD, Settings → Pickup Schedule).
+
+The Friday after Thanksgiving is open. Settings shows the closed dates in the
+next 60 days.
 
 One booking per slot: a slot is taken by any rental with status Reserved
 on that date and pickup time. The app checks before saving, and
@@ -39,12 +53,12 @@ List:
 { "action": "list", "days": 14, "limit": 20 }
 ```
 
-`200 { ok, schedule { timezone, days, start_times, slot_minutes, min_notice_minutes, field_rep { name } }, slots: [{ date, time, start_at, end_at, label }] }`
+`200 { ok, schedule { timezone, days, start_times, slot_minutes, min_notice_minutes, blocked_dates, holidays_blocked, field_rep { name } }, slots: [{ date, time, start_at, end_at, label }] }`
 
 Book:
 
 ```json
-{ "action": "book", "lead_id": "…", "start_at": "2026-11-18T09:00:00-05:00",
+{ "action": "book", "lead_id": "…", "start_at": "2026-11-18T09:30:00-05:00",
   "vehicle_id": "… (optional, defaults to the applicant's assigned vehicle)",
   "pickup_location": "… (optional, defaults to Settings)", "note": "optional",
   "idempotency_key": "optional" }
@@ -57,7 +71,7 @@ the deposit follows Settings → Deposits, and the Booking Login Email follows
 its automation switch. FLEET may book only a slot on the schedule that is
 still open. Repeating the same booking returns `duplicate: true`.
 Errors: `400` bad input, `401`, `404` unknown lead, `409` not approved / not a
-slot / taken or too soon (with `next_open`) / no vehicle / other reserve
+slot / closed date (holiday or blocked, with `next_open`) / taken or too soon (with `next_open`) / no vehicle / other reserve
 refusals, `503`.
 
 ## Fully confirmed (`reservation_confirmed`)

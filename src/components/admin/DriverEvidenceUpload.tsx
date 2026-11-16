@@ -44,7 +44,7 @@ export function DriverEvidenceUpload({ applicationId, category, documents, onUpl
     {open ? <DriverDocumentUploadDialog label={label}
       choices={license ? [
         { label: "Front", upload: (file, { onProgress }) => upload("license_front", file, onProgress) },
-        { label: "Back", upload: (file, { onProgress }) => upload("license_back", file, onProgress) },
+        { label: "Back (Optional)", upload: (file, { onProgress }) => upload("license_back", file, onProgress) },
       ] : undefined}
       hint={category === "agreement" ? "Signed Paper Copy · Owner/Manager Review Required" : category === "insurance" ? "Insurance Document · Verification Remains Separate" : category === "insurance_quote" || category === "screening" ? "Upload The File And Check Off This Step To Complete It" : undefined}
       upload={(file, { onProgress }) => upload(category, file, onProgress)} onClose={() => setOpen(false)} /> : null}

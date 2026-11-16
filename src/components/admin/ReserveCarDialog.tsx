@@ -64,7 +64,7 @@ export function ReserveCarDialog({
   const [personId, setPersonId] = useState(applicationId ?? "");
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [pickupDate, setPickupDate] = useState(easternParts(new Date()).date);
-  const [pickupTime, setPickupTime] = useState("09:00");
+  const [pickupTime, setPickupTime] = useState("09:30");
   const [pickupLocation, setPickupLocation] = useState("");
   const [note, setNote] = useState("");
   const depositOn = resolvedSettings?.enabled === true;
@@ -77,7 +77,7 @@ export function ReserveCarDialog({
     setPersonId(applicationId ?? "");
     setVehicleId(null);
     setPickupDate(easternParts(new Date()).date);
-    setPickupTime("09:00");
+    setPickupTime("09:30");
     setPickupLocation("");
     setNote("");
     const applySettings = (s: ReservationDepositSettings | null) => {

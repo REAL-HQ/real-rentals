@@ -47,7 +47,8 @@ export type EvidenceProjection = {
 
 export function evidenceFields(key: ActivationRequirementKey): EvidenceField[] {
   switch (key) {
-    case "license_documents": return ["license_front", "license_back"];
+    // Only the front is required; the back stays an optional upload.
+    case "license_documents": return ["license_front"];
     case "signed_agreement": return ["agreement"];
     case "insurance_verified":
     case "insurance_document": return ["insurance"];

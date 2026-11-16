@@ -96,7 +96,7 @@ export function pickupChecklist(input: PickupChecklistInput): PickupChecklist | 
     (row) => String(row.type ?? "").trim().toLowerCase() === "rent" && paymentCollected(row),
   );
   const paid = depositPaid || rentPaid || input.depositHeld;
-  const license = docApproved(input.documents, ["license_front", "license_back"]);
+  const license = docApproved(input.documents, ["license_front"]);
   const docs = license;
   const date = text(input.pickupDate);
   const time = text(input.pickupTime);

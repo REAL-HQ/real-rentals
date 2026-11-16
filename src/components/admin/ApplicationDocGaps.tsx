@@ -43,7 +43,6 @@ export function ApplicationDocGaps({
   const failed = result?.failed === true;
   const keys = result?.applications[0]?.slots.map((slot) => slot.key) ?? [
     "license_front",
-    "license_back",
     "insurance_card",
     "driver_profile_screenshot",
     "proof_of_address",

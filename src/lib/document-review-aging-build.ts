@@ -6,9 +6,9 @@ import {
   type DocumentReviewCategory,
   type DocumentReviewRow,
 } from "./document-review-aging";
-import { canonicalRequiredDoc } from "./required-docs";
+import { canonicalReviewDoc } from "./required-docs";
 
-const REQUIRED_INDEX = new Map<string, number>(REQUIRED_DOC_TYPES.map((key, index) => [key, index]));
+const REQUIRED_INDEX = new Map<string, number>([...REQUIRED_DOC_TYPES, "license_back"].map((key, index) => [key, index]));
 
 export type ReviewDocument = {
   id: string;
@@ -61,8 +61,9 @@ export function easternWaitingDays(createdAt: string | null | undefined, today: 
 }
 
 /**
- * Required, current, and still awaiting a person. Verified is not waiting.
- * Rejected and superseded are already outside canonicalRequiredDoc.
+ * Required (or the optional license back), current, and still awaiting a
+ * person. Verified is not waiting. Rejected and superseded are already outside
+ * canonicalRequiredDoc / canonicalReviewDoc.
  */
 export function awaitingReviewCategory(doc: {
   category?: string | null;
@@ -70,7 +71,7 @@ export function awaitingReviewCategory(doc: {
   is_current?: boolean | null;
 }): string | null {
   if ((doc.review_status ?? "").trim() === "verified") return null;
-  return canonicalRequiredDoc(doc);
+  return canonicalReviewDoc(doc);
 }
 
 function displayName(value: string | null | undefined): string {

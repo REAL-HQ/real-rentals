@@ -13,6 +13,7 @@ export function checklistInspectionPhotos<T extends { vehicle_id: string; rental
 /** Only file-backed requirements; never infer a review or completion from a file. */
 export function checklistDocumentCategories(key: ActivationRequirementKey): ("license_front" | "license_back" | "insurance" | "agreement" | "gig_profile" | "income" | "insurance_quote" | "screening")[] {
   switch (key) {
+    // The upload dialog offers both sides; only the front is required.
     case "license_documents": return ["license_front", "license_back"];
     case "signed_agreement": return ["agreement"];
     case "insurance_verified":

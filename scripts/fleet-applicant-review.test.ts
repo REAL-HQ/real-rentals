@@ -106,8 +106,13 @@ describe("rules", () => {
   test("hard blockers: partial, missing docs, rejected doc, disqualifier, under 21, expired license, bad check, open flag, duplicate, no email", () => {
     const codes = (app: Row, docs = docsFor(A), extra: Row = {}) => rules.assessForFleet({ ...base, app, docs, ...extra }).hard_blockers.map((b) => b.code);
     expect(codes(goodApp(A, { status: "partial" }))).toContain("not_submitted");
-    expect(codes(goodApp(A), docsFor(A, ["license_front", "gig_profile"]))).toContain("missing_license_back");
-    expect(codes(goodApp(A), [...docsFor(A, ["license_front", "gig_profile"]), { category: "license_back", review_status: "rejected", is_current: true }])).toEqual(expect.arrayContaining(["missing_license_back", "rejected_license_back"]));
+    expect(codes(goodApp(A), docsFor(A, ["gig_profile"]))).toContain("missing_license_front");
+    expect(codes(goodApp(A), [...docsFor(A, ["gig_profile"]), { category: "license_front", review_status: "rejected", is_current: true }])).toEqual(expect.arrayContaining(["missing_license_front", "rejected_license_front"]));
+    // Only the front is required: no back, or a rejected back, is not a blocker.
+    expect(codes(goodApp(A), docsFor(A, ["license_front", "gig_profile"]))).toEqual([]);
+    const rejectedBack = rules.assessForFleet({ ...base, app: goodApp(A), docs: [...docsFor(A, ["license_front", "gig_profile"]), { category: "license_back", review_status: "rejected", is_current: true }] });
+    expect(rejectedBack.hard_blockers).toEqual([]);
+    expect(rejectedBack.escalations.map((e) => e.code)).toContain("rejected_license_back");
     expect(codes(goodApp(A), docsFor(A), { disqualifiers: ["DUI on record"] })).toContain("disqualifier");
     expect(codes(goodApp(A, { dob: "2006-06-01" }))).toContain("under_21");
     expect(codes(goodApp(A, { license_expiration: "2026-11-01" }))).toContain("license_expired");
@@ -246,7 +251,7 @@ describe("decision endpoint", () => {
 describe("ready-for-review sweep", () => {
   test("queues once per ready applicant; skips partial and not-ready", async () => {
     const s = seed();
-    s.documents = s.documents.filter((d) => !(d.driver_id === C && d.category === "license_back"));
+    s.documents = s.documents.filter((d) => !(d.driver_id === C && d.category === "license_front"));
     const db = fakeDb(s);
     const ids = await srv.sweepReadyForReview(db, { now: NOW });
     expect(ids).toHaveLength(1);

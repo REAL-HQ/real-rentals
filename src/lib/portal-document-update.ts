@@ -18,9 +18,13 @@ export const PORTAL_DOCUMENT_UPDATE_WINDOW_DAYS = 30;
 
 export const PORTAL_DOCUMENT_TIME_ZONE = "America/New_York";
 
+/**
+ * Only the front is required. The back is optional: renters are reminded about
+ * a back they already sent when it expires, never asked for a missing one.
+ */
 export const PORTAL_DOCUMENT_UPDATE_SLOTS = [
-  { category: "license_front", label: "Driver's License (Front)" },
-  { category: "license_back", label: "Driver's License (Back)" },
+  { category: "license_front", label: "Driver's License (Front)", optional: false },
+  { category: "license_back", label: "Driver's License (Back)", optional: true },
 ] as const;
 
 export type PortalDocumentUpdateCategory = (typeof PORTAL_DOCUMENT_UPDATE_SLOTS)[number]["category"];
@@ -145,7 +149,7 @@ const APPLICATION_FILE: Record<
 };
 
 /**
- * License front and license back that are missing, already
+ * License front that is missing, and either side that is already
  * expired, or due within 30 Eastern calendar days (today and day 30 included).
  *
  * A current driver-visible file with no date is on file. It is not treated as
@@ -182,6 +186,7 @@ export function documentsNeedingUpdate(
     }
 
     if (!applicationPath) {
+      if (slot.optional) continue;
       items.push({ category: slot.category, label: slot.label, reason: "missing", expiresOn: null });
       continue;
     }

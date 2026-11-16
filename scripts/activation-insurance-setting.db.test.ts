@@ -758,7 +758,7 @@ try {
     await db`update public.driver_screenings set insurance_verified = false where lead_id = ${f.app}`;
     const m1 = await refused(activate(f, false), /insurance_not_verified:unverified/);
     const g = await fixture();
-    await db`update public.documents set review_status = 'rejected' where driver_id = ${g.app} and category = 'license_back'`;
+    await db`update public.documents set review_status = 'rejected' where driver_id = ${g.app} and category = 'license_front'`;
     const m2 = await refused(activate(g, false), /missing_documents/);
     const h = await fixture();
     const A = await db.reserve();

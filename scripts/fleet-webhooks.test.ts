@@ -121,7 +121,7 @@ describe("lead payload", () => {
       event: "stage_changed", lead_id: APP, name: "Jordan Test", phone: "+18135550142", email: "jordan@example.com",
       stage: "reviewing", previous_stage: "new", current_stage: "reviewing",
       sms_consent: true, consent_timestamp: "2026-11-14T15:00:00.000Z", source: "homepage",
-      docs: { received: ["license_front", "gig_profile_screenshot", "home_address"], missing: ["license_back"], optional_missing: ["income"] },
+      docs: { received: ["license_front", "gig_profile_screenshot", "home_address"], missing: [], optional_missing: ["income"] },
       background_check_status: "pending", reservation_fee_paid: true, agreement_signed: false,
       pickup_at: "2026-11-20T10:30:00-05:00", created_at: "2026-11-14T15:00:00.000Z",
       last_text_sent: { type: "automation", template: "s2", workflow_id: "wf", step_id: "s2", sent_at: "2026-11-14T15:05:00.000Z", status: "sent", from: "+18888338280" },

@@ -214,7 +214,7 @@ try {
   });
 
   await test("the readiness payload lists incomplete requirements with their enforcement", async () => {
-    install(world({ app: { status: "reviewing" }, documents: [doc("license_front")], screenings: [], agreements: [], inspections: [] }));
+    install(world({ app: { status: "reviewing" }, documents: [doc("license_back")], screenings: [], agreements: [], inspections: [] }));
     const r = await readiness(MANAGER);
     const byKey = Object.fromEntries(r.requirements.map((q) => [q.key, q]));
     assert.deepEqual(r.requirements.map((q) => q.key), ["interview", "license_documents", "gig_profile", "income", "insurance_verified", "insurance_quote", "screening", "approved", "signed_agreement", "inspection", "pickup", "rental_active", "insurance_document", "gig_platform"]);
@@ -267,7 +267,7 @@ try {
     ["agreement only sent", { agreements: [{ ...esign, status: "sent", signed_at: null }] }, "no_signed_agreement"],
     ["agreement voided", { agreements: [{ ...esign, status: "voided", signed_at: null, voided_at: "2026-10-02T00:00:00Z" }] }, "no_signed_agreement"],
     ["signed agreement already used by an earlier rental", { agreements: [{ ...esign, rental_id: RENTAL }] }, "no_signed_agreement"],
-    ["licence back missing", { documents: [doc("license_front"), doc("insurance"), doc("gig_profile")] }, "missing_documents"],
+    ["licence front missing", { documents: [doc("license_back"), doc("insurance"), doc("gig_profile")] }, "missing_documents"],
     ["licence front rejected", { documents: [doc("license_front", { review_status: "rejected" }), doc("license_back"), doc("insurance"), doc("gig_profile")] }, "missing_documents"],
   ];
   for (const [name, over, code] of HARD_CASES) {
@@ -744,10 +744,12 @@ try {
 
   await test("missingRequiredCategories includes income proof and does not require insurance", async () => {
     const shared = readFileSync("src/lib/required-docs.ts", "utf8");
-    assert.match(shared, /export const REQUIRED_VAULT_CATEGORIES = \["license_front", "license_back", "gig_profile", "income"\] as const;/);
+    assert.match(shared, /export const REQUIRED_VAULT_CATEGORIES = \["license_front", "gig_profile", "income"\] as const;/);
     const ui = readFileSync("src/components/admin/ApplicantDocuments.tsx", "utf8");
     assert.match(ui, /export \{ REQUIRED_VAULT_CATEGORIES \} from "@\/lib\/required-docs";/);
-    assert.deepEqual(rules.missingRequiredCategories([]), ["license_front", "license_back", "gig_profile", "income"]);
+    assert.deepEqual(rules.missingRequiredCategories([]), ["license_front", "gig_profile", "income"]);
+    // The back of the license is optional.
+    assert.equal(rules.HARD_REQUIRED_CATEGORIES.includes("license_back"), false);
   });
 
   // ------------------------------------------------------ UI visibility

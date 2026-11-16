@@ -21,6 +21,7 @@ import {
   type FleetDeps,
 } from "@/lib/fleet-api.server";
 import {
+  blockedDateReason,
   isScheduledSlot,
   openPickupSlots,
   parseSlotStart,
@@ -56,7 +57,7 @@ export async function listOpenSlots(admin: any, s: PickupScheduleSettings, now: 
 }
 
 function scheduleView(s: PickupScheduleSettings) {
-  return { timezone: s.timezone, days: s.days, start_times: s.startTimes, slot_minutes: s.slotMinutes, min_notice_minutes: s.minNoticeMinutes, field_rep: { name: s.fieldRep.name } };
+  return { timezone: s.timezone, days: s.days, start_times: s.startTimes, slot_minutes: s.slotMinutes, min_notice_minutes: s.minNoticeMinutes, blocked_dates: s.blockedDates, holidays_blocked: true, field_rep: { name: s.fieldRep.name } };
 }
 
 export async function handleFleetPickupSlots(request: Request, deps: PickupDeps = {}): Promise<Response> {
@@ -117,6 +118,10 @@ export async function handleFleetPickupSlots(request: Request, deps: PickupDeps 
   if (!isScheduledSlot(s, slot.date, slot.time)) return fleetJson(409, { ok: false, error: "That time is not a pickup slot.", schedule: scheduleView(s) });
   const open = await listOpenSlots(admin, s, now, { days: 60, limit: 200 }).catch(() => null);
   if (!open) return fleetJson(503, { ok: false, error: "Database unavailable." });
+  const closed = blockedDateReason(s, slot.date);
+  if (closed) {
+    return fleetJson(409, { ok: false, error: `Pickups are closed on ${slot.date} (${closed}).`, next_open: open.slice(0, 5) });
+  }
   if (!open.some((o) => o.date === slot.date && o.time === slot.time)) {
     return fleetJson(409, { ok: false, error: "That slot is booked or too soon.", next_open: open.slice(0, 5) });
   }
