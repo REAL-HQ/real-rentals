@@ -168,9 +168,12 @@ async function needsStaffFor(admin: Admin, leadId: string) {
   return row ? { reason: String(row.reason ?? "needs staff"), created_at: row.created_at ?? null } : null;
 }
 
-/** Hook for staff-handling pauses (added by the handoff change). Null when none. */
-export async function botPauseFor(_admin: Admin, _leadId: string): Promise<{ reason: string; since: string | null } | null> {
-  return null;
+/** An open handoff (fleet-handoff.server.ts) pauses the bots. Unreadable counts as paused. */
+export async function botPauseFor(admin: Admin, leadId: string): Promise<{ reason: string; since: string | null } | null> {
+  const { activeHandoff } = await import("@/lib/fleet-handoff.server");
+  const h = await activeHandoff(admin, leadId);
+  if (h === "unavailable") return { reason: "handoff status unreadable", since: null };
+  return h ? { reason: h.reason, since: h.since } : null;
 }
 
 export async function leadStatus(admin: Admin, leadId: string, now: Date) {
@@ -264,7 +267,7 @@ export async function fleetDigest(admin: Admin, now: Date) {
     admin.from("agreements").select(AGR_COLS).in("status", [...OPEN_AGREEMENT, "signed"]).is("voided_at", null).limit(2000),
     admin.from("rentals").select(RENTAL_COLS).in("status", ["active", "reserved", "pending", "upcoming", "closed"]).limit(2000),
     admin.from("payments").select(PAY_COLS).not("status", "in", `(${SETTLED_PAYMENT.join(",")})`).limit(2000),
-    admin.from("fleet_review_decisions").select("application_id,reason,created_at").eq("decision", "needs_staff").is("resolved_at", null).order("created_at", { ascending: true }).limit(500),
+    admin.from("fleet_review_decisions").select("application_id,reason,escalation_codes,created_at").eq("decision", "needs_staff").is("resolved_at", null).order("created_at", { ascending: true }).limit(500),
     admin.from("fleet_webhook_deliveries").select("event_type,status,created_at").gte("created_at", since24).limit(5000),
   ]);
   if (appsRes.error) throw new Error("Could not read applications.");
@@ -317,6 +320,8 @@ export async function fleetDigest(admin: Admin, now: Date) {
 
   const cap = <T>(xs: T[]) => xs.slice(0, LIST_CAP);
   const staffActions: { kind: string; count: number; detail: string }[] = [];
+  const handoffs = needsStaff.filter((n) => (Array.isArray(n.escalation_codes) ? n.escalation_codes : []).some((c: unknown) => String(c).startsWith("handoff:")));
+  if (handoffs.length) staffActions.push({ kind: "handoff", count: handoffs.length, detail: "People handed to staff (complaint, injury, payment dispute...). Bots are paused for them." });
   if (needsStaff.length) staffActions.push({ kind: "needs_staff", count: needsStaff.length, detail: "Applicants FLEET escalated (Drivers → Needs Staff)." });
   if (pickups.length) staffActions.push({ kind: "pickup_handover", count: pickups.length, detail: "Pickups in the next 2 days: field rep checklist, then activation." });
   const insurancePending = approved.filter((a) => String(a.insurance_status ?? "").toLowerCase() !== "verified").length;
