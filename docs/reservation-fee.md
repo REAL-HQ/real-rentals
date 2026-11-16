@@ -21,7 +21,7 @@ OFF with no row. Turn on with `proposed/reservation-fee-auto-on.sql` (not applie
 | --- | --- | --- |
 | Quote | `insurance-rate.ts` `fleetQuoteText` | FLEET's quote text adds: "After you sign, you'll pay a $50 Reservation Fee by card to hold the car. It is applied to your first week, and that card is saved on file for your rental balance." The per-car deposit reads "no security deposit" / "$250 security deposit". |
 | Agreement | `fleet-agreement.server.ts` | FLEET's agreement records a Required $50 Reservation Fee (`merge_data._prep`). No card is needed to send it. |
-| Signing | `agreements.functions.ts` → `chargeReservationFeeAfterSigning` | Only if the signed text prints a Reservation Fee. The charge row is written first (`payments` type `fee`, reason `reservation_fee`, one per agreement). **No card on file (the normal case):** a per-renter Stripe Checkout (24 hours) for the $50 with `setup_future_usage: off_session`, sent as a "Pay $50.00 Reservation Fee" button in the Agreement Signed email. **A card already on file (a returning renter):** one off-session charge, idempotency key per attempt. No other pay link is sent when the fee path handled the signing. |
+| Signing | `agreements.functions.ts` → `chargeReservationFeeAfterSigning` | Only if the signed text prints a Reservation Fee. The charge row is written first (`payments` type `fee`, reason `reservation_fee`, one per agreement). **Always the Stripe link (card t315s1710):** a per-renter Stripe Checkout (24 hours) for the $50 with `setup_future_usage: off_session`, sent as a "Pay $50.00 Reservation Fee" button in the Agreement Signed email (heading "One Last Step: Reserve Your Car"). A returning renter with a saved card gets the same link; the saved card is never charged automatically for the fee. No other pay link is sent when the fee path handled the signing. |
 | Card saved | `payments/webhook.ts` `checkout.session.completed` | The card used for the fee is saved on the application (`stripe_payment_method_id`, brand, last 4, expiry) for the rental balance. |
 | Paid / hold | `payments/webhook.ts` `payment_intent.succeeded` → `holdReservationForFee` | The row is marked paid (metadata.paymentIds) and an open reservation is marked held right away; the 5-minute job also catches it on pickup day. |
 | Booking | `fleet-pickup.server.ts`, `createReservationCore` | FLEET cannot book a pickup until the fee is paid. A staff reservation shows the fee as pending until paid. |
@@ -37,15 +37,33 @@ the security deposit (`rentals.deposit_*`), and staff screens label them
 ## Renter-facing copy (Agreement Signed email)
 
 - Pay now (no card on file): "Next step: pay your $50.00 Reservation Fee by card with the button below. It is applied in full to your first week, and the card you use is saved on file for your rental balance. Your car is held as soon as it is paid. This link is for your rental and expires within 24 hours." Button: "Pay $50.00 Reservation Fee".
-- Paid (card on file): "Your $50.00 Reservation Fee was charged to your card ending in 4242 and is applied in full to your first week. Your car is now held for your pickup."
-- Processing: "Your $50.00 Reservation Fee is processing on your card. It is applied in full to your first week, and your car is held as soon as it goes through."
+- Heading while the fee is unpaid: "One Last Step: Reserve Your Car" (otherwise "Agreement Signed — You're All Set").
+- The old "charged to your card ending in …" and "processing" lines are no longer reached by signing: there is no automatic charge.
 - Card payments not configured or a decline: the usual pay-link email (the fee is not charged; staff see the unpaid row).
 
 ## Before turning it on
 
-1. The agreement template in use must print the Reservation Fee (and the
-   30-minute late-pickup clause). Today there is no saved template and the
-   built-in text has no Reservation Fee line, so nothing would ever be charged.
+1. The agreement template in use must print the Reservation Fee. The built-in
+   v1.14 (Insurance Included) text prints it, with the approved 30-minute hold
+   line, unlimited miles within 100 miles of Tampa (10.1) and the Service Area
+   "100-mile radius of Tampa, FL".
 2. Rent reminders and late fees ignore type `fee`, so the fee never triggers them.
 3. The Checkout link expires after 24 hours. If the renter does not pay, staff
-   see the unpaid fee row; a resend is not automated yet.
+   see the unpaid fee row; a resend is not automated yet (an automatic resend
+   after 24 hours needs a new job inside 8 AM–9 PM ET; not built).
+
+## Manual payment (Bookings → Record Reservation Fee)
+
+Staff can record a fee paid outside Stripe (Cash App, Venmo, Zelle, cash). It
+is saved as type `fee`, reason `reservation_fee`, so it is credited to week 1
+like the card one. An open Stripe fee row for that renter is settled instead of
+adding a second, and the renter's open Stripe link is closed (expired) first;
+if Stripe shows it already paid, nothing is recorded.
+
+## Old "Reservation Deposit" setting: retired
+
+Retired Nov 16 2026 (card t315s1710). Settings → Deposits no longer shows it,
+the booking dialog has no Deposit Required/Amount fields, and nothing carries a
+reservation payment into the security deposit any more. The `app_settings`
+key `reservation_deposit` (Off) and the `rentals.reservation_deposit_*`
+columns stay; no database change.

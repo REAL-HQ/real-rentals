@@ -156,7 +156,7 @@ If you don't, an insurer may deny coverage, and you are responsible for what it 
 Only you may drive the Vehicle, unless we approve an additional driver in writing. An additional driver must meet Section 19, be listed on page 1, sign this Agreement as an additional driver, and be added to the Renter Policy before driving. You may not let anyone else drive the Vehicle or use it to work on any Platform account, even briefly. There may be no insurance if they do. You are responsible for every act of any person you allow to use the Vehicle.
 
 ## 10. Permitted & Prohibited Uses
-**10.1 Permitted Use.** You may use the Vehicle for personal driving and for rideshare and delivery work under your own Platform accounts. Unlimited miles within Florida are included, with no per-mile charge.
+**10.1 Permitted Use.** You may use the Vehicle for personal driving and for rideshare and delivery work under your own Platform accounts. Unlimited miles within 100 miles of Tampa are included, with no per-mile charge.
 **10.2 Prohibited Uses.** You may not:
 - sublease, re-rent, list on a car-sharing app, lend, sell, pledge, or try to transfer the Vehicle;
 - carry passengers or goods for pay outside a Platform app;
@@ -267,7 +267,7 @@ We do not sell your personal information. We may share it, and Telematics data, 
 
 ## What's Included in Your Rental
 | Insurance Included | A liability policy with a rideshare endorsement, in your name, with an ID card for your Platform accounts.
-| Unlimited Miles | Drive as much as you need within Florida. No mileage limits or per-mile charges.
+| Unlimited Miles | Drive as much as you need within 100 miles of Tampa. No mileage limits or per-mile charges.
 | Maintenance Included | We pay for routine maintenance, oil changes, tires from normal wear, and mechanical repairs.
 | Drive for Any Platform | Rideshare and delivery work under your own accounts, plus personal driving.
 | Repair Swaps | Mechanical repair? We'll try to swap you into a comparable vehicle. If none is available, no rent while you're without a car.
@@ -321,9 +321,9 @@ const V114_VALUES: Record<string, string> = {
   fee_towing: "$250 + actual third-party recovery, tow, impound, and storage costs",
   fee_additional_driver: "$50 per week, per driver, + any added Renter Policy premium",
   fee_citation_admin: "$25",
-  // The Service Area row is blank in the Owner's PDF for the team to fill;
-  // the Owner sets it here before approving.
-  service_area: "",
+  // The Service Area row is blank in the Owner's PDF for the team to fill.
+  // Dolmar set it Nov 16 2026 (t311u, card t315s1710): a 100-mile radius of Tampa.
+  service_area: "100-mile radius of Tampa, FL",
   home_state: "Florida",
   min_age_economy: "21",
   min_age_premium: "25",

@@ -3,17 +3,17 @@
  * credit it to week 1 at activation. See src/lib/reservation-fee.ts.
  *
  * The card is collected only AFTER the agreement is signed (Dolmar, t309u):
- * with no card on file the renter gets a Stripe Checkout for the $50 that also
- * saves the card on file for the rental balance. A card already on file (a
- * returning renter) is charged off-session instead.
+ * every renter, including a returning renter with a saved card (card
+ * t315s1710), gets a Stripe Checkout for the $50 that also saves the card on
+ * file for the rental balance. Nothing is charged off-session for the fee.
  *
  * Money safety (same rules as payment-collection.server.ts):
  *   - The charge row (payments, type fee, reason reservation_fee, notes
  *     reservation_fee:<agreement id>) is written BEFORE Stripe is called.
  *   - One row per agreement; a paid or refunded row is never charged again.
- *   - One off-session attempt per call with an idempotency key per attempt.
- *     An outcome Stripe has not confirmed stays pending (the payments webhook
- *     settles it via metadata.paymentIds); only a reported decline is failed.
+ *   - No off-session charge for the fee, ever: one Stripe Checkout per row
+ *     (idempotency key per row attempt). The payments webhook settles it via
+ *     metadata.paymentIds; a re-run returns the same link.
  *   - Never throws out to signing.
  */
 import {
@@ -98,7 +98,7 @@ async function reservationFeeCheckout(
     // The row waits for the renter: still owed, not failed, no blind retry.
     await admin.from("payments").update({ status: "unpaid", attempt_count: attempt, failure_reason: null, balance_due: amount }).eq("id", row.id).in("status", ["current", "failed", "unpaid"]);
     const { data: ag } = await admin.from("agreements").select("metadata").eq("id", agreementId).maybeSingle();
-    const metadata = { ...((ag?.metadata as Record<string, unknown> | null) ?? {}), reservation_fee_checkout: { url: session.url, payment_id: row.id, created_at: new Date().toISOString() } };
+    const metadata = { ...((ag?.metadata as Record<string, unknown> | null) ?? {}), reservation_fee_checkout: { url: session.url, session_id: (session as any).id ?? null, payment_id: row.id, created_at: new Date().toISOString() } };
     await admin.from("agreements").update({ metadata }).eq("id", agreementId);
     await audit(x.deps)({ action: "payment.reservation_fee_checkout", summary: `Reservation Fee $${amount.toFixed(2)} card checkout sent after signing (card saved on file for the rental balance)`, entityType: "payment", entityId: row.id, metadata: { agreement_id: agreementId, application_id: x.app.id, automatic: true } }).catch(() => {});
     return { status: "checkout", amount, paymentId: row.id, url: session.url };
@@ -144,49 +144,18 @@ export async function chargeReservationFeeAfterSigning(admin: Admin, agreementId
 
     const { data: app } = await admin.from("applications").select("id,full_name,email,phone,stripe_customer_id,stripe_payment_method_id,card_last4").eq("id", appId).maybeSingle();
     const stripe = await stripeClient(deps);
-    if (!app?.stripe_customer_id || !app?.stripe_payment_method_id) {
-      // The normal case (Dolmar, t309u): the card is collected only AFTER signing.
-      // Stripe Checkout takes the $50 and saves that card on file for the rental
-      // balance (setup_future_usage off_session). The payments webhook marks the
-      // row paid (metadata.paymentIds), saves the card on the application and
-      // holds the car.
-      if (!stripe) {
-        await admin.from("payments").update({ status: "unpaid", failure_reason: "Card payments are not configured" }).eq("id", row.id).in("status", ["current", "failed", "unpaid"]);
-        return { status: "no_card", amount, paymentId: row.id };
-      }
-      return await reservationFeeCheckout(admin, stripe, { app: app ?? { id: appId }, agreementId, row, amount, signerEmail: null, deps });
+    // Always the Stripe link (Dolmar, t309u and card t315s1710): the card is
+    // collected only AFTER signing, and a card already saved from an earlier
+    // rental is never charged automatically for the fee. Stripe Checkout takes
+    // the $50 and saves that card on file for the rental balance
+    // (setup_future_usage off_session). The payments webhook marks the row
+    // paid (metadata.paymentIds), saves the card on the application and holds
+    // the car.
+    if (!stripe) {
+      await admin.from("payments").update({ status: "unpaid", failure_reason: "Card payments are not configured" }).eq("id", row.id).in("status", ["current", "failed", "unpaid"]);
+      return { status: "no_card", amount, paymentId: row.id };
     }
-    if (!stripe) return { status: "failed", amount, paymentId: row.id, error: "Card payments are not configured." };
-
-    const attempt = Number(row.attempt_count ?? 0) + 1;
-    const claim = await admin.from("payments").update({ status: "pending", attempt_count: attempt, last_attempt_at: new Date().toISOString() })
-      .eq("id", row.id).in("status", ["current", "failed", "unpaid"]).lt("attempt_count", attempt).select("id");
-    if (!(claim?.data ?? []).length) return { status: "pending", amount, paymentId: row.id, last4: null };
-
-    try {
-      const pi = await stripe.paymentIntents.create({
-        amount: Math.round(amount * 100), currency: "usd",
-        customer: app.stripe_customer_id, payment_method: app.stripe_payment_method_id,
-        off_session: true, confirm: true,
-        description: "Reservation Fee (applied to week 1)",
-        metadata: { applicationId: appId, agreementId, paymentIds: row.id, reason: RESERVATION_FEE_REASON, attempt: String(attempt) },
-      }, { idempotencyKey: `reservation-fee:${row.id}:attempt:${attempt}` });
-      const paid = pi?.status === "succeeded";
-      await admin.from("payments").update({
-        status: paid ? "paid" : "pending", stripe_payment_intent_id: pi?.id ?? null,
-        ...(paid ? { paid_date: new Date().toISOString().slice(0, 10), balance_due: 0, failure_reason: null } : {}),
-      }).eq("id", row.id).eq("status", "pending").eq("attempt_count", attempt);
-      await audit(deps)({ action: paid ? "payment.reservation_fee_charged" : "payment.reservation_fee_processing", summary: `Reservation Fee $${amount.toFixed(2)} ${paid ? "charged" : "processing"} after signing (applied to week 1)`, entityType: "payment", entityId: row.id, metadata: { agreement_id: agreementId, application_id: appId, automatic: true } }).catch(() => {});
-      if (paid) await holdReservationForFee(admin, appId, { id: row.id, amount });
-      return { status: paid ? "paid" : "pending", amount, paymentId: row.id, last4: app.card_last4 ?? null };
-    } catch (e: any) {
-      const { stripeDefinitelyNotCharged } = await import("@/lib/payment-collection.server");
-      const message = String(e?.message ?? "Card charge failed").slice(0, 300);
-      if (!stripeDefinitelyNotCharged(e)) return { status: "pending", amount, paymentId: row.id, last4: null };
-      await admin.from("payments").update({ status: "failed", failure_reason: message }).eq("id", row.id).eq("status", "pending").eq("attempt_count", attempt);
-      await audit(deps)({ action: "payment.reservation_fee_failed", summary: `Reservation Fee $${amount.toFixed(2)} declined after signing`, entityType: "payment", entityId: row.id, metadata: { agreement_id: agreementId, application_id: appId, automatic: true } }).catch(() => {});
-      return { status: "failed", amount, paymentId: row.id, error: message };
-    }
+    return await reservationFeeCheckout(admin, stripe, { app: app ?? { id: appId }, agreementId, row, amount, signerEmail: null, deps });
   } catch (e) {
     console.error("[reservation-fee] charge failed", e);
     return { status: "failed", amount: 0, paymentId: null, error: "Unexpected error" };

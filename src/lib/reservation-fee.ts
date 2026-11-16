@@ -6,9 +6,10 @@
  * security deposit, refundable at the end of the rental (when one is
  * collected) and used to deduct fees during it.
  *
- *   - Collected right after the renter signs, never before (t309u). With no card
- *     on file the renter pays the $50 through Stripe Checkout, which saves that
- *     card on file for the rental balance. A card already on file is charged.
+ *   - Collected right after the renter signs, never before (t309u). Every
+ *     renter pays the $50 through Stripe Checkout, which saves that card on
+ *     file for the rental balance. A card already saved from an earlier rental
+ *     is never charged automatically for the fee (card t315s1710).
  *   - Applied in full to week 1 (a Stripe balance credit at activation).
  *   - The car is held only once the fee is paid: FLEET cannot book the pickup
  *     before that, and a staff reservation shows the fee as pending.

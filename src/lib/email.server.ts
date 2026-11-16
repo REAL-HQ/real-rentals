@@ -1207,11 +1207,15 @@ export async function sendAgreementSignedEmail(args: {
       <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">View In Your Portal</a>`
     : `is fully executed and securely saved to your driver file.</p>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0">We'll send you access to your driver portal when your account is ready.</p>`;
+  // While the Reservation Fee is unpaid the car is not held yet, so the heading
+  // says so (card t315s1710) instead of "You're All Set".
+  const feeUnpaid = !!(args.reservationFeePay && /^https:\/\//i.test(args.reservationFeePay.url));
+  const heading = feeUnpaid ? "One Last Step: Reserve Your Car" : "Agreement Signed — You're All Set";
   const html = shell(`
-      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Agreement Signed — You're All Set</h1>
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${heading}</h1>
       ${pay}
       <p style="color:#444;font-size:15px;line-height:1.55;margin:16px 0 12px">Thanks ${escapeHtml(name)}. Your rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} ${tail}`);
-  await sendEmail({ to: args.to, subject: "Your REAL RENTALS Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" } });
+  await sendEmail({ to: args.to, subject: feeUnpaid ? "Your REAL RENTALS Agreement Is Signed: One Last Step" : "Your REAL RENTALS Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" } });
 }
 
 export async function sendAgreementSignedOpsEmail(args: { driverName: string; applicationId: string; vehicle: string | null }): Promise<void> {
