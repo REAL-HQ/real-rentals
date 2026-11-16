@@ -107,8 +107,13 @@ export const updateApplicationLifecycle = createServerFn({ method: "POST" })
     const { closure_reason: closureReason, closure_notes: rawNotes, ...patch } = data.patch;
     const closureNotes = typeof rawNotes === "string" && rawNotes.trim() ? rawNotes.trim() : null;
     if (Object.keys(patch).length === 0) throw new Error("No changes supplied");
-    // Time is authoritative on the server. Never overwrite the first contact.
-    if (patch.contacted_at || (patch.status && patch.status !== "new")) {
+    // Contacted means a real text, call or reply (Dolmar, t306s1653). A status
+    // change (to Reviewing, Declined, Closed...) is not contact, so it never
+    // fills contacted_at. Only an explicit "Mark Contacted" from staff (who
+    // just called or texted) sets it here; the inbound-reply and FLEET YES/call
+    // paths set it elsewhere. Time is authoritative on the server, and the
+    // first contact is never overwritten.
+    if (patch.contacted_at) {
       patch.contacted_at = before.contacted_at ?? new Date().toISOString();
     }
     let query = supabaseAdmin
