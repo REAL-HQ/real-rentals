@@ -126,7 +126,7 @@ const usd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits
 /** The amendment paragraph printed at the top of the amended agreement. */
 export function amendmentNoticeText(a: { oldRate: number; newRate: number; effectiveDate: string; previousSignedAt: string | null }): string {
   const prior = a.previousSignedAt ? `the Rental Agreement signed ${fmtContractDate(a.previousSignedAt)}` : "your current Rental Agreement";
-  return `This agreement amends and restates ${prior}. Starting ${fmtContractDate(a.effectiveDate)}, the weekly rental rate changes from ${usd(a.oldRate)} to ${usd(a.newRate)}. If you sign after that date, the new rate starts with your next rent week after you sign. Rent for weeks before then, including weeks already paid, stays at ${usd(a.oldRate)} and is not billed again. There is no Reservation Fee and no new deposit. Everything else stays the same until you sign; your current agreement stays in effect if you do not.`;
+  return `This agreement replaces ${prior}. Once you sign, all the terms below apply. Starting ${fmtContractDate(a.effectiveDate)}, the weekly rental rate changes from ${usd(a.oldRate)} to ${usd(a.newRate)}. If you sign after that date, the new rate starts with your next rent week after you sign. Rent for weeks before then, including weeks already paid, stays at ${usd(a.oldRate)} and is not billed again. There is no Reservation Fee and no new deposit. Until you sign, your current agreement stays in effect.`;
 }
 
 /**
