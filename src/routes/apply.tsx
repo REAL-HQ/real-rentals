@@ -307,7 +307,7 @@ function ContactStep({
 }) {
   const navigate = useNavigate();
   const savePartial = useServerFn(savePartialApplication);
-  const [returning, setReturning] = useState<{ email: string; status: LinkStatus; retryAfterSeconds: number } | null>(null);
+  const [returning, setReturning] = useState<{ email: string; status: LinkStatus; retryAfterSeconds: number; fresh?: boolean } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [hp, setHp] = useState("");
   const [form, setForm] = useState({ full_name: "", phone: "", email: "", sms_consent: false });
@@ -391,7 +391,7 @@ function ContactStep({
       if (!data.token) {
         // We matched an application that already exists. The link goes to the
         // address on that record, not to whoever filled this form in.
-        setReturning({ email: form.email, status: data.linkStatus ?? "sent", retryAfterSeconds: data.retryAfterSeconds ?? 120 });
+        setReturning({ email: form.email, status: data.linkStatus ?? "sent", retryAfterSeconds: data.retryAfterSeconds ?? 120, fresh: "fresh" in data && data.fresh === true });
         return;
       }
       markStepOneJustSubmitted();
@@ -420,7 +420,7 @@ function ContactStep({
 
         {returning !== null ? (
           <div className="mt-8">
-            <WelcomeBack email={returning.email} initial={returning} onBack={() => setReturning(null)} />
+            <WelcomeBack email={returning.email} initial={returning} fresh={returning.fresh} onBack={() => setReturning(null)} />
           </div>
         ) : (
         <div className="mt-8 rounded-2xl bg-soft p-6 md:p-8">
