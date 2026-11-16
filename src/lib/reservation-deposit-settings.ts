@@ -1,4 +1,10 @@
-/** Client-safe parse rules for reservation deposit defaults (app_settings). */
+/**
+ * Client-safe parse rules for the reservation_deposit_* columns and the RETIRED
+ * optional "Reservation Deposit" setting (app_settings reservation_deposit).
+ * Retired Nov 16 2026 (Dolmar, card t315s1710): the $50 Reservation Fee
+ * replaces it, is stored in these columns as "applied", and is never called a
+ * deposit. Column and key names stay; the setting always reads Off.
+ */
 
 export const RESERVATION_DEPOSIT_SETTINGS_KEY = "reservation_deposit";
 

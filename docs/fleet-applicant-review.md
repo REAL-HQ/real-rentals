@@ -62,6 +62,9 @@ Reply `{ ok, packet }` with:
   (the checklist codes FLEET relied on).
 - `idempotency_key` is optional. A repeat returns the first result with
   `duplicate: true`. Approving an already-approved applicant is also a no-op.
+- `approval_text_sent: true` (optional, SOP D30): FLEET has sent its own
+  approval text (P12), so the Approval Confirmation email is skipped
+  (`approval_email: "bot_text"`). Without it the email goes as before.
 
 **approve** runs the exact code path staff use when they press Approve:
 the same status change, the `application.approved` audit entry (labelled
@@ -101,13 +104,18 @@ Send `needs_staff` when any of these is true:
 1. Income proof missing.
 2. Driver under 25, or no date of birth.
 3. License expires within 30 days, or no expiration date.
-4. Gig rating under 4.0, or fewer than 100 trips.
+4. Gig rating under 4.0, or fewer than 200 trips (Dolmar, t299s1618; was 100).
+   Unknown trips or rating: FLEET confirms 200+ and 4.0+ on the gig
+   screenshot before approving, otherwise sends to staff.
 5. Not driving gig yet ("Not yet" / "No"), or the gig account is deactivated.
 6. The application analysis raised flags.
 7. Readiness says Needs Attention.
 8. Applied more than once, or an earlier application with the same phone or
    email was declined or closed.
-9. A background or MVR value other than pending/passed.
+9. A background or MVR value other than pending/passed. A flagged, failed,
+   "consider" or declined result is a hard blocker and always goes to staff
+   (`screening_flagged: true`, `recommendation: needs_staff`); a clear result
+   with the gig bar met FLEET may pass (Dolmar, t299s1618).
 10. Insurance name does not match the license.
 11. Anything in the documents or answers that does not line up (names, photos,
     screenshots), or anything FLEET is unsure about.

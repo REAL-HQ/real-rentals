@@ -3,7 +3,7 @@
  * staff text + email. See confirmationGaps in pickup-schedule.ts for the rule.
  *
  * Called (best effort, never throws) after a reservation is created, after a
- * reservation deposit is recorded, after the renter signs the agreement, and
+ * Reservation Fee is recorded, after the renter signs the agreement, and
  * by the fleet-webhooks cron as a safety net for any other path.
  *
  * Idempotent per rental:

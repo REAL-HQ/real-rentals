@@ -498,9 +498,9 @@ export const settleDeposit = createServerFn({ method: "POST" })
             .join("");
           await sendEmail({
             to: app.email as string,
-            subject: `Your deposit — $${refund.toFixed(2)} refunded`,
+            subject: `Your Deposit — $${refund.toFixed(2)} Refunded`,
             html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
-              <h1 style="font-size:19px">Deposit settled</h1>
+              <h1 style="font-size:19px">Deposit Settled</h1>
               <p style="font-size:15px;line-height:1.6">Deposit held: <strong>$${depositAmount.toFixed(2)}</strong></p>
               ${lines ? `<table style="width:100%;border-top:1px solid #eee;border-bottom:1px solid #eee;margin:12px 0;font-size:14px">${lines}</table>` : "<p style='font-size:15px'>No deductions were made.</p>"}
               <p style="font-size:16px"><strong>Refunding: $${refund.toFixed(2)}</strong></p>

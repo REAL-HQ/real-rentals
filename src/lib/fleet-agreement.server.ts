@@ -18,6 +18,7 @@
  *      (Company eSign Signer) and is not touched here.
  * Audited as "FLEET (automated)". Idempotent on idempotency_key.
  */
+import type { AgreementPrep } from "@/lib/agreement-prep";
 import {
   cleanText,
   fleetAdmin,
@@ -37,8 +38,24 @@ export type AgreementDeps = FleetDeps & {
   check?: (admin: Admin, applicationId: string) => Promise<SendCheck>;
   hasOpenOrSigned?: (admin: Admin, applicationId: string) => Promise<boolean>;
   verifySms?: typeof verifySmsConfirmation;
-  issue?: (admin: Admin, applicationId: string, opts: { createdBy: null }) => Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }>;
+  issue?: (admin: Admin, applicationId: string, opts: { createdBy: null; prep?: AgreementPrep }) => Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }>;
+  reservationFee?: { enabled: boolean; amount: number };
 };
+
+/**
+ * With the Reservation Fee switch on (t299s1618), FLEET's agreement records a
+ * Required Reservation Fee so a template that prints it says "$50, applied to
+ * your first payment", and signing charges it (reservation-fee.server.ts).
+ * Off: no prep, exactly as before.
+ */
+export function fleetAgreementPrep(fee: { enabled: boolean; amount: number }, deposit: number | null): AgreementPrep | undefined {
+  if (!fee.enabled) return undefined;
+  return {
+    drivers: { mode: "none", list: [] },
+    reservation: { mode: "required", amount: fee.amount },
+    deposit: deposit && deposit > 0 ? { mode: "required", amount: deposit, reason: "" } : { mode: "none", amount: null, reason: "" },
+  };
+}
 
 const MAX_CONFIRMATION_AGE_DAYS = 7;
 
@@ -225,7 +242,9 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
   let sent: Awaited<ReturnType<NonNullable<AgreementDeps["issue"]>>>;
   try {
     const issue = deps.issue ?? (await import("@/lib/agreements.functions")).issueAgreement;
-    sent = await issue(admin, leadId, { createdBy: null });
+    const fee = deps.reservationFee ?? (await (await import("@/lib/reservation-fee.server")).loadReservationFeeSettings(admin));
+    const prep = fleetAgreementPrep(fee, check.deposit);
+    sent = await issue(admin, leadId, prep ? { createdBy: null, prep } : { createdBy: null });
   } catch (e) {
     const msg = String((e as Error)?.message ?? e).slice(0, 300);
     await audit({ action: "agreement.fleet_send_failed", summary: `Agreement not sent by ${FLEET_ACTOR_LABEL}: ${msg}`, entityType: "application", entityId: leadId, metadata: { confirmation_id: confirmationId } });

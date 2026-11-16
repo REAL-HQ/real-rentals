@@ -20,13 +20,13 @@ export const STEP1_EMAIL_BRAND = "REAL RENTALS";
 
 export const STEP1_EMAIL_COPY = {
   subject: "Step 2: Finish Your Application to Lock In Your Spot",
-  headline: "You're in Line. Finish Step 2 Now to Hold Your Spot.",
+  headline: "You're In Line. Finish Step 2 Now to Hold Your Spot.",
   intro:
     "Thanks for applying with REAL RENTALS. We have a limited number of cars, and they go first come, first served. Priority goes to drivers who send a complete application, because that's how we verify you quickly and set up your insurance.",
   getTitle: "What You Get",
   get: [
     "INSURANCE INCLUDED. We pay for it, at no extra cost to you. It's already included in your weekly rental rate, with your name on the card.",
-    "A car ready for Uber, Lyft and delivery apps",
+    "A car ready for rideshare and delivery apps",
     "Simple 4-week rentals you can renew",
     "A real team behind you if anything goes wrong on the road",
   ],

@@ -460,15 +460,6 @@
       "addedAfterIntegrationMerge": true
     },
     {
-      "file": "src/components/admin/ReserveCarDialog.tsx",
-      "ordinal": 2,
-      "props": {
-        "value": "{depositRequired ? \"yes\" : \"no\"}",
-        "onChange": "{(e) => setDepositRequired(e.target.value === \"yes\")}"
-      },
-      "addedAfterIntegrationMerge": true
-    },
-    {
       "file": "src/components/admin/ReturnFlowDialog.tsx",
       "ordinal": 1,
       "props": {
@@ -700,5 +691,15 @@
     ]
   },
   "sourceSitesAfterIntegrationMerge": 83,
-  "callsiteFilesAfterIntegrationMerge": 52
+  "callsiteFilesAfterIntegrationMerge": 52,
+  "removedWithReservationDepositRetirement": {
+    "note": "Nov 16 2026 (Dolmar, card t315s1710): the optional Reservation Deposit setting was retired, so the Reserve Car dialog no longer has its Deposit Required select.",
+    "controls": [
+      {
+        "file": "src/components/admin/ReserveCarDialog.tsx",
+        "ordinal": 2,
+        "aria-label": "Deposit Required"
+      }
+    ]
+  }
 }

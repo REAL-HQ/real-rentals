@@ -352,7 +352,7 @@ export type ConfirmationInput = {
  *  1. the rental is reserved (rentals.status = reserved);
  *  2. the applicant is Approved or Active;
  *  3. a pickup date, time and location are set;
- *  4. the reservation deposit is not pending (not required, paid or waived);
+ *  4. the Reservation Fee is not pending (not required, paid or waived);
  *  5. the rental agreement is signed (unless the setting turns that off).
  */
 export function confirmationGaps(i: ConfirmationInput): string[] {

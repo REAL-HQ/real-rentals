@@ -10,11 +10,9 @@ import {
   type ReservationRow,
 } from "@/lib/reservations";
 import {
+  DEFAULT_RESERVATION_DEPOSIT_SETTINGS,
   isReservationDepositStatus,
-  readReservationDepositSettings,
-  RESERVATION_DEPOSIT_SETTINGS_KEY,
   resolveReservationDeposit,
-  writeReservationDepositSettings,
   type ReservationDepositSettings,
   type ReservationDepositStatus,
 } from "@/lib/reservation-deposit-settings";
@@ -42,9 +40,15 @@ async function requireOwner(userId: string) {
 
 const UUID = z.string().uuid();
 
-async function loadDepositSettings(admin: any): Promise<ReservationDepositSettings> {
-  const { data } = await admin.from("app_settings").select("value").eq("key", RESERVATION_DEPOSIT_SETTINGS_KEY).maybeSingle();
-  return readReservationDepositSettings(data?.value);
+/**
+ * The old optional "Reservation Deposit" setting is retired (Dolmar, card
+ * t315s1710): the $50 Reservation Fee (reservation_fee_auto) replaces it and is
+ * never called a deposit. The app_settings row and the reservation_deposit_*
+ * columns stay (no DB change); the setting always reads Off and cannot be
+ * turned on from the app.
+ */
+async function loadDepositSettings(_admin: any): Promise<ReservationDepositSettings> {
+  return { ...DEFAULT_RESERVATION_DEPOSIT_SETTINGS };
 }
 
 function mapRow(r: any, app: any, veh: any): ReservationRow {
@@ -125,41 +129,19 @@ export const getReservationDepositSettings = createServerFn({ method: "GET" })
     return loadDepositSettings(supabaseAdmin);
   });
 
-export const saveReservationDepositSettings = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) =>
-    z
-      .object({
-        enabled: z.boolean(),
-        defaultAmount: z.number().min(0).max(10000),
-        blockStartWhenPending: z.boolean(),
-      })
-      .parse(d),
-  )
-  .handler(async ({ context, data }): Promise<ReservationDepositSettings> => {
-    await requireOwner(context.userId);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const next: ReservationDepositSettings = {
-      enabled: data.enabled,
-      defaultAmount: data.defaultAmount,
-      blockStartWhenPending: data.blockStartWhenPending,
-    };
-    const { error } = await supabaseAdmin
-      .from("app_settings")
-      .upsert(
-        { key: RESERVATION_DEPOSIT_SETTINGS_KEY, value: writeReservationDepositSettings(next) as never },
-        { onConflict: "key" },
-      );
-    if (error) throw new Error(error.message);
-    return next;
-  });
-
 export const listReservations = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ rows: ReservationRow[]; settings: ReservationDepositSettings }> => {
+  .handler(async ({ context }): Promise<{ rows: ReservationRow[]; settings: ReservationDepositSettings; reservationFeeOn: boolean }> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const settings = await loadDepositSettings(supabaseAdmin);
+    // With the $50 Reservation Fee on, these columns hold the Reservation Fee,
+    // so staff screens say "Reservation Fee", never "Deposit" (Dolmar, t309u).
+    let reservationFeeOn = false;
+    try {
+      const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
+      reservationFeeOn = (await loadReservationFeeSettings(supabaseAdmin)).enabled;
+    } catch { /* off */ }
     const { data, error } = await supabaseAdmin
       .from("rentals")
       .select(
@@ -169,11 +151,11 @@ export const listReservations = createServerFn({ method: "GET" })
       .order("start_date", { ascending: true })
       .limit(500);
     if (error) {
-      if (/reservation_/i.test(error.message)) return { rows: [], settings };
+      if (/reservation_/i.test(error.message)) return { rows: [], settings, reservationFeeOn };
       throw new Error(error.message);
     }
     const list = (data ?? []) as any[];
-    if (!list.length) return { rows: [], settings };
+    if (!list.length) return { rows: [], settings, reservationFeeOn };
     const appIds = [...new Set(list.map((r) => r.application_id).filter(Boolean))] as string[];
     const vehicleIds = [...new Set(list.map((r) => r.vehicle_id))];
     const [apps, vehicles] = await Promise.all([
@@ -188,6 +170,7 @@ export const listReservations = createServerFn({ method: "GET" })
     const vehBy = new Map((vehicles.data ?? []).map((v: any) => [v.id, v]));
     return {
       settings,
+      reservationFeeOn,
       rows: list.map((r) => mapRow(r, r.application_id ? appBy.get(r.application_id) : null, vehBy.get(r.vehicle_id))),
     };
   });
@@ -199,8 +182,11 @@ export const CreateReservationInput = z.object({
   pickupTime: z.string().max(5),
   pickupLocation: z.string().trim().min(3).max(180),
   note: z.string().max(140).optional(),
+  /** Retired with the Reservation Deposit setting; ignored (card t315s1710). */
   depositRequired: z.boolean().optional(),
   depositAmount: z.number().min(0).max(10000).optional(),
+  /** FLEET only: refuse until the Reservation Fee is paid (when that switch is on). */
+  requireReservationFee: z.boolean().optional(),
 });
 export type CreateReservationData = z.infer<typeof CreateReservationInput>;
 
@@ -226,11 +212,25 @@ export async function createReservationCore(admin: any, data: CreateReservationD
     note: data.note,
   });
   const settings = await loadDepositSettings(admin);
-  const deposit = resolveReservationDeposit({
-    settings,
-    overrideRequired: data.depositRequired,
-    overrideAmount: data.depositAmount,
-  });
+  // No per-booking deposit any more: only the Reservation Fee below sets these columns.
+  let deposit = resolveReservationDeposit({ settings });
+  // $50 Reservation Fee (Dolmar, t299s1618): with reservation_fee_auto ON the
+  // car is held only once the fee is paid. A paid fee is recorded on the
+  // reservation as applied (credited to week 1, never a security deposit);
+  // an unpaid one shows as pending, so the reservation is not confirmed yet.
+  let feePaymentId: string | null = null;
+  let feeOn = false;
+  {
+    const { loadReservationFeeSettings, paidReservationFee } = await import("@/lib/reservation-fee.server");
+    const fee = await loadReservationFeeSettings(admin);
+    if (fee.enabled) {
+      feeOn = true;
+      const paid = await paidReservationFee(admin, data.applicationId);
+      if (data.requireReservationFee && !paid) throw new Error("The Reservation Fee Is Not Paid Yet. The Car Is Held Once It Is Paid.");
+      deposit = { required: true, amount: paid ? paid.amount : fee.amount, status: paid ? "applied" : "pending" } as typeof deposit;
+      feePaymentId = paid?.id ?? null;
+    }
+  }
 
   const { data: app, error: appErr } = await admin
     .from("applications")
@@ -295,13 +295,15 @@ export async function createReservationCore(admin: any, data: CreateReservationD
     start_date: pickup,
     status: RESERVATION_STATUS,
     weekly_rate: weekly,
-    deposit_amount: deposit.required ? deposit.amount : 0,
+    // The Reservation Fee is not a security deposit.
+    deposit_amount: deposit.required && !feeOn ? deposit.amount : 0,
     deposit_held: false,
     deposit_status: deposit.required ? "none" : "none",
     reservation_note: reservationNote,
     reservation_deposit_required: deposit.required,
     reservation_deposit_amount: deposit.amount,
     reservation_deposit_status: deposit.status,
+    ...(feePaymentId ? { reservation_deposit_payment_id: feePaymentId } : {}),
   };
 
   const { data: inserted, error: insErr } = await admin.from("rentals").insert(insertRow as never).select("id").single();
@@ -380,28 +382,9 @@ export const clearReservationAfterActivate = createServerFn({ method: "POST" })
     let cleared = 0;
     for (const row of (rows ?? []) as any[]) {
       const patch: Record<string, unknown> = { status: "cancelled" };
-      // Carry a paid reservation deposit onto the active rental without double-counting rent.
-      if (row.reservation_deposit_status === "paid" && Number(row.reservation_deposit_amount) > 0) {
-        let activeQ = supabaseAdmin
-          .from("rentals")
-          .select("id")
-          .eq("application_id", data.applicationId)
-          .eq("status", "active");
-        if (data.vehicleId) activeQ = activeQ.eq("vehicle_id", data.vehicleId);
-        const active = await activeQ.maybeSingle();
-        if (active.data?.id) {
-          await supabaseAdmin
-            .from("rentals")
-            .update({
-              deposit_amount: Number(row.reservation_deposit_amount),
-              deposit_held: true,
-              deposit_status: "held",
-              deposit_notes: "Applied From Reservation Deposit",
-            } as never)
-            .eq("id", active.data.id);
-          patch.reservation_deposit_status = "applied";
-        }
-      }
+      // Nothing is carried into the security deposit: the old reservation
+      // deposit is retired, and a Reservation Fee is credited to week 1
+      // (applyReservationFeeCredit), never held as a deposit (card t315s1710).
       const { error: upd } = await supabaseAdmin.from("rentals").update(patch as never).eq("id", row.id).eq("status", RESERVATION_STATUS);
       if (!upd) {
         cleared += 1;
@@ -420,7 +403,13 @@ export const clearReservationAfterActivate = createServerFn({ method: "POST" })
     return { cleared };
   });
 
-export const recordReservationDeposit = createServerFn({ method: "POST" })
+/**
+ * Record a Reservation Fee paid outside Stripe (Cash App, Venmo, Zelle, cash).
+ * The fee row is type fee / reason reservation_fee, like the Stripe one, so
+ * it is credited to week 1 at activation and never treated as a deposit. An
+ * open Stripe fee row for this renter is settled instead of adding a second.
+ */
+export const recordReservationFee = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
     z
@@ -440,62 +429,104 @@ export const recordReservationDeposit = createServerFn({ method: "POST" })
     const paidOn = reservationPickupDate(data.paidOn);
     if (!paidOn) throw new Error("Pick A Real Paid Date.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { RESERVATION_FEE_REASON } = await import("@/lib/reservation-fee");
     const { data: row, error } = await supabaseAdmin
       .from("rentals")
-      .select("id,status,application_id,vehicle_id,reservation_deposit_required,reservation_deposit_status,reservation_deposit_amount")
+      .select("id,status,application_id,vehicle_id,reservation_deposit_status")
       .eq("id", data.rentalId)
       .maybeSingle();
     if (error) throw new Error(error.message);
     const resRow = row as any;
     if (!resRow || !isReservationStatus(resRow.status)) throw new Error("Reservation Not Found.");
     if (resRow.reservation_deposit_status === "paid" || resRow.reservation_deposit_status === "applied") {
-      throw new Error("Deposit Already Recorded.");
+      throw new Error("Reservation Fee Already Recorded.");
     }
-    if (resRow.reservation_deposit_status === "waived") throw new Error("Deposit Was Waived.");
+    if (resRow.reservation_deposit_status === "waived") throw new Error("Reservation Fee Was Waived.");
 
-    const ins = await supabaseAdmin
+    const amount = Math.round(data.amount * 100) / 100;
+    const note = `Reservation Fee (manual${data.reference ? `: ${data.reference.slice(0, 160)}` : ""})`;
+    const { data: open } = await supabaseAdmin
       .from("payments")
-      .insert({
-        type: "deposit",
-        status: "paid",
-        amount: Math.round(data.amount * 100) / 100,
-        paid_date: paidOn,
-        due_date: paidOn,
-        payment_method: data.method,
-        notes: data.reference?.slice(0, 200) || "Reservation Deposit",
-        rental_id: resRow.id,
-        driver_id: resRow.application_id,
-        vehicle_id: resRow.vehicle_id,
-        balance_due: 0,
-        notified_status: "paid",
-      })
-      .select("id")
-      .single();
-    if (ins.error || !ins.data) throw new Error("Could Not Record The Deposit.");
+      .select("id,status,notes")
+      .eq("driver_id", resRow.application_id)
+      .eq("reason", RESERVATION_FEE_REASON)
+      .in("status", ["current", "unpaid", "failed", "pending", "paid"])
+      .limit(5);
+    const openRows = (open ?? []) as any[];
+    if (openRows.some((p) => p.status === "paid" && !/\bkept:/.test(String(p.notes ?? "")))) throw new Error("Reservation Fee Already Paid.");
+    if (openRows.some((p) => p.status === "pending")) throw new Error("A Card Payment For The Reservation Fee Is Still Processing.");
+    const existing = openRows.find((p) => p.status !== "paid") ?? null;
+    let paymentId: string;
+    if (existing) {
+      // Close the renter's Stripe link first so the fee can never be paid twice.
+      // If Stripe cannot confirm the link is closed, nothing is recorded.
+      const { data: ags } = await supabaseAdmin.from("agreements").select("id,metadata").eq("application_id", resRow.application_id).limit(20);
+      const sessionIds = ((ags ?? []) as any[])
+        .map((g) => g?.metadata?.reservation_fee_checkout)
+        .filter((c) => c && c.payment_id === existing.id)
+        .map((c) => (c.session_id ? String(c.session_id) : ""));
+      if (sessionIds.length) {
+        if (sessionIds.some((id) => !id)) throw new Error("This Renter Has An Open Stripe Link For The Reservation Fee. Wait For It To Expire (24 Hours) Before Recording A Manual Payment.");
+        const { stripeClient } = await import("@/lib/reservation-fee-core.server");
+        const stripe = await stripeClient({});
+        if (!stripe) throw new Error("Card Payments Are Not Configured, So The Open Stripe Link Could Not Be Closed.");
+        for (const id of sessionIds) {
+          const sess = await stripe.checkout.sessions.retrieve(id);
+          if (sess?.status === "complete") throw new Error("The Renter Already Paid The Reservation Fee By Card.");
+          if (sess?.status === "open") await stripe.checkout.sessions.expire(id);
+        }
+      }
+      // Settle the open Stripe fee row; the renter's link then shows it as paid.
+      const { error: upErr } = await supabaseAdmin
+        .from("payments")
+        .update({ status: "paid", amount, paid_date: paidOn, payment_method: data.method, rental_id: resRow.id, balance_due: 0, notified_status: "paid", failure_reason: null, notes: `${String(existing.notes ?? "")} · ${note}`.slice(0, 400) } as never)
+        .eq("id", existing.id)
+        .in("status", ["current", "unpaid", "failed"]);
+      if (upErr) throw new Error("Could Not Record The Reservation Fee.");
+      paymentId = existing.id;
+    } else {
+      const ins = await supabaseAdmin
+        .from("payments")
+        .insert({
+          type: "fee",
+          reason: RESERVATION_FEE_REASON,
+          status: "paid",
+          amount,
+          paid_date: paidOn,
+          due_date: paidOn,
+          payment_method: data.method,
+          notes: note,
+          rental_id: resRow.id,
+          driver_id: resRow.application_id,
+          vehicle_id: resRow.vehicle_id,
+          balance_due: 0,
+          notified_status: "paid",
+        } as never)
+        .select("id")
+        .single();
+      if (ins.error || !ins.data) throw new Error("Could Not Record The Reservation Fee.");
+      paymentId = (ins.data as any).id;
+    }
 
     const { error: upd } = await supabaseAdmin
       .from("rentals")
       .update({
         reservation_deposit_required: true,
-        reservation_deposit_amount: Math.round(data.amount * 100) / 100,
-        reservation_deposit_status: "paid",
-        reservation_deposit_payment_id: ins.data.id,
+        reservation_deposit_amount: amount,
+        // "applied": credited to week 1, never carried as a security deposit.
+        reservation_deposit_status: "applied",
+        reservation_deposit_payment_id: paymentId,
       } as never)
       .eq("id", resRow.id);
-    if (upd) throw new Error("Deposit Payment Saved, But The Reservation Could Not Be Updated.");
+    if (upd) throw new Error("Reservation Fee Saved, But The Reservation Could Not Be Updated.");
     try {
       const { maybeConfirmReservation } = await import("@/lib/reservation-confirmation.server");
       await maybeConfirmReservation(supabaseAdmin, { rentalId: resRow.id });
     } catch (e) {
       console.error("[reservation] confirmation check failed", String((e as Error)?.message ?? e));
     }
-    return { paymentId: ins.data.id };
+    return { paymentId };
   });
-
-/** Future Stripe deposit invoice/link hook — not implemented; never use a generic Stripe payment page. */
-export function stripeReservationDepositHook(_args: { rentalId: string; amount: number }): { ok: false; reason: string } {
-  return { ok: false, reason: "Stripe Reservation Deposits Are Not Built Yet. Record The Deposit Manually." };
-}
 
 export const getOpenReservationForApplication = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

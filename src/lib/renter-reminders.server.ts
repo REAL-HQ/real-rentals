@@ -162,7 +162,7 @@ export function agreementEmail(step: AgreementStep, firstName: string): { subjec
   }
   return {
     subject: "Reminder: Your REAL RENTALS Agreement Is Waiting",
-    html: emailShell("Your rental agreement is still waiting", p(`Hi ${esc(firstName)}, your rental agreement still needs your signature before we can hand over the keys. Open the signing link in the email we sent you to sign.`) + p("Need a new link? Reply to this email and our team will send one.")),
+    html: emailShell("Your Rental Agreement Is Still Waiting", p(`Hi ${esc(firstName)}, your rental agreement still needs your signature before we can hand over the keys. Open the signing link in the email we sent you to sign.`) + p("Need a new link? Reply to this email and our team will send one.")),
   };
 }
 

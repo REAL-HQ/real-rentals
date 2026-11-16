@@ -175,6 +175,7 @@ function senders({ result = { ok: true }, delay = 0, throws = false } = {}) {
     deps: {
       sendWizardRecoveryEmail: (a) => make(a.variant)(a),
       sendAbandonedRecoveryEmail: make("abandoned"),
+      abandonedQuoteEmail: true,
       now: () => NOW,
       log: () => {},
     },
@@ -412,20 +413,30 @@ const ok = (name) => {
     assert.equal(r2.ok, true, "sendAbandonedRecoveryEmail returns the send result");
     const tokenRows = inserts.filter((i) => i.table === "application_resume_tokens");
     assert.equal(tokenRows.length, 2);
-    for (const row of tokenRows) {
-      const ttl = Date.parse(row.expires_at) - before;
-      assert.ok(ttl > 0 && ttl <= 31 * 60_000, `reminder minted a ${Math.round(ttl / 60000)}-minute token`);
-    }
-    for (const b of bodies) {
-      assert.match(b.html, /works once and expires 30 minutes/);
-      assert.match(b.html, /drivereal\.com\/thank-you\?t=/);
-    }
+    // D9: the 24h/72h reminders carry the 14-day follow-up link; the (dropped) abandoned email keeps the 30-minute one.
+    const ttls = tokenRows.map((row) => Date.parse(row.expires_at) - before);
+    assert.ok(ttls[0] > 13 * 86400_000 && ttls[0] <= 14 * 86400_000 + 60_000, `24h reminder minted a ${Math.round(ttls[0] / 60000)}-minute token`);
+    assert.ok(ttls[1] > 0 && ttls[1] <= 31 * 60_000, `abandoned minted a ${Math.round(ttls[1] / 60000)}-minute token`);
+    assert.match(bodies[0].html, /private to you and works for 14 days/);
+    assert.match(bodies[1].html, /works once and expires 30 minutes/);
+    for (const b of bodies) assert.match(b.html, /drivereal\.com\/thank-you\?t=/);
   } finally {
     globalThis.fetch = savedFetch;
     if (savedKey === undefined) delete process.env.RESEND_API_KEY;
     else process.env.RESEND_API_KEY = savedKey;
   }
-  ok("24h/72h/abandoned reminders mint 30-minute single-use recovery links and say so");
+  ok("24h/72h reminders mint the 14-day link; abandoned keeps the 30-minute link; each says so");
+}
+
+// ------------------------------------------------------------- M04 dropped (D10)
+{
+  const admin = createAdmin([app({ id: "ab-x", created_at: hoursAgo(5), recovery_sent_at: null })]);
+  const s = senders();
+  const { abandonedQuoteEmail, ...deps } = s.deps;
+  const report = await cron.runWizardRecovery(admin, deps);
+  assert.equal(report.sent_abandoned, 0);
+  assert.equal(s.sent.filter((x) => x.kind === "abandoned").length, 0);
+  ok("the 3-hour Abandoned Quote email is dropped by default (D10)");
 }
 
 // ------------------------------------------------------------- per-run cap

@@ -409,7 +409,7 @@ async function handle(request: Request): Promise<Response> {
         track: { workflow: "agreement_reminder" },
         subject: "Reminder: Your REAL RENTALS Agreement Is Ready To Sign",
         html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px">
-          <h1 style="font-size:20px;color:#111">Your rental agreement is still waiting</h1>
+          <h1 style="font-size:20px;color:#111">Your Rental Agreement Is Still Waiting</h1>
           <p style="color:#444;font-size:15px;line-height:1.55">Hi ${(app?.full_name || "there").split(" ")[0]}, we still need your signature before we can hand over the keys. Sign in to your driver portal to review and sign.</p>
           <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Review &amp; Sign</a>
           <p style="color:#888;font-size:12px;margin-top:20px">Need a fresh link? Reply to this email and our team will send one.</p>

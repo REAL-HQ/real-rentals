@@ -381,6 +381,8 @@ export async function handleFleetApplicantDecision(request: Request, deps: Decis
     createdBy: null,
     rpc: FLEET_NO_SESSION_RPC,
     decidedBy: { label: FLEET_ACTOR_LABEL, reason },
+    // D30: FLEET says it sent its approval text (P12), so the approval email is skipped.
+    ...(body.approval_text_sent === true ? { skipApprovalEmail: true } : {}),
   });
   if (!res.ok) return fleetJson(409, { ok: false, error: res.error ?? "Approval was refused." });
   const ins = await record("approved");
