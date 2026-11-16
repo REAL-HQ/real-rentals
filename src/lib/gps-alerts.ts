@@ -2,8 +2,11 @@
  * GPS alerts to a person (Dolmar, t299s1618; SOP D18). Client-safe rules, no I/O.
  *
  * Three alerts, for trackers matched to a car in the app:
- *   outside_area   the car is outside the service area (Florida by default,
- *                  or farther than GPS_RULES.maxMilesFromShop from the shop)
+ *   outside_area   the car is outside the service area: more than
+ *                  GPS_RULES.maxMilesFromShop (100) miles from Tampa (the shop),
+ *                  Dolmar t311u. A reading with only an address and a state
+ *                  other than Florida is also outside (all of FL beyond
+ *                  100 miles is caught by the distance check).
  *   offline        the tracker has not reported for GPS_RULES.offlineHours,
  *                  or the tracker itself says no power / not reporting
  *   no_movement    a car on an active rental has not moved for
@@ -15,10 +18,12 @@
  */
 
 export const GPS_RULES = {
+  /** Only a fallback for readings with no coordinates; every point within 100 miles of Tampa is in FL. */
   serviceStates: ["FL"] as readonly string[],
-  /** The shop (3500 E Hillsborough Ave, Tampa, FL 33610). */
+  /** Center of the service area: the shop (3500 E Hillsborough Ave, Tampa, FL 33610). */
   shop: { lat: 27.9813, lng: -82.4157 },
-  maxMilesFromShop: 150,
+  /** Service area radius: 100 miles of Tampa (Dolmar, t311u; was 150). */
+  maxMilesFromShop: 100,
   offlineHours: 24,
   noMovementHours: 48,
 } as const;
@@ -90,8 +95,9 @@ export function evaluateGps(r: GpsReading, car: GpsVehicle, now: Date, rules = G
   const far = Number.isFinite(Number(r.lat)) && Number.isFinite(Number(r.lng)) && r.lat != null && r.lng != null
     ? milesBetween(rules.shop, { lat: Number(r.lat), lng: Number(r.lng) })
     : null;
-  if ((state && !rules.serviceStates.includes(state)) || (far !== null && far > rules.maxMilesFromShop)) {
-    out.push({ vehicle_id: car.id, rule: "outside_area", message: `${car.label} is outside the service area${where}${far !== null ? ` (${Math.round(far)} miles from the shop)` : ""}.` });
+  const outside = far !== null ? far > rules.maxMilesFromShop : Boolean(state && !rules.serviceStates.includes(state));
+  if (outside) {
+    out.push({ vehicle_id: car.id, rule: "outside_area", message: `${car.label} is outside the ${rules.maxMilesFromShop}-mile service area around Tampa${where}${far !== null ? ` (${Math.round(far)} miles from the shop)` : ""}.` });
   }
   const silent = hoursSince(r.last_report_at, now);
   const noPower = /\b(no power|not reporting|offline|unplugged|disconnected)\b/i.test(String(r.status_text ?? ""));
