@@ -586,3 +586,24 @@ describe("auto-close after 14 days with no reply", () => {
     await ins();
   });
 });
+
+describe("trip-history / gig earnings screenshot is income proof (Dolmar, t306s1653)", () => {
+  const base = app({ license_photo_url: "a1/x.jpg", profile_screenshot_url: "a1/y.jpg" });
+  test("a current trip-history file means income is not asked for", () => {
+    expect(missingItems(base, [])).toEqual(["income"]);
+    expect(missingItems(base, [{ category: "trip_history", is_current: true, review_status: "uploaded" }])).toEqual([]);
+    expect(missingItems(app(), [{ category: "trip_history", is_current: true, review_status: "uploaded" }])).toEqual(["license_front", "gig_profile"]);
+  });
+  test("trip screenshots saved on the application count; rejected or replaced files and outside URLs do not", () => {
+    expect(missingItems({ ...base, trip_screenshots: ["a1/trip1.jpg"] }, [])).toEqual([]);
+    expect(missingItems({ ...base, trip_screenshots: ["https://example.com/x.jpg"] }, [])).toEqual(["income"]);
+    expect(missingItems({ ...base, trip_screenshots: [] }, [])).toEqual(["income"]);
+    expect(missingItems(base, [{ category: "trip_history", is_current: true, review_status: "rejected" }])).toEqual(["income"]);
+    expect(missingItems(base, [{ category: "trip_history", is_current: false, review_status: "uploaded" }])).toEqual(["income"]);
+  });
+  test("the outreach reads trip-history files and the application's trip screenshots", () => {
+    const src = readFileSync("src/lib/missing-items-outreach.server.ts", "utf8");
+    expect(src).toContain('q.in("category", ["license_front", "gig_profile", "income", "trip_history"])');
+    expect(src).toContain("income_proof_url,trip_screenshots,");
+  });
+});

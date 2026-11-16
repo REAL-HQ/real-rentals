@@ -13,6 +13,8 @@ an Owner turns a switch on in Back Office → Automations.
 | gig_profile | A screenshot of your gig app profile showing your rating and your number of trips or deliveries | Same, gig_profile |
 | income | Proof of income from gig work or any other source, like a recent earnings summary, pay stub, or bank statement. This just helps us make sure the rental is a good fit and comfortable for your budget. | Same, income (new wizard upload) |
 
+A current, non-rejected trip-history / gig earnings screenshot (vault category `trip_history`, or a saved `applications.trip_screenshots` path) counts as proof of income (Dolmar, t306s1653): those applicants are never asked for income.
+
 Never asked: date of birth and license expiry (FLEET reads them from the
 license photo), license back (optional), insurance (included), background check or
 MVR (staff only), address and trip screenshots (not required by FLEET's review).
