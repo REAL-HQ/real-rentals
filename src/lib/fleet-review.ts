@@ -15,7 +15,7 @@
  * Nothing here marks anyone insured, verified or screened. Insurance and
  * background-check values are reported exactly as recorded.
  */
-import { REQUIRED_VAULT_CATEGORIES } from "@/lib/required-docs";
+import { REQUIRED_VAULT_CATEGORIES, requirementCategory } from "@/lib/required-docs";
 
 export const FLEET_ACTOR_LABEL = "FLEET (automated)";
 /** How a date FLEET read off the license photo is labelled everywhere. Never "verified". */
@@ -124,6 +124,8 @@ export function docPicture(docs: readonly FleetDoc[]) {
     if (!c) continue;
     if (d.review_status === "rejected") { rejected.add(c); continue; }
     have.add(c);
+    // A trip-history / gig earnings screenshot is income proof (t306s1653).
+    if (requirementCategory(c) !== c) have.add(requirementCategory(c));
     if (d.review_status === "verified") reviewed.add(c);
   }
   // A later good upload replaces a rejected one.

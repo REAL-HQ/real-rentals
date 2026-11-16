@@ -98,7 +98,9 @@ import { CHECKLIST_EVIDENCE_ENABLED, EVIDENCE_FIELDS, PICKUP_PAYMENT_METHODS, do
 import { pickupAmountCents } from "@/lib/pickup-payment";
 import { getChecklistEvidence, saveChecklistEvidence } from "@/lib/checklist-evidence.functions";
 import { ChecklistEvidenceControl } from "./ChecklistEvidenceControl";
-import { driverLifecycle } from "@/lib/driver-lifecycle";
+import { driverLifecycle, firstContact, fleetMarksByStage, stageStartedAt, type ContactActivity, type FleetLifecycleMark } from "@/lib/driver-lifecycle";
+import { getFleetLifecycleMarks } from "@/lib/fleet-lifecycle.functions";
+import { getLeadActivity } from "@/lib/lead-activity.functions";
 import type { ActivationRequirementKey } from "@/lib/activation-readiness";
 import { scoreApplication } from "@/lib/scoring.functions";
 import {
@@ -1933,7 +1935,34 @@ function DriverDetail({
   // ---- Derive lifecycle stages from driver + screening ------------------
   const scrStatus = String((screening as any)?.status ?? "").toLowerCase();
   const dStatus = String(driver.status ?? "").toLowerCase();
-  const contacted = !!driver.contacted_at || scrStatus !== "new_lead";
+  // Contacted from real records (contacted_at, Contact Status, a screening
+  // row past New Lead, a delivered text or a call). A missing screening row
+  // used to read as "past New Lead" and checked Contacted for nobody-reached
+  // applicants.
+  const loadContactActivity = useServerFn(getLeadActivity);
+  const loadFleetMarks = useServerFn(getFleetLifecycleMarks);
+  const [contactActivity, setContactActivity] = useState<ContactActivity[]>([]);
+  const [fleetMarks, setFleetMarks] = useState<FleetLifecycleMark[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    setContactActivity([]);
+    setFleetMarks([]);
+    void loadContactActivity({ data: { applicationId: driver.id, limit: 200 } })
+      .then((r) => { if (!cancelled) setContactActivity(r.rows ?? []); })
+      .catch(() => {});
+    void loadFleetMarks({ data: { applicationId: driver.id } })
+      .then((r) => { if (!cancelled) setFleetMarks(r.marks ?? []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [driver.id, loadContactActivity, loadFleetMarks]);
+  const contact = firstContact({
+    contactedAt: driver.contacted_at ?? null,
+    contactStatus: (driver as any).contact_status ?? null,
+    contactStatusAt: (driver as any).contact_status_at ?? null,
+    screeningStatus: screening ? scrStatus : null,
+    activity: contactActivity,
+  });
+  const contacted = contact.contacted;
   const screeningDone = !!screening?.interview_completed_at;
   // From the vault, not from lead_documents. lead_documents only ever held
   // files a staff member uploaded in the back office, so an applicant who sent
@@ -2151,7 +2180,18 @@ function DriverDetail({
     inspection: isManager ? actualInspection || addressed(inspectionItems) : actualInspection,
     agreement: isManager ? actualAgreement || addressed(agreementItems) : actualAgreement,
   });
-  const stageStartIso = currentStage?.key === "screening" ? driver.contacted_at ?? driver.created_at : driver.created_at;
+  const fleetByStage = fleetMarksByStage(fleetMarks);
+  const lastRequiredDocAt = vaultDocs
+    .filter((d) => (REQUIRED_VAULT_CATEGORIES as readonly string[]).includes(d.category) && d.is_current !== false && d.review_status !== "rejected")
+    .map((d) => d.created_at).sort().at(-1) ?? null;
+  const stageStartIso = stageStartedAt(lifecycle, currentStage?.key, {
+    applied: driver.created_at ?? null,
+    contacted: contact.at,
+    documents: lastRequiredDocAt,
+    approved: fleetByStage.approved?.at ?? null,
+    agreement: fleetByStage.agreement?.at ?? null,
+    reserved: fleetByStage.reserved?.at ?? null,
+  });
   const timeInStage = stageStartIso ? formatDuration(Date.now() - new Date(stageStartIso).getTime()) : undefined;
 
   function readinessChanged() {
@@ -2336,6 +2376,9 @@ function DriverDetail({
 
   const stageTargets: Partial<Record<string, () => void>> = {
     screening: () => setTab("screening"),
+    // The rail's Documents step opens the files (its old receipt checkbox was a
+    // duplicate of the Next Step checklist and was removed, t306s1653).
+    documents: () => openSection("documents", "profile-documents"),
     docs: () => openSection("documents", "profile-documents"),
     profile: () => openSection("documents", "profile-documents"),
     insurance: () => openSection("screening", "profile-insurance"),
@@ -2716,17 +2759,9 @@ function DriverDetail({
               } : undefined}
               percent={percentComplete}
               timeInStage={timeInStage}
+              stageNotes={Object.fromEntries(Object.entries(fleetByStage).map(([k, m]) => [k, { caption: k === "agreement" ? "Sent By FLEET" : "By FLEET", title: `${m!.summary} · ${fmtDateTime(m!.at)}` }]))}
               blocker={readiness.disqualifiers[0]}
               onStageClick={stageTargets}
-              stageCheckoffs={CHECKLIST_EVIDENCE_ENABLED && isManager ? {
-                documents: {
-                  onToggle: () => void toggleEvidence(collectedDocuments.fields),
-                  disabled: vaultLoading || evidenceLoading || evidenceFailed || evidenceSaving || collectedDocuments.uploaded,
-                  checked: collectedDocuments.collected,
-                  label: "Documents Received",
-                  title: collectedDocuments.uploaded ? "Documents On File" : collectedDocuments.collected ? "Received Elsewhere · Upload Due" : "Confirm Documents Received Elsewhere",
-                },
-              } : undefined}
             />
           </div>
           {/* Primary record navigation: below identity and lifecycle progress */}
@@ -2785,7 +2820,7 @@ function DriverDetail({
               </TabsContent>
 
               <TabsContent value="documents" className="mt-0 space-y-4">
-                <div id="profile-agreements" className="scroll-mt-48"><AgreementsCard applicationId={driver.id} onOpenTab={(t) => setTab(t)} /></div>
+                <div id="profile-agreements" className="scroll-mt-48"><AgreementsCard applicationId={driver.id} applicationStatus={driver.status ?? null} onOpenTab={(t) => setTab(t)} /></div>
                 <SectionCard
                   title="Documents"
                   subtitle="Everything this applicant sent us. Shared with the driver unless marked team only."

@@ -10,6 +10,17 @@ import { REQUIRED_DOC_TYPES, type RequiredDocType } from "@/components/admin/typ
  * required for the Documents receipt summary but remains advisory for activation.
  */
 export const REQUIRED_VAULT_CATEGORIES = ["license_front", "gig_profile", "income"] as const;
+/**
+ * Files that count as proof of income. A gig earnings or trip-history
+ * screenshot counts (Dolmar, t306s1653), so an applicant who sent one is never
+ * asked for income proof again. Counting is receipt only, never verification.
+ */
+export const INCOME_PROOF_CATEGORIES = ["income", "trip_history"] as const;
+/** The required category a vault category satisfies (trip_history -> income), else itself. */
+export function requirementCategory(category: string | null | undefined): string {
+  const c = String(category ?? "").trim();
+  return (INCOME_PROOF_CATEGORIES as readonly string[]).includes(c) ? "income" : c;
+}
 /** Accepted and stored, never required: only the front of the license is required. */
 export const OPTIONAL_VAULT_CATEGORIES = ["license_back"] as const;
 export type RequiredVaultCategory = (typeof REQUIRED_VAULT_CATEGORIES)[number];
@@ -17,6 +28,8 @@ export type RequiredVaultCategory = (typeof REQUIRED_VAULT_CATEGORIES)[number];
 /** Vault category -> the required-document name the list counts. */
 export const VAULT_TO_REQUIRED: Record<string, string> = {
   gig_profile: "driver_profile_screenshot",
+  // A trip-history / gig earnings screenshot is income proof (t306s1653).
+  trip_history: "income",
 };
 
 type DocRow = { lead_id?: string | null; category?: string | null; review_status?: string | null; is_current?: boolean | null };

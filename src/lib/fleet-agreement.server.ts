@@ -247,6 +247,15 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
       terms: { weekly_rate: conf.value.weekly_rate, deposit: conf.value.deposit, start_date: conf.value.start_date, vehicle_id: conf.value.vehicle_id },
     },
   });
+  // Lifecycle trail. A confirmed YES text or call is a real two-way exchange,
+  // so it also fills a blank contacted_at. Agreement completes only on signing;
+  // this records that FLEET sent it.
+  {
+    const { recordFleetLifecycleStep, stampContactedByFleet } = await import("@/lib/fleet-lifecycle.server");
+    const how = conf.value.channel === "sms" ? "a YES text" : `a ${conf.value.channel}`;
+    await stampContactedByFleet(admin, audit, { applicationId: leadId, evidence: `Applicant confirmed terms by ${how}.`, source: "send-agreement", at: now });
+    await recordFleetLifecycleStep(audit, { applicationId: leadId, step: "agreement", evidence: `Agreement sent for signature after the applicant confirmed terms by ${how}.`, source: "send-agreement", at: now, extra: { agreement_id: sent.id } });
+  }
   // The signing URL carries the renter's token: it is never returned to FLEET.
   return fleetJson(201, {
     ok: true,

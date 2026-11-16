@@ -392,6 +392,10 @@ export async function handleFleetApplicantDecision(request: Request, deps: Decis
     entityId: leadId,
     metadata: { decided_by: FLEET_ACTOR_LABEL, reason, escalation_codes: codes, decision_id: ins.data?.id ?? null, approval_email: res.approvalEmail ?? null },
   });
+  // The Approved stage is the application status itself; this is the trail
+  // that says FLEET did it (shown as "By FLEET" on the profile).
+  const { recordFleetLifecycleStep } = await import("@/lib/fleet-lifecycle.server");
+  await recordFleetLifecycleStep(audit, { applicationId: leadId, step: "approved", evidence: reason, source: "applicant-decision", at: new Date(), extra: { decision_id: ins.data?.id ?? null } });
   return fleetJson(201, {
     ok: true,
     decision: "approve",

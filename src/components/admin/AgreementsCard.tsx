@@ -44,7 +44,8 @@ type PreviewRes = {
   generatedAt: string;
 };
 
-export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: string; onOpenTab?: (tab: string) => void }) {
+export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: { applicationId: string; onOpenTab?: (tab: string) => void; applicationStatus?: string | null }) {
+  const beforeApproval = applicationStatus != null && !["approved", "active"].includes(String(applicationStatus).toLowerCase());
   const load = useServerFn(listAgreements);
   const doPreview = useServerFn(previewAgreement);
   const doSend = useServerFn(sendAgreement);
@@ -271,7 +272,9 @@ export function AgreementsCard({ applicationId, onOpenTab }: { applicationId: st
           </div>
         ) : rows.length === 0 ? (
           <p className="text-[13px] text-[#55555E]">
-            No agreement sent yet. Prepare one to pre-fill it with this driver's details and assigned vehicle.
+            {beforeApproval
+              ? "No agreement yet. It goes out after approval: once the applicant is approved, has a car and confirms the terms (a YES text), FLEET sends it for signature. You can still prepare one by hand."
+              : "No agreement sent yet. Prepare one to pre-fill it with this driver's details and assigned vehicle."}
           </p>
         ) : (
           <ul className="divide-y divide-[#EDEDF0] border border-[#EDEDF0] rounded-lg overflow-hidden">
