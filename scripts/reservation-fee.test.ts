@@ -209,6 +209,13 @@ describe("late pickup release", () => {
     await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:30:00Z") });
     expect(db.state.rentals[0].status).toBe("reserved");
   });
+  test("team alert table missing: held, nothing released (staff must hear about every release)", async () => {
+    const db = fakeDb(lateSeed(), { missing: ["team_alert_sends"] }); const x = io();
+    const { teamAlert, ...rest } = x;
+    await lp.runLatePickups(db, { ...rest, gate: "send", now: at("2026-11-20T15:20:00Z") });
+    expect(db.state.rentals[0].status).toBe("reserved");
+    expect(x.sms.length).toBe(0);
+  });
   test("no claim table: nothing released", async () => {
     const db = fakeDb(lateSeed(), { missing: ["renter_reminder_sends"] }); const x = io();
     const out = await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:20:00Z") });

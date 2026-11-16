@@ -5,7 +5,8 @@ loses the reservation; the $50 Reservation Fee is kept.
 
 Switch: "Late Pickup Release" (`late_pickup_release`) in Back Office →
 Automations, OFF by default. Runs every 5 minutes inside
-`/api/public/cron/renter-reminders` (needs `proposed/renter-reminders-v1.sql`).
+`/api/public/cron/renter-reminders` (needs `proposed/renter-reminders-v1.sql` and
+`proposed/team-alerts-v1.sql`; without the team alert table nothing is released).
 
 ## Rule
 

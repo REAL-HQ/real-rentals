@@ -81,6 +81,12 @@ export async function runLatePickups(admin: Admin, deps: LatePickupDeps = {}): P
     gate = gateFor(await loadAutomationControls(admin), LATE_PICKUP_KEY);
   }
 
+  // Never release without being able to tell staff: the team alert claim table must exist.
+  if (gate === "send" && !deps.teamAlert) {
+    const t = await admin.from("team_alert_sends").select("key").limit(1);
+    if (t?.error && tableMissing(t.error, "team_alert_sends")) gate = "held";
+  }
+
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: PICKUP_TIMEZONE }).format(now);
   const { data: rentals, error } = await admin
     .from("rentals")
@@ -98,7 +104,7 @@ export async function runLatePickups(admin: Admin, deps: LatePickupDeps = {}): P
       if (fee) { await holdReservationForFee(admin, r.application_id, fee); r.reservation_deposit_status = "applied"; outcomes.push({ rental_id: r.id, status: "fee_hold" }); }
     }
 
-    if (gate !== "send") continue;
+    if (gate !== "send") continue; // off, or held (settings unreadable / team alert table missing)
     const d = readReservationDetails(r.reservation_note);
     if (!d.pickupTime) continue;
     const late = minutesLate(r.start_date, d.pickupTime, now);

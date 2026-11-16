@@ -1,6 +1,7 @@
 -- PROPOSED, NOT APPLIED. Needs Dolmar's approval (including the renter wording
 -- in docs/late-pickup.md), after the code is published and
--- proposed/renter-reminders-v1.sql has been run (claim table + 5-minute job).
+-- proposed/renter-reminders-v1.sql (claim table + 5-minute job) and
+-- proposed/team-alerts-v1.sql (staff alert table; nothing is released without it) have been run.
 -- Turns on "Late Pickup Release" (src/lib/late-pickup.server.ts). Preferred:
 -- switch it on in Back Office -> Automations (records who turned it on). This
 -- is the same change in SQL.
