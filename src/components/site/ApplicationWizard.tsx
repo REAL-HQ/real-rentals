@@ -15,6 +15,7 @@ import {
   CalendarCheck,
   ChevronRight,
   IdCard,
+  Wallet,
   Smartphone,
   MapPin,
   ListChecks,
@@ -236,6 +237,7 @@ type WizardState = {
   license_photo_on_file: boolean;
   insurance_doc_on_file: boolean;
   profile_screenshot_on_file: boolean;
+  income_proof_on_file: boolean;
   /** Display names of the stored screenshots, in stored order. */
   trip_screenshot_names: string[];
   /** Filenames of the stored screenshots the applicant still wants. */
@@ -479,10 +481,20 @@ export function ApplicationWizard({ token }: { token: string }) {
       .then(async (row) => {
         if (row.editable === false) setLocked(true);
         let phase = phaseFrom(row.current_step);
+        let earlierStepOpen = false;
         if (APPLICATION_RESUME_ENABLED === true) {
           const mod = await import("@/lib/application-resume");
           const progress = mod.progressFromWizard(row);
           if (progress.phase) phase = progress.phase;
+          earlierStepOpen = progress.phase === "rental" || progress.phase === "driving";
+        }
+        // A submitted applicant who still owes us something (the missing-items
+        // message links here) lands straight on the upload step.
+        const stored = phaseFrom(row.current_step);
+        const owesItems =
+          !row.license_photo_on_file || !row.profile_screenshot_on_file || !row.income_proof_on_file;
+        if (owesItems && !earlierStepOpen && (stored === "submitted" || stored === "documents" || stored === "profile_complete")) {
+          phase = "documents";
         }
         setState({
           full_name: row.full_name ?? "",
@@ -507,6 +519,7 @@ export function ApplicationWizard({ token }: { token: string }) {
           license_photo_on_file: row.license_photo_on_file,
           insurance_doc_on_file: row.insurance_doc_on_file,
           profile_screenshot_on_file: row.profile_screenshot_on_file,
+          income_proof_on_file: Boolean(row.income_proof_on_file),
           trip_screenshot_names: row.trip_screenshot_names,
           trip_screenshots_keep: [...row.trip_screenshot_names],
           trip_screenshots_added: [],
@@ -1528,8 +1541,8 @@ function DriverProfile({
    * the same file without uploading it again — see DocumentCapture).
    */
   const persistUpload = async (
-    column: "license_photo_url" | "insurance_doc_url" | "profile_screenshot_url",
-    presence: "license_photo_on_file" | "insurance_doc_on_file" | "profile_screenshot_on_file",
+    column: "license_photo_url" | "insurance_doc_url" | "profile_screenshot_url" | "income_proof_url",
+    presence: "license_photo_on_file" | "insurance_doc_on_file" | "profile_screenshot_on_file" | "income_proof_on_file",
     path: string | null,
   ): Promise<void> =>
     saveThenMark(
@@ -1589,6 +1602,13 @@ function DriverProfile({
         blurb: "A screenshot of your driver profile showing your rating.",
         icon: <Smartphone className="h-5 w-5" />,
         done: state.profile_screenshot_on_file,
+      },
+      {
+        key: "income",
+        title: "Proof Of Income",
+        blurb: "A recent weekly earnings summary from your gig app, or a pay stub.",
+        icon: <Wallet className="h-5 w-5" />,
+        done: state.income_proof_on_file,
       },
       {
         key: "trips",
@@ -1704,6 +1724,26 @@ function DriverProfile({
                         onSave={() =>
                           saveSection(s.key, {})
                         }
+                      />
+                    </>
+                  )}
+
+                  {s.key === "income" && (
+                    <>
+                      <DocumentCapture
+                        title="Proof Of Income"
+                        hint="A screenshot of a recent weekly earnings summary from your gig app, or a pay stub."
+                        tips={["Your name and the dates should be readable", "Any app is fine"]}
+                        kind="income"
+                        token={token}
+                        onFile={state.income_proof_on_file}
+                        onChange={(v) =>
+                          persistUpload("income_proof_url", "income_proof_on_file", v)
+                        }
+                      />
+                      <SectionSave
+                        busy={savingSection === s.key}
+                        onSave={() => saveSection(s.key, {})}
                       />
                     </>
                   )}
