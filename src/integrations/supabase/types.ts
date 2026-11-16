@@ -4309,6 +4309,69 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_text_pauses: {
+        Row: {
+          application_id: string | null
+          cancel_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          created_at: string
+          created_by: string
+          id: string
+          idempotency_key: string | null
+          pause_until: string
+          reason: string
+          rental_id: string
+          source: string
+          starts_at: string
+        }
+        Insert: {
+          application_id?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          idempotency_key?: string | null
+          pause_until: string
+          reason: string
+          rental_id: string
+          source?: string
+          starts_at?: string
+        }
+        Update: {
+          application_id?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          idempotency_key?: string | null
+          pause_until?: string
+          reason?: string
+          rental_id?: string
+          source?: string
+          starts_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_text_pauses_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_text_pauses_rental_id_fkey"
+            columns: ["rental_id"]
+            isOneToOne: false
+            referencedRelation: "rentals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount: number
