@@ -13,7 +13,10 @@ import {
   AlertTriangle,
   Wrench,
   ArrowUpRight,
+  FileSignature,
 } from "lucide-react";
+import { UpdatedAgreementDialog } from "@/components/admin/UpdatedAgreementDialog";
+import { Modal } from "@/components/admin/BookingModal";
 import { supabase } from "@/integrations/supabase/client";
 import { endRental } from "@/lib/rentals.functions";
 import { ReturnFlowDialog } from "@/components/admin/ReturnFlowDialog";
@@ -73,6 +76,7 @@ export function BookingActions({
   const [ending, setEnding] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [handoff, setHandoff] = useState<Handoff | null>(null);
+  const [amendOpen, setAmendOpen] = useState(false);
   const active = d.booking.phase === "active";
   const applicationId = d.driver.applicationId;
   const vehicleId = d.vehicle?.id ?? null;
@@ -87,6 +91,16 @@ export function BookingActions({
             testId="action-end-rental"
             onClick={() => setEnding(true)}
             primary
+          />
+        )}
+        {d.canManage && active && (
+          <ActionButton
+            icon={<FileSignature className="w-3.5 h-3.5" strokeWidth={1.75} />}
+            label="Send Updated Agreement"
+            testId="action-send-updated-agreement"
+            disabled={!applicationId}
+            title={applicationId ? "Send an updated agreement (for example a new weekly rate). The new rate starts only after the renter signs." : "No driver record is linked to this rental."}
+            onClick={() => setAmendOpen(true)}
           />
         )}
         {d.canManage && (
@@ -178,6 +192,18 @@ export function BookingActions({
           }}
         />
       ) : null}
+      {amendOpen && (
+        <UpdatedAgreementDialog
+          rentalId={d.booking.id}
+          currentRate={(d.booking as { weeklyRate?: number | null }).weeklyRate ?? null}
+          driverName={d.driver.name}
+          onClose={() => setAmendOpen(false)}
+          onSent={() => {
+            setAmendOpen(false);
+            onRefresh();
+          }}
+        />
+      )}
       {depositOpen && (
         <DepositDialog
           rentalId={d.booking.id}
@@ -590,54 +616,5 @@ function HandoffDialog({
         </button>
       </div>
     </Modal>
-  );
-}
-
-/** Full-screen on a phone, a card on a desktop. Backdrop-only close. */
-function Modal({
-  title,
-  onClose,
-  children,
-  wide,
-  testId,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-  wide?: boolean;
-  testId: string;
-}) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !e.defaultPrevented) onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <div
-      className="fixed inset-0 z-[60] bg-black/50 flex items-start sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        data-testid={testId}
-        className={`bg-white w-full ${wide ? "max-w-3xl" : "max-w-lg"} min-h-full sm:min-h-0 rounded-none sm:rounded-2xl shadow-2xl`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-[#EDEDF0] px-5 py-4">
-          <h3 className="text-[15px] font-semibold text-[#111114]">{title}</h3>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded-md p-1.5 text-[#9A9AA3] hover:bg-[#F4F4F6] hover:text-[#111114]"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
   );
 }

@@ -13,7 +13,8 @@ The site sends FLEET one signed JSON POST per event. Nothing is sent until
 | `quo_call` | `call.completed`, `call.missed`, `call.recording.completed`, `call.summary.completed` |
 | `quo_voicemail` | `call.voicemail.completed` |
 | `quo_transcript` | `call.transcript.completed` |
-| `agreement_signed_by_renter` | a renter signs a rental agreement (email link or portal), once per agreement |
+| `agreement_signed_by_renter` | a renter signs a rental agreement (email link or portal), once per agreement; not sent for an updated agreement |
+| `agreement_amendment_signed` | a renter signs an updated agreement for an active rental (new weekly rate); see [fleet-amend-agreement.md](fleet-amend-agreement.md). Needs proposed/rental-rate-amendments-v1.sql |
 | `application_ready_for_review` | an applicant is first submitted with the required documents on file (cron sweep, once per applicant; see docs/fleet-applicant-review.md) |
 | `reservation_confirmed` | a pickup is booked and confirmed (see docs/fleet-pickup-schedule.md) |
 | `documents_uploaded` | a file lands on an applicant or renter (once per document) * |

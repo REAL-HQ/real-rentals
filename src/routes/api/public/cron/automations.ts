@@ -71,5 +71,14 @@ async function handle(request: Request): Promise<Response> {
   } catch (err) {
     console.error("[held-notices] retry failed", err);
   }
-  return Response.json({ ok: true, ...result, heldNotices, missingItems, missingItemsAutoClose });
+  // Signed updated agreements whose new weekly rate is due today (and open
+  // ones whose agreement was voided). Nothing until the amendments table exists.
+  let rateAmendments: unknown = null;
+  try {
+    const { applyDueRentalAmendments } = await import("@/lib/rental-amendment.server");
+    rateAmendments = await applyDueRentalAmendments(supabaseAdmin);
+  } catch (err) {
+    console.error("[rental-amendment] sweep failed", err);
+  }
+  return Response.json({ ok: true, ...result, heldNotices, missingItems, missingItemsAutoClose, rateAmendments });
 }

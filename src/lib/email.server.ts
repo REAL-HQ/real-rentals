@@ -1216,8 +1216,18 @@ export async function sendAgreementSignedEmail(args: {
   reservationFeeLine?: string | null;
   /** Stripe Checkout for the Reservation Fee (card collected after signing, saved on file). */
   reservationFeePay?: { url: string; amount: number } | null;
+  /** An updated agreement for an active rental: when the new rate starts. */
+  amendmentLine?: string | null;
 }): Promise<void> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
+  if (args.amendmentLine !== undefined) {
+    const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Updated Agreement Signed</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Thanks ${escapeHtml(name)}. Your updated rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} is signed and saved to your driver file, next to your original agreement.</p>${args.amendmentLine ? `
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml(args.amendmentLine)}</p>` : ""}`);
+    await sendEmail({ to: args.to, subject: "Your REAL RENTALS Updated Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" } });
+    return;
+  }
   const money = args.payment ? args.payment.amount.toLocaleString("en-US", { style: "currency", currency: "USD" }) : "";
   const pay = args.reservationFeeLine
     ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml(args.reservationFeeLine)}</p>${args.reservationFeePay && /^https:\/\//i.test(args.reservationFeePay.url) ? `
@@ -1242,13 +1252,14 @@ export async function sendAgreementSignedEmail(args: {
   await sendEmail({ to: args.to, subject: feeUnpaid ? "Your REAL RENTALS Agreement Is Signed: One Last Step" : "Your REAL RENTALS Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" } });
 }
 
-export async function sendAgreementSignedOpsEmail(args: { driverName: string; applicationId: string; vehicle: string | null }): Promise<void> {
+export async function sendAgreementSignedOpsEmail(args: { driverName: string; applicationId: string; vehicle: string | null; amendment?: boolean }): Promise<void> {
   const url = `https://drivereal.com/admin?driver=${encodeURIComponent(args.applicationId)}`;
+  const what = args.amendment ? "updated rental agreement (amendment)" : "rental agreement";
   const html = shell(`
-      <h1 style="margin:12px 0 8px;font-size:20px;color:#111">Rental Agreement Signed</h1>
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px"><strong>${escapeHtml(args.driverName)}</strong> signed their rental agreement${args.vehicle ? ` · ${escapeHtml(args.vehicle)}` : ""}.</p>
+      <h1 style="margin:12px 0 8px;font-size:20px;color:#111">${args.amendment ? "Updated Agreement Signed" : "Rental Agreement Signed"}</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px"><strong>${escapeHtml(args.driverName)}</strong> signed their ${what}${args.vehicle ? ` · ${escapeHtml(args.vehicle)}` : ""}.</p>
       <a href="${url}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open Driver Record</a>`);
-  await sendEmail({ to: DEFAULT_OPS_INBOX, subject: `Signed Agreement — ${args.driverName}`, html, track: { workflow: "esign_signed_ops" } });
+  await sendEmail({ to: DEFAULT_OPS_INBOX, subject: `${args.amendment ? "Signed Updated Agreement" : "Signed Agreement"} — ${args.driverName}`, html, track: { workflow: "esign_signed_ops" } });
 }
 
 /**

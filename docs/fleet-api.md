@@ -18,6 +18,7 @@ Base: `https://drivereal.com/api/public/fleet/`
 | `license-facts` | save DOB / expiry / number / state read off the license photo (never "verified") | fleet-license-facts.md (PR 376) |
 | `assign-vehicle` | list available cars; put one on an approved applicant at its listed rate | fleet-assign-vehicle.md (PR 377) |
 | `send-agreement` | send the agreement after the renter confirmed terms (call or YES text) | [fleet-send-agreement.md](fleet-send-agreement.md) |
+| `amend-agreement` | send an updated agreement to an ACTIVE rental (e.g. a new weekly rate the renter agreed to); generated from v1.14 with no Reservation Fee or new deposit; the rate changes only after they sign (switch, Off) | [fleet-amend-agreement.md](fleet-amend-agreement.md) |
 | `pickup-slots` | open pickup slots; book one | [fleet-pickup-schedule.md](fleet-pickup-schedule.md) |
 | `resend-link` | resend the signing link or the missing-files upload link (switch, Off) | [fleet-resend-link.md](fleet-resend-link.md) |
 | `handoff` | hand a person to staff (complaint, injury, payment dispute, ...); bots pause | [fleet-handoff.md](fleet-handoff.md) |
@@ -30,5 +31,8 @@ Events the site sends FLEET (signed webhooks): [fleet-webhooks.md](fleet-webhook
 
 - Decline, close or reopen an application; clear a Needs Staff flag or a handoff.
 - Run or record a background check or MVR; verify insurance; verify a license.
-- Charge, refund or waive anything; change a rate after the agreement is sent.
+- Charge, refund or waive anything; change a rate directly. (A new rate for an
+  active rental goes only through `amend-agreement`: it is pending until the
+  renter signs the updated agreement, and Stripe is never changed by FLEET.)
+- Propose a weekly rate outside $200–$1,000 (staff only).
 - Complete the pickup checklist, activate a rental, record a return, end a rental.

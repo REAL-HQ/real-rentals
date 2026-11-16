@@ -91,13 +91,28 @@ export async function completeSigning(
     } } : {}),
   });
 
+  // An updated agreement for an active rental (metadata.amendment) is not a
+  // first signing: FLEET gets agreement_amendment_signed instead of the
+  // first-signing event, and the reservation check below is skipped.
+  const isAmendment = Boolean((ag as any)?.metadata?.amendment);
   const archived = await archiveDocument(admin, ag, null);
   // FLEET: renter signed. Never blocks or fails the signature.
   try {
     const { notifyFleetAgreementSigned } = await import("@/lib/fleet-webhook.server");
-    await notifyFleetAgreementSigned(admin, args.id);
+    if (!isAmendment) await notifyFleetAgreementSigned(admin, args.id);
   } catch (e) {
     console.error("[esign] FLEET notify failed", e);
+  }
+  if (isAmendment) {
+    // Fix the date the new rate starts (never before this signature), apply
+    // it when due, and tell FLEET. Never fails the signature.
+    try {
+      const { onAmendmentSigned } = await import("@/lib/rental-amendment.server");
+      await onAmendmentSigned(admin, args.id);
+    } catch (e) {
+      console.error("[esign] amendment apply failed", e);
+    }
+    return { result: "won", archived };
   }
   // A signed agreement may complete a reservation (reservation_confirmed).
   try {
