@@ -22,6 +22,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { resumeTargetFromApply, useResumeToken } from "@/lib/resume-token";
 import { SmsConsentField } from "@/components/site/SmsConsentField";
 import { PhoneLink } from "@/components/site/PhoneLink";
+import { applicantPhoneForSubmit, formatUsPhoneInput } from "@/lib/us-phone";
 import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
 
 const CLAIM_STASH = "rr_waitlist_claim";
@@ -335,7 +336,7 @@ function ContactStep({
       ...prev,
       full_name: claimPrefill.full_name,
       email: claimPrefill.email,
-      phone: claimPrefill.phone ?? "",
+      phone: formatUsPhoneInput(claimPrefill.phone ?? ""),
     }));
     if (claimPrefill.market_id) {
       setMarket({
@@ -372,7 +373,7 @@ function ContactStep({
       const data = await savePartial({
         data: {
           full_name: form.full_name,
-          phone: form.phone,
+          phone: applicantPhoneForSubmit(form.phone),
           email: form.email,
           sms_consent: form.sms_consent,
           consent_page: "/apply",
@@ -519,7 +520,8 @@ function In({
         spellCheck={type === "email" || type === "tel" ? false : undefined}
         aria-invalid={e ? true : undefined}
         value={v}
-        onChange={(ev) => on(ev.target.value)}
+        onChange={(ev) => on(type === "tel" ? formatUsPhoneInput(ev.target.value) : ev.target.value)}
+        onBlur={type === "tel" ? (ev) => on(formatUsPhoneInput(ev.target.value)) : undefined}
         className={`mt-1.5 w-full min-h-11 scroll-mb-28 bg-white border ${e ? "border-real-red" : "border-border"} rounded-lg px-3 text-base`}
       />
       {e && <div className="mt-1 text-xs text-real-red">{e}</div>}
