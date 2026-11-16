@@ -171,8 +171,8 @@ export async function buildReviewPacket(admin: Admin, leadId: string, opts: { in
     analysis: {
       ai_score: app.ai_score ?? null,
       ai_tier: app.ai_tier ?? null,
-      ai_flags: app.ai_flags ?? null,
-      ai_summary: app.ai_summary ?? null,
+      score_flags: app.ai_flags ?? null,
+      score_summary: app.ai_summary ?? null,
       scored_at: app.scored_at ?? null,
       readiness: {
         state: readiness.state,

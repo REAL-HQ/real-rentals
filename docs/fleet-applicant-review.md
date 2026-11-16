@@ -42,7 +42,7 @@ Reply `{ ok, packet }` with:
 | `screening` | the staff screening record as recorded, or null |
 | `checks` | `background_check_status`, `mvr_status`, `incident_count` as recorded |
 | `insurance` | answer, status, coverage, whether a carrier and a document are on file, and `insurance_verified_by_staff`. Reported as recorded: nothing here is verified unless that last field is true |
-| `analysis` | the application score (`ai_score`, `ai_tier`, `ai_flags`, `ai_summary`) and the readiness model (state, coverage, disqualifiers, attention, unknown) |
+| `analysis` | the application score (`ai_score`, `ai_tier`, `score_flags`, `score_summary`) and the readiness model (state, coverage, disqualifiers, attention, unknown) |
 | `agreements[]` | status of any rental agreements |
 | `fleet_review` | the open Needs Staff flag (if any) and past FLEET decisions |
 | `readiness_blockers` / `assessment` | hard blockers, the default escalation checklist, notes, and `recommendation` (`approve`, `needs_staff` or `not_ready`) |
