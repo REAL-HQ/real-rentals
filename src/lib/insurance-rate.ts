@@ -76,12 +76,14 @@ export function fleetQuoteText(q: {
   deposit: number;
   startDate: string;
   location: string;
-  /** The Reservation Fee charged after signing, when that switch is on (t299s1618). */
+  /** The Reservation Fee collected by card after signing, when that switch is on (t299s1618, t309u). Not a deposit. */
   reservationFee?: number;
 }): string {
-  const deposit = q.deposit > 0 ? `$${money(q.deposit)} deposit` : "no deposit";
+  // The per-car security deposit (refundable, used for fees during the rental).
+  // Never the Reservation Fee, which is applied to rent (Dolmar, t309u).
+  const deposit = q.deposit > 0 ? `$${money(q.deposit)} security deposit` : "no security deposit";
   const rate = q.surcharge > 0
     ? `$${money(q.weekly)}/week (includes $${money(q.surcharge)}/week for your insurance quote)`
     : `$${money(q.weekly)}/week`;
-  return `Real Rentals: Your quote is ready: ${q.vehicle} at ${rate}, ${deposit}, starting ${quoteDay(q.startDate)} with pickup at ${q.location}. Rent is paid weekly.${q.reservationFee && q.reservationFee > 0 ? ` A $${money(q.reservationFee)} Reservation Fee is charged to your card on file when you sign and applied to your first week.` : ""} Reply YES to accept and we'll send your rental agreement to sign. Reply STOP to opt out.`;
+  return `Real Rentals: Your quote is ready: ${q.vehicle} at ${rate}, ${deposit}, starting ${quoteDay(q.startDate)} with pickup at ${q.location}. Rent is paid weekly.${q.reservationFee && q.reservationFee > 0 ? ` After you sign, you'll pay a $${money(q.reservationFee)} Reservation Fee by card to hold the car. It is applied to your first week, and that card is saved on file for your rental balance.` : ""} Reply YES to accept and we'll send your rental agreement to sign. Reply STOP to opt out.`;
 }
