@@ -80,7 +80,7 @@ This table lists everything you may be charged. Where it says "actual," we charg
 | Rent | Weekly Rate shown above, paid in advance
 | Insurance (Renter Policy premium) | Included in the Weekly Rate, subject to Section 5.5
 | Taxes and government surcharges | Included in the Weekly Rate. Nothing is added.
-| Reservation Fee (only if an amount is entered on page 1) | Amount shown on page 1, due when you sign this Agreement and applied in full to your first payment. Non-refundable once we set up the Renter Policy, or if you do not show for your scheduled pickup. Refunded in full if we cannot provide a vehicle. It is not a security deposit.
+| Reservation Fee (only if an amount is entered on page 1) | Amount shown on page 1, due when you sign this Agreement and applied in full to your first payment. Non-refundable once we set up the Renter Policy, or if you do not show for your scheduled pickup. We hold the Vehicle until 30 minutes after your scheduled pickup time; if you have not arrived by then, we may release the Vehicle and the pickup counts as a no-show. Refunded in full if we cannot provide a vehicle. It is not a security deposit.
 | Balance due at pickup | Your first payment, less any Reservation Fee you paid, as shown on page 1
 | Late payment | [[fee_late_payment]]
 | Declined or returned payment | [[fee_returned_payment]]

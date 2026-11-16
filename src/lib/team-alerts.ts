@@ -16,7 +16,7 @@ export const TEAM_ALERT_KINDS = ["gps", "roadside_overnight", "late_pickup", "bo
 export type TeamAlertKind = (typeof TEAM_ALERT_KINDS)[number];
 
 export const TEAM_ALERT_LABELS: Record<TeamAlertKind, string> = {
-  gps: "GPS Alerts (outside service area, tracker offline, no movement 48 hours)",
+  gps: "GPS Alerts (outside the 100-mile service area around Tampa, tracker offline 24 hours, no movement 48 hours)",
   roadside_overnight: "Overnight Roadside Alerts (6 PM to 6 AM ET)",
   late_pickup: "Late Pickup Release Alerts",
   bot_handoff: "Bot Hand-Off Alerts (complaints, injuries, payment disputes)",

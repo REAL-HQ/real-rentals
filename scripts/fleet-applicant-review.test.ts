@@ -102,6 +102,9 @@ describe("rules", () => {
     // pending checks and no interview are notes, not escalations
     expect(a.notes.map((x) => x.code)).toContain("background_check_status_pending");
     expect(a.notes.map((x) => x.code)).toContain("no_interview");
+    // card t310s1681: a pending background check is a note, never a blocker or flag
+    expect(a.hard_blockers.map((x) => x.code)).not.toContain("background_check_status_pending");
+    expect(a.hard_blockers.map((x) => x.code)).not.toContain("background_check_status_open");
   });
   test("hard blockers: partial, missing docs, rejected doc, disqualifier, under 21, expired license, bad check, open flag, duplicate, no email", () => {
     const codes = (app: Row, docs = docsFor(A), extra: Row = {}) => rules.assessForFleet({ ...base, app, docs, ...extra }).hard_blockers.map((b) => b.code);

@@ -187,7 +187,7 @@ describe("insurance quote over $350/month (Dolmar, t299s1618)", () => {
     expect(r.status).toBe(201);
     expect(j).toMatchObject({ weekly_rate: 375, listed_weekly_rate: 350, insurance_surcharge_weekly: 25 });
     expect(db.state.applications[0].weekly_rent).toBe(375);
-    expect(j.quote_text).toBe("Real Rentals: Your quote is ready: 2019 Ford Fusion at $375/week (includes $25/week for your insurance quote), no deposit, starting Wed, Nov 18 with pickup at 3500 E Hillsborough Ave, Tampa, FL 33610. Rent is paid weekly. Reply YES to accept and we'll send your rental agreement to sign. Reply STOP to opt out.");
+    expect(j.quote_text).toBe("Real Rentals: Your quote is ready: 2019 Ford Fusion at $375/week (includes $25/week for your insurance quote), no security deposit, starting Wed, Nov 18 with pickup at 3500 E Hillsborough Ave, Tampa, FL 33610. Rent is paid weekly. Reply YES to accept and we'll send your rental agreement to sign. Reply STOP to opt out.");
     expect(audits[0].metadata).toMatchObject({ insurance_quote_monthly: 450, insurance_surcharge_weekly: 25, weekly_rate: 375 });
     // Over the ceiling still goes to staff.
     const db2 = fakeDb(seed());
@@ -202,7 +202,7 @@ describe("insurance quote over $350/month (Dolmar, t299s1618)", () => {
   test("quote text without a surcharge, and with the Reservation Fee line", async () => {
     const r = await rate();
     expect(r.fleetQuoteText({ vehicle: "2017 Ford Fusion", weekly: 325, surcharge: 0, deposit: 0, startDate: "2026-11-18", location: "3500 E Hillsborough Ave, Tampa, FL 33610", reservationFee: 50 }))
-      .toBe("Real Rentals: Your quote is ready: 2017 Ford Fusion at $325/week, no deposit, starting Wed, Nov 18 with pickup at 3500 E Hillsborough Ave, Tampa, FL 33610. Rent is paid weekly. A $50 Reservation Fee is charged to your card on file when you sign and applied to your first week. Reply YES to accept and we'll send your rental agreement to sign. Reply STOP to opt out.");
+      .toBe("Real Rentals: Your quote is ready: 2017 Ford Fusion at $325/week, no security deposit, starting Wed, Nov 18 with pickup at 3500 E Hillsborough Ave, Tampa, FL 33610. Rent is paid weekly. After you sign, you'll pay a $50 Reservation Fee by card to hold the car. It is applied to your first week, and that card is saved on file for your rental balance. Reply YES to accept and we'll send your rental agreement to sign. Reply STOP to opt out.");
   });
 });
 
