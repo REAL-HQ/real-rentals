@@ -995,6 +995,36 @@ async function persistReviewedGaps(
 }
 
 /**
+ * The terms an auto-sent agreement (issueAgreement without a preview) would
+ * print for this applicant right now, plus everything that would stop it
+ * sending. Read-only. FLEET's send (fleet-agreement.server.ts) compares these
+ * with the terms the applicant confirmed before it calls issueAgreement.
+ */
+export async function agreementSendCheck(admin: any, applicationId: string): Promise<{
+  blockers: { field: string; label: string; why: string }[];
+  weeklyRate: number | null;
+  deposit: number | null;
+  startDate: string | null;
+  vehicleId: string | null;
+  vehicleLabel: string | null;
+}> {
+  const prep = await prepareAgreement(admin, applicationId);
+  const blockers = prep.blockers.map((b) => ({ field: b.field, label: b.label, why: b.why }));
+  const refusal = templateSendRefusal(prep.tpl.meta) ?? (prep.numberingPending ? NUMBERING_PENDING : null);
+  if (refusal) blockers.push({ field: "template", label: "Approved agreement template", why: refusal });
+  if (!prep.app?.email) blockers.push({ field: "driver_email", label: "Driver email", why: "The signing link is emailed." });
+  const num = (v: unknown) => (v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+  return {
+    blockers,
+    weeklyRate: num(prep.app?.weekly_rent ?? prep.vehicle?.weekly_rate),
+    deposit: num(prep.app?.deposit_amount ?? prep.vehicle?.deposit),
+    startDate: prep.startIso,
+    vehicleId: prep.namedVehicleId,
+    vehicleLabel: prep.data.vehicle || null,
+  };
+}
+
+/**
  * Is there already an agreement this applicant can act on?
  * Used to keep approval from sending a second copy on every status change.
  */
