@@ -230,7 +230,9 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   if (input.priorDeclined > 0) flag("prior_declined", `${input.priorDeclined} earlier application(s) with the same phone or email were declined or closed.`);
   for (const [k, label] of [["background_check_status", "Background check"], ["mvr_status", "Driving record (MVR)"]] as const) {
     const v = String(app[k] ?? "").trim();
-    // "pending" is today's default for everyone: reported, not escalated.
+    // "pending" is today's default for everyone: reported as a note, never a
+    // blocker or an escalation (Dolmar approved, card t310s1681). Any flag on a
+    // finished check is a hard blocker (screening_flagged, D27).
     if (!v || /^pending$/i.test(v)) note(`${k}_pending`, `${label}: ${v || "not recorded"}.`);
     else if (!BAD_CHECK.test(v) && !GOOD_CHECK.test(v)) flag(`${k}_open`, `${label}: ${v}.`);
   }
