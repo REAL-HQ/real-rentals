@@ -370,7 +370,7 @@ export const AUTOMATIONS: AutomationDef[] = [
     title: "Late Pickup Release",
     audience: "Renters",
     channels: ["SMS", "Email"],
-    trigger: "A renter is 15 minutes past their pickup time and no pickup checklist has been started: the reservation is released, the car goes back to Available, the Reservation Fee is kept, staff get a team alert and the renter gets one text.",
+    trigger: "A renter is 30 minutes past their pickup time and no pickup checklist has been started: the reservation is released, the car goes back to Available, the Reservation Fee is kept, staff get a team alert and the renter gets one text.",
     cadence: "Every 5 minutes, once per reservation. Renter text 8 AM to 9 PM ET only, from the main line; email when the renter has no SMS consent.",
     emailWorkflows: ["late_pickup_release"],
     cronJob: "renter-reminders-every-5-min",

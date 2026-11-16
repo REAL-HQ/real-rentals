@@ -180,18 +180,26 @@ describe("late pickup release", () => {
   });
   test("switch off: nothing released", async () => {
     const db = fakeDb(lateSeed()); const x = io();
-    await lp.runLatePickups(db, { ...x, gate: "off", now: at("2026-11-20T15:20:00Z") });
+    await lp.runLatePickups(db, { ...x, gate: "off", now: at("2026-11-20T15:35:00Z") });
     expect(db.state.rentals[0].status).toBe("reserved");
     expect(x.sms.length + x.alerts.length).toBe(0);
   });
-  test("14 minutes late: still held", async () => {
+  test("the window is 30 minutes (Dolmar t309u)", () => {
+    expect(lp.LATE_MINUTES).toBe(30);
+  });
+  test("14 and 29 minutes late: still held (the old 15-minute rule no longer releases)", async () => {
     const db = fakeDb(lateSeed()); const x = io();
     await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:14:00Z") });
     expect(db.state.rentals[0].status).toBe("reserved");
+    await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:16:00Z") });
+    expect(db.state.rentals[0].status).toBe("reserved");
+    await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:29:00Z") });
+    expect(db.state.rentals[0].status).toBe("reserved");
+    expect(x.sms.length + x.alerts.length).toBe(0);
   });
-  test("15+ minutes, no checklist: released once, car Available, fee kept, staff alert, one renter text", async () => {
+  test("30+ minutes, no checklist: released once, car Available, fee kept, staff alert, one renter text", async () => {
     const db = fakeDb(lateSeed()); const x = io();
-    const out = await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:16:00Z") });
+    const out = await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:31:00Z") });
     expect(out.outcomes).toEqual([{ rental_id: "r1", status: "released", detail: "sms" }]);
     expect(db.state.rentals[0].status).toBe("cancelled");
     expect(db.state.vehicles[0].status).toBe("available");
@@ -200,25 +208,27 @@ describe("late pickup release", () => {
     expect(db.state.payments[0].notes).toMatch(/kept:late_pickup:r1/);
     expect(x.alerts.map((a) => a.kind)).toEqual(["late_pickup"]);
     expect(JSON.stringify(x.alerts)).not.toMatch(/5555550100/);
-    expect(x.sms[0].body).toBe("Real Rentals: We held your car until 15 minutes after your 10:00 AM ET pickup, and it has now been released. Your $50 Reservation Fee is non-refundable for a missed pickup. To rebook, reply here or call (888) 833-8280. Reply STOP to opt out.");
-    await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:21:00Z") });
+    expect(x.sms[0].body).toBe("Real Rentals: We held your car until 30 minutes after your 10:00 AM ET pickup, and it has now been released. Your $50 Reservation Fee is non-refundable for a missed pickup. To rebook, reply here or call (888) 833-8280. Reply STOP to opt out.");
+    await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:36:00Z") });
     expect(x.sms.length).toBe(1);
+    expect(x.alerts[0].title).toMatch(/was 30\+ minutes late \(10:00 AM ET\)/);
+    expect(lp.latePickupEmail({ firstName: "T", time: "10:00", feeKept: 50 }).html).toMatch(/until 30 minutes after your 10:00 AM ET pickup/);
   });
   test("the rep started the pickup checklist: never released", async () => {
     const db = fakeDb(lateSeed({ pickup_handovers: [{ rental_id: "r1" }] })); const x = io();
-    await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:30:00Z") });
+    await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:45:00Z") });
     expect(db.state.rentals[0].status).toBe("reserved");
   });
   test("team alert table missing: held, nothing released (staff must hear about every release)", async () => {
     const db = fakeDb(lateSeed(), { missing: ["team_alert_sends"] }); const x = io();
     const { teamAlert, ...rest } = x;
-    await lp.runLatePickups(db, { ...rest, gate: "send", now: at("2026-11-20T15:20:00Z") });
+    await lp.runLatePickups(db, { ...rest, gate: "send", now: at("2026-11-20T15:35:00Z") });
     expect(db.state.rentals[0].status).toBe("reserved");
     expect(x.sms.length).toBe(0);
   });
   test("no claim table: nothing released", async () => {
     const db = fakeDb(lateSeed(), { missing: ["renter_reminder_sends"] }); const x = io();
-    const out = await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:20:00Z") });
+    const out = await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:35:00Z") });
     expect(out.ok).toBe(false);
     expect(db.state.rentals[0].status).toBe("reserved");
   });

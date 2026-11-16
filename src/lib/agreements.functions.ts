@@ -1298,18 +1298,22 @@ async function sendSignedEmails(admin: any, id: string, signerName: string): Pro
   // that after the pickup appointment is confirmed; existing logins still work.
   const portalAccess = await agreementPortalAccess(admin, ag.application_id as string | null);
   let payment: { url: string; amount: number; tiedToRenter: boolean; label: string } | null = null;
-  // $50 Reservation Fee charged to the card on file right after signing and
-  // applied to week 1 (Dolmar, t299s1618). Switch reservation_fee_auto, OFF by
-  // default; only when the signed agreement prints the fee. When it is
-  // charged (or processing) the signed email says so and no payment link is
-  // sent for it; otherwise the payment link below works as before.
+  // $50 Reservation Fee, collected only AFTER signing and applied to week 1
+  // (Dolmar, t299s1618 and t309u). Switch reservation_fee_auto, OFF by default;
+  // only when the signed agreement prints the fee. No card on file (the normal
+  // case): the signed email carries a Stripe Checkout button for the $50 that
+  // saves the card on file for the rental balance. A card already on file is
+  // charged. When the fee path handled it no other payment link is sent;
+  // otherwise the payment link below works as before.
   let reservationFeeLine: string | null = null;
+  let reservationFeePay: { url: string; amount: number } | null = null;
   let feeHandled = false;
   try {
     const { chargeReservationFeeAfterSigning } = await import("@/lib/reservation-fee.server");
-    const { reservationFeeEmailLine } = await import("@/lib/reservation-fee");
+    const { reservationFeeEmailLine, reservationFeePayLink } = await import("@/lib/reservation-fee");
     const fee = await chargeReservationFeeAfterSigning(admin, id);
     reservationFeeLine = reservationFeeEmailLine(fee);
+    reservationFeePay = reservationFeePayLink(fee);
     feeHandled = reservationFeeLine !== null;
   } catch (e) {
     console.error("[agreement] reservation fee failed", e);
@@ -1330,6 +1334,7 @@ async function sendSignedEmails(admin: any, id: string, signerName: string): Pro
         portalAccess,
         payment,
         reservationFeeLine,
+        reservationFeePay,
       });
     }
     await sendAgreementSignedOpsEmail({

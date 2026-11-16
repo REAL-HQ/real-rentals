@@ -5,7 +5,7 @@
 --     signed agreement text prints a Reservation Fee);
 --   * the car is held only once it is paid (FLEET cannot book the pickup before);
 --   * at activation it is credited to week 1 (Stripe customer balance credit);
---   * kept if the renter is 15+ minutes late and the car is released
+--   * kept if the renter is 30+ minutes late and the car is released
 --     (separate switch "Late Pickup Release" in Back Office -> Automations).
 -- BEFORE RUNNING: the agreement template in use must print the Reservation Fee
 -- (today there is no saved template, and the built-in text does not), or no fee

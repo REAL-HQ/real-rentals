@@ -1,10 +1,10 @@
 /**
- * Late pickup (Dolmar, t299s1618; SOP D25): a renter 15+ minutes late to
+ * Late pickup (Dolmar, t299s1618; SOP D25; 30 minutes per t309u): a renter 30+ minutes late to
  * pickup loses the reservation and the $50 Reservation Fee is kept.
  *
  * Run every 5 minutes by /api/public/cron/renter-reminders. Switch
  * "late_pickup_release" in Back Office -> Automations, OFF until an Owner
- * turns it on. For each Reserved rental whose pickup time (Eastern) was 15
+ * turns it on. For each Reserved rental whose pickup time (Eastern) was 30
  * minutes to 6 hours ago and has no pickup checklist on file:
  *
  *   1. claim it once (renter_reminder_sends key late_release:<rental>);
@@ -29,7 +29,8 @@ import { textingHours, timeLabel } from "@/lib/renter-reminders.server";
 
 type Admin = any;
 export const LATE_PICKUP_KEY = "late_pickup_release";
-export const LATE_MINUTES = 15;
+/** Minutes after the pickup time before the car is released (Dolmar t309u: 30, "more fair for the renter"; was 15). */
+export const LATE_MINUTES = 30;
 const MAX_LATE_HOURS = 6;
 const PHONE = "(888) 833-8280";
 
@@ -46,7 +47,7 @@ export type LatePickupDeps = {
 
 export function latePickupSms(f: { time: string; feeKept: number | null }): string {
   const fee = f.feeKept ? ` Your $${Number.isInteger(f.feeKept) ? f.feeKept : f.feeKept.toFixed(2)} Reservation Fee is non-refundable for a missed pickup.` : "";
-  return `Real Rentals: We held your car until 15 minutes after your ${timeLabel(f.time)} ET pickup, and it has now been released.${fee} To rebook, reply here or call ${PHONE}. Reply STOP to opt out.`;
+  return `Real Rentals: We held your car until ${LATE_MINUTES} minutes after your ${timeLabel(f.time)} ET pickup, and it has now been released.${fee} To rebook, reply here or call ${PHONE}. Reply STOP to opt out.`;
 }
 
 export function latePickupEmail(f: { firstName: string; time: string; feeKept: number | null }): { subject: string; html: string } {
@@ -54,7 +55,7 @@ export function latePickupEmail(f: { firstName: string; time: string; feeKept: n
   const esc = (v: unknown) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return {
     subject: "Your REAL RENTALS Pickup Was Released",
-    html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px"><h1 style="font-size:20px;color:#111">Your pickup was released</h1>${p(`Hi ${esc(f.firstName)}, we held your car until 15 minutes after your ${esc(timeLabel(f.time))} ET pickup, and it has now been released.`)}${f.feeKept ? p(`Your $${f.feeKept.toFixed(2)} Reservation Fee is non-refundable for a missed pickup.`) : ""}${p(`To rebook, reply to this email or call ${PHONE}.`)}</div>`,
+    html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px"><h1 style="font-size:20px;color:#111">Your pickup was released</h1>${p(`Hi ${esc(f.firstName)}, we held your car until ${LATE_MINUTES} minutes after your ${esc(timeLabel(f.time))} ET pickup, and it has now been released.`)}${f.feeKept ? p(`Your $${f.feeKept.toFixed(2)} Reservation Fee is non-refundable for a missed pickup.`) : ""}${p(`To rebook, reply to this email or call ${PHONE}.`)}</div>`,
   };
 }
 
@@ -153,7 +154,7 @@ export async function runLatePickups(admin: Admin, deps: LatePickupDeps = {}): P
     });
     await teamAlert(admin, {
       kind: "late_pickup", dedupeKey: r.id,
-      title: `Pickup Released: ${app?.full_name ?? "renter"} was 15+ minutes late (${timeLabel(d.pickupTime)} ET)`,
+      title: `Pickup Released: ${app?.full_name ?? "renter"} was ${LATE_MINUTES}+ minutes late (${timeLabel(d.pickupTime)} ET)`,
       lines: [`The reservation was released and the car is back to Available.${feeKept ? ` The $${feeKept} Reservation Fee was kept.` : ""}`, "To rebook, reserve again from Bookings (a new Reservation Fee applies)."],
       link: `${site}/admin?tab=bookings`, rentalId: r.id, vehicleId: r.vehicle_id ?? null,
     });
