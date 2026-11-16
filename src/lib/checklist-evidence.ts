@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ActivationRequirementKey, VaultDocFact } from "./activation-readiness";
 import type { StaffTier } from "./roles";
-import { REQUIRED_VAULT_CATEGORIES } from "./required-docs";
+import { REQUIRED_VAULT_CATEGORIES, requirementCategory } from "./required-docs";
 
 /** Saved check-offs live in checklist_evidence_events (record_checklist_evidence) and
  *  activate_rental_checked_tx accepts them in the same transaction as the rental. */
@@ -85,7 +85,7 @@ export function proposeEvidenceEvent(input: AttestationInput, events: readonly E
 /** File presence never becomes identity, insurance, signature, or platform verification. */
 export function projectEvidence(input: { applicationId: string; field: EvidenceField; events: readonly EvidenceEvent[]; documents: readonly VaultDocFact[]; itemComplete: boolean; reviewRequired?: boolean }): EvidenceProjection {
   const event = latestEvidenceEvent(input.events, input.applicationId, input.field);
-  const uploaded = input.documents.some((d) => d.category === input.field && d.is_current === true && d.review_status !== "rejected" && !!d.id && !!d.storage_path);
+  const uploaded = input.documents.some((d) => (input.field === "income" ? requirementCategory(d.category) === "income" : d.category === input.field) && d.is_current === true && d.review_status !== "rejected" && !!d.id && !!d.storage_path);
   const collected = event?.state === "not_collected" ? false : event?.state === "collected" || uploaded || input.itemComplete;
   const paymentConfirmed = input.field === "pickup" && event?.state === "collected" && pickupPaymentNote.safeParse(event.note).success;
   const base = { field: input.field, revision: event?.revision ?? 0, collected, checkedOff: event?.state === "collected", uploaded, complete: input.itemComplete || paymentConfirmed, followUpOpen: !uploaded && !input.itemComplete && !paymentConfirmed };

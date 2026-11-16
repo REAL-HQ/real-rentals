@@ -40,7 +40,7 @@ const FIX: Partial<Record<ActivationRequirementKey, { fix: string; target: FixTa
   insurance_verified: { fix: "Verify Insurance", target: { kind: "section", tab: "screening", anchor: "profile-insurance" } },
   insurance_document: { fix: "Open Insurance", target: { kind: "section", tab: "screening", anchor: "profile-insurance" } },
   approved: { fix: "Approve", target: { kind: "approve" } },
-  signed_agreement: { fix: "Open Agreement", target: { kind: "section", tab: "documents", anchor: "profile-agreements" } },
+  signed_agreement: { fix: "Send Agreement", target: { kind: "section", tab: "documents", anchor: "profile-agreements" } },
   inspection: { fix: "Choose Vehicle", target: { kind: "section", tab: "rental", anchor: "profile-vehicle" } },
 };
 /** Fix order: what must happen first comes first (approval sends the agreement). */

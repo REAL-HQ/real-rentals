@@ -2376,6 +2376,9 @@ function DriverDetail({
 
   const stageTargets: Partial<Record<string, () => void>> = {
     screening: () => setTab("screening"),
+    // The rail's Documents step opens the files (its old receipt checkbox was a
+    // duplicate of the Next Step checklist and was removed, t306s1653).
+    documents: () => openSection("documents", "profile-documents"),
     docs: () => openSection("documents", "profile-documents"),
     profile: () => openSection("documents", "profile-documents"),
     insurance: () => openSection("screening", "profile-insurance"),
@@ -2759,15 +2762,6 @@ function DriverDetail({
               stageNotes={Object.fromEntries(Object.entries(fleetByStage).map(([k, m]) => [k, { caption: k === "agreement" ? "Sent By FLEET" : "By FLEET", title: `${m!.summary} · ${fmtDateTime(m!.at)}` }]))}
               blocker={readiness.disqualifiers[0]}
               onStageClick={stageTargets}
-              stageCheckoffs={CHECKLIST_EVIDENCE_ENABLED && isManager ? {
-                documents: {
-                  onToggle: () => void toggleEvidence(collectedDocuments.fields),
-                  disabled: vaultLoading || evidenceLoading || evidenceFailed || evidenceSaving || collectedDocuments.uploaded,
-                  checked: collectedDocuments.collected,
-                  label: "Documents Received",
-                  title: collectedDocuments.uploaded ? "Documents On File" : collectedDocuments.collected ? "Received Elsewhere · Upload Due" : "Confirm Documents Received Elsewhere",
-                },
-              } : undefined}
             />
           </div>
           {/* Primary record navigation: below identity and lifecycle progress */}
