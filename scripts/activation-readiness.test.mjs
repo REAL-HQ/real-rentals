@@ -765,7 +765,10 @@ try {
     assert.equal(rules.primaryStep({ ...ready, isManager: true }), "activate");
     assert.equal(rules.primaryStep({ ...ready, isManager: false }), "view_rental");
     assert.equal(rules.primaryStep({ ...ready, rentalActive: true, isManager: true }), "view_rental");
-    assert.equal(rules.primaryStep({ ...ready, screeningDone: false, isManager: true }), "interview");
+    assert.equal(rules.primaryStep({ ...ready, approved: false, screeningDone: false, isManager: true }), "interview");
+    // Approved: Send Agreement / Activate replaces Record Interview (t306s1653).
+    assert.equal(rules.primaryStep({ ...ready, screeningDone: false, isManager: true }), "activate");
+    assert.equal(rules.primaryStep({ ...ready, screeningDone: false, docsComplete: false, isManager: false }), "view_rental");
     assert.equal(rules.primaryStep({ ...ready, insuranceOk: false, isManager: true }), "activate");
   });
 

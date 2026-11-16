@@ -1416,8 +1416,9 @@ export async function approveApplicationCore(args: {
             return { error: { message: "application_state_invalid" } };
           }
         }
+        // Approval never fills contacted_at (staff or FLEET): Contacted needs a
+        // real text, call or reply (Dolmar, t306s1653).
         const patch: Record<string, unknown> = { status: "approved" };
-        if (!app.contacted_at) patch.contacted_at = new Date().toISOString();
         const { error: updErr } = await supabaseAdmin
           .from("applications")
           .update(patch as any)

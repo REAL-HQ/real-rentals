@@ -173,3 +173,49 @@ describe("wiring", () => {
     }
   });
 });
+
+describe("Dolmar's decisions (t306s1653)", () => {
+  const doc = (category: string, x: Row = {}) => ({ id: `${category}-1`, category, is_current: true, review_status: "uploaded", storage_path: `p/${category}`, ...x });
+  test("1. a trip-history / gig earnings screenshot counts as income proof everywhere it is counted", async () => {
+    const { missingRequiredCategories, activationRequirements } = await import("@/lib/activation-readiness");
+    const { documentCollection } = await import("@/lib/checklist-evidence");
+    const { docPicture } = await import("@/lib/fleet-review");
+    const { canonicalRequiredDoc } = await import("@/lib/required-docs");
+    const docs = [doc("license_front"), doc("gig_profile"), doc("trip_history")];
+    expect(missingRequiredCategories(docs)).toEqual([]);
+    expect(missingRequiredCategories([doc("license_front"), doc("gig_profile")])).toEqual(["income"]);
+    // A rejected screenshot does not count.
+    expect(missingRequiredCategories([doc("license_front"), doc("gig_profile"), doc("trip_history", { review_status: "rejected" })])).toEqual(["income"]);
+    expect(documentCollection({ applicationId: A, events: [], documents: docs.map((d) => ({ ...d, applicationId: A })) }).collected).toBe(true);
+    expect(docPicture(docs).missing_advisory).toEqual([]);
+    expect(canonicalRequiredDoc({ category: "trip_history", is_current: true })).toBe("income");
+    const reqs = activationRequirements({ documents: docs, agreements: [], insurance: { status: "unverified" }, status: "approved", hasPassedInspection: false } as any);
+    expect(reqs.find((r) => r.key === "income")?.met).toBe(true);
+    // Receipt only: no verification, insurance or license change.
+    expect(reqs.find((r) => r.key === "insurance_verified")?.met).toBe(false);
+  });
+  test("2. once approved, the header offers Send Agreement / Activate instead of Record Interview", async () => {
+    const { primaryStep } = await import("@/lib/activation-readiness");
+    const { nextStep } = await import("@/lib/next-step");
+    expect(primaryStep({ screeningDone: false, docsComplete: false, insuranceOk: false, approved: true, rentalActive: false, isManager: true })).toBe("activate");
+    expect(primaryStep({ screeningDone: false, docsComplete: true, insuranceOk: false, approved: false, rentalActive: false, isManager: true })).toBe("interview");
+    const n = nextStep({ step: "activate", entry: "enabled" as any, loading: false, failed: false, readiness: { requirements: [
+      { key: "interview", label: "Interview Complete", met: false, enforcement: "soft" },
+      { key: "signed_agreement", label: "Rental Agreement Signed", met: false, enforcement: "hard" },
+    ] } as any });
+    expect(n.label).toBe("Send Agreement");
+    expect(n.blockers.map((b) => b.key)).not.toContain("local");
+  });
+  test("3. approval never fills contacted_at (staff or FLEET)", () => {
+    const src = readFileSync("src/lib/applications.functions.ts", "utf8");
+    const legacy = src.slice(src.indexOf('const patch: Record<string, unknown> = { status: "approved" };'), src.indexOf('const patch: Record<string, unknown> = { status: "approved" };') + 300);
+    expect(legacy).not.toContain("contacted_at");
+  });
+  test("4. the rail has no Documents Received checkbox; the Next Step checklist keeps the check-offs", () => {
+    const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
+    expect(panel).not.toContain("stageCheckoffs=");
+    expect(panel).not.toContain('label: "Documents Received"');
+    expect(panel).toContain('documents: () => openSection("documents", "profile-documents")');
+    expect(panel).toContain("void toggleEvidence(presentation.fields)");
+  });
+});
