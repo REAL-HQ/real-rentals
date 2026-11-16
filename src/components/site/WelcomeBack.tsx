@@ -1,13 +1,27 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { requestApplicationLink } from "@/lib/applications.functions";
-import { secureLinkBody, secureLinkHeading, secureLinkKind } from "@/lib/secure-link-copy";
+import {
+  RETURNING_HEADING,
+  isReturningPanel,
+  maskEmail,
+  returningBody,
+  returningStatusLine,
+  secureLinkBody,
+  secureLinkHeading,
+  secureLinkKind,
+} from "@/lib/secure-link-copy";
 
 /**
  * Persistent "check your email" / recovery panel shared by every public entry
  * point. Wording is neutral — it never says whether an application exists —
  * and it only reports what really happened: a provider failure is shown as a
  * failure, never as "sent". Resend is rate-limited with a visible countdown.
+ *
+ * Returning applicant (a lead form matched the email they just typed): we
+ * never ask for that email again. The box is hidden, the address is shown
+ * masked, and Resend reuses it. The link still only ever goes to the address
+ * on the application, so this changes no security property.
  */
 /** What really happened on the last request. "recent" = rate-limited, nothing new sent. */
 export type LinkStatus = "sent" | "recent" | "failed" | "review" | "requested";
@@ -60,6 +74,43 @@ export function WelcomeBack({
   const mins = Math.floor(wait / 60);
   const secs = String(wait % 60).padStart(2, "0");
   const kind = secureLinkKind(expired, missing);
+  // Decided once from how we got here; a later resend never flips the layout.
+  const [returning] = useState(() => !expired && !missing && isReturningPanel(email, initial?.status));
+  const masked = maskEmail(email);
+
+  if (returning) {
+    const shown = state === "idle" || state === "sending" || state === "review" ? "sent" : state;
+    return (
+      <div role="status" aria-live="polite" className={`rounded-2xl p-6 ${dark ? "bg-black/60 text-white" : "bg-soft"}`} data-secure-link="returning">
+        <h2 className="text-xl font-semibold">{RETURNING_HEADING}</h2>
+        <p className={`mt-2 text-sm leading-relaxed ${muted}`}>{returningBody(masked)}</p>
+        <p
+          className={`mt-3 text-sm leading-relaxed ${shown === "failed" ? "text-real-red font-medium" : muted}`}
+          data-returning-status={shown}
+        >
+          {returningStatusLine(shown, masked)}
+        </p>
+        <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
+          <button
+            type="button"
+            onClick={send}
+            disabled={state === "sending" || wait > 0}
+            className="min-h-11 rounded-lg bg-real-red px-5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+          >
+            {state === "sending" ? "Sending…" : wait > 0 ? `Resend In ${mins}:${secs}` : "Resend Link"}
+          </button>
+          {onBack && (
+            <button type="button" onClick={onBack} className={`text-sm underline underline-offset-4 ${muted}`}>
+              Use A Different Email
+            </button>
+          )}
+        </div>
+        <p className={`mt-4 text-xs leading-relaxed ${muted}`}>
+          Need help? Call (888) 833-8280 or email team@drivereal.com.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div role="status" aria-live="polite" className={`rounded-2xl p-6 ${dark ? "bg-black/60 text-white" : "bg-soft"}`} data-secure-link={kind}>
