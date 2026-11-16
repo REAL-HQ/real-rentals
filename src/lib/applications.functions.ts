@@ -637,10 +637,13 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     const { issueResumeToken } = await import("@/lib/resume-tokens.server");
     const token = freshLink ? null : await issueResumeToken(supabaseAdmin, row.id);
     // Step 1 thank-you email to the applicant. Off until an Owner turns on
-    // "Step 1 Thank-You Email" in Back Office → Automations. Never blocks.
+    // "Step 1 Thank-You Email" in Back Office → Automations. Awaited on
+    // purpose (same reason as enrollInWorkflows / syncApplicationUploads): a
+    // fire-and-forget send is killed when the Cloudflare Worker returns the
+    // response. Errors still must not fail the applicant's submission.
     if (!freshLink) try {
       const { sendStepOneThankYouEmail } = await import("@/lib/step-one-email.server");
-      void sendStepOneThankYouEmail({ applicationId: row.id, to: emailLower, firstName: data.full_name ?? null });
+      await sendStepOneThankYouEmail({ applicationId: row.id, to: emailLower, firstName: data.full_name ?? null });
     } catch (e) {
       console.error("[step1-email] setup failed", e);
     }

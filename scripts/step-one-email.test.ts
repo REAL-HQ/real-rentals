@@ -152,11 +152,12 @@ describe("Step 1 thank-you email copy", () => {
 });
 
 describe("Step 1 wiring", () => {
-  test("sent only from the new-application branch, after the token is minted, without awaiting", () => {
+  test("sent only from the new-application branch, after the token is minted, and awaited so Workers cannot drop it", () => {
     const s = readFileSync("src/lib/applications.functions.ts", "utf8");
     const at = s.indexOf("sendStepOneThankYouEmail({");
     expect(at).toBeGreaterThan(s.indexOf("const token = await issueResumeToken(supabaseAdmin, row.id);"));
-    expect(s.slice(at - 8, at)).toContain("void ");
+    expect(s.slice(Math.max(0, at - 24), at)).toContain("await ");
+    expect(s.slice(Math.max(0, at - 24), at)).not.toContain("void ");
     expect(s.split("sendStepOneThankYouEmail({").length).toBe(2);
   });
   test("Back Office preview renders without minting a token", () => {
