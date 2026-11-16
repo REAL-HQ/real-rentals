@@ -225,7 +225,7 @@ export function buildPortalPaymentHistory(input: {
       amountCents: cents(row.amount),
       balanceDueCents,
       dueDate: row.due_date,
-      paidDate: row.paid_date,
+      paidDate: status === "paid" || status === "refunded" ? row.paid_date : null,
     });
     if (!(CLOSED_CHARGE_STATUSES as readonly string[]).includes(status)) {
       if (balanceDueCents == null) balanceUnknown = true;

@@ -490,7 +490,7 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     stripe_charge_id: receipts.stripe_charge_id,
     stripe_customer_id: receipts.stripe_customer_id,
     stripe_payment_intent_id: receipts.stripe_payment_intent_id,
-    stripe_paid_at: receipts.stripe_paid_at,
+    stripe_paid_at: status === 'paid' ? receipts.stripe_paid_at : null,
   }));
 
   // Fill receipt links on a replay without changing status or notified_status.
@@ -503,8 +503,10 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     stripe_charge_id: receipts.stripe_charge_id,
     stripe_customer_id: receipts.stripe_customer_id,
     stripe_payment_intent_id: receipts.stripe_payment_intent_id,
-    stripe_paid_at: receipts.stripe_paid_at,
     stripe_subscription_id: subscriptionId,
+    // Only stamp a paid time when Stripe actually collected. A failed
+    // replay must not clear stripe_paid_at on an already-paid row.
+    ...(receipts.stripe_paid_at ? { stripe_paid_at: receipts.stripe_paid_at } : {}),
   }).eq('stripe_invoice_id', invoice.id));
 
   // Application-only (paid before activation), ambiguous, or another
@@ -512,10 +514,12 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
   if (!notify || !rental) return;
 
   const patch = status === 'paid'
-    ? { status: 'paid', paid_date: today(), balance_due: 0, amount, failure_reason: null }
+    ? { status: 'paid', paid_date: today(), balance_due: 0, amount, failure_reason: null, stripe_paid_at: receipts.stripe_paid_at }
     // attempt_count is ours (collectRows' idempotency keys); Stripe's invoice retry count never
     // overwrites it, or a later attempt could reuse an old key.
-    : { status: 'failed', failure_reason: failure };
+    // This path already skips paid/refunded/void/waived rows, so clearing
+    // stripe_paid_at here only removes a stamp that was never a real payment.
+    : { status: 'failed', failure_reason: failure, stripe_paid_at: null };
   let q = admin.from('payments').update(patch)
     .eq('stripe_invoice_id', invoice.id)
     .neq('status', 'paid').neq('status', 'refunded');

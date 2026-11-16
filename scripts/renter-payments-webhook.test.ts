@@ -143,6 +143,31 @@ describe("payments webhook receipts", () => {
     assert.equal(row.stripe_hosted_invoice_url, "https://invoice.stripe.com/i/test");
     assert.equal(row.stripe_invoice_pdf_url, "https://pay.stripe.com/invoice/test/pdf");
     assert.equal(row.stripe_charge_id, "ch_1");
+    assert.equal(row.stripe_paid_at, new Date(1794497023 * 1000).toISOString());
+  });
+
+  it("does not stamp stripe_paid_at or paid_date on a failed invoice", async () => {
+    const db = fakeDb(rentalSeed);
+    const res = await postVerifiedPaymentWebhook({
+      type: "invoice.payment_failed",
+      data: { object: paidInvoice({
+        id: "in_1UcS37GsNNO50lXbmWqL9CBh",
+        number: "BUKZ1ZXD-0006",
+        status: "open",
+        amount_paid: 0,
+        amount_due: 35000,
+        created: 1763302948,
+        status_transitions: { paid_at: null },
+        charge: { id: "ch_failed", created: 1763302948, status: "failed", paid: false, receipt_url: null },
+      }) },
+    }, db);
+    assert.equal(res.status, 200);
+    assert.equal(db._state.payments.length, 1);
+    const row = db._state.payments[0];
+    assert.equal(row.status, "failed");
+    assert.equal(row.stripe_invoice_id, "in_1UcS37GsNNO50lXbmWqL9CBh");
+    assert.equal(row.stripe_paid_at, null);
+    assert.equal(row.paid_date, null);
   });
 
   it("is idempotent on a second invoice.paid and a payment_succeeded replay", async () => {
