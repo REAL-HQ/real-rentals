@@ -62,6 +62,9 @@ Reply `{ ok, packet }` with:
   (the checklist codes FLEET relied on).
 - `idempotency_key` is optional. A repeat returns the first result with
   `duplicate: true`. Approving an already-approved applicant is also a no-op.
+- `approval_text_sent: true` (optional, SOP D30): FLEET has sent its own
+  approval text (P12), so the Approval Confirmation email is skipped
+  (`approval_email: "bot_text"`). Without it the email goes as before.
 
 **approve** runs the exact code path staff use when they press Approve:
 the same status change, the `application.approved` audit entry (labelled

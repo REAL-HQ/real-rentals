@@ -579,7 +579,7 @@ export async function activateRentalCore(
       const { sendEmail } = await import("@/lib/email.server");
       await sendEmail({
         to: app.email as string,
-        subject: `${vehicleLabel} Is Reserved For You`,
+        subject: `Your ${vehicleLabel} Rental Is Active`,
         html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
           <h1 style="font-size:20px">You're all set, ${escapeHtml(firstName)}</h1>
           <p style="font-size:15px;line-height:1.6">Your rental is active: <strong>${escapeHtml(vehicleLabel)}</strong>${
@@ -600,7 +600,7 @@ export async function activateRentalCore(
       const { sendSms } = await import("@/lib/sms.server");
       await sendSms({
         to: (app.phone as string) ?? "",
-        body: `REAL RENTALS: Hi ${firstName}, ${vehicleLabel} is reserved for you. Check your email to set up your driver portal. Reply STOP to opt out.`,
+        body: `REAL RENTALS: Hi ${firstName}, your ${vehicleLabel} rental is now active. Check your email to set up your driver portal and see your payment schedule. Reply STOP to opt out.`,
         kind: "rental_activated",
         applicationId: data.applicationId,
         rentalId: rental.id as string,
@@ -693,6 +693,8 @@ export const endRental = createServerFn({ method: "POST" })
       if (parsed.rentalId !== data.rentalId || parsed.operationId !== data.closeoutV2.operationId)
         throw new Error("Closeout response binding mismatch; reconcile the original operation");
       if (process.env.RENTER_LIFECYCLE_NOTICES_ENABLED === "true") await import("@/lib/renter-lifecycle-notices.server").then((m) => m.enrollRenterLifecycleNotice({ event: "rental_ended", rentalId: data.rentalId, fresh: !parsed.recovered })).catch((e) => console.error("[renter-lifecycle] rental_ended", e));
+      // Rental Ended notice (D14). Its own Automations switch, OFF by default.
+      if (!parsed.recovered) { const { supabaseAdmin: sa } = await import("@/integrations/supabase/client.server"); await import("@/lib/rental-ended-notice.server").then((m) => m.sendRentalEndedNotice(sa, data.rentalId)).catch((e) => console.error("[rental-ended]", e)); }
       return { ok: true, alreadyClosed: parsed.recovered, closeout: parsed };
     }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -779,6 +781,8 @@ export const endRental = createServerFn({ method: "POST" })
       metadata: { vehicle_id: rental.vehicle_id, driver_id: rental.driver_id },
     });
     if (process.env.RENTER_LIFECYCLE_NOTICES_ENABLED === "true") await import("@/lib/renter-lifecycle-notices.server").then((m) => m.enrollRenterLifecycleNotice({ event: "rental_ended", applicationId: rental.application_id, rentalId: data.rentalId })).catch((e) => console.error("[renter-lifecycle] rental_ended", e));
+    // Rental Ended notice (D14). Its own Automations switch, OFF by default.
+    await import("@/lib/rental-ended-notice.server").then((m) => m.sendRentalEndedNotice(supabaseAdmin, data.rentalId)).catch((e) => console.error("[rental-ended]", e));
 
     return { ok: true, alreadyClosed: false, lifecycle };
   });

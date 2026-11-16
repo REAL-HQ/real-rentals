@@ -480,12 +480,19 @@ async function applicantResumeUrl(applicationId: string): Promise<string> {
  * the address on file. A recovery mint only trims older recovery links, so it
  * never logs the applicant out of a tab they already have open.
  */
-async function applicantRecoveryUrl(applicationId: string): Promise<string> {
+async function applicantRecoveryUrl(applicationId: string, opts: { followup?: boolean } = {}): Promise<string> {
   const preview = await import("@/lib/automation-controls.server");
   if (preview.inPreview()) return preview.PREVIEW_LINK;
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { issueResumeToken, resumeUrl } = await import("@/lib/resume-tokens.server");
-  return resumeUrl(await issueResumeToken(supabaseAdmin, applicationId, { recovery: true }));
+  // followup: the same personal 14-day link the follow-up emails and texts carry (D9).
+  return resumeUrl(await issueResumeToken(supabaseAdmin, applicationId, opts.followup ? {} : { recovery: true }));
+}
+
+/** Under the 24-hour and 72-hour reminder buttons (D9, decided Nov 16): the 14-day link. */
+async function followupLinkNote(): Promise<string> {
+  const { RESUME_TOKEN_DAYS } = await import("@/lib/resume-tokens.server");
+  return `This link is private to you and works for ${RESUME_TOKEN_DAYS} days.`;
 }
 
 /** One sentence under every reminder button, so an expired link is not a dead end. */
@@ -570,12 +577,12 @@ type RecoveryArgs = {
 
 export async function sendWizardRecoveryEmail({ to, firstName, applicationId, variant }: RecoveryArgs): Promise<SendResult> {
   const name = (firstName || "").trim().split(" ")[0] || "there";
-  const resumeUrl = await applicantRecoveryUrl(applicationId);
-  const linkNote = await recoveryLinkNote();
+  const resumeUrl = await applicantRecoveryUrl(applicationId, { followup: true });
+  const linkNote = await followupLinkNote();
   const subject =
     variant === "24h"
-      ? `${name}, your REAL RENTALS application is saved`
-      : `${name}, your REAL RENTALS application is still open`;
+      ? `${name}, Your REAL RENTALS Application Is Saved`
+      : `${name}, Your REAL RENTALS Application Is Still Open`;
   const headline = variant === "24h" ? "Your Application Is Almost Done" : "Your Application Is Still Open";
   const body =
     variant === "24h"
@@ -624,17 +631,36 @@ function money(n: number): string {
 }
 
 /** One short vetting confirmation. Account access and pickup details still wait for Reserved. */
+/** The Reservation Fee switch, read directly (keeps the payment code out of this module). */
+async function reservationFeeForEmail(): Promise<{ enabled: boolean; amount: number }> {
+  const { readReservationFeeSettings, RESERVATION_FEE_SETTINGS_KEY } = await import("@/lib/reservation-fee");
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const r = await supabaseAdmin.from("app_settings").select("value").eq("key", RESERVATION_FEE_SETTINGS_KEY).maybeSingle();
+  return readReservationFeeSettings(r.error ? null : (r.data as { value?: unknown } | null)?.value);
+}
+
 export async function sendApprovalConfirmationEmail(args: {
   to: string;
   firstName: string | null;
   applicationId: string;
+  /** Staff approved with "send agreement": the agreement is on its way (D30 wording). */
+  agreementComing?: boolean;
 }): Promise<SendResult> {
   const name = (args.firstName || "").trim().split(/\s+/)[0] || "there";
+  let fee: { enabled: boolean; amount: number } = { enabled: false, amount: 50 };
+  if (args.agreementComing) {
+    try {
+      fee = await reservationFeeForEmail();
+    } catch { /* no fee sentence */ }
+  }
+  const p = (t: string, last = false) => `<p style="color:#444;font-size:15px;line-height:1.55;margin:0${last ? "" : " 0 16px"}">${t}</p>`;
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Application Is Approved</h1>
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, you're approved to move forward. Next, we'll confirm your rental terms by phone and send your agreement.</p>
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Our team will be in touch to assign a vehicle and schedule your pickup.</p>
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:0">No vehicle is reserved yet. We'll send your driver portal login and pickup details once your reservation is confirmed.</p>`);
+      ${args.agreementComing
+        ? p(`Hi ${escapeHtml(name)}, your application is approved. Your rental agreement is on its way to this email; sign it${fee.enabled ? ` and pay the $${Number.isInteger(fee.amount) ? fee.amount : fee.amount.toFixed(2)} Reservation Fee` : ""} to lock in your car.`, true)
+        : `${p(`Hi ${escapeHtml(name)}, you're approved to move forward. Next, we'll confirm your rental terms by phone and send your agreement.`)}
+      ${p("Our team will be in touch to assign a vehicle and schedule your pickup.")}
+      ${p("No vehicle is reserved yet. We'll send your driver portal login and pickup details once your reservation is confirmed.", true)}`}`);
   return sendEmail({
     to: args.to,
     subject: "Your REAL RENTALS Application Is Approved",
@@ -963,7 +989,7 @@ export async function sendLicenseExpiringEmail(args: LicenseExpiryArgs): Promise
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${expired ? "Your License Has Expired" : "Your License Is Expiring Soon"}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, our records show your driver's license ${expired ? "expired" : "expires"} on <strong>${escapeHtml(when)}</strong>. Send us an updated photo so your rental stays in good standing.</p>
       <a href="https://drivereal.com/portal" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Upload New License</a>`);
-  return sendEmail({ to: args.to, subject: expired ? "Your driver's license on file has expired" : `Your driver's license expires ${when}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "license_expiring" } });
+  return sendEmail({ to: args.to, subject: expired ? "Your Driver's License on File Has Expired" : `Your Driver's License Expires ${when}`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "license_expiring" } });
 }
 
 type ServiceDigestArgs = {
@@ -993,7 +1019,7 @@ export async function sendCardExpiringEmail(args: CardExpiringArgs): Promise<Sen
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Card Is Expiring</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your ${escapeHtml(method)} on file expires <strong>${mm}/${args.expYear}</strong>. Update it now so your weekly rent doesn't miss a beat.</p>
       <a href="${args.updateCardUrl || "https://drivereal.com/portal"}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update Card</a>`);
-  return sendEmail({ to: args.to, subject: `Your card ending in ${args.last4 ?? "••••"} is expiring`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "card_expiring" } });
+  return sendEmail({ to: args.to, subject: `Your Card Ending in ${args.last4 ?? "••••"} Is Expiring`, html, replyTo: EMAIL_REPLY_TO, track: { workflow: "card_expiring" } });
 }
 
 // -----------------------------------------------------------------------------
@@ -1089,35 +1115,55 @@ export async function sendPortalInviteEmail(args: {
     vehicle: string | null;
   };
 }): Promise<void> {
+  // Wording: SOP P36 (D13, decided Nov 16 2026): list order, "license", what to
+  // bring and the pickup rules. Never names an insurance broker or carrier.
   const name = escapeHtml(args.firstName || "there");
   const url = escapeHtml(args.inviteUrl || publicAppUrl("/login"));
   const reservation = args.reservation;
-  const appointment = reservation ? `
-      <p><strong>Pickup:</strong> ${escapeHtml(fmtDate(reservation.pickupDate))}, ${escapeHtml(formatReservationTime(reservation.pickupTime))}<br>
-      <strong>Location:</strong> ${escapeHtml(reservation.pickupLocation)}${reservation.vehicle ? `<br><strong>Vehicle:</strong> ${escapeHtml(reservation.vehicle)}` : ""}</p>` : "";
-  await sendEmail({
-    to: args.to,
-    subject: reservation ? "Your Pickup Is Reserved — Set Up Your Driver Portal" : "Set Up Your REAL RENTALS Driver Portal",
-    html: `
-      <p>Hi ${name},</p>
-      <p>${reservation ? "Your pickup is reserved." : "Your REAL RENTALS driver portal is ready."} Your driver portal is where
-         you finish everything before you pick up a vehicle.</p>
-      ${appointment}
+  const p = (t: string) => `<p>${t}</p>`;
+  let feeLine = "";
+  if (reservation) {
+    try {
+      const fee = await reservationFeeForEmail();
+      if (fee.enabled) feeLine = p(`Your $${Number.isInteger(fee.amount) ? fee.amount : fee.amount.toFixed(2)} Reservation Fee goes toward your first week's rent.`);
+    } catch { /* no fee line */ }
+  }
+  const button = `
       <p style="margin:26px 0">
         <a href="${url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">
           ${args.inviteUrl ? "Set Your Password" : "Open Your Portal"}
         </a>
-      </p>
-      <p>Once you're in you can:</p>
+      </p>`;
+  const portal = p("In your driver portal you can upload documents, keep your contact details current and see your payments. Insurance is included in your weekly rate.");
+  const html = reservation
+    ? `
+      <p>Hi ${name},</p>
+      <p>Your pickup is booked.</p>
+      <p><strong>Pickup:</strong> ${escapeHtml(fmtDate(reservation.pickupDate))} at ${escapeHtml(formatReservationTime(reservation.pickupTime))}<br>
+      <strong>Location:</strong> ${escapeHtml(reservation.pickupLocation)}${reservation.vehicle ? `<br><strong>Vehicle:</strong> ${escapeHtml(reservation.vehicle)}` : ""}</p>
+      <p><strong>Before You Come</strong></p>
       <ul>
-        <li>upload or replace your licence and other documents</li>
-        <li>Insurance is included, with the policy in your name. One less bill to worry about.</li>
-        <li>keep your contact details up to date</li>
-        <li>read and sign your rental agreement</li>
+        <li>Bring your driver's license.</li>
+        <li>Arrive on time. If you're 15+ minutes late, the car may go to another driver.</li>
+        <li>Your insurance card is handed to you at pickup, not before.</li>
+        <li>Set up your rideshare account after pickup, once your rental is paid.</li>
       </ul>
-      ${reservation ? "<p>Please arrive at your confirmed pickup time. Contact us if you need to make a change.</p>" : "<p>We'll let you know as soon as a vehicle is assigned to you.</p>"}
-      <p>— REAL RENTALS</p>
-    `,
+      ${feeLine}${button}${portal}
+      <p>— REAL RENTALS · (888) 833-8280</p>
+    `
+    : `
+      <p>Hi ${name},</p>
+      <p>Your REAL RENTALS driver portal is ready.</p>
+      ${button}${portal}
+      <p>We'll let you know as soon as a vehicle is assigned to you.</p>
+      <p>— REAL RENTALS · (888) 833-8280</p>
+    `;
+  await sendEmail({
+    to: args.to,
+    subject: reservation
+      ? `Your Pickup Is Booked: ${fmtDate(reservation.pickupDate)} at ${formatReservationTime(reservation.pickupTime)}`
+      : "Set Up Your REAL RENTALS Driver Portal",
+    html,
     track: { workflow: "portal_invite" },
   });
 }

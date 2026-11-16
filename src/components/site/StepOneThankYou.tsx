@@ -29,6 +29,7 @@ export function StepOneThankYou({ onContinue }: { onContinue: () => void }) {
           >
             {C.primaryCta}
           </button>
+          <p className="mt-1.5 text-[12px] leading-4 text-muted-foreground">{C.primaryHelper}</p>
           <a
             href={`sms:${STEP_ONE_LINE.e164}`}
             className="mt-2 inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-border bg-white px-4 text-sm font-medium text-foreground"

@@ -227,7 +227,7 @@ describe("held notices: webhook queues references, sweep sends once", () => {
     db._state.rentals[0].applications.card_exp_year = new Date().getFullYear();
     db._state.held_notices = [held({ kind: "card_expiring" })];
     expect((await retryHeldNotices(proxy, deps)).sent).toBe(1);
-    expect(sent.filter((s) => s.includes("is expiring"))).toHaveLength(1);
+    expect(sent.filter((s) => /is expiring/i.test(s))).toHaveLength(1);
     db = seed([{ id: P1, status: "paid" }]); db._state.held_notices = [held({ kind: "card_expiring" })];
     expect((await retryHeldNotices(proxy, deps)).dropped).toBe(1);
   });

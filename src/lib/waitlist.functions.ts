@@ -131,7 +131,7 @@ export const joinWaitlist = createServerFn({ method: "POST" })
     const companyPhone = (await (await import("@/lib/company.server")).getBusinessPhone()).display;
     void sendEmail({
       to: data.email,
-      subject: "You're on the REAL RENTALS waitlist",
+      subject: "You're on the REAL RENTALS Waitlist",
       html: `<div style="font-family:Arial,Helvetica,sans-serif;padding:24px;max-width:560px;color:#111">
         <p style="font-size:15px;line-height:1.6">Hi ${escapeHtml(data.full_name.split(" ")[0])},</p>
         <p style="font-size:15px;line-height:1.6">You're on the list${cityLabel ? ` for a car in <strong>${escapeHtml(cityLabel)}</strong>` : ""}. Every car that opens up goes to the next person on the list first — you'll get an email the moment it's your turn.</p>
