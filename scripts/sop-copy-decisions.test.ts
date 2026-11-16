@@ -97,10 +97,19 @@ describe("D14 Rental Ended notice", () => {
   test("on: one notice per rental with the built wording", async () => {
     const db = fakeDb(seed); const sent: any[] = [];
     const deliver = async (n: any) => { sent.push(n); return { email: "sent", sms: "sent" }; };
-    expect((await ren.sendRentalEndedNotice(db, "r1", { gate: "send", deliver })).status).toBe("sent");
-    expect((await ren.sendRentalEndedNotice(db, "r1", { gate: "send", deliver })).status).toBe("duplicate");
+    const noon = new Date("2026-11-16T17:00:00Z"); // 12 PM ET
+    expect((await ren.sendRentalEndedNotice(db, "r1", { gate: "send", deliver, now: noon })).status).toBe("sent");
+    expect((await ren.sendRentalEndedNotice(db, "r1", { gate: "send", deliver, now: noon })).status).toBe("duplicate");
     expect(sent.length).toBe(1);
     expect(sent[0].smsBody).toBe("REAL RENTALS: Hi Test, your rental has ended. The driver portal has the details. Reply STOP to opt out.");
     expect(sent[0].emailHtml).toContain("2021 Toyota Camry");
+    expect(sent[0].phone).toBe("+15555550100");
+  });
+  test("outside 8 AM–9 PM ET: email only, no text", async () => {
+    const db = fakeDb(seed); const sent: any[] = [];
+    const deliver = async (n: any) => { sent.push(n); return { email: "sent", sms: "skipped" }; };
+    expect((await ren.sendRentalEndedNotice(db, "r1", { gate: "send", deliver, now: new Date("2026-11-17T03:30:00Z") })).status).toBe("sent"); // 10:30 PM ET
+    expect(sent[0].phone).toBeNull();
+    expect(sent[0].email).toBe("t@example.com");
   });
 });

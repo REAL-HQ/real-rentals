@@ -10,6 +10,7 @@
  */
 import { rentalEndedNotice } from "@/lib/driver-notifications";
 import { tableMissing } from "@/lib/fleet-api.server";
+import { withinTextingHours } from "@/lib/failed-payment-link";
 
 type Admin = any;
 export const RENTAL_ENDED_NOTICE_KEY = "rental_ended_notice";
@@ -17,6 +18,7 @@ export const RENTAL_ENDED_NOTICE_KEY = "rental_ended_notice";
 export type RentalEndedDeps = {
   gate?: "send" | "off" | "held";
   deliver?: (notice: any) => Promise<any>;
+  now?: Date;
 };
 
 export async function sendRentalEndedNotice(admin: Admin, rentalId: string, deps: RentalEndedDeps = {}): Promise<{ status: string }> {
@@ -37,7 +39,9 @@ export async function sendRentalEndedNotice(admin: Admin, rentalId: string, deps
     const vehicleLabel = [v?.year, v?.make, v?.model].filter(Boolean).join(" ") || "your vehicle";
     const notice = rentalEndedNotice({
       firstName: String(app.full_name ?? "").trim().split(/\s+/)[0] || "there",
-      email: app.email ?? null, phone: app.phone ?? null, applicationId: app.id,
+      // Texts only 8 AM to 9 PM ET (bot rules): a rental ended outside those
+      // hours gets the email only.
+      email: app.email ?? null, phone: withinTextingHours(deps.now ?? new Date()) ? (app.phone ?? null) : null, applicationId: app.id,
       driverId: app.user_id ?? rental.driver_id ?? null, rentalId,
       vehicleLabel,
     });
