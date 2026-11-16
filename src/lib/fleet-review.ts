@@ -42,7 +42,7 @@ export const FLEET_ESCALATION_DEFAULTS = {
   youngDriverAge: 25,
   minAge: 21,
   /** Gig rating below this -> staff look. */
-  minRating: 4.7,
+  minRating: 4.0,
   /** Fewer completed trips than this -> staff look. */
   minTrips: 100,
   /** License expiring within this many days -> staff look (expired = blocker). */

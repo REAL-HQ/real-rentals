@@ -632,7 +632,7 @@ export async function sendApprovalConfirmationEmail(args: {
   const name = (args.firstName || "").trim().split(/\s+/)[0] || "there";
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Application Is Approved</h1>
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, your qualification and verification checks are complete.</p>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, you're approved to move forward. Next, we'll confirm your rental terms by phone and send your agreement.</p>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Our team will be in touch to assign a vehicle and schedule your pickup.</p>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0">No vehicle is reserved yet. We'll send your driver portal login and pickup details once your reservation is confirmed.</p>`);
   return sendEmail({
