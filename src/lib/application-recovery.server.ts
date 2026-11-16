@@ -58,6 +58,7 @@ async function callRpc(
 export async function deliverApplicationRecovery(
   admin: Admin,
   applicationId: string,
+  opts: { submittedName?: string | null } = {},
 ): Promise<RecoveryOutcome> {
   if (!applicationResumeAtomicEnabled()) {
     throw new Error("Atomic application recovery is disabled.");
@@ -82,6 +83,7 @@ export async function deliverApplicationRecovery(
     result = await sendApplicationResumeEmail({
       to: attempt.email,
       firstName: attempt.full_name,
+      submittedName: opts.submittedName ?? null,
       applicationId,
       token,
       attemptId: attempt.attempt_id,

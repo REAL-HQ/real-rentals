@@ -21,6 +21,14 @@ export const APPLICANT_EDITABLE_STATUSES = ["partial", "new", "complete", "revie
 export const APPLICATION_LOCKED_MESSAGE =
   "This application is already being processed — contact us to make changes.";
 
+/**
+ * The way forward from that screen (t316u): it used to be a dead end. Same
+ * words for every decision; starting again emails a fresh link to the
+ * address they type, so nothing here reveals or unlocks the old application.
+ */
+export const APPLICATION_LOCKED_NEXT_STEP =
+  "Want to rent with us again? Start a new application and we'll email you a secure link to continue.";
+
 export function isApplicantEditableStatus(status: unknown): boolean {
   const raw = typeof status === "string" ? status.trim().toLowerCase() : "";
   return (APPLICANT_EDITABLE_STATUSES as readonly string[]).includes(raw);

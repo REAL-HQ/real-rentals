@@ -11,7 +11,7 @@ import {
   decideAutoClose, comeBackEmail, comeBackSms, MISSING_ITEMS_AUTOCLOSE_KEY, MISSING_ITEMS_AUTOCLOSE_WORKFLOW, missingItems, missingKey, outreachEmail, outreachSms, readOutreachSettings, redactContact,
   type DecisionInput, type OutreachApp, type OutreachLogRow,
 } from "@/lib/missing-items";
-import { easternHour, handleFleetMissingItems, reopenAutoClosed, runMissingItemsAutoClose, runMissingItemsOutreach } from "@/lib/missing-items-outreach.server";
+import { easternHour, isSuppressedEmail, handleFleetMissingItems, reopenAutoClosed, runMissingItemsAutoClose, runMissingItemsOutreach } from "@/lib/missing-items-outreach.server";
 
 const NOW = new Date("2026-11-16T17:00:00.000Z"); // 12:00 PM ET
 const daysAgo = (d: number, from = NOW) => new Date(from.getTime() - d * 86_400_000).toISOString();
@@ -614,5 +614,30 @@ describe("trip-history / gig earnings screenshot is income proof (Dolmar, t306s1
     const src = readFileSync("src/lib/missing-items-outreach.server.ts", "utf8");
     expect(src).toContain('q.in("category", ["license_front", "gig_profile", "income", "trip_history"])');
     expect(src).toContain("income_proof_url,trip_screenshots,");
+  });
+});
+
+describe("bounced and mistyped emails are not mailed again", () => {
+  test("isSuppressedEmail: past bounce, typo domains, reserved test domains", () => {
+    const bad = new Set(["old@gmail.com"]);
+    expect(isSuppressedEmail("Old@Gmail.com ", bad)).toBe(true);
+    expect(isSuppressedEmail("x@gkail.com", bad)).toBe(true);
+    expect(isSuppressedEmail("x@gmail.vom", bad)).toBe(true);
+    expect(isSuppressedEmail("x@foo.invalid", bad)).toBe(true);
+    expect(isSuppressedEmail("ok@gmail.com", bad)).toBe(false);
+    expect(isSuppressedEmail("", bad)).toBe(false);
+  });
+  test("one-time send: a bounced address loses email but keeps its text; email-only is skipped", async () => {
+    const seed = SEED();
+    seed.applications[0] = app({ id: "a1", email: "bounced@gmail.com" }); // email + sms
+    seed.applications[1] = app({ id: "a2", full_name: "Sam Lee", sms_consent: false, email: "sam@gmail.vom", license_photo_url: "a2/l.jpg" }); // email only
+    (seed as any).email_deliveries = [{ recipient: "bounced@gmail.com", state: "bounced" }];
+    const db = fakeDb(seed);
+    const h = deps();
+    const r = await runMissingItemsOutreach(db.admin, { mode: "backfill" }, h.d);
+    expect(r.skipped.email_suppressed).toBe(2);
+    expect(h.emails.length).toBe(0);
+    expect(h.texts.length).toBe(1);
+    expect(r.channels).toEqual({ email_only: 0, email_and_sms: 0, sms_only: 1 });
   });
 });
