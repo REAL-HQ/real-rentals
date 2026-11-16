@@ -95,6 +95,8 @@ const stepUpdateSchema = z.object({
   insurance_answer: z.enum(["yes", "no", "not_sure"]).nullable().optional(),
   // Part 2 — licence
   license_valid: z.boolean().nullable().optional(),
+  // Proof of income upload (private bucket path, own folder only).
+  income_proof_url: z.string().trim().max(500).nullable().optional(),
   gig_status: z.string().trim().max(60).nullable().optional(),
   // Gig
   platforms: z.array(z.string().trim().min(1).max(60)).max(12).nullable().optional(),
@@ -623,6 +625,12 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { resolveResumeToken } = await import("@/lib/resume-tokens.server");
     const id = await resolveResumeToken(supabaseAdmin, token);
+    // Missing-items auto-close: the applicant came back through their link,
+    // so put the application back where it was (only our own close).
+    {
+      const { reopenAutoClosed } = await import("@/lib/missing-items-outreach.server");
+      await reopenAutoClosed(supabaseAdmin, id);
+    }
 
     // One read of the row as it stands, before anything else happens. Four
     // decisions need it: whether the applicant may still edit at all, whether
@@ -658,7 +666,7 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
     // columns say, then signs a download URL for it.
     const ownPath = (v: unknown) =>
       typeof v !== "string" || v === "" || v.startsWith(`${id}/`);
-    for (const col of ["license_photo_url", "insurance_doc_url", "profile_screenshot_url"]) {
+    for (const col of ["license_photo_url", "insurance_doc_url", "profile_screenshot_url", "income_proof_url"]) {
       if (patch[col] !== undefined && !ownPath(patch[col])) {
         throw new Error("That file reference is not one we issued.");
       }
@@ -932,8 +940,9 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
  * PRESENCE-ONLY — the fact of the file, never its storage path. A path plus a
  * bucket name is the shape of an object; the wizard only ever needed to know
  * whether to say "Uploaded":
- *   license_photo_url, insurance_doc_url, profile_screenshot_url ->
- *   booleans; trip_screenshots -> a count and the display names only.
+ *   license_photo_url, insurance_doc_url, profile_screenshot_url,
+ *   income_proof_url -> booleans; trip_screenshots -> a count and the display
+ *   names only.
  *
  * DO NOT RETURN — the applicant cannot act on it, or it is ours:
  *   id and market_id (internal identifiers), email and phone (contact
@@ -983,6 +992,7 @@ const RESUME_COLUMNS = [
   "insurance_doc_url",
   "profile_screenshot_url",
   "trip_screenshots",
+  "income_proof_url",
 ] as const;
 
 /** Last four characters of a reference, for recognition only. */
@@ -998,6 +1008,12 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { resolveResumeToken } = await import("@/lib/resume-tokens.server");
     const id = await resolveResumeToken(supabaseAdmin, data.token);
+    // Missing-items auto-close: the applicant came back through their link,
+    // so put the application back where it was (only our own close).
+    {
+      const { reopenAutoClosed } = await import("@/lib/missing-items-outreach.server");
+      await reopenAutoClosed(supabaseAdmin, id);
+    }
     const { data: row, error } = await supabaseAdmin
       .from("applications")
       .select(RESUME_COLUMNS.join(","))
@@ -1051,6 +1067,7 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
       license_photo_on_file: Boolean(r.license_photo_url),
       insurance_doc_on_file: Boolean(r.insurance_doc_url),
       profile_screenshot_on_file: Boolean(r.profile_screenshot_url),
+      income_proof_on_file: Boolean(r.income_proof_url),
       trip_screenshot_names: trips.map((p) => String(p).split("/").pop() ?? ""),
     };
   });
@@ -1074,7 +1091,7 @@ export const requestUploadUrl = createServerFn({ method: "POST" })
     z
       .object({
         token: z.string().min(20).max(200),
-        kind: z.enum(["license", "insurance", "gig_profile", "trip_history"]),
+        kind: z.enum(["license", "insurance", "gig_profile", "trip_history", "income"]),
         // An allowlist, not a shape check. `[a-z0-9]{1,5}` would have accepted
         // "html", "svg" or "js" — and while these buckets are private and the
         // browser never picks the path, a file the server agreed to sign is a
@@ -1145,7 +1162,7 @@ export const requestUploadUrl = createServerFn({ method: "POST" })
     // category is not in the `kind` enum at all and lives in a different
     // bucket entirely.
     const bucket =
-      data.kind === "license" || data.kind === "insurance"
+      data.kind === "license" || data.kind === "insurance" || data.kind === "income"
         ? "license-uploads"
         : "profile-screenshots";
     const path = `${id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${data.ext}`;

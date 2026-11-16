@@ -48,6 +48,7 @@ import { Route as ApiPublicCronRentRemindersRouteImport } from './routes/api/pub
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
 import { Route as ApiPublicFleetApplicantDecisionRouteImport } from './routes/api/public/fleet/applicant-decision'
 import { Route as ApiPublicFleetApplicantsRouteImport } from './routes/api/public/fleet/applicants'
+import { Route as ApiPublicFleetMissingItemsRouteImport } from './routes/api/public/fleet/missing-items'
 import { Route as ApiPublicFleetPaymentTextPauseRouteImport } from './routes/api/public/fleet/payment-text-pause'
 import { Route as ApiPublicFleetPickupSlotsRouteImport } from './routes/api/public/fleet/pickup-slots'
 import { Route as ApiPublicFleetSendAgreementRouteImport } from './routes/api/public/fleet/send-agreement'
@@ -263,6 +264,12 @@ const ApiPublicFleetApplicantsRoute =
     path: '/api/public/fleet/applicants',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetMissingItemsRoute =
+  ApiPublicFleetMissingItemsRouteImport.update({
+    id: '/api/public/fleet/missing-items',
+    path: '/api/public/fleet/missing-items',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetPaymentTextPauseRoute =
   ApiPublicFleetPaymentTextPauseRouteImport.update({
     id: '/api/public/fleet/payment-text-pause',
@@ -366,6 +373,7 @@ export interface FileRoutesByFullPath {
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
+  '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
@@ -418,6 +426,7 @@ export interface FileRoutesByTo {
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
+  '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
@@ -471,6 +480,7 @@ export interface FileRoutesById {
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
+  '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
@@ -525,6 +535,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/wizard-recovery'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
+    | '/api/public/fleet/missing-items'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/send-agreement'
@@ -577,6 +588,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/wizard-recovery'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
+    | '/api/public/fleet/missing-items'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/send-agreement'
@@ -629,6 +641,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/wizard-recovery'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
+    | '/api/public/fleet/missing-items'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/send-agreement'
@@ -682,6 +695,7 @@ export interface RootRouteChildren {
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
   ApiPublicFleetApplicantDecisionRoute: typeof ApiPublicFleetApplicantDecisionRoute
   ApiPublicFleetApplicantsRoute: typeof ApiPublicFleetApplicantsRoute
+  ApiPublicFleetMissingItemsRoute: typeof ApiPublicFleetMissingItemsRoute
   ApiPublicFleetPaymentTextPauseRoute: typeof ApiPublicFleetPaymentTextPauseRoute
   ApiPublicFleetPickupSlotsRoute: typeof ApiPublicFleetPickupSlotsRoute
   ApiPublicFleetSendAgreementRoute: typeof ApiPublicFleetSendAgreementRoute
@@ -970,6 +984,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetApplicantsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/missing-items': {
+      id: '/api/public/fleet/missing-items'
+      path: '/api/public/fleet/missing-items'
+      fullPath: '/api/public/fleet/missing-items'
+      preLoaderRoute: typeof ApiPublicFleetMissingItemsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/payment-text-pause': {
       id: '/api/public/fleet/payment-text-pause'
       path: '/api/public/fleet/payment-text-pause'
@@ -1090,6 +1111,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
   ApiPublicFleetApplicantDecisionRoute: ApiPublicFleetApplicantDecisionRoute,
   ApiPublicFleetApplicantsRoute: ApiPublicFleetApplicantsRoute,
+  ApiPublicFleetMissingItemsRoute: ApiPublicFleetMissingItemsRoute,
   ApiPublicFleetPaymentTextPauseRoute: ApiPublicFleetPaymentTextPauseRoute,
   ApiPublicFleetPickupSlotsRoute: ApiPublicFleetPickupSlotsRoute,
   ApiPublicFleetSendAgreementRoute: ApiPublicFleetSendAgreementRoute,
