@@ -8,11 +8,11 @@ defaults apply:
 | Setting | Default |
 | --- | --- |
 | Days | Monday to Friday |
-| Start times (Eastern) | 9:30, 10:30, 11:30 AM |
+| Start times (Eastern) | 9:00, 10:00, 11:00 AM (last pickup ends at noon) |
 | Slot length | 60 minutes (start times must be at least this far apart) |
 | Minimum notice | 120 minutes |
 | Booking window | 14 days |
-| Default pickup location | none (staff type it; FLEET must send one until it is set) |
+| Default pickup location | 3500 E Hillsborough Ave, Tampa, FL 33610 (FLEET may send a different one) |
 | Field rep | Dolmar Cross |
 | Confirmed reservation alerts | **Off** |
 | Text to | +18134768508 |
@@ -44,7 +44,7 @@ List:
 Book:
 
 ```json
-{ "action": "book", "lead_id": "…", "start_at": "2026-11-18T09:30:00-05:00",
+{ "action": "book", "lead_id": "…", "start_at": "2026-11-18T09:00:00-05:00",
   "vehicle_id": "… (optional, defaults to the applicant's assigned vehicle)",
   "pickup_location": "… (optional, defaults to Settings)", "note": "optional",
   "idempotency_key": "optional" }
@@ -87,5 +87,7 @@ On the first confirmation of a rental:
   recorded as `off` and never sent later.
 
 Migration: `proposed/pickup-schedule-v1.sql` (index, `reservation_confirmations`,
-event allowed). Until it runs, the event is refused by the database check
+event allowed, schedule seeded with the defaults and alerts Off). To turn the
+alerts on: `proposed/pickup-schedule-alerts-on.sql` (only flips
+`notify.enabled`), or the switch in Settings. Until it runs, the event is refused by the database check
 (logged, nothing sent) and no alert is sent.

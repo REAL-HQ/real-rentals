@@ -92,7 +92,7 @@ export async function handleFleetPickupSlots(request: Request, deps: PickupDeps 
   const leadId = String(body.lead_id ?? "").trim();
   if (!UUID_RE.test(leadId)) return fleetJson(400, { ok: false, error: "lead_id must be a UUID." });
   const slot = parseSlotStart(body.start_at, s.timezone);
-  if (!slot) return fleetJson(400, { ok: false, error: "start_at must be an ISO time with a zone, e.g. 2026-11-18T09:30:00-05:00." });
+  if (!slot) return fleetJson(400, { ok: false, error: "start_at must be an ISO time with a zone, e.g. 2026-11-18T09:00:00-05:00." });
   const idem = idempotencyKey(body.idempotency_key);
   if (idem === "invalid") return fleetJson(400, { ok: false, error: "idempotency_key must be 1 to 120 characters." });
   const note = cleanText(body.note, 140) || undefined;

@@ -1,7 +1,8 @@
 /**
  * Pickup schedule (client-safe, pure). Stored in app_settings under
- * PICKUP_SCHEDULE_SETTINGS_KEY. Defaults: Monday to Friday, 9:30, 10:30 and
- * 11:30 AM Eastern, one hour each, one booking per slot, earliest first.
+ * PICKUP_SCHEDULE_SETTINGS_KEY. Defaults: Monday to Friday, 9:00, 10:00 and
+ * 11:00 AM Eastern, one hour each (last ends at noon), one booking per slot,
+ * earliest first.
  *
  * A booked slot is a rentals row with status "reserved" whose start_date and
  * reservation_note pickup_time match the slot (see reservations.ts).
@@ -40,12 +41,12 @@ export type PickupScheduleSettings = {
 
 export const DEFAULT_PICKUP_SCHEDULE: PickupScheduleSettings = {
   days: [1, 2, 3, 4, 5],
-  startTimes: ["09:30", "10:30", "11:30"],
+  startTimes: ["09:00", "10:00", "11:00"],
   slotMinutes: 60,
   minNoticeMinutes: 120,
   horizonDays: 14,
   timezone: PICKUP_TIMEZONE,
-  defaultLocation: null,
+  defaultLocation: "3500 E Hillsborough Ave, Tampa, FL 33610",
   fieldRep: { name: "Dolmar Cross" },
   notify: {
     enabled: false,
@@ -222,7 +223,7 @@ export function isScheduledSlot(s: PickupScheduleSettings, date: string, time: s
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && s.days.includes(weekday) && s.startTimes.includes(time);
 }
 
-/** Parse "2026-11-18T09:30:00-05:00" into the zone's date and HH:mm. */
+/** Parse "2026-11-18T09:00:00-05:00" into the zone's date and HH:mm. */
 export function parseSlotStart(raw: unknown, timeZone = PICKUP_TIMEZONE): { date: string; time: string } | null {
   const s = String(raw ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(s)) return null;

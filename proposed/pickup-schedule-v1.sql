@@ -10,9 +10,10 @@
 --  2. reservation_confirmations: one row per rental once it is fully
 --     confirmed; claims the staff text/email so it is sent at most once.
 --  3. Allow the reservation_confirmed FLEET webhook event.
--- The schedule itself lives in app_settings key "pickup_schedule"; without a
--- row the code uses the defaults (Mon-Fri 09:30/10:30/11:30 ET, 60 minutes,
--- field rep Dolmar Cross, alerts Off). Nothing here sends anything.
+-- The schedule itself lives in app_settings key "pickup_schedule" (seeded
+-- below; without a row the code uses the same defaults (Mon-Fri 09:00/10:00/11:00 ET, 60 minutes,
+-- pickup at 3500 E Hillsborough Ave, Tampa, FL 33610, field rep Dolmar Cross,
+-- alerts Off)). Nothing here sends anything.
 BEGIN;
 
 CREATE OR REPLACE FUNCTION private.reservation_pickup_time(note text)
@@ -54,9 +55,15 @@ ALTER TABLE public.fleet_webhook_deliveries
     'agreement_signed_by_renter',
     'application_ready_for_review',
     'reservation_confirmed'));
+
+-- Seed the schedule with the defaults (alerts Off). Never overwrites a saved schedule.
+INSERT INTO public.app_settings (key, value)
+VALUES ('pickup_schedule', '{"days": [1, 2, 3, 4, 5], "startTimes": ["09:00", "10:00", "11:00"], "slotMinutes": 60, "minNoticeMinutes": 120, "horizonDays": 14, "timezone": "America/New_York", "defaultLocation": "3500 E Hillsborough Ave, Tampa, FL 33610", "fieldRep": {"name": "Dolmar Cross"}, "notify": {"enabled": false, "sms": ["+18134768508"], "emails": ["DolmarCross@gmail.com", "Team@DriveReal.com"], "requireSignedAgreement": true}}'::jsonb)
+ON CONFLICT (key) DO NOTHING;
 COMMIT;
 
 -- Rollback:
+-- DELETE FROM public.app_settings WHERE key = 'pickup_schedule';
 -- DELETE FROM public.fleet_webhook_deliveries WHERE event_type = 'reservation_confirmed';
 -- ALTER TABLE public.fleet_webhook_deliveries DROP CONSTRAINT fleet_webhook_deliveries_event_type_check;
 -- ALTER TABLE public.fleet_webhook_deliveries ADD CONSTRAINT fleet_webhook_deliveries_event_type_check

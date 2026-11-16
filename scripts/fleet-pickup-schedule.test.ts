@@ -48,16 +48,19 @@ function fakeDb(seed: Record<string, Row[]>, opts: { missing?: string[] } = {}) 
 const A = "11111111-1111-4111-8111-111111111111";
 const R = "22222222-2222-4222-8222-222222222222";
 const V = "44444444-4444-4444-8444-444444444444";
-const NOTE = (t = "09:30") => writeReservationDetails({ pickupTime: t, pickupLocation: "123 Main St, Tampa, FL" });
+const NOTE = (t = "09:00") => writeReservationDetails({ pickupTime: t, pickupLocation: "123 Main St, Tampa, FL" });
 const S = ps.DEFAULT_PICKUP_SCHEDULE;
 
 describe("schedule defaults and settings", () => {
-  test("Mon-Fri 9:30/10:30/11:30 ET, 60 min, field rep Dolmar Cross, alerts Off, field-rep text only to his cell", () => {
+  test("Mon-Fri 9:30/10:00/11:00 ET, 60 min, field rep Dolmar Cross, alerts Off, field-rep text only to his cell", () => {
     expect(S.days).toEqual([1, 2, 3, 4, 5]);
-    expect(S.startTimes).toEqual(["09:30", "10:30", "11:30"]);
+    expect(S.startTimes).toEqual(["09:00", "10:00", "11:00"]);
+    // Last pickup ends by noon.
+    expect(ps.toMinutes(S.startTimes[S.startTimes.length - 1]) + S.slotMinutes).toBe(12 * 60);
     expect(S.slotMinutes).toBe(60);
     expect(S.timezone).toBe("America/New_York");
     expect(S.fieldRep.name).toBe("Dolmar Cross");
+    expect(S.defaultLocation).toBe("3500 E Hillsborough Ave, Tampa, FL 33610");
     expect(S.notify.enabled).toBe(false);
     expect(S.notify.sms).toEqual(["+18134768508"]);
     expect(S.notify.emails).toEqual(["DolmarCross@gmail.com", "Team@DriveReal.com"]);
@@ -65,7 +68,7 @@ describe("schedule defaults and settings", () => {
     expect(ps.readPickupSchedule({ days: "bad" })).toEqual(S);
   });
   test("validation", () => {
-    expect(ps.validatePickupSchedule({ ...S, startTimes: ["09:30", "10:00"] }).ok).toBe(false);
+    expect(ps.validatePickupSchedule({ ...S, startTimes: ["09:00", "09:30"] }).ok).toBe(false);
     expect(ps.validatePickupSchedule({ ...S, days: [] }).ok).toBe(false);
     expect(ps.validatePickupSchedule({ ...S, notify: { ...S.notify, sms: ["12"] } }).ok).toBe(false);
     expect(ps.validatePickupSchedule({ ...S, notify: { ...S.notify, enabled: true, sms: [], emails: [] } }).ok).toBe(false);
@@ -78,20 +81,20 @@ describe("schedule defaults and settings", () => {
 describe("open slots", () => {
   test("earliest first, weekdays only, booked and too-soon slots skipped, Eastern offsets", () => {
     // Sun 2026-11-15 10:00 ET
-    const slots = ps.openPickupSlots(S, new Date("2026-11-15T15:00:00Z"), new Set(["2026-11-16 09:30"]), { limit: 6 });
-    expect(slots.map((s) => `${s.date} ${s.time}`)).toEqual(["2026-11-16 10:30", "2026-11-16 11:30", "2026-11-17 09:30", "2026-11-17 10:30", "2026-11-17 11:30", "2026-11-18 09:30"]);
-    expect(slots[0]).toMatchObject({ start_at: "2026-11-16T10:30:00-05:00", end_at: "2026-11-16T11:30:00-05:00", label: "Mon 11/16 10:30 AM ET" });
-    // Mon 08:00 ET with 120 min notice: 9:30 is too soon.
+    const slots = ps.openPickupSlots(S, new Date("2026-11-15T15:00:00Z"), new Set(["2026-11-16 09:00"]), { limit: 6 });
+    expect(slots.map((s) => `${s.date} ${s.time}`)).toEqual(["2026-11-16 10:00", "2026-11-16 11:00", "2026-11-17 09:00", "2026-11-17 10:00", "2026-11-17 11:00", "2026-11-18 09:00"]);
+    expect(slots[0]).toMatchObject({ start_at: "2026-11-16T10:00:00-05:00", end_at: "2026-11-16T11:00:00-05:00", label: "Mon 11/16 10:00 AM ET" });
+    // Mon 08:00 ET with 120 min notice: 9:00 is too soon.
     const mon = ps.openPickupSlots(S, new Date("2026-11-16T13:00:00Z"), new Set(), { limit: 1 });
-    expect(mon[0].time).toBe("10:30");
-    expect(ps.slotIso("2026-07-01", "09:30")).toBe("2026-07-01T09:30:00-04:00");
-    expect(ps.parseSlotStart("2026-11-18T14:30:00Z")).toEqual({ date: "2026-11-18", time: "09:30" });
-    expect(ps.isScheduledSlot(S, "2026-11-21", "09:30")).toBe(false);
+    expect(mon[0].time).toBe("10:00");
+    expect(ps.slotIso("2026-07-01", "09:00")).toBe("2026-07-01T09:00:00-04:00");
+    expect(ps.parseSlotStart("2026-11-18T14:00:00Z")).toEqual({ date: "2026-11-18", time: "09:00" });
+    expect(ps.isScheduledSlot(S, "2026-11-21", "09:00")).toBe(false);
   });
 });
 
 describe("fully confirmed", () => {
-  const base = { rentalStatus: "reserved", applicationStatus: "approved", pickupDate: "2026-11-18", pickupTime: "09:30", pickupLocation: "x", depositStatus: "not_required", signedAgreement: true, requireSignedAgreement: true };
+  const base = { rentalStatus: "reserved", applicationStatus: "approved", pickupDate: "2026-11-18", pickupTime: "09:00", pickupLocation: "x", depositStatus: "not_required", signedAgreement: true, requireSignedAgreement: true };
   test("rule", () => {
     expect(ps.confirmationGaps(base)).toEqual([]);
     expect(ps.confirmationGaps({ ...base, signedAgreement: false })).toEqual(["agreement_not_signed"]);
@@ -124,7 +127,7 @@ describe("fully confirmed", () => {
     const r: any = await rc.maybeConfirmReservation(db, { rentalId: R }, t.deps);
     expect(r).toMatchObject({ confirmed: true, notice: "off" });
     expect(t.queued[0]).toMatchObject({ event_type: "reservation_confirmed", dedupe_key: `reservation_confirmed:${R}`, application_id: A });
-    expect(t.queued[0].payload).toMatchObject({ renter_name: "Test Renter", vehicle: { label: "2021 Toyota Camry" }, pickup: { start_at: "2026-11-18T09:30:00-05:00", location: "123 Main St, Tampa, FL" }, field_rep: { name: "Dolmar Cross" } });
+    expect(t.queued[0].payload).toMatchObject({ renter_name: "Test Renter", vehicle: { label: "2021 Toyota Camry" }, pickup: { start_at: "2026-11-18T09:00:00-05:00", location: "123 Main St, Tampa, FL" }, field_rep: { name: "Dolmar Cross" } });
     expect(t.queued[0].payload.admin_url).toContain(`/admin?tab=drivers&id=${A}`);
     expect(t.sms).toHaveLength(0);
     expect(t.emails).toHaveLength(0);
@@ -140,7 +143,7 @@ describe("fully confirmed", () => {
     expect(t.sms[0].fromId).toBeUndefined();
     expect(t.sms[0].body).toContain("Test Renter");
     expect(t.sms[0].body).toContain("2021 Toyota Camry");
-    expect(t.sms[0].body).toContain("Wed 11/18 9:30 AM ET");
+    expect(t.sms[0].body).toContain("Wed 11/18 9:00 AM ET");
     expect(t.emails[0].to).toEqual(["DolmarCross@gmail.com", "Team@DriveReal.com"]);
     expect(t.emails[0].html).toContain("Open In Admin");
     const again: any = await rc.maybeConfirmReservation(db, { rentalId: R }, t.deps);
@@ -168,33 +171,33 @@ describe("FLEET pickup-slots endpoint", () => {
     });
     return { status: res.status, body: await res.json(), calls, audits };
   }
-  const seed = (status = "approved") => ({ applications: [{ id: A, status, full_name: "T", vehicle_id: V, deleted_at: null }], rentals: [{ id: "x", status: "reserved", application_id: "other", vehicle_id: "v2", start_date: "2026-11-16", reservation_note: NOTE("09:30") }] });
+  const seed = (status = "approved") => ({ applications: [{ id: A, status, full_name: "T", vehicle_id: V, deleted_at: null }], rentals: [{ id: "x", status: "reserved", application_id: "other", vehicle_id: "v2", start_date: "2026-11-16", reservation_note: NOTE("09:00") }] });
 
   test("list: earliest open slots with the schedule", async () => {
     const r = await call(fakeDb(seed()), { action: "list", limit: 2 });
     expect(r.status).toBe(200);
-    expect(r.body.slots.map((s: any) => s.start_at)).toEqual(["2026-11-16T10:30:00-05:00", "2026-11-16T11:30:00-05:00"]);
+    expect(r.body.slots.map((s: any) => s.start_at)).toEqual(["2026-11-16T10:00:00-05:00", "2026-11-16T11:00:00-05:00"]);
     expect(r.body.schedule).toMatchObject({ timezone: "America/New_York", field_rep: { name: "Dolmar Cross" } });
   });
   test("book: through the staff Reserved core with the default location; audited", async () => {
-    const r = await call(fakeDb(seed()), { action: "book", lead_id: A, start_at: "2026-11-17T09:30:00-05:00" });
+    const r = await call(fakeDb(seed()), { action: "book", lead_id: A, start_at: "2026-11-17T09:00:00-05:00" });
     expect(r.status).toBe(201);
-    expect(r.calls[0]).toEqual({ applicationId: A, vehicleId: V, pickupDate: "2026-11-17", pickupTime: "09:30", pickupLocation: "123 Main St, Tampa, FL", note: undefined });
+    expect(r.calls[0]).toEqual({ applicationId: A, vehicleId: V, pickupDate: "2026-11-17", pickupTime: "09:00", pickupLocation: "123 Main St, Tampa, FL", note: undefined });
     expect(r.audits[0]).toMatchObject({ action: "reservation.fleet_booked", entityId: "new-rental" });
   });
   test("book refusals: not approved, off schedule, taken, missing auth", async () => {
-    expect((await call(fakeDb(seed("reviewing")), { action: "book", lead_id: A, start_at: "2026-11-17T09:30:00-05:00" })).status).toBe(409);
+    expect((await call(fakeDb(seed("reviewing")), { action: "book", lead_id: A, start_at: "2026-11-17T09:00:00-05:00" })).status).toBe(409);
     expect((await call(fakeDb(seed()), { action: "book", lead_id: A, start_at: "2026-11-17T14:00:00-05:00" })).body.error).toContain("not a pickup slot");
-    const taken = await call(fakeDb(seed()), { action: "book", lead_id: A, start_at: "2026-11-16T09:30:00-05:00" });
+    const taken = await call(fakeDb(seed()), { action: "book", lead_id: A, start_at: "2026-11-16T09:00:00-05:00" });
     expect(taken.status).toBe(409);
-    expect(taken.body.next_open[0].time).toBe("10:30");
+    expect(taken.body.next_open[0].time).toBe("10:00");
     expect(taken.calls).toHaveLength(0);
     const res = await fp.handleFleetPickupSlots(new Request("https://x/api/public/fleet/pickup-slots", { method: "POST", body: "{}" }), { env: { FLEET_API_KEY: KEY } });
     expect(res.status).toBe(401);
   });
   test("book repeat is a duplicate, not a second booking", async () => {
-    const db = fakeDb({ ...seed(), rentals: [{ id: "mine", status: "reserved", application_id: A, vehicle_id: V, start_date: "2026-11-17", reservation_note: NOTE("09:30") }] });
-    const r = await call(db, { action: "book", lead_id: A, start_at: "2026-11-17T09:30:00-05:00" });
+    const db = fakeDb({ ...seed(), rentals: [{ id: "mine", status: "reserved", application_id: A, vehicle_id: V, start_date: "2026-11-17", reservation_note: NOTE("09:00") }] });
+    const r = await call(db, { action: "book", lead_id: A, start_at: "2026-11-17T09:00:00-05:00" });
     expect(r.body).toMatchObject({ ok: true, duplicate: true, rental_id: "mine" });
     expect(r.calls).toHaveLength(0);
   });
@@ -216,7 +219,7 @@ describe("wiring", () => {
     expect(read("src/components/admin/ReserveCarDialog.tsx")).toContain("listPickupSlots");
   });
   test("the only phone number in the pickup/notification code is the field rep's", () => {
-    for (const f of ["src/lib/pickup-schedule.ts", "src/lib/reservation-confirmation.server.ts", "src/lib/fleet-pickup.server.ts", "src/lib/pickup-schedule.functions.ts", "src/components/admin/PickupScheduleSettingsPanel.tsx", "docs/fleet-pickup-schedule.md", "proposed/pickup-schedule-v1.sql"]) {
+    for (const f of ["src/lib/pickup-schedule.ts", "src/lib/reservation-confirmation.server.ts", "src/lib/fleet-pickup.server.ts", "src/lib/pickup-schedule.functions.ts", "src/components/admin/PickupScheduleSettingsPanel.tsx", "docs/fleet-pickup-schedule.md", "proposed/pickup-schedule-v1.sql", "proposed/pickup-schedule-alerts-on.sql"]) {
       const phones = (read(f).match(/\+?1?\(?\d{3}\)?[-. ]?\d{3}[-. ]?\d{4}/g) ?? []).map((p) => p.replace(/\D/g, "").slice(-10));
       for (const p of phones) expect(p).toBe("8134768508");
     }
@@ -230,23 +233,40 @@ describe("proposed migration (PGlite)", () => {
     await pg.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA private;
       CREATE FUNCTION private.is_staff() RETURNS boolean LANGUAGE sql AS 'SELECT true';
       CREATE TABLE public.rentals (id uuid primary key default gen_random_uuid(), status text, start_date date, reservation_note text);
+      CREATE TABLE public.app_settings (key text primary key, value jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
       CREATE TABLE public.fleet_webhook_deliveries (id uuid primary key default gen_random_uuid(), event_type text,
         CONSTRAINT fleet_webhook_deliveries_event_type_check CHECK (event_type IN ('lead_created')));`);
     await pg.exec(SQL);
     const ins = (status: string, note: string, date = "2026-11-18") => pg.query(`INSERT INTO rentals (status, start_date, reservation_note) VALUES ($1, $2, $3) RETURNING id`, [status, date, note]);
-    const first = await ins("reserved", NOTE("09:30"));
-    await expect(ins("reserved", NOTE("09:30"))).rejects.toThrow(/rentals_one_reserved_per_pickup_slot/);
-    await ins("reserved", NOTE("10:30"));
-    await ins("reserved", NOTE("09:30"), "2026-11-19");
-    await ins("cancelled", NOTE("09:30"));
+    const first = await ins("reserved", NOTE("09:00"));
+    await expect(ins("reserved", NOTE("09:00"))).rejects.toThrow(/rentals_one_reserved_per_pickup_slot/);
+    await ins("reserved", NOTE("10:00"));
+    await ins("reserved", NOTE("09:00"), "2026-11-19");
+    await ins("cancelled", NOTE("09:00"));
     await ins("reserved", "plain staff note");
     await ins("reserved", "plain staff note");
     await pg.query(`UPDATE rentals SET status = 'cancelled' WHERE id = $1`, [(first.rows[0] as any).id]);
-    await ins("reserved", NOTE("09:30"));
+    await ins("reserved", NOTE("09:00"));
     await pg.query(`INSERT INTO fleet_webhook_deliveries (event_type) VALUES ('reservation_confirmed')`);
     await pg.query(`INSERT INTO reservation_confirmations (rental_id, notice_status) VALUES ($1, 'off')`, [(first.rows[0] as any).id]);
     await expect(pg.query(`INSERT INTO reservation_confirmations (rental_id, notice_status) VALUES ($1, 'off')`, [(first.rows[0] as any).id])).rejects.toThrow();
     await pg.exec(SQL);
     expect(SQL).toMatch(/PROPOSED, NOT APPLIED/);
+    // Seeded value reads back as exactly the code defaults (alerts Off).
+    const seeded = (await pg.query<any>(`SELECT value FROM app_settings WHERE key = 'pickup_schedule'`)).rows[0].value;
+    expect(ps.readPickupSchedule(seeded)).toEqual(S);
+    expect(seeded).toEqual(S);
+    // Alerts-on file flips only notify.enabled, keeps edits, and is re-runnable.
+    await pg.query(`UPDATE app_settings SET value = jsonb_set(value, '{fieldRep,name}', '"Someone Else"') WHERE key = 'pickup_schedule'`);
+    const ON = readFileSync("proposed/pickup-schedule-alerts-on.sql", "utf8");
+    await pg.exec(ON);
+    await pg.exec(ON);
+    const on = ps.readPickupSchedule((await pg.query<any>(`SELECT value FROM app_settings WHERE key = 'pickup_schedule'`)).rows[0].value);
+    expect(on.notify).toEqual({ ...S.notify, enabled: true });
+    expect(on.fieldRep.name).toBe("Someone Else");
+    // With no saved row, the alerts-on file inserts the full defaults with alerts On.
+    await pg.query(`DELETE FROM app_settings`);
+    await pg.exec(ON);
+    expect(ps.readPickupSchedule((await pg.query<any>(`SELECT value FROM app_settings`)).rows[0].value)).toEqual({ ...S, notify: { ...S.notify, enabled: true } });
   });
 });
