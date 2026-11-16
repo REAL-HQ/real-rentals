@@ -115,6 +115,9 @@ export async function chargeReservationFeeAfterSigning(admin: Admin, agreementId
     if (!settings.enabled) return { status: "off" };
     const { data: ag } = await admin.from("agreements").select("id,application_id,status,body,merge_data,metadata,vehicle_id,signed_at").eq("id", agreementId).maybeSingle();
     if (!ag?.application_id || ag.status !== "signed") return { status: "not_found" };
+    // An updated agreement for an already-active rental (rental-amendment.server.ts)
+    // never carries or charges a Reservation Fee: the renter already paid week 1.
+    if ((ag as any)?.metadata?.amendment) return { status: "no_fee_on_agreement" };
     const amount = signedReservationFee(ag);
     if (amount === null) return { status: "no_fee_on_agreement" };
     const appId = String(ag.application_id);

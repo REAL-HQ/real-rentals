@@ -194,7 +194,14 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
   const app = await admin.from("applications").select("id,status,full_name,email,phone,deleted_at").eq("id", leadId).maybeSingle();
   if (app.error) return fleetJson(503, { ok: false, error: "Could not read the applicant." });
   if (!app.data || app.data.deleted_at) return fleetJson(404, { ok: false, error: "Applicant not found." });
-  if (String(app.data.status) !== "approved") return fleetJson(409, { ok: false, error: `Only an Approved applicant can be sent an agreement (this one is ${app.data.status}).` });
+  if (String(app.data.status) !== "approved") {
+    const active = String(app.data.status) === "active";
+    return fleetJson(409, {
+      ok: false,
+      error: `Only an Approved applicant can be sent an agreement (this one is ${app.data.status}).${active ? " For an active rental use POST /api/public/fleet/amend-agreement." : ""}`,
+      ...(active ? { use: "/api/public/fleet/amend-agreement" } : {}),
+    });
+  }
 
   const hasOpenOrSigned = deps.hasOpenOrSigned ?? (await import("@/lib/agreements.functions")).hasOpenOrSignedAgreement;
   if (await hasOpenOrSigned(admin, leadId)) return fleetJson(409, { ok: false, error: "An agreement is already out or signed for this applicant. Nothing was sent." });

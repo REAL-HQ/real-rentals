@@ -496,6 +496,19 @@ export const AUTOMATIONS: AutomationDef[] = [
     defaultOn: false,
     note: "Off until turned on. Same wording renters already get: the staff Resend signing email and text, and the Missing Items step-1 message. Texts come from the 888 line, need SMS consent and respect STOP. Refused while someone is handed off to staff.",
   },
+  {
+    key: "rental_agreement_amendments",
+    title: "Updated Agreements (FLEET)",
+    audience: "Renters",
+    channels: ["SMS", "Email"],
+    trigger: "FLEET asks the site to send an updated rental agreement to an active rental, for example a new weekly rate the renter agreed to.",
+    cadence: "Only when FLEET asks. 8 AM–9 PM ET only. One open updated agreement per rental. FLEET may propose $200–$1,000/week; anything else is for staff.",
+    emailWorkflows: [],
+    control: { kind: "setting" },
+    previews: [],
+    defaultOn: false,
+    note: "Off until turned on. Needs proposed/rental-rate-amendments-v1.sql. Sends the same agreement and signing link staff send, with the new rate and an amendment notice. The new rate starts only after the renter signs, from the effective date or the next rent week, never back-dated; Stripe is never changed automatically. A rate increase needs the renter's logged consent (a real text on our lines, or a call). Refused while someone is handed off to staff. Staff can always send one from the rental page (Send Updated Agreement).",
+  },
 ];
 
 export const AUTOMATION_KEYS = AUTOMATIONS.map((a) => a.key);

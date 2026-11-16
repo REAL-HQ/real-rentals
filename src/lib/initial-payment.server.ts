@@ -96,6 +96,9 @@ export async function createInitialPaymentLink(
       .eq("id", agreementId)
       .maybeSingle();
     if (!ag?.application_id) return null;
+    // An updated agreement for an already-active rental never gets a
+    // first-payment (week 1 / deposit) link: those weeks are already billed.
+    if ((ag.metadata as any)?.amendment) return null;
     const merge = (ag.merge_data ?? {}) as {
       weekly_rate?: string;
       deposit_amount?: string;

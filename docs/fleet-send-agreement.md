@@ -54,6 +54,10 @@ Errors: `400` bad input, `401` wrong key, `404` not found, `409` refused (not
 approved, already out, missing details, mismatch, send failed), `503` not set up
 or the database is unavailable.
 
+An **active** rental (already signed and picked up) is refused here with
+`use: "/api/public/fleet/amend-agreement"`: send an updated agreement through
+[fleet-amend-agreement.md](fleet-amend-agreement.md) instead.
+
 When the renter signs, FLEET gets `agreement_signed_by_renter` as today.
 
 Storage: `public.agreement_terms_confirmations`

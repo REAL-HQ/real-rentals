@@ -48,6 +48,7 @@ import { Route as ApiPublicCronOpsRemindersRouteImport } from './routes/api/publ
 import { Route as ApiPublicCronRentRemindersRouteImport } from './routes/api/public/cron/rent-reminders'
 import { Route as ApiPublicCronRenterRemindersRouteImport } from './routes/api/public/cron/renter-reminders'
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
+import { Route as ApiPublicFleetAmendAgreementRouteImport } from './routes/api/public/fleet/amend-agreement'
 import { Route as ApiPublicFleetApplicantDecisionRouteImport } from './routes/api/public/fleet/applicant-decision'
 import { Route as ApiPublicFleetApplicantsRouteImport } from './routes/api/public/fleet/applicants'
 import { Route as ApiPublicFleetAssignVehicleRouteImport } from './routes/api/public/fleet/assign-vehicle'
@@ -272,6 +273,12 @@ const ApiPublicCronWizardRecoveryRoute =
     path: '/api/public/cron/wizard-recovery',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetAmendAgreementRoute =
+  ApiPublicFleetAmendAgreementRouteImport.update({
+    id: '/api/public/fleet/amend-agreement',
+    path: '/api/public/fleet/amend-agreement',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetApplicantDecisionRoute =
   ApiPublicFleetApplicantDecisionRouteImport.update({
     id: '/api/public/fleet/applicant-decision',
@@ -432,6 +439,7 @@ export interface FileRoutesByFullPath {
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
   '/api/public/cron/renter-reminders': typeof ApiPublicCronRenterRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
+  '/api/public/fleet/amend-agreement': typeof ApiPublicFleetAmendAgreementRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
@@ -494,6 +502,7 @@ export interface FileRoutesByTo {
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
   '/api/public/cron/renter-reminders': typeof ApiPublicCronRenterRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
+  '/api/public/fleet/amend-agreement': typeof ApiPublicFleetAmendAgreementRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
@@ -557,6 +566,7 @@ export interface FileRoutesById {
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
   '/api/public/cron/renter-reminders': typeof ApiPublicCronRenterRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
+  '/api/public/fleet/amend-agreement': typeof ApiPublicFleetAmendAgreementRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
@@ -621,6 +631,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/rent-reminders'
     | '/api/public/cron/renter-reminders'
     | '/api/public/cron/wizard-recovery'
+    | '/api/public/fleet/amend-agreement'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
@@ -683,6 +694,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/rent-reminders'
     | '/api/public/cron/renter-reminders'
     | '/api/public/cron/wizard-recovery'
+    | '/api/public/fleet/amend-agreement'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
@@ -745,6 +757,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/rent-reminders'
     | '/api/public/cron/renter-reminders'
     | '/api/public/cron/wizard-recovery'
+    | '/api/public/fleet/amend-agreement'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
@@ -808,6 +821,7 @@ export interface RootRouteChildren {
   ApiPublicCronRentRemindersRoute: typeof ApiPublicCronRentRemindersRoute
   ApiPublicCronRenterRemindersRoute: typeof ApiPublicCronRenterRemindersRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
+  ApiPublicFleetAmendAgreementRoute: typeof ApiPublicFleetAmendAgreementRoute
   ApiPublicFleetApplicantDecisionRoute: typeof ApiPublicFleetApplicantDecisionRoute
   ApiPublicFleetApplicantsRoute: typeof ApiPublicFleetApplicantsRoute
   ApiPublicFleetAssignVehicleRoute: typeof ApiPublicFleetAssignVehicleRoute
@@ -1106,6 +1120,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCronWizardRecoveryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/amend-agreement': {
+      id: '/api/public/fleet/amend-agreement'
+      path: '/api/public/fleet/amend-agreement'
+      fullPath: '/api/public/fleet/amend-agreement'
+      preLoaderRoute: typeof ApiPublicFleetAmendAgreementRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/applicant-decision': {
       id: '/api/public/fleet/applicant-decision'
       path: '/api/public/fleet/applicant-decision'
@@ -1296,6 +1317,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicCronRentRemindersRoute: ApiPublicCronRentRemindersRoute,
   ApiPublicCronRenterRemindersRoute: ApiPublicCronRenterRemindersRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
+  ApiPublicFleetAmendAgreementRoute: ApiPublicFleetAmendAgreementRoute,
   ApiPublicFleetApplicantDecisionRoute: ApiPublicFleetApplicantDecisionRoute,
   ApiPublicFleetApplicantsRoute: ApiPublicFleetApplicantsRoute,
   ApiPublicFleetAssignVehicleRoute: ApiPublicFleetAssignVehicleRoute,

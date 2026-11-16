@@ -38,6 +38,8 @@ type Admin = any;
 export const FLEET_LEAD_EVENTS = ["lead_created", "stage_changed"] as const;
 export const FLEET_QUO_EVENTS = ["quo_message_received", "quo_call", "quo_voicemail", "quo_transcript"] as const;
 export const FLEET_AGREEMENT_EVENTS = ["agreement_signed_by_renter"] as const;
+/** An updated agreement for an active rental was signed (rental-amendment.server.ts; needs proposed/rental-rate-amendments-v1.sql). */
+export const FLEET_AMENDMENT_EVENTS = ["agreement_amendment_signed"] as const;
 export const FLEET_REVIEW_EVENTS = ["application_ready_for_review"] as const;
 export const FLEET_RESERVATION_EVENTS = ["reservation_confirmed"] as const;
 /** Queued by the lifecycle sweep (fleet-lifecycle-events.server.ts), off until app_settings.fleet_lifecycle_events.enabled. */
@@ -55,6 +57,7 @@ export type FleetEvent =
   | (typeof FLEET_LEAD_EVENTS)[number]
   | (typeof FLEET_QUO_EVENTS)[number]
   | (typeof FLEET_AGREEMENT_EVENTS)[number]
+  | (typeof FLEET_AMENDMENT_EVENTS)[number]
   | (typeof FLEET_REVIEW_EVENTS)[number]
   | (typeof FLEET_RESERVATION_EVENTS)[number]
   | (typeof FLEET_LIFECYCLE_EVENTS)[number];
