@@ -1,0 +1,163 @@
+// FLEET assigns a car: earliest available first, the car's listed rate and
+// deposit, one car per person, start date on an open pickup day.
+// Network refused; fake database; proposed index on PGlite.
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { PGlite } from "@electric-sql/pglite";
+process.env.SUPABASE_URL ??= "http://127.0.0.1:9";
+process.env.SUPABASE_PUBLISHABLE_KEY ??= "dummy";
+process.env.SUPABASE_SERVICE_ROLE_KEY ??= "dummy";
+globalThis.fetch = (async (url: any) => { throw new Error(`network refused in test: ${url}`); }) as any;
+const asg = await import("@/lib/fleet-assign.server");
+const { DEFAULT_PICKUP_SCHEDULE } = await import("@/lib/pickup-schedule");
+
+type Row = Record<string, any>;
+function fakeDb(seed: Record<string, Row[]>, opts: { missing?: string[] } = {}) {
+  const state: Record<string, Row[]> = JSON.parse(JSON.stringify(seed));
+  let n = 1;
+  const unique: Record<string, string> = { fleet_review_decisions: "idempotency_key", fleet_webhook_deliveries: "dedupe_key" };
+  function from(table: string) {
+    state[table] ??= [];
+    let op = "select"; let payload: any = null; let single = false; let lim: number | null = null; let wantRows = false; let cols = "";
+    const f: ((r: Row) => boolean)[] = [];
+    const q: any = {
+      select: (c?: string) => { wantRows = true; cols = c ?? ""; return q; },
+      insert: (r: Row) => { op = "insert"; payload = r; return q; },
+      update: (r: Row) => { op = "update"; payload = r; return q; },
+      upsert: (r: Row, o: any) => { op = o?.ignoreDuplicates ? "insert_ignore" : "insert"; payload = r; return q; },
+      eq: (c: string, v: any) => { f.push((r) => r[c] === v); return q; },
+      neq: (c: string, v: any) => { f.push((r) => r[c] !== v); return q; },
+      is: (c: string, v: any) => { f.push((r) => (r[c] ?? null) === v); return q; },
+      gte: (c: string, v: any) => { f.push((r) => String(r[c] ?? "") >= String(v)); return q; },
+      in: (c: string, v: any[]) => { f.push((r) => v.includes(r[c])); return q; },
+      order: () => q,
+      limit: (x: number) => { lim = x; return q; },
+      maybeSingle: () => { single = true; return q; },
+      single: () => { single = true; return q; },
+      then: (res: any, rej: any) => Promise.resolve(run()).then(res, rej),
+    };
+    function run() {
+      if (opts.missing?.includes(table)) return { data: null, error: { code: "42P01", message: `relation "${table}" does not exist` } };
+      if (table === "applications" && cols.includes("approval_evidence_version"))
+        return { data: null, error: { code: "42703", message: "column applications.approval_evidence_version does not exist" } };
+      const rows = state[table];
+      if (op === "insert" || op === "insert_ignore") {
+        const u = unique[table];
+        if (u && payload[u] != null && rows.some((r) => r[u] === payload[u])) {
+          if (op === "insert_ignore") return { data: [], error: null };
+          return { data: null, error: { code: "23505", message: "duplicate key" } };
+        }
+        if (table === "fleet_review_decisions" && payload.decision === "needs_staff" && rows.some((r) => r.application_id === payload.application_id && r.decision === "needs_staff" && !r.resolved_at))
+          return { data: null, error: { code: "23505", message: "one open" } };
+        const r = { id: `${table}-${n++}`, created_at: new Date().toISOString(), resolved_at: null, ...payload };
+        rows.push(r);
+        return { data: wantRows ? (single ? { id: r.id } : [{ id: r.id }]) : null, error: null };
+      }
+      let m = rows.filter((r) => f.every((x) => x(r)));
+      if (op === "update") { for (const r of m) Object.assign(r, payload); return { data: wantRows ? m.map((r) => ({ ...r })) : null, error: null }; }
+      if (lim != null) m = m.slice(0, lim);
+      return { data: single ? m[0] ?? null : m, error: null };
+    }
+    return q;
+  }
+  return { from, state, storage: { from: () => ({ createSignedUrl: async (p: string) => ({ data: { signedUrl: `https://signed.example/${p}?t=1` } }) }) } };
+}
+
+const KEY = "k".repeat(40);
+const ENV = { FLEET_API_KEY: KEY };
+const NOW = new Date("2026-11-16T13:00:00Z"); // Mon 8 AM ET
+const A = "11111111-1111-4111-8111-111111111111";
+const B = "22222222-2222-4222-8222-222222222222";
+const V1 = "aaaaaaaa-aaaa-4aaa-8aaa-000000000001";
+const V2 = "aaaaaaaa-aaaa-4aaa-8aaa-000000000002";
+const V3 = "aaaaaaaa-aaaa-4aaa-8aaa-000000000003";
+const V4 = "aaaaaaaa-aaaa-4aaa-8aaa-000000000004";
+const car = (id: string, extra: Row = {}) => ({ id, year: 2019, make: "Ford", model: "Fusion", status: "available", archived_at: null, weekly_rate: 350, deposit: null, created_at: "2026-10-06T08:00:00Z", ...extra });
+function seed() {
+  return {
+    applications: [
+      { id: A, status: "approved", deleted_at: null, vehicle_id: null, weekly_rent: null, deposit_amount: null, contract_start_date: null },
+      { id: B, status: "approved", deleted_at: null, vehicle_id: null, weekly_rent: null, deposit_amount: null, contract_start_date: null },
+    ],
+    vehicles: [
+      car(V1, { created_at: "2026-10-01T00:00:00Z" }), // returned Nov 10
+      car(V2, { created_at: "2026-10-05T00:00:00Z" }), // never rented
+      car(V3, { weekly_rate: 0 }),                     // no listed rate
+      car(V4, { status: "maintenance" }),
+    ],
+    rentals: [{ id: "r1", vehicle_id: V1, status: "closed", start_date: "2026-10-01", end_date: "2026-11-10" }],
+  };
+}
+const req = (body: unknown, key: string | null = KEY) => new Request("https://drivereal.com/api/public/fleet/assign-vehicle", {
+  method: "POST", headers: { "Content-Type": "application/json", ...(key ? { Authorization: `Bearer ${key}` } : {}) }, body: JSON.stringify(body),
+});
+const audits: any[] = [];
+const deps = (db: any) => ({ admin: db, env: ENV, now: () => NOW, settings: DEFAULT_PICKUP_SCHEDULE, audit: async (e: any) => { audits.push(e); } });
+
+describe("assign-vehicle", () => {
+  test("auth", async () => {
+    const db = fakeDb(seed());
+    expect((await asg.handleFleetAssignVehicle(req({ action: "list" }, null), deps(db))).status).toBe(401);
+  });
+  test("list: free cars with a listed rate, earliest available first", async () => {
+    const db = fakeDb(seed());
+    const j = await (await asg.handleFleetAssignVehicle(req({ action: "list" }), deps(db))).json();
+    expect(j.vehicles.map((v: any) => v.vehicle_id)).toEqual([V2, V1]);
+    expect(j.vehicles[0]).toMatchObject({ weekly_rate: 350, deposit: 0, vehicle: "2019 Ford Fusion" });
+  });
+  test("assign: first car, listed rate, $0 deposit when none listed, start date on an open pickup day", async () => {
+    const db = fakeDb(seed());
+    audits.length = 0;
+    const r = await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A, start_date: "2026-11-18" }), deps(db));
+    const j = await r.json();
+    expect(r.status).toBe(201);
+    expect(j).toMatchObject({ vehicle_id: V2, weekly_rate: 350, deposit: 0, start_date: "2026-11-18" });
+    expect(db.state.applications[0]).toMatchObject({ vehicle_id: V2, weekly_rent: 350, deposit_amount: 0, contract_start_date: "2026-11-18" });
+    expect(audits[0].action).toBe("application.fleet_vehicle_assigned");
+    // Replay is a no-op.
+    const again = await (await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A }), deps(db))).json();
+    expect(again).toMatchObject({ duplicate: true, vehicle_id: V2 });
+    // One car, one person: B gets the next car, and cannot take V2.
+    expect((await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: B, vehicle_id: V2 }), deps(db))).status).toBe(409);
+    const b = await (await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: B }), deps(db))).json();
+    expect(b.vehicle_id).toBe(V1);
+    // A cannot switch cars through FLEET.
+    expect((await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A, vehicle_id: V1 }), deps(db))).status).toBe(409);
+  });
+  test("refusals: not approved, closed day, no rate, maintenance, reserved car", async () => {
+    const db = fakeDb(seed());
+    db.state.applications[0].status = "new";
+    expect((await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A }), deps(db))).status).toBe(409);
+    db.state.applications[0].status = "approved";
+    const sat = await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A, start_date: "2026-11-21" }), deps(db));
+    expect(sat.status).toBe(409);
+    expect((await sat.json()).next_open_days.length).toBeGreaterThan(0);
+    expect((await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A, start_date: "2026-11-26" }), deps(db))).status).toBe(409); // Thanksgiving
+    expect((await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A, vehicle_id: V3 }), deps(db))).status).toBe(409);
+    expect((await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A, vehicle_id: V4 }), deps(db))).status).toBe(409);
+    db.state.rentals.push({ id: "r2", vehicle_id: V2, status: "reserved", start_date: "2026-11-18" });
+    const j = await (await asg.handleFleetAssignVehicle(req({ action: "assign", lead_id: A }), deps(db))).json();
+    expect(j.vehicle_id).toBe(V1);
+    expect(db.state.applications[0].vehicle_id).toBe(V1);
+  });
+  test("source never touches insurance, screening or verification and never reserves", () => {
+    const s = readFileSync("src/lib/fleet-assign.server.ts", "utf8");
+    expect(s).not.toMatch(/(insurance_|background_check|mvr_status|verified)\w*\s*:/);
+    expect(s).not.toMatch(/createReservationCore|from\("rentals"\)\.insert/);
+  });
+});
+
+describe("proposed index (PGlite)", () => {
+  test("one Approved applicant per car; Active and deleted do not count", async () => {
+    const pg = new PGlite();
+    await pg.exec(`CREATE TABLE public.applications (id serial primary key, vehicle_id uuid, status text, deleted_at timestamptz);`);
+    const SQL = readFileSync("proposed/fleet-assign-vehicle-v1.sql", "utf8");
+    await pg.exec(SQL);
+    await pg.exec(SQL);
+    await pg.query(`INSERT INTO applications (vehicle_id, status) VALUES ($1, 'approved')`, [V1]);
+    await expect(pg.query(`INSERT INTO applications (vehicle_id, status) VALUES ($1, 'approved')`, [V1])).rejects.toThrow();
+    await pg.query(`INSERT INTO applications (vehicle_id, status) VALUES ($1, 'active')`, [V1]);
+    await pg.query(`INSERT INTO applications (vehicle_id, status, deleted_at) VALUES ($1, 'approved', now())`, [V1]);
+    expect(SQL).toMatch(/PROPOSED, NOT APPLIED/);
+  });
+});

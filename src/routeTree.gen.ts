@@ -33,6 +33,7 @@ import { Route as AuthConfirmRouteImport } from './routes/auth/confirm'
 import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
 import { Route as FleetIndexRouteImport } from './routes/fleet.index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
+import { Route as PickupRentalIdRouteImport } from './routes/pickup.$rentalId'
 import { Route as PortalHelpRouteImport } from './routes/portal_.help'
 import { Route as PortalRoadsideRouteImport } from './routes/portal_.roadside'
 import { Route as SignTokenRouteImport } from './routes/sign.$token'
@@ -45,13 +46,19 @@ import { Route as ApiPublicCronFleetWebhooksRouteImport } from './routes/api/pub
 import { Route as ApiPublicCronLateFeesRouteImport } from './routes/api/public/cron/late-fees'
 import { Route as ApiPublicCronOpsRemindersRouteImport } from './routes/api/public/cron/ops-reminders'
 import { Route as ApiPublicCronRentRemindersRouteImport } from './routes/api/public/cron/rent-reminders'
+import { Route as ApiPublicCronRenterRemindersRouteImport } from './routes/api/public/cron/renter-reminders'
 import { Route as ApiPublicCronWizardRecoveryRouteImport } from './routes/api/public/cron/wizard-recovery'
 import { Route as ApiPublicFleetApplicantDecisionRouteImport } from './routes/api/public/fleet/applicant-decision'
 import { Route as ApiPublicFleetApplicantsRouteImport } from './routes/api/public/fleet/applicants'
+import { Route as ApiPublicFleetAssignVehicleRouteImport } from './routes/api/public/fleet/assign-vehicle'
+import { Route as ApiPublicFleetHandoffRouteImport } from './routes/api/public/fleet/handoff'
+import { Route as ApiPublicFleetLicenseFactsRouteImport } from './routes/api/public/fleet/license-facts'
 import { Route as ApiPublicFleetMissingItemsRouteImport } from './routes/api/public/fleet/missing-items'
 import { Route as ApiPublicFleetPaymentTextPauseRouteImport } from './routes/api/public/fleet/payment-text-pause'
 import { Route as ApiPublicFleetPickupSlotsRouteImport } from './routes/api/public/fleet/pickup-slots'
+import { Route as ApiPublicFleetResendLinkRouteImport } from './routes/api/public/fleet/resend-link'
 import { Route as ApiPublicFleetSendAgreementRouteImport } from './routes/api/public/fleet/send-agreement'
+import { Route as ApiPublicFleetStatusRouteImport } from './routes/api/public/fleet/status'
 import { Route as ApiPublicInboundEmailRouteImport } from './routes/api/public/inbound/email'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicResendWebhookRouteImport } from './routes/api/public/resend/webhook'
@@ -181,6 +188,11 @@ const FleetIdRoute = FleetIdRouteImport.update({
   path: '/fleet/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PickupRentalIdRoute = PickupRentalIdRouteImport.update({
+  id: '/pickup/$rentalId',
+  path: '/pickup/$rentalId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PortalHelpRoute = PortalHelpRouteImport.update({
   id: '/portal_/help',
   path: '/portal/help',
@@ -246,6 +258,12 @@ const ApiPublicCronRentRemindersRoute =
     path: '/api/public/cron/rent-reminders',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicCronRenterRemindersRoute =
+  ApiPublicCronRenterRemindersRouteImport.update({
+    id: '/api/public/cron/renter-reminders',
+    path: '/api/public/cron/renter-reminders',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicCronWizardRecoveryRoute =
   ApiPublicCronWizardRecoveryRouteImport.update({
     id: '/api/public/cron/wizard-recovery',
@@ -262,6 +280,23 @@ const ApiPublicFleetApplicantsRoute =
   ApiPublicFleetApplicantsRouteImport.update({
     id: '/api/public/fleet/applicants',
     path: '/api/public/fleet/applicants',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicFleetAssignVehicleRoute =
+  ApiPublicFleetAssignVehicleRouteImport.update({
+    id: '/api/public/fleet/assign-vehicle',
+    path: '/api/public/fleet/assign-vehicle',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicFleetHandoffRoute = ApiPublicFleetHandoffRouteImport.update({
+  id: '/api/public/fleet/handoff',
+  path: '/api/public/fleet/handoff',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicFleetLicenseFactsRoute =
+  ApiPublicFleetLicenseFactsRouteImport.update({
+    id: '/api/public/fleet/license-facts',
+    path: '/api/public/fleet/license-facts',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiPublicFleetMissingItemsRoute =
@@ -282,12 +317,23 @@ const ApiPublicFleetPickupSlotsRoute =
     path: '/api/public/fleet/pickup-slots',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetResendLinkRoute =
+  ApiPublicFleetResendLinkRouteImport.update({
+    id: '/api/public/fleet/resend-link',
+    path: '/api/public/fleet/resend-link',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetSendAgreementRoute =
   ApiPublicFleetSendAgreementRouteImport.update({
     id: '/api/public/fleet/send-agreement',
     path: '/api/public/fleet/send-agreement',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetStatusRoute = ApiPublicFleetStatusRouteImport.update({
+  id: '/api/public/fleet/status',
+  path: '/api/public/fleet/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicInboundEmailRoute = ApiPublicInboundEmailRouteImport.update({
   id: '/api/public/inbound/email',
   path: '/api/public/inbound/email',
@@ -357,6 +403,7 @@ export interface FileRoutesByFullPath {
   '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/pickup/$rentalId': typeof PickupRentalIdRoute
   '/portal/help': typeof PortalHelpRoute
   '/portal/roadside': typeof PortalRoadsideRoute
   '/sign/$token': typeof SignTokenRoute
@@ -370,13 +417,19 @@ export interface FileRoutesByFullPath {
   '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
+  '/api/public/cron/renter-reminders': typeof ApiPublicCronRenterRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
+  '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
+  '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
+  '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -410,6 +463,7 @@ export interface FileRoutesByTo {
   '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/pickup/$rentalId': typeof PickupRentalIdRoute
   '/portal/help': typeof PortalHelpRoute
   '/portal/roadside': typeof PortalRoadsideRoute
   '/sign/$token': typeof SignTokenRoute
@@ -423,13 +477,19 @@ export interface FileRoutesByTo {
   '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
+  '/api/public/cron/renter-reminders': typeof ApiPublicCronRenterRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
+  '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
+  '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
+  '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -464,6 +524,7 @@ export interface FileRoutesById {
   '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/fleet/$id': typeof FleetIdRoute
+  '/pickup/$rentalId': typeof PickupRentalIdRoute
   '/portal_/help': typeof PortalHelpRoute
   '/portal_/roadside': typeof PortalRoadsideRoute
   '/sign/$token': typeof SignTokenRoute
@@ -477,13 +538,19 @@ export interface FileRoutesById {
   '/api/public/cron/late-fees': typeof ApiPublicCronLateFeesRoute
   '/api/public/cron/ops-reminders': typeof ApiPublicCronOpsRemindersRoute
   '/api/public/cron/rent-reminders': typeof ApiPublicCronRentRemindersRoute
+  '/api/public/cron/renter-reminders': typeof ApiPublicCronRenterRemindersRoute
   '/api/public/cron/wizard-recovery': typeof ApiPublicCronWizardRecoveryRoute
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
+  '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
+  '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
+  '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
+  '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
   '/api/public/inbound/email': typeof ApiPublicInboundEmailRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/resend/webhook': typeof ApiPublicResendWebhookRoute
@@ -519,6 +586,7 @@ export interface FileRouteTypes {
     | '/auth/confirm'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/pickup/$rentalId'
     | '/portal/help'
     | '/portal/roadside'
     | '/sign/$token'
@@ -532,13 +600,19 @@ export interface FileRouteTypes {
     | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/rent-reminders'
+    | '/api/public/cron/renter-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
+    | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/handoff'
+    | '/api/public/fleet/license-facts'
     | '/api/public/fleet/missing-items'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
+    | '/api/public/fleet/resend-link'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/status'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -572,6 +646,7 @@ export interface FileRouteTypes {
     | '/auth/confirm'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/pickup/$rentalId'
     | '/portal/help'
     | '/portal/roadside'
     | '/sign/$token'
@@ -585,13 +660,19 @@ export interface FileRouteTypes {
     | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/rent-reminders'
+    | '/api/public/cron/renter-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
+    | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/handoff'
+    | '/api/public/fleet/license-facts'
     | '/api/public/fleet/missing-items'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
+    | '/api/public/fleet/resend-link'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/status'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -625,6 +706,7 @@ export interface FileRouteTypes {
     | '/auth/confirm'
     | '/card/$applicationId'
     | '/fleet/$id'
+    | '/pickup/$rentalId'
     | '/portal_/help'
     | '/portal_/roadside'
     | '/sign/$token'
@@ -638,13 +720,19 @@ export interface FileRouteTypes {
     | '/api/public/cron/late-fees'
     | '/api/public/cron/ops-reminders'
     | '/api/public/cron/rent-reminders'
+    | '/api/public/cron/renter-reminders'
     | '/api/public/cron/wizard-recovery'
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
+    | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/handoff'
+    | '/api/public/fleet/license-facts'
     | '/api/public/fleet/missing-items'
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
+    | '/api/public/fleet/resend-link'
     | '/api/public/fleet/send-agreement'
+    | '/api/public/fleet/status'
     | '/api/public/inbound/email'
     | '/api/public/payments/webhook'
     | '/api/public/resend/webhook'
@@ -679,6 +767,7 @@ export interface RootRouteChildren {
   AuthConfirmRoute: typeof AuthConfirmRoute
   CardApplicationIdRoute: typeof CardApplicationIdRoute
   FleetIdRoute: typeof FleetIdRoute
+  PickupRentalIdRoute: typeof PickupRentalIdRoute
   PortalHelpRoute: typeof PortalHelpRoute
   PortalRoadsideRoute: typeof PortalRoadsideRoute
   SignTokenRoute: typeof SignTokenRoute
@@ -692,13 +781,19 @@ export interface RootRouteChildren {
   ApiPublicCronLateFeesRoute: typeof ApiPublicCronLateFeesRoute
   ApiPublicCronOpsRemindersRoute: typeof ApiPublicCronOpsRemindersRoute
   ApiPublicCronRentRemindersRoute: typeof ApiPublicCronRentRemindersRoute
+  ApiPublicCronRenterRemindersRoute: typeof ApiPublicCronRenterRemindersRoute
   ApiPublicCronWizardRecoveryRoute: typeof ApiPublicCronWizardRecoveryRoute
   ApiPublicFleetApplicantDecisionRoute: typeof ApiPublicFleetApplicantDecisionRoute
   ApiPublicFleetApplicantsRoute: typeof ApiPublicFleetApplicantsRoute
+  ApiPublicFleetAssignVehicleRoute: typeof ApiPublicFleetAssignVehicleRoute
+  ApiPublicFleetHandoffRoute: typeof ApiPublicFleetHandoffRoute
+  ApiPublicFleetLicenseFactsRoute: typeof ApiPublicFleetLicenseFactsRoute
   ApiPublicFleetMissingItemsRoute: typeof ApiPublicFleetMissingItemsRoute
   ApiPublicFleetPaymentTextPauseRoute: typeof ApiPublicFleetPaymentTextPauseRoute
   ApiPublicFleetPickupSlotsRoute: typeof ApiPublicFleetPickupSlotsRoute
+  ApiPublicFleetResendLinkRoute: typeof ApiPublicFleetResendLinkRoute
   ApiPublicFleetSendAgreementRoute: typeof ApiPublicFleetSendAgreementRoute
+  ApiPublicFleetStatusRoute: typeof ApiPublicFleetStatusRoute
   ApiPublicInboundEmailRoute: typeof ApiPublicInboundEmailRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicResendWebhookRoute: typeof ApiPublicResendWebhookRoute
@@ -879,6 +974,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FleetIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pickup/$rentalId': {
+      id: '/pickup/$rentalId'
+      path: '/pickup/$rentalId'
+      fullPath: '/pickup/$rentalId'
+      preLoaderRoute: typeof PickupRentalIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/portal_/help': {
       id: '/portal_/help'
       path: '/portal/help'
@@ -963,6 +1065,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCronRentRemindersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/cron/renter-reminders': {
+      id: '/api/public/cron/renter-reminders'
+      path: '/api/public/cron/renter-reminders'
+      fullPath: '/api/public/cron/renter-reminders'
+      preLoaderRoute: typeof ApiPublicCronRenterRemindersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/cron/wizard-recovery': {
       id: '/api/public/cron/wizard-recovery'
       path: '/api/public/cron/wizard-recovery'
@@ -982,6 +1091,27 @@ declare module '@tanstack/react-router' {
       path: '/api/public/fleet/applicants'
       fullPath: '/api/public/fleet/applicants'
       preLoaderRoute: typeof ApiPublicFleetApplicantsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fleet/assign-vehicle': {
+      id: '/api/public/fleet/assign-vehicle'
+      path: '/api/public/fleet/assign-vehicle'
+      fullPath: '/api/public/fleet/assign-vehicle'
+      preLoaderRoute: typeof ApiPublicFleetAssignVehicleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fleet/handoff': {
+      id: '/api/public/fleet/handoff'
+      path: '/api/public/fleet/handoff'
+      fullPath: '/api/public/fleet/handoff'
+      preLoaderRoute: typeof ApiPublicFleetHandoffRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fleet/license-facts': {
+      id: '/api/public/fleet/license-facts'
+      path: '/api/public/fleet/license-facts'
+      fullPath: '/api/public/fleet/license-facts'
+      preLoaderRoute: typeof ApiPublicFleetLicenseFactsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/fleet/missing-items': {
@@ -1005,11 +1135,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetPickupSlotsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/resend-link': {
+      id: '/api/public/fleet/resend-link'
+      path: '/api/public/fleet/resend-link'
+      fullPath: '/api/public/fleet/resend-link'
+      preLoaderRoute: typeof ApiPublicFleetResendLinkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/send-agreement': {
       id: '/api/public/fleet/send-agreement'
       path: '/api/public/fleet/send-agreement'
       fullPath: '/api/public/fleet/send-agreement'
       preLoaderRoute: typeof ApiPublicFleetSendAgreementRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/fleet/status': {
+      id: '/api/public/fleet/status'
+      path: '/api/public/fleet/status'
+      fullPath: '/api/public/fleet/status'
+      preLoaderRoute: typeof ApiPublicFleetStatusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/inbound/email': {
@@ -1095,6 +1239,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthConfirmRoute: AuthConfirmRoute,
   CardApplicationIdRoute: CardApplicationIdRoute,
   FleetIdRoute: FleetIdRoute,
+  PickupRentalIdRoute: PickupRentalIdRoute,
   PortalHelpRoute: PortalHelpRoute,
   PortalRoadsideRoute: PortalRoadsideRoute,
   SignTokenRoute: SignTokenRoute,
@@ -1108,13 +1253,19 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicCronLateFeesRoute: ApiPublicCronLateFeesRoute,
   ApiPublicCronOpsRemindersRoute: ApiPublicCronOpsRemindersRoute,
   ApiPublicCronRentRemindersRoute: ApiPublicCronRentRemindersRoute,
+  ApiPublicCronRenterRemindersRoute: ApiPublicCronRenterRemindersRoute,
   ApiPublicCronWizardRecoveryRoute: ApiPublicCronWizardRecoveryRoute,
   ApiPublicFleetApplicantDecisionRoute: ApiPublicFleetApplicantDecisionRoute,
   ApiPublicFleetApplicantsRoute: ApiPublicFleetApplicantsRoute,
+  ApiPublicFleetAssignVehicleRoute: ApiPublicFleetAssignVehicleRoute,
+  ApiPublicFleetHandoffRoute: ApiPublicFleetHandoffRoute,
+  ApiPublicFleetLicenseFactsRoute: ApiPublicFleetLicenseFactsRoute,
   ApiPublicFleetMissingItemsRoute: ApiPublicFleetMissingItemsRoute,
   ApiPublicFleetPaymentTextPauseRoute: ApiPublicFleetPaymentTextPauseRoute,
   ApiPublicFleetPickupSlotsRoute: ApiPublicFleetPickupSlotsRoute,
+  ApiPublicFleetResendLinkRoute: ApiPublicFleetResendLinkRoute,
   ApiPublicFleetSendAgreementRoute: ApiPublicFleetSendAgreementRoute,
+  ApiPublicFleetStatusRoute: ApiPublicFleetStatusRoute,
   ApiPublicInboundEmailRoute: ApiPublicInboundEmailRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicResendWebhookRoute: ApiPublicResendWebhookRoute,

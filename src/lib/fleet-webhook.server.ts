@@ -7,6 +7,9 @@
  *   quo_voicemail, quo_transcript          (queued by the Quo webhook)
  *   agreement_signed_by_renter             (queued by esign completeSigning)
  *   application_ready_for_review           (queued by the cron sweep in fleet-review.server.ts)
+ *   documents_uploaded, payment_succeeded, payment_failed, agreement_delivery_failed,
+ *   pickup_checklist_completed, rental_activated, rental_returned, rental_ended
+ *                                          (queued by the lifecycle sweep, fleet-lifecycle-events.server.ts; off by default)
  *
  * Disabled until FLEET_WEBHOOK_URL (https) and FLEET_WEBHOOK_KEY are set.
  * While disabled, queued rows are marked 'skipped' (nothing is sent and no
@@ -37,12 +40,24 @@ export const FLEET_QUO_EVENTS = ["quo_message_received", "quo_call", "quo_voicem
 export const FLEET_AGREEMENT_EVENTS = ["agreement_signed_by_renter"] as const;
 export const FLEET_REVIEW_EVENTS = ["application_ready_for_review"] as const;
 export const FLEET_RESERVATION_EVENTS = ["reservation_confirmed"] as const;
+/** Queued by the lifecycle sweep (fleet-lifecycle-events.server.ts), off until app_settings.fleet_lifecycle_events.enabled. */
+export const FLEET_LIFECYCLE_EVENTS = [
+  "documents_uploaded",
+  "payment_succeeded",
+  "payment_failed",
+  "agreement_delivery_failed",
+  "pickup_checklist_completed",
+  "rental_activated",
+  "rental_returned",
+  "rental_ended",
+] as const;
 export type FleetEvent =
   | (typeof FLEET_LEAD_EVENTS)[number]
   | (typeof FLEET_QUO_EVENTS)[number]
   | (typeof FLEET_AGREEMENT_EVENTS)[number]
   | (typeof FLEET_REVIEW_EVENTS)[number]
-  | (typeof FLEET_RESERVATION_EVENTS)[number];
+  | (typeof FLEET_RESERVATION_EVENTS)[number]
+  | (typeof FLEET_LIFECYCLE_EVENTS)[number];
 
 export const FLEET_MAX_ATTEMPTS = 8;
 /** Wait before attempt n+1 after n failed attempts. */
@@ -203,7 +218,7 @@ export async function buildAgreementSignedPayload(admin: Admin, agreementId: str
     ag.rental_id
       ? admin.from("rentals").select("id,vehicle_id").eq("id", ag.rental_id).limit(1)
       : appId
-        ? admin.from("rentals").select("id,vehicle_id").eq("application_id", appId).is("end_date", null).order("created_at", { ascending: false }).limit(1)
+        ? admin.from("rentals").select("id,vehicle_id").eq("application_id", appId).in("status", ["active", "reserved", "pending", "upcoming"]).order("created_at", { ascending: false }).limit(1)
         : Promise.resolve({ data: [] }),
   ]);
   const rental = Array.isArray(rentalRes?.data) ? rentalRes.data[0] ?? null : null;

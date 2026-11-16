@@ -131,3 +131,12 @@ shipped do not get an alert; use `list`.
 `application_id, decision (approved | needs_staff), reason, escalation_codes,
 assessment, decided_by, idempotency_key, created_at, resolved_at, resolved_by,
 resolution_note`. Only the server writes; staff can read.
+
+## Changes (Nov 16, 2026, t298s1611)
+
+- FLEET saves the date of birth and license expiry it reads off the license
+  photo through `/api/public/fleet/license-facts` (docs/fleet-license-facts.md),
+  labelled "Read by FLEET from license photo", never verified.
+- Missing income proof no longer escalates (note `requested_income`).
+- `resubmitted` is a note; only `prior_declined` (an earlier declined or closed
+  application) escalates.

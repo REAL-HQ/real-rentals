@@ -37,7 +37,16 @@ async function handle(request: Request): Promise<Response> {
   } catch (e) {
     console.error("[fleet-webhooks] reservation confirmation sweep failed", String((e as Error)?.message ?? e));
   }
+  // Lifecycle events (documents, payments, activation, return). Off unless
+  // app_settings.fleet_lifecycle_events.enabled; see fleet-lifecycle-events.server.ts.
+  let lifecycleQueued = 0;
+  try {
+    const { sweepFleetLifecycleEvents } = await import("@/lib/fleet-lifecycle-events.server");
+    lifecycleQueued = (await sweepFleetLifecycleEvents(supabaseAdmin)).queued;
+  } catch (e) {
+    console.error("[fleet-webhooks] lifecycle sweep failed", String((e as Error)?.message ?? e));
+  }
   const { dispatchFleetWebhooks } = await import("@/lib/fleet-webhook.server");
   const result = await dispatchFleetWebhooks(supabaseAdmin, { limit: 50 });
-  return Response.json({ ok: true, readyQueued, reservationsConfirmed, ...result });
+  return Response.json({ ok: true, readyQueued, reservationsConfirmed, lifecycleQueued, ...result });
 }
