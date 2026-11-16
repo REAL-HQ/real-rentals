@@ -151,6 +151,8 @@ export const AMENDMENT_TITLE = "Rental Agreement (Amended)";
 export const AMENDMENT_NO_FEE_LINE = "Not applicable (rental already active)";
 export const AMENDMENT_NO_DEPOSIT_LINE = "$0 (no new deposit; rental already active)";
 export const AMENDMENT_NOTHING_DUE_LINE = "$0.00 (rental already active)";
+/** Card-on-file line for an updated agreement when no card is saved yet (t327s1775). */
+export const AMENDMENT_CARD_NEXT_PAYMENT_LINE = "Saved at next payment";
 
 /**
  * The template an updated agreement is generated from: v1.14 (library family
