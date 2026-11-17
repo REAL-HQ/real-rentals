@@ -93,8 +93,8 @@ describe("team alert switch and sending", () => {
     for (const f of ["src/lib/team-alerts.ts", "src/lib/team-alerts.server.ts", "src/lib/gps-alerts.ts", "src/lib/gps-alerts.server.ts", "src/lib/fleet-team-alert.server.ts"]) {
       const s = readFileSync(f, "utf8");
       expect(s).not.toMatch(/\.phone\b|"phone"|,phone|phone,/);
-      const numbers = s.match(/\+1\d{10}/g) ?? [];
-      expect(numbers.every((n) => n === ta.FIELD_REP_ALERT_NUMBER)).toBe(true);
+      // No phone number is hard-coded in alert code; field-rep numbers come from settings.
+      expect(s.match(/\+1\d{10}/g) ?? []).toEqual([]);
     }
   });
   test("overnight is 6 PM to 6 AM Eastern", () => {
