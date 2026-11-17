@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -434,10 +435,10 @@ export function InterviewTab({
                 />
               </Field>
               <Field label="Carrier Phone">
-                <input
+                <PhoneInput
                   value={s.insurance_carrier_phone ?? ""}
-                  onChange={(e) =>
-                    up("insurance_carrier_phone" as any, (e.target.value || null) as any)
+                  onValueChange={(v) =>
+                    up("insurance_carrier_phone" as any, (v || null) as any)
                   }
                   className="h-8 w-full rounded-md border border-border bg-white px-2 text-sm"
                 />

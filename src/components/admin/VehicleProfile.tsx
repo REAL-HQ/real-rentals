@@ -1078,6 +1078,7 @@ function SectionDrawer({
               />
               <Text
                 label="Phone"
+                phone
                 value={str("insurance_agent_phone")}
                 onChange={(v) => set("insurance_agent_phone", v)}
               />

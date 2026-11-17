@@ -643,6 +643,7 @@ export function VehicleEditorDrawer({
               />
               <Text
                 label="Phone"
+                phone
                 value={str("insurance_agent_phone")}
                 onChange={(x) => set("insurance", "insurance_agent_phone", x)}
               />

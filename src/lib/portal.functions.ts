@@ -1,3 +1,4 @@
+import { usPhoneE164 } from "@/lib/us-phone";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { isSignedAgreementEvidence } from "@/lib/signed-agreement-evidence";
@@ -626,7 +627,9 @@ export const updateDriverProfile = createServerFn({ method: "POST" })
       const phone = (d?.phone ?? "").trim();
       if (phone) {
         if (phone.replace(/\D/g, "").length < 10) throw new Error("Enter a valid phone number.");
-        out.phone = phone.slice(0, 40);
+        // Same stored shape as the apply form: E.164 for a US number, so Quo
+        // inbound matching and duplicate checks keep finding the digits.
+        out.phone = (usPhoneE164(phone) ?? phone).slice(0, 40);
       }
       /*
        * Email is deliberately NOT self-editable, and is dropped rather than

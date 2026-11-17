@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { AppSelect } from "@/components/ui/app-select";
 import type { ReactNode } from "react";
 import {
@@ -83,10 +84,13 @@ export function Text({
   error,
   mono = false,
   readOnly = false,
+  phone = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  /** Shared formatted phone field. */
+  phone?: boolean;
   placeholder?: string;
   hint?: string;
   error?: string;
@@ -96,6 +100,18 @@ export function Text({
 }) {
   return (
     <Field label={label} hint={hint} error={error}>
+      {phone ? (
+        <PhoneInput
+          value={value}
+          onValueChange={onChange}
+          placeholder={readOnly ? "—" : placeholder}
+          readOnly={readOnly}
+          tabIndex={readOnly ? -1 : undefined}
+          className={`${inputCls} ${mono ? "font-mono tracking-tight" : ""} ${
+          error ? "border-[#D03020]" : ""
+        } ${readOnly ? "bg-[#FAFAFB] text-[#55555E] cursor-default focus:border-[#EDEDF0]" : ""}`}
+        />
+      ) : (
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -106,6 +122,7 @@ export function Text({
           error ? "border-[#D03020]" : ""
         } ${readOnly ? "bg-[#FAFAFB] text-[#55555E] cursor-default focus:border-[#EDEDF0]" : ""}`}
       />
+      )}
     </Field>
   );
 }

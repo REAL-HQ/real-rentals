@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -16,7 +17,7 @@ const SECTIONS: {
   key: string;
   title: string;
   hint?: string;
-  fields: { key: string; label: string; type: "text" | "number" | "textarea" | "boolean" | "emails"; hint?: string; usedIn?: string }[];
+  fields: { key: string; label: string; type: "text" | "tel" | "number" | "textarea" | "boolean" | "emails"; hint?: string; usedIn?: string }[];
 }[] = [
   { key: "esign_company_signer", title: "Company eSign Signer",
     hint: "Countersigns every agreement as /s/ Name, Title, REAL RENTALS. Captured when a document is sent — changing it never alters documents already sent or signed. Owners only.",
@@ -44,7 +45,7 @@ const SECTIONS: {
     { key: "admin_email", label: "Applicant Alert Email", type: "emails" },
     { key: "alert_on_new", label: "Email Me When Someone Starts Or Returns To An Application", type: "boolean" },
     { key: "alert_on_complete", label: "Email Me When Someone Completes An Application", type: "boolean" },
-    { key: "sms_number", label: "Admin SMS Number", type: "text" },
+    { key: "sms_number", label: "Admin SMS Number", type: "tel" },
   ]},
   { key: "application_settings", title: "Application Settings", fields: [
     { key: "min_age", label: "Minimum Driver Age", type: "number" },
@@ -61,7 +62,7 @@ const SECTIONS: {
     { key: "mailing_address", label: "Mailing Address", type: "text",
       hint: "Street, city, state and ZIP.",
       usedIn: "Printed on rental agreements as the company address. Required before an agreement template can be approved." },
-    { key: "business_phone", label: "Business Phone", type: "text",
+    { key: "business_phone", label: "Business Phone", type: "tel",
       hint: "Main customer phone number.",
       usedIn: "Shown on the website and driver portal, printed on agreements, and used in customer emails and SMS HELP replies. Not a telecom provider ID." },
     { key: "support_email", label: "Support Email", type: "text",
@@ -180,6 +181,10 @@ function SectionForm({ sec, saved, framed, onSaved }: {
                 </label>
                 {f.type === "textarea" ? (
                   <textarea id={`set-${sec.key}-${f.key}`} value={draft[f.key] ?? ""} rows={3} onChange={(e) => set(f.key, e.target.value)}
+                    className="mt-1 w-full bg-white border border-border rounded-md px-3 py-2 text-sm" />
+                ) : f.type === "tel" ? (
+                  // Shared phone field. Readers (businessPhoneE164 / toE164) strip to digits.
+                  <PhoneInput id={`set-${sec.key}-${f.key}`} value={draft[f.key] ?? ""} onValueChange={(v) => set(f.key, v)}
                     className="mt-1 w-full bg-white border border-border rounded-md px-3 py-2 text-sm" />
                 ) : (
                   <input id={`set-${sec.key}-${f.key}`} type={f.type} value={draft[f.key] ?? ""}

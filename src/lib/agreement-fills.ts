@@ -2,6 +2,7 @@
 // Client-safe: no database, no contract text. A value is saved only when the
 // source field is empty or invalid. A correction of a value already on file
 // stays on this agreement (the existing details overlay) and is not written back.
+import { usPhoneE164 } from "@/lib/us-phone";
 import type { AgreementDetails } from "@/lib/agreement-prep";
 import { normalizeDisplayField, isStorableColor } from "@/lib/display-normalize";
 import { checkVin } from "@/lib/vin";
@@ -87,7 +88,9 @@ export function recordFillsFromDetails(
   if (blank(app.email) && EMAIL.test(email)) put("email", email);
 
   const phone = clean(details.driverPhone);
-  if (blank(app.phone) && phone.replace(/\D/g, "").length >= 7) put("phone", phone);
+  // applications.phone is E.164 for US numbers (Quo matching and dedupe
+  // look for the contiguous digits); the shared phone field types "(813) 555-0123".
+  if (blank(app.phone) && phone.replace(/\D/g, "").length >= 7) put("phone", usPhoneE164(phone) ?? phone);
 
   const addressMissing =
     blank(app.address) || blank(app.city) || blank(app.state) || blank(app.zip);

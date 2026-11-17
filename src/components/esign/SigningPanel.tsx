@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CheckboxInput } from "@/components/ui/checkbox-input";
 import {
   SIGNATURE_STYLES, SIGNATURE_FONTS_HREF, ackRows, defaultInitials, normalizeInitialsText,
   type Adoption, type Mark, type SignatureStyle,
@@ -215,7 +216,7 @@ export function SigningPanel({ body, defaultName, companySigner, busy, error, on
       <section className={card}>
         <h2 className={h2}>{rows.length ? "5" : "4"}. Sign</h2>
         <label className="mt-3 flex cursor-pointer items-start gap-3 text-[14px] text-[#28282E]">
-          <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[#D03020]" />
+          <CheckboxInput checked={agree} onChange={(e) => setAgree(e.target.checked)} boxClassName="mt-0.5" />
           <span>
             I have read and agree to this rental agreement. I adopt the signature and initials shown above as my legal electronic signature and initials, equivalent to handwritten ones.
             {isStructured(body) ? " I initialed each Renter Acknowledgment individually." : null}

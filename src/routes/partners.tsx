@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { AppSelect } from "@/components/ui/app-select";
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
@@ -252,7 +253,11 @@ function Partners() {
             <form onSubmit={submit} noValidate className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="Full Name" value={form.full_name} onChange={(v) => set("full_name", v)} error={errors.full_name} />
               <Field label="Email" type="email" value={form.email} onChange={(v) => set("email", v)} error={errors.email} />
-              <Field label="Phone" value={form.phone} onChange={(v) => set("phone", v)} error={errors.phone} />
+              <div>
+                <label className="text-[10px] tracking-wider text-muted-foreground">Phone</label>
+                <PhoneInput mode="us" value={form.phone} onValueChange={(v) => set("phone", v)} className={`mt-1 w-full bg-soft rounded-lg px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 ${errors.phone ? "ring-2 ring-real-red/40" : ""}`} />
+                {errors.phone && <div className="mt-1 text-xs text-real-red">{errors.phone}</div>}
+              </div>
               <Field label="VIN (17 Characters)" value={form.vin} onChange={(v) => set("vin", v.toUpperCase().slice(0, 17))} error={errors.vin} />
               <Field label="Year" value={form.year} onChange={(v) => set("year", v.replace(/\D/g, "").slice(0, 4))} error={errors.year} />
               <Field label="Make" value={form.make} onChange={(v) => set("make", v)} error={errors.make} />

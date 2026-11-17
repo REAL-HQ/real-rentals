@@ -1,3 +1,5 @@
+import { PhoneInput } from "@/components/ui/phone-input";
+import { applicantPhoneForSubmit } from "@/lib/us-phone";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, ArrowRight, X, CheckCircle2 } from "lucide-react";
@@ -147,7 +149,8 @@ function WaitlistModal({ card, onClose }: { card: LocationCard; onClose: () => v
       market_id: card.market_id,
       full_name: fullName,
       email,
-      phone,
+      // Same stored shape as the apply form's waitlist write (E.164 for US).
+      phone: phone.trim() ? applicantPhoneForSubmit(phone) : phone,
       driver_status: driverStatus,
       city: card.city,
       utm_source: params.get("utm_source"),
@@ -189,7 +192,7 @@ function WaitlistModal({ card, onClose }: { card: LocationCard; onClose: () => v
             <form onSubmit={submit} className="mt-5 space-y-3">
               <input value={fullName} onChange={(e) => setFullName(e.target.value)} required placeholder="Full Name" className="w-full rounded-lg bg-soft border border-transparent focus:border-real-red focus:bg-white px-4 py-3 text-sm outline-none transition" />
               <input value={email} onChange={(e) => setEmail(e.target.value)} required type="email" placeholder="Email" className="w-full rounded-lg bg-soft border border-transparent focus:border-real-red focus:bg-white px-4 py-3 text-sm outline-none transition" />
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" placeholder="Phone" className="w-full rounded-lg bg-soft border border-transparent focus:border-real-red focus:bg-white px-4 py-3 text-sm outline-none transition" />
+              <PhoneInput mode="us" value={phone} onValueChange={setPhone} placeholder="Phone" className="w-full rounded-lg bg-soft border border-transparent focus:border-real-red focus:bg-white px-4 py-3 text-sm outline-none transition" />
               <div>
                 <div className="text-xs font-medium mb-2">Already Driving On A Gig App?</div>
                 <div className="grid grid-cols-3 gap-2">

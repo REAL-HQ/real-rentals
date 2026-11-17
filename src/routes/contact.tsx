@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useBusinessPhone } from "@/lib/company.functions";
@@ -56,7 +57,10 @@ function Contact() {
             <form onSubmit={onSubmit} className="space-y-4">
               <Field label="Full Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
               <Field label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} required />
-              <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
+              <div>
+                <label className="text-[10px] tracking-wider text-muted-foreground">Phone</label>
+                <PhoneInput mode="us" value={form.phone} onValueChange={(v) => setForm({ ...form, phone: v })} className="mt-1 w-full bg-soft rounded-lg px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10" />
+              </div>
               <div>
                 <label className="text-[10px] tracking-wider text-muted-foreground">Message</label>
                 <textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={5} className="mt-1 w-full bg-soft rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10" />

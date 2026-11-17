@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { useEffect, useMemo, useState } from "react";
 import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
@@ -273,7 +274,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
               <div className="grid grid-cols-2 gap-2">
                 <label className="col-span-2">Full Name<input className={input} value={values.driverName} onChange={(e) => updateDetails({ driverName: e.target.value })} /></label>
                 <label>Email<input type="email" className={input} value={values.driverEmail} onChange={(e) => updateDetails({ driverEmail: e.target.value })} /></label>
-                <label>Phone<input className={input} value={values.driverPhone} onChange={(e) => updateDetails({ driverPhone: e.target.value })} /></label>
+                <label>Phone<PhoneInput className={input} value={values.driverPhone} onValueChange={(driverPhone) => updateDetails({ driverPhone })} /></label>
                 <label className="col-span-2">Street Address<input className={input} value={values.address} onChange={(e) => updateDetails({ address: e.target.value })} /></label>
                 <label>City<input className={input} value={values.city} onChange={(e) => updateDetails({ city: e.target.value })} /></label>
                 <div className="grid grid-cols-2 gap-2">

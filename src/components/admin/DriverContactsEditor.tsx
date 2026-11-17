@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { useCallback, useEffect, useState } from "react";
 import { Mail, Phone, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -251,13 +252,23 @@ export function DriverContactsEditor({
                       void handleSaveEdit(c);
                     }}
                   >
-                    <input
-                      autoFocus
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      className="h-7 flex-1 min-w-[10rem] rounded border border-input bg-background px-2 text-[12px]"
-                      aria-label={kind === "phone" ? "Phone number" : "Email address"}
-                    />
+                    {kind === "phone" ? (
+                      <PhoneInput
+                        autoFocus
+                        value={editValue}
+                        onValueChange={setEditValue}
+                        className="h-7 flex-1 min-w-[10rem] rounded border border-input bg-background px-2 text-[12px]"
+                        aria-label="Phone number"
+                      />
+                    ) : (
+                      <input
+                        autoFocus
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        className="h-7 flex-1 min-w-[10rem] rounded border border-input bg-background px-2 text-[12px]"
+                        aria-label="Email address"
+                      />
+                    )}
                     <Button type="submit" size="sm" className="h-7 px-2 text-[11px]" disabled={busy}>
                       Save
                     </Button>
@@ -360,13 +371,23 @@ export function DriverContactsEditor({
           >
             <label className="flex-1 min-w-[10rem] text-[11px] text-muted-foreground">
               {kind === "phone" ? "Phone" : "Email"}
-              <input
-                autoFocus
-                value={draftValue}
-                onChange={(e) => setDraftValue(e.target.value)}
-                placeholder={kind === "phone" ? "(555) 010-0000" : "name@example.com"}
-                className="mt-1 h-7 w-full rounded border border-input bg-background px-2 text-[12px] text-foreground"
-              />
+              {kind === "phone" ? (
+                <PhoneInput
+                  autoFocus
+                  value={draftValue}
+                  onValueChange={setDraftValue}
+                  placeholder="(555) 010-0000"
+                  className="mt-1 h-7 w-full rounded border border-input bg-background px-2 text-[12px] text-foreground"
+                />
+              ) : (
+                <input
+                  autoFocus
+                  value={draftValue}
+                  onChange={(e) => setDraftValue(e.target.value)}
+                  placeholder="name@example.com"
+                  className="mt-1 h-7 w-full rounded border border-input bg-background px-2 text-[12px] text-foreground"
+                />
+              )}
             </label>
             <label className="w-32 text-[11px] text-muted-foreground">
               Label
