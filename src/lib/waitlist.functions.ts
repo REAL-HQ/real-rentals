@@ -7,6 +7,7 @@ import { completeRead, readInBatches } from "@/lib/waitlist-reads.server";
 import { WAITLIST_CLAIM_ENABLED, deliverOpeningEmails } from "@/lib/waitlist-claim";
 import type { ReadinessResult } from "@/lib/readiness";
 import { validateWaitlistTags } from "@/lib/waitlist-tags";
+import { parseCarsAvailable } from "@/lib/cars-available";
 
 // Cars Available + waitlist.
 //
@@ -37,13 +38,14 @@ export const getAvailability = createServerFn({ method: "GET" }).handler(async (
   );
   const { data, error } = await supabasePublic.rpc("cars_available");
   // Unset or unreadable means the feature is off: hero behaves as it always
-  // did, and the back office shows "not set" rather than 0.
+  // did, and the back office shows "not set" rather than 0. SQL null must
+  // stay null — Number(null) is 0, which would switch city pages to the
+  // waitlist even when the override is not set.
   if (error) {
     console.error("[waitlist] cars_available rpc failed", error.message);
     return { carsAvailable: null as number | null };
   }
-  const n = typeof data === "number" ? data : Number(data);
-  return { carsAvailable: Number.isFinite(n) && n >= 0 ? n : null };
+  return { carsAvailable: parseCarsAvailable(data) };
 });
 
 export const joinWaitlist = createServerFn({ method: "POST" })
