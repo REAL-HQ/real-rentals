@@ -548,6 +548,9 @@ function findDisqualifiers(a: ReadinessInput, s: ReadinessInput): string[] {
     out.push("Insurance name does not match licence");
   }
   if (bool(a.license_valid) === false) out.push("Licence reported invalid");
+  // A different Florida address on the license is not a disqualifier
+  // (Dolmar, t359u). Out-of-state licenses go to staff through FLEET
+  // review (`out_of_state_license`), not as a readiness disqualifier.
   return out;
 }
 

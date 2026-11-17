@@ -49,6 +49,7 @@ Reply `{ ok, packet }` with:
 | key | what |
 |---|---|
 | `contacts` | every phone and email on the profile (`phones[]` / `emails[]`, with `is_primary`, `receives_messages`, and `sms_ok` per number). `answers.phone` / `answers.email` stay the primary |
+| `addresses` | every address on the profile (`is_primary`, `label`, `source`). `answers.address` / `city` / `state` / `zip` stay the primary. A license address that differs from the application is saved as a second row labeled "License address" and does not overwrite the primary |
 | `answers` | the application answers (license number masked to the last 4; payment ids, consent text and card ids left out) |
 | `documents[]` | every current vault document: category, file name, type, size, `review_status`, review note, upload time, expiry. `url` is null unless `include_urls: true`, then a signed link valid for 15 minutes (the back office's own signer) |
 | `gig_evidence` | platforms, gig status, trips, rating, screenshot counts, gig-profile and trip-history document counts |
@@ -155,7 +156,11 @@ Send `needs_staff` when any of these is true:
     required (Real Rentals provides it). "No insurance" or "no full coverage"
     is never a flag, a blocker, or a missing item, and nobody is marked
     insured from this rule.
-11. Anything in the documents or answers that does not line up (names, photos,
+11. The license is issued out of state (issuing state is not FL, from the
+    license reading or a staff entry). Different Florida addresses on the
+    license and the application are not a flag; both can be saved on the
+    profile. `address_mismatch` is never used.
+12. Anything in the documents or answers that does not line up (names, photos,
     screenshots), or anything FLEET is unsure about.
 
 Notes (reported, not escalations): no screening interview yet (the call happens
@@ -186,3 +191,9 @@ resolution_note`. Only the server writes; staff can read.
 - Missing income proof no longer escalates (note `requested_income`).
 - `resubmitted` is a note; only `prior_declined` (an earlier declined or closed
   application) escalates.
+
+## Changes (Nov 16, 2026, t359u)
+
+- Out-of-state licenses (`out_of_state_license`) escalate to staff. A different
+  Florida address on the license is not a flag; both addresses are kept on the
+  profile (`driver_addresses`, migration not applied by the PR).

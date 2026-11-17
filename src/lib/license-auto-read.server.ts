@@ -21,6 +21,7 @@
  * a second read, including for an unreadable photo).
  */
 import { LICENSE_FIELDS, maskNo, norm, validateReading } from "@/lib/fleet-license.server";
+import { addressFromApplication, isLicenseAddressColumnMissing, normalizeAddress, type AddressParts } from "@/lib/driver-addresses";
 
 type Field = (typeof LICENSE_FIELDS)[number];
 export const AUTO_READ_BY = "Photo Reading (automatic)";
@@ -30,8 +31,9 @@ const MAX_CANDIDATES = 500;
 const SYSTEM = `You read the FRONT of a US driver's license for a car rental company.
 Transcribe only what is printed. Never infer, complete or correct a value. If a value is not printed or not legible, use null.
 Return strict JSON only, no prose:
-{"is_license_front": true|false, "dob": "YYYY-MM-DD"|null, "license_expiration": "YYYY-MM-DD"|null, "license_number": string|null, "license_state": "two-letter US state code"|null, "confidence": number between 0 and 1}
+{"is_license_front": true|false, "dob": "YYYY-MM-DD"|null, "license_expiration": "YYYY-MM-DD"|null, "license_number": string|null, "license_state": "two-letter US state code"|null, "address_line1": string|null, "address_city": string|null, "address_state": "two-letter US state code"|null, "address_zip": string|null, "confidence": number between 0 and 1}
 dob is the date of birth (DOB). license_expiration is the expiration date (EXP). license_number is the DL/license number exactly as printed. license_state is the issuing state.
+address_line1, address_city, address_state and address_zip are the address printed on the license, or null if it is not printed or not legible. Do not invent a street if only a city is shown.
 US licenses print dates as MM/DD/YYYY; convert to YYYY-MM-DD.`;
 
 export type AutoReadOutcome = {
@@ -83,7 +85,7 @@ export async function licenseAutoReadCandidates(admin: any, opts: { applicationI
   const apps: any[] = [];
   const reads: any[] = [];
   for (const part of chunks(ids)) {
-    const { data, error: e } = await admin.from("applications").select("id,status,deleted_at,dob,license_expiration,license_number,license_state").in("id", part);
+    const { data, error: e } = await admin.from("applications").select("id,status,deleted_at,dob,license_expiration,license_number,license_state,address,city,state,zip").in("id", part);
     if (e) throw new Error(`applications: ${e.message}`);
     apps.push(...(data ?? []));
   }
@@ -107,7 +109,16 @@ export async function licenseAutoReadCandidates(admin: any, opts: { applicationI
 }
 
 /** Keep each field that passes FLEET's validation on its own; drop the rest. */
-export function cleanReading(parsed: any, now: Date): { values: Partial<Record<Field, string>>; confidence: number | null } {
+export function parseLicenseAddress(parsed: any): AddressParts | null {
+  return normalizeAddress({
+    line1: parsed?.address_line1 ?? null,
+    city: parsed?.address_city ?? parsed?.city ?? null,
+    state: parsed?.address_state ?? null,
+    zip: parsed?.address_zip ?? parsed?.zip ?? null,
+  });
+}
+
+export function cleanReading(parsed: any, now: Date): { values: Partial<Record<Field, string>>; confidence: number | null; address: AddressParts | null } {
   const values: Partial<Record<Field, string>> = {};
   for (const f of LICENSE_FIELDS) {
     const v = parsed?.[f];
@@ -116,7 +127,7 @@ export function cleanReading(parsed: any, now: Date): { values: Partial<Record<F
     if (r.ok && r.values[f]) values[f] = r.values[f];
   }
   const c = Number(parsed?.confidence);
-  return { values, confidence: Number.isFinite(c) && c >= 0 && c <= 1 ? c : null };
+  return { values, confidence: Number.isFinite(c) && c >= 0 && c <= 1 ? c : null, address: parseLicenseAddress(parsed) };
 }
 
 /** Which fields go onto the application, which already match, and which differ from what is on file. */
@@ -143,11 +154,18 @@ export function planApply(
 async function readOne(admin: any, app: any, doc: any, deps: Deps, now: Date): Promise<AutoReadOutcome | { stop: string }> {
   const base = { application_id: app.id, document_id: doc.id, applied: [] as Field[], conflicts: [] as Field[] };
   const mime = String(doc.mime_type || "image/jpeg").split(";")[0].trim();
-  const record = async (row: Record<string, unknown>) =>
-    admin.from("fleet_license_readings").insert({
+  const record = async (row: Record<string, unknown>) => {
+    const base = {
       application_id: app.id, document_id: doc.id, applied_fields: [], conflicts: [], source_label: AUTO_READ_LABEL, read_by: AUTO_READ_BY,
       idempotency_key: `auto-read-${doc.id}`, ...row,
-    }).select("id").single();
+    };
+    const first = await admin.from("fleet_license_readings").insert(base).select("id").single();
+    if (first.error && isLicenseAddressColumnMissing(first.error)) {
+      const { address_line1, address_city, address_state, address_zip, ...rest } = base as any;
+      return admin.from("fleet_license_readings").insert(rest).select("id").single();
+    }
+    return first;
+  };
 
   if (!/^image\/(jpeg|png|webp|gif)$|^application\/pdf$/.test(mime)) {
     await record({ note: `Not read: file type ${mime}.` });
@@ -186,8 +204,8 @@ async function readOne(admin: any, app: any, doc: any, deps: Deps, now: Date): P
     await record({ note: "The photo does not look like the front of a driver's license." });
     return { ...base, result: "not_a_license" };
   }
-  const { values, confidence } = cleanReading(parsed, now);
-  if (!Object.keys(values).length) {
+  const { values, confidence, address } = cleanReading(parsed, now);
+  if (!Object.keys(values).length && !address) {
     await record({ note: "No license details could be read from the photo.", confidence });
     return { ...base, result: "unreadable" };
   }
@@ -201,6 +219,8 @@ async function readOne(admin: any, app: any, doc: any, deps: Deps, now: Date): P
   const ins = await record({
     dob: values.dob ?? null, license_expiration: values.license_expiration ?? null,
     license_number: values.license_number ?? null, license_state: values.license_state ?? null,
+    address_line1: address?.line1 ?? null, address_city: address?.city ?? null,
+    address_state: address?.state ?? null, address_zip: address?.zip ?? null,
     applied_fields: plan.applied, conflicts: plan.conflicts, confidence,
     note: plan.conflicts.length ? "Differs from what is on file; nothing on file was changed." : null,
   });
@@ -221,6 +241,12 @@ async function readOne(admin: any, app: any, doc: any, deps: Deps, now: Date): P
   if (landed.length !== plan.applied.length) {
     await admin.from("fleet_license_readings").update({ applied_fields: landed }).eq("id", ins.data.id);
     plan.applied = landed;
+  }
+  if (address) {
+    try {
+      const { saveLicenseAddressIfDifferent } = await import("@/lib/driver-addresses.server");
+      await saveLicenseAddressIfDifferent(admin, app.id, addressFromApplication(app), address);
+    } catch { /* the reading is saved; the second address can be added later */ }
   }
   try {
     const { logAudit } = await import("@/lib/audit.server");

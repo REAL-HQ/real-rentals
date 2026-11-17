@@ -207,6 +207,29 @@ describe("background checks (Dolmar, t299s1618)", () => {
     expect(a.notes.map((n) => n.code)).toEqual(expect.arrayContaining(["no_trips", "no_rating"]));
     expect(a.notes.find((n) => n.code === "no_trips")!.message).toContain("100+");
   });
+  test("a Florida license with a different address is not escalated (t359u)", () => {
+    const a = rules.assessForFleet({
+      ...base,
+      app: goodApp(A, { license_state: "FL", address: "100 Example Rd", city: "Plant City", state: "FL", zip: "33567" }),
+      docs: docsFor(A),
+      licenseReading: { license_state: "FL", address_city: "Exampleville", address_state: "FL", address_zip: "34448" },
+    });
+    expect(a.escalations.map((e) => e.code)).not.toContain("address_mismatch");
+    expect(a.escalations.map((e) => e.code)).not.toContain("out_of_state_license");
+    expect(a.notes.map((n) => n.code)).toContain("license_address_recorded");
+    expect(a.recommendation).toBe("approve");
+  });
+  test("an out-of-state license escalates to staff (t359u)", () => {
+    const a = rules.assessForFleet({
+      ...base,
+      app: goodApp(A, { license_state: "GA" }),
+      docs: docsFor(A),
+      licenseReading: { license_state: "GA" },
+    });
+    expect(a.escalations.map((e) => e.code)).toContain("out_of_state_license");
+    expect(a.escalations.map((e) => e.code)).not.toContain("address_mismatch");
+    expect(a.recommendation).toBe("needs_staff");
+  });
 });
 
 describe("applicants endpoint", () => {

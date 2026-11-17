@@ -36,6 +36,8 @@ import {
 import { computeReadiness } from "@/lib/readiness";
 import { fleetContactsFor, listDriverContacts } from "@/lib/driver-contacts.server";
 import { last10Digits, normalizeDriverEmail } from "@/lib/driver-contacts";
+import { listDriverAddresses } from "@/lib/driver-addresses.server";
+import { APPLICATION_ADDRESS_LABEL, addressFromApplication, formatAddress } from "@/lib/driver-addresses";
 import { readRentidSettings } from "@/lib/fleet-rentid.server";
 
 type Admin = any;
@@ -173,12 +175,43 @@ export async function buildReviewPacket(admin: Admin, leadId: string, opts: { in
   const { license_number, insurance_carrier, insurance_doc_url, profile_screenshot_url, trip_screenshots, ...answers } = app;
   const tripShots = Array.isArray(trip_screenshots) ? trip_screenshots.length : 0;
   const contacts = await fleetContactsFor(admin, leadId, app);
+  let addresses = await listDriverAddresses(admin, leadId).catch(() => []);
+  if (!addresses.length) {
+    const primary = addressFromApplication(app);
+    if (primary) {
+      addresses = [{
+        id: "primary-address",
+        application_id: app.id,
+        line1: primary.line1 ?? "",
+        line2: primary.line2 ?? null,
+        city: primary.city,
+        state: primary.state,
+        zip: primary.zip,
+        label: APPLICATION_ADDRESS_LABEL,
+        source: "application",
+        is_primary: true,
+        created_by: null,
+        created_at: app.created_at ?? "",
+        updated_at: app.updated_at ?? "",
+      }];
+    }
+  }
   return {
     lead_id: app.id,
     name: app.full_name ?? null,
     status: app.status ?? null,
     admin_url: adminUrlFor(app.id),
     contacts,
+    addresses: addresses.map((r) => ({
+      line1: r.line1 || null,
+      city: r.city,
+      state: r.state,
+      zip: r.zip,
+      label: r.label,
+      source: r.source,
+      is_primary: r.is_primary,
+      display: formatAddress(r),
+    })),
     answers: { ...answers, license_number_masked: maskLicense(license_number) },
     documents,
     // What FLEET read off the license photo (label "Read by FLEET from license
