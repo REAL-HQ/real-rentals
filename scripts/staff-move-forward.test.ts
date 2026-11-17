@@ -367,6 +367,9 @@ describe("team alert copy (before/after)", () => {
   test("scrubPhones leaves no placeholder; generic texts start 'REAL:'", () => {
     expect(ta.scrubPhones("Briana Palmer ((000) 000-0000). Texted")).toBe("Briana Palmer. Texted");
     expect(ta.teamAlertSms("GPS OFFLINE: R12 - Check Tracker", "L")).toBe("REAL: GPS OFFLINE: R12 - Check Tracker L");
+    expect(copy.personName("briana palmer")).toBe("Briana Palmer");
+    expect(copy.personName("MARY-ANN O'NEIL")).toBe("Mary-Ann O'Neil");
+    expect(copy.personName("Ronald McDonald")).toBe("Ronald McDonald");
     expect(copy.displayPhone("+1 (000) 000-0000")).toEqual({ e164: "+10000000000", display: "(000) 000-0000" });
   });
 });

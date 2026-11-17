@@ -43,7 +43,10 @@ const cap = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimE
 
 /** "Briana Palmer" from a full name; "" when there is none. */
 export function personName(full: string | null | undefined): string {
-  return cap(clean(full), 60);
+  const n = cap(clean(full), 60);
+  // "briana palmer" / "BRIANA PALMER" -> "Briana Palmer"; mixed case (McDonald) is kept.
+  if (n !== n.toLowerCase() && n !== n.toUpperCase()) return n;
+  return n.toLowerCase().replace(/(^|[\s'-])([a-z])/g, (_m, p: string, c: string) => p + c.toUpperCase());
 }
 
 /** Short Eastern clock time, e.g. "9:38 AM". */
