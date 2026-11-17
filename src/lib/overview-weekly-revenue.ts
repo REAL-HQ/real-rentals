@@ -1,13 +1,16 @@
 /**
  * Overview "Billed vs Collected" series.
  *
- * Same money rules as the Revenue card's payments ledger: rent / late_fee /
- * other only (deposits out). Collected is multi-method — Stripe, Zelle, Cash
+ * Same money rules as the Revenue card's payments ledger and the Revenue
+ * report (REVENUE_TYPES in revenue-report.ts): rent, late_fee, other, toll,
+ * damage and fee. Deposits stay out. A fee (a one-day rental paid by Payment
+ * Link, a Reservation Fee credited to week 1) is money the renter paid us, so
+ * it is revenue; before Nov 17 2026 it was silently dropped here. Collected is multi-method — Stripe, Zelle, Cash
  * App, Venmo, cash, wire — whatever net_collected recorded. Billed is the
  * amount due in the week, same type filter, so the chart cannot disagree with
  * the card about what counts as revenue.
  */
-export const OVERVIEW_REVENUE_TYPES = ["rent", "late_fee", "other"] as const;
+export const OVERVIEW_REVENUE_TYPES = ["rent", "late_fee", "other", "toll", "damage", "fee"] as const;
 export type OverviewRevenueType = (typeof OVERVIEW_REVENUE_TYPES)[number];
 
 export type WeekPoint = { label: string; iso: string; collected: number; billed: number };

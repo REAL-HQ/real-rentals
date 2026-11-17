@@ -227,8 +227,12 @@ export function verifyCollectedCharges(input: {
   for (const payment of input.invoicePayments) {
     const invoice = payment.invoiceId ? invoiceIndex.get(payment.invoiceId) : undefined;
     const subscription = invoice?.subscriptionId ? subscriptionIndex.get(invoice.subscriptionId) : undefined;
-    const customer = subscription?.customerId || null;
-    if (!invoice || !subscription || !customer || invoice.customerId !== customer) {
+    // A standalone invoice (no subscription, e.g. a one-off $350 invoice sent
+    // from the Dashboard) is owned by its own customer. A subscription invoice
+    // still needs its subscription's customer to agree.
+    const standalone = !!invoice && !invoice.subscriptionId && !!invoice.customerId;
+    const customer = standalone ? invoice!.customerId : subscription?.customerId || null;
+    if (!invoice || (!standalone && !subscription) || !customer || invoice.customerId !== customer) {
       incomplete("InvoicePayment", payment.id, "Invoice, subscription or matching customer unavailable");
       if (payment.intentId) unresolvedIntents.add(payment.intentId);
       if (payment.chargeId) unresolvedCharges.add(payment.chargeId);
