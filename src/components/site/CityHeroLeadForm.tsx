@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { markStepOneJustSubmitted } from "@/lib/step-one-thank-you";
 import { useNavigate, Link } from "@tanstack/react-router";
 import { SmsConsentField } from "@/components/site/SmsConsentField";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { applicantPhoneForSubmit, formatUsPhoneInput } from "@/lib/us-phone";
 import { ArrowRight, Check } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
@@ -298,17 +299,19 @@ function Field({
   return (
     <label className="block">
       <span className="text-[10px] tracking-wider text-muted-foreground">{label}</span>
-      <input
-        type={type}
-        inputMode={type === "tel" ? "tel" : undefined}
-        autoComplete={type === "tel" ? "tel" : type === "email" ? "email" : undefined}
-        min={min}
-        max={max}
-        value={value}
-        onChange={(event) => onChange(type === "tel" ? formatUsPhoneInput(event.target.value) : event.target.value)}
-        onBlur={type === "tel" ? (event) => onChange(formatUsPhoneInput(event.target.value)) : undefined}
-        className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm ${error ? "border-real-red" : "border-border"}`}
-      />
+      {type === "tel" ? (
+        <PhoneInput mode="us" value={value} onValueChange={onChange} className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm ${error ? "border-real-red" : "border-border"}`} />
+      ) : (
+        <input
+          type={type}
+          autoComplete={type === "email" ? "email" : undefined}
+          min={min}
+          max={max}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm ${error ? "border-real-red" : "border-border"}`}
+        />
+      )}
       {error && <div className="mt-1 text-xs text-real-red">{error}</div>}
     </label>
   );

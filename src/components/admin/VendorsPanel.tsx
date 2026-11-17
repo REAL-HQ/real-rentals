@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -383,7 +384,7 @@ function VendorForm({
             v={f.contact_name ?? ""}
             onChange={(s) => set("contact_name", s || null)}
           />
-          <Txt label="Phone" v={f.phone ?? ""} onChange={(s) => set("phone", s || null)} />
+          <Txt label="Phone" phone v={f.phone ?? ""} onChange={(s) => set("phone", s || null)} />
           <Txt label="Email" v={f.email ?? ""} onChange={(s) => set("email", s || null)} />
           <Txt label="Website" v={f.website ?? ""} onChange={(s) => set("website", s || null)} />
           <Txt label="Address" v={f.address ?? ""} onChange={(s) => set("address", s || null)} />
@@ -496,12 +497,28 @@ function Txt({
   v,
   onChange,
   placeholder,
+  phone = false,
 }: {
   label: string;
   v: string;
   onChange: (s: string) => void;
   placeholder?: string;
+  /** Shared formatted phone field. */
+  phone?: boolean;
 }) {
+  if (phone) {
+    return (
+      <div>
+        <MicroLabel>{label}</MicroLabel>
+        <PhoneInput
+          value={v}
+          placeholder={placeholder}
+          onValueChange={onChange}
+          className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm"
+        />
+      </div>
+    );
+  }
   return (
     <div>
       <MicroLabel>{label}</MicroLabel>

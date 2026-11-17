@@ -1,4 +1,5 @@
 import { useFileDrop } from "@/components/use-file-drop";
+import { CheckboxInput } from "@/components/ui/checkbox-input";
 import { inspectFiles } from "@/components/FileUploader";
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { Link } from "@tanstack/react-router";
@@ -1336,11 +1337,10 @@ function DrivingStep({
             ))}
           </ol>
           <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-white p-3 min-h-[44px]">
-            <input
-              type="checkbox"
+            <CheckboxInput
               checked={insuranceConsent}
               onChange={(e) => setInsuranceConsent(e.target.checked)}
-              className="mt-0.5 h-5 w-5 shrink-0 accent-[#D03020]"
+              boxClassName="mt-px"
               aria-describedby="insurance-consent-required"
             />
             <span className="text-sm font-medium text-foreground">{INSURANCE_CONSENT_LABEL}</span>

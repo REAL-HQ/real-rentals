@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -237,7 +238,7 @@ function WaitlistCard({
       <form onSubmit={submit} className="rounded-xl border border-border p-6 space-y-3">
         <div className="text-sm font-semibold">Contact Details And Preferences</div>
         <input aria-label="Full Name" placeholder="Full Name" className={field} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-        <input aria-label="Phone" placeholder="Phone" className={field} value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
+        <PhoneInput mode="us" aria-label="Phone" placeholder="Phone" className={field} value={f.phone} onValueChange={(phone) => setF({ ...f, phone })} />
         <div className="grid grid-cols-3 gap-3">
           <input aria-label="City" placeholder="City" className={`${field} col-span-2`} value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} />
           <input aria-label="State" placeholder="State" maxLength={2} className={field} value={f.state} onChange={(e) => setF({ ...f, state: e.target.value })} />

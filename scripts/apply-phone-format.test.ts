@@ -102,13 +102,19 @@ describe("apply / lead form wiring", () => {
   const consent = readFileSync("src/components/site/SmsConsentField.tsx", "utf8");
   const save = readFileSync("src/lib/applications.functions.ts", "utf8");
 
-  test("the SMS consent checkbox is a normal 20px box, not h-11 w-11", () => {
-    expect(consent).toMatch(/className="mt-0\.5 h-5 w-5 shrink-0 accent-real-red"/);
+  test("the SMS consent checkbox is a normal 18px box, not h-11 w-11", () => {
+    // t369u: drawn by the shared CheckboxInput (appearance-none, fixed px) so
+    // no browser can render it as an oversized native control.
+    expect(consent).toMatch(/<CheckboxInput\b/);
     expect(consent).not.toMatch(/\bh-11 w-11\b/);
     expect(consent).toMatch(/flex items-start gap-3/);
-    // Disclosure indent matches 20px box + gap-3 (not the old 44px box).
-    expect(consent).toMatch(/className="mt-2 pl-8 /);
+    // Disclosure indent matches the 18px box + gap-3 (not the old 44px box).
+    expect(consent).toMatch(/className="mt-2 pl-\[30px\] /);
     expect(consent).not.toMatch(/\bpl-14\b/);
+    const box = readFileSync("src/components/ui/checkbox-input.tsx", "utf8");
+    expect(box).toMatch(/h-\[18px\] w-\[18px\]/);
+    expect(box).toMatch(/appearance-none/);
+    expect(box).toMatch(/type="checkbox"/);
   });
 
   test("no other apply-flow checkbox uses the oversized h-11 w-11 style", () => {
@@ -119,17 +125,20 @@ describe("apply / lead form wiring", () => {
       const oversized = checkboxLines(file).filter((line) => /\bh-11 w-11\b/.test(line) && /checkbox/.test(line));
       expect(oversized).toEqual([]);
     }
-    // The insurance consent in the wizard (later apply step) was already 20px.
-    expect(wizard).toMatch(/type="checkbox"[\s\S]{0,200}className="mt-0\.5 h-5 w-5 shrink-0/);
+    // The insurance consent in the wizard (later apply step) uses the same box.
+    expect(wizard).toMatch(/<CheckboxInput[\s\S]{0,200}checked=\{insuranceConsent\}/);
   });
 
   test("the contact step formats as the user types and submits E.164", () => {
-    expect(apply).toMatch(/formatUsPhoneInput/);
+    // Shared PhoneInput (formatUsPhoneInput on change and blur, mode "us").
+    expect(apply).toMatch(/<PhoneInput\s+mode="us"/);
     expect(apply).toMatch(/applicantPhoneForSubmit\(form\.phone\)/);
-    expect(apply).toMatch(/type === "tel" \? formatUsPhoneInput/);
-    expect(apply).toMatch(/onBlur=\{type === "tel"/);
-    expect(lead).toMatch(/formatUsPhoneInput/);
+    expect(apply).toMatch(/type === "tel" \? \(/);
+    expect(lead).toMatch(/<PhoneInput mode="us"/);
     expect(lead).toMatch(/applicantPhoneForSubmit\(form\.phone\)/);
+    const shared = readFileSync("src/components/ui/phone-input.tsx", "utf8");
+    expect(shared).toMatch(/mode === "us" \? formatUsPhoneInput : formatPhoneInput/);
+    expect(shared).toMatch(/onBlur=\{/);
   });
 
   test("savePartialApplication stores E.164 and looks up common typings", () => {

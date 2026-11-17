@@ -1,4 +1,5 @@
 import { AppSelect } from "@/components/ui/app-select";
+import { CheckboxInput } from "@/components/ui/checkbox-input";
 import type { FleetFilterState } from "@/lib/fleet-filters";
 
 const control =
@@ -82,18 +83,14 @@ export function FleetFiltersBar({
           </AppSelect>
         </label>
         <label className="inline-flex min-h-11 items-center gap-3 rounded-lg border border-border bg-white px-3 text-sm">
-          <input
-            type="checkbox"
-            className="size-5 accent-[#D03020]"
+          <CheckboxInput
             checked={value.uberOnly}
             onChange={(event) => onChange({ ...value, uberOnly: event.target.checked })}
           />
           Uber Eligible Only
         </label>
         <label className="inline-flex min-h-11 items-center gap-3 rounded-lg border border-border bg-white px-3 text-sm">
-          <input
-            type="checkbox"
-            className="size-5 accent-[#D03020]"
+          <CheckboxInput
             checked={value.availableOnly}
             onChange={(event) => onChange({ ...value, availableOnly: event.target.checked })}
           />

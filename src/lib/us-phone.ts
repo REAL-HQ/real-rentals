@@ -99,3 +99,59 @@ export function applicantPhoneLookupValues(raw: string): string[] {
     ]),
   ];
 }
+
+/**
+ * Format any phone field as the user types (the shared PhoneInput).
+ *
+ * US numbers, the only kind the business takes, are formatted exactly like
+ * formatUsPhoneInput. Two kinds of input are left as typed instead of being
+ * mangled into a US shape: an international number (starts with "+" and a
+ * country code other than 1), and a number with an extension or other
+ * letters ("813-555-0123 ext 4"), which some vendor and insurance phones need.
+ */
+export function formatPhoneInput(raw: string): string {
+  const s = String(raw ?? "");
+  const trimmed = s.trimStart();
+  if (trimmed.startsWith("+") && !/^\+\s*\(?\s*1/.test(trimmed) && /\d/.test(trimmed)) return s;
+  if (/[a-z]/i.test(s)) return s;
+  return formatUsPhoneInput(s);
+}
+
+/** Show a stored phone (E.164 or as-typed) the way the input formats it. */
+export function formatPhoneForDisplay(stored: string | null | undefined): string {
+  const s = String(stored ?? "");
+  const national = usNationalNumber(s);
+  if (national && !/[a-z]/i.test(s)) return formatUsPhoneInput(national);
+  return s;
+}
+
+/**
+ * Where the caret belongs after reformatting, so typing or deleting in the
+ * middle of a number does not throw the caret to the end.
+ *
+ * Counts the digits left of the caret in what the user typed, drops a
+ * country-code 1 the formatter removed, and puts the caret right after the
+ * same number of digits in the formatted value.
+ */
+export function caretAfterFormat(typed: string, caret: number, formatted: string): number {
+  const typedDigits = usPhoneDigits(typed);
+  let before = usPhoneDigits(typed.slice(0, Math.max(0, caret))).length;
+  const formattedDigits = usPhoneDigits(formatted);
+  if (
+    typedDigits.length > formattedDigits.length &&
+    typedDigits.startsWith("1") &&
+    !formattedDigits.startsWith("1")
+  ) {
+    before = Math.max(0, before - 1);
+  }
+  before = Math.min(before, formattedDigits.length);
+  if (before === 0) {
+    const first = formatted.search(/\d/);
+    return first < 0 ? formatted.length : first;
+  }
+  let seen = 0;
+  for (let i = 0; i < formatted.length; i++) {
+    if (/\d/.test(formatted[i]) && ++seen === before) return i + 1;
+  }
+  return formatted.length;
+}

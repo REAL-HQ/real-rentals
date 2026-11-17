@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -123,7 +124,7 @@ function NewShopForm({ markets, onClose, onCreated }: { markets: { id: string; n
         <div className="flex items-center justify-between"><h3 className="font-semibold">Add Shop</h3><button type="button" onClick={onClose}><X className="w-4 h-4" /></button></div>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Shop name" className="w-full rounded border border-border px-3 py-2 text-sm" />
         <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" className="w-full rounded border border-border px-3 py-2 text-sm" />
-        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className="w-full rounded border border-border px-3 py-2 text-sm" />
+        <PhoneInput value={phone} onValueChange={setPhone} placeholder="Phone" className="w-full rounded border border-border px-3 py-2 text-sm" />
         <AppSelect aria-label="Market" value={marketId} onChange={(e) => setMarketId(e.target.value)} className="w-full rounded border border-border bg-white px-3 py-2 text-sm">
           <option value="">No Market</option>
           {markets.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}

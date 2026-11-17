@@ -1,12 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { SMS_CONSENT_LABEL } from "@/lib/sms-consent";
+import { CheckboxInput } from "@/components/ui/checkbox-input";
 
 /**
  * Optional, unchecked-by-default SMS opt-in. Separate from any Terms
  * acceptance; leaving it unchecked never blocks submission.
  * Disclosure text mirrors SMS_CONSENT_DISCLOSURE in src/lib/sms-consent.ts.
  *
- * The checkbox is a normal 20px box aligned with the first line of the
+ * The checkbox is a normal 18px box (CheckboxInput) aligned with the first line of the
  * label. The whole label (box + wording) is the tap target, so it stays
  * comfortable on a phone without a 44px-tall visual box.
  */
@@ -22,19 +23,18 @@ export function SmsConsentField({
   return (
     <div className={className}>
       <label className="flex items-start gap-3 cursor-pointer">
-        <input
-          type="checkbox"
+        <CheckboxInput
           name="sms_consent"
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
-          className="mt-0.5 h-5 w-5 shrink-0 accent-real-red"
+          boxClassName="mt-px"
           aria-describedby="sms-consent-disclosure"
         />
         <span className="text-sm leading-snug text-foreground">
           {SMS_CONSENT_LABEL} <span className="text-muted-foreground">(Optional)</span>
         </span>
       </label>
-      <p id="sms-consent-disclosure" className="mt-2 pl-8 text-xs leading-relaxed text-muted-foreground">
+      <p id="sms-consent-disclosure" className="mt-2 pl-[30px] text-xs leading-relaxed text-muted-foreground">
         By checking this box, you agree to receive recurring transactional SMS messages from REAL RENTALS
         at the mobile number provided. Message frequency varies. Message and data rates may apply. Reply
         STOP to opt out or HELP for help. Consent is not a condition of renting a vehicle. View our{" "}

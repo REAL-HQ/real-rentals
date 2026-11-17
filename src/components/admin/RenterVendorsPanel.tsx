@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { AppSelect } from "@/components/ui/app-select";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -66,7 +67,11 @@ export function RenterVendorsPanel() {
           </label>
           {(["name", "phone", "website", "address", "logo_url"] as const).map((k) => (
             <label key={k} className="flex flex-col gap-1 ">{k.replace("_url", "").replace("_", " ")}
-              <input className="border rounded px-2 py-1" value={(draft[k] as string) ?? ""} onChange={(e) => set(k, e.target.value)} />
+              {k === "phone" ? (
+                <PhoneInput className="border rounded px-2 py-1" value={(draft[k] as string) ?? ""} onValueChange={(v) => set(k, v)} />
+              ) : (
+                <input className="border rounded px-2 py-1" value={(draft[k] as string) ?? ""} onChange={(e) => set(k, e.target.value)} />
+              )}
             </label>
           ))}
           <label className="flex flex-col gap-1 sm:col-span-2">Notes

@@ -21,6 +21,7 @@ import { getAttribution } from "@/lib/attribution";
 import { supabase } from "@/integrations/supabase/client";
 import { resumeTargetFromApply, useResumeToken } from "@/lib/resume-token";
 import { SmsConsentField } from "@/components/site/SmsConsentField";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { PhoneLink } from "@/components/site/PhoneLink";
 import { applicantPhoneForSubmit, formatUsPhoneInput } from "@/lib/us-phone";
 import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
@@ -510,20 +511,33 @@ function In({
   return (
     <label className="block">
       <span className="text-xs tracking-wide text-muted-foreground">{label}</span>
+      {type === "tel" ? (
+        // Shared phone field: formats as typed, pasted, or autofilled; the
+        // submit still stores E.164 via applicantPhoneForSubmit(form.phone).
+        <PhoneInput
+          mode="us"
+          name={name}
+          autoComplete={autoComplete}
+          aria-invalid={e ? true : undefined}
+          value={v}
+          onValueChange={on}
+          className={`mt-1.5 w-full min-h-11 scroll-mb-28 bg-white border ${e ? "border-real-red" : "border-border"} rounded-lg px-3 text-base`}
+        />
+      ) : (
       <input
         type={type}
         name={name}
         inputMode={inputMode}
         autoComplete={autoComplete}
         autoCapitalize={autoCapitalize}
-        autoCorrect={type === "email" || type === "tel" ? "off" : undefined}
-        spellCheck={type === "email" || type === "tel" ? false : undefined}
+        autoCorrect={type === "email" ? "off" : undefined}
+        spellCheck={type === "email" ? false : undefined}
         aria-invalid={e ? true : undefined}
         value={v}
-        onChange={(ev) => on(type === "tel" ? formatUsPhoneInput(ev.target.value) : ev.target.value)}
-        onBlur={type === "tel" ? (ev) => on(formatUsPhoneInput(ev.target.value)) : undefined}
+        onChange={(ev) => on(ev.target.value)}
         className={`mt-1.5 w-full min-h-11 scroll-mb-28 bg-white border ${e ? "border-real-red" : "border-border"} rounded-lg px-3 text-base`}
       />
+      )}
       {e && <div className="mt-1 text-xs text-real-red">{e}</div>}
     </label>
   );

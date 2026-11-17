@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { enumDisplayLabel } from "@/lib/ui-display-labels";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { initialPortalTab, rememberPayIntent, wantsPay } from "@/lib/portal-pay-link";
@@ -848,7 +849,14 @@ function ProfileForm({ profile, onSaved }: { profile: any; onSaved: () => void }
       </p>
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
         {field("full_name", "Full name")}
-        {field("phone", "Phone", "tel")}
+        <div>
+          <div className="text-[10px] tracking-wider text-muted-foreground font-semibold">Phone</div>
+          <PhoneInput
+            value={f.phone}
+            onValueChange={(phone) => setF((p) => ({ ...p, phone }))}
+            className="mt-1.5 w-full rounded-lg border border-border px-3 py-2 text-sm"
+          />
+        </div>
         {/* Read-only. The address is the account identity and the one every
             agreement, receipt and password reset goes to, so it changes through
             the request box below rather than in place. */}

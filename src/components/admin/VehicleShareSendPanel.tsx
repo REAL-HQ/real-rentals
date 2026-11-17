@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { useEffect, useRef, useState } from "react";
 import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
@@ -149,7 +150,11 @@ export function VehicleShareSendPanel({ vehicleId }: { vehicleId: string }) {
         </div>
         <div>
           <label className="mb-1.5 block text-xs font-medium" htmlFor="vehicle-share-recipient">Recipient {channel === "email" ? "Email" : "Mobile Phone"}</label>
-          <input id="vehicle-share-recipient" type={channel === "email" ? "email" : "tel"} value={channel === "email" ? email : phone} onChange={(event) => channel === "email" ? setEmail(event.target.value) : setPhone(event.target.value)} placeholder={channel === "email" ? "name@example.com" : "(555) 555-5555"} className={input} />
+          {channel === "email" ? (
+            <input id="vehicle-share-recipient" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" className={input} />
+          ) : (
+            <PhoneInput id="vehicle-share-recipient" value={phone} onValueChange={setPhone} placeholder="(555) 555-5555" className={input} />
+          )}
         </div>
       </section>
       {channel === "sms" && (options?.smsSenders?.length ?? 0) > 1 && (

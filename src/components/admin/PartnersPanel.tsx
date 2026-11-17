@@ -1,3 +1,4 @@
+import { PhoneInput } from "@/components/ui/phone-input";
 import { enumDisplayLabel } from "@/lib/ui-display-labels";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -164,7 +165,7 @@ function AddPartner({ onClose, onSave }: { onClose: () => void; onSave: (p: Part
         <div className="space-y-3 text-sm">
           <input placeholder="Name" value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-soft rounded-md px-3 py-2" />
           <input placeholder="Email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full bg-soft rounded-md px-3 py-2" />
-          <input placeholder="Phone" value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full bg-soft rounded-md px-3 py-2" />
+          <PhoneInput placeholder="Phone" value={form.phone || ""} onValueChange={(phone) => setForm({ ...form, phone })} className="w-full bg-soft rounded-md px-3 py-2" />
           <Select value={form.partner_type} onValueChange={(v) => setForm({ ...form, partner_type: v })}>
             <SelectTrigger className="bg-white text-foreground"><SelectValue /></SelectTrigger>
             <SelectContent>{PARTNER_TYPES.map(s => <SelectItem key={s} value={s}>{enumDisplayLabel(s)}</SelectItem>)}</SelectContent>
