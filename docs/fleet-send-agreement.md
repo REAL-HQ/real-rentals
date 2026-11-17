@@ -89,3 +89,22 @@ stored or sent:
 
 Anything else is refused (`409`, or `400` for the time) and nothing is sent:
 ask again, or hand it to staff. A call confirmation works as before.
+
+## Confirmed by staff (Move Forward, Nov 17 2026)
+
+FLEET no longer calls approved applicants. Rosa or another manager calls,
+goes over the terms, and clicks **Move Forward** on the profile's Terms
+Confirmed row. The site stores the click (`staff_terms_confirmations`) and
+sends FLEET the `applicant_ready_for_agreement` webhook. FLEET then sends:
+
+```json
+{ "lead_id": "…", "terms_confirmation": { "channel": "staff", "staff_event_id": "<event_id from the webhook>" } }
+```
+
+- The event must exist, belong to `lead_id`, and be at most 7 days old.
+- Its stored terms are the confirmed terms. Leave the terms out, or send the
+  same ones; different values are refused (409).
+- They must match what the agreement would print, like any other channel.
+- No `idempotency_key` needed: the event id is the key (`staff:<event_id>`).
+- The contact belongs to the staff member, so FLEET does not stamp
+  contacted_at; the agreement step is still recorded as sent by FLEET.

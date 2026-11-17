@@ -154,8 +154,8 @@ export async function runLatePickups(admin: Admin, deps: LatePickupDeps = {}): P
     });
     await teamAlert(admin, {
       kind: "late_pickup", dedupeKey: r.id,
-      title: `Pickup Released: ${app?.full_name ?? "renter"} was ${LATE_MINUTES}+ minutes late (${timeLabel(d.pickupTime)} ET)`,
-      lines: [`The reservation was released and the car is back to Available.${feeKept ? ` The $${feeKept} Reservation Fee was kept.` : ""}`, "To rebook, reserve again from Bookings (a new Reservation Fee applies)."],
+      title: `PICKUP RELEASED: ${String(app?.full_name ?? "").trim() || "Renter"} - Rebook If Needed`,
+      lines: [`${LATE_MINUTES}+ minutes late for the ${timeLabel(d.pickupTime)} ET pickup.`, `The reservation was released and the car is back to Available.${feeKept ? ` The $${feeKept} Reservation Fee was kept.` : ""}`, "To rebook, reserve again from Bookings (a new Reservation Fee applies)."],
       link: `${site}/admin?tab=bookings`, rentalId: r.id, vehicleId: r.vehicle_id ?? null,
     });
 

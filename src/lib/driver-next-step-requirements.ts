@@ -4,6 +4,8 @@ import { NEXT_STEP_REQUIREMENT_KEYS, type ActivationRequirement } from "./activa
 export function driverNextStepRequirements(
   requirements: readonly ActivationRequirement[],
   reservationPaymentStatus: string | null | undefined,
+  /** The Terms Confirmed row (staff-terms.ts termsConfirmedRequirement). Omitted = not shown. */
+  termsConfirmed?: ActivationRequirement | null,
 ): ActivationRequirement[] {
   const reservationPayment: ActivationRequirement = {
     key: "reservation_paid",
@@ -19,6 +21,7 @@ export function driverNextStepRequirements(
   };
   return NEXT_STEP_REQUIREMENT_KEYS.flatMap((key) => {
     if (key === "reservation_paid") return [reservationPayment];
+    if (key === "terms_confirmed") return termsConfirmed ? [termsConfirmed] : [];
     const requirement = requirements.find((item) => item.key === key);
     if (!requirement) return [];
     return [{

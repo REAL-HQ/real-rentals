@@ -247,7 +247,8 @@ describe("late pickup release", () => {
     expect(x.sms[0].body).toBe("Real Rentals: We held your car until 30 minutes after your 10:00 AM ET pickup, and it has now been released. Your $50 Reservation Fee is non-refundable for a missed pickup. To rebook, reply here or call (888) 833-8280. Reply STOP to opt out.");
     await lp.runLatePickups(db, { ...x, gate: "send", now: at("2026-11-20T15:36:00Z") });
     expect(x.sms.length).toBe(1);
-    expect(x.alerts[0].title).toMatch(/was 30\+ minutes late \(10:00 AM ET\)/);
+    expect(x.alerts[0].title).toMatch(/^PICKUP RELEASED: .+ - Rebook If Needed$/);
+    expect(x.alerts[0].lines.join(" ")).toMatch(/30\+ minutes late for the 10:00 AM ET pickup/);
     expect(lp.latePickupEmail({ firstName: "T", time: "10:00", feeKept: 50 }).html).toMatch(/until 30 minutes after your 10:00 AM ET pickup/);
   });
   test("the rep started the pickup checklist: never released", async () => {

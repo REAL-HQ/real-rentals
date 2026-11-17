@@ -94,6 +94,9 @@ import {
   screeningRequirementsComplete,
 } from "@/lib/activation-readiness";
 import { ActivationRequirementList } from "./ActivationRequirementList";
+import { TermsConfirmedControl } from "./TermsConfirmedControl";
+import { confirmStaffTermsMoveForward, getStaffTermsState } from "@/lib/staff-terms.functions";
+import { moveForwardEnabled, termsConfirmedRequirement, type StaffTermsState } from "@/lib/staff-terms";
 import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
 import { ChecklistInspectionFiles } from "./ChecklistInspectionFiles";
 import { checklistDocumentCategories } from "./checklist-actions";
@@ -2043,6 +2046,11 @@ function DriverDetail({
   const [rentalTabReadiness, setRentalTabReadiness] = useState<ActivationReadiness | null>(null);
   const [rentalTabReadinessLoading, setRentalTabReadinessLoading] = useState(false);
   const [rentalTabReadinessFailed, setRentalTabReadinessFailed] = useState(false);
+  // Terms Confirmed row (Move Forward). Manager+ only, like the rest of the checklist.
+  const loadStaffTerms = useServerFn(getStaffTermsState);
+  const moveForwardFn = useServerFn(confirmStaffTermsMoveForward);
+  const [staffTerms, setStaffTerms] = useState<StaffTermsState | null>(null);
+  const [staffTermsNonce, setStaffTermsNonce] = useState(0);
   const [readinessNonce, setReadinessNonce] = useState(0);
   // Saved check-offs only (checklist_evidence_events) — never local checkmarks.
   const loadEvidence = useServerFn(getChecklistEvidence);
@@ -2249,7 +2257,36 @@ function DriverDetail({
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
   }, [refreshVault, refreshEvidenceEvents]);
+  const agreementSignedForTerms = rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true;
+  useEffect(() => {
+    if (!isManager || !approved || rentalActive) { setStaffTerms(null); return; }
+    let cancelled = false;
+    loadStaffTerms({ data: { applicationId: driver.id } })
+      .then((r) => { if (!cancelled) setStaffTerms(r as StaffTermsState); })
+      .catch(() => { if (!cancelled) setStaffTerms(null); });
+    return () => { cancelled = true; };
+  }, [driver.id, isManager, approved, rentalActive, loadStaffTerms, staffTermsNonce, readinessNonce]);
+  const termsConfirmedRow = isManager && approved && !rentalActive
+    ? termsConfirmedRequirement(staffTerms, { approved, agreementSigned: agreementSignedForTerms })
+    : null;
+  const termsVehicles = useMemo(() => vehicles.map((v: any) => ({ id: String(v.id), label: [v.year, v.make, v.model].filter(Boolean).join(" ") + (v.plate ? ` · ${v.plate}` : "") || "Vehicle" })), [vehicles]);
   function renderChecklistEvidence(key: ActivationRequirementKey) {
+    if (key === "terms_confirmed") {
+      if (!isManager) return null;
+      return (
+        <TermsConfirmedControl
+          state={staffTerms}
+          vehicles={termsVehicles}
+          enabled={moveForwardEnabled({ approved: dStatus === "approved", isManager, agreementSigned: agreementSignedForTerms }) && staffTerms?.ready !== false}
+          disabledReason={staffTerms?.ready === false ? "Move Forward Is Not Set Up Yet" : "Approve The Application First"}
+          onSubmit={async ({ terms, retry }) => {
+            const r = await moveForwardFn({ data: { applicationId: driver.id, terms, retry } });
+            setStaffTermsNonce((n) => n + 1);
+            return r.ok ? { ok: true, delivery: r.delivery } : { ok: false, error: r.error };
+          }}
+        />
+      );
+    }
     if (!isManager || vaultLoading || key === "insurance_document") return null;
     if (key === "inspection") return <ChecklistInspectionFiles applicationId={driver.id} vehicleId={driver.vehicle_id ?? null} documents={vaultDocs} onUploaded={refreshEvidence} />;
     const categories = checklistDocumentCategories(key);
@@ -2840,6 +2877,7 @@ function DriverDetail({
                   renderEvidence={renderChecklistEvidence}
                   evidence={evidencePresentation}
                   reservationPaymentStatus={reservationDepositStatus}
+                  termsConfirmed={termsConfirmedRow}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onReserve={() => runTarget({ kind: "reserve" })}
@@ -3023,6 +3061,7 @@ function DriverDetail({
                   readiness={rentalTabReadiness}
                   renderEvidence={renderChecklistEvidence}
                   evidence={evidencePresentation}
+                  termsConfirmed={termsConfirmedRow}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onReserve={() => runTarget({ kind: "reserve" })}

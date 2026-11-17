@@ -65,7 +65,7 @@ export async function handleGpsReadings(request: Request, deps: GpsDeps = {}): P
       sent.push(await sendTeamAlert(admin, {
         kind: "gps",
         dedupeKey: `${car.id}:${x.rule}:${etDay(now)}`,
-        title: x.rule === "outside_area" ? `GPS: Outside Service Area — ${car.unit_number ?? car.license_plate ?? "car"}` : x.rule === "offline" ? `GPS: Tracker Offline — ${car.unit_number ?? car.license_plate ?? "car"}` : `GPS: No Movement 48 Hours — ${car.unit_number ?? car.license_plate ?? "car"}`,
+        title: `${x.rule === "outside_area" ? "GPS OUTSIDE AREA" : x.rule === "offline" ? "GPS OFFLINE" : "GPS NO MOVEMENT 48H"}: ${car.unit_number ?? car.license_plate ?? "Car"} - Check Tracker`,
         lines: [x.message, "From the latest tracker check. Look at the tracker map before acting; nothing was done to the car."],
         link: `${SITE()}/admin?tab=vehicles&id=${encodeURIComponent(car.id)}`,
         vehicleId: car.id,
