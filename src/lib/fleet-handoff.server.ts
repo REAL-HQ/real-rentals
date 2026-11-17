@@ -14,21 +14,23 @@
  * FLEET action that messages the renter (resend-link) refuses. Only staff clear
  * it (Drivers → the red banner → Mark Handled). FLEET cannot clear a handoff.
  *
- * Optional staff text: app_settings "fleet_handoff" { "alert_sms": true } texts
- * the pickup alert line(s) from the Pickup Schedule defaults. Injuries and
- * accidents alert at any hour; everything else 8 AM–9 PM ET only (otherwise the
- * flag waits for the morning). OFF by default. The text names the person and
- * the reason with an admin link; never a renter phone number.
+ * Optional staff text: app_settings "fleet_handoff" { "alert_sms": true }.
+ * During Rosa's hours the text goes to the other company Quo line (the one
+ * the renter is not already on). Outside her hours it goes to the Pickup
+ * Schedule field-rep numbers, as before. Injuries and accidents always
+ * include the field rep, at any hour; everything else 8 AM–9 PM ET only
+ * (otherwise the flag waits for the morning). OFF by default. The text names
+ * the person and the reason with an admin link; never a renter phone number.
+ * Pass line_id (PN… or E.164) so the other line can be chosen.
  */
 import { cleanText, fleetAdmin, fleetAudit, fleetJson, fleetRequestBody, idempotencyKey, tableMissing, UUID_RE, type FleetDeps } from "@/lib/fleet-api.server";
-import { withinTextingHours } from "@/lib/failed-payment-link";
+import { planStaffHandoffSms, publicCoverage } from "@/lib/staff-coverage.server";
 
 type Admin = any;
 export const HANDOFF_REASONS = ["complaint", "injury", "accident", "payment_dispute", "legal", "staff_handling", "other"] as const;
 export type HandoffReason = (typeof HANDOFF_REASONS)[number];
 export const HANDOFF_PREFIX = "handoff:";
 export const FLEET_HANDOFF_SETTINGS_KEY = "fleet_handoff";
-const URGENT: readonly HandoffReason[] = ["injury", "accident"];
 const LABEL: Record<HandoffReason, string> = {
   complaint: "Complaint",
   injury: "Injury",
@@ -42,7 +44,7 @@ const SITE = () => String(process.env.SITE_URL || "https://drivereal.com").repla
 const adminUrl = (id: string) => `${SITE()}/admin?tab=drivers&id=${encodeURIComponent(id)}`;
 
 export type HandoffDeps = FleetDeps & {
-  sendSms?: (a: { to: string; body: string; kind: string; requireConsent: false; applicationId: string }) => Promise<{ ok?: boolean } | unknown>;
+  sendSms?: (a: { to: string; body: string; kind: string; requireConsent: false; applicationId: string; fromId?: string | null }) => Promise<{ ok?: boolean } | unknown>;
   alertNumbers?: () => Promise<string[]>;
 };
 
@@ -81,11 +83,6 @@ async function resolveLead(admin: Admin, body: Record<string, any>): Promise<{ l
 async function alertSettingOn(admin: Admin): Promise<boolean> {
   const { data, error } = await admin.from("app_settings").select("value").eq("key", FLEET_HANDOFF_SETTINGS_KEY).maybeSingle();
   return !error && !!data?.value && (data.value as any).alert_sms === true;
-}
-
-async function defaultAlertNumbers(): Promise<string[]> {
-  const { DEFAULT_PICKUP_SCHEDULE } = await import("@/lib/pickup-schedule");
-  return [...DEFAULT_PICKUP_SCHEDULE.notify.sms];
 }
 
 export function handoffAlertText(a: { name: string | null; reason: HandoffReason; leadId: string }): string {
@@ -167,23 +164,28 @@ export async function handleFleetHandoff(request: Request, deps: HandoffDeps = {
   });
 
   let alert: "sent" | "off" | "quiet_hours" | "failed" | "not_new" = "off";
+  let coverage = null;
+  const activeLine = body.line_id ?? body.from_phone_number_id ?? body.phone_number_id ?? null;
   if (!created) alert = "not_new";
   else if (await alertSettingOn(admin)) {
-    if (!URGENT.includes(reason) && !withinTextingHours(now)) alert = "quiet_hours";
+    const app = await admin.from("applications").select("full_name").eq("id", who.leadId).maybeSingle();
+    const text = handoffAlertText({ name: app.data?.full_name ?? null, reason, leadId: who.leadId });
+    const fieldRepNumbers = deps.alertNumbers ? await deps.alertNumbers() : undefined;
+    const plan = await planStaffHandoffSms({ admin, now, reason, activeLine, fieldRepNumbers });
+    coverage = publicCoverage(plan.coverage, plan);
+    if (plan.quietHours) alert = "quiet_hours";
+    else if (!plan.targets.length) alert = "failed";
     else {
-      const app = await admin.from("applications").select("full_name").eq("id", who.leadId).maybeSingle();
-      const text = handoffAlertText({ name: app.data?.full_name ?? null, reason, leadId: who.leadId });
-      const numbers = await (deps.alertNumbers ?? defaultAlertNumbers)();
       const send = deps.sendSms ?? (async (a: any) => (await import("@/lib/sms.server")).sendSms(a));
       let okAny = false;
-      for (const to of numbers) {
+      for (const t of plan.targets) {
         try {
-          const r: any = await send({ to, body: text, kind: "fleet_handoff_staff", requireConsent: false, applicationId: who.leadId });
+          const r: any = await send({ to: t.to, body: text, kind: "fleet_handoff_staff", requireConsent: false, applicationId: who.leadId, fromId: t.fromId });
           if (r?.ok) okAny = true;
         } catch { /* reported below */ }
       }
       alert = okAny ? "sent" : "failed";
     }
   }
-  return fleetJson(created ? 201 : 200, { ok: true, lead_id: who.leadId, decision_id: decisionId, bots_paused: true, added_to_open_flag: !created, staff_alert: alert });
+  return fleetJson(created ? 201 : 200, { ok: true, lead_id: who.leadId, decision_id: decisionId, bots_paused: true, added_to_open_flag: !created, staff_alert: alert, staff_coverage: coverage });
 }

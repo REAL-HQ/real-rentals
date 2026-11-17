@@ -424,6 +424,20 @@ describe("Quo webhook", () => {
     expect(seen.map((x) => [x.body, x.to])).toEqual([["hi 888", "+18888338280"], ["hi 813", "+18132124174"]]);
   });
 
+  test("a text from one company line to the other is not treated as a renter inbound", async () => {
+    setEnv({ QUO_WEBHOOK_KEY: SECRET });
+    const { handleQuoWebhook } = await import("@/lib/quo-webhook.server");
+    const processInbound = async () => { throw new Error("must not run"); };
+    const ev = {
+      type: "message.received",
+      data: {
+        resource: { id: "ACinternal", direction: "incoming", text: "staff alert", status: "received" },
+        context: { phoneNumberId: "PNcX8a0PLJ", senderIdentifier: "+18888338280", recipientIdentifiers: ["+18132124174"] },
+      },
+    };
+    expect((await handleQuoWebhook(await signed(ev), { admin: db, processInbound })).status).toBe(200);
+  });
+
   test("events for any other Quo number (or none) are ignored", async () => {
     setEnv({ QUO_WEBHOOK_KEY: SECRET });
     const { handleQuoWebhook } = await import("@/lib/quo-webhook.server");

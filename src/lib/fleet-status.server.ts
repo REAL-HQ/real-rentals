@@ -17,6 +17,7 @@ import { cleanText, fleetAdmin, fleetJson, fleetRequestBody, tableMissing, UUID_
 import { fleetContactsFor, lookupLeadByContact } from "@/lib/driver-contacts.server";
 import { missingItems, type MissingItemKey } from "@/lib/missing-items";
 import { readReservationDetails } from "@/lib/reservations";
+import { loadStaffCoverage, planStaffHandoffSms, publicCoverage } from "@/lib/staff-coverage.server";
 
 type Admin = any;
 const SITE = () => String(process.env.SITE_URL || "https://drivereal.com").replace(/\/$/, "");
@@ -358,6 +359,15 @@ export async function fleetDigest(admin: Admin, now: Date) {
     },
     webhooks_24h: { delivered: whCount("delivered"), pending: whCount("pending"), failed: whCount("failed"), skipped: whCount("skipped") },
     staff_actions: staffActions,
+    staff_coverage: await (async () => {
+      try {
+        const loaded = await loadStaffCoverage(admin);
+        const plan = await planStaffHandoffSms({ admin, now, coverage: loaded, ignoreQuietHours: true });
+        return publicCoverage(plan.coverage, plan);
+      } catch {
+        return null;
+      }
+    })(),
   };
 }
 

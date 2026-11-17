@@ -2,12 +2,13 @@
  * Team alerts to a person (Dolmar, t299s1618). Client-safe constants and the
  * one switch format. Sending lives in team-alerts.server.ts.
  *
- * A team alert is one email to the team inbox plus one text to the field rep.
- * The field rep number is a constant: alert code never takes a phone number
- * from a renter, an applicant, a request body or a setting.
+ * A team alert is one email to the team inbox plus a staff text. bot_handoff
+ * texts follow staff coverage (docs/staff-coverage.md). Other kinds text the
+ * field-rep numbers from the Pickup Schedule settings. Alert code never takes
+ * a phone number from a renter, an applicant or a request body.
  */
 
-/** The only number a team alert text may go to (field rep). */
+/** Historical field-rep number (kept for existing docs/tests). New sends read Pickup Schedule settings. */
 export const FIELD_REP_ALERT_NUMBER = "+18134768508";
 export const TEAM_ALERT_EMAIL = "team@drivereal.com";
 export const TEAM_ALERTS_SETTINGS_KEY = "team_alerts";

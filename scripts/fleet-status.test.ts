@@ -140,7 +140,11 @@ describe("endpoint", () => {
     expect(digest.queues.pickups_next_2_days.pickups).toEqual([{ lead_id: L2, name: "Test 2222", date: "2026-11-17", time: "10:30", rental_id: "r-res" }]);
     expect(digest.staff_actions.map((a: any) => a.kind)).toContain("insurance_verification");
     expect(JSON.stringify(digest)).not.toMatch(/"phone"/);
-    expect(JSON.stringify(db.state)).toBe(before); // read-only
+    expect(digest.staff_coverage).toMatchObject({ on_duty: { staffKey: "dolmar" }, reach_via: "field_rep_sms", may_call_applicant: true });
+    const after = JSON.parse(JSON.stringify(db.state));
+    delete after.staff_schedules;
+    delete after.staff_schedule_exceptions;
+    expect(after).toEqual(JSON.parse(before)); // read-only, aside from lazily seeing the coverage tables
   });
   test("lead: journey + next step", async () => {
     const res = await s.handleFleetStatus(req({ action: "lead", lead_id: L2 }), { admin: seed(), env, now: () => NOW });

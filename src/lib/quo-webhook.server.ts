@@ -1,7 +1,7 @@
 // Quo webhook handler (see routes/api/public/sms/quo.ts). Split out so tests
 // can drive it with a fake database and a signed request.
 import { verifyQuoWebhook } from "@/lib/quo.server";
-import { quoInboundLineFor, recordQuoEvent, type QuoLine } from "@/lib/quo-events.server";
+import { quoInboundLineFor, quoInboundLines, recordQuoEvent, type QuoLine } from "@/lib/quo-events.server";
 import { toE164 } from "@/lib/sms.server";
 
 type Deps = {
@@ -76,6 +76,9 @@ export async function handleQuoWebhook(request: Request, deps: Deps = {}): Promi
   if (type === "message.received") {
     const from = toE164(context.senderIdentifier);
     if (!from) return ok();
+    // A handoff text from one company line to the other must not be treated
+    // as a renter inbound (no opt-out, no lead match, no FLEET forward).
+    if (quoInboundLines().some((l) => l.e164 === from)) return ok();
     // Quo retries until it sees a 2xx: process each message once.
     if (messageId) {
       const { data: seen } = await admin

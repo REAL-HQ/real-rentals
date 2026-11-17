@@ -89,9 +89,19 @@ describe("handoff", () => {
     const lead = await st.leadStatus(db, L1, DAY);
     expect(lead!.next).toMatchObject({ step: "staff_handling", owner: "staff" });
   });
-  test("no phone literal in the handoff code; alert line comes from the Pickup Schedule defaults", () => {
+  test("no phone literal in the handoff code; routing comes from staff coverage", () => {
     const src = readFileSync("src/lib/fleet-handoff.server.ts", "utf8");
     expect(src).not.toMatch(/\+1\d{10}/);
-    expect(src).toContain("DEFAULT_PICKUP_SCHEDULE.notify.sms");
+    expect(src).toContain("planStaffHandoffSms");
+  });
+
+  test("during Rosa's hours the staff text goes to the other company line", async () => {
+    const rosaHours = new Date("2026-01-05T19:00:00Z"); // Mon 2:00 PM EST
+    const day = await run(seed(true), { action: "handoff", lead_id: L1, reason: "complaint", note: "Unhappy with the car.", line_id: "PNrZULvFMn" }, rosaHours);
+    expect(day.json.staff_alert).toBe("sent");
+    expect(day.sent[0]).toMatchObject({ to: "+18132124174", fromId: "PNrZULvFMn", requireConsent: false, kind: "fleet_handoff_staff" });
+    expect(day.json.staff_coverage.on_duty.staffKey).toBe("rosa");
+    expect(day.json.staff_coverage.to_line_id).toBe("PNcX8a0PLJ");
+    expect(JSON.stringify(day.json)).not.toMatch(/8135550101/);
   });
 });
