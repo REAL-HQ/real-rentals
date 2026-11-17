@@ -80,5 +80,25 @@ async function handle(request: Request): Promise<Response> {
   } catch (err) {
     console.error("[rental-amendment] sweep failed", err);
   }
-  return Response.json({ ok: true, ...result, heldNotices, missingItems, missingItemsAutoClose, rateAmendments });
+  // Applicant texts that failed only because Quo was out of credits, sent
+  // again once credit is back (9 AM-8 PM ET, at most 3 tries in 24 hours).
+  let creditRetry: unknown = null;
+  try {
+    const { retryCreditFailedSms } = await import("@/lib/sms-credit-retry.server");
+    creditRetry = await retryCreditFailedSms(supabaseAdmin);
+  } catch (err) {
+    console.error("[sms-credit-retry] failed", err);
+  }
+  // License photos read automatically: DOB, license number/state and expiry
+  // fill in on the application (never over a value staff entered). Two per
+  // run; Photo Reading's switch and daily limit apply.
+  let licenseAutoRead: unknown = null;
+  try {
+    const { autoReadLicenses } = await import("@/lib/license-auto-read.server");
+    const r = await autoReadLicenses(supabaseAdmin, { limit: 2 });
+    licenseAutoRead = r.held ? { held: r.held } : { candidates: r.candidates, read: r.read };
+  } catch (err) {
+    console.error("[license-auto-read] failed", err);
+  }
+  return Response.json({ ok: true, ...result, heldNotices, missingItems, missingItemsAutoClose, rateAmendments, creditRetry, licenseAutoRead });
 }
