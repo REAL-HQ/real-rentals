@@ -101,6 +101,9 @@ describe("v1.14 is the agreement new sends use", () => {
     expect(p.body).toContain("There is no security deposit.");
     expect(p.body).not.toMatch(/reservation deposit/i);
     expect(p.body).toContain("The Reservation Fee is not a security deposit.");
+    expect(p.body).toContain("We refund it in full if: (a) we cannot set up the Renter Policy for you");
+    expect(p.body).toContain("It is not refunded if you do not show for your scheduled pickup, change your mind, miss pickup without notice, or provided information that was false or did not match.");
+    expect(p.body).not.toContain("Non-refundable once we set up the Renter Policy");
     for (const s of ["Jordan Q Sample", "jordan.sample@example.com", "S123-456-78-900-0", "2021 Toyota Camry LE", "4T1C11AK5MU123456", "SMP123 / FL", "100 Sample St, Tampa, FL, 33602", "$375.00 weekly", "Card Autopay", "Declined", "None Authorized", "Saved when you pay the Reservation Fee right after signing"]) expect(p.body).toContain(s);
     // The signing charge fires for this agreement.
     expect(signedReservationFee({ body: p.body, merge_data: p.data as any })).toBe(50);

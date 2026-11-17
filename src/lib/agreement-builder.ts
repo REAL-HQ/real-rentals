@@ -178,7 +178,7 @@ This Vehicle Rental Agreement ("Agreement") is between {{company_name}} d/b/a RE
 **Early Return.** [[early_return_rule]]
 
 ## 2. Reservation Fee, Payment & Card on File
-**Reservation Fee.** If a Reservation Fee is marked as required in the Rental & Vehicle Information above, it is due when your pickup or delivery is scheduled and is applied in full to your first week's rate. It is non-refundable if you do not show for your scheduled pickup or delivery, or cancel less than [[reservation_cancel_hours]] hours before it. It is fully refunded if you cancel [[reservation_cancel_hours]] hours or more before your scheduled pickup or delivery, or if we cancel or cannot provide a vehicle. The Reservation Fee is not a security deposit. If it is marked as not required, this paragraph does not apply to your rental.
+**Reservation Fee.** If a Reservation Fee is marked as required in the Rental & Vehicle Information above, it is due when your pickup or delivery is scheduled and is applied in full to your first week's rate. We refund it in full if: (a) we cannot set up the Renter Policy for you; (b) we cannot provide the vehicle, or a similar one, within one to two days of your start date; (c) the vehicle fails its pickup inspection and we cannot swap it; (d) we change the weekly rate, start date, or vehicle that was confirmed, and you decline the change; (e) a check we run after you pay (including a background check or income review) means we cannot rent to you; or (f) the fee was charged in error or more than once. It is not refunded if you do not show for your scheduled pickup or delivery, change your mind, miss pickup without notice, or provided information that was false or did not match. The Reservation Fee is not a security deposit. If it is marked as not required, this paragraph does not apply to your rental.
 **Weekly Payment.** The weekly rate is due in advance. You keep a valid payment card on file, and you authorize us to charge it for the weekly rate and any other amount you owe under this Agreement, including anything in the Fee Schedule, plus a reasonable processing fee. [[deposit_clause]] If a charge is declined, you authorize us to run it again, and you remain responsible for the balance.
 **No Refunds.** A weekly rate, once charged, is not refunded. After the minimum term, no future weeks will be charged once you return the vehicle in acceptable condition and give the notice in Section 1.
 
@@ -229,7 +229,7 @@ You must be at least [[min_age_economy]] to rent an economy vehicle and at least
 These are the charges that may apply. We'll always charge the actual amount owed and send a receipt.
 |#45 Item | Amount
 | Weekly rate | As listed above, due in advance each week
-| Reservation Fee (if marked required) | Amount shown above, applied to first week; non-refundable on no-show or cancellation under [[reservation_cancel_hours]] hours
+| Reservation Fee (if marked required) | Amount shown above, applied to first week; refunded in full if we cannot set up the Renter Policy, cannot provide a vehicle, fail pickup inspection without a swap, change confirmed terms you decline, deny you after a check we run after you pay, or charged the fee in error; not refunded on a no-show, a change of mind, a missed pickup without notice, or false or mismatched information
 | Early return (before [[min_term_weeks]]-week minimum) | Remaining weeks of minimum term, charged weekly; credited for any week the vehicle is re-rented
 | Late payment | [[fee_late_payment]]
 | Declined / returned payment | [[fee_returned_payment]]
@@ -257,7 +257,7 @@ These are the charges that may apply. We'll always charge the actual amount owed
 |#14 Initial | Renter Acknowledgment
 |i I have received and read this entire Agreement, including the Fee Schedule.
 |i My rental has a [[min_term_weeks]]-week minimum term. If I return the vehicle early, I owe the remaining weeks of the minimum term, less credit for any week the vehicle is re-rented.
-|i If a Reservation Fee is marked as required, it is applied to my first week and is non-refundable if I don't show or cancel less than [[reservation_cancel_hours]] hours before pickup or delivery. (Initial even if not required.)
+|i If a Reservation Fee is marked as required, it is applied to my first week and is refunded in full only in the cases listed in Section 2 (including if we cannot set up the Renter Policy or cannot provide a vehicle). It is not refunded if I don't show, change my mind, miss pickup without notice, or provided information that was false or did not match. (Initial even if not required.)
 |i REAL RENTALS does not require me to carry insurance and does not provide insurance that covers me while I have the vehicle.
 |i Whether or not I carry insurance, I am personally responsible for everything that happens with the vehicle during my rental, including injuries, property damage, and claims by others, and I will defend and indemnify REAL RENTALS against those claims.
 |i I'm responsible for physical damage to or loss of the vehicle regardless of fault, including any deductible and Loss of Use, even if insurance doesn't pay.

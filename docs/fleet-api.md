@@ -27,6 +27,7 @@ Base: `https://drivereal.com/api/public/fleet/`
 | `handoff` | hand a person to staff (complaint, injury, payment dispute, ...); bots pause | [fleet-handoff.md](fleet-handoff.md) |
 | `missing-items` | preview / run the one-time missing-items message | [missing-items-outreach.md](missing-items-outreach.md) |
 | `payment-text-pause` | pause rent texts for an approved payment deal; status; cancel | [fleet-payment-text-pause.md](fleet-payment-text-pause.md) |
+| `refund-reservation` | refund a paid Reservation Fee for one of the six refundable reasons (idempotent; one per fee) | [reservation-fee-refunds.md](reservation-fee-refunds.md) |
 
 Events the site sends FLEET (signed webhooks): [fleet-webhooks.md](fleet-webhooks.md).
 
@@ -34,9 +35,12 @@ Events the site sends FLEET (signed webhooks): [fleet-webhooks.md](fleet-webhook
 
 - Decline, close or reopen an application; clear a Needs Staff flag or a handoff.
 - Run or record a background check or MVR; verify insurance; verify a license.
-- Charge, refund or waive anything; change a rate directly. (A new rate for an
-  active rental goes only through `amend-agreement`: it is pending until the
-  renter signs the updated agreement, and Stripe is never changed by FLEET.)
+- Charge or waive anything, or refund anything except a paid Reservation Fee
+  through `refund-reservation` (six refundable reasons only; one refund per
+  fee). Change a rate directly. (A new rate for an active rental goes only
+  through `amend-agreement`: it is pending until the renter signs the updated
+  agreement, and Stripe is never changed by FLEET except for that Reservation
+  Fee refund.)
 - Propose a weekly rate outside $200–$1,000 (staff only).
 - Complete the pickup checklist, activate a rental, record a return, end a rental.
 - File a signed agreement or a rental application (eSign and staff only), or

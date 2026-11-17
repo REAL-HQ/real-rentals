@@ -114,6 +114,7 @@ import {
   InterviewTab,
   useDriverScreening,
 } from "./DriverScreening";
+import { RenterPolicyStatusCard } from "./RenterPolicyStatusCard";
 import {
   Select,
   SelectContent,
@@ -2082,7 +2083,7 @@ function DriverDetail({
       .then(([open, settings]) => {
         if (cancelled) return;
         setHasReservation(!!open.reservation);
-        setReservationDepositStatus(open.reservation?.depositStatus ?? null);
+        setReservationDepositStatus(open.feeDisplayStatus ?? open.reservation?.depositStatus ?? null);
         setBlockStartWhenPending(settings.blockStartWhenPending === true);
       })
       .catch(() => {
@@ -2939,6 +2940,9 @@ function DriverDetail({
                     readinessChanged();
                   }}
                 />
+                <div className="mt-4">
+                  <RenterPolicyStatusCard applicationId={driver.id} canDecide={isManager} />
+                </div>
                 </div>
                 <IdentityReviewCard applicationId={driver.id} />
                 <AISnapshotCard driver={driver} />

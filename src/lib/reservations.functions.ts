@@ -531,10 +531,12 @@ export const recordReservationFee = createServerFn({ method: "POST" })
 export const getOpenReservationForApplication = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: UUID }).parse(d))
-  .handler(async ({ context, data }): Promise<{ reservation: ReservationRow | null; settings: ReservationDepositSettings }> => {
+  .handler(async ({ context, data }): Promise<{ reservation: ReservationRow | null; settings: ReservationDepositSettings; feeDisplayStatus: string | null }> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const settings = await loadDepositSettings(supabaseAdmin);
+    const { reservationFeeStatusForApplication } = await import("@/lib/reservation-fee-refund.server");
+    const fee = await reservationFeeStatusForApplication(supabaseAdmin as any, data.applicationId).catch(() => ({ status: null as string | null }));
     const { data: row, error } = await supabaseAdmin
       .from("rentals")
       .select(
@@ -544,16 +546,16 @@ export const getOpenReservationForApplication = createServerFn({ method: "POST" 
       .eq("status", RESERVATION_STATUS)
       .maybeSingle();
     if (error) {
-      if (/reservation_/i.test(error.message)) return { reservation: null, settings };
+      if (/reservation_/i.test(error.message)) return { reservation: null, settings, feeDisplayStatus: fee.status };
       throw new Error(error.message);
     }
-    if (!row) return { reservation: null, settings };
+    if (!row) return { reservation: null, settings, feeDisplayStatus: fee.status };
     const resRow = row as any;
     const [app, veh] = await Promise.all([
       supabaseAdmin.from("applications").select("id,full_name,email").eq("id", data.applicationId).maybeSingle(),
       supabaseAdmin.from("vehicles").select("id,unit_number,year,make,model").eq("id", resRow.vehicle_id).maybeSingle(),
     ]);
-    return { reservation: mapRow(resRow, app.data, veh.data), settings };
+    return { reservation: mapRow(resRow, app.data, veh.data), settings, feeDisplayStatus: fee.status ?? resRow.reservation_deposit_status ?? null };
   });
 
 
