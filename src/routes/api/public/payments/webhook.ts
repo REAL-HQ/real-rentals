@@ -12,7 +12,7 @@ import { resolveStripePaymentMatch } from '@/lib/renter-payments-match.server';
 import { linkOrFlagSubscription, renderWebhookReminder, sendFailedPaymentText, webhookReminderSlot, type SmsSender } from '@/lib/failed-payment-notice.server';
 
 /** Test seam for the outbound text and staff alert; the route never sets it. */
-export type WebhookDeps = { sendSms?: SmsSender; alert?: (a: any) => Promise<unknown>; now?: Date };
+export type WebhookDeps = { sendSms?: SmsSender; alert?: (a: any) => Promise<unknown>; now?: Date; stripe?: any };
 let webhookDeps: WebhookDeps = {};
 
 let _supabase: ReturnType<typeof createClient> | null = null;
@@ -114,6 +114,11 @@ async function holdReservationAfterFee(pi: any) {
 async function handleCheckoutCompleted(session: any, env: StripeEnv) {
   if (session.mode === 'payment' && session.metadata?.reason === 'reservation_fee') {
     await saveReservationFeeCard(session, env);
+  }
+  if (session.mode === 'payment' && session.payment_status === 'paid') {
+    // A Payment Link or Dashboard Checkout the app did not create carries no
+    // paymentIds/rentalId, so the intent path below cannot record it.
+    await recordOneOff({ paymentIntentId: stripeId(session.payment_intent), session }, env, { retryOnError: true });
   }
   if (session.mode === 'subscription' || session.mode === 'payment') {
     // Link the renter's customer / subscription to the rental. The money is
@@ -731,6 +736,37 @@ async function handleSubscriptionUpdated(sub: any) {
   }).eq('stripe_subscription_id', sub.id);
 }
 
+/**
+ * One-off payments the app did not create (Payment Links, Dashboard Checkout,
+ * manual charges): record them against exactly one rental, or warn staff.
+ * App-created and invoice payments are skipped inside.
+ */
+async function recordOneOff(
+  input: { paymentIntentId: string | null; session?: any; charge?: any; paymentIntent?: any },
+  env: StripeEnv,
+  opts: { retryOnError: boolean },
+) {
+  if (!input.paymentIntentId) return;
+  try {
+    const { recordOneOffPayment } = await import('@/lib/one-off-payment.server');
+    const stripe = webhookDeps.stripe ?? createStripeClient(env);
+    const admin: any = getSupabase();
+    await recordOneOffPayment(admin, stripe, input, { warn: (pi) => warnUnmatchedPayment(admin, pi, 'paid') });
+  } catch (err) {
+    // checkout.session.completed retries (400) so a Payment Link is never lost.
+    // The intent/charge events also reach invoice and app payments, which
+    // must keep returning 200 when this extra read fails; they only log.
+    if (opts.retryOnError) throw err;
+    console.error('[webhook] one-off payment check failed', err);
+  }
+}
+
+/** A paid intent with no app metadata that the intent path left without a row. */
+function unownedIntent(pi: any): boolean {
+  const m = pi?.metadata ?? {};
+  return !m.paymentIds && !m.rentalId && !m.rental_id && !m.applicationId && !m.agreementId && m.reason !== 'reservation_fee';
+}
+
 async function handleVerifiedPaymentEvent(event: { type: string; data: { object: any } }, env: StripeEnv) {
   switch (event.type) {
     case 'checkout.session.completed':
@@ -739,6 +775,14 @@ async function handleVerifiedPaymentEvent(event: { type: string; data: { object:
     case 'payment_intent.succeeded':
       await upsertPaymentFromPaymentIntent(event.data.object, 'paid');
       await holdReservationAfterFee(event.data.object);
+      if (unownedIntent(event.data.object)) {
+        await recordOneOff({ paymentIntentId: stripeId(event.data.object?.id), paymentIntent: event.data.object }, env, { retryOnError: false });
+      }
+      break;
+    case 'charge.succeeded':
+      if (event.data.object?.paid && unownedIntent(event.data.object)) {
+        await recordOneOff({ paymentIntentId: stripeId(event.data.object?.payment_intent), charge: event.data.object }, env, { retryOnError: false });
+      }
       break;
     case 'payment_intent.payment_failed':
       await upsertPaymentFromPaymentIntent(event.data.object, 'failed');
