@@ -33,6 +33,7 @@ import { UnmatchedRenterPayments } from "./RenterPayments";
 import { BILLING_DAY_CHANGE_ENABLED, BILLING_ONE_TIME_EXTENSION_ENABLED, BILLING_PM_UPDATE_LINK_ENABLED } from "@/lib/billing-controls-flag";
 import { BillingControls } from "./BillingControls";
 import type { StaffTier } from "@/lib/roles";
+import { tierAllows } from "@/lib/roles";
 import { OPEN_STATUSES, canTake, type PaymentStatusAction } from "@/lib/payment-status-rules";
 import { changePaymentStatus } from "@/lib/payment-status.functions";
 import { releaseUnconfirmedPayment } from "@/lib/payment-unconfirmed.functions";
@@ -40,7 +41,9 @@ import { chargeCardOnRental } from "@/lib/rental-payments.functions";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { VehicleCombobox } from "@/components/admin/VehicleCombobox";
 import { StripeCollections } from "./StripeCollections";
-
+import { RefundReservationDialog } from "./RefundReservationDialog";
+import { RESERVATION_FEE_REASON } from "@/lib/reservation-fee";
+import { refundReasonFromNotes, reservationFeeRefundedDetail } from "@/lib/reservation-fee-refund";
 const STATUSES = [
   "upcoming",
   "pending",
@@ -114,6 +117,16 @@ function fmtDate(iso?: string | null) {
   return formatDate(iso) || "—";
 }
 
+function isReservationFeePayment(p: { reason?: string | null; notes?: string | null }) {
+  return p.reason === RESERVATION_FEE_REASON || /reservation_fee:/.test(String(p.notes ?? ""));
+}
+function paymentStatusLabel(p: { status?: string | null; reason?: string | null; notes?: string | null }) {
+  if (isReservationFeePayment(p) && (p.status === "refunded" || refundReasonFromNotes(p.notes))) {
+    return reservationFeeRefundedDetail(refundReasonFromNotes(p.notes));
+  }
+  return STATUS_LABEL[String(p.status ?? "")] ?? enumDisplayLabel(String(p.status ?? ""));
+}
+
 export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { initialFilter?: string; autoOpenAdd?: boolean; tier?: StaffTier | null } = {}) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [drivers, setDrivers] = useState<Application[]>([]);
@@ -125,6 +138,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
   const [showAdd, setShowAdd] = useState(!!autoOpenAdd);
   const [showManual, setShowManual] = useState(false);
   const [paymentsSection, setPaymentsSection] = useState<"ledger" | "stripe">("ledger");
+  const [refundRow, setRefundRow] = useState<{ id: string; name: string; amount: number } | null>(null);
 
   useEffect(() => {
     supabase
@@ -431,7 +445,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                   </td>
                   <td className="px-3">
                     {!canTake(tier, "set_open_status", String(p.status)) ? (
-                      <StatusPill status={p.status}>{STATUS_LABEL[p.status] ?? enumDisplayLabel(p.status)}</StatusPill>
+                      <StatusPill status={p.status}>{paymentStatusLabel(p)}</StatusPill>
                     ) : (
                     <Select
                       value={p.status}
@@ -440,7 +454,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                       <SelectTrigger className="h-7 w-auto border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden">
                         <span className="inline-flex items-center gap-1">
                           <StatusPill status={p.status}>
-                            {STATUS_LABEL[p.status] ?? enumDisplayLabel(p.status)}
+                            {paymentStatusLabel(p)}
                           </StatusPill>
                           <ChevronDown className="w-3 h-3 text-[#9A9AA3]" />
                         </span>
@@ -493,7 +507,15 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                             Void (Entered In Error)
                           </DropdownMenuItem>
                         )}
-                        {(p.status === "paid" || p.status === "refunded") && (
+                        {isReservationFeePayment(p) && p.status === "paid" && tierAllows(tier, "manager") && (
+                          <DropdownMenuItem onClick={() => setRefundRow({ id: p.id, name: driverName, amount: Number(p.amount ?? 0) })}>
+                            Refund Reservation
+                          </DropdownMenuItem>
+                        )}
+                        {isReservationFeePayment(p) && p.status === "refunded" && (
+                          <DropdownMenuItem disabled>{paymentStatusLabel(p)}</DropdownMenuItem>
+                        )}
+                        {!isReservationFeePayment(p) && (p.status === "paid" || p.status === "refunded") && (
                           <DropdownMenuItem disabled>Refunds Happen In The Stripe Dashboard</DropdownMenuItem>
                         )}
                         {(p.status === "pending") && (
@@ -532,6 +554,20 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
           onSave={add}
         />
       )}
+      {refundRow ? (
+        <RefundReservationDialog
+          open
+          onOpenChange={(v) => { if (!v) setRefundRow(null); }}
+          paymentId={refundRow.id}
+          driverName={refundRow.name}
+          amount={refundRow.amount}
+          onDone={async () => {
+            const { data } = await supabase.from("payments").select("*").eq("id", refundRow.id).maybeSingle();
+            if (data) setPayments((rows) => rows.map((r) => (r.id === data.id ? (data as Payment) : r)));
+            setRefundRow(null);
+          }}
+        />
+      ) : null}
       </>
       )}
     </div>

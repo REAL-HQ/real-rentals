@@ -25,6 +25,7 @@ The site sends FLEET one signed JSON POST per event. Nothing is sent until
 | `rental_activated` | a rental started * |
 | `rental_returned` | the return checklist was completed * |
 | `rental_ended` | a rental was ended * |
+| `reservation_refunded` | a paid Reservation Fee was refunded (staff, FLEET, or auto on insurance decline). Needs proposed/reservation-fee-refunds-v1.sql |
 
 \* Lifecycle events. **Off** until `app_settings.fleet_lifecycle_events` is
 `{"enabled": true}` (`proposed/fleet-lifecycle-events-on.sql`), and they need
@@ -86,6 +87,13 @@ Lifecycle payloads (ids, names and amounts, never phone numbers):
   `POST /api/public/fleet/send-agreement` with
   `terms_confirmation: { "channel": "staff", "staff_event_id": <event_id> }`
   (docs/fleet-send-agreement.md).
+
+- `reservation_refunded` (a Reservation Fee was refunded; needs
+  proposed/reservation-fee-refunds-v1.sql):
+  `lead_id, application_id, amount, reason, stripe_refund_id`.
+  `reason` is one of `insurance_declined`, `no_vehicle`, `failed_inspection`,
+  `terms_changed`, `post_payment_denial`, `duplicate_or_mistaken_charge`.
+  One event per payment; a second refund attempt never sends another.
 
 Every body also has `event`, `delivery_id` and `sent_at`.
 

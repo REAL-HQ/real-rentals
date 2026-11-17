@@ -12,6 +12,7 @@
  *                                          (queued by the lifecycle sweep, fleet-lifecycle-events.server.ts; off by default)
  *   applicant_ready_for_agreement          (queued when staff click Move Forward on the Terms Confirmed row,
  *                                           staff-terms.server.ts; needs proposed/staff-terms-confirmations-v1.sql)
+ *   reservation_refunded                   (queued when a Reservation Fee is refunded; needs proposed/reservation-fee-refunds-v1.sql)
  *
  * Disabled until FLEET_WEBHOOK_URL (https) and FLEET_WEBHOOK_KEY are set.
  * While disabled, queued rows are marked 'skipped' (nothing is sent and no
@@ -58,6 +59,8 @@ export const FLEET_LIFECYCLE_EVENTS = [
 ] as const;
 /** Staff confirmed the terms after their call (Move Forward). FLEET then calls send-agreement with channel "staff". */
 export const FLEET_STAFF_EVENTS = ["applicant_ready_for_agreement"] as const;
+/** A Reservation Fee was refunded (reservation-fee-refund.server.ts; needs proposed/reservation-fee-refunds-v1.sql). */
+export const FLEET_RESERVATION_REFUND_EVENTS = ["reservation_refunded"] as const;
 export type FleetEvent =
   | (typeof FLEET_LEAD_EVENTS)[number]
   | (typeof FLEET_QUO_EVENTS)[number]
@@ -66,7 +69,8 @@ export type FleetEvent =
   | (typeof FLEET_REVIEW_EVENTS)[number]
   | (typeof FLEET_RESERVATION_EVENTS)[number]
   | (typeof FLEET_LIFECYCLE_EVENTS)[number]
-  | (typeof FLEET_STAFF_EVENTS)[number];
+  | (typeof FLEET_STAFF_EVENTS)[number]
+  | (typeof FLEET_RESERVATION_REFUND_EVENTS)[number];
 
 export const FLEET_MAX_ATTEMPTS = 8;
 /** Wait before attempt n+1 after n failed attempts. */

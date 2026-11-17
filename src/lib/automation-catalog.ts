@@ -534,6 +534,19 @@ export const AUTOMATIONS: AutomationDef[] = [
     previews: [],
     note: "Storing only: the card is saved to the renter's Documents as \"Insurance ID Card\" and on the driver profile, not reviewed, and nobody is marked insured or verified. Nothing is sent to the renter. Older cards stay as history; a card staff already verified stays current until staff review the new one. No match, two matches, a different name or an expired card goes to Fleet Inbox (Needs Attention) with one bell notice instead.",
   },
+  {
+    key: "auto_refund_reservation_on_insurance_decline",
+    title: "Auto-Refund Reservation On Insurance Decline",
+    audience: "Renters",
+    channels: [],
+    trigger: "A manager or owner marks the Renter Policy as declined after the Reservation Fee was paid.",
+    cadence: "Once, immediately, through the same refund path as Refund Reservation. One refund per reservation.",
+    emailWorkflows: [],
+    control: { kind: "setting" },
+    previews: [],
+    defaultOn: false,
+    note: "Off until turned on. Refunds the paid Reservation Fee in full (insurance declined) and tells FLEET. Needs proposed/reservation-fee-refunds-v1.sql. Never names the insurance company. A fee kept for a missed pickup is not refunded.",
+  },
 ];
 
 export const AUTOMATION_KEYS = AUTOMATIONS.map((a) => a.key);
