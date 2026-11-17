@@ -1,9 +1,12 @@
 # Team Alerts (Dolmar, t299s1618)
 
-One email to team@drivereal.com and one text to the field rep
-(+18134768508, a constant in `src/lib/team-alerts.ts`; alert code never takes
-a phone number from a renter, an applicant, a request or a setting, and removes
-anything shaped like a phone number from the alert text).
+One email to team@drivereal.com (anytime) and one text. For `bot_handoff`,
+the text follows staff coverage: the other company Quo line during Rosa's
+hours, or the field-rep numbers from the Pickup Schedule settings otherwise
+(docs/staff-coverage.md). Injuries also go to the field rep at any hour.
+GPS, late pickup and overnight roadside still text the field-rep numbers.
+Alert code never takes a phone number from a renter, an applicant or a
+request, and removes anything shaped like a phone number from the alert text.
 
 | Kind | When | Built in |
 | --- | --- | --- |

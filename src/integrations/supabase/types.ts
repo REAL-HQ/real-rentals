@@ -5907,6 +5907,89 @@ export type Database = {
         }
         Relationships: []
       }
+      staff_schedule_exceptions: {
+        Row: {
+          created_at: string
+          end_time: string | null
+          exception_date: string
+          id: string
+          kind: string
+          note: string | null
+          staff_key: string
+          start_time: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          end_time?: string | null
+          exception_date: string
+          id?: string
+          kind: string
+          note?: string | null
+          staff_key: string
+          start_time?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          end_time?: string | null
+          exception_date?: string
+          id?: string
+          kind?: string
+          note?: string | null
+          staff_key?: string
+          start_time?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_schedule_exceptions_staff_key_fkey"
+            columns: ["staff_key"]
+            isOneToOne: false
+            referencedRelation: "staff_schedules"
+            referencedColumns: ["staff_key"]
+          },
+        ]
+      }
+      staff_schedules: {
+        Row: {
+          created_at: string
+          display_name: string
+          id: string
+          is_active: boolean
+          reach_via: string
+          roles: string[]
+          staff_key: string
+          timezone: string
+          updated_at: string
+          weekly_windows: Json
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          id?: string
+          is_active?: boolean
+          reach_via?: string
+          roles?: string[]
+          staff_key: string
+          timezone?: string
+          updated_at?: string
+          weekly_windows?: Json
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_active?: boolean
+          reach_via?: string
+          roles?: string[]
+          staff_key?: string
+          timezone?: string
+          updated_at?: string
+          weekly_windows?: Json
+        }
+        Relationships: []
+      }
       toll_charges: {
         Row: {
           admin_fee: number

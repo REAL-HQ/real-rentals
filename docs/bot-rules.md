@@ -13,7 +13,7 @@ payment texts have all gone out from +1 888-833-8280 (checked read-only Nov 16
 
 ## Quiet hours (D20)
 
-Bot texts and calls only 8 AM to 9 PM Eastern. Exceptions: roadside and
+Bot texts and calls only 8 AM to 9 PM Eastern. Applicant calls also stop at 6:00 PM ET. Exceptions: roadside and
 accident replies, and team alerts to staff. The site already uses 8 AM–9 PM ET
 for its own texts (follow-up workflow 21→8 quiet window; rent reminders;
 pickup and agreement texts; the late-pickup text).
@@ -46,8 +46,11 @@ A bot stops and hands the conversation to a person when:
 
 The hand-off is `POST /api/public/fleet/team-alert` with
 `{"kind":"bot_handoff","reason":"complaint|injury|payment_dispute|asked_for_person|outside_templates|no_answer", ...}`.
-It emails team@drivereal.com and texts the field rep (switch `team_alerts.bot_handoff`, off by default).
-The bot tells the person: "I'm getting someone from our team to help. They'll reach out shortly."
+It emails team@drivereal.com anytime and texts the on-duty staff (Rosa during
+her hours, via the other company Quo line; Dolmar otherwise; switch
+`team_alerts.bot_handoff`, off by default). Injuries also text the field rep
+at any hour. See docs/staff-coverage.md. The bot tells the person: "I'm
+getting someone from our team to help. They'll reach out shortly."
 
 ## Overnight roadside (D17)
 

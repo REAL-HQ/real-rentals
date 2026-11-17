@@ -41,11 +41,14 @@ replay): `{ ok, lead_id, decision_id, bots_paused: true, added_to_open_flag, sta
 ## Staff text (off by default)
 
 With `app_settings.fleet_handoff = {"alert_sms": true}`
-(`proposed/fleet-handoff-alerts-on.sql`) a new handoff texts the pickup alert
-line(s) from the Pickup Schedule defaults (the field rep), from the 888 line:
+(`proposed/fleet-handoff-alerts-on.sql`) a new handoff texts staff. During
+Rosa's hours the text goes to the other company Quo line (the one the renter
+is not already on; pass `line_id`). Outside her hours it goes to the Pickup
+Schedule field-rep numbers, as before. Injuries and accidents always include
+the field rep, at any hour; everything else only 8 AM to 9 PM ET (otherwise
+`staff_alert: "quiet_hours"` and the flag waits for morning). The text is:
 "REAL RENTALS staff alert: Ana T. was handed off to staff (Injury). Bots are
 paused for them until someone marks it handled. <admin link>". It names the
 person by first name and last initial and never includes a renter's phone
-number. Injuries and accidents text at any hour; everything else only 8 AM to
-9 PM ET (otherwise `staff_alert: "quiet_hours"` and the flag waits for
-morning). `staff_alert` is `sent`, `off`, `quiet_hours`, `failed` or `not_new`.
+number. `staff_alert` is `sent`, `off`, `quiet_hours`, `failed` or `not_new`.
+See docs/staff-coverage.md.

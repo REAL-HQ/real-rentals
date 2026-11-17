@@ -14,10 +14,13 @@
  *     (D29). The bot stops replying to that person and says a team member will
  *     follow up (docs/bot-rules.md).
  *
- * Sends one team alert (team-alerts.server.ts): email to team@drivereal.com,
- * text to the field rep. Gated per kind by app_settings.team_alerts (OFF by
- * default; the reply says "off" and nothing is sent). Any phone number in the
- * summary is removed; the field rep number is a constant.
+ * Sends one team alert (team-alerts.server.ts): email to team@drivereal.com
+ * anytime, and a text that follows staff coverage (other company Quo line
+ * during Rosa's hours, field-rep numbers from Pickup Schedule settings
+ * otherwise). Injuries also go to the field rep at any hour. Gated per kind
+ * by app_settings.team_alerts (OFF by default). Any phone number in the
+ * summary is removed. Staff phones are read from settings, never from the
+ * request.
  */
 import { cleanText, fleetAdmin, fleetJson, fleetRequestBody, UUID_RE, type FleetDeps } from "@/lib/fleet-api.server";
 import { isOvernightEt } from "@/lib/team-alerts";
@@ -65,7 +68,16 @@ export async function handleFleetTeamAlert(request: Request, deps: FleetDeps & T
   const link = leadId ? `${SITE()}/admin?tab=drivers&id=${encodeURIComponent(leadId)}` : `${SITE()}/admin?tab=issues`;
   const admin = await fleetAdmin(deps);
   const { sendTeamAlert } = await import("@/lib/team-alerts.server");
-  const out = await sendTeamAlert(admin, { kind, dedupeKey: dedupe, title, lines: [`Summary: ${summary}`, ...lines], link, rentalId }, deps);
+  const out = await sendTeamAlert(admin, {
+    kind,
+    dedupeKey: dedupe,
+    title,
+    lines: [`Summary: ${summary}`, ...lines],
+    link,
+    rentalId,
+    activeLine: body.line_id ?? body.from_phone_number_id ?? body.phone_number_id ?? null,
+    handoffReason: kind === "bot_handoff" ? String(body.reason ?? "") : null,
+  }, deps);
   const code = out.status === "no_table" ? 503 : out.status === "failed" ? 502 : 200;
   return fleetJson(code, { ok: out.status === "sent" || out.status === "partial" || out.status === "duplicate", ...out });
 }

@@ -66,13 +66,23 @@ describe("team alert switch and sending", () => {
   });
   test("on: one email to the team, one text to the field rep only, once per key; phone numbers removed", async () => {
     const db = fakeDb(); const x = io();
+    const afterHours = new Date("2026-01-06T00:00:00Z"); // Mon 7 PM EST, Rosa off
+    const deps = { ...x, settings: ALL_ON, fieldRepNumbers: ["+10000000000"], now: () => afterHours };
     const a = { kind: "bot_handoff" as const, dedupeKey: "m1", title: "Complaint from renter at (813) 555-0101", lines: ["Call 813-555-0101 back"], link: "https://drivereal.com/admin" };
-    expect((await tas.sendTeamAlert(db, a, { ...x, settings: ALL_ON })).status).toBe("sent");
-    expect((await tas.sendTeamAlert(db, a, { ...x, settings: ALL_ON })).status).toBe("duplicate");
-    expect(x.sms.map((s) => s.to)).toEqual(["+18134768508"]);
+    expect((await tas.sendTeamAlert(db, a, deps)).status).toBe("sent");
+    expect((await tas.sendTeamAlert(db, a, deps)).status).toBe("duplicate");
+    expect(x.sms.map((s) => s.to)).toEqual(["+10000000000"]);
     expect(x.emails.map((e) => e.to)).toEqual(["team@drivereal.com"]);
     expect(JSON.stringify([x.sms, x.emails])).not.toMatch(/555[\s.-]?0101/);
     expect(x.sms[0].requireConsent).toBe(false);
+  });
+
+  test("during Rosa's hours a bot handoff texts the other company line", async () => {
+    const db = fakeDb(); const x = io();
+    const rosaHours = new Date("2026-01-05T19:00:00Z");
+    const a = { kind: "bot_handoff" as const, dedupeKey: "m2", title: "Asked for a person", lines: ["Wants a call"], link: "https://drivereal.com/admin", activeLine: "PNrZULvFMn", handoffReason: "asked_for_person" };
+    expect((await tas.sendTeamAlert(db, a, { ...x, settings: ALL_ON, fieldRepNumbers: ["+10000000000"], now: () => rosaHours })).status).toBe("sent");
+    expect(x.sms[0]).toMatchObject({ to: "+18132124174", fromId: "PNrZULvFMn", requireConsent: false });
   });
   test("no table: nothing sent", async () => {
     const db = fakeDb({}, { missing: ["team_alert_sends"] }); const x = io();
@@ -84,7 +94,7 @@ describe("team alert switch and sending", () => {
       const s = readFileSync(f, "utf8");
       expect(s).not.toMatch(/\.phone\b|"phone"|,phone|phone,/);
       const numbers = s.match(/\+1\d{10}/g) ?? [];
-      expect(numbers.every((n) => n === "+18134768508")).toBe(true);
+      expect(numbers.every((n) => n === ta.FIELD_REP_ALERT_NUMBER)).toBe(true);
     }
   });
   test("overnight is 6 PM to 6 AM Eastern", () => {
