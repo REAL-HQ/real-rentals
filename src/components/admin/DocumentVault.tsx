@@ -177,6 +177,14 @@ export function DocumentVault({
                         <Lock className="w-3 h-3" /> Team Only
                       </span>
                     ) : null}
+                    {mode === "admin" && doc && doc.uploaded_by_role === "email" ? (
+                      <span
+                        className="inline-flex items-center rounded-full border border-[#D6E4F5] bg-[#EEF4FB] px-2 py-0.5 text-[10.5px] font-semibold text-[#2B5C99]"
+                        title="Saved automatically from an emailed card. Not reviewed."
+                      >
+                        From Email
+                      </span>
+                    ) : null}
                     {tone ? (
                       <span
                         className={`inline-flex items-center gap-1 text-[10.5px] font-semibold rounded-full px-2 py-0.5 border ${

@@ -21,6 +21,7 @@ Base: `https://drivereal.com/api/public/fleet/`
 | `send-agreement` | send the agreement after the renter confirmed terms (call or YES text) | [fleet-send-agreement.md](fleet-send-agreement.md) |
 | `amend-agreement` | send an updated agreement to an ACTIVE rental (e.g. a new weekly rate the renter agreed to); generated from v1.14 with no Reservation Fee or new deposit; the rate changes only after they sign (switch, Off) | [fleet-amend-agreement.md](fleet-amend-agreement.md) |
 | `driver-document` | file a document onto a driver's profile, team only, never verified (switch, Off) | [below](#driver-document) |
+| `insurance-card` | hand over an insurance ID card found in team@ Gmail (Inbox or Spam) for Fleet Inbox to read; filed to a renter only on an exact VIN + name match, never verified (switch "Insurance ID Cards To Portal", On) | [renter-insurance-cards.md](renter-insurance-cards.md) |
 | `pickup-slots` | open pickup slots; book one | [fleet-pickup-schedule.md](fleet-pickup-schedule.md) |
 | `resend-link` | resend the signing link or the missing-files upload link (switch, Off) | [fleet-resend-link.md](fleet-resend-link.md) |
 | `handoff` | hand a person to staff (complaint, injury, payment dispute, ...); bots pause | [fleet-handoff.md](fleet-handoff.md) |
