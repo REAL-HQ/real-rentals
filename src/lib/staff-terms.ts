@@ -52,7 +52,7 @@ export function parseStaffTerms(raw: any): { ok: true; value: StaffTerms } | { o
   const weekly = money(raw?.weekly_rate);
   if (weekly === null || weekly <= 0) return { ok: false, error: "Weekly Rate must be a positive amount." };
   const deposit = money(raw?.deposit);
-  if (deposit === null) return { ok: false, error: "Deposit must be an amount (0 if none)." };
+  if (deposit === null) return { ok: false, error: "Reservation must be an amount (0 if none)." };
   const start = String(raw?.start_date ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !Number.isFinite(Date.parse(`${start}T12:00:00Z`))) return { ok: false, error: "Start Date must be a date." };
   const vehicle = String(raw?.vehicle_id ?? "").trim();

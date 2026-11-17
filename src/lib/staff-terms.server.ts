@@ -56,7 +56,7 @@ export function staffTermsMismatches(t: StaffTerms, check: SendCheck) {
   return out;
 }
 
-const FIELD_LABEL: Record<string, string> = { weekly_rate: "Weekly Rate", deposit: "Deposit", start_date: "Start Date", vehicle_id: "Vehicle" };
+const FIELD_LABEL: Record<string, string> = { weekly_rate: "Weekly Rate", deposit: "Reservation", start_date: "Start Date", vehicle_id: "Vehicle" };
 
 /**
  * The clicker's name, resolved on the server: the account's full name, else

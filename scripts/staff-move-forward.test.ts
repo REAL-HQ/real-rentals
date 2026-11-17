@@ -423,3 +423,15 @@ describe("proposed migration (PGlite)", () => {
     expect((await pg.query<any>(`SELECT to_regclass('public.staff_terms_confirmations') AS t`)).rows[0].t).toBeNull();
   });
 });
+
+describe("Reservation wording (Dolmar, Nov 17 10:35 AM)", () => {
+  test("dialog says Reservation ($); the payload key stays deposit", () => {
+    const ui = readFileSync("src/components/admin/TermsConfirmedControl.tsx", "utf8");
+    expect(ui).toContain(">Reservation ($)</Label>");
+    expect(ui).not.toMatch(/>Deposit/);
+    const srv = readFileSync("src/lib/staff-terms.server.ts", "utf8");
+    expect(srv).toContain('deposit: "Reservation"');
+    expect(srv).toMatch(/terms:\s*\{[^}]*deposit/);
+  });
+});
+

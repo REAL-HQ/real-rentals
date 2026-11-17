@@ -98,7 +98,7 @@ export function approvedApplicantCopy(a: {
     status: parts.join(" · "),
     lines: [
       ...(note ? [cap(note, 240)] : []),
-      "Go over the weekly rate, deposit, start date and car. Then click Move Forward on the Terms Confirmed row, and FLEET sends the agreement.",
+      "Go over the weekly rate, reservation, start date and car. Then click Move Forward on the Terms Confirmed row, and FLEET sends the agreement.",
     ],
     sms: alertSms(subject, a.smsLink),
   };

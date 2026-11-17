@@ -122,7 +122,7 @@ export function TermsConfirmedControl({
               <Input id="mf-weekly" inputMode="decimal" value={weekly} onChange={(e) => setWeekly(e.target.value)} />
             </div>
             <div className="grid min-w-0 gap-1.5">
-              <Label htmlFor="mf-deposit">Deposit ($)</Label>
+              <Label htmlFor="mf-deposit">Reservation ($)</Label>
               <Input id="mf-deposit" inputMode="decimal" value={deposit} onChange={(e) => setDeposit(e.target.value)} />
             </div>
             <div className="grid min-w-0 gap-1.5">
