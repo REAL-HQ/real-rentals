@@ -510,7 +510,7 @@ export const promoteToApplicant = createServerFn({ method: "POST" })
     // signup date/source, and is safe to retry. Sends nothing.
     const { data: res, error } = await supabaseAdmin.rpc("promote_waitlist_entry", { _entry: data.entryId });
     if (error || !res) {
-      console.error("[waitlist] promote failed", error?.message);
+      console.error("[waitlist] promote failed", error?.code, error?.message, error?.details);
       return { ok: false as const, error: "Could not move this person into Drivers. Please try again." };
     }
     const r = res as { application_id: string; created: boolean; already: boolean; needs_review?: boolean; reason?: string };
