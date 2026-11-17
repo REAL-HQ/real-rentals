@@ -24,7 +24,7 @@
 
 export const AUTOMATION_CONTROLS_KEY = "automation_controls";
 
-export type AutomationAudience = "Applicants" | "Renters" | "Team";
+export type AutomationAudience = "Applicants" | "Renters" | "Partners" | "Team";
 export type AutomationChannel = "Email" | "SMS";
 
 /** Where the on/off switch lives. "code" means it cannot be turned on from the back office. */
@@ -471,6 +471,32 @@ export const AUTOMATIONS: AutomationDef[] = [
     previews: [],
     defaultOn: false,
     note: "Off until turned on (SOP D14; approved for go-live, card t310s1681). Needs proposed/renter-reminders-v1.sql (once-per-rental claim table).",
+  },
+  {
+    key: "partner_rental_notice",
+    title: "Partner Rental Notice",
+    audience: "Partners",
+    channels: ["SMS", "Email"],
+    trigger: "Staff start a rental on a car owned by a partner.",
+    cadence: "Once per rental: an email to the partner, plus a text 8 AM–9 PM ET when the partner gave SMS consent. Never names the renter.",
+    emailWorkflows: ["partner_rental_notice"],
+    control: { kind: "setting" },
+    previews: [],
+    defaultOn: false,
+    note: "Off until turned on. Needs migration 20261117070000_partner_portal_v2 (once-per-rental claim table and partner consent fields).",
+  },
+  {
+    key: "partner_submission_alert",
+    title: "Partner Submission Alert",
+    audience: "Team",
+    channels: ["Email"],
+    trigger: "Someone submits a vehicle on drivereal.com/partners or adds one in the partner portal.",
+    cadence: "Once per submission, to team@drivereal.com.",
+    emailWorkflows: ["partner_submission_alert"],
+    control: { kind: "setting" },
+    previews: [],
+    defaultOn: false,
+    note: "Off until turned on.",
   },
   {
     key: "rental_lifecycle",

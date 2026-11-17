@@ -350,17 +350,60 @@
       }
     },
     {
-      "file": "src/routes/partners.tsx",
-      "line": 269,
+      "file": "src/components/partner/PartnerVehicleFields.tsx",
+      "line": 103,
       "props": {
-        "value": "{photos}",
-        "onChange": "{setPhotos}",
+        "value": "{files.photos}",
+        "disabled": "{disabled}",
+        "onChange": "{(photos) => onFiles({ ...files, photos })}",
         "accept": "\"image/*\"",
         "multiple": true,
-        "maxFiles": "{6}",
+        "maxFiles": "{MAX_INTAKE_PHOTOS}",
         "title": "\"Drop Vehicle Photos Here\"",
         "label": "\"Browse Photos\"",
-        "hint": "{`${photos.length}/6 selected`}"
+        "hint": "{`${files.photos.length}/${MAX_INTAKE_PHOTOS} selected`}"
+      }
+    },
+    {
+      "file": "src/components/partner/PartnerVehicleFields.tsx",
+      "line": 111,
+      "props": {
+        "value": "{files.registration}",
+        "disabled": "{disabled}",
+        "onChange": "{(registration) => onFiles({ ...files, registration })}",
+        "accept": "\"image/*,application/pdf\"",
+        "maxFiles": "{1}",
+        "variant": "\"inline\"",
+        "label": "\"Upload Registration\"",
+        "hint": "\"Kept private. Only our team sees it.\""
+      }
+    },
+    {
+      "file": "src/components/partner/PartnerVehicleFields.tsx",
+      "line": 119,
+      "props": {
+        "value": "{files.idDocument}",
+        "disabled": "{disabled}",
+        "onChange": "{(idDocument) => onFiles({ ...files, idDocument })}",
+        "accept": "\"image/*,application/pdf\"",
+        "maxFiles": "{1}",
+        "variant": "\"inline\"",
+        "label": "\"Upload ID\"",
+        "hint": "\"Kept private. Used to confirm the owner on the title.\""
+      }
+    },
+    {
+      "file": "src/components/admin/PartnerSubmissions.tsx",
+      "line": 206,
+      "props": {
+        "value": "{receiptFiles}",
+        "onChange": "{setReceiptFiles}",
+        "accept": "\"application/pdf,image/*\"",
+        "maxFiles": "{1}",
+        "maxBytes": "{25 * 1024 * 1024}",
+        "variant": "\"inline\"",
+        "label": "\"Attach Receipt\"",
+        "disabled": "{busy}"
       }
     }
   ],
@@ -442,8 +485,8 @@
   ],
   "customWizardSurface": "src/components/site/ApplicationWizard.tsx: MultiFileUpload",
   "integrationMerge": {
-    "note": "Merged integration (via PR 325) on 2026-11-14: ApplicantDocuments uploader moved to DriverDocumentUploadDialog; RenterReimbursements and ReturnFlowDialog uploaders are new on integration. Props pinned as they arrived. PR 314 (trip media) added TripMediaPanel and changed InspectionsPanel accept/size to the shared trip-media limits.",
-    "uploaderSourceSites": 25,
-    "uploaderFiles": 24
+    "note": "Merged integration (via PR 325) on 2026-11-14: ApplicantDocuments uploader moved to DriverDocumentUploadDialog; RenterReimbursements and ReturnFlowDialog uploaders are new on integration. Props pinned as they arrived. PR 314 (trip media) added TripMediaPanel and changed InspectionsPanel accept/size to the shared trip-media limits. Partner Portal v2 (Nov 17 2026): the /partners photo uploader moved into the shared PartnerVehicleFields (photos, registration, ID — used by /partners and the partner portal), and Back Office -> Partners gained a payout receipt uploader.",
+    "uploaderSourceSites": 28,
+    "uploaderFiles": 25
   }
 }

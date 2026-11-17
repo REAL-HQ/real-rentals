@@ -1,13 +1,16 @@
 import { PhoneInput } from "@/components/ui/phone-input";
-import { AppSelect } from "@/components/ui/app-select";
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
-import { supabase } from "@/integrations/supabase/client";
-import { createFleetOwnerSubmission, updateFleetOwnerPhotos } from "@/lib/partner-submissions.functions";
+import { startPartnerIntake, finishPartnerIntake } from "@/lib/partner-intake.functions";
 import { Banknote, ShieldCheck, MapPin, Wrench, KeySquare, Cog, Satellite, FileText, Umbrella } from "lucide-react";
-import { FileUploader } from "@/components/FileUploader";
+import { intakeFileProblem } from "@/lib/partner-portal";
+import {
+  EMPTY_FILES, EMPTY_VEHICLE, Field, PartnerVehicleFields, Select, US_STATES, filesPayload, validateVehicle, vehiclePayload,
+  type VehicleFiles, type VehicleFormState,
+} from "@/components/partner/PartnerVehicleFields";
+import { newIdempotencyKey, uploadPlanned } from "@/components/partner/partner-upload";
 
 export const Route = createFileRoute("/partners")({
   head: () => ({
@@ -51,46 +54,31 @@ const FAQS = [
   { q: "Do I need to live in Tampa?", a: "No. Most owners are out-of-state. We handle all local operations, handoffs, inspections, and maintenance." },
 ];
 
-const TITLE_STATUSES = ["Clean", "Salvage", "Rebuilt", "Not sure"];
-const LIEN_STATUSES = ["Owned free and clear", "Financed — still making payments"];
-const CONDITIONS = ["Excellent", "Good", "Fair"];
-const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
-
-type FormState = {
-  full_name: string;
-  email: string;
-  phone: string;
-  vin: string;
-  year: string;
-  make: string;
-  model: string;
-  trim: string;
-  mileage: string;
-  title_status: string;
-  lien_status: string;
-  registration_state: string;
-  currently_insured: string;
-  condition: string;
-  message: string;
+type ContactState = {
+  full_name: string; email: string; phone: string; business_name: string;
+  address_line1: string; address_line2: string; city: string; state: string; postal_code: string;
 };
 
-const EMPTY: FormState = {
-  full_name: "", email: "", phone: "", vin: "", year: "", make: "", model: "",
-  trim: "", mileage: "", title_status: "", lien_status: "", registration_state: "",
-  currently_insured: "", condition: "", message: "",
+const EMPTY_CONTACT: ContactState = {
+  full_name: "", email: "", phone: "", business_name: "", address_line1: "", address_line2: "", city: "", state: "", postal_code: "",
 };
 
 function Partners() {
   const formRef = useRef<HTMLDivElement | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY);
-  const [photos, setPhotos] = useState<File[]>([]);
-  const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  const [contact, setContact] = useState<ContactState>(EMPTY_CONTACT);
+  const [vehicle, setVehicle] = useState<VehicleFormState>(EMPTY_VEHICLE);
+  const [files, setFiles] = useState<VehicleFiles>(EMPTY_FILES);
+  const [smsConsent, setSmsConsent] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ email: string; missing: string[] } | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // One key per form fill: a retry after a network error lands on the same row.
+  const idemRef = useRef<string>(newIdempotencyKey());
 
-  function set<K extends keyof FormState>(k: K, v: FormState[K]) {
-    setForm((f) => ({ ...f, [k]: v }));
+  function setC<K extends keyof ContactState>(k: K, v: string) {
+    setContact((c) => ({ ...c, [k]: v }));
     if (errors[k]) setErrors((e) => ({ ...e, [k]: undefined }));
   }
 
@@ -99,17 +87,15 @@ function Partners() {
   }
 
   function validate(): boolean {
-    const e: Partial<Record<keyof FormState, string>> = {};
-    if (!form.full_name.trim()) e.full_name = "Required";
-    if (!form.email.trim()) e.email = "Required";
-    else if (!/^\S+@\S+\.\S+$/.test(form.email)) e.email = "Enter a valid email";
-    if (!form.phone.trim()) e.phone = "Required";
-    if (!form.vin.trim()) e.vin = "Required";
-    else if (form.vin.trim().length !== 17) e.vin = "VIN must be 17 characters";
-    if (!form.year.trim()) e.year = "Required";
-    else if (!/^\d{4}$/.test(form.year)) e.year = "Enter a 4-digit year";
-    if (!form.make.trim()) e.make = "Required";
-    if (!form.model.trim()) e.model = "Required";
+    const e: Record<string, string | undefined> = { ...validateVehicle(vehicle) };
+    if (!contact.full_name.trim()) e.full_name = "Required";
+    if (!contact.email.trim()) e.email = "Required";
+    else if (!/^\S+@\S+\.\S+$/.test(contact.email)) e.email = "Enter a valid email";
+    if (contact.phone.replace(/\D/g, "").length < 10) e.phone = "Enter a 10-digit phone number";
+    const { meta } = filesPayload(files);
+    const fileProblem = meta.map(intakeFileProblem).find(Boolean);
+    if (fileProblem) e.files = fileProblem;
+    for (const k of Object.keys(e)) if (!e[k]) delete e[k];
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -120,43 +106,36 @@ function Partners() {
     if (!validate()) return;
     setSubmitting(true);
     try {
-      // Create the submission via a server function so uploads can be scoped
-      // to a real submission id (storage RLS verifies the id exists).
-      const { id: submissionId } = await createFleetOwnerSubmission({
+      const { list, meta } = filesPayload(files);
+      setProgress("Saving your details…");
+      const started = await startPartnerIntake({
         data: {
-          full_name: form.full_name.trim(),
-          email: form.email.trim(),
-          phone: form.phone.trim(),
-          vin: form.vin.trim().toUpperCase(),
-          year: Number(form.year),
-          make: form.make.trim(),
-          model: form.model.trim(),
-          trim: form.trim.trim() || null,
-          mileage: form.mileage ? Number(form.mileage) : null,
-          title_status: form.title_status || null,
-          lien_status: form.lien_status || null,
-          registration_state: form.registration_state || null,
-          currently_insured: form.currently_insured === "" ? null : form.currently_insured === "Yes",
-          condition: form.condition || null,
-          message: form.message.trim() || null,
+          idempotencyKey: idemRef.current,
+          contact: {
+            full_name: contact.full_name.trim(),
+            email: contact.email.trim(),
+            phone: contact.phone.trim(),
+            business_name: contact.business_name.trim() || null,
+            address_line1: contact.address_line1.trim() || null,
+            address_line2: contact.address_line2.trim() || null,
+            city: contact.city.trim() || null,
+            state: contact.state || null,
+            postal_code: contact.postal_code.trim() || null,
+            sms_consent: smsConsent,
+          },
+          vehicle: vehiclePayload(vehicle),
+          files: meta,
         },
       });
-      const photo_urls: string[] = [];
-      for (const file of photos) {
-        const ext = file.name.split(".").pop() || "jpg";
-        const path = `${submissionId}/${crypto.randomUUID()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from("owner-vehicle-photos").upload(path, file, { contentType: file.type });
-        if (upErr) throw upErr;
-        photo_urls.push(path);
-      }
-      if (photo_urls.length) {
-        await updateFleetOwnerPhotos({ data: { id: submissionId, photo_urls } });
-      }
-      setSent(true);
+      const up = await uploadPlanned(started.uploads, list, (d, t) => setProgress(`Uploading files ${d}/${t}…`));
+      setProgress("Finishing…");
+      await finishPartnerIntake({ data: { submissionId: started.submissionId, idempotencyKey: idemRef.current, uploaded: up.uploaded } });
+      setSent({ email: contact.email.trim(), missing: up.failed });
     } catch (err: any) {
-      setSubmitError(err.message || "Something went wrong. Please try again.");
+      setSubmitError(err?.message || "Something went wrong. Please try again — your details are saved and won't be duplicated.");
     } finally {
       setSubmitting(false);
+      setProgress(null);
     }
   }
 
@@ -245,71 +224,52 @@ function Partners() {
             <p className="mt-3 text-muted-foreground">A few details and we'll set up a call to walk through the program.</p>
           </FadeUp>
           {sent ? (
-            <div className="mt-8 rounded-2xl bg-soft p-10 text-center">
-              <h3 className="text-2xl font-semibold">Thanks.</h3>
-              <p className="mt-3 text-muted-foreground">We'll review your vehicle and reach out within 24 hours to set up a call.</p>
+            <div className="mt-8 rounded-2xl bg-soft p-10 text-center" data-testid="partner-intake-done">
+              <h3 className="text-2xl font-semibold">Thanks — We Got Your Vehicle.</h3>
+              <p className="mt-3 text-muted-foreground">We'll review it and reach out within 24 hours to set up a call.</p>
+              {sent.missing.length > 0 && (
+                <p className="mt-3 text-sm text-real-red">These files didn't upload: {sent.missing.join(", ")}. We'll collect them when we call.</p>
+              )}
+              <p className="mt-6 text-sm text-muted-foreground">Create your partner portal login with <strong>{sent.email}</strong> to follow your submission, add more vehicles, and later see rentals, earnings and payouts.</p>
+              <a href={`/partner?signup=1&email=${encodeURIComponent(sent.email)}`} className="mt-4 inline-flex rounded-lg bg-black px-6 py-3 text-sm font-medium text-white hover:opacity-90">Create Partner Login</a>
             </div>
           ) : (
-            <form onSubmit={submit} noValidate className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Full Name" value={form.full_name} onChange={(v) => set("full_name", v)} error={errors.full_name} />
-              <Field label="Email" type="email" value={form.email} onChange={(v) => set("email", v)} error={errors.email} />
+            <form onSubmit={submit} noValidate className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="partner-intake-form">
+              <h3 className="md:col-span-2 text-sm font-semibold tracking-wider text-muted-foreground">About You</h3>
+              <Field label="Full Name" value={contact.full_name} onChange={(v) => setC("full_name", v)} error={errors.full_name} autoComplete="name" />
+              <Field label="Email" type="email" value={contact.email} onChange={(v) => setC("email", v)} error={errors.email} autoComplete="email" />
               <div>
                 <label className="text-[10px] tracking-wider text-muted-foreground">Phone</label>
-                <PhoneInput mode="us" value={form.phone} onValueChange={(v) => set("phone", v)} className={`mt-1 w-full bg-soft rounded-lg px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 ${errors.phone ? "ring-2 ring-real-red/40" : ""}`} />
+                <PhoneInput mode="us" value={contact.phone} onValueChange={(v) => setC("phone", v)} className={`mt-1 w-full bg-soft rounded-lg px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 ${errors.phone ? "ring-2 ring-real-red/40" : ""}`} />
                 {errors.phone && <div className="mt-1 text-xs text-real-red">{errors.phone}</div>}
               </div>
-              <Field label="VIN (17 Characters)" value={form.vin} onChange={(v) => set("vin", v.toUpperCase().slice(0, 17))} error={errors.vin} />
-              <Field label="Year" value={form.year} onChange={(v) => set("year", v.replace(/\D/g, "").slice(0, 4))} error={errors.year} />
-              <Field label="Make" value={form.make} onChange={(v) => set("make", v)} error={errors.make} />
-              <Field label="Model" value={form.model} onChange={(v) => set("model", v)} error={errors.model} />
-              <Field label="Trim (Optional)" value={form.trim} onChange={(v) => set("trim", v)} />
-              <Field label="Current Mileage" value={form.mileage} onChange={(v) => set("mileage", v.replace(/\D/g, ""))} />
-              <Select label="Title Status" value={form.title_status} onChange={(v) => set("title_status", v)} options={TITLE_STATUSES} />
-              <Select label="Lien Status" value={form.lien_status} onChange={(v) => set("lien_status", v)} options={LIEN_STATUSES} />
-              <Select label="Registration State" value={form.registration_state} onChange={(v) => set("registration_state", v)} options={US_STATES} />
-              <Select label="Currently Insured" value={form.currently_insured} onChange={(v) => set("currently_insured", v)} options={["Yes", "No"]} />
-              <Select label="Vehicle Condition" value={form.condition} onChange={(v) => set("condition", v)} options={CONDITIONS} />
-
-              <div className="md:col-span-2">
-                <label className="text-[10px] tracking-wider text-muted-foreground">Vehicle Photos (4–6)</label>
-                <div className="mt-1">
-                  <FileUploader
-                    value={photos}
-                    disabled={submitting}
-                    onChange={setPhotos}
-                    accept="image/*"
-                    multiple
-                    maxFiles={6}
-                    title="Drop Vehicle Photos Here"
-                    label="Browse Photos"
-                    hint={`${photos.length}/6 selected`}
-                  />
-                </div>
+              <Field label="Business Name (Optional)" value={contact.business_name} onChange={(v) => setC("business_name", v)} autoComplete="organization" />
+              <Field label="Street Address" value={contact.address_line1} onChange={(v) => setC("address_line1", v)} autoComplete="address-line1" />
+              <Field label="Apt / Suite (Optional)" value={contact.address_line2} onChange={(v) => setC("address_line2", v)} autoComplete="address-line2" />
+              <Field label="City" value={contact.city} onChange={(v) => setC("city", v)} autoComplete="address-level2" />
+              <div className="grid grid-cols-2 gap-4">
+                <Select label="State" value={contact.state} onChange={(v) => setC("state", v)} options={US_STATES} />
+                <Field label="ZIP" value={contact.postal_code} onChange={(v) => setC("postal_code", v.replace(/[^0-9-]/g, "").slice(0, 10))} inputMode="numeric" autoComplete="postal-code" />
               </div>
 
-              <div className="md:col-span-2">
-                <label className="text-[10px] tracking-wider text-muted-foreground">Message (Optional)</label>
-                <textarea
-                  value={form.message}
-                  onChange={(e) => set("message", e.target.value)}
-                  rows={4}
-                  className="mt-1 w-full bg-soft rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10"
-                />
-              </div>
+              <h3 className="md:col-span-2 mt-4 text-sm font-semibold tracking-wider text-muted-foreground">Your Vehicle</h3>
+              <PartnerVehicleFields value={vehicle} onChange={(v) => { setVehicle(v); setErrors((e) => ({ ...e, vin: undefined, year: undefined, make: undefined, model: undefined })); }}
+                errors={errors as any} files={files} onFiles={(f) => { setFiles(f); setErrors((e) => ({ ...e, files: undefined })); }} disabled={submitting} />
+              {errors.files && <div className="md:col-span-2 text-xs text-real-red">{errors.files}</div>}
 
-              {submitError && (
-                <div className="md:col-span-2 text-sm text-real-red">{submitError}</div>
-              )}
+              <label className="md:col-span-2 flex items-start gap-3 text-xs text-muted-foreground">
+                <input type="checkbox" checked={smsConsent} onChange={(e) => setSmsConsent(e.target.checked)} className="mt-0.5 h-[18px] w-[18px] shrink-0" />
+                <span>Text me updates about my vehicle (for example, when it goes out on rent). Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out. Not required to join.</span>
+              </label>
+
+              {submitError && <div className="md:col-span-2 text-sm text-real-red">{submitError}</div>}
 
               <div className="md:col-span-2 flex flex-col items-start gap-3">
-                <button
-                  disabled={submitting}
-                  className="rounded-lg bg-real-red px-7 py-3 text-sm font-medium text-white hover:opacity-90 transition active:scale-95 disabled:opacity-60"
-                >
-                  {submitting ? "Submitting…" : "Submit Vehicle"}
+                <button disabled={submitting} className="rounded-lg bg-real-red px-7 py-3 text-sm font-medium text-white hover:opacity-90 transition active:scale-95 disabled:opacity-60">
+                  {submitting ? (progress ?? "Submitting…") : "Submit Vehicle"}
                 </button>
                 <p className="text-xs text-muted-foreground">
-                  You keep the title at all times · Insurance included for the renter · Cancel with notice.
+                  You keep the title at all times · Insurance included for the renter · Cancel with notice. Already a partner? <a href="/partner" className="underline">Sign in</a>.
                 </p>
               </div>
             </form>
@@ -356,38 +316,5 @@ function Partners() {
         </div>
       </section>
     </SiteLayout>
-  );
-}
-
-function Field({ label, value, onChange, type = "text", error }: { label: string; value: string; onChange: (v: string) => void; type?: string; error?: string }) {
-  return (
-    <div>
-      <label className="text-[10px] tracking-wider text-muted-foreground">{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`mt-1 w-full bg-soft rounded-lg px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 ${error ? "ring-2 ring-real-red/40" : ""}`}
-      />
-      {error && <div className="mt-1 text-xs text-real-red">{error}</div>}
-    </div>
-  );
-}
-
-// Owned option labels only; submitted strings and state abbreviations stay exact.
-const PARTNER_OPTION_LABELS: Readonly<Record<string, string>> = {
-  "Not sure": "Not Sure",
-  "Owned free and clear": "Owned Free And Clear",
-  "Financed — still making payments": "Financed — Still Making Payments",
-};
-function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: string[] }) {
-  return (
-    <label className="block">
-      <span className="text-[10px] tracking-wider text-muted-foreground">{label}</span>
-      <AppSelect aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 h-auto w-full rounded-lg border-border bg-soft px-5 py-3 text-sm text-foreground">
-        <option value="">Select…</option>
-        {options.map((option) => <option key={option} value={option}>{PARTNER_OPTION_LABELS[option] ?? option}</option>)}
-      </AppSelect>
-    </label>
   );
 }
