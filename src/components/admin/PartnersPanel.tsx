@@ -2,27 +2,25 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { enumDisplayLabel } from "@/lib/ui-display-labels";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { Partner, FleetOwner, InvestorLead } from "./types";
+import type { Partner, InvestorLead } from "./types";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useServerFn } from "@tanstack/react-start";
 import { linkPartnerLogin } from "@/lib/partner.functions";
 import { EmptyState } from "./ui";
+import { PartnerSubmissions, RecordPayoutButton } from "./PartnerSubmissions";
 
 const PARTNER_TYPES = ["vehicle_owner","capital_partner","private_lender","jv_partner","other"] as const;
 const PARTNER_STATUSES = ["prospect","active","paused","closed"] as const;
 
 export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string } = {}) {
   const [partners, setPartners] = useState<Partner[]>([]);
-  const [legacyOwners, setLegacyOwners] = useState<FleetOwner[]>([]);
   const [legacyInvestors, setLegacyInvestors] = useState<InvestorLead[]>([]);
   const [filter, setFilter] = useState<string>("all");
   const [showAdd, setShowAdd] = useState(false);
 
   useEffect(() => {
     refresh();
-    supabase.from("fleet_owner_submissions").select("*").order("created_at", { ascending: false })
-      .then(({ data }) => setLegacyOwners(data || []));
     supabase.from("investor_leads").select("*").order("created_at", { ascending: false })
       .then(({ data }) => setLegacyInvestors(data || []));
   }, []);
@@ -49,9 +47,6 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
     setPartners(cur => [data as Partner, ...cur]);
     setShowAdd(false);
     toast.success("Partner added");
-  }
-  async function convertOwner(o: FleetOwner) {
-    await add({ name: o.full_name, email: o.email, phone: o.phone, partner_type: "vehicle_owner", status: "prospect", vehicles_contributed: 1, notes: `Converted from fleet owner submission. Vehicle: ${o.year} ${o.make} ${o.model}` });
   }
   async function convertInvestor(l: InvestorLead) {
     await add({ name: l.name, email: l.email, phone: l.phone || undefined, partner_type: "capital_partner", status: "prospect", notes: [l.capital_range && `Range: ${l.capital_range}`, l.message].filter(Boolean).join(" — ") || null });
@@ -98,6 +93,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
                 <SelectTrigger className="h-8 w-36 bg-white text-foreground"><SelectValue /></SelectTrigger>
                 <SelectContent>{PARTNER_TYPES.map(s => <SelectItem key={s} value={s}>{enumDisplayLabel(s)}</SelectItem>)}</SelectContent>
               </Select>
+              {p.status === "active" && <RecordPayoutButton partnerId={p.id} partnerName={p.name} />}
               <button onClick={() => remove(p.id)} className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-real-red hover:text-white hover:border-real-red">Delete</button>
             </div>
             <LinkLoginRow partner={p} onLinked={refresh} />
@@ -115,17 +111,12 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
       </div>
 
       <div className="mt-10">
-        <h3 className="text-sm font-semibold tracking-wider text-muted-foreground mb-3">Legacy Submissions</h3>
+        <PartnerSubmissions onChanged={refresh} />
+      </div>
+
+      <div className="mt-10">
+        <h3 className="text-sm font-semibold tracking-wider text-muted-foreground mb-3">Investor Leads</h3>
         <div className="space-y-2">
-          {legacyOwners.map(o => (
-            <div key={o.id} className="rounded-lg bg-white border border-border p-3 flex flex-wrap items-center gap-3 text-sm">
-              <div className="flex-1 min-w-[200px]">
-                <div className="font-medium">{o.full_name} <span className="text-xs text-muted-foreground">· Fleet owner</span></div>
-                <div className="text-xs text-muted-foreground">{o.email} · {o.year} {o.make} {o.model}</div>
-              </div>
-              <button onClick={() => convertOwner(o)} className="rounded-md bg-black text-white px-3 py-1.5 text-xs">Convert To Partner</button>
-            </div>
-          ))}
           {legacyInvestors.map(l => (
             <div key={l.id} className="rounded-lg bg-white border border-border p-3 flex flex-wrap items-center gap-3 text-sm">
               <div className="flex-1 min-w-[200px]">
@@ -135,9 +126,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
               <button onClick={() => convertInvestor(l)} className="rounded-md bg-black text-white px-3 py-1.5 text-xs">Convert To Partner</button>
             </div>
           ))}
-          {legacyOwners.length === 0 && legacyInvestors.length === 0 && (
-            <div className="text-xs text-muted-foreground">No legacy submissions.</div>
-          )}
+          {legacyInvestors.length === 0 && <div className="text-xs text-muted-foreground">No investor leads.</div>}
         </div>
       </div>
 
@@ -219,7 +208,7 @@ function LinkLoginRow({ partner, onLinked }: { partner: Partner & { user_id?: st
             className="rounded-md bg-black text-white px-3 py-1 disabled:opacity-50">
             {busy ? "…" : "Link Login"}
           </button>
-          <span className="text-muted-foreground">(account must have signed up at /partner first)</span>
+          <span className="text-muted-foreground">(or they sign up at /partner with this email and are linked automatically)</span>
         </>
       )}
     </div>

@@ -2912,6 +2912,24 @@ export type Database = {
       }
       fleet_owner_submissions: {
         Row: {
+          address_line1: string | null
+          address_line2: string | null
+          business_name: string | null
+          city: string | null
+          color: string | null
+          decided_at: string | null
+          decided_by: string | null
+          decline_reason: string | null
+          id_document_path: string | null
+          idempotency_key: string | null
+          license_plate: string | null
+          listed_vehicle_id: string | null
+          partner_id: string | null
+          postal_code: string | null
+          registration_path: string | null
+          sms_consent_at: string | null
+          state: string | null
+          submitted_by: string | null
           condition: string | null
           created_at: string
           currently_insured: boolean | null
@@ -2934,6 +2952,24 @@ export type Database = {
           year: number
         }
         Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          business_name?: string | null
+          city?: string | null
+          color?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          decline_reason?: string | null
+          id_document_path?: string | null
+          idempotency_key?: string | null
+          license_plate?: string | null
+          listed_vehicle_id?: string | null
+          partner_id?: string | null
+          postal_code?: string | null
+          registration_path?: string | null
+          sms_consent_at?: string | null
+          state?: string | null
+          submitted_by?: string | null
           condition?: string | null
           created_at?: string
           currently_insured?: boolean | null
@@ -2956,6 +2992,24 @@ export type Database = {
           year: number
         }
         Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          business_name?: string | null
+          city?: string | null
+          color?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          decline_reason?: string | null
+          id_document_path?: string | null
+          idempotency_key?: string | null
+          license_plate?: string | null
+          listed_vehicle_id?: string | null
+          partner_id?: string | null
+          postal_code?: string | null
+          registration_path?: string | null
+          sms_consent_at?: string | null
+          state?: string | null
+          submitted_by?: string | null
           condition?: string | null
           created_at?: string
           currently_insured?: boolean | null
@@ -4540,8 +4594,57 @@ export type Database = {
           },
         ]
       }
+      partner_notice_sends: {
+        Row: {
+          channel: string | null
+          created_at: string
+          detail: string | null
+          key: string
+          kind: string
+          partner_id: string | null
+          rental_id: string | null
+          status: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          channel?: string | null
+          created_at?: string
+          detail?: string | null
+          key: string
+          kind: string
+          partner_id?: string | null
+          rental_id?: string | null
+          status?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          channel?: string | null
+          created_at?: string
+          detail?: string | null
+          key?: string
+          kind?: string
+          partner_id?: string | null
+          rental_id?: string | null
+          status?: string
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
       partners: {
         Row: {
+          activated_at: string | null
+          activated_by: string | null
+          address_line1: string | null
+          address_line2: string | null
+          business_name: string | null
+          city: string | null
+          payout_setup_updated_at: string | null
+          postal_code: string | null
+          sms_consent_at: string | null
+          state: string | null
+          stripe_connect_account_id: string | null
+          notify_rentals: boolean
+          payouts_enabled: boolean
           capital_committed: number | null
           created_at: string
           documents: Json | null
@@ -4559,6 +4662,19 @@ export type Database = {
           vehicles_contributed: number | null
         }
         Insert: {
+          activated_at?: string | null
+          activated_by?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          business_name?: string | null
+          city?: string | null
+          payout_setup_updated_at?: string | null
+          postal_code?: string | null
+          sms_consent_at?: string | null
+          state?: string | null
+          stripe_connect_account_id?: string | null
+          notify_rentals?: boolean
+          payouts_enabled?: boolean
           capital_committed?: number | null
           created_at?: string
           documents?: Json | null
@@ -4576,6 +4692,19 @@ export type Database = {
           vehicles_contributed?: number | null
         }
         Update: {
+          activated_at?: string | null
+          activated_by?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          business_name?: string | null
+          city?: string | null
+          payout_setup_updated_at?: string | null
+          postal_code?: string | null
+          sms_consent_at?: string | null
+          state?: string | null
+          stripe_connect_account_id?: string | null
+          notify_rentals?: boolean
+          payouts_enabled?: boolean
           capital_committed?: number | null
           created_at?: string
           documents?: Json | null
@@ -4832,6 +4961,10 @@ export type Database = {
       }
       payouts: {
         Row: {
+          expenses_total: number
+          method: string | null
+          receipt_path: string | null
+          reference: string | null
           created_at: string
           gross_rent: number
           id: string
@@ -4847,6 +4980,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          expenses_total?: number
+          method?: string | null
+          receipt_path?: string | null
+          reference?: string | null
           created_at?: string
           gross_rent?: number
           id?: string
@@ -4862,6 +4999,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          expenses_total?: number
+          method?: string | null
+          receipt_path?: string | null
+          reference?: string | null
           created_at?: string
           gross_rent?: number
           id?: string
