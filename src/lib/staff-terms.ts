@@ -90,17 +90,23 @@ export function deliveryState(row: { status?: string | null } | null | undefined
 }
 
 /**
- * The Terms Confirmed row. "Not Done" until clicked, then "Sent To FLEET <time>",
- * or "Failed" (with Retry). Already complete once an agreement is signed.
+ * The Terms Confirmed row. Always shown in the Next Step list, right after
+ * Application Approved (Dolmar, Nov 17 12:09 PM): "After Approval" (grey) until
+ * the application is approved, then "Not Done" until Move Forward is clicked,
+ * then "Confirmed By <name>, <time> · Sent To FLEET", or "Failed" (with Retry).
+ * Already complete once an agreement is signed.
  */
+export const TERMS_AFTER_APPROVAL = "After Approval";
 export function termsConfirmedRequirement(state: StaffTermsState | null | undefined, opts: { approved: boolean; agreementSigned: boolean }): ActivationRequirement {
   const latest = state?.latest ?? null;
   let detail = "Not Done";
   let met: boolean | null = false;
-  if (latest?.delivery === "sent") { detail = `Sent To FLEET ${shortEt(latest.deliveredAt ?? latest.clickedAt)}`.trim(); met = true; }
-  else if (latest?.delivery === "sending") detail = "Sending To FLEET";
+  const who = latest ? [latest.clickedByName ? `Confirmed By ${latest.clickedByName}` : "Confirmed", shortEt(latest.clickedAt)].filter(Boolean).join(", ") : "";
+  if (latest?.delivery === "sent") { detail = `${who} · Sent To FLEET`; met = true; }
+  else if (latest?.delivery === "sending") detail = `${who} · Sending To FLEET`;
   else if (latest) detail = "Failed";
   else if (opts.agreementSigned) { detail = "Agreement Signed"; met = true; }
+  else if (!opts.approved) { detail = TERMS_AFTER_APPROVAL; met = null; }
   return { key: "terms_confirmed", label: TERMS_CONFIRMED_LABEL, met, enforcement: "advisory", detail };
 }
 

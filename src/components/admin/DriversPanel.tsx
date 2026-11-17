@@ -96,7 +96,7 @@ import {
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import { TermsConfirmedControl } from "./TermsConfirmedControl";
 import { confirmStaffTermsMoveForward, getStaffTermsState } from "@/lib/staff-terms.functions";
-import { moveForwardEnabled, termsConfirmedRequirement, type StaffTermsState } from "@/lib/staff-terms";
+import { moveForwardEnabled, termsConfirmedRequirement, TERMS_AFTER_APPROVAL, type StaffTermsState } from "@/lib/staff-terms";
 import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
 import { ChecklistInspectionFiles } from "./ChecklistInspectionFiles";
 import { checklistDocumentCategories } from "./checklist-actions";
@@ -2260,26 +2260,28 @@ function DriverDetail({
   }, [refreshVault, refreshEvidenceEvents]);
   const agreementSignedForTerms = rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true;
   useEffect(() => {
-    if (!isManager || !approved || rentalActive) { setStaffTerms(null); return; }
+    if (!isManager || !approved) { setStaffTerms(null); return; }
     let cancelled = false;
     loadStaffTerms({ data: { applicationId: driver.id } })
       .then((r) => { if (!cancelled) setStaffTerms(r as StaffTermsState); })
       .catch(() => { if (!cancelled) setStaffTerms(null); });
     return () => { cancelled = true; };
-  }, [driver.id, isManager, approved, rentalActive, loadStaffTerms, staffTermsNonce, readinessNonce]);
-  const termsConfirmedRow = isManager && approved && !rentalActive
-    ? termsConfirmedRequirement(staffTerms, { approved, agreementSigned: agreementSignedForTerms })
-    : null;
+  }, [driver.id, isManager, approved, loadStaffTerms, staffTermsNonce, readinessNonce]);
+  // Always in the list right after Application Approved: grey "After Approval"
+  // before approval, Move Forward (Manager/Owner) once approved, then who/when.
+  const termsAgreementSigned = agreementSignedForTerms || rentalActive;
+  const termsConfirmedRow = termsConfirmedRequirement(staffTerms, { approved, agreementSigned: termsAgreementSigned });
   const termsVehicles = useMemo(() => vehicles.map((v: any) => ({ id: String(v.id), label: [v.year, v.make, v.model].filter(Boolean).join(" ") + (v.plate ? ` · ${v.plate}` : "") || "Vehicle" })), [vehicles]);
   function renderChecklistEvidence(key: ActivationRequirementKey) {
     if (key === "terms_confirmed") {
       if (!isManager) return null;
+      if (termsAgreementSigned && !staffTerms?.latest) return null;
       return (
         <TermsConfirmedControl
           state={staffTerms}
           vehicles={termsVehicles}
-          enabled={moveForwardEnabled({ approved: dStatus === "approved", isManager, agreementSigned: agreementSignedForTerms }) && staffTerms?.ready !== false}
-          disabledReason={staffTerms?.ready === false ? "Move Forward Is Not Set Up Yet" : "Approve The Application First"}
+          enabled={moveForwardEnabled({ approved: dStatus === "approved", isManager, agreementSigned: termsAgreementSigned }) && staffTerms?.ready !== false}
+          disabledReason={dStatus !== "approved" ? TERMS_AFTER_APPROVAL : staffTerms?.ready === false ? "Move Forward Is Not Set Up Yet" : "Approve The Application First"}
           onSubmit={async ({ terms, retry }) => {
             const r = await moveForwardFn({ data: { applicationId: driver.id, terms, retry } });
             setStaffTermsNonce((n) => n + 1);
