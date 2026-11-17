@@ -19,17 +19,22 @@ import { ReadinessStatePill } from "./ui";
 import type { ReadinessByApplicant } from "@/lib/admin-overview";
 import { displayPersonName } from "@/lib/display-normalize";
 import { LeadCardBody } from "./LeadCardBody";
+import { LeadCardMenu } from "./LeadCardMenu";
+import type { StaffTier } from "@/lib/roles";
 
 export default function LeadPriorities({
   isManager = false,
   refreshKey = 0,
   readiness = {},
   canSeeReadiness = false,
+  tier = null,
 }: {
   isManager?: boolean;
   refreshKey?: number;
   readiness?: ReadinessByApplicant;
   canSeeReadiness?: boolean;
+  /** Signed-in staff tier; decides which ⋮ menu options show (Delete is Owner-only). */
+  tier?: StaffTier | null;
 }) {
   const load = useServerFn(getLeadPriorities);
   const [result, setResult] = useState<LeadPrioritiesResult | null>(null);
@@ -192,6 +197,7 @@ export default function LeadPriorities({
                       <LeadCardBody
                         lead={lead}
                         today={result.today}
+                        menu={<LeadCardMenu lead={lead} today={result.today} tier={tier} onChanged={refresh} />}
                         name={
                           <Link
                             to="/admin"
