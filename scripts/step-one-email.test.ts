@@ -183,7 +183,9 @@ describe("one welcome email, not two", () => {
   });
   test("the engine applies it before sending, alongside the profile-complete skip", () => {
     const s = readFileSync("src/lib/automations.server.ts", "utf8");
-    expect(s).toMatch(/const skipThis =\s*shouldSkipForCompleteProfile\(step as any, app\) \|\|\s*\(step\.channel === "email" &&\s*shouldSkipForStepOneEmail\(/);
+    expect(s).toMatch(/const skipThis =\s*\(shouldSkipForCompleteProfile\(step as any, app\) &&[\s\S]{0,200}?\) \|\|\s*\(step\.channel === "email" &&\s*shouldSkipForStepOneEmail\(/);
+    // The 5-minute welcome email step sends the thank-you itself when Step 1 did not (t352u).
+    expect(s).toMatch(/sendStepOneThankYouEmail\(/);
     expect(s).toMatch(/\.eq\("kind", STEP1_EMAIL_LOG_KIND\)/);
   });
 });

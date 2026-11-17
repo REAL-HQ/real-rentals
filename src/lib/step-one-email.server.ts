@@ -66,8 +66,26 @@ function esc(v: string): string {
   return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-export function renderStepOneEmail(args: { firstName: string | null; continueUrl: string }): { subject: string; html: string } {
-  const c = STEP1_EMAIL_COPY;
+/**
+ * Not-yet / No / Pending gig drivers (known once Part 1 is in) have no gig
+ * profile to screenshot: they are asked for proof of income instead
+ * (Dolmar, t348u / t352u). Gig drivers keep the copy above, word for word.
+ */
+export const STEP1_EMAIL_NOT_DRIVING = {
+  ready: [
+    "Driver's License (Front)",
+    "Proof of Income (an Income Document or an Earnings Screenshot)",
+    "Your Current Home Address",
+  ],
+  why: [
+    "Driver's license: confirms it's really you, and it's needed to set up your insurance.",
+    "Home address: insurance is priced by where you live.",
+    "Proof of income (an income document or an earnings screenshot): this is the main one. It helps confirm the weekly rent will work for you, so we can approve you faster.",
+  ],
+} as const;
+
+export function renderStepOneEmail(args: { firstName: string | null; continueUrl: string; notDrivingYet?: boolean }): { subject: string; html: string } {
+  const c = args.notDrivingYet ? { ...STEP1_EMAIL_COPY, ...STEP1_EMAIL_NOT_DRIVING } : STEP1_EMAIL_COPY;
   const name = (args.firstName || "").trim().split(/\s+/)[0] || "";
   const h2 = (t: string) => `<h2 style="margin:22px 0 8px;font-size:16px;color:#111">${esc(t)}</h2>`;
   const list = (items: readonly string[]) =>
@@ -108,7 +126,7 @@ export type StepOneEmailOutcome = "sent" | "off" | "held" | "no_email" | "failed
 
 /** Fire-and-forget from savePartialApplication. Never throws. */
 export async function sendStepOneThankYouEmail(
-  args: { applicationId: string; to: string | null; firstName: string | null; token?: string },
+  args: { applicationId: string; to: string | null; firstName: string | null; token?: string; notDrivingYet?: boolean },
   deps: Deps = {},
 ): Promise<StepOneEmailOutcome> {
   try {
@@ -123,7 +141,7 @@ export async function sendStepOneThankYouEmail(
       const { issueResumeToken, resumeUrl } = await import("@/lib/resume-tokens.server");
       url = resumeUrl(args.token ?? (await issueResumeToken(admin, args.applicationId)));
     }
-    const { subject, html } = renderStepOneEmail({ firstName: args.firstName, continueUrl: url });
+    const { subject, html } = renderStepOneEmail({ firstName: args.firstName, continueUrl: url, notDrivingYet: args.notDrivingYet === true });
     const send = deps.sendEmail ?? (await import("@/lib/email.server")).sendEmail;
     const { EMAIL_REPLY_TO } = await import("@/lib/email.server");
     const res = await send({ to: args.to, subject, html, replyTo: EMAIL_REPLY_TO, track: { workflow: STEP1_EMAIL_WORKFLOW } });
