@@ -46,6 +46,12 @@ export type CollectionInvoicePayment = {
   externalRecord: boolean;
 };
 export type CollectionInvoiceRef = { id: string; customerId: string | null; subscriptionId: string | null };
+/**
+ * An app payments row (no Stripe invoice) that ties a one-off payment intent to
+ * a known rental: a Payment Link or Dashboard charge the webhook recorded.
+ * customerId is the rental's Stripe customer when it has one.
+ */
+export type CollectionAppLinkedPayment = { intentId: string; chargeId: string | null; rentalId: string; customerId: string | null };
 export type CollectionSubscriptionRef = { id: string; customerId: string | null };
 export type CollectionBalanceEvidence = { created: unknown; currency: unknown; amount: unknown; fee: unknown };
 export type UnverifiedCollectionCharge = {
@@ -189,6 +195,8 @@ export function verifyCollectedCharges(input: {
   invoicePayments: CollectionInvoicePayment[];
   invoices: CollectionInvoiceRef[];
   subscriptions: CollectionSubscriptionRef[];
+  /** Optional. Lets a no-invoice charge count when an app row owns its intent. */
+  appLinkedPayments?: CollectionAppLinkedPayment[];
   window: { gte: number; lt: number };
 }): {
   charges: CollectionCharge[];
@@ -230,9 +238,27 @@ export function verifyCollectedCharges(input: {
     addOwner(linkedIntents, payment.intentId, customer);
     addOwner(linkedCharges, payment.chargeId, customer);
   }
+  const appLinks = new Map<string, CollectionAppLinkedPayment[]>();
+  for (const link of input.appLinkedPayments ?? []) {
+    if (!link.intentId || !link.rentalId) continue;
+    appLinks.set(link.intentId, [...(appLinks.get(link.intentId) || []), link]);
+  }
+  /**
+   * The owner of a charge no invoice links: exactly one app row for its intent
+   * (and charge, when the row names one), whose rental customer does not
+   * contradict the charge customer. A Payment Link charge has no customer, so
+   * the rental's customer (or the rental itself) stands in.
+   */
+  const appOwner = (charge: UnverifiedCollectionCharge): string | null => {
+    const links = (appLinks.get(charge.paymentIntentId || "") || []).filter((l) => !l.chargeId || l.chargeId === charge.id);
+    if (links.length !== 1) return null;
+    const link = links[0];
+    if (charge.customerId && link.customerId && charge.customerId !== link.customerId) return null;
+    return charge.customerId || link.customerId || `rental:${link.rentalId}`;
+  };
   const verifiedCharges: CollectionCharge[] = [];
   for (const charge of input.charges) {
-    const customerId = charge.customerId;
+    let customerId = charge.customerId;
     const balance = charge.balance;
     const collected = charge.paid && charge.captured && charge.status === "succeeded" && charge.amountCaptured > 0;
     const capturedAt = balance && typeof balance.created === "number" && Number.isFinite(balance.created) ? balance.created : null;
@@ -246,7 +272,12 @@ export function verifyCollectedCharges(input: {
       ...(linkedCharges.get(charge.id) || []),
       ...(linkedIntents.get(charge.paymentIntentId || "") || []),
     ]);
-    if (!customerId || owners.size !== 1 || !owners.has(customerId) || unresolvedCharges.has(charge.id) || unresolvedIntents.has(charge.paymentIntentId || "")) {
+    const unresolved = unresolvedCharges.has(charge.id) || unresolvedIntents.has(charge.paymentIntentId || "");
+    if (owners.size === 0 && !unresolved) {
+      const owner = appOwner(charge);
+      if (owner) { customerId = owner; owners.add(owner); }
+    }
+    if (!customerId || owners.size !== 1 || !owners.has(customerId) || unresolved) {
       if (relevant) incomplete("Charge", charge.id, "Payment ownership or invoice relationship unverified");
       continue;
     }
