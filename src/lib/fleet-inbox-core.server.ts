@@ -15,7 +15,8 @@ A single document may describe MANY vehicles (e.g. a PDF of several insurance ca
 
 documentClass: one of ${DOC_CLASSES.join(", ")}. Use "unknown" if not confident.
 A vehicle RENTAL agreement between the rental company and a renter (renter name, weekly rate, rental start/end) is "rental_agreement", never "purchase_agreement"; purchase_agreement is only for buying or selling a vehicle.
-Field names (only these): vin, year, make, model, trim, color, body_type, license_plate, plate_state, unit_number, title_number, title_status, registration_number, registration_state, registration_expires_on, insurance_carrier, insurance_policy_number, insurance_effective_on, insurance_expires_on, named_insured, current_odometer, service_date, vendor, invoice_number, service_description, parts_total, labor_total, tax_total, total, legal_owner, lienholder, purchase_price, purchase_date, payoff_amount, loan_reference, monthly_payment.
+Field names (only these): vin, year, make, model, trim, color, body_type, license_plate, plate_state, unit_number, title_number, title_status, registration_number, registration_state, registration_expires_on, insurance_carrier, insurance_policy_number, insurance_effective_on, insurance_expires_on, named_insured, approved_drivers, current_odometer, service_date, vendor, invoice_number, service_description, parts_total, labor_total, tax_total, total, legal_owner, lienholder, purchase_price, purchase_date, payoff_amount, loan_reference, monthly_payment.
+approved_drivers: the people an insurance card lists as approved or listed drivers, as printed, separated by "; " (omit if none are printed).
 body_type: sedan, suv, minivan, truck, van, coupe, hatchback, wagon, convertible, other. Dates YYYY-MM-DD. Money and mileage digits only (decimal point allowed for money).
 confidence: high (clear), medium (legible but imperfect), low (unclear).
 For service/repair/maintenance receipts: current_odometer is the mileage printed on the invoice; also list each service line on that vehicle's entry as "serviceItems":[{"description":"as printed","amount":"digits or omit"}]. Never invent a line, amount, mileage, date, vendor or invoice number.
@@ -27,7 +28,7 @@ Respond ONLY with strict JSON:
  "warnings":["..."]}`;
 
 const ALL_FIELDS = new Set<string>([
-  ...VEHICLE_FIELDS, ...FINANCE_FIELDS, "unit_number", "named_insured", "service_date", "vendor",
+  ...VEHICLE_FIELDS, ...FINANCE_FIELDS, "unit_number", "named_insured", "approved_drivers", "service_date", "vendor",
   "service_description", "parts_total", "labor_total", "total", "invoice_number", "tax_total", "service_items",
 ]);
 
@@ -245,7 +246,16 @@ export async function analyzeItemCore(itemId: string, opts: { allowStuck?: boole
   // Never for Vehicle Profile uploads: those always go through explicit staff review.
   const { data: srcBatch } = await sb.from("fleet_import_batches").select("source_channel").eq("id", claimed.batch_id).maybeSingle();
   if (!isStaffReviewChannel(srcBatch?.source_channel)) await (await import("@/lib/safe-autofill.server")).runSafeAutofillForItem(sb, data.itemId);
-  const needs = docClass === "unknown" || classConf === "low" || extraction.vehicles.length === 0;
+  // Emailed renter insurance ID card: file it to exactly one renter's portal
+  // Documents, or leave it Needs Attention for staff (renter-insurance-card.server.ts).
+  // Storing only — never verifies, never messages, never throws.
+  let cardNeedsStaff = false;
+  if (docClass === "insurance_card") {
+    const { fileRenterInsuranceCard } = await import("@/lib/renter-insurance-card.server");
+    const filed = await fileRenterInsuranceCard(sb, data.itemId);
+    cardNeedsStaff = filed.status === "review";
+  }
+  const needs = cardNeedsStaff || docClass === "unknown" || classConf === "low" || extraction.vehicles.length === 0;
   await sb.from("fleet_import_items").update({ status: needs ? "needs_attention" : "ready" }).eq("id", data.itemId);
   await refreshBatchStatus(claimed.batch_id);
   return { ok: true as const };
