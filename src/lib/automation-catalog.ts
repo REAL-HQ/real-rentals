@@ -548,6 +548,18 @@ export const AUTOMATIONS: AutomationDef[] = [
     defaultOn: false,
     note: "Off until turned on. Files are team only and saved as not reviewed; nothing is verified or approved and the driver is not told. Signed agreements and rental applications are never filed this way (eSign and staff only); an old agreement goes under Other and never counts as the current one. A file staff already verified is never replaced. Every upload is in the audit log.",
   },
+  {
+    key: "renter_insurance_cards",
+    title: "Insurance ID Cards To Portal",
+    audience: "Renters",
+    channels: [],
+    trigger: "An emailed insurance ID card (the intake inbox, or a team inbox card FLEET hands over, Spam included) is read in Fleet Inbox and its VIN and name match exactly one renter on an active or reserved rental.",
+    cadence: "Each time a card arrives. The same file is never saved twice.",
+    emailWorkflows: [],
+    control: { kind: "setting" },
+    previews: [],
+    note: "Storing only: the card is saved to the renter's Documents as \"Insurance ID Card\" and on the driver profile, not reviewed, and nobody is marked insured or verified. Nothing is sent to the renter. Older cards stay as history; a card staff already verified stays current until staff review the new one. No match, two matches, a different name or an expired card goes to Fleet Inbox (Needs Attention) with one bell notice instead.",
+  },
 ];
 
 export const AUTOMATION_KEYS = AUTOMATIONS.map((a) => a.key);

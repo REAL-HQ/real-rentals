@@ -2,7 +2,7 @@ import { type StripeEnv } from "./stripe.server";
 import { BILLING_ONE_TIME_EXTENSION_ENABLED } from "./billing-controls-flag";
 import { createReadOnlyStripe } from "./stripe-reader.server";
 import { STRIPE_READER_PAGE_SIZE } from "./stripe-reader";
-import { aggregateCollections, collectionsWindow, readAllPages, verifyCollectedCharges, type CollectionBalanceEvidence, type CollectionSubscription, type CollectionsRange, type CollectionsReport } from "./stripe-collections";
+import { aggregateCollections, collectionsWindow, readAllPages, verifyCollectedCharges, type CollectionAppLinkedPayment, type CollectionBalanceEvidence, type CollectionSubscription, type CollectionsRange, type CollectionsReport } from "./stripe-collections";
 
 function balanceEvidence(balance: unknown): CollectionBalanceEvidence | null {
   if (!balance || typeof balance !== "object") return null;
@@ -11,6 +11,43 @@ function balanceEvidence(balance: unknown): CollectionBalanceEvidence | null {
 }
 
 const idOf = (v: string | { id: string } | null | undefined) => typeof v === "string" ? v : v?.id;
+
+/**
+ * App payments rows that own a one-off intent (no Stripe invoice): Payment
+ * Links and Dashboard charges the webhook recorded against a rental. Only the
+ * given intents are read. A failed read returns [] so those charges stay
+ * unverified, exactly as before; it never fails the report.
+ */
+export async function loadAppLinkedPayments(intentIds: string[], db?: any): Promise<CollectionAppLinkedPayment[]> {
+  const ids = [...new Set(intentIds.filter(Boolean))];
+  if (!ids.length) return [];
+  try {
+    const admin = db ?? (await import("@/integrations/supabase/client.server")).supabaseAdmin;
+    const out: CollectionAppLinkedPayment[] = [];
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data, error } = await (admin as any)
+        .from("payments")
+        .select("stripe_payment_intent_id, stripe_charge_id, rental_id, stripe_customer_id, rentals:rental_id(stripe_customer_id)")
+        .in("stripe_payment_intent_id", ids.slice(i, i + 200))
+        .is("stripe_invoice_id", null)
+        .not("rental_id", "is", null)
+        .in("status", ["paid", "refunded"]);
+      if (error) throw new Error(error.message);
+      for (const row of (data ?? []) as any[]) {
+        out.push({
+          intentId: String(row.stripe_payment_intent_id),
+          chargeId: row.stripe_charge_id ?? null,
+          rentalId: String(row.rental_id),
+          customerId: row.rentals?.stripe_customer_id ?? row.stripe_customer_id ?? null,
+        });
+      }
+    }
+    return out;
+  } catch (err) {
+    console.error("[stripe-collections] app-linked payments unavailable", err);
+    return [];
+  }
+}
 
 /** GET/list/retrieve only. Invoices prove linkage, but never contribute money. */
 export async function loadStripeCollections(environment: StripeEnv, range: CollectionsRange): Promise<CollectionsReport> {
@@ -35,8 +72,14 @@ export async function loadStripeCollections(environment: StripeEnv, range: Colle
     id: r.id, chargeId: idOf(r.charge) || "", created: r.created, amount: r.amount, currency: r.currency, status: r.status,
     fee: r.balance_transaction && typeof r.balance_transaction !== "string" && r.balance_transaction.currency === r.currency ? r.balance_transaction.fee : null,
   }));
+  // One-off charges (no invoice payment names their intent) may be owned by an app row.
+  const invoiceIntents = new Set(invoicePayments.map(payment => idOf(payment.payment.payment_intent)).filter(Boolean));
+  const appLinkedPayments = await loadAppLinkedPayments(
+    [...chargeIndex.values()].map(charge => idOf(charge.payment_intent) || "").filter(id => id && !invoiceIntents.has(id)),
+  );
   const verified = verifyCollectedCharges({
     window,
+    appLinkedPayments,
     invoicePayments: invoicePayments.map(payment => ({
       id: payment.id,
       invoiceId: idOf(payment.invoice) || null,
