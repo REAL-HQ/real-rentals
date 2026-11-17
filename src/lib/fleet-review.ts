@@ -72,10 +72,10 @@ export const FLEET_ESCALATION_DEFAULTS = {
   /** Under this age (from date of birth) -> staff look. 21+ is the hard floor. */
   youngDriverAge: 25,
   minAge: 21,
-  /** Gig rating below this -> staff look (Dolmar, t299s1618). */
+  /** Gig rating below this -> staff look (Dolmar, Nov 16 2026: 100+ trips and a 4.0+ rating). */
   minRating: 4.0,
-  /** Fewer completed trips than this -> staff look (Dolmar, t299s1618: 200 trips and a 4.0 rating). */
-  minTrips: 200,
+  /** Fewer completed trips than this -> staff look (Dolmar, Nov 16 2026: 100+ trips and a 4.0+ rating; was 200). */
+  minTrips: 100,
   /** License expiring within this many days -> staff look (expired = blocker). */
   licenseExpiryDays: 30,
 } as const;
@@ -277,7 +277,7 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   if (rating !== null && rating > 0 && rating < T.minRating) flag("low_rating", `Gig rating ${rating} (minimum ${T.minRating.toFixed(1)}).`);
   if (noTrackRecord) {
     // Not driving for a gig app yet (Dolmar, t339u): no longer a reason to send
-    // to staff by itself. The 200-trip / 4.0 minimums cannot apply to someone
+    // to staff by itself. The 100-trip / 4.0 minimums cannot apply to someone
     // with no trips, so they are replaced, not waived: proof of income is a
     // required document (a hard blocker above) and approve is strict, meaning
     // the server refuses it while ANY escalation exists (date of birth with
@@ -304,6 +304,10 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
     if (!v || /^pending$/i.test(v)) note(`${k}_pending`, `${label}: ${v || "not recorded"}.`);
     else if (!BAD_CHECK.test(v) && !GOOD_CHECK.test(v)) flag(`${k}_open`, `${label}: ${v}.`);
   }
+  // Renter insurance is not required (Real Rentals provides it). "No insurance"
+  // / "no full coverage" is never a flag, blocker, or missing item. This fires
+  // only when staff recorded a personal policy whose name does not match the
+  // license — a data mismatch, not a missing-insurance requirement.
   if (s.has_personal_insurance === true && s.insurance_name_matches_license === false) flag("insurance_name", "Insurance name does not match the license.");
 
   // Blockers that do not hide the applicant from FLEET's list: an open staff

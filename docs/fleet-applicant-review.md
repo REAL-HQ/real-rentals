@@ -114,7 +114,7 @@ license, and an open Needs Staff flag. With the RentID switch on
 
 ### Not driving for a gig app yet (Dolmar, t339u)
 
-"Not yet" is no longer a reason to send to staff by itself. The 200-trip /
+"Not yet" is no longer a reason to send to staff by itself. The 100-trip /
 4.0-rating bar cannot apply to someone with no trips, so for these applicants
 (`no_track_record: true`) it is replaced, not waived:
 
@@ -137,8 +137,8 @@ Send `needs_staff` when any of these is true:
    not driving yet: a hard blocker).
 2. Driver under 25, or no date of birth.
 3. License expires within 30 days, or no expiration date.
-4. Gig rating under 4.0, or fewer than 200 trips (Dolmar, t299s1618; was 100).
-   Unknown trips or rating: FLEET confirms 200+ and 4.0+ on the gig
+4. Gig rating under 4.0, or fewer than 100 trips (Dolmar, Nov 16 2026; was 200).
+   Unknown trips or rating: FLEET confirms 100+ and 4.0+ on the gig
    screenshot before approving, otherwise sends to staff.
 5. The gig account is deactivated. (Not driving gig yet is no longer an
    escalation by itself; see "Not driving for a gig app yet".)
@@ -150,7 +150,11 @@ Send `needs_staff` when any of these is true:
    "consider" or declined result is a hard blocker and always goes to staff
    (`screening_flagged: true`, `recommendation: needs_staff`); a clear result
    with the gig bar met FLEET may pass (Dolmar, t299s1618).
-10. Insurance name does not match the license.
+10. Insurance name does not match the license — only if staff recorded a
+    personal policy whose name does not match. Renter insurance is not
+    required (Real Rentals provides it). "No insurance" or "no full coverage"
+    is never a flag, a blocker, or a missing item, and nobody is marked
+    insured from this rule.
 11. Anything in the documents or answers that does not line up (names, photos,
     screenshots), or anything FLEET is unsure about.
 
