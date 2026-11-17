@@ -5,19 +5,26 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { displayPersonName } from "@/lib/display-normalize";
 import { getDeletionSummary, deleteDriver, purgeDriver } from "@/lib/driver-deletion.functions";
 
 type Summary = Extract<Awaited<ReturnType<typeof getDeletionSummary>>, { ok: true }>;
 
-/** Owner-only. Mode "soft" = Delete Driver (recoverable); "purge" = Delete Permanently. */
+/**
+ * Owner-only. Mode "soft" = Delete Driver (recoverable); "purge" = Delete Permanently.
+ * subject "Lead" is the same soft delete opened from a Lead Priorities card: the
+ * title names the person and the caller shows its own toast (with Undo).
+ */
 export function DeleteDriverDialog({
   applicationId,
   mode,
+  subject = "Driver",
   onClose,
   onDone,
 }: {
   applicationId: string;
   mode: "soft" | "purge";
+  subject?: "Driver" | "Lead";
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -41,7 +48,7 @@ export function DeleteDriverDialog({
     try {
       const r = mode === "soft" ? await softFn({ data: { applicationId } }) : await purgeFn({ data: { applicationId } });
       if (!r.ok) return void toast.error(r.error);
-      toast.success(mode === "soft" ? "Driver Deleted" : "Personal Data Deleted");
+      if (subject === "Driver") toast.success(mode === "soft" ? "Driver Deleted" : "Personal Data Deleted");
       const failed = mode === "purge" ? Number((r as any).files?.failed ?? 0) : 0;
       if (failed) toast.error(`${failed} file(s) could not be removed yet. Retry in Recently Deleted.`);
       onDone();
@@ -54,15 +61,19 @@ export function DeleteDriverDialog({
 
   const purgeBlocked = !!s && mode === "purge" && (s.legalHold || s.activeRentals > 0 || s.openCharges > 0);
   const softBlocked = !!s && mode === "soft" && s.activeRentals > 0;
+  const isLead = subject === "Lead" && mode === "soft";
+  const leadName = s?.name ? displayPersonName(s.name) : "This Lead";
   const canConfirm = !!s && !busy && !purgeBlocked && !softBlocked && (mode === "soft" || typed.trim() === (s.name ?? "").trim());
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{mode === "soft" ? "Delete Driver" : "Delete Permanently"}</DialogTitle>
+          <DialogTitle>{isLead ? `Delete ${leadName}?` : mode === "soft" ? "Delete Driver" : "Delete Permanently"}</DialogTitle>
           <DialogDescription>
-            {mode === "soft" ? "Reversible. The Owner can restore this driver from Recently Deleted." : "Not reversible. Eligible personal information and identity files are erased."}
+            {isLead
+              ? "Reversible. The lead is hidden from Lead Priorities and Drivers; Undo right after, or the Owner can restore it from Recently Deleted."
+              : mode === "soft" ? "Reversible. The Owner can restore this driver from Recently Deleted." : "Not reversible. Eligible personal information and identity files are erased."}
           </DialogDescription>
         </DialogHeader>
         {err && <p className="text-sm text-destructive">{err}</p>}
@@ -70,7 +81,7 @@ export function DeleteDriverDialog({
         {s && (
           <div className="space-y-3 text-sm">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
-              <dt className="text-muted-foreground">Driver</dt><dd>{s.name}</dd>
+              <dt className="text-muted-foreground">{isLead ? "Lead" : "Driver"}</dt><dd>{s.name}</dd>
               <dt className="text-muted-foreground">Status</dt><dd className="">{enumDisplayLabel(s.status)}</dd>
               <dt className="text-muted-foreground">Waitlist History</dt><dd>{s.waitlistHistory ? "Yes" : "No"}</dd>
               <dt className="text-muted-foreground">Linked Duplicates</dt><dd>{s.duplicates}</dd>
@@ -113,7 +124,7 @@ export function DeleteDriverDialog({
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button variant="destructive" disabled={!canConfirm} onClick={confirm}>
-            {busy ? "Working…" : mode === "soft" ? "Delete Driver" : "Delete Permanently"}
+            {busy ? "Working…" : isLead ? "Delete Lead" : mode === "soft" ? "Delete Driver" : "Delete Permanently"}
           </Button>
         </DialogFooter>
       </DialogContent>

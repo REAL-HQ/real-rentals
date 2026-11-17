@@ -10,6 +10,7 @@ export function LeadCardBody({
   status,
   draft,
   actions,
+  menu,
 }: {
   lead: Pick<
     PriorityLead,
@@ -20,13 +21,18 @@ export function LeadCardBody({
   status: ReactNode;
   draft?: ReactNode;
   actions: ReactNode;
+  /** Optional ⋮ menu, pinned to the card's top-right corner beside the name. */
+  menu?: ReactNode;
 }) {
   const tone = LEAD_TONES[lead.bucket];
   const timing = leadTiming(lead, today);
   const isHighPriority = lead.priority === "High";
   return (
     <div className="flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4 text-card-foreground">
-      <div className="min-w-0 break-words text-base font-semibold leading-5">{name}</div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 break-words text-base font-semibold leading-5">{name}</div>
+        {menu}
+      </div>
       <p data-lead-next className="text-[13px] font-medium leading-5 text-card-foreground">
         {LEAD_NEXT_STEP[lead.bucket]}
       </p>

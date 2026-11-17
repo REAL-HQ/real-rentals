@@ -43,11 +43,12 @@ export const LEAD_ALL_PAGE_ORDER: LeadBucket[] = [
 
 export const ACTIVE_LEAD_STATUSES = ["new", "reviewing", "approved"];
 export const LEAD_SELECT =
-  "id,full_name,phone,status,created_at,contact_status,contact_status_note,contact_follow_up_on,contact_status_at,contact_status_by";
+  "id,full_name,phone,email,status,created_at,contact_status,contact_status_note,contact_follow_up_on,contact_status_at,contact_status_by";
 export type LeadRow = {
   id: string;
   full_name: string | null;
   phone: string | null;
+  email?: string | null;
   status: string;
   created_at: string | null;
   contact_status: string;
@@ -146,6 +147,7 @@ export function projectLead(raw: LeadRow, bucket: LeadBucket) {
     id: raw.id,
     full_name: raw.full_name,
     phone: raw.phone,
+    email: raw.email ?? null,
     created_at: raw.created_at,
     contact_status: raw.contact_status,
     contact_status_note: raw.contact_status_note,
