@@ -213,7 +213,9 @@ type Factor = {
 
 // ---------------------------------------------------------------- factors
 //
-// Weights total 100 and express how much each fact should move a hiring
+// Weights total 83 (renter insurance factors were removed: Real Rentals
+// provides insurance, so those facts no longer move a hiring decision).
+// Weights express how much each remaining fact should move a hiring
 // decision, not how hard it is to collect. Staff-established facts and
 // self-reported ones share a weight: what changes with evidence quality is
 // verification coverage, not how good the applicant looks.
@@ -368,79 +370,14 @@ export const FACTORS: Factor[] = [
     },
   },
 
-  // ---- Insurance -------------------------------------------------------- 17
-  {
-    key: "insurance_cover",
-    remedy: "applicant",
-    label: "Insurance cover",
-    group: "Insurance",
-    weight: 8,
-    evaluate: (a, s) => {
-      const has = bool(s.has_personal_insurance);
-      const active = bool(s.policy_active);
-      if (has === true && active === true)
-        return positive("Policy confirmed active", "staff_verified");
-      if (has === true && active === false) return attention("Policy not active", "staff_verified");
-      if (has === false) return attention("No personal insurance", "staff_verified");
-      const self = bool(a.full_coverage_insurance);
-      // "declared" means they typed a carrier and policy number, nothing more.
-      if (self === true)
-        return positive(
-          "Full coverage declared",
-          a.insurance_doc_url ? "document" : "self_reported",
-        );
-      if (self === false) return attention("No full coverage", "self_reported");
-      // "Not sure" is an answered question with an unknown answer. It stays
-      // unknown — it must never be read as "no" — but saying so tells staff
-      // there is a card to ask about rather than a question to ask.
-      if (a.insurance_answer === "not_sure")
-        return unknown("Applicant unsure whether they have full coverage");
-      return unknown("Insurance not provided");
-    },
-  },
-  {
-    key: "insurance_doc",
-    remedy: "request_document",
-    label: "Insurance document",
-    group: "Insurance",
-    weight: 4,
-    evaluate: (a, s, d) => {
-      if (bool(s.insurance_verified) === true || d.verified("insurance_card"))
-        return positive("Insurance verified by staff", "staff_verified");
-      if (a.insurance_doc_url || d.has("insurance_card"))
-        return positive("Insurance document on file", "document");
-      return unknown("No insurance document");
-    },
-  },
-  {
-    key: "rideshare_endorsement",
-    remedy: "applicant",
-    label: "Rideshare endorsement",
-    group: "Insurance",
-    weight: 3,
-    evaluate: (a, s) => {
-      const st = bool(s.rideshare_endorsement);
-      if (st === true) return positive("Rideshare endorsement confirmed", "staff_verified");
-      if (st === false) return attention("No rideshare endorsement", "staff_verified");
-      const self = bool(a.insurance_rideshare_endorsement);
-      if (self === true) return positive("Rideshare endorsement reported", "self_reported");
-      if (self === false) return attention("No rideshare endorsement", "self_reported");
-      return unknown("Endorsement not established");
-    },
-  },
-  {
-    key: "insurance_name",
-    remedy: "verify",
-    label: "Policy name matches",
-    group: "Insurance",
-    weight: 2,
-    evaluate: (_a, s) => {
-      const m = bool(s.insurance_name_matches_license);
-      if (m === true) return positive("Policy name matches licence", "staff_verified");
-      if (m === false) return attention("Policy name does not match licence", "staff_verified");
-      return unknown("Name match not checked");
-    },
-  },
+  // Renter insurance is not scored, flagged, or treated as missing. Real
+  // Rentals provides the policy, so "no insurance" / "no full coverage" /
+  // "no insurance document" must never be a concern, a blocker, or a hole
+  // in coverage. Optional insurance documents can still be filed; they do
+  // not change this model, and nobody is marked insured from this change.
+  // Vehicle / rental insurance and the activation checklist are separate
+  // (src/lib/activation-readiness.ts) and are not part of this applicant
+  // readiness model.
 
   // ---- Driving history — all four are staff-only, all four stay unknown
   //      until somebody asks. Nothing here may be inferred from a null. -- 20
@@ -605,6 +542,8 @@ function findDisqualifiers(a: ReadinessInput, s: ReadinessInput): string[] {
   if (bool(s.has_dui) === true) out.push("DUI on record");
   if (s.gig_account_status === "deactivated") out.push("Gig account deactivated");
   if (bool(s.card_in_own_name) === false) out.push("Payment card not in driver's name");
+  // Only when staff recorded a personal policy that does not match the
+  // license. Missing renter insurance is not a disqualifier.
   if (bool(s.has_personal_insurance) === true && bool(s.insurance_name_matches_license) === false) {
     out.push("Insurance name does not match licence");
   }

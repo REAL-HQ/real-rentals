@@ -86,9 +86,12 @@ console.log("READINESS READS THE VAULT IT IS GIVEN");
      `without the vault the licence is only "on file" (${detail(withoutVault, "license_doc")})`);
   ok(evidence(withVault, "license_doc") === "staff_verified",
      `with it, staff verification shows (${detail(withVault, "license_doc")})`);
-  ok(evidence(withoutVault, "insurance_doc") === "document" &&
-     evidence(withVault, "insurance_doc") === "staff_verified",
-     "same for the insurance document");
+  ok(evidence(withoutVault, "insurance_doc") == null &&
+     evidence(withVault, "insurance_doc") == null,
+     "an insurance document is not a readiness factor (Real Rentals provides insurance)");
+  ok(!(withoutVault.attention ?? []).some((f) => /insurance/i.test(f.key) || /insurance/i.test(f.label)) &&
+     !(withVault.attention ?? []).some((f) => /insurance/i.test(f.key) || /insurance/i.test(f.label)),
+     "  and it does not show as a concern or a missing item");
 
   // A rejected document is not evidence, whatever the application column says.
   const rejected = vault.map((d) =>

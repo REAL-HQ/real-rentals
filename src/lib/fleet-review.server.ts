@@ -202,9 +202,15 @@ export async function buildReviewPacket(admin: Admin, leadId: string, opts: { in
       mvr_status: app.mvr_status ?? null,
       incident_count: app.incident_count ?? null,
     },
-    // As recorded. FLEET must not treat any of this as verified unless
-    // insurance_verified_by_staff is true.
+    // Historical answers only. Renter insurance is not required — Real Rentals
+    // provides it — so a "no" / "no full coverage" / missing document is never
+    // a flag, a blocker, or a missing item. FLEET must not treat any of this
+    // as verified unless insurance_verified_by_staff is true, and this packet
+    // never marks anyone insured. Carrier names are never included.
     insurance: {
+      required: false,
+      provided_by_company: true,
+      note: "Real Rentals provides insurance. A renter's own insurance is not required, and no insurance or no full coverage is not a flag or a missing item.",
       answer: app.insurance_answer ?? null,
       status: app.insurance_status ?? null,
       full_coverage_insurance: app.full_coverage_insurance ?? null,

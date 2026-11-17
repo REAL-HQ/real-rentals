@@ -148,19 +148,40 @@ describe("rules", () => {
     // Missing income proof is requested, not sent to staff (t298s1611).
     expect(a.escalations.map((e) => e.code)).not.toContain("missing_income");
     expect(a.notes.map((e) => e.code)).toContain("requested_income");
-    // Gig bar is 200 trips and a 4.0 rating (Dolmar, t299s1618; was 100 trips, t294u).
+    // Gig bar is 100 trips and a 4.0 rating (Dolmar, Nov 16 2026; was 200).
     expect(rules.FLEET_ESCALATION_DEFAULTS.minRating).toBe(4.0);
-    expect(rules.FLEET_ESCALATION_DEFAULTS.minTrips).toBe(200);
-    const ok = rules.assessForFleet({ ...base, app: goodApp(A, { rating: 4.5, trips_completed: 200 }), docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]) });
+    expect(rules.FLEET_ESCALATION_DEFAULTS.minTrips).toBe(100);
+    const ok = rules.assessForFleet({ ...base, app: goodApp(A, { rating: 4.5, trips_completed: 100 }), docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]) });
     expect(ok.escalations.map((e) => e.code)).not.toContain("low_rating");
     expect(ok.escalations.map((e) => e.code)).not.toContain("few_trips");
-    const was100 = rules.assessForFleet({ ...base, app: goodApp(A, { rating: 4.5, trips_completed: 150 }), docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]) });
-    expect(was100.escalations.map((e) => e.code)).toContain("few_trips");
-    expect(was100.recommendation).toBe("needs_staff");
-    const edge = rules.assessForFleet({ ...base, app: goodApp(A, { rating: 4.0, trips_completed: 199 }), docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]) });
+    const below = rules.assessForFleet({ ...base, app: goodApp(A, { rating: 4.5, trips_completed: 99 }), docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]) });
+    expect(below.escalations.map((e) => e.code)).toContain("few_trips");
+    expect(below.recommendation).toBe("needs_staff");
+    const mid = rules.assessForFleet({ ...base, app: goodApp(A, { rating: 4.5, trips_completed: 150 }), docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]) });
+    expect(mid.escalations.map((e) => e.code)).not.toContain("few_trips");
+    const edge = rules.assessForFleet({ ...base, app: goodApp(A, { rating: 4.0, trips_completed: 100 }), docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]) });
     expect(edge.escalations.map((e) => e.code)).not.toContain("low_rating");
-    expect(edge.escalations.map((e) => e.code)).toContain("few_trips");
+    expect(edge.escalations.map((e) => e.code)).not.toContain("few_trips");
     expect(a.recommendation).toBe("needs_staff");
+  });
+  test("no insurance / no full coverage is not a flag, blocker, or missing item", () => {
+    const a = rules.assessForFleet({
+      ...base,
+      app: goodApp(A, {
+        insurance_answer: "no",
+        full_coverage_insurance: false,
+        insurance_status: "none",
+        insurance_doc_url: null,
+        insurance_rideshare_endorsement: false,
+      }),
+      docs: docsFor(A, ["license_front", "license_back", "gig_profile", "income"]),
+      screening: { has_personal_insurance: false },
+    });
+    const codes = [...a.hard_blockers, ...a.escalations, ...a.notes].map((e) => e.code);
+    const messages = [...a.hard_blockers, ...a.escalations, ...a.notes].map((e) => e.message);
+    expect(codes.some((c) => /insurance/i.test(c))).toBe(false);
+    expect(messages.some((m) => /no insurance|no full coverage|missing.*insurance|insurance document/i.test(m))).toBe(false);
+    expect(a.recommendation).toBe("approve");
   });
 });
 
@@ -181,10 +202,10 @@ describe("background checks (Dolmar, t299s1618)", () => {
       expect(a.hard_blockers.map((b) => b.code)).toContain(`${k}_${v}`);
     }
   });
-  test("unknown trips or rating is a note telling FLEET to confirm the 200 / 4.0 bar", () => {
+  test("unknown trips or rating is a note telling FLEET to confirm the 100 / 4.0 bar", () => {
     const a = rules.assessForFleet({ ...base, app: goodApp(A, { trips_completed: null, rating: null }), docs: docsFor(A) });
     expect(a.notes.map((n) => n.code)).toEqual(expect.arrayContaining(["no_trips", "no_rating"]));
-    expect(a.notes.find((n) => n.code === "no_trips")!.message).toContain("200+");
+    expect(a.notes.find((n) => n.code === "no_trips")!.message).toContain("100+");
   });
 });
 
@@ -215,7 +236,10 @@ describe("applicants endpoint", () => {
     expect(p.answers.license_number).toBeUndefined();
     expect(p.answers.stripe_customer_id).toBeUndefined();
     expect(p.insurance.insurance_verified_by_staff).toBe(false);
+    expect(p.insurance.required).toBe(false);
+    expect(p.insurance.provided_by_company).toBe(true);
     expect(p.insurance).not.toHaveProperty("carrier");
+    expect(JSON.stringify(p.insurance)).not.toMatch(/geico|progressive|state farm|broker/i);
     expect(p.readiness_blockers).toEqual([]);
     const withUrls = await (await srv.handleFleetApplicants(req("applicants", { action: "get", lead_id: A, include_urls: true }), { admin: db, env: ENV, now: () => NOW })).json();
     expect(withUrls.packet.documents[0].url).toContain("https://signed.example/");

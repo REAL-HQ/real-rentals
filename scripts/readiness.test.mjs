@@ -20,7 +20,7 @@ const ok = (c, m) => { console.log(`${c ? "  ok " : "FAIL "} ${m}`); if (!c) fai
 const eq = (a, b, m) => ok(a === b, `${m}${a === b ? "" : `  (got ${a}, want ${b})`}`);
 
 console.log(`model: ${FACTORS.length} factors, total weight ${TOTAL_WEIGHT}`);
-eq(TOTAL_WEIGHT, 100, "weights total 100");
+eq(TOTAL_WEIGHT, 83, "weights total 83 (renter insurance factors removed)");
 ok(new Set(FACTORS.map(f => f.key)).size === FACTORS.length, "factor keys are unique");
 
 console.log("\nNULL IS NEVER A NEGATIVE FACT");
@@ -43,8 +43,12 @@ eq(f(computeReadiness({}, { accidents_last_3yr: 0 }), "accidents").state, "posit
 console.log("\nMISSING vs BAD, per the brief");
 eq(f(blank, "driver_rating").state, "unknown", "missing rating != poor rating");
 eq(f(computeReadiness({ rating: 3.9 }, {}), "driver_rating").state, "attention", "  a low rating IS a concern");
-eq(f(blank, "insurance_cover").state, "unknown", "missing insurance != failed insurance");
-eq(f(computeReadiness({}, { has_personal_insurance: false }), "insurance_cover").state, "attention", "  no insurance IS a concern");
+eq(FACTORS.some(x => x.key === "insurance_cover" || x.key === "insurance_doc" || x.group === "Insurance"), false,
+   "renter insurance is not a readiness factor");
+eq(computeReadiness({ insurance_answer: "no", full_coverage_insurance: false }, { has_personal_insurance: false }).attention.length, 0,
+   "no insurance / no full coverage is not a concern");
+eq(computeReadiness({ insurance_answer: "no", full_coverage_insurance: false }, { has_personal_insurance: false }).disqualifiers.length, 0,
+   "  and is not a disqualifier");
 eq(f(blank, "trip_volume").state, "unknown", "missing trip count != zero trips");
 eq(f(computeReadiness({ trips_completed: 10 }, {}), "trip_volume").state, "attention", "  10 trips IS a concern");
 
@@ -110,7 +114,6 @@ const factor = (key) => (app, scr) =>
   computeReadiness(app, scr ?? {}).factors.find((f) => f.key === key);
 const timing2 = factor("timing");
 const commitment = factor("drive_type");
-const cover = factor("insurance_cover");
 
 // Timing: the applicant's own start date, now that start_timing is not asked.
 const wantsSoon = timing2({ pickup_date: "2026-10-01" });
@@ -138,17 +141,17 @@ eq(commitment({}, { drive_type: "part_time" }).evidence, "staff_verified",
    "a staff answer outranks the applicant's");
 eq(commitment({ drive_type: "weekends" }).state, "unknown", "an unrecognised value establishes nothing");
 
-// Insurance: "not sure" is an answer, and it is not "no".
-const notSure = cover({ insurance_answer: "not_sure", full_coverage_insurance: null });
-eq(notSure.state, "unknown", "not sure leaves insurance unknown");
-eq(notSure.earned, 0, "  earning nothing");
-eq(cover({ insurance_answer: "no", full_coverage_insurance: false }).state, "attention",
-   "a plain no is a concern, as before");
-eq(notSure.detail !== cover({}).detail, true,
-   "  but reads differently from a question nobody asked");
-ok(computeReadiness({ insurance_answer: "not_sure" }, {}).coverage <
-   computeReadiness({ insurance_answer: "no", full_coverage_insurance: false }, {}).coverage,
-   "not sure does not count as known coverage the way no does");
+// Insurance is not scored. "No" and "not sure" must not become a concern,
+// a missing item, or a hole that changes coverage.
+const noCover = computeReadiness({ insurance_answer: "no", full_coverage_insurance: false }, {});
+const notSureApp = computeReadiness({ insurance_answer: "not_sure", full_coverage_insurance: null }, {});
+const blankIns = computeReadiness({}, {});
+eq(noCover.attention.length, 0, "a plain no is not a concern");
+eq(notSureApp.attention.length, 0, "not sure is not a concern");
+eq(noCover.coverage, blankIns.coverage, "no insurance does not change known coverage");
+eq(notSureApp.coverage, blankIns.coverage, "  and neither does not sure");
+eq(noCover.factors.some(x => x.group === "Insurance" || /insurance/i.test(x.key)), false,
+   "  no insurance factor remains in the model");
 setClockForTests(() => Date.now());
 
 console.log("\nFOUR STATES, NO FIFTH, AND NO 'APPROVED'");
@@ -229,7 +232,9 @@ ok(highQualLowCov.coverage < THRESHOLDS.PROMISING_COVERAGE, "  on very low cover
 ok(highQualLowCov.state !== "decision_ready", "  is never Decision Ready");
 eq(highQualLowCov.state, "more_info_needed", "  it is More Info Needed");
 const highQualMidCov = computeReadiness(
-  { license_valid: true, trips_completed: 900, rating: 4.9, start_timing: "Today" },
+  // Coverage sits between the promising floor (20) and the hot-prospect
+  // floor (40) now that renter-insurance weight is no longer in the total.
+  { license_valid: true, rating: 4.9, start_timing: "Today" },
   { gig_account_status: "active" },
 );
 ok(highQualMidCov.coverage >= THRESHOLDS.PROMISING_COVERAGE, "mid coverage");
@@ -265,15 +270,15 @@ eq(typeof isHotProspect(perfect), "boolean", "Hot Prospect is a boolean, never a
 
 console.log("\nBOTH DOCUMENT VOCABULARIES COUNT");
 const vaultNames = computeReadiness({}, {}, [
-  { category: "insurance", is_current: true },
+  { category: "license_front", is_current: true },
   { category: "gig_profile", is_current: true },
 ]);
 const legacyNames = computeReadiness({}, {}, [
-  { doc_type: "insurance_card" },
+  { doc_type: "license_front" },
   { doc_type: "driver_profile_screenshot" },
 ]);
-eq(f(vaultNames, "insurance_doc").state, "positive", "the vault's 'insurance' counts");
-eq(f(legacyNames, "insurance_doc").state, "positive", "so does lead_documents' 'insurance_card'");
+eq(f(vaultNames, "license_doc").state, "positive", "the vault's 'license_front' counts");
+eq(f(legacyNames, "license_doc").state, "positive", "so does the older 'license_front' spelling");
 eq(vaultNames.coverage, legacyNames.coverage, "the two vocabularies give identical coverage");
 
 console.log("\nA STAFF-CHECKED DOCUMENT IS BETTER EVIDENCE, NOT MORE POINTS");
@@ -308,8 +313,9 @@ ok(withDoc.coverage > noDocs.coverage, "a licence image raises known coverage");
 ok(withDoc.verifiedCoverage > noDocs.verifiedCoverage, "  and verified coverage");
 eq(withDoc.disqualifiers.length, 0, "  and raises no concern");
 const vaultInsurance = computeReadiness({}, {}, [{ doc_type: "insurance_card" }]);
-eq(f(vaultInsurance, "insurance_doc").state, "positive", "a vault insurance card counts");
-eq(f(vaultInsurance, "insurance_doc").evidence, "document", "  as document evidence");
+eq(f(vaultInsurance, "insurance_doc"), undefined, "an insurance card is not a readiness factor");
+eq(vaultInsurance.attention.length, 0, "  and does not raise a concern");
+eq(vaultInsurance.coverage, 0, "  and does not fill a coverage hole or mark anyone insured");
 eq(f(computeReadiness({}, {}, [{ doc_type: "" }]), "license_doc").state, "unknown",
    "a blank doc_type counts for nothing");
 
