@@ -132,44 +132,49 @@ export function ChargesPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="admin-sticky-bar flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>{rows.length} charge(s)</span>
-          {unassigned > 0 ? <StatusPill tone="amber">{unassigned} unassigned</StatusPill> : null}
-          {billable.length > 0 ? (
-            <StatusPill tone="green">{billable.length} ready to bill</StatusPill>
-          ) : null}
+      {/* data-admin-flow disables the sticky bar's -16px margin, which was
+          painting over the filter chips sitting in the next row (t375u).
+          Chips live inside the bar so they stay fully visible and can wrap. */}
+      <div data-admin-flow data-testid="charges-toolbar" className="admin-sticky-bar flex flex-col gap-2 pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>{rows.length} charge(s)</span>
+            {unassigned > 0 ? <StatusPill tone="amber">{unassigned} unassigned</StatusPill> : null}
+            {billable.length > 0 ? (
+              <StatusPill tone="green">{billable.length} ready to bill</StatusPill>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowImport(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm font-medium hover:border-[#D6D6DB]"
+            >
+              <Upload className="w-4 h-4" /> Import Statement
+            </button>
+            <button
+              onClick={() => setShowAdd(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90"
+            >
+              <Plus className="w-4 h-4" /> Add Charge
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowImport(true)}
-            className="inline-flex items-center gap-2 rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm font-medium hover:border-[#D6D6DB]"
-          >
-            <Upload className="w-4 h-4" /> Import Statement
-          </button>
-          <button
-            onClick={() => setShowAdd(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#D03020] text-white px-4 py-2 text-sm font-medium hover:opacity-90"
-          >
-            <Plus className="w-4 h-4" /> Add Charge
-          </button>
+        <div className="flex flex-wrap gap-1.5" data-testid="charges-status-filters">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => setFilter(f.value)}
+              className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                filter === f.value
+                  ? "border-[#D03020] bg-[#D03020] text-white"
+                  : "border-[#EDEDF0] text-[#55555E] hover:border-[#D6D6DB]"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        {STATUS_FILTERS.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => setFilter(f.value)}
-            className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
-              filter === f.value
-                ? "border-[#D03020] bg-[#D03020] text-white"
-                : "border-[#EDEDF0] text-[#55555E] hover:border-[#D6D6DB]"
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
       </div>
 
       {selected.size > 0 ? (
