@@ -70,8 +70,8 @@ const V = "44444444-4444-4444-8444-444444444444";
 const V2 = "55555555-5555-4555-8555-555555555555";
 const ROSA = "99999999-9999-4999-8999-999999999999";
 const NOW = new Date("2026-11-17T15:05:00Z"); // Tue 10:05 AM ET (Rosa on duty)
-const okCheck = { blockers: [] as any[], weeklyRate: 325, deposit: 0, startDate: "2026-11-18", vehicleId: V, vehicleLabel: "2021 Toyota Camry" };
-const terms = (x: Row = {}) => ({ weekly_rate: "325", deposit: "0", start_date: "2026-11-18", vehicle_id: V, ...x });
+const okCheck = { blockers: [] as any[], weeklyRate: 325, reservationFee: 50, deposit: 0, startDate: "2026-11-18", vehicleId: V, vehicleLabel: "2021 Toyota Camry" };
+const terms = (x: Row = {}) => ({ weekly_rate: "325", reservation_fee: "50", deposit: "0", start_date: "2026-11-18", vehicle_id: V, ...x });
 const actor = { userId: ROSA, email: "rosa@drivereal.com", role: "team", tier: "manager" };
 
 function harness(d: { check?: any; open?: boolean; enqueueFails?: boolean; deliver?: "delivered" | "failed" | "skipped" } = {}) {
@@ -113,7 +113,7 @@ describe("Terms Confirmed row", () => {
   });
   test("status: Not Done -> Sent To FLEET <time> | Sending | Failed; button only for managers after approval", () => {
     const base = { ready: true, prefill: null, blockers: [] };
-    const latest = (delivery: any) => ({ id: "e", clickedAt: NOW.toISOString(), clickedByName: "Rosa DeJesus", terms: { weekly_rate: 325, deposit: 0, start_date: "2026-11-18", vehicle_id: V, vehicle_label: null }, delivery, deliveredAt: NOW.toISOString(), error: null });
+    const latest = (delivery: any) => ({ id: "e", clickedAt: NOW.toISOString(), clickedByName: "Rosa DeJesus", terms: { weekly_rate: 325, reservation_fee: 50, deposit: 0, start_date: "2026-11-18", vehicle_id: V, vehicle_label: null }, delivery, deliveredAt: NOW.toISOString(), error: null });
     expect(st.termsConfirmedRequirement({ ...base, latest: latest("sent") }, { approved: true, agreementSigned: false })).toMatchObject({ met: true, detail: "Sent To FLEET Nov 17, 10:05 AM" });
     expect(st.termsConfirmedRequirement({ ...base, latest: latest("failed") }, { approved: true, agreementSigned: false }).detail).toBe("Failed");
     expect(st.termsConfirmedRequirement({ ...base, latest: latest("sending") }, { approved: true, agreementSigned: false }).detail).toBe("Sending To FLEET");
@@ -124,9 +124,9 @@ describe("Terms Confirmed row", () => {
   });
   test("terms parsing and key", () => {
     expect(st.parseStaffTerms(terms()).ok).toBe(true);
-    for (const bad of [{ weekly_rate: "0" }, { deposit: "x" }, { start_date: "11/18/2026" }, { vehicle_id: "Camry" }]) expect(st.parseStaffTerms(terms(bad)).ok).toBe(false);
+    for (const bad of [{ weekly_rate: "0" }, { reservation_fee: "" }, { reservation_fee: "x" }, { deposit: "x" }, { start_date: "11/18/2026" }, { vehicle_id: "Camry" }]) expect(st.parseStaffTerms(terms(bad)).ok).toBe(false);
     const p = st.parseStaffTerms(terms({ weekly_rate: "$325.00" }));
-    expect(p.ok && st.staffTermsKey(p.value)).toBe(`325.00|0.00|2026-11-18|${V}`);
+    expect(p.ok && st.staffTermsKey(p.value)).toBe(`325.00|50.00|0.00|2026-11-18|${V}`);
   });
 });
 
@@ -143,7 +143,7 @@ describe("confirmStaffTerms (Move Forward)", () => {
     expect(h.enq[0].payload).toEqual({
       event: "applicant_ready_for_agreement", event_id: r.eventId, lead_id: A, application_id: A,
       clicked_by: { id: ROSA, name: "Rosa DeJesus" }, clicked_at: NOW.toISOString(),
-      terms: { weekly_rate: 325, deposit: 0, start_date: "2026-11-18", vehicle_id: V },
+      terms: { weekly_rate: 325, reservation_fee: 50, deposit: 0, start_date: "2026-11-18", vehicle_id: V },
     });
     expect(h.dispatched).toHaveLength(1);
     expect(db.state.staff_terms_confirmations).toHaveLength(1);
@@ -203,20 +203,20 @@ describe("confirmStaffTerms (Move Forward)", () => {
   test("prefill comes from what the agreement would print", async () => {
     const db = fakeDb(seed());
     const s = await sts.readStaffTermsState(db, A, { check: async () => okCheck });
-    expect(s).toMatchObject({ ready: true, latest: null, prefill: { weekly_rate: 325, deposit: 0, start_date: "2026-11-18", vehicle_id: V, vehicle_label: "2021 Toyota Camry" } });
+    expect(s).toMatchObject({ ready: true, latest: null, prefill: { weekly_rate: 325, reservation_fee: 50, deposit: 0, start_date: "2026-11-18", vehicle_id: V, vehicle_label: "2021 Toyota Camry" } });
   });
 });
 
 describe("send-agreement channel staff", () => {
   const KEY = "k".repeat(40);
-  const ev = (x: Row = {}) => ({ id: "66666666-6666-4666-8666-666666666666", application_id: A, terms_key: "k", weekly_rate: 325, deposit: 0, start_date: "2026-11-18", vehicle_id: V, clicked_by: ROSA, clicked_by_name: "Rosa DeJesus", clicked_at: "2026-11-17T15:05:00Z", ...x });
+  const ev = (x: Row = {}) => ({ id: "66666666-6666-4666-8666-666666666666", application_id: A, terms_key: "k", weekly_rate: 325, reservation_fee: 50, deposit: 0, start_date: "2026-11-18", vehicle_id: V, clicked_by: ROSA, clicked_by_name: "Rosa DeJesus", clicked_at: "2026-11-17T15:05:00Z", ...x });
   async function call(db: any, tc: Row, d: Row = {}) {
     const issued: any[] = []; const audits: any[] = [];
     const res = await fa.handleFleetSendAgreement(new Request("https://drivereal.com/api/public/fleet/send-agreement", {
       method: "POST", headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: A, terms_confirmation: tc, ...(d.idem ? { idempotency_key: d.idem } : {}) }),
     }), {
       admin: db, env: { FLEET_API_KEY: KEY }, now: () => new Date("2026-11-17T15:10:00Z"), audit: async (e) => { audits.push(e); },
-      check: async () => d.check ?? okCheck, hasOpenOrSigned: async () => false, reservationFee: { enabled: false, amount: 0 },
+      check: async () => d.check ?? okCheck, hasOpenOrSigned: async () => false, reservationFee: d.fee ?? { enabled: true, amount: 50 },
       issue: async (_a: any, id: string, o: any) => { issued.push({ id, o }); return { id: "agr-1", url: "https://drivereal.com/sign/SECRET", delivery: { email: "sent", sms: "sent", delivered: true } }; },
     });
     return { status: res.status, body: await res.json(), issued, audits };
@@ -241,6 +241,17 @@ describe("send-agreement channel staff", () => {
     const r = await call(db, { confirmed_at: "2026-11-17T10:04:00-05:00", channel: "call", call_id: "AC1", summary: "Confirmed $325/week, no deposit.", weekly_rate: 325, deposit: 0, start_date: "2026-11-18", vehicle_id: V });
     expect(r.status).toBe(201);
     expect("staff_event_id" in db.state.agreement_terms_confirmations[0]).toBe(false);
+  });
+  test("send-agreement (staff) refuses when the fee switch changed since Move Forward", async () => {
+    const r = await call(db0(), { channel: "staff", staff_event_id: ev().id }, { fee: { enabled: false, amount: 50 } });
+    expect(r.status).toBe(409);
+    expect(r.body.mismatches[0]).toMatchObject({ field: "reservation_fee", confirmed: 50, agreement: 0 });
+    expect(r.issued).toHaveLength(0);
+    const ok = await call(db0(), { channel: "staff", staff_event_id: ev().id, reservation_fee: 50 });
+    const badFleet = await call(db0(), { channel: "staff", staff_event_id: ev().id, reservation_fee: 75 });
+    expect(badFleet.status).toBe(409);
+    expect(badFleet.body.mismatches[0]).toMatchObject({ field: "reservation_fee", staff: 50 });
+    expect(ok.status).toBe(201);
   });
   test("refusals", async () => {
     for (const [e, tc, d, code, want] of [
@@ -402,14 +413,20 @@ describe("proposed migration (PGlite)", () => {
         CONSTRAINT fleet_webhook_deliveries_event_type_check CHECK (event_type IN ('lead_created')));`);
     await pg.exec(readFileSync("proposed/agreement-terms-confirmations-v1.sql", "utf8"));
     const SQL = readFileSync("proposed/staff-terms-confirmations-v1.sql", "utf8");
+    const SQL2 = readFileSync("proposed/staff-terms-confirmations-v2-reservation-fee.sql", "utf8");
     expect(SQL).toMatch(/PROPOSED, NOT APPLIED/);
     await pg.exec(SQL);
     await pg.exec(SQL);
+    await pg.exec(SQL2);
+    await pg.exec(SQL2);
     const app = (await pg.query<any>(`INSERT INTO applications DEFAULT VALUES RETURNING id`)).rows[0].id;
     const ev = (key = "325.00|0.00|2026-11-18|v") => pg.query<any>(`INSERT INTO staff_terms_confirmations (application_id, terms_key, weekly_rate, deposit, start_date, vehicle_id, clicked_by, clicked_by_name)
       VALUES ($1, $2, 325, 0, '2026-11-18', gen_random_uuid(), gen_random_uuid(), 'Rosa DeJesus') RETURNING id`, [app, key]);
     const id = (await ev()).rows[0].id;
     await expect(ev()).rejects.toThrow();
+    expect((await pg.query<any>(`SELECT reservation_fee FROM staff_terms_confirmations WHERE id = $1`, [id])).rows[0].reservation_fee).toBe("0.00");
+    await pg.query(`UPDATE staff_terms_confirmations SET reservation_fee = 50 WHERE id = $1`, [id]);
+    await expect(pg.query(`UPDATE staff_terms_confirmations SET reservation_fee = -1 WHERE id = $1`, [id])).rejects.toThrow();
     const conf = (ch: string, staff: string | null) => pg.query(`INSERT INTO agreement_terms_confirmations (application_id, confirmed_at, channel, staff_event_id, summary, weekly_rate, deposit, start_date, vehicle_id, recorded_by)
       VALUES ($1, now(), $2, $3, 'Rosa confirmed the terms', 325, 0, '2026-11-18', gen_random_uuid(), 'FLEET (automated)')`, [app, ch, staff]);
     await conf("staff", id);
@@ -417,6 +434,9 @@ describe("proposed migration (PGlite)", () => {
     await pg.query(`INSERT INTO fleet_webhook_deliveries (event_type, dedupe_key) VALUES ('applicant_ready_for_agreement', 'x')`);
     await pg.query(`INSERT INTO fleet_webhook_deliveries (event_type, dedupe_key) VALUES ('agreement_amendment_signed', 'y')`);
     await expect(pg.query(`INSERT INTO fleet_webhook_deliveries (event_type, dedupe_key) VALUES ('nope', 'z')`)).rejects.toThrow();
+    const rollback2 = SQL2.split("-- Rollback")[1].split("\n").filter((l) => l.startsWith("-- ")).map((l) => l.slice(3)).join("\n");
+    await pg.exec(rollback2);
+    expect((await pg.query<any>(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'staff_terms_confirmations' AND column_name = 'reservation_fee'`)).rows[0].n).toBe(0);
     const rollback = SQL.split("-- Rollback")[1].split("\n").filter((l) => l.startsWith("-- ")).map((l) => l.slice(3)).filter((l) => !/^\(|^Rollback/.test(l)).join("\n");
     await pg.exec(rollback);
     await expect(conf("staff", null)).rejects.toThrow();
@@ -424,14 +444,29 @@ describe("proposed migration (PGlite)", () => {
   });
 });
 
-describe("Reservation wording (Dolmar, Nov 17 10:35 AM)", () => {
-  test("dialog says Reservation ($); the payload key stays deposit", () => {
+describe("Reservation and Deposit (Dolmar, Nov 17 10:35 and 10:36 AM)", () => {
+  test("dialog has both Reservation ($) and Deposit ($); payload keeps deposit and adds reservation_fee", () => {
     const ui = readFileSync("src/components/admin/TermsConfirmedControl.tsx", "utf8");
     expect(ui).toContain(">Reservation ($)</Label>");
-    expect(ui).not.toMatch(/>Deposit/);
+    expect(ui).toContain(">Deposit ($)</Label>");
+    expect(ui.indexOf(">Reservation ($)")).toBeLessThan(ui.indexOf(">Deposit ($)"));
     const srv = readFileSync("src/lib/staff-terms.server.ts", "utf8");
-    expect(srv).toContain('deposit: "Reservation"');
-    expect(srv).toMatch(/terms:\s*\{[^}]*deposit/);
+    expect(srv).toContain('reservation_fee: "Reservation"');
+    expect(srv).toContain('deposit: "Deposit"');
+  });
+  test("Deposit defaults to 0 when left out; Reservation is required", () => {
+    const r = st.parseStaffTerms({ weekly_rate: "325", reservation_fee: "50", start_date: "2026-11-18", vehicle_id: V });
+    expect(r).toEqual({ ok: true, value: { weekly_rate: 325, reservation_fee: 50, deposit: 0, start_date: "2026-11-18", vehicle_id: V } });
+    expect(st.parseStaffTerms({ weekly_rate: "325", deposit: "0", start_date: "2026-11-18", vehicle_id: V })).toEqual({ ok: false, error: "Reservation must be an amount (0 if none)." });
+    expect(st.staffTermsKey((r as any).value)).toBe(`325.00|50.00|0.00|2026-11-18|${V}`);
+  });
+  test("Move Forward refuses a Reservation that differs from what signing would charge; no deposit on file matches 0", async () => {
+    const h = harness();
+    const bad = await sts.confirmStaffTerms(fakeDb(seed()), { applicationId: A, terms: terms({ reservation_fee: "75" }), actor }, h.deps);
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) { expect(bad.error).toContain("Reservation"); expect(bad.mismatches?.[0]).toMatchObject({ field: "reservation_fee", confirmed: 75, agreement: 50 }); }
+    const h2 = harness({ check: { ...okCheck, deposit: null } });
+    const ok = await sts.confirmStaffTerms(fakeDb(seed()), { applicationId: A, terms: terms(), actor }, h2.deps);
+    expect(ok.ok).toBe(true);
   });
 });
-

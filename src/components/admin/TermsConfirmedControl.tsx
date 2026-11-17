@@ -7,12 +7,12 @@ import { Label } from "@/components/ui/label";
 import { AppSelect } from "@/components/ui/app-select";
 import { MOVE_FORWARD_LABEL, parseStaffTerms, type StaffTermsState } from "@/lib/staff-terms";
 
-export type MoveForwardSubmit = (args: { terms: { weekly_rate: string; deposit: string; start_date: string; vehicle_id: string }; retry: boolean }) => Promise<{ ok: boolean; error?: string; delivery?: string }>;
+export type MoveForwardSubmit = (args: { terms: { weekly_rate: string; reservation_fee: string; deposit: string; start_date: string; vehicle_id: string }; retry: boolean }) => Promise<{ ok: boolean; error?: string; delivery?: string }>;
 
 /**
  * The Terms Confirmed row's right-side control: Move Forward opens a small
  * confirm dialog prefilled with what the agreement would print (weekly rate,
- * deposit, start date, vehicle). Staff confirm or edit; the server re-checks
+ * Reservation Fee, deposit, start date, vehicle). Staff confirm or edit; the server re-checks
  * everything and refuses terms the agreement would not print. Failed shows
  * Retry, which re-sends the same event to FLEET.
  */
@@ -36,6 +36,7 @@ export function TermsConfirmedControl({
   const [error, setError] = useState<string | null>(null);
   const prefill = state?.prefill ?? null;
   const [weekly, setWeekly] = useState("");
+  const [reservation, setReservation] = useState("");
   const [deposit, setDeposit] = useState("");
   const [start, setStart] = useState("");
   const [vehicle, setVehicle] = useState("");
@@ -43,10 +44,11 @@ export function TermsConfirmedControl({
     if (!open) return;
     setError(null);
     setWeekly(prefill?.weekly_rate != null ? String(prefill.weekly_rate) : "");
-    setDeposit(prefill?.deposit != null ? String(prefill.deposit) : "");
+    setReservation(prefill?.reservation_fee != null ? String(prefill.reservation_fee) : "");
+    setDeposit(prefill?.deposit != null ? String(prefill.deposit) : "0");
     setStart(prefill?.start_date ?? "");
     setVehicle(prefill?.vehicle_id ?? "");
-  }, [open, prefill?.weekly_rate, prefill?.deposit, prefill?.start_date, prefill?.vehicle_id]);
+  }, [open, prefill?.weekly_rate, prefill?.reservation_fee, prefill?.deposit, prefill?.start_date, prefill?.vehicle_id]);
 
   const latest = state?.latest ?? null;
   const failed = latest?.delivery === "failed";
@@ -59,7 +61,7 @@ export function TermsConfirmedControl({
     if (!latest || busy) return;
     setBusy(true);
     try {
-      const r = await onSubmit({ terms: { weekly_rate: String(latest.terms.weekly_rate), deposit: String(latest.terms.deposit), start_date: latest.terms.start_date, vehicle_id: latest.terms.vehicle_id }, retry: true });
+      const r = await onSubmit({ terms: { weekly_rate: String(latest.terms.weekly_rate), reservation_fee: String(latest.terms.reservation_fee ?? 0), deposit: String(latest.terms.deposit), start_date: latest.terms.start_date, vehicle_id: latest.terms.vehicle_id }, retry: true });
       if (!r.ok) throw new Error(r.error ?? "Could Not Send To FLEET.");
       if (r.delivery === "failed") toast.error("FLEET Did Not Receive It Yet. Try Again Shortly.");
       else toast.success("Sent To FLEET");
@@ -72,12 +74,12 @@ export function TermsConfirmedControl({
 
   async function confirm() {
     if (busy) return;
-    const parsed = parseStaffTerms({ weekly_rate: weekly, deposit, start_date: start, vehicle_id: vehicle });
+    const parsed = parseStaffTerms({ weekly_rate: weekly, reservation_fee: reservation, deposit, start_date: start, vehicle_id: vehicle });
     if (!parsed.ok) { setError(parsed.error); return; }
     setBusy(true);
     setError(null);
     try {
-      const r = await onSubmit({ terms: { weekly_rate: weekly, deposit, start_date: start, vehicle_id: vehicle }, retry: false });
+      const r = await onSubmit({ terms: { weekly_rate: weekly, reservation_fee: reservation, deposit, start_date: start, vehicle_id: vehicle }, retry: false });
       if (!r.ok) { setError(r.error ?? "Could Not Move Forward."); return; }
       setOpen(false);
       if (r.delivery === "failed") toast.error("Saved, But FLEET Did Not Receive It. Use Retry.");
@@ -122,14 +124,18 @@ export function TermsConfirmedControl({
               <Input id="mf-weekly" inputMode="decimal" value={weekly} onChange={(e) => setWeekly(e.target.value)} />
             </div>
             <div className="grid min-w-0 gap-1.5">
-              <Label htmlFor="mf-deposit">Reservation ($)</Label>
-              <Input id="mf-deposit" inputMode="decimal" value={deposit} onChange={(e) => setDeposit(e.target.value)} />
-            </div>
-            <div className="grid min-w-0 gap-1.5">
               <Label htmlFor="mf-start">Start Date</Label>
               <Input id="mf-start" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
             </div>
             <div className="grid min-w-0 gap-1.5">
+              <Label htmlFor="mf-reservation">Reservation ($)</Label>
+              <Input id="mf-reservation" inputMode="decimal" value={reservation} onChange={(e) => setReservation(e.target.value)} />
+            </div>
+            <div className="grid min-w-0 gap-1.5">
+              <Label htmlFor="mf-deposit">Deposit ($)</Label>
+              <Input id="mf-deposit" inputMode="decimal" value={deposit} onChange={(e) => setDeposit(e.target.value)} />
+            </div>
+            <div className="col-span-2 grid min-w-0 gap-1.5">
               <Label htmlFor="mf-vehicle">Vehicle</Label>
               <AppSelect id="mf-vehicle" className="w-full min-w-0 overflow-hidden [&>span]:min-w-0 [&>span]:truncate" value={vehicle} onChange={(e) => setVehicle(e.target.value)}>
                 <option value="" disabled>Choose Vehicle</option>

@@ -5,7 +5,7 @@
  *   1. The terms are well formed and the applicant is Approved, with no
  *      agreement out or signed.
  *   2. The agreement the site would send has no blockers, and its weekly
- *      rate, deposit, start date and vehicle are exactly what staff
+ *      rate, Reservation Fee, deposit, start date and vehicle are exactly what staff
  *      confirmed (send-agreement re-checks the same thing), so FLEET is never
  *      handed terms it cannot send.
  *   3. One staff_terms_confirmations row per applicant and term set
@@ -28,7 +28,7 @@ import {
 } from "@/lib/staff-terms";
 
 type Admin = any;
-type SendCheck = { blockers: { field: string; label: string; why: string }[]; weeklyRate: number | null; deposit: number | null; startDate: string | null; vehicleId: string | null; vehicleLabel: string | null };
+type SendCheck = { blockers: { field: string; label: string; why: string }[]; weeklyRate: number | null; reservationFee: number | null; deposit: number | null; startDate: string | null; vehicleId: string | null; vehicleLabel: string | null };
 export type StaffActor = { userId: string; email: string | null; role: string; tier?: string };
 type AuditEntry = { action: string; summary: string; entityType?: string | null; entityId?: string | null; metadata?: Record<string, unknown> };
 
@@ -50,13 +50,15 @@ export type ConfirmResult =
 export function staffTermsMismatches(t: StaffTerms, check: SendCheck) {
   const out: { field: string; confirmed: unknown; agreement: unknown }[] = [];
   if (check.weeklyRate === null || Math.abs(check.weeklyRate - t.weekly_rate) > 0.004) out.push({ field: "weekly_rate", confirmed: t.weekly_rate, agreement: check.weeklyRate });
-  if (check.deposit === null || Math.abs(check.deposit - t.deposit) > 0.004) out.push({ field: "deposit", confirmed: t.deposit, agreement: check.deposit });
+  if (check.reservationFee === null || Math.abs(check.reservationFee - t.reservation_fee) > 0.004) out.push({ field: "reservation_fee", confirmed: t.reservation_fee, agreement: check.reservationFee });
+  // No deposit on file prints none, so it matches 0.
+  if (Math.abs((check.deposit ?? 0) - t.deposit) > 0.004) out.push({ field: "deposit", confirmed: t.deposit, agreement: check.deposit });
   if (check.startDate !== t.start_date) out.push({ field: "start_date", confirmed: t.start_date, agreement: check.startDate });
   if (String(check.vehicleId ?? "").toLowerCase() !== t.vehicle_id) out.push({ field: "vehicle_id", confirmed: t.vehicle_id, agreement: check.vehicleId });
   return out;
 }
 
-const FIELD_LABEL: Record<string, string> = { weekly_rate: "Weekly Rate", deposit: "Reservation", start_date: "Start Date", vehicle_id: "Vehicle" };
+const FIELD_LABEL: Record<string, string> = { weekly_rate: "Weekly Rate", reservation_fee: "Reservation", deposit: "Deposit", start_date: "Start Date", vehicle_id: "Vehicle" };
 
 /**
  * The clicker's name, resolved on the server: the account's full name, else
@@ -81,7 +83,7 @@ export async function resolveStaffName(admin: Admin, actor: StaffActor): Promise
   return (actor.email || "Staff").slice(0, 120);
 }
 
-export function staffTermsPayload(row: { id: string; application_id: string; clicked_by: string; clicked_by_name: string; clicked_at: string; weekly_rate: unknown; deposit: unknown; start_date: string; vehicle_id: string }) {
+export function staffTermsPayload(row: { id: string; application_id: string; clicked_by: string; clicked_by_name: string; clicked_at: string; weekly_rate: unknown; reservation_fee?: unknown; deposit: unknown; start_date: string; vehicle_id: string }) {
   return {
     event: STAFF_TERMS_EVENT,
     event_id: row.id,
@@ -89,11 +91,11 @@ export function staffTermsPayload(row: { id: string; application_id: string; cli
     application_id: row.application_id,
     clicked_by: { id: row.clicked_by, name: row.clicked_by_name },
     clicked_at: new Date(row.clicked_at).toISOString(),
-    terms: { weekly_rate: Number(row.weekly_rate), deposit: Number(row.deposit), start_date: String(row.start_date).slice(0, 10), vehicle_id: row.vehicle_id },
+    terms: { weekly_rate: Number(row.weekly_rate), reservation_fee: Number(row.reservation_fee ?? 0), deposit: Number(row.deposit), start_date: String(row.start_date).slice(0, 10), vehicle_id: row.vehicle_id },
   };
 }
 
-const COLS = "id,application_id,terms_key,weekly_rate,deposit,start_date,vehicle_id,vehicle_label,clicked_by,clicked_by_name,clicked_at,fleet_delivery_id";
+const COLS = "id,application_id,terms_key,weekly_rate,reservation_fee,deposit,start_date,vehicle_id,vehicle_label,clicked_by,clicked_by_name,clicked_at,fleet_delivery_id";
 
 export async function confirmStaffTerms(admin: Admin, input: { applicationId: string; terms: unknown; actor: StaffActor; retry?: boolean }, deps: StaffTermsDeps = {}): Promise<ConfirmResult> {
   const now = (deps.now ?? (() => new Date()))();
@@ -228,7 +230,8 @@ export async function readStaffTermsState(admin: Admin, applicationId: string, d
     const check = await (deps.check ?? (await import("@/lib/agreements.functions")).agreementSendCheck)(admin, applicationId);
     prefill = {
       ...(check.weeklyRate != null ? { weekly_rate: check.weeklyRate } : {}),
-      ...(check.deposit != null ? { deposit: check.deposit } : {}),
+      ...(check.reservationFee != null ? { reservation_fee: check.reservationFee } : {}),
+      deposit: check.deposit ?? 0,
       ...(check.startDate ? { start_date: check.startDate } : {}),
       ...(check.vehicleId ? { vehicle_id: check.vehicleId } : {}),
       vehicle_label: check.vehicleLabel,

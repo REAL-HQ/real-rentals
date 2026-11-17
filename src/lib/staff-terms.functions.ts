@@ -5,7 +5,7 @@ import { requireManager } from "@/lib/roles.server";
 
 /**
  * Terms Confirmed row (Move Forward). Managers and Owners only: the terms
- * include the rate and deposit, which Coordinators do not see.
+ * include the rate, Reservation Fee and deposit, which Coordinators do not see.
  */
 export const getStaffTermsState = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -25,7 +25,8 @@ export const confirmStaffTermsMoveForward = createServerFn({ method: "POST" })
       retry: z.boolean().optional(),
       terms: z.object({
         weekly_rate: z.union([z.number(), z.string()]),
-        deposit: z.union([z.number(), z.string()]),
+        reservation_fee: z.union([z.number(), z.string()]),
+        deposit: z.union([z.number(), z.string()]).optional(),
         start_date: z.string().max(20),
         vehicle_id: z.string().max(60),
       }),

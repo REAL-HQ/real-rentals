@@ -32,6 +32,10 @@ endpoints (`Authorization: Bearer <FLEET_API_KEY>`, JSON, POST).
   `vehicle_id` must match exactly what the agreement will print, which comes
   from the applicant's record (weekly rent, or the vehicle's rate; deposit;
   contract start date; assigned vehicle).
+- `reservation_fee` is optional for `call`/`sms`; when sent it must equal the
+  Reservation Fee this send prints and signing charges (`reservation_fee_auto`:
+  its amount when on, 0 when off). For `staff` it always comes from the Move
+  Forward row and is checked the same way.
 
 What happens, in order (each step must pass):
 

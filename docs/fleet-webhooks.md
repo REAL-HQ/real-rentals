@@ -75,9 +75,13 @@ Lifecycle payloads (ids, names and amounts, never phone numbers):
   (`rental_returned` adds `balance_due` in dollars).
 
 - `applicant_ready_for_agreement` (staff clicked Move Forward on the Terms
-  Confirmed row after their call; needs proposed/staff-terms-confirmations-v1.sql):
+  Confirmed row after their call; needs proposed/staff-terms-confirmations-v1.sql
+  and -v2-reservation-fee.sql):
   `event_id, lead_id, application_id, clicked_by {id, name}, clicked_at,
-  terms {weekly_rate, deposit, start_date, vehicle_id}`. One event per lead and
+  terms {weekly_rate, reservation_fee, deposit, start_date, vehicle_id}`.
+  `reservation_fee` is the Reservation Fee the agreement prints and signing
+  charges (applied to week 1, never a deposit); `deposit` keeps its meaning
+  (security deposit, 0 if none). One event per lead and
   term set; a double click never sends a second one. FLEET then calls
   `POST /api/public/fleet/send-agreement` with
   `terms_confirmation: { "channel": "staff", "staff_event_id": <event_id> }`

@@ -1146,12 +1146,22 @@ async function persistReviewedGaps(
 export async function agreementSendCheck(admin: any, applicationId: string): Promise<{
   blockers: { field: string; label: string; why: string }[];
   weeklyRate: number | null;
+  /** The Reservation Fee the agreement prints and signing charges (0 = none). */
+  reservationFee: number | null;
   deposit: number | null;
   startDate: string | null;
   vehicleId: string | null;
   vehicleLabel: string | null;
 }> {
   const prep = await prepareAgreement(admin, applicationId);
+  // Same source FLEET's send uses (fleet-agreement.server.ts termsPrep) and
+  // the auto-send preparation: the reservation_fee_auto switch and amount.
+  let reservationFee: number | null = null;
+  try {
+    const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
+    const fee = await loadReservationFeeSettings(admin);
+    reservationFee = fee.enabled ? fee.amount : 0;
+  } catch { reservationFee = null; }
   const blockers = prep.blockers.map((b) => ({ field: b.field, label: b.label, why: b.why }));
   const refusal = templateSendRefusal(prep.tpl.meta) ?? (prep.numberingPending ? NUMBERING_PENDING : null);
   if (refusal) blockers.push({ field: "template", label: "Approved agreement template", why: refusal });
@@ -1160,6 +1170,7 @@ export async function agreementSendCheck(admin: any, applicationId: string): Pro
   return {
     blockers,
     weeklyRate: num(prep.app?.weekly_rent ?? prep.vehicle?.weekly_rate),
+    reservationFee,
     deposit: num(prep.app?.deposit_amount ?? prep.vehicle?.deposit),
     startDate: prep.startIso,
     vehicleId: prep.namedVehicleId,

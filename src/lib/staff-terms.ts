@@ -17,7 +17,13 @@ export const STAFF_TERMS_EVENT = "applicant_ready_for_agreement" as const;
 export const MOVE_FORWARD_LABEL = "Move Forward";
 export const TERMS_CONFIRMED_LABEL = "Terms Confirmed";
 
-export type StaffTerms = { weekly_rate: number; deposit: number; start_date: string; vehicle_id: string };
+/**
+ * reservation_fee is the Reservation Fee the agreement prints and signing
+ * charges (applied to week 1; never a deposit). deposit is the per-car
+ * security deposit, 0 today, kept for a future rental that takes one
+ * (Dolmar, Nov 17 10:36 AM). The deposit key keeps its meaning for FLEET.
+ */
+export type StaffTerms = { weekly_rate: number; reservation_fee: number; deposit: number; start_date: string; vehicle_id: string };
 
 export type StaffTermsDelivery = "sent" | "sending" | "failed" | "none";
 
@@ -51,18 +57,20 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function parseStaffTerms(raw: any): { ok: true; value: StaffTerms } | { ok: false; error: string } {
   const weekly = money(raw?.weekly_rate);
   if (weekly === null || weekly <= 0) return { ok: false, error: "Weekly Rate must be a positive amount." };
-  const deposit = money(raw?.deposit);
-  if (deposit === null) return { ok: false, error: "Reservation must be an amount (0 if none)." };
+  const reservation = money(raw?.reservation_fee);
+  if (reservation === null) return { ok: false, error: "Reservation must be an amount (0 if none)." };
+  const deposit = raw?.deposit == null || raw?.deposit === "" ? 0 : money(raw?.deposit);
+  if (deposit === null) return { ok: false, error: "Deposit must be an amount (0 if none)." };
   const start = String(raw?.start_date ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !Number.isFinite(Date.parse(`${start}T12:00:00Z`))) return { ok: false, error: "Start Date must be a date." };
   const vehicle = String(raw?.vehicle_id ?? "").trim();
   if (!UUID.test(vehicle)) return { ok: false, error: "Choose the vehicle." };
-  return { ok: true, value: { weekly_rate: weekly, deposit, start_date: start, vehicle_id: vehicle.toLowerCase() } };
+  return { ok: true, value: { weekly_rate: weekly, reservation_fee: reservation, deposit, start_date: start, vehicle_id: vehicle.toLowerCase() } };
 }
 
 /** One key per term set: the same click twice is the same event. */
 export function staffTermsKey(t: StaffTerms): string {
-  return [t.weekly_rate.toFixed(2), t.deposit.toFixed(2), t.start_date, t.vehicle_id.toLowerCase()].join("|");
+  return [t.weekly_rate.toFixed(2), t.reservation_fee.toFixed(2), t.deposit.toFixed(2), t.start_date, t.vehicle_id.toLowerCase()].join("|");
 }
 
 /** Short Eastern time, e.g. "Nov 17, 10:05 AM". */
