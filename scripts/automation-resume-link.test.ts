@@ -36,6 +36,7 @@ function query(table: string) {
     eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), q),
     gt: (k: string, v: any) => (filters.push((r) => r[k] > v), q),
     lte: (k: string, v: any) => (filters.push((r) => r[k] <= v), q),
+    in: (k: string, vs: any[]) => (filters.push((r) => vs.includes(r[k])), q),
     not: (k: string) => (filters.push((r) => r[k] != null), q),
     order: (k: string, o?: { ascending?: boolean }) => (
       (orderKey = k),
@@ -54,6 +55,7 @@ function query(table: string) {
 vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin: { from: query } }));
 vi.mock("@/lib/email.server", () => ({
   sendEmail: async (a: Row) => (sentEmail.push(a), { ok: true }),
+  EMAIL_REPLY_TO: "team@drivereal.com",
 }));
 vi.mock("@/lib/company.server", () => ({
   getBusinessPhone: async () => ({ display: "(888) 833-8280" }),
@@ -372,5 +374,57 @@ describe("Step 1 thank-you email replaces the 5-minute email", () => {
     db.outbound_messages = [thankYou(3 * 24 * 60)];
     await eng.runDueAutomations();
     expect(sentEmail).toHaveLength(1);
+  });
+
+  it("thank-you switch on but Step 1 never sent it: the 5-minute step sends the thank-you instead, once (t352u)", async () => {
+    seed({ currentStep: "submitted", steps });
+    db.automation_workflows[0].trigger_event = "application_submitted";
+    db.app_settings = [{ key: "automation_controls", value: { off: {}, on: { step1_thank_you_email: { at: "x", by: "y" } } } }];
+    await eng.runDueAutomations();
+    expect(sentEmail).toHaveLength(1);
+    expect(sentEmail[0].subject).toBe("Step 2: Finish Your Application to Lock In Your Spot");
+    expect((db.outbound_messages ?? []).filter((r) => r.kind === "step1_thank_you" && r.status === "sent")).toHaveLength(1);
+  });
+
+  it("thank-you switch on, other workflows never send it", async () => {
+    seed({ currentStep: "submitted", steps });
+    db.automation_workflows[0].trigger_event = "rental_started";
+    db.app_settings = [{ key: "automation_controls", value: { off: {}, on: { step1_thank_you_email: { at: "x", by: "y" } } } }];
+    await eng.runDueAutomations();
+    expect(sentEmail).toHaveLength(1);
+    expect(sentEmail[0].subject).toBe("We Got Your Application, Jordan");
+  });
+});
+
+describe("not-yet drivers (t352u)", () => {
+  const step = {
+    channel: "sms",
+    body: "Send your gig app profile screenshot: {{resume_link}} Reply STOP to opt out.",
+    body_not_driving: "Send your proof of income (an income document or an earnings screenshot): {{resume_link}} Reply STOP to opt out.",
+    skip_when_profile_complete: true,
+  };
+  it("a gig driver gets the original wording", async () => {
+    seed({ currentStep: "submitted", steps: [step] });
+    db.applications[0].gig_status = "Yes, already driving";
+    await eng.runDueAutomations();
+    expect(sentSms[0].body).toContain("gig app profile screenshot");
+  });
+  it("a not-yet driver gets the income-proof wording", async () => {
+    seed({ currentStep: "submitted", steps: [step] });
+    db.applications[0].gig_status = "Not yet, ready to start";
+    await eng.runDueAutomations();
+    expect(sentSms[0].body).toContain("proof of income (an income document or an earnings screenshot)");
+    expect(sentSms[0].body).not.toContain("gig app");
+  });
+  it("profile_complete still asks a not-yet driver with no income proof; skips once it is on file", async () => {
+    seed({ currentStep: "profile_complete", steps: [step] });
+    db.applications[0].gig_status = "No";
+    await eng.runDueAutomations();
+    expect(sentSms).toHaveLength(1);
+    seed({ currentStep: "profile_complete", steps: [step] });
+    db.applications[0].gig_status = "No";
+    db.documents = [{ driver_id: "app1", category: "income", review_status: "uploaded", is_current: true }];
+    await eng.runDueAutomations();
+    expect(sentSms).toHaveLength(0);
   });
 });

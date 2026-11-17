@@ -38,6 +38,53 @@ export function shouldSkipForCompleteProfile(
 }
 
 /**
+ * Not-yet / No / Pending gig drivers have no gig profile to screenshot, so the
+ * follow-up asks them for proof of income instead (Dolmar, t348u / t352u).
+ * A step carries that wording in body_not_driving / subject_not_driving; a
+ * step without it sends its ordinary body to everyone, unchanged.
+ */
+export function stepCopyFor(
+  step: { body?: string | null; subject?: string | null; body_not_driving?: string | null; subject_not_driving?: string | null },
+  notDrivingYet: boolean,
+): { body: string; subject: string | null } {
+  const alt = notDrivingYet && typeof step.body_not_driving === "string" && step.body_not_driving.trim() !== "";
+  return {
+    body: String((alt ? step.body_not_driving : step.body) ?? ""),
+    subject: alt && step.subject_not_driving ? step.subject_not_driving : (step.subject ?? null),
+  };
+}
+
+/**
+ * "Finished Part 2" only means nothing is left to ask a not-yet driver for
+ * when their proof of income is on file. Without it the nudge still goes out
+ * (asking for income proof), even though the wizard says profile_complete.
+ */
+export function profileCompleteSkips(
+  step: { skip_when_profile_complete?: boolean | null },
+  app: { current_step?: string | null } | null | undefined,
+  notDrivingYet: boolean,
+  incomeOnFile: boolean,
+): boolean {
+  if (!shouldSkipForCompleteProfile(step, app)) return false;
+  return !notDrivingYet || incomeOnFile;
+}
+
+async function incomeProofOnFile(admin: any, app: any): Promise<boolean> {
+  const ownFile = (v: unknown) => typeof v === "string" && v.trim() !== "" && !v.startsWith("http");
+  if (ownFile(app?.income_proof_url)) return true;
+  if (Array.isArray(app?.trip_screenshots) && app.trip_screenshots.some(ownFile)) return true;
+  const { INCOME_PROOF_CATEGORIES } = await import("@/lib/missing-items");
+  const { data, error } = await admin
+    .from("documents")
+    .select("category,review_status,is_current")
+    .eq("driver_id", app.id)
+    .in("category", [...INCOME_PROOF_CATEGORIES]);
+  // Unreadable: treat as on file, which keeps today's skip (never a surprise text).
+  if (error) return true;
+  return (data ?? []).some((d: any) => d.is_current !== false && d.review_status !== "rejected");
+}
+
+/**
  * The Step 1 thank-you email (step-one-email.server.ts) already welcomed this
  * applicant and asked for Step 2, so an early follow-up EMAIL (delay up to
  * STEP1_EMAIL_REPLACES_DELAY_MINUTES, i.e. the 5-minute "We Got Your
@@ -284,7 +331,7 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
     try {
       const { data: workflow, error: workflowErr } = await supabaseAdmin
         .from("automation_workflows")
-        .select("id,name,is_active,quiet_hours_start,quiet_hours_end,stop_on_statuses")
+        .select("id,name,is_active,quiet_hours_start,quiet_hours_end,stop_on_statuses,trigger_event")
         .eq("id", enrollment.workflow_id)
         .maybeSingle();
 
@@ -305,7 +352,7 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
       const { data: app } = enrollment.application_id
         ? await supabaseAdmin
             .from("applications")
-            .select("id,full_name,email,phone,city,status,current_step,sms_consent,sms_opt_out_at")
+            .select("id,full_name,email,phone,city,status,current_step,sms_consent,sms_opt_out_at,gig_status,income_proof_url,trip_screenshots")
             .eq("id", enrollment.application_id)
             .maybeSingle()
         : { data: null };
@@ -345,8 +392,12 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
 
       // The applicant already finished Part 2: this nudge doesn't apply to
       // them. Send nothing, but move on to the next step as if it were sent.
+      const { notDrivingGigYet } = await import("@/lib/fleet-review");
+      const notYet = notDrivingGigYet(app);
+      const copy = stepCopyFor(step as any, notYet);
       const skipThis =
-        shouldSkipForCompleteProfile(step as any, app) ||
+        (shouldSkipForCompleteProfile(step as any, app) &&
+          profileCompleteSkips(step as any, app, notYet, !notYet || (await incomeProofOnFile(supabaseAdmin, app)))) ||
         (step.channel === "email" &&
           shouldSkipForStepOneEmail(step as any, await stepOneEmailSentAt(supabaseAdmin, enrollment.application_id), now));
 
@@ -368,8 +419,30 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
         continue;
       }
 
+      // The 5-minute welcome email IS the Step 1 thank-you email when that
+      // automation is on: one welcome per new lead, never two. If the
+      // thank-you is off or cannot go out, the ordinary step body goes instead.
+      let welcomeSent = false;
+      if (
+        !skipThis &&
+        (workflow as any).trigger_event === "application_submitted" &&
+        step.channel === "email" &&
+        Number(step.delay_minutes ?? Infinity) <= STEP1_EMAIL_REPLACES_DELAY_MINUTES &&
+        enrollment.application_id &&
+        app?.email
+      ) {
+        const { sendStepOneThankYouEmail } = await import("@/lib/step-one-email.server");
+        const outcome = await sendStepOneThankYouEmail(
+          { applicationId: enrollment.application_id, to: String(app.email).trim().toLowerCase(), firstName: app.full_name ?? null, notDrivingYet: notYet },
+          { admin: supabaseAdmin },
+        );
+        welcomeSent = outcome === "sent";
+      }
+
       if (skipThis) {
         result.skipped++;
+      } else if (welcomeSent) {
+        result.sent++;
       } else {
         const firstName = (app?.full_name ?? "").trim().split(/\s+/)[0] || "there";
         // A resume link is a credential, so mint one only when this step's
@@ -379,7 +452,7 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
         let resumeLink: string | null = null;
         const { canReachRenter } = await import("@/lib/driver-contacts.server");
         if (
-          wantsResumeLink(step.body) &&
+          wantsResumeLink(copy.body) &&
           enrollment.application_id &&
           await canReachRenter(supabaseAdmin, step.channel, app)
         ) {
@@ -407,7 +480,7 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
           ).display,
           resume_link: resumeLink ?? "",
         };
-        const body = renderTemplate(step.body, vars);
+        const body = renderTemplate(copy.body, vars);
         const applicationId = enrollment.application_id;
         if (!applicationId) {
           result.skipped++;
@@ -432,7 +505,7 @@ export async function runDueAutomations(limit = 100): Promise<SweepResult> {
         } else {
           const { sendRenterEmail } = await import("@/lib/driver-contacts.server");
           const subject = renderTemplate(
-            step.subject || "A quick update from REAL RENTALS",
+            copy.subject || "A quick update from REAL RENTALS",
             vars,
           );
           const html = renderAutomationEmailHtml(body, resumeLink);

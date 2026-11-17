@@ -643,7 +643,16 @@ export const savePartialApplication = createServerFn({ method: "POST" })
     // response. Errors still must not fail the applicant's submission.
     if (!freshLink) try {
       const { sendStepOneThankYouEmail } = await import("@/lib/step-one-email.server");
-      await sendStepOneThankYouEmail({ applicationId: row.id, to: emailLower, firstName: data.full_name ?? null });
+      const outcome = await sendStepOneThankYouEmail({ applicationId: row.id, to: emailLower, firstName: data.full_name ?? null, token: token ?? undefined });
+      // Record why it did not go out, on the lead, so a silent miss is visible
+      // (it never went out for anyone in its first two days, t351u). The
+      // follow-up's 5-minute welcome step sends it instead (automations.server).
+      if (outcome !== "sent") {
+        await supabaseAdmin.from("outbound_messages").insert({
+          channel: "email", to_address: emailLower, subject: "Step 1 thank-you email", body: `Not sent at Step 1: ${outcome}`,
+          status: "skipped", provider: null, kind: "step1_thank_you", error: `step1: ${outcome}`, application_id: row.id,
+        } as any);
+      }
     } catch (e) {
       console.error("[step1-email] setup failed", e);
     }
