@@ -12,6 +12,7 @@ import { savePartialApplication } from "@/lib/applications.functions";
 import { WelcomeBack, type LinkStatus } from "@/components/site/WelcomeBack";
 import { getAvailability, joinWaitlist } from "@/lib/waitlist.functions";
 import { getAttribution } from "@/lib/attribution";
+import { applySubmitErrorMessage, dismissKeyboard } from "@/lib/apply-submit-error";
 import { FadeUp } from "./FadeUp";
 import heroBg from "@/assets/hero-bg.jpg";
 
@@ -81,6 +82,7 @@ export function CityHeroLeadForm({
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const today = useMemo(() => new Date().toISOString().split("T")[0], []);
 
@@ -105,6 +107,8 @@ export function CityHeroLeadForm({
 
   async function submit() {
     if (hp) return; // bot
+    dismissKeyboard();
+    setSubmitError(null);
     if (!validate()) {
       toast.error("Please fix the highlighted fields.");
       return;
@@ -158,8 +162,11 @@ export function CityHeroLeadForm({
       }
       markStepOneJustSubmitted();
       navigate({ to: "/thank-you", search: { t: data.token } });
-    } catch (error: any) {
-      toast.error(error?.message || "Could not submit your application. Please try again.");
+    } catch (error: unknown) {
+      console.error("[city-lead] submit failed", error);
+      const message = applySubmitErrorMessage(error);
+      setSubmitError(message);
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
@@ -251,6 +258,11 @@ export function CityHeroLeadForm({
                 {/* Same optional opt-in in both modes, so waitlist leads can get the follow-up texts once promoted. */}
                 <SmsConsentField className="mt-5" checked={form.sms_consent} onChange={(v) => update("sms_consent", v)} />
 
+                {submitError ? (
+                  <p role="alert" data-testid="city-lead-submit-error" className="mt-5 rounded-lg border border-real-red/40 bg-white px-3 py-2 text-sm text-real-red">
+                    {submitError}
+                  </p>
+                ) : null}
                 <button
                   type="button"
                   onClick={submit}
