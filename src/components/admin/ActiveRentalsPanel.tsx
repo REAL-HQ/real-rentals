@@ -16,7 +16,6 @@ import {
 import {
   formatBoardDate,
   formatWeeklyRate,
-  overdueLabel,
   paymentStatusLabel,
   weeksInLabel,
   type ActiveRentalRow,
@@ -24,6 +23,7 @@ import {
 import { listActiveRentals } from "@/lib/active-rentals.functions";
 import { getRentalLateFees, type RentalLateFeeStatus } from "@/lib/rent-reminders.functions";
 import { RecordPaymentDialog, WaiveLateFeeDialog, lateFeeLabel } from "./RentPaymentActions";
+import { OverdueStatus } from "./OverdueStatus";
 import { ReturnFlowDialog } from "./ReturnFlowDialog";
 import { RETURN_FLOW_ENABLED } from "@/lib/return-flow";
 
@@ -213,13 +213,7 @@ export function ActiveRentalsPanel() {
                       </span>
                     </td>
                     <td className="px-2 py-2 align-middle">
-                      {(row.overdueDays ?? 0) > 0 ? (
-                        <span className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white">
-                          {overdueLabel(row.overdueDays)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">{overdueLabel(row.overdueDays)}</span>
-                      )}
+                      <OverdueStatus days={row.overdueDays} />
                       {lateDue ? (
                         <span className="mt-1 block text-xs font-medium text-[#D03020]" data-testid="late-fee">
                           Late {lateFeeLabel(fee, feesLoaded)}

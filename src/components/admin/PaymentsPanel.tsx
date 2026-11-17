@@ -12,6 +12,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AdminTableScroll } from "./AdminTableScroll";
+import { SortableColumnHeader } from "./SortableColumnHeader";
+import { cycleColumnSort, sortRows, type ColumnSort } from "@/lib/admin-table-sort";
 import { ManualPaymentsWorkspace } from "./ManualPaymentsWorkspace";
 import { StatusPill, EmptyState } from "./ui";
 import {
@@ -77,6 +79,34 @@ const SORT_OPTIONS = [
 ] as const;
 const TYPES = ["rent", "deposit", "late_fee", "toll", "damage", "fee", "other"] as const;
 
+type PaymentSortKey =
+  | "driver"
+  | "vehicle"
+  | "type"
+  | "amount"
+  | "due"
+  | "status"
+  | "method"
+  | "late_fees"
+  | "balance";
+
+const PAYMENT_SORT_KIND: Record<PaymentSortKey, "text" | "number" | "date"> = {
+  driver: "text",
+  vehicle: "text",
+  type: "text",
+  amount: "number",
+  due: "date",
+  status: "text",
+  method: "text",
+  late_fees: "number",
+  balance: "number",
+};
+
+/** Due is the exception: the first header click is newest first (desc).
+ *  Every other column starts ascending. A third click clears the header
+ *  and restores the default: due date earliest first, no arrow. */
+const PAYMENT_FIRST_DIR: Partial<Record<PaymentSortKey, "asc" | "desc">> = { due: "desc" };
+
 // Date-only values (due_date, paid_date) are calendar dates: formatDate reads
 // "2026-11-05" as Nov 5. new Date() would read it as UTC midnight, a day early in ET.
 function fmtDate(iso?: string | null) {
@@ -91,7 +121,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
   // Arriving from the dashboard's Collections card asks for everything
   // unresolved at once, which no single status covers.
   const [statusFilter, setStatusFilter] = useState<string>(initialFilter ?? "all");
-  const [sort, setSort] = useState<"due_asc" | "due_desc" | "amount_desc">("due_asc");
+  const [columnSort, setColumnSort] = useState<ColumnSort<PaymentSortKey> | null>(null);
   const [showAdd, setShowAdd] = useState(!!autoOpenAdd);
   const [showManual, setShowManual] = useState(false);
   const [paymentsSection, setPaymentsSection] = useState<"ledger" | "stripe">("ledger");
@@ -193,20 +223,55 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
     setShowAdd(false);
   }
 
+  function paymentSortValue(p: Payment, key: PaymentSortKey): unknown {
+    switch (key) {
+      case "driver": {
+        const d = p.driver_id ? driverMap[p.driver_id] : null;
+        return d?.full_name || (p.driver_id ? "Unnamed driver" : "");
+      }
+      case "vehicle": {
+        const v = p.vehicle_id ? vehicleMap[p.vehicle_id] : null;
+        return v ? `${v.year} ${v.make} ${v.model}` : "";
+      }
+      case "type":
+        return enumDisplayLabel(p.type);
+      case "amount":
+        return Number(p.amount);
+      case "due":
+        return p.due_date || "";
+      case "status":
+        return STATUS_LABEL[p.status as string] ?? enumDisplayLabel(p.status);
+      case "method":
+        return p.payment_method || "";
+      case "late_fees":
+        return Number(p.late_fees || 0);
+      case "balance":
+        return p.balance_due == null ? "" : Number(p.balance_due);
+    }
+  }
+
+  // Filter first, then sort a copy. Outstanding is computed from the filtered
+  // set so clicking a header never changes the total.
   const filtered = (
     statusFilter === "all"
       ? payments
       : statusFilter === "overdue"
         ? payments.filter((p) => OVERDUE_SET.has(p.status as string))
         : payments.filter((p) => p.status === statusFilter)
-  )
-    .slice()
-    .sort((a, b) => {
-      if (sort === "amount_desc") return Number(b.amount) - Number(a.amount);
-      const ad = a.due_date || "9999";
-      const bd = b.due_date || "9999";
-      return sort === "due_asc" ? ad.localeCompare(bd) : bd.localeCompare(ad);
-    });
+  );
+
+  const sorted = columnSort
+    ? sortRows(filtered, (p) => paymentSortValue(p, columnSort.key), PAYMENT_SORT_KIND[columnSort.key], columnSort.dir)
+    : sortRows(filtered, (p) => p.due_date || "", "date", "asc");
+
+  const dropdownSortValue =
+    columnSort == null || (columnSort.key === "due" && columnSort.dir === "asc")
+      ? "due_asc"
+      : columnSort.key === "due" && columnSort.dir === "desc"
+        ? "due_desc"
+        : columnSort.key === "amount" && columnSort.dir === "desc"
+          ? "amount_desc"
+          : null;
 
   // Owed now: due/unpaid states only. Upcoming isn't due yet; paid, refunded,
   // waived and void owe nothing. A settled balance of 0 is 0, not the amount.
@@ -267,11 +332,15 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                   {SORT_OPTIONS.map((option) => (
                     <DropdownMenuItem
                       key={option.value}
-                      onSelect={() => setSort(option.value)}
+                      onSelect={() => {
+                        if (option.value === "due_asc") setColumnSort(null);
+                        else if (option.value === "due_desc") setColumnSort({ key: "due", dir: "desc" });
+                        else setColumnSort({ key: "amount", dir: "desc" });
+                      }}
                       className="flex items-center justify-between gap-3 bg-white text-xs text-foreground focus:bg-muted"
                     >
                       <span>{option.label}</span>
-                      {sort === option.value ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                      {dropdownSortValue === option.value ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -315,20 +384,31 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
         <table className="w-full text-sm max-lg:min-w-[52rem]">
           <thead className="bg-[#FAFAFB] text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3]">
             <tr>
-              <th className="text-left px-3 py-2.5">Driver</th>
-              <th className="text-left px-3 py-2.5">Vehicle</th>
-              <th className="text-left px-3 py-2.5">Type</th>
-              <th className="text-right px-3 py-2.5">Amount</th>
-              <th className="text-left px-3 py-2.5">Due</th>
-              <th className="text-left px-3 py-2.5">Status</th>
-              <th className="text-left px-3 py-2.5">Method</th>
-              <th className="text-right px-3 py-2.5">Late Fees</th>
-              <th className="text-right px-3 py-2.5">Balance</th>
+              {([
+                ["driver", "Driver", "left"],
+                ["vehicle", "Vehicle", "left"],
+                ["type", "Type", "left"],
+                ["amount", "Amount", "right"],
+                ["due", "Due", "left"],
+                ["status", "Status", "left"],
+                ["method", "Method", "left"],
+                ["late_fees", "Late Fees", "right"],
+                ["balance", "Balance", "right"],
+              ] as const).map(([key, label, align]) => (
+                <SortableColumnHeader
+                  key={key}
+                  label={label}
+                  align={align}
+                  active={columnSort?.key === key}
+                  dir={columnSort?.key === key ? columnSort.dir : undefined}
+                  onClick={() => setColumnSort((cur) => cycleColumnSort(cur, key, PAYMENT_FIRST_DIR[key] ?? "asc"))}
+                />
+              ))}
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((p) => {
+            {sorted.map((p) => {
               const d = p.driver_id ? driverMap[p.driver_id] : null;
               const v = p.vehicle_id ? vehicleMap[p.vehicle_id] : null;
               const driverName = d?.full_name || (p.driver_id ? "Unnamed driver" : "—");
@@ -430,7 +510,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                 </tr>
               );
             })}
-            {filtered.length === 0 && (
+            {sorted.length === 0 && (
               <tr>
                 <td colSpan={10} className="p-4">
                   <EmptyState
