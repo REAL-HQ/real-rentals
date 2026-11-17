@@ -48,15 +48,15 @@ export function isoDate(v: unknown): string | null {
   if (d.getUTCFullYear() !== +m[1] || d.getUTCMonth() + 1 !== +m[2] || d.getUTCDate() !== +m[3]) return null;
   return s;
 }
-const day = (v: unknown) => (v == null ? null : String(v).slice(0, 10));
+export const day = (v: unknown) => (v == null ? null : String(v).slice(0, 10));
 /** Compare a stored value to a reading: dates by day, the number without spaces/dashes. */
-const norm = (f: string, v: unknown): string | null => {
+export const norm = (f: string, v: unknown): string | null => {
   if (v == null || String(v).trim() === "") return null;
   if (f === "dob" || f === "license_expiration") return day(v);
   if (f === "license_number") return String(v).toUpperCase().replace(/[\s-]/g, "");
   return String(v).trim().toUpperCase();
 };
-const maskNo = (v: string) => (v.length <= 4 ? "****" : `${"*".repeat(Math.min(8, v.length - 4))}${v.slice(-4)}`);
+export const maskNo = (v: string) => (v.length <= 4 ? "****" : `${"*".repeat(Math.min(8, v.length - 4))}${v.slice(-4)}`);
 
 export function validateReading(body: Record<string, any>, now: Date): { ok: true; values: Partial<Record<Field, string>>; confidence: number | null } | { ok: false; error: string } {
   const values: Partial<Record<Field, string>> = {};
@@ -127,6 +127,18 @@ export async function handleFleetLicenseFacts(request: Request, deps: FleetDeps 
   const admin = await fleetAdmin(deps);
   const audit = fleetAudit(deps);
   const now = (deps.now ?? (() => new Date()))();
+
+  // { "action": "auto_read", "limit": 5, "dry_run": false, "lead_ids": [...] }
+  // Reads license photos that have no reading yet (license-auto-read.server.ts).
+  // Photo Reading's switch and daily limit apply. Never a verification.
+  if (body.action === "auto_read") {
+    const limit = body.limit == null ? 5 : Number(body.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 10) return fleetJson(400, { ok: false, error: "limit must be 1 to 10." });
+    const ids = Array.isArray(body.lead_ids) ? body.lead_ids.map(String).filter((x: string) => UUID_RE.test(x)).slice(0, 200) : undefined;
+    const { autoReadLicenses } = await import("@/lib/license-auto-read.server");
+    const r = await autoReadLicenses(admin, { limit, dryRun: body.dry_run === true, applicationIds: ids?.length ? ids : undefined });
+    return fleetJson(r.ok ? 200 : 503, r);
+  }
 
   const leadId = String(body.lead_id ?? "");
   if (!UUID_RE.test(leadId)) return fleetJson(400, { ok: false, error: "lead_id must be a UUID." });

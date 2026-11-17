@@ -46,7 +46,7 @@ import { notDrivingGigYet } from "@/lib/fleet-review";
 
 export const OUTREACH_LOG_TABLE = "applicant_outreach_log";
 const APP_COLUMNS =
-  "id,full_name,status,email,phone,sms_consent,sms_opt_out_at,license_photo_url,profile_screenshot_url,income_proof_url,trip_screenshots,vehicle_size,pickup_date,expected_duration,gig_status,drive_type,created_at,updated_at,deleted_at,primary_application_id,legal_hold";
+  "id,full_name,status,email,phone,sms_consent,sms_opt_out_at,license_photo_url,profile_screenshot_url,income_proof_url,trip_screenshots,vehicle_size,pickup_date,expected_duration,gig_status,drive_type,created_at,updated_at,deleted_at,primary_application_id,legal_hold,source,current_step";
 const PREVIEW_LINK = "https://drivereal.com/thank-you?t=PRIVATE-14-DAY-LINK";
 
 export type OutreachDeps = {

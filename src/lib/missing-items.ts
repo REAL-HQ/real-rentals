@@ -173,6 +173,9 @@ export type OutreachApp = {
   deleted_at?: string | null;
   primary_application_id?: string | null;
   legal_hold?: boolean | null;
+  /** Where the lead came from; "fleet_waitlist" = promoted off the waitlist to New. */
+  source?: string | null;
+  current_step?: string | null;
 };
 export type OutreachDoc = { category?: string | null; review_status?: string | null; is_current?: boolean | null };
 
@@ -279,6 +282,21 @@ function baseRefusal(i: DecisionInput): string | null {
   return null;
 }
 
+/**
+ * Someone promoted off the waitlist to New (source fleet_waitlist) who has not
+ * started the application yet (still at the rental step) is not "mid-
+ * application": staff or FLEET touched the row, not the applicant. They get
+ * their first message at the next sweep inside the sending window (Dolmar,
+ * t352u) instead of waiting a full day after the promotion.
+ */
+export const WAITLIST_PROMOTED_WAIT_HOURS = 0;
+export function isWaitlistPromotedUnstarted(a: Pick<OutreachApp, "source" | "current_step">): boolean {
+  return String(a.source ?? "") === "fleet_waitlist" && String(a.current_step ?? "rental") === "rental";
+}
+function waitHoursFor(a: OutreachApp, settings: { waitHours: number }): number {
+  return isWaitlistPromotedUnstarted(a) ? Math.min(settings.waitHours, WAITLIST_PROMOTED_WAIT_HOURS) : settings.waitHours;
+}
+
 export function decideOutreach(i: DecisionInput): Decision {
   const refused = baseRefusal(i);
   if (refused) return { send: false, reason: refused };
@@ -305,7 +323,7 @@ export function decideOutreach(i: DecisionInput): Decision {
     const sequences = new Set(i.log.filter((r) => r.source === "ongoing").map((r) => r.missing_key)).size;
     if (sequences >= i.settings.maxSequences) return { send: false, reason: "max_sequences" };
     if (age > i.settings.maxAgeDays) return { send: false, reason: "too_old" };
-    if (hoursSince(i.app.updated_at ?? i.app.created_at, i.now) < i.settings.waitHours) return { send: false, reason: "waiting_after_activity" };
+    if (hoursSince(i.app.updated_at ?? i.app.created_at, i.now) < waitHoursFor(i.app, i.settings)) return { send: false, reason: "waiting_after_activity" };
     return { send: true, step: 1, key, email, sms };
   }
   const next = (Math.max(...sent) + 1) as 2 | 3 | 4;
