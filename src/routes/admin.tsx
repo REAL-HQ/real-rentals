@@ -998,7 +998,7 @@ function Admin() {
           </div>
 
           <main data-admin-main className="flex-1 min-w-0 px-4 pb-4 md:px-8 md:pb-8 pt-2">
-            {tab === "overview" && <OverviewPanel canSeeCollections={tierAllows(tier, "manager")} />}
+            {tab === "overview" && <OverviewPanel canSeeCollections={tierAllows(tier, "manager")} tier={tier} />}
             {TODAYS_OPS_ENABLED && tab === "todays_ops" && <TodaysOps />}
             {FLEET_CALENDAR_ENABLED && tab === "fleet_calendar" && <FleetCalendar />}
             {VEHICLE_TURNAROUND_ENABLED && tab === "vehicle_turnaround" && <VehicleTurnaround />}
