@@ -114,13 +114,30 @@ describe("Terms Confirmed row", () => {
   test("status: Not Done -> Sent To FLEET <time> | Sending | Failed; button only for managers after approval", () => {
     const base = { ready: true, prefill: null, blockers: [] };
     const latest = (delivery: any) => ({ id: "e", clickedAt: NOW.toISOString(), clickedByName: "Rosa DeJesus", terms: { weekly_rate: 325, reservation_fee: 50, deposit: 0, start_date: "2026-11-18", vehicle_id: V, vehicle_label: null }, delivery, deliveredAt: NOW.toISOString(), error: null });
-    expect(st.termsConfirmedRequirement({ ...base, latest: latest("sent") }, { approved: true, agreementSigned: false })).toMatchObject({ met: true, detail: "Sent To FLEET Nov 17, 10:05 AM" });
+    expect(st.termsConfirmedRequirement({ ...base, latest: latest("sent") }, { approved: true, agreementSigned: false })).toMatchObject({ met: true, detail: "Confirmed By Rosa DeJesus, Nov 17, 10:05 AM · Sent To FLEET" });
     expect(st.termsConfirmedRequirement({ ...base, latest: latest("failed") }, { approved: true, agreementSigned: false }).detail).toBe("Failed");
-    expect(st.termsConfirmedRequirement({ ...base, latest: latest("sending") }, { approved: true, agreementSigned: false }).detail).toBe("Sending To FLEET");
+    expect(st.termsConfirmedRequirement({ ...base, latest: latest("sending") }, { approved: true, agreementSigned: false }).detail).toBe("Confirmed By Rosa DeJesus, Nov 17, 10:05 AM · Sending To FLEET");
     expect(st.moveForwardEnabled({ approved: true, isManager: true, agreementSigned: false })).toBe(true);
     expect(st.moveForwardEnabled({ approved: false, isManager: true, agreementSigned: false })).toBe(false);
     expect(st.moveForwardEnabled({ approved: true, isManager: false, agreementSigned: false })).toBe(false);
     expect(st.MOVE_FORWARD_LABEL.split(" ")).toHaveLength(2);
+  });
+  test("row always shows after Application Approved: grey After Approval before approval, Not Done once approved (Dolmar Nov 17 12:09 PM)", () => {
+    const before = st.termsConfirmedRequirement(null, { approved: false, agreementSigned: false });
+    expect(before).toMatchObject({ key: "terms_confirmed", label: "Terms Confirmed", met: null, detail: "After Approval", enforcement: "advisory" });
+    const reqs: any[] = [
+      { key: "approved", label: "Application Approved", met: false, enforcement: "hard" },
+      { key: "signed_agreement", label: "Rental Agreement Signed", met: false, enforcement: "hard" },
+    ];
+    expect(driverNextStepRequirements(reqs, null, before).map((r) => r.key).filter((k) => k !== "reservation_paid")).toEqual(["approved", "terms_confirmed", "signed_agreement"]);
+    expect(st.termsConfirmedRequirement(null, { approved: true, agreementSigned: false })).toMatchObject({ met: false, detail: "Not Done" });
+    expect(st.termsConfirmedRequirement(null, { approved: true, agreementSigned: true })).toMatchObject({ met: true, detail: "Agreement Signed" });
+    expect(st.moveForwardEnabled({ approved: false, isManager: true, agreementSigned: false })).toBe(false);
+    const panel = readFileSync("src/components/admin/DriversPanel.tsx", "utf8");
+    const line = panel.split("\n").find((l) => l.includes("const termsConfirmedRow ="))!;
+    expect(line).toBeTruthy();
+    expect(line).not.toMatch(/\?\s*termsConfirmedRequirement|: null|isManager &&|approved &&/);
+    expect(panel).toContain("disabledReason={dStatus !== \"approved\" ? TERMS_AFTER_APPROVAL");
   });
   test("terms parsing and key", () => {
     expect(st.parseStaffTerms(terms()).ok).toBe(true);
