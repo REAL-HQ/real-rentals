@@ -32,6 +32,7 @@ import {
   type FleetDeps,
 } from "@/lib/fleet-api.server";
 import { FLEET_ACTOR_LABEL, LICENSE_READING_LABEL } from "@/lib/fleet-review";
+import { addressFromApplication, isLicenseAddressColumnMissing, normalizeAddress } from "@/lib/driver-addresses";
 
 type Admin = any;
 export const LICENSE_FIELDS = ["dob", "license_expiration", "license_number", "license_state"] as const;
@@ -98,9 +99,16 @@ export function validateReading(body: Record<string, any>, now: Date): { ok: tru
 
 /** The latest reading for an applicant (null when none, or the table is not installed). */
 export async function latestLicenseReading(admin: Admin, leadId: string) {
-  const res = await admin.from("fleet_license_readings")
-    .select("id,document_id,dob,license_expiration,license_number,license_state,applied_fields,conflicts,confidence,source_label,read_by,created_at")
+  const cols = "id,document_id,dob,license_expiration,license_number,license_state,address_line1,address_city,address_state,address_zip,applied_fields,conflicts,confidence,source_label,read_by,created_at";
+  const colsWithout = "id,document_id,dob,license_expiration,license_number,license_state,applied_fields,conflicts,confidence,source_label,read_by,created_at";
+  let res = await admin.from("fleet_license_readings")
+    .select(cols)
     .eq("application_id", leadId).order("created_at", { ascending: false }).limit(1);
+  if (res.error && isLicenseAddressColumnMissing(res.error)) {
+    res = await admin.from("fleet_license_readings")
+      .select(colsWithout)
+      .eq("application_id", leadId).order("created_at", { ascending: false }).limit(1);
+  }
   if (res.error || !Array.isArray(res.data) || !res.data.length) return null;
   const r = res.data[0];
   return {
@@ -110,6 +118,10 @@ export async function latestLicenseReading(admin: Admin, leadId: string) {
     license_expiration: day(r.license_expiration),
     license_number_masked: r.license_number ? maskNo(String(r.license_number)) : null,
     license_state: r.license_state ?? null,
+    address_line1: r.address_line1 ?? null,
+    address_city: r.address_city ?? null,
+    address_state: r.address_state ?? null,
+    address_zip: r.address_zip ?? null,
     applied: Array.isArray(r.applied_fields) ? r.applied_fields : [],
     conflicts: r.conflicts ?? [],
     confidence: r.confidence ?? null,
@@ -162,7 +174,7 @@ export async function handleFleetLicenseFacts(request: Request, deps: FleetDeps 
     }
   }
 
-  const appRes = await admin.from("applications").select("id,status,deleted_at,dob,license_expiration,license_number,license_state").eq("id", leadId).maybeSingle();
+  const appRes = await admin.from("applications").select("id,status,deleted_at,dob,license_expiration,license_number,license_state,address,city,state,zip").eq("id", leadId).maybeSingle();
   if (appRes.error) return fleetJson(503, { ok: false, error: "Could not read the applicant." });
   const app = appRes.data;
   if (!app) return fleetJson(404, { ok: false, error: "Applicant not found." });
@@ -200,13 +212,23 @@ export async function handleFleetLicenseFacts(request: Request, deps: FleetDeps 
     else conflicts.push(f === "license_number" ? { field: f, on_file: maskNo(current), read: maskNo(read) } : { field: f, on_file: current, read });
   }
 
-  const ins = await admin.from("fleet_license_readings").insert({
+  const licenseAddress = normalizeAddress({
+    line1: body.address_line1 ?? null,
+    city: body.address_city ?? null,
+    state: body.address_state ?? null,
+    zip: body.address_zip ?? null,
+  });
+  const readingRow: Record<string, unknown> = {
     application_id: leadId,
     document_id: documentId,
     dob: v.values.dob ?? null,
     license_expiration: v.values.license_expiration ?? null,
     license_number: v.values.license_number ?? null,
     license_state: v.values.license_state ?? null,
+    address_line1: licenseAddress?.line1 ?? null,
+    address_city: licenseAddress?.city ?? null,
+    address_state: licenseAddress?.state ?? null,
+    address_zip: licenseAddress?.zip ?? null,
     applied_fields: applied,
     conflicts,
     confidence: v.confidence,
@@ -214,11 +236,22 @@ export async function handleFleetLicenseFacts(request: Request, deps: FleetDeps 
     source_label: LICENSE_READING_LABEL,
     read_by: FLEET_ACTOR_LABEL,
     idempotency_key: idem,
-  }).select("id").single();
+  };
+  let ins = await admin.from("fleet_license_readings").insert(readingRow).select("id").single();
+  if (ins.error && isLicenseAddressColumnMissing(ins.error)) {
+    const { address_line1, address_city, address_state, address_zip, ...rest } = readingRow;
+    ins = await admin.from("fleet_license_readings").insert(rest).select("id").single();
+  }
   if (ins.error || !ins.data) {
     if (tableMissing(ins.error, "fleet_license_readings")) return fleetJson(503, { ok: false, error: "License readings are not set up yet (fleet_license_readings). Nothing was changed." });
     if (String(ins.error?.code) === "23505") return fleetJson(409, { ok: false, error: "idempotency_key was reused. Retry with a new key." });
     return fleetJson(503, { ok: false, error: "Could not save the reading. Nothing was changed." });
+  }
+  if (licenseAddress) {
+    try {
+      const { saveLicenseAddressIfDifferent } = await import("@/lib/driver-addresses.server");
+      await saveLicenseAddressIfDifferent(admin, leadId, addressFromApplication(app), licenseAddress);
+    } catch { /* the reading is saved; the second address can be added later */ }
   }
   if (applied.length) {
     const up = await admin.from("applications").update(patch).eq("id", leadId);

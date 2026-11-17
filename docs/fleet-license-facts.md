@@ -12,6 +12,7 @@ field rep confirms the license at pickup.
 { "lead_id": "…", "document_id": "<license_front document id from the packet>",
   "dob": "1990-02-03", "license_expiration": "2029-05-01",
   "license_number": "C123456789012", "license_state": "FL",
+  "address_line1": "123 Example St", "address_city": "Exampleville", "address_state": "FL", "address_zip": "00000",
   "confidence": 0.95, "note": "optional", "idempotency_key": "license-<lead_id>-1" }
 ```
 
@@ -51,3 +52,5 @@ Storage: `public.fleet_license_readings` (`proposed/fleet-license-readings-v1.sq
 - "Applied before" escalates only when an earlier application with the same
   phone or email was declined or closed (`prior_declined`). Sending the same
   open application again is a note (`resubmitted`).
+
+Optional address fields (`address_line1`, `address_city`, `address_state`, `address_zip`) are stored on the reading. If they differ from the primary application address they are saved as a second profile row labeled "License address" and never overwrite the primary or a staff-entered value.

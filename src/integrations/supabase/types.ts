@@ -1767,6 +1767,62 @@ export type Database = {
           },
         ]
       }
+      driver_addresses: {
+        Row: {
+          application_id: string
+          city: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_primary: boolean
+          label: string | null
+          line1: string
+          line2: string | null
+          source: string
+          state: string | null
+          updated_at: string
+          zip: string | null
+        }
+        Insert: {
+          application_id: string
+          city?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_primary?: boolean
+          label?: string | null
+          line1?: string
+          line2?: string | null
+          source?: string
+          state?: string | null
+          updated_at?: string
+          zip?: string | null
+        }
+        Update: {
+          application_id?: string
+          city?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_primary?: boolean
+          label?: string | null
+          line1?: string
+          line2?: string | null
+          source?: string
+          state?: string | null
+          updated_at?: string
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_addresses_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       driver_contacts: {
         Row: {
           application_id: string

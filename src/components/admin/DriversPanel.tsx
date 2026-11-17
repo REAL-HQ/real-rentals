@@ -74,6 +74,7 @@ import { ReturnFlowDialog } from "./ReturnFlowDialog";
 import { RETURN_FLOW_ENABLED } from "@/lib/return-flow";
 import { DriverRentalDetails } from "./DriverRentalDetails";
 import { DriverContactsEditor } from "./DriverContactsEditor";
+import { DriverAddressesEditor } from "./DriverAddressesEditor";
 import { nextStep, type FixTarget } from "@/lib/next-step";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { DepositDialog } from "./DepositDialog";
@@ -2875,6 +2876,14 @@ function DriverDetail({
                     onPrimaryChange={(patch) => onUpdate(patch)}
                   />
                 </Card>
+                <Card title="Addresses" icon={<MapPin className="w-4 h-4" />}>
+                  <DriverAddressesEditor
+                    applicationId={driver.id}
+                    primary={{ line1: driver.address, city: driver.city, state: driver.state, zip: driver.zip }}
+                    canEdit={isManager}
+                    onPrimaryChange={(parts) => onUpdate({ address: parts.line1, city: parts.city, state: parts.state, zip: parts.zip })}
+                  />
+                </Card>
                 <Card title="Driver Info" icon={<UserIcon className="w-4 h-4" />}>
                   {isManager ? (
                     <>
@@ -2884,10 +2893,6 @@ function DriverDetail({
                         <TxtField label="License State" value={driver.license_state ?? screening?.license_state ?? null} onSave={(v) => onUpdate({ license_state: v })} />
                         <DateField label="License Exp." value={driver.license_expiration} onSave={(v) => onUpdate({ license_expiration: v })} />
                         <NumField label="Years Licensed" value={driver.years_licensed ?? screening?.license_years ?? null} onSave={(v) => onUpdate({ years_licensed: v })} />
-                        <TxtField label="Street Address" value={driver.address} onSave={(v) => onUpdate({ address: v })} />
-                        <TxtField label="City" value={driver.city} onSave={(v) => onUpdate({ city: v })} />
-                        <TxtField label="State" value={driver.state} onSave={(v) => onUpdate({ state: v })} />
-                        <TxtField label="ZIP" value={driver.zip} onSave={(v) => onUpdate({ zip: v })} />
                         <TxtField
                           label="Platforms"
                           value={(driver.platforms ?? screening?.gig_apps)?.join(", ") || null}

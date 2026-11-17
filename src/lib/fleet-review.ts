@@ -16,6 +16,13 @@
  * background-check values are reported exactly as recorded.
  */
 import { REQUIRED_VAULT_CATEGORIES, requirementCategory } from "@/lib/required-docs";
+import {
+  addressFromApplication,
+  addressFromReading,
+  isOutOfStateLicense,
+  licenseIssuingState,
+  sameAddress,
+} from "@/lib/driver-addresses";
 
 export const FLEET_ACTOR_LABEL = "FLEET (automated)";
 /** How a date FLEET read off the license photo is labelled everywhere. Never "verified". */
@@ -99,8 +106,16 @@ export type FleetReviewInput = {
   openNeedsStaff: { reason: string; created_at: string | null } | null;
   /** Other applications with the same phone or email that were declined or closed. */
   priorDeclined: number;
-  /** The latest FLEET reading of the license photo, if any (fleet-license-facts). */
-  licenseReading?: { applied?: string[] | null } | null;
+  /** The latest FLEET or automatic reading of the license photo, if any. */
+  licenseReading?: {
+    applied?: string[] | null;
+    license_state?: string | null;
+    address_line1?: string | null;
+    address_city?: string | null;
+    address_state?: string | null;
+    address_zip?: string | null;
+    address?: { line1?: string | null; city?: string | null; state?: string | null; zip?: string | null } | null;
+  } | null;
   /**
    * app_settings.fleet_rentid.require_for_approval (OFF by default). When on,
    * FLEET may approve only after a RentID result recorded both checks as
@@ -309,6 +324,22 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   // only when staff recorded a personal policy whose name does not match the
   // license — a data mismatch, not a missing-insurance requirement.
   if (s.has_personal_insurance === true && s.insurance_name_matches_license === false) flag("insurance_name", "Insurance name does not match the license.");
+
+  // Address on the license does not need to match the application (Dolmar,
+  // t359u). Different Florida addresses are fine — both can be saved on the
+  // profile. Only an out-of-state license (issuing state not FL, from the
+  // license reading or a staff entry) is sent to staff. address_mismatch is
+  // never a flag.
+  const licState = licenseIssuingState(app, input.licenseReading, s);
+  if (isOutOfStateLicense(licState)) {
+    flag("out_of_state_license", `License is issued in ${licState}. Out-of-state licenses go to staff.`);
+  } else {
+    const appAddr = addressFromApplication(app);
+    const licAddr = addressFromReading(input.licenseReading);
+    if (appAddr && licAddr && !sameAddress(appAddr, licAddr)) {
+      note("license_address_recorded", "The license address differs from the application address. Different Florida addresses are fine; both can be saved on the profile.");
+    }
+  }
 
   // Blockers that do not hide the applicant from FLEET's list: an open staff
   // flag (filtered separately) and a RentID result still to come.
