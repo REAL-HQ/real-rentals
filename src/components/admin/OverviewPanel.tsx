@@ -1,7 +1,7 @@
 import { AppSelect } from "@/components/ui/app-select";
 import { paymentOverlap } from "@/lib/payment-overlap";
 import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/lib/revenue-state";
-import { tierFromRoles, tierAllows } from "@/lib/roles";
+import { tierFromRoles, tierAllows, type StaffTier } from "@/lib/roles";
 import { OVERVIEW_TODAY_ENABLED } from "@/lib/overview-today-flag";
 import LeadPriorities from "./LeadPriorities";
 import OverviewToday from "./OverviewToday";
@@ -138,7 +138,7 @@ function shortDate(iso?: string | null) {
   if (!iso) return "—";
   return fmtDate(iso);
 }
-export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
+export function OverviewPanel({ canSeeCollections = false, tier = null }: { canSeeCollections?: boolean; tier?: StaffTier | null }) {
   const client=useQueryClient();
   const [boundary,setBoundary]=useState<RevenueSession>({epoch:0,ready:false,collections:false});
   useEffect(()=>{
@@ -161,10 +161,10 @@ export function OverviewPanel({ canSeeCollections = false }: { canSeeCollections
     return ()=>{subscription.subscription.unsubscribe();window.removeEventListener("focus",recheck);gate.dispose();};
   },[client]);
   if(!boundary.ready) return <div role="status">Revenue and overview unavailable until current access is verified.</div>;
-  return <OverviewContent key={`${boundary.epoch}:${canSeeCollections}`} canSeeCollections={canSeeCollections && boundary.collections} />;
+  return <OverviewContent key={`${boundary.epoch}:${canSeeCollections}`} canSeeCollections={canSeeCollections && boundary.collections} tier={tier} />;
 }
 
-function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: boolean }) {
+function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCollections?: boolean; tier?: StaffTier | null }) {
   const [fleet, setFleet] = useState<FleetSummary>(() => summarizeFleet([]));
   const [fleetMismatches, setFleetMismatches] = useState<FleetStatusMismatch[]>([]);
   const [opsUpdatedAt, setOpsUpdatedAt] = useState<Date | null>(null);
@@ -463,6 +463,7 @@ function OverviewContent({ canSeeCollections = false }: { canSeeCollections?: bo
 
       <LeadPriorities
         isManager={canSeeCollections}
+        tier={tier}
         refreshKey={opsRefreshKey}
         readiness={readiness}
         canSeeReadiness={canSeeReadiness}
