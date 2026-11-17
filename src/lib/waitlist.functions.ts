@@ -14,9 +14,9 @@ import { parseCarsAvailable } from "@/lib/cars-available";
 // The owner sets a single number: how many cars are open right now. Above
 // zero the public hero shows a scarcity line and takes normal applications;
 // at zero it switches to waitlist mode and signed-out visitors join a queue.
-// Positions exist only here and in the back office — the applicant-facing
-// surface never shows a number, so nobody reads anything into their place
-// in line.
+// The marketing waitlist on city pages still hides the queue number.
+// Approved applicants who join the capacity waitlist are told their
+// position in the joined notice (Automations switch, default off).
 //
 // Availability lives in app_settings under key `fleet_availability`. A SQL
 // function (cars_available()) exposes just that one number to anon callers;
@@ -30,6 +30,7 @@ const emailLower = z
 // ---------------------------------------------------------------- public
 
 export const getAvailability = createServerFn({ method: "GET" }).handler(async () => {
+  const { publicWaitlistMode } = await import("@/lib/fleet-capacity");
   const { createClient } = await import("@supabase/supabase-js");
   const supabasePublic = createClient(
     process.env.SUPABASE_URL!,
@@ -41,11 +42,25 @@ export const getAvailability = createServerFn({ method: "GET" }).handler(async (
   // did, and the back office shows "not set" rather than 0. SQL null must
   // stay null — Number(null) is 0, which would switch city pages to the
   // waitlist even when the override is not set.
+  let carsAvailable: number | null = null;
   if (error) {
     console.error("[waitlist] cars_available rpc failed", error.message);
-    return { carsAvailable: null as number | null };
+  } else {
+    carsAvailable = parseCarsAvailable(data);
   }
-  return { carsAvailable: parseCarsAvailable(data) };
+  let fleetAvailable: number | null = null;
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { readFleetCapacity } = await import("@/lib/fleet-capacity.server");
+    fleetAvailable = await readFleetCapacity(supabaseAdmin);
+  } catch (e) {
+    console.error("[waitlist] fleet capacity failed", (e as Error)?.message ?? e);
+  }
+  return {
+    carsAvailable,
+    fleetAvailable,
+    waitlistMode: publicWaitlistMode(carsAvailable, fleetAvailable),
+  };
 });
 
 export const joinWaitlist = createServerFn({ method: "POST" })
@@ -184,6 +199,8 @@ export const listWaitlist = createServerFn({ method: "POST" })
     carsAvailable: number | null;
     waitingCount: number;
     fleet: FleetAvailability;
+    waitlistMode: boolean;
+    approvedQueue: import("@/lib/fleet-capacity.server").ApprovedWaitlistEntry[];
     /** False only during the additive schema rollout, before waitlist.tags exists. */
     tagsAvailable: boolean;
   }> => {
@@ -309,11 +326,16 @@ export const listWaitlist = createServerFn({ method: "POST" })
       };
     });
 
+    const { listApprovedWaitlist } = await import("@/lib/fleet-capacity.server");
+    const { publicWaitlistMode } = await import("@/lib/fleet-capacity");
+    const approvedQueue = await listApprovedWaitlist(supabaseAdmin);
     return {
       entries,
       carsAvailable,
       waitingCount: entries.filter((e) => e.status === "waiting").length,
       fleet,
+      waitlistMode: publicWaitlistMode(carsAvailable, fleet.fleetAvailable),
+      approvedQueue,
       tagsAvailable,
     };
   });
@@ -561,11 +583,15 @@ export const listWaitlistHolds = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data } = await supabaseAdmin
-      .from("application_waitlist_holds")
-      .select("application_id,added_at")
-      .is("removed_at", null);
-    return { holds: (data ?? []) as { application_id: string; added_at: string }[] };
+    const { listApprovedWaitlist } = await import("@/lib/fleet-capacity.server");
+    const queue = await listApprovedWaitlist(supabaseAdmin);
+    return {
+      holds: queue.map((e) => ({
+        application_id: e.applicationId,
+        added_at: e.addedAt,
+        position: e.position,
+      })),
+    };
   });
 
 /** Add/Remove Waitlist. Owner + Manager only; idempotent; records who and when; sends nothing. */

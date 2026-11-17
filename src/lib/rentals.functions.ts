@@ -648,6 +648,18 @@ export async function activateRentalCore(
 
     // rental.activated was written inside activate_rental_checked_tx (or, without
     // the wrapper, immediately after activate_rental_tx with any failure returned).
+    try {
+      const { readFleetCapacity, scheduleCapacitySideEffects } = await import("@/lib/fleet-capacity.server");
+      const before = await readFleetCapacity(supabaseAdmin);
+      const capacityBefore = before == null ? null : before + 1;
+      scheduleCapacitySideEffects(supabaseAdmin, {
+        vehicleId: data.vehicleId ?? null,
+        releaseApplicationId: data.applicationId,
+        capacityBefore,
+      });
+    } catch (e) {
+      console.error("[capacity-waitlist] activate hook failed", (e as Error)?.message ?? e);
+    }
     return { ok: true, rentalId: rental.id as string, accountCreated: created, inviteUrl, ...(auditError ? { auditError } : {}) };
 }
 
@@ -760,6 +772,17 @@ export const endRental = createServerFn({ method: "POST" })
       const lifecycle = safeLifecycle.parse(outcome);
       if (lifecycle.alreadyClosed) return { ok: true, alreadyClosed: true };
       // The safe-release transaction owns its atomic audit; no second client audit.
+    try {
+      const { readFleetCapacity, scheduleCapacitySideEffects } = await import("@/lib/fleet-capacity.server");
+      const before = await readFleetCapacity(supabaseAdmin);
+      const capacityBefore = before == null ? null : (data.vehicleStatus === "available" ? Math.max(0, before - 1) : before);
+      scheduleCapacitySideEffects(supabaseAdmin, {
+        vehicleId: rental.vehicle_id ?? null,
+        capacityBefore,
+      });
+    } catch (e) {
+      console.error("[capacity-waitlist] end-rental hook failed", (e as Error)?.message ?? e);
+    }
       return { ok: true, alreadyClosed: false, lifecycle };
     }
 
@@ -794,6 +817,17 @@ export const endRental = createServerFn({ method: "POST" })
     // Rental Ended notice (D14). Its own Automations switch, OFF by default.
     await import("@/lib/rental-ended-notice.server").then((m) => m.sendRentalEndedNotice(supabaseAdmin, data.rentalId)).catch((e) => console.error("[rental-ended]", e));
 
+    try {
+      const { readFleetCapacity, scheduleCapacitySideEffects } = await import("@/lib/fleet-capacity.server");
+      const before = await readFleetCapacity(supabaseAdmin);
+      const capacityBefore = before == null ? null : (data.vehicleStatus === "available" ? Math.max(0, before - 1) : before);
+      scheduleCapacitySideEffects(supabaseAdmin, {
+        vehicleId: rental.vehicle_id ?? null,
+        capacityBefore,
+      });
+    } catch (e) {
+      console.error("[capacity-waitlist] end-rental hook failed", (e as Error)?.message ?? e);
+    }
     return { ok: true, alreadyClosed: false, lifecycle };
   });
 

@@ -34,9 +34,16 @@ describe("getAvailability wiring", () => {
     expect(src).not.toMatch(/const n = typeof data === "number" \? data : Number\(data\)/);
   });
 
-  test("the hero enters waitlist mode only when availability is exactly 0", () => {
-    expect(hero).toContain("const waitlistMode = availability === 0");
-    // A failed or still-loading read must not look like 0 cars.
+  test("the hero follows the server waitlistMode flag, not a local === 0 check", () => {
+    expect(hero).toContain("setWaitlistMode(r.waitlistMode === true)");
+    expect(hero).not.toContain("const waitlistMode = availability === 0");
+    // A failed or still-loading read must not look like 0 cars or flip to waitlist.
     expect(hero).toContain("setAvailability(null)");
+    expect(hero).toContain("setWaitlistMode(false)");
+  });
+
+  test("getAvailability computes waitlistMode from the override and the real count", () => {
+    expect(src).toContain("publicWaitlistMode(carsAvailable, fleetAvailable)");
+    expect(src).toContain("parseCarsAvailable(data)");
   });
 });

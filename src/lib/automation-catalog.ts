@@ -547,6 +547,20 @@ export const AUTOMATIONS: AutomationDef[] = [
     defaultOn: false,
     note: "Off until turned on. Refunds the paid Reservation Fee in full (insurance declined) and tells FLEET. Needs proposed/reservation-fee-refunds-v1.sql. Never names the insurance company. A fee kept for a missed pickup is not refunded.",
   },
+  {
+    key: "waitlist_joined_notice",
+    title: "Waitlist Joined Notice",
+    audience: "Applicants",
+    channels: ["Email", "SMS"],
+    trigger: "An approved or ready applicant is added to the waitlist because no cars are Available.",
+    cadence: "Once when they join. Email goes out right away. Texts need SMS consent and wait for 8 AM–9 PM ET.",
+    emailWorkflows: ["application_waitlist_joined"],
+    cronJob: "automations-every-5-min",
+    control: { kind: "setting" },
+    previews: [],
+    defaultOn: false,
+    note: "Off until turned on. Tells them no cars are available, their spot number, and that they will be first contacted when a car comes back or we add one. Never awards a car. Staff alerts when a car opens up are a separate Team Alert switch.",
+  },
 ];
 
 export const AUTOMATION_KEYS = AUTOMATIONS.map((a) => a.key);

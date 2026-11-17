@@ -26,6 +26,7 @@ The site sends FLEET one signed JSON POST per event. Nothing is sent until
 | `rental_returned` | the return checklist was completed * |
 | `rental_ended` | a rental was ended * |
 | `reservation_refunded` | a paid Reservation Fee was refunded (staff, FLEET, or auto on insurance decline). Needs proposed/reservation-fee-refunds-v1.sql |
+| `vehicle_available` | the Available count left zero (a car was marked Available or added as Available). Off until the Team Alert switch is on. Needs proposed/capacity-waitlist-v1.sql |
 
 \* Lifecycle events. **Off** until `app_settings.fleet_lifecycle_events` is
 `{"enabled": true}` (`proposed/fleet-lifecycle-events-on.sql`), and they need
@@ -144,3 +145,21 @@ events are tried inline after Step 1 and by the every-minute cron
 `QUO_INBOUND_NUMBER_IDS` (comma-separated) picks the accepted lines. Default:
 `PNcX8a0PLJ` (+18132124174, Primary 813) and `PNrZULvFMn` (+18888338280,
 REAL Rentals 888). Another line: `PNid|+1XXXXXXXXXX|Label`.
+
+
+## vehicle_available
+
+Queued when the number of Available cars (unarchived, status `available`, no active rental) goes from 0 to 1 or more — a car was marked Available, or a new car was added and made Available. Off until the Team Alert switch `vehicle_available` is turned on. Nothing is auto-awarded.
+
+Payload:
+
+```json
+{
+  "vehicle_id": "uuid",
+  "waitlist": [
+    { "lead_id": "uuid", "position": 1, "name": "Briana Palmer" }
+  ]
+}
+```
+
+`waitlist` is the approved-applicant queue in order (first approved first). It may be empty. Staff also get a team alert (email to team@, plus rosa@ during her hours, and a company-line text that follows coverage and 8 AM–9 PM ET quiet hours).

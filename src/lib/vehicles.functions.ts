@@ -316,6 +316,12 @@ export const createVehicle = createServerFn({ method: "POST" })
         weekly_rate: data.weekly_rate, monthly_rate: data.monthly_rate, deposit: data.deposit,
       });
 
+      let capacityBefore: number | null = null;
+      try {
+        const { readFleetCapacity } = await import("@/lib/fleet-capacity.server");
+        capacityBefore = await readFleetCapacity(supabaseAdmin);
+      } catch { capacityBefore = null; }
+
       const { data: row, error } = await supabaseAdmin
         .from("vehicles")
         .insert({
@@ -391,6 +397,13 @@ export const createVehicle = createServerFn({ method: "POST" })
           ownership_type: data.ownership_type ?? null,
         },
       });
+
+      try {
+        const { scheduleCapacitySideEffects } = await import("@/lib/fleet-capacity.server");
+        scheduleCapacitySideEffects(supabaseAdmin, { vehicleId: row.id, capacityBefore });
+      } catch (e) {
+        console.error("[capacity-waitlist] create hook failed", (e as Error)?.message ?? e);
+      }
 
       return { ok: true, id: row.id, unit_number: row.unit_number };
     },
@@ -1339,6 +1352,13 @@ async function applySection(
     if (!Object.keys(patch).length) {
       return { ok: true, saved: [...titleMoved].map(named), unchanged: intended.filter((k) => allowed.includes(k)).map(named), ignored, rejected: [] };
     }
+    let capacityBefore: number | null = null;
+    if (typeof patch.status === "string") {
+      try {
+        const { readFleetCapacity } = await import("@/lib/fleet-capacity.server");
+        capacityBefore = await readFleetCapacity(supabaseAdmin);
+      } catch { capacityBefore = null; }
+    }
     const { data: persisted, error } = await supabaseAdmin
       .from("vehicles")
       .update(patch as any)
@@ -1414,6 +1434,14 @@ async function applySection(
         continue;
       }
       (changedKeys.includes(k) ? saved : unchanged).push(named(k));
+    }
+    if (changed.status) {
+      try {
+        const { scheduleCapacitySideEffects } = await import("@/lib/fleet-capacity.server");
+        scheduleCapacitySideEffects(supabaseAdmin, { vehicleId: data.id, capacityBefore });
+      } catch (e) {
+        console.error("[capacity-waitlist] status hook failed", (e as Error)?.message ?? e);
+      }
     }
     return { ok: true, saved, unchanged, rejected, ignored };
   }
