@@ -1,4 +1,17 @@
 import { NEXT_STEP_REQUIREMENT_KEYS, type ActivationRequirement } from "./activation-readiness";
+import { reservationFeeRefundedDetail } from "@/lib/reservation-fee-refund";
+
+function reservationPaymentDetail(status: string | null | undefined): string {
+  const raw = String(status ?? "");
+  if (raw === "paid") return "Paid";
+  if (raw === "pending") return "Payment Pending";
+  if (raw === "not_required") return "Not Required";
+  if (raw === "waived") return "Waived";
+  if (raw === "refunded" || raw.startsWith("refunded:")) {
+    return reservationFeeRefundedDetail(raw.includes(":") ? raw.slice(raw.indexOf(":") + 1) : null);
+  }
+  return "Not Recorded";
+}
 
 /** Profile presentation only; never substitutes for server activation readiness. */
 export function driverNextStepRequirements(
@@ -12,12 +25,7 @@ export function driverNextStepRequirements(
     label: "Reservation Paid",
     met: reservationPaymentStatus === "paid" ? true : reservationPaymentStatus === "pending" ? false : null,
     enforcement: "advisory",
-    detail: reservationPaymentStatus === "paid" ? "Paid"
-      : reservationPaymentStatus === "pending" ? "Payment Pending"
-      : reservationPaymentStatus === "not_required" ? "Not Required"
-      : reservationPaymentStatus === "waived" ? "Waived"
-      : reservationPaymentStatus === "refunded" ? "Refunded"
-      : "Not Recorded",
+    detail: reservationPaymentDetail(reservationPaymentStatus),
   };
   return NEXT_STEP_REQUIREMENT_KEYS.flatMap((key) => {
     if (key === "reservation_paid") return [reservationPayment];

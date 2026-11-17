@@ -67,3 +67,16 @@ the booking dialog has no Deposit Required/Amount fields, and nothing carries a
 reservation payment into the security deposit any more. The `app_settings`
 key `reservation_deposit` (Off) and the `rentals.reservation_deposit_*`
 columns stay; no database change.
+
+## Refunds (Nov 17 2026, t406u)
+
+The fee is refunded in full only for the six approved reasons (insurance
+declined; no car on the start date; failed pickup inspection; we change
+confirmed terms and the driver declines; a check we run after payment
+denies them; or a duplicate or mistaken charge). It is not refunded for a
+no-show, a change of mind, a missed pickup without notice, or false or
+mismatched information from the driver.
+
+See [reservation-fee-refunds.md](reservation-fee-refunds.md). The
+Automations switch is Off until turned on. Needs
+`proposed/reservation-fee-refunds-v1.sql`.
