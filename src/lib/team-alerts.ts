@@ -8,8 +8,6 @@
  * a phone number from a renter, an applicant or a request body.
  */
 
-/** Historical field-rep number (kept for existing docs/tests). New sends read Pickup Schedule settings. */
-export const FIELD_REP_ALERT_NUMBER = "+18134768508";
 export const TEAM_ALERT_EMAIL = "team@drivereal.com";
 export const TEAM_ALERTS_SETTINGS_KEY = "team_alerts";
 

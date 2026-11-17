@@ -88,6 +88,7 @@ import { approvalEmailMessage } from "@/lib/approval-email";
 import {
   activationEntryState,
   missingRequiredCategories,
+  ACTIVATION_READINESS_REFRESH_EVENT,
   notifyActivationReadinessRefresh,
   primaryStep,
   screeningRequirementsComplete,
@@ -566,6 +567,14 @@ export function DriversPanel({
       });
   }, [loadActiveSets, readVersions]);
   useEffect(() => { refreshActiveRenters(); }, [refreshActiveRenters, activationRefresh]);
+  // A committed readiness change anywhere in this tab (vehicle, screening,
+  // document) re-reads the list's activation context so row readiness and the
+  // Activate dialog's vehicle list never lag behind what was just saved.
+  useEffect(() => {
+    const onReadinessChanged = () => refreshActivationContext();
+    window.addEventListener(ACTIVATION_READINESS_REFRESH_EVENT, onReadinessChanged);
+    return () => window.removeEventListener(ACTIVATION_READINESS_REFRESH_EVENT, onReadinessChanged);
+  }, [refreshActivationContext]);
   const loadFunnel = useServerFn(listApprovedNotRenting);
   const [funnel, setFunnel] = useState<ApprovedNotRentingResult | null>(null);
   const [funnelFailed, setFunnelFailed] = useState(false);
@@ -594,7 +603,7 @@ export function DriversPanel({
     return () => {
       cancelled = true;
     };
-  }, [canManageWaitlist, loadFunnel, viewingFunnel]);
+  }, [canManageWaitlist, loadFunnel, viewingFunnel, activationRefresh]);
   const [holdBusy, setHoldBusy] = useState<string | null>(null);
   const refreshHolds = useCallback(
     () =>
@@ -718,17 +727,19 @@ export function DriversPanel({
   const loadDriverRows = useServerFn(listDriverRows);
   const loadOnboarding = useServerFn(getOnboardingChecklist);
   const refreshOnboarding = useCallback(() => {
+    const current = readVersions.begin("onboarding");
     if (ONBOARDING_CHECKLIST_ENABLED !== true || canViewOnboarding !== true) return;
     void loadOnboarding()
       .then((result) => {
+        if (!current()) return;
         setOnboardingResult(result);
         setOnboardingFailed(result.failed === true);
       })
-      .catch(() => setOnboardingFailed(true));
-  }, [loadOnboarding, canViewOnboarding]);
+      .catch(() => { if (current()) setOnboardingFailed(true); });
+  }, [loadOnboarding, canViewOnboarding, readVersions]);
   useEffect(() => {
     refreshOnboarding();
-  }, [refreshOnboarding]);
+  }, [refreshOnboarding, activationRefresh]);
   const loadDocExpiry = useServerFn(getDriverDocExpiry);
   useEffect(() => {
     if (DRIVER_DOC_EXPIRY_ENABLED !== true || !driversLoaded || canSeeSensitive !== true) return;
@@ -750,7 +761,7 @@ export function DriversPanel({
     return () => {
       cancel = true;
     };
-  }, [loadDocExpiry, driversLoaded, canSeeSensitive]);
+  }, [loadDocExpiry, driversLoaded, canSeeSensitive, activationRefresh]);
   const loadDocGaps = useServerFn(getApplicationDocGaps);
   useEffect(() => {
     if (APPLICATION_DOC_GAPS_ENABLED !== true || !driversLoaded || canSeeSensitive !== true) return;
@@ -772,35 +783,50 @@ export function DriversPanel({
     return () => {
       cancel = true;
     };
-  }, [loadDocGaps, driversLoaded, canSeeSensitive]);
+  }, [loadDocGaps, driversLoaded, canSeeSensitive, activationRefresh]);
   const refreshDrivers = useCallback(
-    () =>
+    () => {
+      const current = readVersions.begin("drivers");
       void loadDriverRows({ data: undefined })
         .then((res: DriverListResult) => {
+          if (!current()) return;
           setDrivers((res?.rows ?? []) as unknown as Application[]);
           setCanSeeSensitive(!!res?.canSeeSensitive);
           setDriversLoaded(true);
         })
-        .catch(() => setDriversLoaded(true)),
-    [loadDriverRows],
+        .catch(() => { if (current()) setDriversLoaded(true); });
+    },
+    [loadDriverRows, readVersions],
   );
 
   useEffect(() => {
+    let live = true;
+    let reported = false;
+    const current = readVersions.begin("activation-context");
+    const failed = () => {
+      if (live && current() && !reported) { reported = true; toast.error("Driver context could not refresh. Recheck to retry; no readiness decision was changed."); }
+    };
     refreshDrivers();
     supabase
       .from("vehicles")
       .select("*")
-      .then(({ data }) => setVehicles((data as any) || []));
+      .then(({ data, error }) => {
+        if (!live || !current()) return;
+        if (error) return failed();
+        setVehicles((data as any) || []);
+      }, failed);
     supabase
       .from("driver_screenings")
       .select("*")
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (!live || !current()) return;
+        if (error) return failed();
         const map: Record<string, DriverScreeningRow> = {};
         (data || []).forEach((s) => {
           map[s.lead_id] = s as DriverScreeningRow;
         });
         setScreenings(map);
-      });
+      }, failed);
     // The document vault, in bulk. One source.
     //
     // This used to union `documents` with `lead_documents` and de-duplicate by
@@ -808,10 +834,12 @@ export function DriversPanel({
     // reads it — so the union is gone and with it the chance of the two
     // disagreeing about the same applicant.
     void (async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("documents")
         .select("driver_id,category,review_status,is_current")
         .not("driver_id", "is", null);
+      if (!live || !current()) return;
+      if (error) return failed();
       const rows: ReadinessDocument[] = (
         (data ?? []) as {
           driver_id: string;
@@ -827,12 +855,13 @@ export function DriversPanel({
       }));
 setDocCounts(requiredDocCounts(rows));
       setDocRows(rows);
-    })();
+    })().catch(failed);
     // refreshDrivers is a useCallback over the server function, so this
     // still runs once on mount — but it is named here rather than silenced,
     // because a loader missing from the dependency list is how a list stops
     // refreshing after somebody changes how it loads.
-  }, [refreshDrivers]);
+    return () => { live = false; };
+  }, [refreshDrivers, readVersions, activationRefresh]);
 
   const loadReviewAging = useServerFn(getDocumentReviewAging);
   useEffect(() => {
@@ -855,7 +884,7 @@ setDocCounts(requiredDocCounts(rows));
     return () => {
       cancel = true;
     };
-  }, [loadReviewAging, driversLoaded, canSeeSensitive]);
+  }, [loadReviewAging, driversLoaded, canSeeSensitive, activationRefresh]);
 
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v])), [vehicles]);
 
@@ -1477,7 +1506,7 @@ setDocCounts(requiredDocCounts(rows));
                         onValueChange={(status) => {
                           const tier = panelTier(isOwner, isManager);
                           if (status === ACTIVATE_FROM_LIST) {
-                            if (!openRentals.has(a.id) && (isOwner || isManager)) setListActivateId(a.id);
+                            if (!openRentals.has(a.id) && (isOwner || isManager)) { refreshActivationContext(); setListActivateId(a.id); }
                             return;
                           }
                           if (applicationStatusChoiceDisabled(a.status, status, tier)) return;
@@ -1607,7 +1636,7 @@ setDocCounts(requiredDocCounts(rows));
                             <ExternalLink className="w-4 h-4 mr-2" /> Open
                           </DropdownMenuItem>
                           {(isOwner || isManager) && !openRentals.has(a.id) && (
-                            <DropdownMenuItem onClick={() => setListActivateId(a.id)}>
+                            <DropdownMenuItem onClick={() => { refreshActivationContext(); setListActivateId(a.id); }}>
                               <Car className="w-4 h-4 mr-2" /> Activate
                             </DropdownMenuItem>
                           )}
@@ -1761,7 +1790,16 @@ setDocCounts(requiredDocCounts(rows));
         );
       })() : null}
       {listUploadId ? (
-        <ListDocUpload applicationId={listUploadId} onClose={() => setListUploadId(null)} />
+        <ListDocUpload
+          applicationId={listUploadId}
+          onClose={() => setListUploadId(null)}
+          onUploaded={() => {
+            // Vault changed from the list: re-read documents (and the rest of
+            // the activation context) and tell an open Activate dialog to recheck.
+            refreshActivationContext();
+            notifyActivationReadinessRefresh({ applicationId: listUploadId });
+          }}
+        />
       ) : null}
       {listRecordPay ? (
         <RecordPaymentDialog
@@ -1791,8 +1829,8 @@ setDocCounts(requiredDocCounts(rows));
 }
 
 
-function ListDocUpload({ applicationId, onClose }: { applicationId: string; onClose: () => void }) {
-  const upload = useDriverDocumentUpload(applicationId, async () => { onClose(); });
+function ListDocUpload({ applicationId, onClose, onUploaded }: { applicationId: string; onClose: () => void; onUploaded?: () => void }) {
+  const upload = useDriverDocumentUpload(applicationId, async () => { onUploaded?.(); onClose(); });
   return (
     <DriverDocumentUploadDialog
       label="Documents"
