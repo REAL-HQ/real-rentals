@@ -294,7 +294,7 @@ describe("send-agreement channel staff", () => {
 describe("team-alert applicant_approved", () => {
   const KEY = "k".repeat(40);
   const req = (body: unknown) => new Request("https://drivereal.com/api/public/fleet/team-alert", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${KEY}` }, body: JSON.stringify(body) });
-  const ON = { gps: true, roadside_overnight: true, late_pickup: true, bot_handoff: true, applicant_approved: true };
+  const ON = { gps: true, roadside_overnight: true, late_pickup: true, bot_handoff: true, applicant_approved: true, vehicle_available: true };
   function io() {
     const sms: any[] = []; const emails: any[] = [];
     return { sms, emails, sendSms: async (a: any) => { sms.push(a); return { ok: true }; }, sendEmail: async (a: any) => { emails.push(a); return { ok: true }; } };
@@ -383,7 +383,7 @@ describe("team alert copy (before/after)", () => {
     const sms: any[] = []; const emails: any[] = [];
     const db = fakeDb(seed());
     const res = await fta.handleFleetTeamAlert(new Request("https://x/api/public/fleet/team-alert", { method: "POST", headers: { Authorization: `Bearer ${KEY}` }, body: JSON.stringify({ kind: "bot_handoff", reason: "asked_for_person", lead_id: A, summary: "Wants a call back at (000) 000-0000 about pickup" }) }), {
-      admin: db, env: { FLEET_API_KEY: KEY }, now: () => new Date("2026-11-19T15:00:00Z"), settings: { gps: true, roadside_overnight: true, late_pickup: true, bot_handoff: true, applicant_approved: true }, fieldRepNumbers: ["+10000000001"],
+      admin: db, env: { FLEET_API_KEY: KEY }, now: () => new Date("2026-11-19T15:00:00Z"), settings: { gps: true, roadside_overnight: true, late_pickup: true, bot_handoff: true, applicant_approved: true, vehicle_available: true }, fieldRepNumbers: ["+10000000001"],
       sendSms: async (a: any) => { sms.push(a); return { ok: true }; }, sendEmail: async (a: any) => { emails.push(a); return { ok: true }; },
     } as any);
     expect(res.status).toBe(200);

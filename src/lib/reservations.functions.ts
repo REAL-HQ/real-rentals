@@ -359,7 +359,10 @@ export const cancelReservation = createServerFn({ method: "POST" })
         .in("status", [RESERVATION_STATUS, "active"])
         .limit(1);
       if (!still?.length) {
+        const { readFleetCapacity, scheduleCapacitySideEffects } = await import("@/lib/fleet-capacity.server");
+        const before = await readFleetCapacity(supabaseAdmin).catch(() => null);
         await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).eq("status", "reserved");
+        scheduleCapacitySideEffects(supabaseAdmin, { vehicleId: row.vehicle_id, capacityBefore: before });
       }
     }
     return { ok: true };
@@ -396,7 +399,10 @@ export const clearReservationAfterActivate = createServerFn({ method: "POST" })
           .in("status", [RESERVATION_STATUS, "active"])
           .limit(1);
         if (!still.data?.length) {
+          const { readFleetCapacity, scheduleCapacitySideEffects } = await import("@/lib/fleet-capacity.server");
+          const before = await readFleetCapacity(supabaseAdmin).catch(() => null);
           await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).eq("status", "reserved");
+          scheduleCapacitySideEffects(supabaseAdmin, { vehicleId: row.vehicle_id, capacityBefore: before });
         }
       }
     }

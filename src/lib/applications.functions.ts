@@ -1564,6 +1564,13 @@ export async function approveApplicationCore(args: {
     } catch (e) {
       console.error("[approve] stripe customer not created", e);
     }
+    try {
+      const { stampApprovedAt, scheduleCapacitySideEffects } = await import("@/lib/fleet-capacity.server");
+      await stampApprovedAt(supabaseAdmin, data.id);
+      scheduleCapacitySideEffects(supabaseAdmin, { applicationId: data.id });
+    } catch (e) {
+      console.error("[capacity-waitlist] approval hook failed", (e as Error)?.message ?? e);
+    }
   }
 
   // Approval records the vetting decision only. The existing Reserved

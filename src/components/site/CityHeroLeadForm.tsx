@@ -49,22 +49,27 @@ export function CityHeroLeadForm({
   const [returning, setReturning] = useState<{ email: string; status: LinkStatus; retryAfterSeconds: number; fresh?: boolean } | null>(null);
   const getAvail = useServerFn(getAvailability);
   const join = useServerFn(joinWaitlist);
-  // How many cars the team says are open right now, set in the back office.
-  // Unset keeps this form exactly as it always was; 0 switches the card into
-  // waitlist mode; above 0 adds a scarcity line. Undefined means still
-  // loading, and we render the normal form until we know — no flash of the
-  // wrong mode.
+  // Waitlist mode comes from the server: the real Available count, unless
+  // staff set the optional override (0 forces it on, a number above 0
+  // forces it off). A missing override is not 0. Undefined availability
+  // means still loading — we render the normal form until we know.
   const [availability, setAvailability] = useState<number | null | undefined>(undefined);
+  const [waitlistMode, setWaitlistMode] = useState(false);
   const [joined, setJoined] = useState(false);
-  const waitlistMode = availability === 0;
   useEffect(() => {
     let active = true;
     getAvail()
       .then((r) => {
-        if (active) setAvailability(r.carsAvailable);
+        if (!active) return;
+        const scarcity = r.waitlistMode ? null : (r.carsAvailable != null && r.carsAvailable > 0 ? r.carsAvailable : r.fleetAvailable);
+        setAvailability(typeof scarcity === "number" && scarcity > 0 ? scarcity : null);
+        setWaitlistMode(r.waitlistMode === true);
       })
       .catch(() => {
-        if (active) setAvailability(null);
+        if (active) {
+          setAvailability(null);
+          setWaitlistMode(false);
+        }
       });
     return () => {
       active = false;
