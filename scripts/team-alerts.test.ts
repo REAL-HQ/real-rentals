@@ -53,7 +53,7 @@ const req = (path: string, body: unknown) => new Request(`https://drivereal.com/
 
 describe("team alert switch and sending", () => {
   test("every kind is OFF with no row, a malformed row or a non-true value", () => {
-    expect(ta.readTeamAlertSettings(null)).toEqual({ gps: false, roadside_overnight: false, late_pickup: false, bot_handoff: false });
+    expect(ta.readTeamAlertSettings(null)).toEqual({ gps: false, roadside_overnight: false, late_pickup: false, bot_handoff: false, applicant_approved: false });
     expect(ta.readTeamAlertSettings({ gps: true, roadside_overnight: { enabled: "true" } }).gps).toBe(false);
     expect(ta.readTeamAlertSettings({ gps: { enabled: true } }).gps).toBe(true);
   });
@@ -91,7 +91,18 @@ describe("team alert switch and sending", () => {
   });
   test("alert code never reads a renter or applicant phone number", () => {
     for (const f of ["src/lib/team-alerts.ts", "src/lib/team-alerts.server.ts", "src/lib/gps-alerts.ts", "src/lib/gps-alerts.server.ts", "src/lib/fleet-team-alert.server.ts"]) {
-      const s = readFileSync(f, "utf8");
+      let s = readFileSync(f, "utf8");
+      if (f === "src/lib/fleet-team-alert.server.ts") {
+        // The one sanctioned read (Nov 17 2026, Dolmar): applicant_approved puts
+        // a tap-to-call link in the staff-only email from the application row,
+        // and checks whether the applicant replied. Nothing else may read it.
+        const allowed = [
+          'select("id,status,full_name,phone,deleted_at")',
+          "repliedSince(admin, app.data.phone, textedAt)",
+          "displayPhone(app.data.phone)",
+        ];
+        for (const a of allowed) { expect(s).toContain(a); s = s.split(a).join(""); }
+      }
       expect(s).not.toMatch(/\.phone\b|"phone"|,phone|phone,/);
       // No phone number is hard-coded in alert code; field-rep numbers come from settings.
       expect(s.match(/\+1\d{10}/g) ?? []).toEqual([]);
@@ -187,7 +198,7 @@ describe("proposed SQL (PGlite)", () => {
     const SQL = readFileSync("proposed/team-alerts-v1.sql", "utf8");
     await pg.exec(SQL); await pg.exec(SQL);
     const v = (await pg.query(`SELECT value FROM app_settings WHERE key='team_alerts'`)).rows[0] as any;
-    expect(ta.readTeamAlertSettings(v.value)).toEqual({ gps: false, roadside_overnight: false, late_pickup: false, bot_handoff: false });
+    expect(ta.readTeamAlertSettings(v.value)).toEqual({ gps: false, roadside_overnight: false, late_pickup: false, bot_handoff: false, applicant_approved: false });
     await pg.query(`INSERT INTO team_alert_sends (key, kind) VALUES ('a','gps')`);
     await expect(pg.query(`INSERT INTO team_alert_sends (key, kind) VALUES ('a','gps')`)).rejects.toThrow();
     expect(SQL).toMatch(/PROPOSED, NOT APPLIED/);

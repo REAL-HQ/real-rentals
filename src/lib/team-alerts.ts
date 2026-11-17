@@ -11,7 +11,7 @@
 export const TEAM_ALERT_EMAIL = "team@drivereal.com";
 export const TEAM_ALERTS_SETTINGS_KEY = "team_alerts";
 
-export const TEAM_ALERT_KINDS = ["gps", "roadside_overnight", "late_pickup", "bot_handoff"] as const;
+export const TEAM_ALERT_KINDS = ["gps", "roadside_overnight", "late_pickup", "bot_handoff", "applicant_approved"] as const;
 export type TeamAlertKind = (typeof TEAM_ALERT_KINDS)[number];
 
 export const TEAM_ALERT_LABELS: Record<TeamAlertKind, string> = {
@@ -19,7 +19,15 @@ export const TEAM_ALERT_LABELS: Record<TeamAlertKind, string> = {
   roadside_overnight: "Overnight Roadside Alerts (6 PM to 6 AM ET)",
   late_pickup: "Late Pickup Release Alerts",
   bot_handoff: "Bot Hand-Off Alerts (complaints, injuries, payment disputes)",
+  applicant_approved: "Approved Applicant Call Alerts (staff call to go over terms, then Move Forward)",
 };
+
+/**
+ * Staff work inboxes by staff_schedules.staff_key. An applicant_approved alert
+ * also emails the on-duty coverage person here (team@ always gets a copy).
+ * Work email addresses only; never a phone number.
+ */
+export const STAFF_WORK_EMAILS: Readonly<Record<string, string>> = { rosa: "rosa@drivereal.com" };
 
 /** Every kind is OFF until an Owner turns it on. No row, malformed row, or unknown kind = off. */
 export type TeamAlertSettings = Record<TeamAlertKind, boolean>;
@@ -41,13 +49,21 @@ export function isOvernightEt(at: Date): boolean {
   return h >= 18 || h < 6;
 }
 
-/** Team alert text: one line, no renter phone number, an admin link. */
+/** Team alert text: "REAL: <subject> <link>", one line, no renter phone number. */
 export function teamAlertSms(title: string, link: string | null): string {
   const t = title.replace(/\s+/g, " ").trim().slice(0, 240);
-  return `REAL RENTALS alert: ${t}${link ? ` ${link}` : ""}`;
+  return `REAL: ${t}${link ? ` ${link}` : ""}`;
 }
 
-/** Strip anything that looks like a phone number from alert text (belt and braces). */
+/**
+ * Strip anything that looks like a phone number from alert text (belt and
+ * braces). Leaves no placeholder and no empty brackets behind.
+ */
 export function scrubPhones(text: string): string {
-  return text.replace(/(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g, "[number removed]");
+  return text
+    .replace(/(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g, "")
+    .replace(/\(\s*\)|\[\s*\]/g, "")
+    .replace(/\s+([,.;:)])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }

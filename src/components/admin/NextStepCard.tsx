@@ -1,5 +1,5 @@
 import { Circle, Car, ClipboardList, Loader2, RotateCw } from "lucide-react";
-import type { ActivationReadiness } from "@/lib/activation-readiness";
+import type { ActivationReadiness, ActivationRequirement } from "@/lib/activation-readiness";
 import type { NextStep } from "@/lib/next-step";
 import { ActivationRequirementList } from "./ActivationRequirementList";
 import type { ActivationRequirementKey } from "@/lib/activation-readiness";
@@ -27,6 +27,7 @@ export function NextStepCard({
   renderEvidence,
   evidence,
   reservationPaymentStatus,
+  termsConfirmed,
 }: {
   model: NextStep;
   readiness: ActivationReadiness | null;
@@ -42,6 +43,8 @@ export function NextStepCard({
   renderEvidence?: (key: ActivationRequirementKey) => ReactNode;
   evidence?: EvidencePresentationMap;
   reservationPaymentStatus?: string | null;
+  /** Terms Confirmed row (Move Forward), after Application Approved. */
+  termsConfirmed?: ActivationRequirement | null;
 }) {
   const { activation } = model;
   const primary = "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-[#D03020] px-3.5 text-[12px] font-semibold text-white hover:bg-[#B00000] disabled:cursor-not-allowed disabled:opacity-50";
@@ -148,7 +151,7 @@ export function NextStepCard({
         </ul>
       ) : null}
       {readiness ? (
-        <ActivationRequirementList embedded blockers={model.blockers} requirements={driverNextStepRequirements(readiness.requirements, reservationPaymentStatus)} evidence={evidence} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} renderEvidence={renderEvidence} />
+        <ActivationRequirementList embedded blockers={model.blockers} requirements={driverNextStepRequirements(readiness.requirements, reservationPaymentStatus, termsConfirmed)} evidence={evidence} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} renderEvidence={renderEvidence} />
       ) : null}
     </section>
   );

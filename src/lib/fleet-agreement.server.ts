@@ -17,6 +17,16 @@
  *      staff Approve-and-send uses. The company signer comes from Settings
  *      (Company eSign Signer) and is not touched here.
  * Audited as "FLEET (automated)". Idempotent on idempotency_key.
+ *
+ * Channel "staff" (Nov 17 2026): Rosa or another manager called the
+ * applicant and clicked Move Forward on the Terms Confirmed row. FLEET passes
+ *   terms_confirmation: { channel: "staff", staff_event_id: <event_id from
+ *   the applicant_ready_for_agreement webhook> }
+ * The event must exist, belong to this lead and be at most 7 days old; its
+ * stored terms are the confirmed terms (any terms FLEET also passes must
+ * equal them), and they must match the agreement exactly like any other
+ * channel. The contact belongs to the staff member, so FLEET does not stamp
+ * contacted_at. Without idempotency_key the event id is the key.
  */
 import { withAutoSendDefaults, type AgreementPrep } from "@/lib/agreement-prep";
 import {
@@ -68,14 +78,23 @@ function money(v: unknown): number | null {
 
 export type TermsConfirmation = {
   confirmed_at: string;
-  channel: "call" | "sms";
+  channel: "call" | "sms" | "staff";
   call_id: string | null;
   message_id: string | null;
   summary: string;
   weekly_rate: number;
+  /**
+   * The Reservation Fee the applicant agreed to (signing charges it). Always
+   * set for channel staff (from the Move Forward row); optional for call/sms.
+   * Checked, not stored on agreement_terms_confirmations.
+   */
+  reservation_fee?: number;
   deposit: number;
   start_date: string;
   vehicle_id: string;
+  /** Channel staff only: the staff_terms_confirmations row. */
+  staff_event_id?: string;
+  staff_name?: string;
 };
 
 export function parseTermsConfirmation(raw: any, now: Date): { ok: true; value: TermsConfirmation } | { ok: false; error: string } {
@@ -87,7 +106,7 @@ export function parseTermsConfirmation(raw: any, now: Date): { ok: true; value: 
   if (t > now.getTime() + 5 * 60_000) return { ok: false, error: "terms_confirmation.confirmed_at is in the future." };
   if (now.getTime() - t > MAX_CONFIRMATION_AGE_DAYS * 86400_000) return { ok: false, error: `The confirmation is older than ${MAX_CONFIRMATION_AGE_DAYS} days. Confirm the terms again.` };
   const channel = String(raw.channel ?? "").toLowerCase();
-  if (channel !== "call" && channel !== "sms") return { ok: false, error: "terms_confirmation.channel must be call or sms." };
+  if (channel !== "call" && channel !== "sms") return { ok: false, error: "terms_confirmation.channel must be call, sms or staff." };
   const callId = cleanText(raw.call_id, 120) || null;
   const messageId = cleanText(raw.message_id, 120) || null;
   if (channel === "call" && !callId) return { ok: false, error: "terms_confirmation.call_id is required for a call." };
@@ -98,11 +117,58 @@ export function parseTermsConfirmation(raw: any, now: Date): { ok: true; value: 
   if (weekly === null || weekly <= 0) return { ok: false, error: "terms_confirmation.weekly_rate must be a positive amount." };
   const deposit = money(raw.deposit);
   if (deposit === null) return { ok: false, error: "terms_confirmation.deposit must be an amount (0 if none)." };
+  const hasFee = raw.reservation_fee != null && raw.reservation_fee !== "";
+  const reservationFee = hasFee ? money(raw.reservation_fee) : null;
+  if (hasFee && reservationFee === null) return { ok: false, error: "terms_confirmation.reservation_fee must be an amount (0 if none)." };
   const start = String(raw.start_date ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return { ok: false, error: "terms_confirmation.start_date must be YYYY-MM-DD." };
   const vehicleId = String(raw.vehicle_id ?? "").trim();
   if (!UUID_RE.test(vehicleId)) return { ok: false, error: "terms_confirmation.vehicle_id must be the vehicle's id (UUID)." };
-  return { ok: true, value: { confirmed_at: new Date(t).toISOString(), channel, call_id: callId, message_id: messageId, summary, weekly_rate: weekly, deposit, start_date: start, vehicle_id: vehicleId } };
+  return { ok: true, value: { confirmed_at: new Date(t).toISOString(), channel, call_id: callId, message_id: messageId, summary, weekly_rate: weekly, ...(reservationFee !== null ? { reservation_fee: reservationFee } : {}), deposit, start_date: start, vehicle_id: vehicleId } };
+}
+
+/**
+ * Channel staff: the Move Forward event is the confirmation. Read it, check it
+ * belongs to this lead and is recent, and take its terms. Terms FLEET also
+ * passes must equal the stored ones.
+ */
+export async function resolveStaffConfirmation(admin: Admin, raw: any, leadId: string, now: Date): Promise<{ ok: true; value: TermsConfirmation } | { ok: false; status: number; error: string; mismatches?: { field: string; confirmed: unknown; staff: unknown }[] }> {
+  const eventId = String(raw?.staff_event_id ?? "").trim();
+  if (!UUID_RE.test(eventId)) return { ok: false, status: 400, error: "terms_confirmation.staff_event_id is required for channel staff (the event_id from applicant_ready_for_agreement)." };
+  const r = await admin.from("staff_terms_confirmations").select("id,application_id,weekly_rate,reservation_fee,deposit,start_date,vehicle_id,clicked_by_name,clicked_at").eq("id", eventId).maybeSingle();
+  if (r.error) {
+    if (tableMissing(r.error, "staff_terms_confirmations")) return { ok: false, status: 503, error: "Staff confirmations are not set up yet. Nothing was sent." };
+    return { ok: false, status: 503, error: "Could not read the staff confirmation. Nothing was sent." };
+  }
+  const ev = r.data;
+  if (!ev) return { ok: false, status: 404, error: "No staff confirmation with that staff_event_id. Nothing was sent." };
+  if (ev.application_id !== leadId) return { ok: false, status: 409, error: "That staff confirmation is for another applicant. Nothing was sent." };
+  const at = Date.parse(String(ev.clicked_at ?? ""));
+  if (!Number.isFinite(at)) return { ok: false, status: 409, error: "The staff confirmation has no time. Nothing was sent." };
+  if (now.getTime() - at > MAX_CONFIRMATION_AGE_DAYS * 86400_000) return { ok: false, status: 409, error: `The staff confirmation is older than ${MAX_CONFIRMATION_AGE_DAYS} days. Ask staff to confirm the terms again.` };
+  const stored = { weekly_rate: money(ev.weekly_rate) ?? 0, reservation_fee: money(ev.reservation_fee) ?? 0, deposit: money(ev.deposit) ?? 0, start_date: String(ev.start_date ?? "").slice(0, 10), vehicle_id: String(ev.vehicle_id ?? "").toLowerCase() };
+  const mismatches: { field: string; confirmed: unknown; staff: unknown }[] = [];
+  if (raw.weekly_rate != null && raw.weekly_rate !== "" && money(raw.weekly_rate) !== stored.weekly_rate) mismatches.push({ field: "weekly_rate", confirmed: raw.weekly_rate, staff: stored.weekly_rate });
+  if (raw.reservation_fee != null && raw.reservation_fee !== "" && money(raw.reservation_fee) !== stored.reservation_fee) mismatches.push({ field: "reservation_fee", confirmed: raw.reservation_fee, staff: stored.reservation_fee });
+  if (raw.deposit != null && raw.deposit !== "" && money(raw.deposit) !== stored.deposit) mismatches.push({ field: "deposit", confirmed: raw.deposit, staff: stored.deposit });
+  if (raw.start_date != null && raw.start_date !== "" && String(raw.start_date).trim() !== stored.start_date) mismatches.push({ field: "start_date", confirmed: raw.start_date, staff: stored.start_date });
+  if (raw.vehicle_id != null && raw.vehicle_id !== "" && String(raw.vehicle_id).trim().toLowerCase() !== stored.vehicle_id) mismatches.push({ field: "vehicle_id", confirmed: raw.vehicle_id, staff: stored.vehicle_id });
+  if (mismatches.length) return { ok: false, status: 409, error: "The terms sent differ from what staff confirmed. Nothing was sent. Leave them out or send the staff terms.", mismatches };
+  const name = cleanText(ev.clicked_by_name, 120) || "Staff";
+  const summary = cleanText(raw.summary, 2000);
+  return {
+    ok: true,
+    value: {
+      confirmed_at: new Date(at).toISOString(),
+      channel: "staff",
+      call_id: null,
+      message_id: null,
+      summary: summary.length >= 10 ? summary : `${name} confirmed the terms with the applicant by phone and clicked Move Forward.`,
+      ...stored,
+      staff_event_id: ev.id,
+      staff_name: name,
+    },
+  };
 }
 
 /** A short affirmative reply ("YES", "Yes I confirm", "ok"), with no hedge or refusal in it. */
@@ -142,10 +208,16 @@ export async function verifySmsConfirmation(admin: Admin, appPhone: unknown, con
 }
 
 /** Differences between what was confirmed and what the agreement will print. */
-export function termsMismatches(confirmed: TermsConfirmation, check: SendCheck): { field: string; confirmed: unknown; agreement: unknown }[] {
+export function termsMismatches(confirmed: TermsConfirmation, check: SendCheck, feeCharged?: number | null): { field: string; confirmed: unknown; agreement: unknown }[] {
   const out: { field: string; confirmed: unknown; agreement: unknown }[] = [];
   if (check.weeklyRate === null || Math.abs(check.weeklyRate - confirmed.weekly_rate) > 0.004) out.push({ field: "weekly_rate", confirmed: confirmed.weekly_rate, agreement: check.weeklyRate });
-  if (check.deposit === null || Math.abs(check.deposit - confirmed.deposit) > 0.004) out.push({ field: "deposit", confirmed: confirmed.deposit, agreement: check.deposit });
+  // The Reservation Fee the agreement prints and signing charges.
+  if (confirmed.reservation_fee !== undefined) {
+    const fee = feeCharged !== undefined ? feeCharged : (check.reservationFee ?? null);
+    if (fee === null || Math.abs(fee - confirmed.reservation_fee) > 0.004) out.push({ field: "reservation_fee", confirmed: confirmed.reservation_fee, agreement: fee });
+  }
+  // No deposit on file prints none (fleetAgreementPrep), so it matches 0.
+  if (Math.abs((check.deposit ?? 0) - confirmed.deposit) > 0.004) out.push({ field: "deposit", confirmed: confirmed.deposit, agreement: check.deposit });
   if (check.startDate !== confirmed.start_date) out.push({ field: "start_date", confirmed: confirmed.start_date, agreement: check.startDate });
   if (check.vehicleId !== confirmed.vehicle_id) out.push({ field: "vehicle_id", confirmed: confirmed.vehicle_id, agreement: check.vehicleId });
   return out;
@@ -155,7 +227,7 @@ export function termsMismatches(confirmed: TermsConfirmation, check: SendCheck):
  * POST /api/public/fleet/send-agreement
  *   { "lead_id": "…", "idempotency_key": "…",
  *     "terms_confirmation": { "confirmed_at": "2026-11-16T15:04:00-05:00", "channel": "call",
- *       "call_id": "AC…", "summary": "…", "weekly_rate": 325, "deposit": 0,
+ *       "call_id": "AC…", "summary": "…", "weekly_rate": 325, "reservation_fee"?: 50, "deposit": 0,
  *       "start_date": "2026-11-18", "vehicle_id": "…" } }
  */
 export async function handleFleetSendAgreement(request: Request, deps: AgreementDeps = {}): Promise<Response> {
@@ -175,10 +247,22 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
     leadId = r.data.application_id;
   }
   if (!UUID_RE.test(leadId)) return fleetJson(400, { ok: false, error: "lead_id must be a UUID." });
-  const idem = idempotencyKey(body.idempotency_key);
+  let idem = idempotencyKey(body.idempotency_key);
   if (idem === "invalid") return fleetJson(400, { ok: false, error: "idempotency_key must be 1-120 characters." });
-  const conf = parseTermsConfirmation(body.terms_confirmation, now);
-  if (!conf.ok) return fleetJson(400, { ok: false, error: conf.error });
+  const rawConf = body.terms_confirmation;
+  const isStaff = !!rawConf && typeof rawConf === "object" && String(rawConf.channel ?? "").toLowerCase() === "staff";
+  let conf: { ok: true; value: TermsConfirmation };
+  if (isStaff) {
+    const staff = await resolveStaffConfirmation(admin, rawConf, leadId, now);
+    if (!staff.ok) return fleetJson(staff.status, { ok: false, error: staff.error, ...(staff.mismatches ? { mismatches: staff.mismatches } : {}) });
+    conf = staff;
+    // One send per staff event unless FLEET names its own key.
+    idem ??= `staff:${staff.value.staff_event_id}`;
+  } else {
+    const parsedConf = parseTermsConfirmation(rawConf, now);
+    if (!parsedConf.ok) return fleetJson(400, { ok: false, error: parsedConf.error });
+    conf = parsedConf;
+  }
 
   let retryConfirmationId: string | null = null;
   if (idem) {
@@ -216,13 +300,16 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
   if (!check.vehicleId) return fleetJson(409, { ok: false, error: "No vehicle is assigned to this applicant. Nothing was sent.", blockers: check.blockers });
   if (!check.weeklyRate) return fleetJson(409, { ok: false, error: "No weekly rate is set. Nothing was sent.", blockers: check.blockers });
   if (check.blockers.length) return fleetJson(409, { ok: false, error: "The agreement has missing details. Nothing was sent.", blockers: check.blockers });
-  const mismatches = termsMismatches(conf.value, check);
+  // The fee this send prints (fleetAgreementPrep) and signing charges.
+  const fee = deps.reservationFee ?? (await (await import("@/lib/reservation-fee.server")).loadReservationFeeSettings(admin));
+  const feeCharged = fee.enabled ? fee.amount : 0;
+  const mismatches = termsMismatches(conf.value, check, feeCharged);
   if (mismatches.length) {
     return fleetJson(409, {
       ok: false,
       error: "The confirmed terms do not match what the agreement would say. Nothing was sent. Fix the record or send it to staff.",
       mismatches,
-      agreement_terms: { weekly_rate: check.weeklyRate, deposit: check.deposit, start_date: check.startDate, vehicle_id: check.vehicleId, vehicle: check.vehicleLabel },
+      agreement_terms: { weekly_rate: check.weeklyRate, reservation_fee: feeCharged, deposit: check.deposit, start_date: check.startDate, vehicle_id: check.vehicleId, vehicle: check.vehicleLabel },
     });
   }
 
@@ -233,9 +320,12 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
   }
 
   // Store the confirmation first; no record, no send.
+  const { staff_event_id: staffEventId, staff_name: staffName, reservation_fee: _fee, ...confRow } = conf.value;
   const ins = retryConfirmationId ? { data: { id: retryConfirmationId }, error: null } : await admin.from("agreement_terms_confirmations").insert({
     application_id: leadId,
-    ...conf.value,
+    ...confRow,
+    // Only the staff channel writes the new column, so call/sms keep working before the migration.
+    ...(conf.value.channel === "staff" ? { staff_event_id: staffEventId } : {}),
     vehicle_label: check.vehicleLabel,
     recorded_by: FLEET_ACTOR_LABEL,
     idempotency_key: idem,
@@ -250,7 +340,6 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
   let sent: Awaited<ReturnType<NonNullable<AgreementDeps["issue"]>>>;
   try {
     const issue = deps.issue ?? (await import("@/lib/agreements.functions")).issueAgreement;
-    const fee = deps.reservationFee ?? (await (await import("@/lib/reservation-fee.server")).loadReservationFeeSettings(admin));
     const prep = fleetAgreementPrep(fee, check.deposit);
     sent = await issue(admin, leadId, { createdBy: null, prep });
   } catch (e) {
@@ -261,7 +350,7 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
   await admin.from("agreement_terms_confirmations").update({ agreement_id: sent.id, agreement_sent_at: now.toISOString() }).eq("id", confirmationId);
   await audit({
     action: "agreement.fleet_sent",
-    summary: `Rental agreement sent by ${FLEET_ACTOR_LABEL} after the applicant confirmed terms by ${conf.value.channel}`,
+    summary: conf.value.channel === "staff" ? `Rental agreement sent by ${FLEET_ACTOR_LABEL} after ${staffName} confirmed the terms with the applicant (Move Forward)` : `Rental agreement sent by ${FLEET_ACTOR_LABEL} after the applicant confirmed terms by ${conf.value.channel}`,
     entityType: "application",
     entityId: leadId,
     metadata: {
@@ -271,6 +360,7 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
       channel: conf.value.channel,
       call_id: conf.value.call_id,
       message_id: conf.value.message_id,
+      ...(conf.value.channel === "staff" ? { staff_event_id: staffEventId, confirmed_by_staff: staffName } : {}),
       terms: { weekly_rate: conf.value.weekly_rate, deposit: conf.value.deposit, start_date: conf.value.start_date, vehicle_id: conf.value.vehicle_id },
     },
   });
@@ -279,9 +369,15 @@ export async function handleFleetSendAgreement(request: Request, deps: Agreement
   // this records that FLEET sent it.
   {
     const { recordFleetLifecycleStep, stampContactedByFleet } = await import("@/lib/fleet-lifecycle.server");
-    const how = conf.value.channel === "sms" ? "a YES text" : `a ${conf.value.channel}`;
-    await stampContactedByFleet(admin, audit, { applicationId: leadId, evidence: `Applicant confirmed terms by ${how}.`, source: "send-agreement", at: now });
-    await recordFleetLifecycleStep(audit, { applicationId: leadId, step: "agreement", evidence: `Agreement sent for signature after the applicant confirmed terms by ${how}.`, source: "send-agreement", at: now, extra: { agreement_id: sent.id } });
+    if (conf.value.channel === "staff") {
+      // Staff made the call: the contact is theirs (recorded when they clicked
+      // Move Forward), so FLEET does not stamp contacted_at.
+      await recordFleetLifecycleStep(audit, { applicationId: leadId, step: "agreement", evidence: `Agreement sent for signature after ${staffName} confirmed the terms with the applicant (Move Forward).`, source: "send-agreement", at: now, extra: { agreement_id: sent.id, staff_event_id: staffEventId } });
+    } else {
+      const how = conf.value.channel === "sms" ? "a YES text" : `a ${conf.value.channel}`;
+      await stampContactedByFleet(admin, audit, { applicationId: leadId, evidence: `Applicant confirmed terms by ${how}.`, source: "send-agreement", at: now });
+      await recordFleetLifecycleStep(audit, { applicationId: leadId, step: "agreement", evidence: `Agreement sent for signature after the applicant confirmed terms by ${how}.`, source: "send-agreement", at: now, extra: { agreement_id: sent.id } });
+    }
   }
   // The signing URL carries the renter's token: it is never returned to FLEET.
   return fleetJson(201, {

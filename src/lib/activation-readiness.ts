@@ -86,6 +86,8 @@ export type ActivationRequirementKey =
   | "gig_platform"
   /** Profile-only reservation payment display; never an activation blocker. */
   | "reservation_paid"
+  /** Profile-only staff Move Forward row (staff-terms.ts); never an activation blocker. */
+  | "terms_confirmed"
   | "pickup"
   | "rental_active";
 
@@ -360,7 +362,7 @@ export function hasSignedAgreement(f: DriverReadinessFacts): boolean {
 /** The operational rows shown in the profile's Next Step card, in Dolmar's order. */
 export const NEXT_STEP_REQUIREMENT_KEYS = [
   "interview", "license_documents", "gig_profile", "income", "insurance_quote", "screening",
-  "approved", "signed_agreement", "insurance_verified", "reservation_paid", "inspection", "pickup", "rental_active",
+  "approved", "terms_confirmed", "signed_agreement", "insurance_verified", "reservation_paid", "inspection", "pickup", "rental_active",
 ] as const satisfies readonly ActivationRequirementKey[];
 
 /** Both screening evidence rows must be checked off and have their own uploaded file. */
