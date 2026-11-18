@@ -372,7 +372,9 @@ describe("page", () => {
     expect(html).toContain('href="tel:+18888338280"');
     expect(html).toContain("team@drivereal.com");
     expect(html).toContain("Your pickup is confirmed once your insurance is approved. We&#x27;ll text you if anything changes.");
-    expect(html).toContain("fully refundable if your insurance is declined");
+    expect(html).toContain("Refundable If We Can&#x27;t Get You On The Road");
+    expect(html).toContain("The $50 is not refundable if you change your mind or don&#x27;t show up for pickup.");
+    expect(html).not.toMatch(/declined/i);
     expect(html).toContain("minus the $50");
     expect(html).toMatch(/Payment received\.<br\/?>\s*Your car is being held for you\./);
     expect(html).not.toContain("Payment received. Your car is being held for you.");
@@ -389,6 +391,8 @@ describe("page", () => {
     expect(reserved).not.toContain("Your Pickup Time");
     expect(reserved).toContain("Thu, Nov 19 at 9:30 AM ET");
     expect(reserved).toMatch(/Payment received\.<br\/?>\s*Your car is being held for you\./);
+    expect(reserved).toContain("Refundable If We Can&#x27;t Get You On The Road");
+    expect(reserved).not.toMatch(/declined/i);
     for (const st of ["no_vehicle", "no_slots", "unavailable"]) {
       // Not "Pick Your Pickup Time" when there is nothing to pick.
 
@@ -396,6 +400,22 @@ describe("page", () => {
       expect(html).toContain("We&#x27;ll Call You To Schedule");
       expect(html).not.toContain("Pick Your Pickup Time");
       expect(html).toContain("(888) 833-8280");
+      expect(html).toContain("Refundable If We Can&#x27;t Get You On The Road");
+      expect(html).not.toMatch(/declined/i);
     }
+  });
+
+  it("renter-facing paid-page source never mentions an insurance decline refund", () => {
+    const files = [
+      "src/components/reservation/PaymentReceivedDetails.tsx",
+      "src/components/reservation/PaymentReceivedLive.tsx",
+      "src/lib/payment-received.ts",
+      "src/lib/payment-received.server.ts",
+      "src/lib/payment-received.functions.ts",
+      "src/routes/reservation-fee.tsx",
+    ];
+    const all = files.map((f) => readFileSync(f, "utf8")).join("\n");
+    expect(all).toContain("Refundable If We Can't Get You On The Road");
+    expect(all).not.toMatch(/declined/i);
   });
 });

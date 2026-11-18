@@ -27,7 +27,7 @@ type OkView = Extract<PaymentReceivedView, { ok: true }>;
 
 export const INSURANCE_PICKUP_NOTE = "Your pickup is confirmed once your insurance is approved. We'll text you if anything changes.";
 export const PREFERRED_PICKUP_CONFIRM_NOTE = "We'll confirm this time once your insurance is finalized.";
-export const REFUND_LINE = "Your $50 is fully refundable if your insurance is declined or we can't provide a car on your start date. If your insurance is declined, we cancel your pickup and refund the $50.";
+export const REFUND_LINE = "Refundable If We Can't Get You On The Road. The $50 is not refundable if you change your mind or don't show up for pickup.";
 
 function pickupWhen(p: { date: string; time: string }): string {
   return `${fmtDay(p.date) ?? p.date} at ${fmtTime(p.time)} ET`;
