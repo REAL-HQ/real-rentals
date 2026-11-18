@@ -26,6 +26,7 @@ import type { PickupSlot } from "@/lib/pickup-schedule";
 type OkView = Extract<PaymentReceivedView, { ok: true }>;
 
 export const INSURANCE_PICKUP_NOTE = "Your pickup is confirmed once your insurance is approved. We'll text you if anything changes.";
+export const PREFERRED_PICKUP_CONFIRM_NOTE = "We'll confirm this time once your insurance is finalized.";
 export const REFUND_LINE = "Your $50 is fully refundable if your insurance is declined or we can't provide a car on your start date. If your insurance is declined, we cancel your pickup and refund the $50.";
 
 function pickupWhen(p: { date: string; time: string }): string {
@@ -65,16 +66,16 @@ function CallUs({ title, body }: { title: string; body: string }) {
   );
 }
 
-function Booked({ pickup, fresh }: { pickup: BookedPickup; fresh: boolean }) {
+function Booked({ pickup }: { pickup: BookedPickup }) {
   return (
     <div data-testid="pickup-booked" className="rounded-[10px] border border-[#BFE8C8] bg-[#F0FBF2] p-4 text-left">
       <div className="flex items-center gap-2">
         <CalendarCheck className="h-4 w-4 text-[#157A2A]" aria-hidden="true" />
-        <h3 className="text-[15px] font-semibold text-[#157A2A]">{fresh ? "Pickup Time Booked" : "Your Pickup Time"}</h3>
+        <h3 className="text-[15px] font-semibold text-[#157A2A]">Preferred Pickup Time</h3>
       </div>
       <p className="mt-1.5 text-[15px] font-semibold text-[#111114]">{pickupWhen(pickup)}</p>
       {pickup.location ? <p className="mt-0.5 text-[13px] text-[#55555E]">{pickup.location}</p> : null}
-      <p className="mt-2 text-[13px] leading-relaxed text-[#28282E]">{INSURANCE_PICKUP_NOTE}</p>
+      <p className="mt-2 text-[13px] leading-relaxed text-[#28282E]">{PREFERRED_PICKUP_CONFIRM_NOTE}</p>
     </div>
   );
 }
@@ -152,7 +153,6 @@ export function SlotPicker({
 /** Pickup section: booked, picker, or a friendly "we'll call you". */
 export function PickupSection({ booking, onBook }: { booking: PickupBookingState; onBook?: (startAt: string) => Promise<BookPickupResult> }) {
   const [state, setState] = useState<PickupBookingState>(booking);
-  const [fresh, setFresh] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -163,7 +163,6 @@ export function PickupSection({ booking, onBook }: { booking: PickupBookingState
     try {
       const r = await onBook(slot.start_at);
       if (r.ok) {
-        setFresh(!r.already);
         setState({ state: "reserved", pickup: r.pickup });
       } else if (r.code === "slot_taken" || r.code === "bad_slot") {
         setError(r.message);
@@ -185,9 +184,9 @@ export function PickupSection({ booking, onBook }: { booking: PickupBookingState
 
   return (
     <section aria-labelledby="pickup-heading" className="mt-5 text-left">
-      <h2 id="pickup-heading" className="mb-3 text-[15px] font-semibold text-[#111114]">{state.state === "pick" ? "Pick Your Pickup Time" : "Your Pickup Time"}</h2>
+      <h2 id="pickup-heading" className="mb-3 text-[15px] font-semibold text-[#111114]">{state.state === "pick" ? "Pick Your Pickup Time" : state.state === "reserved" ? "Preferred Pickup Time" : "Your Pickup Time"}</h2>
       {state.state === "reserved" ? (
-        <Booked pickup={state.pickup} fresh={fresh} />
+        <Booked pickup={state.pickup} />
       ) : state.state === "pick" ? (
         <SlotPicker key={state.slots.map((s) => s.start_at).join(",")} slots={state.slots} location={state.location} busy={busy} error={error} onBook={book} />
       ) : state.state === "no_vehicle" ? (
@@ -217,7 +216,9 @@ export function PaymentReceivedDetails({ view, onBook }: { view: OkView; onBook?
         <CheckCircle2 className="mx-auto h-11 w-11 text-[#4CD964]" aria-hidden="true" />
         <h1 className="mt-3 text-2xl md:text-[28px] font-semibold tracking-tight text-[#111114]">You're Reserved!</h1>
         <p className="mt-2 text-[15px] leading-snug text-[#55555E]">
-          {car ? "Payment received. Your car is being held for you." : "Payment received. Your spot is reserved."}
+          Payment received.
+          <br />
+          {car ? "Your car is being held for you." : "Your spot is reserved."}
         </p>
       </div>
 

@@ -374,6 +374,8 @@ describe("page", () => {
     expect(html).toContain("Your pickup is confirmed once your insurance is approved. We&#x27;ll text you if anything changes.");
     expect(html).toContain("fully refundable if your insurance is declined");
     expect(html).toContain("minus the $50");
+    expect(html).toMatch(/Payment received\.<br\/?>\s*Your car is being held for you\./);
+    expect(html).not.toContain("Payment received. Your car is being held for you.");
     expect(html).not.toMatch(/portal/i);
     expect(html).not.toMatch(/RR-\d|Confirmation/);
     expect(html).not.toMatch(/deposit/i);
@@ -381,8 +383,12 @@ describe("page", () => {
   });
   it("friendly states", () => {
     const reserved = renderToStaticMarkup(createElement(PaymentReceivedDetails, { view: { ...view, booking: { state: "reserved", pickup: { date: "2026-11-19", time: "09:30", label: "", location: "3500 E Hillsborough Ave" } } } }));
-    expect(reserved).toContain("Your Pickup Time");
+    expect(reserved).toContain("Preferred Pickup Time");
+    expect(reserved).toContain("We&#x27;ll confirm this time once your insurance is finalized.");
+    expect(reserved).not.toContain("Pickup Time Booked");
+    expect(reserved).not.toContain("Your Pickup Time");
     expect(reserved).toContain("Thu, Nov 19 at 9:30 AM ET");
+    expect(reserved).toMatch(/Payment received\.<br\/?>\s*Your car is being held for you\./);
     for (const st of ["no_vehicle", "no_slots", "unavailable"]) {
       // Not "Pick Your Pickup Time" when there is nothing to pick.
 
