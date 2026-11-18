@@ -188,7 +188,8 @@ describe("wiring", () => {
     assert.match(rentals, /event: "rental_started"/);
     assert.equal(rentals.match(/event: "rental_ended"/g)?.length, 2);
     assert.match(incidents, /event: "incident_logged", applicationId, rentalId, fresh: !data.id/);
-    assert.match(rentals, /subject: `Your \$\{vehicleLabel\} Rental Is Active`/);
+    // t466u: no activation email; the text stays and the one welcome follows the pickup payment.
+    assert.match(rentals, /rental is now active\. Your driver portal login comes by email once your rental is paid\./);
     assert.match(rentals, /kind: "rental_activated"/);
     assert.match(rentals, /kind: "rental_started"/);
     assert.doesNotMatch(helper, /sendEmail\(|sendSms\(|TWILIO_|RESEND_/);

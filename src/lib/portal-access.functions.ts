@@ -113,6 +113,23 @@ export const getMyPortalAccess = createServerFn({ method: "GET" })
     };
   });
 
+/**
+ * Whether this signed-in person may use the Driver Portal yet (t466u): only
+ * after pickup. "none" (no application: a waitlist lead) keeps the existing
+ * lead page. Staff are never gated here; /portal checks their tier first.
+ */
+export const getMyPortalGate = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<{ gate: "open" | "pre_pickup" | "none" }> => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { portalGateForUser, portalGateForEmail } = await import("@/lib/portal-pickup-gate.server");
+    const byUser = await portalGateForUser(supabaseAdmin, context.userId);
+    if (byUser !== "none") return { gate: byUser };
+    const { email, verified } = await identity(context.userId);
+    if (!verified || !email) return { gate: "none" };
+    return { gate: await portalGateForEmail(supabaseAdmin, email) };
+  });
+
 /** Opens the existing application wizard with a short-lived, single-use resume token. */
 export const openMyApplication = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -153,8 +170,8 @@ export const openMyApplication = createServerFn({ method: "POST" })
     if (!app) throw new Error("No application is linked to this account.");
     const { isPortalHandoffStatus } = await import("@/lib/application-resume-flag");
     const { portalLoginUrl, shouldHandoffToPortal } = await import("@/lib/portal-handoff");
-    // Approved/active (or a linked driver) use the Documents vault in /portal,
-    // never a resume wizard token.
+    // Renters who picked up use the Documents vault in /portal, never a resume
+    // wizard token. Approved renters before pickup get a documents-only link.
     if (
       isPortalHandoffStatus(app.status) ||
       (await shouldHandoffToPortal(supabaseAdmin, app as any))

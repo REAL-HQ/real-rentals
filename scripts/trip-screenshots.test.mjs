@@ -160,8 +160,14 @@ console.log("\nPATHS THE SERVER GENERATES CANNOT BREAK ITS OWN FILTER");
   const src = readFileSync("src/lib/applications.functions.ts", "utf8");
   const gen = src.match(/const path = `\$\{id\}\/\$\{Date\.now\(\)\}-\$\{Math\.random\(\)[^`]*`/);
   ok(Boolean(gen), "the upload path is built from an id, a timestamp and a random suffix");
-  ok(!/data\.(filename|name|path)/.test(src.slice(src.indexOf("export const requestUploadUrl"))),
+  const issue = src.slice(src.indexOf("export const requestUploadUrl"), src.indexOf("export const", src.indexOf("export const requestUploadUrl") + 10));
+  ok(!/data\.(filename|name|path)/.test(issue),
      "  nothing from the caller reaches it");
+  // The secure-link document replace (t466u) takes back a path this function
+  // issued and stores it only when it has exactly the generated shape.
+  const replace = readFileSync("src/lib/applicant-document-replace.server.ts", "utf8");
+  ok(/if \(!isIssuedUploadPath\(applicationId, input\.path\)\)/.test(replace) && /\^\\d\{10,16\}-\[a-z0-9\]\{1,8\}\\\.\[a-z0-9\]\{2,5\}\$/.test(replace),
+     "  a path handed back for a document replace must have exactly the generated shape");
   const sample = `59b62ce6-654e-4298-a6c3-ff5bb79f9d35/${Date.now()}-ab12cd.jpg`;
   ok(!/["',\s]/.test(sample), `a generated path carries no quote, comma or space (${sample})`);
 

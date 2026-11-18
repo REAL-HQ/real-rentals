@@ -107,7 +107,10 @@ const mailer = src.slice(
   src.indexOf("async function emailLinkToAddressOnFile"),
   src.indexOf("async function sendRecoveryLink"),
 );
-ok(/\.select\("email, full_name[\s\S]{0,1600}sendApplicationResumeEmail\(\{ to: onFile\.email/.test(mailer),
+// An approved renter before pickup gets the documents link instead (t466u),
+// to the same address on file.
+ok(/sendDocumentsLinkEmail\(\{ to: onFile\.email/.test(mailer), "  approved before pickup: the documents link, to the address on file");
+ok(/\.select\("id, email, full_name[\s\S]{0,2600}sendApplicationResumeEmail\(\{ to: onFile\.email/.test(mailer),
    "  to the address on the matched record, not the submitted one");
 // Stronger than excluding the identity fields, which is what this used to
 // check: nothing the caller submitted is applied to a record they merely
@@ -150,7 +153,8 @@ ok(/APPLICATION_RESUME_ATOMIC_ENABLED === "true"/.test(recoveryMod),
    "atomic delivery stays off unless the flag is exactly true");
 
 console.log("\nUPLOAD AUTHORIZATION");
-const upRaw = src.slice(src.indexOf("export const requestUploadUrl"), src.indexOf("export const reissueApplicantLink"));
+const upStart = src.indexOf("export const requestUploadUrl");
+const upRaw = src.slice(upStart, src.indexOf("export const", upStart + 10));
 // Code only. A comment explaining why a category is unreachable is not the
 // category being reachable.
 const up = upRaw.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
@@ -163,7 +167,10 @@ ok(/z\.enum\(\["jpg", "jpeg", "png", "webp", "heic", "heif", "pdf"\]\)/.test(up)
    "the extension is an explicit MIME-shaped allowlist");
 ok(/const path = `\$\{id\}\//.test(up), "the path is server-generated under the application's own folder");
 ok(!/data\.path|data\.bucket|data\.filename/.test(up), "  nothing about the destination comes from the caller");
-ok(/decided\.includes/.test(up), "a decided application stops accepting uploads");
+// t466u: only partial/new/reviewing/approved take uploads, and approved only
+// until pickup; every decided or started application is refused.
+ok(/if \(!canUploadBeforePickupStatus\(status\)\)/.test(up), "a decided application stops accepting uploads");
+ok(/applicationPickedUp\(supabaseAdmin, id, status\)[\s\S]{0,200}DOC_REPLACE_LOCKED_MESSAGE/.test(up), "  and an approved one stops at pickup");
 ok(/MAX_GRANTS_PER_WINDOW/.test(up), "issuance is rate limited");
 ok(/applicant_upload_grants/.test(up), "  against a durable record");
 

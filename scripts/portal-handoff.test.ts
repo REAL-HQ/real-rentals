@@ -1,5 +1,6 @@
 /**
- * Resume → portal handoff: approved/active applicants use /login, not the wizard.
+ * Resume → portal handoff: only renters who picked up the car use /login.
+ * Approved renters before pickup keep the secure link for documents (t466u).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -12,17 +13,17 @@ import { portalLoginUrl, shouldHandoffToPortal } from "../src/lib/portal-handoff
 import { thankYouView } from "../src/lib/secure-link-copy";
 
 describe("portal handoff", () => {
-  it("treats approved and active as portal-only statuses", () => {
-    assert.equal(isPortalHandoffStatus("approved"), true);
+  it("treats only active as a portal-only status", () => {
+    assert.equal(isPortalHandoffStatus("approved"), false);
     assert.equal(isPortalHandoffStatus("ACTIVE"), true);
-    assert.equal(isPortalHandoffStatus("  Approved "), true);
+    assert.equal(isPortalHandoffStatus("  Approved "), false);
     assert.equal(isPortalHandoffStatus("new"), false);
     assert.equal(isPortalHandoffStatus("partial"), false);
     assert.equal(isPortalHandoffStatus("complete"), false);
   });
 
-  it("refuses resume open for approved/active while keeping complete reviewable", () => {
-    assert.equal(portalOpenRefused("approved", true), true);
+  it("refuses resume open for active, opens approved for documents, keeps complete reviewable", () => {
+    assert.equal(portalOpenRefused("approved", true), false);
     assert.equal(portalOpenRefused("active", true), true);
     assert.equal(portalOpenRefused("complete", true), false);
     assert.equal(portalOpenRefused("new", true), false);
@@ -35,26 +36,28 @@ describe("portal handoff", () => {
     assert.equal(portalLoginUrl("not-an-email"), "https://drivereal.com/login");
   });
 
-  it("hands off on status or linked driver role", async () => {
+  it("hands off on pickup only, never on a linked login or driver role", async () => {
     const calls: string[] = [];
+    const rentalsByApp: Record<string, string[]> = { reserved1: ["reserved"], started1: ["active"], returned1: ["closed"] };
     const admin = {
       from(table: string) {
         calls.push(table);
-        return {
-          select: () => ({
-            eq: () => ({
-              eq: () => ({
-                limit: async () => ({ data: [{ role: "driver" }] }),
-              }),
-            }),
-          }),
+        let appId = "";
+        const q: any = {
+          select: () => q,
+          eq: (_k: string, v: string) => ((appId = v), q),
+          limit: async () => ({ data: (rentalsByApp[appId] ?? []).map((status) => ({ status })) }),
+          maybeSingle: async () => ({ data: null }),
         };
+        return q;
       },
     };
-    assert.equal(await shouldHandoffToPortal(admin as any, { status: "approved", email: "a@b.co" }), true);
-    assert.equal(await shouldHandoffToPortal(admin as any, { status: "new", user_id: "u1" }), true);
-    assert.equal(await shouldHandoffToPortal(admin as any, { status: "new" }), false);
-    assert.ok(calls.includes("user_roles"));
+    assert.equal(await shouldHandoffToPortal(admin as any, { status: "active", email: "a@b.co" }), true);
+    assert.equal(await shouldHandoffToPortal(admin as any, { id: "reserved1", status: "approved", user_id: "u1" }), false);
+    assert.equal(await shouldHandoffToPortal(admin as any, { id: "started1", status: "approved" }), true);
+    assert.equal(await shouldHandoffToPortal(admin as any, { id: "returned1", status: "approved" }), true);
+    assert.equal(await shouldHandoffToPortal(admin as any, { status: "new", user_id: "u1" }), false);
+    assert.equal(calls.includes("user_roles"), false);
   });
 
   it("exposes an approved thank-you view before the wizard", () => {
@@ -68,7 +71,8 @@ describe("portal handoff", () => {
 
   it("wires thank-you, login prefills, and mint refusal in source", () => {
     const thanks = readFileSync("src/routes/thank-you.tsx", "utf8");
-    assert.match(thanks, /You're Approved — Sign In To Your Account/);
+    assert.match(thanks, /Sign In To Your Driver Portal/);
+    assert.match(thanks, /ApplicantDocumentsPanel/);
     assert.match(thanks, /portalLoginUrl|search=\{.*email/);
     assert.match(thanks, /r\.portal/);
 

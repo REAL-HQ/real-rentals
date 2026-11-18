@@ -15,7 +15,7 @@ vi.mock("@/lib/audit.server", () => ({ logAudit: async (_a: any, e: any) => { se
 vi.mock("@/lib/automation-controls.server", () => ({ gateFor: () => "on", loadAutomationControls: async () => ({}) }));
 vi.mock("@/lib/driver-account.server", () => ({ provisionDriverAccount: async () => ({ userId: "33333333-3333-4333-8333-333333333333", inviteUrl: null, conflict: false }) }));
 vi.mock("@/lib/email.server", () => ({
-  sendPortalInviteEmail: async (a: any) => { sent.invite.push(a); },
+  sendPickupBookedEmail: async (a: any) => { sent.invite.push(a); return { ok: true }; },
   sendEmail: async (a: any) => { sent.email.push(a); return { ok: true }; },
 }));
 vi.mock("@/lib/sms.server", () => ({ sendSms: async (a: any) => { sent.sms.push(a); return { ok: true }; } }));

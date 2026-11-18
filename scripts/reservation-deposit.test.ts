@@ -124,11 +124,11 @@ describe("Reserved pickup appointment details", () => {
   });
 });
 
-describe("Booking Login Email + Reserved next step", () => {
-  it("catalogues Booking Login Email default On", () => {
+describe("Pickup Booked Email + Reserved next step", () => {
+  it("catalogues Pickup Booked Email default On (no login details, t466u)", () => {
     const row = AUTOMATIONS.find((a) => a.key === "booking_login_email");
     assert.ok(row);
-    assert.equal(row?.title, "Booking Login Email");
+    assert.equal(row?.title, "Pickup Booked Email");
     assert.equal(row?.defaultOn, undefined);
     assert.deepEqual(row?.emailWorkflows, []); // portal_invite stays ungated for Approve
   });
@@ -187,6 +187,7 @@ describe("migration + server source guards", () => {
     assert.equal(/optional reservation deposit/.test(readFileSync("src/components/admin/SettingsWorkspace.tsx", "utf8")), false);
     assert.equal(fn.includes("buy.stripe.com"), false);
     assert.match(fn, /booking_login_email/);
-    assert.match(fn, /maybeSendBookingLoginEmail/);
+    assert.match(fn, /maybeSendPickupBookedEmail/);
+    assert.equal(/maybeSendBookingLoginEmail|sendPortalInviteEmail/.test(fn), false);
   });
 });

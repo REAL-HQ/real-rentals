@@ -6,7 +6,9 @@ import { APPROVAL_SOURCE_STATUSES, APPROVAL_STATUS_NOT_APPROVABLE } from "@/lib/
 import {
   APPLICANT_EDITABLE_STATUSES,
   APPLICATION_LOCKED_MESSAGE,
+  canUploadBeforePickupStatus,
   isApplicantEditableStatus,
+  isDocumentsOnlyStatus,
 } from "@/lib/application-edit-status";
 import { DOCUMENT_CONTENT_SHA256_ENABLED } from "@/lib/document-content-sha";
 import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
@@ -218,7 +220,7 @@ async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: strin
   try {
     const { data: onFile } = await supabaseAdmin
       .from("applications")
-      .select("email, full_name, status, user_id")
+      .select("id, email, full_name, status, user_id")
       .eq("id", applicationId)
       .maybeSingle();
     if (!onFile?.email) return false;
@@ -231,6 +233,13 @@ async function emailLinkToAddressOnFile(supabaseAdmin: any, applicationId: strin
         email: onFile.email,
       });
       if (!r.ok) console.error("[portal-handoff] provider refused", applicationId, r.error);
+      return r.ok;
+    }
+    // Approved, not picked up yet: the documents-only secure link (t466u).
+    if (isDocumentsOnlyStatus(onFile.status)) {
+      const { sendDocumentsLinkEmail } = await import("@/lib/email.server");
+      const r = await sendDocumentsLinkEmail({ to: onFile.email, firstName: onFile.full_name ?? null, submittedName, applicationId });
+      if (!r.ok) console.error("[documents-link] provider refused", applicationId, r.error);
       return r.ok;
     }
     const { sendApplicationResumeEmail } = await import("@/lib/email.server");
@@ -1172,6 +1181,9 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
       // declined somebody is not the link's to tell. updateApplicationStep
       // enforces the same rule; this only lets the wizard say so up front.
       editable: isApplicantEditableStatus(r.status),
+      // Approved, not picked up yet: the link opens a documents-only page
+      // (t466u). replaceApplicantDocument enforces the same rule.
+      documentsOnly: isDocumentsOnlyStatus(r.status),
 
       // Masked.
       insurance_policy_on_file: Boolean(r.insurance_policy_number),
@@ -1234,20 +1246,21 @@ export const requestUploadUrl = createServerFn({ method: "POST" })
     // bug: it blocked "rejected", which is not a status this system has, and
     // missed "declined", which is — so a declined applicant kept a working
     // upload credential for the full life of their token.
-    const decided = [
-      "declined",
-      "closed",
-      "duplicate",
-      "approved",
-      "active",
-      "suspended",
-      "complete",
-      "completed",
-    ];
-    if (decided.includes(String(app?.status ?? "").toLowerCase())) {
+    // Before pickup (t466u) approved renters may still send documents
+    // through their secure link; every decided or started application is
+    // refused. "complete" never took uploads and still does not.
+    const status = String(app?.status ?? "").toLowerCase();
+    if (!canUploadBeforePickupStatus(status)) {
       throw new Error(
         "This application has already been decided. Email team@drivereal.com and we'll add the document for you.",
       );
+    }
+    if (isDocumentsOnlyStatus(status)) {
+      const { applicationPickedUp } = await import("@/lib/portal-pickup-gate.server");
+      if (await applicationPickedUp(supabaseAdmin, id, status)) {
+        const { DOC_REPLACE_LOCKED_MESSAGE } = await import("@/lib/applicant-document-replace.server");
+        throw new Error(DOC_REPLACE_LOCKED_MESSAGE);
+      }
     }
 
     // One signed URL is one opportunity to write an object, so issuance is
@@ -1293,6 +1306,28 @@ export const requestUploadUrl = createServerFn({ method: "POST" })
   });
 
 /**
+ * Upload or replace one document through the secure link, before pickup.
+ * Documents only: no other field changes (applicant-document-replace.server.ts).
+ */
+export const replaceApplicantDocument = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        token: z.string().min(20).max(200),
+        kind: z.enum(["license", "insurance", "gig_profile", "trip_history", "income"]),
+        path: z.string().min(40).max(200),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { resolveResumeToken } = await import("@/lib/resume-tokens.server");
+    const id = await resolveResumeToken(supabaseAdmin, data.token);
+    const { replaceApplicantDocumentCore } = await import("@/lib/applicant-document-replace.server");
+    return replaceApplicantDocumentCore(supabaseAdmin as any, id, { kind: data.kind, path: data.path });
+  });
+
+/**
  * Staff: revoke every live resume link for an application and mint a fresh one.
  *
  * This is the reissue path. It exists because the tokens are stored hashed —
@@ -1316,7 +1351,7 @@ export const reissueApplicantLink = createServerFn({ method: "POST" })
 
     const { data: app } = await supabaseAdmin
       .from("applications")
-      .select("status,email,user_id")
+      .select("id,status,email,user_id")
       .eq("id", data.id)
       .maybeSingle();
     const { shouldHandoffToPortal, portalLoginUrl } = await import("@/lib/portal-handoff");
@@ -1702,25 +1737,29 @@ export const openResumeLink = createServerFn({ method: "POST" })
     const { shouldHandoffToPortal } = await import("@/lib/portal-handoff");
     // Peek first: approved/active (or a linked driver) go to /login, and we
     // never exchange a recovery link into a wizard session for them.
+    let documentsOnly = false;
     try {
       const peek = await inspectResumeToken(supabaseAdmin, data.token);
       if (peek) {
         const { data: app } = await supabaseAdmin
           .from("applications")
-          .select("status,email,user_id")
+          .select("id,status,email,user_id")
           .eq("id", peek.applicationId)
           .maybeSingle();
         if (await shouldHandoffToPortal(supabaseAdmin, app as any)) {
           return {
             token: null as string | null,
             portal: { email: String((app as any)?.email ?? "").trim() },
+            documentsOnly: false,
           };
         }
+        // Approved, not picked up: documents only (t466u).
+        documentsOnly = isDocumentsOnlyStatus((app as any)?.status);
       }
       // exchangeResumeToken is the gate: hash lookup, expiry, revocation, and
       // single-use consume of a recovery credential before a session is issued.
-      return { token: await exchangeResumeToken(supabaseAdmin, data.token), portal: null as null };
+      return { token: await exchangeResumeToken(supabaseAdmin, data.token), portal: null as null, documentsOnly };
     } catch {
-      return { token: null as string | null, portal: null as null };
+      return { token: null as string | null, portal: null as null, documentsOnly: false };
     }
   });

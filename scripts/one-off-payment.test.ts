@@ -229,7 +229,10 @@ describe("payments webhook — one-off payments", () => {
     const stripe = stripeStub({ fail: true });
     const r = await send("payment_intent.succeeded", intent({ metadata: { paymentIds: "p1" } }), db, stripe);
     assert.equal(r.status, 200);
-    assert.deepEqual(stripe.calls, []);
+    // The only Stripe read allowed is the
+    // best-effort receipt-link lookup (portal history), and its failure
+    // changes nothing.
+    assert.ok(stripe.calls.every((c: string) => c === "charge"), String(stripe.calls));
   });
 
   it("skips an invoice-paid charge (invoice path owns it)", async () => {

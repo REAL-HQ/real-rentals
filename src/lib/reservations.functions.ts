@@ -85,8 +85,16 @@ function mapRow(r: any, app: any, veh: any, extra?: { thumbnailPath?: string | n
   };
 }
 
-/** One pickup/login email per new reservation; existing accounts get the portal URL, not a new password link. */
-async function maybeSendBookingLoginEmail(
+/**
+ * One "Your Pickup Is Booked" email per new reservation (switch
+ * booking_login_email, kept under its old key so the saved setting carries).
+ *
+ * It carries NO login details (t463u / t466u). The login was created a few
+ * lines earlier only because a rental needs a driver id; nothing about it is
+ * emailed here. The Driver Portal opens at pickup, and the one login email is
+ * portal-welcome.server.ts, after the pickup rent is paid.
+ */
+async function maybeSendPickupBookedEmail(
   admin: any,
   applicationId: string,
   reservation: { pickupDate: string; pickupTime: string; pickupLocation: string; vehicle: string | null },
@@ -98,33 +106,22 @@ async function maybeSendBookingLoginEmail(
 
   const { data: app, error } = await admin
     .from("applications")
-    .select("id,email,full_name,user_id,status")
+    .select("id,email,full_name,status")
     .eq("id", applicationId)
     .maybeSingle();
   if (error || !app?.email) return "failed";
   if (!["approved", "active"].includes(String(app.status ?? "").toLowerCase())) return "skipped";
 
   try {
-    const { provisionDriverAccount } = await import("@/lib/driver-account.server");
-    const account = await provisionDriverAccount(admin, {
-      applicationId,
-      email: String(app.email),
-      fullName: (app.full_name as string | null) ?? null,
-    });
-    if (account.conflict) return "failed";
-    // Existing accounts receive the confirmed appointment and portal URL;
-    // only a brand-new account receives a set-password link.
-
-    const { sendPortalInviteEmail } = await import("@/lib/email.server");
-    await sendPortalInviteEmail({
+    const { sendPickupBookedEmail } = await import("@/lib/email.server");
+    const r = await sendPickupBookedEmail({
       to: String(app.email),
       firstName: String(app.full_name ?? "there").trim().split(/\s+/)[0] || "there",
-      inviteUrl: account.inviteUrl,
       reservation,
     });
-    return "sent";
+    return r?.ok === false ? "failed" : "sent";
   } catch (e) {
-    console.error("[reservation] booking login email failed", e);
+    console.error("[reservation] pickup booked email failed", e);
     return "failed";
   }
 }
@@ -282,7 +279,9 @@ export async function createReservationCore(
     throw new Error("Only An Approved Applicant Or Active Renter Can Hold A Reservation.");
   }
   if (!app.user_id) {
-    // Provision so driver_id NOT NULL can be satisfied; invite may follow.
+    // Provision so driver_id NOT NULL can be satisfied. Creates the login
+    // only; nothing is emailed and portal access stays closed until pickup
+    // (portal-pickup-gate). The one login email is the pickup welcome.
     try {
       const { provisionDriverAccount } = await import("@/lib/driver-account.server");
       const account = await provisionDriverAccount(admin, {
@@ -354,7 +353,7 @@ export async function createReservationCore(
 
   await admin.from("vehicles").update({ status: "reserved" }).eq("id", data.vehicleId).neq("status", "rented");
 
-  const loginEmail = await maybeSendBookingLoginEmail(admin, data.applicationId, {
+  const loginEmail = await maybeSendPickupBookedEmail(admin, data.applicationId, {
     pickupDate: pickup,
     pickupTime: data.pickupTime,
     pickupLocation: data.pickupLocation.trim(),

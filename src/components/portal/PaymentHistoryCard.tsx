@@ -59,7 +59,7 @@ function PaymentHistoryCardLive({ previewDriverId }: { previewDriverId?: string 
     <section className="rounded-2xl border border-border bg-white p-5" aria-labelledby="portal-payment-history-title">
       <h3 id="portal-payment-history-title" className="font-semibold">Payment History</h3>
       <p className="mt-1 text-sm text-muted-foreground">
-        Actual due dates, paid dates, verified payment sources, and invoice PDFs.
+        Actual due dates, paid dates, verified payment sources, receipts, and invoice PDFs.
       </p>
       <p className="mt-3 text-sm">
         <span className="text-muted-foreground">Balance Due </span>
@@ -86,7 +86,7 @@ function PaymentHistoryCardLive({ previewDriverId }: { previewDriverId?: string 
                 <th className="font-medium">Type</th>
                 <th className="font-medium">Status / Source</th>
                 <th className="text-right font-medium">Amount</th>
-                <th className="text-right font-medium">Invoice</th>
+                <th className="text-right font-medium">Receipt</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -100,6 +100,17 @@ function PaymentHistoryCardLive({ previewDriverId }: { previewDriverId?: string 
                     <td>{payment ? `${charge.statusLabel} · ${payment.sourceLabel}` : charge.statusLabel}</td>
                     <td className="text-right">{formatHistoryCents(payment?.collectedCents ?? charge.amountCents)}</td>
                     <td className="text-right">
+                      {payment?.receiptUrl ? (
+                        <a
+                          href={payment.receiptUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex min-h-11 items-center font-semibold text-real-red underline"
+                        >
+                          Receipt
+                        </a>
+                      ) : null}
+                      {payment?.receiptUrl ? <span className="mx-2 text-muted-foreground">·</span> : null}
                       {payment ? (
                         <button
                           type="button"
