@@ -58,7 +58,10 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const doSend = useServerFn(sendAgreement);
   const doReadLicense = useServerFn(readAgreementLicense);
   const doReadAgreement = useServerFn(readWrittenAgreement);
-  const [prep, setPrep] = useState<AgreementPrep>(EMPTY_PREP);
+  // Weekly by card autopay is how every rental is paid today (and what Move
+  // Forward / FLEET sends); staff can change either. The Damage Waiver stays
+  // unanswered until staff record the renter's choice.
+  const [prep, setPrep] = useState<AgreementPrep>({ ...EMPTY_PREP, payment: { schedule: "weekly", method: "Card Autopay" } });
   const [res, setRes] = useState<Res | null>(null);
   const [reviewedKey, setReviewedKey] = useState<string>("");
   const [rendering, setRendering] = useState(false);

@@ -88,7 +88,7 @@ export function VehicleCombobox({
           aria-label={ariaLabel}
           disabled={disabled}
           className={cn(
-            "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-popover px-3 text-left text-sm font-normal text-popover-foreground shadow-sm hover:bg-popover disabled:cursor-not-allowed disabled:opacity-50",
+            "flex h-9 w-full min-w-0 max-w-full overflow-hidden items-center justify-between gap-2 rounded-md border border-border bg-popover px-3 text-left text-sm font-normal text-popover-foreground shadow-sm hover:bg-popover disabled:cursor-not-allowed disabled:opacity-50",
             photoColumns && selected && "h-12",
             triggerClassName,
           )}

@@ -2289,8 +2289,12 @@ function DriverDetail({
           vehicles={termsVehicles}
           enabled={moveForwardEnabled({ approved: dStatus === "approved", isManager, agreementSigned: termsAgreementSigned }) && staffTerms?.ready !== false}
           disabledReason={dStatus !== "approved" ? TERMS_AFTER_APPROVAL : staffTerms?.ready === false ? "Move Forward Is Not Set Up Yet" : "Approve The Application First"}
-          onSubmit={async ({ terms, retry }) => {
-            const r = await moveForwardFn({ data: { applicationId: driver.id, terms, retry } });
+          onSubmit={async ({ terms, retry, licenseNumber }) => {
+            const r = await moveForwardFn({ data: { applicationId: driver.id, terms, retry, ...(licenseNumber ? { licenseNumber } : {}) } });
+            // Confirm Terms saves the rate, dates, deposit, vehicle (and a blank
+            // licence number) to the applicant: show them on the profile now.
+            const saved = (r as any).saved as Partial<Application> | undefined;
+            if (saved && Object.keys(saved).length) onSaved(saved);
             setStaffTermsNonce((n) => n + 1);
             return r.ok ? { ok: true, delivery: r.delivery } : { ok: false, error: r.error };
           }}
