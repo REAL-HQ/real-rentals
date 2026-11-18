@@ -77,7 +77,7 @@ describe("signing step from the fee outcome", () => {
     expect(rf.reservationFeeSigningStep({ status: "checkout", amount: 50, paymentId: "p", url: "javascript:alert(1)" })).toBeNull();
   });
   test("return pages explain the result instead of /login", () => {
-    expect(rf.reservationFeeReturnUrls("https://drivereal.com/")).toEqual({ success: "https://drivereal.com/reservation-fee?status=paid", cancel: "https://drivereal.com/reservation-fee?status=canceled" });
+    expect(rf.reservationFeeReturnUrls("https://drivereal.com/")).toEqual({ success: "https://drivereal.com/reservation-fee?status=paid&session_id={CHECKOUT_SESSION_ID}", cancel: "https://drivereal.com/reservation-fee?status=canceled" });
   });
 });
 
@@ -86,7 +86,7 @@ describe("one Checkout per fee: the page reuses the email's session", () => {
     const db = fakeDb(seed()); const s = stripe();
     const o = await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: s, ...noAudit });
     expect(s.sessions).toHaveLength(1);
-    expect(s.sessions[0].a.success_url).toMatch(/\/reservation-fee\?status=paid$/);
+    expect(s.sessions[0].a.success_url).toMatch(/\/reservation-fee\?status=paid&session_id=\{CHECKOUT_SESSION_ID\}$/);
     expect(s.sessions[0].a.cancel_url).toMatch(/\/reservation-fee\?status=canceled$/);
     expect(s.sessions[0].a.payment_intent_data).toMatchObject({ setup_future_usage: "off_session", metadata: { reason: "reservation_fee", paymentIds: db.state.payments[0].id } });
     const step = rf.reservationFeeSigningStep(o);
