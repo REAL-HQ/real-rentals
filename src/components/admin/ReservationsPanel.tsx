@@ -219,7 +219,18 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
             <tbody className="divide-y divide-[#F1F1F4]">
               {rows.map((row) => (
                 <tr key={row.id} data-reservation-id={row.id}>
-                  <td className="px-3 py-2.5 font-medium text-[#111114]">{row.driverName ?? "—"}</td>
+                  <td className="px-3 py-2.5 font-medium text-[#111114]">
+                    {row.driverName ?? "—"}
+                    {row.bookedBy === "renter" ? (
+                      <span
+                        data-booked-by="renter"
+                        title="The renter picked this pickup time on the Payment Received page"
+                        className="ml-2 inline-flex rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[11px] font-medium text-[#3D4BB8] align-middle"
+                      >
+                        Renter-Booked
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-3 py-2.5 text-[#55555E]">
                     {row.unitNumber ? `Unit ${row.unitNumber}` : null}
                     {row.unitNumber && row.vehicleLabel ? " · " : null}

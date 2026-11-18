@@ -69,6 +69,7 @@ function mapRow(r: any, app: any, veh: any): ReservationRow {
     pickupTime: details.pickupTime,
     pickupLocation: details.pickupLocation,
     note: details.note,
+    bookedBy: details.bookedBy,
     createdAt: r.created_at,
     depositRequired: r.reservation_deposit_required === true,
     depositAmount: Number(r.reservation_deposit_amount ?? 0),
@@ -201,15 +202,24 @@ export const createReservation = createServerFn({ method: "POST" })
 
 /**
  * The one Reserved code path, shared by staff (createReservation, manager
- * only) and FLEET (/api/public/fleet/pickup-slots). Callers authorize first.
+ * only), FLEET (/api/public/fleet/pickup-slots) and the renter on the Payment
+ * Received page (payment-received.server.ts, scoped to a paid Reservation Fee
+ * Checkout). Callers authorize first.
  */
-export async function createReservationCore(admin: any, data: CreateReservationData): Promise<{ id: string; loginEmail: string }> {
+export async function createReservationCore(
+  admin: any,
+  data: CreateReservationData & {
+    /** Server-only (never in CreateReservationInput): the renter picked this slot on the Payment Received page. */
+    bookedBy?: "renter";
+  },
+): Promise<{ id: string; loginEmail: string }> {
   const pickup = reservationPickupDate(data.pickupDate);
   if (!pickup) throw new Error("Pick A Real Pickup Date.");
   const reservationNote = writeReservationDetails({
     pickupTime: data.pickupTime,
     pickupLocation: data.pickupLocation,
     note: data.note,
+    bookedBy: data.bookedBy === "renter" ? "renter" : null,
   });
   const settings = await loadDepositSettings(admin);
   // No per-booking deposit any more: only the Reservation Fee below sets these columns.
