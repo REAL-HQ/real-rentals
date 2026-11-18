@@ -31,6 +31,8 @@ import {
   type RentalBilling,
 } from "@/lib/rental-payments.functions";
 import { getMyAgreements, signMyAgreement, getAgreementPdf } from "@/lib/agreements.functions";
+import { ReservationFeeNextStep } from "@/components/esign/ReservationFeeNextStep";
+import type { ReservationFeeSigningStep } from "@/lib/reservation-fee";
 import { portalAgreementState, portalAgreementStatusLabel } from "@/lib/portal-agreement-state";
 import { saveAgreementPdf } from "@/lib/agreement-download";
 import { DocumentVault } from "@/components/admin/DocumentVault";
@@ -119,7 +121,7 @@ export const Route = createFileRoute("/portal")({
 
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "vehicle", label: "My Vehicle", icon: Car },
+  { id: "vehicle", label: "Vehicle", icon: Car },
   { id: "documents", label: "Documents", icon: FileText },
   { id: "pictures", label: "Pictures", icon: ImageIcon },
   { id: "payments", label: "Payments", icon: CreditCard },
@@ -258,7 +260,7 @@ function Portal() {
     [hasRental],
   );
 
-  // A rental ending while someone is sitting on My Vehicle must not leave them
+  // A rental ending while someone is sitting on the Vehicle tab must not leave them
   // staring at a tab that is no longer in the nav.
   useEffect(() => {
     if (!visibleTabs.some((t) => t.id === tab)) setTab("dashboard");
@@ -579,16 +581,26 @@ function AgreementsView() {
   const [name, setName] = useState("");
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
+  // $50 Reservation Fee step after a portal signature: the same Checkout the email links to.
+  const [feeStep, setFeeStep] = useState<ReservationFeeSigningStep | null>(null);
 
   if (isLoading) return null;
+  const feeCard = feeStep ? (
+    <div className="rounded-2xl border border-border bg-white p-5">
+      <h3 className="font-semibold">Agreement Signed</h3>
+      <ReservationFeeNextStep step={feeStep} />
+    </div>
+  ) : null;
   // Drafts are not issued agreements and never reach the driver. Voided rows
   // stay visible, neutrally, with no signing call to action.
   const rows = (data ?? [])
     .map((a) => ({ ...a, state: portalAgreementState(a) }))
     .filter((a) => a.state === "awaiting_signature" || a.state === "signing");
-  if (rows.length === 0) return null;
+  if (rows.length === 0) return feeCard;
 
   return (
+    <>
+    {feeCard}
     <div className="rounded-2xl border border-border bg-white p-5">
       <h3 className="font-semibold">Agreements To Sign</h3>
       <ul className="mt-3 divide-y divide-border">
@@ -647,7 +659,8 @@ function AgreementsView() {
                       onSubmit={async (v) => {
                         setBusy(true);
                         try {
-                          await sign({ data: { agreementId: a.id, signerName: v.signerName, agree: true, adoption: v.adoption } });
+                          const res = await sign({ data: { agreementId: a.id, signerName: v.signerName, agree: true, adoption: v.adoption } });
+                          setFeeStep((res as any)?.reservationFee ?? null);
                           toast.success("Agreement signed");
                           setOpenId(null);
                           await refetch();
@@ -666,6 +679,7 @@ function AgreementsView() {
         ))}
       </ul>
     </div>
+    </>
   );
 }
 
@@ -2083,7 +2097,7 @@ function MetricTile({
 }
 
 function VehicleView({ data }: { data: DriverDashboard }) {
-  if (!data.vehicle) return <Stub label="My Vehicle" />;
+  if (!data.vehicle) return <Stub label="Vehicle" />;
   const v = data.vehicle;
   return (
     <div className="rounded-2xl border border-border bg-white overflow-hidden">

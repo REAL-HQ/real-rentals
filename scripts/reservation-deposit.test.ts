@@ -112,12 +112,13 @@ describe("Reserved pickup appointment details", () => {
       pickupTime: "14:05",
       pickupLocation: "3500 E. Hillsborough Ave., Tampa, FL 33610",
       note: "Confirmed With Driver",
+      bookedBy: null,
     });
     assert.equal(formatReservationTime("14:05"), "2:05 PM");
   });
 
   it("preserves legacy plain notes and rejects incomplete new appointments", () => {
-    assert.deepEqual(readReservationDetails("Historical Note"), { pickupTime: null, pickupLocation: null, note: "Historical Note" });
+    assert.deepEqual(readReservationDetails("Historical Note"), { pickupTime: null, pickupLocation: null, note: "Historical Note", bookedBy: null });
     assert.throws(() => writeReservationDetails({ pickupTime: "25:00", pickupLocation: "Tampa" }), /Pick A Real Pickup Time/);
     assert.throws(() => writeReservationDetails({ pickupTime: "09:00", pickupLocation: "" }), /Enter A Pickup Location/);
   });

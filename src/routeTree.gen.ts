@@ -24,6 +24,7 @@ import { Route as PartnerRouteImport } from './routes/partner'
 import { Route as PartnersRouteImport } from './routes/partners'
 import { Route as PortalRouteImport } from './routes/portal'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ReservationFeeRouteImport } from './routes/reservation-fee'
 import { Route as SetPasswordRouteImport } from './routes/set-password'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SmsConsentRouteImport } from './routes/sms-consent'
@@ -149,6 +150,11 @@ const PortalRoute = PortalRouteImport.update({
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReservationFeeRoute = ReservationFeeRouteImport.update({
+  id: '/reservation-fee',
+  path: '/reservation-fee',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SetPasswordRoute = SetPasswordRouteImport.update({
@@ -449,6 +455,7 @@ export interface FileRoutesByFullPath {
   '/partners': typeof PartnersRoute
   '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
+  '/reservation-fee': typeof ReservationFeeRoute
   '/set-password': typeof SetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sms-consent': typeof SmsConsentRoute
@@ -517,6 +524,7 @@ export interface FileRoutesByTo {
   '/partners': typeof PartnersRoute
   '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
+  '/reservation-fee': typeof ReservationFeeRoute
   '/set-password': typeof SetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sms-consent': typeof SmsConsentRoute
@@ -586,6 +594,7 @@ export interface FileRoutesById {
   '/partners': typeof PartnersRoute
   '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
+  '/reservation-fee': typeof ReservationFeeRoute
   '/set-password': typeof SetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/sms-consent': typeof SmsConsentRoute
@@ -656,6 +665,7 @@ export interface FileRouteTypes {
     | '/partners'
     | '/portal'
     | '/privacy'
+    | '/reservation-fee'
     | '/set-password'
     | '/sitemap.xml'
     | '/sms-consent'
@@ -724,6 +734,7 @@ export interface FileRouteTypes {
     | '/partners'
     | '/portal'
     | '/privacy'
+    | '/reservation-fee'
     | '/set-password'
     | '/sitemap.xml'
     | '/sms-consent'
@@ -792,6 +803,7 @@ export interface FileRouteTypes {
     | '/partners'
     | '/portal'
     | '/privacy'
+    | '/reservation-fee'
     | '/set-password'
     | '/sitemap.xml'
     | '/sms-consent'
@@ -861,6 +873,7 @@ export interface RootRouteChildren {
   PartnersRoute: typeof PartnersRoute
   PortalRoute: typeof PortalRoute
   PrivacyRoute: typeof PrivacyRoute
+  ReservationFeeRoute: typeof ReservationFeeRoute
   SetPasswordRoute: typeof SetPasswordRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   SmsConsentRoute: typeof SmsConsentRoute
@@ -1019,6 +1032,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reservation-fee': {
+      id: '/reservation-fee'
+      path: '/reservation-fee'
+      fullPath: '/reservation-fee'
+      preLoaderRoute: typeof ReservationFeeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/set-password': {
@@ -1397,6 +1417,7 @@ const rootRouteChildren: RootRouteChildren = {
   PartnersRoute: PartnersRoute,
   PortalRoute: PortalRoute,
   PrivacyRoute: PrivacyRoute,
+  ReservationFeeRoute: ReservationFeeRoute,
   SetPasswordRoute: SetPasswordRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   SmsConsentRoute: SmsConsentRoute,

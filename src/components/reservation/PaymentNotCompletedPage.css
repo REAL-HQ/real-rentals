@@ -1,0 +1,612 @@
+/* Payment Not Completed (/reservation-fee?status=canceled). Scoped to .pnc. */
+.pnc {
+  --pnc-bg: #FAFAFB;
+  --pnc-white: #FFFFFF;
+  --pnc-ink: #111114;
+  --pnc-muted: #55555E;
+  --pnc-muted-2: #28282E;
+  --pnc-line: #EDEDF0;
+  --pnc-logo-red: #E61919;
+  --pnc-brand: #D03020;
+  --pnc-brand-deep: #A81F14;
+  --pnc-brand-soft: #FFF6F5;
+  --pnc-success: #4CD964;
+  --pnc-success-soft: #F0FBF2;
+  --pnc-success-ink: #157A2A;
+  --pnc-soft: #F6F6F8;
+  --pnc-radius-card: 12px;
+  --pnc-radius-box: 10px;
+  --pnc-radius-btn: 8px;
+  background: var(--pnc-bg);
+  color: var(--pnc-ink);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+.pnc h1, .pnc h2, .pnc h3, .pnc h4 {
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+.pnc a:not(.pnc-btn) { color: var(--pnc-brand); text-decoration: none; }
+.pnc a:not(.pnc-btn):hover { text-decoration: underline; }
+
+.pnc-header {
+  background: var(--pnc-white);
+  border-bottom: 1px solid var(--pnc-line);
+  position: relative;
+  z-index: 3;
+}
+.pnc-header-inner {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 20px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pnc-hero {
+  background:
+    linear-gradient(180deg, rgba(224, 25, 25, 0.16) 0%, rgba(0,0,0,0) 42%),
+    #0B0B0D;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+}
+.pnc-hero::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 5px;
+  background: var(--pnc-logo-red);
+}
+.pnc-hero-inner {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 88px 20px 36px;
+  text-align: center;
+}
+.pnc-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #1A1A1E;
+  border: 1px solid #3A3A40;
+  color: #F3C7C3;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 6px 12px 6px 10px;
+}
+.pnc-status-pill svg { width: 14px; height: 14px; flex-shrink: 0; }
+.pnc-kicker {
+  margin-top: 16px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #F3B4AE;
+}
+.pnc-hero h1 {
+  margin-top: 8px;
+  font-size: 30px;
+  line-height: 1.12;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+.pnc-hero .pnc-subhead {
+  margin: 14px auto 0;
+  max-width: 620px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #D5D5DA;
+}
+.pnc-hero .pnc-subhead strong { color: #fff; font-weight: 600; }
+
+.pnc-hero-actions {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.pnc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 15px 22px;
+  border-radius: var(--pnc-radius-btn);
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  text-decoration: none;
+  line-height: 1.2;
+  cursor: pointer;
+  border: none;
+  appearance: none;
+  background: none;
+}
+.pnc-btn:hover { text-decoration: none; }
+.pnc-btn:disabled { cursor: default; opacity: 0.85; }
+.pnc-btn-primary,
+.pnc a.pnc-btn-primary,
+.pnc a.pnc-btn-primary:link,
+.pnc a.pnc-btn-primary:visited,
+.pnc a.pnc-btn-primary:hover,
+.pnc a.pnc-btn-primary:focus,
+.pnc a.pnc-btn-primary:active,
+.pnc button.pnc-btn-primary:disabled {
+  background: var(--pnc-brand);
+  color: #fff;
+  border: 1px solid var(--pnc-brand);
+  box-shadow: 0 8px 24px rgba(208, 48, 32, 0.35);
+}
+.pnc-btn-primary:hover,
+.pnc a.pnc-btn-primary:hover {
+  background: var(--pnc-brand-deep);
+  border-color: var(--pnc-brand-deep);
+  color: #fff;
+  text-decoration: none;
+}
+.pnc-btn-lg { min-width: min(100%, 340px); padding: 16px 24px; font-size: 17px; }
+.pnc-btn-note {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: #C8C8CE;
+  text-align: center;
+}
+.pnc-applied-line {
+  color: #FFD56A;
+  font-weight: 700;
+}
+.pnc-expiry { font-size: 13px; color: #B8B8BE; }
+.pnc-see-terms {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #8A8A93;
+}
+.pnc-see-terms a {
+  color: #8A8A93;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.pnc-see-terms a:hover { color: #C8C8CE; }
+.pnc-cta-error {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #F3B4AE;
+  max-width: 420px;
+  text-align: center;
+}
+
+.pnc-insurance {
+  background: #161618;
+  padding: 0 20px 28px;
+}
+.pnc-insurance-card {
+  max-width: 880px;
+  margin: 0 auto;
+  background: linear-gradient(180deg, #FFFDF8 0%, #FFF8E8 100%);
+  border: 1px solid #E8C56B;
+  border-radius: 16px;
+  padding: 28px 22px 24px;
+  text-align: center;
+  box-shadow: 0 16px 40px rgba(0,0,0,.28);
+}
+.pnc-insurance-kicker {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--pnc-success-ink);
+}
+.pnc-insurance-kicker svg { width: 18px; height: 18px; }
+.pnc-insurance-card h2 {
+  margin-top: 8px;
+  font-size: 28px;
+  line-height: 1.12;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--pnc-ink);
+}
+.pnc-insurance-card h2 em {
+  font-style: normal;
+  color: var(--pnc-brand);
+}
+.pnc-insurance-card p {
+  margin: 12px auto 0;
+  max-width: 620px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--pnc-muted-2);
+}
+.pnc-insurance-chip {
+  display: inline-flex;
+  margin-top: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--pnc-success-ink);
+  background: var(--pnc-success-soft);
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+
+.pnc-urgency { background: #161618; color: #fff; }
+.pnc-urgency-inner {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 8px 20px 24px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+.pnc-stat {
+  background: #1E1E22;
+  border: 1px solid #323238;
+  border-radius: var(--pnc-radius-box);
+  padding: 16px 16px 14px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+}
+.pnc-stat-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pnc-stat-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #9A9AA3;
+}
+.pnc-stat-value {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+  line-height: 1.25;
+}
+.pnc-stat-value-accent { color: #FF6B5C; }
+.pnc-stat p {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #B0B0B6;
+}
+
+.pnc-wrap {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+.pnc-block { padding: 36px 0 4px; }
+.pnc-section-kicker {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--pnc-brand);
+  margin-bottom: 6px;
+}
+.pnc-block h2 {
+  font-size: 22px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--pnc-ink);
+}
+.pnc-lead {
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--pnc-muted);
+  max-width: 560px;
+}
+
+.pnc-gallery {
+  margin-top: 18px;
+  background: var(--pnc-white);
+  border: 1px solid var(--pnc-line);
+  border-radius: var(--pnc-radius-card);
+  overflow: hidden;
+}
+.pnc-gallery-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px 12px;
+}
+.pnc-gallery-head h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pnc-ink);
+}
+.pnc-hero-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  object-position: center 68%;
+  background: #E8EDF2;
+}
+.pnc-thumbs {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  padding: 10px;
+  background: var(--pnc-soft);
+}
+.pnc-thumb {
+  aspect-ratio: 16 / 10;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  background: #EEF1F5;
+  padding: 0;
+  cursor: pointer;
+}
+.pnc-thumb-active { border-color: var(--pnc-brand); }
+.pnc-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 68%;
+}
+
+.pnc-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 18px;
+}
+.pnc-card {
+  background: var(--pnc-white);
+  border: 1px solid var(--pnc-line);
+  border-radius: var(--pnc-radius-card);
+  padding: 18px 18px 16px;
+}
+.pnc-icon-bubble {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--pnc-brand-soft);
+  color: var(--pnc-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+.pnc-icon-bubble-green { background: var(--pnc-success-soft); color: var(--pnc-success-ink); }
+.pnc-icon-bubble svg { width: 18px; height: 18px; }
+.pnc-card h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pnc-ink);
+  line-height: 1.3;
+}
+.pnc-card p {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--pnc-muted);
+}
+
+.pnc-timeline {
+  margin-top: 18px;
+  background: var(--pnc-white);
+  border: 1px solid var(--pnc-line);
+  border-radius: var(--pnc-radius-card);
+  padding: 8px 20px 8px 16px;
+}
+.pnc-step { display: flex; gap: 14px; padding: 16px 0; }
+.pnc-step + .pnc-step { border-top: 1px solid var(--pnc-line); }
+.pnc-num {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--pnc-brand);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.pnc-step h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pnc-ink);
+  line-height: 1.3;
+}
+.pnc-step p {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--pnc-muted);
+}
+
+.pnc-trust-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 18px;
+}
+.pnc-trust-item {
+  display: flex;
+  gap: 12px;
+  background: var(--pnc-white);
+  border: 1px solid var(--pnc-line);
+  border-radius: var(--pnc-radius-box);
+  padding: 14px 16px;
+}
+.pnc-trust-item svg {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  color: var(--pnc-success-ink);
+  margin-top: 1px;
+}
+.pnc-trust-item h3 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pnc-ink);
+  line-height: 1.3;
+}
+.pnc-trust-item p {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--pnc-muted);
+}
+
+.pnc-faq-list {
+  margin-top: 18px;
+  background: var(--pnc-white);
+  border: 1px solid var(--pnc-line);
+  border-radius: var(--pnc-radius-card);
+  overflow: hidden;
+}
+.pnc-faq { padding: 0; }
+.pnc-faq + .pnc-faq { border-top: 1px solid var(--pnc-line); }
+.pnc-faq summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pnc-ink);
+  letter-spacing: -0.02em;
+}
+.pnc-faq summary::-webkit-details-marker { display: none; }
+.pnc-faq summary::after {
+  content: "";
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid #8A8A93;
+  border-bottom: 2px solid #8A8A93;
+  transform: rotate(45deg);
+  transition: transform .15s ease;
+  margin-top: -4px;
+}
+.pnc-faq[open] summary::after {
+  transform: rotate(225deg);
+  margin-top: 4px;
+}
+.pnc-faq-body {
+  padding: 0 18px 16px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--pnc-muted);
+}
+
+.pnc-final {
+  margin: 36px 0 24px;
+  background: #0B0B0D;
+  color: #fff;
+  border-radius: 16px;
+  padding: 32px 22px;
+  text-align: center;
+}
+.pnc-final h2 {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+.pnc-final .pnc-lead {
+  margin: 10px auto 0;
+  max-width: 460px;
+  color: #C8C8CE;
+}
+.pnc-final .pnc-hero-actions { margin-top: 20px; }
+.pnc-final .pnc-expiry { color: #A8A8B0; }
+.pnc-final .pnc-section-kicker { color: #F3B4AE; }
+
+.pnc-foot {
+  text-align: center;
+  padding: 8px 20px 28px;
+  font-size: 13px;
+  color: var(--pnc-muted);
+  line-height: 1.5;
+}
+.pnc-foot a { font-weight: 500; }
+
+.pnc-sticky { display: none; }
+
+@media (max-width: 719px) {
+  .pnc.pnc-has-sticky { padding-bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
+  .pnc-sticky {
+    display: none;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 20;
+    background: #0B0B0D;
+    border-top: 1px solid #2A2A30;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -10px 30px rgba(0,0,0,.28);
+  }
+  .pnc-sticky.pnc-sticky-visible { display: block; }
+  .pnc-sticky .pnc-btn { width: 100%; box-shadow: none; }
+  .pnc-sticky .pnc-btn-note {
+    margin-top: 6px;
+    gap: 2px;
+    text-align: center;
+  }
+  .pnc-sticky .pnc-applied-line,
+  .pnc-sticky .pnc-expiry {
+    display: block;
+    font-size: 12px;
+  }
+  .pnc-sticky .pnc-applied-line { color: #FFD56A; font-weight: 700; }
+  .pnc-sticky .pnc-expiry { color: #B8B8BE; font-weight: 500; }
+}
+
+@media (min-width: 720px) {
+  .pnc-hero-inner { padding: 96px 24px 40px; }
+  .pnc-hero h1 { font-size: 42px; }
+  .pnc-hero .pnc-subhead { font-size: 17px; }
+  .pnc-insurance { padding: 0 20px 32px; }
+  .pnc-insurance-card { padding: 36px 48px 32px; }
+  .pnc-insurance-kicker { flex-direction: row; gap: 8px; }
+  .pnc-insurance-card h2 { font-size: 40px; }
+  .pnc-insurance-card p { font-size: 17px; }
+  .pnc-urgency-inner { grid-template-columns: 1fr 1fr 1fr; gap: 14px; padding: 8px 20px 28px; justify-content: center; }
+  .pnc-urgency-inner[data-count="1"] { grid-template-columns: minmax(280px, 560px); }
+  .pnc-urgency-inner[data-count="2"] { grid-template-columns: 1fr 1fr; }
+  .pnc-stat-value { min-height: 2.5em; }
+  .pnc-block h2 { font-size: 26px; }
+  .pnc-fee-lead { max-width: none; }
+  .pnc-cards { grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .pnc-trust-row { grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .pnc-final { padding: 40px 40px; }
+}

@@ -42,6 +42,8 @@ export function writeReservationDetails(input: {
   pickupTime: string;
   pickupLocation: string;
   note?: string | null;
+  /** "renter": booked by the renter on the Payment Received page (payment-received.server.ts). */
+  bookedBy?: "renter" | null;
 }): string {
   const pickupTime = reservationPickupTime(input.pickupTime);
   const pickupLocation = String(input.pickupLocation ?? "").trim().slice(0, 180);
@@ -52,6 +54,8 @@ export function writeReservationDetails(input: {
     pickup_time: pickupTime,
     pickup_location: pickupLocation,
     note: normalizeReservationNote(input.note)?.slice(0, 140) ?? null,
+    // Only written for renter bookings, so staff and FLEET records stay byte-identical.
+    ...(input.bookedBy === "renter" ? { booked_by: "renter" } : {}),
   });
 }
 
@@ -59,8 +63,9 @@ export function readReservationDetails(raw: string | null | undefined): {
   pickupTime: string | null;
   pickupLocation: string | null;
   note: string | null;
+  bookedBy: "renter" | null;
 } {
-  const fallback = { pickupTime: null, pickupLocation: null, note: normalizeReservationNote(raw) };
+  const fallback = { pickupTime: null, pickupLocation: null, note: normalizeReservationNote(raw), bookedBy: null };
   if (!raw) return fallback;
   try {
     const value = JSON.parse(raw) as Record<string, unknown>;
@@ -69,6 +74,7 @@ export function readReservationDetails(raw: string | null | undefined): {
       pickupTime: reservationPickupTime(typeof value.pickup_time === "string" ? value.pickup_time : null),
       pickupLocation: typeof value.pickup_location === "string" ? value.pickup_location : null,
       note: normalizeReservationNote(typeof value.note === "string" ? value.note : null),
+      bookedBy: value.booked_by === "renter" ? "renter" : null,
     };
   } catch {
     return fallback;
@@ -87,6 +93,8 @@ export type ReservationRow = {
   pickupTime: string | null;
   pickupLocation: string | null;
   note: string | null;
+  /** "renter" when the renter picked the slot on the Payment Received page. */
+  bookedBy: "renter" | null;
   createdAt: string;
   depositRequired: boolean;
   depositAmount: number;

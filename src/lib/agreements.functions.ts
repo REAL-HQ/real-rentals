@@ -1465,7 +1465,17 @@ async function agreementPortalAccess(admin: any, applicationId: string | null): 
   return !!data?.user_id;
 }
 
-async function sendSignedEmails(admin: any, id: string, signerName: string): Promise<boolean> {
+/**
+ * `out.reservationFee` receives the signing page's next step: the SAME $50
+ * Checkout the email links to (reservationFeeSigningStep), so the applicant is
+ * sent straight to it. No second session is ever created for the page.
+ */
+async function sendSignedEmails(
+  admin: any,
+  id: string,
+  signerName: string,
+  out?: { reservationFee?: import("@/lib/reservation-fee").ReservationFeeSigningStep | null },
+): Promise<boolean> {
   const { data: ag } = await admin
     .from("agreements")
     .select("application_id,signer_email,merge_data,metadata")
@@ -1508,10 +1518,11 @@ async function sendSignedEmails(admin: any, id: string, signerName: string): Pro
   let feeHandled = false;
   try {
     const { chargeReservationFeeAfterSigning } = await import("@/lib/reservation-fee.server");
-    const { reservationFeeEmailLine, reservationFeePayLink } = await import("@/lib/reservation-fee");
+    const { reservationFeeEmailLine, reservationFeePayLink, reservationFeeSigningStep } = await import("@/lib/reservation-fee");
     const fee = await chargeReservationFeeAfterSigning(admin, id);
     reservationFeeLine = reservationFeeEmailLine(fee);
     reservationFeePay = reservationFeePayLink(fee);
+    if (out) out.reservationFee = reservationFeeSigningStep(fee);
     feeHandled = reservationFeeLine !== null;
   } catch (e) {
     console.error("[agreement] reservation fee failed", e);
@@ -1587,11 +1598,19 @@ export const signAgreement = createServerFn({ method: "POST" })
       adoption: data.adoption ?? null,
     });
     if (result === "already_signed") {
-      return { ok: true, alreadySigned: true, portalAccess: await agreementPortalAccess(supabaseAdmin, ag.application_id as string | null) };
+      // Read-only: the open Checkout from the first signing, never a new one.
+      const { existingReservationFeeStep } = await import("@/lib/reservation-fee.server");
+      return {
+        ok: true,
+        alreadySigned: true,
+        portalAccess: await agreementPortalAccess(supabaseAdmin, ag.application_id as string | null),
+        reservationFee: await existingReservationFeeStep(supabaseAdmin, ag.id as string),
+      };
     }
     if (result !== "won") claimError(result);
-    const portalAccess = await sendSignedEmails(supabaseAdmin, ag.id as string, data.signerName);
-    return { ok: true, alreadySigned: false, portalAccess };
+    const out: { reservationFee?: import("@/lib/reservation-fee").ReservationFeeSigningStep | null } = {};
+    const portalAccess = await sendSignedEmails(supabaseAdmin, ag.id as string, data.signerName, out);
+    return { ok: true, alreadySigned: false, portalAccess, reservationFee: out.reservationFee ?? null };
   });
 
 // ------------------------------------------------------------- driver portal
@@ -1667,10 +1686,14 @@ export const signMyAgreement = createServerFn({ method: "POST" })
       authMethod: "portal",
       adoption: data.adoption ?? null,
     });
-    if (result === "already_signed") return { ok: true, alreadySigned: true };
+    if (result === "already_signed") {
+      const { existingReservationFeeStep } = await import("@/lib/reservation-fee.server");
+      return { ok: true, alreadySigned: true, reservationFee: await existingReservationFeeStep(supabaseAdmin, data.agreementId) };
+    }
     if (result !== "won") claimError(result);
-    await sendSignedEmails(supabaseAdmin, data.agreementId, data.signerName);
-    return { ok: true, alreadySigned: false };
+    const out: { reservationFee?: import("@/lib/reservation-fee").ReservationFeeSigningStep | null } = {};
+    await sendSignedEmails(supabaseAdmin, data.agreementId, data.signerName, out);
+    return { ok: true, alreadySigned: false, reservationFee: out.reservationFee ?? null };
   });
 
 /** For scripts/v114-default-agreement.test.ts: the one generation step, read-only. */
