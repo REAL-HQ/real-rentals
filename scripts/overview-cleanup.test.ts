@@ -113,4 +113,16 @@ describe("Overview wiring", () => {
     expect(cardCopy).toContain("Applied");
     expect(cardCopy).toContain("Last contact");
   });
+
+  it("puts Revenue, Collections, Service, then Active Renters above Lead Priorities", () => {
+    const overview = readFileSync("src/components/admin/OverviewPanel.tsx", "utf8");
+    const grid = 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4';
+    expect(overview.indexOf("<OverviewToday")).toBeLessThan(overview.indexOf(grid));
+    expect(overview.indexOf(grid)).toBeLessThan(overview.indexOf("<LeadPriorities"));
+    const block = overview.slice(overview.indexOf(grid), overview.indexOf("<LeadPriorities"));
+    const order = ["<RevenueCard", 'eyebrow="Collections"', 'eyebrow="Service"', 'eyebrow="Active Renters"']
+      .map((marker) => block.indexOf(marker));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
 });

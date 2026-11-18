@@ -11,6 +11,7 @@ import {
   READINESS_HINT,
   READINESS_LABEL,
   VEHICLE_LIST_PAGE_SIZE,
+  ON_RENT_STATUS_FILTER,
   type ReadinessBand,
   type VehicleListRow,
 } from "@/lib/vehicles-list";
@@ -374,9 +375,45 @@ function FleetVehicles({
     </div>
   );
 
+  const stats = result?.fleetStats ?? null;
+  const statValue = (n: number | null | undefined) => (n == null ? "—" : String(n));
+
   return (
     <div className="min-w-0">
       {remindersFailed ? <p className="mb-3 text-sm text-[#D03020]" data-testid="maintenance-log-error">Could not load maintenance reminders.</p> : null}
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5" data-testid="vehicle-stat-cards">
+        <VehicleStatCard
+          label="Total"
+          value={statValue(stats?.total ?? result?.fleetTotal)}
+          hint="Including archived"
+          active={statusFilter === "all"}
+          onClick={() => setList({ status: "all" })}
+        />
+        <VehicleStatCard
+          label="Rented"
+          value={statValue(stats?.rented)}
+          hint="Active rentals"
+          active={statusFilter === ON_RENT_STATUS_FILTER}
+          onClick={() => setList({ status: ON_RENT_STATUS_FILTER })}
+        />
+        <VehicleStatCard
+          label="Available"
+          value={statValue(stats?.available)}
+          active={statusFilter === "available"}
+          onClick={() => setList({ status: "available" })}
+        />
+        <VehicleStatCard
+          label="Maintenance"
+          value={statValue(stats?.maintenance)}
+          active={statusFilter === "maintenance"}
+          onClick={() => setList({ status: "maintenance" })}
+        />
+        <VehicleStatCard
+          label="Utilization"
+          value={stats?.utilizationPct == null ? "—" : `${stats.utilizationPct}%`}
+          hint="Of unarchived"
+        />
+      </div>
       <AdminToolbar compact
         search={
           <input
@@ -394,7 +431,8 @@ function FleetVehicles({
             <SelectTrigger className={VEHICLE_TOOLBAR.select} aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Status: All</SelectItem>
-              {(result?.statuses ?? []).map((s) => <SelectItem key={s} value={s}><VehicleStatusBadge status={s} label={availabilityLabel({ on_rent: false, status: s })} /></SelectItem>)}
+              <SelectItem value={ON_RENT_STATUS_FILTER}>Rented</SelectItem>
+              {(result?.statuses ?? []).filter((status) => status !== "rented").map((s) => <SelectItem key={s} value={s}><VehicleStatusBadge status={s} label={availabilityLabel({ on_rent: false, status: s })} /></SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={bodyFilter} onValueChange={(v) => setList({ body: v })}>
@@ -605,5 +643,42 @@ function FleetVehicles({
         />
       )}
     </div>
+  );
+}
+
+function VehicleStatCard({
+  label,
+  value,
+  hint,
+  active = false,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const className = `min-w-0 rounded-2xl border bg-white px-4 py-3 text-left shadow-sm transition-colors ${
+    onClick
+      ? active
+        ? "border-[#D03020]"
+        : "border-[#EDEDF0] hover:border-[#D03020]"
+      : "border-[#EDEDF0]"
+  }`;
+  const body = (
+    <>
+      <div className="text-[10px] font-semibold text-muted-foreground">{label}</div>
+      <div className="mt-1 text-[18px] font-semibold tabular-nums">{value}</div>
+      {hint ? <div className="mt-0.5 text-[11px] text-[#55555E]">{hint}</div> : null}
+    </>
+  );
+  if (!onClick) {
+    return <div className={className}>{body}</div>;
+  }
+  return (
+    <button type="button" onClick={onClick} aria-pressed={active} aria-label={`${label} ${value}`} className={className}>
+      {body}
+    </button>
   );
 }

@@ -346,8 +346,8 @@ export function DriversPanel({
   externalSearch?: string;
   initialOpenId?: string;
   /**
-   * ?filter= from the address bar. "waitlist" is honoured for every staff
-   * tier. "documents-expiring" and "approved-not-renting" are honoured for a manager.
+   * ?filter= from the address bar. "waitlist" and "active" are honoured for
+   * every staff tier. "documents-expiring" and "approved-not-renting" are honoured for a manager.
    */
   urlFilter?: string;
   /** Verification recordings are Owner-only. See VerificationRecording. */
@@ -381,7 +381,7 @@ export function DriversPanel({
       const search: {
         tab: "drivers";
         id?: string;
-        filter?: "documents-expiring" | "approved-not-renting" | "stalled";
+        filter?: "documents-expiring" | "approved-not-renting" | "stalled" | "active";
       } = id ? { tab: "drivers", id } : { tab: "drivers" };
       // Opening a driver from a manager list comes back to that list.
       // Waitlist links stay as they were: the filter is not kept.
@@ -389,6 +389,7 @@ export function DriversPanel({
         search.filter = urlFilter;
       }
       if (urlFilter === "stalled" && stalledOn) search.filter = "stalled";
+      if (urlFilter === "active") search.filter = "active";
       void navigate({ to: "/admin", search });
     },
     [navigate, urlFilter, canManageWaitlist, stalledOn],
@@ -423,6 +424,7 @@ export function DriversPanel({
   // and the back button agree. Manager lists are ignored for a coordinator.
   const urlListFilter =
     urlFilter === "waitlist" ||
+    urlFilter === "active" ||
     ((urlFilter === "documents-expiring" || urlFilter === "approved-not-renting") && canManageWaitlist) ||
     (urlFilter === "stalled" && stalledOn)
       ? urlFilter
@@ -443,12 +445,17 @@ export function DriversPanel({
         void navigate({ to: "/admin", search: { tab: "drivers", filter: "stalled" } });
         return;
       }
+      if (f === "active") {
+        void navigate({ to: "/admin", search: { tab: "drivers", filter: "active" } });
+        return;
+      }
       setLocalFilter(f);
       if (
         urlFilter === "waitlist" ||
         urlFilter === "documents-expiring" ||
         urlFilter === "approved-not-renting" ||
-        urlFilter === "stalled"
+        urlFilter === "stalled" ||
+        urlFilter === "active"
       ) {
         void navigate({ to: "/admin", search: { tab: "drivers" } });
       }
