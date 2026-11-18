@@ -2,15 +2,18 @@ import { useCallback, useEffect, useState } from "react";
 import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Loader2, MoreHorizontal } from "lucide-react";
+import { CalendarCheck, Loader2, MoreHorizontal } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { EmptyState } from "./ui";
+import { AdminTableScroll } from "./AdminTableScroll";
+import { VehicleStaffPhoto } from "./VehicleStaffPhoto";
 import {
   cancelReservation,
   listReservations,
   recordReservationFee,
 } from "@/lib/reservations.functions";
-import type { ReservationRow } from "@/lib/reservations";
-import { RESERVATION_DEPOSIT_STATUS_LABEL } from "@/lib/reservation-deposit-settings";
-import { MANUAL_METHODS, easternParts, money } from "@/lib/rent-reminders";
+import { reservationFeeLabel, type ReservationRow } from "@/lib/reservations";
+import { MANUAL_METHODS, easternParts } from "@/lib/rent-reminders";
 import { fmtDate, formatReservationTime } from "@/lib/date-format";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -177,19 +180,21 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
 
   return (
     <div className="space-y-4" data-testid="reservations-panel">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="text-[15px] font-semibold text-[#111114]">Booked</h2>
-          <p className="text-sm text-[#55555E]">
-            Holds before Start.
-            {feeOn ? " Reservation Fee (applied to week 1)" : " Reservation Fee Off"}.
-          </p>
+      <div className="admin-sticky-bar flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-[#55555E]">
+          Cars held for a renter before pickup.
+          {feeOn ? " Reservation Fee (applied to week 1)." : " Reservation Fee Off."}
+        </p>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground" data-testid="reserved-count">
+            {rows.length} Reserved Vehicle{rows.length === 1 ? "" : "s"}
+          </span>
+          {canManage ? (
+            <button type="button" className={primary} onClick={() => setReserveOpen(true)}>
+              Reserve A Car
+            </button>
+          ) : null}
         </div>
-        {canManage ? (
-          <button type="button" className={primary} onClick={() => setReserveOpen(true)}>
-            Reserved
-          </button>
-        ) : null}
       </div>
 
       {loading ? (
@@ -199,88 +204,117 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
       ) : failed ? (
         <p className="text-sm text-[#8A1C10]">Could Not Load Reservations. Apply The Rental Reservations Migration If It Is Missing.</p>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-[#EDEDF0] bg-white p-8 text-center text-sm text-[#55555E]">
-          No Reservations Yet.
-        </div>
+        <EmptyState
+          icon={<CalendarCheck className="w-6 h-6" strokeWidth={1.75} />}
+          title="No Reserved Vehicles"
+          hint="Rentals with status Reserved show up here."
+        />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[#EDEDF0] bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-[#FAFAFB] text-left text-xs uppercase tracking-wide text-[#9A9AA3]">
-              <tr>
-                <th className="px-3 py-2 font-medium">Driver</th>
-                <th className="px-3 py-2 font-medium">Vehicle</th>
-                <th className="px-3 py-2 font-medium">Pickup</th>
-                <th className="px-3 py-2 font-medium">Location</th>
-                <th className="px-3 py-2 font-medium">{chargeLabel}</th>
-                <th className="px-3 py-2 font-medium">Note</th>
-                {canManage ? <th className="px-3 py-2 font-medium" /> : null}
+        <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white">
+          <table className="w-full table-fixed text-left text-sm" data-testid="reserved-table">
+            <thead className="text-[11px] font-semibold text-[#55555E]">
+              <tr className="border-b border-[#EDEDF0]">
+                <th className="w-[15%] px-2 py-2.5 font-semibold">Driver</th>
+                <th className="w-[25%] px-2 py-2.5 font-semibold">Vehicle</th>
+                <th className="w-[12%] px-2 py-2.5 font-semibold">Reserved</th>
+                <th className="w-[15%] px-2 py-2.5 font-semibold">Pickup</th>
+                <th className="w-[12%] px-2 py-2.5 font-semibold">{chargeLabel}</th>
+                <th className="w-[8%] px-2 py-2.5 font-semibold">Rate</th>
+                <th className="w-[13%] px-2 py-2.5 font-semibold text-right sticky right-0 bg-white">Open</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F1F1F4]">
-              {rows.map((row) => (
-                <tr key={row.id} data-reservation-id={row.id}>
-                  <td className="px-3 py-2.5 font-medium text-[#111114]">
-                    {row.driverName ?? "—"}
-                    {row.bookedBy === "renter" ? (
-                      <span
-                        data-booked-by="renter"
-                        title="The renter picked this pickup time on the Payment Received page"
-                        className="ml-2 inline-flex rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[11px] font-medium text-[#3D4BB8] align-middle"
-                      >
-                        Renter-Booked
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2.5 text-[#55555E]">
-                    {row.unitNumber ? `Unit ${row.unitNumber}` : null}
-                    {row.unitNumber && row.vehicleLabel ? " · " : null}
-                    {row.vehicleLabel ?? "—"}
-                  </td>
-                  <td className="px-3 py-2.5 text-[#55555E]">{fmtDate(row.pickupDate)}{row.pickupTime ? ` · ${formatReservationTime(row.pickupTime)}` : ""}</td>
-                  <td className="px-3 py-2.5 text-[#55555E] max-w-[18rem]">{row.pickupLocation ?? "—"}</td>
-                  <td className="px-3 py-2.5">
-                    <span
-                      data-deposit-status={row.depositStatus}
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                        row.depositStatus === "pending"
-                          ? "bg-[#FFF4D6] text-[#8A6A00]"
-                          : row.depositStatus === "paid" || row.depositStatus === "applied"
-                            ? "bg-[#E7F6EC] text-[#1B6B3A]"
-                            : "bg-[#F1F1F4] text-[#55555E]"
-                      }`}
-                    >
-                      {RESERVATION_DEPOSIT_STATUS_LABEL[row.depositStatus]}
-                      {row.depositRequired && row.depositAmount > 0 ? ` · ${money(row.depositAmount)}` : ""}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-[#55555E] max-w-[14rem] truncate">{row.note ?? "—"}</td>
-                  {canManage ? (
-                    <td className="px-3 py-2.5 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#EDEDF0] bg-white text-[#55555E] hover:border-[#D6D6DB]"
-                            aria-label="Reservation Actions"
-                            disabled={busyId === row.id}
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-white">
-                          {feeOn && (row.depositStatus === "pending" || row.depositStatus === "not_required") && (
-                            <DropdownMenuItem onSelect={() => setDepositRow(row)}>Record {chargeLabel}</DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem onSelect={() => void onCancel(row)}>Cancel Reservation</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+            <tbody>
+              {rows.map((row) => {
+                const fee = reservationFeeLabel(row.depositStatus, feeOn);
+                return (
+                  <tr key={row.id} className="border-b border-[#EDEDF0] last:border-0" data-testid="reserved-row" data-reservation-id={row.id}>
+                    <td className="px-2 py-2 align-middle font-medium text-[#111114]">
+                      <span className="block truncate">{row.driverName ?? "—"}</span>
+                      {row.bookedBy === "renter" ? (
+                        <span
+                          data-booked-by="renter"
+                          title="The renter picked this pickup time on the Payment Received page"
+                          className="mt-0.5 inline-flex rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[11px] font-medium text-[#3D4BB8]"
+                        >
+                          Renter-Booked
+                        </span>
+                      ) : null}
                     </td>
-                  ) : null}
-                </tr>
-              ))}
+                    <td className="px-2 py-2 align-middle text-[#111114]">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="block h-8 w-11 shrink-0 overflow-hidden rounded-md border border-border bg-soft">
+                          <VehicleStaffPhoto path={row.thumbnailPath ?? null} name={row.vehicleLabel ?? "Vehicle"} className="h-full w-full object-cover" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium leading-tight">{row.vehicleLabel ?? "Unknown"}</span>
+                          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                            {[row.plate, row.vinLast6 ? `VIN …${row.vinLast6}` : null, row.unitNumber ? `Unit ${row.unitNumber}` : null].filter(Boolean).join(" · ") || "—"}
+                          </span>
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-2 align-middle whitespace-nowrap">{fmtDate(row.createdAt)}</td>
+                    <td className="px-2 py-2 align-middle">
+                      <span className="block whitespace-nowrap">{fmtDate(row.pickupDate)}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {row.pickupTime ? formatReservationTime(row.pickupTime) : "No Time Set"}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 align-middle">
+                      <span
+                        data-deposit-status={row.depositStatus}
+                        data-fee-label={fee}
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          fee === "Unpaid"
+                            ? "bg-[#FFF4D6] text-[#8A6A00]"
+                            : fee === "Paid"
+                              ? "bg-[#E7F6EC] text-[#1B6B3A]"
+                              : "bg-[#F1F1F4] text-[#55555E]"
+                        }`}
+                      >
+                        {fee}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 align-middle whitespace-nowrap">
+                      {typeof row.weeklyRate === "number" ? `$${row.weeklyRate.toLocaleString()}/wk` : "—"}
+                    </td>
+                    <td className="px-2 py-2 align-middle sticky right-0 bg-white">
+                      <div className="flex items-center justify-end gap-1">
+                        <Link
+                          to="/admin"
+                          search={{ tab: "bookings", view: "past", id: row.id }}
+                          className="inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-2.5 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB]"
+                        >
+                          Open
+                        </Link>
+                        {canManage ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                aria-label={`Actions For ${row.driverName ?? "Reservation"}`}
+                                disabled={busyId === row.id}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-soft hover:text-foreground"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="bg-white">
+                              {feeOn && (row.depositStatus === "pending" || row.depositStatus === "not_required") && (
+                                <DropdownMenuItem onSelect={() => setDepositRow(row)}>Record {chargeLabel}</DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem onSelect={() => void onCancel(row)}>Cancel Reservation</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
       )}
 
       {canManage ? (

@@ -7,8 +7,11 @@ import {
   reservationPickupDate,
   writeReservationDetails,
   RESERVATION_STATUS,
+  vinLast6,
   type ReservationRow,
 } from "@/lib/reservations";
+import { tierAllows } from "@/lib/roles";
+import { chooseVehicleThumbnailPaths, vehicleListThumbnailKey, type VehicleThumbnailMedia } from "@/lib/vehicle-thumbnail";
 import {
   DEFAULT_RESERVATION_DEPOSIT_SETTINGS,
   isReservationDepositStatus,
@@ -51,7 +54,7 @@ async function loadDepositSettings(_admin: any): Promise<ReservationDepositSetti
   return { ...DEFAULT_RESERVATION_DEPOSIT_SETTINGS };
 }
 
-function mapRow(r: any, app: any, veh: any): ReservationRow {
+function mapRow(r: any, app: any, veh: any, extra?: { thumbnailPath?: string | null; weeklyRate?: number | null }): ReservationRow {
   const label = veh ? [veh.year, veh.make, veh.model].filter(Boolean).join(" ").trim() || null : null;
   const details = readReservationDetails(r.reservation_note);
   const status = isReservationDepositStatus(r.reservation_deposit_status)
@@ -75,6 +78,10 @@ function mapRow(r: any, app: any, veh: any): ReservationRow {
     depositAmount: Number(r.reservation_deposit_amount ?? 0),
     depositStatus: status,
     depositPaymentId: r.reservation_deposit_payment_id ?? null,
+    plate: veh?.license_plate ?? null,
+    vinLast6: vinLast6(veh?.vin),
+    thumbnailPath: extra?.thumbnailPath ?? null,
+    ...(extra && "weeklyRate" in extra ? { weeklyRate: extra.weeklyRate ?? null } : {}),
   };
 }
 
@@ -133,7 +140,8 @@ export const getReservationDepositSettings = createServerFn({ method: "GET" })
 export const listReservations = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<{ rows: ReservationRow[]; settings: ReservationDepositSettings; reservationFeeOn: boolean }> => {
-    await requireStaff(context.userId);
+    const actor = await requireStaff(context.userId);
+    const canSeeMoney = tierAllows(actor.tier, "manager");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const settings = await loadDepositSettings(supabaseAdmin);
     // With the $50 Reservation Fee on, these columns hold the Reservation Fee,
@@ -146,7 +154,7 @@ export const listReservations = createServerFn({ method: "GET" })
     const { data, error } = await supabaseAdmin
       .from("rentals")
       .select(
-        "id,application_id,driver_id,vehicle_id,start_date,reservation_note,created_at,status,reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,reservation_deposit_payment_id",
+        "id,application_id,driver_id,vehicle_id,start_date,reservation_note,created_at,status,weekly_rate,reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,reservation_deposit_payment_id",
       )
       .eq("status", RESERVATION_STATUS)
       .order("start_date", { ascending: true })
@@ -159,12 +167,26 @@ export const listReservations = createServerFn({ method: "GET" })
     if (!list.length) return { rows: [], settings, reservationFeeOn };
     const appIds = [...new Set(list.map((r) => r.application_id).filter(Boolean))] as string[];
     const vehicleIds = [...new Set(list.map((r) => r.vehicle_id))];
-    const [apps, vehicles] = await Promise.all([
+    const [apps, vehicles, media, thumbSettings] = await Promise.all([
       appIds.length
         ? supabaseAdmin.from("applications").select("id,full_name,email").in("id", appIds)
         : Promise.resolve({ data: [] as any[], error: null }),
-      supabaseAdmin.from("vehicles").select("id,unit_number,year,make,model").in("id", vehicleIds),
+      supabaseAdmin.from("vehicles").select("id,unit_number,year,make,model,license_plate,vin").in("id", vehicleIds),
+      supabaseAdmin
+        .from("vehicle_media")
+        .select("id,vehicle_id,storage_path")
+        .in("vehicle_id", vehicleIds)
+        .eq("kind", "original")
+        .order("is_primary", { ascending: false })
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true }),
+      supabaseAdmin
+        .from("app_settings")
+        .select("key,value")
+        .in("key", vehicleIds.map((id) => vehicleListThumbnailKey(id))),
     ]);
+    // Thumbnails are cosmetic: a failed read leaves the placeholder, never the list.
+    const thumbnailFor = chooseVehicleThumbnailPaths((media.data ?? []) as VehicleThumbnailMedia[], thumbSettings.data ?? []);
     if (apps.error) throw new Error(apps.error.message);
     if (vehicles.error) throw new Error(vehicles.error.message);
     const appBy = new Map((apps.data ?? []).map((a: any) => [a.id, a]));
@@ -172,7 +194,12 @@ export const listReservations = createServerFn({ method: "GET" })
     return {
       settings,
       reservationFeeOn,
-      rows: list.map((r) => mapRow(r, r.application_id ? appBy.get(r.application_id) : null, vehBy.get(r.vehicle_id))),
+      rows: list.map((r) =>
+        mapRow(r, r.application_id ? appBy.get(r.application_id) : null, vehBy.get(r.vehicle_id), {
+          thumbnailPath: thumbnailFor.get(r.vehicle_id) ?? null,
+          ...(canSeeMoney ? { weeklyRate: r.weekly_rate == null ? null : Number(r.weekly_rate) } : {}),
+        }),
+      ),
     };
   });
 
@@ -550,7 +577,7 @@ export const getOpenReservationForApplication = createServerFn({ method: "POST" 
     const { data: row, error } = await supabaseAdmin
       .from("rentals")
       .select(
-        "id,application_id,driver_id,vehicle_id,start_date,reservation_note,created_at,status,reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,reservation_deposit_payment_id",
+        "id,application_id,driver_id,vehicle_id,start_date,reservation_note,created_at,status,weekly_rate,reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,reservation_deposit_payment_id",
       )
       .eq("application_id", data.applicationId)
       .eq("status", RESERVATION_STATUS)

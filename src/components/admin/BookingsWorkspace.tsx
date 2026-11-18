@@ -7,7 +7,7 @@ import { BOOKINGS_VIEWS, parseBookingsView, type BookingsView } from "@/lib/book
 export { BOOKINGS_VIEWS, parseBookingsView } from "@/lib/bookings-workspace";
 
 /**
- * One Bookings page under Rentals: Booked, Active, and Past.
+ * One Bookings page under Rentals: Reserved, Active, and Past.
  * Default tab is Active. Old ?tab=active_rentals links land here via LEGACY_TABS.
  */
 type ListState = { q?: string; phase?: string; sort?: string; page?: string; vehicle?: string };
@@ -48,7 +48,7 @@ export function BookingsWorkspace({
       <div className="admin-sticky-bar flex flex-wrap items-end gap-5 border-b border-border">
         {BOOKINGS_VIEWS.map((item) => {
           if (item.id === "active" && !canViewBoard) return null;
-          if (item.id === "booked" && !canManageReservations && !canViewBoard) return null;
+          if (item.id === "reserved" && !canManageReservations && !canViewBoard) return null;
           return (
             <button
               key={item.id}
@@ -67,7 +67,7 @@ export function BookingsWorkspace({
         })}
       </div>
 
-      {effective === "booked" ? (
+      {effective === "reserved" ? (
         <ReservationsPanel canManage={canManageReservations} />
       ) : effective === "active" ? (
         <ActiveRentalsPanel />

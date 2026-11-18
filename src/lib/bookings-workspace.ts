@@ -1,7 +1,7 @@
-/** Pure helpers for the Bookings page tabs (Booked / Active / Past). */
+/** Pure helpers for the Bookings page tabs (Reserved / Active / Past). */
 
 export const BOOKINGS_VIEWS = [
-  { id: "booked", label: "Booked" },
+  { id: "reserved", label: "Reserved" },
   { id: "active", label: "Active" },
   { id: "past", label: "Past" },
 ] as const;
@@ -13,7 +13,8 @@ export function parseBookingsView(
   opts: { canViewBoard: boolean; openId?: string | null },
 ): BookingsView {
   const v = String(raw ?? "").toLowerCase();
-  if (v === "booked" || v === "reserved") return "booked";
+  // "booked" is the old name for this tab; old links keep working.
+  if (v === "reserved" || v === "booked") return "reserved";
   if (v === "past" || v === "all") return "past";
   if (v === "active" || v === "board") return opts.canViewBoard ? "active" : "past";
   if (opts.openId) return "past";

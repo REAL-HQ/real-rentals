@@ -100,7 +100,35 @@ export type ReservationRow = {
   depositAmount: number;
   depositStatus: ReservationDepositStatus;
   depositPaymentId: string | null;
+  /** Vehicle details for the Reserved list (same facts the Active list shows). */
+  plate?: string | null;
+  vinLast6?: string | null;
+  thumbnailPath?: string | null;
+  /** Manager+ only; the server leaves it out for a Coordinator. */
+  weeklyRate?: number | null;
 };
+
+export type ReservationFeeLabel = "Paid" | "Unpaid" | "Waived" | "Refunded" | "Not Required";
+
+/**
+ * The $50 Reservation Fee as staff read it on the Reserved list.
+ * paid / applied (already counted toward week 1) read Paid; pending reads
+ * Unpaid; a fee that is switched off for this reservation reads Not Required
+ * rather than claiming anything is owed.
+ */
+export function reservationFeeLabel(status: string | null | undefined, feeOn: boolean): ReservationFeeLabel {
+  const s = String(status ?? "").toLowerCase();
+  if (s === "paid" || s === "applied") return "Paid";
+  if (s === "waived") return "Waived";
+  if (s === "refunded") return "Refunded";
+  if (s === "pending") return "Unpaid";
+  return feeOn ? "Unpaid" : "Not Required";
+}
+
+export function vinLast6(vin: string | null | undefined): string | null {
+  const v = String(vin ?? "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  return v ? v.slice(-6) : null;
+}
 
 /** Whether Start Rental should be blocked for a pending reservation deposit. */
 export function reservationBlocksStart(input: {
