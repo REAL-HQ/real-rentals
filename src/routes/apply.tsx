@@ -25,6 +25,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { PhoneLink } from "@/components/site/PhoneLink";
 import { applicantPhoneForSubmit, formatUsPhoneInput } from "@/lib/us-phone";
 import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
+import { applySubmitErrorMessage, dismissKeyboard } from "@/lib/apply-submit-error";
 
 const CLAIM_STASH = "rr_waitlist_claim";
 
@@ -313,6 +314,9 @@ function ContactStep({
   const [hp, setHp] = useState("");
   const [form, setForm] = useState({ full_name: "", phone: "", email: "", sms_consent: false });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Stays on screen next to Continue until the next try; a toast alone sat
+  // behind the phone keyboard or over the button and vanished in 4 seconds.
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [market, setMarket] = useState<{ id: string; name: string; state: string | null } | null>(null);
 
   useEffect(() => {
@@ -365,6 +369,8 @@ function ContactStep({
 
   async function submit() {
     if (hp) return;
+    dismissKeyboard();
+    setSubmitError(null);
     if (!validate()) {
       toast.error("Please fix the highlighted fields.");
       return;
@@ -397,8 +403,11 @@ function ContactStep({
       }
       markStepOneJustSubmitted();
       navigate({ to: "/thank-you", search: { t: data.token } });
-    } catch (e: any) {
-      toast.error(e?.message ?? "Could not save. Please try again.");
+    } catch (e: unknown) {
+      console.error("[apply] step 1 save failed", e);
+      const message = applySubmitErrorMessage(e);
+      setSubmitError(message);
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
@@ -447,6 +456,11 @@ function ContactStep({
             data-testid="contact-continue"
             style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
           >
+            {submitError ? (
+              <p role="alert" data-testid="apply-submit-error" className="mb-3 rounded-lg border border-real-red/40 bg-white px-3 py-2 text-sm text-real-red">
+                {submitError}
+              </p>
+            ) : null}
             <button
               type="button"
               onClick={submit}

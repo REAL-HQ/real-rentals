@@ -17,6 +17,22 @@ import type { ApprovalEmailStatus } from "@/lib/approval-email";
 
 const nullableString = z.string().trim().max(255).nullable().optional();
 
+/**
+ * Ad attribution (utm_*, gclid, landing page, referrer). Collected for
+ * reporting only, so an over-long value is cut to 255 characters instead of
+ * failing the whole application. The landing page is the first URL's path and
+ * query: a Google Ads click on iOS already arrives at ~194 characters
+ * (gad_source, gad_campaignid, gbraid, gclid), and a longer path or one more
+ * parameter would push it over 255 and reject Step 1 with no record left
+ * behind. The waitlist form already accepts 500.
+ */
+const attributionString = z
+  .string()
+  .max(4000)
+  .transform((v) => v.trim().slice(0, 255))
+  .nullable()
+  .optional();
+
 /** Exact case-insensitive match. Escapes ILIKE wildcards so a typed % is not a pattern. */
 function literalIlike(value: string): string {
   return value.replace(/[%_\\]/g, (ch) => `\\${ch}`);
@@ -361,14 +377,14 @@ export const savePartialApplication = createServerFn({ method: "POST" })
         // an applicant cannot know it at this point. Part 1 asks for an
         // expected duration instead. The column keeps its history.
         source: z.enum(["homepage", "city_lp"]),
-        utm_source: nullableString,
-        utm_medium: nullableString,
-        utm_campaign: nullableString,
-        utm_term: nullableString,
-        utm_content: nullableString,
-        gclid: nullableString,
-        landing_page: nullableString,
-        referrer: nullableString,
+        utm_source: attributionString,
+        utm_medium: attributionString,
+        utm_campaign: attributionString,
+        utm_term: attributionString,
+        utm_content: attributionString,
+        gclid: attributionString,
+        landing_page: attributionString,
+        referrer: attributionString,
       })
       .parse(data),
   )
