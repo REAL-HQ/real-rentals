@@ -80,6 +80,27 @@ export function reservationFeeEmailLine(o: ReservationFeeOutcome): string | null
   return null;
 }
 
+/**
+ * The agreement prints a Reservation Fee but signing produced no way to pay
+ * it (no Checkout link, nothing paid or processing). Staff must send a link.
+ * null for off / no fee / amendment / checkout / paid / pending.
+ */
+export function reservationFeeLinkProblem(o: ReservationFeeOutcome): { amount: number; reason: string } | null {
+  if (o.status === "no_card") return { amount: o.amount, reason: "card checkout could not be created" };
+  if (o.status === "failed") return { amount: o.amount > 0 ? o.amount : 50, reason: o.error || "unexpected error" };
+  return null;
+}
+
+/** What the staff "Copy Reservation Fee Link" action returns for an outcome. Client-safe. */
+export function staffReservationFeeLinkResult(o: ReservationFeeOutcome): { ok: true; url: string; amount: number } | { ok: false; message: string } {
+  if (o.status === "checkout") return { ok: true, url: o.url, amount: o.amount };
+  if (o.status === "already_paid" || o.status === "paid") return { ok: false, message: "The Reservation Fee Is Already Paid." };
+  if (o.status === "pending") return { ok: false, message: "The Reservation Fee Payment Is Still Processing." };
+  if (o.status === "off") return { ok: false, message: "The Reservation Fee Is Turned Off." };
+  if (o.status === "no_fee_on_agreement" || o.status === "not_found") return { ok: false, message: "No Signed Agreement With A Reservation Fee." };
+  return { ok: false, message: "Card Checkout Could Not Be Created. Try Again, Or Record A Manual Payment." };
+}
+
 /** The Reservation Fee pay button for the Agreement Signed email (card collected after signing). */
 export function reservationFeePayLink(o: ReservationFeeOutcome): { url: string; amount: number } | null {
   return o.status === "checkout" ? { url: o.url, amount: o.amount } : null;

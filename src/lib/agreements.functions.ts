@@ -1487,6 +1487,11 @@ async function sendSignedEmails(
   // no Reservation Fee and no first-week payment link. The renter's email
   // says when the new rate starts.
   const amendment = ((ag.metadata ?? {}) as any).amendment as { new_weekly_rate?: number; effective_date?: string } | undefined;
+  // The signed PDF rides on both emails (t445u). Archived synchronously in
+  // completeSigning before this runs; null (still archiving, missing, too big)
+  // sends the emails without it.
+  const { loadSignedAgreementAttachment } = await import("@/lib/signed-agreement-pdf.server");
+  const attachment = await loadSignedAgreementAttachment(admin, id);
   if (amendment) {
     const portal = await agreementPortalAccess(admin, ag.application_id as string | null);
     try {
@@ -1495,8 +1500,8 @@ async function sendSignedEmails(
       const rate = Number(am?.new_weekly_rate ?? amendment.new_weekly_rate);
       const on = String(am?.apply_on ?? amendment.effective_date ?? "");
       const line = rate > 0 && on ? `Your new weekly rate of $${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })} starts ${fmtContractDate(on)}. Rent before then stays the same.` : null;
-      if (ag.signer_email) await sendAgreementSignedEmail({ to: ag.signer_email as string, firstName: merge.driver_name ?? signerName, vehicle: merge.vehicle || null, portalAccess: portal, amendmentLine: line });
-      await sendAgreementSignedOpsEmail({ driverName: signerName, applicationId: ag.application_id as string, vehicle: merge.vehicle || null, amendment: true });
+      if (ag.signer_email) await sendAgreementSignedEmail({ to: ag.signer_email as string, firstName: merge.driver_name ?? signerName, vehicle: merge.vehicle || null, portalAccess: portal, amendmentLine: line, attachment });
+      await sendAgreementSignedOpsEmail({ driverName: signerName, applicationId: ag.application_id as string, vehicle: merge.vehicle || null, amendment: true, attachment });
     } catch (e) {
       console.error("[agreement] amendment signed emails failed", e);
     }
@@ -1516,14 +1521,26 @@ async function sendSignedEmails(
   let reservationFeeLine: string | null = null;
   let reservationFeePay: { url: string; amount: number } | null = null;
   let feeHandled = false;
+  // The agreement prints a Reservation Fee but no payment link exists (Stripe
+  // unreachable or unconfigured, row write failed). Before Nov 18 2026 this
+  // was silent: the renter saw "You're All Set" and nobody was told
+  // (Jonathon Boykins). Now the renter is told the link follows and staff get
+  // an ACTION NEEDED email.
+  let feeProblem: { amount: number; reason: string } | null = null;
   try {
     const { chargeReservationFeeAfterSigning } = await import("@/lib/reservation-fee.server");
-    const { reservationFeeEmailLine, reservationFeePayLink, reservationFeeSigningStep } = await import("@/lib/reservation-fee");
+    const { reservationFeeEmailLine, reservationFeePayLink, reservationFeeSigningStep, reservationFeeLinkProblem } = await import("@/lib/reservation-fee");
     const fee = await chargeReservationFeeAfterSigning(admin, id);
     reservationFeeLine = reservationFeeEmailLine(fee);
     reservationFeePay = reservationFeePayLink(fee);
     if (out) out.reservationFee = reservationFeeSigningStep(fee);
     feeHandled = reservationFeeLine !== null;
+    feeProblem = reservationFeeLinkProblem(fee);
+    if (feeProblem) {
+      // The usual pay-link fallback below still runs (docs/reservation-fee.md).
+      const { logAudit } = await import("@/lib/audit.server");
+      await logAudit(null, { action: "payment.reservation_fee_link_failed", summary: `Reservation Fee link was not created after signing (${feeProblem.reason}); staff alerted`, entityType: "esign_document", entityId: id, metadata: { application_id: ag.application_id, status: fee.status } }).catch(() => {});
+    }
   } catch (e) {
     console.error("[agreement] reservation fee failed", e);
   }
@@ -1544,12 +1561,16 @@ async function sendSignedEmails(
         payment,
         reservationFeeLine,
         reservationFeePay,
+        reservationFeeLinkPending: feeProblem && !payment ? { amount: feeProblem.amount } : null,
+        attachment,
       });
     }
     await sendAgreementSignedOpsEmail({
       driverName: signerName,
       applicationId: ag.application_id as string,
       vehicle: merge.vehicle || null,
+      reservationFeeProblem: feeProblem,
+      attachment,
     });
   } catch (e) {
     console.error("[agreement] signed emails failed", e);
@@ -1694,6 +1715,47 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     const out: { reservationFee?: import("@/lib/reservation-fee").ReservationFeeSigningStep | null } = {};
     await sendSignedEmails(supabaseAdmin, data.agreementId, data.signerName, out);
     return { ok: true, alreadySigned: false, reservationFee: out.reservationFee ?? null };
+  });
+
+/**
+ * Staff (Manager+): the renter's $50 Reservation Fee Checkout link for their
+ * latest signed agreement, to copy and send by hand (Nov 18 2026, after
+ * Jonathon Boykins signed while card checkout was down). Reuses the open
+ * Checkout (under 23 hours) or creates one on the same unpaid fee row; a paid
+ * fee is never charged again (chargeReservationFeeAfterSigning). Sends
+ * nothing to anyone. Writes what signing would have written: the fee row if
+ * missing, the Stripe customer, the Checkout session, and an audit entry.
+ */
+export const staffReservationFeeLink = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
+  .handler(async ({ context, data }): Promise<{ url: string; amount: number }> => {
+    const { requireManager } = await import("@/lib/roles.server");
+    const actor = await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: rows } = await supabaseAdmin
+      .from("agreements")
+      .select("id,status,signed_at,metadata")
+      .eq("application_id", data.applicationId)
+      .eq("status", "signed")
+      .order("signed_at", { ascending: false })
+      .limit(10);
+    const ag = ((rows ?? []) as any[]).find((r) => !r?.metadata?.amendment) ?? null;
+    if (!ag) throw new Error("No Signed Agreement With A Reservation Fee.");
+    const { chargeReservationFeeAfterSigning } = await import("@/lib/reservation-fee.server");
+    const { staffReservationFeeLinkResult } = await import("@/lib/reservation-fee");
+    const fee = await chargeReservationFeeAfterSigning(supabaseAdmin, ag.id as string);
+    const res = staffReservationFeeLinkResult(fee);
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor as any, {
+      action: "payment.reservation_fee_link_copied",
+      summary: res.ok ? "Staff copied the Reservation Fee payment link (nothing was sent)" : `Staff asked for the Reservation Fee link: ${res.message}`,
+      entityType: "esign_document",
+      entityId: ag.id as string,
+      metadata: { application_id: data.applicationId, status: fee.status },
+    }).catch(() => {});
+    if (!res.ok) throw new Error(res.message);
+    return { url: res.url, amount: res.amount };
   });
 
 /** For scripts/v114-default-agreement.test.ts: the one generation step, read-only. */

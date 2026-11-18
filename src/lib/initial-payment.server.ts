@@ -10,7 +10,24 @@ type Admin = typeof import("@/integrations/supabase/client.server").supabaseAdmi
 const SETTINGS_KEY = "initial_payment_link";
 const SITE = () => publicAppOrigin();
 
-export function checkoutStripeEnv(): "sandbox" | "live" | null {
+/**
+ * The Stripe publishable key this build ships with (.env.production /
+ * .env.development). The Lovable Vite config inlines import.meta.env.VITE_*
+ * into the SERVER bundle as well as the client, but the Worker's process.env
+ * never has it at runtime. Reading only process.env made checkoutStripeEnv()
+ * return null in production, so signing skipped the Reservation Fee Checkout
+ * ("Card payments are not configured"; Jonathon Boykins, Nov 18 2026).
+ * Outside a Vite build (node/tsx tests) import.meta.env is undefined: "".
+ */
+export function buildPaymentsClientToken(): string {
+  try {
+    return String(import.meta.env.VITE_PAYMENTS_CLIENT_TOKEN ?? "");
+  } catch {
+    return "";
+  }
+}
+
+export function checkoutStripeEnv(buildToken: string = buildPaymentsClientToken()): "sandbox" | "live" | null {
   const named = process.env.STRIPE_CHECKOUT_ENV;
   if (named === "sandbox" || named === "live") {
     const secret =
@@ -18,7 +35,7 @@ export function checkoutStripeEnv(): "sandbox" | "live" | null {
     if (secret && process.env.LOVABLE_API_KEY) return named;
     return null;
   }
-  const pub = process.env.VITE_PAYMENTS_CLIENT_TOKEN || process.env.PAYMENTS_CLIENT_TOKEN || "";
+  const pub = process.env.VITE_PAYMENTS_CLIENT_TOKEN || process.env.PAYMENTS_CLIENT_TOKEN || buildToken || "";
   if (
     pub.startsWith("pk_test_") &&
     process.env.STRIPE_SANDBOX_API_KEY &&
