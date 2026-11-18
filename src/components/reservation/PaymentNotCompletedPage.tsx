@@ -213,7 +213,7 @@ export function PaymentNotCompletedPage({
             </details>
             <details className="pnc-faq" id="faq-something-goes-wrong">
               <summary>What If Something Goes Wrong?</summary>
-              <p className="pnc-faq-body">Refundable If We Can't Get You On The Road. The ${d.amount} is not refundable if you change your mind or don't show up for pickup.</p>
+              <p className="pnc-faq-body">Refundable If We Can't Get You On The Road.</p>
             </details>
             <details className="pnc-faq">
               <summary>Can I Pay Later?</summary>

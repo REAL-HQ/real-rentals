@@ -29,8 +29,8 @@
   font-weight: 600;
 }
 
-.pnc a { color: var(--pnc-brand); text-decoration: none; }
-.pnc a:hover { text-decoration: underline; }
+.pnc a:not(.pnc-btn) { color: var(--pnc-brand); text-decoration: none; }
+.pnc a:not(.pnc-btn):hover { text-decoration: underline; }
 
 .pnc-header {
   background: var(--pnc-white);
@@ -135,13 +135,26 @@
 }
 .pnc-btn:hover { text-decoration: none; }
 .pnc-btn:disabled { cursor: default; opacity: 0.85; }
-.pnc-btn-primary {
+.pnc-btn-primary,
+.pnc a.pnc-btn-primary,
+.pnc a.pnc-btn-primary:link,
+.pnc a.pnc-btn-primary:visited,
+.pnc a.pnc-btn-primary:hover,
+.pnc a.pnc-btn-primary:focus,
+.pnc a.pnc-btn-primary:active,
+.pnc button.pnc-btn-primary:disabled {
   background: var(--pnc-brand);
   color: #fff;
   border: 1px solid var(--pnc-brand);
   box-shadow: 0 8px 24px rgba(208, 48, 32, 0.35);
 }
-.pnc-btn-primary:hover { background: var(--pnc-brand-deep); border-color: var(--pnc-brand-deep); }
+.pnc-btn-primary:hover,
+.pnc a.pnc-btn-primary:hover {
+  background: var(--pnc-brand-deep);
+  border-color: var(--pnc-brand-deep);
+  color: #fff;
+  text-decoration: none;
+}
 .pnc-btn-lg { min-width: min(100%, 340px); padding: 16px 24px; font-size: 17px; }
 .pnc-btn-note {
   display: flex;

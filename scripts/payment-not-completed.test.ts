@@ -292,9 +292,13 @@ describe("page copy", () => {
     expect(html).toContain("12 Open Pickup Slots This Week");
     expect(html).toContain("2015 Ford Fusion (Silver)");
     expect(html).toContain("Reserve My Car For $50");
+    expect((html.match(/Reserve My Car For \$50/g) ?? []).length).toBe(3);
+    expect(html).toMatch(/<a class="pnc-btn pnc-btn-primary pnc-btn-lg" href="https:\/\/checkout\.stripe\.com[^"]*">Reserve My Car For \$50<\/a>/);
     expect(html).toContain(CHECKOUT_URL);
     expect(html).toContain("What If Something Goes Wrong?");
     expect(html).toContain("Refundable If We Can't Get You On The Road");
+    expect(html).not.toMatch(/not refundable if you change your mind/i);
+    expect(html).not.toMatch(/don't show up for pickup/i);
     expect(html).toContain("See Terms");
     expect(html).toContain("faq-something-goes-wrong");
     expect(html).toContain("(888) 833-8280");
@@ -304,8 +308,8 @@ describe("page copy", () => {
     expect(html).not.toMatch(/deposit/i);
     expect(html).not.toMatch(/text a real person/i);
     expect(html).not.toMatch(/testimonial|reviewer|★★★/i);
-    // The only refund mention is the one FAQ.
-    expect((html.match(/[Rr]efund/g) ?? []).length).toBe(2);
+    // The only refund mention is the one FAQ headline.
+    expect((html.match(/[Rr]efund/g) ?? []).length).toBe(1);
     expect(html.split("faq-something-goes-wrong")[0]).not.toMatch(/[Rr]efund/);
   });
 
@@ -317,6 +321,22 @@ describe("page copy", () => {
     expect(html).toContain("Pay Reservation Fee button in your Agreement Signed email");
     expect(html).not.toContain("checkout.stripe.com");
     expect(html).not.toMatch(/href="https:\/\/checkout/);
+  });
+
+  it("Reserve button labels stay white even when the CTA is a checkout link, and loading text is visible", () => {
+    const css = readFileSync("src/components/reservation/PaymentNotCompletedPage.css", "utf8");
+    expect(css).toMatch(/\.pnc a:not\(\.pnc-btn\)/);
+    expect(css).not.toMatch(/(^|\n)\.pnc a \{/);
+    expect(css).toMatch(/\.pnc a\.pnc-btn-primary(?::[a-z]+)*(,\s*\n?\.pnc a\.pnc-btn-primary(?::[a-z]+)*)*\s*,?[^;{]*\{[^}]*color:\s*#fff/s);
+    const loading = pageText(renderToStaticMarkup(createElement(PaymentNotCompletedPage, {
+      view: { ...EMPTY_PNC_VIEW, amount: 50 },
+      onReserve: async () => {},
+      reserving: true,
+      now: NOW,
+    })));
+    expect(loading).toContain("Opening Checkout");
+    expect((loading.match(/Opening Checkout/g) ?? []).length).toBe(3);
+    expect(loading).not.toContain("Reserve My Car For $50");
   });
 
   it("source files never mention an insurance decline refund, a deposit, or a renter phone", () => {
@@ -333,5 +353,7 @@ describe("page copy", () => {
     expect(all).not.toMatch(/deposit/i);
     expect(all).not.toMatch(/\+1[2-9]\d{9}/);
     expect(all).not.toMatch(/text a real person/i);
+    expect(all).not.toMatch(/not refundable if you change your mind/i);
+    expect(all).not.toMatch(/don't show up for pickup/i);
   });
 });
