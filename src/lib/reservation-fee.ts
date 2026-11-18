@@ -169,5 +169,25 @@ export function reservationFeeReturnUrls(site: string): { success: string; cance
   };
 }
 
+/**
+ * Benefits recap on the Stripe-hosted Reservation Fee checkout (line item
+ * description, left side). Every item comes from the renter-facing agreement
+ * ("What's Included in Your Rental", agreement-v114.ts). No refund wording, no
+ * carrier or broker name.
+ */
+export const RESERVATION_FEE_BENEFITS = [
+  "Car For Gig Work",
+  "Any Gig Platform",
+  "Insurance Included",
+  "Unlimited Miles",
+  "Maintenance Included",
+  "Repair Swaps",
+] as const;
+export const RESERVATION_FEE_CHECKOUT_DESCRIPTION = RESERVATION_FEE_BENEFITS.join(" · ");
+export function reservationFeeSubmitMessage(amount: number): string {
+  const n = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+  return `Your $${n} Reservation Fee holds your car and is applied to your first week's rent. You get: ${RESERVATION_FEE_BENEFITS.slice(0, -1).join(", ")}, and ${RESERVATION_FEE_BENEFITS[RESERVATION_FEE_BENEFITS.length - 1]}.`;
+}
+
 /** Auto-redirect delay on the signing page: long enough to read "Agreement Signed". */
 export const RESERVATION_FEE_REDIRECT_SECONDS = 4;

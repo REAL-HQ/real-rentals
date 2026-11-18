@@ -17,7 +17,9 @@
  *   - Never throws out to signing.
  */
 import {
+  RESERVATION_FEE_CHECKOUT_DESCRIPTION,
   RESERVATION_FEE_CHECKOUT_TTL_MS,
+  reservationFeeSubmitMessage,
   RESERVATION_FEE_REASON,
   reservationFeeNote,
   reservationFeeReturnUrls,
@@ -99,7 +101,8 @@ async function reservationFeeCheckout(
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer,
-      line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: Math.round(amount * 100), product_data: { name: "Reservation Fee (applied to your first week)" } } }],
+      line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: Math.round(amount * 100), product_data: { name: "Reservation Fee (applied to your first week)", description: RESERVATION_FEE_CHECKOUT_DESCRIPTION } } }],
+      custom_text: { submit: { message: reservationFeeSubmitMessage(amount) } },
       payment_intent_data: { setup_future_usage: "off_session", description: "Reservation Fee (applied to week 1)", metadata: meta },
       metadata: meta,
       // Return pages that explain the result (src/routes/reservation-fee.tsx).

@@ -105,6 +105,12 @@ describe("charge after signing", () => {
     expect(a).toMatchObject({ mode: "payment", customer: "cus_1", payment_intent_data: { setup_future_usage: "off_session", metadata: { reason: "reservation_fee", applicationId: "app1", agreementId: "ag1" } } });
     expect(a.line_items[0].price_data).toMatchObject({ unit_amount: 5000, currency: "usd", product_data: { name: "Reservation Fee (applied to your first week)" } });
     expect(a.payment_intent_data.metadata.paymentIds).toBe(db.state.payments[0].id);
+    // Benefits recap on the hosted checkout (left side description + above the Pay button).
+    expect(a.line_items[0].price_data.product_data.description).toBe("Car For Gig Work · Any Gig Platform · Insurance Included · Unlimited Miles · Maintenance Included · Repair Swaps");
+    expect(a.custom_text.submit.message).toBe("Your $50 Reservation Fee holds your car and is applied to your first week's rent. You get: Car For Gig Work, Any Gig Platform, Insurance Included, Unlimited Miles, Maintenance Included, and Repair Swaps.");
+    const recap = `${a.line_items[0].price_data.product_data.description} ${a.custom_text.submit.message}`;
+    expect(recap).not.toMatch(/refund|deposit|review|broker|carrier|text a real person/i);
+    expect(a.custom_text.submit.message.length).toBeLessThanOrEqual(1200);
     expect(db.state.payments[0]).toMatchObject({ type: "fee", reason: "reservation_fee", amount: 50, status: "unpaid" });
     expect(db.state.rentals[0].reservation_deposit_status).toBe("pending"); // not held until paid
     expect(db.state.agreements[0].metadata.reservation_fee_checkout.url).toBe((o as any).url);
