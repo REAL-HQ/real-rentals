@@ -50,7 +50,10 @@ export function driverLifecycle(facts: {
     applied: true,
     contacted: facts.contacted || facts.interviewComplete === true,
     documents: facts.documentsReceived === true,
-    screening: facts.screening,
+    // Approval is the screening decision. Once staff or FLEET approved the
+    // applicant (or they are at or past Approved), Screening is done even when
+    // the optional insurance-quote / screening files were never uploaded.
+    screening: facts.screening || facts.approved || facts.agreement || facts.rentalActive || facts.reserved === true,
     approved: facts.approved,
     agreement: facts.agreement,
     reserved: facts.rentalActive || facts.reserved === true,
@@ -157,4 +160,25 @@ export function fleetMarksByStage(marks: readonly FleetLifecycleMark[] | null | 
     if (!prev || Date.parse(m.at) > Date.parse(prev.at)) out[m.step] = m;
   }
   return out;
+}
+
+/**
+ * Reserved is done only when the $50 Reservation Fee is actually paid (a
+ * successful payment recorded), or the rental is already running. An open
+ * reservation row alone never turns it green while a fee is still owed,
+ * refunded or pending. A reservation staff made with no fee required
+ * (fee off or waived) still counts, as before.
+ */
+export function reservationStageDone(input: {
+  feeStatus: string | null | undefined;
+  hasReservation: boolean;
+  feeRequired?: boolean;
+  rentalActive?: boolean;
+}): boolean {
+  if (input.rentalActive === true) return true;
+  const status = String(input.feeStatus ?? "");
+  if (status === "paid") return true;
+  if (status === "waived") return input.hasReservation;
+  if (status !== "") return false; // pending, unpaid, refunded, failed: not reserved yet
+  return input.hasReservation && input.feeRequired !== true;
 }
