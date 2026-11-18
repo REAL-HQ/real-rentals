@@ -14,7 +14,8 @@
  *     The renter picks a slot. It goes through createReservationCore, the one
  *     Reserved path staff and FLEET use, so every guard applies (Approved or
  *     Active, car free, one reservation per person / car / slot, the unique
- *     indexes) and that save alone sends the booking login email, runs
+ *     indexes) and that save alone sends the Pickup Booked email (no login
+ *     details; the portal opens at pickup), runs
  *     maybeConfirmReservation (field rep text, staff emails, FLEET
  *     reservation_confirmed) and, by cron, the renter reminders. Nothing here
  *     sends anything itself. The booking is marked booked_by "renter" in the

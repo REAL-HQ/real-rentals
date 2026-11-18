@@ -8,6 +8,8 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { getMyPortalGate } from "@/lib/portal-access.functions";
+import { PORTAL_OPENS_AT_PICKUP_MESSAGE, PORTAL_OPENS_AT_PICKUP_TITLE } from "@/lib/portal-pickup-gate";
 import { useBusinessPhone } from "@/lib/company.functions";
 import {
   getDriverDashboard,
@@ -213,6 +215,29 @@ function ReadOnlyNote({ what }: { what: string }) {
   return <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{what} are disabled in Driver Preview.</div>;
 }
 
+function PortalOpensAtPickup() {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <Nav />
+      <div className="container-real py-32 text-center max-w-lg">
+        <h1 className="text-2xl font-semibold">{PORTAL_OPENS_AT_PICKUP_TITLE}</h1>
+        <p className="mt-3 text-muted-foreground text-sm leading-relaxed">{PORTAL_OPENS_AT_PICKUP_MESSAGE}</p>
+        <button
+          type="button"
+          onClick={() => {
+            void supabase.auth.signOut().then(() => {
+              if (typeof window !== "undefined") window.location.assign("/login");
+            });
+          }}
+          className="mt-6 inline-flex min-h-11 items-center rounded-lg bg-real-red text-white px-6 py-2.5 text-sm font-medium"
+        >
+          Get My Secure Link
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Portal() {
   const [session, setSession] = useState<any>(null);
   const [checking, setChecking] = useState(true);
@@ -246,6 +271,17 @@ function Portal() {
       });
   }, [session]);
 
+  // The Driver Portal opens at pickup (t466u). Checked for every signed-in
+  // non-staff account, driver role or not: Reserved creates the login well
+  // before pickup, and nothing before pickup may open the portal.
+  const fetchGate = useServerFn(getMyPortalGate);
+  const { data: gateData, isError: gateFailed } = useQuery({
+    queryKey: ["portal-gate", session?.user?.id ?? null],
+    queryFn: () => fetchGate(),
+    enabled: Boolean(session),
+  });
+  const gate = gateData?.gate ?? null;
+
   // Shares PortalBody's query key, so this costs no extra request — it only
   // lets the shell know whether there is a rental before it draws the nav.
   const fetchDashboard = usePortalRead(getDriverDashboard);
@@ -266,7 +302,7 @@ function Portal() {
     if (!visibleTabs.some((t) => t.id === tab)) setTab("dashboard");
   }, [visibleTabs, tab]);
 
-  if (checking) {
+  if (checking || (session && !gateData && !gateFailed)) {
     return (
       <div className="min-h-screen flex flex-col">
         <Nav />
@@ -294,6 +330,10 @@ function Portal() {
         </div>
       </div>
     );
+  }
+  // Fails closed for renters: an unreadable gate does not open the portal.
+  if (!staffTier && (gate === "pre_pickup" || gateFailed)) {
+    return <PortalOpensAtPickup />;
   }
   if (!isDriver && wantsPreview && availableExperiences(staffTier, false).includes("driver")) {
     return <DriverPreview tier={staffTier} />;

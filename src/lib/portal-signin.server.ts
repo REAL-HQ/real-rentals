@@ -115,7 +115,16 @@ export async function requestSignIn(admin: Admin, rawEmail: string, origin: stri
     if ((count ?? 0) >= PER_IP_HOUR) return { retryAfter: 600 };
   }
 
-  const eligible = await isEligible(admin, email);
+  // The Driver Portal opens at pickup (t466u). Someone whose applications
+  // have not picked up yet gets their secure documents link instead of a
+  // sign-in code. The public answer stays the same either way.
+  let eligible = await isEligible(admin, email);
+  let prePickup = false;
+  if (eligible) {
+    const { portalGateForEmail } = await import("@/lib/portal-pickup-gate.server");
+    prePickup = (await portalGateForEmail(admin, email)) === "pre_pickup";
+    if (prePickup) eligible = false;
+  }
   const code = randomCode();
   const token = randomToken();
   const { data: row, error } = await admin
@@ -132,6 +141,22 @@ export async function requestSignIn(admin: Admin, rawEmail: string, origin: stri
     .single();
   if (error) throw new Error("Could not start sign-in");
 
+  if (prePickup) {
+    let state = "gated";
+    try {
+      const { prePickupApplicationForEmail } = await import("@/lib/portal-pickup-gate.server");
+      const app = await prePickupApplicationForEmail(admin, email);
+      if (app) {
+        const { sendDocumentsLinkEmail } = await import("@/lib/email.server");
+        const res = await sendDocumentsLinkEmail({ to: app.email, firstName: app.full_name, applicationId: app.id });
+        state = res.ok ? "gated_link_sent" : "gated_link_failed";
+      }
+    } catch (e) {
+      console.error("[portal-signin] documents link failed", e);
+      state = "gated_link_failed";
+    }
+    await admin.from("portal_signin_challenges").update({ send_state: state }).eq("id", row.id);
+  }
   if (eligible) {
     const { sendPortalSignInEmail } = await import("@/lib/email.server");
     const link = `${origin}/login?signin=${encodeURIComponent(token)}`;
@@ -189,6 +214,16 @@ export async function verifySignIn(admin: Admin, input: { email?: string; code?:
   }
   if (!challenge) return BAD;
   const email: string = challenge.email;
+
+  // Belt and braces for a code sent before the pickup gate existed, or a
+  // rental that was cancelled since: no portal session before pickup.
+  {
+    const { portalGateForEmail } = await import("@/lib/portal-pickup-gate.server");
+    if ((await portalGateForEmail(admin, email)) === "pre_pickup") {
+      const { PORTAL_OPENS_AT_PICKUP_MESSAGE } = await import("@/lib/portal-pickup-gate");
+      return { ok: false, error: PORTAL_OPENS_AT_PICKUP_MESSAGE };
+    }
+  }
 
   // Identity: the verified email IS the person. Create only now, after proof.
   let user = await findAuthUser(admin, email);

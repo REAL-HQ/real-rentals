@@ -153,17 +153,29 @@ export const AUTOMATIONS: AutomationDef[] = [
   },
   {
     key: "booking_login_email",
-    title: "Booking Login Email",
+    title: "Pickup Booked Email",
     audience: "Applicants",
     channels: ["Email"],
-    trigger: "A Manager reserves a car for an approved applicant or renter.",
-    cadence: "Once per reservation. Existing accounts get the portal link; new accounts get a set-password link.",
-    // Empty on purpose: portal_invite must stay ungated for manual Resend Invite.
-    // Reserved checks gateFor("booking_login_email") before sendPortalInviteEmail.
+    trigger: "A car is Reserved for an approved applicant or renter (staff, FLEET, or the renter picking a pickup time).",
+    cadence: "Once per reservation. Pickup details only; it never includes login details.",
+    // Kept under its old key so the saved On/Off setting carries over.
+    // Reserved checks gateFor("booking_login_email") before sendPickupBookedEmail.
     emailWorkflows: [],
     control: { kind: "setting" },
     previews: [],
-    note: "On by default. Sends with the confirmed pickup details when Reserved is saved, whether or not a deposit is required or paid. Turn off to stop new invites from Reserved; manual Resend Invite still works. Approved never sends login details.",
+    note: "On by default. Sends the confirmed pickup details when Reserved is saved. Driver portal login details go out only once, in the Welcome To Your Driver Portal email after the rental is paid at pickup.",
+  },
+  {
+    key: "portal_welcome_email",
+    title: "Welcome To Your Driver Portal",
+    audience: "Renters",
+    channels: ["Email"],
+    trigger: "The renter has picked up the car and the pickup rent is paid (at activation, or when that payment comes in).",
+    cadence: "Once per renter, ever. Never for the $50 Reservation Fee.",
+    emailWorkflows: [],
+    control: { kind: "setting" },
+    previews: [],
+    note: "On by default. The only email with driver portal login details (a set-password link). Turn off to hold it; nobody gets portal login details before pickup either way.",
   },
   {
     key: "approval_confirmation",

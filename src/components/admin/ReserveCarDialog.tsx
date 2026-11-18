@@ -30,8 +30,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 /**
  * Shared Reserved action: from Next Step after approval, or Bookings → Booked.
- * Only approved / active applicants. Sends the Booking Login Email once when
- * automation is On. Never marks insurance or verification complete.
+ * Only approved / active applicants. Sends the Pickup Booked Email (no login
+ * details) once when automation is On. Never marks insurance or verification complete.
  */
 export function ReserveCarDialog({
   open,
@@ -121,15 +121,15 @@ export function ReserveCarDialog({
       });
       const emailNote =
         res.loginEmail === "sent"
-          ? " Booking Login Email Sent."
+          ? " Pickup Booked Email Sent."
           : res.loginEmail === "skipped"
-            ? " Login Email Already Sent Earlier."
+            ? " Pickup Booked Email Not Needed."
             : res.loginEmail === "off"
-              ? " Booking Login Email Is Off."
+              ? " Pickup Booked Email Is Off."
               : res.loginEmail === "held"
-                ? " Booking Login Email Held."
+                ? " Pickup Booked Email Held."
                 : res.loginEmail === "failed"
-                  ? " Login Email Could Not Be Sent."
+                  ? " Pickup Booked Email Could Not Be Sent."
                   : "";
       toast.success(`Reserved.${emailNote}`);
       onOpenChange(false);

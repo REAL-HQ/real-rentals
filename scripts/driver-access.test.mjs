@@ -93,9 +93,13 @@ ok(/portalAccount = "deferred"/.test(approveBody), "approval explicitly defers a
 ok(/newlyApproved[\s\S]*sendApprovalConfirmationEmail/.test(approveBody), "approval sends its separate confirmation only on a new approval");
 ok(/idempotencyKey: `approval-confirmation-\$\{args\.applicationId\}`/.test(email), "the approval confirmation has a stable per-application idempotency key");
 ok(/if \(data\.sendAgreement !== true\)/.test(approveBody) && !/data\.sendAgreement !== false/.test(approveBody), "approval never sends an agreement unless explicitly requested");
-ok(/export async function sendPortalInviteEmail/.test(email), "the Reserved invite email exists");
-ok(/reservation\?:/.test(email) && /pickupLocation/.test(email), "the login email can include confirmed pickup details");
-ok(/sendPortalInviteEmail/.test(reservations), "Reserved sends the account login email");
+// t466u: Reserved confirms the pickup but never sends login details. The one
+// login email is the Driver Portal welcome, after the pickup payment.
+const pickupBooked = email.slice(email.indexOf("export async function sendPickupBookedEmail"), email.indexOf("export async function sendPortalWelcomeEmail"));
+ok(pickupBooked.length > 100 && /pickupLocation/.test(pickupBooked), "the Reserved email confirms pickup details");
+ok(!/set-password|setPasswordUrl|\/login/.test(pickupBooked.slice(0, pickupBooked.indexOf('"Welcome To Your Driver Portal."') > 0 ? pickupBooked.indexOf('"Welcome To Your Driver Portal."') : undefined)), "the Reserved email carries no login");
+ok(/sendPickupBookedEmail/.test(reservations) && !/sendPortalInviteEmail|provisionDriverAccount\([^)]*\)[\s\S]{0,200}inviteUrl/.test(reservations), "Reserved sends the pickup email, not a login");
+ok(/export async function sendPortalWelcomeEmail/.test(email) && /idempotencyKey: `portal-welcome-\$\{args\.applicationId\}`/.test(email), "the one welcome email has a per-application idempotency key");
 const agreements = read("src/lib/agreements.functions.ts");
 const signAt = agreements.indexOf("export const signAgreement");
 const signBody = agreements.slice(signAt, agreements.indexOf("export const", signAt + 10));

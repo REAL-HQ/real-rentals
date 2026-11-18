@@ -172,9 +172,11 @@ export function ActivateRentalDialog({
       }
       if (res.auditError) toast.error(res.auditError, { duration: Infinity });
       toast.success(
-        res.accountCreated
-          ? "Rental active — driver emailed a link to set their password"
-          : "Rental active — driver notified",
+        res.portalWelcome === "sent"
+          ? "Rental Active — Driver Portal Welcome Sent"
+          : res.portalWelcome === "suppressed"
+            ? "Rental Active — No Welcome Sent"
+            : "Rental Active — Driver Portal Welcome Sends Once The Pickup Payment Is Paid",
       );
       onActivated();
     } catch (e) {

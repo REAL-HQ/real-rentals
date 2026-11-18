@@ -110,7 +110,8 @@ describe("activation welcome suppression", () => {
   test("owner-only, audited, gates both email and SMS, defaults to sending", () => {
     expect(r).toContain('if (data.suppressWelcome === true && actor.tier !== "owner")');
     expect(r).toContain("welcome_suppressed: !sendWelcome");
-    expect(r).toMatch(/if \(sendWelcome\) try \{\s*const \{ sendEmail \}/);
+    // t466u: the email side is now the one Driver Portal welcome after the pickup payment.
+    expect(r).toMatch(/if \(sendWelcome\) try \{\s*const \{ welcomeOrDeferAtActivation \}/);
     expect(r).toMatch(/if \(sendWelcome\) try \{\s*const \{ sendSms \}/);
     expect(r).toContain("const sendWelcome = data.suppressWelcome !== true;");
   });

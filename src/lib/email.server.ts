@@ -579,8 +579,9 @@ export async function sendApplicationResumeEmail(args: {
 }
 
 /**
- * Approved/active applicants: point them at /login instead of a resume token.
- * Email is prefilled only; no auto-login and no account creation from this mail.
+ * Renters who picked up (t466u): point them at /login instead of a resume
+ * token. Email is prefilled only; no auto-login and no account creation from
+ * this mail. Before pickup they get sendDocumentsLinkEmail instead.
  */
 export async function sendPortalHandoffEmail(args: {
   to: string;
@@ -591,16 +592,48 @@ export async function sendPortalHandoffEmail(args: {
   const { portalLoginUrl } = await import("@/lib/portal-handoff");
   const url = portalLoginUrl(args.email);
   const html = shell(`
-      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">You're Approved — Sign In To Your Account</h1>
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Hi ${escapeHtml(name)}, your application is approved. Sign in to your REAL RENTALS account to upload documents, sign your agreement, and finish setup. No password needed — we'll email you a sign-in code.</p>
-      <a href="${url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Sign In To Your Account</a>
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Sign In To Your Driver Portal</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Hi ${escapeHtml(name)}, your rental is underway. Sign in to your driver portal to see your payments and receipts, your signed agreement and your documents. No password needed — we'll email you a sign-in code.</p>
+      <a href="${url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Sign In To Your Driver Portal</a>
       <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${url}</span></p>`);
   return sendEmail({
     to: args.to,
-    subject: "You're Approved — Sign In To Your REAL RENTALS Account",
+    subject: "Sign In To Your REAL RENTALS Driver Portal",
     html,
     replyTo: EMAIL_REPLY_TO,
     track: { workflow: "portal_handoff" },
+  });
+}
+
+/**
+ * Before pickup (t466u): the secure link for documents, sent instead of any
+ * portal sign-in. Single-use 30-minute link, exchanged for the normal secure
+ * session when opened. Contains no login details.
+ */
+export async function sendDocumentsLinkEmail(args: {
+  to: string;
+  firstName: string | null;
+  applicationId: string;
+  /** The name just typed into a form, when this send came from one (same rule as the resume email). */
+  submittedName?: string | null;
+}): Promise<SendResult> {
+  const name = resumeGreetingName(args.firstName, args.submittedName) || "there";
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { issueResumeToken, resumeUrl: buildUrl, RECOVERY_TOKEN_MINUTES } = await import("@/lib/resume-tokens.server");
+  const url = buildUrl(await issueResumeToken(supabaseAdmin, args.applicationId, { recovery: true }));
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Your Secure Documents Link</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${escapeHtml(name)}, here's your secure link to upload or replace documents, like a clearer photo of your driver's license or a new insurance card.</p>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">Your driver portal opens once your rental is paid at pickup. We'll email your login then. For your security this link works once and expires in ${RECOVERY_TOKEN_MINUTES} minutes — you can always request a new one.</p>
+      <a href="${url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Update My Documents</a>
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">Or paste this link into your browser:<br><span style="color:#555;word-break:break-all">${url}</span></p>
+      <p style="color:#888;font-size:12px;margin:16px 0 0;line-height:1.5">If that wasn't you, you can ignore this email — nothing on your application has changed.</p>`);
+  return sendEmail({
+    to: args.to,
+    subject: "Your REAL RENTALS Secure Documents Link",
+    html,
+    replyTo: EMAIL_REPLY_TO,
+    track: { workflow: "documents_link" },
   });
 }
 
@@ -696,7 +729,8 @@ export async function sendApprovalConfirmationEmail(args: {
         ? p(`Hi ${escapeHtml(name)}, your application is approved. Your rental agreement is on its way to this email; sign it${fee.enabled ? ` and pay the $${Number.isInteger(fee.amount) ? fee.amount : fee.amount.toFixed(2)} Reservation Fee` : ""} to lock in your car.`, true)
         : `${p(`Hi ${escapeHtml(name)}, you're approved to move forward. Next, we'll confirm your rental terms by phone and send your agreement.`)}
       ${p("Our team will be in touch to assign a vehicle and schedule your pickup.")}
-      ${p("No vehicle is reserved yet. We'll send your driver portal login and pickup details once your reservation is confirmed.", true)}`}`);
+      ${p("No vehicle is reserved yet. We'll send your pickup details once your reservation is confirmed.")}
+      ${p("Once your rental is paid at pickup, we'll email your driver portal login.", true)}`}`);
   return sendEmail({
     to: args.to,
     subject: "Your REAL RENTALS Application Is Approved",
@@ -1130,49 +1164,35 @@ export async function sendAbandonedRecoveryEmail(args: AbandonedArgs): Promise<S
 type AgreementSendArgs = { to: string; firstName: string | null; url: string; vehicle: string | null };
 
 /**
- * "Your pickup is reserved — set up your portal."
+ * "Your pickup is booked." Sent once, when Reserved saves the confirmed
+ * pickup appointment (staff, FLEET, or the renter picking a time after the
+ * Reservation Fee).
  *
- * Sent once, after Reserved saves the confirmed pickup appointment. A
- * returning driver never gets it: they already have a password, and a second
- * set-password link would reset an account they were already signed into.
- *
- * inviteUrl is a one-time Supabase recovery link. When it could not be minted
- * the mail still goes out pointing at the portal, where Forgot Password gets
- * them the same place.
+ * No login details (t463u / t466u): no set-password link, no portal button.
+ * The Driver Portal opens only at pickup, and sendPortalWelcomeEmail is the
+ * one email that carries the login.
  */
-export async function sendPortalInviteEmail(args: {
+export async function sendPickupBookedEmail(args: {
   to: string;
   firstName: string | null;
-  inviteUrl: string | null;
-  reservation?: {
+  reservation: {
     pickupDate: string;
     pickupTime: string;
     pickupLocation: string;
     vehicle: string | null;
   };
-}): Promise<void> {
+}): Promise<SendResult> {
   // Wording: SOP P36 (D13, decided Nov 16 2026): list order, "license", what to
   // bring and the pickup rules. Never names an insurance broker or carrier.
   const name = escapeHtml(args.firstName || "there");
-  const url = escapeHtml(args.inviteUrl || publicAppUrl("/login"));
   const reservation = args.reservation;
   const p = (t: string) => `<p>${t}</p>`;
   let feeLine = "";
-  if (reservation) {
-    try {
-      const fee = await reservationFeeForEmail();
-      if (fee.enabled) feeLine = p(`Your $${Number.isInteger(fee.amount) ? fee.amount : fee.amount.toFixed(2)} Reservation Fee goes toward your first week's rent.`);
-    } catch { /* no fee line */ }
-  }
-  const button = `
-      <p style="margin:26px 0">
-        <a href="${url}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">
-          ${args.inviteUrl ? "Set Your Password" : "Open Your Portal"}
-        </a>
-      </p>`;
-  const portal = p("In your driver portal you can upload documents, keep your contact details current and see your payments. Insurance is included in your weekly rate.");
-  const html = reservation
-    ? `
+  try {
+    const fee = await reservationFeeForEmail();
+    if (fee.enabled) feeLine = p(`Your $${Number.isInteger(fee.amount) ? fee.amount : fee.amount.toFixed(2)} Reservation Fee goes toward your first week's rent.`);
+  } catch { /* no fee line */ }
+  const html = `
       <p>Hi ${name},</p>
       <p>Your pickup is booked.</p>
       <p><strong>Pickup:</strong> ${escapeHtml(fmtDate(reservation.pickupDate))} at ${escapeHtml(formatReservationTime(reservation.pickupTime))}<br>
@@ -1184,23 +1204,51 @@ export async function sendPortalInviteEmail(args: {
         <li>Your insurance card is handed to you at pickup, not before.</li>
         <li>Set up your rideshare account after pickup, once your rental is paid.</li>
       </ul>
-      ${feeLine}${button}${portal}
-      <p>— REAL RENTALS · (888) 833-8280</p>
-    `
-    : `
-      <p>Hi ${name},</p>
-      <p>Your REAL RENTALS driver portal is ready.</p>
-      ${button}${portal}
-      <p>We'll let you know as soon as a vehicle is assigned to you.</p>
+      ${feeLine}
+      ${p("Once your rental is paid at pickup, we'll email your driver portal login.")}
       <p>— REAL RENTALS · (888) 833-8280</p>
     `;
-  await sendEmail({
+  return sendEmail({
     to: args.to,
-    subject: reservation
-      ? `Your Pickup Is Booked: ${fmtDate(reservation.pickupDate)} at ${formatReservationTime(reservation.pickupTime)}`
-      : "Set Up Your REAL RENTALS Driver Portal",
+    subject: `Your Pickup Is Booked: ${fmtDate(reservation.pickupDate)} at ${formatReservationTime(reservation.pickupTime)}`,
     html,
-    track: { workflow: "portal_invite" },
+    track: { workflow: "pickup_booked" },
+  });
+}
+
+/**
+ * "Welcome To Your Driver Portal." The ONE email that carries portal login
+ * details (t463u / t466u), sent automatically once the renter has picked up
+ * and the pickup rent is paid (portal-welcome.server.ts). Never for the
+ * Reservation Fee.
+ *
+ * setPasswordUrl is a one-time Supabase recovery link to /set-password. When
+ * it could not be minted the button opens /login, where the sign-in code or
+ * Forgot Password gets them in.
+ */
+export async function sendPortalWelcomeEmail(args: {
+  to: string;
+  firstName: string | null;
+  setPasswordUrl: string | null;
+  vehicle: string | null;
+  applicationId: string;
+}): Promise<SendResult> {
+  const name = escapeHtml((args.firstName || "").trim().split(/\s+/)[0] || "there");
+  const loginUrl = publicAppUrl("/login");
+  const button = escapeHtml(args.setPasswordUrl || loginUrl);
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Welcome To Your Driver Portal</h1>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 16px">Hi ${name}, your rental is paid${args.vehicle ? ` and your <strong>${escapeHtml(args.vehicle)}</strong> is yours to drive` : ""}. Your driver portal is ready.</p>
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 20px">In your portal you can see your payments and receipts, your signed agreement, your insurance card and your documents, report an issue, and keep your details current.</p>
+      <a href="${button}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">${args.setPasswordUrl ? "Set Your Password" : "Sign In To Your Driver Portal"}</a>
+      <p style="color:#888;font-size:12px;margin:20px 0 0;line-height:1.5">${args.setPasswordUrl ? "This set-password link works once. " : ""}You can always sign in at <span style="color:#555;word-break:break-all">${escapeHtml(loginUrl)}</span> with a one-time code sent to this email.</p>`);
+  return sendEmail({
+    to: args.to,
+    subject: "Welcome To Your REAL RENTALS Driver Portal",
+    html,
+    replyTo: EMAIL_REPLY_TO,
+    track: { workflow: "portal_welcome" },
+    idempotencyKey: `portal-welcome-${args.applicationId}`,
   });
 }
 
