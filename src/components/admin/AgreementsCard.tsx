@@ -3,7 +3,7 @@ import { saveAgreementPdf } from "@/lib/agreement-download";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { FileSignature, Send, Ban, RefreshCw, Loader2, Download, Copy, AlertTriangle } from "lucide-react";
+import { FileSignature, Send, Ban, RefreshCw, Loader2, Download, Copy, AlertTriangle, Eye } from "lucide-react";
 import { SectionCard } from "./ui";
 import {
   listAgreements,
@@ -17,6 +17,7 @@ import {
 } from "@/lib/agreements.functions";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { AgreementPdfViewer } from "./AgreementPdfViewer";
+import { AgreementViewerDialog } from "./AgreementViewerDialog";
 import { PrepareAgreementDialog } from "./PrepareAgreementDialog";
 
 const CH: Record<string, string> = { sent: "Sent", failed: "Failed", not_attempted: "Not Attempted" };
@@ -60,6 +61,7 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
   const [preview, setPreview] = useState<PreviewRes | null>(null);
   const [busy, setBusy] = useState(false);
   const [prepOpen, setPrepOpen] = useState(false);
+  const [viewing, setViewing] = useState<{ id: string; title: string | null } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Latest signing link per agreement, held only in memory for Copy.
   const [links, setLinks] = useState<Record<string, string>>({});
@@ -151,6 +153,7 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
         </button>
       }
     >
+      {viewing && <AgreementViewerDialog agreementId={viewing.id} title={viewing.title} onClose={() => setViewing(null)} />}
       {prepOpen && (
         <PrepareAgreementDialog
           applicationId={applicationId}
@@ -333,6 +336,16 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
                   ) : null}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {a.status === "signed" && a.archive_status === "archived" ? (
+                    <button
+                      title="View Signed Agreement"
+                      data-testid="view-agreement"
+                      onClick={() => setViewing({ id: a.id, title: a.title })}
+                      className="inline-flex items-center gap-1 rounded-md border border-[#E6E6EA] px-2 py-1 text-[11px] font-semibold text-[#55555E] hover:bg-[#F4F4F6]"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> View
+                    </button>
+                  ) : null}
                   {a.status === "signed" && a.archive_status === "archived" ? (
                     <button
                       title="Download Signed PDF"

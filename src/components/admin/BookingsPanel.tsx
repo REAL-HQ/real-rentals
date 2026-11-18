@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useNavigate } from "@tanstack/react-router";
+import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { CalendarCheck, ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 import { listBookings } from "@/lib/bookings.functions";
 import {
@@ -263,9 +264,9 @@ export function BookingsPanel({
               {rows.map((b) => (
                 <tr
                   key={b.id}
-                  onClick={() => setViewing(b.id)}
                   data-booking={b.id}
-                  className="border-t border-border cursor-pointer hover:bg-[#FAFAFB]"
+                  className={`border-t border-border ${ROW_OPEN_CLASS}`}
+                  {...rowOpenProps(() => setViewing(b.id))}
                 >
                   <td className="px-2 py-2 align-top">
                     <DriverCell b={b} />

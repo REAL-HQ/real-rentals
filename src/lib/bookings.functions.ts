@@ -3,6 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { requireStaff } from "@/lib/roles.server";
 import { tierAllows } from "@/lib/roles";
+import { selectBookingAgreements, paymentBelongsToBooking, type AgreementLinkRow, type BookingRef, type SiblingRental } from "@/lib/booking-links";
 import {
   BOOKING_LIST_PAGE_SIZE,
   BOOKING_SORTS,
@@ -456,7 +457,7 @@ export const getBooking = createServerFn({ method: "POST" })
       Boolean,
     ) as string[];
 
-    const [app, veh, insp, agree, readings, media, inc, svc] = await Promise.all([
+    const [app, veh, insp, agree, siblingRes, readings, media, inc, svc] = await Promise.all([
       rental.application_id
         ? sb
             .from("applications")
@@ -478,11 +479,21 @@ export const getBooking = createServerFn({ method: "POST" })
         )
         .eq("rental_id", data.rentalId)
         .order("created_at", { ascending: false }),
+      // The agreement is prepared and signed before the rental exists, so its
+      // rental_id can be null: read it by rental OR by the same person while
+      // unlinked, then keep the ones that fit this booking (booking-links.ts).
       sb
         .from("agreements")
-        .select("id,title,status,sent_at,signed_at,voided_at,archive_status,document_id")
-        .eq("rental_id", data.rentalId)
+        .select("id,title,status,sent_at,signed_at,voided_at,archive_status,document_id,rental_id,application_id,vehicle_id")
+        .or(
+          rental.application_id
+            ? `rental_id.eq.${data.rentalId},and(rental_id.is.null,application_id.eq.${String(rental.application_id)})`
+            : `rental_id.eq.${data.rentalId}`,
+        )
         .order("created_at", { ascending: false }),
+      rental.application_id
+        ? sb.from("rentals").select("id,vehicle_id,status").eq("application_id", String(rental.application_id)).neq("id", data.rentalId)
+        : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
       // A rental may point at neither reading. PostgREST cannot parse an empty
       // `in()` list, so an unguarded ask here would fail the whole record for
       // exactly the rentals with the least on them.
@@ -528,7 +539,27 @@ export const getBooking = createServerFn({ method: "POST" })
       driverSignedAt: (i.driver_signed_at as string | null) ?? null,
       photoCount: photosByInspection.get(String(i.id)) ?? 0,
     }));
-    const agreements = ((agree.data ?? []) as Array<Record<string, unknown>>).map((a) => ({
+    const bookingRef: BookingRef = {
+      id: data.rentalId,
+      applicationId: (rental.application_id as string | null) ?? null,
+      vehicleId: (rental.vehicle_id as string | null) ?? null,
+    };
+    const siblings: SiblingRental[] = ((siblingRes.data ?? []) as Array<Record<string, unknown>>).map((x) => ({
+      id: String(x.id),
+      vehicleId: (x.vehicle_id as string | null) ?? null,
+      status: (x.status as string | null) ?? null,
+    }));
+    const agreementRows = selectBookingAgreements<Record<string, unknown> & AgreementLinkRow>(
+      ((agree.data ?? []) as Array<Record<string, unknown>>).map((a) => ({
+        ...a,
+        rental_id: (a.rental_id as string | null) ?? null,
+        application_id: (a.application_id as string | null) ?? null,
+        vehicle_id: (a.vehicle_id as string | null) ?? null,
+      })),
+      bookingRef,
+      siblings,
+    );
+    const agreements = agreementRows.map((a) => ({
       id: String(a.id),
       title: (a.title as string | null) ?? null,
       status: (a.status as string | null) ?? null,
@@ -583,8 +614,14 @@ export const getBooking = createServerFn({ method: "POST" })
       const [pay, charges] = await Promise.all([
         sb
           .from("payments")
-          .select("id,type,status,amount,balance_due,due_date,paid_date,net_collected")
-          .eq("rental_id", data.rentalId)
+          .select("id,type,status,amount,balance_due,due_date,paid_date,net_collected,rental_id,driver_id")
+          // payments.driver_id is the applications id; a fee paid before the
+          // reservation existed has no rental_id yet.
+          .or(
+            rental.application_id
+              ? `rental_id.eq.${data.rentalId},and(rental_id.is.null,driver_id.eq.${String(rental.application_id)})`
+              : `rental_id.eq.${data.rentalId}`,
+          )
           .order("due_date", { ascending: false, nullsFirst: false }),
         sb
           .from("toll_charges")
@@ -592,7 +629,15 @@ export const getBooking = createServerFn({ method: "POST" })
           .eq("rental_id", data.rentalId)
           .order("occurred_at", { ascending: false, nullsFirst: false }),
       ]);
-      const payments = ((pay.data ?? []) as Array<Record<string, unknown>>).map((p) => ({
+      const payments = ((pay.data ?? []) as Array<Record<string, unknown>>)
+        .filter((p) =>
+          paymentBelongsToBooking(
+            { rental_id: (p.rental_id as string | null) ?? null, driver_id: (p.driver_id as string | null) ?? null },
+            bookingRef,
+            siblings,
+          ),
+        )
+        .map((p) => ({
         id: String(p.id),
         type: (p.type as string | null) ?? null,
         status: (p.status as string | null) ?? null,

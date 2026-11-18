@@ -69,6 +69,7 @@ export async function holdReservationForFee(admin: Admin, applicationId: string,
     reservation_deposit_payment_id: fee.id,
   }).eq("id", res.id).eq("status", "reserved");
   await admin.from("payments").update({ rental_id: res.id }).eq("id", fee.id).is("rental_id", null);
+  await (await import("@/lib/booking-links.server")).linkOrphansToRental(admin, res.id as string);
   try {
     const { maybeConfirmReservation } = await import("@/lib/reservation-confirmation.server");
     await maybeConfirmReservation(admin, { rentalId: res.id });

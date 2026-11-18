@@ -1028,6 +1028,9 @@ export async function issueAgreement(
     .select("id")
     .single();
   if (error) throw new Error(error.message);
+  // Agreements are prepared before the rental exists; if the renter already has
+  // a live reservation/rental, tie this one to it now so the booking shows it.
+  if (!amendment) await (await import("@/lib/booking-links.server")).linkAgreementToLiveRental(admin, row.id as string);
 
   await admin.from("esign_recipients").insert({
     document_id: row.id,

@@ -19,11 +19,13 @@ import {
   updateDocumentMeta,
   deleteDocument,
   setDocumentReview,
+  getApplicationSummary,
   type VaultDocument,
   type DocCategory,
 } from "@/lib/documents.functions";
 import { DocumentViewer, type ViewerDoc } from "./DocumentViewer";
 import { MicroLabel } from "./ui";
+import { PdfThumbnail } from "./PdfThumbnail";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DriverDocumentUploadDialog } from "./DriverDocumentUploadDialog";
@@ -90,6 +92,20 @@ function fmtSize(n: number | null) {
     : `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
+
+function isPdfDoc(d: VaultDocument): boolean {
+  return (d.mime_type ?? "").includes("pdf") || (d.file_name ?? "").toLowerCase().endsWith(".pdf");
+}
+
+/**
+ * An agreement our own e-sign flow produced and archived (uploaded_by_role is
+ * "system"). Signing it already proved who signed and when (name, IP, SHA-256
+ * on the agreement record), so there is nothing for a person to verify. The
+ * manual Verify action exists for PAPER agreements, where a person has to look.
+ */
+function isSystemSigned(d: VaultDocument | undefined): boolean {
+  return !!d && d.category === "agreement" && d.signed_agreement === true && d.uploaded_by_role === "system";
+}
 
 function isImageDoc(d: VaultDocument): boolean {
   if ((d.mime_type ?? "").startsWith("image/")) return true;
@@ -172,6 +188,41 @@ export function ApplicantDocuments({
   const [viewing, setViewing] = useState<ViewerDoc | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [uploadingCategory, setUploadingCategory] = useState<DocCategory | null>(null);
+  // The application is a record, not a file: fetched as a document when no file is filed.
+  const fetchSummary = useServerFn(getApplicationSummary);
+  const [appSummary, setAppSummary] = useState<{ base64: string; fileName: string; submittedAt: string | null } | null>(null);
+  const hasApplicationFile = docs.some((d) => d.is_current && d.category === "rental_application");
+  useEffect(() => {
+    let live = true;
+    if (hasApplicationFile) {
+      setAppSummary(null);
+      return;
+    }
+    fetchSummary({ data: { applicationId } })
+      .then((r) => live && setAppSummary(r))
+      .catch(() => live && setAppSummary(null));
+    return () => {
+      live = false;
+    };
+  }, [applicationId, hasApplicationFile, fetchSummary]);
+
+  function openSummary() {
+    if (!appSummary) return;
+    const bin = atob(appSummary.base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    setViewing({
+      url: URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })),
+      fileName: appSummary.fileName,
+      mimeType: "application/pdf",
+      title: "Rental Application",
+      meta: [
+        { label: "Status", value: "Submitted" },
+        ...(appSummary.submittedAt ? [{ label: "Submitted", value: fmtDate(appSummary.submittedAt) ?? "—" }] : []),
+        { label: "Source", value: "Generated from the submitted application" },
+      ],
+    });
+  }
 
   const refresh = useCallback(async () => {
     await onRefresh();
@@ -320,8 +371,14 @@ export function ApplicantDocuments({
         {ORDER.map((key) => {
           const meta = DOC_CATEGORIES.find((c) => c.key === key)!;
           const d = current.get(key);
+          const summaryCard = key === "rental_application" && !d && !!appSummary;
+          const systemSigned = isSystemSigned(d);
           const st = statusOf(d);
-          const style = STATUS_STYLE[st];
+          const style = summaryCard
+            ? { label: "Submitted", cls: "bg-sky-50 text-sky-700 border-sky-200" }
+            : systemSigned && st === "uploaded"
+              ? { label: "E-Signed", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" }
+              : STATUS_STYLE[st];
           const working = busy === key || (d && busy === d.id);
           // Signed agreements are permanent records: no Replace and no Needs
           // New, and the server refuses both anyway. A wrong agreement is
@@ -334,8 +391,8 @@ export function ApplicantDocuments({
             >
               <button
                 type="button"
-                disabled={!d}
-                onClick={() => d && open(d, meta.label)}
+                disabled={!d && !summaryCard}
+                onClick={() => (d ? open(d, meta.label) : summaryCard ? openSummary() : undefined)}
                 className="relative block w-full aspect-[16/10] bg-[#FAFAFB] border-b border-[#EDEDF0] disabled:cursor-default group"
               >
                 {d && d.url && isImageDoc(d) ? (
@@ -344,10 +401,14 @@ export function ApplicantDocuments({
                     alt={meta.label}
                     className="absolute inset-0 w-full h-full object-cover group-hover:opacity-90 transition-opacity"
                   />
+                ) : d && d.url && isPdfDoc(d) ? (
+                  <PdfThumbnail url={d.url} label={meta.label} />
                 ) : d ? (
                   <span className="absolute inset-0 grid place-items-center text-[#9A9AA3]">
                     <FileText className="w-7 h-7" />
                   </span>
+                ) : summaryCard ? (
+                  <PdfThumbnail base64={appSummary!.base64} label={meta.label} />
                 ) : (
                   <span className="absolute inset-0 grid place-items-center text-[11px] text-[#C4C4CB]">
                     Not Received
@@ -375,12 +436,35 @@ export function ApplicantDocuments({
                   <div className="text-[10px] text-[#9A9AA3]">
                     Screenshot Only. Not Verified With Uber, Lyft Or Any Platform.
                   </div>
+                ) : key === "agreement" && systemSigned ? (
+                  <div className="text-[10px] text-[#9A9AA3]" data-testid="system-signed-note">
+                    Signed Through Our E-Sign Flow. No Manual Verification Needed.
+                  </div>
+                ) : key === "rental_application" && summaryCard ? (
+                  <div className="text-[10px] text-[#9A9AA3]">
+                    Generated From The Submitted Application. Nothing To Upload Or Verify.
+                  </div>
                 ) : key === "agreement" ? (
                   <div className="text-[10px] text-[#9A9AA3]">
                     Verify Only A Fully Signed Agreement. Verification Is Audited And Counts As The
                     Signed Agreement For Activation.
                   </div>
                 ) : null}
+
+                {summaryCard && (
+                  <div className="text-[11px] text-[#9A9AA3] space-y-0.5">
+                    <div className="truncate">{appSummary!.fileName}</div>
+                    {appSummary!.submittedAt && <div>{fmtDate(appSummary!.submittedAt)}</div>}
+                    <button
+                      type="button"
+                      onClick={openSummary}
+                      data-testid="view-application"
+                      className="mt-1 inline-flex items-center gap-1 rounded-md border border-[#E6E6EA] px-2 py-1 text-[11px] font-semibold text-[#55555E] hover:bg-[#F4F4F6]"
+                    >
+                      <FileText className="w-3 h-3" /> View Application
+                    </button>
+                  </div>
+                )}
 
                 {d && (
                   <div className="text-[11px] text-[#9A9AA3] space-y-0.5">
@@ -407,7 +491,7 @@ export function ApplicantDocuments({
                 )}
 
                 <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
-                  {d && st !== "verified" && (
+                  {d && st !== "verified" && !systemSigned && (
                     <button
                       onClick={() => void decide(d, "verified")}
                       disabled={!!working}
