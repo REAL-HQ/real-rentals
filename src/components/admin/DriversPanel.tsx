@@ -58,6 +58,7 @@ import { StalledApplications } from "./StalledApplications";
 import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
+import { staffReservationFeeLink } from "@/lib/agreements.functions";
 import {
   mergeDuplicateApplications,
   approveApplication,
@@ -3834,13 +3835,13 @@ function cardLinkText(ensure: () => Promise<CachedCardLink>) {
  * Copy starts in the click turn. The link is minted inside the clipboard item,
  * so Safari still treats the write as part of the gesture.
  */
-function copyCardLink(ensureLink: () => Promise<string>, success: string) {
+function copyCardLink(ensureLink: () => Promise<string>, success: string, failure: (e: unknown) => string = () => "Failed to copy link") {
   const clipboard = navigator.clipboard;
   const writeText = () =>
     ensureLink()
       .then((link) => clipboard.writeText(link))
       .then(() => toast.success(success))
-      .catch(() => toast.error("Failed to copy link"));
+      .catch((e) => toast.error(failure(e)));
   if (!clipboard?.write || typeof ClipboardItem === "undefined") {
     writeText();
     return;
@@ -3878,6 +3879,15 @@ const handoffItemClass =
 
 function CardOnFileActions({ driver, onUpdate, canIssue }: { driver: any; onUpdate: (p: any) => void; canIssue: boolean }) {
   const { ensure: ensureLink, cached } = useCardOnFileLink(driver.id);
+  const feeLink = useServerFn(staffReservationFeeLink);
+  // One server call per click, shared by the clipboard item and its fallback.
+  function copyReservationFeeLink() {
+    let pending: Promise<string> | null = null;
+    const ensure = () => (pending ??= feeLink({ data: { applicationId: driver.id } }).then((r) => r.url));
+    copyCardLink(ensure, "Reservation Fee link copied. Nothing was sent to the renter.", (e) =>
+      e instanceof Error && e.message && e.message.length < 140 ? e.message : "Could not create the Reservation Fee link",
+    );
+  }
   const hasCard = !!driver.card_last4;
   const [chargeOpen, setChargeOpen] = useState(false);
   const [preparing, setPreparing] = useState(false);
@@ -3935,6 +3945,9 @@ function CardOnFileActions({ driver, onUpdate, canIssue }: { driver: any; onUpda
             <>
               <DropdownMenuItem onClick={copyLink}>
                 <Copy className="w-4 h-4 mr-2" /> Copy Card-On-File Link
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={copyReservationFeeLink} title="The $50 Reservation Fee checkout for the latest signed agreement. Copies the link only; nothing is sent.">
+                <Copy className="w-4 h-4 mr-2" /> Copy Reservation Fee Link
               </DropdownMenuItem>
               {canHandoff && !ready && (
                 <DropdownMenuItem onSelect={prepare} disabled={preparing}>

@@ -6,6 +6,7 @@ import { fmtDate, formatReservationTime } from "@/lib/date-format";
 
 /** Canonical renter-facing sender identity. The only place it is defined. */
 import { PORTAL_PAY_URL } from "@/lib/portal-pay-link";
+import { driverRecordPath } from "@/lib/admin-record-links";
 import { findDisallowedOutboundUrls, outboundRefusalMessage, publicAppUrl } from "@/lib/public-app-url";
 
 export const EMAIL_FROM = "REAL RENTALS <team@drivereal.com>";
@@ -45,7 +46,15 @@ type SendArgs = {
   noticeTimeout?: boolean;
   /** Combined with the 5s notice abort. Live sends omit noticeTimeout, so this is ignored. */
   signal?: AbortSignal;
+  /**
+   * Files attached to the email (Resend `attachments`, base64 content). Only
+   * the signed-agreement emails use this (signed-agreement-pdf.server.ts).
+   * Omitted everywhere else, so those requests are unchanged.
+   */
+  attachments?: EmailAttachment[];
 };
+
+export type EmailAttachment = { filename: string; content: string; contentType?: string };
 
 export type SendResult = {
   ok: boolean;
@@ -138,7 +147,7 @@ function noticeFetchSignal(noticeTimeout: boolean | undefined, signal: AbortSign
   return signal ? AbortSignal.any([timeout, signal]) : timeout;
 }
 
-export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey, noticeTimeout, signal }: SendArgs): Promise<SendResult> {
+export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, track, idempotencyKey, noticeTimeout, signal, attachments }: SendArgs): Promise<SendResult> {
   // Company phone in templates resolves from Settings → Business Phone.
   let html = rawHtml;
   if (html.includes("{{company_phone}}")) {
@@ -204,6 +213,9 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
         html,
         text,
         reply_to: replyTo ?? EMAIL_REPLY_TO,
+        ...(attachments?.length
+          ? { attachments: attachments.map((f) => ({ filename: f.filename, content: f.content, ...(f.contentType ? { content_type: f.contentType } : {}) })) }
+          : {}),
       }),
       ...(noticeSignal ? { signal: noticeSignal } : {}),
     });
@@ -389,7 +401,7 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
       : `New Driver Lead: ${name} — ${marketLabel}`;
 
   const base = args.adminBaseUrl || "https://drivereal.com";
-  const adminLink = `${base}/admin?driver=${applicationId}`;
+  const adminLink = `${base}${driverRecordPath(applicationId)}`;
   const telHref = phone ? `tel:${phone.replace(/[^\d+]/g, "")}` : null;
   const mailHref = email ? `mailto:${email}` : null;
   const platformsStr = platforms && platforms.length ? platforms.join(", ") : "—";
@@ -1218,6 +1230,14 @@ export async function sendAgreementSignedEmail(args: {
   reservationFeePay?: { url: string; amount: number } | null;
   /** An updated agreement for an active rental: when the new rate starts. */
   amendmentLine?: string | null;
+  /**
+   * The agreement prints a Reservation Fee but its payment link could not be
+   * created at signing. The email must not say "You're All Set"; it says the
+   * payment link follows (staff get the alert in the ops email).
+   */
+  reservationFeeLinkPending?: { amount: number } | null;
+  /** The signed agreement PDF (signed-agreement-pdf.server.ts), when it is available. */
+  attachment?: EmailAttachment | null;
 }): Promise<void> {
   const name = (args.firstName || "").trim().split(" ")[0] || "there";
   if (args.amendmentLine !== undefined) {
@@ -1225,11 +1245,14 @@ export async function sendAgreementSignedEmail(args: {
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Updated Agreement Signed</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">Thanks ${escapeHtml(name)}. Your updated rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} is signed and saved to your driver file, next to your original agreement.</p>${args.amendmentLine ? `
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml(args.amendmentLine)}</p>` : ""}`);
-    await sendEmail({ to: args.to, subject: "Your REAL RENTALS Updated Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" } });
+    await sendEmail({ to: args.to, subject: "Your REAL RENTALS Updated Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" }, ...(args.attachment ? { attachments: [args.attachment] } : {}) });
     return;
   }
   const money = args.payment ? args.payment.amount.toLocaleString("en-US", { style: "currency", currency: "USD" }) : "";
-  const pay = args.reservationFeeLine
+  const pendingFee = !args.reservationFeeLine && args.reservationFeeLinkPending && args.reservationFeeLinkPending.amount > 0 ? args.reservationFeeLinkPending : null;
+  const pay = pendingFee
+    ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml(reservationFeeLinkPendingLine(pendingFee.amount))}</p>`
+    : args.reservationFeeLine
     ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml(args.reservationFeeLine)}</p>${args.reservationFeePay && /^https:\/\//i.test(args.reservationFeePay.url) ? `
       <a href="${escapeHtml(args.reservationFeePay.url)}" style="display:inline-block;background:#D03020;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Pay ${escapeHtml(args.reservationFeePay.amount.toLocaleString("en-US", { style: "currency", currency: "USD" }))} Reservation Fee</a>` : ""}`
     : args.payment
@@ -1243,23 +1266,40 @@ export async function sendAgreementSignedEmail(args: {
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0">We'll send you access to your driver portal when your account is ready.</p>`;
   // While the Reservation Fee is unpaid the car is not held yet, so the heading
   // says so (card t315s1710) instead of "You're All Set".
-  const feeUnpaid = !!(args.reservationFeePay && /^https:\/\//i.test(args.reservationFeePay.url));
+  const feeUnpaid = !!(args.reservationFeePay && /^https:\/\//i.test(args.reservationFeePay.url)) || !!pendingFee;
   const heading = feeUnpaid ? "One Last Step: Reserve Your Car" : "Agreement Signed — You're All Set";
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${heading}</h1>
       ${pay}
-      <p style="color:#444;font-size:15px;line-height:1.55;margin:16px 0 12px">Thanks ${escapeHtml(name)}. Your rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} ${tail}`);
-  await sendEmail({ to: args.to, subject: feeUnpaid ? "Your REAL RENTALS Agreement Is Signed: One Last Step" : "Your REAL RENTALS Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" } });
+      <p style="color:#444;font-size:15px;line-height:1.55;margin:16px 0 12px">Thanks ${escapeHtml(name)}. Your rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} ${tail}${args.attachment ? `
+      <p style="color:#666;font-size:13px;line-height:1.5;margin:14px 0 0">A copy of your signed agreement is attached as a PDF.</p>` : ""}`);
+  await sendEmail({ to: args.to, subject: feeUnpaid ? "Your REAL RENTALS Agreement Is Signed: One Last Step" : "Your REAL RENTALS Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" }, ...(args.attachment ? { attachments: [args.attachment] } : {}) });
 }
 
-export async function sendAgreementSignedOpsEmail(args: { driverName: string; applicationId: string; vehicle: string | null; amendment?: boolean }): Promise<void> {
-  const url = `https://drivereal.com/admin?driver=${encodeURIComponent(args.applicationId)}`;
+/** Renter copy when the Reservation Fee link could not be created at signing (staff are alerted). */
+export function reservationFeeLinkPendingLine(amount: number): string {
+  return `Next step: your $${amount.toFixed(2)} Reservation Fee holds your car and is 100% applied to your first week's rent. We'll send you a secure payment link shortly.`;
+}
+
+export async function sendAgreementSignedOpsEmail(args: {
+  driverName: string;
+  applicationId: string;
+  vehicle: string | null;
+  amendment?: boolean;
+  /** The Reservation Fee payment link could not be created at signing: staff must send one. */
+  reservationFeeProblem?: { amount: number; reason: string } | null;
+  /** The signed agreement PDF, when available. */
+  attachment?: EmailAttachment | null;
+}): Promise<void> {
+  const url = `https://drivereal.com${driverRecordPath(args.applicationId)}`;
   const what = args.amendment ? "updated rental agreement (amendment)" : "rental agreement";
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:20px;color:#111">${args.amendment ? "Updated Agreement Signed" : "Rental Agreement Signed"}</h1>
       <p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px"><strong>${escapeHtml(args.driverName)}</strong> signed their ${what}${args.vehicle ? ` · ${escapeHtml(args.vehicle)}` : ""}.</p>
+      ${args.reservationFeeProblem ? `<p style="color:#B42318;background:#FEF3F2;border:1px solid #FECDCA;border-radius:8px;padding:10px 12px;font-size:14px;line-height:1.5;margin:0 0 12px"><strong>Action needed:</strong> the $${args.reservationFeeProblem.amount.toFixed(2)} Reservation Fee payment link was NOT created (${escapeHtml(args.reservationFeeProblem.reason)}). The renter was not sent to checkout. Open the driver record, use Payment Card → Copy Reservation Fee Link, and send it to them.</p>` : ""}
+      <p style="color:#666;font-size:13px;line-height:1.5;margin:0 0 12px">${args.attachment ? "The signed agreement is attached as a PDF." : "The signed PDF was not ready to attach; it is on the driver record."}</p>
       <a href="${url}" style="display:inline-block;background:#111;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Open Driver Record</a>`);
-  await sendEmail({ to: DEFAULT_OPS_INBOX, subject: `${args.amendment ? "Signed Updated Agreement" : "Signed Agreement"} — ${args.driverName}`, html, track: { workflow: "esign_signed_ops" } });
+  await sendEmail({ to: DEFAULT_OPS_INBOX, subject: `${args.reservationFeeProblem ? "ACTION NEEDED: " : ""}${args.amendment ? "Signed Updated Agreement" : "Signed Agreement"} — ${args.driverName}`, html, track: { workflow: "esign_signed_ops" }, ...(args.attachment ? { attachments: [args.attachment] } : {}) });
 }
 
 /**

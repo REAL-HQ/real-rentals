@@ -134,6 +134,7 @@ import { fmtDateTime } from "@/lib/date-format";
 import { displayPersonName, personInitials } from "@/lib/display-normalize";
 import { AdminGlobalSearch } from "@/components/admin/AdminGlobalSearch";
 import type { SearchKind } from "@/components/admin/admin-search";
+import { legacyDriverRecordId } from "@/lib/admin-record-links";
 
 /** Deep-link parameters the Overview cards and applicant rows send. */
 type AdminSearch = {
@@ -242,6 +243,14 @@ export const Route = createFileRoute("/admin")({
     const out: AdminSearch = {};
     if (str(raw.tab)) out.tab = str(raw.tab);
     if (str(raw.id)) out.id = str(raw.id);
+    // Older staff emails linked /admin?driver=<application id>, a parameter
+    // this page never read, so "Open Driver Record" landed on the dashboard
+    // (t445u). Read it as the driver's record.
+    const legacyDriver = legacyDriverRecordId(raw);
+    if (legacyDriver && !out.tab && !out.id) {
+      out.tab = "drivers";
+      out.id = legacyDriver;
+    }
     if (str(raw.filter)) out.filter = str(raw.filter);
     // The router JSON-parses search values, so its own links round-trip as
     // the string "1" while a hand-typed or emailed ?add=1 arrives as the
