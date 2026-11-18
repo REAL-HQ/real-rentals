@@ -50,6 +50,58 @@ async function driverForRental(rentalId: string | undefined) {
   };
 }
 
+/**
+ * A $50 Reservation Fee is paid before any rental exists, so its intent carries
+ * applicationId and no rentalId. Without this the renter got no receipt and
+ * staff got no email when a lead paid.
+ */
+async function driverForApplication(applicationId: string | undefined) {
+  if (!applicationId || !/^[0-9a-f-]{36}$/i.test(applicationId)) return null;
+  const admin: any = getSupabase();
+  const { data } = await admin
+    .from('applications')
+    .select('email, full_name, phone, card_brand, card_last4, card_exp_month, card_exp_year')
+    .eq('id', applicationId)
+    .maybeSingle();
+  if (!data?.email) return null;
+  return {
+    email: data.email as string,
+    applicationId,
+    plate: null as string | null,
+    name: (data.full_name as string | null) ?? null,
+    phone: (data.phone as string | null) ?? null,
+    brand: data.card_brand as string | null,
+    last4: data.card_last4 as string | null,
+    expMonth: data.card_exp_month as number | null,
+    expYear: data.card_exp_year as number | null,
+  };
+}
+
+/** Staff email once per paid Reservation Fee (after the receipt claim, so a replay sends nothing). */
+async function alertTeamReservationFeePaid(
+  driver: { name: string | null; applicationId?: string | null } | null,
+  amount: number,
+  applicationId: string | undefined,
+) {
+  try {
+    const { getLeadAlertPrefs, sendEmail } = await import('@/lib/email.server');
+    const prefs = await getLeadAlertPrefs();
+    if (!prefs.recipients.length) return;
+    const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const who = driver?.name || 'A lead';
+    const appId = driver?.applicationId ?? applicationId ?? null;
+    const link = appId ? `https://drivereal.com/admin?tab=drivers&id=${encodeURIComponent(appId)}` : null;
+    await sendEmail({
+      to: prefs.recipients,
+      subject: `Reservation Fee Paid — $${amount.toFixed(2)} — ${who}`,
+      html: `<p><strong>${esc(who)}</strong> paid the $${amount.toFixed(2)} Reservation Fee.</p>${link ? `<p><a href="${link}">Open Their Profile</a></p>` : ''}`,
+      track: { workflow: 'reservation_fee_paid' },
+    });
+  } catch (err) {
+    console.error('[payments] reservation fee staff alert failed', err);
+  }
+}
+
 function cardExpiresSoon(m: number | null, y: number | null): boolean {
   if (!m || !y) return false;
   const now = new Date();
@@ -359,7 +411,11 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
     read: false,
   }).then(() => {}, () => {});
 
-  const driver = await driverForRental(rentalId);
+  const driver = (await driverForRental(rentalId))
+    ?? (reason === 'reservation_fee' ? await driverForApplication(pi.metadata?.applicationId as string | undefined) : null);
+  if (status === 'paid' && reason === 'reservation_fee') {
+    await alertTeamReservationFeePaid(driver, amount, pi.metadata?.applicationId as string | undefined);
+  }
   if (driver) {
     if (status === 'paid') {
       const sendReceipt = () => sendPaymentReceiptEmail({
