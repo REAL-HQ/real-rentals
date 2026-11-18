@@ -19,6 +19,7 @@
 import { tableMissing } from "@/lib/fleet-api.server";
 import {
   deliveryState,
+  parseLicenseNumber,
   parseStaffTerms,
   STAFF_TERMS_EVENT,
   STAFF_TERMS_TABLE,
@@ -40,11 +41,87 @@ export type StaffTermsDeps = {
   dispatch?: (admin: Admin, ids: string[]) => Promise<unknown>;
   audit?: (actor: StaffActor, e: AuditEntry) => Promise<void>;
   resolveName?: (admin: Admin, actor: StaffActor) => Promise<string>;
+  save?: typeof saveConfirmedTerms;
 };
 
+export type SavedTermsPatch = Partial<Record<"vehicle_id" | "weekly_rent" | "deposit_amount" | "contract_start_date" | "contract_end_date" | "license_number", string | number>>;
+
+/**
+ * Confirm Terms is where staff type the agreed weekly rate, start date,
+ * deposit and vehicle, so it saves them to the applicant before the agreement
+ * check reads the records. Before this, the dialog only compared what staff
+ * typed with records nobody had filled in, and refused with "Fix First:
+ * Vehicle assignment, Weekly rate, ..." for the very values on screen
+ * (Rosa, Jonathon Boykins, Nov 18 2026).
+ *
+ *  - The scheduled end date is kept when it is still a valid end for the new
+ *    start (after it, at least four weeks); otherwise it becomes start + 4 weeks.
+ *  - A licence number is written only into a blank record (never overwrites).
+ *  - The vehicle must exist, not be archived and not be on another driver's
+ *    active rental.
+ * Only changed columns are written, with one audit entry. Nothing is sent.
+ */
+export async function saveConfirmedTerms(
+  admin: Admin,
+  input: { applicationId: string; terms: StaffTerms; licenseNumber?: string | null; actor: StaffActor },
+  deps: Pick<StaffTermsDeps, "audit"> = {},
+): Promise<{ ok: true; patch: SavedTermsPatch } | { ok: false; status: number; error: string }> {
+  const { terms } = input;
+  const app = await admin.from("applications")
+    .select("id,vehicle_id,weekly_rent,deposit_amount,contract_start_date,contract_end_date,license_number")
+    .eq("id", input.applicationId).maybeSingle();
+  if (app.error || !app.data) return { ok: false, status: 503, error: "Could Not Read The Applicant." };
+  const v = await admin.from("vehicles").select("id,archived_at").eq("id", terms.vehicle_id).maybeSingle();
+  if (v.error) return { ok: false, status: 503, error: "Could Not Read The Vehicle." };
+  if (!v.data || v.data.archived_at) return { ok: false, status: 409, error: "That Vehicle Is Not In The Fleet. Choose Another." };
+  const busy = await admin.from("rentals").select("id,application_id").eq("vehicle_id", terms.vehicle_id).eq("status", "active").limit(5);
+  if (busy.error) return { ok: false, status: 503, error: "Could Not Check The Vehicle's Rentals." };
+  if ((busy.data ?? []).some((r: any) => r.application_id !== input.applicationId))
+    return { ok: false, status: 409, error: "That Vehicle Is On Another Driver's Active Rental. Choose Another." };
+
+  const { defaultRentalEndIso, rentalEndBeforeMinimum } = await import("@/lib/agreement-dates");
+  const cur = app.data as Record<string, any>;
+  const curEnd = cur.contract_end_date ? String(cur.contract_end_date).slice(0, 10) : null;
+  const endKeeps = curEnd && curEnd > terms.start_date && !rentalEndBeforeMinimum(terms.start_date, curEnd);
+  const want: SavedTermsPatch = {
+    vehicle_id: terms.vehicle_id,
+    weekly_rent: terms.weekly_rate,
+    deposit_amount: terms.deposit,
+    contract_start_date: terms.start_date,
+  };
+  if (!endKeeps) {
+    const end = defaultRentalEndIso(terms.start_date);
+    if (end) want.contract_end_date = end;
+  }
+  const licence = parseLicenseNumber(input.licenseNumber);
+  if (licence && !String(cur.license_number ?? "").trim()) want.license_number = licence;
+
+  const equal = (before: unknown, val: string | number) =>
+    typeof val === "number"
+      ? before != null && before !== "" && Math.abs(Number(before) - val) < 0.005
+      : String(before ?? "").toLowerCase() === val.toLowerCase() || (val.length === 10 && String(before ?? "").slice(0, 10) === val);
+  const patch: SavedTermsPatch = {};
+  for (const [k, val] of Object.entries(want) as [keyof SavedTermsPatch, string | number][]) {
+    if (!equal(cur[k], val)) patch[k] = val;
+  }
+  if (!Object.keys(patch).length) return { ok: true, patch };
+  const up = await admin.from("applications").update(patch).eq("id", input.applicationId).is("deleted_at", null).select("id");
+  if (up.error) return { ok: false, status: 503, error: "Could Not Save The Terms To The Applicant. Nothing Was Sent." };
+  const audit = deps.audit ?? (async (actor: StaffActor, e: AuditEntry) => (await import("@/lib/audit.server")).logAudit(actor as any, e as any));
+  await audit(input.actor, {
+    action: "application.terms_saved_by_staff",
+    summary: "Confirm Terms saved the agreed rental details to the applicant",
+    entityType: "application",
+    entityId: input.applicationId,
+    // The field names only: a licence number is not copied into the audit log.
+    metadata: { fields: Object.keys(patch), source: "move_forward" },
+  }).catch(() => {});
+  return { ok: true, patch };
+}
+
 export type ConfirmResult =
-  | { ok: true; duplicate: boolean; retried: boolean; eventId: string; delivery: ReturnType<typeof deliveryState>; payload: Record<string, unknown> }
-  | { ok: false; status: number; error: string; mismatches?: { field: string; confirmed: unknown; agreement: unknown }[]; blockers?: SendCheck["blockers"] };
+  | { ok: true; duplicate: boolean; retried: boolean; eventId: string; delivery: ReturnType<typeof deliveryState>; payload: Record<string, unknown>; saved?: SavedTermsPatch }
+  | { ok: false; status: number; error: string; mismatches?: { field: string; confirmed: unknown; agreement: unknown }[]; blockers?: SendCheck["blockers"]; saved?: SavedTermsPatch };
 
 /** Differences between what staff confirmed and what the agreement will print. */
 export function staffTermsMismatches(t: StaffTerms, check: SendCheck) {
@@ -97,7 +174,7 @@ export function staffTermsPayload(row: { id: string; application_id: string; cli
 
 const COLS = "id,application_id,terms_key,weekly_rate,reservation_fee,deposit,start_date,vehicle_id,vehicle_label,clicked_by,clicked_by_name,clicked_at,fleet_delivery_id";
 
-export async function confirmStaffTerms(admin: Admin, input: { applicationId: string; terms: unknown; actor: StaffActor; retry?: boolean }, deps: StaffTermsDeps = {}): Promise<ConfirmResult> {
+export async function confirmStaffTerms(admin: Admin, input: { applicationId: string; terms: unknown; actor: StaffActor; retry?: boolean; licenseNumber?: string | null }, deps: StaffTermsDeps = {}): Promise<ConfirmResult> {
   const now = (deps.now ?? (() => new Date()))();
   const parsed = parseStaffTerms(input.terms);
   if (!parsed.ok) return { ok: false, status: 400, error: parsed.error };
@@ -118,16 +195,22 @@ export async function confirmStaffTerms(admin: Admin, input: { applicationId: st
 
   let row = prior.data as any;
   let created = false;
+  let saved: SavedTermsPatch | undefined;
   if (!row) {
     const hasOpenOrSigned = deps.hasOpenOrSigned ?? (await import("@/lib/agreements.functions")).hasOpenOrSignedAgreement;
     if (await hasOpenOrSigned(admin, leadId)) return { ok: false, status: 409, error: "An Agreement Is Already Out Or Signed. Nothing Was Sent." };
+    // What staff typed becomes the applicant's rental details first, so the
+    // agreement check below reads them (see saveConfirmedTerms).
+    const save = await (deps.save ?? saveConfirmedTerms)(admin, { applicationId: leadId, terms, licenseNumber: input.licenseNumber ?? null, actor: input.actor }, { audit: deps.audit });
+    if (!save.ok) return save;
+    saved = save.patch;
     let check: SendCheck;
     try {
       check = await (deps.check ?? (await import("@/lib/agreements.functions")).agreementSendCheck)(admin, leadId);
     } catch (e) {
       return { ok: false, status: 409, error: `The Agreement Cannot Be Prepared: ${String((e as Error)?.message ?? e).slice(0, 200)}` };
     }
-    if (check.blockers.length) return { ok: false, status: 409, error: `Fix Before Moving Forward: ${check.blockers.map((b) => b.label).join(", ")}.`, blockers: check.blockers };
+    if (check.blockers.length) return { ok: false, status: 409, error: `Saved. Still Needed Before The Agreement Can Send: ${check.blockers.map((b) => b.label).join(", ")}.`, blockers: check.blockers, saved };
     const mismatches = staffTermsMismatches(terms, check);
     if (mismatches.length) {
       return {
@@ -135,6 +218,7 @@ export async function confirmStaffTerms(admin: Admin, input: { applicationId: st
         status: 409,
         error: `The Agreement Would Print Different ${mismatches.map((m) => FIELD_LABEL[m.field] ?? m.field).join(", ")}. Update The Applicant's Rental Details First, Then Move Forward.`,
         mismatches,
+        saved,
       };
     }
     const name = await (deps.resolveName ?? resolveStaffName)(admin, input.actor);
@@ -219,7 +303,7 @@ export async function confirmStaffTerms(admin: Admin, input: { applicationId: st
   } else if (input.retry) {
     await audit(input.actor, { action: "application.terms_confirmation_resent", summary: `FLEET notice for the confirmed terms re-queued by staff`, entityType: "application", entityId: leadId, metadata: { event_id: row.id, fleet_delivery_id: deliveryId } }).catch(() => {});
   }
-  return { ok: true, duplicate: !created, retried: !created && !!input.retry, eventId: row.id, delivery: deliveryId ? deliveryState(after?.data) : "failed", payload };
+  return { ok: true, duplicate: !created, retried: !created && !!input.retry, eventId: row.id, delivery: deliveryId ? deliveryState(after?.data) : "failed", payload, ...(saved ? { saved } : {}) };
 }
 
 /** The row's state plus the dialog prefill. */
