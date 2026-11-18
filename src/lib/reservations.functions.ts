@@ -571,12 +571,12 @@ export const getOpenReservationForApplication = createServerFn({ method: "POST" 
 
 export const listVehiclesForReservation = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<Array<{ id: string; unit_number: string | null; year: number | null; make: string | null; model: string | null; status: string | null; weekly_rate: number | null }>> => {
+  .handler(async ({ context }): Promise<Array<{ id: string; unit_number: string | null; year: number | null; make: string | null; model: string | null; license_plate: string | null; vin: string | null; status: string | null; weekly_rate: number | null }>> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("vehicles")
-      .select("id,unit_number,year,make,model,status,weekly_rate,archived_at")
+      .select("id,unit_number,year,make,model,license_plate,vin,status,weekly_rate,archived_at")
       .is("archived_at", null)
       .in("status", ["available", "ready", "onboarding"])
       .order("unit_number", { ascending: true })
@@ -600,6 +600,8 @@ export const listVehiclesForReservation = createServerFn({ method: "GET" })
         year: v.year ?? null,
         make: v.make ?? null,
         model: v.model ?? null,
+        license_plate: v.license_plate ?? null,
+        vin: v.vin ?? null,
         status: v.status ?? null,
         weekly_rate: typeof v.weekly_rate === "number" ? v.weekly_rate : null,
       }));

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AppSelect } from "@/components/ui/app-select";
+import { VehicleCombobox, type VehicleComboboxVehicle } from "./VehicleCombobox";
 import { MOVE_FORWARD_LABEL, parseStaffTerms, type StaffTermsState } from "@/lib/staff-terms";
 
 export type MoveForwardSubmit = (args: { terms: { weekly_rate: string; reservation_fee: string; deposit: string; start_date: string; vehicle_id: string }; retry: boolean }) => Promise<{ ok: boolean; error?: string; delivery?: string }>;
@@ -26,7 +26,7 @@ export function TermsConfirmedControl({
 }: {
   state: StaffTermsState | null;
   enabled: boolean;
-  vehicles: { id: string; label: string }[];
+  vehicles: VehicleComboboxVehicle[];
   onSubmit: MoveForwardSubmit;
   disabledReason?: string;
   defaultOpen?: boolean;
@@ -55,7 +55,7 @@ export function TermsConfirmedControl({
   const sent = latest?.delivery === "sent" || latest?.delivery === "sending";
   const vehicleOptions = vehicles.some((v) => v.id === vehicle) || !vehicle
     ? vehicles
-    : [{ id: vehicle, label: prefill?.vehicle_label || "Assigned Vehicle" }, ...vehicles];
+    : [{ id: vehicle, make: prefill?.vehicle_label || "Assigned Vehicle" }, ...vehicles];
 
   async function retry() {
     if (!latest || busy) return;
@@ -136,11 +136,15 @@ export function TermsConfirmedControl({
               <Input id="mf-deposit" inputMode="decimal" value={deposit} onChange={(e) => setDeposit(e.target.value)} />
             </div>
             <div className="col-span-2 grid min-w-0 gap-1.5">
-              <Label htmlFor="mf-vehicle">Vehicle</Label>
-              <AppSelect id="mf-vehicle" className="w-full min-w-0 overflow-hidden [&>span]:min-w-0 [&>span]:truncate" value={vehicle} onChange={(e) => setVehicle(e.target.value)}>
-                <option value="" disabled>Choose Vehicle</option>
-                {vehicleOptions.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
-              </AppSelect>
+              <Label id="mf-vehicle-label">Vehicle</Label>
+              <VehicleCombobox
+                vehicles={vehicleOptions}
+                value={vehicle || null}
+                onChange={(id) => setVehicle(id ?? "")}
+                allowNone={false}
+                placeholder="Choose Vehicle"
+                aria-label="Vehicle"
+              />
             </div>
           </div>
           {state?.blockers?.length ? (

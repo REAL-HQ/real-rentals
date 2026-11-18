@@ -6,6 +6,9 @@ import { RecordNumber } from "./RecordNumber";
 import { ReplacementAgreement } from "./ReplacementAgreement";
 import { SWAP_ENABLED, SWAP_REASONS } from "@/lib/record-numbers";
 import { fmtDate } from "@/lib/date-format";
+import { supabase } from "@/integrations/supabase/client";
+import { VEHICLE_COMBOBOX_SELECT } from "@/lib/vehicle-label";
+import { VehicleCombobox, type VehicleComboboxVehicle } from "./VehicleCombobox";
 import {
   listAssignmentHistory,
   swapRentalVehicle,
@@ -161,6 +164,13 @@ function SwapForm({
   const swap = useServerFn(swapRentalVehicle);
   const operation = useRef<{ key: string; id: string } | null>(null);
   const [vehicle, setVehicle] = useState("");
+  const [choices, setChoices] = useState<VehicleComboboxVehicle[]>([]);
+  useEffect(() => {
+    let live = true;
+    void supabase.from("vehicles").select(VEHICLE_COMBOBOX_SELECT).is("archived_at", null).order("unit_number")
+      .then(({ data }) => { if (live) setChoices(((data ?? []) as VehicleComboboxVehicle[]).filter((v) => !["retired", "sold"].includes(String(v.status)))); });
+    return () => { live = false; };
+  }, []);
   const [reason, setReason] = useState<(typeof SWAP_REASONS)[number]>("Replacement");
   const [notes, setNotes] = useState("");
   const [effective, setEffective] = useState("");
@@ -228,10 +238,12 @@ function SwapForm({
       }}
       className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-[#EDEDF0] bg-white p-3"
     >
-      <label className="text-[12px] text-[#55555E]">
+      <div className="text-[12px] text-[#55555E]">
         Replacement Vehicle
-        <input className={field} value={vehicle} onChange={(e) => setVehicle(e.target.value)} autoComplete="off" />
-      </label>
+        <div className="mt-1">
+          <VehicleCombobox vehicles={choices} value={vehicle || null} onChange={(id) => setVehicle(id ?? "")} allowNone={false} placeholder="Choose Replacement Vehicle" aria-label="Replacement Vehicle" />
+        </div>
+      </div>
       <label className="text-[12px] text-[#55555E]">
         Reason
         <AppSelect aria-label="Reason" className={field} value={reason} onChange={(e) => setReason(e.target.value as (typeof SWAP_REASONS)[number])}>
