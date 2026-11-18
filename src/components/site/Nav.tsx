@@ -116,7 +116,14 @@ export function Nav() {
           {!session && !isCityPage && (
             <PhoneLink
               placement="header"
-              className="inline-flex min-h-11 min-w-11 items-center justify-center text-[13px] font-medium text-muted-foreground hover:text-foreground transition"
+              // The logo drops 28px below the bar (Logo `top-[28px]`), so the
+              // row's center sits above the logo's white-bar portion. Shifting
+              // the phone down by half that drop centers it on the part of the
+              // logo above the hero. Desktop/tablet only (md+, where the number
+              // shows); on phones the bare icon stays level with Book Now.
+              className={`inline-flex min-h-11 min-w-11 items-center justify-center text-[13px] font-medium text-muted-foreground hover:text-foreground transition${
+                location.pathname !== "/admin" ? " md:relative md:top-[14px]" : ""
+              }`}
             >
               {(d) => (
                 <>
