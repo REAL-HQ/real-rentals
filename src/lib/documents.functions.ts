@@ -1225,3 +1225,27 @@ export const setDocumentReview = createServerFn({ method: "POST" })
 
     return { ok: true as const };
   });
+
+/**
+ * The submitted application as an on-screen document. The application is a
+ * record, not an uploaded file, so the Documents grid asks for it here when no
+ * file is filed under rental_application. Manager and above, like the vault.
+ */
+export const getApplicationSummary = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }): Promise<{ base64: string; fileName: string; submittedAt: string | null } | null> => {
+    const { requireManager } = await import("@/lib/roles.server");
+    await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: app } = await supabaseAdmin.from("applications").select("*").eq("id", data.applicationId).maybeSingle();
+    const { applicationWasSubmitted } = await import("@/lib/application-summary");
+    if (!app || !applicationWasSubmitted(app as Record<string, unknown>)) return null;
+    const { createApplicationSummaryPdf } = await import("@/lib/application-summary-pdf.server");
+    const bytes = await createApplicationSummaryPdf(app as Record<string, unknown>);
+    return {
+      base64: Buffer.from(bytes).toString("base64"),
+      fileName: `rental-application-${String(app.id).slice(0, 8)}.pdf`,
+      submittedAt: (app.created_at as string | null) ?? null,
+    };
+  });

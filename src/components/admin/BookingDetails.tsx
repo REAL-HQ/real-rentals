@@ -22,9 +22,8 @@ import { BookingActions } from "@/components/admin/BookingActions";
 import { CloseoutPreview } from "@/components/admin/CloseoutPreview";
 import { CLOSEOUT_PREVIEW_ENABLED, showsCloseoutPreview } from "@/lib/closeout-preview-flag";
 import { listConditionMedia } from "@/lib/inspections.functions";
-import { getAgreementPdf } from "@/lib/agreements.functions";
 import { listAuditLog, type AuditRow } from "@/lib/team.functions";
-import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
+import { AgreementViewerDialog } from "@/components/admin/AgreementViewerDialog";
 import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { Row, TwoCol } from "./VehicleProfileFields";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
@@ -665,21 +664,7 @@ function Inspections({ d }: { d: BookingDetail }) {
  * question: is this booking papered or not.
  */
 function Agreements({ d }: { d: BookingDetail }) {
-  const pdf = useServerFn(getAgreementPdf);
-  const [base64, setBase64] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-
-  async function open(id: string) {
-    setBusy(id);
-    try {
-      const r = await pdf({ data: { agreementId: id } });
-      setBase64((r as { base64: string }).base64);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not open that agreement.");
-    } finally {
-      setBusy(null);
-    }
-  }
+  const [viewing, setViewing] = useState<{ id: string; title: string | null } | null>(null);
 
   return (
     <div className="space-y-5">
@@ -719,13 +704,11 @@ function Agreements({ d }: { d: BookingDetail }) {
                   a.archiveStatus === "archived" &&
                   (d.canManage ? (
                     <button
-                      onClick={() => void open(a.id)}
-                      disabled={busy === a.id}
+                      onClick={() => setViewing({ id: a.id, title: a.title })}
                       data-testid="open-agreement-pdf"
-                      className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] px-2.5 py-1 text-[12px] font-medium disabled:opacity-50"
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] px-2.5 py-1 text-[12px] font-medium"
                     >
-                      {busy === a.id && <Loader2 className="w-3 h-3 animate-spin" />} Open Signed
-                      PDF
+                      View Signed Agreement
                     </button>
                   ) : (
                     <p
@@ -743,27 +726,8 @@ function Agreements({ d }: { d: BookingDetail }) {
         )}
       </SectionCard>
 
-      {base64 && (
-        <div
-          className="fixed inset-0 z-[90] overflow-y-auto bg-black/80 p-4"
-          onClick={() => setBase64(null)}
-        >
-          <div
-            className="mx-auto max-w-3xl rounded-xl bg-white p-3"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-end">
-              <button
-                onClick={() => setBase64(null)}
-                aria-label="Close"
-                className="rounded-md p-1 text-[#9A9AA3] hover:text-[#111114]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <AgreementPdfViewer base64={base64} />
-          </div>
-        </div>
+      {viewing && (
+        <AgreementViewerDialog agreementId={viewing.id} title={viewing.title} onClose={() => setViewing(null)} />
       )}
     </div>
   );

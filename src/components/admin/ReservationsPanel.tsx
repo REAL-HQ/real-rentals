@@ -3,7 +3,8 @@ import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { CalendarCheck, Loader2, MoreHorizontal } from "lucide-react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { EmptyState } from "./ui";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { VehicleStaffPhoto } from "./VehicleStaffPhoto";
@@ -136,6 +137,7 @@ function RecordReservationFeeDialog({
 }
 
 export function ReservationsPanel({ canManage = false }: { canManage?: boolean }) {
+  const navigate = useNavigate();
   const load = useServerFn(listReservations);
   const cancel = useServerFn(cancelReservation);
   const [rows, setRows] = useState<ReservationRow[]>([]);
@@ -229,7 +231,13 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
               {rows.map((row) => {
                 const fee = reservationFeeLabel(row.depositStatus, feeOn);
                 return (
-                  <tr key={row.id} className="border-b border-[#EDEDF0] last:border-0" data-testid="reserved-row" data-reservation-id={row.id}>
+                  <tr
+                    key={row.id}
+                    className={`border-b border-[#EDEDF0] last:border-0 ${ROW_OPEN_CLASS}`}
+                    data-testid="reserved-row"
+                    data-reservation-id={row.id}
+                    {...rowOpenProps(() => void navigate({ to: "/admin", search: { tab: "bookings", view: "past", id: row.id } as never }))}
+                  >
                     <td className="px-2 py-2 align-middle font-medium text-[#111114]">
                       <span className="block truncate">{row.driverName ?? "—"}</span>
                       {row.bookedBy === "renter" ? (

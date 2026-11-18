@@ -558,6 +558,8 @@ export async function activateRentalCore(
     }
     if (!rentalId) throw new Error("The rental could not be confirmed. Check Bookings before retrying.");
     const rental = { id: rentalId };
+    // Agreement signed (and fee paid) before this rental existed: tie them to it.
+    await import("@/lib/booking-links.server").then((m) => m.linkOrphansToRental(supabaseAdmin, rentalId as string)).catch(() => {});
     if (process.env.RENTER_LIFECYCLE_NOTICES_ENABLED === "true") await import("@/lib/renter-lifecycle-notices.server").then((m) => m.enrollRenterLifecycleNotice({ event: "rental_started", applicationId: data.applicationId, rentalId: rental.id })).catch((e) => console.error("[renter-lifecycle] rental_started", e));
 
     // 7. Tell the driver the rental is active. No login details here

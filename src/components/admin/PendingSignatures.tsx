@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { useServerFn } from "@tanstack/react-start";
 import { getPendingSignatures } from "@/lib/agreement-pending-signatures.functions";
 import { AGREEMENT_PENDING_SIGNATURE_ENABLED } from "@/lib/agreement-pending-signatures-flag";
@@ -11,6 +12,7 @@ export function PendingSignatures() {
 }
 
 function PendingSignaturesLive() {
+  const navigate = useNavigate();
   const load = useServerFn(getPendingSignatures);
   const [list, setList] = useState<PendingSignatureList | null>(null);
   const [error, setError] = useState(false);
@@ -60,7 +62,11 @@ function PendingSignaturesLive() {
             </thead>
             <tbody>
               {list.rows.map((row) => (
-                <tr key={row.agreementId} className="border-b border-[#EDEDF0] last:border-b-0 align-top">
+                <tr
+                  key={row.agreementId}
+                  className={`border-b border-[#EDEDF0] last:border-b-0 align-top ${row.driverSearch ? ROW_OPEN_CLASS : ""}`}
+                  {...(row.driverSearch ? rowOpenProps(() => void navigate({ to: "/admin", search: row.driverSearch as never })) : {})}
+                >
                   <td className="px-3 py-2">
                     {row.driverSearch ? (
                       <Link to="/admin" search={row.driverSearch} className="font-medium text-[#111114] underline">

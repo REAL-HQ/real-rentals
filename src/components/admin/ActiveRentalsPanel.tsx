@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { useServerFn } from "@tanstack/react-start";
 import { CalendarCheck, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
@@ -54,6 +55,7 @@ function isAbortError(e: unknown): boolean {
 }
 
 export function ActiveRentalsPanel() {
+  const navigate = useNavigate();
   const fetchBoard = useServerFn(listActiveRentals);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
   const [rows, setRows] = useState<ActiveRentalRow[]>([]);
@@ -183,7 +185,12 @@ export function ActiveRentalsPanel() {
                 const fee = fees.get(row.id);
                 const lateDue = (fee?.lateFee ?? 0) > 0 && !fee?.waived;
                 return (
-                  <tr key={row.id} className="border-b border-[#EDEDF0] last:border-0" data-testid="active-rental-row">
+                  <tr
+                    key={row.id}
+                    className={`border-b border-[#EDEDF0] last:border-0 ${ROW_OPEN_CLASS}`}
+                    data-testid="active-rental-row"
+                    {...rowOpenProps(() => void navigate({ to: "/admin", search: { tab: "bookings", view: "past", id: row.id } as never }))}
+                  >
                     <td className="px-2 py-2 align-middle font-medium text-[#111114]">
                       <span className="block truncate">{row.driverName}</span>
                     </td>

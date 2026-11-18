@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { AgreementPdfViewer } from "@/components/admin/AgreementPdfViewer";
 import { X, Download, ZoomIn, ZoomOut, ExternalLink, FileText } from "lucide-react";
 
 // Look at the document without leaving the page.
@@ -157,20 +158,15 @@ export function DocumentViewer({ doc, onClose }: { doc: ViewerDoc | null; onClos
             </div>
           </div>
         ) : pdf ? (
-          <object
-            data={doc.url}
-            type="application/pdf"
-            className="w-full h-full min-h-[70vh] rounded-lg bg-white"
-          >
-            <div className="h-full grid place-items-center text-center text-white/70 text-[13px] p-6">
-              <div>
-                This browser will not preview PDFs.
-                <a href={doc.url} target="_blank" rel="noreferrer" className="underline ml-1">
-                  Open It In A New Tab
-                </a>
-              </div>
-            </div>
-          </object>
+          <div className="mx-auto max-w-4xl rounded-lg bg-[#EDEDF0]" data-testid="doc-pdf-pages">
+            <AgreementPdfViewer url={doc.url} />
+            <p className="px-4 pb-3 text-center text-[11px] text-[#55555E]">
+              Not displaying?
+              <a href={doc.url} target="_blank" rel="noreferrer" className="underline ml-1">
+                Open It In A New Tab
+              </a>
+            </p>
+          </div>
         ) : image ? (
           <div className="min-h-full grid place-items-center">
             <img

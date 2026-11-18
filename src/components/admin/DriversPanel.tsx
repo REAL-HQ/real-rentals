@@ -178,6 +178,7 @@ import {
   type CachedCardLink,
 } from "@/lib/card-link-cache";
 import { AgreementsCard } from "./AgreementsCard";
+import { rowOpenProps } from "@/lib/row-click";
 import { ContactStatusCell } from "./ContactStatusCell";
 import { RecordPaymentDialog } from "./RentPaymentActions";
 import { RenterPayments } from "./RenterPayments";
@@ -1465,8 +1466,8 @@ setDocCounts(requiredDocCounts(rows));
                 const rows = [
                   <tr
                     key={a.id}
-                    onClick={() => openDriver(a)}
-                    className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 transition-colors"
+                    {...rowOpenProps(() => openDriver(a))}
+                    className="cursor-pointer border-b border-border last:border-0 hover:bg-soft/60 focus-visible:outline-none focus-visible:bg-soft/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D03020]/40 transition-colors"
                   >
                     <td className="px-2 py-2.5 font-medium whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5 max-w-[105px] max-lg:max-w-[12rem]">
@@ -1499,20 +1500,14 @@ setDocCounts(requiredDocCounts(rows));
                         </button>
                       )}
                     </td>
-                    <td
-                      className="px-3 py-2.5 whitespace-nowrap"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <td className="px-3 py-2.5 whitespace-nowrap">
                       <ContactStatusCell
                         applicationId={a.id}
                         row={a}
                         onSaved={(st) => applyContactStatus(a.id, st)}
                       />
                     </td>
-                    <td
-                      className="px-3 py-2.5 whitespace-nowrap"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <td className="px-3 py-2.5 whitespace-nowrap">
                       <Select
                         value={a.status || ""}
                         onValueChange={(status) => {
@@ -1579,10 +1574,7 @@ setDocCounts(requiredDocCounts(rows));
                         </SelectContent>
                       </Select>
                     </td>
-                    <td
-                      className="px-3 py-2.5 whitespace-nowrap"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <td className="px-3 py-2.5 whitespace-nowrap">
                       {a.phone ? (
                         <a
                           href={`tel:${a.phone}`}
@@ -1594,7 +1586,7 @@ setDocCounts(requiredDocCounts(rows));
                         <span className="text-[11px] text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="px-2 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-2 py-2.5 whitespace-nowrap">
                       {a.email ? (
                         <a href={`mailto:${a.email}`} title={a.email} className="flex items-center gap-1 min-w-0 text-[11px] text-muted-foreground hover:text-foreground hover:underline">
                           <Mail className="w-3 h-3 shrink-0" />
@@ -1638,7 +1630,7 @@ setDocCounts(requiredDocCounts(rows));
                         </>
                       ) : "—"}
                     </td>
-                    <td className="px-2 py-2.5 text-right sticky right-0 bg-white" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-2 py-2.5 text-right sticky right-0 bg-white">
                       <DropdownMenu>
                         <DropdownMenuTrigger className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-soft text-muted-foreground">
                           <MoreVertical className="w-4 h-4" />
@@ -1732,7 +1724,7 @@ setDocCounts(requiredDocCounts(rows));
                     rows.push(
                       <tr
                         key={h.id}
-                        onClick={() => openDriver(h)}
+                        {...rowOpenProps(() => openDriver(h))}
                         className="cursor-pointer bg-soft/30 border-b border-border text-xs text-muted-foreground hover:bg-soft/60"
                       >
                         <td className="pl-10 pr-4 py-2 italic">↳ earlier submission</td>

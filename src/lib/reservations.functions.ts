@@ -353,6 +353,8 @@ export async function createReservationCore(
   }
 
   await admin.from("vehicles").update({ status: "reserved" }).eq("id", data.vehicleId).neq("status", "rented");
+  // The agreement and the Reservation Fee were created before this row: tie them to it.
+  await (await import("@/lib/booking-links.server")).linkOrphansToRental(admin, inserted.id);
 
   const loginEmail = await maybeSendPickupBookedEmail(admin, data.applicationId, {
     pickupDate: pickup,
