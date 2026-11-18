@@ -373,7 +373,8 @@ describe("page", () => {
     expect(html).toContain("team@drivereal.com");
     expect(html).toContain("Your pickup is confirmed once your insurance is approved. We&#x27;ll text you if anything changes.");
     expect(html).toContain("Refundable If We Can&#x27;t Get You On The Road");
-    expect(html).toContain("The $50 is not refundable if you change your mind or don&#x27;t show up for pickup.");
+    expect(html).not.toMatch(/not refundable if you change your mind/i);
+    expect(html).not.toMatch(/don(?:&#x27;|')t show up for pickup/i);
     expect(html).not.toMatch(/declined/i);
     expect(html).toContain("minus the $50");
     expect(html).toMatch(/Payment received\.<br\/?>\s*Your car is being held for you\./);
@@ -417,5 +418,7 @@ describe("page", () => {
     const all = files.map((f) => readFileSync(f, "utf8")).join("\n");
     expect(all).toContain("Refundable If We Can't Get You On The Road");
     expect(all).not.toMatch(/declined/i);
+    expect(all).not.toMatch(/not refundable if you change your mind/i);
+    expect(all).not.toMatch(/don't show up for pickup/i);
   });
 });
