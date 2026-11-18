@@ -564,17 +564,18 @@
 .pnc-sticky { display: none; }
 
 @media (max-width: 719px) {
-  .pnc { padding-bottom: 118px; }
+  .pnc.pnc-has-sticky { padding-bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
   .pnc-sticky {
-    display: block;
+    display: none;
     position: fixed;
     left: 0; right: 0; bottom: 0;
     z-index: 20;
     background: #0B0B0D;
     border-top: 1px solid #2A2A30;
-    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
     box-shadow: 0 -10px 30px rgba(0,0,0,.28);
   }
+  .pnc-sticky.pnc-sticky-visible { display: block; }
   .pnc-sticky .pnc-btn { width: 100%; box-shadow: none; }
   .pnc-sticky .pnc-btn-note {
     margin-top: 6px;
@@ -599,7 +600,9 @@
   .pnc-insurance-kicker { flex-direction: row; gap: 8px; }
   .pnc-insurance-card h2 { font-size: 40px; }
   .pnc-insurance-card p { font-size: 17px; }
-  .pnc-urgency-inner { grid-template-columns: 1fr 1fr 1fr; gap: 14px; padding: 8px 20px 28px; }
+  .pnc-urgency-inner { grid-template-columns: 1fr 1fr 1fr; gap: 14px; padding: 8px 20px 28px; justify-content: center; }
+  .pnc-urgency-inner[data-count="1"] { grid-template-columns: minmax(280px, 560px); }
+  .pnc-urgency-inner[data-count="2"] { grid-template-columns: 1fr 1fr; }
   .pnc-stat-value { min-height: 2.5em; }
   .pnc-block h2 { font-size: 26px; }
   .pnc-fee-lead { max-width: none; }

@@ -20,6 +20,7 @@ import {
   openSlotsThisWeekLine,
   publicPhotoUrls,
   reserveLabel,
+  stickyReserveVisible,
 } from "../src/lib/payment-not-completed";
 import { reservationFeeReturnUrls } from "../src/lib/reservation-fee";
 import { DEFAULT_PICKUP_SCHEDULE, PICKUP_SCHEDULE_SETTINGS_KEY } from "../src/lib/pickup-schedule";
@@ -168,7 +169,17 @@ describe("helpers", () => {
   });
 });
 
+describe("sticky reserve bar", () => {
+  it("shows only after the hero CTA is off-screen and hides again when the bottom CTA is in view", () => {
+    expect(stickyReserveVisible(true, false)).toBe(false);
+    expect(stickyReserveVisible(false, false)).toBe(true);
+    expect(stickyReserveVisible(false, true)).toBe(false);
+    expect(stickyReserveVisible(true, true)).toBe(false);
+  });
+});
+
 describe("lookup", () => {
+
   it("unpaid Reservation Fee session → car, published photos, city count, this-week slots, live checkout; nothing personal", async () => {
     const db = fakeDb(seed());
     const st = fakeStripe();
@@ -318,16 +329,43 @@ describe("page copy", () => {
     expect(html).toContain("Your Car Isn't Reserved Yet");
     expect(html).not.toContain("Cars Available");
     expect(html).not.toContain("Open Pickup Slot");
+    expect(html).not.toContain('id="car-heading"');
+    expect(html).not.toContain("This is the car you signed for");
+    expect(html).toContain('data-count="1"');
     expect(html).toContain("Pay Reservation Fee button in your Agreement Signed email");
     expect(html).not.toContain("checkout.stripe.com");
     expect(html).not.toMatch(/href="https:\/\/checkout/);
+    expect(html).toContain('data-testid="pnc-sticky"');
+    expect(html).toMatch(/data-testid="pnc-sticky"[^>]*hidden/);
+    expect(html).not.toContain("pnc-sticky-visible");
+    expect(html).not.toContain("pnc-has-sticky");
   });
+
+  it("shows the car block when a photo exists, and marks three urgency cards when counts are live", () => {
+    const html = pageText(renderToStaticMarkup(createElement(PaymentNotCompletedPage, {
+      view: {
+        ok: true, alreadyPaid: false, processing: false, amount: 50,
+        vehicle: { label: "2015 Ford Fusion (Silver)", photos: ["https://cdn.example.com/fusion-1.jpg"], bodyType: "sedan" },
+        city: "Tampa", availableCars: 5, openSlotsThisWeek: 12,
+        linkExpiresAt: null, checkoutUrl: null,
+      },
+      now: NOW,
+    })));
+    expect(html).toContain('id="car-heading"');
+    expect(html).toContain("2015 Ford Fusion (Silver)");
+    expect(html).toContain('data-count="3"');
+  });
+
 
   it("Reserve button labels stay white even when the CTA is a checkout link, and loading text is visible", () => {
     const css = readFileSync("src/components/reservation/PaymentNotCompletedPage.css", "utf8");
     expect(css).toMatch(/\.pnc a:not\(\.pnc-btn\)/);
     expect(css).not.toMatch(/(^|\n)\.pnc a \{/);
     expect(css).toMatch(/\.pnc a\.pnc-btn-primary(?::[a-z]+)*(,\s*\n?\.pnc a\.pnc-btn-primary(?::[a-z]+)*)*\s*,?[^;{]*\{[^}]*color:\s*#fff/s);
+    expect(css).toMatch(/\.pnc-sticky\.pnc-sticky-visible\s*\{\s*display:\s*block/);
+    expect(css).toMatch(/\.pnc\.pnc-has-sticky\s*\{\s*padding-bottom:/);
+    expect(css).toMatch(/\.pnc-urgency-inner\[data-count="1"\]/);
+    expect(css).not.toMatch(/@media \(max-width: 719px\)[^{]*\{[^}]*\.pnc-sticky \{[^}]*display:\s*block/s);
     const loading = pageText(renderToStaticMarkup(createElement(PaymentNotCompletedPage, {
       view: { ...EMPTY_PNC_VIEW, amount: 50 },
       onReserve: async () => {},

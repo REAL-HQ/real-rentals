@@ -146,6 +146,11 @@ export function linkExpiryLabel(expiresAt: string | null | undefined, now: Date 
   return `Your Link Is Good For ${span}`;
 }
 
+/** Sticky Reserve bar: show only after the hero CTA is off-screen and before the bottom CTA comes into view. */
+export function stickyReserveVisible(heroCtaInView: boolean, finalCtaInView: boolean): boolean {
+  return !heroCtaInView && !finalCtaInView;
+}
+
 export function paidReturnPath(sessionId: string | null): string {
   return sessionId ? `/reservation-fee?status=paid&session_id=${encodeURIComponent(sessionId)}` : "/reservation-fee?status=paid";
 }

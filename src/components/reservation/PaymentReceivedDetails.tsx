@@ -28,6 +28,8 @@ type OkView = Extract<PaymentReceivedView, { ok: true }>;
 export const INSURANCE_PICKUP_NOTE = "Your pickup is confirmed once your insurance is approved. We'll text you if anything changes.";
 export const PREFERRED_PICKUP_CONFIRM_NOTE = "We'll confirm this time once your insurance is finalized.";
 export const REFUND_LINE = "Refundable If We Can't Get You On The Road.";
+/** Old or unscoped paid return links have no session id, so this page cannot open the slot picker. No email carries a pickup scheduling link; staff text the renter to choose a time. */
+export const FALLBACK_PICKUP_NOTE = "We'll text you to choose your pickup time.";
 
 function pickupWhen(p: { date: string; time: string }): string {
   return `${fmtDay(p.date) ?? p.date} at ${fmtTime(p.time)} ET`;
@@ -69,12 +71,13 @@ function CallUs({ title, body }: { title: string; body: string }) {
 function Booked({ pickup }: { pickup: BookedPickup }) {
   return (
     <div data-testid="pickup-booked" className="rounded-[10px] border border-[#BFE8C8] bg-[#F0FBF2] p-4 text-left">
-      <div className="flex items-center gap-2">
-        <CalendarCheck className="h-4 w-4 text-[#157A2A]" aria-hidden="true" />
-        <h3 className="text-[15px] font-semibold text-[#157A2A]">Preferred Pickup Time</h3>
+      <div className="flex items-start gap-2">
+        <CalendarCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#157A2A]" aria-hidden="true" />
+        <div>
+          <p className="text-[15px] font-semibold text-[#111114]">{pickupWhen(pickup)}</p>
+          {pickup.location ? <p className="mt-0.5 text-[13px] text-[#55555E]">{pickup.location}</p> : null}
+        </div>
       </div>
-      <p className="mt-1.5 text-[15px] font-semibold text-[#111114]">{pickupWhen(pickup)}</p>
-      {pickup.location ? <p className="mt-0.5 text-[13px] text-[#55555E]">{pickup.location}</p> : null}
       <p className="mt-2 text-[13px] leading-relaxed text-[#28282E]">{PREFERRED_PICKUP_CONFIRM_NOTE}</p>
     </div>
   );
@@ -267,6 +270,37 @@ export function PaymentReceivedDetails({ view, onBook }: { view: OkView; onBook?
         <MessageSquare className="h-4 w-4" aria-hidden="true" /> Text Us
       </a>
 
+      <p className="mt-5 text-center text-[13px] leading-normal text-[#55555E]">
+        Questions?{" "}
+        <a className="font-medium text-[#D03020]" href={`tel:${COMPANY_PHONE_E164}`}>{COMPANY_PHONE_DISPLAY}</a>
+        {" · "}
+        <a className="font-medium text-[#D03020]" href={`mailto:${COMPANY_EMAIL}`}>{COMPANY_EMAIL}</a>
+      </p>
+    </div>
+  );
+}
+
+
+/** Static Payment Received card for old or unscoped links (no Checkout Session id). */
+export function PaymentReceivedFallback() {
+  return (
+    <div className="rounded-xl border border-[#EDEDF0] bg-white px-6 pt-8 pb-7 text-center md:px-9 md:pt-10 md:pb-8" data-testid="reservation-fee-return-paid">
+      <CheckCircle2 className="mx-auto h-11 w-11 text-[#4CD964]" aria-hidden="true" />
+      <h1 className="mt-3 text-2xl md:text-[28px] font-semibold tracking-tight text-[#111114]">You're Reserved!</h1>
+      <p className="mt-2 text-[15px] leading-snug text-[#55555E]">
+        Payment received.
+        <br />
+        Your car is being held for you.
+      </p>
+      <p className="mt-4 text-[15px] leading-relaxed text-[#28282E]">{FALLBACK_PICKUP_NOTE}</p>
+      <p data-testid="refund-line" className="mt-4 rounded-[10px] border border-[#F4C7C2] bg-[#FFF6F5] px-3.5 py-3 text-left text-[13px] leading-relaxed text-[#28282E]">{REFUND_LINE}</p>
+      <a
+        data-testid="text-us"
+        href={`sms:${COMPANY_PHONE_E164}`}
+        className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg border-[1.5px] border-[#D03020] bg-white px-5 py-3 text-[15px] font-semibold text-[#D03020] no-underline"
+      >
+        <MessageSquare className="h-4 w-4" aria-hidden="true" /> Text Us
+      </a>
       <p className="mt-5 text-center text-[13px] leading-normal text-[#55555E]">
         Questions?{" "}
         <a className="font-medium text-[#D03020]" href={`tel:${COMPANY_PHONE_E164}`}>{COMPANY_PHONE_DISPLAY}</a>
