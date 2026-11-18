@@ -1,7 +1,7 @@
 /**
  * Loads the Payment Received data for a Checkout Session id and renders the
  * rich page. Any refusal (old link, bad or unpaid session, Stripe down) shows
- * `fallback`: the static thank-you in src/routes/reservation-fee.tsx.
+ * `fallback`: PaymentReceivedFallback (old or unscoped links).
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";

@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2 } from "lucide-react";
 import { Logo } from "@/components/site/Logo";
-import { PhoneLink } from "@/components/site/PhoneLink";
+import { PaymentReceivedFallback } from "@/components/reservation/PaymentReceivedDetails";
 import { PaymentReceivedLive } from "@/components/reservation/PaymentReceivedLive";
 import { PaymentNotCompletedLive } from "@/components/reservation/PaymentNotCompletedLive";
 import { isCheckoutSessionId } from "@/lib/payment-received";
@@ -13,15 +12,19 @@ import { isCheckoutSessionId } from "@/lib/payment-received";
  *
  *   status=paid&session_id=cs_…  PaymentReceivedLive (receipt, car, pickup
  *                                slot picker). Old links, or a missing,
- *                                invalid or unpaid session, get the static
- *                                thank-you below.
+ *                                invalid or unpaid session, get
+ *                                PaymentReceivedFallback: the same look and
+ *                                the truthful next step (we'll text them to
+ *                                choose a pickup time — no email carries a
+ *                                pickup scheduling link).
  *   status=canceled(&session_id) PaymentNotCompletedLive: the conversion
  *                                page. With a session id (sessions created
  *                                after this shipped) it shows the signed
  *                                car, live availability, and a button that
  *                                restarts the same $50 Checkout. Without
- *                                one, live numbers are hidden and the renter
- *                                is pointed to their email link.
+ *                                one, live numbers and the car block are
+ *                                hidden and the renter is pointed to their
+ *                                email link.
  *
  * The payment itself is recorded on the lead by the payments webhook
  * (metadata.paymentIds), which also holds the car.
@@ -51,7 +54,7 @@ function ReservationFeeReturn() {
   const paid = status === "paid";
   if (!paid) return <PaymentNotCompletedLive sessionId={session_id} />;
 
-  const staticCard = <StaticPaidCard />;
+  const staticCard = <PaymentReceivedFallback />;
   return (
     <div className="min-h-screen bg-[#FAFAFB]">
       <header className="border-b border-[#EDEDF0] bg-white">
@@ -62,27 +65,6 @@ function ReservationFeeReturn() {
       <main className={`${session_id ? "max-w-[720px]" : "max-w-xl"} mx-auto px-5 py-14`}>
         {session_id ? <PaymentReceivedLive sessionId={session_id} fallback={staticCard} /> : staticCard}
       </main>
-    </div>
-  );
-}
-
-function StaticPaidCard() {
-  return (
-    <div className="rounded-xl border border-[#EDEDF0] bg-white p-8 text-center" data-testid="reservation-fee-return-paid">
-      <CheckCircle2 className="w-10 h-10 text-[#4CD964] mx-auto" />
-      <h1 className="mt-3 text-xl font-semibold text-[#111114]">Payment Received</h1>
-      <p className="mt-2 text-sm text-[#55555E]">
-        Thank you. Your Reservation Fee is applied in full to your first week, and your card is saved on file for your rental balance.
-      </p>
-      <p className="mt-2 text-sm text-[#55555E]">
-        Your car is held as soon as the payment confirms, usually within a minute. Our team will reach out to schedule your pickup.
-      </p>
-      <p className="mt-5 text-sm text-[#55555E]">
-        Questions? Call{" "}
-        <PhoneLink placement="contact" className="text-[#D03020] font-medium" />{" "}
-        or email{" "}
-        <a className="text-[#D03020] font-medium" href="mailto:team@drivereal.com">team@drivereal.com</a>.
-      </p>
     </div>
   );
 }

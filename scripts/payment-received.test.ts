@@ -32,7 +32,7 @@ import { holdReservationForFee } from "../src/lib/reservation-fee.server";
 import { sweepReservationConfirmations } from "../src/lib/reservation-confirmation.server";
 import { readReservationDetails, writeReservationDetails } from "../src/lib/reservations";
 import { reservationFeeReturnUrls } from "../src/lib/reservation-fee";
-import { PaymentReceivedDetails } from "../src/components/reservation/PaymentReceivedDetails";
+import { PaymentReceivedDetails, PaymentReceivedFallback } from "../src/components/reservation/PaymentReceivedDetails";
 
 type Rows = Record<string, any[]>;
 function fakeDb(seed: Rows) {
@@ -387,6 +387,7 @@ describe("page", () => {
   it("friendly states", () => {
     const reserved = renderToStaticMarkup(createElement(PaymentReceivedDetails, { view: { ...view, booking: { state: "reserved", pickup: { date: "2026-11-19", time: "09:30", label: "", location: "3500 E Hillsborough Ave" } } } }));
     expect(reserved).toContain("Preferred Pickup Time");
+    expect((reserved.match(/Preferred Pickup Time/g) ?? []).length).toBe(1);
     expect(reserved).toContain("We&#x27;ll confirm this time once your insurance is finalized.");
     expect(reserved).not.toContain("Pickup Time Booked");
     expect(reserved).not.toContain("Your Pickup Time");
@@ -406,6 +407,21 @@ describe("page", () => {
     }
   });
 
+  it("no-session fallback matches the new look and tells a truthful next step", () => {
+    const html = renderToStaticMarkup(createElement(PaymentReceivedFallback));
+    expect(html).toMatch(/Payment received\.<br\/?>\s*Your car is being held for you\./);
+    expect(html).toContain("You&#x27;re Reserved!");
+    expect(html).toContain("We&#x27;ll text you to choose your pickup time.");
+    expect(html).toContain("Refundable If We Can&#x27;t Get You On The Road");
+    expect(html).toContain('href="sms:+18888338280"');
+    expect(html).toContain("team@drivereal.com");
+    expect(html).not.toMatch(/Our team will reach out to schedule your pickup/i);
+    expect(html).not.toMatch(/Check your email for your pickup scheduling link/i);
+    expect(html).not.toMatch(/not refundable if you change your mind/i);
+    expect(html).not.toMatch(/don(?:&#x27;|')t show up for pickup/i);
+    expect(html).not.toMatch(/declined/i);
+  });
+
   it("renter-facing paid-page source never mentions an insurance decline refund", () => {
     const files = [
       "src/components/reservation/PaymentReceivedDetails.tsx",
@@ -417,6 +433,8 @@ describe("page", () => {
     ];
     const all = files.map((f) => readFileSync(f, "utf8")).join("\n");
     expect(all).toContain("Refundable If We Can't Get You On The Road");
+    expect(all).toContain("We'll text you to choose your pickup time.");
+    expect(all).not.toMatch(/Our team will reach out to schedule your pickup/i);
     expect(all).not.toMatch(/declined/i);
     expect(all).not.toMatch(/not refundable if you change your mind/i);
     expect(all).not.toMatch(/don't show up for pickup/i);

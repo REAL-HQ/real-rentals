@@ -3,7 +3,7 @@
  * mockup (t429u). Live counts and photos are passed in; missing values are
  * hidden, never invented. Reserve restarts the real $50 Checkout.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Logo } from "@/components/site/Logo";
 import { representativePhoto } from "@/lib/marketing-fleet";
 import {
@@ -16,6 +16,7 @@ import {
   linkExpiryLabel,
   openSlotsThisWeekLine,
   reserveLabel,
+  stickyReserveVisible,
   type PaymentNotCompletedView,
 } from "@/lib/payment-not-completed";
 import "./PaymentNotCompletedPage.css";
@@ -39,9 +40,37 @@ export function PaymentNotCompletedPage({
   const generic = d.vehicle ? representativePhoto(d.vehicle.bodyType) : null;
   const gallery = photos.length ? photos : generic ? [generic] : [];
   const realGallery = photos.length > 0;
+  const showCar = Boolean(d.vehicle && gallery.length > 0);
+  const urgencyCount =
+    (d.availableCars != null && d.city ? 1 : 0) +
+    (d.openSlotsThisWeek != null ? 1 : 0) +
+    1;
+
+  const heroCtaRef = useRef<HTMLDivElement>(null);
+  const finalCtaRef = useRef<HTMLElement>(null);
+  const [showSticky, setShowSticky] = useState(false);
+
+  useEffect(() => {
+    const hero = heroCtaRef.current;
+    const final = finalCtaRef.current;
+    if (!hero || !final || typeof IntersectionObserver === "undefined") return;
+    let heroInView = true;
+    let finalInView = false;
+    const sync = () => setShowSticky(stickyReserveVisible(heroInView, finalInView));
+    const io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.target === hero) heroInView = entry.isIntersecting;
+        else if (entry.target === final) finalInView = entry.isIntersecting;
+      }
+      sync();
+    });
+    io.observe(hero);
+    io.observe(final);
+    return () => io.disconnect();
+  }, []);
 
   return (
-    <div className="pnc" data-testid="reservation-fee-return-canceled">
+    <div className={`pnc${showSticky ? " pnc-has-sticky" : ""}`} data-testid="reservation-fee-return-canceled">
       <header className="pnc-header">
         <div className="pnc-header-inner">
           <Logo href={false} />
@@ -66,7 +95,9 @@ export function PaymentNotCompletedPage({
               <> Your car is not held until you pay — cars go to whoever reserves first.</>
             )}
           </p>
-          <Cta amount={d.amount} checkoutUrl={d.checkoutUrl} processing={d.processing} onReserve={onReserve} reserving={reserving} expiry={expiry} error={error} size="lg" />
+          <div ref={heroCtaRef} data-testid="pnc-hero-cta">
+            <Cta amount={d.amount} checkoutUrl={d.checkoutUrl} processing={d.processing} onReserve={onReserve} reserving={reserving} expiry={expiry} error={error} size="lg" />
+          </div>
         </div>
       </section>
 
@@ -85,7 +116,7 @@ export function PaymentNotCompletedPage({
       </section>
 
       <section className="pnc-urgency" aria-label="Live availability">
-        <div className="pnc-urgency-inner">
+        <div className="pnc-urgency-inner" data-count={urgencyCount}>
           {d.availableCars != null && d.city ? (
             <article className="pnc-stat">
               <div className="pnc-stat-label-row">
@@ -115,13 +146,13 @@ export function PaymentNotCompletedPage({
       </section>
 
       <div className="pnc-wrap">
-        <section className="pnc-block" aria-labelledby="car-heading">
-          <h2 id="car-heading">Your Car</h2>
-          <p className="pnc-lead">This is the car you signed for. Pay the ${d.amount} Reservation Fee to hold it.</p>
-          {gallery.length > 0 && d.vehicle ? (
+        {showCar && d.vehicle ? (
+          <section className="pnc-block" aria-labelledby="car-heading" data-testid="pnc-your-car">
+            <h2 id="car-heading">Your Car</h2>
+            <p className="pnc-lead">This is the car you signed for. Pay the ${d.amount} Reservation Fee to hold it.</p>
             <Gallery label={d.vehicle.label} photos={gallery} real={realGallery} />
-          ) : null}
-        </section>
+          </section>
+        ) : null}
 
         <section className="pnc-block" aria-labelledby="fee-heading">
           <p className="pnc-section-kicker">A Smart Move</p>
@@ -222,7 +253,7 @@ export function PaymentNotCompletedPage({
           </div>
         </section>
 
-        <section className="pnc-final" id="reserve" aria-labelledby="final-heading">
+        <section className="pnc-final" id="reserve" aria-labelledby="final-heading" ref={finalCtaRef}>
           <p className="pnc-section-kicker">A Smart Move</p>
           <h2 id="final-heading">Reserve Your Car Before Someone Else Does</h2>
           <p className="pnc-lead">You've already been approved and you've already signed. Pay the ${d.amount} Reservation Fee now to hold your car and pick your pickup time.</p>
@@ -237,7 +268,12 @@ export function PaymentNotCompletedPage({
         <a href={`mailto:${COMPANY_EMAIL}`}>{COMPANY_EMAIL}</a>
       </footer>
 
-      <div className="pnc-sticky" aria-label="Reserve your car">
+      <div
+        className={`pnc-sticky${showSticky ? " pnc-sticky-visible" : ""}`}
+        aria-label="Reserve your car"
+        data-testid="pnc-sticky"
+        hidden={!showSticky}
+      >
         <Cta amount={d.amount} checkoutUrl={d.checkoutUrl} processing={d.processing} onReserve={onReserve} reserving={reserving} expiry={expiry} error={null} size="md" />
       </div>
     </div>
