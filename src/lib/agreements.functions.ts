@@ -1733,26 +1733,16 @@ export const staffReservationFeeLink = createServerFn({ method: "POST" })
     const { requireManager } = await import("@/lib/roles.server");
     const actor = await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: rows } = await supabaseAdmin
-      .from("agreements")
-      .select("id,status,signed_at,metadata")
-      .eq("application_id", data.applicationId)
-      .eq("status", "signed")
-      .order("signed_at", { ascending: false })
-      .limit(10);
-    const ag = ((rows ?? []) as any[]).find((r) => !r?.metadata?.amendment) ?? null;
-    if (!ag) throw new Error("No Signed Agreement With A Reservation Fee.");
-    const { chargeReservationFeeAfterSigning } = await import("@/lib/reservation-fee.server");
-    const { staffReservationFeeLinkResult } = await import("@/lib/reservation-fee");
-    const fee = await chargeReservationFeeAfterSigning(supabaseAdmin, ag.id as string);
-    const res = staffReservationFeeLinkResult(fee);
+    const { reservationFeeLinkForApplication } = await import("@/lib/reservation-fee.server");
+    const link = await reservationFeeLinkForApplication(supabaseAdmin, data.applicationId);
+    const res = link.ok ? { ok: true as const, url: link.url, amount: link.amount } : { ok: false as const, message: link.message };
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit(actor as any, {
       action: "payment.reservation_fee_link_copied",
       summary: res.ok ? "Staff copied the Reservation Fee payment link (nothing was sent)" : `Staff asked for the Reservation Fee link: ${res.message}`,
       entityType: "esign_document",
-      entityId: ag.id as string,
-      metadata: { application_id: data.applicationId, status: fee.status },
+      entityId: link.agreementId,
+      metadata: { application_id: data.applicationId, status: link.status },
     }).catch(() => {});
     if (!res.ok) throw new Error(res.message);
     return { url: res.url, amount: res.amount };
