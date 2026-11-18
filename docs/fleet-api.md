@@ -28,6 +28,7 @@ Base: `https://drivereal.com/api/public/fleet/`
 | `missing-items` | preview / run the one-time missing-items message | [missing-items-outreach.md](missing-items-outreach.md) |
 | `payment-text-pause` | pause rent texts for an approved payment deal; status; cancel | [fleet-payment-text-pause.md](fleet-payment-text-pause.md) |
 | `refund-reservation` | refund a paid Reservation Fee for one of the six refundable reasons (idempotent; one per fee) | [reservation-fee-refunds.md](reservation-fee-refunds.md) |
+| `reservation-fee-link` | get the $50 Reservation Fee Checkout link for a signed applicant (reuses the open one; sends nothing) | [fleet-reservation-fee-link.md](fleet-reservation-fee-link.md) |
 
 Events the site sends FLEET (signed webhooks): [fleet-webhooks.md](fleet-webhooks.md).
 

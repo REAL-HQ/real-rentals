@@ -64,6 +64,7 @@ import { Route as ApiPublicFleetPaymentTextPauseRouteImport } from './routes/api
 import { Route as ApiPublicFleetPickupSlotsRouteImport } from './routes/api/public/fleet/pickup-slots'
 import { Route as ApiPublicFleetRefundReservationRouteImport } from './routes/api/public/fleet/refund-reservation'
 import { Route as ApiPublicFleetResendLinkRouteImport } from './routes/api/public/fleet/resend-link'
+import { Route as ApiPublicFleetReservationFeeLinkRouteImport } from './routes/api/public/fleet/reservation-fee-link'
 import { Route as ApiPublicFleetScreeningResultRouteImport } from './routes/api/public/fleet/screening-result'
 import { Route as ApiPublicFleetSendAgreementRouteImport } from './routes/api/public/fleet/send-agreement'
 import { Route as ApiPublicFleetStatusRouteImport } from './routes/api/public/fleet/status'
@@ -372,6 +373,12 @@ const ApiPublicFleetResendLinkRoute =
     path: '/api/public/fleet/resend-link',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetReservationFeeLinkRoute =
+  ApiPublicFleetReservationFeeLinkRouteImport.update({
+    id: '/api/public/fleet/reservation-fee-link',
+    path: '/api/public/fleet/reservation-fee-link',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetScreeningResultRoute =
   ApiPublicFleetScreeningResultRouteImport.update({
     id: '/api/public/fleet/screening-result',
@@ -495,6 +502,7 @@ export interface FileRoutesByFullPath {
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/refund-reservation': typeof ApiPublicFleetRefundReservationRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
+  '/api/public/fleet/reservation-fee-link': typeof ApiPublicFleetReservationFeeLinkRoute
   '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
   '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
@@ -564,6 +572,7 @@ export interface FileRoutesByTo {
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/refund-reservation': typeof ApiPublicFleetRefundReservationRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
+  '/api/public/fleet/reservation-fee-link': typeof ApiPublicFleetReservationFeeLinkRoute
   '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
   '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
@@ -634,6 +643,7 @@ export interface FileRoutesById {
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/refund-reservation': typeof ApiPublicFleetRefundReservationRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
+  '/api/public/fleet/reservation-fee-link': typeof ApiPublicFleetReservationFeeLinkRoute
   '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
   '/api/public/fleet/send-agreement': typeof ApiPublicFleetSendAgreementRoute
   '/api/public/fleet/status': typeof ApiPublicFleetStatusRoute
@@ -705,6 +715,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/refund-reservation'
     | '/api/public/fleet/resend-link'
+    | '/api/public/fleet/reservation-fee-link'
     | '/api/public/fleet/screening-result'
     | '/api/public/fleet/send-agreement'
     | '/api/public/fleet/status'
@@ -774,6 +785,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/refund-reservation'
     | '/api/public/fleet/resend-link'
+    | '/api/public/fleet/reservation-fee-link'
     | '/api/public/fleet/screening-result'
     | '/api/public/fleet/send-agreement'
     | '/api/public/fleet/status'
@@ -843,6 +855,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/refund-reservation'
     | '/api/public/fleet/resend-link'
+    | '/api/public/fleet/reservation-fee-link'
     | '/api/public/fleet/screening-result'
     | '/api/public/fleet/send-agreement'
     | '/api/public/fleet/status'
@@ -913,6 +926,7 @@ export interface RootRouteChildren {
   ApiPublicFleetPickupSlotsRoute: typeof ApiPublicFleetPickupSlotsRoute
   ApiPublicFleetRefundReservationRoute: typeof ApiPublicFleetRefundReservationRoute
   ApiPublicFleetResendLinkRoute: typeof ApiPublicFleetResendLinkRoute
+  ApiPublicFleetReservationFeeLinkRoute: typeof ApiPublicFleetReservationFeeLinkRoute
   ApiPublicFleetScreeningResultRoute: typeof ApiPublicFleetScreeningResultRoute
   ApiPublicFleetSendAgreementRoute: typeof ApiPublicFleetSendAgreementRoute
   ApiPublicFleetStatusRoute: typeof ApiPublicFleetStatusRoute
@@ -1314,6 +1328,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetResendLinkRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/reservation-fee-link': {
+      id: '/api/public/fleet/reservation-fee-link'
+      path: '/api/public/fleet/reservation-fee-link'
+      fullPath: '/api/public/fleet/reservation-fee-link'
+      preLoaderRoute: typeof ApiPublicFleetReservationFeeLinkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/screening-result': {
       id: '/api/public/fleet/screening-result'
       path: '/api/public/fleet/screening-result'
@@ -1457,6 +1478,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicFleetPickupSlotsRoute: ApiPublicFleetPickupSlotsRoute,
   ApiPublicFleetRefundReservationRoute: ApiPublicFleetRefundReservationRoute,
   ApiPublicFleetResendLinkRoute: ApiPublicFleetResendLinkRoute,
+  ApiPublicFleetReservationFeeLinkRoute: ApiPublicFleetReservationFeeLinkRoute,
   ApiPublicFleetScreeningResultRoute: ApiPublicFleetScreeningResultRoute,
   ApiPublicFleetSendAgreementRoute: ApiPublicFleetSendAgreementRoute,
   ApiPublicFleetStatusRoute: ApiPublicFleetStatusRoute,

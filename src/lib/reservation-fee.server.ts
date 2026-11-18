@@ -214,3 +214,37 @@ export async function existingReservationFeeStep(admin: Admin, agreementId: stri
     return null;
   }
 }
+
+export type ReservationFeeLinkResult =
+  | { ok: true; url: string; amount: number; agreementId: string; sessionId: string | null; expiresAt: string | null; reused: boolean; status: "checkout" }
+  | { ok: false; message: string; agreementId: string | null; status: ReservationFeeOutcome["status"] | "no_signed_agreement" };
+
+/**
+ * One shared core for "give me the $50 Reservation Fee Checkout link for this
+ * applicant" (staff Copy Reservation Fee Link and FLEET's reservation-fee-link
+ * API). Needs a signed, non-amendment agreement that prints the fee. Reuses the
+ * open Checkout (under 23 hours) or creates one on the same unpaid fee row; a
+ * paid fee is never charged again. Sends nothing to anyone.
+ */
+export async function reservationFeeLinkForApplication(admin: Admin, applicationId: string, deps: ReservationFeeDeps = {}): Promise<ReservationFeeLinkResult> {
+  const { data: rows } = await admin
+    .from("agreements")
+    .select("id,status,signed_at,metadata")
+    .eq("application_id", applicationId)
+    .eq("status", "signed")
+    .order("signed_at", { ascending: false })
+    .limit(10);
+  const ag = ((rows ?? []) as any[]).find((r) => !r?.metadata?.amendment) ?? null;
+  if (!ag) return { ok: false, message: "No Signed Agreement With A Reservation Fee.", agreementId: null, status: "no_signed_agreement" };
+  const before = ag?.metadata?.reservation_fee_checkout?.session_id ?? null;
+  const fee = await chargeReservationFeeAfterSigning(admin, ag.id as string, deps);
+  const { staffReservationFeeLinkResult } = await import("@/lib/reservation-fee");
+  const res = staffReservationFeeLinkResult(fee);
+  if (!res.ok || fee.status !== "checkout") return { ok: false, message: res.ok ? "Card Checkout Could Not Be Created." : res.message, agreementId: ag.id as string, status: fee.status };
+  const { data: fresh } = await admin.from("agreements").select("metadata").eq("id", ag.id).maybeSingle();
+  const co = (fresh?.metadata as any)?.reservation_fee_checkout;
+  const sessionId = co?.url === res.url ? (co?.session_id ?? null) : null;
+  const created = Date.parse(String(co?.created_at ?? ""));
+  const expiresAt = co?.url === res.url && Number.isFinite(created) ? new Date(created + RESERVATION_FEE_CHECKOUT_TTL_MS).toISOString() : null;
+  return { ok: true, url: res.url, amount: res.amount, agreementId: ag.id as string, sessionId, expiresAt, reused: sessionId !== null && sessionId === before, status: "checkout" };
+}
