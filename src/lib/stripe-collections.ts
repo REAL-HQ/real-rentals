@@ -332,3 +332,20 @@ export function consolidatedRevenue(input: {
   const deducted = Math.min(overlap, Math.max(stripeNet, 0));
   return { amount: Math.round((stripeNet + input.internalNonStripe - deducted) * 100) / 100, coverage: "Partial" };
 }
+
+/**
+ * What the Overview Revenue card shows. The recorded-payments total (from the
+ * payments table) is the floor: if the live Stripe consolidation is loading or
+ * cannot be verified, the card shows the recorded total labelled "Partial"
+ * instead of a dash. Only when the payments query itself failed is there no
+ * number. Zero revenue is $0, never unavailable.
+ */
+export function displayRevenue(input: {
+  consolidated: { amount: number | null; coverage: "Partial" | "Unavailable" } | null;
+  recorded: number | null;
+}): { amount: number | null; coverage: "Partial" | "Unavailable"; fellBack: boolean } {
+  const c = input.consolidated;
+  if (c && c.amount !== null && Number.isFinite(c.amount)) return { amount: c.amount, coverage: c.coverage, fellBack: false };
+  if (input.recorded !== null && Number.isFinite(input.recorded)) return { amount: input.recorded, coverage: "Partial", fellBack: !!c };
+  return { amount: null, coverage: "Unavailable", fellBack: false };
+}
