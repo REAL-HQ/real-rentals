@@ -18,6 +18,7 @@ const badgeVariants = cva(
         warning: "border-warning/30 bg-warning-soft text-warning-foreground",
         occupied: "border-status-occupied/20 bg-status-occupied-soft text-status-occupied",
         attention: "border-destructive/20 bg-danger-soft text-destructive",
+        white: "border-border bg-white text-muted-foreground",
         neutral: "border-border bg-secondary text-muted-foreground",
       },
     },

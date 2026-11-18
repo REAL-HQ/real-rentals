@@ -168,7 +168,7 @@ function SwapForm({
   useEffect(() => {
     let live = true;
     void supabase.from("vehicles").select(VEHICLE_COMBOBOX_SELECT).is("archived_at", null).order("unit_number")
-      .then(({ data }) => { if (live) setChoices(((data ?? []) as VehicleComboboxVehicle[]).filter((v) => !["retired", "sold"].includes(String(v.status)))); });
+      .then(({ data }) => { if (live) setChoices(((data ?? []) as VehicleComboboxVehicle[]).filter((v) => !["retired", "sold", "unavailable"].includes(String(v.status)))); });
     return () => { live = false; };
   }, []);
   const [reason, setReason] = useState<(typeof SWAP_REASONS)[number]>("Replacement");
