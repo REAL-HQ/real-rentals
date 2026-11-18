@@ -1,68 +1,123 @@
 import type { ReactNode } from "react";
-import { LEAD_NEXT_STEP, LEAD_TONES, leadBadgeLabel, leadTiming } from "@/lib/lead-card";
+import { Clock } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { personInitials } from "@/lib/display-normalize";
+import { leadAvatarTone, leadContactMeta, leadUrgency, leadVisibleNextStep } from "@/lib/lead-card";
 import type { PriorityLead } from "@/lib/lead-priorities";
+import { cn } from "@/lib/utils";
 
 /** Presentational Lead Priorities card. Interactive pieces come in as slots. */
 export function LeadCardBody({
   lead,
   today,
   name,
+  displayName = "Applicant",
   status,
   draft,
   actions,
   menu,
+  view,
 }: {
   lead: Pick<
     PriorityLead,
-    "bucket" | "priority" | "contactLabel" | "created_at" | "contact_status_at" | "contact_follow_up_on" | "contact_status_note"
+    | "bucket"
+    | "contact_status"
+    | "priority"
+    | "contactLabel"
+    | "created_at"
+    | "contact_status_at"
+    | "contact_follow_up_on"
+    | "contact_status_note"
   >;
   today: string;
   name: ReactNode;
+  /** Used for the avatar. Falls back when a caller only passes the name node. */
+  displayName?: string;
   status: ReactNode;
   draft?: ReactNode;
   actions: ReactNode;
   /** Optional ⋮ menu, pinned to the card's top-right corner beside the name. */
   menu?: ReactNode;
+  /** Stretched link. Sits under the text so a click on the card opens the applicant. */
+  view?: ReactNode;
 }) {
-  const tone = LEAD_TONES[lead.bucket];
-  const timing = leadTiming(lead, today);
-  const isHighPriority = lead.priority === "High";
+  const urgency = leadUrgency(lead, today);
+  const next = leadVisibleNextStep(lead.bucket);
+  const note = lead.contact_status_note?.trim() || "";
+  const overdue = lead.bucket === "overdue";
   return (
-    <div className="flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4 text-card-foreground">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 break-words text-base font-semibold leading-5">{name}</div>
-        {menu}
-      </div>
-      <p data-lead-next className="text-[13px] font-medium leading-5 text-card-foreground">
-        {LEAD_NEXT_STEP[lead.bucket]}
-      </p>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-        {status}
-        <span
-          data-lead-badge
-          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${
-            isHighPriority ? "bg-destructive/10 text-destructive" : tone.badge
-          }`}
-        >
-          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${lead.bucket === "overdue" || isHighPriority ? "bg-brand" : "bg-muted-foreground/40"}`} />
-          {leadBadgeLabel(lead.bucket, lead.contactLabel, lead.priority)}
-        </span>
-      </div>
-      {draft}
-      <p data-lead-timing className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs leading-4 text-muted-foreground">
-        {timing.map((t, i) => (
-          <span key={t} className={i === 0 && lead.bucket === "overdue" ? "font-medium text-brand" : undefined}>
-            {i > 0 ? "· " : ""}
-            {t}
-          </span>
-        ))}
-      </p>
-      {lead.contact_status_note && (
-        <p className="line-clamp-2 break-words text-xs text-muted-foreground" title={lead.contact_status_note}>
-          Note: {lead.contact_status_note.slice(0, 240)}
-        </p>
+    <div
+      className={cn(
+        "relative flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4 text-card-foreground",
+        overdue && "shadow-[inset_3px_0_0_0_var(--real-red)]",
       )}
-      {actions}
+    >
+      <div className="relative z-10 flex min-w-0 items-start gap-3 pointer-events-none">
+        <div
+          aria-hidden="true"
+          className={cn(
+            "grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold",
+            leadAvatarTone(lead.contact_status),
+          )}
+        >
+          {personInitials(displayName)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+              <div className="min-w-0 break-words text-base font-semibold leading-5">{name}</div>
+              {urgency && (
+                <span
+                  data-lead-urgency
+                  title={urgency.title}
+                  className={cn(
+                    "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                    urgency.prominent
+                      ? "bg-brand/10 text-brand"
+                      : "bg-secondary text-muted-foreground",
+                  )}
+                >
+                  {urgency.label}
+                </span>
+              )}
+            </div>
+            {menu && <div className="pointer-events-auto shrink-0">{menu}</div>}
+          </div>
+          {next && (
+            <p data-lead-next className="mt-0.5 text-xs leading-4 text-muted-foreground">
+              {next}
+            </p>
+          )}
+          <div className="pointer-events-auto mt-2 flex flex-wrap items-center gap-1.5">
+            {status}
+          </div>
+        </div>
+      </div>
+      {draft && <div className="relative z-10 pointer-events-auto">{draft}</div>}
+      <p
+        data-lead-timing
+        className="relative z-10 flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground pointer-events-none"
+      >
+        <Clock aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+        <span>{leadContactMeta(lead)}</span>
+      </p>
+      {note && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <p
+                className="relative z-10 line-clamp-1 cursor-default break-words text-xs text-muted-foreground pointer-events-auto"
+                title={note}
+              >
+                {note}
+              </p>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-xs">{note}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      <div className="relative z-10 mt-auto pointer-events-none">{actions}</div>
+      {view}
     </div>
   );
 }
