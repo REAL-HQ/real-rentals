@@ -103,6 +103,8 @@ export function vehicleRowNumber(page: number, pageSize: number, index: number) 
 export type VehicleListResult = {
   /** Exact whole-table count, including archived vehicles; null if unavailable. */
   fleetTotal?: number | null;
+  /** Fleet-wide inventory snapshot for the Vehicles stat cards; independent of list filters. */
+  fleetStats?: VehicleFleetStats;
   rows: VehicleListRow[];
   total: number;
   page: number;
@@ -150,4 +152,70 @@ export function availabilityLabel(row: Pick<VehicleListRow, "on_rent" | "status"
   if (row.on_rent) return "Rented";
   if (row.status === "onboarding") return "Needs Setup";
   return (row.status ?? "—").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** URL/Status filter value: vehicles with an active rental, not the stored status. */
+export const ON_RENT_STATUS_FILTER = "on_rent";
+
+export type VehicleFleetStats = {
+  /** Whole table, including archived. Same scope as fleetTotal. */
+  total: number;
+  archived: number;
+  /** Unarchived vehicles with an active rental. */
+  rented: number;
+  /** Unarchived, not on a rental, status available. */
+  available: number;
+  /** Unarchived, not on a rental, status maintenance. */
+  maintenance: number;
+  /** Unarchived, not on a rental, any other status. */
+  other: number;
+  /**
+   * Rented ÷ unarchived, rounded. Archived vehicles are excluded from the
+   * denominator. Null when every vehicle is archived or the unarchived count is 0.
+   */
+  utilizationPct: number | null;
+};
+
+/**
+ * Inventory counts for the Vehicles page cards.
+ *
+ * Total matches "N Vehicles Total (Including Archived)". Rented follows the
+ * list's Availability column (an active rental beats stored status).
+ * Utilization is rented / (total − archived).
+ */
+export function summarizeVehicleFleetStats(
+  vehicles: { id?: string | null; status?: string | null }[],
+  onRentIds: Set<string>,
+  total = vehicles.length,
+): VehicleFleetStats {
+  let archived = 0;
+  let rented = 0;
+  let available = 0;
+  let maintenance = 0;
+  let other = 0;
+  for (const vehicle of vehicles) {
+    const status = (vehicle.status ?? "").toLowerCase();
+    if (status === "archived") {
+      archived += 1;
+      continue;
+    }
+    const id = typeof vehicle.id === "string" ? vehicle.id : "";
+    if (id && onRentIds.has(id)) {
+      rented += 1;
+      continue;
+    }
+    if (status === "available") available += 1;
+    else if (status === "maintenance") maintenance += 1;
+    else other += 1;
+  }
+  const unarchived = Math.max(0, total - archived);
+  return {
+    total,
+    archived,
+    rented,
+    available,
+    maintenance,
+    other,
+    utilizationPct: unarchived > 0 ? Math.round((rented / unarchived) * 100) : null,
+  };
 }

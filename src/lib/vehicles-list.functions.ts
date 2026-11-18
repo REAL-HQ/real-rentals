@@ -9,11 +9,14 @@ import {
   readinessGaps,
   VEHICLE_LIST_PAGE_SIZE,
   vehicleSortOrders,
+  ON_RENT_STATUS_FILTER,
+  summarizeVehicleFleetStats,
   type ReadinessBand,
   type ReadinessCounts,
   type VehicleListRow,
   type VehicleListResult,
 } from "@/lib/vehicles-list";
+import { activeRentalVehicleIds } from "@/lib/fleet-summary";
 import { chooseVehicleThumbnailPaths, vehicleListThumbnailKey, type VehicleThumbnailMedia } from "@/lib/vehicle-thumbnail";
 
 // Vehicles List 1: one page of list columns, server-searched/filtered/sorted.
@@ -40,26 +43,37 @@ const READINESS_SWEEP_MAX = 2000;
  * whole table, so a filter never hides the option that would clear it. Read
  * once per request — both exits below need the same answer.
  */
-type FacetRow = { status?: string | null; body_type?: string | null };
-type FacetReader = {
-  from: (t: string) => {
-    select: (c: string, options: { count: "exact" }) => { limit: (n: number) => PromiseLike<{ data: FacetRow[] | null; count: number | null }> };
-  };
-};
+type FacetRow = { id?: string | null; status?: string | null; body_type?: string | null };
+type FleetClient = { from: (table: string) => any };
 
-async function filterOptions(
-  supabaseAdmin: FacetReader,
-): Promise<{ statuses: string[]; bodyTypes: string[]; fleetTotal: number | null }> {
-  const facets = await supabaseAdmin.from("vehicles").select("status,body_type", { count: "exact" }).limit(10000);
+async function fleetOptions(supabaseAdmin: FleetClient) {
+  const [facets, rentals] = await Promise.all([
+    supabaseAdmin.from("vehicles").select("id,status,body_type", { count: "exact" }).limit(10000),
+    supabaseAdmin.from("rentals").select("vehicle_id").eq("status", "active").limit(10000),
+  ]);
+  const onRentIds = activeRentalVehicleIds(rentals.data ?? []);
+  const rows = (facets.data ?? []) as FacetRow[];
   const statuses = new Set<string>(["archived"]);
   const bodies = new Set<string>();
-  for (const f of facets.data ?? []) {
+  for (const f of rows) {
     if (f.status) statuses.add(f.status);
     if (f.body_type) bodies.add(f.body_type);
   }
+  const total = facets.count ?? rows.length;
   // Exact table count is independent of filters and the capped facet rows.
   // Includes archived records; the UI labels that scope explicitly.
-  return { statuses: [...statuses].sort(), bodyTypes: [...bodies].sort(), fleetTotal: facets.count ?? null };
+  return {
+    statuses: [...statuses].sort(),
+    bodyTypes: [...bodies].sort(),
+    fleetTotal: facets.count ?? null,
+    fleetStats: summarizeVehicleFleetStats(rows, onRentIds, total),
+    onRentIds,
+  };
+}
+
+function listOptions(options: Awaited<ReturnType<typeof fleetOptions>>) {
+  const { onRentIds, ...rest } = options;
+  return rest;
 }
 
 export const listVehicles = createServerFn({ method: "POST" })
@@ -84,6 +98,8 @@ export const listVehicles = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const ready = isReadinessFilter(data.ready) ? data.ready : "all";
+    const fleet = await fleetOptions(supabaseAdmin);
+    const onRentIds = [...fleet.onRentIds];
 
     /** The same scope for every query below: filters, minus readiness itself. */
     const scoped = <T>(q: T): T => {
@@ -94,10 +110,15 @@ export const listVehicles = createServerFn({ method: "POST" })
         neq: (c: string, v: unknown) => Filters;
         is: (c: string, v: unknown) => Filters;
         or: (e: string) => Filters;
+        in: (c: string, v: unknown[]) => Filters;
       };
       let x = q as unknown as Filters;
       // Archived vehicles leave the normal fleet view; the Archived filter shows them.
-      if (data.status !== "all") x = x.eq("status", data.status);
+      // "Rented" on the stat cards is live occupancy (on_rent), not vehicle.status.
+      if (data.status === ON_RENT_STATUS_FILTER) {
+        x = onRentIds.length ? x.in("id", onRentIds) : x.in("id", ["__none__"]);
+        x = x.neq("status", "archived");
+      } else if (data.status !== "all") x = x.eq("status", data.status);
       else x = x.neq("status", "archived");
       if (data.body !== "all") x = x.eq("body_type", data.body);
       if (data.partner === "__none__") x = x.is("partner_id", null);
@@ -138,7 +159,7 @@ export const listVehicles = createServerFn({ method: "POST" })
       // An empty `in` list is not a filter PostgREST will take, and the answer
       // is known anyway.
       if (!matching.length) {
-        const options = await filterOptions(supabaseAdmin);
+        const options = listOptions(fleet);
         return {
           rows: [],
           total: 0,
@@ -160,7 +181,7 @@ export const listVehicles = createServerFn({ method: "POST" })
     const from = (data.page - 1) * data.pageSize;
     const [{ data: rows, count, error }, options] = await Promise.all([
       query.range(from, from + data.pageSize - 1),
-      filterOptions(supabaseAdmin),
+      Promise.resolve(listOptions(fleet)),
     ]);
     if (error) throw new Error(error.message);
 

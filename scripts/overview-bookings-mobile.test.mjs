@@ -231,6 +231,13 @@ for (const cls of contents) {
 check(overview.includes('className="max-lg:min-w-0 space-y-6"'), "the overview root can shrink inside the admin column");
 check(overview.includes("grid-cols-1 items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)]"), "the fleet chart stacks under the donut on a phone");
 check(overview.includes("getOverviewApplicants"), "overview still reads applicants through the server function");
+const summaryGrid = "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4";
+check(overview.includes(summaryGrid), "the summary cards stay a 1/2/4 column grid");
+const summaryBlock = overview.slice(overview.indexOf(summaryGrid), overview.indexOf("<LeadPriorities"));
+const cardOrder = ["<RevenueCard", 'eyebrow="Collections"', 'eyebrow="Service"', 'eyebrow="Active Renters"'].map((marker) => summaryBlock.indexOf(marker));
+check(overview.indexOf("<OverviewToday") < overview.indexOf(summaryGrid) && overview.indexOf(summaryGrid) < overview.indexOf("<LeadPriorities"), "the summary cards sit above Lead Priorities");
+check(cardOrder.every((index) => index >= 0) && cardOrder.join() === [...cardOrder].sort((a, b) => a - b).join(), "the summary cards are Revenue, Collections, Service, then Active Renters");
+
 // The Hot Prospects card moved off Overview in the Overview cleanup (094e0f67); its row classes are gone with it.
 check(!/>\s*Hot Prospects\s*</.test(overview), "overview no longer renders the Hot Prospects card");
 check(!overview.includes("text-transform"), "overview does not add a text-transform");

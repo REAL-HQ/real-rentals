@@ -17,6 +17,7 @@ import {
   ArrowUpRight,
   Plus,
   CheckCircle2,
+  Users,
   ChevronDown,
   TrendingUp,
   Receipt,
@@ -461,36 +462,9 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
 
       {OVERVIEW_TODAY_ENABLED && canSeeCollections && <OverviewToday />}
 
-      <LeadPriorities
-        isManager={canSeeCollections}
-        tier={tier}
-        refreshKey={opsRefreshKey}
-        readiness={readiness}
-        canSeeReadiness={canSeeReadiness}
-      />
-      <BookingFollowupSlot />
-      <BookingConversion canView={canSeeCollections} />
-
-      {/* Four cards. Each control matches what the card is for — a plus only
-          where something gets created. */}
+      {/* Four cards sit above Lead Priorities so the health check is first.
+          Order: Revenue, Collections, Service, then Active Renters. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <ActionCard
-          icon={Car}
-          eyebrow="Fleet"
-          title="Add Vehicle"
-          hint={`${vehiclesTotal} In Fleet`}
-          href="/admin"
-          search={{ tab: "vehicles", add: "1" }}
-          control="add"
-          expanded={summaryExpanded}
-          onExpand={() => setSummaryExpanded((value) => !value)}
-          details={<>
-            <SummaryDetailRow label="Available" value={vehiclesAvail} />
-            <SummaryDetailRow label="Rented" value={rented} />
-            <SummaryDetailRow label="Maintenance" value={maintOpen} />
-          </>}
-        />
-
         <RevenueCard
           amount={revenue}
           delta={revenueDelta}
@@ -579,8 +553,34 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
             </div>
           ) : <p className="text-[11px] text-muted-foreground">{serviceFailed ? "Service Details Unavailable" : servicePreview === null ? "Loading Service Details…" : "No Vehicles Need Service"}</p>}
         />
+
+        <ActionCard
+          icon={Users}
+          eyebrow="Active Renters"
+          title={activeRentalCount === null ? "—" : String(activeRentalCount)}
+          hint={activeRentalCount === 0 ? "No active rentals" : "With an active rental"}
+          href="/admin"
+          search={{ tab: "drivers", filter: "active" }}
+          control="view"
+          expanded={summaryExpanded}
+          onExpand={() => setSummaryExpanded((value) => !value)}
+          details={<>
+            <SummaryDetailRow label="Active Rentals" value={activeRentalCount === null ? "—" : activeRentalCount} />
+          </>}
+        />
         {MAINTENANCE_LOG_ENABLED ? <MaintenanceDueTile /> : null}
       </div>
+
+      <LeadPriorities
+        isManager={canSeeCollections}
+        tier={tier}
+        refreshKey={opsRefreshKey}
+        readiness={readiness}
+        canSeeReadiness={canSeeReadiness}
+      />
+      <BookingFollowupSlot />
+      <BookingConversion canView={canSeeCollections} />
+
       {canSeeCollections ? <DocumentsExpiringChip /> : null}
 
       {/* Fleet snapshot + Applications queue */}
