@@ -83,7 +83,7 @@ import { getStripeCollections } from "@/lib/stripe-collections.functions";
 import { getProjectedRevenueSummary } from "@/lib/projected-revenue.functions";
 import type { ProjectedRevenueSummary } from "@/lib/projected-revenue";
 import { centsToDollars } from "@/lib/projected-revenue";
-import { consolidatedRevenue } from "@/lib/stripe-collections";
+import { consolidatedRevenue, displayRevenue } from "@/lib/stripe-collections";
 import { useNavigate } from "@tanstack/react-router";
 import { DocumentsExpiringChip } from "./DocumentsExpiring";
 import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
@@ -1104,11 +1104,15 @@ function RevenueCard({
     ? sq.isError ? { amount: null, coverage: "Unavailable" as const }
       : consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, overlap: overlapOwed, report: sq.data })
     : null;
-  const shownLoading = consolidated ? loading || (sq.isFetching && !sq.data) : loading;
-  const shownAmount = c ? c.amount : amount;
-  const coverage = c ? c.coverage : amount === null ? "Unavailable" : "Partial";
-  const coverageHint = coverage === "Unavailable"
-    ? "A required revenue source could not be verified for this period, so no consolidated total is shown. Verified Stripe collections remain available in Collections."
+  const shown = displayRevenue({ consolidated: c, recorded: amount });
+  // Recorded payments show at once; Stripe consolidation refines them later.
+  const shownLoading = loading && shown.amount === null;
+  const shownAmount = shown.amount;
+  const coverage = shown.coverage;
+  const coverageHint = shown.fellBack
+    ? (sq.isFetching && !sq.data ? "Stripe is still being verified, so this" : "Stripe could not be verified just now, so this") + " is the total of payments recorded in the system for this period. Verified Stripe collections remain available in Collections."
+    : coverage === "Unavailable"
+    ? "The payments for this period could not be read. Verified Stripe collections remain available in Collections."
     : c
       ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. A manual receipt Stripe later collected is not added on top of that Stripe net. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
       : "Recorded payments only. Stripe, Zelle, Cash App, Venmo, cash and bank transfers are not all verified yet.";
@@ -1163,7 +1167,7 @@ function RevenueCard({
       )}
       <div className="mt-1 text-[11px] text-[#55555E] truncate">
         {describeRange(range)}
-        {c ? null : delta != null ? (
+        {c && !shown.fellBack ? null : delta != null ? (
           <>
             <span className="mx-1 text-[#C7C7CC]">·</span>
             <span className={`font-medium ${delta >= 0 ? "text-[#0F8A4B]" : "text-[#CC0000]"}`}>
