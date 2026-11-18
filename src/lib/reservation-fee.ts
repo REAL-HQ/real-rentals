@@ -132,15 +132,20 @@ export const RESERVATION_FEE_CHECKOUT_TTL_MS = 23 * 3600 * 1000;
 /** Where Stripe Checkout returns the renter after paying or backing out. */
 export const RESERVATION_FEE_RETURN_PATH = "/reservation-fee";
 /**
- * Stripe replaces this literal with the Checkout Session id on success, so the
- * Payment Received page can look up its own receipt and offer pickup slots
- * (payment-received.server.ts). Only sessions created after this shipped
- * carry it; older links fall back to the static page.
+ * Stripe replaces this literal with the Checkout Session id on success and on
+ * cancel, so the Payment Received page can look up its receipt and the
+ * Payment Not Completed page can look up the car, photos and availability
+ * (payment-received.server.ts, payment-not-completed.server.ts). Only sessions
+ * created after this shipped carry it; older cancel links fall back to the
+ * page without live numbers.
  */
 export const CHECKOUT_SESSION_ID_TEMPLATE = "{CHECKOUT_SESSION_ID}";
 export function reservationFeeReturnUrls(site: string): { success: string; cancel: string } {
   const base = `${site.replace(/\/+$/, "")}${RESERVATION_FEE_RETURN_PATH}`;
-  return { success: `${base}?status=paid&session_id=${CHECKOUT_SESSION_ID_TEMPLATE}`, cancel: `${base}?status=canceled` };
+  return {
+    success: `${base}?status=paid&session_id=${CHECKOUT_SESSION_ID_TEMPLATE}`,
+    cancel: `${base}?status=canceled&session_id=${CHECKOUT_SESSION_ID_TEMPLATE}`,
+  };
 }
 
 /** Auto-redirect delay on the signing page: long enough to read "Agreement Signed". */
