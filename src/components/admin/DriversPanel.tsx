@@ -2278,7 +2278,7 @@ function DriverDetail({
   // before approval, Move Forward (Manager/Owner) once approved, then who/when.
   const termsAgreementSigned = agreementSignedForTerms || rentalActive;
   const termsConfirmedRow = termsConfirmedRequirement(staffTerms, { approved, agreementSigned: termsAgreementSigned });
-  const termsVehicles = useMemo(() => vehicles.map((v: any) => ({ id: String(v.id), label: [v.year, v.make, v.model].filter(Boolean).join(" ") + (v.plate ? ` · ${v.plate}` : "") || "Vehicle" })), [vehicles]);
+  const termsVehicles = useMemo(() => vehicles.map((v: any) => ({ id: String(v.id), unit_number: v.unit_number ?? null, year: v.year ?? null, make: v.make ?? null, model: v.model ?? null, license_plate: v.license_plate ?? v.plate ?? null, vin: v.vin ?? null, status: v.status ?? null })), [vehicles]);
   function renderChecklistEvidence(key: ActivationRequirementKey) {
     if (key === "terms_confirmed") {
       if (!isManager) return null;

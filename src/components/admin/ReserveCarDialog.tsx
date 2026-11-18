@@ -53,7 +53,7 @@ export function ReserveCarDialog({
   const loadSlots = useServerFn(listPickupSlots);
   const [slots, setSlots] = useState<PickupSlot[]>([]);
   const [fieldRep, setFieldRep] = useState<string | null>(null);
-  const [vehicles, setVehicles] = useState<Array<{ id: string; unit_number: string | null; year: number | null; make: string | null; model: string | null; status: string | null }>>([]);
+  const [vehicles, setVehicles] = useState<Array<{ id: string; unit_number: string | null; year: number | null; make: string | null; model: string | null; license_plate?: string | null; vin?: string | null; status: string | null }>>([]);
   const [people, setPeople] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
   const [personId, setPersonId] = useState(applicationId ?? "");
   const [vehicleId, setVehicleId] = useState<string | null>(null);
