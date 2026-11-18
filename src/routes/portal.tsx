@@ -121,7 +121,7 @@ export const Route = createFileRoute("/portal")({
 
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "vehicle", label: "My Vehicle", icon: Car },
+  { id: "vehicle", label: "Vehicle", icon: Car },
   { id: "documents", label: "Documents", icon: FileText },
   { id: "pictures", label: "Pictures", icon: ImageIcon },
   { id: "payments", label: "Payments", icon: CreditCard },
@@ -260,7 +260,7 @@ function Portal() {
     [hasRental],
   );
 
-  // A rental ending while someone is sitting on My Vehicle must not leave them
+  // A rental ending while someone is sitting on the Vehicle tab must not leave them
   // staring at a tab that is no longer in the nav.
   useEffect(() => {
     if (!visibleTabs.some((t) => t.id === tab)) setTab("dashboard");
@@ -2097,7 +2097,7 @@ function MetricTile({
 }
 
 function VehicleView({ data }: { data: DriverDashboard }) {
-  if (!data.vehicle) return <Stub label="My Vehicle" />;
+  if (!data.vehicle) return <Stub label="Vehicle" />;
   const v = data.vehicle;
   return (
     <div className="rounded-2xl border border-border bg-white overflow-hidden">
