@@ -129,8 +129,8 @@ const SLOT = "2026-11-19T09:30:00-05:00"; // Thu 9:30 AM ET
 beforeEach(() => { sent.sms.length = 0; sent.email.length = 0; sent.invite.length = 0; sent.webhooks.length = 0; sent.audit.length = 0; sent.keys.clear(); });
 
 describe("return URL", () => {
-  it("success_url carries Stripe's {CHECKOUT_SESSION_ID} template; cancel is unchanged", () => {
-    expect(reservationFeeReturnUrls("https://drivereal.com")).toEqual({ success: "https://drivereal.com/reservation-fee?status=paid&session_id={CHECKOUT_SESSION_ID}", cancel: "https://drivereal.com/reservation-fee?status=canceled" });
+  it("success_url and cancel_url carry Stripe's {CHECKOUT_SESSION_ID} template", () => {
+    expect(reservationFeeReturnUrls("https://drivereal.com")).toEqual({ success: "https://drivereal.com/reservation-fee?status=paid&session_id={CHECKOUT_SESSION_ID}", cancel: "https://drivereal.com/reservation-fee?status=canceled&session_id={CHECKOUT_SESSION_ID}" });
   });
   it("session ids and receipt links are validated", () => {
     expect(isCheckoutSessionId(SID)).toBe(true);

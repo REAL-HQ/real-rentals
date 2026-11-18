@@ -38,6 +38,14 @@ export type ReservationFeeDeps = {
   settings?: ReservationFeeSettings;
   stripe?: StripeLike | null;
   audit?: (e: { action: string; summary: string; entityType?: string; entityId?: string; metadata?: Record<string, unknown> }) => Promise<void>;
+  /** Clock for the 23-hour Checkout reuse window. */
+  now?: () => number;
+  /**
+   * When true (default), an unpaid fee reuses its still-open Checkout.
+   * Payment Not Completed sets this false to mint a new session after expiry
+   * without charging a second time (same payments row).
+   */
+  reuseCheckout?: boolean;
 };
 
 
@@ -137,10 +145,17 @@ export async function chargeReservationFeeAfterSigning(admin: Admin, agreementId
       return { status: "already_paid", amount: Number(row.amount), paymentId: row.id };
     }
     if (row && row.status === "pending") return { status: "pending", amount: Number(row.amount), paymentId: row.id, last4: null };
-    // Signing runs once, but never send a second checkout for the same fee in a re-run.
-    if (row && row.status === "unpaid") {
-      const url = (ag as any)?.metadata?.reservation_fee_checkout?.payment_id === row.id ? String((ag as any).metadata.reservation_fee_checkout.url ?? "") : "";
-      if (/^https:\/\//.test(url)) return { status: "checkout", amount: Number(row.amount), paymentId: row.id, url };
+    // Signing runs once, but never send a second checkout for the same fee in a re-run
+    // while the stored Checkout is still within 23 hours. An expired link is not reused;
+    // a new session is created on the same unpaid row below.
+    const now = deps.now?.() ?? Date.now();
+    if (row && row.status === "unpaid" && deps.reuseCheckout !== false) {
+      const co = (ag as any)?.metadata?.reservation_fee_checkout;
+      const url = co?.payment_id === row.id ? String(co.url ?? "") : "";
+      const created = Date.parse(String(co?.created_at ?? ""));
+      if (/^https:\/\//.test(url) && Number.isFinite(created) && now - created < RESERVATION_FEE_CHECKOUT_TTL_MS) {
+        return { status: "checkout", amount: Number(row.amount), paymentId: row.id, url };
+      }
     }
     if (!row) {
       const ins = await admin.from("payments").insert({

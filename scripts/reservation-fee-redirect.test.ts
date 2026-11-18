@@ -77,7 +77,7 @@ describe("signing step from the fee outcome", () => {
     expect(rf.reservationFeeSigningStep({ status: "checkout", amount: 50, paymentId: "p", url: "javascript:alert(1)" })).toBeNull();
   });
   test("return pages explain the result instead of /login", () => {
-    expect(rf.reservationFeeReturnUrls("https://drivereal.com/")).toEqual({ success: "https://drivereal.com/reservation-fee?status=paid&session_id={CHECKOUT_SESSION_ID}", cancel: "https://drivereal.com/reservation-fee?status=canceled" });
+    expect(rf.reservationFeeReturnUrls("https://drivereal.com/")).toEqual({ success: "https://drivereal.com/reservation-fee?status=paid&session_id={CHECKOUT_SESSION_ID}", cancel: "https://drivereal.com/reservation-fee?status=canceled&session_id={CHECKOUT_SESSION_ID}" });
   });
 });
 
@@ -87,7 +87,7 @@ describe("one Checkout per fee: the page reuses the email's session", () => {
     const o = await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: s, ...noAudit });
     expect(s.sessions).toHaveLength(1);
     expect(s.sessions[0].a.success_url).toMatch(/\/reservation-fee\?status=paid&session_id=\{CHECKOUT_SESSION_ID\}$/);
-    expect(s.sessions[0].a.cancel_url).toMatch(/\/reservation-fee\?status=canceled$/);
+    expect(s.sessions[0].a.cancel_url).toMatch(/\/reservation-fee\?status=canceled&session_id=\{CHECKOUT_SESSION_ID\}$/);
     expect(s.sessions[0].a.payment_intent_data).toMatchObject({ setup_future_usage: "off_session", metadata: { reason: "reservation_fee", paymentIds: db.state.payments[0].id } });
     const step = rf.reservationFeeSigningStep(o);
     expect(step).toEqual({ state: "pay", amount: 50, url: "https://checkout.stripe.com/c/pay/cs_1" });
@@ -189,13 +189,28 @@ describe("what the applicant sees", () => {
     expect(proc).toContain("processing");
     expect(proc).not.toContain("href=");
   });
-  test("return page copy: paid and canceled, never 'deposit', no data reads", () => {
+  test("return page copy: paid and canceled, never 'deposit', no data reads in the route", () => {
     const r = readFileSync("src/routes/reservation-fee.tsx", "utf8");
+    const canceled = readFileSync("src/components/reservation/PaymentNotCompletedPage.tsx", "utf8");
     expect(r).toContain('createFileRoute("/reservation-fee")');
     expect(r).toContain("Payment Received");
-    expect(r).toContain("Payment Not Completed");
-    expect(r).toContain("No payment was taken");
-    expect(r).not.toMatch(/deposit/i);
+    expect(r).toContain("PaymentNotCompletedLive");
+    expect(canceled).toContain("Payment Not Completed");
+    expect(canceled).toContain("Your Car Isn't Reserved Yet");
+    expect(canceled).toContain("Insurance Included At");
+    expect(canceled).not.toMatch(/declined/i);
+    expect(r + canceled).not.toMatch(/deposit/i);
     expect(r).not.toMatch(/supabase|createServerFn|useServerFn/);
+  });
+
+  test("an expired stored Checkout is not reused; a new session is minted on the same unpaid row", async () => {
+    const meta = { reservation_fee_checkout: { url: "https://checkout.stripe.com/c/pay/old", payment_id: "p1", session_id: "cs_old", created_at: "2026-11-16T00:00:00Z" } };
+    const db = fakeDb(seed(meta, [{ id: "p1", driver_id: "app1", status: "unpaid", amount: 50, notes: "reservation_fee:ag1", attempt_count: 1 }]));
+    const s = stripe();
+    const o = await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: s, now: () => NOW, ...noAudit });
+    expect(s.sessions).toHaveLength(1);
+    expect(o).toMatchObject({ status: "checkout", amount: 50, paymentId: "p1" });
+    expect((o as any).url).toBe("https://checkout.stripe.com/c/pay/cs_1");
+    expect(db.state.payments).toHaveLength(1);
   });
 });
