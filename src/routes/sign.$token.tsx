@@ -7,6 +7,8 @@ import { layoutToText } from "@/lib/agreement-layout";
 import { SigningPanel } from "@/components/esign/SigningPanel";
 import type { Adoption } from "@/lib/signature-adoption";
 import { CheckCircle2, ShieldCheck, Loader2 } from "lucide-react";
+import { ReservationFeeNextStep } from "@/components/esign/ReservationFeeNextStep";
+import type { ReservationFeeSigningStep } from "@/lib/reservation-fee";
 
 export const Route = createFileRoute("/sign/$token")({
   head: () => ({
@@ -35,6 +37,8 @@ function SignPage() {
   const [done, setDone] = useState(false);
   // Set only from the server's answer after signing; never from the URL.
   const [portalAccess, setPortalAccess] = useState(false);
+  // The $50 Reservation Fee step, from the server's answer after signing only.
+  const [feeStep, setFeeStep] = useState<ReservationFeeSigningStep | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -60,6 +64,7 @@ function SignPage() {
     try {
       const res = await submitSign({ data: { token, signerName: v.signerName, agree: true, adoption: v.adoption } });
       setPortalAccess(res?.portalAccess === true);
+      setFeeStep((res as any)?.reservationFee ?? null);
       setDone(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e: any) {
@@ -123,6 +128,7 @@ function SignPage() {
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-8 text-center">
             <CheckCircle2 className="w-10 h-10 text-[#4CD964] mx-auto" />
             <h1 className="mt-3 text-xl font-semibold text-[#111114]">Agreement Signed</h1>
+            {feeStep ? <ReservationFeeNextStep step={feeStep} /> : null}
             {portalAccess ? (
               <>
                 <p className="mt-2 text-sm text-[#55555E]">

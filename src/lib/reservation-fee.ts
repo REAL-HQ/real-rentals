@@ -84,3 +84,57 @@ export function reservationFeeEmailLine(o: ReservationFeeOutcome): string | null
 export function reservationFeePayLink(o: ReservationFeeOutcome): { url: string; amount: number } | null {
   return o.status === "checkout" ? { url: o.url, amount: o.amount } : null;
 }
+
+/**
+ * What the signing page shows right after a successful signature (Dolmar,
+ * t413u follow-up): the applicant goes straight to the SAME $50 Stripe
+ * Checkout the Agreement Signed email links to. Never a second session; the
+ * email button stays as the backup. Client-safe.
+ *
+ *   - "pay": an open Checkout exists; the page sends them there (with a
+ *     prominent button in case the redirect is blocked or they come back).
+ *   - "paid": the fee was already collected; nothing to pay.
+ *   - "processing": the card payment is going through.
+ *   - null: fee switch off, no fee on the agreement, an amendment, or a
+ *     checkout that could not be created (staff follow up). The page shows the
+ *     plain "Agreement Signed" screen as before.
+ */
+export type ReservationFeeSigningStep =
+  | { state: "pay"; amount: number; url: string }
+  | { state: "paid"; amount: number }
+  | { state: "processing"; amount: number };
+
+/** Only an https Checkout link is ever handed to the browser. */
+export function safeCheckoutUrl(url: unknown): string | null {
+  if (typeof url !== "string") return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function reservationFeeSigningStep(o: ReservationFeeOutcome | null | undefined): ReservationFeeSigningStep | null {
+  if (!o) return null;
+  if (o.status === "checkout") {
+    const url = safeCheckoutUrl(o.url);
+    return url ? { state: "pay", amount: o.amount, url } : null;
+  }
+  if (o.status === "paid" || o.status === "already_paid") return { state: "paid", amount: o.amount };
+  if (o.status === "pending") return { state: "processing", amount: o.amount };
+  return null;
+}
+
+/** Checkout lives 23 hours (reservation-fee.server.ts); an older link is not offered. */
+export const RESERVATION_FEE_CHECKOUT_TTL_MS = 23 * 3600 * 1000;
+
+/** Where Stripe Checkout returns the renter after paying or backing out. */
+export const RESERVATION_FEE_RETURN_PATH = "/reservation-fee";
+export function reservationFeeReturnUrls(site: string): { success: string; cancel: string } {
+  const base = `${site.replace(/\/+$/, "")}${RESERVATION_FEE_RETURN_PATH}`;
+  return { success: `${base}?status=paid`, cancel: `${base}?status=canceled` };
+}
+
+/** Auto-redirect delay on the signing page: long enough to read "Agreement Signed". */
+export const RESERVATION_FEE_REDIRECT_SECONDS = 4;

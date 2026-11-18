@@ -17,8 +17,12 @@
  *   - Never throws out to signing.
  */
 import {
+  RESERVATION_FEE_CHECKOUT_TTL_MS,
   RESERVATION_FEE_REASON,
   reservationFeeNote,
+  reservationFeeReturnUrls,
+  reservationFeeSigningStep,
+  type ReservationFeeSigningStep,
   signedReservationFee,
   type ReservationFeeOutcome,
   type ReservationFeeSettings,
@@ -90,8 +94,10 @@ async function reservationFeeCheckout(
       line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: Math.round(amount * 100), product_data: { name: "Reservation Fee (applied to your first week)" } } }],
       payment_intent_data: { setup_future_usage: "off_session", description: "Reservation Fee (applied to week 1)", metadata: meta },
       metadata: meta,
-      success_url: `${site}/login?paid=1`,
-      cancel_url: `${site}/login`,
+      // Return pages that explain the result (src/routes/reservation-fee.tsx).
+      // The applicant usually has no login yet, so /login made no sense here.
+      success_url: reservationFeeReturnUrls(site).success,
+      cancel_url: reservationFeeReturnUrls(site).cancel,
       expires_at: Math.floor(Date.now() / 1000) + 23 * 3600,
     }, { idempotencyKey: `reservation-fee-checkout:${row.id}:attempt:${attempt}` });
     if (!session?.url) throw new Error("Checkout session has no url");
@@ -165,3 +171,31 @@ export async function chargeReservationFeeAfterSigning(admin: Admin, agreementId
   }
 }
 
+
+/**
+ * Read-only: the Reservation Fee step for an agreement that is ALREADY signed
+ * (a double tap, a second tab, or a retry that lost the race). Never creates a
+ * Checkout, never writes. Returns the stored Checkout only while it is open
+ * (same row, unpaid, under 23 hours old); otherwise paid/processing/null.
+ */
+export async function existingReservationFeeStep(admin: Admin, agreementId: string, now: number = Date.now()): Promise<ReservationFeeSigningStep | null> {
+  try {
+    const { data: ag } = await admin.from("agreements").select("id,application_id,status,metadata").eq("id", agreementId).maybeSingle();
+    if (!ag?.application_id || ag.status !== "signed") return null;
+    if ((ag as any)?.metadata?.amendment) return null;
+    const { data: rows } = await admin.from("payments").select("id,status,amount,notes").eq("driver_id", String(ag.application_id)).eq("notes", reservationFeeNote(agreementId)).limit(5);
+    const row = ((rows ?? []) as any[]).find((p) => p.status !== "void") ?? null;
+    if (!row) return null;
+    const amount = Number(row.amount);
+    if (row.status === "paid") return reservationFeeSigningStep({ status: "already_paid", amount, paymentId: row.id });
+    if (row.status === "pending") return reservationFeeSigningStep({ status: "pending", amount, paymentId: row.id, last4: null });
+    if (row.status !== "unpaid") return null;
+    const co = (ag as any)?.metadata?.reservation_fee_checkout;
+    if (!co || co.payment_id !== row.id) return null;
+    const created = Date.parse(String(co.created_at ?? ""));
+    if (!Number.isFinite(created) || now - created >= RESERVATION_FEE_CHECKOUT_TTL_MS) return null;
+    return reservationFeeSigningStep({ status: "checkout", amount, paymentId: row.id, url: String(co.url ?? "") });
+  } catch {
+    return null;
+  }
+}
