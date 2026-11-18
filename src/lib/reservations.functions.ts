@@ -11,6 +11,7 @@ import {
   type ReservationRow,
 } from "@/lib/reservations";
 import { tierAllows } from "@/lib/roles";
+import { SwitchReservationVehicleInput, type SwitchResult } from "@/lib/reservation-switch";
 import { chooseVehicleThumbnailPaths, vehicleListThumbnailKey, type VehicleThumbnailMedia } from "@/lib/vehicle-thumbnail";
 import {
   DEFAULT_RESERVATION_DEPOSIT_SETTINGS,
@@ -399,6 +400,21 @@ export const cancelReservation = createServerFn({ method: "POST" })
       }
     }
     return { ok: true };
+  });
+
+/**
+ * Switch Vehicle on a Reserved rental (Manager+). Core logic and guards live in
+ * reservation-switch.server.ts; this wrapper authorizes and writes the audit entry.
+ */
+export const switchReservationVehicle = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => SwitchReservationVehicleInput.parse(d))
+  .handler(async ({ context, data }): Promise<SwitchResult> => {
+    const actor = await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { switchReservationVehicleCore } = await import("@/lib/reservation-switch.server");
+    const { logAudit } = await import("@/lib/audit.server");
+    return switchReservationVehicleCore(supabaseAdmin, data, (entry) => logAudit(actor, entry));
   });
 
 export const clearReservationAfterActivate = createServerFn({ method: "POST" })

@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ReserveCarDialog } from "./ReserveCarDialog";
+import { SwitchReservationVehicleDialog } from "./SwitchReservationVehicleDialog";
 
 const input = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm";
 const primary = "inline-flex h-9 items-center justify-center rounded-md bg-[#D03020] px-4 text-sm font-semibold text-white hover:bg-[#B52818] disabled:opacity-50";
@@ -147,6 +148,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
   const [reserveOpen, setReserveOpen] = useState(false);
   const [depositRow, setDepositRow] = useState<ReservationRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [switchRow, setSwitchRow] = useState<ReservationRow | null>(null);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -303,6 +305,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                               {feeOn && (row.depositStatus === "pending" || row.depositStatus === "not_required") && (
                                 <DropdownMenuItem onSelect={() => setDepositRow(row)}>Record {chargeLabel}</DropdownMenuItem>
                               )}
+                              <DropdownMenuItem onSelect={() => setSwitchRow(row)}>Switch Vehicle</DropdownMenuItem>
                               <DropdownMenuItem onSelect={() => void onCancel(row)}>Cancel Reservation</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -322,6 +325,17 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
           open={reserveOpen}
           onOpenChange={setReserveOpen}
           onSaved={refresh}
+        />
+      ) : null}
+      {canManage && switchRow ? (
+        <SwitchReservationVehicleDialog
+          open={!!switchRow}
+          onOpenChange={(v) => !v && setSwitchRow(null)}
+          rentalId={switchRow.id}
+          driverName={switchRow.driverName}
+          currentVehicleLabel={[switchRow.vehicleLabel, switchRow.plate].filter(Boolean).join(" · ") || null}
+          currentRate={typeof switchRow.weeklyRate === "number" ? switchRow.weeklyRate : null}
+          onSwitched={refresh}
         />
       ) : null}
       {depositRow ? (
