@@ -105,7 +105,7 @@ import { CHECKLIST_EVIDENCE_ENABLED, EVIDENCE_FIELDS, PICKUP_PAYMENT_METHODS, do
 import { pickupAmountCents } from "@/lib/pickup-payment";
 import { getChecklistEvidence, saveChecklistEvidence } from "@/lib/checklist-evidence.functions";
 import { ChecklistEvidenceControl } from "./ChecklistEvidenceControl";
-import { driverLifecycle, firstContact, fleetMarksByStage, stageStartedAt, type ContactActivity, type FleetLifecycleMark } from "@/lib/driver-lifecycle";
+import { driverLifecycle, reservationStageDone, firstContact, fleetMarksByStage, stageStartedAt, type ContactActivity, type FleetLifecycleMark } from "@/lib/driver-lifecycle";
 import { getFleetLifecycleMarks } from "@/lib/fleet-lifecycle.functions";
 import { getLeadActivity } from "@/lib/lead-activity.functions";
 import type { ActivationRequirementKey } from "@/lib/activation-readiness";
@@ -2046,6 +2046,7 @@ function DriverDetail({
   const [reserveOpen, setReserveOpen] = useState(false);
   const [hasReservation, setHasReservation] = useState(false);
   const [reservationDepositStatus, setReservationDepositStatus] = useState<string | null>(null);
+  const [reservationFeeRequired, setReservationFeeRequired] = useState(false);
   const [blockStartWhenPending, setBlockStartWhenPending] = useState(false);
   // Rental tab: Activate Rental entry and the server's readiness checklist.
   // Loaded only for Manager+ (the server refuses a Coordinator) and only while
@@ -2079,6 +2080,7 @@ function DriverDetail({
   useEffect(() => {
     if (rentalActive || !approved) {
       setHasReservation(false);
+      setReservationFeeRequired(false);
       setReservationDepositStatus(null);
       return;
     }
@@ -2091,6 +2093,7 @@ function DriverDetail({
       .then(([open, settings]) => {
         if (cancelled) return;
         setHasReservation(!!open.reservation);
+        setReservationFeeRequired(open.reservation?.depositRequired === true);
         setReservationDepositStatus(open.feeDisplayStatus ?? open.reservation?.depositStatus ?? null);
         setBlockStartWhenPending(settings.blockStartWhenPending === true);
       })
@@ -2230,7 +2233,9 @@ function DriverDetail({
   const { stages: lifecycle, current: currentStage, percent: percentComplete } = driverLifecycle({
     contacted, interviewComplete: screeningDone, screening: screeningComplete,
     documentsReceived: !vaultLoading && collectedDocuments.collected,
-    approved, reserved: hasReservation, rentalActive: rentalActiveFlag,
+    approved, rentalActive: rentalActiveFlag,
+    // Green only once the $50 Reservation Fee is actually paid.
+    reserved: reservationStageDone({ feeStatus: reservationDepositStatus, hasReservation, feeRequired: reservationFeeRequired, rentalActive: rentalActiveFlag }),
     insuranceComplete,
     pickup: isManager && pickupItems.some((i) => i.status === "upload_due"),
     // Saved Yellow/Red evidence stays visible; only a real passed inspection or signed agreement is Green.

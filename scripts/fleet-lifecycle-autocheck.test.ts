@@ -50,10 +50,11 @@ describe("rail: derived, never a fake checkmark", () => {
     const l = life.driverLifecycle({ ...base, contacted: true, approved: true });
     expect(l.current.key).toBe("agreement");
     expect(stateOf(l, "documents")).toBe("open");
-    expect(stateOf(l, "screening")).toBe("open");
-    expect(l.open.map((s) => s.key)).toEqual(["documents", "screening"]);
-    // Open never counts: applied, contacted, approved = 3 of 11.
-    expect(l.percent).toBe(27);
+    // Approval is the screening decision (t451u): Screening is done, Documents stays open.
+    expect(stateOf(l, "screening")).toBe("done");
+    expect(l.open.map((s) => s.key)).toEqual(["documents"]);
+    // Open never counts: applied, contacted, screening, approved = 4 of 11.
+    expect(l.percent).toBe(36);
   });
   test("gating stages always stay current: no reservation means Reserved even after inspection", () => {
     const l = life.driverLifecycle({ ...base, contacted: true, documentsReceived: true, screening: true, approved: true, agreement: true, inspection: true });
