@@ -43,3 +43,20 @@ export function rowOpenProps(open: () => void) {
 
 export const ROW_OPEN_CLASS =
   "cursor-pointer hover:bg-[#FAFAFB] focus-visible:outline-none focus-visible:bg-[#FAFAFB] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D03020]/40 transition-colors";
+
+
+/**
+ * Props for a row that opens an admin record (a driver, vehicle, booking...) through
+ * the router. With no destination the row stays plain: no pointer, no focus stop.
+ */
+export function rowNav(
+  navigate: (opts: any) => unknown,
+  search: Record<string, unknown> | null | undefined,
+  base = "",
+): { className: string } & Partial<ReturnType<typeof rowOpenProps>> {
+  if (!search) return { className: base };
+  return {
+    ...rowOpenProps(() => void navigate({ to: "/admin", search } as never)),
+    className: `${base} ${ROW_OPEN_CLASS}`.trim(),
+  };
+}

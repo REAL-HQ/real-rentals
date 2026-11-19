@@ -1,5 +1,6 @@
 import { LinkedVehicleCell } from "./VehicleCell";
 import { AppSelect } from "@/components/ui/app-select";
+import { rowOpenProps, ROW_OPEN_CLASS, rowNav } from "@/lib/row-click";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -242,7 +243,7 @@ export function MaintenanceSchedules() {
                     {items.map((s) => {
                       const state = scheduleDueState(s, v.current_odometer);
                       return (
-                        <li key={s.id} className="px-5 py-2.5 flex items-center gap-3 flex-wrap">
+                        <li key={s.id} className={`px-5 py-2.5 flex items-center gap-3 flex-wrap ${ROW_OPEN_CLASS}`} {...rowOpenProps(() => setEditing({ vehicleId: v.id, schedule: s }))}>
                           <div className="min-w-[160px] flex-1">
                             <div className="text-[13px] text-[#111114]">{s.item}</div>
                             <div className="text-[11px] text-[#9A9AA3]">

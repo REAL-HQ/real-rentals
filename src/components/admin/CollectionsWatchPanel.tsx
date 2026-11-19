@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getCollectionsWatch } from "@/lib/collections-watch.functions";
 import type { CollectionsWatchReport, WatchMatch } from "@/lib/collections-watch";
@@ -15,6 +16,7 @@ const money = (cents: number | null) => cents === null ? "—" : (cents / 100).t
 const statusLabel = (status: "past_due" | "unpaid") => status === "past_due" ? "Past Due" : "Unpaid";
 
 export function CollectionsWatchPanel() {
+  const navigate = useNavigate();
   const read = useServerFn(getCollectionsWatch);
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   useEffect(() => {
@@ -43,7 +45,7 @@ export function CollectionsWatchPanel() {
           <Section title="Past Due And Unpaid" empty="No past due or unpaid subscriptions." count={load.report.overdue.length}>
             <Table heads={["Customer", "Status", "Amount Due", "Days Overdue", "Failure Reason", "Driver", "Phone"]}>
               {load.report.overdue.map((row) => (
-                <tr key={row.id} className="border-b align-top">
+                <tr key={row.id} {...rowNav(navigate, row.match.driverId ? { tab: "drivers", id: row.match.driverId } : null, "border-b align-top")}>
                   <td className="py-2 pr-3"><div>{row.customerName ?? "—"}</div><div className="text-muted-foreground">{row.customerEmail ?? "—"}</div></td>
                   <td className="py-2 pr-3">{statusLabel(row.status)}</td>
                   <td className="py-2 pr-3">{money(row.amountDueCents)}</td>
@@ -57,7 +59,7 @@ export function CollectionsWatchPanel() {
           <Section title="Failed Charges" empty="No failed charges in the last 30 days." count={load.report.failedCharges.length}>
             <Table heads={["Date", "Customer", "Amount", "Failure Reason", "Driver", "Phone"]}>
               {load.report.failedCharges.map((row) => (
-                <tr key={row.id} className="border-b align-top">
+                <tr key={row.id} {...rowNav(navigate, row.match.driverId ? { tab: "drivers", id: row.match.driverId } : null, "border-b align-top")}>
                   <td className="py-2 pr-3">{row.createdDate ?? "—"}</td>
                   <td className="py-2 pr-3"><div>{row.customerName ?? "—"}</div><div className="text-muted-foreground">{row.customerEmail ?? "—"}</div></td>
                   <td className="py-2 pr-3">{money(row.amountCents)}</td>
@@ -70,7 +72,7 @@ export function CollectionsWatchPanel() {
           <Section title="Due In 7 Days" empty="Nothing is due in the next 7 days." count={load.report.dueSoon.length}>
             <Table heads={["Due", "Customer", "Amount", "Source", "Driver", "Phone"]}>
               {load.report.dueSoon.map((row) => (
-                <tr key={row.id} className="border-b align-top">
+                <tr key={row.id} {...rowNav(navigate, row.match.driverId ? { tab: "drivers", id: row.match.driverId } : null, "border-b align-top")}>
                   <td className="py-2 pr-3">{row.dueDate ?? "—"}</td>
                   <td className="py-2 pr-3"><div>{row.customerName ?? "—"}</div><div className="text-muted-foreground">{row.customerEmail ?? "—"}</div></td>
                   <td className="py-2 pr-3">{money(row.amountCents)}</td>

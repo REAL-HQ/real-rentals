@@ -1,4 +1,6 @@
 import { AppSelect } from "@/components/ui/app-select";
+import { useNavigate } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
 import { useEffect, useState } from "react";
 import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
 import { FleetServiceCenter } from "./FleetServiceCenter";
@@ -67,6 +69,7 @@ export function needsOdometer(v: VehicleLite): boolean {
 }
 
 export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolean } = {}) {
+  const navigate = useNavigate();
   const [rows, setRows] = useState<Row[]>([]);
   const [vehicles, setVehicles] = useState<VehicleLite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -203,7 +206,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
           </header>
           <ul className="divide-y divide-[#F4F4F6] max-h-[520px] overflow-auto">
             {vehicles.map((v) => (
-              <li key={v.id} className="px-5 py-2.5 flex items-center gap-3">
+              <li key={v.id} {...rowNav(navigate, { tab: "vehicles", id: v.id }, "px-5 py-2.5 flex items-center gap-3")}>
                 <div className="text-[13px] text-[#111114] flex-1 truncate">
                   {`${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim() || v.id.slice(0, 8)}
                 </div>
@@ -242,7 +245,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
           </header>
           <ul className="divide-y divide-[#F4F4F6]">
             {downVehicles.map((v) => (
-              <li key={v.id} className="px-5 py-2.5 flex items-center gap-3">
+              <li key={v.id} {...rowNav(navigate, { tab: "vehicles", id: v.id }, "px-5 py-2.5 flex items-center gap-3")}>
                 <div className="text-[13px] text-[#111114] flex-1">
                   {`${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim()}
                 </div>
@@ -267,7 +270,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
           </header>
           <ul className="divide-y divide-[#F4F4F6]">
             {dueVehicles.map(({ v, reasons }) => (
-              <li key={v.id} className="px-5 py-2.5 flex items-center gap-3 flex-wrap">
+              <li key={v.id} {...rowNav(navigate, { tab: "vehicles", id: v.id }, "px-5 py-2.5 flex items-center gap-3 flex-wrap")}>
                 <div className="text-[13px] text-[#111114] flex-1 min-w-[180px]">
                   {`${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim()}
                 </div>
@@ -298,7 +301,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
           </header>
           <ul className="divide-y divide-[#F4F4F6]">
             {needsOdoVehicles.map((v) => (
-              <li key={v.id} className="px-5 py-2.5 flex items-center gap-3">
+              <li key={v.id} {...rowNav(navigate, { tab: "vehicles", id: v.id }, "px-5 py-2.5 flex items-center gap-3")}>
                 <div className="text-[13px] text-[#111114] flex-1">
                   {`${v.year ?? ""} ${v.make ?? ""} ${v.model ?? ""}`.trim()}
                 </div>
@@ -357,7 +360,7 @@ export function MaintenancePanel({ autoOpenAdd = false }: { autoOpenAdd?: boolea
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map((r) => (
-                <tr key={r.id}>
+                <tr key={r.id} {...rowNav(navigate, r.vehicle_id ? { tab: "vehicles", id: r.vehicle_id } : null)}>
                   <td className="px-4 py-2"><span className="flex items-center gap-2"><VehiclePickerPhoto vehicleId={r.vehicle_id} className="h-8 w-11 rounded-md" iconClassName="h-3.5 w-3.5" /><span className="truncate">{vName(r.vehicle_id)}</span></span></td>
                   <td>
                     <AppSelect aria-label="Maintenance Status"

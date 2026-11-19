@@ -1,4 +1,5 @@
 import { AppSelect } from "@/components/ui/app-select";
+import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -217,7 +218,7 @@ export function IncidentBoard() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.id} className="border-t border-border">
+                <tr key={row.id} className={`border-t border-border ${ROW_OPEN_CLASS}`} {...rowOpenProps(() => setOpenId(row.id))}>
                   <td className="px-3 py-2">{row.vehicle}</td>
                   <td className="px-3 py-2">{row.driver}</td>
                   <td className="px-3 py-2">{row.typeLabel}</td>

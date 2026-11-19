@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { getStripeRiskMonitor } from "@/lib/stripe-risk-monitor.functions";
@@ -95,8 +96,9 @@ function Report({ report }: { report: RiskReport }) {
 }
 
 function Row({ row }: { row: RiskRow }) {
+  const navigate = useNavigate();
   return (
-    <tr className="border-b align-top">
+    <tr {...rowNav(navigate, row.applicationId ? { tab: "drivers", id: row.applicationId } : null, "border-b align-top")}>
       <td className="py-2 pr-3">{row.kindLabel}</td>
       <td className="py-2 pr-3">{formatStatusLabel(row.status)}</td>
       <td className="py-2 pr-3">{row.whenEt || "—"}</td>

@@ -1,4 +1,5 @@
 import { AppSelect } from "@/components/ui/app-select";
+import { rowOpenProps, ROW_OPEN_CLASS, rowNav } from "@/lib/row-click";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -264,7 +265,7 @@ export function AutomationsPanel() {
 
                 <ol className="divide-y divide-[#EDEDF0]">
                   {mine.map((s) => (
-                    <li key={s.id} className="p-4 flex items-start gap-3">
+                    <li key={s.id} className={`p-4 flex items-start gap-3 ${ROW_OPEN_CLASS}`} {...rowOpenProps(() => setEditingStep({ workflowId: wf.id, step: s }))}>
                       <div className="mt-0.5 shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#F6F6F8] text-xs font-semibold">
                         {s.step_order}
                       </div>

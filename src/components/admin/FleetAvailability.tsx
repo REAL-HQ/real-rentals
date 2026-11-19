@@ -1,5 +1,6 @@
 import { VehicleOrLabel } from "./VehicleCell";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
@@ -97,6 +98,7 @@ function WaitingHint({ count, canOpen }: { count: number; canOpen: boolean }) {
 }
 
 function GroupTable({ id, label, rows }: { id: FleetGroup; label: string; rows: FleetAvailabilityRow[] }) {
+  const navigate = useNavigate();
   const rented = id === "rented";
   return (
     <section className="overflow-hidden rounded-2xl border border-[#EDEDF0] bg-white">
@@ -119,7 +121,7 @@ function GroupTable({ id, label, rows }: { id: FleetGroup; label: string; rows: 
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id} className="border-t border-[#EDEDF0]">
+              <tr key={row.id} {...rowNav(navigate, { tab: "vehicles", id: row.id }, "border-t border-[#EDEDF0]")}>
                 <td className="px-3 py-2 font-mono whitespace-nowrap">{row.unit}</td>
                 <td className="px-3 py-2"><VehicleOrLabel vehicleId={row.id} label={row.vehicle} size="sm" /></td>
                 <td className="px-3 py-2 font-mono whitespace-nowrap">{row.plate}</td>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
 import { Phone, MessageSquare, ArrowUpRight, Flame, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,7 @@ export default function LeadPriorities({
   /** Signed-in staff tier; decides which ⋮ menu options show (Delete is Owner-only). */
   tier?: StaffTier | null;
 }) {
+  const navigate = useNavigate();
   const load = useServerFn(getLeadPriorities);
   const [result, setResult] = useState<LeadPrioritiesResult | null>(null);
   const [offset, setOffset] = useState(0);
@@ -193,7 +195,7 @@ export default function LeadPriorities({
                 {result.rows.map((lead) => {
                   const readinessResult = canSeeReadiness ? readiness[lead.id] : undefined;
                   return (
-                    <li key={lead.id} data-lead-priority={lead.bucket} className="min-w-0">
+                    <li key={lead.id} data-lead-priority={lead.bucket} {...rowNav(navigate, { tab: "drivers", id: lead.id }, "min-w-0 rounded-2xl")}>
                       <LeadCardBody
                         lead={lead}
                         today={result.today}

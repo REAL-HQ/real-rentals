@@ -1,5 +1,7 @@
 import { LinkedVehicleCell } from "./VehicleCell";
 import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
+import { useNavigate } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
 import { useEffect, useMemo, useState } from "react";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from "./modal";
 import { supabase } from "@/integrations/supabase/client";
@@ -129,6 +131,7 @@ function paymentStatusLabel(p: { status?: string | null; reason?: string | null;
 }
 
 export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { initialFilter?: string; autoOpenAdd?: boolean; tier?: StaffTier | null } = {}) {
+  const navigate = useNavigate();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -431,7 +434,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
               return (
                 <tr
                   key={p.id}
-                  className="border-t border-[#EDEDF0] h-11 hover:bg-[#FAFAFB] transition-colors duration-150"
+                  {...rowNav(navigate, p.driver_id ? { tab: "drivers", id: p.driver_id } : null, "border-t border-[#EDEDF0] h-11")}
                 >
                   <td className="px-3 text-[13px] font-medium text-[#111114] max-lg:whitespace-nowrap">{driverName}</td>
                   <td className="px-3 text-xs text-[#55555E]">

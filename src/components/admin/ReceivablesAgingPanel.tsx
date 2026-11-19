@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { getReceivablesAging } from "@/lib/receivables-aging.functions";
@@ -60,6 +61,7 @@ export function ReceivablesAgingPanel() {
 }
 
 function Report({ report }: { report: AgingReport }) {
+  const navigate = useNavigate();
   if (report.warnings.length > 0 || !report.bucketCents) {
     return (
       <div className="space-y-2">
@@ -94,7 +96,7 @@ function Report({ report }: { report: AgingReport }) {
             </thead>
             <tbody>
               {report.rows.map((row) => (
-                <tr key={row.rentalId} className="border-b align-top">
+                <tr key={row.rentalId} {...rowNav(navigate, row.applicationId ? { tab: "drivers", id: row.applicationId } : null, "border-b align-top")}>
                   <td className="py-2 pr-3">{row.applicationId ? <Link to="/admin" search={{ tab: "drivers", id: row.applicationId }} className="underline">{row.driver}</Link> : row.driver}</td>
                   <td className="py-2 pr-3">{row.vehicleId ? <Link to="/admin" search={{ tab: "vehicles", id: row.vehicleId }} className="underline">{row.vehicle}</Link> : row.vehicle}</td>
                   <td className="py-2 pr-3">{formatStatusLabel(row.rentalStatus)}</td>
