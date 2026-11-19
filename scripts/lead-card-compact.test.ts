@@ -52,6 +52,7 @@ const render = (lead: ReturnType<typeof row>) =>
       today: TODAY,
       displayName: "David Stellar",
       name: "David Stellar",
+      status: h("span", { "data-status": "" }, lead.contactLabel),
       actions: h("div", null, "Call Text View Applicant"),
     }),
   );
@@ -64,7 +65,8 @@ describe("compact lead cards", () => {
     expect(html).not.toContain("border-l-");
     expect(html).not.toContain("data-lead-urgency");
     expect(html).toContain("bg-emerald-600");
-    expect(html).not.toContain("Applied Today");
+    expect(html).toContain('data-status="">New<');
+    expect(html).toContain("Applied Today");
     expect(html).not.toContain("Make first contact");
     expect(html).not.toContain("Follow up and log the outcome");
     for (const s of [
@@ -87,26 +89,25 @@ describe("compact lead cards", () => {
         contact_status_at: now,
       }),
     );
-    expect(html).not.toContain("Contacted");
+    expect(html).toContain('data-status="">Contacted<');
     expect(html).toContain(">3<");
-    expect(html).toContain(">Days<");
-    expect(html).not.toContain("Days Overdue");
+    expect(html).toContain("Days Overdue");
     expect(html).toContain("Due Nov 5, 2026 (3 days overdue)");
     expect(html).toContain("text-brand");
-    expect(html).not.toContain("Last contact Today");
+    expect(html).toContain("Last contact Today");
     expect(html).not.toContain("Overdue · Urgent");
     expect(html).not.toContain("Follow up and log the outcome");
     expect(html).not.toContain("Applied");
   });
   test("interested drops the duplicate stage chip; documents keep the missing-contact line", () => {
     const interested = render(row("interested", { contact_status: "interested" }));
-    expect(interested).not.toContain("Interested");
+    expect(interested).toContain('data-status="">Interested<');
     expect(interested).not.toContain(">High<");
     expect(interested).not.toContain("Confirm next steps");
     const info = render(row("information", { contact_status: "documents" }));
-    expect(info).not.toContain("Documents");
+    expect(info).toContain('data-status="">Documents<');
     expect(info).not.toContain("Waiting on Info · Medium");
-    expect(info).not.toContain("No contact logged");
+    expect(info).toContain("No contact logged");
     expect(info).not.toContain("Check what info is missing");
   });
   test("note is one line with the full text on hover; missing date is honest", () => {
@@ -120,11 +121,13 @@ describe("compact lead cards", () => {
         source: "google",
       }),
     );
-    expect(html).not.toContain("line-clamp-1");
-    expect(html).not.toContain(note);
-    expect(html).not.toContain("Sedan");
+    expect(html).toContain("line-clamp-2");
+    expect(html).not.toContain("italic");
+    expect(html).toContain(`title="${note}"`);
     expect(html).toContain(">Nov 20<");
+    expect(html).toContain("Scheduled");
     expect(html).toContain('title="Due Nov 20, 2026"');
+    expect(html).toContain("Sedan · Google");
     expect(
       leadTiming(
         { bucket: "new", created_at: null, contact_status_at: null, contact_follow_up_on: null },
@@ -188,12 +191,14 @@ describe("compact lead cards", () => {
       "tel:",
       "open-messages",
       "View Applicant",
+      "<ContactStatusCell",
+      "ReadinessStatePill",
+      "<LeadFollowUpDraft applicationId={lead.id} bucket={lead.bucket} />",
+      "<LeadCardMenu lead={lead} today={result.today} tier={tier} onChanged={refresh} />",
       "Unnamed Applicant",
       "No leads need attention",
     ])
       expect(ui).toContain(s);
-    for (const s of ["<ContactStatusCell", "ReadinessStatePill", "<LeadFollowUpDraft", "<LeadCardMenu"])
-      expect(ui).not.toContain(s);
     for (const s of ["ReadinessMetrics", "positives", "{lead.reason}", "{lead.action}"])
       expect(ui).not.toContain(s);
   });

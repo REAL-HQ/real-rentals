@@ -12,18 +12,22 @@ import {
   type LeadFilter,
   type LeadPrioritiesResult,
 } from "@/lib/lead-priorities";
+import { ContactStatusCell } from "./ContactStatusCell";
+import { LeadFollowUpDraft } from "./LeadFollowUpDraft";
 import { LeadResponseReport } from "./LeadResponseReport";
+import { ReadinessStatePill } from "./ui";
 import type { ReadinessByApplicant } from "@/lib/admin-overview";
 import { displayPersonName } from "@/lib/display-normalize";
 import { LeadCardBody, leadCallClass, leadStatTiles, leadTextClass } from "./LeadCardBody";
+import { LeadCardMenu } from "./LeadCardMenu";
 import type { StaffTier } from "@/lib/roles";
 
 export default function LeadPriorities({
   isManager = false,
   refreshKey = 0,
-  readiness: _readiness = {},
-  canSeeReadiness: _canSeeReadiness = false,
-  tier: _tier = null,
+  readiness = {},
+  canSeeReadiness = false,
+  tier = null,
 }: {
   isManager?: boolean;
   refreshKey?: number;
@@ -193,6 +197,7 @@ export default function LeadPriorities({
             ) : (
               <ul className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {result.rows.map((lead) => {
+                  const readinessResult = canSeeReadiness ? readiness[lead.id] : undefined;
                   const displayName = lead.full_name
                     ? displayPersonName(lead.full_name)
                     : "Unnamed Applicant";
@@ -207,7 +212,22 @@ export default function LeadPriorities({
                         lead={lead}
                         today={result.today}
                         displayName={displayName}
+                        menu={<LeadCardMenu lead={lead} today={result.today} tier={tier} onChanged={refresh} />}
                         name={displayName}
+                        status={
+                          <>
+                            <ContactStatusCell
+                              applicationId={lead.id}
+                              row={lead}
+                              onSaved={refresh}
+                              appearance="neutral"
+                            />
+                            {readinessResult ? (
+                              <ReadinessStatePill state={readinessResult.state} short />
+                            ) : null}
+                          </>
+                        }
+                        draft={<LeadFollowUpDraft applicationId={lead.id} bucket={lead.bucket} />}
                         actions={
                           <div className="flex items-center gap-2">
                             {lead.phone && (

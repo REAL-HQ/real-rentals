@@ -120,17 +120,17 @@ describe("Contact Status drafts pass the same rules the server re-runs", () => {
 });
 
 describe("card wiring", () => {
-  test("the card shows the name and actions, and leaves the menu off the face", () => {
+  test("the card renders the menu slot in the top-right of the name row", () => {
     const row = projectLead(
       { id: "a1", full_name: "Test Lead", phone: "555", email: null, status: "new", created_at: new Date().toISOString(), contact_status: "new", contact_status_note: null, contact_follow_up_on: null, contact_status_at: null, contact_status_by: null } as never,
       "new",
     );
     const html = renderToStaticMarkup(
-      h(LeadCardBody, { lead: row, today: TODAY, displayName: "Test Lead", name: h("a", null, "Test Lead"), actions: h("div", null, "Call") }),
+      h(LeadCardBody, { lead: row, today: TODAY, displayName: "Test Lead", name: h("a", null, "Test Lead"), status: h("span", null, "New"), actions: h("div", null, "Call"), menu: h("button", { "data-kebab": "" }, "menu") }),
     );
-    expect(html.indexOf(">Test Lead<")).toBeLessThan(html.indexOf("Call"));
-    expect(html).not.toContain("data-kebab");
-    expect(html).not.toContain(">New<");
+    expect(html.indexOf(">Test Lead<")).toBeLessThan(html.indexOf("data-kebab"));
+    expect(html.indexOf("data-kebab")).toBeLessThan(html.indexOf("Call"));
+    expect(html).toMatch(/flex items-start gap-2[\s\S]*Test Lead[\s\S]*data-kebab/);
   });
   test("lead rows carry email for Copy Email", () => {
     expect(LEAD_SELECT.split(",")).toContain("email");
@@ -156,8 +156,7 @@ describe("card wiring", () => {
   test("tier flows from the admin shell to every lead card", () => {
     expect(adminSrc).toContain('<OverviewPanel canSeeCollections={tierAllows(tier, "manager")} tier={tier} />');
     expect(overviewSrc).toContain("tier={tier}");
-    expect(listSrc).not.toContain("<LeadCardMenu");
-    expect(menuSrc).toContain("tier");
+    expect(listSrc).toContain("<LeadCardMenu lead={lead} today={result.today} tier={tier} onChanged={refresh} />");
   });
   test("no real phone numbers in the menu code or this test", () => {
     const self = readFileSync("scripts/lead-card-menu.test.ts", "utf8");

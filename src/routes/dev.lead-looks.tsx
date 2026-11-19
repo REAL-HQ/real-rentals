@@ -3,7 +3,7 @@ import { LEAD_LOOKS, LeadLookBoard, type LookId } from "@/components/admin/LeadL
 import { displayPersonName } from "@/lib/display-normalize";
 import { projectLead, type LeadBucket, type LeadRow } from "@/lib/lead-priorities";
 
-const LOOK_IDS = ["a", "b", "c", "d", "e"] as const;
+const LOOK_IDS = ["a", "b", "c", "d"] as const;
 
 export const Route = createFileRoute("/dev/lead-looks")({
   validateSearch: (search: Record<string, unknown>): { look: LookId | "all" } => ({
@@ -14,7 +14,7 @@ export const Route = createFileRoute("/dev/lead-looks")({
 
 const TODAY = "2026-11-18";
 
-const SAMPLES: Array<LeadRow & { bucket: LeadBucket }> = [
+const SAMPLES: Array<LeadRow & { bucket: LeadBucket; extra?: string }> = [
   {
     id: "preview-1",
     bucket: "overdue",
@@ -23,7 +23,8 @@ const SAMPLES: Array<LeadRow & { bucket: LeadBucket }> = [
     status: "reviewing",
     created_at: "2026-09-02T15:00:00.000Z",
     contact_status: "voicemail",
-    contact_status_note: "Left a voicemail about the sedan.",
+    contact_status_note: "Left a voicemail about the sedan. She asked for the weekly rate and whether insurance is included before she calls back.",
+    extra: "Promising",
     contact_follow_up_on: "2026-10-10",
     contact_status_at: "2026-10-13T15:00:00.000Z",
     contact_status_by: null,
@@ -68,7 +69,8 @@ const SAMPLES: Array<LeadRow & { bucket: LeadBucket }> = [
     status: "reviewing",
     created_at: "2026-11-01T15:00:00.000Z",
     contact_status: "documents",
-    contact_status_note: "Licence back is blurry.",
+    contact_status_note: "Licence back is blurry. Asked them to resend a photo in daylight.",
+    extra: "More Info Needed",
     contact_follow_up_on: null,
     contact_status_at: null,
     contact_status_by: null,
@@ -108,9 +110,14 @@ const SAMPLES: Array<LeadRow & { bucket: LeadBucket }> = [
 ];
 
 const LEADS = SAMPLES.map((sample) => {
-  const { bucket, ...row } = sample;
+  const { bucket, extra, ...row } = sample;
   const lead = projectLead(row, bucket);
-  return { lead, name: displayPersonName(lead.full_name ?? ""), phone: "5550101000" };
+  return {
+    lead,
+    name: displayPersonName(lead.full_name ?? ""),
+    phone: "5550101000",
+    tags: [lead.contactLabel, extra].filter((tag): tag is string => Boolean(tag)),
+  };
 });
 
 function LeadLooksPage() {
