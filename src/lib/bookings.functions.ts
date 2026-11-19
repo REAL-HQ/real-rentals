@@ -43,6 +43,9 @@ import {
 //   only, and the auth id is returned under a different name so the two can
 //   never be confused by a caller either.
 
+import { loadVehicleThumbnailPaths } from "@/lib/vehicle-thumbs.server";
+import { vinLast6 } from "@/lib/vehicle-label";
+
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
 
 /**
@@ -228,10 +231,11 @@ export const listBookings = createServerFn({ method: "POST" })
       vehIds.length
         ? sb
             .from("vehicles")
-            .select("id,unit_number,year,make,model,license_plate")
+            .select("id,unit_number,year,make,model,license_plate,vin")
             .in("id", vehIds)
         : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
     ]);
+    const thumbs = await loadVehicleThumbnailPaths(sb, vehIds);
     const appById = new Map((apps.data ?? []).map((a) => [String(a.id), a]));
     const vehById = new Map((vehicles.data ?? []).map((v) => [String(v.id), v]));
 
@@ -274,6 +278,8 @@ export const listBookings = createServerFn({ method: "POST" })
         unitNumber: (veh?.unit_number as string | null) ?? null,
         vehicleLabel: vehicleLabelOf(veh as never) ?? null,
         plate: (veh?.license_plate as string | null) ?? null,
+        vinLast6: vinLast6(veh?.vin as string | null) || null,
+        thumbnailPath: r.vehicle_id ? thumbs.get(String(r.vehicle_id)) ?? null : null,
       };
       if (canSeeMoney) {
         row.weeklyRate = r.weekly_rate == null ? null : Number(r.weekly_rate);
@@ -696,6 +702,8 @@ export const getBooking = createServerFn({ method: "POST" })
       unitNumber: (vehRow?.unit_number as string | null) ?? null,
       vehicleLabel: vehicleLabelOf(vehRow as never) ?? null,
       plate: (vehRow?.license_plate as string | null) ?? null,
+      vinLast6: vinLast6(vehRow?.vin as string | null) || null,
+      thumbnailPath: rental.vehicle_id ? (await loadVehicleThumbnailPaths(sb, [String(rental.vehicle_id)])).get(String(rental.vehicle_id)) ?? null : null,
     };
     if (canSeeMoney) {
       booking.weeklyRate = rental.weekly_rate == null ? null : Number(rental.weekly_rate);

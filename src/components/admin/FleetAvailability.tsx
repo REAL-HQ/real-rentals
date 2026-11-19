@@ -1,3 +1,4 @@
+import { VehicleOrLabel } from "./VehicleCell";
 import { Link } from "@tanstack/react-router";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { useServerFn } from "@tanstack/react-start";
@@ -120,7 +121,7 @@ function GroupTable({ id, label, rows }: { id: FleetGroup; label: string; rows: 
             {rows.map((row) => (
               <tr key={row.id} className="border-t border-[#EDEDF0]">
                 <td className="px-3 py-2 font-mono whitespace-nowrap">{row.unit}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{row.vehicle}</td>
+                <td className="px-3 py-2"><VehicleOrLabel vehicleId={row.id} label={row.vehicle} size="sm" /></td>
                 <td className="px-3 py-2 font-mono whitespace-nowrap">{row.plate}</td>
                 <td className="px-3 py-2 whitespace-nowrap"><VehicleStatusBadge status={row.statusLabel} label={row.statusLabel} /></td>
                 {rented && <td className="px-3 py-2 whitespace-nowrap">{row.driver}</td>}

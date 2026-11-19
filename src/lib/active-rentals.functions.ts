@@ -9,6 +9,7 @@ import {
   type PaymentFact,
   type ReadResult,
 } from "@/lib/active-rentals";
+import { vinLast6 } from "@/lib/vehicle-label";
 import { chooseVehicleThumbnailPaths, vehicleListThumbnailKey, type VehicleThumbnailMedia } from "@/lib/vehicle-thumbnail";
 
 // Manager board for rentals that are out right now.
@@ -159,13 +160,14 @@ export const listActiveRentals = createServerFn({ method: "POST" })
         make: string | null;
         model: string | null;
         license_plate: string | null;
+        vin: string | null;
         plate_expires_on: string | null;
         registration_expires_on: string | null;
         insurance_expires_on: string | null;
       }>(
         supabaseAdmin
           .from("vehicles")
-          .select("id,unit_number,year,make,model,license_plate,plate_expires_on,registration_expires_on,insurance_expires_on")
+          .select("id,unit_number,year,make,model,license_plate,vin,plate_expires_on,registration_expires_on,insurance_expires_on")
           .in("id", vehicleIds),
       ),
       supabaseAdmin
@@ -208,6 +210,8 @@ export const listActiveRentals = createServerFn({ method: "POST" })
           applicationId: rental.application_id,
           vehicleId: rental.vehicle_id,
           vehicleLabel,
+          vehicleVinLast6: vinLast6(vehicle?.vin) || null,
+          vehicleUnit: vehicle?.unit_number ?? null,
           startDate: rental.start_date,
           weeklyRate: rental.weekly_rate == null ? null : Number(rental.weekly_rate),
           nextPaymentDue: rental.next_payment_due,

@@ -7,7 +7,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { EmptyState } from "./ui";
 import { AdminTableScroll } from "./AdminTableScroll";
-import { VehicleStaffPhoto } from "./VehicleStaffPhoto";
+import { VehicleCell } from "./VehicleCell";
 import {
   cancelReservation,
   listReservations,
@@ -251,17 +251,10 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                       ) : null}
                     </td>
                     <td className="px-2 py-2 align-middle text-[#111114]">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="block h-8 w-11 shrink-0 overflow-hidden rounded-md border border-border bg-soft">
-                          <VehicleStaffPhoto path={row.thumbnailPath ?? null} name={row.vehicleLabel ?? "Vehicle"} className="h-full w-full object-cover" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium leading-tight">{row.vehicleLabel ?? "Unknown"}</span>
-                          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                            {[row.plate, row.vinLast6 ? `VIN …${row.vinLast6}` : null, row.unitNumber ? `Unit ${row.unitNumber}` : null].filter(Boolean).join(" · ") || "—"}
-                          </span>
-                        </span>
-                      </div>
+                      <VehicleCell
+                        vehicle={{ label: row.vehicleLabel, plate: row.plate, vinLast6: row.vinLast6, unitNumber: row.unitNumber }}
+                        thumbnailPath={row.thumbnailPath ?? null}
+                      />
                     </td>
                     <td className="px-2 py-2 align-middle whitespace-nowrap">{fmtDate(row.createdAt)}</td>
                     <td className="px-2 py-2 align-middle">

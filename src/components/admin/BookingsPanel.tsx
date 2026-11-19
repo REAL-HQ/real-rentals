@@ -1,3 +1,4 @@
+import { VehicleCell } from "./VehicleCell";
 import { useCallback, useEffect, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -66,14 +67,9 @@ function DriverCell({ b }: { b: BookingRow }) {
   );
 }
 
-function VehicleCell({ b }: { b: BookingRow }) {
+function BookingVehicleCell({ b }: { b: BookingRow }) {
   if (!b.vehicleId) return <span className="text-muted-foreground">Unknown</span>;
-  return (
-    <span className="block min-w-0">
-      <span className="block truncate font-medium text-foreground">{b.unitNumber ?? "Unknown"}</span>
-      <span className="block truncate text-xs text-muted-foreground">{b.vehicleLabel ?? ""}</span>
-    </span>
-  );
+  return <VehicleCell vehicle={b} thumbnailPath={b.thumbnailPath ?? null} />;
 }
 
 export function BookingsPanel({
@@ -272,7 +268,7 @@ export function BookingsPanel({
                     <DriverCell b={b} />
                   </td>
                   <td className="px-2 py-2 align-top">
-                    <VehicleCell b={b} />
+                    <BookingVehicleCell b={b} />
                   </td>
                   <td className="px-2 py-2 align-top text-muted-foreground">
                     <span className="block">{b.startDate ? fmtDate(b.startDate) : "Not recorded"}</span>

@@ -6,7 +6,7 @@ import { CalendarCheck, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "./ui";
 import { AdminTableScroll } from "./AdminTableScroll";
-import { VehicleStaffPhoto } from "./VehicleStaffPhoto";
+import { VehicleCell } from "./VehicleCell";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -181,7 +181,7 @@ export function ActiveRentalsPanel() {
             </thead>
             <tbody>
               {visible.map((row) => {
-                const [vehicleName, ...vehicleDetails] = (row.vehicleLabel || "Unknown").split(" · ");
+                const vehiclePlate = (row.vehicleLabel || "").split(" · ").slice(1).join(" · ") || null;
                 const fee = fees.get(row.id);
                 const lateDue = (fee?.lateFee ?? 0) > 0 && !fee?.waived;
                 return (
@@ -195,17 +195,10 @@ export function ActiveRentalsPanel() {
                       <span className="block truncate">{row.driverName}</span>
                     </td>
                     <td className="px-2 py-2 align-middle text-[#111114]">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="block h-8 w-11 shrink-0 overflow-hidden rounded-md border border-border bg-soft">
-                          <VehicleStaffPhoto path={row.thumbnailPath ?? null} name={vehicleName} className="h-full w-full object-cover" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium leading-tight">{vehicleName}</span>
-                          {vehicleDetails.length ? (
-                            <span className="mt-0.5 block truncate text-xs text-muted-foreground">{vehicleDetails.join(" · ")}</span>
-                          ) : null}
-                        </span>
-                      </div>
+                      <VehicleCell
+                        vehicle={{ label: row.vehicleLabel, plate: vehiclePlate, vinLast6: row.vehicleVinLast6, unitNumber: row.vehicleUnit }}
+                        thumbnailPath={row.thumbnailPath ?? null}
+                      />
                     </td>
                     <td className="px-2 py-2 align-middle">
                       <span className="block whitespace-nowrap">{formatBoardDate(row.startDate)}</span>

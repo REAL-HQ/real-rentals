@@ -1,3 +1,4 @@
+import { LinkedVehicleCell } from "./VehicleCell";
 import { formatStatusLabel } from "@/lib/ui-display-labels";
 import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -494,7 +495,7 @@ function Ledger({
                   <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
                     {/^\d{4}-\d{2}-\d{2}$/.test(row.incurredOn) ? fmtDate(row.incurredOn + "T00:00:00") : "Unknown"}
                   </td>
-                  <td className="px-4 py-3">{row.vehicleLabel}</td>
+                  <td className="px-4 py-3">{row.vehicleId ? <LinkedVehicleCell vehicleId={row.vehicleId} fallback={{ label: row.vehicleLabel }} /> : row.vehicleLabel}</td>
                   <td className="px-4 py-3">{categoryLabel(row.category)}</td>
                   <td className="px-4 py-3">{row.description}</td>
                   <td className="px-4 py-3 text-right tabular-nums font-medium">{row.amountText}</td>
@@ -540,7 +541,7 @@ function Ledger({
                   <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
                     {fmtDate(r.incurred_on + "T00:00:00")}
                   </td>
-                  <td className="px-4 py-3 max-lg:whitespace-nowrap">{r.vehicle_label}</td>
+                  <td className="px-4 py-3"><LinkedVehicleCell vehicleId={r.vehicle_id} fallback={{ label: r.vehicle_label }} /></td>
                   <td className="px-4 py-3 max-lg:whitespace-nowrap">
                     {EXPENSE_CATEGORIES.find((c) => c.value === r.category)?.label ?? r.category}
                   </td>

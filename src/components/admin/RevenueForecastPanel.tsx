@@ -1,3 +1,4 @@
+import { VehicleOrLabel } from "./VehicleCell";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -96,7 +97,7 @@ function Report({ report }: { report: RevenueForecastReport }) {
                 {report.vehicles.map((vehicle) => (
                   <tr key={vehicle.vehicleId} className="border-b">
                     <td className="py-2 pr-3">
-                      <Link to="/admin" search={{ tab: "vehicles", id: vehicle.vehicleId }} className="underline">{vehicle.label}</Link>
+                      <Link to="/admin" search={{ tab: "vehicles", id: vehicle.vehicleId }} className="underline"><VehicleOrLabel vehicleId={vehicle.vehicleId} label={vehicle.label} size="sm" /></Link>
                     </td>
                     {vehicle.weekCents.map((cents, index) => <td key={index} className="py-2 pr-3">{money(cents)}</td>)}
                     <td className="py-2">{money(vehicle.totalCents)}</td>

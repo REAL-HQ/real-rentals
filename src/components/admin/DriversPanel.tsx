@@ -1,3 +1,4 @@
+import { LinkedVehicleCell } from "./VehicleCell";
 import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { LeadActivity } from "./LeadActivity";
 import { AppSelect } from "@/components/ui/app-select";
@@ -3087,14 +3088,12 @@ function DriverDetail({
                   <div className="rounded-lg border border-[#EDEDF0] bg-[#FAFAFB] p-4 mb-3">
                     {veh ? (
                       <div>
-                        <div className="text-[15px] font-semibold text-[#111114]">
-                          {veh.year} {veh.make} {veh.model}
-                          {veh.trim ? ` ${veh.trim}` : ""}
-                        </div>
+                        <LinkedVehicleCell
+                          vehicleId={veh.id}
+                          fallback={{ year: veh.year, make: veh.make, model: veh.model, plate: veh.license_plate, vin: veh.vin, unitNumber: veh.unit_number }}
+                        />
                         <div className="text-[11px] text-[#55555E] mt-1">
-                          {[formatVehicleIdentityLine(veh), veh.body_type, veh.fuel_type, veh.status]
-                            .filter(Boolean)
-                            .join(" · ")}
+                          {[veh.trim, veh.body_type, veh.fuel_type, veh.status].filter(Boolean).join(" · ")}
                         </div>
                       </div>
                     ) : (

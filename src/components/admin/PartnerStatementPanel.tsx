@@ -1,3 +1,4 @@
+import { VehicleOrLabel } from "./VehicleCell";
 import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -177,7 +178,7 @@ export function PartnerStatementPanel() {
                 <tbody>
                   {statement.vehicles.map((vehicle) => (
                     <tr key={vehicle.vehicleId} className="border-t border-border">
-                      <td className="px-4 py-3 font-medium">{vehicle.label}</td>
+                      <td className="px-4 py-3 font-medium"><VehicleOrLabel vehicleId={vehicle.vehicleId} label={vehicle.label} /></td>
                       <td className="px-4 py-3 text-right tabular-nums">{money(vehicle.revenueCents) || "—"}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{money(vehicle.expenseCents) || "—"}</td>
                       <td className="px-4 py-3 text-right tabular-nums font-semibold">{money(vehicle.netCents) || "—"}</td>

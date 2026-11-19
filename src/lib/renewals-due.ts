@@ -264,6 +264,7 @@ export type RenewalDueRow = {
   driverName: string;
   driverSearch: { tab: "drivers"; id: string } | null;
   vehicleLabel: string;
+  vehicleId?: string | null;
   weeklyRate: number | null;
   nextPaymentDue: string | null;
   endDate: string | null;
@@ -281,6 +282,7 @@ export type OverdueReturnRow = {
   driverName: string;
   driverSearch: { tab: "drivers"; id: string } | null;
   vehicleLabel: string;
+  vehicleId?: string | null;
   endDate: string;
   daysOverdue: number;
   label: string;
@@ -381,6 +383,7 @@ export function buildRenewalsDue(input: RenewalsDueInput): RenewalsDueBoard {
       rentalId: rental.id,
       driverName: rental.application_id ? name || "Unnamed Driver" : "No Driver",
       driverSearch: rental.application_id ? { tab: "drivers", id: rental.application_id } : null,
+      vehicleId: rental.vehicle_id ?? null,
       vehicleLabel: renewalVehicleLabel(rental.vehicle_id ? vehicles.get(rental.vehicle_id) ?? null : null),
       weeklyRate: rental.weekly_rate,
       nextPaymentDue,
@@ -412,6 +415,7 @@ export function buildRenewalsDue(input: RenewalsDueInput): RenewalsDueBoard {
       rentalId: rental.id,
       driverName: rental.application_id ? name || "Unnamed Driver" : "No Driver",
       driverSearch: rental.application_id ? { tab: "drivers", id: rental.application_id } : null,
+      vehicleId: rental.vehicle_id ?? null,
       vehicleLabel: renewalVehicleLabel(rental.vehicle_id ? vehicles.get(rental.vehicle_id) ?? null : null),
       endDate,
       daysOverdue: late,

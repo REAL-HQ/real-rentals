@@ -1,3 +1,4 @@
+import { LinkedVehicleCell } from "./VehicleCell";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Wrench } from "lucide-react";
@@ -79,9 +80,7 @@ export function MaintenanceDue({
           {rows.map((row) => (
             <tr key={row.vehicleId} className="border-t border-border align-top">
               <td className="px-3 py-3">
-                <div className="font-medium whitespace-nowrap">{row.unitNumber || "—"}</div>
-                <div className="max-w-[200px] truncate">{vehicleName(row) || "Unknown"}</div>
-                <div className="font-mono text-xs text-muted-foreground">{row.plate || "—"}</div>
+                <LinkedVehicleCell vehicleId={row.vehicleId} fallback={{ year: row.year, make: row.make, model: row.model, plate: row.plate, unitNumber: row.unitNumber }} />
               </td>
               <td className="px-3 py-3 whitespace-nowrap">{row.currentMiles}</td>
               {row.items.map((item) => (

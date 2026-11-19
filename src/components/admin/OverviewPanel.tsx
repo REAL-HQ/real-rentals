@@ -1,3 +1,4 @@
+import { LinkedVehicleCell } from "./VehicleCell";
 import { AppSelect } from "@/components/ui/app-select";
 import { paymentOverlap } from "@/lib/payment-overlap";
 import { createRevenueBoundary, paymentRevenue, type RevenueSession } from "@/lib/revenue-state";
@@ -554,7 +555,7 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
                   <Link to="/admin" search={{ tab: "vehicles", id: row.vehicle.id }}>
                     <Car className="shrink-0 text-destructive" />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[11px] font-semibold">{row.vehicle.unit_number || "Vehicle"}</span>
+                      <LinkedVehicleCell vehicleId={row.vehicle.id} size="sm" fallback={{ unitNumber: row.vehicle.unit_number }} />
                       <span className="block text-[10px] font-normal text-muted-foreground">
                         {row.vehicle.status === "maintenance" ? <VehicleStatusBadge status="maintenance" /> : row.item}
                         {row.vehicle.status === "maintenance" ? null : ` · ${row.due.state === "due_soon" ? "Due Soon" : row.due.state === "overdue" ? "Overdue" : row.due.state === "due" ? "Due" : row.due.state === "conflict" ? "Needs Review" : "Open"}`}

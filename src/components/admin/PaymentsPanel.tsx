@@ -1,3 +1,4 @@
+import { LinkedVehicleCell } from "./VehicleCell";
 import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { useEffect, useMemo, useState } from "react";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from "./modal";
@@ -433,8 +434,12 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                   className="border-t border-[#EDEDF0] h-11 hover:bg-[#FAFAFB] transition-colors duration-150"
                 >
                   <td className="px-3 text-[13px] font-medium text-[#111114] max-lg:whitespace-nowrap">{driverName}</td>
-                  <td className="px-3 text-xs text-[#55555E] max-lg:whitespace-nowrap">
-                    {v ? `${v.year} ${v.make} ${v.model}` : "—"}
+                  <td className="px-3 text-xs text-[#55555E]">
+                    {p.vehicle_id ? (
+                      <LinkedVehicleCell vehicleId={p.vehicle_id} size="sm" fallback={v ? { year: v.year, make: v.make, model: v.model } : undefined} />
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="px-3 text-[13px]">{enumDisplayLabel(p.type)}</td>
                   <td className="px-3 text-right tabular-nums text-[13px]">

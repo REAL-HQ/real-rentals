@@ -39,8 +39,8 @@ describe("Bookings Reserved tab", () => {
   it("panel has Active-style columns, count, Open button, Title Case, no deposit wording", () => {
     for (const h of ["Driver", "Vehicle", "Reserved", "Pickup", "Rate", "Open"]) assert.match(panel, new RegExp(`>${h}</th>|>\\{chargeLabel\\}</th>`));
     assert.match(panel, /Reserved Vehicle\{rows\.length === 1/);
-    assert.match(panel, /VehicleStaffPhoto/);
-    assert.match(panel, /VIN …/);
+    assert.match(panel, /<VehicleCell/);
+    assert.match(panel, /vinLast6: row\.vinLast6/);
     assert.match(panel, /view: "past", id: row\.id/);
     assert.match(panel, /Reserve A Car/);
     assert.match(panel, /No Reserved Vehicles/);
