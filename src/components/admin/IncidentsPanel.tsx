@@ -1,3 +1,4 @@
+import { VehicleOrLabel } from "./VehicleCell";
 import { enumDisplayLabel } from "@/lib/ui-display-labels";
 import { AppSelect } from "@/components/ui/app-select";
 import { useContext, useEffect, useState, createContext, type ReactNode } from "react";
@@ -219,7 +220,7 @@ export function IncidentsPanel({ seedIssueId = null, embedded = false }: { seedI
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {fmtDateTime(r.occurred_at)} ·{" "}
-                      {r.vehicle_label ?? "unknown vehicle"}
+                      <VehicleOrLabel vehicleId={r.vehicle_id} label={r.vehicle_label ?? "unknown vehicle"} size="sm" />
                       {r.driver_name ? ` · ${r.driver_name}` : " · no renter assigned"}
                       {r.location ? ` · ${r.location}` : ""}
                     </p>

@@ -1,3 +1,4 @@
+import { VehicleOrLabel } from "./VehicleCell";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -83,7 +84,7 @@ function Section({ title, rows, empty }: { title: string; rows: StripeMatchRow[]
                   <td className="py-2 pr-3">
                     {row.driverId ? <Link to="/admin" search={{ tab: "drivers", id: row.driverId }} className="underline">{row.driverName ?? "Driver"}</Link> : "—"}
                   </td>
-                  <td className="py-2 pr-3">{row.vehicleLabel ?? "—"}</td>
+                  <td className="py-2 pr-3"><VehicleOrLabel vehicleId={row.vehicleId} label={row.vehicleLabel} size="sm" /></td>
                   <td className="py-2">{row.rentalExists ? "Yes" : "No"}</td>
                 </tr>
               ))}

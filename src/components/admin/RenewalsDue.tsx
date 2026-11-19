@@ -1,3 +1,4 @@
+import { VehicleOrLabel } from "./VehicleCell";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -73,7 +74,7 @@ function RenewalsDueLive() {
                       <span className="text-[#55555E]">{row.driverName}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-[#111114]">{row.vehicleLabel}</td>
+                  <td className="px-3 py-2 text-[#111114]"><VehicleOrLabel vehicleId={row.vehicleId} label={row.vehicleLabel} size="sm" /></td>
                   <td className="px-3 py-2 text-[#111114]">{formatWeeklyRate(row.weeklyRate)}</td>
                   <td className="px-3 py-2 text-[#55555E]">{row.nextPaymentDue ? formatRenewalDate(row.nextPaymentDue) : "None"}</td>
                   <td className="px-3 py-2 text-[#55555E]">{row.endDate ? formatRenewalDate(row.endDate) : "None"}</td>
@@ -197,7 +198,7 @@ function RenewalsDueHistory() {
                       <span className="text-[#55555E]">{row.driverName}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-[#111114]">{row.vehicleLabel}</td>
+                  <td className="px-3 py-2 text-[#111114]"><VehicleOrLabel vehicleId={row.vehicleId} label={row.vehicleLabel} size="sm" /></td>
                   <td className="px-3 py-2 text-[#111114]">{formatWeeklyRate(row.weeklyRate)}</td>
                   <td className="px-3 py-2 text-[#55555E]">{row.nextPaymentDue ? formatRenewalDate(row.nextPaymentDue) : "None"}</td>
                   <td className="px-3 py-2 text-[#55555E]">{row.endDate ? formatRenewalDate(row.endDate) : "None"}</td>
@@ -255,7 +256,7 @@ function OverdueReturn({ rows }: { rows: RenewalsDueBoard["overdue"] }) {
                       <span className="text-[#55555E]">{row.driverName}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-[#111114]">{row.vehicleLabel}</td>
+                  <td className="px-3 py-2 text-[#111114]"><VehicleOrLabel vehicleId={row.vehicleId} label={row.vehicleLabel} size="sm" /></td>
                   <td className="px-3 py-2 text-[#55555E]">{formatRenewalDate(row.endDate)}</td>
                   <td className="px-3 py-2 text-[#111114]">{row.label}</td>
                 </tr>

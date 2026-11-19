@@ -1,3 +1,4 @@
+import { VehicleOrLabel } from "./VehicleCell";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -90,8 +91,8 @@ function Mismatch({ row }: { row: BillingMismatch }) {
       </td>
       <td className="py-2 pr-3">
         {row.rentalId ? (
-          <Link to="/admin" search={{ tab: "bookings", view: "past", id: row.rentalId }} className="underline">{row.vehicleLabel}</Link>
-        ) : row.vehicleLabel}
+          <Link to="/admin" search={{ tab: "bookings", view: "past", id: row.rentalId }} className="underline"><VehicleOrLabel vehicleId={row.vehicleId} label={row.vehicleLabel} size="sm" /></Link>
+        ) : <VehicleOrLabel vehicleId={row.vehicleId} label={row.vehicleLabel} size="sm" />}
       </td>
       <td className="py-2 pr-3">{row.reason}</td>
       <td className="py-2 pr-3">{row.subscriptionId ?? "No Subscription"}</td>

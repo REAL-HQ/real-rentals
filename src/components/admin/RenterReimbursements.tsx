@@ -1,3 +1,4 @@
+import { VehicleOrLabel } from "./VehicleCell";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppSelect } from "@/components/ui/app-select";
 import { useServerFn } from "@tanstack/react-start";
@@ -95,7 +96,7 @@ export function RenterReimbursements({ from, to }: { from: string | null; to: st
                   <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.paid_on)}</td>
                   <td className="px-3 py-2">
                     <div className="font-medium">{r.renter_name}</div>
-                    {r.vehicle_label ? <div className="text-xs text-muted-foreground">{r.vehicle_label}</div> : null}
+                    {r.vehicle_id || r.vehicle_label ? <div className="mt-1"><VehicleOrLabel vehicleId={r.vehicle_id} label={r.vehicle_label} size="sm" /></div> : null}
                   </td>
                   <td className="px-3 py-2">
                     {r.reason_label}

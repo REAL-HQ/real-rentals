@@ -1,3 +1,4 @@
+import { LinkedVehicleCell } from "./VehicleCell";
 import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -205,10 +206,7 @@ export function MaintenanceSchedules() {
               >
                 <header className="px-5 py-3 border-b border-[#EDEDF0] flex items-center gap-3 flex-wrap">
                   <div className="text-[13px] font-semibold text-[#111114]">
-                    {label}
-                    {v.license_plate ? (
-                      <span className="text-[#9A9AA3] font-normal"> · {v.license_plate}</span>
-                    ) : null}
+                    <LinkedVehicleCell vehicleId={v.id} fallback={{ label, plate: v.license_plate }} />
                   </div>
                   <div className="text-[11px] text-[#9A9AA3] tabular-nums">
                     {v.current_odometer

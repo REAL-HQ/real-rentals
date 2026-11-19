@@ -42,6 +42,17 @@ describe("shared cell is used in every list", () => {
     ["FleetServiceCenter", "components/admin/FleetServiceCenter.tsx"],
     ["FleetInboxPanel", "components/admin/FleetInboxPanel.tsx"],
     ["OverviewPanel", "components/admin/OverviewPanel.tsx"],
+    ["ChargesPanel", "components/admin/ChargesPanel.tsx"],
+    ["IncidentsPanel", "components/admin/IncidentsPanel.tsx"],
+    ["PartnerStatementPanel", "components/admin/PartnerStatementPanel.tsx"],
+    ["RevenueForecastPanel", "components/admin/RevenueForecastPanel.tsx"],
+    ["FleetAvailability", "components/admin/FleetAvailability.tsx"],
+    ["StripeMatchPanel", "components/admin/StripeMatchPanel.tsx"],
+    ["RenterReimbursements", "components/admin/RenterReimbursements.tsx"],
+    ["RenewalsDue", "components/admin/RenewalsDue.tsx"],
+    ["BillingHealthPanel", "components/admin/BillingHealthPanel.tsx"],
+    ["MaintenanceDue", "components/admin/MaintenanceDue.tsx"],
+    ["MaintenanceSchedules", "components/admin/MaintenanceSchedules.tsx"],
   ];
   for (const [name, file] of users) test(name, () => expect(src(file)).toMatch(/(Linked)?VehicleCell/));
 

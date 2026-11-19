@@ -1,3 +1,4 @@
+import { VehicleOrLabel } from "./VehicleCell";
 import { enumDisplayLabel } from "@/lib/ui-display-labels";
 import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
@@ -252,7 +253,7 @@ export function ChargesPanel() {
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {fmtDateTime(r.occurred_at)} ·{" "}
-                      {r.vehicle_label ?? "unknown vehicle"}
+                      <VehicleOrLabel vehicleId={r.vehicle_id} label={r.vehicle_label ?? "unknown vehicle"} size="sm" />
                       {r.location ? ` · ${r.location}` : ""}
                       {r.agency ? ` · ${r.agency}` : ""}
                     </p>

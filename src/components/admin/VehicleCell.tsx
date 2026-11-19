@@ -119,3 +119,9 @@ export function LinkedVehicleCell({
   const c = q.data;
   return <VehicleCell vehicle={c ? { ...fallback, ...c } : fallback} thumbnailPath={c?.thumbnailPath ?? null} {...rest} />;
 }
+
+/** LinkedVehicleCell when the row has a vehicle id; otherwise the plain label it already had. */
+export function VehicleOrLabel({ vehicleId, label, ...rest }: { vehicleId?: string | null; label?: string | null } & Omit<React.ComponentProps<typeof LinkedVehicleCell>, "vehicleId" | "fallback">) {
+  if (!vehicleId) return <span>{label || "—"}</span>;
+  return <LinkedVehicleCell vehicleId={vehicleId} fallback={{ label }} {...rest} />;
+}
