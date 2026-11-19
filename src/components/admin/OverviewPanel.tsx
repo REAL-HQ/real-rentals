@@ -83,7 +83,8 @@ import { getStripeCollections } from "@/lib/stripe-collections.functions";
 import { getProjectedRevenueSummary } from "@/lib/projected-revenue.functions";
 import type { ProjectedRevenueSummary } from "@/lib/projected-revenue";
 import { centsToDollars } from "@/lib/projected-revenue";
-import { consolidatedRevenue, displayRevenue } from "@/lib/stripe-collections";
+import { consolidatedRevenue } from "@/lib/stripe-collections";
+import { readWithRetry, recordedRevenueTotal, revenueCardDisplay } from "@/lib/revenue-card";
 import { useNavigate } from "@tanstack/react-router";
 import { DocumentsExpiringChip } from "./DocumentsExpiring";
 import { stripeCollectionsQuery } from "@/lib/stripe-collections-query";
@@ -187,6 +188,8 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   const [revenue, setRevenue] = useState<number | null>(null);
   const [priorRevenue, setPriorRevenue] = useState<number | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(true);
+  const [revenueFailed, setRevenueFailed] = useState(false);
+  const [revenueRetryKey, setRevenueRetryKey] = useState(0);
   const [internalNonStripe, setInternalNonStripe] = useState<number | null>(null);
   const [overlapOwed, setOverlapOwed] = useState<number | null>(null);
   const [appSort, setAppSort] = useState<"newest" | "oldest" | "readiness" | "attention">("newest");
@@ -354,9 +357,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   const compare = useMemo(() => priorRange(range), [range]);
 
   useEffect(() => {
-    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setOverlapOwed(null);setRevenueLoading(false);return;}
+    if(!canSeeCollections) {setRevenue(null);setPriorRevenue(null);setInternalNonStripe(null);setOverlapOwed(null);setRevenueFailed(false);setRevenueLoading(false);return;}
     let live = true;
     setRevenueLoading(true);
+    setRevenueFailed(false);
     (async () => {
       const q = (r: DayRange) =>
         supabase
@@ -366,22 +370,30 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("paid_date", r.from)
           .lte("paid_date", r.to);
-      const [cur, prev] = await Promise.all([q(range), q(compare)]);
+      // A transient read failure retries before the card gives up; the
+      // recorded total is the card's floor, so it must not blank on one blip.
+      const read = (r: DayRange) => readWithRetry(() => q(r), (res) => !!res.error || !Array.isArray(res.data), { alive: () => live });
+      const [cur, prev] = await Promise.all([read(range), read(compare)]);
       if (!live) return;
-      const current=paymentRevenue(cur), previous=paymentRevenue(prev);
-      setRevenue(current?.total ?? null);
-      setInternalNonStripe(current?.nonStripe ?? null);
+      // Display floor: tolerant sum of recorded payments ($0 when none).
+      // Consolidation inputs stay strict (paymentRevenue fails closed) so a
+      // doubtful read can never be presented as Stripe-verified.
+      const strict = paymentRevenue(cur);
+      const shownTotal = recordedRevenueTotal(cur);
+      setRevenue(shownTotal);
+      setRevenueFailed(shownTotal === null);
+      setInternalNonStripe(strict?.nonStripe ?? null);
       setOverlapOwed(paymentOverlap(cur));
-      setPriorRevenue(previous?.total ?? null);
+      setPriorRevenue(recordedRevenueTotal(prev));
       setRevenueLoading(false);
     })().catch(()=>{
       if(!live)return;
-      setRevenue(null);setInternalNonStripe(null);setOverlapOwed(null);setPriorRevenue(null);setRevenueLoading(false);
+      setRevenue(null);setRevenueFailed(true);setInternalNonStripe(null);setOverlapOwed(null);setPriorRevenue(null);setRevenueLoading(false);
     });
     return () => {
       live = false;
     };
-  }, [range, compare, canSeeCollections, opsRefreshKey]);
+  }, [range, compare, canSeeCollections, opsRefreshKey, revenueRetryKey]);
 
   const revenueDelta = useMemo(() => {
     // No prior revenue is not a 100% rise; it is a comparison that cannot be
@@ -469,6 +481,8 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
           amount={revenue}
           delta={revenueDelta}
           loading={revenueLoading}
+          failed={revenueFailed}
+          onRetry={() => setRevenueRetryKey((k) => k + 1)}
           range={range}
           compare={compare}
           rangeKey={rangeKey}
@@ -1065,6 +1079,8 @@ function RevenueCard({
   amount,
   delta,
   loading,
+  failed = false,
+  onRetry,
   range,
   compare,
   rangeKey,
@@ -1081,6 +1097,8 @@ function RevenueCard({
   amount: number | null;
   delta: number | null;
   loading: boolean;
+  failed?: boolean;
+  onRetry?: () => void;
   range: DayRange;
   compare: DayRange;
   rangeKey: RangeKey;
@@ -1100,22 +1118,30 @@ function RevenueCard({
   // Shares the Collections section's cache entry — no duplicate provider request.
   const loadCollections = useServerFn(getStripeCollections);
   const sq = useQuery(stripeCollectionsQuery(loadCollections, "live", range.from, range.to, Boolean(consolidated)));
-  const c = consolidated
-    ? sq.isError ? { amount: null, coverage: "Unavailable" as const }
-      : consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, overlap: overlapOwed, report: sq.data })
+  // Stripe is an optional refinement. Its loading, error or incomplete
+  // report never hides the recorded total.
+  const c = consolidated && !sq.isError && sq.data
+    ? consolidatedRevenue({ internalNonStripe: consolidated.internalNonStripe, overlap: overlapOwed, report: sq.data })
     : null;
-  const shown = displayRevenue({ consolidated: c, recorded: amount });
-  // Recorded payments show at once; Stripe consolidation refines them later.
-  const shownLoading = loading && shown.amount === null;
+  const shown = revenueCardDisplay({ consolidated: c, recorded: loading ? null : amount, recordedFailed: !loading && failed });
+  const fromStripe = shown.source === "stripe";
+  const shownLoading = shown.amount === null && !failed;
   const shownAmount = shown.amount;
-  const coverage = shown.coverage;
-  const coverageHint = shown.fellBack
-    ? (sq.isFetching && !sq.data ? "Stripe is still being verified, so this" : "Stripe could not be verified just now, so this") + " is the total of payments recorded in the system for this period. Verified Stripe collections remain available in Collections."
-    : coverage === "Unavailable"
-    ? "The payments for this period could not be read. Verified Stripe collections remain available in Collections."
-    : c
-      ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. A manual receipt Stripe later collected is not added on top of that Stripe net. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
-      : "Recorded payments only. Stripe, Zelle, Cash App, Venmo, cash and bank transfers are not all verified yet.";
+  const coverage = shown.badge;
+  const stripeNote = !consolidated
+    ? ""
+    : sq.isFetching && !sq.data
+      ? " Stripe is still being verified."
+      : sq.isError || (sq.data && !fromStripe)
+        ? " Stripe could not be verified just now."
+        : "";
+  const coverageHint = fromStripe
+    ? "Verified Stripe net (after refunds and fees) plus recorded non-Stripe payments. A manual receipt Stripe later collected is not added on top of that Stripe net. Zelle, Cash App, Venmo, cash and bank transfers are not verified yet."
+    : shown.source === "recorded"
+      ? "Total of payments recorded in the system for this period." + stripeNote + " Verified Stripe collections remain available in Collections."
+      : failed
+        ? "The payments for this period could not be read. Click Retry to try again."
+        : "Loading recorded payments for this period.";
   const goPayments = () => !open && navigate({ to: "/admin", search: { tab: "payments" } });
   const label = RANGE_LABELS.find((r) => r.key === rangeKey)?.label ?? "Range";
 
@@ -1158,7 +1184,16 @@ function RevenueCard({
         </span>
       </div>
       <div className="mt-1 text-[22px] font-semibold tracking-tight tabular-nums leading-none">
-        {shownLoading || shownAmount == null ? <span className="text-[#C7C7CC]">—</span> : usd(shownAmount)}
+        {shownAmount != null ? usd(shownAmount) : shownLoading ? <span className="text-[#C7C7CC]">—</span> : (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onRetry?.(); }}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="text-[13px] font-medium text-[#55555E] underline underline-offset-2"
+          >
+            Retry
+          </button>
+        )}
       </div>
       {overlapOwed != null && overlapOwed > 0 && (
         <div className="mt-1 text-[11px] text-[#8A5A00]">
@@ -1167,7 +1202,7 @@ function RevenueCard({
       )}
       <div className="mt-1 text-[11px] text-[#55555E] truncate">
         {describeRange(range)}
-        {c && !shown.fellBack ? null : delta != null ? (
+        {fromStripe ? null : delta != null ? (
           <>
             <span className="mx-1 text-[#C7C7CC]">·</span>
             <span className={`font-medium ${delta >= 0 ? "text-[#0F8A4B]" : "text-[#CC0000]"}`}>
