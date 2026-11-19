@@ -126,10 +126,12 @@ describe("card wiring", () => {
       "new",
     );
     const html = renderToStaticMarkup(
-      h(LeadCardBody, { lead: row, today: TODAY, name: h("a", null, "Test Lead"), status: h("span", null, "New"), actions: h("div", null, "Call"), menu: h("button", { "data-kebab": "" }, "menu") }),
+      h(LeadCardBody, { lead: row, today: TODAY, displayName: "Test Lead", name: h("a", null, "Test Lead"), status: h("span", null, "New"), actions: h("div", null, "Call"), menu: h("button", { "data-kebab": "" }, "menu") }),
     );
-    expect(html).toMatch(/justify-between[^>]*><div[^>]*><a>Test Lead<\/a><\/div><button data-kebab="">/);
+    // Name, then the ⋮ control, still above the next-step line.
+    expect(html.indexOf(">Test Lead<")).toBeLessThan(html.indexOf("data-kebab"));
     expect(html.indexOf("data-kebab")).toBeLessThan(html.indexOf("Make first contact"));
+    expect(html).toMatch(/flex items-start gap-2[\s\S]*Test Lead[\s\S]*data-kebab/);
   });
   test("lead rows carry email for Copy Email", () => {
     expect(LEAD_SELECT.split(",")).toContain("email");

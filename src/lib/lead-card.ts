@@ -1,3 +1,4 @@
+import { CONTACT_STATUS_TONE, normalizeContactStatus } from "./contact-status";
 import { fmtDate } from "./date-format";
 import { overdueAge, type LeadBucket } from "./lead-priorities";
 
@@ -5,10 +6,7 @@ import { overdueAge, type LeadBucket } from "./lead-priorities";
  * Compact Lead Priorities card copy. Applicant cards stay neutral; overdue
  * and High priorities use red. Meaning is always written, never color-only.
  */
-export const LEAD_TONES: Record<
-  LeadBucket,
-  { label: string; badge: string }
-> = {
+export const LEAD_TONES: Record<LeadBucket, { label: string; badge: string }> = {
   overdue: { label: "Overdue", badge: "text-brand" },
   new: { label: "New", badge: "text-muted-foreground" },
   interested: { label: "Interested", badge: "text-muted-foreground" },
@@ -55,9 +53,12 @@ export function leadTiming(
   const out: string[] = [];
   if (lead.contact_follow_up_on) {
     const age = lead.bucket === "overdue" ? overdueAge(lead.contact_follow_up_on, today) : null;
-    out.push(age ? `Due ${fmtDate(lead.contact_follow_up_on)} (${age})` : `Due ${fmtDate(lead.contact_follow_up_on)}`);
-  }
-  else {
+    out.push(
+      age
+        ? `Due ${fmtDate(lead.contact_follow_up_on)} (${age})`
+        : `Due ${fmtDate(lead.contact_follow_up_on)}`,
+    );
+  } else {
     const applied = lead.created_at ? relDays(lead.created_at) : null;
     out.push(applied ? `Applied ${applied}` : "Applied date unknown");
   }
@@ -75,5 +76,70 @@ export function leadTiming(
  */
 export function leadBadgeLabel(bucket: LeadBucket, contactLabel: string, priority: string): string {
   const stage = LEAD_TONES[bucket].label;
-  return stage.toLowerCase() === contactLabel.trim().toLowerCase() ? priority : `${stage} · ${priority}`;
+  return stage.toLowerCase() === contactLabel.trim().toLowerCase()
+    ? priority
+    : `${stage} · ${priority}`;
+}
+
+/** Filled avatar uses the same status hues as the contact badge. */
+export function leadAvatarTone(status: string): string {
+  const key = normalizeContactStatus(status);
+  return key ? CONTACT_STATUS_TONE[key] : "bg-secondary text-foreground";
+}
+
+/**
+ * Overdue and "due today" already say what to do. Repeating the stock next
+ * step under the name is the line that made the card feel busy.
+ */
+const QUIET_NEXT = new Set<LeadBucket>(["overdue", "today"]);
+export function leadVisibleNextStep(bucket: LeadBucket): string | null {
+  if (QUIET_NEXT.has(bucket)) return null;
+  return LEAD_NEXT_STEP[bucket];
+}
+
+function overdueDays(due: string, today: string): number | null {
+  const days = (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${due}T00:00:00Z`)) / 86400000;
+  return Number.isInteger(days) && days > 0 ? days : null;
+}
+
+/**
+ * One urgency mark. Overdue is the short "39d overdue" form; the full date
+ * stays on the title so the card does not also print the red sentence.
+ */
+export function leadUrgency(
+  lead: { bucket: LeadBucket; contact_follow_up_on: string | null },
+  today: string,
+): { label: string; title: string; prominent: boolean } | null {
+  const due = lead.contact_follow_up_on;
+  if (lead.bucket === "overdue") {
+    const days = due ? overdueDays(due, today) : null;
+    const age = due ? overdueAge(due, today) : null;
+    return {
+      label: days != null ? `${days}d overdue` : "Overdue",
+      title: due && age ? `Due ${fmtDate(due)} (${age})` : "Overdue",
+      prominent: true,
+    };
+  }
+  if (!due) return null;
+  if (due === today) return { label: "Due Today", title: `Due ${fmtDate(due)}`, prominent: false };
+  if (due > today) {
+    const full = fmtDate(due);
+    return { label: `Due ${full.replace(/, \d{4}$/, "")}`, title: `Due ${full}`, prominent: false };
+  }
+  return null;
+}
+
+/** Last contact, or when they applied if nobody has reached them yet. */
+export function leadContactMeta(lead: {
+  bucket: LeadBucket;
+  created_at: string | null;
+  contact_status_at: string | null;
+}): string {
+  const contacted = lead.contact_status_at ? relDays(lead.contact_status_at) : null;
+  if (contacted) return `Last contact ${contacted}`;
+  if (lead.bucket === "new") {
+    const applied = lead.created_at ? relDays(lead.created_at) : null;
+    return applied ? `Applied ${applied}` : "Applied date unknown";
+  }
+  return "No contact logged";
 }
