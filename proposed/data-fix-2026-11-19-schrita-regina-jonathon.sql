@@ -8,8 +8,10 @@
 -- NOT covered by SQL (Stripe, needs approval separately):
 --   * Schrita: Stripe invoice in_1UcTbKGsNNO50lXbZvfhnC5J ($350) is still OPEN and
 --     Stripe will retry it Fri Nov 20 ~12:23 PM ET -> a second $350 charge. She already
---     paid that week (pi_3UdKhDGsNNO50lXb0lSzNmHB, Nov 18 9:03 PM ET). Void it in Stripe
---     before then. (The site has no invoice.voided handler, so voiding changes no row.)
+--     paid that week (pi_3UdKhDGsNNO50lXb0lSzNmHB, Nov 18 9:03 PM ET). After section A,
+--     the invoice is marked paid outside Stripe (paid_out_of_band), not voided: that cancels
+--     the retry and returns the subscription to active (Dolmar t507s2841). Then re-check row
+--     258e43e6 in case the invoice.paid webhook rewrote its Stripe fields.
 --   * Regina: invoice in_1UcS37GsNNO50lXbmWqL9CBh ($350, open, subscription paused with
 --     behavior=void, no retry scheduled). Void it once the daily plan is confirmed.
 
@@ -47,7 +49,7 @@ INSERT INTO public._backup_20261119_rentals
 UPDATE public.payments
    SET status = 'void', balance_due = 0,
        stripe_payment_intent_id = NULL, stripe_charge_id = NULL,
-       notes = 'Duplicate of rent row 258e43e6 (Nov 16 week); was pi_3UdKhDGsNNO50lXb0lSzNmHB, mis-typed Fee by the one-off webhook. Merged Nov 19 2026, approved by Dolmar <date/card>.',
+       notes = 'Duplicate of rent row 258e43e6 (Nov 16 week); was pi_3UdKhDGsNNO50lXb0lSzNmHB, mis-typed Fee by the one-off webhook. Merged Nov 19 2026, approved by Dolmar (t507s2841).',
        updated_at = now()
  WHERE id = '116c25bd-20d6-438a-94e9-464985ac0849'
    AND type = 'fee' AND status = 'paid' AND amount = 350
@@ -68,7 +70,7 @@ UPDATE public.payments p
        payment_method = COALESCE(b.payment_method, p.payment_method),
        notified_status = 'paid',
        failure_reason = NULL,
-       notes = 'Paid Nov 18 2026 by Stripe Payment Link plink_1UdKfsGsNNO50lXbkP0hreuo (pi_3UdKhDGsNNO50lXb0lSzNmHB); merged from duplicate Fee row 116c25bd. $50 late fee cleared: paid inside waiver 93f0e71e (waived through Nov 18). Invoice in_1UcTbK to be voided in Stripe. Approved by Dolmar <date/card>.',
+       notes = 'Paid Nov 18 2026 by Stripe Payment Link plink_1UdKfsGsNNO50lXbkP0hreuo (pi_3UdKhDGsNNO50lXb0lSzNmHB); merged from duplicate Fee row 116c25bd. $50 late fee cleared: paid inside waiver 93f0e71e (waived through Nov 18). Invoice in_1UcTbK marked paid outside Stripe (paid_out_of_band). Approved by Dolmar Nov 19 2026 (t507s2841).',
        updated_at = now()
   FROM (SELECT * FROM public._backup_20261119_payments WHERE id = '116c25bd-20d6-438a-94e9-464985ac0849' ORDER BY backed_up_at DESC LIMIT 1) b
  WHERE p.id = '258e43e6-fac1-438a-b197-06d57985da4e'
