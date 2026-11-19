@@ -120,9 +120,33 @@ export function oneOffIdentity(input: { paymentIntent: Obj; session?: Obj; charg
 
 const ROW_TYPES = new Set(["rent", "deposit", "late_fee", "toll", "damage", "fee"]);
 
-/** payments.type for a one-off payment: a known reason keeps its type, anything else is a fee. */
-export function oneOffRowType(reason: string | null): "rent" | "deposit" | "late_fee" | "toll" | "damage" | "fee" {
-  return reason && ROW_TYPES.has(reason) ? (reason as any) : "fee";
+/**
+ * payments.type for a one-off payment: a known reason keeps its type. With no
+ * reason, a payment from a renter on an active rental is rent (Dolmar, Nov 19
+ * 2026: Payment Links FLEET sends for rent, including $50/day, were landing as
+ * Fee, so Schrita's $350 never settled her week). Anything else is a fee.
+ */
+export function oneOffRowType(
+  reason: string | null,
+  ctx: { activeRental?: boolean } = {},
+): "rent" | "deposit" | "late_fee" | "toll" | "damage" | "fee" {
+  if (reason && ROW_TYPES.has(reason)) return reason as any;
+  if (!reason && ctx.activeRental) return "rent";
+  return "fee";
+}
+
+/**
+ * The week a rent payment pays for: the oldest open rent row still owed that
+ * is due on or before the payment day (within 21 days), else the payment day.
+ * Daily-plan rentals keep the payment day (each payment pays the next day owed).
+ */
+export function rentWeekFor(paidOn: string, openRentDues: string[], opts: { dailyPlan?: boolean } = {}): string {
+  if (opts.dailyPlan) return paidOn;
+  const floor = new Date(`${paidOn}T00:00:00Z`);
+  floor.setUTCDate(floor.getUTCDate() - 21);
+  const min = floor.toISOString().slice(0, 10);
+  const candidates = openRentDues.filter((d) => d <= paidOn && d >= min).sort();
+  return candidates[0] ?? paidOn;
 }
 
 export type RentalCandidate = { id: string; application_id: string | null; vehicle_id: string | null; status: string | null; stripe_customer_id?: string | null };

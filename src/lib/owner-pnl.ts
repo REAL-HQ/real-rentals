@@ -184,7 +184,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 const REFUND_SKIP = new Set(["pending", "failed", "canceled", "cancelled"]);
 const COLLECTED = new Set(["paid", "refunded"]);
-const REVENUE_TYPES = new Set(["rent", "late_fee", "other", "toll", "damage", "fee"]);
+const REVENUE_TYPES = new Set(["rent", "late_fee", "other", "toll", "damage", "fee", "reservation"]);
 const STRIPE_METHODS = new Set(["stripe", "card", "credit", "credit_card", "debit", "debit_card", "visa", "mastercard", "amex", "american_express", "apple_pay"]);
 const RECORDED_SOURCES: Record<string, OwnerIncomeSource> = {
   cash_app: "cash_app",

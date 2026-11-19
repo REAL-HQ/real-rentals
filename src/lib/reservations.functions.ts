@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { RESERVATION_ROW_TYPE } from "@/lib/payment-category";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
@@ -542,7 +543,7 @@ export const recordReservationFee = createServerFn({ method: "POST" })
       const ins = await supabaseAdmin
         .from("payments")
         .insert({
-          type: "fee",
+          type: RESERVATION_ROW_TYPE,
           reason: RESERVATION_FEE_REASON,
           status: "paid",
           amount,

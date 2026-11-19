@@ -19,8 +19,10 @@ import { chooseVehicleThumbnailPaths, vehicleListThumbnailKey, type VehicleThumb
 // manager-only (payments and incidents) or admin/team (issues), so the service
 // role repeats requireManager and does not use requireStaff.
 //
-// Last payment status is the latest public.payments row, including its Stripe
-// invoice or payment-intent id. Next due is rentals.next_payment_due. This
+// Last payment status is the latest rent row in public.payments, including its
+// Stripe invoice or payment-intent id. Next due and Overdue come from the shared
+// rent standing (rent-standing.ts): rentals.next_payment_due moved past every
+// week already paid for, and daily rent plans honored. This
 // does not call Stripe Collections, Unified Finance, or Reconciliation.
 
 async function gate(userId: string) {
@@ -76,11 +78,13 @@ export const listActiveRentals = createServerFn({ method: "POST" })
     const vehicleIds = ids(list.map((r) => r.vehicle_id));
     const applicationIds = ids(list.map((r) => r.application_id));
 
+    const { loadDailyRentPlans } = await import("@/lib/daily-rent-plans.server");
+    const dailyPlans = await loadDailyRentPlans(supabaseAdmin);
     const [payments, issues, incidentsByVehicle, incidentsByRental, applications, vehicles, media, thumbnailSettings] = await Promise.all([
       readRows<PaymentFact>(
         supabaseAdmin
           .from("payments")
-          .select("rental_id,status,paid_date,due_date,created_at,stripe_invoice_id,stripe_payment_intent_id")
+          .select("rental_id,type,reason,notes,amount,status,paid_date,due_date,created_at,stripe_invoice_id,stripe_payment_intent_id")
           .in("rental_id", rentalIds)
           .order("created_at", { ascending: false })
           .limit(5000)
@@ -94,6 +98,10 @@ export const listActiveRentals = createServerFn({ method: "POST" })
               createdAt: row.created_at,
               stripeInvoiceId: row.stripe_invoice_id,
               stripePaymentIntentId: row.stripe_payment_intent_id,
+              type: row.type,
+              reason: row.reason,
+              notes: row.notes,
+              amount: row.amount,
             })),
           })),
       ),
@@ -218,6 +226,7 @@ export const listActiveRentals = createServerFn({ method: "POST" })
         };
       }),
       payments: paymentsRead,
+      dailyPlans,
       issues: issuesRead,
       incidents,
       documentDates: documentsLoaded

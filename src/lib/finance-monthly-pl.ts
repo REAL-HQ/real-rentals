@@ -32,7 +32,7 @@ export const STANDING_GAPS = [
 ] as const;
 
 const PAID = new Set(["paid", "refunded"]);
-const OTHER_TYPES = new Set(["other", "toll", "damage", "fee"]);
+const OTHER_TYPES = new Set(["other", "toll", "damage", "fee", "reservation"]);
 
 const EXPENSE_LABELS: Record<string, string> = {
   registration: "Registration And Tags",

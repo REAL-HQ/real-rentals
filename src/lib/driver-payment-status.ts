@@ -1,3 +1,5 @@
+import { isRentRowCovered, type StandingPayment } from "@/lib/rent-standing";
+
 /**
  * The single driver Payment / Deposit status calculation. Derived only from
  * real rentals and payments rows — never from applications.payment_status,
@@ -50,8 +52,13 @@ export function derivePaymentStatus(rentals: PayRental[], payments: PayRow[], to
   const rows = payments.filter((p) => (p.type ?? "rent") !== "deposit" && !EXCLUDED.has(p.status ?? ""));
   // A payments row is one charge; a retry that succeeds moves the same row to
   // paid. A row still marked failed but with nothing left owing is resolved too.
+  // Rent paid on another row for the same week (a Payment Link, cash) settles it too,
+  // the same rule Bookings > Active uses (rent-standing.ts).
+  const asStanding = (p: PayRow): StandingPayment => ({ type: p.type ?? "rent", status: p.status, amount: p.amount, dueDate: p.due_date });
+  const standingRows = rows.map(asStanding);
   const resolved = (p: PayRow) =>
-    CLOSED.has(p.status ?? "") || (FAILED.has(p.status ?? "") && p.balance_due != null && n(p.balance_due) <= 0);
+    CLOSED.has(p.status ?? "") || (FAILED.has(p.status ?? "") && p.balance_due != null && n(p.balance_due) <= 0)
+    || isRentRowCovered(asStanding(p), standingRows.filter((_, i) => (rows[i].rental_id ?? null) === (p.rental_id ?? null)));
   const open = rows.filter((p) => !resolved(p));
   if (open.some((p) => FAILED.has(p.status ?? ""))) return "failed";
   if (open.some((p) => LATE.has(p.status ?? "") || (p.due_date != null && p.due_date < day))) return "overdue";
