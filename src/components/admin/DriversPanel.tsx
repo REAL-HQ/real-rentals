@@ -57,6 +57,7 @@ import { listStalledApplications, type StalledApplicationRow } from "@/lib/stall
 import { StalledApplications } from "./StalledApplications";
 import type { Application, DriverScreening as DriverScreeningRow, Vehicle } from "./types";
 import { toast } from "sonner";
+import { AttributionDetails } from "./AttributionDetails";
 import { useServerFn } from "@tanstack/react-start";
 import { staffReservationFeeLink } from "@/lib/agreements.functions";
 import {
@@ -3059,17 +3060,7 @@ function DriverDetail({
                     )
                   }
                 >
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    <Field
-                      label="Source"
-                      value={driver.gclid ? "Google Ads" : "Organic / Direct"}
-                    />
-                    <Field label="utm_source" value={driver.utm_source} />
-                    <Field label="utm_medium" value={driver.utm_medium} />
-                    <Field label="utm_campaign" value={driver.utm_campaign} />
-                    <Field label="Landing Page" value={driver.landing_page} />
-                    <Field label="Referrer" value={driver.referrer} />
-                  </div>
+                  <AttributionDetails data={driver} />
                 </Card>
               </TabsContent>
 
