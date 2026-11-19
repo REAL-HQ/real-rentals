@@ -66,7 +66,7 @@ export async function linkAgreementToLiveRental(admin: Admin, agreementId: strin
       .from("rentals")
       .select("id,vehicle_id,status")
       .eq("application_id", ag.application_id)
-      .in("status", ["reserved", "active"]);
+      .in("status", ["reserved", "on_hold", "active"]);
     const rows = (rs ?? []) as Array<{ id: string; vehicle_id: string | null }>;
     const pick = rows.length === 1 ? rows[0] : rows.find((x) => ag.vehicle_id && x.vehicle_id === ag.vehicle_id);
     if (!pick) return;

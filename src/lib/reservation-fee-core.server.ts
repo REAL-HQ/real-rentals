@@ -74,6 +74,7 @@ export async function applyReservationFeeCredit(admin: Admin, rentalId: string, 
       metadata: { paymentId: fee.id, rentalId, reason: "reservation_fee_credit" },
     }, { idempotencyKey: `reservation-fee-credit:${fee.id}` });
     await admin.from("payments").update({ rental_id: rentalId, notes: `${fee.notes} credited_week1:${rentalId}` }).eq("id", fee.id);
+    await (await import("@/lib/rental-hold.server")).markCreditUsedByWeek1(admin, fee.id, rentalId);
     await audit(deps)({ action: "payment.reservation_fee_credited", summary: `Reservation Fee $${fee.amount.toFixed(2)} credited to week 1`, entityType: "rental", entityId: rentalId, metadata: { payment_id: fee.id, automatic: true } }).catch(() => {});
     return { status: "credited", amount: fee.amount };
   } catch (e) {

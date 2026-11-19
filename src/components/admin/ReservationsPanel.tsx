@@ -25,6 +25,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ReserveCarDialog } from "./ReserveCarDialog";
 import { SwitchReservationVehicleDialog } from "./SwitchReservationVehicleDialog";
+import { OnHoldBadge, PutOnHoldDialog, ResumeHoldDialog } from "./OnHoldDialogs";
+import { RenterCreditsCard } from "./RenterCreditsCard";
+import { convertReservationFeeToCredit } from "@/lib/rental-hold.functions";
+import { isOnHoldStatus } from "@/lib/rental-hold";
 
 const input = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm";
 const primary = "inline-flex h-9 items-center justify-center rounded-md bg-[#D03020] px-4 text-sm font-semibold text-white hover:bg-[#B52818] disabled:opacity-50";
@@ -140,6 +144,9 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
   const navigate = useNavigate();
   const load = useServerFn(listReservations);
   const cancel = useServerFn(cancelReservation);
+  const toCredit = useServerFn(convertReservationFeeToCredit);
+  const [holdRow, setHoldRow] = useState<ReservationRow | null>(null);
+  const [resumeRow, setResumeRow] = useState<ReservationRow | null>(null);
   const [rows, setRows] = useState<ReservationRow[]>([]);
   // The $50 Reservation Fee lives in the reservation_deposit_* columns when its
   // switch is on; it is never called a deposit (Dolmar, t309u).
@@ -182,6 +189,20 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
     }
   };
 
+  const onKeepAsCredit = async (row: ReservationRow) => {
+    if (!row.depositPaymentId) return;
+    if (!window.confirm(`Keep ${row.driverName ?? "This Renter"}'s Reservation Fee As A Credit Toward Their Next Rental?`)) return;
+    setBusyId(row.id);
+    try {
+      const r = await toCredit({ data: { paymentId: row.depositPaymentId } });
+      toast.success(`Credit Saved: $${r.amount.toFixed(2)}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could Not Save Credit");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="space-y-4" data-testid="reservations-panel">
       <div className="admin-sticky-bar flex flex-wrap items-center justify-between gap-2">
@@ -191,7 +212,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
         </p>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground" data-testid="reserved-count">
-            {rows.length} Reserved Vehicle{rows.length === 1 ? "" : "s"}
+            {rows.length} Reserved Vehicle{rows.length === 1 ? "" : "s"}{rows.some((r) => isOnHoldStatus(r.status)) ? ` (${rows.filter((r) => isOnHoldStatus(r.status)).length} On Hold)` : ""}
           </span>
           {canManage ? (
             <button type="button" className={primary} onClick={() => setReserveOpen(true)}>
@@ -240,6 +261,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                   >
                     <td className="px-2 py-2 align-middle font-medium text-[#111114]">
                       <span className="block truncate">{row.driverName ?? "—"}</span>
+                      {isOnHoldStatus(row.status) ? <OnHoldBadge reason={row.holdReason} /> : null}
                       {row.bookedBy === "renter" ? (
                         <span
                           data-booked-by="renter"
@@ -306,7 +328,15 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                               {feeOn && (row.depositStatus === "pending" || row.depositStatus === "not_required") && (
                                 <DropdownMenuItem onSelect={() => setDepositRow(row)}>Record {chargeLabel}</DropdownMenuItem>
                               )}
-                              <DropdownMenuItem onSelect={() => setSwitchRow(row)}>Switch Vehicle</DropdownMenuItem>
+                              {isOnHoldStatus(row.status) ? (
+                                <DropdownMenuItem onSelect={() => setResumeRow(row)}>Resume Reservation</DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem onSelect={() => setHoldRow(row)}>Put On Hold</DropdownMenuItem>
+                              )}
+                              {isOnHoldStatus(row.status) && row.depositPaymentId ? (
+                                <DropdownMenuItem onSelect={() => void onKeepAsCredit(row)}>Keep {chargeLabel} As Credit</DropdownMenuItem>
+                              ) : null}
+                              {!isOnHoldStatus(row.status) && <DropdownMenuItem onSelect={() => setSwitchRow(row)}>Switch Vehicle</DropdownMenuItem>}
                               <DropdownMenuItem onSelect={() => void onCancel(row)}>Cancel Reservation</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -338,6 +368,16 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
           currentRate={typeof switchRow.weeklyRate === "number" ? switchRow.weeklyRate : null}
           onSwitched={refresh}
         />
+      ) : null}
+      <RenterCreditsCard
+        canManage={canManage}
+        rentals={rows.map((r) => ({ id: r.id, applicationId: r.applicationId, label: r.vehicleLabel ?? "Reservation" }))}
+      />
+      {holdRow ? (
+        <PutOnHoldDialog open={!!holdRow} onOpenChange={(v) => !v && setHoldRow(null)} rentalId={holdRow.id} driverName={holdRow.driverName} onSaved={refresh} />
+      ) : null}
+      {resumeRow ? (
+        <ResumeHoldDialog open={!!resumeRow} onOpenChange={(v) => !v && setResumeRow(null)} rentalId={resumeRow.id} driverName={resumeRow.driverName} onSaved={refresh} />
       ) : null}
       {depositRow ? (
         <RecordReservationFeeDialog

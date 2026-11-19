@@ -96,6 +96,10 @@ export type ReservationRow = {
   /** "renter" when the renter picked the slot on the Payment Received page. */
   bookedBy: "renter" | null;
   createdAt: string;
+  /** "reserved" or "on_hold" (On Hold keeps the car held; crons skip it). */
+  status?: string;
+  holdReason?: string | null;
+  holdStartedAt?: string | null;
   depositRequired: boolean;
   depositAmount: number;
   depositStatus: ReservationDepositStatus;

@@ -76,6 +76,9 @@ function mapRow(r: any, app: any, veh: any, extra?: { thumbnailPath?: string | n
     note: details.note,
     bookedBy: details.bookedBy,
     createdAt: r.created_at,
+    status: r.status ?? "reserved",
+    holdReason: r.hold_reason ?? null,
+    holdStartedAt: r.hold_started_at ?? null,
     depositRequired: r.reservation_deposit_required === true,
     depositAmount: Number(r.reservation_deposit_amount ?? 0),
     depositStatus: status,
@@ -150,14 +153,13 @@ export const listReservations = createServerFn({ method: "GET" })
       const { loadReservationFeeSettings } = await import("@/lib/reservation-fee-core.server");
       reservationFeeOn = (await loadReservationFeeSettings(supabaseAdmin)).enabled;
     } catch { /* off */ }
-    const { data, error } = await supabaseAdmin
-      .from("rentals")
-      .select(
-        "id,application_id,driver_id,vehicle_id,start_date,reservation_note,created_at,status,weekly_rate,reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,reservation_deposit_payment_id",
-      )
-      .eq("status", RESERVATION_STATUS)
-      .order("start_date", { ascending: true })
-      .limit(500);
+    const baseCols =
+      "id,application_id,driver_id,vehicle_id,start_date,reservation_note,created_at,status,weekly_rate,reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,reservation_deposit_payment_id";
+    const run = (cols: string) =>
+      supabaseAdmin.from("rentals").select(cols).in("status", [RESERVATION_STATUS, "on_hold"]).order("start_date", { ascending: true }).limit(500);
+    let { data, error } = await run(`${baseCols},hold_reason,hold_started_at`);
+    // Before the On Hold migration is applied the hold columns are missing: read without them.
+    if (error && /hold_/i.test(error.message)) ({ data, error } = await run(baseCols));
     if (error) {
       if (/reservation_/i.test(error.message)) return { rows: [], settings, reservationFeeOn };
       throw new Error(error.message);
@@ -396,7 +398,7 @@ export const cancelReservation = createServerFn({ method: "POST" })
         .from("rentals")
         .select("id")
         .eq("vehicle_id", row.vehicle_id)
-        .in("status", [RESERVATION_STATUS, "active"])
+        .in("status", [RESERVATION_STATUS, "on_hold", "active"])
         .limit(1);
       if (!still?.length) {
         await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).eq("status", "reserved");
@@ -430,7 +432,7 @@ export const clearReservationAfterActivate = createServerFn({ method: "POST" })
       .from("rentals")
       .select("id,vehicle_id,reservation_deposit_status,reservation_deposit_amount,reservation_deposit_payment_id,reservation_deposit_required")
       .eq("application_id", data.applicationId)
-      .eq("status", RESERVATION_STATUS);
+      .in("status", [RESERVATION_STATUS, "on_hold"]);
     if (data.vehicleId) q = q.eq("vehicle_id", data.vehicleId);
     const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
@@ -440,7 +442,7 @@ export const clearReservationAfterActivate = createServerFn({ method: "POST" })
       // Nothing is carried into the security deposit: the old reservation
       // deposit is retired, and a Reservation Fee is credited to week 1
       // (applyReservationFeeCredit), never held as a deposit (card t315s1710).
-      const { error: upd } = await supabaseAdmin.from("rentals").update(patch as never).eq("id", row.id).eq("status", RESERVATION_STATUS);
+      const { error: upd } = await supabaseAdmin.from("rentals").update(patch as never).eq("id", row.id).in("status", [RESERVATION_STATUS, "on_hold"]);
       if (!upd) {
         cleared += 1;
         // Free the reserved vehicle if nothing else holds it.
@@ -448,7 +450,7 @@ export const clearReservationAfterActivate = createServerFn({ method: "POST" })
           .from("rentals")
           .select("id")
           .eq("vehicle_id", row.vehicle_id)
-          .in("status", [RESERVATION_STATUS, "active"])
+          .in("status", [RESERVATION_STATUS, "on_hold", "active"])
           .limit(1);
         if (!still.data?.length) {
           await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", row.vehicle_id).eq("status", "reserved");
