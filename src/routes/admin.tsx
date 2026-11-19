@@ -332,21 +332,31 @@ function Admin() {
       const desktop = window.matchMedia("(min-width: 768px)").matches;
       const header = el.querySelector("header");
       root.style.setProperty("--admin-sticky-h", `${desktop ? el.offsetHeight : header?.offsetHeight ?? 0}px`);
-      const bar = main?.querySelector<HTMLElement>(".admin-sticky-bar");
-      root.style.setProperty("--admin-bar-h", `${desktop && bar ? bar.offsetHeight : 0}px`);
+      // Stacked bars (e.g. Bookings tabs + the Reserved toolbar) all stick at
+      // once: stack each below the previous one and publish the total, so the
+      // table header sticks under all of them instead of beneath one.
+      const bars = Array.from(main?.querySelectorAll<HTMLElement>(".admin-sticky-bar") ?? []);
+      let offset = 0;
+      for (const bar of bars) {
+        bar.style.top = desktop && offset > 0 ? `calc(var(--admin-sticky-h, 0px) + ${offset}px)` : "";
+        offset += desktop ? bar.offsetHeight : 0;
+      }
+      root.style.setProperty("--admin-bar-h", `${offset}px`);
     };
     set();
     const ro = new ResizeObserver(set);
     ro.observe(el);
-    let observedBar: Element | null = null;
+    const observedBars = new Set<Element>();
     const mo = new MutationObserver(() => {
-      const bar = main?.querySelector(".admin-sticky-bar") ?? null;
-      if (bar !== observedBar) {
-        if (observedBar) ro.unobserve(observedBar);
-        if (bar) ro.observe(bar);
-        observedBar = bar;
-        set();
+      const bars = Array.from(main?.querySelectorAll(".admin-sticky-bar") ?? []);
+      let changed = bars.length !== observedBars.size;
+      for (const bar of bars) {
+        if (!observedBars.has(bar)) { ro.observe(bar); observedBars.add(bar); changed = true; }
       }
+      for (const bar of Array.from(observedBars)) {
+        if (!bars.includes(bar)) { ro.unobserve(bar); observedBars.delete(bar); changed = true; }
+      }
+      if (changed) set();
     });
     if (main) mo.observe(main, { childList: true, subtree: true });
     window.addEventListener("resize", set);

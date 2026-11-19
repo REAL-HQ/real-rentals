@@ -8,12 +8,12 @@ describe("vehicleCellParts", () => {
   test("full record", () => {
     const p = vehicleCellParts({ year: 2013, make: "Ford", model: "Fusion", plate: "xlk331", vin: "1FADP3F2XDL123456", unitNumber: "RR-004" });
     expect(p.title).toBe("2013 Ford Fusion");
-    expect(p.detailLine).toBe("XLK331 · VIN …123456 · Unit RR-004");
+    expect(p.detailLine).toBe("XLK331 · VIN …123456");
   });
   test("pre-joined label drops unit and plate from the title", () => {
     const p = vehicleCellParts({ label: "Unit RR-004 · 2013 Ford Fusion · XLK331", unitNumber: "RR-004", plate: "XLK331", vinLast6: "123456" });
     expect(p.title).toBe("2013 Ford Fusion");
-    expect(p.detailLine).toBe("XLK331 · VIN …123456 · Unit RR-004");
+    expect(p.detailLine).toBe("XLK331 · VIN …123456");
   });
   test("missing plate, VIN and photo never show undefined or stray separators", () => {
     const p = vehicleCellParts({ year: 2020, make: "Kia", model: "Soul" });

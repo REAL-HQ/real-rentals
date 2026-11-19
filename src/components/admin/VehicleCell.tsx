@@ -8,24 +8,22 @@ import { VehicleStaffPhoto } from "./VehicleStaffPhoto";
 
 /**
  * The one way a vehicle appears in a list: thumbnail (click to enlarge),
- * year make model, plate and last 6 of the VIN, unit optional. Missing
+ * year make model, plate and last 6 of the VIN (no unit number). Missing
  * pieces are skipped, never shown as "undefined" or hanging separators.
  */
 export function VehicleCell({
   vehicle,
   thumbnailPath = null,
-  showUnit = true,
   size = "md",
   className = "",
 }: {
   vehicle: VehicleCellInput | null | undefined;
   thumbnailPath?: string | null;
-  showUnit?: boolean;
   size?: "sm" | "md";
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const p = vehicleCellParts(showUnit ? vehicle : { ...vehicle, unitNumber: null });
+  const p = vehicleCellParts(vehicle);
   const box = size === "sm" ? "h-7 w-10" : "h-8 w-11";
   return (
     <div className={`flex min-w-0 items-center gap-2 ${className}`} data-testid="vehicle-cell">
