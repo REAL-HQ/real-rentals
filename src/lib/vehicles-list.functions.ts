@@ -53,7 +53,7 @@ async function fleetOptions(supabaseAdmin: FleetClient) {
   ]);
   const onRentIds = activeRentalVehicleIds(rentals.data ?? []);
   const rows = (facets.data ?? []) as FacetRow[];
-  const statuses = new Set<string>(["archived"]);
+  const statuses = new Set<string>(["archived", "unavailable"]);
   const bodies = new Set<string>();
   for (const f of rows) {
     if (f.status) statuses.add(f.status);
