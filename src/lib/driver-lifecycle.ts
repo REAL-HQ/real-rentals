@@ -177,7 +177,9 @@ export function reservationStageDone(input: {
 }): boolean {
   if (input.rentalActive === true) return true;
   const status = String(input.feeStatus ?? "");
-  if (status === "paid") return true;
+  // "applied": the fee was paid and is credited to the first week's rent
+  // (rentals.reservation_deposit_status), so it is as paid as "paid".
+  if (status === "paid" || status === "applied") return true;
   if (status === "waived") return input.hasReservation;
   if (status !== "") return false; // pending, unpaid, refunded, failed: not reserved yet
   return input.hasReservation && input.feeRequired !== true;

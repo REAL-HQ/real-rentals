@@ -307,7 +307,7 @@ export async function createReservationCore(
   if (!vehicle) throw new Error("Vehicle Not Found.");
   if (vehicle.archived_at) throw new Error("That Vehicle Is Archived.");
   const vStatus = String(vehicle.status ?? "").toLowerCase();
-  if (["sold", "retired", "archived", "rented"].includes(vStatus)) {
+  if (["sold", "retired", "archived", "rented", "unavailable"].includes(vStatus)) {
     throw new Error("That Vehicle Is Not Free To Reserve.");
   }
 

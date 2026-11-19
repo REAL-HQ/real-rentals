@@ -63,6 +63,7 @@ const STATUS_LABEL: Record<string, string> = {
   available: "Available",
   rented: "Rented",
   maintenance: "In Maintenance",
+  unavailable: "Unavailable",
   reserved: "Reserved",
   archived: "Archived",
   sold: "Sold",
@@ -285,7 +286,7 @@ export function buildFleetAvailability(input: {
     let group: FleetGroup;
     if (active.length > 0) group = "rented";
     else if (shop || maintenance) group = "in_shop";
-    else if (registration === "expired" || insurance === "expired" || INACTIVE.has(status)) group = "not_rentable";
+    else if (registration === "expired" || insurance === "expired" || status === "unavailable" || INACTIVE.has(status)) group = "not_rentable";
     else if (status === "available" && !openIncident && registration === "current" && insurance === "current") {
       group = "available_now";
     } else group = "unknown";
