@@ -18,7 +18,7 @@ export type VehicleCellParts = {
   plate: string | null;
   vinLast6: string | null;
   unit: string | null;
-  /** Plate · VIN …123456 [· Unit X]; "—" when none are known. */
+  /** Plate · VIN …123456 (the unit number is never shown); "—" when none are known. */
   detailLine: string;
 };
 
@@ -38,6 +38,6 @@ export function vehicleCellParts(v: VehicleCellInput | null | undefined): Vehicl
   const title = ymm || titleFromLabel(clean(v?.label), unit, plate) || (unit ? `Unit ${unit}` : "Vehicle Not Listed");
   const last6 = clean(v?.vinLast6) || vinLast6(v?.vin);
   const detailLine =
-    [plate || null, last6 ? `VIN …${last6}` : null, unit && title !== `Unit ${unit}` ? `Unit ${unit}` : null].filter(Boolean).join(" · ") || "—";
+    [plate || null, last6 ? `VIN …${last6}` : null].filter(Boolean).join(" · ") || "—";
   return { title, plate: plate || null, vinLast6: last6 || null, unit: unit || null, detailLine };
 }
