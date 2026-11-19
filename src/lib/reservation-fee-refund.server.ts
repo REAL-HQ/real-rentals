@@ -515,7 +515,20 @@ export async function reservationFeeStatusForApplication(
     .eq("driver_id", applicationId)
     .eq("reason", RESERVATION_FEE_REASON)
     .limit(10);
-  const rows = ((r?.data ?? []) as any[]).filter((p) => p.status !== "void");
+  let rows = ((r?.data ?? []) as any[]).filter((p) => p.status !== "void");
+  if (!rows.length) {
+    // A fee paid before the rental existed carries rental_id NULL and may sit
+    // under a different driver id; find it through the application's rentals.
+    const rentals = await admin.from("rentals").select("id,reservation_deposit_payment_id").eq("application_id", applicationId).limit(10);
+    const rentalRows = ((rentals as any)?.data ?? []) as any[];
+    const payIds = rentalRows.map((x) => x.reservation_deposit_payment_id).filter(Boolean);
+    const rentalIds = rentalRows.map((x) => x.id).filter(Boolean);
+    const ors = [...payIds.map((id) => `id.eq.${id}`), ...rentalIds.map((id) => `rental_id.eq.${id}`), ...rentalIds.map((id) => `notes.like.reservation_fee:${id}%`)];
+    if (ors.length) {
+      const more = await admin.from("payments").select("id,status,reason,notes,refunded_amount").eq("reason", RESERVATION_FEE_REASON).or(ors.join(",")).limit(10);
+      rows = (((more as any)?.data ?? []) as any[]).filter((p) => p.status !== "void");
+    }
+  }
   const row =
     rows.find((p) => p.status === "refunded" || Number(p.refunded_amount ?? 0) > 0) ??
     rows.find((p) => p.status === "paid" && !isKept(p.notes)) ??

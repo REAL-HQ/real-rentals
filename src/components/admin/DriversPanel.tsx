@@ -2080,7 +2080,8 @@ function DriverDetail({
     setReservationDepositStatus(null);
     void Promise.all([
       loadOpenReservation({ data: { applicationId: driver.id } }),
-      loadReservationDepositSettings(),
+      // A settings failure must not blank the reservation and fee facts.
+      loadReservationDepositSettings().catch(() => ({ blockStartWhenPending: false })),
     ])
       .then(([open, settings]) => {
         if (cancelled) return;
@@ -2224,7 +2225,10 @@ function DriverDetail({
   const insuranceEvidenceTone = insuranceComplete ? "green" : evidenceTone(evidenceItems.filter((i) => i.field === "insurance"));
   const { stages: lifecycle, current: currentStage, percent: percentComplete } = driverLifecycle({
     contacted, interviewComplete: screeningDone, screening: screeningComplete,
-    documentsReceived: !vaultLoading && collectedDocuments.collected,
+    // Same definition as the Documents card ("N of 3 required received"):
+    // current, not-rejected license front, gig profile and income proof.
+    // A staff check-off (collected) also counts, as before.
+    documentsReceived: !vaultLoading && (missingRequiredCategories(vaultDocs).length === 0 || collectedDocuments.collected),
     approved, rentalActive: rentalActiveFlag,
     // Green only once the $50 Reservation Fee is actually paid.
     reserved: reservationStageDone({ feeStatus: reservationDepositStatus, hasReservation, feeRequired: reservationFeeRequired, rentalActive: rentalActiveFlag }),
