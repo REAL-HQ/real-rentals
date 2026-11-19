@@ -1,4 +1,4 @@
-import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { useEffect, useMemo, useState } from "react";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from "./modal";
 import { supabase } from "@/integrations/supabase/client";
@@ -254,7 +254,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
       case "due":
         return p.due_date || "";
       case "status":
-        return STATUS_LABEL[p.status as string] ?? enumDisplayLabel(p.status);
+        return STATUS_LABEL[p.status as string] ?? formatStatusLabel(p.status);
       case "method":
         return p.payment_method || "";
       case "late_fees":
@@ -299,7 +299,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
     if (status === "overdue") return payments.filter((payment) => OVERDUE_SET.has(payment.status as string)).length;
     return payments.filter((payment) => payment.status === status).length;
   };
-  const statusLabel = (status: string) => status === "all" ? "All" : STATUS_LABEL[status] ?? status.replace(/_/g, " ");
+  const statusLabel = (status: string) => status === "all" ? "All" : STATUS_LABEL[status] ?? formatStatusLabel(status);
 
   return (
     <div className="max-lg:min-w-0">

@@ -8,6 +8,7 @@ import { CLOSEOUT_PREVIEW_ENABLED } from "@/lib/closeout-preview-flag";
 import type { CloseoutFigure, CloseoutPreview as Preview } from "@/lib/closeout-preview";
 import { fmtDateTime } from "@/lib/date-format";
 import { SectionCard } from "./ui";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 const tone: Record<CloseoutFigure["state"], string> = {
   Ready: "text-[#1F7A34]",
@@ -57,7 +58,7 @@ export function CloseoutPreview({ rentalId }: { rentalId: string }) {
               <div key={figure.key} className="text-[12px] space-y-1 border-t border-[#F4F4F6] pt-3">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="font-medium text-[#111114]">{figure.title}</span>
-                  <span className={tone[figure.state]}>{figure.state}</span>
+                  <span className={tone[figure.state]}>{formatStatusLabel(figure.state)}</span>
                 </div>
                 <p className="text-[#111114]">{figure.value}</p>
                 <p className="text-[#55555E]">{figure.explanation}</p>

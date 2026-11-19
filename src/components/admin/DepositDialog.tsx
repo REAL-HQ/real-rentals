@@ -1,4 +1,4 @@
-import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -152,7 +152,7 @@ export function DepositDialog({
                   </div>
                   <div className="text-xs">
                     <StatusPill status="active">
-                      {enumDisplayLabel(summary.depositStatus)}
+                      {formatStatusLabel(summary.depositStatus)}
                     </StatusPill>
                   </div>
                 </div>

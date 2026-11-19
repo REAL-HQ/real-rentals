@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { getDepositsLedger } from "@/lib/deposits-ledger.functions";
 import { PERIOD_LABELS, type DepositPeriod, type DepositsLedgerReport, type LedgerMatch } from "@/lib/deposits-ledger";
 import { AdminTableScroll } from "./AdminTableScroll";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 /**
  * Read-only. Period buttons only reload this report. There is no settle,
@@ -70,7 +71,7 @@ export function DepositsLedgerPanel() {
                 <tr key={row.id} className="border-b align-top">
                   <td className="py-2 pr-3">{money(row.amountCents, row.currency)}</td>
                   <td className="py-2 pr-3">{row.reason ?? "—"}</td>
-                  <td className="py-2 pr-3">{row.status}</td>
+                  <td className="py-2 pr-3">{formatStatusLabel(row.status)}</td>
                   <td className="py-2 pr-3">{row.chargeDate ?? "—"}</td>
                   <Driver match={row.match} />
                 </tr>
@@ -87,7 +88,7 @@ export function DepositsLedgerPanel() {
                   <td className="py-2 pr-3">{row.phone ? <a href={`tel:${row.phone}`} className="underline">{row.phone}</a> : "No Phone"}</td>
                   <td className="py-2 pr-3">{row.vehicle ?? "—"}</td>
                   <td className="py-2 pr-3">{row.collectedDate ?? "—"}</td>
-                  <td className="py-2">{row.status}</td>
+                  <td className="py-2">{formatStatusLabel(row.status)}</td>
                 </tr>
               ))}
             </Table>

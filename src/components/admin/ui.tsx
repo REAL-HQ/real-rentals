@@ -1,4 +1,4 @@
-import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 import type { ReactNode } from "react";
 import { Check, ArrowRight, ArrowUp, ArrowDown, AlertTriangle, HelpCircle, ChevronDown } from "lucide-react";
 import {
@@ -122,7 +122,7 @@ export function StatusPill({
   caret?: boolean;
 }) {
   const t = TONE[tone ?? toneFor(status)];
-  const label = children ?? (status === "onboarding" ? "Needs Setup" : status ? enumDisplayLabel(String(status)) : "—");
+  const label = children ?? (status === "onboarding" ? "Needs Setup" : status ? formatStatusLabel(String(status)) : "—");
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-[11px] font-medium ${className}`}

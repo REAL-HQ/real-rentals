@@ -1,5 +1,5 @@
 import { PhoneInput } from "@/components/ui/phone-input";
-import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { initialPortalTab, rememberPayIntent, wantsPay } from "@/lib/portal-pay-link";
 import { SigningPanel } from "@/components/esign/SigningPanel";
@@ -1361,7 +1361,7 @@ function SettingsView() {
           <div className="py-2.5 flex items-center justify-between gap-4">
             <dt className="text-sm text-muted-foreground">Status</dt>
             <dd className="text-sm font-medium text-right">
-              {data?.status ? enumDisplayLabel(data.status) : "—"}
+              {data?.status ? formatStatusLabel(data.status) : "—"}
             </dd>
           </div>
           <div className="py-2.5 flex items-center justify-between gap-4">
@@ -1546,7 +1546,7 @@ function IssuesViewInner() {
                           : "bg-gray-100 text-gray-700"
                     }`}
                   >
-                    {i.status}
+                    {formatStatusLabel(i.status)}
                   </span>
                 </div>
                 {i.body && (
@@ -1659,7 +1659,7 @@ function ReferralsView() {
                         : "bg-gray-100 text-gray-700"
                     }`}
                   >
-                    {r.status}
+                    {formatStatusLabel(r.status)}
                   </span>
                 </div>
               </li>
@@ -1996,7 +1996,7 @@ function DashboardView({
                       {p.paid_date ? fmtDate(p.paid_date) : "Pending"}
                     </div>
                     <div className="text-xs text-muted-foreground ">
-                      {p.type} · {p.status}
+                      {p.type} · {formatStatusLabel(p.status)}
                     </div>
                   </div>
                   <div className="text-sm font-medium">{fmt(p.amount)}</div>
@@ -2375,7 +2375,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
                               : "bg-gray-100 text-gray-700"
                       }`}
                     >
-                      {p.status}
+                      {formatStatusLabel(p.status)}
                     </span>
                   </td>
                   <td className="text-right">{fmt(p.amount)}</td>

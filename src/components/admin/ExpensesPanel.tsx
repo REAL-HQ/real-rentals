@@ -1,4 +1,4 @@
-import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -221,7 +221,7 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
                 <td className="px-4 py-3 max-lg:whitespace-nowrap">
                   <span className="font-medium">{r.label}</span>
                   {r.status && (
-                    <span className="block text-xs text-muted-foreground ">{enumDisplayLabel(r.status)}</span>
+                    <span className="block text-xs text-muted-foreground ">{formatStatusLabel(r.status)}</span>
                   )}
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">{money2(r.revenue)}</td>

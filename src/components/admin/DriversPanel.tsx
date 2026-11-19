@@ -1,4 +1,4 @@
-import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { LeadActivity } from "./LeadActivity";
 import { AppSelect } from "@/components/ui/app-select";
 import { OnboardingChecklist } from "./OnboardingChecklist";
@@ -1732,7 +1732,7 @@ setDocCounts(requiredDocCounts(rows));
                             own: the contact status belongs to the person, and
                             it is on their primary row above. */}
                         <td className="px-4 py-2">—</td>
-                        <td className="px-4 py-2">{enumDisplayLabel(h.status)}</td>
+                        <td className="px-4 py-2">{formatStatusLabel(h.status)}</td>
                         <td className="px-4 py-2">{h.phone ? formatPhone(h.phone) : "—"}</td>
                         <td className="px-4 py-2">{h.email || "—"}</td>
                         <td className="px-4 py-2">—</td>

@@ -5,6 +5,7 @@ import { AdminTableScroll } from "./AdminTableScroll";
 import { getReceivablesAging } from "@/lib/receivables-aging.functions";
 import { RECEIVABLES_AGING_OFF } from "@/lib/receivables-aging-flag";
 import { AGE_BUCKET_LABEL, AGE_BUCKETS, receivablesAgingToCsv, type AgingReport } from "@/lib/receivables-aging";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 /**
  * Read-only. Download CSV is built in the browser from the rows on screen.
@@ -96,7 +97,7 @@ function Report({ report }: { report: AgingReport }) {
                 <tr key={row.rentalId} className="border-b align-top">
                   <td className="py-2 pr-3">{row.applicationId ? <Link to="/admin" search={{ tab: "drivers", id: row.applicationId }} className="underline">{row.driver}</Link> : row.driver}</td>
                   <td className="py-2 pr-3">{row.vehicleId ? <Link to="/admin" search={{ tab: "vehicles", id: row.vehicleId }} className="underline">{row.vehicle}</Link> : row.vehicle}</td>
-                  <td className="py-2 pr-3">{row.rentalStatus}</td>
+                  <td className="py-2 pr-3">{formatStatusLabel(row.rentalStatus)}</td>
                   <td className="py-2 pr-3"><Link to="/admin" search={{ tab: "payments" }} className="underline">{money(row.owedCents)}</Link></td>
                   <td className="py-2 pr-3">{row.oldestDue ?? "—"}</td>
                   <td className="py-2 pr-3">{row.bucket ? AGE_BUCKET_LABEL[row.bucket] : "—"}</td>
