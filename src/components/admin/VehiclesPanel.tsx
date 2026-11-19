@@ -1,4 +1,5 @@
 import { AdminToolbar, TOOLBAR, TopSearchChip } from "./AdminToolbar";
+import { rowOpenProps } from "@/lib/row-click";
 import { useCallback, useEffect, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -332,7 +333,7 @@ function FleetVehicles({
     <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-lg:min-w-0 ${view === "list" ? "md:hidden" : ""}`}>
       {rows.map((v, index) => {
         return (
-          <div key={v.id} onClick={() => setViewing(v.id)} className="rounded-2xl bg-soft overflow-hidden cursor-pointer transition-shadow hover:shadow-md max-lg:min-w-0">
+          <div key={v.id} {...rowOpenProps(() => setViewing(v.id))} className="rounded-2xl bg-soft overflow-hidden cursor-pointer transition-shadow hover:shadow-md max-lg:min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/40">
             {view !== "list" && <div className="aspect-[4/3] bg-background flex items-center justify-center">
               <VehicleStaffPhoto path={v.thumbnailPath ?? null} name={vehicleName(v)} className="w-full h-full object-cover" />
             </div>}
@@ -571,7 +572,7 @@ function FleetVehicles({
             </thead>
             <tbody>
               {rows.map((v, index) => (
-                <tr key={v.id} onClick={() => setViewing(v.id)} className="group border-t border-border cursor-pointer hover:bg-[#FAFAFB]">
+                <tr key={v.id} className="group border-t border-border cursor-pointer hover:bg-[#FAFAFB] focus-visible:outline-none focus-visible:bg-[#FAFAFB] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D03020]/40 transition-colors" {...rowOpenProps(() => setViewing(v.id))}>
                   <td className="w-10 px-3 py-2 tabular-nums text-muted-foreground">{rowNumber(index)}</td>
                   <td className="px-3 py-2 whitespace-nowrap"><VehicleListThumbnail vehicle={v} /></td>
                   <td className="px-3 py-2 max-w-[220px] truncate">{vehicleName(v)}{reminders[v.id] ? <MaintenanceLogBadge state={reminders[v.id]} /> : null}</td>

@@ -318,9 +318,9 @@ export function BookingsPanel({
           {rows.map((b) => (
             <div
               key={b.id}
-              onClick={() => setViewing(b.id)}
+              {...rowOpenProps(() => setViewing(b.id))}
               data-booking-card={b.id}
-              className="rounded-2xl bg-soft p-4 cursor-pointer transition-shadow hover:shadow-md"
+              className="rounded-2xl bg-soft p-4 cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/40"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">

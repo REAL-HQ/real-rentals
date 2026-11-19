@@ -1,4 +1,5 @@
 import { AppSelect } from "@/components/ui/app-select";
+import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -196,7 +197,7 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub?:
 
 function ServiceRow({ r, canCost, onOpen, onEvidence }: { r: any; canCost: boolean; onOpen: () => void; onEvidence: (id: string) => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3 text-[13px]">
+    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 py-3 text-[13px] ${ROW_OPEN_CLASS}`} {...rowOpenProps(onOpen)}>
       <button onClick={onOpen} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1 text-left">
         <span className="w-28 text-muted-foreground">{d(r.performed_on)}</span>
         <span className="w-24 tabular-nums text-muted-foreground">{mi(r.odometer)}</span>

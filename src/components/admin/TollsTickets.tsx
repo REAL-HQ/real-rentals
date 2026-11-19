@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
 import { useServerFn } from "@tanstack/react-start";
 import { getTollsTicketsLedger } from "@/lib/tolls-tickets.functions";
 import { TOLLS_TICKETS_LEDGER_ENABLED } from "@/lib/tolls-tickets-flag";
@@ -52,6 +54,7 @@ function TollsTicketsLive() {
 }
 
 function TollsTicketsBody({ ledger }: { ledger: TollsTicketsLedger }) {
+  const navigate = useNavigate();
   return (
     <div className="space-y-4">
       <SectionCard title="Ledger" padded={false}>
@@ -71,7 +74,7 @@ function TollsTicketsBody({ ledger }: { ledger: TollsTicketsLedger }) {
               </thead>
               <tbody>
                 {ledger.lines.map((line) => (
-                  <tr key={`${line.source}-${line.id}`} className="border-b border-[#EDEDF0]">
+                  <tr key={`${line.source}-${line.id}`} {...rowNav(navigate, line.rentalId ? { tab: "bookings", view: "past", id: line.rentalId } : null, "border-b border-[#EDEDF0]")}>
                     <td className="px-3 py-2">{line.dateEt ?? "Not Recorded"}</td>
                     <td className="px-3 py-2">{line.renter}</td>
                     <td className="px-3 py-2">{line.rental}</td>

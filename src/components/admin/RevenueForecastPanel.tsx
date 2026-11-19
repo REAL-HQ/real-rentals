@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getRevenueForecast } from "@/lib/revenue-forecast.functions";
 import { IDLE_POTENTIAL_LABEL, PROJECTION_LABEL, revenueForecastToCsv, type RevenueForecastReport } from "@/lib/revenue-forecast";
@@ -51,6 +52,7 @@ export function RevenueForecastPanel() {
 }
 
 function Report({ report }: { report: RevenueForecastReport }) {
+  const navigate = useNavigate();
   if (report.warnings.length > 0) {
     return (
       <div className="space-y-2">
@@ -94,7 +96,7 @@ function Report({ report }: { report: RevenueForecastReport }) {
               </thead>
               <tbody>
                 {report.vehicles.map((vehicle) => (
-                  <tr key={vehicle.vehicleId} className="border-b">
+                  <tr key={vehicle.vehicleId} {...rowNav(navigate, { tab: "vehicles", id: vehicle.vehicleId }, "border-b")}>
                     <td className="py-2 pr-3">
                       <Link to="/admin" search={{ tab: "vehicles", id: vehicle.vehicleId }} className="underline">{vehicle.label}</Link>
                     </td>

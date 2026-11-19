@@ -1,3 +1,5 @@
+import { useNavigate } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
 import {
   APPLICATION_DOC_GAPS_ENABLED,
   type ApplicationDocGapsResult,
@@ -39,6 +41,7 @@ export function ApplicationDocGaps({
   canView: boolean;
   result: ApplicationDocGapsResult | null;
 }) {
+  const navigate = useNavigate();
   if (APPLICATION_DOC_GAPS_ENABLED !== true || canView !== true) return null;
   const failed = result?.failed === true;
   const keys = result?.applications[0]?.slots.map((slot) => slot.key) ?? [
@@ -74,7 +77,7 @@ export function ApplicationDocGaps({
             </thead>
             <tbody>
               {result.applications.map((app) => (
-                <tr key={app.id} className="border-t border-[#EDEDF0]">
+                <tr key={app.id} {...rowNav(navigate, { tab: "drivers", id: app.id }, "border-t border-[#EDEDF0]")}>
                   <td className="px-3 py-2 font-medium text-[#111114]">{app.name}</td>
                   {app.slots.map((slot) => (
                     <td key={slot.key} className="px-3 py-2">

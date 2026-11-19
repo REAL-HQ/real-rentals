@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { AdminTableScroll } from "./AdminTableScroll";
 import { getStripePayoutRecon } from "@/lib/stripe-payout-recon.functions";
@@ -117,6 +118,7 @@ function Figure({ label, cents }: { label: string; cents: number | null }) {
 }
 
 function MoneyTable({ rows, charge }: { rows: MoneyRow[]; charge: boolean }) {
+  const navigate = useNavigate();
   return (
     <AdminTableScroll>
       <table className="w-full text-sm">
@@ -129,7 +131,7 @@ function MoneyTable({ rows, charge }: { rows: MoneyRow[]; charge: boolean }) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.id} className="border-b align-top">
+            <tr key={row.id} {...rowNav(navigate, !charge && row.applicationId ? { tab: "drivers", id: row.applicationId } : null, "border-b align-top")}>
               <td className="py-2 pr-3">
                 {charge ? row.id : row.applicationId ? <Link to="/admin" search={{ tab: "drivers", id: row.applicationId }} className="underline">{row.driverName ?? "Driver"}</Link> : "—"}
               </td>

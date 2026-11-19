@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getDepositsLedger } from "@/lib/deposits-ledger.functions";
 import { PERIOD_LABELS, type DepositPeriod, type DepositsLedgerReport, type LedgerMatch } from "@/lib/deposits-ledger";
@@ -20,6 +21,7 @@ const money = (cents: number | null, currency = "usd") => {
 };
 
 export function DepositsLedgerPanel() {
+  const navigate = useNavigate();
   const read = useServerFn(getDepositsLedger);
   const [period, setPeriod] = useState<DepositPeriod>("this_month");
   const [load, setLoad] = useState<Load>({ kind: "loading" });
@@ -67,7 +69,7 @@ export function DepositsLedgerPanel() {
           <Section title="Refunds" empty="No refunds in this period." count={load.report.refunds.length}>
             <Table heads={["Amount", "Reason", "Status", "Charge Date", "Driver", "Phone"]}>
               {load.report.refunds.map((row) => (
-                <tr key={row.id} className="border-b align-top">
+                <tr key={row.id} {...rowNav(navigate, row.match.driverId ? { tab: "drivers", id: row.match.driverId } : null, "border-b align-top")}>
                   <td className="py-2 pr-3">{money(row.amountCents, row.currency)}</td>
                   <td className="py-2 pr-3">{row.reason ?? "—"}</td>
                   <td className="py-2 pr-3">{row.status}</td>
@@ -81,7 +83,7 @@ export function DepositsLedgerPanel() {
             <p className="text-sm text-muted-foreground">Current app records. This list is not limited to the selected period.</p>
             <Table heads={["Amount", "Driver", "Phone", "Vehicle", "Collected", "Status"]}>
               {load.report.deposits.map((row) => (
-                <tr key={row.id} className="border-b align-top">
+                <tr key={row.id} {...rowNav(navigate, row.driverId ? { tab: "drivers", id: row.driverId } : null, "border-b align-top")}>
                   <td className="py-2 pr-3">{money(row.amountCents)}</td>
                   <td className="py-2 pr-3">{row.driverId ? <Link to="/admin" search={{ tab: "drivers", id: row.driverId }} className="underline">{row.driverName ?? "Driver"}</Link> : "—"}</td>
                   <td className="py-2 pr-3">{row.phone ? <a href={`tel:${row.phone}`} className="underline">{row.phone}</a> : "No Phone"}</td>

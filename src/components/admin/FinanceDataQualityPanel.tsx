@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getFinanceDataQuality } from "@/lib/finance-data-quality.functions";
 import { financeDataQualityToCsv, type QualityIssue, type QualityReport } from "@/lib/finance-data-quality";
@@ -83,8 +84,9 @@ function Report({ report }: { report: QualityReport }) {
 }
 
 function Issue({ row }: { row: QualityIssue }) {
+  const navigate = useNavigate();
   return (
-    <tr className="border-b align-top">
+    <tr {...rowNav(navigate, row.recordHref ? searchFromHref(row.recordHref) : null, "border-b align-top")}>
       <td className="py-2 pr-3">{row.problem}</td>
       <td className="py-2 pr-3">
         <Link to="/admin" search={searchFromHref(row.recordHref)} className="underline">{row.recordLabel}</Link>

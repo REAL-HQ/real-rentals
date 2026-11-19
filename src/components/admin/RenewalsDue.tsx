@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getRenewalsDue } from "@/lib/renewals-due.functions";
 import { RENEWALS_DUE_ENABLED } from "@/lib/renewals-due-flag";
@@ -13,6 +14,7 @@ export function RenewalsDue() {
 }
 
 function RenewalsDueLive() {
+  const navigate = useNavigate();
   const load = useServerFn(getRenewalsDue);
   const [board, setBoard] = useState<RenewalsDueBoard | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +65,7 @@ function RenewalsDueLive() {
             </thead>
             <tbody>
               {board.rows.map((row) => (
-                <tr key={row.rentalId} className="border-b border-[#EDEDF0] last:border-b-0 align-top">
+                <tr key={row.rentalId} {...rowNav(navigate, row.driverSearch, "border-b border-[#EDEDF0] last:border-b-0 align-top")}>
                   <td className="px-3 py-2">
                     {row.driverSearch ? (
                       <Link to="/admin" search={row.driverSearch} className="font-medium text-[#111114] underline">
@@ -102,6 +104,7 @@ function RenewalsDueLive() {
 }
 
 function RenewalsDueHistory() {
+  const navigate = useNavigate();
   const load = useServerFn(getRenewalsDue);
   const [windowDays, setWindowDays] = useState<7 | 14>(7);
   const [goodHistoryOnly, setGoodHistoryOnly] = useState(false);
@@ -187,7 +190,7 @@ function RenewalsDueHistory() {
             </thead>
             <tbody>
               {board.rows.map((row) => (
-                <tr key={row.rentalId} className="border-b border-[#EDEDF0] last:border-b-0 align-top">
+                <tr key={row.rentalId} {...rowNav(navigate, row.driverSearch, "border-b border-[#EDEDF0] last:border-b-0 align-top")}>
                   <td className="px-3 py-2">
                     {row.driverSearch ? (
                       <Link to="/admin" search={row.driverSearch} className="font-medium text-[#111114] underline">
@@ -227,6 +230,7 @@ function RenewalsDueHistory() {
 }
 
 function OverdueReturn({ rows }: { rows: RenewalsDueBoard["overdue"] }) {
+  const navigate = useNavigate();
   return (
     <section className="space-y-2" data-testid="overdue-return">
       <h2 className="text-[15px] font-semibold text-[#111114]">Overdue Return</h2>
@@ -245,7 +249,7 @@ function OverdueReturn({ rows }: { rows: RenewalsDueBoard["overdue"] }) {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.rentalId} className="border-b border-[#EDEDF0] last:border-b-0 align-top">
+                <tr key={row.rentalId} {...rowNav(navigate, row.driverSearch, "border-b border-[#EDEDF0] last:border-b-0 align-top")}>
                   <td className="px-3 py-2">
                     {row.driverSearch ? (
                       <Link to="/admin" search={row.driverSearch} className="font-medium text-[#111114] underline">

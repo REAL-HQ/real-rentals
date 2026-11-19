@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
 import { useServerFn } from "@tanstack/react-start";
 import { Wrench } from "lucide-react";
 import { listMaintenanceDue } from "@/lib/maintenance-due.functions";
@@ -39,6 +41,7 @@ export function MaintenanceDue({
   body: string;
   partner: string;
 }) {
+  const navigate = useNavigate();
   const fetchDue = useServerFn(listMaintenanceDue);
   const result = useQuery({
     queryKey: ["maintenance-due"],
@@ -77,7 +80,7 @@ export function MaintenanceDue({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.vehicleId} className="border-t border-border align-top">
+            <tr key={row.vehicleId} {...rowNav(navigate, { tab: "vehicles", id: row.vehicleId }, "border-t border-border align-top")}>
               <td className="px-3 py-3">
                 <div className="font-medium whitespace-nowrap">{row.unitNumber || "—"}</div>
                 <div className="max-w-[200px] truncate">{vehicleName(row) || "Unknown"}</div>

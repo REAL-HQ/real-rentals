@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getApplicationResumeReminders } from "@/lib/application-resume-reminders.functions";
 import { APPLICATION_RESUME_REMINDERS_ENABLED } from "@/lib/application-resume-reminders-flag";
@@ -12,6 +13,7 @@ export function ApplicationResumeReminders() {
 }
 
 function ApplicationResumeRemindersLive() {
+  const navigate = useNavigate();
   const load = useServerFn(getApplicationResumeReminders);
   const [list, setList] = useState<ResumeReminderList | null>(null);
   const [error, setError] = useState(false);
@@ -56,7 +58,7 @@ function ApplicationResumeRemindersLive() {
             </thead>
             <tbody>
               {list.rows.map((row) => (
-                <tr key={row.applicationId} className="border-b border-[#EDEDF0] last:border-b-0 align-top">
+                <tr key={row.applicationId} {...rowNav(navigate, row.driverSearch, "border-b border-[#EDEDF0] last:border-b-0 align-top")}>
                   <td className="px-3 py-2">
                     <Link to="/admin" search={row.driverSearch} className="font-medium text-[#111114] underline">
                       {row.driverName}

@@ -1,4 +1,5 @@
 import { AppSelect } from "@/components/ui/app-select";
+import { rowOpenProps, ROW_OPEN_CLASS, rowNav } from "@/lib/row-click";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -67,7 +68,7 @@ export function VehicleDefaultsPanel() {
         </div>
       )}
       {rows.map((r) => draft && !isNew && draft.body_type === r.body_type ? null : (
-        <div key={r.body_type} className="rounded-xl border border-border bg-card px-5 py-4 flex items-center gap-4 flex-wrap">
+        <div key={r.body_type} className={`rounded-xl border border-border bg-card px-5 py-4 flex items-center gap-4 flex-wrap ${canEdit ? ROW_OPEN_CLASS : ""}`} {...(canEdit ? rowOpenProps(() => { setIsNew(false); setDraft(toDraft(r)); }) : {})}>
           <div className="w-32 font-semibold text-[14px]">{bodyTypeLabel(r.body_type)}</div>
           <dl className="flex-1 grid grid-cols-3 gap-4 min-w-[260px]">
             {DEFAULT_FIELDS.map((f) => (

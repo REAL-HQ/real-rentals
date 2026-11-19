@@ -1,4 +1,6 @@
 import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { useNavigate } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
 import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -155,6 +157,7 @@ export function ExpensesPanel({ autoOpenAdd }: { autoOpenAdd?: boolean } = {}) {
 // ------------------------------------------------------------------- P&L
 
 function ProfitAndLoss({ from, to }: { from: string | null; to: string | null }) {
+  const navigate = useNavigate();
   const load = useServerFn(getVehiclePL);
   const [rows, setRows] = useState<VehiclePL[]>([]);
   const [totals, setTotals] = useState({ revenue: 0, expenses: 0, maintenance: 0, net: 0, days_on_rent: 0 });
@@ -217,7 +220,7 @@ function ProfitAndLoss({ from, to }: { from: string | null; to: string | null })
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.vehicle_id} className="border-t border-border">
+              <tr key={r.vehicle_id} {...rowNav(navigate, r.vehicle_id ? { tab: "vehicles", id: r.vehicle_id } : null, "border-t border-border")}>
                 <td className="px-4 py-3 max-lg:whitespace-nowrap">
                   <span className="font-medium">{r.label}</span>
                   {r.status && (
@@ -300,6 +303,7 @@ function Ledger({
   autoOpenAdd?: boolean;
   receiptGaps: boolean;
 }) {
+  const navigate = useNavigate();
   const load = useServerFn(listExpenses);
   const loadGaps = useServerFn(listExpenseReceiptGaps);
   const del = useServerFn(deleteExpense);
@@ -536,7 +540,7 @@ function Ledger({
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-t border-border">
+                <tr key={r.id} {...rowNav(navigate, r.vehicle_id ? { tab: "vehicles", id: r.vehicle_id } : null, "border-t border-border")}>
                   <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
                     {fmtDate(r.incurred_on + "T00:00:00")}
                   </td>

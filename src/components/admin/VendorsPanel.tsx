@@ -1,4 +1,5 @@
 import { PhoneInput } from "@/components/ui/phone-input";
+import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -172,7 +173,8 @@ export function VendorsPanel(props: { initialTypeFilter?: string } = {}) {
           {filtered.map((v) => (
             <div
               key={v.id}
-              className="rounded-2xl border border-[#EDEDF0] p-4 bg-white shadow-sm transition-colors duration-150 hover:border-[#D9D9DE]"
+              className={`rounded-2xl border border-[#EDEDF0] p-4 bg-white shadow-sm transition-colors duration-150 hover:border-[#D9D9DE] ${ROW_OPEN_CLASS}`}
+              {...rowOpenProps(() => setEditing(v))}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">

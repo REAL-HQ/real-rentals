@@ -1,3 +1,5 @@
+import { useNavigate } from "@tanstack/react-router";
+import { rowNav } from "@/lib/row-click";
 import {
   ONBOARDING_CHECKLIST_ENABLED,
   ONBOARDING_ROW_CAP,
@@ -79,6 +81,7 @@ export function OnboardingChecklist({
   result: OnboardingChecklistResult | null;
   failed: boolean;
 }) {
+  const navigate = useNavigate();
   if (ONBOARDING_CHECKLIST_ENABLED !== true || canView !== true) return null;
   if (failed || result?.failed) return <OnboardingLoadError />;
   if (!result) return <p className="mb-4 text-[12px] text-[#55555E]">Loading Onboarding Checklist</p>;
@@ -114,7 +117,7 @@ export function OnboardingChecklist({
             </thead>
             <tbody>
               {result.drivers.map((driver) => (
-                <tr key={driver.id} className="border-t border-[#EDEDF0]">
+                <tr key={driver.id} {...rowNav(navigate, { tab: "drivers", id: driver.id }, "border-t border-[#EDEDF0]")}>
                   <td className="px-3 py-2 align-top text-[#111114]">
                     <span className="block font-medium">{driver.name}</span>
                     <span className="block text-[#55555E]">{statusLabel(driver.status)}</span>
