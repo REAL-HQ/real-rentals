@@ -30,6 +30,7 @@
 // Stripe renters only ever get their own invoice page (invoice.stripe.com).
 // The day-before autopay heads-up has no link at all. Never another way to pay.
 import { isHostedInvoiceUrl } from "@/lib/failed-payment-link";
+import { FALLBACK_LEDGER_POLICY, buildLedgerWeek, type LedgerDeal, type LedgerForgiveness, type LedgerPolicy } from "@/lib/late-fee-ledger";
 
 export const LATE_FEE_PER_DAY = 50;
 /** Overdue notices are only sent for failures this recent (days), and never for ones before the switch went on. */
@@ -116,6 +117,21 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/**
+ * One unpaid week's late fee as the renter should be told it: the ledger's open
+ * amount, so waived days, payment-deal days, the weekly cap and staff
+ * forgiveness are all honored. With no policy, deals or forgiveness on the
+ * state this equals lateFeeFor().
+ */
+export function weekLateFee(s: Pick<RentalBillingState, "waivers" | "forgiveness" | "deals" | "lateFeePolicy">, dueDate: string, today: string): { daysLate: number; fee: number; forgiven: number } {
+  const w = buildLedgerWeek({
+    policy: s.lateFeePolicy ?? FALLBACK_LEDGER_POLICY,
+    week: { dueDate, asOf: today, owing: true },
+    waivers: s.waivers, deals: s.deals, forgiveness: s.forgiveness,
+  });
+  return { daysLate: Math.max(0, dayDiff(dueDate, today)), fee: w.open, forgiven: w.forgiven };
+}
+
 // ------------------------------------------------------------------ state + stage
 
 export type RentalBillingState = {
@@ -140,6 +156,12 @@ export type RentalBillingState = {
   /** Stripe: other open failed invoices (newer), each listed with its own amount and link. */
   otherInvoices?: { url: string | null; amount: number; createdOn: string }[];
   waivers?: LateFeeWaiver[];
+  /** Staff forgiveness of individual late fees (late_fee_forgiveness). Forgiven fees are never quoted. */
+  forgiveness?: LedgerForgiveness[];
+  /** Approved payment deal windows: no fee accrues on those days (matches the daily sweep). */
+  deals?: LedgerDeal[];
+  /** app_settings.late_fee_policy as ledger numbers; absent = $50/day, no cap. */
+  lateFeePolicy?: LedgerPolicy;
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
 };
@@ -393,7 +415,7 @@ export function renderReminder(
   now: Date,
 ): RenderedReminder | null {
   const today = easternParts(now).date;
-  const fee = lateFeeFor({ dueDate: s.dueDate!, today, waivers: s.waivers });
+  const fee = weekLateFee(s, s.dueDate!, today);
   const wholeWeekWaived = (s.waivers ?? []).some((w) => w.dueDate === s.dueDate && w.waivedThrough == null);
   const amount = s.mode === "stripe" && s.rentOwed > 0 ? s.rentOwed : s.weeklyRate;
   let link: string | null = null;
@@ -412,7 +434,7 @@ export function renderReminder(
     // nothing, a newer unwaived week still counts.
     const primaryFee = wholeWeekWaived ? 0 : fee.fee;
     const otherFees = s.mode === "stripe"
-      ? (s.otherInvoices ?? []).reduce((t, o) => t + lateFeeFor({ dueDate: o.createdOn, today, waivers: s.waivers }).fee, 0)
+      ? (s.otherInvoices ?? []).reduce((t, o) => t + weekLateFee(s, o.createdOn, today).fee, 0)
       : 0;
     const totalFee = round2(primaryFee + otherFees);
     if (totalFee > 0) {

@@ -275,7 +275,16 @@ export async function renderWebhookReminder(
     const { renderReminder } = await import("@/lib/rent-reminders");
     const templates = await loadReminderTemplates(admin);
     const w = await admin.from("rent_late_fee_waivers").select("due_date, waived_through").eq("rental_id", input.rentalId);
+    // Payment-deal days, the weekly cap and staff forgiveness: the text never quotes a fee that was forgiven.
+    let feeCtx: Awaited<ReturnType<typeof import("@/lib/late-fee-forgiveness.server").loadLateFeeContext>> | null = null;
+    try {
+      const { loadLateFeeContext } = await import("@/lib/late-fee-forgiveness.server");
+      feeCtx = await loadLateFeeContext(admin, [input.rentalId]);
+    } catch {
+      feeCtx = null;
+    }
     return renderReminder(templates, slot.ledgerStage === "overdue" ? "overdue" : "daily", {
+      ...(feeCtx ? { forgiveness: feeCtx.forgivenessBy.get(input.rentalId) ?? [], deals: feeCtx.dealsBy.get(input.rentalId) ?? [], lateFeePolicy: feeCtx.policy } : {}),
       rentalId: input.rentalId, applicationId: input.applicationId, firstName: input.firstName, phone: input.phone, email: null,
       weeklyRate: input.amount, mode: "stripe", dueDate: slot.dueDate, owing: true, rentOwed: input.amount, invoiceUrl: link,
       invoiceId: typeof input.invoice?.id === "string" ? input.invoice.id : null,
