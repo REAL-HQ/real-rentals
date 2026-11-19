@@ -63,7 +63,7 @@ describe("compact lead cards", () => {
     expect(html).not.toContain("blue");
     expect(html).not.toContain("border-l-");
     expect(html).not.toContain("data-lead-urgency");
-    expect(html).toContain("from-emerald-300");
+    expect(html).toContain("bg-emerald-600");
     expect(html).toContain("Applied Today");
     expect(html).not.toContain("Make first contact");
     expect(html).not.toContain("Follow up and log the outcome");
@@ -175,9 +175,13 @@ describe("compact lead cards", () => {
     for (const src of [ui, body, lib]) {
       expect(src).not.toMatch(/\bblue\b|border-l-(?:blue|red|emerald|amber|violet|slate)/);
     }
-    expect(body).toContain("bg-gradient-to-br");
-    expect(ui).toContain("bg-gradient-to-b");
+    expect(body).not.toMatch(/gradient|border-l-/);
+    expect(ui).not.toMatch(/gradient|border-l-/);
+    expect(body).toContain("bg-brand");
+    expect(body).toContain("bg-amber-500");
+    expect(body).toContain("bg-emerald-600");
     expect(body).toContain("rounded-2xl");
+    expect(body).toContain("bg-white");
   });
   test("list keeps actions, status control and readiness, drops metrics", () => {
     for (const s of [
