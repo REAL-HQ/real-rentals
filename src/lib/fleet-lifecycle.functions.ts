@@ -11,5 +11,11 @@ export const getFleetLifecycleMarks = createServerFn({ method: "POST" })
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { readFleetLifecycleMarks } = await import("@/lib/fleet-lifecycle.server");
-    return { marks: await readFleetLifecycleMarks(supabaseAdmin, data.applicationId) };
+    const { readFleetInsuranceApplied } = await import("@/lib/fleet-insurance-applied.server");
+    const [marks, insuranceApplied] = await Promise.all([
+      readFleetLifecycleMarks(supabaseAdmin, data.applicationId),
+      // FLEET's "Insurance Quote: Applied" audit row (yellow only, never verification).
+      readFleetInsuranceApplied(supabaseAdmin, data.applicationId).catch(() => null),
+    ]);
+    return { marks, insuranceApplied };
   });

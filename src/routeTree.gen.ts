@@ -57,6 +57,7 @@ import { Route as ApiPublicFleetAssignVehicleRouteImport } from './routes/api/pu
 import { Route as ApiPublicFleetDriverDocumentRouteImport } from './routes/api/public/fleet/driver-document'
 import { Route as ApiPublicFleetGpsReadingsRouteImport } from './routes/api/public/fleet/gps-readings'
 import { Route as ApiPublicFleetHandoffRouteImport } from './routes/api/public/fleet/handoff'
+import { Route as ApiPublicFleetInsuranceAppliedRouteImport } from './routes/api/public/fleet/insurance-applied'
 import { Route as ApiPublicFleetInsuranceCardRouteImport } from './routes/api/public/fleet/insurance-card'
 import { Route as ApiPublicFleetLicenseFactsRouteImport } from './routes/api/public/fleet/license-facts'
 import { Route as ApiPublicFleetMissingItemsRouteImport } from './routes/api/public/fleet/missing-items'
@@ -331,6 +332,12 @@ const ApiPublicFleetHandoffRoute = ApiPublicFleetHandoffRouteImport.update({
   path: '/api/public/fleet/handoff',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicFleetInsuranceAppliedRoute =
+  ApiPublicFleetInsuranceAppliedRouteImport.update({
+    id: '/api/public/fleet/insurance-applied',
+    path: '/api/public/fleet/insurance-applied',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetInsuranceCardRoute =
   ApiPublicFleetInsuranceCardRouteImport.update({
     id: '/api/public/fleet/insurance-card',
@@ -495,6 +502,7 @@ export interface FileRoutesByFullPath {
   '/api/public/fleet/driver-document': typeof ApiPublicFleetDriverDocumentRoute
   '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
+  '/api/public/fleet/insurance-applied': typeof ApiPublicFleetInsuranceAppliedRoute
   '/api/public/fleet/insurance-card': typeof ApiPublicFleetInsuranceCardRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
@@ -565,6 +573,7 @@ export interface FileRoutesByTo {
   '/api/public/fleet/driver-document': typeof ApiPublicFleetDriverDocumentRoute
   '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
+  '/api/public/fleet/insurance-applied': typeof ApiPublicFleetInsuranceAppliedRoute
   '/api/public/fleet/insurance-card': typeof ApiPublicFleetInsuranceCardRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
@@ -636,6 +645,7 @@ export interface FileRoutesById {
   '/api/public/fleet/driver-document': typeof ApiPublicFleetDriverDocumentRoute
   '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
+  '/api/public/fleet/insurance-applied': typeof ApiPublicFleetInsuranceAppliedRoute
   '/api/public/fleet/insurance-card': typeof ApiPublicFleetInsuranceCardRoute
   '/api/public/fleet/license-facts': typeof ApiPublicFleetLicenseFactsRoute
   '/api/public/fleet/missing-items': typeof ApiPublicFleetMissingItemsRoute
@@ -708,6 +718,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/driver-document'
     | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/handoff'
+    | '/api/public/fleet/insurance-applied'
     | '/api/public/fleet/insurance-card'
     | '/api/public/fleet/license-facts'
     | '/api/public/fleet/missing-items'
@@ -778,6 +789,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/driver-document'
     | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/handoff'
+    | '/api/public/fleet/insurance-applied'
     | '/api/public/fleet/insurance-card'
     | '/api/public/fleet/license-facts'
     | '/api/public/fleet/missing-items'
@@ -848,6 +860,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/driver-document'
     | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/handoff'
+    | '/api/public/fleet/insurance-applied'
     | '/api/public/fleet/insurance-card'
     | '/api/public/fleet/license-facts'
     | '/api/public/fleet/missing-items'
@@ -919,6 +932,7 @@ export interface RootRouteChildren {
   ApiPublicFleetDriverDocumentRoute: typeof ApiPublicFleetDriverDocumentRoute
   ApiPublicFleetGpsReadingsRoute: typeof ApiPublicFleetGpsReadingsRoute
   ApiPublicFleetHandoffRoute: typeof ApiPublicFleetHandoffRoute
+  ApiPublicFleetInsuranceAppliedRoute: typeof ApiPublicFleetInsuranceAppliedRoute
   ApiPublicFleetInsuranceCardRoute: typeof ApiPublicFleetInsuranceCardRoute
   ApiPublicFleetLicenseFactsRoute: typeof ApiPublicFleetLicenseFactsRoute
   ApiPublicFleetMissingItemsRoute: typeof ApiPublicFleetMissingItemsRoute
@@ -1279,6 +1293,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetHandoffRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/insurance-applied': {
+      id: '/api/public/fleet/insurance-applied'
+      path: '/api/public/fleet/insurance-applied'
+      fullPath: '/api/public/fleet/insurance-applied'
+      preLoaderRoute: typeof ApiPublicFleetInsuranceAppliedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/insurance-card': {
       id: '/api/public/fleet/insurance-card'
       path: '/api/public/fleet/insurance-card'
@@ -1471,6 +1492,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicFleetDriverDocumentRoute: ApiPublicFleetDriverDocumentRoute,
   ApiPublicFleetGpsReadingsRoute: ApiPublicFleetGpsReadingsRoute,
   ApiPublicFleetHandoffRoute: ApiPublicFleetHandoffRoute,
+  ApiPublicFleetInsuranceAppliedRoute: ApiPublicFleetInsuranceAppliedRoute,
   ApiPublicFleetInsuranceCardRoute: ApiPublicFleetInsuranceCardRoute,
   ApiPublicFleetLicenseFactsRoute: ApiPublicFleetLicenseFactsRoute,
   ApiPublicFleetMissingItemsRoute: ApiPublicFleetMissingItemsRoute,

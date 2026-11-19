@@ -4,6 +4,8 @@ import { reservationFeeRefundedDetail } from "@/lib/reservation-fee-refund";
 function reservationPaymentDetail(status: string | null | undefined): string {
   const raw = String(status ?? "");
   if (raw === "paid") return "Paid";
+  // Paid and credited to the first week's rent (rentals.reservation_deposit_status).
+  if (raw === "applied") return "Paid · Applied To First Week";
   if (raw === "pending") return "Payment Pending";
   if (raw === "not_required") return "Not Required";
   if (raw === "waived") return "Waived";
@@ -23,7 +25,7 @@ export function driverNextStepRequirements(
   const reservationPayment: ActivationRequirement = {
     key: "reservation_paid",
     label: "Reservation Paid",
-    met: reservationPaymentStatus === "paid" ? true : reservationPaymentStatus === "pending" ? false : null,
+    met: reservationPaymentStatus === "paid" || reservationPaymentStatus === "applied" ? true : reservationPaymentStatus === "pending" ? false : null,
     enforcement: "advisory",
     detail: reservationPaymentDetail(reservationPaymentStatus),
   };

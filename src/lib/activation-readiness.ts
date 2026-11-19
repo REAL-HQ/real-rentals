@@ -360,17 +360,27 @@ export function hasSignedAgreement(f: DriverReadinessFacts): boolean {
 }
 
 /** The operational rows shown in the profile's Next Step card, in Dolmar's order. */
+// Verification items first (Screening sits with them), then approval and the
+// paperwork, then Reservation Paid, Insurance Quote -> Insurance Setup, and the
+// pickup steps (Dolmar, t493u).
 export const NEXT_STEP_REQUIREMENT_KEYS = [
-  "interview", "license_documents", "gig_profile", "income", "insurance_quote", "screening",
-  "approved", "terms_confirmed", "signed_agreement", "insurance_verified", "reservation_paid", "inspection", "pickup", "rental_active",
+  "interview", "license_documents", "gig_profile", "income", "screening",
+  "approved", "terms_confirmed", "signed_agreement", "reservation_paid", "insurance_quote", "insurance_verified", "inspection", "pickup", "rental_active",
 ] as const satisfies readonly ActivationRequirementKey[];
 
-/** Both screening evidence rows must be checked off and have their own uploaded file. */
+/**
+ * Lifecycle Screening: the Screening checklist row. The insurance quote is an
+ * insurance step (it comes after Reservation Paid), so it no longer holds up
+ * Screening.
+ */
 export function screeningRequirementsComplete(requirements: readonly ActivationRequirement[]): boolean {
-  return (["insurance_quote", "screening"] as const).every(
-    (key) => requirements.some((requirement) => requirement.key === key && requirement.met === true),
-  );
+  return requirements.some((requirement) => requirement.key === "screening" && requirement.met === true);
 }
+
+/** Checklist labels for the Insurance Quote row (shared by server detail and profile). */
+export const INSURANCE_QUOTE_LABEL = { onFile: "Quote On File", applied: "Applied · Awaiting Quote", notApplied: "Not Applied", conflict: "Needs Review" } as const;
+/** Screening is complete through the approval decision; this never claims a background/MVR "pass". */
+export const SCREENING_APPROVED_LABEL = "Approved";
 
 /** The readiness checklist, in the order the work is done. */
 export function activationRequirements(f: DriverReadinessFacts): ActivationRequirement[] {
@@ -385,6 +395,15 @@ export function activationRequirements(f: DriverReadinessFacts): ActivationRequi
   const incomeOnFile = currentFile("income");
   const checkedFile = (field: "insurance_quote" | "screening") => currentFile(field) && f.evidence?.[field] === "collected";
   const rentalActive = f.rentalActive === true;
+  const isApproved = (ACTIVATABLE_STATUSES as readonly string[]).includes(String(f.status ?? "").toLowerCase());
+  // Insurance Quote: a saved "Mark Applied" check-off is Applied (yellow); the
+  // quote file on record completes it. A check-off alone never completes it.
+  const quoteOnFile = currentFile("insurance_quote");
+  const quoteApplied = f.evidence?.insurance_quote === "collected";
+  // Screening: the approval decision (staff, or FLEET after its RentID
+  // screening) is the screening outcome. Before approval it still needs the
+  // screening file and a check-off. Shown as "Approved", never as a pass.
+  const screeningByApproval = isApproved && !checkedFile("screening");
   return [
     {
       key: "interview",
@@ -423,21 +442,22 @@ export function activationRequirements(f: DriverReadinessFacts): ActivationRequi
     {
       key: "insurance_quote",
       label: "Insurance Quote",
-      met: checkedFile("insurance_quote"),
+      met: quoteOnFile,
       enforcement: "advisory",
-      detail: "Saved Check-Off And File Required",
+      // Shown inline only while unmet; the profile row shows Applied / Not Applied itself.
+      ...(quoteOnFile ? {} : { detail: quoteApplied ? "Upload The Quote When It Arrives" : "Mark Applied Once Insurance Is Applied For" }),
     },
     {
       key: "screening",
       label: "Screening",
-      met: checkedFile("screening"),
+      met: checkedFile("screening") || isApproved,
       enforcement: "advisory",
-      detail: "Saved Check-Off And File Required",
+      detail: screeningByApproval ? SCREENING_APPROVED_LABEL : "Saved Check-Off And File Required",
     },
     {
       key: "approved",
       label: "Application Approved",
-      met: (ACTIVATABLE_STATUSES as readonly string[]).includes(String(f.status ?? "").toLowerCase()),
+      met: isApproved,
       enforcement: "hard",
     },
     {
