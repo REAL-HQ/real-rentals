@@ -11,7 +11,7 @@ process.env.SUPABASE_PUBLISHABLE_KEY ??= "dummy";
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= "dummy";
 
 import { postVerifiedPaymentWebhook } from "../src/routes/api/public/payments/webhook.ts";
-import { appOwnsPayment, oneOffIdentity, oneOffRowType, pickRental, exactILike, UNMATCHED_TITLE } from "../src/lib/one-off-payment.ts";
+import { appOwnsPayment, oneOffIdentity, oneOffRowType, pickRental, exactILike, rentWeekFor, UNMATCHED_TITLE } from "../src/lib/one-off-payment.ts";
 import { consolidatedRevenue, verifyCollectedCharges } from "../src/lib/stripe-collections.ts";
 import { loadAppLinkedPayments } from "../src/lib/stripe-collections.server.ts";
 
@@ -155,6 +155,12 @@ describe("one-off payment helpers", () => {
 
   it("maps types and picks exactly one rental", () => {
     assert.equal(oneOffRowType(null), "fee");
+    assert.equal(oneOffRowType(null, { activeRental: true }), "rent");
+    assert.equal(oneOffRowType("toll", { activeRental: true }), "toll");
+    assert.equal(oneOffRowType("anything", { activeRental: true }), "fee");
+    assert.equal(rentWeekFor("2026-11-18", ["2026-11-16"]), "2026-11-16", "Schrita: Nov 18 payment pays the open Nov 16 week");
+    assert.equal(rentWeekFor("2026-11-18", ["2026-10-01"]), "2026-11-18", "a week older than 21 days is not guessed");
+    assert.equal(rentWeekFor("2026-11-18", ["2026-11-16"], { dailyPlan: true }), "2026-11-18", "daily rent keeps the paid day");
     assert.equal(oneOffRowType("late_fee"), "late_fee");
     assert.equal(oneOffRowType("anything"), "fee");
     assert.equal(pickRental([rental(), rental({ id: RENTAL2 })], { explicit: false }).ambiguous, true);
@@ -179,13 +185,40 @@ describe("payments webhook — one-off payments", () => {
     assert.equal(rows[0].amount, 50);
     assert.equal(rows[0].balance_due, 0);
     assert.equal(rows[0].status, "paid");
-    assert.equal(rows[0].type, "fee");
+    assert.equal(rows[0].type, "rent", "a renter's no-reason Payment Link on an active rental is rent (Dolmar, Nov 19)");
     assert.equal(rows[0].paid_date, "2026-11-16", "paid date is the Eastern day");
     assert.equal(rows[0].stripe_charge_id, CH);
     assert.equal(rows[0].stripe_customer_id, CUS);
     assert.equal(rows[0].notified_status, "paid", "no app receipt for a Stripe-receipted payment");
     assert.equal(rows[0].reason, "1-day rental Nov 16, return Nov 17");
     assert.equal(unmatched(db).length, 0);
+  });
+
+  it("a $350 rent Payment Link pays the open week and flags its still-open Stripe invoice (Schrita, Nov 18)", async () => {
+    const open = { id: "rent-1116", rental_id: RENTAL, type: "rent", status: "overdue", amount: 350, balance_due: 400, late_fees: 50, due_date: "2026-11-15", stripe_invoice_id: "in_TESTopen" };
+    const db = fakeDb({ rentals: [rental()], applications: [app()], payments: [open], notifications: [], app_settings: [] });
+    const big = { amount_total: 35000, metadata: { customer: CUS } };
+    const stripe = stripeStub({ session: session(big), pi: intent({ amount: 35000, amount_received: 35000 }), charge: charge({ amount: 35000, amount_captured: 35000 }) });
+    assert.equal((await send("checkout.session.completed", session(big), db, stripe)).status, 200);
+    const rows = paymentsFor(db);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].type, "rent");
+    assert.equal(rows[0].due_date, "2026-11-15", "applied to the open week, not the paid day");
+    assert.equal(rows[0].paid_date, "2026-11-16");
+    const notes = db._state.notifications.filter((n: Row) => n.title === "Open Stripe Invoice After Rent Paid");
+    assert.equal(notes.length, 1);
+    assert.match(notes[0].body, /in_TESTopen/);
+    assert.equal(db._state.payments.find((r: Row) => r.id === "rent-1116").status, "overdue", "the open row is not rewritten by the webhook");
+  });
+
+  it("a daily-plan renter's $50 stays on the paid day and raises no invoice notice", async () => {
+    const open = { id: "rent-1116", rental_id: RENTAL, type: "rent", status: "overdue", amount: 350, due_date: "2026-11-15", stripe_invoice_id: "in_TESTopen" };
+    const db = fakeDb({ rentals: [rental()], applications: [app()], payments: [open], notifications: [], app_settings: [{ key: "daily_rent_plans", value: { [RENTAL]: { dailyRate: 50, startsOn: "2026-11-15" } } }] });
+    assert.equal((await send("checkout.session.completed", session(), db, stripeStub())).status, 200);
+    const rows = paymentsFor(db);
+    assert.equal(rows[0].type, "rent");
+    assert.equal(rows[0].due_date, "2026-11-16");
+    assert.equal(db._state.notifications.filter((n: Row) => n.title === "Open Stripe Invoice After Rent Paid").length, 0);
   });
 
   it("matches by email when the payment carries no customer", async () => {

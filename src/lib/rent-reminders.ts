@@ -164,6 +164,8 @@ export type RentalBillingState = {
   lateFeePolicy?: LedgerPolicy;
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
+  /** A daily rent plan is in force (app_settings.daily_rent_plans): no late fee, no automatic weekly reminder. */
+  dailyPlan?: { rate: number; startsOn: string } | null;
 };
 
 export type StageDecision =

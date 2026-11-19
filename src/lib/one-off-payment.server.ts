@@ -12,6 +12,7 @@ import {
   oneOffIdentity,
   oneOffRowType,
   pickRental,
+  rentWeekFor,
   unmatchedBody,
   UNMATCHED_TITLE,
   type OneOffIdentity,
@@ -131,17 +132,34 @@ export async function recordOneOffPayment(
   const r = match.rental;
   const amount = id.amountCents / 100;
   const day = id.paidAt ? easternDateOf(id.paidAt) : easternDateOf(Math.floor(Date.now() / 1000));
+  const rowType = oneOffRowType(id.reason, { activeRental: r.status === "active" });
+  // Rent lands on the week it pays for, so Due/Overdue/Late all read it as paid.
+  let dueOn = day;
+  let openRows: { id: string; due_date: string | null; amount: unknown; stripe_invoice_id: string | null; status: string | null }[] = [];
+  let onDailyPlan = false;
+  if (rowType === "rent") {
+    const { loadDailyRentPlans } = await import("@/lib/daily-rent-plans.server");
+    const { activeDailyPlan } = await import("@/lib/rent-standing");
+    onDailyPlan = !!activeDailyPlan((await loadDailyRentPlans(admin)).get(r.id) ?? null, day);
+    try {
+      openRows = await rows(admin.from("payments").select("id, due_date, amount, stripe_invoice_id, status").eq("rental_id", r.id).eq("type", "rent")
+        .in("status", ["failed", "overdue", "past_due", "late", "unpaid", "collections", "current"]));
+    } catch {
+      openRows = [];
+    }
+    dueOn = rentWeekFor(day, openRows.map((o) => String(o.due_date ?? "").slice(0, 10)).filter(Boolean), { dailyPlan: onDailyPlan });
+  }
   const via = [id.paymentLinkId && `payment link ${id.paymentLinkId}`, id.sessionId && `checkout ${id.sessionId}`].filter(Boolean).join(", ");
   const ins = must(await admin.from("payments").insert({
     rental_id: r.id,
     driver_id: r.application_id ?? null,
     vehicle_id: r.vehicle_id ?? null,
-    type: oneOffRowType(id.reason),
+    type: rowType,
     reason: (id.purpose ?? id.reason ?? "Stripe payment").slice(0, 200),
     amount,
     balance_due: 0,
     status: "paid",
-    due_date: day,
+    due_date: dueOn,
     paid_date: day,
     payment_method: id.cardPayment ? "card" : null,
     stripe_payment_intent_id: id.paymentIntentId,
@@ -159,6 +177,17 @@ export async function recordOneOffPayment(
       driver_id: null, title: "Payment Received", kind: "payment", read: false,
       body: `$${amount.toFixed(2)} — ${(id.purpose ?? "Stripe payment").slice(0, 120)}`,
     }).then(() => {}, () => {});
+  }
+  // The week this paid may still have an open Stripe invoice that Stripe will retry.
+  // Nothing here writes Stripe: staff get one notice to void it (or mark it paid out of band).
+  if (inserted && rowType === "rent" && !onDailyPlan) {
+    const week = openRows.find((o) => String(o.due_date ?? "").slice(0, 10) === dueOn && o.stripe_invoice_id);
+    if (week && amount + 0.005 >= Number(week.amount ?? 0)) {
+      await admin.from("notifications").insert({
+        driver_id: null, title: "Open Stripe Invoice After Rent Paid", kind: "payment", read: false,
+        body: `$${amount.toFixed(2)} rent for the week of ${dueOn} was paid by ${via || "Stripe"}, but invoice ${week.stripe_invoice_id} is still open and Stripe may retry it. Void it or mark it paid out of band in Stripe, then mark the week Paid.`,
+      }).then(() => {}, () => {});
+    }
   }
   return { status: "recorded", rentalId: r.id, by: match.by, inserted };
 }

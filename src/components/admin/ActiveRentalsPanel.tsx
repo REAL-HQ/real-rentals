@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { dailyRateLabel } from "@/lib/rent-standing";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { rowOpenProps, ROW_OPEN_CLASS } from "@/lib/row-click";
 import { useServerFn } from "@tanstack/react-start";
@@ -184,7 +185,9 @@ export function ActiveRentalsPanel() {
               {visible.map((row) => {
                 const vehiclePlate = (row.vehicleLabel || "").split(" · ").slice(1).join(" · ") || null;
                 const fee = fees.get(row.id);
-                const lateDue = (fee?.lateFee ?? 0) > 0 && !fee?.waived;
+                // Late only shows beside an overdue badge: a rental the shared rent standing calls
+                // Current (rent paid on any row, or a daily plan) never carries a Late amount.
+                const lateDue = (fee?.lateFee ?? 0) > 0 && !fee?.waived && (row.overdueDays ?? 0) > 0;
                 return (
                   <tr
                     key={row.id}
@@ -205,13 +208,27 @@ export function ActiveRentalsPanel() {
                       <span className="block whitespace-nowrap">{formatBoardDate(row.startDate)}</span>
                       <span className="block text-xs text-muted-foreground">{weeksInLabel(row.weeksIn)}</span>
                     </td>
-                    <td className="px-2 py-2 align-middle whitespace-nowrap">{formatWeeklyRate(row.weeklyRate)}</td>
+                    <td className="px-2 py-2 align-middle whitespace-nowrap" data-testid="rate-cell">
+                      {row.cadence === "daily" && row.dailyRate ? (
+                        <>
+                          <span className="block">{dailyRateLabel(row.dailyRate)}</span>
+                          <span className="block text-xs text-muted-foreground">Weekly {formatWeeklyRate(row.weeklyRate)}</span>
+                        </>
+                      ) : (
+                        formatWeeklyRate(row.weeklyRate)
+                      )}
+                    </td>
                     <td className="px-2 py-2 align-middle">
                       <span className="block whitespace-nowrap">{formatBoardDate(row.nextPaymentDue) || "No Due Date"}</span>
                       <span className="block text-xs text-muted-foreground">
                         {paymentStatusLabel(row.lastPaymentStatus, row.paymentsLoaded)}
                         {row.lastPaymentViaStripe ? " · Stripe" : ""}
                       </span>
+                      {(row.rentOwed ?? 0) > 0 ? (
+                        <span className="block text-xs font-medium text-[#111114]" data-testid="rent-owed">
+                          Owes {formatWeeklyRate(row.rentOwed ?? 0)}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-2 py-2 align-middle">
                       {fee ? (

@@ -8,6 +8,8 @@
 // so re-running the sweep (or running it twice in a day) never charges the
 // same day twice.
 
+import { activeDailyPlan, isRentRowCovered, type DailyRentPlan, type StandingPayment } from "@/lib/rent-standing";
+
 export type LateFeePolicy = {
   enabled: boolean;
   /** Days after the due date before anything is charged. */
@@ -245,6 +247,15 @@ export async function applyLateFees(today?: string, opts: { admin?: any; now?: D
       forgivenBy.set(k, round2((forgivenBy.get(k) ?? 0) + Number(f.amount)));
     }
   }
+  // Rent already paid toward a week on another row (a Payment Link, a cash payment) settles it,
+  // and a daily rent plan replaces the weekly rows due on or after its start: no fee on either.
+  let paidRentBy = new Map<string, StandingPayment[]>();
+  let dailyPlans = new Map<string, DailyRentPlan>();
+  if (rentalIds.length) {
+    const { loadDailyRentPlans, loadPaidRentByRental } = await import("@/lib/daily-rent-plans.server");
+    paidRentBy = await loadPaidRentByRental(supabaseAdmin, rentalIds);
+    dailyPlans = await loadDailyRentPlans(supabaseAdmin);
+  }
   const waiversBy = new Map<string, any[]>();
   for (const w of (waiverRes.error ? [] : waiverRes.data ?? []) as any[]) (waiversBy.get(w.rental_id) ?? waiversBy.set(w.rental_id, []).get(w.rental_id)!).push(w);
   // Late fees stop once the car is back at the shop (D33).
@@ -264,6 +275,20 @@ export async function applyLateFees(today?: string, opts: { admin?: any; now?: D
       if (owed <= 0) {
         run.skipped++;
         continue;
+      }
+      if (p.rental_id) {
+        const asRow: StandingPayment = { type: p.type, status: p.status, amount: p.amount, dueDate: p.due_date };
+        if (isRentRowCovered(asRow, paidRentBy.get(p.rental_id) ?? [])) {
+          run.skipped++;
+          run.details!.push({ payment_id: p.id, rental_id: p.rental_id, due_date: p.due_date, addition: 0, reason: "rent paid on another row" });
+          continue;
+        }
+        const plan = activeDailyPlan(dailyPlans.get(p.rental_id) ?? null, todayStr);
+        if (plan && String(p.due_date).slice(0, 10) >= plan.startsOn) {
+          run.skipped++;
+          run.details!.push({ payment_id: p.id, rental_id: p.rental_id, due_date: p.due_date, addition: 0, reason: "daily rent plan" });
+          continue;
+        }
       }
       const rentalDeals = p.rental_id ? deals.get(p.rental_id) ?? [] : [];
       if (rentalDeals.some((w) => todayStr >= w.from && todayStr <= w.through)) {

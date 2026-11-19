@@ -16,6 +16,7 @@
  *     metadata.paymentIds; a re-run returns the same link.
  *   - Never throws out to signing.
  */
+import { RESERVATION_ROW_TYPE } from "@/lib/payment-category";
 import {
   RESERVATION_FEE_CHECKOUT_DESCRIPTION,
   RESERVATION_FEE_CHECKOUT_TTL_MS,
@@ -163,7 +164,7 @@ export async function chargeReservationFeeAfterSigning(admin: Admin, agreementId
     }
     if (!row) {
       const ins = await admin.from("payments").insert({
-        driver_id: appId, vehicle_id: ag.vehicle_id ?? null, type: "fee", reason: RESERVATION_FEE_REASON,
+        driver_id: appId, vehicle_id: ag.vehicle_id ?? null, type: RESERVATION_ROW_TYPE, reason: RESERVATION_FEE_REASON,
         amount, balance_due: amount, status: "current", due_date: new Date().toISOString().slice(0, 10), notes: note,
       }).select("id,status,amount,attempt_count").single();
       if (ins.error || !ins.data) return { status: "failed", amount, paymentId: null, error: "Could not record the Reservation Fee." };

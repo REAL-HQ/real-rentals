@@ -38,6 +38,8 @@ import { BILLING_DAY_CHANGE_ENABLED, BILLING_ONE_TIME_EXTENSION_ENABLED, BILLING
 import { BillingControls } from "./BillingControls";
 import type { StaffTier } from "@/lib/roles";
 import { tierAllows } from "@/lib/roles";
+import { PAYMENT_CATEGORIES, PAYMENT_CATEGORY_LABEL, paymentCategory, paymentCategoryLabel, type PaymentCategory } from "@/lib/payment-category";
+import { isRentRowCovered, type StandingPayment } from "@/lib/rent-standing";
 import { OPEN_STATUSES, canTake, type PaymentStatusAction } from "@/lib/payment-status-rules";
 import { changePaymentStatus } from "@/lib/payment-status.functions";
 import { releaseUnconfirmedPayment } from "@/lib/payment-unconfirmed.functions";
@@ -139,6 +141,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
   // Arriving from the dashboard's Collections card asks for everything
   // unresolved at once, which no single status covers.
   const [statusFilter, setStatusFilter] = useState<string>(initialFilter ?? "all");
+  const [typeFilter, setTypeFilter] = useState<PaymentCategory | "all">("all");
   const [columnSort, setColumnSort] = useState<ColumnSort<PaymentSortKey> | null>(null);
   const [showAdd, setShowAdd] = useState(!!autoOpenAdd);
   const [showManual, setShowManual] = useState(false);
@@ -254,7 +257,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
         return v ? `${v.year} ${v.make} ${v.model}` : "";
       }
       case "type":
-        return enumDisplayLabel(p.type);
+        return paymentCategoryLabel(p);
       case "amount":
         return Number(p.amount);
       case "due":
@@ -272,13 +275,31 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
 
   // Filter first, then sort a copy. Outstanding is computed from the filtered
   // set so clicking a header never changes the total.
-  const filtered = (
+  const byStatus = (
     statusFilter === "all"
       ? payments
       : statusFilter === "overdue"
         ? payments.filter((p) => OVERDUE_SET.has(p.status as string))
         : payments.filter((p) => p.status === statusFilter)
   );
+  // Type filter reads the shared category (payment-category.ts): a Reservation Fee is
+  // Reservation even while it is stored as type 'fee'.
+  const filtered = typeFilter === "all" ? byStatus : byStatus.filter((p) => paymentCategory(p) === typeFilter);
+  const typeCount = (t: PaymentCategory | "all") => (t === "all" ? byStatus.length : byStatus.filter((p) => paymentCategory(p) === t).length);
+
+  // Rent rows a later payment already paid for (same rule as Bookings > Active): not owed.
+  const coveredIds = useMemo(() => {
+    const byRental = new Map<string, StandingPayment[]>();
+    for (const p of payments) {
+      if (!p.rental_id) continue;
+      (byRental.get(p.rental_id) ?? byRental.set(p.rental_id, []).get(p.rental_id)!).push({
+        id: p.id, type: p.type, reason: (p as any).reason, notes: p.notes, status: p.status, amount: p.amount, dueDate: p.due_date, paidDate: p.paid_date,
+      } as StandingPayment & { id: string });
+    }
+    const out = new Set<string>();
+    for (const list of byRental.values()) for (const row of list) if (isRentRowCovered(row, list)) out.add((row as any).id);
+    return out;
+  }, [payments]);
 
   const sorted = columnSort
     ? sortRows(filtered, (p) => paymentSortValue(p, columnSort.key), PAYMENT_SORT_KIND[columnSort.key], columnSort.dir)
@@ -297,7 +318,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
   // waived and void owe nothing. A settled balance of 0 is 0, not the amount.
   const OWED = new Set(["pending", "current", "late", "overdue", "past_due", "failed", "unpaid", "collections"]);
   const totalDue = filtered
-    .filter((p) => OWED.has(p.status as string))
+    .filter((p) => OWED.has(p.status as string) && !coveredIds.has(p.id))
     .reduce((s, p) => s + (p.balance_due == null ? Number(p.amount || 0) : Number(p.balance_due)), 0);
 
   const statusCount = (status: string) => {
@@ -328,10 +349,10 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                     type="button"
                     aria-label={`Payment Filters${statusFilter === "all" ? "" : `: ${statusLabel(statusFilter)}`}`}
                     title="Filter And Sort Payments"
-                    className={`inline-flex h-8 min-w-0 items-center gap-1.5 whitespace-nowrap rounded-md border bg-white px-3 text-xs font-medium text-foreground hover:bg-soft ${statusFilter === "all" ? "border-border" : "border-foreground"}`}
+                    className={`inline-flex h-8 min-w-0 items-center gap-1.5 whitespace-nowrap rounded-md border bg-white px-3 text-xs font-medium text-foreground hover:bg-soft ${statusFilter === "all" && typeFilter === "all" ? "border-border" : "border-foreground"}`}
                   >
                     <ListFilter className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">Filters{statusFilter === "all" ? "" : `: ${statusLabel(statusFilter)} (${statusCount(statusFilter)})`}</span>
+                    <span className="truncate">Filters{statusFilter === "all" ? "" : `: ${statusLabel(statusFilter)} (${statusCount(statusFilter)})`}{typeFilter === "all" ? "" : `${statusFilter === "all" ? ":" : " ·"} ${PAYMENT_CATEGORY_LABEL[typeFilter]}`}</span>
                     <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   </button>
                 </DropdownMenuTrigger>
@@ -345,6 +366,19 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                     >
                       <span>{statusLabel(status)} ({statusCount(status)})</span>
                       {statusFilter === status ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">Payment Type</DropdownMenuLabel>
+                  {(["all", ...PAYMENT_CATEGORIES] as const).map((t) => (
+                    <DropdownMenuItem
+                      key={`type-${t}`}
+                      data-testid={`payments-type-filter-${t}`}
+                      onSelect={() => setTypeFilter(t)}
+                      className="flex items-center justify-between gap-3 bg-white text-xs text-foreground focus:bg-muted"
+                    >
+                      <span>{t === "all" ? "All Types" : PAYMENT_CATEGORY_LABEL[t]} ({typeCount(t)})</span>
+                      {typeFilter === t ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
                     </DropdownMenuItem>
                   ))}
                   <DropdownMenuSeparator />
@@ -446,7 +480,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                       "—"
                     )}
                   </td>
-                  <td className="px-3 text-[13px]">{enumDisplayLabel(p.type)}</td>
+                  <td className="px-3 text-[13px]" data-testid="payment-type-cell">{paymentCategoryLabel(p)}</td>
                   <td className="px-3 text-right tabular-nums text-[13px]">
                     ${Number(p.amount).toLocaleString()}
                   </td>
@@ -478,6 +512,9 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                       </SelectContent>
                     </Select>
                     )}
+                    {coveredIds.has(p.id) ? (
+                      <span className="mt-0.5 block text-[11px] font-medium text-[#50C060]" data-testid="payment-covered-note">Paid On Another Row</span>
+                    ) : null}
                   </td>
                   <td className="px-3 text-[13px]">{p.payment_method || "—"}</td>
                   <td

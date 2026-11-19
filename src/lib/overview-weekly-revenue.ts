@@ -10,7 +10,7 @@
  * amount due in the week, same type filter, so the chart cannot disagree with
  * the card about what counts as revenue.
  */
-export const OVERVIEW_REVENUE_TYPES = ["rent", "late_fee", "other", "toll", "damage", "fee"] as const;
+export const OVERVIEW_REVENUE_TYPES = ["rent", "late_fee", "other", "toll", "damage", "fee", "reservation"] as const;
 export type OverviewRevenueType = (typeof OVERVIEW_REVENUE_TYPES)[number];
 
 export type WeekPoint = { label: string; iso: string; collected: number; billed: number };
