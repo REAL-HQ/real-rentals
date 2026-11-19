@@ -7,6 +7,7 @@ import { SectionCard, MicroLabel, EmptyState } from "./ui";
 import { listStudioMedia } from "@/lib/photo-studio-media.functions";
 import { generateMarketingShots, getPhotoStudioStatus, reviewMarketingShot, setCarMarketingPublished } from "@/lib/photo-studio.functions";
 import { SHOT_SLOTS, SLOT_LABELS, carSetStatus, type ShotSlot } from "@/lib/photo-studio";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 type Media = Awaited<ReturnType<typeof listStudioMedia>>["items"][number];
 
@@ -58,7 +59,7 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
       {st?.enabled && !st.configured && <p className="text-sm text-amber-700">The image provider is not configured yet.</p>}
       {st && <p className="text-xs text-muted-foreground">This month: ${(st.usage.monthCents / 100).toFixed(2)} of ${(st.monthlyCapCents / 100).toFixed(2)} · today {st.usage.todayImages}/{st.dailyImageLimit} images · {st.model}</p>}
       <div className="flex flex-wrap items-center gap-2 my-2">
-        <Badge variant={setStatus === "approved" ? "default" : "secondary"}>Set: {setStatus}</Badge>
+        <Badge variant={setStatus === "approved" ? "default" : "secondary"}>Set: {formatStatusLabel(setStatus)}</Badge>
         {published && <Badge>On website</Badge>}
         {canEdit && <Button size="sm" disabled={busy || !st?.enabled || originals.length === 0} onClick={() => run()}>{shots.length ? "Regenerate All" : "Generate Shots"}</Button>}
         {st?.canPublish && setStatus === "approved" && (
@@ -80,7 +81,7 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
                   {s.studio_check?.inferred && <span className="absolute right-1 top-1 rounded bg-amber-600 px-1 text-[10px] text-white">angle inferred</span>}
                 </div>
                 <div className="mt-1 flex items-center gap-1 text-xs">
-                  <Badge variant="outline">{s.studio_review_status}</Badge>
+                  <Badge variant="outline">{formatStatusLabel(s.studio_review_status)}</Badge>
                   {canEdit && s.studio_review_status === "pending" && (<>
                     <Button size="sm" variant="ghost" onClick={() => decide(s.id, "approved")}>Approve</Button>
                     <Button size="sm" variant="ghost" onClick={() => decide(s.id, "rejected")}>Reject</Button>

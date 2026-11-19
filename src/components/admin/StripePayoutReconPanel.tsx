@@ -14,6 +14,7 @@ import {
   type PayoutReconPayout,
   type PayoutReconReport,
 } from "@/lib/stripe-payout-recon";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 /**
  * Read-only. Download CSV is built in the browser from the rows on screen.
@@ -135,7 +136,7 @@ function MoneyTable({ rows, charge }: { rows: MoneyRow[]; charge: boolean }) {
               </td>
               <td className="py-2 pr-3">{row.paymentIntentId ?? "—"}</td>
               <td className="py-2 pr-3">{formatCents(row.amountCents) || "—"}</td>
-              {charge ? null : <td className="py-2 pr-3">{row.status ?? "—"}</td>}
+              {charge ? null : <td className="py-2 pr-3">{formatStatusLabel(row.status)}</td>}
               {charge ? null : (
                 <td className="py-2 pr-3"><Link to="/admin" search={{ tab: "payments" }} className="underline">Payments</Link></td>
               )}

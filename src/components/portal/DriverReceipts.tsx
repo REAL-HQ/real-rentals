@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { DriverReceipt } from "@/lib/driver-receipts";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 /**
  * Read-only. Mounted only while DRIVER_RECEIPTS_ENABLED is true. Print uses
@@ -49,7 +50,7 @@ export function DriverReceipts({ read }: { read: () => Promise<DriverReceipt[]> 
                 <tr key={receipt.id}>
                   <td className="py-2">{receipt.date ?? "—"}</td>
                   <td>{receipt.purpose ?? "—"}</td>
-                  <td>{receipt.status ?? "—"}</td>
+                  <td>{formatStatusLabel(receipt.status)}</td>
                   <td className="text-right">{receipt.amount ?? "—"}</td>
                   <td className="text-right">
                     <button type="button" onClick={() => setOpenId(receipt.id)} className="text-xs font-semibold text-real-red">

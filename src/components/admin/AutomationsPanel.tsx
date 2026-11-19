@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 type Workflow = {
   id: string;
@@ -362,7 +363,7 @@ function RecentSends({ rows }: { rows: LogRow[] }) {
                 r.status === "sent" ? "active" : r.status === "failed" ? "overdue" : "pending"
               }
             >
-              {r.status}
+              {formatStatusLabel(r.status)}
             </StatusPill>
             <div className="min-w-0 flex-1">
               <div className="text-xs text-muted-foreground">

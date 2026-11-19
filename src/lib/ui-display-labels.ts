@@ -27,3 +27,23 @@ export const UI_ENUM_LABELS: Readonly<Record<string, string>> = {
 export function enumDisplayLabel(value: string | null | undefined): string {
   return value == null ? "—" : Object.prototype.hasOwnProperty.call(UI_ENUM_LABELS, value) ? UI_ENUM_LABELS[value] : value;
 }
+
+const STATUS_SPECIAL: Readonly<Record<string, string>> = {
+  past_due: "Past Due", no_show: "No Show", in_progress: "In Progress", on_rent: "Rented", onboarding: "Needs Setup",
+  not_started: "Not Started", needs_review: "Needs Review", in_review: "In Review", ok: "OK", sms: "SMS", ach: "ACH", id: "ID", mvr: "MVR",
+};
+/** Display-only Title Case for status values ("partially_paid" -> "Partially Paid"). Never use the result as a stored or submitted value. */
+export function formatStatusLabel(value: string | null | undefined): string {
+  if (value == null) return "—";
+  const raw = String(value).trim();
+  if (!raw) return "—";
+  const key = raw.toLowerCase().replace(/[\s-]+/g, "_");
+  if (Object.prototype.hasOwnProperty.call(STATUS_SPECIAL, key)) return STATUS_SPECIAL[key];
+  if (Object.prototype.hasOwnProperty.call(UI_ENUM_LABELS, key)) return UI_ENUM_LABELS[key];
+  return raw
+    .replace(/[_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map((w) => (w === w.toUpperCase() && w.length > 1 && /[A-Z]/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(" ");
+}

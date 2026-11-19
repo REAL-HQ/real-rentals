@@ -5,6 +5,7 @@ import { getRenewalsDue } from "@/lib/renewals-due.functions";
 import { RENEWALS_DUE_ENABLED } from "@/lib/renewals-due-flag";
 import { RENEWAL_CANDIDATES_ENABLED } from "@/lib/renewal-candidates-flag";
 import { formatRenewalDate, type RenewalsDueBoard } from "@/lib/renewals-due";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 export function RenewalsDue() {
   if (!RENEWALS_DUE_ENABLED) return null;
@@ -77,7 +78,7 @@ function RenewalsDueLive() {
                   <td className="px-3 py-2 text-[#111114]">{formatWeeklyRate(row.weeklyRate)}</td>
                   <td className="px-3 py-2 text-[#55555E]">{row.nextPaymentDue ? formatRenewalDate(row.nextPaymentDue) : "None"}</td>
                   <td className="px-3 py-2 text-[#55555E]">{row.endDate ? formatRenewalDate(row.endDate) : "None"}</td>
-                  <td className="px-3 py-2 text-[#111114]">{row.lastPaymentStatus}</td>
+                  <td className="px-3 py-2 text-[#111114]">{formatStatusLabel(row.lastPaymentStatus)}</td>
                   <td className="px-3 py-2">
                     <Link to="/admin" search={row.paymentsSearch} className="text-[#111114] underline">
                       Payments
@@ -201,7 +202,7 @@ function RenewalsDueHistory() {
                   <td className="px-3 py-2 text-[#111114]">{formatWeeklyRate(row.weeklyRate)}</td>
                   <td className="px-3 py-2 text-[#55555E]">{row.nextPaymentDue ? formatRenewalDate(row.nextPaymentDue) : "None"}</td>
                   <td className="px-3 py-2 text-[#55555E]">{row.endDate ? formatRenewalDate(row.endDate) : "None"}</td>
-                  <td className="px-3 py-2 text-[#111114]">{row.lastPaymentStatus}</td>
+                  <td className="px-3 py-2 text-[#111114]">{formatStatusLabel(row.lastPaymentStatus)}</td>
                   <td className="px-3 py-2 text-[#111114]">{row.paidCharges == null ? "Not Checked" : row.paidCharges}</td>
                   <td className="px-3 py-2">
                     <Link to="/admin" search={row.paymentsSearch} className="text-[#111114] underline">

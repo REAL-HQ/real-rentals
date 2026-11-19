@@ -12,6 +12,7 @@ import {
   type RiskReport,
   type RiskRow,
 } from "@/lib/stripe-risk-monitor";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 /**
  * Read-only. Download CSV is built in the browser from the rows on screen.
@@ -97,7 +98,7 @@ function Row({ row }: { row: RiskRow }) {
   return (
     <tr className="border-b align-top">
       <td className="py-2 pr-3">{row.kindLabel}</td>
-      <td className="py-2 pr-3">{row.status}</td>
+      <td className="py-2 pr-3">{formatStatusLabel(row.status)}</td>
       <td className="py-2 pr-3">{row.whenEt || "—"}</td>
       <td className="py-2 pr-3">{row.declineCode ?? "—"}</td>
       <td className="py-2 pr-3">

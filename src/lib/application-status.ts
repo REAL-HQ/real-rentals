@@ -38,6 +38,7 @@
  */
 
 import type { StaffTier } from "@/lib/roles";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 export const APPLICATION_STATUS_CHOICES = [
   { value: "new", label: "New" },
@@ -69,7 +70,7 @@ export const APPLICATION_STATUS_LABELS: Record<string, string> = {
 export function applicationStatusLabel(value: string | null | undefined): string {
   const key = String(value ?? "").trim();
   if (!key) return "Select Status";
-  return APPLICATION_STATUS_LABELS[key] ?? key;
+  return APPLICATION_STATUS_LABELS[key] ?? formatStatusLabel(key);
 }
 
 /**

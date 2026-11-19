@@ -1,4 +1,4 @@
-import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { AppSelect } from "@/components/ui/app-select";
 import { useContext, useEffect, useState, createContext, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -208,7 +208,7 @@ export function IncidentsPanel({ seedIssueId = null, embedded = false }: { seedI
                               : "pending"
                         }
                       >
-                        {enumDisplayLabel(r.status)}
+                        {formatStatusLabel(r.status)}
                       </StatusPill>
                       {r.severity !== "minor" ? (
                         <StatusPill tone={r.severity === "total_loss" ? "red" : "amber"}>

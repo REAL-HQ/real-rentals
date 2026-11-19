@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { History, MessageSquare, Phone, Voicemail, FileText, Mail, ArrowRightLeft } from "lucide-react";
 import { getLeadActivity, type LeadActivityRow } from "@/lib/lead-activity.functions";
 import { fmtDateTime } from "@/lib/date-format";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 // One activity log per lead: texts, calls, voicemails, transcripts, emails
 // and stage changes, newest first. Calls and texts show the line they came
@@ -69,7 +70,7 @@ export function LeadActivity({ applicationId }: { applicationId: string }) {
                 </div>
                 {r.summary ? <p className="mt-0.5 whitespace-pre-wrap break-words text-[13px] text-[#55555E] line-clamp-4">{r.summary}</p> : null}
                 <div className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-[#9A9AA3]">
-                  {r.status ? <span>{r.status}</span> : null}
+                  {r.status ? <span>{formatStatusLabel(r.status)}</span> : null}
                   {r.template && r.activity_type !== "status_change" ? <span>{r.template}</span> : null}
                   {r.line_e164 ? <span>{r.line_e164}</span> : null}
                   {r.recording_url ? (

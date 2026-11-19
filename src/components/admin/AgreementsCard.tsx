@@ -19,6 +19,7 @@ import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { AgreementPdfViewer } from "./AgreementPdfViewer";
 import { AgreementViewerDialog } from "./AgreementViewerDialog";
 import { PrepareAgreementDialog } from "./PrepareAgreementDialog";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 const CH: Record<string, string> = { sent: "Sent", failed: "Failed", not_attempted: "Not Attempted" };
 const chTone = (v: string) =>
@@ -287,7 +288,7 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
                   <div className="flex items-center gap-2">
                     <span className="text-[13px] font-medium text-[#111114] truncate">{a.title}</span>
                     <span className={`text-[10.5px] font-semibold tracking-wide rounded-full border px-2 py-0.5 ${toneFor(a.status)}`}>
-                      {a.status}
+                      {formatStatusLabel(a.status)}
                     </span>
                   </div>
                   <div className="text-[11.5px] text-[#77777F] mt-0.5">

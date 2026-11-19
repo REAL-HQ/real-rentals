@@ -13,6 +13,7 @@ import {
   type VehicleProfitReport,
   type VehicleProfitRow,
 } from "@/lib/vehicle-profitability";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 /**
  * Read-only. Download CSV is built in the browser from the rows on screen.
@@ -117,7 +118,7 @@ function Report({ report }: { report: VehicleProfitReport }) {
                 {report.unattributed.map((row) => (
                   <tr key={row.id} className="border-b align-top">
                     <td className="py-2 pr-3">{row.paidDate ?? "—"}</td>
-                    <td className="py-2 pr-3">{row.status}</td>
+                    <td className="py-2 pr-3">{formatStatusLabel(row.status)}</td>
                     <td className="py-2 pr-3">{row.type}</td>
                     <td className="py-2 pr-3">{formatCents(row.amountCents) || "—"}</td>
                     <td className="py-2 pr-3"><Link to="/admin" search={{ tab: "payments" }} className="underline">Payments</Link></td>

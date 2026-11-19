@@ -1,5 +1,5 @@
 import { PhoneInput } from "@/components/ui/phone-input";
-import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Partner, FleetOwner, InvestorLead } from "./types";
@@ -92,7 +92,7 @@ export function PartnersPanel({ externalSearch = "" }: { externalSearch?: string
               </div>
               <Select value={p.status} onValueChange={(status) => update(p.id, { status })}>
                 <SelectTrigger className="h-8 w-28 bg-white text-foreground"><SelectValue /></SelectTrigger>
-                <SelectContent>{PARTNER_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                <SelectContent>{PARTNER_STATUSES.map(s => <SelectItem key={s} value={s}>{formatStatusLabel(s)}</SelectItem>)}</SelectContent>
               </Select>
               <Select value={p.partner_type} onValueChange={(partner_type) => update(p.id, { partner_type })}>
                 <SelectTrigger className="h-8 w-36 bg-white text-foreground"><SelectValue /></SelectTrigger>

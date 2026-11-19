@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EmptyState } from "./ui";
 import { Building2 } from "lucide-react";
 import { fmtDateTime } from "@/lib/date-format";
+import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 const STATUSES = ["new", "reviewing", "call_scheduled", "approved", "enrolled", "declined"];
 
@@ -50,7 +51,7 @@ export function FleetOwnersPanel() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {STATUSES.map((s) => <SelectItem key={s} value={s}>{formatStatusLabel(s)}</SelectItem>)}
                 </SelectContent>
               </Select>
               <button onClick={() => remove(f.id)} className="rounded-md border border-[#EDEDF0] px-3 py-1.5 text-xs hover:bg-[#D03020] hover:text-white hover:border-[#D03020] transition-colors duration-150">Delete</button>

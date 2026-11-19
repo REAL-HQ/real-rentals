@@ -1,4 +1,4 @@
-import { enumDisplayLabel } from "@/lib/ui-display-labels";
+import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -242,7 +242,7 @@ export function ChargesPanel() {
                                 : "pending"
                         }
                       >
-                        {r.status === "new" ? "unassigned" : enumDisplayLabel(r.status)}
+                        {r.status === "new" ? "Unassigned" : formatStatusLabel(r.status)}
                       </StatusPill>
                       {r.source === "import" ? (
                         <span className="text-[10px] tracking-wide text-[#9A9AA3]">
