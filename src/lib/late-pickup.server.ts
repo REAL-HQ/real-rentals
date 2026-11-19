@@ -126,7 +126,7 @@ export async function runLatePickups(admin: Admin, deps: LatePickupDeps = {}): P
     const rel = await admin.from("rentals").update({ status: "cancelled" }).eq("id", r.id).eq("status", "reserved").select("id");
     if (!(rel?.data ?? []).length) { await admin.from("renter_reminder_sends").update({ status: "skipped", detail: "no longer reserved" }).eq("key", key); continue; }
     if (r.vehicle_id) {
-      const still = await admin.from("rentals").select("id").eq("vehicle_id", r.vehicle_id).in("status", ["reserved", "active"]).limit(1);
+      const still = await admin.from("rentals").select("id").eq("vehicle_id", r.vehicle_id).in("status", ["reserved", "on_hold", "active"]).limit(1);
       if (!(still?.data ?? []).length) await admin.from("vehicles").update({ status: "available" }).eq("id", r.vehicle_id).eq("status", "reserved");
       if (r.application_id) await admin.from("applications").update({ vehicle_id: null }).eq("id", r.application_id).eq("vehicle_id", r.vehicle_id).eq("status", "approved");
     }
