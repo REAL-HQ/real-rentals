@@ -94,7 +94,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip as ControlTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { serviceSummaryPreview, type ServiceSummaryRow } from "./overview-summary-details";
 
-type WeekPoint = { label: string; iso: string; collected: number; billed: number };
+type WeekPoint = import("@/lib/overview-weekly-revenue").WeekPoint;
 
 /**
  * What counts as revenue.
@@ -845,6 +845,8 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
         let worst: WeekPoint | null = null;
         let worstGap = 0;
         for (const w of weekly) {
+          // The in-progress week is still being collected; it cannot be the worst.
+          if (w.current) continue;
           const gap = w.billed - w.collected;
           if (w.billed > 0 && gap > worstGap) {
             worstGap = gap;
@@ -888,6 +890,7 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
                     tick={{ fill: "#9A9AA3", fontSize: 10 }}
                     tickLine={false}
                     axisLine={{ stroke: "#EDEDF0" }}
+                    interval={0}
                   />
                   <YAxis
                     tick={{ fill: "#9A9AA3", fontSize: 10 }}
@@ -902,6 +905,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
                       border: "1px solid #EDEDF0",
                       borderRadius: 8,
                       fontSize: 12,
+                    }}
+                    labelFormatter={(label: any, items: any) => {
+                      const w = items?.[0]?.payload as WeekPoint | undefined;
+                      return w ? `Week Of ${shortDate(w.iso)}${w.current ? " (Through Today)" : ""}` : String(label);
                     }}
                     formatter={(v: any, name: any) => [
                       usd(Number(v)),
