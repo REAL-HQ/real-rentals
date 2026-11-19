@@ -1,3 +1,4 @@
+import { LinkedVehicleCell } from "./VehicleCell";
 import { AppSelect } from "@/components/ui/app-select";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgreementFilingPanel } from "@/components/admin/AgreementFilingPanel";
@@ -544,6 +545,7 @@ function ProposalCard({ p, item, dec, setOne, vehicles, vehLabel, batchVehicleHi
         <div className="min-w-0 flex-1">
           <div className="text-[11px] tracking-wider text-[#9A9AA3]">{heading}</div>
           <div className="text-[15px] font-semibold text-[#111114]">{title}</div>
+          {p.kind === "match" && p.match_vehicle_id ? <div className="my-1.5"><LinkedVehicleCell vehicleId={p.match_vehicle_id} /></div> : null}
           <div className="text-xs text-[#55555E] break-all">
             VIN {p.vin ?? "—"}{p.vin_check?.checkDigitValid === true ? " ✓" : ""}
             {" · "}Source: {item?.file_name ?? "file"}{p.page ? `, page ${p.page}` : ""}

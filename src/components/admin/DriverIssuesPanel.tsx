@@ -1,3 +1,4 @@
+import { LinkedVehicleCell } from "./VehicleCell";
 import { AppSelect } from "@/components/ui/app-select";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -140,8 +141,9 @@ export function DriverIssuesPanel({ embedded = false }: { embedded?: boolean } =
                   </div>
                   <p className="mt-1 text-[13px] text-[#55555E]">
                     {row.driverName}
-                    {row.vehicleLabel ? ` · ${row.vehicleLabel}` : " · No Vehicle Linked"}
+                    {row.vehicleId ? "" : " · No Vehicle Linked"}
                   </p>
+                  {row.vehicleId ? <div className="mt-1"><LinkedVehicleCell vehicleId={row.vehicleId} size="sm" fallback={{ label: row.vehicleLabel }} /></div> : null}
                 </div>
                 <div className="text-right">
                   <time className="block text-[12px] text-[#9A9AA3] whitespace-nowrap" dateTime={row.createdAt}>

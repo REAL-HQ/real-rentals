@@ -113,6 +113,8 @@ export type ActiveRentalSource = {
   applicationId: string | null;
   vehicleId: string | null;
   vehicleLabel: string;
+  vehicleVinLast6?: string | null;
+  vehicleUnit?: string | null;
   startDate: string;
   weeklyRate: number | null;
   nextPaymentDue: string | null;
@@ -149,6 +151,8 @@ export type ActiveRentalRow = {
   applicationId: string | null;
   vehicleId: string | null;
   vehicleLabel: string;
+  vehicleVinLast6?: string | null;
+  vehicleUnit?: string | null;
   thumbnailPath?: string | null;
   startDate: string;
   weeksIn: number | null;
@@ -227,6 +231,8 @@ export function buildActiveRentalRows(args: {
         applicationId: rental.applicationId,
         vehicleId: rental.vehicleId,
         vehicleLabel: rental.vehicleLabel,
+        ...(rental.vehicleVinLast6 ? { vehicleVinLast6: rental.vehicleVinLast6 } : {}),
+        ...(rental.vehicleUnit ? { vehicleUnit: rental.vehicleUnit } : {}),
         startDate: rental.startDate,
         weeksIn: weeksIn(rental.startDate, args.today),
         weeklyRate: rental.weeklyRate,

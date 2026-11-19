@@ -15,6 +15,7 @@ import {
 export type ExpenseReceiptGapRow = {
   id: string;
   vehicleLabel: string;
+  vehicleId?: string | null;
   category: string;
   description: string;
   amountText: string;
@@ -84,6 +85,7 @@ export const listExpenseReceiptGaps = createServerFn({ method: "POST" })
       counts: summary.counts,
       rows: gaps.map((row) => ({
         id: String(row.id),
+        vehicleId: row.vehicle_id ? String(row.vehicle_id) : null,
         vehicleLabel: labels.get(String(row.vehicle_id ?? "")) ?? "Unknown Vehicle",
         category: row.category == null ? "" : String(row.category),
         description: String(row.description ?? "").trim() || "No Description",

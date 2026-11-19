@@ -119,6 +119,10 @@ export type BookingRow = {
   unitNumber: string | null;
   vehicleLabel: string | null;
   plate: string | null;
+  /** Last 6 of the VIN, for the shared vehicle cell. */
+  vinLast6?: string | null;
+  /** Staff-confirmed car photo path, for the shared vehicle cell. */
+  thumbnailPath?: string | null;
   /** Manager+ only. Undefined for a Coordinator — the server does not send it. */
   weeklyRate?: number | null;
   paymentStatus?: string | null;
