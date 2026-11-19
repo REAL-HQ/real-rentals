@@ -101,12 +101,13 @@ import { moveForwardEnabled, termsConfirmedRequirement, TERMS_AFTER_APPROVAL, ty
 import { DriverEvidenceUpload } from "./DriverEvidenceUpload";
 import { ChecklistInspectionFiles } from "./ChecklistInspectionFiles";
 import { checklistDocumentCategories } from "./checklist-actions";
-import { CHECKLIST_EVIDENCE_ENABLED, EVIDENCE_FIELDS, PICKUP_PAYMENT_METHODS, documentCollection, evidenceTone, latestEvidenceEvent, projectEvidence, requirementEvidence, type EvidenceEvent, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
+import { CHECKLIST_EVIDENCE_ENABLED, EVIDENCE_FIELDS, PICKUP_PAYMENT_METHODS, evidenceTone, latestEvidenceEvent, requirementEvidence, type EvidenceEvent, type EvidencePresentationMap, type EvidenceField, type EvidenceProjection } from "@/lib/checklist-evidence";
 import { pickupAmountCents } from "@/lib/pickup-payment";
 import { getChecklistEvidence, saveChecklistEvidence } from "@/lib/checklist-evidence.functions";
 import { ChecklistEvidenceControl } from "./ChecklistEvidenceControl";
 import { driverLifecycle, reservationStageDone, firstContact, fleetMarksByStage, stageStartedAt, type ContactActivity, type FleetLifecycleMark } from "@/lib/driver-lifecycle";
 import { getFleetLifecycleMarks } from "@/lib/fleet-lifecycle.functions";
+import { checklistEvidenceItems, lifecycleReadiness, type FleetInsuranceApplied } from "@/lib/checklist-readiness";
 import { getLeadActivity } from "@/lib/lead-activity.functions";
 import type { ActivationRequirementKey } from "@/lib/activation-readiness";
 import { scoreApplication } from "@/lib/scoring.functions";
@@ -1987,15 +1988,17 @@ function DriverDetail({
   const loadFleetMarks = useServerFn(getFleetLifecycleMarks);
   const [contactActivity, setContactActivity] = useState<ContactActivity[]>([]);
   const [fleetMarks, setFleetMarks] = useState<FleetLifecycleMark[]>([]);
+  const [fleetInsuranceApplied, setFleetInsuranceApplied] = useState<FleetInsuranceApplied>(null);
   useEffect(() => {
     let cancelled = false;
     setContactActivity([]);
     setFleetMarks([]);
+    setFleetInsuranceApplied(null);
     void loadContactActivity({ data: { applicationId: driver.id, limit: 200 } })
       .then((r) => { if (!cancelled) setContactActivity(r.rows ?? []); })
       .catch(() => {});
     void loadFleetMarks({ data: { applicationId: driver.id } })
-      .then((r) => { if (!cancelled) setFleetMarks(r.marks ?? []); })
+      .then((r) => { if (!cancelled) { setFleetMarks(r.marks ?? []); setFleetInsuranceApplied(r.insuranceApplied ?? null); } })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [driver.id, loadContactActivity, loadFleetMarks]);
@@ -2060,15 +2063,9 @@ function DriverDetail({
   const [evidenceEvents, setEvidenceEvents] = useState<EvidenceEvent[]>([]);
   const [evidenceSaving, setEvidenceSaving] = useState(false);
   const [pickupPaymentOpen, setPickupPaymentOpen] = useState(false);
-  const [pickupPayment, setPickupPayment] = useState<PayCells | null>(null);
-  const loadPickupPayment = useServerFn(getDriverPayStatuses);
   const loadOpenReservation = useServerFn(getOpenReservationForApplication);
   const loadReservationDepositSettings = useServerFn(getReservationDepositSettings);
   const clearReservation = useServerFn(clearReservationAfterActivate);
-  useEffect(() => {
-    setPickupPayment(null);
-    void loadPickupPayment({ data: { driverIds: [driver.id] } }).then((rows) => setPickupPayment(rows[driver.id] ?? NO_PAY_CELLS)).catch(() => setPickupPayment(null));
-  }, [driver.id, loadPickupPayment, readinessNonce]);
   useEffect(() => {
     if (rentalActive || !approved) {
       setHasReservation(false);
@@ -2099,7 +2096,9 @@ function DriverDetail({
       cancelled = true;
     };
   }, [driver.id, isManager, rentalActive, approved, loadOpenReservation, loadReservationDepositSettings, readinessNonce]);
-  const pickupPaid = pickupPayment?.pay === "Current";
+  // Pickup is never completed by the account's payment standing: a paid $50
+  // Reservation Fee made it "Current" and showed Pickup Complete green before
+  // the car was picked up (t493u). Only a running rental completes it.
   const [evidenceLoading, setEvidenceLoading] = useState(true);
   const [evidenceFailed, setEvidenceFailed] = useState(false);
   const refreshEvidenceEvents = useCallback(async () => {
@@ -2114,24 +2113,20 @@ function DriverDetail({
   let safeEvents: EvidenceEvent[] = evidenceEvents;
   try { for (const f of EVIDENCE_FIELDS) latestEvidenceEvent(evidenceEvents, driver.id, f); }
   catch { safeEvents = []; }
-  const collectedDocuments = documentCollection({
+  // One shared readiness source for the checklist rows and the lifecycle
+  // stepper (checklist-readiness.ts), so the two never disagree.
+  const checklistInput = {
     applicationId: driver.id,
+    documents: vaultDocs,
     events: safeEvents,
-    documents: vaultDocs.map((doc) => ({ ...doc, applicationId: driver.id })),
-  });
-  const evidenceItems: EvidenceProjection[] = CHECKLIST_EVIDENCE_ENABLED && isManager ? EVIDENCE_FIELDS.map((field) => projectEvidence({
-    applicationId: driver.id, field, events: safeEvents, documents: vaultDocs,
-    itemComplete: field === "agreement"
-      ? rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true && r.detail !== "Upload Due") === true
-      : field === "pickup"
-        ? rentalActiveFlag || pickupPaid
-      : field === "inspection"
-        ? !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true
-        : field === "income" || field === "insurance_quote" || field === "screening"
-          ? rentalTabReadiness?.requirements.some((r) => r.key === field && r.met === true) === true
-          : false,
-    reviewRequired: field === "agreement" || field === "insurance" || field === "insurance_quote" || field === "screening",
-  })) : [];
+    requirements: rentalTabReadinessLoading || rentalTabReadinessFailed ? null : rentalTabReadiness?.requirements ?? null,
+    // Pickup completes only with a real running rental, never a paid fee.
+    rentalActive: rentalActiveFlag,
+    inspectionPassed: !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true,
+    fleetInsuranceApplied,
+  };
+  const evidenceItems: EvidenceProjection[] = CHECKLIST_EVIDENCE_ENABLED && isManager ? checklistEvidenceItems(checklistInput) : [];
+  const stepperReadiness = lifecycleReadiness({ ...checklistInput, items: evidenceItems.length ? evidenceItems : undefined });
   // One click on a checklist circle: Missing/Not Collected -> Upload Due (Yellow);
   // Upload Due -> Not Collected (Red). A file on record (Green) is never changed here.
   async function toggleEvidence(fields: EvidenceProjection[]) {
@@ -2146,7 +2141,7 @@ function DriverDetail({
         const base = { applicationId: driver.id, field: f.field, expectedRevision: f.revision, idempotencyKey: crypto.randomUUID(), note: "" };
         await saveEvidence({ data: next === "collected" ? { ...base, state: "collected", source: "other" } : { ...base, state: "not_collected", source: null } });
       }
-      toast.success(next === "collected" ? open.every((f) => f.field === "pickup") ? "Pickup Checked Off — Use Activate Rental To Start The Rental" : "Checked Off — Upload The File When You Have It" : open.every((f) => f.field === "pickup") ? "Pickup Marked Not Done" : "Marked Not Collected");
+      toast.success(open.every((f) => f.field === "insurance_quote") ? next === "collected" ? "Insurance Quote Marked Applied — Upload The Quote When It Arrives" : "Insurance Quote Marked Not Applied" : next === "collected" ? open.every((f) => f.field === "pickup") ? "Pickup Checked Off — Use Activate Rental To Start The Rental" : "Checked Off — Upload The File When You Have It" : open.every((f) => f.field === "pickup") ? "Pickup Marked Not Done" : "Marked Not Collected");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could Not Save This Check-Off.");
     } finally {
@@ -2198,7 +2193,7 @@ function DriverDetail({
       return [];
     }
     if (r.key === "insurance_verified" && r.met !== true) presentation.label = "Optional · Record After Signing";
-    if ((r.key === "insurance_quote" || r.key === "screening") && presentation.tone === "yellow") presentation.label = presentation.fields.every((f) => f.uploaded) ? "Check Off Required" : "Upload Due";
+    if (r.key === "screening" && presentation.tone === "yellow") presentation.label = presentation.fields.every((f) => f.uploaded) ? "Check Off Required" : "Upload Due";
     if (r.key === "inspection" && presentation.tone === "yellow") presentation.label = "Upload Due · Written Override Required";
     // A payment confirmation records receipt only; it never creates a charge or starts a rental.
     if (r.key === "pickup" && presentation.tone === "yellow") {
@@ -2206,21 +2201,26 @@ function DriverDetail({
       presentation.label = latest?.state === "collected" && latest.note.startsWith("Payment Confirmed:") ? "Payment Confirmed · Activate To Finish" : "Checked Off · Payment Details Due";
     }
     if (r.key === "pickup" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Not Done";
-    if (r.enforcement === "advisory" && r.key !== "pickup" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Advisory";
+    if (r.enforcement === "advisory" && r.key !== "pickup" && r.key !== "insurance_quote" && presentation.fields.every((f) => f.status === "missing")) presentation.label = "Advisory";
     const toggleable = presentation.fields.some((f) => !f.complete && (!f.uploaded || f.field === "insurance_quote" || f.field === "screening")) && !(r.key === "signed_agreement" && r.met === true && presentation.fields.every((f) => f.status !== "upload_due"));
-    return [[r.key, toggleable ? { ...presentation, onToggle: r.key === "pickup" ? () => setPickupPaymentOpen(true) : () => void toggleEvidence(presentation.fields), busy: evidenceSaving, toggleLabel: r.key === "pickup" ? "Confirm Pickup Payment" : presentation.toggleLabel, toggleTitle: r.key === "pickup" ? "Confirm The Amount Received And Payment Method." : presentation.toggleTitle } : presentation]];
+    const quoteApplied = r.key === "insurance_quote" && presentation.fields.every((f) => f.status === "upload_due");
+    const quoteToggle = r.key === "insurance_quote"
+      ? { toggleLabel: quoteApplied ? "Insurance Quote: Applied. Click To Mark Not Applied" : "Mark Applied", toggleTitle: quoteApplied ? "Upload The Quote When It Arrives To Complete This Step." : "Mark Insurance As Applied For. Turns Yellow Until The Quote Is Uploaded." }
+      : null;
+    return [[r.key, toggleable ? { ...presentation, onToggle: r.key === "pickup" ? () => setPickupPaymentOpen(true) : () => void toggleEvidence(presentation.fields), busy: evidenceSaving, toggleLabel: r.key === "pickup" ? "Confirm Pickup Payment" : quoteToggle?.toggleLabel ?? presentation.toggleLabel, toggleTitle: r.key === "pickup" ? "Confirm The Amount Received And Payment Method." : quoteToggle?.toggleTitle ?? presentation.toggleTitle } : presentation]];
   })) : undefined;
   const agreementItems = evidenceItems.filter((i) => i.field === "agreement");
   const inspectionItems = evidenceItems.filter((i) => i.field === "inspection");
   const pickupItems = evidenceItems.filter((i) => i.field === "pickup");
   const pickupEvidenceTone = evidenceTone(pickupItems);
-  const screeningEvidenceTone = evidenceTone(evidenceItems.filter((i) => i.field === "insurance_quote" || i.field === "screening"));
+  // Screening's color is the Screening checklist row (the insurance quote is an insurance step).
+  const screeningEvidenceTone = isManager ? stepperReadiness.screeningTone : null;
   const agreementEvidenceTone = evidenceTone(agreementItems);
   const inspectionEvidenceTone = evidenceTone(inspectionItems);
   const addressed = (items: EvidenceProjection[]) => items.length > 0 && items.every((i) => i.status !== "missing");
   const actualInspection = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.vehicleId === driver.vehicle_id && rentalTabReadiness.requirements.some((r) => r.key === "inspection" && r.met === true) === true;
   const actualAgreement = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.requirements.some((r) => r.key === "signed_agreement" && r.met === true) === true;
-  const screeningComplete = !rentalTabReadinessLoading && !rentalTabReadinessFailed && screeningRequirementsComplete(rentalTabReadiness?.requirements ?? []);
+  const screeningComplete = !rentalTabReadinessLoading && !rentalTabReadinessFailed && (screeningRequirementsComplete(rentalTabReadiness?.requirements ?? []) || stepperReadiness.screeningComplete);
   const insuranceComplete = !rentalTabReadinessLoading && !rentalTabReadinessFailed && rentalTabReadiness?.requirements.some((r) => r.key === "insurance_verified" && r.met === true) === true;
   const insuranceEvidenceTone = insuranceComplete ? "green" : evidenceTone(evidenceItems.filter((i) => i.field === "insurance"));
   const { stages: lifecycle, current: currentStage, percent: percentComplete } = driverLifecycle({
@@ -2228,7 +2228,7 @@ function DriverDetail({
     // Same definition as the Documents card ("N of 3 required received"):
     // current, not-rejected license front, gig profile and income proof.
     // A staff check-off (collected) also counts, as before.
-    documentsReceived: !vaultLoading && (missingRequiredCategories(vaultDocs).length === 0 || collectedDocuments.collected),
+    documentsReceived: !vaultLoading && (missingRequiredCategories(vaultDocs).length === 0 || stepperReadiness.documentsReceived),
     approved, rentalActive: rentalActiveFlag,
     // Green only once the $50 Reservation Fee is actually paid.
     reserved: reservationStageDone({ feeStatus: reservationDepositStatus, hasReservation, feeRequired: reservationFeeRequired, rentalActive: rentalActiveFlag }),
@@ -2843,7 +2843,8 @@ function DriverDetail({
             <LifecycleRail
               stages={lifecycle}
               evidenceTones={CHECKLIST_EVIDENCE_ENABLED ? {
-                documents: collectedDocuments.tone,
+                // Same rows as the checklist's License / Gig Profile / Income.
+                documents: stepperReadiness.documentsTone,
                 ...(screeningEvidenceTone ? { screening: screeningEvidenceTone } : {}),
                 ...(insuranceEvidenceTone ? { insurance: insuranceEvidenceTone } : {}),
                 ...(inspectionEvidenceTone ? { inspection: inspectionEvidenceTone } : {}),
