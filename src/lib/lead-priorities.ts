@@ -43,7 +43,7 @@ export const LEAD_ALL_PAGE_ORDER: LeadBucket[] = [
 
 export const ACTIVE_LEAD_STATUSES = ["new", "reviewing", "approved"];
 export const LEAD_SELECT =
-  "id,full_name,phone,email,status,created_at,contact_status,contact_status_note,contact_follow_up_on,contact_status_at,contact_status_by";
+  "id,full_name,phone,email,status,created_at,contact_status,contact_status_note,contact_follow_up_on,contact_status_at,contact_status_by,source,vehicle_size";
 export type LeadRow = {
   id: string;
   full_name: string | null;
@@ -56,6 +56,9 @@ export type LeadRow = {
   contact_follow_up_on: string | null;
   contact_status_at: string | null;
   contact_status_by: string | null;
+  /** Already on the application. Shown on the card only when present. */
+  source?: string | null;
+  vehicle_size?: string | null;
 };
 export function leadToday(now = new Date()): string {
   const p = new Intl.DateTimeFormat("en-CA", {
@@ -154,6 +157,8 @@ export function projectLead(raw: LeadRow, bucket: LeadBucket) {
     contact_follow_up_on: raw.contact_follow_up_on,
     contact_status_at: raw.contact_status_at,
     contact_status_by: raw.contact_status_by,
+    source: raw.source ?? null,
+    vehicle_size: raw.vehicle_size ?? null,
     bucket,
     priority,
     reason,

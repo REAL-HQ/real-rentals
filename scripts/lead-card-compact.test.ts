@@ -12,7 +12,9 @@ import {
   leadBadgeLabel,
   leadContactMeta,
   leadTiming,
+  leadContextLine,
   leadUrgency,
+  leadUrgencyStat,
   leadVisibleNextStep,
 } from "../src/lib/lead-card";
 import { LEAD_BUCKETS, projectLead, type LeadBucket } from "../src/lib/lead-priorities";
@@ -61,8 +63,9 @@ describe("compact lead cards", () => {
     expect(html).not.toContain("blue");
     expect(html).not.toContain("border-l-");
     expect(html).not.toContain("data-lead-urgency");
-    expect(html).toContain(">Make first contact<");
+    expect(html).toContain("from-emerald-300");
     expect(html).toContain("Applied Today");
+    expect(html).not.toContain("Make first contact");
     expect(html).not.toContain("Follow up and log the outcome");
     for (const s of [
       "Awaiting first contact",
@@ -85,7 +88,8 @@ describe("compact lead cards", () => {
       }),
     );
     expect(html).toContain('data-status="">Contacted<');
-    expect(html).toContain(">3d overdue<");
+    expect(html).toContain(">3<");
+    expect(html).toContain("Days Overdue");
     expect(html).toContain("Due Nov 5, 2026 (3 days overdue)");
     expect(html).toContain("text-brand");
     expect(html).toContain("Last contact Today");
@@ -97,12 +101,12 @@ describe("compact lead cards", () => {
     const interested = render(row("interested", { contact_status: "interested" }));
     expect(interested).toContain('data-status="">Interested<');
     expect(interested).not.toContain(">High<");
-    expect(interested).toContain(">Confirm next steps<");
+    expect(interested).not.toContain("Confirm next steps");
     const info = render(row("information", { contact_status: "documents" }));
     expect(info).toContain('data-status="">Documents<');
     expect(info).not.toContain("Waiting on Info · Medium");
     expect(info).toContain("No contact logged");
-    expect(info).toContain(">Check what info is missing<");
+    expect(info).not.toContain("Check what info is missing");
   });
   test("note is one line with the full text on hover; missing date is honest", () => {
     const note = "x".repeat(400);
@@ -111,14 +115,17 @@ describe("compact lead cards", () => {
         contact_status: "follow_up",
         contact_follow_up_on: "2026-11-20",
         contact_status_note: note,
+        vehicle_size: "sedan",
+        source: "google",
       }),
     );
     expect(html).toContain("line-clamp-1");
     expect(html).not.toContain("line-clamp-2");
     expect(html).not.toContain("Note: ");
     expect(html).toContain(`title="${note}"`);
-    expect(html).toContain(">Due Nov 20<");
+    expect(html).toContain(">Nov 20<");
     expect(html).toContain('title="Due Nov 20, 2026"');
+    expect(html).toContain("Sedan · Google");
     expect(
       leadTiming(
         { bucket: "new", created_at: null, contact_status_at: null, contact_follow_up_on: null },
@@ -137,6 +144,13 @@ describe("compact lead cards", () => {
     });
     expect(leadVisibleNextStep("overdue")).toBeNull();
     expect(leadVisibleNextStep("new")).toBe("Make first contact");
+    expect(leadUrgencyStat({ bucket: "overdue", contact_follow_up_on: "2026-10-10" }, "2026-11-18")).toMatchObject({
+      figure: "39",
+      unit: "Days Overdue",
+      heat: "overdue",
+    });
+    expect(leadContextLine({ vehicle_size: "sedan", source: "google" })).toBe("Sedan · Google");
+    expect(leadContextLine({ vehicle_size: "  ", source: null })).toBeNull();
   });
   test("every bucket: short step, distinct labeled tone, timing at most two items", () => {
     for (const b of LEAD_BUCKETS) {
@@ -157,12 +171,13 @@ describe("compact lead cards", () => {
     expect(new Set(LEAD_BUCKETS.map((b) => LEAD_TONES[b].label)).size).toBe(LEAD_BUCKETS.length);
     expect(leadBadgeLabel("today", "Follow-Up", "Medium")).toBe("Due Today · Medium");
   });
-  test("neutral cards never reintroduce the rejected blue accents or gradients", () => {
-    for (const src of [body, lib]) {
-      expect(src).not.toMatch(/blue|border-l-(?:blue|red|emerald|amber|violet|slate)/);
+  test("urgency color stays on brand red, amber, and green", () => {
+    for (const src of [ui, body, lib]) {
+      expect(src).not.toMatch(/\bblue\b|border-l-(?:blue|red|emerald|amber|violet|slate)/);
     }
-    for (const src of [ui, body, lib])
-      expect(src).not.toMatch(/bg-gradient|linear-gradient|bg-linear|\bfrom-\w+-\d|\bvia-\w+-\d/);
+    expect(body).toContain("bg-gradient-to-br");
+    expect(ui).toContain("bg-gradient-to-b");
+    expect(body).toContain("rounded-2xl");
   });
   test("list keeps actions, status control and readiness, drops metrics", () => {
     for (const s of [
