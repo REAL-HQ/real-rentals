@@ -24,11 +24,13 @@ export const PAYMENT_CATEGORY_LABEL: Record<PaymentCategory, string> = {
 };
 
 /**
- * payments.type the app writes for a Reservation Fee. 'fee' until the
- * proposed payments_type_check migration adds 'reservation'; flip to
- * "reservation" in the same release that applies it.
+ * payments.type the app writes for a Reservation Fee. The payments_type_check
+ * migration (proposed/payments-type-reservation-v1.sql) was applied on
+ * production Nov 19 2026 (Dolmar t518s2906), so new Reservation Fees are stored
+ * as 'reservation'. Older 'fee' + reason 'reservation_fee' rows still read as
+ * Reservation through isReservationRow.
  */
-export const RESERVATION_ROW_TYPE: "fee" | "reservation" = "fee";
+export const RESERVATION_ROW_TYPE: "fee" | "reservation" = "reservation";
 
 export type CategorizableRow = { type?: unknown; reason?: unknown; notes?: unknown };
 

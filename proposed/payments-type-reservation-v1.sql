@@ -1,4 +1,4 @@
--- PROPOSED, NOT APPLIED. Needs Dolmar's approval before it runs on production.
+-- APPLIED on production Nov 19 2026 12:40 PM ET (Dolmar t518s2906). Retyped 1 row: 03733dbe (Jonathon).
 --
 -- Adds 'reservation' to payments.type so a Reservation Fee can be stored as its
 -- own type (Dolmar t505u, Nov 19 2026: "so we can quickly filter to find

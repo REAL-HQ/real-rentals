@@ -111,12 +111,12 @@ describe("payment type (category)", () => {
     expect(paymentCategoryLabel({ type: "fee", reason: "Stripe payment" })).toBe("Fee");
     expect(paymentCategory({ type: "toll", reason: "reservation_fee" })).toBe("toll");
   });
-  test("the filter offers Reservation, Rent and Fee; writers stay on 'fee' until the migration", () => {
+  test("the filter offers Reservation, Rent and Fee; writers store 'reservation' now that the migration is applied", () => {
     for (const t of ["reservation", "rent", "fee", "deposit", "late_fee", "toll", "damage", "other"]) expect(PAYMENT_CATEGORIES).toContain(t as any);
-    expect(RESERVATION_ROW_TYPE).toBe("fee");
+    expect(RESERVATION_ROW_TYPE).toBe("reservation");
     const mig = readFileSync("proposed/payments-type-reservation-v1.sql", "utf8");
     expect(mig).toMatch(/'reservation'/);
-    expect(mig).toMatch(/PROPOSED, NOT APPLIED/);
+    expect(mig).toMatch(/APPLIED on production Nov 19 2026/);
   });
 });
 

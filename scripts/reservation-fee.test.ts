@@ -111,7 +111,7 @@ describe("charge after signing", () => {
     const recap = `${a.line_items[0].price_data.product_data.description} ${a.custom_text.submit.message}`;
     expect(recap).not.toMatch(/refund|deposit|review|broker|carrier|text a real person/i);
     expect(a.custom_text.submit.message.length).toBeLessThanOrEqual(1200);
-    expect(db.state.payments[0]).toMatchObject({ type: "fee", reason: "reservation_fee", amount: 50, status: "unpaid" });
+    expect(db.state.payments[0]).toMatchObject({ type: "reservation", reason: "reservation_fee", amount: 50, status: "unpaid" });
     expect(db.state.rentals[0].reservation_deposit_status).toBe("pending"); // not held until paid
     expect(db.state.agreements[0].metadata.reservation_fee_checkout.url).toBe((o as any).url);
     expect(rf.reservationFeePayLink(o)).toEqual({ url: (o as any).url, amount: 50 });
@@ -125,7 +125,7 @@ describe("charge after signing", () => {
     const db = fakeDb(seed({ card: false })); 
     const o = await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: null, ...noAudit });
     expect(o.status).toBe("no_card");
-    expect(db.state.payments[0]).toMatchObject({ type: "fee", reason: "reservation_fee", amount: 50, status: "unpaid" });
+    expect(db.state.payments[0]).toMatchObject({ type: "reservation", reason: "reservation_fee", amount: 50, status: "unpaid" });
   });
   test("the payments webhook saves the Reservation Fee card on file and holds the car once paid", () => {
     const wh = readFileSync("src/routes/api/public/payments/webhook.ts", "utf8");
@@ -156,7 +156,7 @@ describe("charge after signing", () => {
     expect(readFileSync("src/lib/reservation-fee.server.ts", "utf8")).not.toMatch(/off_session: true/);
   });
   test("a fee already paid holds the car and is never charged again", async () => {
-    const db = fakeDb({ ...seed(), rentals: [{ id: "r1", application_id: "app1", status: "reserved", reservation_deposit_status: "pending" }], payments: [{ id: "p1", driver_id: "app1", type: "fee", reason: "reservation_fee", status: "paid", amount: 50, notes: "reservation_fee:ag1" }] }); const s = stripe();
+    const db = fakeDb({ ...seed(), rentals: [{ id: "r1", application_id: "app1", status: "reserved", reservation_deposit_status: "pending" }], payments: [{ id: "p1", driver_id: "app1", type: "reservation", reason: "reservation_fee", status: "paid", amount: 50, notes: "reservation_fee:ag1" }] }); const s = stripe();
     const o = await rfs.chargeReservationFeeAfterSigning(db, "ag1", { settings: ON, stripe: s, ...noAudit });
     expect(o.status).toBe("already_paid");
     expect(s.calls.length + s.sessions.length).toBe(0);
