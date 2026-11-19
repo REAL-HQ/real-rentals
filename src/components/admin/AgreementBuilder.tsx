@@ -25,6 +25,7 @@ const FIX_LINK: Record<string, string> = {
   "Countersigner": "/admin?tab=settings&section=media",
 };
 import { Diff } from "@/components/admin/AgreementTemplatesPanel";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 type Company = Record<string, any>;
 
@@ -34,7 +35,7 @@ function Section({ title, badge, children, open = false }: { title: string; badg
       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-[13px] font-medium">
         <span className="min-w-0 truncate">{title}</span>
         <span className="flex shrink-0 items-center gap-2">
-          {badge ? <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] text-destructive">{badge} Missing</span> : null}
+          {badge ? <span className={`rounded-full ${DANGER_BADGE} px-2 py-0.5 text-[11px]`}>{badge} Missing</span> : null}
           <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
         </span>
       </summary>
@@ -214,7 +215,7 @@ export function AgreementBuilder({
   const preview = (
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-card px-3 py-2 text-[12px]">
-        <span className="rounded bg-destructive/10 px-2 py-0.5 font-semibold text-destructive">PREVIEW — NOT SENT</span>
+        <span className={`rounded ${DANGER_BADGE} px-2 py-0.5 font-semibold`}>PREVIEW — NOT SENT</span>
         {rendering && <span className="text-muted-foreground">Updating…</span>}
         <span className="ml-auto flex items-center gap-1">
           <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Zoom Out" onClick={() => setZoom((z) => Math.max(50, z - 10))}><Minus className="h-3.5 w-3.5" /></Button>

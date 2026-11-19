@@ -16,6 +16,7 @@ import {
   type IssueStatus,
 } from "@/lib/driver-issues";
 import { listDriverIssues, updateDriverIssueStatus, type DriverIssueRow } from "@/lib/driver-issues.functions";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 const FILTERS = [
   { id: "open", label: "Open" },
@@ -130,7 +131,7 @@ export function DriverIssuesPanel({ embedded = false }: { embedded?: boolean } =
                     <h2 className="font-semibold text-[#111114]">{row.title}</h2>
                     {badge ? (
                       <span
-                        className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white"
+                        className={`rounded-full ${DANGER_BADGE} px-2 py-0.5 text-[11px] font-semibold`}
                         data-testid="issue-alert-badge"
                       >
                         {badge}

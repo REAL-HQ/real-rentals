@@ -37,6 +37,7 @@ import { signedAgreementLocked } from "@/lib/signed-agreement-evidence";
 import { useDriverDocumentUpload } from "./use-driver-document-upload";
 import { displayTitleCase } from "@/lib/display-normalize";
 import { REQUIRED_VAULT_CATEGORIES } from "@/lib/required-docs";
+import { DANGER_BADGE_BORDERED } from "@/lib/badge-tone";
 
 // Everything an applicant sent us, in one place, grouped the way somebody
 // looking at it actually thinks.
@@ -78,7 +79,7 @@ function statusOf(d: VaultDocument | undefined): Status {
 
 const STATUS_STYLE: Record<Status, { label: string; cls: string }> = {
   verified: { label: "Verified", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  rejected: { label: "Needs Replacement", cls: "bg-red-50 text-red-700 border-red-200" },
+  rejected: { label: "Needs Replacement", cls: DANGER_BADGE_BORDERED },
   expired: { label: "Expired", cls: "bg-amber-50 text-amber-800 border-amber-200" },
   uploaded: { label: "Uploaded", cls: "bg-sky-50 text-sky-700 border-sky-200" },
   // Not red. A document nobody has sent yet is an outstanding task, not a fault.

@@ -35,6 +35,7 @@ import { RecordNumber } from "@/components/admin/RecordNumber";
 import { BookingVehicleHistory } from "@/components/admin/BookingVehicleHistory";
 import { CloseoutSummary } from "@/components/admin/CloseoutSummary";
 import { CLOSEOUT_SUMMARY_ENABLED, closeoutApplies } from "@/lib/closeout-summary";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 // A booking, read.
 //
@@ -442,7 +443,7 @@ function Overview({
                       {titleCase(i.status) ?? "—"}
                     </StatusPill>
                     {i.drivable === false && (
-                      <span className="rounded-full bg-[rgba(208,48,32,0.08)] px-2 py-0.5 text-[10px] text-[#D03020]">
+                      <span className={`rounded-full ${DANGER_BADGE} px-2 py-0.5 text-[10px]`}>
                         Not Drivable
                       </span>
                     )}

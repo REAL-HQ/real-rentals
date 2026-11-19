@@ -42,6 +42,7 @@ import {
   setInsuranceVerification,
   type InsuranceVerificationActivity,
 } from "@/lib/insurance-verification.functions";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 /* ------------------------------------------------------------------ */
 /* Disqualifier rules                                                  */
@@ -538,7 +539,7 @@ export function InterviewTab({
               </span>
             )}
             {concerns.disqualified && (
-              <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800">
+              <span className={`rounded ${DANGER_BADGE} px-1.5 py-0.5 text-[10px] font-semibold`}>
                 Will Disqualify: {concerns.reasons.join(", ")}
               </span>
             )}

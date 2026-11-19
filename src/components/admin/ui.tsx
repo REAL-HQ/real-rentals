@@ -12,6 +12,7 @@ import { fmtDate as formatDate } from "@/lib/date-format";
 import type { EvidenceTone } from "@/lib/checklist-evidence";
 import { REQUIRED_DOC_TYPES } from "@/components/admin/types";
 import { Button } from "@/components/ui/button";
+import { DANGER_BADGE_STYLE } from "@/lib/badge-tone";
 
 // ---- Design tokens (shared across admin) --------------------------------
 // Canvas #FAFAFB · Card #FFFFFF · Border #EDEDF0 · Ink #111114 · Sub #55555E
@@ -24,7 +25,7 @@ type Tone = "green" | "amber" | "red" | "neutral";
 const TONE: Record<Tone, { bg: string; fg: string; ring: string }> = {
   green: { bg: "rgba(80,192,96,0.08)", fg: "#50C060", ring: "#50C060" },
   amber: { bg: "rgba(240,192,64,0.08)", fg: "#C68A12", ring: "#C68A12" },
-  red: { bg: "rgba(208,48,32,0.08)", fg: "#D03020", ring: "#D03020" },
+  red: { bg: DANGER_BADGE_STYLE.backgroundColor, fg: DANGER_BADGE_STYLE.color, ring: "#D03020" },
   neutral: { bg: "rgba(85,85,94,0.08)", fg: "#55555E", ring: "#9A9AA3" },
 };
 
