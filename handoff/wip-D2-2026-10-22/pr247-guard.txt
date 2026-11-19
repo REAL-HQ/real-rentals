@@ -1,0 +1,25 @@
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Locked hash: package.json
++ actual - expected
+
++ '7e503ed878936491188372a3ab3536f61002c12a0970080933e3498f1bb95fc0'
+- '76cea7614c8b8617db3ea9f968c0fb64957100c8abc6105fa08434313a32f29c'
+
+    at checkLockedFilePins (file:///tmp/rr-worktrees/rc16-combined/scripts/ci/record-rental/guard.mjs:79:10)
+    at inspect (file:///tmp/rr-worktrees/rc16-combined/scripts/ci/record-rental/guard.mjs:112:3)
+    at file:///tmp/rr-worktrees/rc16-combined/scripts/ci/record-rental/guard.mjs:123:2
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: '7e503ed878936491188372a3ab3536f61002c12a0970080933e3498f1bb95fc0',
+  expected: '76cea7614c8b8617db3ea9f968c0fb64957100c8abc6105fa08434313a32f29c',
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v22.23.3
