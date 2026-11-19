@@ -9,9 +9,10 @@ import { reminderBadges, type LogAttention, type LogItem, type VehicleLog } from
 import { fmtDate } from "@/lib/date-format";
 import { displayVehicleWord } from "@/lib/display-normalize";
 import { SectionCard } from "./ui";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 const BADGE_CLASS: Record<LogAttention, string> = {
-  overdue: "bg-[rgba(208,48,32,0.08)] text-[#D03020]",
+  overdue: DANGER_BADGE,
   due_soon: "bg-[rgba(240,192,64,0.16)] text-[#8A6410]",
 };
 

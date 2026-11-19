@@ -24,6 +24,7 @@ import {
 } from "@/lib/vehicle-import.functions";
 import { MicroLabel, EmptyState } from "./ui";
 import { FileUploader } from "@/components/FileUploader";
+import { DANGER_BADGE_STYLE } from "@/lib/badge-tone";
 
 // Bringing a fleet in from a spreadsheet.
 //
@@ -308,7 +309,7 @@ function VerdictTable({ rows, emptyLabel }: { rows: RowVerdict[]; emptyLabel: st
                 ? { backgroundColor: "rgba(80,192,96,0.10)", color: "#3E9A4C" }
                 : r.action === "skip"
                   ? { backgroundColor: "rgba(85,85,94,0.08)", color: "#55555E" }
-                  : { backgroundColor: "rgba(208,48,32,0.10)", color: "#D03020" }
+                  : { ...DANGER_BADGE_STYLE }
             }
           >
             {r.action === "create" ? "Add" : r.action === "skip" ? "Skip" : "Problem"}
@@ -332,7 +333,7 @@ function Chip({
     tone === "green"
       ? { backgroundColor: "rgba(80,192,96,0.10)", color: "#3E9A4C" }
       : tone === "red"
-        ? { backgroundColor: "rgba(208,48,32,0.10)", color: "#D03020" }
+        ? { ...DANGER_BADGE_STYLE }
         : { backgroundColor: "rgba(85,85,94,0.08)", color: "#55555E" };
   return (
     <span

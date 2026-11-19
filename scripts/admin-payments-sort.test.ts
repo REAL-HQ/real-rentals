@@ -121,6 +121,6 @@ describe("Payments / Charges / Bookings wiring", () => {
     expect(overdue).toContain("#50C060");
     expect(overdue).toContain("rounded-full");
     expect(overdue).toContain("px-2 py-0.5 text-[11px] font-semibold");
-    expect(overdue).toContain("bg-[#D03020]");
+    expect(overdue).toContain("DANGER_BADGE");
   });
 });

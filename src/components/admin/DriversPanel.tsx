@@ -262,6 +262,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { DocumentsExpiringList } from "./DocumentsExpiring";
 import { FleetNeedsStaffBanner } from "./FleetNeedsStaffBanner";
+import { DANGER_BADGE, DANGER_BADGE_BORDERED } from "@/lib/badge-tone";
+import { driverStatusDisplay } from "@/lib/driver-status-display";
 import { listFleetNeedsStaff, type FleetNeedsStaffFlag } from "@/lib/fleet-review.functions";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
 import type { ExpiryScope } from "@/lib/document-expiry";
@@ -277,7 +279,7 @@ const statusBadge: Record<string, string> = {
   approved: "bg-emerald-100 text-emerald-800",
   active: "bg-green-100 text-green-800",
   suspended: "bg-orange-100 text-orange-800",
-  declined: "bg-red-100 text-red-800",
+  declined: DANGER_BADGE,
   closed: "bg-gray-200 text-gray-700",
 };
 
@@ -1466,7 +1468,8 @@ setDocCounts(requiredDocCounts(rows));
                     ? "bg-emerald-100 text-emerald-800"
                     : waitingMs < 60 * 60_000
                       ? "bg-amber-100 text-amber-800"
-                      : "bg-red-100 text-red-800";
+                      : DANGER_BADGE;
+                const statusDisplay = driverStatusDisplay(a.status, needsStaff.get(a.id));
                 const rows = [
                   <tr
                     key={a.id}
@@ -1482,15 +1485,6 @@ setDocCounts(requiredDocCounts(rows));
                         campaign={a.utm_campaign}
                         className="ml-2 align-middle"
                       />
-                      {needsStaff.has(a.id) ? (
-                        <span
-                          data-fleet-needs-staff-pill
-                          title={`FLEET: ${needsStaff.get(a.id)?.reason ?? ""}`}
-                          className="ml-2 inline-flex items-center rounded bg-[#D03020] px-1.5 py-0.5 align-middle text-[10px] font-semibold text-white"
-                        >
-                          Needs Staff
-                        </span>
-                      ) : null}
                       {dupeCount > 0 && (
                         <button
                           onClick={(e) => {
@@ -1558,6 +1552,15 @@ setDocCounts(requiredDocCounts(rows));
                                 className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
                               >
                                 Marked Active, No Rental
+                                <ChevronDown className="h-3 w-3 shrink-0" />
+                              </span>
+                            ) : statusDisplay.needsStaff ? (
+                              <span
+                                data-fleet-needs-staff-pill
+                                title={statusDisplay.title ?? undefined}
+                                className={`inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-[11px] font-medium ${DANGER_BADGE}`}
+                              >
+                                {statusDisplay.label}
                                 <ChevronDown className="h-3 w-3 shrink-0" />
                               </span>
                             ) : (
@@ -3520,7 +3523,7 @@ function AISnapshotCard({ driver }: { driver: Application }) {
             "Not yet scored. Run the AI review to grade trips, rating, license, and screenshots."}
         </p>
         {flags.length > 0 && (
-          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded bg-red-50 text-red-800 border border-red-200">
+          <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded border ${DANGER_BADGE_BORDERED}`}>
             <AlertTriangle className="w-3 h-3" /> {flags.length}
           </span>
         )}

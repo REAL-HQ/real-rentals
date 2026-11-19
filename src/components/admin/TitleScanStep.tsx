@@ -6,6 +6,7 @@ import { Camera, Loader2, AlertTriangle, ArrowRight, FileText } from "lucide-rea
 import { FileUploader } from "@/components/FileUploader";
 import { scanVehicleTitle, type TitleScanResult } from "@/lib/vehicle-title-scan.functions";
 import { MicroLabel } from "./ui";
+import { DANGER_BADGE_STYLE } from "@/lib/badge-tone";
 
 // Photograph the title, check what was read, then fill the form.
 //
@@ -56,7 +57,7 @@ const TO_FORM: Record<string, string> = {
 const CONF: Record<string, { label: string; bg: string; fg: string }> = {
   high: { label: "Clear", bg: "rgba(80,192,96,0.10)", fg: "#3E9A4C" },
   medium: { label: "Check", bg: "rgba(240,192,64,0.12)", fg: "#C68A12" },
-  low: { label: "Unclear", bg: "rgba(208,48,32,0.10)", fg: "#D03020" },
+  low: { label: "Unclear", bg: DANGER_BADGE_STYLE.backgroundColor, fg: DANGER_BADGE_STYLE.color },
 };
 
 export function TitleScanStep({ onUse }: { onUse: (prefill: Record<string, string>) => void }) {

@@ -8,9 +8,10 @@ import { listMaintenanceDue } from "@/lib/maintenance-due.functions";
 import { vehicleUrgency, type DueBadge, type VehicleDueRow } from "@/lib/maintenance-due";
 import { displayVehicleWord } from "@/lib/display-normalize";
 import { EmptyState } from "./ui";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 const BADGE_CLASS: Record<DueBadge, string> = {
-  overdue: "bg-[rgba(208,48,32,0.08)] text-[#D03020]",
+  overdue: DANGER_BADGE,
   due_14: "bg-[rgba(240,192,64,0.16)] text-[#8A6410]",
   ok: "bg-[rgba(32,160,96,0.10)] text-[#13613B]",
   unknown: "bg-[#F1F1F4] text-[#55555E]",

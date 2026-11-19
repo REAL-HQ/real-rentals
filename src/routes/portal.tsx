@@ -113,6 +113,7 @@ import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { fmtDate } from "@/lib/date-format";
 import { buildRoadsideIssue, ROADSIDE_TYPES } from "@/lib/driver-issues";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 export const Route = createFileRoute("/portal")({
   head: () => ({
@@ -2369,7 +2370,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
                         p.status === "paid"
                           ? "bg-emerald-100 text-emerald-800"
                           : p.status === "failed"
-                            ? "bg-red-100 text-red-800"
+                            ? DANGER_BADGE
                             : p.status === "pending"
                               ? "bg-amber-100 text-amber-800"
                               : "bg-gray-100 text-gray-700"

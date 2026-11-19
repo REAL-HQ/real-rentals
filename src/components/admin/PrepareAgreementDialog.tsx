@@ -12,6 +12,7 @@ import { defaultRentalEndIso } from "@/lib/agreement-dates";
 import { layoutToText } from "@/lib/agreement-layout";
 import { readAgreementLicense, readWrittenAgreement } from "@/lib/agreement-license.functions";
 import { LIBRARY, DRAFT_STATUS_LABEL, OWNER_APPROVED_LIBRARY, acknowledgmentsOf } from "@/lib/agreement-library";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
 type Res = {
@@ -37,7 +38,7 @@ function Section({ title, children, open = true, badge }: { title: string; child
       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-[13px] font-medium">
         <span>{title}</span>
         <span className="flex items-center gap-2">
-          {badge ? <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] text-destructive">{badge} To Fix</span> : null}
+          {badge ? <span className={`rounded-full ${DANGER_BADGE} px-2 py-0.5 text-[11px]`}>{badge} To Fix</span> : null}
           <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
         </span>
       </summary>
@@ -442,7 +443,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
         <aside className="w-full overflow-y-auto bg-muted/20 md:w-[35%] md:border-r">{details}</aside>
         <section className="flex min-w-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center gap-2 border-b bg-card px-3 py-2 text-[12px]">
-            <span className="rounded bg-destructive/10 px-2 py-0.5 font-semibold text-destructive">PREVIEW — NOT SENT</span>
+            <span className={`rounded ${DANGER_BADGE} px-2 py-0.5 font-semibold`}>PREVIEW — NOT SENT</span>
             {rendering && <span className="text-muted-foreground">Updating…</span>}
           </div>
           <div className="min-h-0 flex-1 overflow-auto bg-muted/40" data-testid="prep-preview">

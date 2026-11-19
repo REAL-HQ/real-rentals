@@ -13,6 +13,7 @@
  * Client-safe: vocabulary and rules only. Every write is checked again on the
  * server (contact-status.functions.ts).
  */
+import { DANGER_BADGE } from "./badge-tone";
 
 /** Stored value -> the label staff read. Title Case, one word where possible. */
 export const CONTACT_STATUSES = [
@@ -70,8 +71,8 @@ export const CONTACT_STATUS_TONE: Record<ContactStatusKey, string> = {
   interested: "bg-emerald-100 text-emerald-800",
   follow_up: "bg-amber-100 text-amber-800",
   documents: "bg-violet-100 text-violet-800",
-  unqualified: "bg-rose-100 text-rose-800",
-  declined: "bg-rose-100 text-rose-800",
+  unqualified: DANGER_BADGE,
+  declined: DANGER_BADGE,
   unresponsive: "bg-gray-200 text-gray-700",
 };
 

@@ -55,6 +55,7 @@ import { BookingVehicleHistory } from "./BookingVehicleHistory";
 import { rentalReadyItems, listingReadyItems, profileItems, percent, vehicleReadinessChecks, listingPhotoCheck, overallReadiness, readinessByCategory, vehicleAvailability, type ReadinessCheck, type FixTarget } from "@/lib/vehicle-readiness";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import { usStateOptions } from "@/lib/us-states";
+import { DANGER_BADGE_STYLE } from "@/lib/badge-tone";
 
 // The vehicle as a record you read.
 //
@@ -265,7 +266,7 @@ export function VehicleProfile({
                   className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
                   style={
                     a.days < 0
-                      ? { backgroundColor: "rgba(208,48,32,0.08)", color: "#D03020" }
+                      ? { ...DANGER_BADGE_STYLE }
                       : { backgroundColor: "rgba(240,192,64,0.08)", color: "#C68A12" }
                   }
                 >

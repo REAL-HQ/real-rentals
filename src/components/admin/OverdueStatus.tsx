@@ -1,4 +1,5 @@
 import { overdueLabel } from "@/lib/active-rentals";
+import { DANGER_BADGE } from "@/lib/badge-tone";
 
 /**
  * Overdue column cell on Active Rentals (Bookings > Active) and any screen
@@ -17,7 +18,7 @@ export function OverdueStatus({ days }: { days: number | null }) {
     return (
       <span
         data-testid="overdue-pill"
-        className="inline-flex items-center rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white"
+        className={`inline-flex items-center rounded-full ${DANGER_BADGE} px-2 py-0.5 text-[11px] font-semibold`}
       >
         {label}
       </span>
