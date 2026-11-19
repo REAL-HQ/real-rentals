@@ -12,22 +12,18 @@ import {
   type LeadFilter,
   type LeadPrioritiesResult,
 } from "@/lib/lead-priorities";
-import { ContactStatusCell } from "./ContactStatusCell";
-import { LeadFollowUpDraft } from "./LeadFollowUpDraft";
 import { LeadResponseReport } from "./LeadResponseReport";
-import { ReadinessStatePill } from "./ui";
 import type { ReadinessByApplicant } from "@/lib/admin-overview";
 import { displayPersonName } from "@/lib/display-normalize";
 import { LeadCardBody, leadCallClass, leadStatTiles, leadTextClass } from "./LeadCardBody";
-import { LeadCardMenu } from "./LeadCardMenu";
 import type { StaffTier } from "@/lib/roles";
 
 export default function LeadPriorities({
   isManager = false,
   refreshKey = 0,
-  readiness = {},
-  canSeeReadiness = false,
-  tier = null,
+  readiness: _readiness = {},
+  canSeeReadiness: _canSeeReadiness = false,
+  tier: _tier = null,
 }: {
   isManager?: boolean;
   refreshKey?: number;
@@ -145,7 +141,7 @@ export default function LeadPriorities({
       ) : (
         result && (
           <>
-            <div className="my-4 grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="my-5 grid grid-cols-3 gap-3">
               {leadStatTiles().map(({ label, next, Icon, tile, icon }) => {
                 const value = next === "new" ? result.counts.new : next === "interested" ? result.counts.hot : result.counts.overdue;
                 return (
@@ -155,15 +151,15 @@ export default function LeadPriorities({
                   variant="outline"
                   aria-pressed={filter === next}
                   onClick={() => setLeadFilter(next)}
-                  className={`h-auto min-h-[92px] min-w-0 flex-col items-start justify-between gap-0 whitespace-normal rounded-2xl px-3 py-3 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:text-inherit ${tile} ${
+                  className={`h-auto min-h-[96px] min-w-0 flex-col items-start justify-between gap-0 whitespace-normal rounded-2xl px-4 py-4 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md hover:text-inherit ${tile} ${
                     filter === next ? "ring-2 ring-brand" : ""
                   }`}
                 >
-                  <span className={`grid h-8 w-8 place-items-center rounded-xl ${icon}`}>
-                    <Icon aria-hidden="true" className="h-4 w-4" />
+                  <span className={`grid h-7 w-7 place-items-center rounded-lg ${icon}`}>
+                    <Icon aria-hidden="true" className="h-3.5 w-3.5" />
                   </span>
-                  <span className="mt-3 text-3xl font-semibold leading-none tabular-nums">{value}</span>
-                  <span className="mt-1 text-xs font-medium">{label}</span>
+                  <span className="mt-4 text-4xl font-semibold leading-none tabular-nums">{value}</span>
+                  <span className="mt-1.5 text-sm font-medium text-muted-foreground">{label}</span>
                 </Button>
               );
               })}
@@ -195,9 +191,8 @@ export default function LeadPriorities({
                 No leads need attention in this view.
               </p>
             ) : (
-              <ul className="mt-1 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              <ul className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {result.rows.map((lead) => {
-                  const readinessResult = canSeeReadiness ? readiness[lead.id] : undefined;
                   const displayName = lead.full_name
                     ? displayPersonName(lead.full_name)
                     : "Unnamed Applicant";
@@ -212,22 +207,7 @@ export default function LeadPriorities({
                         lead={lead}
                         today={result.today}
                         displayName={displayName}
-                        menu={<LeadCardMenu lead={lead} today={result.today} tier={tier} onChanged={refresh} />}
                         name={displayName}
-                        status={
-                          <>
-                            <ContactStatusCell
-                              applicationId={lead.id}
-                              row={lead}
-                              onSaved={refresh}
-                              appearance="neutral"
-                            />
-                            {readinessResult ? (
-                              <ReadinessStatePill state={readinessResult.state} short />
-                            ) : null}
-                          </>
-                        }
-                        draft={<LeadFollowUpDraft applicationId={lead.id} bucket={lead.bucket} />}
                         actions={
                           <div className="flex items-center gap-2">
                             {lead.phone && (
