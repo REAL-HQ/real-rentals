@@ -78,6 +78,8 @@ export function computeLateFee(args: {
   appliedThrough: string | null;
   /** Late days that carry no fee (staff waivers, approved payment deals). */
   excludedDays?: number;
+  /** Dollars staff forgave on this payment's week (late_fee_forgiveness), taken off after the cap. */
+  forgivenAmount?: number;
 }): FeeComputation {
   const { policy, dueDate, today, alreadyCharged, appliedThrough } = args;
   const none = { addition: 0, appliedThrough: appliedThrough ?? dueDate, reason: "" };
@@ -105,6 +107,9 @@ export function computeLateFee(args: {
   let target = chargeableDays > 0 ? policy.flat_fee + policy.daily_fee * chargeableDays : 0;
 
   if (policy.max_fee > 0) target = Math.min(target, policy.max_fee);
+  // Forgiven fees stay forgiven: the target drops by what staff forgave, so
+  // the next run never adds a forgiven fee back.
+  target = Math.max(0, round2(target - Math.max(0, Number(args.forgivenAmount ?? 0) || 0)));
 
   const addition = Math.max(0, round2(target - alreadyCharged));
   if (addition === 0) {
@@ -230,6 +235,16 @@ export async function applyLateFees(today?: string, opts: { admin?: any; now?: D
         supabaseAdmin.from("rentals").select("id,status,end_date").in("id", rentalIds),
       ])
     : [{ data: [] }, new Map<string, DealWindow[]>(), { data: [] }, { data: [] }];
+  // Staff forgiveness (Manage Late Fees). Absent until its migration is applied: then nothing is subtracted.
+  const forgivenBy = new Map<string, number>();
+  if (rentalIds.length) {
+    const fr = await supabaseAdmin.from("late_fee_forgiveness").select("rental_id,due_date,amount,undone_at").in("rental_id", rentalIds);
+    for (const f of (fr?.error ? [] : fr?.data ?? []) as any[]) {
+      if (f.undone_at || !(Number(f.amount) > 0)) continue;
+      const k = `${f.rental_id}|${String(f.due_date).slice(0, 10)}`;
+      forgivenBy.set(k, round2((forgivenBy.get(k) ?? 0) + Number(f.amount)));
+    }
+  }
   const waiversBy = new Map<string, any[]>();
   for (const w of (waiverRes.error ? [] : waiverRes.data ?? []) as any[]) (waiversBy.get(w.rental_id) ?? waiversBy.set(w.rental_id, []).get(w.rental_id)!).push(w);
   // Late fees stop once the car is back at the shop (D33).
@@ -269,6 +284,7 @@ export async function applyLateFees(today?: string, opts: { admin?: any; now?: D
         alreadyCharged: Number(p.late_fees ?? 0),
         appliedThrough: (p.late_fee_applied_through as string | null) ?? null,
         excludedDays: excluded.days,
+        forgivenAmount: p.rental_id ? forgivenBy.get(`${p.rental_id}|${String(p.due_date).slice(0, 10)}`) ?? 0 : 0,
       });
       run.details!.push({ payment_id: p.id, rental_id: p.rental_id ?? null, due_date: p.due_date, addition: result.addition, reason: excluded.wholeWeekWaived ? "week waived" : asOf !== todayStr ? `${result.reason || "nothing due"} (car returned ${asOf})` : result.reason });
       if (opts.dryRun) {

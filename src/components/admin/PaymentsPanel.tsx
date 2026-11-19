@@ -2,6 +2,7 @@ import { LinkedVehicleCell } from "./VehicleCell";
 import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
 import { useNavigate } from "@tanstack/react-router";
 import { rowNav } from "@/lib/row-click";
+import { ManageLateFeesDialog } from "./ManageLateFeesDialog";
 import { useEffect, useMemo, useState } from "react";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton, inputCls } from "./modal";
 import { supabase } from "@/integrations/supabase/client";
@@ -143,6 +144,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
   const [showManual, setShowManual] = useState(false);
   const [paymentsSection, setPaymentsSection] = useState<"ledger" | "stripe">("ledger");
   const [refundRow, setRefundRow] = useState<{ id: string; name: string; amount: number } | null>(null);
+  const [lateFeeRow, setLateFeeRow] = useState<{ rentalId: string; name: string } | null>(null);
 
   useEffect(() => {
     supabase
@@ -481,7 +483,24 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                   <td
                     className={`px-3 text-right tabular-nums text-[13px] ${lateFees > 0 ? "text-[#D03020] font-medium" : "text-[#9A9AA3]"}`}
                   >
-                    ${lateFees.toLocaleString()}
+                    {p.rental_id && (tier === "owner" || tier === "manager") && (lateFees > 0 || String(p.type ?? "rent") === "rent") ? (
+                      <button
+                        type="button"
+                        data-no-row-click
+                        data-testid="payments-late-fee-cell"
+                        title="Manage Late Fees"
+                        aria-label={`Manage Late Fees For ${driverName}`}
+                        className="rounded px-1 hover:bg-[#F5F5F7] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/40"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLateFeeRow({ rentalId: p.rental_id!, name: driverName });
+                        }}
+                      >
+                        ${lateFees.toLocaleString()}
+                      </button>
+                    ) : (
+                      <>${lateFees.toLocaleString()}</>
+                    )}
                   </td>
                   <td className="px-3 text-right tabular-nums text-[13px]">
                     ${Number(p.balance_due).toLocaleString()}
@@ -562,6 +581,19 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
           onSave={add}
         />
       )}
+      {lateFeeRow ? (
+        <ManageLateFeesDialog
+          open
+          onOpenChange={(v) => { if (!v) setLateFeeRow(null); }}
+          rentalId={lateFeeRow.rentalId}
+          driverName={lateFeeRow.name}
+          onChanged={async () => {
+            // Forgiving lowers the open rent row's late fees and balance: show it right away.
+            const { data } = await supabase.from("payments").select("*").eq("rental_id", lateFeeRow.rentalId);
+            if (data) setPayments((rows) => rows.map((r) => (data as Payment[]).find((x) => x.id === r.id) ?? r));
+          }}
+        />
+      ) : null}
       {refundRow ? (
         <RefundReservationDialog
           open

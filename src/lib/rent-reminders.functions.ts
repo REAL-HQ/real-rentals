@@ -9,6 +9,7 @@ import {
   RENT_REMINDER_STAGES,
   easternParts,
   lateFeeFor,
+  weekLateFee,
   mergeTemplates,
   money,
   templateProblem,
@@ -28,6 +29,8 @@ export type RentalLateFeeStatus = {
   daysLate: number;
   lateFee: number;
   waived: boolean;
+  /** Late fees staff forgave on the weeks still owed. */
+  forgiven: number;
   balance: number;
 };
 
@@ -40,11 +43,18 @@ export const getRentalLateFees = createServerFn({ method: "GET" })
     const today = easternParts(new Date()).date;
     const { states, errors } = await loadBillingStates(supabaseAdmin as any, {}, today);
     const rows = states.map((s) => {
-      const fee = s.owing && s.dueDate ? lateFeeFor({ dueDate: s.dueDate, today, waivers: s.waivers }) : { daysLate: 0, fee: 0, waived: false };
+      // Every week still owed (a Stripe renter can have more than one failed invoice), read
+      // through the same ledger as Manage Late Fees: waivers, deal days, cap and forgiveness.
+      const dues = s.owing && s.dueDate ? [s.dueDate, ...(s.otherInvoices ?? []).map((o) => o.createdOn)] : [];
+      const weeks = [...new Set(dues.filter(Boolean))].map((d) => weekLateFee(s, d, today));
+      const lateFee = Math.round(weeks.reduce((t, w) => t + w.fee, 0) * 100) / 100;
+      const forgiven = Math.round(weeks.reduce((t, w) => t + w.forgiven, 0) * 100) / 100;
+      const primary = s.owing && s.dueDate ? lateFeeFor({ dueDate: s.dueDate, today, waivers: s.waivers }) : { daysLate: 0, fee: 0, waived: false };
       return {
         rentalId: s.rentalId, mode: s.mode, dueDate: s.dueDate, owing: s.owing, rentOwed: s.rentOwed,
-        daysLate: fee.daysLate, lateFee: fee.fee, waived: fee.waived,
-        balance: Math.round((s.rentOwed + fee.fee) * 100) / 100,
+        daysLate: primary.daysLate, lateFee, forgiven,
+        waived: s.owing && lateFee <= 0 && (primary.waived || forgiven > 0),
+        balance: Math.round((s.rentOwed + lateFee) * 100) / 100,
       };
     });
     return { rows, errors };

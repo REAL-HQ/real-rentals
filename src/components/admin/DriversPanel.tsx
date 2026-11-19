@@ -185,6 +185,7 @@ import { rowOpenProps } from "@/lib/row-click";
 import { ContactStatusCell } from "./ContactStatusCell";
 import { RecordPaymentDialog } from "./RentPaymentActions";
 import { RenterPayments } from "./RenterPayments";
+import { LateFeesCard } from "./LateFeesCard";
 import { ApprovedNotRentingList } from "./ApprovedNotRenting";
 import { listApprovedNotRenting } from "@/lib/booking-funnel.functions";
 import type { ApprovedNotRentingResult } from "@/lib/booking-funnel";
@@ -3117,6 +3118,9 @@ function DriverDetail({
 
               <TabsContent value="payments" className="mt-0 space-y-4">
                 <RenterPayments driverId={driver.id} />
+                {(isOwner || isManager) && activeRentalId && rentalStatus === "active" ? (
+                  <LateFeesCard rentalId={activeRentalId} driverName={driver.full_name ? displayPersonName(driver.full_name) : "Driver"} />
+                ) : null}
                 {isManager && <DriverStatement driverId={driver.id} />}
                 <Card title="Payment Terms" icon={<CreditCard className="w-4 h-4" />}>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

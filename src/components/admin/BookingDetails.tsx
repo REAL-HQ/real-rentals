@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { LateFeesCard } from "./LateFeesCard";
 import { VehiclePickerPhoto } from "./VehiclePickerPhoto";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -756,6 +757,10 @@ function Money({ d }: { d: BookingDetail }) {
           </div>
         </TwoCol>
       </SectionCard>
+
+      {d.booking.status === "active" ? (
+        <LateFeesCard rentalId={d.booking.id} driverName={d.driver.name ?? "Driver"} />
+      ) : null}
 
       <SectionCard title="Payments" icon={<CreditCard className="w-4 h-4" strokeWidth={1.75} />}>
         {m.payments.length === 0 ? (

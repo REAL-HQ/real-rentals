@@ -25,6 +25,7 @@ import { listActiveRentals } from "@/lib/active-rentals.functions";
 import { getRentalLateFees, type RentalLateFeeStatus } from "@/lib/rent-reminders.functions";
 import { RecordPaymentDialog, WaiveLateFeeDialog, lateFeeLabel } from "./RentPaymentActions";
 import { OverdueStatus } from "./OverdueStatus";
+import { ManageLateFeesDialog } from "./ManageLateFeesDialog";
 import { ReturnFlowDialog } from "./ReturnFlowDialog";
 import { RETURN_FLOW_ENABLED } from "@/lib/return-flow";
 
@@ -65,7 +66,7 @@ export function ActiveRentalsPanel() {
   const [fees, setFees] = useState<Map<string, RentalLateFeeStatus>>(new Map());
   const [feesLoaded, setFeesLoaded] = useState(false);
   const [reload, setReload] = useState(0);
-  const [dialog, setDialog] = useState<{ kind: "pay" | "waive" | "return"; row: ActiveRentalRow } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "pay" | "waive" | "return" | "fees"; row: ActiveRentalRow } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -213,15 +214,24 @@ export function ActiveRentalsPanel() {
                       </span>
                     </td>
                     <td className="px-2 py-2 align-middle">
-                      <OverdueStatus days={row.overdueDays} />
-                      {lateDue ? (
-                        <span className="mt-1 block text-xs font-medium text-[#D03020]" data-testid="late-fee">
-                          Late {lateFeeLabel(fee, feesLoaded)}
-                        </span>
+                      {fee ? (
+                        // Manager and above (the late fee read is manager-only): opens Manage Late Fees, never the row.
+                        <button
+                          type="button"
+                          data-no-row-click
+                          data-testid="late-fee-cell"
+                          aria-label={`Manage Late Fees For ${row.driverName}`}
+                          title="Manage Late Fees"
+                          className="-m-1 rounded-md p-1 text-left hover:bg-[#F5F5F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D03020]/40"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDialog({ kind: "fees", row });
+                          }}
+                        >
+                          <OverdueCellBody row={row} fee={fee} feesLoaded={feesLoaded} lateDue={lateDue} />
+                        </button>
                       ) : (
-                        <span className="sr-only" data-testid="late-fee">
-                          {lateFeeLabel(fee, feesLoaded)}
-                        </span>
+                        <OverdueCellBody row={row} fee={fee} feesLoaded={feesLoaded} lateDue={lateDue} />
                       )}
                     </td>
                     <td className="px-2 py-2 align-middle sticky right-0 bg-white">
@@ -262,10 +272,13 @@ export function ActiveRentalsPanel() {
                             {fees.get(row.id)?.mode === "manual" ? (
                               <DropdownMenuItem onSelect={() => setDialog({ kind: "pay", row })}>Record Payment</DropdownMenuItem>
                             ) : null}
+                            {fees.get(row.id) ? (
+                              <DropdownMenuItem onSelect={() => setDialog({ kind: "fees", row })}>Manage Late Fees</DropdownMenuItem>
+                            ) : null}
                             {fees.get(row.id)?.owing ? (
                               <DropdownMenuItem onSelect={() => setDialog({ kind: "waive", row })}>Waive Late Fee</DropdownMenuItem>
                             ) : null}
-                            {fees.get(row.id)?.mode === "manual" || fees.get(row.id)?.owing ? <DropdownMenuSeparator /> : null}
+                            {fees.get(row.id) ? <DropdownMenuSeparator /> : null}
                             {RETURN_FLOW_ENABLED ? (
                               <DropdownMenuItem onSelect={() => setDialog({ kind: "return", row })}>Return</DropdownMenuItem>
                             ) : null}
@@ -317,6 +330,17 @@ export function ActiveRentalsPanel() {
           }}
         />
       ) : null}
+      {dialog?.kind === "fees" ? (
+        <ManageLateFeesDialog
+          open
+          onOpenChange={(v) => {
+            if (!v) setDialog(null);
+          }}
+          rentalId={dialog.row.id}
+          driverName={dialog.row.driverName}
+          onChanged={() => setReload((n) => n + 1)}
+        />
+      ) : null}
       {dialog?.kind === "waive" ? (
         <WaiveLateFeeDialog
           open
@@ -331,4 +355,29 @@ export function ActiveRentalsPanel() {
       ) : null}
     </div>
   );
+}
+
+function OverdueCellBody({ row, fee, feesLoaded, lateDue }: { row: ActiveRentalRow; fee: RentalLateFeeStatus | undefined; feesLoaded: boolean; lateDue: boolean }) {
+  return (
+    <>
+      <OverdueStatus days={row.overdueDays} />
+      {lateDue ? (
+        <span className="mt-1 block text-xs font-medium text-[#D03020]" data-testid="late-fee">
+          Late {lateFeeLabel(fee, feesLoaded)}
+        </span>
+      ) : fee && fee.forgiven > 0 ? (
+        <span className="mt-1 block text-xs text-muted-foreground" data-testid="late-fee">
+          Forgiven {lateFeeLabelMoney(fee.forgiven)}
+        </span>
+      ) : (
+        <span className="sr-only" data-testid="late-fee">
+          {lateFeeLabel(fee, feesLoaded)}
+        </span>
+      )}
+    </>
+  );
+}
+
+function lateFeeLabelMoney(n: number): string {
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
