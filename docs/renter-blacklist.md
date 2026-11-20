@@ -21,8 +21,9 @@ Requested by Dolmar Nov 19 2026 (10:50, 10:51 and 11:07 PM ET). Migration `supab
 Any staff member logs a warning (Log Warning on the driver profile). Only an Owner / Admin voids one.
 
 ## Who can do what
-- Owner / Admin (user role `admin`, the Owner tier): Add To Blacklist, Remove From Blacklist, Void Warning, clear a blacklist match ("Not The Same Person"). Confirmed by Dolmar Nov 20 2026.
-- Manager / Coordinator: see the list and badges, Log Warning.
+- Owner / Admin / Manager: Add To Blacklist (reason + note + date + who are still required; the note is saved to Notes). Confirmed by Dolmar Nov 20 2026.
+- Owner / Admin (user role `admin`, the Owner tier): Remove From Blacklist, Void Warning, clear a blacklist match ("Not The Same Person"). Confirmed by Dolmar Nov 20 2026.
+- Manager / Coordinator: see the list and badges, Log Warning (Manager can also Add To Blacklist, above; neither can remove, void or clear).
 
 Every add needs a reason, a note and a date, and records who added it. The note is also appended to the renter's Notes (skipped when the identical text is already there). Removal records who, when and why; entries are never deleted.
 
