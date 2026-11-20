@@ -50,19 +50,21 @@ export function BlacklistedBadge({ title }: { title?: string | null }) {
 
 /**
  * Driver profile: Blacklist status, warnings (strikes) and history.
- * Owner / Admin: Add To Blacklist / Remove From Blacklist / Void Warning.
+ * Owner / Admin / Manager: Add To Blacklist. Owner / Admin only: Remove From Blacklist / Void Warning.
  * Any staff: Log Warning. Every reason note is also added to the renter's Notes.
  */
 export function BlacklistCard({
   applicationId,
   driverName,
   isOwner,
+  isManager = false,
   onNotesChanged,
   onBlacklistChanged,
 }: {
   applicationId: string;
   driverName: string | null;
   isOwner: boolean;
+  isManager?: boolean;
   onNotesChanged?: (notes: string) => void;
   onBlacklistChanged?: (entry: BlacklistEntry | null) => void;
 }) {
@@ -141,7 +143,7 @@ export function BlacklistCard({
           <button type="button" className={secondary} onClick={() => open("strike")} data-testid="blacklist-log-warning">
             Log Warning
           </button>
-          {isOwner && !active ? (
+          {(isOwner || isManager) && !active ? (
             <button type="button" className={primary} onClick={() => open("add")} data-testid="blacklist-add">
               <Ban className="h-3.5 w-3.5" /> Add To Blacklist
             </button>

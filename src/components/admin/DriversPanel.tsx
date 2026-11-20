@@ -2939,6 +2939,7 @@ function DriverDetail({
                   applicationId={driver.id}
                   driverName={driver.full_name ?? null}
                   isOwner={isOwner}
+                  isManager={isManager}
                   onNotesChanged={(notes) => onSaved({ notes })}
                   onBlacklistChanged={onBlacklistChanged}
                 />

@@ -5,9 +5,9 @@ import { BLACKLIST_REASON_KEYS, STRIKE_KIND_KEYS, type BlacklistReasonKey, type 
 import type { BlacklistEntry, BlacklistProfile, StrikeEntry } from "@/lib/blacklist";
 
 /**
- * Staff side of the Renter Blacklist. Reading is any staff tier; adding,
- * removing, voiding a warning and clearing a match are Owner / Admin only
- * (role admin = Owner tier) (checked
+ * Staff side of the Renter Blacklist. Reading is any staff tier; adding is
+ * Owner / Admin / Manager; removing, voiding a warning and clearing a match are
+ * Owner / Admin only (role admin = Owner tier) (checked
  * here AND in blacklist.server.ts, because supabaseAdmin bypasses RLS).
  * Logging a warning (strike) is any staff tier.
  */
@@ -52,8 +52,8 @@ export const addToBlacklist = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }): Promise<{ entry: BlacklistEntry; notes: string }> => {
-    const { requireOwner } = await import("@/lib/roles.server");
-    const actor = await requireOwner(context.userId);
+    const { requireManager } = await import("@/lib/roles.server");
+    const actor = await requireManager(context.userId);
     const { admin, audit, core } = await deps();
     return core.addToBlacklist(admin, actor, data, audit);
   });
