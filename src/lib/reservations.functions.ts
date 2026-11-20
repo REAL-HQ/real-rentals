@@ -277,6 +277,8 @@ export async function createReservationCore(
     .maybeSingle();
   if (appErr) throw new Error(appErr.message);
   if (!app) throw new Error("Applicant Not Found.");
+  // Never rent to a blacklisted renter (rentals_blacklist_guard refuses it too).
+  await (await import("@/lib/blacklist.server")).assertNotBlacklisted(admin, data.applicationId);
   // Safer: block until approved (no held emails for unapproved drivers).
   const appStatus = String(app.status ?? "").toLowerCase();
   if (!["approved", "active"].includes(appStatus)) {
@@ -348,6 +350,8 @@ export async function createReservationCore(
 
   const { data: inserted, error: insErr } = await admin.from("rentals").insert(insertRow as never).select("id").single();
   if (insErr) {
+    const blacklisted = (await import("@/lib/blacklist.server")).blacklistRefusalFromDbError(insErr.message);
+    if (blacklisted) throw new Error(blacklisted);
     if (/rentals_one_reserved_per_vehicle/i.test(insErr.message)) throw new Error("That Vehicle Is Already Reserved.");
     if (/rentals_one_reserved_per_driver/i.test(insErr.message)) throw new Error("This Person Already Has A Reserved Car.");
     if (/rentals_one_reserved_per_pickup_slot/i.test(insErr.message)) throw new Error("That Pickup Slot Is Already Booked.");

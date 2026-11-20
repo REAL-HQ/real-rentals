@@ -7,7 +7,7 @@ import { listFleetNeedsStaff, resolveFleetNeedsStaff, type FleetNeedsStaffFlag }
  * Shown on a driver profile while FLEET has sent the applicant to staff
  * (needs_staff). Managers clear it once they have decided.
  */
-export function FleetNeedsStaffBanner({ applicationId, canResolve, flags }: { applicationId: string; canResolve: boolean; flags?: FleetNeedsStaffFlag[] | null }) {
+export function FleetNeedsStaffBanner({ applicationId, canResolve, canClearBlacklistMatch = false, flags }: { applicationId: string; canResolve: boolean; /** Owner only: a blacklist match flag is cleared by an Owner. */ canClearBlacklistMatch?: boolean; flags?: FleetNeedsStaffFlag[] | null }) {
   const load = useServerFn(listFleetNeedsStaff);
   const resolve = useServerFn(resolveFleetNeedsStaff);
   const [flag, setFlag] = useState<FleetNeedsStaffFlag | null>(null);
@@ -21,6 +21,8 @@ export function FleetNeedsStaffBanner({ applicationId, canResolve, flags }: { ap
   }, [applicationId, flags, load]);
   if (!flag) return null;
   const handoff = flag.escalationCodes.some((c) => c.startsWith("handoff:"));
+  const blacklistMatch = flag.escalationCodes.includes("blacklist_match");
+  const mayResolve = blacklistMatch ? canClearBlacklistMatch : canResolve;
   async function clear() {
     if (!flag || busy) return;
     setBusy(true);
@@ -38,10 +40,17 @@ export function FleetNeedsStaffBanner({ applicationId, canResolve, flags }: { ap
   return (
     <div role="status" data-fleet-needs-staff className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-[#F5C2BC] bg-[#FDF1EF] px-4 py-3 text-sm text-[#7A1B12]">
       <span className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white">{handoff ? "Handoff" : "Needs Staff"}</span>
-      <span className="min-w-0 flex-1">{handoff ? "Bots Paused, Staff Must Handle: " : "FLEET Sent This To Staff: "}{flag.reason}</span>
-      {canResolve ? (
+      <span className="min-w-0 flex-1">
+        {blacklistMatch
+          ? "Matches A Blacklisted Renter. Never Auto-Approved; An Owner Must Confirm It Is Not The Same Person: "
+          : handoff
+            ? "Bots Paused, Staff Must Handle: "
+            : "FLEET Sent This To Staff: "}
+        {flag.reason}
+      </span>
+      {mayResolve ? (
         <button type="button" disabled={busy} onClick={() => void clear()} className="inline-flex h-8 items-center rounded-md border border-[#D6D6DB] bg-white px-3 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB] disabled:opacity-50">
-          {busy ? "Clearing…" : "Mark Handled"}
+          {busy ? "Clearing…" : blacklistMatch ? "Not The Same Person" : "Mark Handled"}
         </button>
       ) : null}
     </div>

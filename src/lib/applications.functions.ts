@@ -1551,6 +1551,20 @@ export async function approveApplicationCore(args: {
       error: "Application not found",
     };
 
+  // Blacklisted, or matching a blacklisted renter without an Owner's
+  // clearance: never approved, and no agreement goes out. The database
+  // trigger (applications_blacklist_guard) refuses the write regardless.
+  {
+    const { checkBlacklist } = await import("@/lib/blacklist.server");
+    let refusal: string | null = null;
+    try {
+      refusal = (await checkBlacklist(supabaseAdmin, data.id)).message;
+    } catch (e) {
+      refusal = e instanceof Error ? e.message : "Could Not Check The Blacklist. Try Again.";
+    }
+    if (refusal) return { ok: false, agreementSent: false, portalAccount: "deferred", error: refusal };
+  }
+
   // Already approved: do not write status, application.approved, or the
   // one-time Approval Confirmation again. A repeat call manages only the agreement.
   const newlyApproved = app.status !== "approved";
@@ -1604,7 +1618,8 @@ export async function approveApplicationCore(args: {
       },
     });
     if (!approved.ok) {
-      return { ok: false, agreementSent: false, portalAccount: "deferred", error: approved.error };
+      const { blacklistRefusalFromDbError } = await import("@/lib/blacklist.server");
+      return { ok: false, agreementSent: false, portalAccount: "deferred", error: blacklistRefusalFromDbError(approved.error) ?? approved.error };
     }
     // One Stripe customer per renter from approval on, so every later
     // checkout, invoice and subscription uses it. Never blocks approval.

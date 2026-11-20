@@ -49,6 +49,26 @@ export const resolveFleetNeedsStaff = createServerFn({ method: "POST" })
     const { requireManager } = await import("@/lib/roles.server");
     const actor = await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // A flag raised because the applicant matches a blacklisted renter is an
+    // Owner's call: clearing it records "not the same person" (a clearance),
+    // which is what lets approval and rentals through the database guard.
+    const { flagBlacklistIds, clearBlacklistMatch } = await import("@/lib/blacklist.server");
+    const flagRead = await (supabaseAdmin as any)
+      .from("fleet_review_decisions")
+      .select("id,application_id,escalation_codes,assessment")
+      .eq("id", data.id)
+      .maybeSingle();
+    const blacklistIds = flagBlacklistIds(flagRead.data);
+    const codes: string[] = Array.isArray(flagRead.data?.escalation_codes) ? flagRead.data.escalation_codes.map(String) : [];
+    if (codes.includes("blacklist_match")) {
+      if (actor.tier !== "owner") return { ok: false, error: "Only An Owner Can Clear A Blacklist Match." };
+      try {
+        const { logAudit } = await import("@/lib/audit.server");
+        await clearBlacklistMatch(supabaseAdmin, actor, { applicationId: flagRead.data.application_id, blacklistIds, note: data.note || null }, logAudit as any);
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : "Could Not Clear The Blacklist Match." };
+      }
+    }
     const res = await (supabaseAdmin as any)
       .from("fleet_review_decisions")
       .update({ resolved_at: new Date().toISOString(), resolved_by: context.userId, resolution_note: data.note || null })

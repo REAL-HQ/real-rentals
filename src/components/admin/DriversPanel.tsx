@@ -265,6 +265,9 @@ import { FleetNeedsStaffBanner } from "./FleetNeedsStaffBanner";
 import { DANGER_BADGE, DANGER_BADGE_BORDERED } from "@/lib/badge-tone";
 import { driverStatusDisplay } from "@/lib/driver-status-display";
 import { listFleetNeedsStaff, type FleetNeedsStaffFlag } from "@/lib/fleet-review.functions";
+import { listBlacklist } from "@/lib/blacklist.functions";
+import type { BlacklistEntry } from "@/lib/blacklist";
+import { BlacklistCard, BlacklistedBadge } from "@/components/admin/BlacklistCard";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
 import type { ExpiryScope } from "@/lib/document-expiry";
 
@@ -540,6 +543,26 @@ export function DriversPanel({
   const loadNeedsStaff = useServerFn(listFleetNeedsStaff);
   const [needsStaffFlags, setNeedsStaffFlags] = useState<FleetNeedsStaffFlag[] | null>(null);
   const needsStaff = useMemo(() => new Map((needsStaffFlags ?? []).map((f) => [f.applicationId, f])), [needsStaffFlags]);
+  // Active Renter Blacklist entries (renter_blacklist). Empty until installed.
+  const loadBlacklist = useServerFn(listBlacklist);
+  const [blacklistEntries, setBlacklistEntries] = useState<BlacklistEntry[] | null>(null);
+  const blacklisted = useMemo(
+    () => new Map((blacklistEntries ?? []).filter((e) => e.applicationId).map((e) => [e.applicationId as string, e])),
+    [blacklistEntries],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    loadBlacklist()
+      .then((r) => { if (!cancelled) setBlacklistEntries(r.entries); })
+      .catch(() => { if (!cancelled) setBlacklistEntries([]); });
+    return () => { cancelled = true; };
+  }, [loadBlacklist]);
+  const applyBlacklist = useCallback((applicationId: string, entry: BlacklistEntry | null) => {
+    setBlacklistEntries((list) => {
+      const rest = (list ?? []).filter((e) => e.applicationId !== applicationId);
+      return entry ? [...rest, entry] : rest;
+    });
+  }, []);
   useEffect(() => {
     let cancelled = false;
     loadNeedsStaff()
@@ -928,6 +951,8 @@ setDocCounts(requiredDocCounts(rows));
           ? drivers.filter((a) => held.has(a.id))
           : filter === "needs_staff"
             ? drivers.filter((a) => needsStaff.has(a.id))
+          : filter === "blacklisted"
+            ? drivers.filter((a) => blacklisted.has(a.id))
           : filter === "active"
             ? drivers.filter((a) => activeRenters.has(a.id))
             : drivers.filter((a) => a.status === filter && !held.has(a.id))
@@ -959,7 +984,7 @@ setDocCounts(requiredDocCounts(rows));
     return Array.from(byKey.values()).sort((a, b) => {
       return (b.primary.created_at ?? "").localeCompare(a.primary.created_at ?? "");
     });
-  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters, needsStaff]);
+  }, [drivers, filter, contactFilter, docFilter, docExpiry, docRowsById, externalSearch, held, activeRenters, needsStaff, blacklisted]);
 
   const funnelRows = useMemo(() => {
     const q = externalSearch.trim().toLowerCase();
@@ -1157,6 +1182,8 @@ setDocCounts(requiredDocCounts(rows));
         vehicles={vehicles}
         onUpdate={(p) => update(open.id, p)}
         onSaved={(p) => applySaved(open.id, p)}
+        blacklistEntry={blacklisted.get(open.id) ?? null}
+        onBlacklistChanged={(entry) => applyBlacklist(open.id, entry)}
         onReserved={() => setFunnel((current) => current ? { ...current, rows: current.rows.filter((row) => row.id !== open.id) } : current)}
         hasActiveRental={openRentals.has(open.id)}
         onCloseApplication={async (reason, notes) => update(open.id, { status: "closed", closure_reason: reason, closure_notes: notes })}
@@ -1185,13 +1212,14 @@ setDocCounts(requiredDocCounts(rows));
   const FILTER_LABEL: Record<string, string> = {
     all: "All", new: "New", reviewing: "Reviewing", approved: "Approved", waitlist: "Waitlist",
     active: "Active", suspended: "Suspended", declined: "Declined", closed: "Closed",
-    needs_staff: "Needs Staff",
+    needs_staff: "Needs Staff", blacklisted: "Blacklisted",
   };
   const PRIMARY_FILTER_ORDER = ["all", "new", "reviewing", "approved", "waitlist", "active"];
-  const MENU_FILTER_ORDER = ["needs_staff", "suspended", "declined", "closed"];
+  const MENU_FILTER_ORDER = ["needs_staff", "blacklisted", "suspended", "declined", "closed"];
   const filterCount = (s: string) => {
     if (s === "active" && activeReadFailed && activeRenters.size === 0) return "…";
     if (s === "needs_staff") return needsStaffFlags == null ? "…" : drivers.filter((a) => needsStaff.has(a.id)).length;
+    if (s === "blacklisted") return blacklistEntries == null ? "…" : drivers.filter((a) => blacklisted.has(a.id)).length;
     const count = applicationFilterCount(s, drivers, held, activeRenters, waitlistCount);
     return count == null ? "…" : count;
   };
@@ -1469,7 +1497,7 @@ setDocCounts(requiredDocCounts(rows));
                     : waitingMs < 60 * 60_000
                       ? "bg-amber-100 text-amber-800"
                       : DANGER_BADGE;
-                const statusDisplay = driverStatusDisplay(a.status, needsStaff.get(a.id));
+                const statusDisplay = driverStatusDisplay(a.status, needsStaff.get(a.id), blacklisted.get(a.id));
                 const rows = [
                   <tr
                     key={a.id}
@@ -1535,7 +1563,12 @@ setDocCounts(requiredDocCounts(rows));
                         }}
                       >
                         <SelectTrigger aria-label="Application Status" className="h-7 w-auto min-w-[6rem] border-0 bg-transparent p-0 shadow-none hover:opacity-80 focus:ring-0 [&>svg]:hidden [&>span]:!inline-flex">
-                          {held.has(a.id) ? (
+                          {statusDisplay.blacklisted ? (
+                            <span data-blacklisted-pill className="inline-flex items-center gap-1">
+                              <BlacklistedBadge title={statusDisplay.title} />
+                              <ChevronDown className="h-3 w-3 shrink-0" />
+                            </span>
+                          ) : held.has(a.id) ? (
                             <span
                               title={`Underlying stage: ${a.status ?? "—"}`}
                               className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-800"
@@ -1870,6 +1903,8 @@ function DriverDetail({
   hasActiveRental,
   onRentalStarted,
   onCloseApplication,
+  blacklistEntry,
+  onBlacklistChanged,
   initialTab = null,
   onInitialTabConsumed,
 }: {
@@ -1891,6 +1926,9 @@ function DriverDetail({
   hasActiveRental: boolean;
   onRentalStarted?: () => void;
   onCloseApplication?: (reason: ClosureReason, notes: string | null) => Promise<boolean>;
+  /** Active Renter Blacklist entry, or null. */
+  blacklistEntry?: BlacklistEntry | null;
+  onBlacklistChanged?: (entry: BlacklistEntry | null) => void;
   initialTab?: string | null;
   onInitialTabConsumed?: () => void;
   canViewOnboarding?: boolean;
@@ -2704,7 +2742,7 @@ function DriverDetail({
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         {/* Header + record navigation scroll with the profile */}
         <div className="bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">
-          <FleetNeedsStaffBanner applicationId={driver.id} canResolve={isManager || isOwner} />
+          <FleetNeedsStaffBanner applicationId={driver.id} canResolve={isManager || isOwner} canClearBlacklistMatch={isOwner} />
           {/* Identity: its own box, with the record tabs directly below it */}
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex max-lg:flex-wrap">
@@ -2718,6 +2756,7 @@ function DriverDetail({
                   <h2 className="text-[18px] font-semibold text-[#111114] truncate">
                     {driver.full_name ? displayPersonName(driver.full_name) : "Unnamed"}
                   </h2>
+                  {blacklistEntry ? <BlacklistedBadge title={blacklistEntry.reasonLabel} /> : null}
                   <StatusPill status={driver.status} />
                   {driver.gclid && (
                     <span className="text-[10px] font-semibold tracking-[0.04em] text-[#C68A12] bg-[rgba(240,192,64,0.08)] rounded px-1.5 py-0.5">
@@ -2885,6 +2924,13 @@ function DriverDetail({
 
         <div className="px-4 sm:px-8 py-6 max-w-[1400px]">
               <TabsContent value="overview" className="mt-0 space-y-5">
+                <BlacklistCard
+                  applicationId={driver.id}
+                  driverName={driver.full_name ?? null}
+                  isOwner={isOwner}
+                  onNotesChanged={(notes) => onSaved({ notes })}
+                  onBlacklistChanged={onBlacklistChanged}
+                />
                 {APPLICATION_QUICK_REVIEW_ENABLED && isManager && isPendingReviewStatus(driver.status) ? (
                   <ApplicationQuickReview
                     applicationId={driver.id}
@@ -3187,6 +3233,9 @@ function DriverDetail({
               <TabsContent value="notes" className="mt-0">
                 <Card title="Internal Notes" icon={<FileText className="w-4 h-4" />}>
                   <textarea
+                    // Remount when Notes change outside this box (a blacklist
+                    // or warning note was appended), so it shows the saved text.
+                    key={`notes-${(driver.notes ?? "").length}`}
                     defaultValue={driver.notes || ""}
                     rows={6}
                     placeholder="Add internal notes about this driver…"
