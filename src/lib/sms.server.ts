@@ -11,6 +11,7 @@
 // never texted. That check lives here rather than at each call site so a new
 // caller cannot accidentally bypass it.
 
+import { isStaffOrManualMessageKind } from "@/lib/blacklist";
 import { resolveQuoSender, smsProviderStatus } from "@/lib/sms-provider.server";
 import { findDisallowedOutboundUrls, outboundRefusalMessage } from "@/lib/public-app-url";
 import { contactSmsDecision, isDriverContactsTableMissing, samePhone } from "@/lib/driver-contacts";
@@ -165,6 +166,30 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
       step_id: args.stepId ?? null,
     });
     return { ok: false, skipped: true, reason: "opted_out" };
+  }
+
+  // 1b. Blacklisted renters get no automated texts, ever. Staff typing a message
+  //     (staff_message) and alerts that go to staff are not affected; inbound
+  //     texts and calls never come through here.
+  if (!isStaffOrManualMessageKind(args.kind)) {
+    const { isBlacklistSuppressed, BLACKLIST_SUPPRESSED_ERROR } = await import("@/lib/blacklist.server");
+    if (await isBlacklistSuppressed(supabaseAdmin, { applicationId: args.applicationId ?? null, phone: to })) {
+      await logMessage(supabaseAdmin, {
+        channel: "sms",
+        to_address: to,
+        body: args.body,
+        status: "skipped",
+        error: BLACKLIST_SUPPRESSED_ERROR,
+        kind: args.kind ?? null,
+        application_id: args.applicationId ?? null,
+        rental_id: args.rentalId ?? null,
+        vehicle_id: args.vehicleId ?? null,
+        workflow_id: args.workflowId ?? null,
+        enrollment_id: args.enrollmentId ?? null,
+        step_id: args.stepId ?? null,
+      });
+      return { ok: false, skipped: true, reason: "blacklisted" };
+    }
   }
 
   // 2. Ordinary messages require a recorded opt-in on a known applicant.

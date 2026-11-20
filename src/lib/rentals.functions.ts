@@ -367,6 +367,18 @@ export async function activateRentalCore(
       actorIsOwner: actor.tier === "owner",
     });
     if (!decision.ok) return { ok: false, blockers: decision.blockers };
+    // Blacklisted (or an uncleared blacklist match): never overridable.
+    // rentals_blacklist_guard refuses the activation in the database as well.
+    {
+      const { checkBlacklist } = await import("@/lib/blacklist.server");
+      let refusal: string | null = null;
+      try {
+        refusal = (await checkBlacklist(supabaseAdmin, data.applicationId)).message;
+      } catch (e) {
+        refusal = e instanceof Error ? e.message : "Could Not Check The Blacklist. Try Again.";
+      }
+      if (refusal) return { ok: false, blockers: [{ code: "blacklisted", message: refusal } as any] };
+    }
     if (data.suppressWelcome === true && actor.tier !== "owner") {
       return { ok: false, blockers: [{ code: "override_reason_required", message: "Only an Owner can activate without the welcome email and text." } as any] };
     }
@@ -552,6 +564,8 @@ export async function activateRentalCore(
     if (txErr) {
       const msg = String(txErr.message);
       if (/actor_not_manager/.test(msg)) throw new Error("Forbidden");
+      const blacklisted = (await import("@/lib/blacklist.server")).blacklistRefusalFromDbError(msg);
+      if (blacklisted) return { ok: false, blockers: [{ code: "blacklisted", message: blacklisted } as any] };
       const blocker = checkedTxBlocker(msg) ?? activationTxBlocker(msg);
       if (blocker) return { ok: false, blockers: [blocker] };
       throw new Error(msg);

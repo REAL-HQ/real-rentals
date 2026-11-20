@@ -219,6 +219,18 @@ async function buildMergeData(
    * date at all.
    */
   const blockers: AgreementBlocker[] = [];
+  // Never send an agreement to a blacklisted renter, or to an applicant who
+  // matches one until an Owner clears the match.
+  {
+    const { checkBlacklist } = await import("@/lib/blacklist.server");
+    let refusal: string | null = null;
+    try {
+      refusal = (await checkBlacklist(admin, applicationId)).message;
+    } catch (e) {
+      refusal = e instanceof Error ? e.message : "Could Not Check The Blacklist. Try Again.";
+    }
+    if (refusal) blockers.push({ field: "blacklisted", label: "Not Blacklisted", why: refusal });
+  }
   if (!startDate)
     blockers.push({
       field: "contract_start_date",

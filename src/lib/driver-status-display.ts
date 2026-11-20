@@ -1,4 +1,5 @@
 import { formatStatusLabel } from "@/lib/ui-display-labels";
+import { BLACKLISTED_LABEL } from "@/lib/blacklist";
 
 export const NEEDS_STAFF_LABEL = "Needs Staff";
 
@@ -7,6 +8,8 @@ export type DriverStatusDisplay = {
   label: string;
   /** True when the pill is the red Needs Staff state rather than the saved status. */
   needsStaff: boolean;
+  /** True when the pill is the red Blacklisted state (renter_blacklist). */
+  blacklisted?: boolean;
   /** Raw saved application status, unchanged. */
   underlying: string | null;
   /** Hover text explaining the override, or null. */
@@ -21,12 +24,27 @@ export type DriverStatusDisplay = {
  */
 export function driverStatusDisplay(
   status: string | null | undefined,
-  flag: { reason?: string | null } | null | undefined,
+  flag: { reason?: string | null; escalationCodes?: readonly string[] | null } | null | undefined,
+  blacklisted?: { reasonLabel?: string | null } | null,
 ): DriverStatusDisplay {
   const underlying = status ?? null;
+  // Blacklisted outranks every other display, terminal stages included:
+  // staff must never miss it.
+  if (blacklisted) {
+    return {
+      label: BLACKLISTED_LABEL,
+      needsStaff: false,
+      blacklisted: true,
+      underlying,
+      title: `Blacklisted${blacklisted.reasonLabel ? `: ${blacklisted.reasonLabel}` : ""}. Saved status: ${formatStatusLabel(underlying)}`,
+    };
+  }
   const masked = status === "declined" || status === "closed";
   if (flag && !masked) {
-    const reason = flag.reason ? `FLEET: ${flag.reason}` : "FLEET flagged this applicant for staff";
+    const isMatch = (flag.escalationCodes ?? []).includes("blacklist_match");
+    const reason = isMatch
+      ? "Matches a blacklisted renter"
+      : flag.reason ? `FLEET: ${flag.reason}` : "FLEET flagged this applicant for staff";
     return {
       label: NEEDS_STAFF_LABEL,
       needsStaff: true,

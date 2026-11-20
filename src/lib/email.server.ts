@@ -68,7 +68,7 @@ export type SendResult = {
    * "off": the Owner switched it off. "held": the switches could not be read,
    * so it was held (recorded as failed "Held: ...") and may be retried.
    */
-  blocked?: "off" | "held";
+  blocked?: "off" | "held" | "blacklisted";
   retriable?: boolean;
 };
 
@@ -174,6 +174,22 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
       console.error("[email] automation settings unreadable; holding send", { workflow: track?.workflow });
       await recordHeldDelivery(track!.workflow, Array.isArray(to) ? (to[0] ?? "") : to);
       return { ok: false, blocked: "held", retriable: true, error: "Held: automation settings could not be read. Not sent." };
+    }
+  }
+  // Blacklisted renters get no automated email, ever. A staff member writing to
+  // them (staff_message) and internal team notifications are not affected.
+  {
+    const wf = track?.workflow ?? "";
+    if (wf !== "staff_message" && !STAFF_WORKFLOWS.has(wf)) {
+      const recipients = Array.isArray(to) ? to : [to];
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { isBlacklistSuppressed, BLACKLIST_SUPPRESSED_ERROR } = await import("@/lib/blacklist.server");
+      for (const r of recipients) {
+        if (await isBlacklistSuppressed(supabaseAdmin, { email: r })) {
+          console.info("[email] recipient is blacklisted; automated email suppressed", { workflow: wf || null });
+          return { ok: false, blocked: "blacklisted", error: BLACKLIST_SUPPRESSED_ERROR };
+        }
+      }
     }
   }
   const text = htmlToText(html);

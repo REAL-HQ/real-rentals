@@ -44,7 +44,7 @@ describe("one red badge", () => {
     const nameCell = src.slice(src.indexOf("<SourceBadge"), src.indexOf("dupeCount > 0 &&"));
     expect(nameCell).not.toContain("Needs Staff");
     expect(nameCell).not.toContain("data-fleet-needs-staff-pill");
-    expect(src).toContain("driverStatusDisplay(a.status, needsStaff.get(a.id))");
+    expect(src).toContain("driverStatusDisplay(a.status, needsStaff.get(a.id)"); // third arg: blacklist entry (Renter Blacklist)
   });
   test("no one-off red badge classes left in badge components", () => {
     for (const f of ["DriversPanel", "DriverDocExpiry", "OverdueStatus", "MaintenanceDue", "MaintenanceLog", "TeamPanel"]) {
