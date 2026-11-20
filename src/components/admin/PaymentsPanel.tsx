@@ -461,7 +461,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
               <th></th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="[&>tr>td:not([colspan])]:py-3">
             {sorted.map((p) => {
               const d = p.driver_id ? driverMap[p.driver_id] : null;
               const v = p.vehicle_id ? vehicleMap[p.vehicle_id] : null;
