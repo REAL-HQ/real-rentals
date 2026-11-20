@@ -50,7 +50,7 @@ export function BlacklistedBadge({ title }: { title?: string | null }) {
 
 /**
  * Driver profile: Blacklist status, warnings (strikes) and history.
- * Owner: Add To Blacklist / Remove From Blacklist / Void Warning.
+ * Owner / Admin: Add To Blacklist / Remove From Blacklist / Void Warning.
  * Any staff: Log Warning. Every reason note is also added to the renter's Notes.
  */
 export function BlacklistCard({
@@ -176,7 +176,7 @@ export function BlacklistCard({
         <p className="mt-2 text-[12px] font-medium text-rose-800" data-testid="blacklist-matches">
           Matches A Blacklisted Renter On:{" "}
           {[...new Set(profile.matches.flatMap((m) => m.kinds))].map(identifierKindLabel).join(", ")}. Never
-          auto-approved; an Owner must confirm it is not the same person.
+          auto-approved; an Owner or Admin must confirm it is not the same person.
         </p>
       ) : null}
 

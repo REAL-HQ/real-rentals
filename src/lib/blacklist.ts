@@ -11,7 +11,7 @@
  * (public.renter_blacklist) so that approval, activation and agreements keep
  * reading the lifecycle they always read, while the database refuses any
  * approval or rental for a blacklisted person (triggers in the migration).
- * Only an Owner adds or removes; nothing is ever deleted, so history stays.
+ * Only an Owner / Admin adds or removes; nothing is ever deleted, so history stays.
  */
 import { DANGER_BADGE } from "./badge-tone";
 
@@ -394,7 +394,7 @@ export function isStaffOrManualMessageKind(kind: unknown): boolean {
 export function blacklistRefusal(kind: "blacklisted" | "match"): string {
   return kind === "blacklisted"
     ? "This Renter Is Blacklisted. They Cannot Be Approved, Reserved Or Rented To."
-    : "This Applicant Matches A Blacklisted Renter. An Owner Must Review And Clear The Match First.";
+    : "This Applicant Matches A Blacklisted Renter. An Owner Or Admin Must Review And Clear The Match First.";
 }
 
 // ------------------------------------------------------- shapes the UI reads
@@ -446,3 +446,13 @@ export type BlacklistMatchRow = {
   clearedAt: string | null;
   clearedByLabel: string | null;
 };
+
+/**
+ * Who may add / remove blacklist entries, void warnings and clear matches:
+ * Owner and Admin. In this app the Admin role (user_roles.role = 'admin') is the
+ * Owner tier (roles.ts TIER_BY_ROLE), so this is the "owner" tier; Managers
+ * ('team') and Coordinators cannot. Database RLS mirrors it with private.is_owner().
+ */
+export function canManageBlacklist(tier: string | null | undefined): boolean {
+  return tier === "owner";
+}

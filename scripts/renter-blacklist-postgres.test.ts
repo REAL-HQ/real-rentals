@@ -63,7 +63,8 @@ CREATE TABLE public.driver_addresses (id uuid PRIMARY KEY DEFAULT gen_random_uui
 CREATE TABLE public.rentals (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), application_id uuid, driver_id uuid NOT NULL, vehicle_id uuid, status text NOT NULL DEFAULT 'reserved');
 `;
 
-const HEATHER = "36973513-aaaa-4bbb-8ccc-000000000006";
+const HEATHER = "f8593900-aaaa-4bbb-8ccc-000000000006";
+const HEATHER_RENTAL = "36973513-480e-4423-8129-000000000006";
 const OWNER = "0f0f0f0f-0000-4000-8000-000000000001";
 const HEATHER_USER = "0f0f0f0f-0000-4000-8000-000000000002";
 
@@ -82,7 +83,7 @@ beforeAll(() => {
         INSERT INTO public.user_roles (user_id, role) VALUES ('${OWNER}', 'admin');
         INSERT INTO public.applications (id, full_name, email, phone, address, zip, license_number, status, user_id, notes)
         VALUES ('${HEATHER}', 'Heather Bell', 'Renter6@Example.com', '(555) 010-0106', '12 Pine Street Apt 3', '33610', 'b100-200-30-400-0', 'active', '${HEATHER_USER}', 'Existing note.');
-        INSERT INTO public.rentals (application_id, driver_id, status) VALUES ('${HEATHER}', '${HEATHER_USER}', 'active');`);
+        INSERT INTO public.rentals (id, application_id, driver_id, status) VALUES ('${HEATHER_RENTAL}', '${HEATHER}', '${HEATHER_USER}', 'active');`);
 });
 afterAll(() => {
   if (skip) return;
@@ -126,6 +127,8 @@ describe.skipIf(skip)("renter blacklist in Postgres", () => {
     expect(notes.startsWith("Existing note.\n\nBlacklisted Nov 19, 2026: rent unpaid 2+ days ($350)")).toBe(true);
     expect(notes.split("Blacklisted Nov 19, 2026").length).toBe(2);
     expect(must(`SELECT count(*) FROM public.audit_log WHERE action = 'renter.blacklisted'`)).toBe("1");
+    expect(must(`SELECT note FROM public.renter_blacklist WHERE application_id = '${HEATHER}'`)).toMatch(/Never signed a rental agreement\. \$600 unpaid incl\. \$150 key\.$/);
+    expect(notes).not.toContain("$600 unpaid");
   });
 
   test("proposed SQL skips the note when the identical note already exists", () => {

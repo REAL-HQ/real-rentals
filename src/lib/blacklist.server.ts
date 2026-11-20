@@ -3,8 +3,9 @@
  *
  * supabaseAdmin bypasses RLS, so the role check happens in the server
  * functions (blacklist.functions.ts) AND the actor's tier is checked again
- * here: Owner to add or remove, or to clear a match; any staff to log a
- * warning (strike); Owner to void one. The database triggers in
+ * here: Owner / Admin to add or remove, or to clear a match; any staff to log a
+ * warning (strike); Owner / Admin to void one. (The Admin role is the Owner
+ * tier in roles.ts; Managers and Coordinators cannot.) The database triggers in
  * 20261120040000_renter_blacklist.sql refuse approvals and rentals for a
  * blacklisted person whatever path a caller takes; checkBlacklist() below is
  * only the friendly pre-check so staff see a sentence, not a Postgres error.
@@ -14,6 +15,7 @@
  */
 import {
   BLACKLIST_MATCH_CODE,
+  canManageBlacklist,
   appendNote,
   blacklistBlockers,
   blacklistNotesLine,
@@ -171,7 +173,7 @@ async function appendToNotes(admin: any, app: { id: string; notes: string | null
 }
 
 function requireOwnerTier(actor: BlacklistActor, what: string) {
-  if (actor.tier !== "owner") throw new Error(`Only An Owner Can ${what}.`);
+  if (!canManageBlacklist(actor.tier)) throw new Error(`Only An Owner Or Admin Can ${what}.`);
 }
 
 export async function addToBlacklist(
@@ -355,7 +357,7 @@ export function flagBlacklistIds(flag: { escalation_codes?: unknown; assessment?
 }
 
 /**
- * An Owner decided a match is NOT the blacklisted person: record a clearance
+ * An Owner / Admin decided a match is NOT the blacklisted person: record a clearance
  * for each matched entry, so the approval and rental triggers let this
  * applicant through. The flag itself is resolved by the caller.
  */
@@ -462,7 +464,7 @@ export async function listBlacklistMatches(
 }
 
 /**
- * Owner clears a waitlist / website-lead match ("Not The Same Person"). Application
+ * Owner / Admin clears a waitlist / website-lead match ("Not The Same Person"). Application
  * matches are cleared through the needs_staff flag (clearBlacklistMatch), which
  * also records the clearance that unblocks approval.
  */

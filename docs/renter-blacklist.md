@@ -18,10 +18,10 @@ Requested by Dolmar Nov 19 2026 (10:50, 10:51 and 11:07 PM ET). Migration `supab
 - Smoking: two logged Smoking warnings.
 - Returning Car Dirty: two logged Returned Car Dirty warnings.
 
-Any staff member logs a warning (Log Warning on the driver profile). Only an Owner voids one.
+Any staff member logs a warning (Log Warning on the driver profile). Only an Owner / Admin voids one.
 
 ## Who can do what
-- Owner: Add To Blacklist, Remove From Blacklist, Void Warning, clear a blacklist match ("Not The Same Person").
+- Owner / Admin (user role `admin`, the Owner tier): Add To Blacklist, Remove From Blacklist, Void Warning, clear a blacklist match ("Not The Same Person"). Confirmed by Dolmar Nov 20 2026.
 - Manager / Coordinator: see the list and badges, Log Warning.
 
 Every add needs a reason, a note and a date, and records who added it. The note is also appended to the renter's Notes (skipped when the identical text is already there). Removal records who, when and why; entries are never deleted.
@@ -54,7 +54,7 @@ Any new or edited application, extra phone/email/address on a driver, signed agr
 
 Waitlist signups and website leads only carry phone and email, so those two are compared.
 
-A match is recorded in `renter_blacklist_matches` (which fields, which blacklisted person) and shown as a red alert at the top of the Drivers list and on the driver profile. Applications also get Needs Staff with reason "blacklist match: <Fields> (matches <Name>)", are never auto-approved, and approval/rentals stay refused until an Owner clicks Not The Same Person (recorded with a reason). Waitlist rows are marked for review. Nothing is declined automatically, and matched (linked) people still receive normal messages; only the blacklisted person is silenced.
+A match is recorded in `renter_blacklist_matches` (which fields, which blacklisted person) and shown as a red alert at the top of the Drivers list and on the driver profile. Applications also get Needs Staff with reason "blacklist match: <Fields> (matches <Name>)", are never auto-approved, and approval/rentals stay refused until an Owner / Admin clicks Not The Same Person (recorded with a reason). Waitlist rows are marked for review. Nothing is declined automatically, and matched (linked) people still receive normal messages; only the blacklisted person is silenced.
 
 When the blacklisted person's own record gains a new detail (new phone, address, signed IP), it is added to their match list and existing records are re-checked. Blacklisting someone also checks everyone already on file.
 

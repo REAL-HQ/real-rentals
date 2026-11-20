@@ -7,7 +7,7 @@ import { listFleetNeedsStaff, resolveFleetNeedsStaff, type FleetNeedsStaffFlag }
  * Shown on a driver profile while FLEET has sent the applicant to staff
  * (needs_staff). Managers clear it once they have decided.
  */
-export function FleetNeedsStaffBanner({ applicationId, canResolve, canClearBlacklistMatch = false, flags }: { applicationId: string; canResolve: boolean; /** Owner only: a blacklist match flag is cleared by an Owner. */ canClearBlacklistMatch?: boolean; flags?: FleetNeedsStaffFlag[] | null }) {
+export function FleetNeedsStaffBanner({ applicationId, canResolve, canClearBlacklistMatch = false, flags }: { applicationId: string; canResolve: boolean; /** Owner / Admin only: a blacklist match flag is cleared by an Owner or Admin. */ canClearBlacklistMatch?: boolean; flags?: FleetNeedsStaffFlag[] | null }) {
   const load = useServerFn(listFleetNeedsStaff);
   const resolve = useServerFn(resolveFleetNeedsStaff);
   const [flag, setFlag] = useState<FleetNeedsStaffFlag | null>(null);
@@ -42,7 +42,7 @@ export function FleetNeedsStaffBanner({ applicationId, canResolve, canClearBlack
       <span className="rounded-full bg-[#D03020] px-2 py-0.5 text-[11px] font-semibold text-white">{handoff ? "Handoff" : "Needs Staff"}</span>
       <span className="min-w-0 flex-1">
         {blacklistMatch
-          ? "Matches A Blacklisted Renter. Never Auto-Approved; An Owner Must Confirm It Is Not The Same Person: "
+          ? "Matches A Blacklisted Renter. Never Auto-Approved; An Owner Or Admin Must Confirm It Is Not The Same Person: "
           : handoff
             ? "Bots Paused, Staff Must Handle: "
             : "FLEET Sent This To Staff: "}

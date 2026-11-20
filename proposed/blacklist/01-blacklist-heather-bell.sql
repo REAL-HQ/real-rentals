@@ -28,12 +28,15 @@ DECLARE
   n int;
   owner_id uuid;
   note_text constant text := 'Blacklisted Nov 19, 2026: rent unpaid 2+ days ($350), ignored multiple contacts, kill switch bypassed/drove while disabled, vehicle CZ07DA repossessed Nov 19 with spare key; main key not returned ($150 replacement). Never signed a rental agreement.';
+  -- The blacklist record's own note adds the balance (Dolmar Nov 20 2026); profile Notes keep the exact text above.
+  record_note constant text := note_text || ' $600 unpaid incl. $150 key.';
 BEGIN
-  SELECT count(*), min(a.id::text)::uuid INTO n, app_id
-  FROM public.applications a
-  WHERE a.id::text LIKE '36973513%' AND a.deleted_at IS NULL AND a.full_name ILIKE '%heather%' AND a.full_name ILIKE '%bell%';
+  -- 36973513 is her rental id (RR-006); the blacklist is on the application behind it.
+  SELECT count(DISTINCT a.id), min(a.id::text)::uuid INTO n, app_id
+  FROM public.rentals r JOIN public.applications a ON a.id = r.application_id
+  WHERE r.id::text LIKE '36973513%' AND a.deleted_at IS NULL AND a.full_name ILIKE '%heather%' AND a.full_name ILIKE '%bell%';
   IF n <> 1 THEN
-    RAISE EXCEPTION 'Expected exactly one live application 36973513… for Heather Bell, found %', n;
+    RAISE EXCEPTION 'Expected exactly one live Heather Bell application behind rental 36973513…, found %', n;
   END IF;
 
   -- The Owner account (role admin). Prefer Dolmar's login; otherwise the earliest Owner.
@@ -45,7 +48,7 @@ BEGIN
 
   IF NOT EXISTS (SELECT 1 FROM public.renter_blacklist b WHERE b.application_id = app_id AND b.removed_at IS NULL) THEN
     INSERT INTO public.renter_blacklist (application_id, reason_code, note, blacklisted_on, added_by, added_by_label)
-    VALUES (app_id, 'vehicle_repossessed', note_text, DATE '2026-11-19', owner_id, 'Dolmar Cross (Owner)');
+    VALUES (app_id, 'vehicle_repossessed', record_note, DATE '2026-11-19', owner_id, 'Dolmar Cross (Owner)');
 
     INSERT INTO public.audit_log (actor_user_id, actor_role, action, entity_type, entity_id, summary, metadata)
     VALUES (owner_id, 'owner', 'renter.blacklisted', 'application', app_id::text,
@@ -63,10 +66,12 @@ END $$;
 -- Check before COMMIT:
 SELECT b.id, b.application_id, b.full_name, b.reason_code, b.blacklisted_on, b.added_by_label,
        (SELECT count(*) FROM public.renter_blacklist_identifiers i WHERE i.blacklist_id = b.id) AS identifiers
-FROM public.renter_blacklist b WHERE b.application_id::text LIKE '36973513%' AND b.removed_at IS NULL;
+FROM public.renter_blacklist b
+WHERE b.application_id IN (SELECT r.application_id FROM public.rentals r WHERE r.id::text LIKE '36973513%') AND b.removed_at IS NULL;
 
 COMMIT;
 
 -- Rollback (records a removal; entries are never deleted):
 -- UPDATE public.renter_blacklist SET removed_at = now(), removed_by_label = 'Dolmar Cross (Owner)',
---   removal_reason = 'Entered in error' WHERE application_id::text LIKE '36973513%' AND removed_at IS NULL;
+--   removal_reason = 'Entered in error'
+--   WHERE application_id IN (SELECT application_id FROM public.rentals WHERE id::text LIKE '36973513%') AND removed_at IS NULL;

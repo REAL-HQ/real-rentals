@@ -1,3 +1,4 @@
+import { canManageBlacklist } from "@/lib/blacklist";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -61,7 +62,7 @@ export const resolveFleetNeedsStaff = createServerFn({ method: "POST" })
     const blacklistIds = flagBlacklistIds(flagRead.data);
     const codes: string[] = Array.isArray(flagRead.data?.escalation_codes) ? flagRead.data.escalation_codes.map(String) : [];
     if (codes.includes("blacklist_match")) {
-      if (actor.tier !== "owner") return { ok: false, error: "Only An Owner Can Clear A Blacklist Match." };
+      if (!canManageBlacklist(actor.tier)) return { ok: false, error: "Only An Owner Or Admin Can Clear A Blacklist Match." };
       try {
         const { logAudit } = await import("@/lib/audit.server");
         await clearBlacklistMatch(supabaseAdmin, actor, { applicationId: flagRead.data.application_id, blacklistIds, note: data.note || null }, logAudit as any);

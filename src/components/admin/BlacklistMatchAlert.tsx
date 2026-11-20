@@ -14,7 +14,7 @@ const SOURCE_LABEL: Record<BlacklistMatchRow["sourceTable"], string> = {
 /**
  * Loud red alert: this person (or these records) match a blacklisted renter.
  * Shows which fields matched and who they matched. Never declines anything:
- * staff decide. Only an Owner can clear ("Not The Same Person").
+ * staff decide. Only an Owner / Admin can clear ("Not The Same Person").
  *
  * - With applicationId: the matches for that one driver profile.
  * - Without: every open match (Drivers list header), including waitlist and website leads.
@@ -54,7 +54,7 @@ export function BlacklistMatchAlert({ applicationId, canClear, onOpenApplication
         <ShieldAlert className="h-4 w-4 text-rose-700" aria-hidden />
         {applicationId ? "Blacklist Match" : `${rows.length} Blacklist ${rows.length === 1 ? "Match Needs" : "Matches Need"} Review`}
       </div>
-      <p className="mb-2 text-xs text-rose-800">Never Auto-Approved. Staff Can Still Talk To Them; An Owner Decides Whether It Is The Same Person.</p>
+      <p className="mb-2 text-xs text-rose-800">Never Auto-Approved. Staff Can Still Talk To Them; An Owner Or Admin Decides Whether It Is The Same Person.</p>
       <ul className="space-y-1.5">
         {rows.map((r) => (
           <li key={r.id} className="flex flex-wrap items-center gap-2">

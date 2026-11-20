@@ -265,14 +265,14 @@ describe("blocking", () => {
     // FLEET's approval is the same core (approveApplicationCore) and an open needs_staff blocks it.
     expect(src("fleet-review.server.ts")).toMatch(/approveApplicationCore/);
   });
-  test("a blacklist-match flag is cleared only by an Owner and records clearances", async () => {
+  test("a blacklist-match flag is cleared only by an Owner / Admin and records clearances", async () => {
     expect(flagBlacklistIds({ escalation_codes: ["blacklist_match"], assessment: { blacklist_match: { blacklist_ids: ["b1", "b2"] } } })).toEqual(["b1", "b2"]);
     expect(flagBlacklistIds({ escalation_codes: ["other"], assessment: { blacklist_match: { blacklist_ids: ["b1"] } } })).toEqual([]);
     const { admin, db } = fakeAdmin(seed());
     await clearBlacklistMatch(admin, owner, { applicationId: APP, blacklistIds: ["b1"], note: "Different person, same building" }, audit);
     expect(db.renter_blacklist_clearances[0]).toMatchObject({ application_id: APP, blacklist_id: "b1", cleared_by: "u-owner" });
     const fn = readFileSync(new URL("../src/lib/fleet-review.functions.ts", import.meta.url), "utf8");
-    expect(fn).toMatch(/Only An Owner Can Clear A Blacklist Match/);
+    expect(fn).toMatch(/Only An Owner Or Admin Can Clear A Blacklist Match/);
   });
   test("no renter phone numbers or emails in the code added for this feature", () => {
     for (const f of ["../src/lib/blacklist.ts", "../src/lib/blacklist.server.ts", "../src/components/admin/BlacklistCard.tsx", "../src/components/admin/BlacklistMatchAlert.tsx", "../supabase/migrations/20261120040000_renter_blacklist.sql", "../proposed/blacklist/01-blacklist-heather-bell.sql"]) {
@@ -383,7 +383,7 @@ describe("re-entry alerts", () => {
     const s = seed();
     s.renter_blacklist_matches.push({ id: "m1", blacklist_id: "b1", source_table: "waitlist", source_id: "w1", matched_kinds: ["phone"], matched_name: "Heather Bell", created_at: "2026-11-19T00:00:00Z", cleared_at: null });
     const { admin, db } = fakeAdmin(s);
-    await expect(clearLeadBlacklistMatch(admin, manager, { matchId: "m1", note: "x" }, audit)).rejects.toThrow(/Owner/);
+    await expect(clearLeadBlacklistMatch(admin, manager, { matchId: "m1", note: "x" }, audit)).rejects.toThrow(/Owner Or Admin/);
     await clearLeadBlacklistMatch(admin, owner, { matchId: "m1", note: "Her sister, different phone owner" }, audit);
     expect(db.renter_blacklist_matches[0]).toMatchObject({ cleared_by: "u-owner", clear_note: "Her sister, different phone owner" });
     expect(db.renter_blacklist_matches[0].cleared_at).toBeTruthy();
@@ -405,5 +405,21 @@ describe("re-entry alerts", () => {
     const panel = readFileSync(new URL("../src/components/admin/DriversPanel.tsx", import.meta.url), "utf8");
     expect(panel).toMatch(/<BlacklistMatchAlert applicationId=\{driver\.id\}/);
     expect(panel).toMatch(/<BlacklistMatchAlert\s+canClear=\{isOwner\}/);
+  });
+});
+
+describe("Owner / Admin permission (Dolmar Nov 20 2026)", () => {
+  test("the admin role is the tier that may manage the blacklist; Managers and Coordinators may not", async () => {
+    const { TIER_BY_ROLE } = await import("../src/lib/roles");
+    const { canManageBlacklist } = await import("../src/lib/blacklist");
+    expect(canManageBlacklist(TIER_BY_ROLE.admin)).toBe(true);
+    expect(canManageBlacklist(TIER_BY_ROLE.team)).toBe(false);
+    expect(canManageBlacklist(TIER_BY_ROLE.coordinator)).toBe(false);
+    expect(canManageBlacklist(null)).toBe(false);
+    const adminActor = { userId: "u-admin", email: "admin@example.com", role: "admin", tier: TIER_BY_ROLE.admin as "owner" };
+    const { admin } = fakeAdmin(seed());
+    const r = await addToBlacklist(admin, adminActor, { applicationId: APP, reason: "vehicle_repossessed", note: "Repossessed, keys missing", date: "2026-11-19" }, audit);
+    expect(JSON.stringify(r.entry)).toContain("(Owner)");
+    await expect(addToBlacklist(fakeAdmin(seed()).admin, manager, { applicationId: APP, reason: "vehicle_repossessed", note: "Repossessed, keys missing", date: "2026-11-19" }, audit)).rejects.toThrow("Only An Owner Or Admin Can Blacklist A Renter.");
   });
 });

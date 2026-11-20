@@ -6,7 +6,8 @@ import type { BlacklistEntry, BlacklistProfile, StrikeEntry } from "@/lib/blackl
 
 /**
  * Staff side of the Renter Blacklist. Reading is any staff tier; adding,
- * removing, voiding a warning and clearing a match are Owner only (checked
+ * removing, voiding a warning and clearing a match are Owner / Admin only
+ * (role admin = Owner tier) (checked
  * here AND in blacklist.server.ts, because supabaseAdmin bypasses RLS).
  * Logging a warning (strike) is any staff tier.
  */
