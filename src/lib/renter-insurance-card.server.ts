@@ -200,11 +200,9 @@ export async function fileRenterInsuranceCard(sb: Admin, itemId: string, deps: F
     }
     const docId = ins.data.id as string;
 
-    // History: older current cards point at the new one. A staff-verified
-    // card stays current until staff review this one (insurance-review-hold).
-    const older = await sb.from("documents").select("id,review_status").eq("driver_id", appId).eq("category", RENTER_INSURANCE_CATEGORY).eq("is_current", true).neq("id", docId);
-    const toSupersede = ((older.data ?? []) as any[]).filter((d) => d.review_status !== "verified").map((d) => d.id);
-    if (toSupersede.length) await sb.from("documents").update({ is_current: false, superseded_by: docId }).in("id", toSupersede);
+    // Nothing is superseded: every insurance card stays active (one per
+    // vehicle, one per swap). Staff archive the ones that no longer apply.
+    const toSupersede: string[] = [];
 
     // The Fleet Inbox item says where it went (staff only).
     const note = `Filed to the renter's Documents as ${RENTER_INSURANCE_LABEL} (not reviewed).`;

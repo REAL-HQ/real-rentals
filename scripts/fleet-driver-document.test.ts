@@ -160,18 +160,18 @@ describe("FLEET driver-document upload", () => {
     expect(db.state.documents.find((d: Row) => d.id === "o1")).toMatchObject({ is_current: true, superseded_by: null });
   });
 
-  test("a staff-verified current file is never replaced; an unreviewed one is", async () => {
+  test("a second file is added beside a verified one and an unreviewed one; nothing is superseded", async () => {
     const ver = { id: "lic", driver_id: A, category: "license_front", kind: "license_front", is_current: true, review_status: "verified" };
     const db = fakeDb(seed([ver]));
     const r = await call(db, base({ category: "license_front", content_base64: b64(JPG), file_name: "lic.jpg", label: null }));
-    expect(r.status).toBe(409);
-    expect(r.json.reason).toBe("verified_on_file");
-    expect(db.objects.size).toBe(0);
+    expect(r.status).toBe(201);
+    expect(db.state.documents.find((d: Row) => d.id === "lic")).toMatchObject({ is_current: true, review_status: "verified" });
     const db2 = fakeDb(seed([{ ...ver, review_status: "uploaded" }]));
     const r2 = await call(db2, base({ category: "license_front", content_base64: b64(JPG), file_name: "lic.jpg", expires_at: "2029-01-21" }));
     expect(r2.status).toBe(201);
-    expect(db2.state.documents.find((d: Row) => d.id === "lic")).toMatchObject({ is_current: false, superseded_by: r2.json.document_id });
-    expect(db2.state.documents.find((d: Row) => d.id === r2.json.document_id)).toMatchObject({ expires_at: "2029-01-21", mime_type: "image/jpeg", review_status: "uploaded" });
+    expect(db2.state.documents.find((d: Row) => d.id === "lic")).toMatchObject({ is_current: true });
+    expect(db2.state.documents.find((d: Row) => d.id === "lic")!.superseded_by ?? null).toBeNull();
+    expect(db2.state.documents.find((d: Row) => d.id === r2.json.document_id)).toMatchObject({ is_current: true, expires_at: "2029-01-21", mime_type: "image/jpeg", review_status: "uploaded" });
   });
 
   test("types sniffed from bytes: PDF JPEG PNG WebP HEIC accepted, others refused", async () => {

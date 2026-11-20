@@ -129,7 +129,21 @@ export type ReviewItem = { code: string; message: string };
 
 export type FleetReviewAssessment = {
   submitted: boolean;
-  docs: { have: string[]; missing_required: string[]; missing_advisory: string[]; unreviewed: string[]; rejected: string[] };
+  docs: {
+    have: string[];
+    missing_required: string[];
+    missing_advisory: string[];
+    unreviewed: string[];
+    rejected: string[];
+    /**
+     * Every active file, counted per section. A section can hold several files
+     * (two pay stubs, a gig profile per app); FLEET reviews each one, not just
+     * the newest. `unreviewed_files` is the files nobody has looked at yet,
+     * even in a section where a different file is already verified.
+     */
+    files: Record<string, { active: number; verified: number; rejected: number; unreviewed: number }>;
+    unreviewed_files: Record<string, number>;
+  };
   hard_blockers: ReviewItem[];
   escalations: ReviewItem[];
   /** Facts worth knowing that do not, by default, need staff. */
@@ -184,10 +198,16 @@ export function docPicture(docs: readonly FleetDoc[], app?: Record<string, any> 
   const have = new Set<string>();
   const reviewed = new Set<string>();
   const rejected = new Set<string>();
+  const files: Record<string, { active: number; verified: number; rejected: number; unreviewed: number }> = {};
   for (const d of docs) {
     if (d?.is_current === false) continue;
     const c = String(d?.category ?? "").trim();
     if (!c) continue;
+    const f = (files[c] ??= { active: 0, verified: 0, rejected: 0, unreviewed: 0 });
+    f.active++;
+    if (d.review_status === "rejected") f.rejected++;
+    else if (d.review_status === "verified") f.verified++;
+    else f.unreviewed++;
     if (d.review_status === "rejected") { rejected.add(c); continue; }
     have.add(c);
     // A trip-history / gig earnings screenshot is income proof (t306s1653).
@@ -199,7 +219,9 @@ export function docPicture(docs: readonly FleetDoc[], app?: Record<string, any> 
   const missing_required = hard.filter((c) => !have.has(c));
   const missing_advisory = advisory.filter((c) => !have.has(c));
   const unreviewed = [...hard].filter((c) => have.has(c) && !reviewed.has(c) && !(c === "income" && [...reviewed].some((r) => requirementCategory(r) === "income")));
-  return { have: [...have].sort(), missing_required: [...missing_required], missing_advisory: [...missing_advisory], unreviewed, rejected: [...rejected].sort() };
+  const unreviewed_files: Record<string, number> = {};
+  for (const [c, f] of Object.entries(files)) if (f.unreviewed > 0) unreviewed_files[c] = f.unreviewed;
+  return { have: [...have].sort(), missing_required: [...missing_required], missing_advisory: [...missing_advisory], unreviewed, rejected: [...rejected].sort(), files, unreviewed_files };
 }
 
 /**
@@ -279,6 +301,8 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
   // Missing income proof is requested from the applicant (missing-documents
   // outreach), not sent to staff (Dolmar, t298s1611).
   for (const c of docs.missing_advisory) note(`requested_${c}`, `Advisory document not on file yet (requested from the applicant): ${c.replace(/_/g, " ")}.`);
+  const extraUnreviewed = Object.entries(docs.unreviewed_files).filter(([c]) => !docs.unreviewed.includes(c));
+  if (extraUnreviewed.length) note("docs_files_unreviewed", `Files in a section that has another file already verified, not yet reviewed: ${extraUnreviewed.map(([c, n]) => `${c.replace(/_/g, " ")} (${n})`).join(", ")}. Review every file in a section.`);
   if (docs.unreviewed.length) note("docs_unreviewed", `Not yet reviewed by staff: ${docs.unreviewed.join(", ")}.`);
   if (input.licenseReading?.applied?.length) note("license_read_by_fleet", `${LICENSE_READING_LABEL} (${input.licenseReading.applied.join(", ")}); not verified, the field rep confirms the license at pickup.`);
   if (age === null) flag("no_dob", "No date of birth on file.");

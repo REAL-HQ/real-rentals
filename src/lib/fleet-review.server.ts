@@ -214,6 +214,9 @@ export async function buildReviewPacket(admin: Admin, leadId: string, opts: { in
     })),
     answers: { ...answers, license_number_masked: maskLicense(license_number) },
     documents,
+    // Every active file, counted per section, so a section with two files is
+    // never read as one. Review each file in `documents`, not the newest only.
+    documents_by_category: assessment.docs.files,
     // What FLEET read off the license photo (label "Read by FLEET from license
     // photo"). Never a verification: the field rep confirms at pickup.
     license_reading: licenseReading,

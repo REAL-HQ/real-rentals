@@ -136,3 +136,103 @@ export async function replaceApplicantDocumentCore(
   });
   return { ok: true, replaced };
 }
+
+const KIND_CATEGORY: Record<Exclude<ApplicantDocKind, "trip_history">, { category: string; bucket: string }> = {
+  license: { category: "license_front", bucket: "license-uploads" },
+  insurance: { category: "insurance", bucket: "license-uploads" },
+  gig_profile: { category: "gig_profile", bucket: "profile-screenshots" },
+  income: { category: "income", bucket: "license-uploads" },
+};
+
+export type AddDeps = ReplaceDeps & {
+  register?: (admin: Admin, args: Record<string, unknown>) => Promise<unknown>;
+};
+
+/**
+ * Add another file to a section without touching the ones already there.
+ *
+ * Replace swaps the file the application column names. Add keeps it and files
+ * the new one beside it as a second active document, so an applicant can send
+ * two pay stubs or a gig profile for each app and staff (and FLEET) see all of
+ * them. The first file in an empty section still goes in the column, so the
+ * application itself keeps pointing at a main file. Trip history is already a
+ * list and takes the same path as before.
+ */
+export async function addApplicantDocumentCore(
+  admin: Admin,
+  applicationId: string,
+  input: { kind: ApplicantDocKind; path: string },
+  deps: AddDeps = {},
+): Promise<{ ok: true; added: true; asPrimary: boolean }> {
+  if (!isIssuedUploadPath(applicationId, input.path)) {
+    throw new Error("That file reference is not one we issued.");
+  }
+  if (input.kind === "trip_history") {
+    await replaceApplicantDocumentCore(admin, applicationId, input, deps);
+    return { ok: true, added: true, asPrimary: false };
+  }
+  const { data: app, error } = await admin
+    .from("applications")
+    .select("id,status,user_id,full_name,license_expiration,license_photo_url,insurance_doc_url,profile_screenshot_url,income_proof_url,trip_screenshots")
+    .eq("id", applicationId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!app) throw new Error("Application not found");
+  const status = (app.status as string | null) ?? null;
+  if (!canUploadBeforePickupStatus(status)) throw new Error(DOC_REPLACE_CLOSED_MESSAGE);
+  const pickedUp = deps.pickedUp ?? (await import("@/lib/portal-pickup-gate.server")).applicationPickedUp;
+  if (await pickedUp(admin, applicationId, status)) throw new Error(DOC_REPLACE_LOCKED_MESSAGE);
+
+  const column = DOC_KIND_COLUMN[input.kind];
+  const { category, bucket } = KIND_CATEGORY[input.kind];
+  const label = DOC_KIND_LABEL[input.kind];
+  const asPrimary = !app[column];
+  const patch: Record<string, unknown> = {};
+  if (asPrimary) {
+    patch[column] = input.path;
+    const { error: upErr } = await admin.from("applications").update(patch).eq("id", applicationId).eq("status", status);
+    if (upErr) throw new Error(upErr.message);
+  }
+  if (asPrimary) {
+    const sync = deps.sync ?? (await import("@/lib/documents.functions")).syncApplicationUploads;
+    await sync(admin, { ...app, ...patch }).catch((e: unknown) => console.error("[documents] secure-link document sync failed", e));
+  } else {
+    const register = deps.register ?? (await import("@/lib/documents.functions")).registerDocument;
+    await register(admin, {
+      applicationId,
+      category,
+      bucket,
+      path: input.path,
+      fileName: input.path.split("/").pop() ?? null,
+      label: `Additional ${label}`,
+      uploadedBy: (app.user_id as string | null) ?? null,
+      uploadedByRole: "driver",
+    });
+  }
+
+  const who = String(app.full_name ?? "").trim() || "An applicant";
+  await admin
+    .from("notifications")
+    .insert({
+      kind: "document",
+      title: "Document Added",
+      body: `${who} added another ${label} file through their secure link. Review it on their profile.`,
+      read: false,
+      channels: ["in_app"],
+    })
+    .then(() => {}, () => {});
+  const audit =
+    deps.audit ??
+    (async (entry: Record<string, unknown>) => {
+      const { logAudit } = await import("@/lib/audit.server");
+      await logAudit(null, entry as any);
+    });
+  await audit({
+    action: "application.document_added",
+    summary: `Another ${label} file added through the secure link`,
+    entityType: "application",
+    entityId: applicationId,
+    metadata: { kind: input.kind, status, source: "secure_link", primary: asPrimary },
+  });
+  return { ok: true, added: true, asPrimary };
+}

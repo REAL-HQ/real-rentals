@@ -63,13 +63,31 @@ export function driverCanUploadCategory(category: string): boolean {
 }
 
 /**
- * Categories where several files are current at once.
- *
- * A licence has one right answer, so a new one supersedes the old. Trip
- * history is a set — an applicant sends four screenshots of four weeks — and
- * superseding within it destroys the evidence it exists to hold.
+ * Categories that stay single-slot. Agreements and rental applications are
+ * filed by eSign or staff, one record each; a signed agreement is immutable
+ * and nothing else may stand in for it.
  */
-export const MULTI_FILE_CATEGORIES: readonly string[] = ["trip_history", "other"];
+export const SINGLE_SLOT_CATEGORIES: readonly string[] = ["rental_application", "agreement"];
+
+/**
+ * Categories where several files are active at once: every other category.
+ *
+ * Income proof, gig profile, license front and back, insurance, insurance
+ * quote, screening, trip history, registration-type and other documents all
+ * take more than one file (two pay stubs, a gig profile per app, a card per
+ * vehicle). Uploading a second file never supersedes the first. A file leaves
+ * the active list only when staff archive it, or replace it on purpose
+ * (confirmDocumentUpload with replacesDocumentId). Readiness treats a section
+ * as satisfied when any active file in it is present and not rejected; FLEET
+ * is shown every active file.
+ */
+export const MULTI_FILE_CATEGORIES: readonly string[] = DOC_CATEGORIES.map((c) => c.key as string).filter(
+  (k) => !SINGLE_SLOT_CATEGORIES.includes(k),
+);
+
+export function isMultiFileCategory(category: string): boolean {
+  return MULTI_FILE_CATEGORIES.includes(category);
+}
 
 export type DocCategory = (typeof DOC_CATEGORIES)[number]["key"];
 
@@ -248,7 +266,7 @@ export async function registerDocument(
     uploadedByRole?: string;
     visibility?: string[];
   },
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; created?: boolean } | null> {
   const { data: seen } = await admin
     .from("documents")
     .select("id,storage_bucket,category,is_current,superseded_by")
@@ -277,9 +295,19 @@ export async function registerDocument(
       patch.kind = args.category;
       if (args.label) patch.label = args.label;
     }
-    if (seen.is_current === false) {
-      patch.is_current = true;
-      patch.superseded_by = null;
+    // Only a row demoted by a mis-filing is restored: the row that superseded
+    // it is no longer in this category. A file staff archived (no superseder)
+    // or replaced on purpose (a superseder in the same category) stays out.
+    if (seen.is_current === false && seen.superseded_by) {
+      const { data: by } = await admin
+        .from("documents")
+        .select("category")
+        .eq("id", seen.superseded_by)
+        .maybeSingle();
+      if (by && by.category !== args.category) {
+        patch.is_current = true;
+        patch.superseded_by = null;
+      }
     }
     if (Object.keys(patch).length) {
       await admin.from("documents").update(patch).eq("id", seen.id);
@@ -292,7 +320,7 @@ export async function registerDocument(
         .eq("id", seen.id)
         .is("size_bytes", null);
     }
-    return { id: seen.id as string };
+    return { id: seen.id as string, created: false };
   }
 
   // Flag on, a missing object or a user_metadata write throws. Callers catch
@@ -325,7 +353,7 @@ export async function registerDocument(
   }
 
   // Single-slot categories only. See MULTI_FILE_CATEGORIES.
-  if (!MULTI_FILE_CATEGORIES.includes(args.category)) {
+  if (!isMultiFileCategory(args.category)) {
     // Renter insurance: a verified card stays current until this upload is reviewed.
     await supersedeQuery(
       admin
@@ -339,7 +367,7 @@ export async function registerDocument(
     );
   }
 
-  return { id: row.id as string };
+  return { id: row.id as string, created: true };
 }
 
 /**
@@ -429,18 +457,16 @@ async function registerSyncedUpload(
   admin: any,
   category: string,
   args: Parameters<typeof registerDocument>[1],
-): Promise<boolean> {
+): Promise<{ id: string; created?: boolean } | null> {
   if (!DOCUMENT_CONTENT_SHA256_ENABLED) {
-    const res = await registerDocument(admin, args);
-    return !!res;
+    return await registerDocument(admin, args);
   }
   try {
-    const res = await registerDocument(admin, args);
-    return !!res;
+    return await registerDocument(admin, args);
   } catch (e) {
     if (!isUploadedContentShaRefusal(e)) throw e;
     console.error("[documents] registration refused", category, e);
-    return false;
+    return null;
   }
 }
 
@@ -460,22 +486,39 @@ export async function syncApplicationUploads(
     // Legacy rows stored a full URL rather than a storage path; those are not
     // objects we own, so leave them alone.
     if (!path || typeof path !== "string" || path.startsWith("http")) continue;
-    if (
-      await registerSyncedUpload(admin, field.category, {
-        applicationId: application.id as string,
-        category: field.category,
-        bucket: field.bucket,
-        path,
-        fileName: path.split("/").pop() ?? null,
-        label: field.label,
-        expiresAt:
-          field.category === "license_front" ? (application.license_expiration ?? null) : null,
-        uploadedBy: (application.user_id as string) ?? null,
-        uploadedByRole: "driver",
-        ...(await objectMeta(admin, field.bucket, path)),
-      })
-    ) {
+    const res = await registerSyncedUpload(admin, field.category, {
+      applicationId: application.id as string,
+      category: field.category,
+      bucket: field.bucket,
+      path,
+      fileName: path.split("/").pop() ?? null,
+      label: field.label,
+      expiresAt:
+        field.category === "license_front" ? (application.license_expiration ?? null) : null,
+      uploadedBy: (application.user_id as string) ?? null,
+      uploadedByRole: "driver",
+      ...(await objectMeta(admin, field.bucket, path)),
+    });
+    if (res) {
       registered++;
+      /*
+       * The application column holds ONE file, the applicant's main one. When
+       * they point it at a new file (Replace in the apply flow) the file it
+       * used to name is retired, exactly as before. Extra files they Add
+       * Another are not column files and carry a different label, so they are
+       * never touched here. Only on the sync that first saw the new path, so a
+       * later sync cannot undo a file staff restored.
+       */
+      if (res.created) {
+        await admin
+          .from("documents")
+          .update({ is_current: false, superseded_by: res.id })
+          .eq("driver_id", application.id)
+          .eq("category", field.category)
+          .eq("label", field.label)
+          .eq("is_current", true)
+          .neq("id", res.id);
+      }
     }
   }
 
@@ -518,6 +561,7 @@ export async function syncApplicationUploads(
       .update({ is_current: false })
       .eq("driver_id", application.id)
       .eq("category", "trip_history")
+      .eq("label", "Trip screenshot (from application)")
       .eq("is_current", true);
     if (keep.length) q = q.not("storage_path", "in", `(${keep.map((p: string) => `"${p}"`).join(",")})`);
     await q;
@@ -828,7 +872,7 @@ export async function persistConfirmedDocument(
     }
   }
   // Multi-file categories keep every file current; see MULTI_FILE_CATEGORIES.
-  if (MULTI_FILE_CATEGORIES.includes(fields.category)) return { id: row.id as string };
+  if (isMultiFileCategory(fields.category)) return { id: row.id as string };
   // Renter insurance: a verified card stays current until this upload is reviewed.
   await supersedeQuery(
     admin
@@ -868,6 +912,11 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
         expiresAt: z.string().max(20).optional().nullable(),
         label: z.string().max(140).optional().nullable(),
         internal: z.boolean().optional(),
+        /**
+         * Replace on purpose: the named file leaves the active list once this
+         * one is saved. Staff only. Without it an upload only ever adds.
+         */
+        replacesDocumentId: z.string().uuid().optional(),
       })
       .parse(d),
   )
@@ -938,7 +987,107 @@ export const confirmDocumentUpload = createServerFn({ method: "POST" })
       uploaded_by: context.userId,
       uploaded_by_role: admin ? "team" : "driver",
     });
+    if (data.replacesDocumentId) {
+      if (!staff) throw new Error("Only team members can replace a document.");
+      await retireDocument(supabaseAdmin, {
+        documentId: data.replacesDocumentId,
+        applicationId: data.applicationId,
+        category: data.category,
+        supersededBy: saved.id,
+      });
+    }
     return { ok: true, id: saved.id };
+  });
+
+/**
+ * Take one file off the active list without deleting it. The row and the
+ * object stay; only is_current changes. Signed-agreement evidence and anything
+ * an agreement names is refused. Used by Archive (no successor) and by an
+ * explicit Replace (the new file as successor).
+ */
+export async function retireDocument(
+  admin: any,
+  args: { documentId: string; applicationId?: string; category?: string; supersededBy: string | null },
+): Promise<{ id: string; driver_id: string | null; category: string; was_current: boolean }> {
+  const { data: doc, error } = await admin
+    .from("documents")
+    .select("id,driver_id,kind,category,storage_bucket,storage_path,is_current")
+    .eq("id", args.documentId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!doc) throw new Error("Document not found");
+  if (args.applicationId && doc.driver_id !== args.applicationId) throw new Error("That document belongs to a different driver.");
+  if (args.category && doc.category !== args.category) throw new Error("That document is in a different section.");
+  if (!isMultiFileCategory(String(doc.category)) && args.supersededBy == null) {
+    throw new Error("Rental agreements and applications are permanent records and can't be archived.");
+  }
+  if (isSignedAgreementEvidence(doc)) throw new Error(SIGNED_AGREEMENT_REPLACE_REFUSED);
+  if (await namedByAgreement(admin, [doc.id as string], REPLACE_CHECK_FAILED)) throw new Error(SIGNED_AGREEMENT_REPLACE_REFUSED);
+  const { error: upErr } = await admin
+    .from("documents")
+    .update({ is_current: false, superseded_by: args.supersededBy })
+    .eq("id", doc.id);
+  if (upErr) throw new Error(upErr.message);
+  return { id: doc.id as string, driver_id: (doc.driver_id as string | null) ?? null, category: String(doc.category), was_current: doc.is_current !== false };
+}
+
+const DocumentIdInput = (d: unknown) => z.object({ documentId: z.string().uuid() }).parse(d);
+
+/** Staff: take a single file off the active list. Reversible with Restore; nothing is deleted. */
+export const archiveDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(DocumentIdInput)
+  .handler(async ({ data, context }) => {
+    const { requireManager } = await import("@/lib/roles.server");
+    const actor = await requireManager(context.userId);
+    await assertMayTouch(context.userId, data.documentId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const done = await retireDocument(supabaseAdmin, { documentId: data.documentId, supersededBy: null });
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor, {
+      action: "document.archived",
+      summary: `Archived a ${done.category.replace(/_/g, " ")} file. It stays on record and can be restored.`,
+      entityType: "document",
+      entityId: done.id,
+      metadata: { driver_id: done.driver_id, category: done.category },
+    });
+    return { ok: true };
+  });
+
+/** Staff: put an archived or replaced file back on the active list. */
+export const restoreDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(DocumentIdInput)
+  .handler(async ({ data, context }) => {
+    const { requireManager } = await import("@/lib/roles.server");
+    const actor = await requireManager(context.userId);
+    await assertMayTouch(context.userId, data.documentId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: doc, error } = await supabaseAdmin
+      .from("documents")
+      .select("id,driver_id,category,is_current")
+      .eq("id", data.documentId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!doc) throw new Error("Document not found");
+    if (!isMultiFileCategory(String(doc.category))) {
+      throw new Error("Rental agreements and applications keep one current file. Upload a new one instead.");
+    }
+    if (doc.is_current !== false) return { ok: true };
+    const { error: upErr } = await supabaseAdmin
+      .from("documents")
+      .update({ is_current: true, superseded_by: null })
+      .eq("id", doc.id);
+    if (upErr) throw new Error(upErr.message);
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit(actor, {
+      action: "document.restored",
+      summary: `Restored a ${String(doc.category).replace(/_/g, " ")} file to the active list.`,
+      entityType: "document",
+      entityId: doc.id as string,
+      metadata: { driver_id: doc.driver_id, category: doc.category },
+    });
+    return { ok: true };
   });
 
 export const updateDocumentMeta = createServerFn({ method: "POST" })
@@ -1177,7 +1326,7 @@ export const setDocumentReview = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     // Renter insurance held for review: finish the swap now that the team decided.
-    if (doc.driver_id && (HOLD_VERIFIED_CATEGORIES as readonly string[]).includes(doc.category)) {
+    if (doc.driver_id && HOLD_VERIFIED_CATEGORIES.includes(doc.category)) {
       const others = await supabaseAdmin
         .from("documents")
         .select("id")
