@@ -59,7 +59,15 @@ export function ActivationRequirementList({
               <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
             </span>
           );
-          const icon = fileState ? fileState.tone === "green" ? completedIcon : <Circle className={`h-6 w-6 shrink-0 ${fileState.tone === "red" ? "text-destructive" : "text-warning"}`} aria-label={fileState.label} /> : r.met === true ? completedIcon : r.met === null ? <Minus className="h-6 w-6 shrink-0 text-muted-foreground" aria-label="Not Checked Yet" /> : <Circle className={`h-6 w-6 shrink-0 ${r.enforcement === "hard" ? "text-destructive" : r.enforcement === "soft" || r.enforcement === "acknowledge" ? "text-warning-foreground" : "text-muted-foreground"}`} aria-label="Incomplete" />;
+          // Terms Confirmed and Reservation Paid use met=null for "not yet" (After
+          // Approval, Not Recorded). That used to draw a dash. They follow the
+          // same circle as a not-done row, and the same check once met.
+          const openCircle = (r.key === "terms_confirmed" || r.key === "reservation_paid")
+            ? <Circle className="h-6 w-6 shrink-0 text-destructive" aria-label="Incomplete" />
+            : r.met === null
+              ? <Minus className="h-6 w-6 shrink-0 text-muted-foreground" aria-label="Not Checked Yet" />
+              : <Circle className={`h-6 w-6 shrink-0 ${r.enforcement === "hard" ? "text-destructive" : r.enforcement === "soft" || r.enforcement === "acknowledge" ? "text-warning-foreground" : "text-muted-foreground"}`} aria-label="Incomplete" />;
+          const icon = fileState ? fileState.tone === "green" ? completedIcon : <Circle className={`h-6 w-6 shrink-0 ${fileState.tone === "red" ? "text-destructive" : "text-warning"}`} aria-label={fileState.label} /> : r.met === true ? completedIcon : openCircle;
           const marker = fileState?.onToggle ? (
             <button
               type="button"
