@@ -5,6 +5,11 @@
 //   no_insurance        "REAL RENTALS - Vehicle Rental Agreement (v1.10)"
 //   insurance_required  "REAL RENTALS - Vehicle Rental Agreement (v1.10.2, Insurance Required)"
 //   insurance_included  "REAL RENTALS - Vehicle Rental Agreement (v1.14)" (agreement-v114.ts)
+//   insurance_included_v115  "REAL RENTALS - Vehicle Rental Agreement (v1.15)" (agreement-v115.ts):
+//                       v1.14 + the Florida additions (Nov 19 2026); the default for new sends.
+// no_insurance and insurance_required are RETIRED (Nov 19 2026): they stay here
+// so they can still be previewed and compared, but nothing can send them. See
+// RETIRED_REASON below for why they were retired rather than patched.
 // Wording is verbatim except: company placeholders ([Legal Entity Name],
 // [address], [phone], the support email) are merge fields from Settings →
 // Company; reusable values are [[terms]]; bullets/checkboxes the PDF font
@@ -14,6 +19,7 @@
 import { V16_SOURCE, V16_TERM_DEFAULTS, writeTerms } from "@/lib/agreement-builder";
 import { parseLayout } from "@/lib/agreement-layout";
 import { V114_SOURCE, V114_TERM_DEFAULTS } from "@/lib/agreement-v114";
+import { V115_SOURCE, V115_TERM_DEFAULTS } from "@/lib/agreement-v115";
 
 export type LibraryTemplate = {
   key: string;
@@ -28,7 +34,28 @@ export type LibraryTemplate = {
   reservationStyle: "amount";
   /** REAL RENTALS arranges the renter's policy: no renter insurance is asked for. */
   insuranceIncluded?: boolean;
+  /** Retired: previewable and comparable, but no new agreement can be sent with it. */
+  retired?: { at: string; reason: string };
+  /** The family Compare Versions diffs against (defaults to the first other family). */
+  compareWith?: string;
 };
+
+/**
+ * Why v1.10 and v1.10.2 were retired instead of having the v1.14 Florida
+ * notices pasted in (Nov 19 2026). Retiring is the safer choice:
+ *  - neither was ever Owner-approved or sent; v1.14/v1.15 replaced them;
+ *  - they lack the sections the notices depend on (no Section 16 default
+ *    terms, no s. 812.155 written-demand procedure, no starter-interrupt or
+ *    notice-address terms, a different GPS consent), so adding only the
+ *    s. 812.155(6), s. 627.7263 and s. 934.425 sentences would create an
+ *    agreement that looks compliant but is not consistent with itself;
+ *  - patched copies would need their own attorney review, and keeping them
+ *    sendable leaves a path to new agreements without the v1.15 protections.
+ * Renters who signed an older agreement get the Florida 812.155 Addendum
+ * (agreement-fl-addendum.ts) instead.
+ */
+export const RETIRED_REASON =
+  "Retired Nov 19 2026: replaced by v1.15 (Insurance Included). It lacks the Florida s. 812.155(6), s. 627.7263 and s. 934.425 language, so it can be previewed but not sent. Renters on it get the Florida 812.155 Addendum.";
 
 /** Exact substitution that fails loudly if the source text is not found. */
 function sub(text: string, from: string, to: string): string {
@@ -95,16 +122,24 @@ export const LIBRARY: LibraryTemplate[] = [
     key: "no_insurance", name: "Vehicle Rental Agreement — No Insurance Required", displayVersion: "1.10",
     insuranceRequired: false, sourceFile: "REAL-RENTALS-Vehicle-Rental-Agreement-v1.6_no_insurance-2.pdf",
     source: V110_SOURCE, terms: V110_TERM_DEFAULTS, body: writeTerms(V110_SOURCE, V110_TERM_DEFAULTS), reservationStyle: "amount",
+    retired: { at: "2026-11-19", reason: RETIRED_REASON },
   },
   {
     key: "insurance_required", name: "Vehicle Rental Agreement — Insurance Required", displayVersion: "1.10.2",
     insuranceRequired: true, sourceFile: "REAL-RENTALS-Vehicle-Rental-Agreement-v1.10.2_insurance_required.pdf",
     source: V1102_INS_SOURCE, terms: V1102_TERM_DEFAULTS, body: writeTerms(V1102_INS_SOURCE, V1102_TERM_DEFAULTS), reservationStyle: "amount",
+    retired: { at: "2026-11-19", reason: RETIRED_REASON },
   },
   {
     key: "insurance_included", name: "Vehicle Rental Agreement — Insurance Included", displayVersion: "1.14",
     insuranceRequired: false, insuranceIncluded: true, sourceFile: "REAL-RENTALS-Vehicle-Rental-Agreement-v1.14-Final.pdf",
     source: V114_SOURCE, terms: V114_TERM_DEFAULTS, body: writeTerms(V114_SOURCE, V114_TERM_DEFAULTS), reservationStyle: "amount",
+  },
+  {
+    key: "insurance_included_v115", name: "Vehicle Rental Agreement — Insurance Included", displayVersion: "1.15",
+    insuranceRequired: false, insuranceIncluded: true, sourceFile: "agreement-v115.ts (v1.14 + Florida additions, Nov 19 2026)",
+    source: V115_SOURCE, terms: V115_TERM_DEFAULTS, body: writeTerms(V115_SOURCE, V115_TERM_DEFAULTS), reservationStyle: "amount",
+    compareWith: "insurance_included",
   },
 ];
 
@@ -142,13 +177,28 @@ export function lineDiff(a: string, b: string): { t: "same" | "del" | "add"; lin
 }
 
 /**
- * The agreement new sends use when no saved template is active: v1.14
- * (Insurance Included). Dolmar, Nov 16 2026 (t319u): "the v1.14 agreement is
- * the latest agreement we have. add those fees to that agreement." Signed
- * agreements keep the text they were signed with.
+ * The agreement new sends use when no saved template is active: v1.15
+ * (Insurance Included) = v1.14 + the Florida additions Dolmar approved for
+ * building on Nov 19 2026 (relayed by FLEET, 9:04 PM ET). v1.14 (Dolmar,
+ * Nov 16 2026, t319u) stays approved and selectable. Signed agreements keep
+ * the text they were signed with.
  */
-export const DEFAULT_LIBRARY_KEY = "insurance_included";
+export const DEFAULT_LIBRARY_KEY = "insurance_included_v115";
 /** Library families the Owner approved for sending (an Owner approval, not a legal review). */
 export const OWNER_APPROVED_LIBRARY: Record<string, { at: string; by: string }> = {
   insurance_included: { at: "2026-11-16", by: "Dolmar Cross (Owner), t319u" },
+  // Takes effect only when Dolmar merges the PR that adds it (his review of the
+  // wording); a Florida attorney review of the new wording is still pending.
+  insurance_included_v115: { at: "2026-11-19", by: "Dolmar Cross (Owner), on merging the v1.15 PR" },
 };
+
+/** True when a library family is retired (previewable, never sendable). */
+export function isRetiredLibrary(key: string | null | undefined): boolean {
+  return Boolean(key && libraryTemplate(key)?.retired);
+}
+
+// A retired family can never be the default or carry an Owner approval.
+for (const k of [DEFAULT_LIBRARY_KEY, ...Object.keys(OWNER_APPROVED_LIBRARY)]) {
+  if (!libraryTemplate(k)) throw new Error(`agreement-library: unknown family ${k}`);
+  if (isRetiredLibrary(k)) throw new Error(`agreement-library: retired family ${k} cannot be the default or approved`);
+}

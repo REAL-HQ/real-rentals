@@ -36,7 +36,9 @@ ok(/\.eq\("status", "active"\)/.test(src), "only an active rental is authoritati
 ok(/\(fromRental \? rental\.end_date : null\) \?\? app\.contract_end_date/.test(src),
    "an open-ended live rental falls back to the agreed end date rather than blocking forever");
 ok(/endDate <= startDate/.test(src), "an end on or before the start is a blocker");
-ok(/!app\.address \|\|[^\n]*!app\.zip/.test(src), "a missing address is a blocker");
+// Home Address (street, city, state, ZIP) via the shared check (agreement-home-address.ts, v1.15).
+const homeSrc = readFileSync("src/lib/agreement-home-address.ts", "utf8");
+ok(/if \(homeAddressMissing\(app\)\)\s*\n?\s*blockers\.push\(\{ field: "driver_address"/.test(src) && /blank\(p\.zip\)/.test(homeSrc) && /blank\(p\.address\)/.test(homeSrc), "a missing address is a blocker");
 ok(/tab: "payments"/.test(src), "  and the message names where staff can fix it");
 
 console.log("\nAPPLICATION INTENT NEVER BECOMES A CONTRACTUAL DATE");
