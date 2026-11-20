@@ -1565,6 +1565,14 @@ export async function approveApplicationCore(args: {
     if (refusal) return { ok: false, agreementSent: false, portalAccount: "deferred", error: refusal };
   }
 
+  // State DMV license check (Dolmar, Nov 20 2026): no approval, by staff or FLEET,
+  // without a Valid check under 24 hours old. Not valid / out-of-state: Needs Staff.
+  {
+    const { dmvRefusal } = await import("@/lib/dmv-license-check.server");
+    const refusal = await dmvRefusal(supabaseAdmin, data.id);
+    if (refusal) return { ok: false, agreementSent: false, portalAccount: "deferred", error: refusal };
+  }
+
   // Already approved: do not write status, application.approved, or the
   // one-time Approval Confirmation again. A repeat call manages only the agreement.
   const newlyApproved = app.status !== "approved";

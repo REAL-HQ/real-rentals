@@ -3,6 +3,8 @@
 export type Row = Record<string, any>;
 export function fakeDb(seed: Record<string, Row[]>, opts: { unique?: Record<string, string>; missing?: string[] } = {}) {
   const state: Record<string, Row[]> = JSON.parse(JSON.stringify(seed));
+  // The State DMV check table behaves as "migration not installed" unless a test seeds it.
+  if (!("license_dmv_checks" in seed)) opts = { ...opts, missing: [...(opts.missing ?? []), "license_dmv_checks"] };
   let n = 1;
   const unique = opts.unique ?? {};
   function from(table: string) {
