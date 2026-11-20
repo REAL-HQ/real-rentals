@@ -99,6 +99,7 @@ describe("no vehicle dropdown is left as a plain select", () => {
   test("replacement-vehicle swap field is a picker, still validated as a vehicle id", () => {
     const b = read("src/components/admin/BookingVehicleHistory.tsx");
     expect(b).toContain('aria-label="Replacement Vehicle"');
-    expect(b).toContain("Replacement Vehicle must be the vehicle id");
+    expect(read("src/lib/vehicle-swap.functions.ts")).toContain("toVehicleId: z.string().uuid()");
+    expect(read("src/lib/vehicle-swap.server.ts")).toContain('if (!UUID_RE.test(toVehicleId)) return fail(400, "Choose the replacement vehicle.");');
   });
 });
