@@ -20,6 +20,8 @@ import {
   CLAUSE_STARTER_INTERRUPT,
   PEST_FEE_ITEM,
   PEST_FEE_AMOUNT,
+  LATE_FEE_ITEM,
+  LATE_FEE_AMOUNT,
   CLAUSE_LICENSE_COPY,
 } from "@/lib/agreement-v115";
 import { V115_TERM_DEFAULTS } from "@/lib/agreement-v115";
@@ -48,6 +50,10 @@ export const ADDENDUM_SECTION_REFERENCES =
 /** Drafted for item 7: pests added to the Damage Waiver exclusions of an older agreement. */
 export const ADDENDUM_PEST_WAIVER =
   "If your Agreement includes a damage waiver, it does not cover pest, insect, or biohazard infestation.";
+
+/** Drafted so the capped late fee is the only late-fee term (older agreements print other late-fee wording). */
+export const ADDENDUM_LATE_FEE_REPLACES =
+  "This late fee replaces any other late payment fee in your Agreement.";
 
 export const FL_ADDENDUM_SOURCE = `${LAYOUT_MARKER}
 # REAL RENTALS
@@ -86,9 +92,11 @@ ${CLAUSE_SERVICE_AREA_CONSENT}
 ## 6. Starter-Interrupt Device
 ${CLAUSE_STARTER_INTERRUPT}
 
-## 7. Pest, Insect & Biohazard Infestation (Section 4)
+## 7. Late Fee and Pest, Insect & Biohazard Infestation (Section 4)
 |#40 Item | Amount
+| ${LATE_FEE_ITEM} | ${LATE_FEE_AMOUNT}
 | ${PEST_FEE_ITEM} | ${PEST_FEE_AMOUNT}
+${ADDENDUM_LATE_FEE_REPLACES}
 ${ADDENDUM_PEST_WAIVER}
 
 ## 8. Driver's License Copy
@@ -103,7 +111,7 @@ ${CLAUSE_LICENSE_COPY}
 |i 4. Notice Address.
 |i 5. Service Area.
 |i 6. Starter-Interrupt Device.
-|i 7. Pest, Insect & Biohazard Infestation.
+|i 7. Late Fee and Pest, Insect & Biohazard Infestation.
 |i 8. Driver's License Copy.
 
 ## Signatures

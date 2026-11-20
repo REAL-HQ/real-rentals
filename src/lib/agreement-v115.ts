@@ -39,6 +39,16 @@ export const PEST_FEE_ITEM = "Pest, insect, or biohazard infestation caused duri
 export const PEST_FEE_AMOUNT = "actual treatment cost + Loss of Use while the Vehicle is out of service.";
 /** 7b. Damage Waiver exclusion added to Section 7.5 "What it does not cover". */
 export const PEST_WAIVER_EXCLUSION = "pest, insect, or biohazard infestation";
+/**
+ * 9. Section 4 late-fee cap (Dolmar, Nov 19 2026, relayed by FLEET 10:48 PM ET),
+ * verbatim. Replaces v1.14's uncapped "Late payment" row so the agreement has
+ * one late-fee statement; printed as the fee row's two cells.
+ */
+export const CLAUSE_LATE_FEE =
+  "Late fee: $50 per day, up to a maximum of $350 per missed payment. After that, daily rent continues to accrue until the Vehicle is returned or recovered.";
+export const LATE_FEE_ITEM = "Late fee";
+export const LATE_FEE_AMOUNT = "$50 per day, up to a maximum of $350 per missed payment. After that, daily rent continues to accrue until the Vehicle is returned or recovered.";
+if (`${LATE_FEE_ITEM}: ${LATE_FEE_AMOUNT}` !== CLAUSE_LATE_FEE) throw new Error("agreement-v115: late-fee row does not match the approved wording");
 /** 8. Section 19: driver's license copy consent. */
 export const CLAUSE_LICENSE_COPY =
   "You consent to our copying and keeping your driver's license, and we may re-verify it during the rental.";
@@ -56,6 +66,7 @@ export const V115_ADDITIONS = [
   CLAUSE_STARTER_INTERRUPT,
   CLAUSE_PEST_FEE,
   CLAUSE_LICENSE_COPY,
+  CLAUSE_LATE_FEE,
 ] as const;
 
 /** Exact substitution that fails loudly if the v1.14 anchor text is not found. */
@@ -80,6 +91,8 @@ s = sub(
   "You may not keep the Vehicle for any period that has not been paid for.",
   `You may not keep the Vehicle for any period that has not been paid for. ${CLAUSE_RENTAL_PERIOD_ENDS}`,
 );
+// 9. Section 4 late-fee row: capped wording replaces v1.14's "Late payment" row.
+s = sub(s, "| Late payment | [[fee_late_payment]]\n", `| ${LATE_FEE_ITEM} | [[fee_late_payment]]\n`);
 // 7. Section 4 fee row (after the other renter-caused condition charges).
 s = sub(
   s,
@@ -127,5 +140,5 @@ if (!s.replace(/\*\*/g, "").includes(`! ${FL_812155_NOTICE}`)) throw new Error("
 
 export const V115_SOURCE = s;
 
-/** v1.15 prints the same contract values as v1.14 (fees, Service Area, venue). */
-export const V115_TERM_DEFAULTS: Record<string, string> = { ...V114_TERM_DEFAULTS };
+/** v1.15 prints the same contract values as v1.14 (fees, Service Area, venue), except the capped late fee. */
+export const V115_TERM_DEFAULTS: Record<string, string> = { ...V114_TERM_DEFAULTS, fee_late_payment: LATE_FEE_AMOUNT };

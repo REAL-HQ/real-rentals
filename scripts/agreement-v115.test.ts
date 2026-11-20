@@ -25,7 +25,7 @@ import { FL_ADDENDUM_SOURCE, FL_ADDENDUM_OWNER_APPROVAL, renderFloridaAddendum, 
 import { floridaAddendumFields } from "../src/lib/florida-addendum.functions";
 import { homeAddressMissing, missingHomeAddressParts, formatHomeAddress, HOME_ADDRESS_LABEL } from "../src/lib/agreement-home-address";
 import { parseLayout, layoutToText } from "../src/lib/agreement-layout";
-import { writeTerms } from "../src/lib/agreement-builder";
+import { writeTerms, resolveTerms } from "../src/lib/agreement-builder";
 import { AMENDMENT_TEMPLATE_KEY } from "../src/lib/rental-amendment";
 
 type Rows = Record<string, any[]>;
@@ -149,6 +149,7 @@ describe("v1.15 contains every addition verbatim", () => {
     expect(dels).toEqual([
       "#- Vehicle Rental Agreement (v1.14)",
       expect.stringMatching(/^\*\*2\.2 Automatic Renewal/),
+      "| Late payment | [[fee_late_payment]]",
       expect.stringMatching(/^\*\*What it does not cover\.\*\*/),
     ]);
     // Each changed v1.14 line survives inside its v1.15 line (text only added).
@@ -302,6 +303,43 @@ describe("Florida 812.155 Addendum", () => {
     const fn = readFileSync(new URL("../src/lib/florida-addendum.functions.ts", import.meta.url), "utf8");
     expect(fn).not.toMatch(/\.insert\(|\.update\(|\.upsert\(|\.delete\(|sendSms|sendEmail|deliverSigningLink/);
     expect(fn).toMatch(/requireTier\(context\.userId, "manager"\)/);
+  });
+});
+
+const APPROVED_LATE_FEE = "Late fee: $50 per day, up to a maximum of $350 per missed payment. After that, daily rent continues to accrue until the Vehicle is returned or recovered.";
+
+describe("late-fee cap (Dolmar, Nov 19 2026, 10:48 PM ET)", () => {
+  const feeRows = (body: string) => (parseLayout(body).find((b) => b.k === "table" && b.header?.[0] === "Item") as any).rows.map((r: any) => r.cells);
+
+  it("the approved wording is exact", () => {
+    expect(V115.CLAUSE_LATE_FEE).toBe(APPROVED_LATE_FEE);
+    expect(`${V115.LATE_FEE_ITEM}: ${V115.LATE_FEE_AMOUNT}`).toBe(APPROVED_LATE_FEE);
+    expect(V115.V115_TERM_DEFAULTS.fee_late_payment).toBe(V115.LATE_FEE_AMOUNT);
+  });
+
+  it("v1.15: one late-fee row with the exact wording; the uncapped v1.14 wording is gone", async () => {
+    expect(plain(resolveTerms(v115.body))).toContain(APPROVED_LATE_FEE);
+    expect(feeRows(resolveTerms(v115.body))).toContainEqual(["Late fee", "$50 per day, up to a maximum of $350 per missed payment. After that, daily rent continues to accrue until the Vehicle is returned or recovered."]);
+    expect(feeRows(resolveTerms(v115.body)).filter((c: string[]) => /^late (fee|payment)/i.test(c[0]))).toHaveLength(1);
+    const p = await prepare(fakeDb(seed(true)) as any, APP.id);
+    const text = plain(p.body);
+    expect(text).toContain(APPROVED_LATE_FEE);
+    expect(text).not.toContain("$50 for each day a payment is late");
+    expect(text).not.toMatch(/Late payment:/);
+  });
+
+  it("Florida addendum fee section: the exact wording, in Section 7's table", () => {
+    const body = renderFloridaAddendum({
+      agreement_number: "RRA-1", driver_name: "Jordan Q Sample", driver_address: "100 Sample St, Tampa, FL, 33602",
+      vehicle: "2021 Toyota Camry LE", vehicle_vin: "4T1C11AK5MU123456", license_plate: "SMP123 / FL",
+      company_name: "Sample Rentals LLC", company_address: "1 Main St, Tampa, FL", company_email: "team@example.com", company_phone: "(555) 010-0000",
+    });
+    expect(plain(body)).toContain(APPROVED_LATE_FEE);
+    expect(body).toContain("| Late fee | $50 per day, up to a maximum of $350 per missed payment. After that, daily rent continues to accrue until the Vehicle is returned or recovered.");
+    const s7 = FL_ADDENDUM_SOURCE.slice(FL_ADDENDUM_SOURCE.indexOf("## 7."), FL_ADDENDUM_SOURCE.indexOf("## 8."));
+    expect(s7).toContain(`| ${V115.LATE_FEE_ITEM} | ${V115.LATE_FEE_AMOUNT}`);
+    expect(plain(body).match(/\$50 for each day/g)).toBeNull();
+    expect(acknowledgmentsOf(body)[6]).toBe("7. Late Fee and Pest, Insect & Biohazard Infestation.");
   });
 });
 
