@@ -448,7 +448,16 @@ export type BlacklistMatchRow = {
 };
 
 /**
- * Who may add / remove blacklist entries, void warnings and clear matches:
+ * Who may ADD a blacklist entry: Owner / Admin and Managers (Dolmar, Nov 20
+ * 2026). Coordinators cannot. Database RLS mirrors it with private.is_manager()
+ * (true for admin + team). Removing, voiding and clearing stay canManageBlacklist.
+ */
+export function canAddToBlacklist(tier: string | null | undefined): boolean {
+  return tier === "owner" || tier === "manager";
+}
+
+/**
+ * Who may remove blacklist entries blacklist entries, void warnings and clear matches (adding is wider, see canAddToBlacklist):
  * Owner and Admin. In this app the Admin role (user_roles.role = 'admin') is the
  * Owner tier (roles.ts TIER_BY_ROLE), so this is the "owner" tier; Managers
  * ('team') and Coordinators cannot. Database RLS mirrors it with private.is_owner().

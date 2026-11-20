@@ -184,10 +184,10 @@ describe("matching normalization", () => {
 });
 
 describe("permissions and writes", () => {
-  test("only an Owner can blacklist, remove, void, or clear a match", async () => {
+  test("only an Owner can remove, void, or clear a match; Coordinators cannot add either", async () => {
     for (const actor of [manager, coordinator]) {
       const { admin } = fakeAdmin(seed());
-      await expect(addToBlacklist(admin, actor, { applicationId: APP, reason: "chargeback", note: "Disputed rent", date: "2026-11-19" }, audit, "2026-11-19")).rejects.toThrow("Only An Owner");
+      if (actor === coordinator) await expect(addToBlacklist(admin, actor, { applicationId: APP, reason: "chargeback", note: "Disputed rent", date: "2026-11-19" }, audit, "2026-11-19")).rejects.toThrow("Only An Owner");
       await expect(removeFromBlacklist(admin, actor, { applicationId: APP, reason: "Paid in full" }, audit)).rejects.toThrow("Only An Owner");
       await expect(voidStrike(admin, actor, { strikeId: "s1", reason: "Entered in error" }, audit)).rejects.toThrow("Only An Owner");
       await expect(clearBlacklistMatch(admin, actor, { applicationId: APP, blacklistIds: ["b"] }, audit)).rejects.toThrow("Only An Owner");
@@ -420,6 +420,26 @@ describe("Owner / Admin permission (Dolmar Nov 20 2026)", () => {
     const { admin } = fakeAdmin(seed());
     const r = await addToBlacklist(admin, adminActor, { applicationId: APP, reason: "vehicle_repossessed", note: "Repossessed, keys missing", date: "2026-11-19" }, audit);
     expect(JSON.stringify(r.entry)).toContain("(Owner)");
-    await expect(addToBlacklist(fakeAdmin(seed()).admin, manager, { applicationId: APP, reason: "vehicle_repossessed", note: "Repossessed, keys missing", date: "2026-11-19" }, audit)).rejects.toThrow("Only An Owner Or Admin Can Blacklist A Renter.");
+    await expect(addToBlacklist(fakeAdmin(seed()).admin, coordinator, { applicationId: APP, reason: "vehicle_repossessed", note: "Repossessed, keys missing", date: "2026-11-19" }, audit)).rejects.toThrow("Only An Owner, Admin Or Manager Can Blacklist A Renter.");
+  });
+
+  test("a Manager can ADD (reason, note, date, who required; note saved to Notes) but not remove, void or clear", async () => {
+    const { canAddToBlacklist } = await import("../src/lib/blacklist");
+    expect(canAddToBlacklist("owner")).toBe(true);
+    expect(canAddToBlacklist("manager")).toBe(true);
+    expect(canAddToBlacklist("coordinator")).toBe(false);
+    expect(canAddToBlacklist(null)).toBe(false);
+    const { admin } = fakeAdmin(seed());
+    const r = await addToBlacklist(admin, manager, { applicationId: APP, reason: "vehicle_repossessed", note: "Repossessed, keys missing", date: "2026-11-19" }, audit);
+    expect(JSON.stringify(r.entry)).toContain("(Manager)");
+    expect(r.notes).toContain("Repossessed, keys missing");
+    await expect(addToBlacklist(fakeAdmin(seed()).admin, manager, { applicationId: APP, reason: "vehicle_repossessed", note: "", date: "2026-11-19" }, audit)).rejects.toThrow();
+    await expect(removeFromBlacklist(admin, manager, { applicationId: APP, reason: "Mistake" } as any, audit)).rejects.toThrow("Only An Owner Or Admin Can Remove A Renter From The Blacklist.");
+    const fs = readFileSync(new URL("../src/lib/blacklist.functions.ts", import.meta.url), "utf8");
+    expect(fs).toMatch(/requireManager\(context\.userId\);\s+const \{ admin, audit, core \} = await deps\(\);\s+return core\.addToBlacklist/);
+    const card = readFileSync(new URL("../src/components/admin/BlacklistCard.tsx", import.meta.url), "utf8");
+    expect(card).toMatch(/\(isOwner \|\| isManager\) && !active/);
+    expect(card).toMatch(/\{isOwner && active \?/);
+    expect(card).toMatch(/\{isOwner && !s\.voidedAt/);
   });
 });

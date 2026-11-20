@@ -3,7 +3,7 @@
  *
  * supabaseAdmin bypasses RLS, so the role check happens in the server
  * functions (blacklist.functions.ts) AND the actor's tier is checked again
- * here: Owner / Admin to add or remove, or to clear a match; any staff to log a
+ * here: Owner / Admin / Manager to add; Owner / Admin to remove or to clear a match; any staff to log a
  * warning (strike); Owner / Admin to void one. (The Admin role is the Owner
  * tier in roles.ts; Managers and Coordinators cannot.) The database triggers in
  * 20261120040000_renter_blacklist.sql refuse approvals and rentals for a
@@ -16,6 +16,7 @@
 import {
   BLACKLIST_MATCH_CODE,
   canManageBlacklist,
+  canAddToBlacklist,
   appendNote,
   blacklistBlockers,
   blacklistNotesLine,
@@ -183,7 +184,7 @@ export async function addToBlacklist(
   audit: AuditFn,
   today = todayEt(),
 ): Promise<{ entry: BlacklistEntry; notes: string }> {
-  requireOwnerTier(actor, "Blacklist A Renter");
+  if (!canAddToBlacklist(actor.tier)) throw new Error("Only An Owner, Admin Or Manager Can Blacklist A Renter.");
   const app = await readApplication(admin, input.applicationId);
   const strikes = await readStrikes(admin, input.applicationId);
   const blockers = blacklistBlockers({ reason: input.reason, note: input.note, date: input.date }, strikes, today);
