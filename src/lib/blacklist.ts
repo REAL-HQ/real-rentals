@@ -375,6 +375,10 @@ const KIND_LABELS: Record<string, string> = {
   dob_last: "DOB + Last Name",
   card: "Saved Card",
   ip: "Signer IP",
+  reference_phone: "Reference Phone",
+  reference_name: "Reference Name",
+  emergency_phone: "Emergency Contact Phone",
+  emergency_name: "Emergency Contact Name",
 };
 export function identifierKindLabel(k: string): string {
   return KIND_LABELS[k] ?? k;
@@ -455,4 +459,36 @@ export type BlacklistMatchRow = {
  */
 export function canManageBlacklist(tier: string | null | undefined): boolean {
   return tier === "owner";
+}
+
+/** "Heather A. Bell Jr" -> "heather a bell" (mirrors private.rr_norm_person_name). Needs first + last. */
+export function normalizePersonName(name: unknown): string | null {
+  const toks = String(name ?? "").toLowerCase().replace(/[^a-z ]+/g, " ").trim().split(" ").filter(Boolean);
+  let i = toks.length;
+  while (i > 0 && ["jr", "sr", "ii", "iii", "iv"].includes(toks[i - 1])) i--;
+  if (i < 2) return null;
+  return toks.slice(0, i).join(" ");
+}
+
+/**
+ * Does this applicant's reference / emergency contact point at a blacklisted person?
+ * Mirrors private.blacklist_reference_hits: phone against the person's phones, name
+ * against their (normalized) full name.
+ */
+export function referenceMatchKinds(
+  app: { reference_name?: unknown; reference_phone?: unknown; emergency_contact_name?: unknown; emergency_contact_phone?: unknown },
+  blacklisted: { fullName: string | null; phones: readonly string[] },
+): string[] {
+  const out = new Set<string>();
+  const name = normalizePersonName(blacklisted.fullName);
+  const phones = new Set(blacklisted.phones.map((p) => normalizePhone(p)).filter(Boolean) as string[]);
+  const check = (who: "reference" | "emergency", n: unknown, p: unknown) => {
+    const np = normalizePhone(p);
+    if (np && phones.has(np)) out.add(`${who}_phone`);
+    const nn = normalizePersonName(n);
+    if (nn && name && nn === name) out.add(`${who}_name`);
+  };
+  check("reference", app.reference_name, app.reference_phone);
+  check("emergency", app.emergency_contact_name, app.emergency_contact_phone);
+  return [...out].sort();
 }

@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addressSimilar, normalizeAddress, normalizeAddressBase, normalizeCard, normalizeDobLast, normalizeEmail, normalizeIp, normalizeLicense, normalizePhone } from "../src/lib/blacklist";
+import { normalizePersonName, addressSimilar, normalizeAddress, normalizeAddressBase, normalizeCard, normalizeDobLast, normalizeEmail, normalizeIp, normalizeLicense, normalizePhone } from "../src/lib/blacklist";
 
 function candidates(): string[] {
   const out: string[] = [];
@@ -79,6 +79,7 @@ beforeAll(() => {
     .replace(/ALTER TABLE public\.fleet_webhook_deliveries[\s\S]*?;\n/g, "");
   must(fleet);
   must(readFileSync(new URL("../supabase/migrations/20261120040000_renter_blacklist.sql", import.meta.url), "utf8"));
+  must(readFileSync(new URL("../supabase/migrations/20261120130000_application_references.sql", import.meta.url), "utf8"));
   must(`INSERT INTO auth.users VALUES ('${OWNER}', 'owner@example.com'), ('${HEATHER_USER}', 'renter6@example.com');
         INSERT INTO public.user_roles (user_id, role) VALUES ('${OWNER}', 'admin');
         INSERT INTO public.applications (id, full_name, email, phone, address, zip, license_number, status, user_id, notes)
@@ -282,6 +283,36 @@ describe.skipIf(skip)("renter blacklist in Postgres", () => {
     expect(must(`SELECT has_function_privilege('authenticated', 'public.renter_blacklist_suppressed(uuid, text, text)', 'EXECUTE')`)).toBe("f");
     expect(must(`SELECT has_function_privilege('service_role', 'public.renter_blacklist_suppressed(uuid, text, text)', 'EXECUTE')`)).toBe("t");
     expect(must(`SELECT has_table_privilege('authenticated', 'public.renter_blacklist_matches', 'INSERT')`)).toBe("f");
+  });
+
+  test("references / emergency contacts: listing a blacklisted person (name or phone) is a match", () => {
+    for (const n of ["  Heather  A. Bell Jr ", "Heather", "HEATHER BELL", null, "O'Neil Smith-Jones"])
+      expect(must(`SELECT coalesce(private.rr_norm_person_name(${lit(n)}), '<null>')`)).toBe(normalizePersonName(n) ?? "<null>");
+    const kindsOf = (id: string) => must(`SELECT coalesce(string_agg(k, ',' ORDER BY k), '') FROM public.renter_blacklist_matches m, unnest(m.matched_kinds) k WHERE m.source_table = 'applications' AND m.source_id = '${id}'`);
+    const refPhone = must(`INSERT INTO public.applications (full_name, email, phone, reference_name, reference_phone) VALUES ('Ref One', 'ref1@example.com', '5550104001', 'Some Friend', '(555) 010-0106') RETURNING id`);
+    expect(kindsOf(refPhone)).toBe("reference_phone");
+    expect(must(`SELECT reason FROM public.fleet_review_decisions WHERE application_id = '${refPhone}'`)).toBe("blacklist match: Reference Phone (matches Heather Bell)");
+    const refName = must(`INSERT INTO public.applications (full_name, email, phone, reference_name) VALUES ('Ref Two', 'ref2@example.com', '5550104002', 'heather bell') RETURNING id`);
+    expect(kindsOf(refName)).toBe("reference_name");
+    const emPhone = must(`INSERT INTO public.applications (full_name, email, phone) VALUES ('Em One', 'em1@example.com', '5550104003') RETURNING id`);
+    must(`UPDATE public.applications SET emergency_contact_name = 'Mom', emergency_contact_phone = '+1 555 010 0106' WHERE id = '${emPhone}'`);
+    expect(kindsOf(emPhone)).toBe("emergency_phone");
+    const emName = must(`INSERT INTO public.applications (full_name, email, phone, emergency_contact_name) VALUES ('Em Two', 'em2@example.com', '5550104004', 'Heather Bell') RETURNING id`);
+    expect(kindsOf(emName)).toBe("emergency_name");
+    expect(psql(`UPDATE public.applications SET status = 'approved' WHERE id = '${emName}'`).err).toContain("renter_blacklist_match_uncleared");
+    // Never declined automatically.
+    expect(must(`SELECT status FROM public.applications WHERE id = '${emName}'`)).toBe("new");
+    // Someone else's name or number: no match.
+    const clean = must(`INSERT INTO public.applications (full_name, email, phone, reference_name, reference_phone, emergency_contact_name) VALUES ('Clean Ref', 'cr@example.com', '5550104005', 'Heather Bello', '5550104999', 'Bell') RETURNING id`);
+    expect(kindsOf(clean)).toBe("");
+    // Blacklisting someone flags existing applicants who list them.
+    const lister = must(`INSERT INTO public.applications (full_name, email, phone, status, reference_name) VALUES ('Lists Friend', 'lf@example.com', '5550104006', 'reviewing', 'Friend Person') RETURNING id`);
+    const friend = must(`INSERT INTO public.applications (full_name, email, phone, status) VALUES ('Friend Person', 'fp@example.com', '5550104007', 'active') RETURNING id`);
+    expect(kindsOf(lister)).toBe("");
+    must(`INSERT INTO public.renter_blacklist (application_id, reason_code, note, blacklisted_on, added_by_label) VALUES ('${friend}', 'gps_tamper', 'Cut the GPS wire', '2026-11-20', 'Owner')`);
+    expect(kindsOf(lister)).toBe("reference_name");
+    expect(must(`SELECT reason FROM public.fleet_review_decisions WHERE application_id = '${lister}'`)).toBe("blacklist match: Reference Name (matches Friend Person)");
+    expect(psql(`ALTER TABLE public.applications VALIDATE CONSTRAINT applications_contact_people_lengths`).ok).toBe(true);
   });
 
   test("permissions: browser roles cannot reach the identifiers or the check function", () => {
