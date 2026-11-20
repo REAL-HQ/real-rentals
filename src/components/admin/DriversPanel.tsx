@@ -268,6 +268,7 @@ import { listFleetNeedsStaff, type FleetNeedsStaffFlag } from "@/lib/fleet-revie
 import { listBlacklist } from "@/lib/blacklist.functions";
 import type { BlacklistEntry } from "@/lib/blacklist";
 import { BlacklistCard, BlacklistedBadge } from "@/components/admin/BlacklistCard";
+import { DmvLicenseCheckCard } from "@/components/admin/DmvLicenseCheckCard";
 import { BlacklistMatchAlert } from "@/components/admin/BlacklistMatchAlert";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
 import type { ExpiryScope } from "@/lib/document-expiry";
@@ -2943,6 +2944,7 @@ function DriverDetail({
                   onNotesChanged={(notes) => onSaved({ notes })}
                   onBlacklistChanged={onBlacklistChanged}
                 />
+                <DmvLicenseCheckCard applicationId={driver.id} licenseState={driver.license_state ?? null} />
                 {APPLICATION_QUICK_REVIEW_ENABLED && isManager && isPendingReviewStatus(driver.status) ? (
                   <ApplicationQuickReview
                     applicationId={driver.id}

@@ -63,6 +63,7 @@ export function signedReservationFee(ag: { body?: string | null; merge_data?: Re
 
 export type ReservationFeeOutcome =
   | { status: "off" | "no_fee_on_agreement" | "not_found" }
+  | { status: "dmv_check_required"; amount: number; message: string }
   | { status: "already_paid"; amount: number; paymentId: string }
   | { status: "no_card"; amount: number; paymentId: string | null }
   | { status: "checkout"; amount: number; paymentId: string; url: string }
@@ -88,6 +89,7 @@ export function reservationFeeEmailLine(o: ReservationFeeOutcome): string | null
 export function reservationFeeLinkProblem(o: ReservationFeeOutcome): { amount: number; reason: string } | null {
   if (o.status === "no_card") return { amount: o.amount, reason: "card checkout could not be created" };
   if (o.status === "failed") return { amount: o.amount > 0 ? o.amount : 50, reason: o.error || "unexpected error" };
+  if (o.status === "dmv_check_required") return { amount: o.amount, reason: "a Valid state DMV license check under 24 hours old is needed first" };
   return null;
 }
 
@@ -97,6 +99,7 @@ export function staffReservationFeeLinkResult(o: ReservationFeeOutcome): { ok: t
   if (o.status === "already_paid" || o.status === "paid") return { ok: false, message: "The Reservation Fee Is Already Paid." };
   if (o.status === "pending") return { ok: false, message: "The Reservation Fee Payment Is Still Processing." };
   if (o.status === "off") return { ok: false, message: "The Reservation Fee Is Turned Off." };
+  if (o.status === "dmv_check_required") return { ok: false, message: o.message };
   if (o.status === "no_fee_on_agreement" || o.status === "not_found") return { ok: false, message: "No Signed Agreement With A Reservation Fee." };
   return { ok: false, message: "Card Checkout Could Not Be Created. Try Again, Or Record A Manual Payment." };
 }

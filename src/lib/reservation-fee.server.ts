@@ -150,6 +150,13 @@ export async function chargeReservationFeeAfterSigning(admin: Admin, agreementId
       return { status: "already_paid", amount: Number(row.amount), paymentId: row.id };
     }
     if (row && row.status === "pending") return { status: "pending", amount: Number(row.amount), paymentId: row.id, last4: null };
+    // State DMV license check (Dolmar, Nov 20 2026): no Reservation Fee link (new
+    // or reused) without a Valid check under 24 hours old. Fails closed.
+    {
+      const { dmvRefusal } = await import("@/lib/dmv-license-check.server");
+      const refusal = await dmvRefusal(admin, appId, deps.now?.());
+      if (refusal) return { status: "dmv_check_required", amount, message: refusal };
+    }
     // Signing runs once, but never send a second checkout for the same fee in a re-run
     // while the stored Checkout is still within 23 hours. An expired link is not reused;
     // a new session is created on the same unpaid row below.

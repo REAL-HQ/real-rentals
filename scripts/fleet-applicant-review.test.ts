@@ -38,7 +38,7 @@ function fakeDb(seed: Record<string, Row[]>, opts: { missing?: string[] } = {}) 
       then: (res: any, rej: any) => Promise.resolve(run()).then(res, rej),
     };
     function run() {
-      if (opts.missing?.includes(table)) return { data: null, error: { code: "42P01", message: `relation "${table}" does not exist` } };
+      if (opts.missing?.includes(table) || (table === "license_dmv_checks" && !("license_dmv_checks" in seed))) return { data: null, error: { code: "42P01", message: `relation "${table}" does not exist` } };
       if (table === "applications" && cols.includes("approval_evidence_version"))
         return { data: null, error: { code: "42703", message: "column applications.approval_evidence_version does not exist" } };
       const rows = state[table];

@@ -31,6 +31,7 @@ function fakeDb(seed: Record<string, Row[]> = {}) {
       then: (res: any, rej: any) => Promise.resolve(run()).then(res, rej),
     };
     function run() {
+      if (table === "license_dmv_checks" && !("license_dmv_checks" in seed)) return { data: null, error: { code: "42P01", message: `relation "license_dmv_checks" does not exist` } };
       const rows = state[table];
       if (op !== "select") writes.push(`${op}:${table}`);
       if (op === "insert") { const row = { id: `${table}-${++seq}`, attempt_count: 0, ...payload }; rows.push(row); return { data: single ? row : [row], error: null }; }

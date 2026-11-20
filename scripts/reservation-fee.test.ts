@@ -30,7 +30,7 @@ function fakeDb(seed: Record<string, Row[]> = {}, opts: { missing?: string[]; un
       then: (res: any, rej: any) => Promise.resolve(run()).then(res, rej),
     };
     function run() {
-      if (opts.missing?.includes(table)) return { data: null, error: { code: "42P01", message: `relation "${table}" does not exist` } };
+      if (opts.missing?.includes(table) || (table === "license_dmv_checks" && !("license_dmv_checks" in seed))) return { data: null, error: { code: "42P01", message: `relation "${table}" does not exist` } };
       const rows = state[table];
       if (op === "insert") {
         if ((opts.uniqueKey ?? ["renter_reminder_sends"]).includes(table) && rows.some((r) => r.key === payload.key)) return { data: null, error: { code: "23505", message: "duplicate key" } };

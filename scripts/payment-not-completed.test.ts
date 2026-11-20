@@ -39,6 +39,7 @@ function fakeDb(seed: Rows) {
     let lim = Infinity; let op: "select" | "update" | "insert" = "select"; let patch: any = null; let inserted: any = null; let insErr: any = null;
     const all = () => (state[table] ??= []);
     const run = () => {
+      if (table === "license_dmv_checks" && !("license_dmv_checks" in seed)) return { data: null, error: { code: "42P01", message: `relation "license_dmv_checks" does not exist` } };
       if (op === "insert") return { data: inserted, error: insErr };
       const hit = all().filter((r) => f.every((g) => g(r)));
       if (op === "update") { hit.forEach((r) => Object.assign(r, patch)); return { data: hit, error: null }; }

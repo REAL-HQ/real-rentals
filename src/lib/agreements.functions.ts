@@ -231,6 +231,15 @@ async function buildMergeData(
     }
     if (refusal) blockers.push({ field: "blacklisted", label: "Not Blacklisted", why: refusal });
   }
+  // State DMV license check (Dolmar, Nov 20 2026): this gate covers preview, staff
+  // send, FLEET send, approval auto-send and resend, so none of them can send an
+  // agreement without a Valid check under 24 hours old.
+  // Not for an amended agreement on an already-active rental (the renter was checked before activation).
+  if (amendmentRate == null) {
+    const { dmvRefusal } = await import("@/lib/dmv-license-check.server");
+    const refusal = await dmvRefusal(admin, applicationId);
+    if (refusal) blockers.push({ field: "dmv_license_check", label: "State DMV License Check", why: refusal });
+  }
   if (!startDate)
     blockers.push({
       field: "contract_start_date",
@@ -1539,6 +1548,9 @@ async function sendSignedEmails(
   // (Jonathon Boykins). Now the renter is told the link follows and staff get
   // an ACTION NEEDED email.
   let feeProblem: { amount: number; reason: string } | null = null;
+  // State DMV check no longer Valid / over 24 hours old at signing: no fee link and
+  // no fallback payment link either. Staff re-check, then use Copy Reservation Fee Link.
+  let dmvBlocked = false;
   try {
     const { chargeReservationFeeAfterSigning } = await import("@/lib/reservation-fee.server");
     const { reservationFeeEmailLine, reservationFeePayLink, reservationFeeSigningStep, reservationFeeLinkProblem } = await import("@/lib/reservation-fee");
@@ -1548,6 +1560,7 @@ async function sendSignedEmails(
     if (out) out.reservationFee = reservationFeeSigningStep(fee);
     feeHandled = reservationFeeLine !== null;
     feeProblem = reservationFeeLinkProblem(fee);
+    dmvBlocked = fee.status === "dmv_check_required";
     if (feeProblem) {
       // The usual pay-link fallback below still runs (docs/reservation-fee.md).
       const { logAudit } = await import("@/lib/audit.server");
@@ -1556,7 +1569,7 @@ async function sendSignedEmails(
   } catch (e) {
     console.error("[agreement] reservation fee failed", e);
   }
-  if (!feeHandled) try {
+  if (!feeHandled && !dmvBlocked) try {
     const { createInitialPaymentLink } = await import("@/lib/initial-payment.server");
     payment = await createInitialPaymentLink(admin, id, null);
   } catch (e) {

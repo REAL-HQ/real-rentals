@@ -45,8 +45,8 @@ function fakeAdmin(tables) {
         insert: () => { writes.push(["insert", name]); return api; }, update: () => { writes.push(["update", name]); return api; }, upsert: () => { writes.push(["upsert", name]); return api; }, delete: () => { writes.push(["delete", name]); return api; },
         select: () => api, eq: (c, v) => (filters.push((r) => r[c] === v), api), is: (c, v) => (filters.push((r) => (r[c] ?? null) === v), api),
         in: (c, v) => (filters.push((r) => v.includes(r[c])), api), order: () => api, limit: (n) => ((cap = n), api),
-        maybeSingle: async () => ({ data: rows()[0] ?? null, error: null }),
-        then: (res, rej) => Promise.resolve({ data: rows(), error: null }).then(res, rej),
+        maybeSingle: async () => (name === "license_dmv_checks" && !(name in tables) ? { data: null, error: { code: "42P01", message: "license_dmv_checks does not exist" } } : { data: rows()[0] ?? null, error: null }),
+        then: (res, rej) => Promise.resolve(name === "license_dmv_checks" && !(name in tables) ? { data: null, error: { code: "42P01", message: "license_dmv_checks does not exist" } } : { data: rows(), error: null }).then(res, rej),
       };
       return api;
     },
