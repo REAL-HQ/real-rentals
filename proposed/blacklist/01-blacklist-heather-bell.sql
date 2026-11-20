@@ -13,8 +13,11 @@
 -- Side effects of the migration's triggers when this inserts:
 --   * her phone/email/licence/address are snapshotted into renter_blacklist_identifiers;
 --   * every OTHER live application (not declined/closed/deleted) sharing any of them gets a
---     needs_staff flag 'matches blacklisted renter' (an Owner clears it if it is not her);
---   * approval, reservation and activation are refused for her from then on.
+--     needs_staff flag 'blacklist match: ...' (an Owner clears it if it is not her);
+--   * matching waitlist signups / website leads are recorded too (same building, similar
+--     address, DOB + last name, card and signer IP for applications);
+--   * approval, reservation and activation are refused for her from then on;
+--   * automated texts/emails to her stop; staff can still text/email/call her manually.
 --   Ending / closing her current rental is NOT blocked and is a separate step.
 
 BEGIN;

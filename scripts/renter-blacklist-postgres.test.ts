@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { normalizeAddress, normalizeEmail, normalizeLicense, normalizePhone } from "../src/lib/blacklist";
+import { addressSimilar, normalizeAddress, normalizeAddressBase, normalizeCard, normalizeDobLast, normalizeEmail, normalizeIp, normalizeLicense, normalizePhone } from "../src/lib/blacklist";
 
 function candidates(): string[] {
   const out: string[] = [];
@@ -52,7 +52,12 @@ CREATE TABLE public.audit_log (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), ac
   action text, entity_type text, entity_id text, summary text, metadata jsonb DEFAULT '{}', created_at timestamptz DEFAULT now());
 CREATE TABLE public.applications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), full_name text, email text, phone text, address text, city text, state text, zip text,
-  license_number text, status text NOT NULL DEFAULT 'new', user_id uuid, notes text, deleted_at timestamptz);
+  license_number text, status text NOT NULL DEFAULT 'new', user_id uuid, notes text, deleted_at timestamptz,
+  dob date, card_brand text, card_last4 text, card_exp_month int, card_exp_year int);
+CREATE TABLE public.agreements (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), application_id uuid REFERENCES public.applications(id) ON DELETE CASCADE, signer_ip text);
+CREATE TABLE public.waitlist (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), full_name text NOT NULL, email text NOT NULL, phone text,
+  status text NOT NULL DEFAULT 'waiting', review_flagged_at timestamptz, review_reason text);
+CREATE TABLE public.contact_leads (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, email text NOT NULL, phone text);
 CREATE TABLE public.driver_contacts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), application_id uuid REFERENCES public.applications(id) ON DELETE CASCADE, kind text, value text);
 CREATE TABLE public.driver_addresses (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), application_id uuid REFERENCES public.applications(id) ON DELETE CASCADE, line1 text NOT NULL DEFAULT '', zip text);
 CREATE TABLE public.rentals (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), application_id uuid, driver_id uuid NOT NULL, vehicle_id uuid, status text NOT NULL DEFAULT 'reserved');
@@ -98,6 +103,16 @@ describe.skipIf(skip)("renter blacklist in Postgres", () => {
     for (const e of emails) expect(must(`SELECT coalesce(private.rr_norm_email(${lit(e)}), '<null>')`)).toBe(normalizeEmail(e) ?? "<null>");
     for (const l of lic) expect(must(`SELECT coalesce(private.rr_norm_license(${lit(l)}), '<null>')`)).toBe(normalizeLicense(l) ?? "<null>");
     for (const [a, z] of addrs) expect(must(`SELECT coalesce(private.rr_norm_address(${lit(a)}, ${lit(z)}), '<null>')`)).toBe(normalizeAddress(a, z) ?? "<null>");
+    const more: [string | null, string | null][] = [...addrs, ["40 Magnolia Street Apt 2B", "33610"], ["40 Magnolia St Bldg C Unit 4", "33610"], ["Apt 4", "33610"], ["7 Elm Rd Floor 2 Room 9", "33612"]];
+    for (const [a, z] of more) expect(must(`SELECT coalesce(private.rr_norm_address_base(${lit(a)}, ${lit(z)}), '<null>')`)).toBe(normalizeAddressBase(a, z) ?? "<null>");
+    const people: [string | null, string | null][] = [["1990-04-02", "Pat Q Sample Jr"], ["1990-04-02", "Sample"], ["bad", "A B"], [null, "A B"], ["1990-04-02T00:00:00Z", "A. B. Sample III"]];
+    for (const [d, n] of people) expect(must(`SELECT coalesce(private.rr_norm_dob_last(${lit(d)}, ${lit(n)}), '<null>')`)).toBe(normalizeDobLast(d, n) ?? "<null>");
+    const cards: [string | null, string | null, number | null, number | null][] = [["Visa", "4242", 7, 2029], ["visa", "42", 7, 2029], [null, "4242", 7, 2029], ["amex", "0005", 13, 2029]];
+    for (const [b, l, m, y] of cards) expect(must(`SELECT coalesce(private.rr_norm_card(${lit(b)}, ${lit(l)}, ${m ?? "NULL"}, ${y ?? "NULL"}), '<null>')`)).toBe(normalizeCard(b, l, m, y) ?? "<null>");
+    for (const ip of ["203.0.113.7", " 203.0.113.7, 10.0.0.1", "10.1.2.3", "172.20.1.1", "172.32.1.1", "::1", "2001:db8::1", "unknown", null])
+      expect(must(`SELECT coalesce(private.rr_norm_ip(${lit(ip)}), '<null>')`)).toBe(normalizeIp(ip) ?? "<null>");
+    const pairs: [string, string][] = [["40 magnolia st|33610", "40 magnolai st|33610"], ["40 magnolia st|33610", "40 n magnolia st|33610"], ["40 magnolia st|33610", "41 magnolia st|33610"], ["40 magnolia st|33610", "40 oak st|33610"], ["40 magnolia st|33610", "40 magnolia st|"]];
+    for (const [a, b] of pairs) expect(must(`SELECT private.rr_address_similar(${lit(a)}, ${lit(b)})`)).toBe(addressSimilar(a, b) ? "t" : "f");
   });
 
   test("proposed Heather SQL: blacklists once, snapshots identifiers, appends note once", () => {
@@ -106,7 +121,7 @@ describe.skipIf(skip)("renter blacklist in Postgres", () => {
     must(sql); // re-run is a no-op
     expect(must(`SELECT count(*) FROM public.renter_blacklist WHERE application_id = '${HEATHER}'`)).toBe("1");
     expect(must(`SELECT reason_code || '|' || blacklisted_on || '|' || added_by || '|' || full_name FROM public.renter_blacklist`)).toBe(`vehicle_repossessed|2026-11-19|${OWNER}|Heather Bell`);
-    expect(must(`SELECT string_agg(kind, ',' ORDER BY kind) FROM public.renter_blacklist_identifiers`)).toBe("address,email,license,phone");
+    expect(must(`SELECT string_agg(kind, ',' ORDER BY kind) FROM public.renter_blacklist_identifiers`)).toBe("address,address_base,email,license,phone");
     const notes = must(`SELECT notes FROM public.applications WHERE id = '${HEATHER}'`);
     expect(notes.startsWith("Existing note.\n\nBlacklisted Nov 19, 2026: rent unpaid 2+ days ($350)")).toBe(true);
     expect(notes.split("Blacklisted Nov 19, 2026").length).toBe(2);
@@ -147,7 +162,8 @@ describe.skipIf(skip)("renter blacklist in Postgres", () => {
   test("matching: a reformatted re-application is flagged needs_staff and cannot be approved or rented", () => {
     const id = must(`INSERT INTO public.applications (full_name, email, phone) VALUES ('H. Bell', 'renter6@example.com ', '+1 555 010 0106') RETURNING id`);
     expect(must(`SELECT decision || '|' || reason || '|' || array_to_string(escalation_codes, ',') || '|' || decided_by FROM public.fleet_review_decisions WHERE application_id = '${id}'`))
-      .toBe("needs_staff|matches blacklisted renter|blacklist_match|Blacklist Check (automated)");
+      .toBe("needs_staff|blacklist match: Email, Phone (matches Heather Bell)|blacklist_match|Blacklist Check (automated)");
+    expect(must(`SELECT matched_name || '|' || array_to_string(matched_kinds, ',') FROM public.renter_blacklist_matches WHERE source_id = '${id}'`)).toBe("Heather Bell|email,phone");
     expect(must(`SELECT assessment->'blacklist_match'->'matched' FROM public.fleet_review_decisions WHERE application_id = '${id}'`)).toBe('["email", "phone"]');
     expect(psql(`UPDATE public.applications SET status = 'approved' WHERE id = '${id}'`).err).toContain("renter_blacklist_match_uncleared");
     expect(psql(`INSERT INTO public.rentals (application_id, driver_id, status) VALUES ('${id}', gen_random_uuid(), 'reserved')`).err).toContain("renter_blacklist_match_uncleared");
@@ -164,9 +180,9 @@ describe.skipIf(skip)("renter blacklist in Postgres", () => {
     must(`INSERT INTO public.fleet_review_decisions (application_id, decision, reason) VALUES ('${id}', 'needs_staff', 'FLEET: screenshot unclear')`);
     must(`UPDATE public.applications SET license_number = 'B100 200 30 400 0' WHERE id = '${id}'`);
     expect(must(`SELECT reason || '|' || array_to_string(escalation_codes, ',') FROM public.fleet_review_decisions WHERE application_id = '${id}' AND resolved_at IS NULL`))
-      .toBe("matches blacklisted renter; FLEET: screenshot unclear|blacklist_match");
+      .toBe("blacklist match: License Number (matches Heather Bell); FLEET: screenshot unclear|blacklist_match");
     const id2 = must(`INSERT INTO public.applications (full_name, email, phone, address, zip) VALUES ('Neighbour', 'n@example.com', '5550108888', '12 pine st. #3', '33610') RETURNING id`);
-    expect(must(`SELECT assessment->'blacklist_match'->'matched' FROM public.fleet_review_decisions WHERE application_id = '${id2}'`)).toBe('["address"]');
+    expect(must(`SELECT assessment->'blacklist_match'->'matched' FROM public.fleet_review_decisions WHERE application_id = '${id2}'`)).toBe('["address", "address_base"]');
     const id3 = must(`INSERT INTO public.applications (full_name, email, phone) VALUES ('Clean', 'clean@example.com', '5550107777') RETURNING id`);
     must(`INSERT INTO public.driver_contacts (application_id, kind, value) VALUES ('${id3}', 'phone', '555.010.0106')`);
     expect(must(`SELECT count(*) FROM public.fleet_review_decisions WHERE application_id = '${id3}'`)).toBe("1");
@@ -187,6 +203,82 @@ describe.skipIf(skip)("renter blacklist in Postgres", () => {
     expect(psql(`INSERT INTO public.rentals (application_id, driver_id, status) VALUES ('${target}', gen_random_uuid(), 'reserved')`).ok).toBe(true);
     expect(JSON.parse(must(`SELECT public.renter_blacklist_check('${pre}')::text`))).toMatchObject({ blacklisted: false, block: null });
     expect(JSON.parse(must(`SELECT public.renter_blacklist_check('${HEATHER}')::text`))).toMatchObject({ blacklisted: true, block: "renter_blacklisted" });
+  });
+
+  test("linked people: same building, similar address, DOB + last name, card, signer IP", () => {
+    // Give Heather's (blacklisted) record more details: the snapshot picks them up.
+    must(`UPDATE public.applications SET dob = '1991-03-04', card_brand = 'visa', card_last4 = '4242', card_exp_month = 7, card_exp_year = 2029 WHERE id = '${HEATHER}'`);
+    must(`INSERT INTO public.agreements (application_id, signer_ip) VALUES ('${HEATHER}', '198.51.100.23')`);
+    const kinds = must(`SELECT string_agg(kind, ',' ORDER BY kind) FROM public.renter_blacklist_identifiers i JOIN public.renter_blacklist b ON b.id = i.blacklist_id WHERE b.application_id = '${HEATHER}' AND b.removed_at IS NULL`);
+    expect(kinds).toBe("address,address_base,card,dob_last,email,ip,license,phone");
+    const flagged = (sql: string) => {
+      const id = must(sql);
+      return {
+        id,
+        matched: must(`SELECT coalesce(string_agg(k, ',' ORDER BY k), '') FROM public.renter_blacklist_matches m, unnest(m.matched_kinds) k WHERE m.source_table = 'applications' AND m.source_id = '${id}'`),
+        reason: must(`SELECT coalesce(max(reason), '') FROM public.fleet_review_decisions WHERE application_id = '${id}' AND resolved_at IS NULL`),
+      };
+    };
+    const unit = flagged(`INSERT INTO public.applications (full_name, email, phone, address, zip) VALUES ('Roommate One', 'r1@example.com', '5550102001', '12 Pine St Unit 9', '33610') RETURNING id`);
+    expect(unit.matched).toBe("address_base");
+    expect(unit.reason).toBe("blacklist match: Same Building (matches Heather Bell)");
+    const typo = flagged(`INSERT INTO public.applications (full_name, email, phone, address, zip) VALUES ('Roommate Two', 'r2@example.com', '5550102002', '12 Pnie Street', '33610') RETURNING id`);
+    expect(typo.matched).toBe("address_similar");
+    const otherZip = flagged(`INSERT INTO public.applications (full_name, email, phone, address, zip) VALUES ('Far Away', 'r3@example.com', '5550102003', '12 Pine Street', '32801') RETURNING id`);
+    expect(otherZip.matched).toBe("");
+    const dob = flagged(`INSERT INTO public.applications (full_name, email, phone, dob) VALUES ('Heather Ann Bell', 'new@example.com', '5550102004', '1991-03-04') RETURNING id`);
+    expect(dob.matched).toBe("dob_last");
+    expect(dob.reason).toBe("blacklist match: DOB + Last Name (matches Heather Bell)");
+    const card = flagged(`INSERT INTO public.applications (full_name, email, phone) VALUES ('Card Sharer', 'c@example.com', '5550102005') RETURNING id`);
+    must(`UPDATE public.applications SET card_brand = 'Visa', card_last4 = '4242', card_exp_month = 7, card_exp_year = 2029 WHERE id = '${card.id}'`);
+    expect(must(`SELECT array_to_string(matched_kinds, ',') FROM public.renter_blacklist_matches WHERE source_id = '${card.id}'`)).toBe("card");
+    const ip = flagged(`INSERT INTO public.applications (full_name, email, phone) VALUES ('Same Device', 'd@example.com', '5550102006') RETURNING id`);
+    must(`INSERT INTO public.agreements (application_id, signer_ip) VALUES ('${ip.id}', '198.51.100.23')`);
+    expect(must(`SELECT array_to_string(matched_kinds, ',') FROM public.renter_blacklist_matches WHERE source_id = '${ip.id}'`)).toBe("ip");
+    expect(must(`SELECT reason FROM public.fleet_review_decisions WHERE application_id = '${ip.id}'`)).toBe("blacklist match: Signer IP (matches Heather Bell)");
+    // A private office IP is never used.
+    const office = flagged(`INSERT INTO public.applications (full_name, email, phone) VALUES ('Office Wifi', 'o@example.com', '5550102007') RETURNING id`);
+    must(`INSERT INTO public.agreements (application_id, signer_ip) VALUES ('${office.id}', '10.0.0.5')`);
+    expect(must(`SELECT count(*) FROM public.renter_blacklist_matches WHERE source_id = '${office.id}'`)).toBe("0");
+    // Each match blocks approval until an Owner clears it; never declined.
+    expect(psql(`UPDATE public.applications SET status = 'approved' WHERE id = '${unit.id}'`).err).toContain("renter_blacklist_match_uncleared");
+    expect(must(`SELECT status FROM public.applications WHERE id = '${unit.id}'`)).toBe("new");
+    expect(JSON.parse(must(`SELECT public.renter_blacklist_check('${dob.id}')::text`)).matches[0]).toMatchObject({ full_name: "Heather Bell", kinds: ["dob_last"], cleared: false });
+  });
+
+  test("blacklisting Heather's new phone flags someone who already had it (snapshot grows, scan runs)", () => {
+    const friend = must(`INSERT INTO public.applications (full_name, email, phone, status) VALUES ('Friend', 'f@example.com', '5550103030', 'reviewing') RETURNING id`);
+    expect(must(`SELECT count(*) FROM public.renter_blacklist_matches WHERE source_id = '${friend}'`)).toBe("0");
+    must(`INSERT INTO public.driver_contacts (application_id, kind, value) VALUES ('${HEATHER}', 'phone', '555-010-3030')`);
+    expect(must(`SELECT array_to_string(matched_kinds, ',') FROM public.renter_blacklist_matches WHERE source_id = '${friend}'`)).toBe("phone");
+  });
+
+  test("re-entry through the waitlist and the website contact form is recorded and flagged", () => {
+    const w = must(`INSERT INTO public.waitlist (full_name, email, phone) VALUES ('HB', 'RENTER6@example.com', '555 010 0106') RETURNING id`);
+    expect(must(`SELECT (review_flagged_at IS NOT NULL) || '|' || review_reason FROM public.waitlist WHERE id = '${w}'`)).toBe("true|blacklist match: Email, Phone (matches Heather Bell)");
+    expect(must(`SELECT matched_name || '|' || array_to_string(matched_kinds, ',') FROM public.renter_blacklist_matches WHERE source_table = 'waitlist' AND source_id = '${w}'`)).toBe("Heather Bell|email,phone");
+    const c = must(`INSERT INTO public.contact_leads (name, email, phone) VALUES ('Someone', 'nobody@example.com', '+15550100106') RETURNING id`);
+    expect(must(`SELECT array_to_string(matched_kinds, ',') FROM public.renter_blacklist_matches WHERE source_table = 'contact_leads' AND source_id = '${c}'`)).toBe("phone");
+    const clean = must(`INSERT INTO public.waitlist (full_name, email, phone) VALUES ('Clean', 'clean2@example.com', '5550104444') RETURNING id`);
+    expect(must(`SELECT (review_flagged_at IS NULL)::text FROM public.waitlist WHERE id = '${clean}'`)).toBe("true");
+  });
+
+  test("automated message suppression: blacklisted application, her phone or email; not linked people or others", () => {
+    const sup = (app: string | null, phone: string | null, email: string | null) =>
+      must(`SELECT public.renter_blacklist_suppressed(${app ? `'${app}'` : "NULL"}, ${lit(phone)}, ${lit(email)})`);
+    expect(sup(HEATHER, null, null)).toBe("t");
+    expect(sup(null, "+15550100106", null)).toBe("t");
+    expect(sup(null, null, " renter6@EXAMPLE.com")).toBe("t");
+    expect(sup(null, "+15550109999", "someone@example.com")).toBe("f");
+    expect(sup(null, null, null)).toBe("f");
+    // A linked (matched) person is flagged, not silenced: staff still talk to them.
+    const linked = must(`SELECT source_id FROM public.renter_blacklist_matches WHERE source_table = 'applications' AND matched_kinds = ARRAY['address_base'] LIMIT 1`);
+    expect(sup(linked, null, null)).toBe("f");
+    // Suppression is its own rule: nothing is written to the STOP list.
+    expect(must(`SELECT to_regclass('public.sms_opt_outs') IS NULL`)).toBe("t");
+    expect(must(`SELECT has_function_privilege('authenticated', 'public.renter_blacklist_suppressed(uuid, text, text)', 'EXECUTE')`)).toBe("f");
+    expect(must(`SELECT has_function_privilege('service_role', 'public.renter_blacklist_suppressed(uuid, text, text)', 'EXECUTE')`)).toBe("t");
+    expect(must(`SELECT has_table_privilege('authenticated', 'public.renter_blacklist_matches', 'INSERT')`)).toBe("f");
   });
 
   test("permissions: browser roles cannot reach the identifiers or the check function", () => {

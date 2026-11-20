@@ -1649,7 +1649,7 @@ export async function approveApplicationCore(args: {
           applicationId: data.id,
           agreementComing: data.sendAgreement === true,
         });
-        approvalEmail = result.ok ? "sent" : result.blocked ?? "failed";
+        approvalEmail = result.ok ? "sent" : result.blocked === "blacklisted" ? "not_sent" : result.blocked ?? "failed";
       } catch {
         // Approval is already durable; never undo it because a notice failed.
         approvalEmail = "failed";

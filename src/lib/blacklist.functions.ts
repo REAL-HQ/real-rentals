@@ -95,3 +95,31 @@ export const voidRenterStrike = createServerFn({ method: "POST" })
     const { admin, audit, core } = await deps();
     return core.voidStrike(admin, actor, data, audit);
   });
+
+export const listBlacklistMatches = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        sourceTable: z.enum(["applications", "waitlist", "contact_leads"]).optional(),
+        sourceId: z.string().uuid().optional(),
+      })
+      .parse(d ?? {}),
+  )
+  .handler(async ({ data, context }) => {
+    const { requireStaff } = await import("@/lib/roles.server");
+    await requireStaff(context.userId);
+    const { admin, core } = await deps();
+    return core.listBlacklistMatches(admin, data);
+  });
+
+export const clearBlacklistLeadMatch = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ matchId: z.string().uuid(), note: z.string().max(500).optional() }).parse(d))
+  .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    const { requireOwner } = await import("@/lib/roles.server");
+    const actor = await requireOwner(context.userId);
+    const { admin, audit, core } = await deps();
+    await core.clearLeadBlacklistMatch(admin, actor, data, audit);
+    return { ok: true };
+  });

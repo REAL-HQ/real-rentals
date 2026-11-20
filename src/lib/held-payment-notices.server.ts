@@ -35,7 +35,7 @@ export type HeldNoticeInput = {
   reason: string;
 };
 
-type SendRes = { ok: boolean; blocked?: "off" | "held" } | void | undefined;
+type SendRes = { ok: boolean; blocked?: "off" | "held" | "blacklisted" } | void | undefined;
 
 /** Record a held notice. Never throws; false when the table is missing or the write failed. */
 export async function holdNotice(admin: any, n: HeldNoticeInput): Promise<boolean> {
@@ -136,6 +136,7 @@ export async function retryHeldNotices(admin: any, deps: Deps): Promise<HeldNoti
     const r = (res ?? { ok: true }) as { ok: boolean; blocked?: string };
     if (r.blocked === "held") { await finish("held", "Still held."); report.stillHeld++; }
     else if (r.blocked === "off") { await finish("dropped", "Switched off in Automations."); report.dropped++; }
+    else if (r.blocked === "blacklisted") { await finish("dropped", "Renter is blacklisted; automated email suppressed."); report.dropped++; }
     else if (r.ok) { await finish("sent", null); report.sent++; }
     else { await finish("failed", "Email provider refused; not resent."); report.failed++; }
   }

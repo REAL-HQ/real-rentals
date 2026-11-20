@@ -20,7 +20,8 @@ export const BLACKLISTED_LABEL = "Blacklisted";
 export const BLACKLISTED_BADGE = DANGER_BADGE;
 /** needs_staff escalation code written by the database when a new application matches. */
 export const BLACKLIST_MATCH_CODE = "blacklist_match";
-export const BLACKLIST_MATCH_REASON = "matches blacklisted renter";
+/** Prefix of the needs_staff reason the database writes, e.g. "blacklist match: Phone, Email (matches Jane Doe)". */
+export const BLACKLIST_MATCH_REASON = "blacklist match";
 
 /** Any ONE of these = blacklist (Dolmar, Nov 19 2026 10:51 PM ET). */
 export const BLACKLIST_REASONS = [
@@ -211,8 +212,9 @@ const ADDRESS_WORDS: Record<string, string> = {
   lane: "ln", court: "ct", circle: "cir", place: "pl", parkway: "pkwy", highway: "hwy", terrace: "ter",
   trail: "trl", square: "sq", way: "way", north: "n", south: "s", east: "e", west: "w",
   northeast: "ne", northwest: "nw", southeast: "se", southwest: "sw",
-  apartment: "apt", unit: "apt", suite: "ste", number: "apt", no: "apt",
+  apartment: "apt", unit: "apt", suite: "ste", number: "apt", no: "apt", floor: "fl", room: "rm", building: "bldg",
 };
+const UNIT_WORDS = new Set(["apt", "ste", "bldg", "fl", "rm", "lot"]);
 
 /**
  * Street line (text before the first comma) normalized, plus the 5-digit ZIP
@@ -241,43 +243,151 @@ export function normalizeAddress(address: unknown, zip?: unknown): string | null
   return `${street}|${z}`;
 }
 
-export type BlacklistIdentifierKind = "phone" | "email" | "license" | "address";
+/** Same building, any unit: normalizeAddress without the unit (apt/ste/bldg/fl/rm/lot + next token). */
+export function normalizeAddressBase(address: unknown, zip?: unknown): string | null {
+  const full = normalizeAddress(address, zip);
+  if (!full) return null;
+  const [street, z] = full.split("|");
+  const toks = street.split(" ");
+  const kept: string[] = [];
+  for (let i = 0; i < toks.length; i++) {
+    if (UNIT_WORDS.has(toks[i])) {
+      i++;
+      continue;
+    }
+    kept.push(toks[i]);
+  }
+  if (kept.length < 2) return null;
+  return `${kept.join(" ")}|${z}`;
+}
+
+/** "YYYY-MM-DD|lastname" (suffixes Jr/Sr/II/III/IV dropped). Needs a first and last name. */
+export function normalizeDobLast(dob: unknown, fullName: unknown): string | null {
+  const d = String(dob ?? "").trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  const toks = String(fullName ?? "").toLowerCase().replace(/[^a-z ]+/g, "").trim().split(" ").filter(Boolean);
+  let i = toks.length;
+  while (i > 0 && ["jr", "sr", "ii", "iii", "iv"].includes(toks[i - 1])) i--;
+  if (i < 2) return null;
+  const last = toks[i - 1];
+  return last.length >= 2 ? `${d}|${last}` : null;
+}
+
+/** Saved card: brand + last 4 + expiry (no Stripe fingerprint is stored by the app today). */
+export function normalizeCard(brand: unknown, last4: unknown, month: unknown, year: unknown): string | null {
+  const b = String(brand ?? "").trim().toLowerCase();
+  const l = String(last4 ?? "");
+  const m = Number(month);
+  const y = Number(year);
+  if (!b || !/^\d{4}$/.test(l) || !(m >= 1 && m <= 12) || !(y > 2000)) return null;
+  return `${b}|${l}|${m}|${y}`;
+}
+
+/** Public IP only (first of a forwarded list); private, loopback and junk are null. */
+export function normalizeIp(raw: unknown): string | null {
+  const v = String(raw ?? "").toLowerCase().trim().split(",")[0].trim();
+  if (!v || v === "::1" || /^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(v) || !/^[0-9a-f:.]+$/.test(v)) return null;
+  return v;
+}
+
+export function levenshtein(a: string, b: string): number {
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur.push(Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/** Similar street at the same house number and ZIP (two edits, or only the N/S/E/W prefix differs). */
+export function addressSimilar(a: string | null, b: string | null): boolean {
+  if (!a || !b) return false;
+  const [sa, za = ""] = a.split("|");
+  const [sb, zb = ""] = b.split("|");
+  if (!za || za !== zb) return false;
+  const na = sa.split(" ")[0];
+  const nb = sb.split(" ")[0];
+  if (na !== nb) return false;
+  const ra = sa.slice(na.length + 1);
+  const rb = sb.slice(nb.length + 1);
+  if (ra.length < 3 || rb.length < 3) return false;
+  const strip = (x: string) => x.replace(/^(n|s|e|w|ne|nw|se|sw) /, "");
+  return ra === rb || levenshtein(ra, rb) <= 2 || strip(ra) === strip(rb);
+}
+
+export type BlacklistIdentifierKind = "phone" | "email" | "license" | "address" | "address_base" | "dob_last" | "card" | "ip";
 export type BlacklistIdentifier = { kind: BlacklistIdentifierKind; value: string };
 
-/** Every normalized identifier on an application row (for display-free matching and tests). */
+/** Every normalized identifier on an application row (mirrors private.rr_application_identifiers). */
 export function applicationIdentifiers(app: {
   phone?: unknown;
   email?: unknown;
   license_number?: unknown;
   address?: unknown;
   zip?: unknown;
+  dob?: unknown;
+  full_name?: unknown;
+  card_brand?: unknown;
+  card_last4?: unknown;
+  card_exp_month?: unknown;
+  card_exp_year?: unknown;
+  signer_ip?: unknown;
 }): BlacklistIdentifier[] {
   const out: BlacklistIdentifier[] = [];
-  const p = normalizePhone(app.phone);
-  if (p) out.push({ kind: "phone", value: p });
-  const e = normalizeEmail(app.email);
-  if (e) out.push({ kind: "email", value: e });
-  const l = normalizeLicense(app.license_number);
-  if (l) out.push({ kind: "license", value: l });
-  const a = normalizeAddress(app.address, app.zip);
-  if (a) out.push({ kind: "address", value: a });
+  const push = (kind: BlacklistIdentifierKind, v: string | null) => {
+    if (v) out.push({ kind, value: v });
+  };
+  push("phone", normalizePhone(app.phone));
+  push("email", normalizeEmail(app.email));
+  push("license", normalizeLicense(app.license_number));
+  push("address", normalizeAddress(app.address, app.zip));
+  push("address_base", normalizeAddressBase(app.address, app.zip));
+  push("dob_last", normalizeDobLast(app.dob, app.full_name));
+  push("card", normalizeCard(app.card_brand, app.card_last4, app.card_exp_month, app.card_exp_year));
+  push("ip", normalizeIp(app.signer_ip));
   return out;
 }
 
-/** Which kinds two identifier sets share. Empty = no match. */
-export function matchingKinds(a: readonly BlacklistIdentifier[], b: readonly BlacklistIdentifier[]): BlacklistIdentifierKind[] {
-  const set = new Set(b.map((x) => `${x.kind}:${x.value}`));
-  return [...new Set(a.filter((x) => set.has(`${x.kind}:${x.value}`)).map((x) => x.kind))].sort();
+/** Which kinds two identifier sets share (plus address_similar). Empty = no match. Mirrors the SQL. */
+export function matchingKinds(a: readonly BlacklistIdentifier[], b: readonly BlacklistIdentifier[]): string[] {
+  const out = new Set<string>();
+  for (const x of a)
+    for (const y of b) {
+      if (x.kind !== y.kind) continue;
+      if (x.value === y.value) out.add(x.kind);
+      else if (x.kind === "address_base" && addressSimilar(y.value, x.value)) out.add("address_similar");
+    }
+  return [...out].sort();
 }
 
-const KIND_LABELS: Record<BlacklistIdentifierKind, string> = {
+const KIND_LABELS: Record<string, string> = {
   phone: "Phone",
   email: "Email",
   license: "License Number",
   address: "Address",
+  address_base: "Same Building",
+  address_similar: "Similar Address",
+  dob_last: "DOB + Last Name",
+  card: "Saved Card",
+  ip: "Signer IP",
 };
 export function identifierKindLabel(k: string): string {
-  return KIND_LABELS[k as BlacklistIdentifierKind] ?? k;
+  return KIND_LABELS[k] ?? k;
+}
+
+/**
+ * Automated message kinds that are NOT suppressed for a blacklisted person:
+ * a staff member typed it (staff_message), or it goes to staff about them
+ * (team alerts, *_staff). Everything else sent by sendSms/sendEmail is automated.
+ */
+export function isStaffOrManualMessageKind(kind: unknown): boolean {
+  const k = String(kind ?? "");
+  return k === "staff_message" || k.startsWith("team_alert_") || k.endsWith("_staff");
 }
 
 /** The message staff see when the server refuses because of the blacklist. */
@@ -321,5 +431,18 @@ export type BlacklistProfile = {
   active: BlacklistEntry | null;
   history: BlacklistEntry[];
   strikes: StrikeEntry[];
-  matches: { blacklistId: string; kinds: string[]; cleared: boolean }[];
+  matches: { blacklistId: string; kinds: string[]; cleared: boolean; fullName: string | null }[];
+};
+
+/** One recorded match (renter_blacklist_matches): which blacklisted person, which fields. */
+export type BlacklistMatchRow = {
+  id: string;
+  blacklistId: string;
+  sourceTable: "applications" | "waitlist" | "contact_leads";
+  sourceId: string;
+  matchedKinds: string[];
+  matchedName: string | null;
+  createdAt: string;
+  clearedAt: string | null;
+  clearedByLabel: string | null;
 };

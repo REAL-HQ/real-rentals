@@ -31,6 +31,7 @@ import {
   type BlacklistEntry,
   type StrikeEntry,
   type BlacklistProfile,
+  type BlacklistMatchRow,
 } from "@/lib/blacklist";
 
 export type { BlacklistEntry, StrikeEntry, BlacklistProfile };
@@ -108,7 +109,7 @@ export type BlacklistCheck = {
   blacklisted: boolean;
   block: "renter_blacklisted" | "renter_blacklist_match_uncleared" | null;
   message: string | null;
-  matches: { blacklistId: string; kinds: string[]; cleared: boolean }[];
+  matches: { blacklistId: string; kinds: string[]; cleared: boolean; fullName: string | null }[];
 };
 
 /**
@@ -132,7 +133,7 @@ export async function checkBlacklist(admin: any, applicationId: string): Promise
     block,
     message: block === "renter_blacklisted" ? blacklistRefusal("blacklisted") : block ? blacklistRefusal("match") : null,
     matches: Array.isArray(d.matches)
-      ? d.matches.map((m: any) => ({ blacklistId: String(m.blacklist_id), kinds: Array.isArray(m.kinds) ? m.kinds.map(String) : [], cleared: m.cleared === true }))
+      ? d.matches.map((m: any) => ({ blacklistId: String(m.blacklist_id), kinds: Array.isArray(m.kinds) ? m.kinds.map(String) : [], cleared: m.cleared === true, fullName: m.full_name == null ? null : String(m.full_name) }))
       : [],
   };
 }
@@ -375,11 +376,121 @@ export async function clearBlacklistMatch(
   }));
   const res = await admin.from("renter_blacklist_clearances").upsert(rows, { onConflict: "application_id,blacklist_id", ignoreDuplicates: true });
   if (res.error) throw new Error(notInstalled(res.error) ? BLACKLIST_NOT_INSTALLED : res.error.message);
+  const marked = await admin
+    .from("renter_blacklist_matches")
+    .update({ cleared_at: new Date().toISOString(), cleared_by: actor.userId, cleared_by_label: actorLabel(actor), clear_note: input.note ? String(input.note).slice(0, 500) : null })
+    .eq("source_table", "applications")
+    .eq("source_id", input.applicationId)
+    .in("blacklist_id", input.blacklistIds)
+    .is("cleared_at", null);
+  if (marked?.error && !notInstalled(marked.error)) throw new Error(marked.error.message);
   await audit(actor, {
     action: "renter.blacklist_match_cleared",
     summary: "Cleared A Blacklist Match (Not The Same Person)",
     entityType: "application",
     entityId: input.applicationId,
     metadata: { blacklist_ids: input.blacklistIds, note: input.note ?? null },
+  });
+}
+
+/**
+ * Automated SMS / email suppression. True = do not send this automated message.
+ * Staff manual messages (staff_message) and staff-directed alerts are exempted by
+ * the callers (sms.server.ts / email.server.ts) before this is asked; inbound
+ * texts, calls and email never pass through here. Not the 45-day payment pause,
+ * not the STOP opt-out: a separate, permanent rule while the person is blacklisted.
+ *
+ * Fails open (sends) if the check itself errors, so a database hiccup cannot
+ * silence every renter's payment reminders; the error is logged.
+ */
+export async function isBlacklistSuppressed(
+  admin: any,
+  who: { applicationId?: string | null; phone?: string | null; email?: string | null },
+): Promise<boolean> {
+  if (!admin || typeof admin.rpc !== "function") return false;
+  if (!who.applicationId && !who.phone && !who.email) return false;
+  try {
+    const { data, error } = await admin.rpc("renter_blacklist_suppressed", {
+      _application_id: who.applicationId ?? null,
+      _phone: who.phone ?? null,
+      _email: who.email ?? null,
+    });
+    if (error) {
+      if (!notInstalled(error)) console.error("[blacklist] suppression check failed; sending", error.message);
+      return false;
+    }
+    return data === true;
+  } catch (e) {
+    console.error("[blacklist] suppression check threw; sending", e instanceof Error ? e.message : e);
+    return false;
+  }
+}
+
+export const BLACKLIST_SUPPRESSED_ERROR = "blacklisted: automated messages suppressed";
+
+export type { BlacklistMatchRow };
+
+function toMatchRow(r: any): BlacklistMatchRow {
+  return {
+    id: String(r.id),
+    blacklistId: String(r.blacklist_id),
+    sourceTable: r.source_table,
+    sourceId: String(r.source_id),
+    matchedKinds: Array.isArray(r.matched_kinds) ? r.matched_kinds.map(String) : [],
+    matchedName: r.matched_name ?? null,
+    createdAt: String(r.created_at),
+    clearedAt: r.cleared_at ?? null,
+    clearedByLabel: r.cleared_by_label ?? null,
+  };
+}
+
+/** Open (uncleared) matches for the admin red alert, newest first. Optionally for one record. */
+export async function listBlacklistMatches(
+  admin: any,
+  opts: { sourceTable?: BlacklistMatchRow["sourceTable"]; sourceId?: string; includeCleared?: boolean } = {},
+): Promise<{ installed: boolean; matches: BlacklistMatchRow[] }> {
+  let q = admin.from("renter_blacklist_matches").select("*");
+  if (opts.sourceTable) q = q.eq("source_table", opts.sourceTable);
+  if (opts.sourceId) q = q.eq("source_id", opts.sourceId);
+  if (!opts.includeCleared) q = q.is("cleared_at", null);
+  const res = await q.order("created_at", { ascending: false }).limit(200);
+  if (res.error) {
+    if (notInstalled(res.error) || /renter_blacklist_matches/.test(String(res.error.message ?? ""))) return { installed: false, matches: [] };
+    throw new Error(res.error.message);
+  }
+  return { installed: true, matches: ((res.data ?? []) as any[]).map(toMatchRow) };
+}
+
+/**
+ * Owner clears a waitlist / website-lead match ("Not The Same Person"). Application
+ * matches are cleared through the needs_staff flag (clearBlacklistMatch), which
+ * also records the clearance that unblocks approval.
+ */
+export async function clearLeadBlacklistMatch(
+  admin: any,
+  actor: BlacklistActor,
+  input: { matchId: string; note?: string | null },
+  audit: AuditFn,
+): Promise<void> {
+  requireOwnerTier(actor, "Clear A Blacklist Match");
+  const got = await admin.from("renter_blacklist_matches").select("*").eq("id", input.matchId).maybeSingle();
+  if (got.error) throw new Error(notInstalled(got.error) ? BLACKLIST_NOT_INSTALLED : got.error.message);
+  if (!got.data) throw new Error("That Match No Longer Exists.");
+  const row = toMatchRow(got.data);
+  if (row.sourceTable === "applications") {
+    await clearBlacklistMatch(admin, actor, { applicationId: row.sourceId, blacklistIds: [row.blacklistId], note: input.note }, audit);
+    return;
+  }
+  const res = await admin
+    .from("renter_blacklist_matches")
+    .update({ cleared_at: new Date().toISOString(), cleared_by: actor.userId, cleared_by_label: actorLabel(actor), clear_note: input.note ? String(input.note).slice(0, 500) : null })
+    .eq("id", input.matchId);
+  if (res.error) throw new Error(res.error.message);
+  await audit(actor, {
+    action: "renter.blacklist_match_cleared",
+    summary: "Cleared A Blacklist Match (Not The Same Person)",
+    entityType: row.sourceTable,
+    entityId: row.sourceId,
+    metadata: { blacklist_ids: [row.blacklistId], kinds: row.matchedKinds, note: input.note ?? null },
   });
 }

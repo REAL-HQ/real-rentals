@@ -268,6 +268,7 @@ import { listFleetNeedsStaff, type FleetNeedsStaffFlag } from "@/lib/fleet-revie
 import { listBlacklist } from "@/lib/blacklist.functions";
 import type { BlacklistEntry } from "@/lib/blacklist";
 import { BlacklistCard, BlacklistedBadge } from "@/components/admin/BlacklistCard";
+import { BlacklistMatchAlert } from "@/components/admin/BlacklistMatchAlert";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
 import type { ExpiryScope } from "@/lib/document-expiry";
 
@@ -1290,6 +1291,15 @@ setDocCounts(requiredDocCounts(rows));
             void update(id, { status: "closed", closure_reason: reason, closure_notes: notes })
               .then((ok) => { if (ok) setClosingId(null); })
               .finally(() => setClosingBusy(false));
+          }}
+        />
+      ) : null}
+      {driversLoaded ? (
+        <BlacklistMatchAlert
+          canClear={isOwner}
+          onOpenApplication={(id) => {
+            const a = drivers.find((d) => d.id === id);
+            if (a) openDriver(a);
           }}
         />
       ) : null}
@@ -2742,6 +2752,7 @@ function DriverDetail({
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         {/* Header + record navigation scroll with the profile */}
         <div className="bg-[#FAFAFB] border-b border-[#EDEDF0] px-4 sm:px-8 pt-3 pb-3">
+          <BlacklistMatchAlert applicationId={driver.id} canClear={isOwner} />
           <FleetNeedsStaffBanner applicationId={driver.id} canResolve={isManager || isOwner} canClearBlacklistMatch={isOwner} />
           {/* Identity: its own box, with the record tabs directly below it */}
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-4 shadow-[0_1px_2px_rgba(17,17,20,0.05)]">
