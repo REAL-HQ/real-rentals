@@ -5,11 +5,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalButton } from "./modal";
 
 /** Staged files only; the caller retains the existing private vault pipeline. */
-export function DriverDocumentUploadDialog({ label, hint, upload, onClose, choices }: {
+export function DriverDocumentUploadDialog({ label, hint, upload, onClose, choices, multiple }: {
   label: string;
   hint?: string;
   upload: UploadFn;
   onClose: () => void;
+  /** Stage several files at once and upload them one after another. */
+  multiple?: boolean;
   choices?: { label: string; upload: UploadFn; accept?: string; multiple?: boolean; hint?: string; maxBytes?: number }[];
 }) {
   const [busy, setBusy] = useState(false);
@@ -70,7 +72,7 @@ export function DriverDocumentUploadDialog({ label, hint, upload, onClose, choic
             {choices.map((choice) => <TabsContent key={choice.label} value={choice.label} forceMount className="data-[state=inactive]:hidden">
               {uploader(choice.label, choice.upload, choice)}
             </TabsContent>)}
-          </Tabs> : uploader(label, upload)}
+          </Tabs> : uploader(label, upload, { label, upload, multiple })}
         </ModalBody>
         <ModalFooter><ModalButton onClick={close} disabled={busy}>{choices?.length ? "Done" : "Cancel"}</ModalButton></ModalFooter>
       </ModalShell>

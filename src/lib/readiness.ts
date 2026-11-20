@@ -157,10 +157,12 @@ function indexDocuments(documents: ReadinessDocument[]): DocumentIndex {
     if (!raw) continue;
     for (const [canonical, names] of Object.entries(DOC_ALIASES)) {
       if (!names.includes(raw)) continue;
-      present.add(canonical);
       // A rejected document is not evidence of anything — a staff member has
-      // looked at it and asked for a different one.
-      if (doc.review_status === "rejected") present.delete(canonical);
+      // looked at it and asked for a different one. A section holds several
+      // active files, so one rejected file never cancels another good one,
+      // whichever order they come in. Any one verified file satisfies it.
+      if (doc.review_status === "rejected") continue;
+      present.add(canonical);
       if (doc.review_status === "verified") checked.add(canonical);
     }
   }

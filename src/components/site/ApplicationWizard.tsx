@@ -1721,6 +1721,7 @@ function DriverProfile({
                         hint="A screenshot of your profile screen showing your name and rating."
                         tips={["Your rating should be readable", "Any app is fine"]}
                         kind="gig_profile"
+                        allowMore
                         token={token}
                         onFile={state.profile_screenshot_on_file}
                         onChange={(v) =>
@@ -1743,6 +1744,7 @@ function DriverProfile({
                         hint="A screenshot of a recent weekly earnings summary from your gig app, or a pay stub."
                         tips={["Your name and the dates should be readable", "Any app is fine"]}
                         kind="income"
+                        allowMore
                         token={token}
                         onFile={state.income_proof_on_file}
                         onChange={(v) =>

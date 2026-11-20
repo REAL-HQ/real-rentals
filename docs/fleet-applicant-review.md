@@ -51,7 +51,8 @@ Reply `{ ok, packet }` with:
 | `contacts` | every phone and email on the profile (`phones[]` / `emails[]`, with `is_primary`, `receives_messages`, and `sms_ok` per number). `answers.phone` / `answers.email` stay the primary |
 | `addresses` | every address on the profile (`is_primary`, `label`, `source`). `answers.address` / `city` / `state` / `zip` stay the primary. A license address that differs from the application is saved as a second row labeled "License address" and does not overwrite the primary |
 | `answers` | the application answers (license number masked to the last 4; payment ids, consent text and card ids left out) |
-| `documents[]` | every current vault document: category, file name, type, size, `review_status`, review note, upload time, expiry. `url` is null unless `include_urls: true`, then a signed link valid for 15 minutes (the back office's own signer) |
+| `documents[]` | every active vault document (a section can hold several files, for example two pay stubs; review each one, not only the newest): category, file name, type, size, `review_status`, review note, upload time, expiry. `url` is null unless `include_urls: true`, then a signed link valid for 15 minutes (the back office's own signer) |
+| `documents_by_category` | per section counts of active files: `active`, `verified`, `rejected`, `unreviewed`. A section counts as received when any active file in it is not rejected, and as verified when any one is verified, but FLEET should still review every file |
 | `gig_evidence` | platforms, gig status, trips, rating, screenshot counts, gig-profile and trip-history document counts |
 | `screening` | the staff screening record as recorded, or null |
 | `checks` | `background_check_status`, `mvr_status`, `incident_count` as recorded |

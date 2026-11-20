@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { holdsVerifiedUntilReview, reviewFollowUp, supersedeQuery } from "../src/lib/insurance-review-hold";
+import { HOLD_VERIFIED_CATEGORIES, holdsVerifiedUntilReview, reviewFollowUp, supersedeQuery } from "../src/lib/insurance-review-hold";
 
-describe("insurance review hold", () => {
-  test("only renter insurance uploads hold", () => {
-    expect(holdsVerifiedUntilReview("insurance", "driver")).toBe(true);
-    expect(holdsVerifiedUntilReview("insurance", undefined)).toBe(true);
-    expect(holdsVerifiedUntilReview("insurance", "admin")).toBe(false);
+// Insurance keeps every card active now (multi-file sections), so the old
+// "verified card stays until the new one is reviewed" hold has nothing to hold.
+describe("insurance review hold (retired for multi-file sections)", () => {
+  test("no category holds a verified file", () => {
+    expect(HOLD_VERIFIED_CATEGORIES).toEqual([]);
+    expect(holdsVerifiedUntilReview("insurance", "driver")).toBe(false);
     expect(holdsVerifiedUntilReview("license_front", "driver")).toBe(false);
   });
   test("supersede skips verified rows only when holding", () => {
@@ -17,19 +18,13 @@ describe("insurance review hold", () => {
     supersedeQuery(q, true);
     expect(calls).toEqual(["review_status!=verified"]);
   });
-  test("review follow-ups", () => {
-    expect(reviewFollowUp("insurance", "verified", { is_current: true }, true)).toBe("supersede_others");
-    expect(reviewFollowUp("insurance", "rejected", { is_current: true }, true)).toBe("demote_rejected");
-    expect(reviewFollowUp("insurance", "rejected", { is_current: true }, false)).toBe("none");
-    expect(reviewFollowUp("insurance", "uploaded", { is_current: true }, true)).toBe("none");
-    expect(reviewFollowUp("insurance", "verified", { is_current: false }, true)).toBe("none");
+  test("reviewing never demotes or supersedes another file", () => {
+    expect(reviewFollowUp("insurance", "verified", { is_current: true }, true)).toBe("none");
+    expect(reviewFollowUp("insurance", "rejected", { is_current: true }, true)).toBe("none");
     expect(reviewFollowUp("license_front", "verified", { is_current: true }, true)).toBe("none");
   });
-  test("both supersede sites and the review step are wired", () => {
+  test("single-slot supersede sites still call the helper", () => {
     const src = readFileSync("src/lib/documents.functions.ts", "utf8");
     expect(src.match(/supersedeQuery\(/g)?.length).toBe(2);
-    expect(src).toMatch(/holdsVerifiedUntilReview\(args\.category/);
-    expect(src).toMatch(/holdsVerifiedUntilReview\(fields\.category, fields\.uploaded_by_role\)/);
-    expect(src).toMatch(/follow === "supersede_others"/);
   });
 });
