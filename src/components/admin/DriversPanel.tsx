@@ -269,6 +269,7 @@ import { listBlacklist } from "@/lib/blacklist.functions";
 import type { BlacklistEntry } from "@/lib/blacklist";
 import { BlacklistCard, BlacklistedBadge } from "@/components/admin/BlacklistCard";
 import { BlacklistMatchAlert } from "@/components/admin/BlacklistMatchAlert";
+import { CONTACT_PEOPLE_FIELDS, CONTACT_PEOPLE_LABELS } from "@/lib/application-contacts";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
 import type { ExpiryScope } from "@/lib/document-expiry";
 
@@ -3042,6 +3043,18 @@ function DriverDetail({
                     canEdit={isManager}
                     onPrimaryChange={(parts) => onUpdate({ address: parts.line1, city: parts.city, state: parts.state, zip: parts.zip })}
                   />
+                </Card>
+                <Card title="Reference And Emergency Contact" icon={<UserIcon className="w-4 h-4" />}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {CONTACT_PEOPLE_FIELDS.map((k) =>
+                      isManager ? (
+                        <TxtField key={k} label={CONTACT_PEOPLE_LABELS[k]} value={(driver as any)[k] ?? null} onSave={(v) => onUpdate({ [k]: v } as any)} />
+                      ) : (
+                        <Field key={k} label={CONTACT_PEOPLE_LABELS[k]} value={(driver as any)[k] ?? null} />
+                      ),
+                    )}
+                  </div>
+                  <p className="mt-3 text-[11px] text-muted-foreground">Optional. Checked against the Blacklist: a blacklisted person listed here (by name or phone) is flagged for an Owner / Admin to review.</p>
                 </Card>
                 <Card title="Driver Info" icon={<UserIcon className="w-4 h-4" />}>
                   {isManager ? (

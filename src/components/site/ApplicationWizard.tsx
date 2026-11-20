@@ -21,7 +21,9 @@ import {
   MapPin,
   ListChecks,
   ShieldCheck,
+  Users,
 } from "lucide-react";
+import { CONTACT_PEOPLE_FIELDS, contactPeopleFromRow, type ContactPeople } from "@/lib/application-contacts";
 import { toast } from "sonner";
 import { DocumentCapture } from "./DocumentCapture";
 import { Logo } from "./Logo";
@@ -222,6 +224,13 @@ type WizardState = {
   insurance_rideshare_endorsement: boolean | null;
   address: string | null;
   zip: string | null;
+  // Optional reference + emergency contact.
+  reference_name: ContactPeople["reference_name"];
+  reference_phone: ContactPeople["reference_phone"];
+  reference_relationship: ContactPeople["reference_relationship"];
+  emergency_contact_name: ContactPeople["emergency_contact_name"];
+  emergency_contact_phone: ContactPeople["emergency_contact_phone"];
+  emergency_contact_relationship: ContactPeople["emergency_contact_relationship"];
 
   /*
    * Documents are tracked as presence, not paths.
@@ -517,6 +526,7 @@ export function ApplicationWizard({ token }: { token: string }) {
           insurance_rideshare_endorsement: row.insurance_rideshare_endorsement ?? null,
           address: row.address,
           zip: row.zip,
+          ...contactPeopleFromRow(row as unknown as Record<string, unknown>),
           license_photo_on_file: row.license_photo_on_file,
           insurance_doc_on_file: row.insurance_doc_on_file,
           profile_screenshot_on_file: row.profile_screenshot_on_file,
@@ -1473,6 +1483,8 @@ type Section = {
   blurb: string;
   icon: React.ReactNode;
   done: boolean;
+  /** Optional sections are shown but never counted toward "X Of N Done". */
+  optional?: boolean;
 };
 
 function DriverProfile({
@@ -1634,17 +1646,27 @@ function DriverProfile({
         icon: <MapPin className="h-5 w-5" />,
         done: Boolean(state.address && state.zip),
       },
+      {
+        key: "contacts",
+        title: "Reference And Emergency Contact (Optional)",
+        blurb: "Someone who knows you, and who to call in an emergency.",
+        icon: <Users className="h-5 w-5" />,
+        done: Boolean(state.reference_name || state.emergency_contact_name),
+        optional: true,
+      },
     ],
     [state, tripsUnsaved],
   );
 
-  const doneCount = sections.filter((s) => s.done).length;
+  // Optional sections never count toward "X Of N Done".
+  const required = sections.filter((s) => !s.optional);
+  const doneCount = required.filter((s) => s.done).length;
 
   return (
     <div>
       <StepHeader
         eyebrow="Complete Your Driver Profile"
-        title={`${doneCount} Of ${sections.length} Done`}
+        title={`${doneCount} Of ${required.length} Done`}
         sub="Photos upload and save straight away. For the typed details, press Save in each section — then you can close the page and come back with the same link."
       />
 
@@ -1833,6 +1855,58 @@ function DriverProfile({
                             state: state.state,
                             zip: state.zip,
                           })
+                        }
+                      />
+                    </>
+                  )}
+                  {s.key === "contacts" && (
+                    <>
+                      <p className="text-[13px] text-muted-foreground leading-relaxed">
+                        Optional. A reference is someone who knows you well. An
+                        emergency contact is who we call if something happens to you while driving.
+                      </p>
+                      {(
+                        [
+                          ["reference", "Reference", "reference_name", "reference_phone", "reference_relationship"],
+                          ["emergency", "Emergency Contact", "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship"],
+                        ] as const
+                      ).map(([id, heading, nameKey, phoneKey, relKey]) => (
+                        <div key={id} className="space-y-3">
+                          <div className="text-[12px] font-semibold text-foreground">{heading}</div>
+                          <TextField
+                            label="Full Name"
+                            name={`${id}-name`}
+                            autoComplete="off"
+                            value={state[nameKey] ?? ""}
+                            onChange={(v) => update(nameKey, v || null)}
+                          />
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <TextField
+                              label="Phone"
+                              name={`${id}-phone`}
+                              autoComplete="off"
+                              inputMode="tel"
+                              value={state[phoneKey] ?? ""}
+                              onChange={(v) => update(phoneKey, v || null)}
+                            />
+                            <TextField
+                              label="Relationship"
+                              name={`${id}-relationship`}
+                              autoComplete="off"
+                              placeholder="Friend, Coworker, Sister…"
+                              value={state[relKey] ?? ""}
+                              onChange={(v) => update(relKey, v || null)}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      <SectionSave
+                        busy={savingSection === s.key}
+                        onSave={() =>
+                          saveSection(
+                            s.key,
+                            Object.fromEntries(CONTACT_PEOPLE_FIELDS.map((k) => [k, state[k] ?? null])),
+                          )
                         }
                       />
                     </>

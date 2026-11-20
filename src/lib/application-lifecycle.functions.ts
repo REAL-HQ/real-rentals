@@ -1,3 +1,4 @@
+import { contactPeopleShape } from "@/lib/application-contacts";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -48,6 +49,8 @@ const patchSchema = z
     weekly_hours: z.number().int().nonnegative().max(168).nullable().optional(),
     expected_duration: text.optional(),
     payment_method: text.optional(),
+    // Optional reference + emergency contact (Manager and up, like the other driver details).
+    ...contactPeopleShape,
   })
   .strict()
   .refine((p) => Object.keys(p).length > 0, "No changes supplied");

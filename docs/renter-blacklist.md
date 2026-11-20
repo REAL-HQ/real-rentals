@@ -51,6 +51,8 @@ Any new or edited application, extra phone/email/address on a driver, signed agr
 | DOB + Last Name | Date of birth plus last name (Jr/Sr/II/III ignored) |
 | Saved Card | Card brand + last 4 + expiry month/year as stored on the application |
 | Signer IP | The public IP the agreement was signed from (private/office IPs ignored) |
+| Reference / Emergency Contact Phone | The applicant's reference or emergency contact phone is a blacklisted person's phone |
+| Reference / Emergency Contact Name | The applicant lists a blacklisted person by name (first + last, suffixes ignored) |
 
 Waitlist signups and website leads only carry phone and email, so those two are compared.
 
@@ -59,6 +61,6 @@ A match is recorded in `renter_blacklist_matches` (which fields, which blacklist
 When the blacklisted person's own record gains a new detail (new phone, address, signed IP), it is added to their match list and existing records are re-checked. Blacklisting someone also checks everyone already on file.
 
 ### Not possible with today's data
-- Emergency contact / reference phones: the app has no such fields. Extra phones staff add to a profile are compared. Flagging an applicant who lists a blacklisted person as a reference needs those fields added first.
+- Reference and emergency contact (name, phone, relationship) are optional fields on the application (Driver Profile section "Reference And Emergency Contact (Optional)", and the admin Application tab). Added by 20261120130000_application_references.sql; apply it before publishing the code that reads them.
 - Stripe card fingerprint: not stored. Getting it would need new Stripe API calls with server keys, so it was not done; matching uses brand + last 4 + expiry instead (weaker: two different cards can share these).
 - Device / IP: only the agreement signer IP is captured; nothing is captured at application time.

@@ -1,3 +1,4 @@
+import { contactPeopleFromRow, contactPeopleShape } from "@/lib/application-contacts";
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { applicantPhone } from "@/lib/applicant-validation";
@@ -154,6 +155,9 @@ const stepUpdateSchema = z.object({
   city: z.string().trim().max(80).nullable().optional(),
   state: z.string().trim().max(60).nullable().optional(),
   zip: z.string().trim().max(20).nullable().optional(),
+  // Optional reference + emergency contact (application-contacts.ts). Checked
+  // against the Renter Blacklist by the database.
+  ...contactPeopleShape,
   // how_heard is deliberately absent. The question is gone from the applicant
   // flow and nothing replaces it; the column and its history stay untouched,
   // but no applicant-facing endpoint may write it any more.
@@ -1092,6 +1096,13 @@ const RESUME_COLUMNS = [
   "state",
   "address",
   "zip",
+  // Optional reference + emergency contact (20261120130000_application_references.sql).
+  "reference_name",
+  "reference_phone",
+  "reference_relationship",
+  "emergency_contact_name",
+  "emergency_contact_phone",
+  "emergency_contact_relationship",
   "pickup_date",
   "expected_duration",
   "vehicle_size",
@@ -1156,6 +1167,8 @@ export const getApplicationForWizard = createServerFn({ method: "POST" })
       state: (r.state ?? null) as string | null,
       address: (r.address ?? null) as string | null,
       zip: (r.zip ?? null) as string | null,
+      // The applicant's own answers, shown back to them so they can correct them.
+      ...contactPeopleFromRow(r),
       pickup_date: (r.pickup_date ?? null) as string | null,
       expected_duration: (r.expected_duration ?? null) as string | null,
       vehicle_size: (r.vehicle_size ?? null) as string | null,
