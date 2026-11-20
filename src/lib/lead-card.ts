@@ -1,4 +1,3 @@
-import { CONTACT_STATUS_TONE, normalizeContactStatus } from "./contact-status";
 import { fmtDate } from "./date-format";
 import { overdueAge, type LeadBucket } from "./lead-priorities";
 
@@ -81,10 +80,68 @@ export function leadBadgeLabel(bucket: LeadBucket, contactLabel: string, priorit
     : `${stage} · ${priority}`;
 }
 
-/** Filled avatar uses the same status hues as the contact badge. */
-export function leadAvatarTone(status: string): string {
-  const key = normalizeContactStatus(status);
-  return key ? CONTACT_STATUS_TONE[key] : "bg-secondary text-foreground";
+/** Urgency hue for the avatar ring and card tint. New and interested read as fresh. */
+export type LeadHeat = "overdue" | "today" | "fresh" | "quiet";
+export function leadHeat(bucket: LeadBucket): LeadHeat {
+  if (bucket === "overdue") return "overdue";
+  if (bucket === "today") return "today";
+  if (bucket === "new" || bucket === "interested") return "fresh";
+  return "quiet";
+}
+
+/**
+ * The big number on the card. Overdue is the count of days; the full date
+ * stays on the title. No number when there is nothing due.
+ */
+export function leadUrgencyStat(
+  lead: { bucket: LeadBucket; contact_follow_up_on: string | null },
+  today: string,
+): { figure: string; unit: string; title: string; heat: LeadHeat; meter: number } | null {
+  const due = lead.contact_follow_up_on;
+  if (lead.bucket === "overdue") {
+    const days = due ? overdueDays(due, today) : null;
+    const age = due ? overdueAge(due, today) : null;
+    return {
+      figure: days != null ? String(days) : "—",
+      unit: days === 1 ? "Day Overdue" : "Days Overdue",
+      title: due && age ? `Due ${fmtDate(due)} (${age})` : "Overdue",
+      heat: "overdue",
+      meter: days != null ? Math.min(100, Math.round((days / 45) * 100)) : 100,
+    };
+  }
+  if (due && due === today) {
+    return { figure: "Today", unit: "Due", title: `Due ${fmtDate(due)}`, heat: "today", meter: 100 };
+  }
+  if (due && due > today) {
+    const full = fmtDate(due);
+    return {
+      figure: full.replace(/, \d{4}$/, ""),
+      unit: "Scheduled",
+      title: `Due ${full}`,
+      heat: "quiet",
+      meter: 28,
+    };
+  }
+  return null;
+}
+
+function titleWord(value: string): string {
+  const s = value.trim();
+  if (!s) return "";
+  return s
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/** Vehicle ask and lead source, only when the application already has them. */
+export function leadContextLine(lead: {
+  vehicle_size?: string | null;
+  source?: string | null;
+}): string | null {
+  const bits = [titleWord(lead.vehicle_size ?? ""), titleWord(lead.source ?? "")].filter(Boolean);
+  return bits.length ? bits.join(" · ") : null;
 }
 
 /**

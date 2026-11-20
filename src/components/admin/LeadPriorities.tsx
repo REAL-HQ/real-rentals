@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { rowNav } from "@/lib/row-click";
 import { Phone, MessageSquare, ArrowUpRight, Flame, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { getLeadPriorities } from "@/lib/lead-priorities.functions";
 import {
   LEAD_FILTERS,
@@ -19,7 +18,7 @@ import { LeadResponseReport } from "./LeadResponseReport";
 import { ReadinessStatePill } from "./ui";
 import type { ReadinessByApplicant } from "@/lib/admin-overview";
 import { displayPersonName } from "@/lib/display-normalize";
-import { LeadCardBody } from "./LeadCardBody";
+import { LeadCardBody, leadCallClass, leadStatTiles, leadTextClass } from "./LeadCardBody";
 import { LeadCardMenu } from "./LeadCardMenu";
 import type { StaffTier } from "@/lib/roles";
 
@@ -96,7 +95,7 @@ export default function LeadPriorities({
   return (
     <section
       aria-labelledby="lead-priorities-title"
-      className="rounded-2xl border border-border bg-secondary p-4 text-card-foreground sm:p-5"
+      className="rounded-3xl border border-border bg-white p-4 text-card-foreground shadow-sm sm:p-5"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -146,48 +145,28 @@ export default function LeadPriorities({
       ) : (
         result && (
           <>
-            <div className="my-4 grid grid-cols-3 gap-2 sm:gap-3">
-              {(
-                [
-                  [
-                    "New Leads",
-                    result.counts.new,
-                    "new" as LeadFilter,
-                    "border-border bg-card hover:bg-secondary",
-                    "text-card-foreground",
-                  ],
-                  [
-                    "Hot Leads",
-                    result.counts.hot,
-                    "interested" as LeadFilter,
-                    "border-border bg-card hover:bg-secondary",
-                    "text-card-foreground",
-                  ],
-                  [
-                    "Overdue",
-                    result.counts.overdue,
-                    "follow_up_due" as LeadFilter,
-                    "border-destructive/20 bg-destructive/10 hover:bg-destructive/15",
-                    "text-destructive",
-                  ],
-                ] as const
-              ).map(([label, value, next, cardTone, textTone]) => (
+            <div className="my-5 grid grid-cols-3 gap-3">
+              {leadStatTiles().map(({ label, next, Icon, tile, icon }) => {
+                const value = next === "new" ? result.counts.new : next === "interested" ? result.counts.hot : result.counts.overdue;
+                return (
                 <Button
                   key={label}
                   type="button"
                   variant="outline"
                   aria-pressed={filter === next}
                   onClick={() => setLeadFilter(next)}
-                  className={`h-16 min-w-0 flex-col items-start justify-center gap-1 whitespace-normal rounded-lg px-3 py-2 text-left text-card-foreground shadow-none hover:text-foreground ${cardTone} ${
-                    filter === next ? "border-brand ring-1 ring-brand" : ""
+                  className={`h-auto min-h-[96px] min-w-0 flex-col items-start justify-between gap-0 whitespace-normal rounded-2xl px-4 py-4 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md hover:text-inherit ${tile} ${
+                    filter === next ? "ring-2 ring-brand" : ""
                   }`}
                 >
-                  <span className={`text-xs font-normal ${textTone}`}>{label}</span>
-                  <span className={`text-xl font-semibold leading-none tabular-nums ${textTone}`}>
-                    {value}
+                  <span className={`grid h-7 w-7 place-items-center rounded-lg ${icon}`}>
+                    <Icon aria-hidden="true" className="h-3.5 w-3.5" />
                   </span>
+                  <span className="mt-4 text-4xl font-semibold leading-none tabular-nums">{value}</span>
+                  <span className="mt-1.5 text-sm font-medium text-muted-foreground">{label}</span>
                 </Button>
-              ))}
+              );
+              })}
             </div>
 
             <div className="mb-3 flex flex-wrap gap-2" role="tablist" aria-label="Lead Filters">
@@ -216,14 +195,19 @@ export default function LeadPriorities({
                 No leads need attention in this view.
               </p>
             ) : (
-              <ul className="mt-1 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              <ul className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {result.rows.map((lead) => {
                   const readinessResult = canSeeReadiness ? readiness[lead.id] : undefined;
                   const displayName = lead.full_name
                     ? displayPersonName(lead.full_name)
                     : "Unnamed Applicant";
                   return (
-                    <li key={lead.id} data-lead-priority={lead.bucket} {...rowNav(navigate, { tab: "drivers", id: lead.id }, "min-w-0 rounded-2xl")}>
+                    <li
+                      key={lead.id}
+                      data-lead-priority={lead.bucket}
+                      {...rowNav(navigate, { tab: "drivers", id: lead.id }, "min-w-0 rounded-2xl")}
+                      aria-label={`View Applicant ${displayName}`}
+                    >
                       <LeadCardBody
                         lead={lead}
                         today={result.today}
@@ -245,25 +229,22 @@ export default function LeadPriorities({
                         }
                         draft={<LeadFollowUpDraft applicationId={lead.id} bucket={lead.bucket} />}
                         actions={
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-2">
                             {lead.phone && (
                               <Button
                                 asChild
-                                variant="ghost"
-                                size="icon"
-                                className="pointer-events-auto h-8 w-8 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                                size="sm"
+                                className={leadCallClass()}
                               >
-                                <a
-                                  href={`tel:${lead.phone.replace(/[^+\d]/g, "")}`}
-                                  aria-label="Call"
-                                >
+                                <a href={`tel:${lead.phone.replace(/[^+\d]/g, "")}`} aria-label="Call">
                                   <Phone aria-hidden="true" />
+                                  Call
                                 </a>
                               </Button>
                             )}
                             <Button
-                              variant="ghost"
-                              size="icon"
+                              variant="outline"
+                              size="sm"
                               aria-label="Text"
                               title="Open Messages, then choose Text. Sending permissions and consent are checked there."
                               onClick={() =>
@@ -273,23 +254,13 @@ export default function LeadPriorities({
                                   }),
                                 )
                               }
-                              className="pointer-events-auto h-8 w-8 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                              className={leadTextClass()}
                             >
                               <MessageSquare aria-hidden="true" />
+                              Text
                             </Button>
-                            <ArrowUpRight
-                              aria-hidden="true"
-                              className="ml-auto h-4 w-4 text-muted-foreground"
-                            />
+                            <ArrowUpRight aria-hidden="true" className="ml-auto h-4 w-4 text-muted-foreground" />
                           </div>
-                        }
-                        view={
-                          <Link
-                            to="/admin"
-                            search={{ tab: "drivers", id: lead.id }}
-                            aria-label={`View Applicant ${displayName}`}
-                            className="absolute inset-0 z-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          />
                         }
                       />
                     </li>

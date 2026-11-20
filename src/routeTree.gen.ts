@@ -33,6 +33,7 @@ import { Route as ThankYouRouteImport } from './routes/thank-you'
 import { Route as AuthConfirmRouteImport } from './routes/auth/confirm'
 import { Route as CardApplicationIdRouteImport } from './routes/card.$applicationId'
 import { Route as DIdRouteImport } from './routes/d.$id'
+import { Route as DevLeadLooksRouteImport } from './routes/dev.lead-looks'
 import { Route as FleetIndexRouteImport } from './routes/fleet.index'
 import { Route as FleetIdRouteImport } from './routes/fleet.$id'
 import { Route as PickupRentalIdRouteImport } from './routes/pickup.$rentalId'
@@ -197,6 +198,11 @@ const CardApplicationIdRoute = CardApplicationIdRouteImport.update({
 const DIdRoute = DIdRouteImport.update({
   id: '/d/$id',
   path: '/d/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevLeadLooksRoute = DevLeadLooksRouteImport.update({
+  id: '/dev/lead-looks',
+  path: '/dev/lead-looks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FleetIndexRoute = FleetIndexRouteImport.update({
@@ -478,6 +484,7 @@ export interface FileRoutesByFullPath {
   '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/d/$id': typeof DIdRoute
+  '/dev/lead-looks': typeof DevLeadLooksRoute
   '/fleet/$id': typeof FleetIdRoute
   '/pickup/$rentalId': typeof PickupRentalIdRoute
   '/portal/help': typeof PortalHelpRoute
@@ -549,6 +556,7 @@ export interface FileRoutesByTo {
   '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/d/$id': typeof DIdRoute
+  '/dev/lead-looks': typeof DevLeadLooksRoute
   '/fleet/$id': typeof FleetIdRoute
   '/pickup/$rentalId': typeof PickupRentalIdRoute
   '/portal/help': typeof PortalHelpRoute
@@ -621,6 +629,7 @@ export interface FileRoutesById {
   '/auth/confirm': typeof AuthConfirmRoute
   '/card/$applicationId': typeof CardApplicationIdRoute
   '/d/$id': typeof DIdRoute
+  '/dev/lead-looks': typeof DevLeadLooksRoute
   '/fleet/$id': typeof FleetIdRoute
   '/pickup/$rentalId': typeof PickupRentalIdRoute
   '/portal_/help': typeof PortalHelpRoute
@@ -694,6 +703,7 @@ export interface FileRouteTypes {
     | '/auth/confirm'
     | '/card/$applicationId'
     | '/d/$id'
+    | '/dev/lead-looks'
     | '/fleet/$id'
     | '/pickup/$rentalId'
     | '/portal/help'
@@ -765,6 +775,7 @@ export interface FileRouteTypes {
     | '/auth/confirm'
     | '/card/$applicationId'
     | '/d/$id'
+    | '/dev/lead-looks'
     | '/fleet/$id'
     | '/pickup/$rentalId'
     | '/portal/help'
@@ -836,6 +847,7 @@ export interface FileRouteTypes {
     | '/auth/confirm'
     | '/card/$applicationId'
     | '/d/$id'
+    | '/dev/lead-looks'
     | '/fleet/$id'
     | '/pickup/$rentalId'
     | '/portal_/help'
@@ -908,6 +920,7 @@ export interface RootRouteChildren {
   AuthConfirmRoute: typeof AuthConfirmRoute
   CardApplicationIdRoute: typeof CardApplicationIdRoute
   DIdRoute: typeof DIdRoute
+  DevLeadLooksRoute: typeof DevLeadLooksRoute
   FleetIdRoute: typeof FleetIdRoute
   PickupRentalIdRoute: typeof PickupRentalIdRoute
   PortalHelpRoute: typeof PortalHelpRoute
@@ -1123,6 +1136,13 @@ declare module '@tanstack/react-router' {
       path: '/d/$id'
       fullPath: '/d/$id'
       preLoaderRoute: typeof DIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dev/lead-looks': {
+      id: '/dev/lead-looks'
+      path: '/dev/lead-looks'
+      fullPath: '/dev/lead-looks'
+      preLoaderRoute: typeof DevLeadLooksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/fleet/': {
@@ -1468,6 +1488,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthConfirmRoute: AuthConfirmRoute,
   CardApplicationIdRoute: CardApplicationIdRoute,
   DIdRoute: DIdRoute,
+  DevLeadLooksRoute: DevLeadLooksRoute,
   FleetIdRoute: FleetIdRoute,
   PickupRentalIdRoute: PickupRentalIdRoute,
   PortalHelpRoute: PortalHelpRoute,

@@ -128,9 +128,8 @@ describe("card wiring", () => {
     const html = renderToStaticMarkup(
       h(LeadCardBody, { lead: row, today: TODAY, displayName: "Test Lead", name: h("a", null, "Test Lead"), status: h("span", null, "New"), actions: h("div", null, "Call"), menu: h("button", { "data-kebab": "" }, "menu") }),
     );
-    // Name, then the ⋮ control, still above the next-step line.
     expect(html.indexOf(">Test Lead<")).toBeLessThan(html.indexOf("data-kebab"));
-    expect(html.indexOf("data-kebab")).toBeLessThan(html.indexOf("Make first contact"));
+    expect(html.indexOf("data-kebab")).toBeLessThan(html.indexOf("Call"));
     expect(html).toMatch(/flex items-start gap-2[\s\S]*Test Lead[\s\S]*data-kebab/);
   });
   test("lead rows carry email for Copy Email", () => {
