@@ -22,7 +22,7 @@ function fakeDb(seed: Record<string, Row[]>, opts: { missing?: string[]; rpc?: (
     let op = "select"; let payload: any = null; let single = false; let lim = Infinity;
     const f: ((r: Row) => boolean)[] = [];
     const q: any = {
-      select: () => q, insert: (r: Row) => { op = "insert"; payload = r; return q; }, update: (r: Row) => { op = "update"; payload = r; return q; },
+      select: () => q, upsert: (r: Row) => { op = "insert"; payload = r; return q; }, insert: (r: Row) => { op = "insert"; payload = r; return q; }, update: (r: Row) => { op = "update"; payload = r; return q; },
       eq: (c: string, v: any) => { f.push((r) => r[c] === v); return q; },
       in: (c: string, v: any[]) => { f.push((r) => v.includes(r[c])); return q; },
       is: (c: string, v: any) => { f.push((r) => (r[c] ?? null) === v); return q; },
@@ -293,11 +293,120 @@ describe("signing and handover", () => {
   });
 });
 
+describe("addendum wording (Dolmar t541u/t542u: upgrade to v1.15 terms, same start date and rent)", () => {
+  const notice = lib.swapNoticeText({ weeklyRate: 375, previousSignedAt: "2026-11-16", previousNumber: "RRA-20261116-2A4BBF", previousIsPaper: false, outgoing: { year: 2018, make: "Toyota", model: "Camry", license_plate: "ed40nc" } });
+  test("it is an addendum that states the renter accepts the current v1.15 terms, printed in full", () => {
+    expect(lib.VEHICLE_SWAP_TITLE).toBe("Vehicle Swap Addendum To Rental Agreement");
+    expect(lib.SWAP_TERMS_VERSION).toBe("v1.15");
+    expect(notice).toContain("Vehicle Swap Addendum");
+    expect(notice).toContain("you accept the current Rental Agreement terms (Version 1.15)");
+    expect(notice).toContain("printed in full below");
+    expect(notice).toContain("original start date");
+    expect(notice).toContain("$375.00");
+    expect(notice).not.toMatch(/progressive|bristol|allcom|broker|deposit\b(?!\.)/i);
+  });
+  test("the swap is always built on the v1.15 template and the original start date, whatever version the original was", () => {
+    expect(readFileSync("src/lib/rental-amendment.ts", "utf8")).toMatch(/AMENDMENT_TEMPLATE_KEY = "insurance_included_v115"/);
+    expect(readFileSync("src/lib/agreement-library.ts", "utf8")).toMatch(/DEFAULT_LIBRARY_KEY = "insurance_included_v115"/);
+    const ag = readFileSync("src/lib/agreements.functions.ts", "utf8");
+    expect(ag).toMatch(/const storedStart = fromRental \? rental\.start_date/);
+    expect(ag).toContain('"Vehicle Swap Addendum To Rental Agreement"');
+  });
+  test("the Florida addendum stays out: it is unapproved and no agreement path reads it", () => {
+    const fl = readFileSync("src/lib/agreement-fl-addendum.ts", "utf8");
+    expect(fl).toMatch(/FL_ADDENDUM_OWNER_APPROVAL: \{ at: string; by: string \} \| null = null;/);
+    for (const f of ["src/lib/agreements.functions.ts", "src/lib/vehicle-swap.server.ts", "src/lib/rental-amendment.ts"]) {
+      expect(readFileSync(f, "utf8")).not.toMatch(/agreement-fl-addendum|FL_ADDENDUM/);
+    }
+  });
+});
+
+describe("New Vehicle Insurance Uploaded", () => {
+  const SWAP = "77777777-7777-4777-8777-777777777777";
+  const USER = "55555555-5555-4555-8555-555555555555";
+  const openSwap = (x: Row = {}) => ({ id: SWAP, status: "signed", to_vehicle_id: NEW, rental_id: R, swap_number: 1000, ...x });
+  const withStorage = (db: any, ok = true) => {
+    const removed: string[] = [];
+    db.storage = { from: () => ({ download: async () => (ok ? { data: new Blob(["card"]) } : { data: null }), remove: async (p: string[]) => { removed.push(...p); } }) };
+    return { db, removed };
+  };
+  const input = (x: Row = {}) => ({ swapId: SWAP, kind: "insurance_card", path: `${NEW}/insurance_card-1.pdf`, fileName: "ID CARD.pdf", mimeType: "application/pdf", sizeBytes: 100, actorUserId: USER, ...x });
+  const deps = { gate: ON, audit: async () => {} };
+
+  test("a document is filed on the NEW vehicle, staff only, tied to the swap, and writes no insurance field", async () => {
+    const { db } = withStorage(fakeDb(seed({ rental_vehicle_swaps: [openSwap()], rental_vehicle_swap_documents: [] })));
+    const r = await m.addSwapInsuranceDoc(db as any, input(), deps);
+    expect(r.status).toBe(200);
+    const doc = db.writes.find((w) => w.table === "documents" && w.op === "insert")!.payload;
+    expect(doc).toMatchObject({ vehicle_id: NEW, kind: "insurance_card", category: "insurance_card", storage_bucket: "vehicle-docs", visibility: ["admin"] });
+    expect(db.writes.find((w) => w.table === "rental_vehicle_swap_documents")!.payload).toMatchObject({ swap_id: SWAP, vehicle_id: NEW, doc_kind: "insurance_card" });
+    expect(db.writes.filter((w) => w.table === "vehicles" || w.table === "applications" || w.table === "rentals")).toEqual([]);
+    expect(JSON.stringify(db.writes)).not.toMatch(/insurance_verified|insured|insurance_status|insurance_expires/);
+  });
+  test("ID cards, declarations and endorsements are accepted; anything else, another car's folder, or a closed swap is refused", async () => {
+    for (const kind of ["insurance_card", "insurance_declarations", "insurance_endorsement"]) {
+      const { db } = withStorage(fakeDb(seed({ rental_vehicle_swaps: [openSwap()], rental_vehicle_swap_documents: [] })));
+      expect((await m.addSwapInsuranceDoc(db as any, input({ kind }), deps)).status).toBe(200);
+    }
+    const cases: [Row, Row][] = [
+      [{ kind: "title" }, openSwap()],
+      [{ path: `${OLD}/x.pdf` }, openSwap()],
+      [{ path: `${NEW}/../x.pdf` }, openSwap()],
+      [{}, openSwap({ status: "completed" })],
+    ];
+    for (const [inp, sw] of cases) {
+      const { db } = withStorage(fakeDb(seed({ rental_vehicle_swaps: [sw], rental_vehicle_swap_documents: [] })));
+      const r = await m.addSwapInsuranceDoc(db as any, input(inp), deps);
+      expect(r.status).toBeGreaterThanOrEqual(400);
+      expect(db.writes.filter((w) => w.table === "documents" || w.table === "rental_vehicle_swap_documents")).toEqual([]);
+    }
+  });
+  test("it refuses while Vehicle Swap is off", async () => {
+    const { db } = withStorage(fakeDb(seed({ rental_vehicle_swaps: [openSwap()] })));
+    expect((await m.addSwapInsuranceDoc(db as any, input(), { gate: OFF })).status).toBe(409);
+    expect((await m.overrideSwapInsurance(db as any, { swapId: SWAP, reason: "Insurer confirmed by phone", actorUserId: USER, actorLabel: "o" }, { gate: OFF })).status).toBe(409);
+    expect(db.writes).toEqual([]);
+  });
+  test("the Owner override needs a real reason, an open swap, and records who and why", async () => {
+    const db = fakeDb(seed({ rental_vehicle_swaps: [openSwap()] }));
+    expect((await m.overrideSwapInsurance(db as any, { swapId: SWAP, reason: "short", actorUserId: USER, actorLabel: "o" }, deps)).status).toBe(400);
+    expect(db.writes).toEqual([]);
+    expect((await m.overrideSwapInsurance(db as any, { swapId: SWAP, reason: "Insurer confirmed by phone, card to follow", actorUserId: USER, actorLabel: "o" }, deps)).status).toBe(200);
+    expect(db.state.rental_vehicle_swaps[0]).toMatchObject({ insurance_override_reason: "Insurer confirmed by phone, card to follow", insurance_override_by: USER });
+    const done = fakeDb(seed({ rental_vehicle_swaps: [openSwap({ status: "completed" })] }));
+    expect((await m.overrideSwapInsurance(done as any, { swapId: SWAP, reason: "Insurer confirmed by phone", actorUserId: USER, actorLabel: "o" }, deps)).status).toBe(409);
+  });
+  test("status: met by a document or by an override, otherwise not", async () => {
+    const none = await m.swapInsuranceStatus(fakeDb(seed({ rental_vehicle_swaps: [openSwap()], rental_vehicle_swap_documents: [] })) as any, SWAP);
+    expect(none.satisfied).toBe(false);
+    const doc = await m.swapInsuranceStatus(fakeDb(seed({ rental_vehicle_swaps: [openSwap()], rental_vehicle_swap_documents: [{ id: "l1", swap_id: SWAP, document_id: "d1", doc_kind: "insurance_endorsement", created_at: "2026-11-20" }], documents: [{ id: "d1", file_name: "endorsement.pdf" }] })) as any, SWAP);
+    expect(doc.satisfied).toBe(true);
+    expect(doc.docs[0]).toMatchObject({ kindLabel: "Insurance Endorsement", fileName: "endorsement.pdf" });
+    const ov = await m.swapInsuranceStatus(fakeDb(seed({ rental_vehicle_swaps: [openSwap({ insurance_override_reason: "Insurer confirmed by phone", insurance_override_by: USER })], rental_vehicle_swap_documents: [] })) as any, SWAP);
+    expect(ov.satisfied).toBe(true);
+  });
+  test("the handover is blocked in the database and the button; only the Owner can override; copy is staff only and Title Case", () => {
+    const migration = readFileSync("supabase/migrations/20261120171500_rental_vehicle_swaps.sql", "utf8");
+    expect(migration).toMatch(/RAISE EXCEPTION 'swap_insurance_missing'/);
+    expect(migration.indexOf("swap_insurance_missing';")).toBeLessThan(migration.indexOf("INSERT INTO public.odometer_readings"));
+    expect(migration).not.toMatch(/UPDATE public\.vehicles SET[^;]*insur/i);
+    const fns = readFileSync("src/lib/vehicle-swap.functions.ts", "utf8");
+    expect(fns).toMatch(/requireOwner\(context\.userId\)/);
+    const ui = readFileSync("src/components/admin/BookingVehicleHistory.tsx", "utf8");
+    expect(ui).toMatch(/insured\?\.satisfied === true/);
+    for (const t of ["New Vehicle Insurance Uploaded", "Upload New Vehicle Insurance", "Override As Owner", "Required Before Handover"]) expect(ui + readFileSync("src/lib/vehicle-swap.ts", "utf8")).toContain(t);
+    expect(lib.swapErrorText("swap_insurance_missing")).toContain("New Vehicle Insurance Uploaded");
+    expect(lib.SWAP_INSURANCE_NOTE).toMatch(/does not mark the vehicle insured/);
+    // Renter-facing swap copy never names the insurer, broker or rep.
+    expect(readFileSync("src/lib/vehicle-swap.ts", "utf8")).not.toMatch(/bristol|allcom|clarence|leo boland|progressive/i);
+  });
+});
+
 describe("wiring", () => {
   const agreements = readFileSync("src/lib/agreements.functions.ts", "utf8");
   const esign = readFileSync("src/lib/esign.server.ts", "utf8");
   const numbers = readFileSync("src/lib/record-numbers.ts", "utf8");
-  const migration = readFileSync("supabase/migrations/20261120130000_rental_vehicle_swaps.sql", "utf8");
+  const migration = readFileSync("supabase/migrations/20261120171500_rental_vehicle_swaps.sql", "utf8");
   test("no hard-coded swap flag remains; the gate is runtime", () => {
     expect(numbers).not.toMatch(/SWAP_ENABLED/);
     expect(agreements).not.toMatch(/SWAP_ENABLED/);

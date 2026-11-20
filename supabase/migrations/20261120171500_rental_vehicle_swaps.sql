@@ -73,6 +73,11 @@ CREATE TABLE IF NOT EXISTS public.rental_vehicle_swaps (
   pickup_reading_id uuid REFERENCES public.odometer_readings(id) ON DELETE SET NULL,
   replaced_pickup_reading_id uuid REFERENCES public.odometer_readings(id) ON DELETE SET NULL,
   note text,
+  -- Owner-only override of the "New Vehicle Insurance Uploaded" handover check.
+  -- Never marks anything insured; it only lets the handover proceed, with a reason on record.
+  insurance_override_reason text CHECK (insurance_override_reason IS NULL OR length(btrim(insurance_override_reason)) BETWEEN 10 AND 500),
+  insurance_override_by uuid,
+  insurance_override_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT rental_vehicle_swaps_different_car CHECK (from_vehicle_id <> to_vehicle_id),
@@ -99,13 +104,38 @@ CREATE POLICY "Staff read rental vehicle swaps" ON public.rental_vehicle_swaps
 -- Written only by the server (service role) and the function below.
 REVOKE ALL ON public.rental_vehicle_swaps FROM anon;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.rental_vehicle_swaps FROM authenticated;
+
+-- New Vehicle Insurance documents (ID cards, declarations, endorsements) tied to
+-- a swap. The files themselves are ordinary rows in public.documents for the NEW
+-- vehicle (private vehicle-docs bucket, visibility admin only); this table only
+-- says which swap they were uploaded for. Staff read only; the server writes.
+CREATE TABLE IF NOT EXISTS public.rental_vehicle_swap_documents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  swap_id uuid NOT NULL REFERENCES public.rental_vehicle_swaps(id) ON DELETE CASCADE,
+  document_id uuid NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+  vehicle_id uuid NOT NULL REFERENCES public.vehicles(id) ON DELETE CASCADE,
+  doc_kind text NOT NULL CHECK (doc_kind IN ('insurance_card','insurance_declarations','insurance_endorsement')),
+  uploaded_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (swap_id, document_id)
+);
+CREATE INDEX IF NOT EXISTS rental_vehicle_swap_documents_swap_idx ON public.rental_vehicle_swap_documents (swap_id);
+CREATE INDEX IF NOT EXISTS rental_vehicle_swap_documents_document_idx ON public.rental_vehicle_swap_documents (document_id);
+CREATE INDEX IF NOT EXISTS rental_vehicle_swap_documents_vehicle_idx ON public.rental_vehicle_swap_documents (vehicle_id);
+ALTER TABLE public.rental_vehicle_swap_documents ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Staff read rental vehicle swap documents" ON public.rental_vehicle_swap_documents;
+CREATE POLICY "Staff read rental vehicle swap documents" ON public.rental_vehicle_swap_documents
+  FOR SELECT TO authenticated USING (private.is_staff());
+REVOKE ALL ON public.rental_vehicle_swap_documents FROM anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.rental_vehicle_swap_documents FROM authenticated;
+GRANT ALL ON public.rental_vehicle_swap_documents TO service_role;
 REVOKE ALL ON SEQUENCE public.rental_vehicle_swap_number_seq FROM anon, authenticated;
 
 -- The one writer of a rental's vehicle change. Returns jsonb
 --   { result: 'completed' | 'already_completed', swap_id, swap_number, rental_id,
 --     from_vehicle_id, to_vehicle_id, from_vehicle_status, return_reading_id, pickup_reading_id }
 -- Raises (no partial writes):
---   swap_not_found, swap_not_signed, swap_agreement_not_signed, rental_not_active,
+--   swap_not_found, swap_not_signed, swap_agreement_not_signed, swap_insurance_missing, rental_not_active,
 --   rental_vehicle_changed, replacement_unavailable, replacement_on_other_rental,
 --   replacement_not_rental_ready:<fields>, invalid_vehicle_status, invalid_mileage,
 --   return_below_pickup:<miles>, return_below_history:<miles>, pickup_below_history:<miles>,
@@ -189,6 +219,15 @@ BEGIN
     RAISE EXCEPTION 'replacement_not_rental_ready:%', array_to_string(missing, ',');
   END IF;
 
+  -- Checklist item "New Vehicle Insurance Uploaded": at least one document tied
+  -- to this swap for the new car, or an Owner override with a reason. Having a
+  -- document does NOT mean the car is insured; staff confirm that with the insurer.
+  IF NOT EXISTS (SELECT 1 FROM public.rental_vehicle_swap_documents d JOIN public.documents x ON x.id = d.document_id
+                  WHERE d.swap_id = s.id AND d.vehicle_id = s.to_vehicle_id)
+     AND (s.insurance_override_reason IS NULL OR s.insurance_override_by IS NULL) THEN
+    RAISE EXCEPTION 'swap_insurance_missing';
+  END IF;
+
   -- Odometer: same checks as End Rental for the outgoing car, history check for the replacement.
   IF _return_miles IS NOT NULL THEN
     SELECT mileage INTO v_pick FROM public.odometer_readings
@@ -254,7 +293,9 @@ BEGIN
           jsonb_build_object('swap_id', s.id, 'swap_number', s.swap_number, 'agreement_id', s.agreement_id,
             'from_vehicle_id', s.from_vehicle_id, 'to_vehicle_id', s.to_vehicle_id,
             'from_vehicle_status', _from_vehicle_status, 'return_miles', _return_miles, 'pickup_miles', _pickup_miles,
-            'return_fuel', _return_fuel, 'pickup_fuel', _pickup_fuel, 'billing', 'unchanged'));
+            'return_fuel', _return_fuel, 'pickup_fuel', _pickup_fuel, 'billing', 'unchanged',
+            'insurance_docs', (SELECT count(*) FROM public.rental_vehicle_swap_documents WHERE swap_id = s.id),
+            'insurance_override_reason', s.insurance_override_reason));
 
   RETURN jsonb_build_object('result','completed','swap_id',s.id,'swap_number',s.swap_number,
     'rental_id',s.rental_id,'from_vehicle_id',s.from_vehicle_id,'to_vehicle_id',s.to_vehicle_id,
@@ -273,6 +314,7 @@ COMMIT;
 -- since completed swaps already moved rentals to their replacement car):
 -- BEGIN;
 -- DROP FUNCTION IF EXISTS public.complete_rental_vehicle_swap_tx(uuid,text,integer,integer,text,text,uuid);
+-- DROP TABLE IF EXISTS public.rental_vehicle_swap_documents;
 -- DROP TABLE IF EXISTS public.rental_vehicle_swaps;
 -- DROP SEQUENCE IF EXISTS public.rental_vehicle_swap_number_seq;
 -- DELETE FROM public.app_settings WHERE key = 'vehicle_swap';

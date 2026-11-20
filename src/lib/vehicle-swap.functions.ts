@@ -2,7 +2,7 @@
 // Vehicle → Swap Vehicle). Manager or Owner for every write; staff read the
 // history. Rules: vehicle-swap.ts; server logic: vehicle-swap.server.ts.
 //
-// Off until the migration (supabase/migrations/20261120130000_rental_vehicle_swaps.sql)
+// Off until the migration (supabase/migrations/20261120171500_rental_vehicle_swaps.sql)
 // is installed AND app_settings.vehicle_swap.enabled is true: each handler
 // checks the gate before anything else and refuses with nothing written.
 // This replaces the M2 packet's hard-coded SWAP_ENABLED = false.
@@ -10,7 +10,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { FUEL_LEVELS } from "@/lib/pickup-handover";
-import { OUTGOING_STATUSES, SWAP_REASON_CODES, type SwapGate } from "@/lib/vehicle-swap";
+import { OUTGOING_STATUSES, SWAP_INSURANCE_DOC_KINDS, SWAP_REASON_CODES, type SwapGate } from "@/lib/vehicle-swap";
 import type { SwapHistoryEntry } from "@/lib/vehicle-swap.server";
 
 export type { SwapHistoryEntry };
@@ -143,4 +143,49 @@ export const listVehicleSwaps = createServerFn({ method: "POST" })
     await requireTier(context.userId, "coordinator");
     const { listSwaps } = await import("@/lib/vehicle-swap.server");
     return listSwaps(await admin(), { rentalId: data.rentalId ?? null, vehicleId: data.vehicleId ?? null });
+  });
+
+const InsuranceDocInput = z
+  .object({
+    swapId: z.string().uuid(),
+    kind: z.enum(SWAP_INSURANCE_DOC_KINDS),
+    path: z.string().trim().min(1).max(400),
+    fileName: z.string().trim().max(200).nullish(),
+    mimeType: z.string().trim().max(120).nullish(),
+    sizeBytes: z.number().int().nonnegative().nullish(),
+    expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  })
+  .strict();
+
+/** New Vehicle Insurance Uploaded: documents tied to a swap, and whether the item is met. Staff read. */
+export const getSwapInsurance = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ swapId: z.string().uuid() }).strict().parse(d))
+  .handler(async ({ data, context }) => {
+    await manager(context.userId);
+    const { swapInsuranceStatus } = await import("@/lib/vehicle-swap.server");
+    return swapInsuranceStatus(await admin(), data.swapId);
+  });
+
+/** Files an uploaded ID card, declarations page or endorsement against the swap's new vehicle. Staff only. */
+export const addSwapInsuranceDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => InsuranceDocInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await manager(context.userId);
+    const { addSwapInsuranceDoc } = await import("@/lib/vehicle-swap.server");
+    const { logAudit } = await import("@/lib/audit.server");
+    return unwrap(await addSwapInsuranceDoc(await admin(), { ...data, actorUserId: context.userId }, { audit: (e) => logAudit(actor, e) })) as Record<string, any>;
+  });
+
+/** Owner only: handover may proceed with no insurance document, with a reason on record. */
+export const overrideSwapInsuranceCheck = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ swapId: z.string().uuid(), reason: z.string().trim().min(10).max(500) }).strict().parse(d))
+  .handler(async ({ data, context }) => {
+    const { requireOwner } = await import("@/lib/roles.server");
+    const actor = await requireOwner(context.userId);
+    const { overrideSwapInsurance } = await import("@/lib/vehicle-swap.server");
+    const { logAudit } = await import("@/lib/audit.server");
+    return unwrap(await overrideSwapInsurance(await admin(), { swapId: data.swapId, reason: data.reason, actorUserId: context.userId, actorLabel: `${actor.email || "Owner"} (owner)` }, { audit: (e) => logAudit(actor, e) })) as Record<string, any>;
   });

@@ -2,5 +2,5 @@
 --
 -- The M2 packet swap (proposed/m2-packet/19b.sql, 19c-agreement-contract.sql,
 -- 20.sql) was never installed and is superseded by the e-signed vehicle swap:
---   supabase/migrations/20261120130000_rental_vehicle_swaps.sql
+--   supabase/migrations/20261120171500_rental_vehicle_swaps.sql
 -- (src/lib/vehicle-swap.ts, docs/vehicle-swap-esign.md).

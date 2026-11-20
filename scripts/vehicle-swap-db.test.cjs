@@ -1,4 +1,4 @@
-// Local Postgres proof for supabase/migrations/20261120130000_rental_vehicle_swaps.sql.
+// Local Postgres proof for supabase/migrations/20261120171500_rental_vehicle_swaps.sql.
 //
 // Builds a minimal copy of the production objects the swap touches (the
 // guard triggers, odometer guard, rental_mileage_reading and end_rental_tx are
@@ -14,7 +14,7 @@ const assert = require("assert/strict");
 const { execFileSync, spawn, spawnSync } = require("child_process");
 
 const root = path.resolve(__dirname, "..");
-const MIGRATION = path.join(root, "supabase/migrations/20261120130000_rental_vehicle_swaps.sql");
+const MIGRATION = path.join(root, "supabase/migrations/20261120171500_rental_vehicle_swaps.sql");
 
 function findBin() {
   const cands = [process.env.PG_BIN, "/workspace/pg17/node_modules/@embedded-postgres/linux-x64/native/bin"];
@@ -308,6 +308,31 @@ const call = (swap, status = "maintenance", ret = 50250, pick = 30010) =>
       assert.match(psql(call(R.swap), { expectFail: true }), /replacement_on_other_rental/);
       psql(`DELETE FROM public.rentals WHERE id = '${R.rentalB}'`);
       assert.equal(psql(`SELECT status FROM public.vehicles WHERE id = '${R.newCar}'`), "available");
+    });
+
+    test("no insurance document: handover is refused and writes nothing (New Vehicle Insurance Uploaded)", () => {
+      assert.match(psql(call(R.swap), { expectFail: true }), /swap_insurance_missing/);
+      assert.equal(psql(`SELECT vehicle_id FROM public.rentals WHERE id = '${R.rental}'`), R.oldCar);
+      assert.equal(psql(`SELECT count(*) FROM public.odometer_readings WHERE evidence_key LIKE 'swap_%'`), "0");
+    });
+
+    test("an override needs both a reason and the Owner who set it; with both the check passes", () => {
+      psql(`UPDATE public.rental_vehicle_swaps SET insurance_override_reason = 'Insurer confirmed by phone' WHERE id = '${R.swap}'`);
+      assert.match(psql(call(R.swap), { expectFail: true }), /swap_insurance_missing/);
+      psql(`UPDATE public.rental_vehicle_swaps SET insurance_override_by = '${R.staff}', insurance_override_at = now() WHERE id = '${R.swap}'`);
+      // Past the insurance check the next refusal is the odometer one.
+      assert.match(psql(call(R.swap, "maintenance", 49000), { expectFail: true }), /return_below_pickup:50000/);
+      psql(`UPDATE public.rental_vehicle_swaps SET insurance_override_reason = NULL, insurance_override_by = NULL, insurance_override_at = NULL WHERE id = '${R.swap}'`);
+      assert.match(psql(call(R.swap), { expectFail: true }), /swap_insurance_missing/);
+    });
+
+    test("a document tied to the swap and the new car satisfies the check; it never marks anything insured", () => {
+      const doc = "99999999-9999-4999-8999-999999999999";
+      psql(`INSERT INTO public.documents VALUES ('${doc}','Insurance ID Card')`);
+      psql(`INSERT INTO public.rental_vehicle_swap_documents(swap_id, document_id, vehicle_id, doc_kind) VALUES ('${R.swap}','${doc}','${R.newCar}','insurance_card')`);
+      assert.match(psql(`INSERT INTO public.rental_vehicle_swap_documents(swap_id, document_id, vehicle_id, doc_kind) VALUES ('${R.swap}','${doc}','${R.newCar}','insurance_card')`, { expectFail: true }), /duplicate key/);
+      assert.match(psql(`INSERT INTO public.rental_vehicle_swap_documents(swap_id, document_id, vehicle_id, doc_kind) VALUES ('${R.swap}','${doc}','${R.newCar}','selfie')`, { expectFail: true }), /doc_kind/);
+      assert.equal(psql(`SELECT has_table_privilege('authenticated','public.rental_vehicle_swap_documents','INSERT')::text || has_table_privilege('anon','public.rental_vehicle_swap_documents','SELECT')::text`), "falsefalse");
     });
 
     test("a return reading below the pickup is refused", () => {

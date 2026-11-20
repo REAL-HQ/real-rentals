@@ -2,7 +2,7 @@
  * E-signed vehicle swap for an ACTIVE rental (Dolmar, t532u, Nov 20 2026:
  * "switch a booking/rental to a different car when the reserved car has an
  * issue"). Client-safe rules and wording. Server: vehicle-swap.server.ts.
- * Database: supabase/migrations/20261120130000_rental_vehicle_swaps.sql.
+ * Database: supabase/migrations/20261120171500_rental_vehicle_swaps.sql.
  * Docs (how to turn it on): docs/vehicle-swap-esign.md.
  *
  * Flow:
@@ -33,8 +33,10 @@ import { FUEL_LEVELS } from "@/lib/pickup-handover";
 export const VEHICLE_SWAP_SETTINGS_KEY = "vehicle_swap";
 export const VEHICLE_SWAPS_TABLE = "rental_vehicle_swaps";
 export const VEHICLE_SWAP_FN = "complete_rental_vehicle_swap_tx";
-export const VEHICLE_SWAP_MIGRATION = "20261120130000_rental_vehicle_swaps.sql";
-export const VEHICLE_SWAP_TITLE = "Rental Agreement (Vehicle Swap)";
+export const VEHICLE_SWAP_MIGRATION = "20261120171500_rental_vehicle_swaps.sql";
+export const VEHICLE_SWAP_TITLE = "Vehicle Swap Addendum To Rental Agreement";
+/** The terms every swap moves the renter onto (Dolmar t542u: "Upgrade to new terms"). Fixed, not a choice. */
+export const SWAP_TERMS_VERSION = "v1.15";
 
 export const SWAP_REASON_CODES = ["upgrade", "downgrade", "maintenance", "damage", "replacement", "other"] as const;
 export type SwapReasonCode = (typeof SWAP_REASON_CODES)[number];
@@ -51,6 +53,20 @@ export const SWAP_FUEL_LEVELS = FUEL_LEVELS;
 export const OUTGOING_STATUSES = ["maintenance", "available"] as const;
 export type OutgoingStatus = (typeof OUTGOING_STATUSES)[number];
 export const OUTGOING_STATUS_LABELS: Record<OutgoingStatus, string> = { maintenance: "Maintenance", available: "Available" };
+
+export const SWAP_DOCS_TABLE = "rental_vehicle_swap_documents";
+/** New Vehicle Insurance documents a swap can carry. Staff only; never marks anything insured. */
+export const SWAP_INSURANCE_DOC_KINDS = ["insurance_card", "insurance_declarations", "insurance_endorsement"] as const;
+export type SwapInsuranceDocKind = (typeof SWAP_INSURANCE_DOC_KINDS)[number];
+export const SWAP_INSURANCE_DOC_LABELS: Record<SwapInsuranceDocKind, string> = {
+  insurance_card: "Insurance ID Card",
+  insurance_declarations: "Insurance Declarations Page",
+  insurance_endorsement: "Insurance Endorsement",
+};
+export const SWAP_INSURANCE_CHECK_LABEL = "New Vehicle Insurance Uploaded";
+export const SWAP_INSURANCE_NOTE =
+  "Uploading a document does not mark the vehicle insured. Confirm coverage with the insurer before the handover.";
+export const SWAP_INSURANCE_MIN_OVERRIDE = 10;
 
 export const SWAP_STATUSES = ["pending_signature", "signed", "completed", "voided", "send_failed"] as const;
 export type SwapStatus = (typeof SWAP_STATUSES)[number];
@@ -118,7 +134,7 @@ export function swapNoticeText(a: {
   const prior = a.previousIsPaper
     ? "your Rental Agreement on file"
     : `the Rental Agreement${when ? ` signed ${when}` : ""}${a.previousNumber ? ` (${a.previousNumber})` : ""}`;
-  return `This agreement replaces ${prior} because your vehicle is being swapped. You return the ${swapVehicleText(a.outgoing)} and receive the Vehicle described below. Once you sign and receive the new Vehicle, all the terms below apply to it. Your weekly rental rate of ${usd(a.weeklyRate)} and your payment schedule stay the same, and rent you already paid is not billed again. There is no Reservation Fee and no new deposit. Until then, your current agreement stays in effect.`;
+  return `This Vehicle Swap Addendum changes the Vehicle on ${prior}. You return the ${swapVehicleText(a.outgoing)} and receive the Vehicle described below. By signing, you accept the current Rental Agreement terms (Version 1.15), printed in full below, which replace the terms of your earlier agreement from the date you sign. Your original start date, your weekly rental rate of ${usd(a.weeklyRate)} and your payment schedule stay the same, and rent you already paid is not billed again. There is no Reservation Fee and no new deposit. Until you sign and receive the new Vehicle, your current agreement stays in effect.`;
 }
 
 /** Label of the signed swap PDF on the renter's Documents (same as Agreement Filing's Swap role). */
@@ -142,6 +158,7 @@ export function swapErrorText(raw: string): string {
   const m = String(raw ?? "");
   const n = (re: RegExp) => m.match(re)?.[1] ?? "";
   if (/swap_contention/.test(m)) return "Someone else is changing this rental or car right now. Try again in a moment.";
+  if (/swap_insurance_missing/.test(m)) return `${SWAP_INSURANCE_CHECK_LABEL}: upload the new vehicle's insurance document, or have the Owner override with a reason.`;
   if (/swap_not_signed/.test(m)) return "The renter has not signed the swap agreement yet.";
   if (/swap_agreement_not_signed/.test(m)) return "The signed swap agreement could not be confirmed for this rental and car.";
   if (/rental_not_active/.test(m)) return "This rental is no longer active.";

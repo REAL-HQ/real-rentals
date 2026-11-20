@@ -12,6 +12,10 @@ import {
   OUTGOING_STATUSES,
   OUTGOING_STATUS_LABELS,
   SWAP_FUEL_LEVELS,
+  SWAP_INSURANCE_CHECK_LABEL,
+  SWAP_INSURANCE_DOC_KINDS,
+  SWAP_INSURANCE_DOC_LABELS,
+  SWAP_INSURANCE_NOTE,
   SWAP_OFF_MESSAGE,
   SWAP_REASON_CODES,
   SWAP_REASON_LABELS,
@@ -20,7 +24,12 @@ import {
   type SwapReasonCode,
   type SwapStatus,
 } from "@/lib/vehicle-swap";
+import { FileUploader } from "@/components/FileUploader";
+import { getVehicleDocAccess } from "@/lib/vehicle-docs.functions";
 import {
+  addSwapInsuranceDocument,
+  getSwapInsurance,
+  overrideSwapInsuranceCheck,
   cancelSwapVehicle,
   completeSwapVehicle,
   getSwapOptions,
@@ -157,7 +166,7 @@ function SwapVehiclePanel({ rentalId, onChanged }: { rentalId: string; onChanged
   }, [options, rentalId, tick]);
 
   const enabled = opt?.ok === true && opt.enabled === true;
-  const openSwap = enabled ? (opt?.openSwap as { id: string; status: SwapStatus; swap_number: number } | null) : null;
+  const openSwap = enabled ? (opt?.openSwap as { id: string; status: SwapStatus; swap_number: number; to_vehicle_id: string } | null) : null;
 
   return (
     <div className="mt-3">
@@ -357,7 +366,7 @@ function SwapForm({ rentalId, opt, onClose, onSent }: { rentalId: string; opt: O
   );
 }
 
-function OpenSwapCard({ swap, onDone }: { swap: { id: string; status: SwapStatus; swap_number: number }; onDone: () => void }) {
+function OpenSwapCard({ swap, onDone }: { swap: { id: string; status: SwapStatus; swap_number: number; to_vehicle_id: string }; onDone: () => void }) {
   const complete = useServerFn(completeSwapVehicle);
   const cancel = useServerFn(cancelSwapVehicle);
   const [returnMiles, setReturnMiles] = useState("");
@@ -369,7 +378,8 @@ function OpenSwapCard({ swap, onDone }: { swap: { id: string; status: SwapStatus
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const miles = (s: string) => (/^\d{1,7}$/.test(s.trim()) ? Number(s.trim()) : null);
-  const ready = swap.status === "signed" && miles(returnMiles) !== null && miles(pickupMiles) !== null && returnFuel && pickupFuel;
+  const [insured, setInsured] = useState<{ satisfied: boolean } | null>(null);
+  const ready = swap.status === "signed" && insured?.satisfied === true && miles(returnMiles) !== null && miles(pickupMiles) !== null && returnFuel && pickupFuel;
 
   async function run(fn: () => Promise<Record<string, any>>) {
     setBusy(true);
@@ -394,6 +404,7 @@ function OpenSwapCard({ swap, onDone }: { swap: { id: string; status: SwapStatus
       {swap.status === "pending_signature" && (
         <p className="sm:col-span-2 text-[12px] text-[#55555E]">The renter has the swap agreement. Hand over the new car after they sign.</p>
       )}
+      <SwapInsurancePanel swap={swap} onStatus={setInsured} />
       {swap.status === "signed" && (
         <>
           <label className={label}>
@@ -465,6 +476,115 @@ function OpenSwapCard({ swap, onDone }: { swap: { id: string; status: SwapStatus
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+// "New Vehicle Insurance Uploaded": ID cards, declarations pages and endorsements
+// for the NEW car, kept staff only on that vehicle's documents. The handover
+// stays blocked until one is uploaded, unless the Owner overrides with a reason.
+// A document on file never marks the vehicle insured.
+function SwapInsurancePanel({ swap, onStatus }: { swap: { id: string; to_vehicle_id: string; status: SwapStatus }; onStatus: (s: { satisfied: boolean }) => void }) {
+  const load = useServerFn(getSwapInsurance);
+  const add = useServerFn(addSwapInsuranceDocument);
+  const override = useServerFn(overrideSwapInsuranceCheck);
+  const access = useServerFn(getVehicleDocAccess);
+  const [st, setSt] = useState<Awaited<ReturnType<typeof getSwapInsurance>> | null>(null);
+  const [kind, setKind] = useState<(typeof SWAP_INSURANCE_DOC_KINDS)[number]>("insurance_card");
+  const [expires, setExpires] = useState("");
+  const [isOwner, setIsOwner] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    const r = await load({ data: { swapId: swap.id } });
+    setSt(r);
+    onStatus({ satisfied: r.satisfied });
+  }, [load, swap.id, onStatus]);
+
+  useEffect(() => {
+    void refresh().catch(() => setError("Could not load the insurance documents."));
+    void access({}).then((a) => setIsOwner(Boolean(a.financeSlots))).catch(() => setIsOwner(false));
+  }, [refresh, access]);
+
+  async function uploadOne(file: File) {
+    const ext = (file.name.split(".").pop() || "pdf").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const path = `${swap.to_vehicle_id}/${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const up = await supabase.storage.from("vehicle-docs").upload(path, file, { contentType: file.type || undefined });
+    if (up.error) throw up.error;
+    const r = await add({ data: { swapId: swap.id, kind, path, fileName: file.name, mimeType: file.type || null, sizeBytes: file.size, expiresAt: expires || null } });
+    if (!r.ok) throw new Error(String(r.error ?? "Could not save the document."));
+    await refresh();
+  }
+
+  return (
+    <div data-testid="swap-insurance" className="sm:col-span-2 rounded-md border border-[#EDEDF0] bg-[#FAFAFB] p-3">
+      <div className="flex items-center justify-between gap-2 text-[13px]">
+        <span className="font-medium">{SWAP_INSURANCE_CHECK_LABEL}</span>
+        <span className={st?.satisfied ? "text-[#1A7F3C]" : "text-[#D03020]"}>
+          {st?.satisfied ? (st.docs.length ? "Done" : "Owner Override") : "Required Before Handover"}
+        </span>
+      </div>
+      <p className="mt-1 text-[11px] text-[#9A9AA3]">{SWAP_INSURANCE_NOTE}</p>
+      {st && st.docs.length > 0 && (
+        <ul className="mt-2 space-y-0.5 text-[12px] text-[#55555E]">
+          {st.docs.map((d) => <li key={d.id}>{d.kindLabel}{d.fileName ? ` — ${d.fileName}` : ""}</li>)}
+        </ul>
+      )}
+      {st?.overrideReason && <p className="mt-2 text-[12px] text-[#55555E]">Owner Override: {st.overrideReason}</p>}
+      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <label className={label}>
+          Document Type
+          <AppSelect aria-label="Insurance Document Type" className={field} value={kind} onChange={(e) => setKind(e.target.value as (typeof SWAP_INSURANCE_DOC_KINDS)[number])}>
+            {SWAP_INSURANCE_DOC_KINDS.map((k) => <option key={k} value={k}>{SWAP_INSURANCE_DOC_LABELS[k]}</option>)}
+          </AppSelect>
+        </label>
+        <label className={label}>
+          Expires (Optional)
+          <input type="date" className={field} value={expires} onChange={(e) => setExpires(e.target.value)} />
+        </label>
+        <div className="sm:col-span-2">
+          <FileUploader
+            variant="inline"
+            multiple
+            accept="application/pdf,image/*"
+            maxBytes={20 * 1024 * 1024}
+            title="Upload New Vehicle Insurance"
+            context={SWAP_INSURANCE_DOC_LABELS[kind]}
+            upload={async (file) => { await uploadOne(file); }}
+          />
+        </div>
+      </div>
+      {isOwner && !st?.satisfied && (
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+          <label className={`${label} flex-1`}>
+            Owner Override Reason
+            <input className={field} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why No Insurance Document Is Needed" />
+          </label>
+          <button
+            type="button"
+            disabled={busy || reason.trim().length < 10}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                const r = await override({ data: { swapId: swap.id, reason: reason.trim() } });
+                if (!r.ok) throw new Error(String(r.error ?? "Nothing was changed"));
+                await refresh();
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Nothing was changed");
+              } finally {
+                setBusy(false);
+              }
+            }}
+            className="rounded-md border border-[#EDEDF0] px-3 py-1.5 text-[13px] disabled:opacity-50"
+          >
+            Override As Owner
+          </button>
+        </div>
+      )}
+      {error && <p className="mt-2 text-[12px] text-[#D03020]">{error}</p>}
     </div>
   );
 }

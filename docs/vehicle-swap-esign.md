@@ -23,7 +23,16 @@ e-signs a swap agreement for the new car, and staff then record the handover.
      **Send For E-Signature** sends that same agreement, and the server refuses
      it if anything changed after the preview (same fingerprint rule as every
      staff send).
-2. **The agreement.** It is generated from the current default template
+2. **The agreement is an addendum, not a new contract (Dolmar t541u/t542u).**
+   The signed PDF opens with a Vehicle Swap Addendum notice that says the
+   renter accepts the current Rental Agreement terms (Version 1.15), and the
+   full v1.15 text follows in the same PDF. Every renter is upgraded to v1.15
+   on a swap, whatever version the original was (v1.14 included). This is
+   fixed behaviour, not a setting. The original start date (the rental's
+   `start_date`), the weekly rent and the payment schedule stay the same. The
+   Florida addendum is not part of it: `FL_ADDENDUM_OWNER_APPROVAL` is still
+   null and nothing in the agreement path reads that file.
+   It is generated from the current default template
    (v1.15, `insurance_included_v115`) by the normal `prepareAgreement` /
    `issueAgreement` step, using the updated-agreement (amendment) path:
    - It names the **new** car: year, make, model, colour, plate and full VIN.
@@ -36,7 +45,7 @@ e-signs a swap agreement for the new car, and staff then record the handover.
      box as an amendment notice. It names the agreement being replaced (the
      signed date and RRA number, or "your Rental Agreement on file" for
      paper) and the car being returned.
-   - Title "Rental Agreement (Vehicle Swap)". The row's `rental_id` is set and
+   - Title "Vehicle Swap Addendum To Rental Agreement". The row's `rental_id` is set and
      `metadata.amendment.kind = "vehicle_swap"`.
    - It goes out through the existing e-sign flow (`deliverSigningLink`, by
      email and SMS).
@@ -49,7 +58,24 @@ e-signs a swap agreement for the new car, and staff then record the handover.
      unchanged.
    - FLEET gets no first-signing event, and the reservation check is skipped.
    - The car does **not** move yet.
-4. **Complete Swap** (handover, Manager or Owner):
+4. **New Vehicle Insurance Uploaded** (checklist item on the open swap):
+   - Staff upload one or more documents for the new car: Insurance ID Card,
+     Insurance Declarations Page, Insurance Endorsement (PDF or image, 20 MB).
+     They can be added while the swap waits for signature or after it is signed.
+   - Each file goes to the private `vehicle-docs` bucket under the new car's
+     folder and becomes a `documents` row on the **new vehicle** with its own
+     category (`insurance_card`, `insurance_declarations`,
+     `insurance_endorsement`), `visibility = ['admin']` (staff only, never the
+     renter), plus a row in `rental_vehicle_swap_documents` tying it to the swap.
+     An identical file already on file is linked, not stored twice.
+   - **Complete Swap stays disabled, and the database refuses the handover
+     (`swap_insurance_missing`), until at least one document is tied to the swap,
+     or the Owner overrides with a reason (10+ characters, who and when
+     recorded, written to the audit log).** Managers cannot override.
+   - Nothing here marks a vehicle insured or verified. No vehicle or
+     application insurance field is written. Staff still confirm coverage with
+     the insurer before handing over the car.
+5. **Complete Swap** (handover, Manager or Owner):
    - Staff enter the return odometer and fuel (current car), the pickup
      odometer and fuel (new car), and where the returned car goes
      (Maintenance, the default, or Available, the same choice End Rental
@@ -61,6 +87,7 @@ e-signs a swap agreement for the new car, and staff then record the handover.
      - checks that the swap is signed and that the signed agreement names
        this rental and this car;
      - checks that the new car is still Available, free and Rental Ready;
+     - checks New Vehicle Insurance Uploaded (a document or an Owner override);
      - checks the odometer readings the way End Rental does;
      - writes the swap's own odometer readings (`swap_return:<id>`,
        `swap_checkout:<id>`);
@@ -71,7 +98,7 @@ e-signs a swap agreement for the new car, and staff then record the handover.
    - It never touches payments, Stripe, autopay, deposits or the weekly rate.
    - Photos: run a Vehicle Inspection on each car. The return checklist is
      still off, so the swap does not store photos itself.
-5. **Cancel Swap** works while a swap is open. An unsigned agreement is voided
+6. **Cancel Swap** works while a swap is open. An unsigned agreement is voided
    through `esign_void`. A signed but not-yet-completed swap is marked voided,
    and its signed agreement stays on file.
 
@@ -101,7 +128,7 @@ gate counts as off.
 
 1. Merge the PR and publish the site. This is safe while off: nothing changes
    for anyone.
-2. Apply `supabase/migrations/20261120130000_rental_vehicle_swaps.sql` to
+2. Apply `supabase/migrations/20261120171500_rental_vehicle_swaps.sql` to
    production. Take the usual backup first. The migration is idempotent,
    creates only new objects, and switches nothing on.
 3. Check:

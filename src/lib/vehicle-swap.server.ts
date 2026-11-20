@@ -20,7 +20,11 @@ import { AMENDMENT_TEMPLATE_KEY, amendmentPrep, parseAmendmentTerms } from "@/li
 import {
   OPEN_SWAP_STATUSES,
   OUTGOING_STATUSES,
+  SWAP_DOCS_TABLE,
   SWAP_FUEL_LEVELS,
+  SWAP_INSURANCE_DOC_KINDS,
+  SWAP_INSURANCE_DOC_LABELS,
+  SWAP_INSURANCE_MIN_OVERRIDE,
   SWAP_OFF_MESSAGE,
   SWAP_REASON_CODES,
   VEHICLE_SWAPS_TABLE,
@@ -499,6 +503,155 @@ export async function cancelSwap(admin: Admin, input: { swapId: string; reason: 
   if (upd.error) return fail(503, "Could not cancel the swap.");
   await audit({ action: "rental.vehicle_swap_cancelled", summary: `Vehicle swap S-${s.swap_number} cancelled`, entityType: "rental", entityId: s.rental_id, metadata: { swap_id: s.id, was: s.status, agreement_id: s.agreement_id, agreement_void: agreement, reason, by: input.actorLabel } });
   return { status: 200, body: { ok: true, swap_id: s.id, status: "voided", signed_agreement_kept: s.status === "signed" } };
+}
+
+// ---------------------------------------------- New Vehicle Insurance Uploaded
+
+export type SwapInsuranceDocRow = { id: string; documentId: string; kind: string; kindLabel: string; fileName: string | null; createdAt: string };
+export type SwapInsuranceStatus = { docs: SwapInsuranceDocRow[]; overrideReason: string | null; overrideAt: string | null; satisfied: boolean };
+
+/** Read-only: documents tied to a swap and whether the checklist item is met (a document, or an Owner override). */
+export async function swapInsuranceStatus(admin: Admin, swapId: string): Promise<SwapInsuranceStatus> {
+  const [d, s] = await Promise.all([
+    admin.from(SWAP_DOCS_TABLE).select("id,document_id,doc_kind,created_at").eq("swap_id", swapId).order("created_at", { ascending: true }),
+    admin.from(VEHICLE_SWAPS_TABLE).select("insurance_override_reason,insurance_override_by,insurance_override_at").eq("id", swapId).maybeSingle(),
+  ]);
+  const rows = (d.error ? [] : (d.data ?? [])) as any[];
+  const ids = rows.map((r) => r.document_id);
+  const names = new Map<string, string | null>();
+  if (ids.length) {
+    const f = await admin.from("documents").select("id,file_name").in("id", ids);
+    for (const x of (f.data ?? []) as any[]) names.set(x.id, x.file_name ?? null);
+  }
+  const ov = s.error ? null : s.data;
+  const overrideReason = ov?.insurance_override_reason && ov?.insurance_override_by ? String(ov.insurance_override_reason) : null;
+  return {
+    docs: rows.map((r) => ({
+      id: r.id,
+      documentId: r.document_id,
+      kind: r.doc_kind,
+      kindLabel: (SWAP_INSURANCE_DOC_LABELS as Record<string, string>)[r.doc_kind] ?? r.doc_kind,
+      fileName: names.get(r.document_id) ?? null,
+      createdAt: r.created_at,
+    })),
+    overrideReason,
+    overrideAt: overrideReason ? (ov?.insurance_override_at ?? null) : null,
+    satisfied: rows.length > 0 || Boolean(overrideReason),
+  };
+}
+
+/**
+ * Files an uploaded insurance document against an open swap's NEW vehicle.
+ * The file is already in the private vehicle-docs bucket under
+ * "<new vehicle id>/". It becomes a documents row (staff only, visibility
+ * admin) with its own category, plus a link row to the swap. It never writes
+ * any vehicle insurance field, so nothing becomes "insured" because of it.
+ */
+export async function addSwapInsuranceDoc(
+  admin: Admin,
+  input: { swapId: string; kind: unknown; path: unknown; fileName?: unknown; mimeType?: unknown; sizeBytes?: unknown; expiresAt?: unknown; actorUserId: string },
+  deps: SwapDeps = {},
+): Promise<Result> {
+  const audit = deps.audit ?? defaultAudit;
+  const off = await gateOrFail(admin, deps);
+  if (off) return off;
+  if (!UUID_RE.test(input.swapId)) return fail(400, "swap_id must be a UUID.");
+  const kind = String(input.kind ?? "");
+  if (!(SWAP_INSURANCE_DOC_KINDS as readonly string[]).includes(kind)) return fail(400, "Choose Insurance ID Card, Declarations Page or Endorsement.");
+  const path = String(input.path ?? "").trim();
+  const sw = await admin.from(VEHICLE_SWAPS_TABLE).select("id,status,to_vehicle_id,rental_id,swap_number").eq("id", input.swapId).maybeSingle();
+  if (sw.error || !sw.data) return fail(404, "Swap not found.");
+  const s = sw.data;
+  if (!(OPEN_SWAP_STATUSES as readonly string[]).includes(s.status)) return fail(409, "Insurance documents can only be added while the swap is open.");
+  if (!path || path.includes("..") || !path.startsWith(`${s.to_vehicle_id}/`)) return fail(400, "That file is not stored under the new vehicle.");
+  const expires = input.expiresAt ? String(input.expiresAt) : null;
+  if (expires && !/^\d{4}-\d{2}-\d{2}$/.test(expires)) return fail(400, "Expiry must be a date.");
+
+  const file = await admin.storage.from("vehicle-docs").download(path);
+  if (!file.data) return fail(409, "That upload could not be read back.");
+  const bytes = new Uint8Array(await file.data.arrayBuffer());
+  const digest = await crypto.subtle.digest("SHA-256", bytes as unknown as ArrayBuffer);
+  const sha = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+  // An identical file already on file is linked, never stored twice.
+  const dup = await admin.from("documents").select("id").eq("content_sha256", sha).is("driver_id", null).maybeSingle();
+  let documentId: string;
+  let duplicate = false;
+  if (dup.data) {
+    await admin.storage.from("vehicle-docs").remove([path]);
+    documentId = dup.data.id;
+    duplicate = true;
+  } else {
+    const ins = await admin
+      .from("documents")
+      .insert({
+        vehicle_id: s.to_vehicle_id,
+        kind,
+        category: kind,
+        label: (SWAP_INSURANCE_DOC_LABELS as Record<string, string>)[kind],
+        storage_bucket: "vehicle-docs",
+        storage_path: path,
+        file_name: input.fileName ? String(input.fileName).slice(0, 200) : null,
+        mime_type: input.mimeType ? String(input.mimeType).slice(0, 120) : null,
+        size_bytes: Number.isInteger(input.sizeBytes) ? input.sizeBytes : null,
+        content_sha256: sha,
+        expires_at: expires,
+        is_current: true,
+        visibility: ["admin"], // staff only: never shown to the renter
+        uploaded_by: input.actorUserId,
+        uploaded_by_role: "admin",
+        notes: `Vehicle swap S-${s.swap_number}`,
+      })
+      .select("id")
+      .single();
+    if (ins.error || !ins.data) return fail(503, "Could not save the document.");
+    documentId = ins.data.id;
+  }
+  const link = await admin.from(SWAP_DOCS_TABLE).upsert(
+    { swap_id: s.id, document_id: documentId, vehicle_id: s.to_vehicle_id, doc_kind: kind, uploaded_by: input.actorUserId },
+    { onConflict: "swap_id,document_id", ignoreDuplicates: true },
+  );
+  if (link.error) return fail(503, "Could not tie the document to the swap.");
+  await audit({
+    action: "rental.vehicle_swap_insurance_doc",
+    summary: `Added ${(SWAP_INSURANCE_DOC_LABELS as Record<string, string>)[kind]} to vehicle swap S-${s.swap_number}`,
+    entityType: "rental",
+    entityId: s.rental_id,
+    metadata: { swap_id: s.id, document_id: documentId, kind, duplicate, vehicle_id: s.to_vehicle_id },
+  });
+  return { status: 200, body: { ok: true, document_id: documentId, duplicate } };
+}
+
+/** Owner only (checked by the caller): lets the handover proceed without a document, with a reason on record. */
+export async function overrideSwapInsurance(
+  admin: Admin,
+  input: { swapId: string; reason: unknown; actorUserId: string; actorLabel: string },
+  deps: SwapDeps = {},
+): Promise<Result> {
+  const audit = deps.audit ?? defaultAudit;
+  const now = deps.now ?? new Date();
+  const off = await gateOrFail(admin, deps);
+  if (off) return off;
+  if (!UUID_RE.test(input.swapId)) return fail(400, "swap_id must be a UUID.");
+  const reason = cleanText(input.reason, 500);
+  if (reason.length < SWAP_INSURANCE_MIN_OVERRIDE) return fail(400, `Say why no insurance document is needed (at least ${SWAP_INSURANCE_MIN_OVERRIDE} characters).`);
+  const sw = await admin.from(VEHICLE_SWAPS_TABLE).select("id,status,rental_id,swap_number").eq("id", input.swapId).maybeSingle();
+  if (sw.error || !sw.data) return fail(404, "Swap not found.");
+  if (!(OPEN_SWAP_STATUSES as readonly string[]).includes(sw.data.status)) return fail(409, "Only an open swap can be overridden.");
+  const upd = await admin
+    .from(VEHICLE_SWAPS_TABLE)
+    .update({ insurance_override_reason: reason, insurance_override_by: input.actorUserId, insurance_override_at: now.toISOString(), updated_at: now.toISOString() })
+    .eq("id", sw.data.id)
+    .in("status", OPEN_SWAP_STATUSES as string[]);
+  if (upd.error) return fail(503, "Could not save the override.");
+  await audit({
+    action: "rental.vehicle_swap_insurance_override",
+    summary: `Owner overrode New Vehicle Insurance Uploaded on swap S-${sw.data.swap_number}`,
+    entityType: "rental",
+    entityId: sw.data.rental_id,
+    metadata: { swap_id: sw.data.id, reason, by: input.actorLabel },
+  });
+  return { status: 200, body: { ok: true } };
 }
 
 export type SwapHistoryEntry = {

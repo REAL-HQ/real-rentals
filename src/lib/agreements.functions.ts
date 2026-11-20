@@ -1069,7 +1069,7 @@ export async function issueAgreement(
       metadata: amendment
         ? { ...templateEvidence(tpl.meta, prep.fingerprint, Boolean(lib)), amendment: amendment.metadata }
         : templateEvidence(tpl.meta, prep.fingerprint, Boolean(lib)),
-      ...(amendment ? { title: amendment.swap ? "Rental Agreement (Vehicle Swap)" : "Rental Agreement (Amended)", rental_id: amendment.rentalId } : {}),
+      ...(amendment ? { title: amendment.swap ? "Vehicle Swap Addendum To Rental Agreement" : "Rental Agreement (Amended)", rental_id: amendment.rentalId } : {}),
       body: numbered,
       merge_data: numberedMerge,
       status: "sent",
