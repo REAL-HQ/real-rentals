@@ -10,6 +10,7 @@ import {
 } from "@/lib/agreement-merge";
 import { contractTodayIso, defaultRentalEndIso, fmtContractDate, fmtContractDateOnly, minTermEndIso, minTermWeeks, rentalEndBeforeMinimum } from "@/lib/agreement-dates";
 import { readTerms, resolveTerms, stripTerms, writeTerms, missingTerms, ALL_TERM_FIELDS } from "@/lib/agreement-builder";
+import { homeAddressMissing, formatHomeAddress, HOME_ADDRESS_LABEL, HOME_ADDRESS_WHY } from "@/lib/agreement-home-address";
 import { libraryTemplate, DRAFT_STATUS_LABEL, LIBRARY_KEYS, DEFAULT_LIBRARY_KEY, OWNER_APPROVED_LIBRARY, type LibraryTemplate } from "@/lib/agreement-library";
 import { applyPrep, PrepSchema, type AgreementDetails, type AgreementPrep } from "@/lib/agreement-prep";
 import { recordFillsFromDetails, type AppliedFill } from "@/lib/agreement-fills";
@@ -257,13 +258,10 @@ async function buildMergeData(
     blockers.push({ field: "driver_email", label: "Driver email", why: "The signing link is emailed and the agreement prints it.", fix: pay });
   if (!String(app.phone ?? "").trim())
     blockers.push({ field: "driver_phone", label: "Driver phone", why: "The agreement prints the renter's phone number.", fix: pay });
-  if (!app.address || !app.city || !app.state || !app.zip)
-    blockers.push({
-      field: "driver_address",
-      label: "Driver address (street, city, state, ZIP)",
-      why: "The agreement names the driver's full address. Confirm it with the driver — do not guess it.",
-      fix: pay,
-    });
+  // Home Address is required before any agreement can be sent (v1.15: it is
+  // the address for legal notices, including s. 812.155 demands).
+  if (homeAddressMissing(app))
+    blockers.push({ field: "driver_address", label: HOME_ADDRESS_LABEL, why: HOME_ADDRESS_WHY, fix: pay });
   // Licence: the contract prints number, issuing state and expiry, and limits
   // operation to the Renter — so all three identify the authorised driver, and
   // a licence that has expired by the start date cannot authorise anyone.
@@ -345,10 +343,7 @@ async function buildMergeData(
     driver_name: app.full_name ?? "",
     driver_email: app.email ?? "",
     driver_phone: app.phone ?? "",
-    driver_address:
-      app.address && app.zip
-        ? [app.address, app.city, app.state, app.zip].filter(Boolean).join(", ")
-        : "",
+    driver_address: formatHomeAddress(app),
     license_number: app.license_number ?? "",
     license_state: app.license_state ?? "",
     license_expiration: licenceExpiry,
@@ -547,6 +542,9 @@ export function templateEvidence(meta: TemplateMeta, fingerprint: string, fromLi
 
 /** Once versioning is active, only an Owner-approved template can be sent. */
 function templateSendRefusal(meta: TemplateMeta): string | null {
+  // Retired families (v1.10, v1.10.2) stay previewable but are never sent.
+  const retired = meta.key ? libraryTemplate(meta.key)?.retired : undefined;
+  if (retired) return `${meta.label} is retired, so it cannot be sent. ${retired.reason}`;
   if (meta.key && meta.approvalStatus !== "approved")
     return `${meta.label} is not approved, so it cannot be sent. The Owner approves it in the Agreement Template Library after legal review.`;
   if (meta.versioningActive && meta.approvalStatus !== "approved")
@@ -555,9 +553,8 @@ function templateSendRefusal(meta: TemplateMeta): string | null {
 }
 
 /**
- * The agreement new sends use when no saved template is active: v1.14
- * (Insurance Included). Dolmar, Nov 16 2026 (t319u): "the v1.14 agreement is
- * the latest agreement we have. add those fees to that agreement." Signed
+ * The agreement new sends use when no saved template is active: v1.15
+ * (Insurance Included; agreement-library.ts DEFAULT_LIBRARY_KEY). Signed
  * agreements keep the text they were signed with.
  */
 export { DEFAULT_LIBRARY_KEY, OWNER_APPROVED_LIBRARY };
@@ -698,7 +695,7 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     prep = amendment.prep ? forceNoFee(amendment.prep) : undefined;
     templateKey = amendment.templateKey ?? templateKey;
   }
-  // No template named: a saved, active template wins; otherwise v1.14 (t319u).
+  // No template named: a saved, active template wins; otherwise the default (v1.15).
   let key = templateKey;
   let saved: { body: string; meta: TemplateMeta } | null = null;
   if (!key) {

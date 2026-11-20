@@ -12,6 +12,7 @@ import { defaultRentalEndIso } from "@/lib/agreement-dates";
 import { layoutToText } from "@/lib/agreement-layout";
 import { readAgreementLicense, readWrittenAgreement } from "@/lib/agreement-license.functions";
 import { LIBRARY, DRAFT_STATUS_LABEL, OWNER_APPROVED_LIBRARY, acknowledgmentsOf } from "@/lib/agreement-library";
+import { HOME_ADDRESS_LABEL, missingHomeAddressParts } from "@/lib/agreement-home-address";
 import { DANGER_BADGE } from "@/lib/badge-tone";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
@@ -119,7 +120,9 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const terms = res?.terms ?? {};
   const upToDate = reviewedKey === key && !rendering;
   const needsAck = (res?.companyMissing?.length ?? 0) > 0 && !companyAck;
-  const canSend = !!res?.fingerprint && res.canSend && upToDate && !needsAck && !busy;
+  // Home Address is required before Send (the server refuses it too).
+  const homeMissing = missingHomeAddressParts(prep.details ?? res?.values ?? {});
+  const canSend = !!res?.fingerprint && res.canSend && upToDate && !needsAck && !busy && homeMissing.length === 0;
   const byField = (f: string) => (res?.blockers ?? []).filter((b) => b.field === f).length;
   // v1.14 (Insurance Included) prints these; earlier templates never show the section.
   const usesV114 = (res?.templateFields ?? []).some((f) => ["damage_waiver", "payment_amount", "payment_method", "balance_due", "vehicle_owner"].includes(f));
@@ -245,9 +248,9 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
       <Section title="Agreement Template">
         <label className="flex cursor-pointer items-start gap-2 rounded-md border p-2">
           <input type="radio" className="mt-0.5" checked={templateKey === ""} onChange={() => chooseTemplate("")} />
-          <span><span className="font-medium">Current Agreement In Use</span><br /><span className="text-muted-foreground">{templateKey === "" && res?.template?.label ? res.template.label : "The template Send uses today (Vehicle Rental Agreement v1.14, Owner Approved)."}</span></span>
+          <span><span className="font-medium">Current Agreement In Use</span><br /><span className="text-muted-foreground">{templateKey === "" && res?.template?.label ? res.template.label : "The template Send uses today (Vehicle Rental Agreement v1.15, Insurance Included)."}</span></span>
         </label>
-        {LIBRARY.map((t) => (
+        {LIBRARY.filter((t) => !t.retired).map((t) => (
           <label key={t.key} className="flex cursor-pointer items-start gap-2 rounded-md border p-2">
             <input type="radio" className="mt-0.5" checked={templateKey === t.key} onChange={() => chooseTemplate(t.key)} />
             <span className="min-w-0">
@@ -259,7 +262,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
             </span>
           </label>
         ))}
-        <p className="text-[11px] text-muted-foreground">Only Owner-approved templates can be sent. Choosing a template does not establish insurance coverage or rental eligibility.</p>
+        <p className="text-[11px] text-muted-foreground">Only Owner-approved templates can be sent. Retired templates (v1.10 and v1.10.2) are not listed. Choosing a template does not establish insurance coverage or rental eligibility.</p>
       </Section>
 
       <Section title="Rental Details">
@@ -279,12 +282,15 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
                 <label className="col-span-2">Full Name<input className={input} value={values.driverName} onChange={(e) => updateDetails({ driverName: e.target.value })} /></label>
                 <label>Email<input type="email" className={input} value={values.driverEmail} onChange={(e) => updateDetails({ driverEmail: e.target.value })} /></label>
                 <label>Phone<PhoneInput className={input} value={values.driverPhone} onValueChange={(driverPhone) => updateDetails({ driverPhone })} /></label>
-                <label className="col-span-2">Street Address<input className={input} value={values.address} onChange={(e) => updateDetails({ address: e.target.value })} /></label>
-                <label>City<input className={input} value={values.city} onChange={(e) => updateDetails({ city: e.target.value })} /></label>
+                <label className="col-span-2">Home Street Address <span className="text-destructive">*</span><input required aria-required="true" aria-invalid={homeMissing.includes("Street")} className={input} value={values.address} onChange={(e) => updateDetails({ address: e.target.value })} /></label>
+                <label>City <span className="text-destructive">*</span><input required aria-required="true" aria-invalid={homeMissing.includes("City")} className={input} value={values.city} onChange={(e) => updateDetails({ city: e.target.value })} /></label>
                 <div className="grid grid-cols-2 gap-2">
-                  <label>State<input className={input} value={values.state} onChange={(e) => updateDetails({ state: e.target.value.toUpperCase() })} /></label>
-                  <label>ZIP<input className={input} value={values.zip} onChange={(e) => updateDetails({ zip: e.target.value })} /></label>
+                  <label>State <span className="text-destructive">*</span><input required aria-required="true" aria-invalid={homeMissing.includes("State")} className={input} value={values.state} onChange={(e) => updateDetails({ state: e.target.value.toUpperCase() })} /></label>
+                  <label>ZIP <span className="text-destructive">*</span><input required aria-required="true" aria-invalid={homeMissing.includes("ZIP")} className={input} value={values.zip} onChange={(e) => updateDetails({ zip: e.target.value })} /></label>
                 </div>
+                {homeMissing.length > 0 && (
+                  <p className="col-span-2 text-[11px] text-destructive" data-testid="home-address-required">{HOME_ADDRESS_LABEL} Is Required Before Sending. Missing: {homeMissing.join(", ")}. It is the renter's address for legal notices.</p>
+                )}
                 <label>Date Of Birth<input type="date" className={input} value={values.dob} onChange={(e) => updateDetails({ dob: e.target.value })} /></label>
                 <label>License Number<input className={input} value={values.licenseNumber} onChange={(e) => updateDetails({ licenseNumber: e.target.value })} /></label>
                 <label>Issuing State<input maxLength={2} className={input} value={values.licenseState} onChange={(e) => updateDetails({ licenseState: e.target.value.toUpperCase() })} /></label>
@@ -426,7 +432,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
           {(res?.companyMissing?.length ?? 0) > 0 && (
             <label className="flex items-center gap-1.5 text-[11px]"><input type="checkbox" checked={companyAck} onChange={(e) => setCompanyAck(e.target.checked)} /> Send With Incomplete Company Details</label>
           )}
-          <Button size="sm" disabled={!canSend} onClick={send} title={canSend ? undefined : "Resolve every item listed and wait for the preview to finish updating"}>
+          <Button size="sm" disabled={!canSend} onClick={send} title={canSend ? undefined : homeMissing.length ? `${HOME_ADDRESS_LABEL} Is Required Before Sending` : "Resolve every item listed and wait for the preview to finish updating"}>
             <Send className="h-3.5 w-3.5" /> {busy ? "Sending…" : "Send For Signature"}
           </Button>
         </div>

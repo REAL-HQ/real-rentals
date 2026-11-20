@@ -1,4 +1,5 @@
 import { PaperAgreements } from "./PaperAgreements";
+import { FloridaAddendumPanel } from "./FloridaAddendumPanel";
 import { saveAgreementPdf } from "@/lib/agreement-download";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -431,6 +432,7 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
           </ul>
         )}
       </div>
+    <FloridaAddendumPanel applicationId={applicationId} />
     <PaperAgreements applicationId={applicationId} />
     </SectionCard>
   );

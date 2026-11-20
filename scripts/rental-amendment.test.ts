@@ -146,11 +146,11 @@ describe("amend-agreement endpoint", () => {
     const r = await call(fakeDb(sd), body());
     expect(r.status).toBe(201);
     const am = r.issued[0].o.amendment;
-    expect(am.templateKey).toBe("insurance_included");
+    expect(am.templateKey).toBe("insurance_included_v115");
     expect(am.prep.reservation).toEqual({ mode: "not_required", amount: null });
     expect(am.prep.deposit.mode).toBe("none");
     expect(am.prep).toMatchObject({ damageWaiver: "declined", payment: { schedule: "weekly", method: "Card Autopay" }, vehicleOwner: "REAL RENTALS LLC" });
-    expect(am.metadata).toMatchObject({ reservation_fee: "not_applicable", new_deposit: 0, template_key: "insurance_included" });
+    expect(am.metadata).toMatchObject({ reservation_fee: "not_applicable", new_deposit: 0, template_key: "insurance_included_v115" });
     expect(r.issued[0].o.prep).toBeUndefined();
 
     const r2 = await call(fakeDb(seed()), body({ idempotency_key: "k-terms", terms: { damage_waiver: "accepted", payment_schedule: "every_4_weeks", payment_method: "Zelle", vehicle_owner: "REAL RENTALS LLC" } }));
