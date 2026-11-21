@@ -74,6 +74,7 @@ import { useDriverDocumentUpload } from "./use-driver-document-upload";
 import { ReserveCarDialog } from "./ReserveCarDialog";
 import { NextStepCard } from "./NextStepCard";
 import { ReturnFlowDialog } from "./ReturnFlowDialog";
+import { DriverSwapDialog } from "./DriverSwapDialog";
 import { RETURN_FLOW_ENABLED } from "@/lib/return-flow";
 import { DriverRentalDetails } from "./DriverRentalDetails";
 import { DriverContactsEditor } from "./DriverContactsEditor";
@@ -168,6 +169,7 @@ import {
   Link2 as LinkIcon,
   ListFilter,
   Loader2,
+  Repeat,
 } from "lucide-react";
 import { issueCardOnFileLink, removeCardOnFile } from "@/lib/payments.functions";
 import { publicAppUrl } from "@/lib/public-app-url";
@@ -2091,6 +2093,7 @@ function DriverDetail({
   const approve = useServerFn(approveApplication);
   const closeRental = useServerFn(endRental);
   const [returnFlowOpen, setReturnFlowOpen] = useState(false);
+  const [swapOpen, setSwapOpen] = useState(false);
   const [activateOpen, setActivateOpen] = useState(false);
   const [reserveOpen, setReserveOpen] = useState(false);
   const [hasReservation, setHasReservation] = useState(false);
@@ -2478,6 +2481,8 @@ function DriverDetail({
   // One next step for the header and the Overview card, from the server's
   // readiness when it is loaded (see src/lib/next-step.ts).
   const canReserve = isManager && approved && !rentalActive;
+  // Swap Vehicle from the profile: same Manager/Owner gate as the booking page; the vehicle_swap flag is checked inside the popup.
+  const canSwap = (isManager || isOwner) && rentalActive && Boolean(activeRentalId);
   const next = nextStep({
     step,
     entry: activationEntry,
@@ -2690,6 +2695,11 @@ function DriverDetail({
           </button>
           {rentalActive ? (
             <>
+              {canSwap ? (
+                <button className={btnSecondary} onClick={() => setSwapOpen(true)} data-testid="driver-swap-actions">
+                  <Repeat className="w-3.5 h-3.5" /> Swap
+                </button>
+              ) : null}
               {RETURN_FLOW_ENABLED ? (
                 <button className={btnPrimary} onClick={() => setReturnFlowOpen(true)} data-testid="driver-return-open">
                   <Car className="w-3.5 h-3.5" /> Return
@@ -2812,6 +2822,16 @@ function DriverDetail({
               </div>
             </div>
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+              {canSwap ? (
+                <button
+                  type="button"
+                  onClick={() => setSwapOpen(true)}
+                  data-testid="profile-swap"
+                  className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-[#EDEDF0] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#55555E] hover:border-[#C4C4CB] hover:text-[#111114] transition-colors"
+                >
+                  <Repeat className="w-3.5 h-3.5" strokeWidth={2} /> Swap
+                </button>
+              ) : null}
               <button
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
@@ -2953,6 +2973,7 @@ function DriverDetail({
                 ) : null}
                 <NextStepCard
                   onReturn={RETURN_FLOW_ENABLED ? () => setReturnFlowOpen(true) : undefined}
+                  onSwap={canSwap ? () => setSwapOpen(true) : undefined}
                   model={next}
                   readiness={rentalTabReadiness}
                   renderEvidence={renderChecklistEvidence}
@@ -3131,6 +3152,7 @@ function DriverDetail({
               <TabsContent value="rental" className="mt-0">
                 <div className="mb-4"><NextStepCard
                   onReturn={RETURN_FLOW_ENABLED ? () => setReturnFlowOpen(true) : undefined}
+                  onSwap={canSwap ? () => setSwapOpen(true) : undefined}
                   model={next}
                   readiness={rentalTabReadiness}
                   renderEvidence={renderChecklistEvidence}
@@ -3279,6 +3301,10 @@ function DriverDetail({
         onInterview={() => { setRecordCallOpen(false); setInterviewOpen(true); }}
         onSaved={(saved) => { setScreening(saved); onScreeningChange?.(saved); readinessChanged(); }}
       /> : null}
+
+      {swapOpen && canSwap && activeRentalId ? (
+        <DriverSwapDialog rentalId={activeRentalId} driverName={driver.full_name ? displayPersonName(driver.full_name) : null} onClose={() => setSwapOpen(false)} />
+      ) : null}
 
       {depositRentalId ? (
         <DepositDialog rentalId={depositRentalId} onClose={() => setDepositRentalId(null)} />
