@@ -42,6 +42,7 @@ import {
   applicationStatusChoiceDisabled,
   applicationStatusLabel,
   applicationStatusMenu,
+  canDeclineApplication,
   visibleDriverActivity,
   type ApplicationStatusEvent,
   type ClosureReason,
@@ -49,6 +50,8 @@ import {
 import type { StaffTier } from "@/lib/roles";
 import { getApplicationStatusHistory, listDriverActiveSets } from "@/lib/application-status.functions";
 import { CloseApplicationDialog } from "./CloseApplicationDialog";
+import { DeclineApplicationDialog } from "./DeclineApplicationDialog";
+import { ConfirmDialog } from "./modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
@@ -1008,7 +1011,7 @@ setDocCounts(requiredDocCounts(rows));
   }
   async function update(
     id: string,
-    patch: Partial<Application> & { closure_reason?: ClosureReason; closure_notes?: string | null },
+    patch: Partial<Application> & { closure_reason?: ClosureReason; closure_notes?: string | null; decline_reason?: string },
   ): Promise<boolean> {
     try {
       const saved = await saveLifecycle({ data: { id, patch: patch as LifecyclePatch } });
@@ -1556,6 +1559,8 @@ setDocCounts(requiredDocCounts(rows));
                           }
                           if (applicationStatusChoiceDisabled(a.status, status, tier)) return;
                           if (status === "approved") {
+                            const who = a.full_name ? displayPersonName(a.full_name) : "this applicant";
+                            if (!window.confirm(`Approve ${who}? This sends the Approval Confirmation email.`)) return;
                             void approveFromList({ data: { id: a.id, sendAgreement: false } })
                               .then((res) => {
                                 if (!res.ok) throw new Error(res.error ?? "Could not approve");
@@ -1922,7 +1927,7 @@ function DriverDetail({
 }: {
   driver: Application;
   vehicles: Vehicle[];
-  onUpdate: (patch: Partial<Application>) => Promise<boolean>;
+  onUpdate: (patch: Partial<Application> & { decline_reason?: string }) => Promise<boolean>;
   onSaved: (patch: Partial<Application>) => void;
   onReserved?: () => void;
   onDelete: () => void;
@@ -2237,9 +2242,9 @@ function DriverDetail({
       }]];
       if (r.key === "approved") return [[r.key, {
         tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Approval Required", fields: [],
-        onToggle: () => r.met === true ? openSection("application", "") : void approveOnly(),
+        onToggle: () => r.met === true ? openSection("application", "") : requestApprove(),
         toggleLabel: r.met === true ? "View Approved Application" : "Review And Approve Application",
-        toggleTitle: r.met === true ? "View The Approved Application." : "Run The Existing Approval Checks.",
+        toggleTitle: r.met === true ? "View The Approved Application." : "Confirm, Then Run The Existing Approval Checks.",
       }]];
       if (r.key === "rental_active") return [[r.key, {
         tone: r.met === true ? "green" : "red", label: r.met === true ? "Complete" : "Completed By Activation", fields: [],
@@ -2397,6 +2402,9 @@ function DriverDetail({
   const [recordOpen, setRecordOpen] = useState(false);
   const [recordCloseOpen, setRecordCloseOpen] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declining, setDeclining] = useState(false);
   const [depositRentalId, setDepositRentalId] = useState<string | null>(null);
   const [activeRentalId, setActiveRentalId] = useState<string | null>(null);
   const [rentalStatus, setRentalStatus] = useState<string | null>(null);
@@ -2460,16 +2468,23 @@ function DriverDetail({
   }
 
   // Approval is only the vetting decision. Agreements are prepared and sent explicitly.
-  async function approveOnly() {
-    if (approving) return; // a double click must not approve twice
+  // Every profile path opens the confirm dialog first. approveOnly is the commit.
+  function requestApprove() {
+    if (approving || approveOpen) return;
+    setApproveOpen(true);
+  }
+  async function approveOnly(): Promise<boolean> {
+    if (approving) return false; // a double click must not approve twice
     setApproving(true);
     try {
       const res = await approve({ data: { id: driver.id, sendAgreement: false } });
       if (!res.ok) throw new Error(res.error ?? "Could not approve");
       toast.success(`Approved — Login Details Send At Reserved. ${approvalEmailMessage(res.approvalEmail)}`.trim());
       onSaved({ status: "approved" });
+      return true;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not approve this driver");
+      return false;
     } finally {
       setApproving(false);
     }
@@ -2501,7 +2516,7 @@ function DriverDetail({
     if (t.kind === "section") openSection(t.tab, t.anchor);
     else if (t.kind === "interview") setInterviewOpen(true);
     else if (t.kind === "record_call") setRecordCallOpen(true);
-    else if (t.kind === "approve") void approveOnly();
+    else if (t.kind === "approve") requestApprove();
     else if (t.kind === "reserve") { if (!reserveOpen) setReserveOpen(true); }
     else if (t.kind === "activate") {
       if (reservationBlocksStart({ depositStatus: reservationDepositStatus, blockStartWhenPending })) {
@@ -2518,6 +2533,20 @@ function DriverDetail({
         : next.target.kind === "section" && next.target.tab === "documents" ? FileText
           : next.target.kind === "section" && next.target.tab === "screening" ? ShieldCheck
             : Car;
+  const canDecline = canDeclineApplication(driver.status, panelTier(isOwner, isManager), hasActiveRental || rentalStatus === "active");
+  async function confirmDecline(reason: string) {
+    if (declining) return;
+    setDeclining(true);
+    try {
+      const ok = await onUpdate({ status: "declined", decline_reason: reason });
+      if (ok) {
+        setDeclineOpen(false);
+        toast.success("Application Declined");
+      }
+    } finally {
+      setDeclining(false);
+    }
+  }
   const primaryAction = {
     label: next.target.kind === "approve" && approving ? "Approving…" : next.label,
     onClick: () => runTarget(next.target),
@@ -2832,6 +2861,17 @@ function DriverDetail({
                   <Repeat className="w-3.5 h-3.5" strokeWidth={2} /> Swap
                 </button>
               ) : null}
+              {canDecline ? (
+                <button
+                  type="button"
+                  onClick={() => setDeclineOpen(true)}
+                  disabled={declining}
+                  data-testid="profile-decline"
+                  className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-[#D03020] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#D03020] hover:bg-[#D03020]/5 disabled:opacity-50 transition-colors"
+                >
+                  Decline
+                </button>
+              ) : null}
               <button
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
@@ -2905,7 +2945,7 @@ function DriverDetail({
             </div>
             </div>
             {/* Mobile primary action: full width under identity */}
-            <div className="pt-3 sm:hidden">
+            <div className="pt-3 sm:hidden space-y-2">
               <button
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
@@ -2913,6 +2953,17 @@ function DriverDetail({
               >
                 <PrimaryIcon className="w-3.5 h-3.5" strokeWidth={2} /> {primaryAction.label}
               </button>
+              {canDecline ? (
+                <button
+                  type="button"
+                  onClick={() => setDeclineOpen(true)}
+                  disabled={declining}
+                  data-testid="profile-decline-mobile"
+                  className="w-full inline-flex items-center justify-center rounded-md border border-[#D03020] bg-white px-3.5 py-2 text-[13px] font-semibold text-[#D03020] disabled:opacity-50"
+                >
+                  Decline
+                </button>
+              ) : null}
             </div>
           </div>
           <div className="mt-3">
@@ -3103,7 +3154,7 @@ function DriverDetail({
                       onChange={(v) => {
                         if (applicationStatusChoiceDisabled(driver.status, v, panelTier(isOwner, isManager))) return;
                         if (v === "approved") {
-                          void approveOnly();
+                          requestApprove();
                           return;
                         }
                         if (v === "closed" && driver.status !== "closed") {
@@ -3312,6 +3363,27 @@ function DriverDetail({
 
       {recordCloseOpen && activeRentalId && RECORD_RENTAL_CONTRACT_ENABLED ? <RecordedRentalCloseout key={activeRentalId} rentalId={activeRentalId} onClose={()=>setRecordCloseOpen(false)} onSaved={()=>{setRecordCloseOpen(false);onRentalStarted?.();}}/> : null}
       {recordOpen && RECORD_RENTAL_CONTRACT_ENABLED ? <RecordRentalDialog key={driver.id} driver={driver} vehicles={vehicles} onClose={()=>setRecordOpen(false)} onRecorded={()=>{setRecordOpen(false);onRentalStarted?.();}}/> : null}
+      {approveOpen ? (
+        <ConfirmDialog
+          title="Approve Application"
+          confirmLabel={approving ? "Approving…" : "Approve Application"}
+          busy={approving}
+          onCancel={() => { if (!approving) setApproveOpen(false); }}
+          onConfirm={() => { void approveOnly().then((ok) => { if (ok) setApproveOpen(false); }); }}
+        >
+          <p className="text-sm text-muted-foreground">
+            This runs the approval checks. If they pass, the application is marked Approved and the Approval Confirmation email is sent. Login details are sent at Reserved.
+          </p>
+        </ConfirmDialog>
+      ) : null}
+      {declineOpen ? (
+        <DeclineApplicationDialog
+          name={driver.full_name ? displayPersonName(driver.full_name) : "This Applicant"}
+          busy={declining}
+          onCancel={() => { if (!declining) setDeclineOpen(false); }}
+          onConfirm={(reason) => { void confirmDecline(reason); }}
+        />
+      ) : null}
       {closeOpen ? (
         <CloseApplicationDialog
           busy={closeBusy}

@@ -113,7 +113,8 @@ t("wiring: header and card share the model; fixes open the exact card; guards st
   assert.match(p, /const next = nextStep\(\{/);
   assert.match(p, /onClick: \(\) => runTarget\(next\.target\)/);
   for (const id of ["profile-insurance", "profile-documents", "profile-agreements", "profile-vehicle"]) assert.match(p, new RegExp(`id="${id}"`));
-  assert.match(p, /if \(approving\) return;/);
+  assert.match(p, /if \(approving\) return(?: false)?;/, "double-click guard on approve stays");
+  assert.match(p, /if \(approving \|\| approveOpen\) return;/, "approve opens the confirm dialog once");
   assert.match(p, /if \(!isManager \|\| activateOpen\) return;/, "readiness only fetched for Manager+");
   assert.equal((p.match(/<ActivateRentalDialog/g) ?? []).length, 2, "one list dialog and one driver-profile dialog");
   assert.match(p, /ReserveCarDialog/);
