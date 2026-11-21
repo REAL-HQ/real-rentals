@@ -802,7 +802,9 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
   // new rate applies only to rent weeks billed after they sign.
   if (amendment) {
     const { AMENDMENT_NO_FEE_LINE, AMENDMENT_NO_DEPOSIT_LINE, AMENDMENT_NOTHING_DUE_LINE } = await import("@/lib/rental-amendment");
-    built.data.deposit_amount = AMENDMENT_NO_DEPOSIT_LINE;
+    // A vehicle swap prints no "deposit" wording at all (Dolmar t548u, Nov 21 2026);
+    // a rate change keeps its line unchanged.
+    built.data.deposit_amount = amendment.swap ? (await import("@/lib/vehicle-swap")).SWAP_DEPOSIT_FIELD_LINE : AMENDMENT_NO_DEPOSIT_LINE;
     for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "deposit_amount") built.blockers.splice(i, 1);
     const terms = readTerms(tplBody);
     if (terms) tplBody = writeTerms(stripTerms(tplBody), { ...terms, reservation_line: AMENDMENT_NO_FEE_LINE });

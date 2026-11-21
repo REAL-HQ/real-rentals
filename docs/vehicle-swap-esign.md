@@ -4,7 +4,7 @@ Dolmar asked for this on Nov 20, 2026 (t532u). Staff use it to move an **active*
 rental to a different car, for example when the car has a problem. The renter
 e-signs a swap agreement for the new car, and staff then record the handover.
 
-**Status: built, OFF.** The migration is not applied and the switch is not set.
+**Status: live and enabled, Nov 20, 2026** (Dolmar t547s3058). PR 476 is published, migration `20261120171500` is applied on production, and `app_settings.vehicle_swap` is `{"enabled": true}`. A swap agreement fills no "deposit" wording into its merge fields (Dolmar t548u, Nov 21 2026).
 
 ## What It Does
 

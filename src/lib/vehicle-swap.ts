@@ -142,6 +142,13 @@ export function swapDocumentLabel(previousDocumentId: string | null): string {
   return agreementLabel("swap", previousDocumentId);
 }
 
+/**
+ * What a swap agreement fills into the deposit merge field (Dolmar t548u, Nov 21
+ * 2026: no "deposit" wording on the swap). A rate change keeps
+ * rental-amendment.ts AMENDMENT_NO_DEPOSIT_LINE.
+ */
+export const SWAP_DEPOSIT_FIELD_LINE = "None (rental already active)";
+
 /** Line in the renter's "agreement signed" email. */
 export const SWAP_SIGNED_EMAIL_LINE = "Your vehicle swap agreement is signed. We will hand over your new vehicle at the time we arranged. Your weekly rate and payment schedule stay the same.";
 
