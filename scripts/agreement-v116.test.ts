@@ -115,12 +115,13 @@ describe("v1.16 is the single default agreement", () => {
   });
 
   it("prints the three filled amounts and the $25 citation fee, with no blanks", () => {
-    expect(TOLL_PAYMENT_CURE).toBe("2 days");
+    expect(TOLL_PAYMENT_CURE).toBe("1 day");
     expect(TRANSPONDER_REPLACEMENT_CHARGE).toBe("$25");
     expect(TOLL_REVIEW_WINDOW).toBe("3 days");
     expect(V116_TERM_DEFAULTS.fee_citation_admin).toBe("$25");
     expect(V115_TERM_DEFAULTS.fee_citation_admin).toBe("$25");
-    expect(section).toContain("within 2 days of our notice.");
+    expect(section).toContain("within 1 day of our notice.");
+    expect(section).not.toContain("1 days");
     expect(section).toContain("you pay a replacement charge of $25, plus any tolls and fees that result.");
     expect(section).toContain("tell us in writing within 3 days of the charge.");
     expect(section).toContain("A review does not pause any deadline we must meet with an agency, including the deadline to file a transfer affidavit.");
@@ -162,7 +163,8 @@ describe("v1.16 is the single default agreement", () => {
     const row = db.state.agreements.find((a: any) => a.id === sent.id);
     expect(row.metadata.template_key).toBe("insurance_included_v116");
     expect(row.body).toContain("(v1.16)");
-    expect(row.body).toContain("within 2 days of our notice.");
+    expect(row.body).toContain("you must give us a working payment method within 1 day of our notice.");
+    expect(row.body).not.toContain("1 days");
     expect(row.body).toContain("replacement charge of $25");
     expect(row.body).toContain("within 3 days of the charge.");
     expect(row.body).toContain("including the deadline to file a transfer affidavit.");
@@ -172,7 +174,7 @@ describe("v1.16 is the single default agreement", () => {
     const row115 = older.state.agreements.find((a: any) => a.id === sent115.id);
     expect(row115.metadata.template_key).toBe("insurance_included_v115");
     expect(row115.body).toContain("(v1.15)");
-    expect(row115.body).not.toContain("within 2 days of our notice.");
+    expect(row115.body).not.toContain("within 1 day of our notice.");
   });
 
   it("a preview of the default has no blockers and one agreement", async () => {

@@ -8,7 +8,7 @@
 // text they were signed with (agreements.body), and the library keeps v1.15
 // as its own family.
 //
-// Section 13 values set Nov 21 2026: 2 days to provide a working payment
+// Section 13 values set Nov 21 2026: 1 day to provide a working payment
 // method after a failed toll or citation charge, a $25 toll-transponder
 // replacement charge, and 3 days to ask in writing for a review. A review
 // request does not delay an agency deadline, including a transfer affidavit. The
@@ -18,7 +18,7 @@
 import { V115_SOURCE, V115_TERM_DEFAULTS } from "@/lib/agreement-v115";
 
 /** 13.4: days to provide a working payment method after notice of a failed charge. */
-export const TOLL_PAYMENT_CURE = "2 days";
+export const TOLL_PAYMENT_CURE = "1 day";
 /** 13.5: replacement charge if the toll transponder is missing, damaged, or tampered with. */
 export const TRANSPONDER_REPLACEMENT_CHARGE = "$25";
 /** 13.7: days to ask in writing for a review of a toll or citation charge. */
