@@ -334,7 +334,7 @@ function SwapForm({ rentalId, opt, onClose, onSent }: { rentalId: string; opt: O
         <p className="sm:col-span-2 text-[11px] text-[#9A9AA3]">The original is a paper agreement, so its choices are not on record. Pick Damage Waiver, Payment Schedule and Payment Method to match it.</p>
       )}
       <p className="sm:col-span-2 text-[11px] text-[#9A9AA3]">
-        The swap agreement uses the current agreement template, names the replacement car, and keeps the weekly rate of ${Number((opt.rental as any)?.weekly_rate ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}. No Reservation Fee, no new deposit.
+        The swap agreement uses the current agreement template, names the replacement car, and keeps the weekly rate of ${Number((opt.rental as any)?.weekly_rate ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}. No Reservation Fee.
       </p>
       {pv && blockers.length > 0 && (
         <ul className="sm:col-span-2 list-disc pl-5 text-[12px] text-[#D03020]">

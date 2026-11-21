@@ -303,7 +303,8 @@ describe("addendum wording (Dolmar t541u/t542u: upgrade to v1.15 terms, same sta
     expect(notice).toContain("printed in full below");
     expect(notice).toContain("original start date");
     expect(notice).toContain("$375.00");
-    expect(notice).not.toMatch(/progressive|bristol|allcom|broker|deposit\b(?!\.)/i);
+    expect(notice).not.toMatch(/progressive|bristol|allcom|broker|deposit/i);
+    expect(notice).toContain("There is no Reservation Fee. Until you sign and receive the new Vehicle, your current agreement stays in effect.");
   });
   test("the swap is always built on the v1.15 template and the original start date, whatever version the original was", () => {
     expect(readFileSync("src/lib/rental-amendment.ts", "utf8")).toMatch(/AMENDMENT_TEMPLATE_KEY = "insurance_included_v115"/);

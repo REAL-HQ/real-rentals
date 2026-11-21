@@ -38,7 +38,7 @@ e-signs a swap agreement for the new car, and staff then record the handover.
    - It names the **new** car: year, make, model, colour, plate and full VIN.
      The full VIN is required on contracts.
    - It keeps the rental's weekly rate and payment choices. It carries no
-     Reservation Fee and no new deposit, and late-fee and rent terms are
+     Reservation Fee, and late-fee and rent terms are
      whatever the template says. Nothing changes them.
    - Home Address and every other `buildMergeData` blocker still apply.
    - A **Vehicle Swap** notice is printed at the top, in the same highlight

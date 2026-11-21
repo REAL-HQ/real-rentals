@@ -13,7 +13,7 @@
  *      (v1.15) through the normal agreement step (prepareAgreement /
  *      issueAgreement): it names the NEW car (full VIN, plate, colour), keeps
  *      the rental's weekly rate and payment choices, carries no Reservation
- *      Fee and no new deposit, and prints a Vehicle Swap notice at the top.
+ *      Fee, and prints a Vehicle Swap notice at the top.
  *      It goes out through the existing e-sign flow (email/SMS link).
  *   3. On signing (esign.server.ts completeSigning → onSwapSigned) the swap is
  *      marked signed and the signed PDF is filed as
@@ -134,7 +134,7 @@ export function swapNoticeText(a: {
   const prior = a.previousIsPaper
     ? "your Rental Agreement on file"
     : `the Rental Agreement${when ? ` signed ${when}` : ""}${a.previousNumber ? ` (${a.previousNumber})` : ""}`;
-  return `This Vehicle Swap Addendum changes the Vehicle on ${prior}. You return the ${swapVehicleText(a.outgoing)} and receive the Vehicle described below. By signing, you accept the current Rental Agreement terms (Version 1.15), printed in full below, which replace the terms of your earlier agreement from the date you sign. Your original start date, your weekly rental rate of ${usd(a.weeklyRate)} and your payment schedule stay the same, and rent you already paid is not billed again. There is no Reservation Fee and no new deposit. Until you sign and receive the new Vehicle, your current agreement stays in effect.`;
+  return `This Vehicle Swap Addendum changes the Vehicle on ${prior}. You return the ${swapVehicleText(a.outgoing)} and receive the Vehicle described below. By signing, you accept the current Rental Agreement terms (Version 1.15), printed in full below, which replace the terms of your earlier agreement from the date you sign. Your original start date, your weekly rental rate of ${usd(a.weeklyRate)} and your payment schedule stay the same, and rent you already paid is not billed again. There is no Reservation Fee. Until you sign and receive the new Vehicle, your current agreement stays in effect.`;
 }
 
 /** Label of the signed swap PDF on the renter's Documents (same as Agreement Filing's Swap role). */
