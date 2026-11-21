@@ -10,6 +10,8 @@ import {
   BLACKLIST_REASONS,
   STRIKE_KINDS,
   blacklistBlockers,
+  blacklistNoteBlockers,
+  NOTE_MAX,
   formatBlacklistDate,
   identifierKindLabel,
   secondStrikeReached,
@@ -18,6 +20,7 @@ import {
 } from "@/lib/blacklist";
 import {
   addToBlacklist,
+  editBlacklistNote,
   getBlacklistProfile,
   logRenterStrike,
   removeFromBlacklist,
@@ -71,6 +74,7 @@ export function BlacklistCard({
   const load = useServerFn(getBlacklistProfile);
   const add = useServerFn(addToBlacklist);
   const remove = useServerFn(removeFromBlacklist);
+  const editNote = useServerFn(editBlacklistNote);
   const strike = useServerFn(logRenterStrike);
   const voidStrike = useServerFn(voidRenterStrike);
   const [profile, setProfile] = useState<BlacklistProfile | null>(null);
@@ -81,6 +85,8 @@ export function BlacklistCard({
   const [note, setNote] = useState("");
   const [date, setDate] = useState(todayEt());
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftNote, setDraftNote] = useState("");
 
   const refresh = useCallback(() => {
     load({ data: { applicationId } })
@@ -161,7 +167,57 @@ export function BlacklistCard({
           <dt className="text-[#9A9AA3]">Reason</dt>
           <dd>{active.reasonLabel}</dd>
           <dt className="text-[#9A9AA3]">Note</dt>
-          <dd className="whitespace-pre-wrap">{active.note}</dd>
+          <dd>
+            {editing ? (
+              <div className="space-y-2" data-testid="blacklist-note-editor">
+                <textarea
+                  className={`${input} min-h-[96px]`}
+                  value={draftNote}
+                  maxLength={NOTE_MAX}
+                  onChange={(e) => setDraftNote(e.target.value)}
+                  aria-label="Blacklist Note"
+                  data-testid="blacklist-note-input"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={primary}
+                    data-testid="blacklist-note-save"
+                    disabled={busy || blacklistNoteBlockers(draftNote).length > 0}
+                    onClick={() =>
+                      run(async () => {
+                        const r = await editNote({ data: { applicationId, note: draftNote } });
+                        onNotesChanged?.(r.notes);
+                        setEditing(false);
+                      }, "Blacklist Note Saved.")
+                    }
+                  >
+                    Save
+                  </button>
+                  <button type="button" className={secondary} disabled={busy} data-testid="blacklist-note-cancel" onClick={() => setEditing(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <span className="whitespace-pre-wrap">{active.note}</span>
+                {isOwner || isManager ? (
+                  <button
+                    type="button"
+                    className="ml-2 text-[11px] underline"
+                    data-testid="blacklist-note-edit"
+                    onClick={() => {
+                      setDraftNote(active.note);
+                      setEditing(true);
+                    }}
+                  >
+                    Edit
+                  </button>
+                ) : null}
+              </>
+            )}
+          </dd>
           <dt className="text-[#9A9AA3]">Date</dt>
           <dd>{formatBlacklistDate(active.blacklistedOn)}</dd>
           <dt className="text-[#9A9AA3]">Added By</dt>
