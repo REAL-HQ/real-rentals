@@ -151,10 +151,17 @@ describe("persist", () => {
     expect(w.map((x) => x.op)).toEqual(["insert"]);
     expect(w[0].row.visibility).toEqual(["admin"]);
   });
-  test("single-slot categories still supersede", async () => {
+  test("single-record categories (agreement) still supersede", async () => {
     const w: any[] = [];
-    await persistConfirmedDocument(fakeAdmin(w) as any, fields("license_front"));
+    await persistConfirmedDocument(fakeAdmin(w) as any, fields("agreement"));
     expect(w.map((x) => x.op)).toEqual(["insert", "update"]);
+  });
+  test("every other category now keeps all files too", async () => {
+    for (const c of ["license_front", "income", "gig_profile", "insurance"]) {
+      const w: any[] = [];
+      await persistConfirmedDocument(fakeAdmin(w) as any, fields(c));
+      expect(w.map((x) => x.op)).toEqual(["insert"]);
+    }
   });
 });
 

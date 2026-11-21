@@ -147,10 +147,10 @@ describe("name and card rules", () => {
 });
 
 describe("filing an emailed card", () => {
-  test("exact VIN + name: saved to the renter's Documents, not reviewed, generic name, history kept", async () => {
+  test("exact VIN + name: saved to the renter's Documents, not reviewed, generic name, older cards stay active", async () => {
     const db = world({ docs: [{ id: "old-1", driver_id: APP, category: "insurance", is_current: true, review_status: "uploaded", superseded_by: null }] });
     const { r, audits } = await run(db);
-    expect(r).toMatchObject({ status: "filed", applicationId: APP, rentalId: "rent-1", superseded: 1 });
+    expect(r).toMatchObject({ status: "filed", applicationId: APP, rentalId: "rent-1", superseded: 0 });
     const doc = db.state.documents.find((d) => d.id === (r as any).documentId)!;
     expect(doc).toMatchObject({
       driver_id: APP, category: "insurance", kind: "insurance", label: "Insurance ID Card", file_name: "Insurance ID Card.pdf",
@@ -160,7 +160,7 @@ describe("filing an emailed card", () => {
     expect(doc.storage_path).toBe(`${APP}/insurance-00000000-0000-4000-8000-000000000001.pdf`);
     expect(db.objects.get(`driver-docs/${doc.storage_path}`)!.bytes).toEqual(PDF);
     expect(JSON.stringify(doc)).not.toContain("Example Mutual");
-    expect(db.state.documents.find((d) => d.id === "old-1")).toMatchObject({ is_current: false, superseded_by: doc.id });
+    expect(db.state.documents.find((d) => d.id === "old-1")).toMatchObject({ is_current: true, superseded_by: null });
     expect(audits[0].action).toBe("document.insurance_card_auto_filed");
     expect(audits[0].metadata.verified).toBe(false);
     // Nothing verified, nothing sent, nothing else touched.

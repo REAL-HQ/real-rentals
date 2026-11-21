@@ -1328,6 +1328,28 @@ export const replaceApplicantDocument = createServerFn({ method: "POST" })
   });
 
 /**
+ * Add another file to a section through the secure link. Keeps every file
+ * already there; Replace (above) is the explicit swap.
+ */
+export const addApplicantDocument = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        token: z.string().min(20).max(200),
+        kind: z.enum(["license", "insurance", "gig_profile", "trip_history", "income"]),
+        path: z.string().min(40).max(200),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { resolveResumeToken } = await import("@/lib/resume-tokens.server");
+    const id = await resolveResumeToken(supabaseAdmin, data.token);
+    const { addApplicantDocumentCore } = await import("@/lib/applicant-document-replace.server");
+    return addApplicantDocumentCore(supabaseAdmin as any, id, { kind: data.kind, path: data.path });
+  });
+
+/**
  * Staff: revoke every live resume link for an application and mint a fresh one.
  *
  * This is the reissue path. It exists because the tokens are stored hashed —
