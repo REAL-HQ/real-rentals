@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { FileText, Loader2, Paperclip, Plus, ShieldCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FileUploader } from "@/components/FileUploader";
+import { AppSelect } from "@/components/ui/app-select";
 import { SectionCard } from "./ui";
 import { useDriverDocumentUpload } from "./use-driver-document-upload";
 import { listDriverBackgroundReports, saveDriverBackgroundReport } from "@/lib/background-report.functions";
@@ -256,14 +257,14 @@ function ReportDialog({ applicationId, existing, onClose, onSaved }: { applicati
           {!addFilesOnly ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block"><span className="text-[12px] font-medium">Source</span>
-                <select className={input} value={provider} onChange={(e) => chooseProvider(e.target.value as BackgroundProvider)} data-testid="background-provider">
+                <AppSelect aria-label="Source" className={input} value={provider} onChange={(e) => chooseProvider(e.target.value as BackgroundProvider)} data-testid="background-provider">
                   {BACKGROUND_PROVIDERS.map((p) => <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>)}
-                </select>
+                </AppSelect>
               </label>
               <label className="block"><span className="text-[12px] font-medium">Report Type</span>
-                <select className={input} value={reportType} onChange={(e) => setReportType(e.target.value as BackgroundReportType)}>
+                <AppSelect aria-label="Report Type" className={input} value={reportType} onChange={(e) => setReportType(e.target.value as BackgroundReportType)}>
                   {BACKGROUND_REPORT_TYPES.map((t) => <option key={t} value={t}>{REPORT_TYPE_LABELS[t]}</option>)}
-                </select>
+                </AppSelect>
               </label>
               {provider === "other" ? (
                 <label className="block sm:col-span-2"><span className="text-[12px] font-medium">Source Name</span>
@@ -303,10 +304,10 @@ function ReportDialog({ applicationId, existing, onClose, onSaved }: { applicati
                   </label>
                 ) : null}
                 <label className="block"><span className="text-[12px] font-medium">License Status (As Reported, Optional)</span>
-                  <select className={input} value={license} onChange={(e) => setLicense(e.target.value as LicenseStatus | "")}>
+                  <AppSelect aria-label="License Status" className={input} value={license} onChange={(e) => setLicense(e.target.value as LicenseStatus | "")}>
                     <option value="">Not Recorded</option>
                     {LICENSE_STATUSES.map((s) => <option key={s} value={s}>{licenseStatusLabel(s)}</option>)}
-                  </select>
+                  </AppSelect>
                 </label>
                 <label className="block"><span className="text-[12px] font-medium">License State</span>
                   <input className={input} value={licState} maxLength={2} onChange={(e) => setLicState(e.target.value)} placeholder="FL" />
@@ -314,10 +315,10 @@ function ReportDialog({ applicationId, existing, onClose, onSaved }: { applicati
                 {!isDmv ? (
                   <>
                     <label className="block"><span className="text-[12px] font-medium">Criminal Record Check</span>
-                      <select className={input} value={criminal} onChange={(e) => setCriminal(e.target.value as CriminalResult | "")}>
+                      <AppSelect aria-label="Criminal Record Check" className={input} value={criminal} onChange={(e) => setCriminal(e.target.value as CriminalResult | "")}>
                         <option value="">Not Recorded</option>
                         {CRIMINAL_RESULTS.map((s) => <option key={s} value={s}>{CRIMINAL_OPTIONS[s]}</option>)}
-                      </select>
+                      </AppSelect>
                     </label>
                     <label className="block"><span className="text-[12px] font-medium">Number Of Cases</span>
                       <input className={input} inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/[^\d]/g, ""))} placeholder="18" />
