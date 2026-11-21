@@ -41,7 +41,27 @@ export type ReturnBalanceSummary = {
   applicationId: string | null;
   vehicleId: string | null;
   vehicleLabel: string | null;
+  /** Current vehicle on the rental (after completed swaps). Never includes the unit number. */
+  vehicleIdentity: ReturnVehicleIdentity | null;
 };
+
+export type ReturnVehicleIdentity = { title: string; plate: string; vinLast6: string };
+
+/** Year/make/model, plate and last 6 of the VIN for the Return popup header. */
+export function returnVehicleIdentity(v: {
+  year?: number | string | null;
+  make?: string | null;
+  model?: string | null;
+  license_plate?: string | null;
+  vin?: string | null;
+}): ReturnVehicleIdentity {
+  const vin = String(v.vin ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return {
+    title: [v.year, v.make, v.model].filter((x) => x != null && String(x).trim() !== "").join(" ") || "Vehicle",
+    plate: String(v.license_plate ?? "").trim().toUpperCase(),
+    vinLast6: vin.slice(-6),
+  };
+}
 
 export function moneyCents(cents: number): string {
   const n = Number.isFinite(cents) ? cents : 0;
