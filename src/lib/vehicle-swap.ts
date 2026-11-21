@@ -186,3 +186,21 @@ export function swapErrorText(raw: string): string {
   if (/swap_not_found/.test(m)) return "Swap not found.";
   return "The swap could not be completed. Nothing was changed.";
 }
+
+/** Why Send For E-Signature is disabled, in the order staff fix them. Pure, so it is unit-tested. */
+export function swapSendBlockers(i: {
+  hasVehicle: boolean;
+  hasPreview: boolean;
+  stale: boolean;
+  previewBlocked: boolean;
+  reasonLength: number;
+  companyPending: boolean;
+}): string[] {
+  const out: string[] = [];
+  if (!i.hasVehicle) out.push("Choose A Replacement Vehicle");
+  if (i.reasonLength < 5) out.push("Add Reason Details (5+ Characters) To Send");
+  if (i.hasVehicle && !i.hasPreview) out.push(i.stale ? "Preview Again To Send" : "Preview The Agreement To Send");
+  if (i.hasPreview && i.previewBlocked) out.push("Fix The Items Listed Above");
+  if (i.companyPending) out.push("Confirm The Company Details Box");
+  return out;
+}

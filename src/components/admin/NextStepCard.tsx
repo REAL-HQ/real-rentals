@@ -1,4 +1,4 @@
-import { Circle, Car, ClipboardList, Loader2, RotateCw } from "lucide-react";
+import { Circle, Car, ClipboardList, Loader2, Repeat, RotateCw } from "lucide-react";
 import type { ActivationReadiness, ActivationRequirement } from "@/lib/activation-readiness";
 import type { NextStep } from "@/lib/next-step";
 import { ActivationRequirementList } from "./ActivationRequirementList";
@@ -21,6 +21,7 @@ export function NextStepCard({
   onActivate,
   onReserve,
   onReturn,
+  onSwap,
   canReserve = false,
   canEditCallNotes = false,
   onRetry,
@@ -35,6 +36,8 @@ export function NextStepCard({
   onActivate: () => void;
   onReserve?: () => void;
   onReturn?: () => void;
+  /** Opens Swap Vehicle for the active rental; omitted when the viewer cannot swap. */
+  onSwap?: () => void;
   /** Soft hold available for an approved driver without an open reservation. */
   canReserve?: boolean;
   /** Completed-call notes stay editable even after the checklist collapses. */
@@ -61,6 +64,11 @@ export function NextStepCard({
             {canEditCallNotes ? (
               <button type="button" onClick={() => onRun({ kind: "record_call" })} className={secondary} data-testid="edit-call-notes">
                 <ClipboardList className="h-3.5 w-3.5" /> Edit Notes
+              </button>
+            ) : null}
+            {onSwap ? (
+              <button type="button" onClick={onSwap} className={secondary} data-testid="next-step-swap">
+                <Repeat className="h-3.5 w-3.5" /> Swap
               </button>
             ) : null}
             <button

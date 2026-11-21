@@ -8,7 +8,7 @@ e-signs a swap agreement for the new car, and staff then record the handover.
 
 ## What It Does
 
-1. **Swap Vehicle** (Bookings → an active rental → Vehicles card). Manager or Owner.
+1. **Swap Vehicle** (Bookings → an active rental → Vehicles card, **or** a driver's profile with an active rental → **Swap** in the header, the Next Step card or the Actions row, which opens the same form in a wide popup). Manager or Owner. The popup reuses the same panel, so the flag, permissions and open-swap card are identical. Send For E-Signature shows why it is off (Reason Details needs 5+ characters, Preview Agreement, preview again after edits).
    - Pick the replacement car in the shared vehicle picker: thumbnail, plate,
      last 6 of the VIN, and no unit number. The list shows only Available,
      unarchived cars that are on no reserved, On Hold or active booking and
