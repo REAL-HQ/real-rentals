@@ -65,3 +65,54 @@ To have the site run RentID itself (no human in the portal):
 Until then, the portal stays the source: whoever runs the check (Rosa, or
 FLEET if it is given its own portal login) posts the result with the order
 number through the write path.
+
+## RentID Reports On The Driver Profile (Dolmar, t582u, Nov 21 2026)
+
+Where the data is (checked Nov 21 2026):
+
+- **Portal:** the REAL RENTALS history lives at https://rent-id.io/rentid
+  (sign in with team@drivereal.com, one-time code emailed to team@). Not
+  app.rentid.io, which is a separate empty business account; do not finish its
+  setup wizard. Each order has a page
+  `https://rent-id.io/rentid/req_<id>_j<order lowercase>` (e.g.
+  `req_1793719376790_jn4khlc48` = order N4KHLC48) and a downloadable PDF
+  certificate.
+- **Criminal cases** show case number, internal id, charges, degree, offense
+  and file dates, disposition and court/county. No name or DOB per case, so a
+  case is only as reliable as RentID's identity match. The same case is often
+  listed twice from two sources (AOC `10004830MMMO` vs Clerk
+  `032010MM004830XXOXMX`); `dedupeCases` merges them (key `10|MM|4830`) and
+  keeps the other number as `alt_case_numbers`. RentID's own count is kept
+  as `criminal_case_count`.
+- **Email:** only receipts (`Your receipt from Rentid, Inc. Order #INV-…` from
+  noreply@verify.rentid.io): order, renter name, products, invoice PDF. No
+  result. `CRD-…` receipts are credit purchases, not screenings. team@ is
+  Gmail, not the Resend intake inbox, so receipts are not auto-ingested.
+- **API:** none we can use. The Enterprise "Driver Verifications API" is
+  sales-only (no docs, no key, no webhooks).
+
+What this builds (migration `supabase/migrations/20261121193000_rentid_reports.sql`, NOT applied):
+
+- `public.rentid_reports`: one row per RentID order (unique `order_key`, the
+  order without `INV-`), on one driver: status `ordered` (receipt only) or
+  `reported`, report link, license status/state, criminal record + count +
+  case list, ID result, the report file (`documents` row, category
+  `screening`, team only, not reviewed), who filed it. Manager+ read (RLS
+  `private.is_manager()`); service role writes.
+- **Staff:** Screening tab → **RentID Reports** → **Attach RentID Report**
+  (Manager+). Screenshot or PDF certificate, order number or report link,
+  results; pasting the portal text fills the fields; cases one per line
+  (`Offense Date | Charges | Degree | Disposition | Court / County | Case #`).
+- **FLEET:** `POST /api/public/fleet/rentid-report` (Bearer FLEET_API_KEY),
+  Off until the Owner turns on **RentID Reports (FLEET)** (`rentid_report_imports`).
+  Body: `lead_id` or `renter_name` (exact, unique match only), `order_id` or
+  `report_url`, optional `ordered_at`, `products`, `checked_at`,
+  `license_status`, `license_state`, `criminal_record`, `criminal_case_count`,
+  `criminal_cases[]` (`case_number, internal_id, charges, degree,
+  offense_date, file_date, disposition, court`), `identity_result`, `note`,
+  `content_base64` + `file_name` (filed through the driver-document path, so
+  the Document Uploads switch must be On too). Repeats update the same row.
+- **Never a decision.** Nothing writes `background_check_status`,
+  `mvr_status`, insurance, review status or approval. Recording the pass/fail
+  columns stays with the separate `screening-result` endpoint (its own
+  switch) and staff.

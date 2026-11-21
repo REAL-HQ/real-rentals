@@ -15,8 +15,10 @@ export function useDriverDocumentUpload(applicationId: string, onUploaded: () =>
     const { error } = await supabase.storage.from(signed.bucket).uploadToSignedUrl(signed.path, signed.token, file);
     if (error) throw new Error(error.message);
     onProgress(80);
-    await confirmUpload({ data: { applicationId: signed.applicationId, category, path: signed.path, fileName: file.name, mimeType: file.type || null, sizeBytes: file.size, ...(options?.label ? { label: options.label } : {}), ...(options?.replacesDocumentId ? { replacesDocumentId: options.replacesDocumentId } : {}) } });
+    const confirmed = await confirmUpload({ data: { applicationId: signed.applicationId, category, path: signed.path, fileName: file.name, mimeType: file.type || null, sizeBytes: file.size, ...(options?.label ? { label: options.label } : {}), ...(options?.replacesDocumentId ? { replacesDocumentId: options.replacesDocumentId } : {}) } });
     onProgress(100);
     await onUploaded();
+    // The saved document's id, for callers that link it (RentID reports).
+    return (confirmed as { id?: string } | undefined)?.id ?? null;
   }, [applicationId, startUpload, confirmUpload, onUploaded]);
 }
