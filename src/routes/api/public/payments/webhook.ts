@@ -877,7 +877,9 @@ async function welcomeAfterPaid(ref: { invoiceId?: string | null; paymentIntentI
 /** A paid intent with no app metadata that the intent path left without a row. */
 function unownedIntent(pi: any): boolean {
   const m = pi?.metadata ?? {};
-  return !m.paymentIds && !m.rentalId && !m.rental_id && !m.applicationId && !m.agreementId && m.reason !== 'reservation_fee';
+  // rental_id (snake_case, FLEET's Payment Links) is not read by the intent
+  // path, so the one-off recorder must still see it.
+  return !m.paymentIds && !m.rentalId && !m.applicationId && !m.agreementId && m.reason !== 'reservation_fee';
 }
 
 async function handleVerifiedPaymentEvent(event: { type: string; data: { object: any } }, env: StripeEnv) {
