@@ -273,6 +273,7 @@ import { listFleetNeedsStaff, type FleetNeedsStaffFlag } from "@/lib/fleet-revie
 import { listBlacklist } from "@/lib/blacklist.functions";
 import type { BlacklistEntry } from "@/lib/blacklist";
 import { BlacklistCard, BlacklistedBadge } from "@/components/admin/BlacklistCard";
+import { BackgroundReportsCard } from "@/components/admin/BackgroundReportsCard";
 import { BlacklistMatchAlert } from "@/components/admin/BlacklistMatchAlert";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
 import type { ExpiryScope } from "@/lib/document-expiry";
@@ -3094,6 +3095,7 @@ function DriverDetail({
                   <RenterPolicyStatusCard applicationId={driver.id} canDecide={isManager} />
                 </div>
                 </div>
+                {isManager ? <BackgroundReportsCard applicationId={driver.id} canAdd={isManager} /> : null}
                 <IdentityReviewCard applicationId={driver.id} />
                 <AISnapshotCard driver={driver} />
               </TabsContent>

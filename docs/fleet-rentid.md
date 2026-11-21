@@ -66,3 +66,9 @@ To have the site run RentID itself (no human in the portal):
 Until then, the portal stays the source: whoever runs the check (Rosa, or
 FLEET if it is given its own portal login) posts the result with the order
 number through the write path.
+
+## Background Reports On The Driver Profile
+
+RentID results (and FL DMV license checks and any other check) are stored as
+**Background Reports**: see docs/background-reports.md. On the site the
+feature is provider-neutral ("Background"); RentID is only the Source field.
