@@ -81,6 +81,7 @@ beforeAll(() => {
   must(fleet);
   must(readFileSync(new URL("../supabase/migrations/20261120040000_renter_blacklist.sql", import.meta.url), "utf8"));
   must(readFileSync(new URL("../supabase/migrations/20261120070000_blacklist_manager_can_add.sql", import.meta.url), "utf8"));
+  must(readFileSync(new URL("../supabase/migrations/20261121130000_blacklist_note_editable.sql", import.meta.url), "utf8"));
   must(`INSERT INTO auth.users VALUES ('${OWNER}', 'owner@example.com'), ('${HEATHER_USER}', 'renter6@example.com');
         INSERT INTO public.user_roles (user_id, role) VALUES ('${OWNER}', 'admin');
         INSERT INTO public.applications (id, full_name, email, phone, address, zip, license_number, status, user_id, notes)
@@ -146,7 +147,13 @@ describe.skipIf(skip)("renter blacklist in Postgres", () => {
 
   test("history: entries cannot be deleted or rewritten", () => {
     expect(psql(`DELETE FROM public.renter_blacklist`).err).toContain("never deleted");
-    expect(psql(`UPDATE public.renter_blacklist SET note = 'changed note' WHERE removed_at IS NULL`).err).toContain("only the removal");
+    expect(psql(`UPDATE public.renter_blacklist SET reason_code = 'other' WHERE removed_at IS NULL`).err).toContain("only the note and the removal");
+    expect(psql(`UPDATE public.renter_blacklist SET blacklisted_on = '2020-01-01' WHERE removed_at IS NULL`).err).toContain("only the note and the removal");
+    expect(psql(`UPDATE public.renter_blacklist SET note = 'x' WHERE removed_at IS NULL`).err).toContain("a blacklist note is required");
+    const keep = must(`SELECT note FROM public.renter_blacklist WHERE removed_at IS NULL`);
+    expect(psql(`UPDATE public.renter_blacklist SET note = 'Edited note text' WHERE removed_at IS NULL`).ok).toBe(true);
+    expect(must(`SELECT note FROM public.renter_blacklist WHERE removed_at IS NULL`)).toBe("Edited note text");
+    must(`UPDATE public.renter_blacklist SET note = '${keep.replace(/'/g, "''")}' WHERE removed_at IS NULL`);
     expect(psql(`UPDATE public.renter_blacklist SET removed_at = now() WHERE removed_at IS NULL`).err).toContain("renter_blacklist_removal_complete");
     expect(psql(`UPDATE public.renter_blacklist SET removal_reason = 'again!' WHERE removed_at IS NOT NULL`).err).toContain("already removed");
   });

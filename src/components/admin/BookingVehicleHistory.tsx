@@ -22,6 +22,7 @@ import {
   SWAP_REASON_CODES,
   SWAP_REASON_LABELS,
   SWAP_STATUS_LABELS,
+  swapSendBlockers,
   type OutgoingStatus,
   type SwapReasonCode,
   type SwapStatus,
@@ -146,10 +147,22 @@ export function BookingVehicleHistory({
 
 type Options = Awaited<ReturnType<typeof getSwapOptions>>;
 
-function SwapVehiclePanel({ rentalId, onChanged }: { rentalId: string; onChanged: () => void }) {
+export function SwapVehiclePanel({
+  rentalId,
+  onChanged,
+  autoOpen = false,
+  onClosed,
+}: {
+  rentalId: string;
+  onChanged: () => void;
+  /** The driver-profile popup opens the form straight away and hides the trigger button. */
+  autoOpen?: boolean;
+  /** Called when the form is closed or sent, so a hosting popup can close too. */
+  onClosed?: () => void;
+}) {
   const options = useServerFn(getSwapOptions);
   const [opt, setOpt] = useState<Options | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const reload = () => {
@@ -170,7 +183,7 @@ function SwapVehiclePanel({ rentalId, onChanged }: { rentalId: string; onChanged
 
   return (
     <div className="mt-3">
-      {!openSwap && (
+      {!openSwap && !autoOpen && (
         <div className="flex items-center justify-end">
           <button
             type="button"
@@ -188,7 +201,7 @@ function SwapVehiclePanel({ rentalId, onChanged }: { rentalId: string; onChanged
       {!enabled && <p className="mt-1 text-[11px] text-[#9A9AA3]">{opt?.ok === false && error ? error : SWAP_OFF_MESSAGE}</p>}
       {enabled && openSwap && <OpenSwapCard swap={openSwap} onDone={reload} />}
       {enabled && !openSwap && open && opt && (
-        <SwapForm rentalId={rentalId} opt={opt} onClose={() => setOpen(false)} onSent={() => { setOpen(false); reload(); }} />
+        <SwapForm rentalId={rentalId} opt={opt} onClose={() => { setOpen(false); onClosed?.(); }} onSent={() => { setOpen(false); reload(); }} />
       )}
     </div>
   );
@@ -224,7 +237,14 @@ function SwapForm({ rentalId, opt, onClose, onSent }: { rentalId: string; opt: O
   }, [damageWaiver, schedule, method, owner]);
 
   // Any change makes the old preview stale; Send needs a fresh one.
-  useEffect(() => { setPv(null); }, [vehicle, damageWaiver, schedule, method, owner]);
+  // A cleared preview that had been shown says "Preview again" instead of silently disabling Send.
+  const [stale, setStale] = useState(false);
+  const hadPreview = useRef(false);
+  useEffect(() => {
+    if (hadPreview.current) setStale(true);
+    hadPreview.current = false;
+    setPv(null);
+  }, [vehicle, damageWaiver, schedule, method, owner]);
 
   async function onPreview() {
     setBusy(true);
@@ -232,6 +252,8 @@ function SwapForm({ rentalId, opt, onClose, onSent }: { rentalId: string; opt: O
     try {
       const r = await preview({ data: { rentalId, toVehicleId: vehicle, terms: terms as any } });
       if (!r.ok) throw new Error(String(r.error ?? "Preview failed"));
+      hadPreview.current = true;
+      setStale(false);
       setPv(r.preview as Record<string, any>);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Preview failed");
@@ -275,6 +297,14 @@ function SwapForm({ rentalId, opt, onClose, onSent }: { rentalId: string; opt: O
   const blockers = (pv?.blockers ?? []) as { label: string; why: string }[];
   const companyMissing = (pv?.companyMissing ?? []) as string[];
   const canSend = Boolean(pv?.canSend && pv?.fingerprint) && reason.trim().length >= 5 && (!companyMissing.length || companyAck);
+  const sendWhy = swapSendBlockers({
+    hasVehicle: Boolean(vehicle),
+    hasPreview: Boolean(pv?.fingerprint),
+    stale,
+    previewBlocked: Boolean(pv && !pv.canSend),
+    reasonLength: reason.trim().length,
+    companyPending: companyMissing.length > 0 && !companyAck,
+  });
 
   return (
     <div data-testid="swap-form" className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-[#EDEDF0] bg-white p-3">
@@ -350,6 +380,11 @@ function SwapForm({ rentalId, opt, onClose, onSent }: { rentalId: string; opt: O
         </label>
       )}
       {error && <p className="sm:col-span-2 text-[12px] text-[#D03020]">{error}</p>}
+      {!canSend && sendWhy.length > 0 && (
+        <p data-testid="swap-send-hint" role="status" className="sm:col-span-2 text-[12px] text-[#8A5A00]">
+          Send For E-Signature Is Off: {sendWhy.join(" · ")}
+        </p>
+      )}
       <div className="sm:col-span-2 flex flex-wrap justify-end gap-2">
         <button type="button" onClick={onClose} className="rounded-md px-3 py-1.5 text-[13px]">Close</button>
         <button type="button" disabled={busy || !vehicle} onClick={() => void onPreview()} className="rounded-md border border-[#EDEDF0] px-3 py-1.5 text-[13px] disabled:opacity-50">
