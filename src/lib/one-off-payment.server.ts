@@ -24,10 +24,12 @@ type StripeLike = any;
 
 export type OneOffOutcome =
   | { status: "skipped"; why: "app_owned" | "already_recorded" | "not_paid" | "no_intent" }
-  | { status: "recorded"; rentalId: string; by: "metadata" | "customer" | "email"; inserted: boolean }
+  | { status: "recorded"; rentalId: string; by: MatchBy; inserted: boolean }
   | { status: "unmatched"; why: "no_match" | "ambiguous"; identity: OneOffIdentity };
 
 const RENTAL_COLS = "id, application_id, vehicle_id, status, stripe_customer_id";
+
+type MatchBy = "metadata" | "lead" | "customer" | "email" | "plate";
 
 function must<T extends { error: any }>(res: T): T {
   if (res?.error && res.error.code !== "23505") throw new Error(res.error.message);
@@ -57,14 +59,33 @@ async function loadStripeObjects(stripe: StripeLike, piId: string, given: { sess
     const ip = await stripe.invoicePayments.list({ payment: { type: "payment_intent", payment_intent: piId }, limit: 1 });
     invoiceLinked = (ip?.data?.length ?? 0) > 0;
   }
-  return { paymentIntent, session, charge, invoiceLinked };
+  // The Payment Link itself: its metadata (renter, plate, date, lead_id,
+  // rental_id) never reaches the charge, and staff may add to it after the
+  // session was created. A failed read only loses this extra source.
+  let paymentLink: any = null;
+  const plinkId = stripeId(session?.payment_link);
+  if (plinkId && stripe.paymentLinks?.retrieve) {
+    try {
+      paymentLink = await stripe.paymentLinks.retrieve(plinkId);
+    } catch {
+      paymentLink = null;
+    }
+  }
+  return { paymentIntent, session, charge, invoiceLinked, paymentLink };
 }
 
-async function matchRental(admin: Admin, id: OneOffIdentity): Promise<{ rental: RentalCandidate | null; by: "metadata" | "customer" | "email" | null; ambiguous: boolean }> {
+async function matchRental(admin: Admin, id: OneOffIdentity): Promise<{ rental: RentalCandidate | null; by: MatchBy | null; ambiguous: boolean }> {
   if (id.rentalId) {
     const found = await rows<RentalCandidate>(admin.from("rentals").select(RENTAL_COLS).eq("id", id.rentalId));
     const pick = pickRental(found, { explicit: true });
     if (pick.rental) return { rental: pick.rental, by: "metadata", ambiguous: false };
+  }
+  // Lead / application id on the link (lead_id): that renter's one active rental.
+  if (id.applicationIds.length) {
+    const candidates = await rows<RentalCandidate>(admin.from("rentals").select(RENTAL_COLS).in("application_id", id.applicationIds));
+    const pick = pickRental(candidates, { explicit: false });
+    if (pick.rental) return { rental: pick.rental, by: "lead", ambiguous: false };
+    if (pick.ambiguous) return { rental: null, by: null, ambiguous: true };
   }
   if (id.customerIds.length) {
     const candidates: RentalCandidate[] = [];
@@ -81,6 +102,16 @@ async function matchRental(admin: Admin, id: OneOffIdentity): Promise<{ rental: 
     const candidates = await rows<RentalCandidate>(admin.from("rentals").select(RENTAL_COLS).in("application_id", apps.map((a) => a.id)));
     const pick = pickRental(candidates, { explicit: false });
     if (pick.rental) return { rental: pick.rental, by: "email", ambiguous: false };
+    if (pick.ambiguous) return { rental: null, by: null, ambiguous: true };
+  }
+  // Last: the plate on the link (FLEET's daily links carry plate). Only the one
+  // active rental on that car counts.
+  for (const plate of id.plates) {
+    const cars = await rows<{ id: string }>(admin.from("vehicles").select("id").ilike("license_plate", exactILike(plate)));
+    if (!cars.length) continue;
+    const candidates = await rows<RentalCandidate>(admin.from("rentals").select(RENTAL_COLS).in("vehicle_id", cars.map((c) => c.id)));
+    const pick = pickRental(candidates, { explicit: false });
+    if (pick.rental) return { rental: pick.rental, by: "plate", ambiguous: false };
     if (pick.ambiguous) return { rental: null, by: null, ambiguous: true };
   }
   return { rental: null, by: null, ambiguous: false };
@@ -117,8 +148,10 @@ export async function recordOneOffPayment(
   const objs = await loadStripeObjects(stripe, piId, input);
   if (objs.paymentIntent?.status !== "succeeded") return { status: "skipped", why: "not_paid" };
   if (appOwnsPayment(objs)) return { status: "skipped", why: "app_owned" };
-  // metadata.rentalId on the intent is the existing intent path's job.
-  const piRental = objs.paymentIntent?.metadata?.rentalId ?? objs.paymentIntent?.metadata?.rental_id;
+  // metadata.rentalId on the intent is the existing intent path's job. A
+  // snake_case rental_id (what FLEET puts on Payment Links) is recorded here:
+  // the intent path never read it, so it used to be dropped.
+  const piRental = objs.paymentIntent?.metadata?.rentalId;
   if (piRental) return { status: "skipped", why: "app_owned" };
 
   const id = oneOffIdentity(objs);
@@ -147,15 +180,16 @@ export async function recordOneOffPayment(
     } catch {
       openRows = [];
     }
-    dueOn = rentWeekFor(day, openRows.map((o) => String(o.due_date ?? "").slice(0, 10)).filter(Boolean), { dailyPlan: onDailyPlan });
+    dueOn = rentWeekFor(day, openRows.map((o) => String(o.due_date ?? "").slice(0, 10)).filter(Boolean), { dailyPlan: onDailyPlan, forDate: id.forDate });
   }
+  const purpose = id.purpose ?? (rowType === "rent" && id.forDate ? `Rent for ${id.forDate}` : null);
   const via = [id.paymentLinkId && `payment link ${id.paymentLinkId}`, id.sessionId && `checkout ${id.sessionId}`].filter(Boolean).join(", ");
   const ins = must(await admin.from("payments").insert({
     rental_id: r.id,
     driver_id: r.application_id ?? null,
     vehicle_id: r.vehicle_id ?? null,
     type: rowType,
-    reason: (id.purpose ?? id.reason ?? "Stripe payment").slice(0, 200),
+    reason: (purpose ?? id.reason ?? "Stripe payment").slice(0, 200),
     amount,
     balance_due: 0,
     status: "paid",
@@ -175,7 +209,7 @@ export async function recordOneOffPayment(
   if (inserted) {
     await admin.from("notifications").insert({
       driver_id: null, title: "Payment Received", kind: "payment", read: false,
-      body: `$${amount.toFixed(2)} — ${(id.purpose ?? "Stripe payment").slice(0, 120)}`,
+      body: `$${amount.toFixed(2)} — ${(purpose ?? "Stripe payment").slice(0, 120)}${id.renterName ? ` (${id.renterName.slice(0, 60)})` : ""}`,
     }).then(() => {}, () => {});
   }
   // The week this paid may still have an open Stripe invoice that Stripe will retry.

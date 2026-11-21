@@ -108,7 +108,7 @@ function charge(over: Row = {}): Row {
 }
 
 /** Read-only Stripe stub. Counts calls; `fail` makes every read throw. */
-function stripeStub(o: { session?: Row | null; pi?: Row; charge?: Row; invoicePayments?: Row[]; fail?: boolean } = {}) {
+function stripeStub(o: { session?: Row | null; pi?: Row; charge?: Row; invoicePayments?: Row[]; fail?: boolean; link?: Row | null; linkFails?: boolean } = {}) {
   const calls: string[] = [];
   const guard = (name: string) => { calls.push(name); if (o.fail) throw new Error("stripe down"); };
   return {
@@ -117,6 +117,7 @@ function stripeStub(o: { session?: Row | null; pi?: Row; charge?: Row; invoicePa
     charges: { retrieve: async () => { guard("charge"); return o.charge ?? charge(); } },
     checkout: { sessions: { list: async () => { guard("sessions"); return { data: o.session === null ? [] : [o.session ?? session()] }; } } },
     invoicePayments: { list: async () => { guard("invoicePayments"); return { data: o.invoicePayments ?? [] }; } },
+    paymentLinks: { retrieve: async (id: string) => { guard("paymentLink"); if (o.linkFails) throw new Error("link read failed"); return o.link === undefined ? { id, metadata: {} } : o.link; } },
   };
 }
 
@@ -167,6 +168,23 @@ describe("one-off payment helpers", () => {
     assert.equal(pickRental([rental({ status: "closed" })], { explicit: false }).rental, null);
     assert.equal(pickRental([rental({ status: "closed" })], { explicit: true }).rental?.id, RENTAL);
     assert.equal(exactILike("a_b%c@x.com"), "a\\_b\\%c@x.com");
+  });
+});
+
+describe("payment link identifiers", () => {
+  it("reads lead, plate and date from any metadata source", async () => {
+    const { applicationIdsOf, platesOf, forDateOf, dailyDueFor, normalizePlate } = await import("../src/lib/one-off-payment.ts");
+    assert.deepEqual(applicationIdsOf({ metadata: { lead_id: APP.toUpperCase() } }, { metadata: { application_id: APP2 } }), [APP, APP2]);
+    assert.deepEqual(applicationIdsOf({ metadata: { lead_id: "not-a-uuid" } }), []);
+    assert.deepEqual(platesOf({ metadata: { plate: "siv z88" } }, { metadata: { vehicle: "SIVZ88" } }), ["SIVZ88"]);
+    assert.equal(normalizePlate("RR"), null);
+    assert.equal(forDateOf({ metadata: { purpose: "x" } }, { metadata: { date: "2026-11-20" } }), "2026-11-20");
+    assert.equal(forDateOf({ metadata: { for_date: "2026-11-19", date: "2026-11-20" } }), "2026-11-19");
+    assert.equal(forDateOf({ metadata: { date: "Nov 20" } }), null);
+    assert.equal(dailyDueFor("2026-11-21", "2026-11-20"), "2026-11-20");
+    assert.equal(dailyDueFor("2026-11-21", "2026-11-22"), "2026-11-22");
+    assert.equal(dailyDueFor("2026-11-21", "2026-11-01"), "2026-11-21", "a stale date falls back to the paid day");
+    assert.equal(dailyDueFor("2026-11-21", null), "2026-11-21");
   });
 });
 
@@ -229,6 +247,82 @@ describe("payments webhook — one-off payments", () => {
     const rows = paymentsFor(db);
     assert.equal(rows.length, 1);
     assert.match(rows[0].notes, /matched by email/);
+  });
+
+  // Regina, Nov 21 2026: FLEET's daily $50 link carried renter/plate/date only; the
+  // charge came through Link with no customer and no metadata.
+  const OTHER_EMAIL = "someone.else@example.com";
+  const PLATE_VEH = { id: "veh-1", license_plate: "SIVZ88" };
+  const DAILY = { key: "daily_rent_plans", value: { [RENTAL]: { dailyRate: 50, startsOn: "2026-11-16" } } };
+  const NOV21_0031 = 1795239099; // 12:31 AM ET Nov 21 2026
+
+  it("matches a link by its plate when nothing else ties it to the renter, and a daily link pays its own date", async () => {
+    const db = fakeDb({ rentals: [rental({ stripe_customer_id: null })], applications: [app({ stripe_customer_id: null })], vehicles: [PLATE_VEH], payments: [], notifications: [], app_settings: [DAILY] });
+    const s = session({ customer_details: { email: OTHER_EMAIL }, created: NOV21_0031 - 30, metadata: { date: "2026-11-20", plate: "SIVZ88", renter: "Regina Littles" } });
+    const ch = charge({ created: NOV21_0031, billing_details: { email: OTHER_EMAIL }, payment_method_details: { type: "link" } });
+    const stripe = stripeStub({ session: s, charge: ch, pi: intent({ created: NOV21_0031 - 2 }) });
+    assert.equal((await send("checkout.session.completed", s, db, stripe)).status, 200);
+    const rows = paymentsFor(db);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].rental_id, RENTAL);
+    assert.equal(rows[0].type, "rent");
+    assert.equal(rows[0].paid_date, "2026-11-21");
+    assert.equal(rows[0].due_date, "2026-11-20", "the Nov 20 link pays Nov 20 even when paid after midnight");
+    assert.equal(rows[0].reason, "Rent for 2026-11-20");
+    assert.match(rows[0].notes, /matched by plate/);
+    assert.equal(unmatched(db).length, 0);
+  });
+
+  it("matches by lead_id on the link (no customer, unknown email)", async () => {
+    const db = fakeDb({ rentals: [rental({ stripe_customer_id: null })], applications: [app({ stripe_customer_id: null, email: "x@example.com" })], payments: [], notifications: [] });
+    const s = session({ customer_details: { email: OTHER_EMAIL }, metadata: { lead_id: APP, renter: "Test Renter" } });
+    await send("checkout.session.completed", s, db, stripeStub({ session: s, charge: charge({ billing_details: { email: OTHER_EMAIL } }) }));
+    const rows = paymentsFor(db);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].rental_id, RENTAL);
+    assert.match(rows[0].notes, /matched by lead/);
+  });
+
+  it("reads the Payment Link's own metadata when the session carries none", async () => {
+    const db = fakeDb({ rentals: [rental({ stripe_customer_id: null }), rental({ id: RENTAL2, application_id: APP2, stripe_customer_id: null })], applications: [], payments: [], notifications: [] });
+    const s = session({ customer_details: { email: OTHER_EMAIL }, metadata: {} });
+    const stripe = stripeStub({ session: s, charge: charge({ billing_details: { email: OTHER_EMAIL } }), link: { id: PLINK, metadata: { rental_id: RENTAL2, reason: "rent" } } });
+    await send("checkout.session.completed", s, db, stripe);
+    const rows = paymentsFor(db);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].rental_id, RENTAL2);
+    assert.equal(rows[0].type, "rent");
+    assert.match(rows[0].notes, /matched by metadata/);
+  });
+
+  it("a failed Payment Link read still records by the other identifiers", async () => {
+    const db = fakeDb({ rentals: [rental()], applications: [app()], payments: [], notifications: [] });
+    const stripe = stripeStub({ linkFails: true });
+    assert.equal((await send("checkout.session.completed", session(), db, stripe)).status, 200);
+    assert.equal(paymentsFor(db).length, 1);
+  });
+
+  it("payment_intent_data.metadata.rental_id (snake_case) on the intent is recorded, not dropped", async () => {
+    const db = fakeDb({ rentals: [rental({ stripe_customer_id: null }), rental({ id: RENTAL2, application_id: APP2, stripe_customer_id: null })], applications: [], payments: [], notifications: [] });
+    const pi = intent({ metadata: { rental_id: RENTAL2, lead_id: APP2, reason: "rent", for_date: "2026-11-16" } });
+    const s = session({ customer_details: { email: OTHER_EMAIL }, metadata: {} });
+    const stripe = stripeStub({ session: s, pi, charge: charge({ billing_details: { email: OTHER_EMAIL } }) });
+    assert.equal((await send("payment_intent.succeeded", pi, db, stripe)).status, 200);
+    assert.equal((await send("checkout.session.completed", s, db, stripe)).status, 200);
+    const rows = paymentsFor(db);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].rental_id, RENTAL2);
+    assert.equal(rows[0].type, "rent");
+    assert.equal(rows[0].driver_id, APP2);
+  });
+
+  it("an unmatched link names the renter and plate in the staff notice", async () => {
+    const db = fakeDb({ rentals: [], applications: [], vehicles: [], payments: [], notifications: [] });
+    const s = session({ customer_details: { email: OTHER_EMAIL }, metadata: { plate: "ZZZ999", renter: "Nobody Known" } });
+    await send("checkout.session.completed", s, db, stripeStub({ session: s, charge: charge({ billing_details: { email: OTHER_EMAIL } }) }));
+    assert.equal(paymentsFor(db).length, 0);
+    assert.equal(unmatched(db).length, 1);
+    assert.match(unmatched(db)[0].body, /matches no rental \(renter Nobody Known, plate ZZZ999\)/);
   });
 
   it("an explicit session metadata.rentalId wins", async () => {
