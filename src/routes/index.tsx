@@ -15,9 +15,11 @@ import { StickyCallBar } from "@/components/site/StickyCallBar";
 import { DEFAULT_BUSINESS_PHONE } from "@/lib/company";
 import fleetPartnerBg from "@/assets/fleet-partner.jpg";
 import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
+import { MIN_AGE_FAQ, MIN_RENTER_AGE } from "@/lib/renter-age";
 
 const FAQS = [
-  { q: "What is required to get approved?", a: "You must be 21+, hold a valid US driver's license for at least one year, and have a reasonably clean driving record. No credit check required." },
+  { q: "What is required to get approved?", a: `You must be ${MIN_RENTER_AGE}+, hold a valid US driver's license for at least one year, and have a reasonably clean driving record. No credit check required.` },
+  MIN_AGE_FAQ,
   { q: "Is a security deposit required?", a: "No. We do not collect a security deposit. We do keep a payment card on file for tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
   { q: "Is insurance included?", a: "Yes. Insurance is included, with the policy in your name. One less bill to worry about." },
   { q: "What is included in the weekly payment?", a: "Routine maintenance, a high-mileage allowance, and 24/7 driver support. Insurance is included, with the policy in your name. One less bill to worry about. Gas and tolls are on you." },

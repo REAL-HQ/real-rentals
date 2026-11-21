@@ -106,7 +106,7 @@ describe("rules", () => {
     expect(a.hard_blockers.map((x) => x.code)).not.toContain("background_check_status_pending");
     expect(a.hard_blockers.map((x) => x.code)).not.toContain("background_check_status_open");
   });
-  test("hard blockers: partial, missing docs, rejected doc, disqualifier, under 21, expired license, bad check, open flag, duplicate, no email", () => {
+  test("hard blockers: partial, missing docs, rejected doc, disqualifier, under 23, expired license, bad check, open flag, duplicate, no email", () => {
     const codes = (app: Row, docs = docsFor(A), extra: Row = {}) => rules.assessForFleet({ ...base, app, docs, ...extra }).hard_blockers.map((b) => b.code);
     expect(codes(goodApp(A, { status: "partial" }))).toContain("not_submitted");
     expect(codes(goodApp(A), docsFor(A, ["gig_profile"]))).toContain("missing_license_front");
@@ -117,7 +117,7 @@ describe("rules", () => {
     expect(rejectedBack.hard_blockers).toEqual([]);
     expect(rejectedBack.escalations.map((e) => e.code)).toContain("rejected_license_back");
     expect(codes(goodApp(A), docsFor(A), { disqualifiers: ["DUI on record"] })).toContain("disqualifier");
-    expect(codes(goodApp(A, { dob: "2006-06-01" }))).toContain("under_21");
+    expect(codes(goodApp(A, { dob: "2006-06-01" }))).toContain("under_min_age");
     expect(codes(goodApp(A, { license_expiration: "2026-11-01" }))).toContain("license_expired");
     expect(codes(goodApp(A, { background_check_status: "failed" }))).toContain("background_check_status_failed");
     expect(codes(goodApp(A), docsFor(A), { openNeedsStaff: { reason: "check", created_at: null } })).toContain("open_needs_staff");
@@ -125,6 +125,29 @@ describe("rules", () => {
     expect(codes(goodApp(A, { email: "" }))).toContain("no_email");
     expect(codes(goodApp(A, { status: "declined" }))).toContain("stage_not_reviewable");
     expect(codes(goodApp(A, { status: "active" }))).toContain("stage_not_reviewable");
+  });
+  test("minimum renter age is 23 (Dolmar, Nov 21 2026; was 21, with a 25 staff look)", () => {
+    // NOW is 2026-11-16 15:00 UTC.
+    const assess = (dob: string) => rules.assessForFleet({ ...base, app: goodApp(A, { dob }), docs: docsFor(A) });
+    const blockers = (dob: string) => assess(dob).hard_blockers.map((b) => b.code);
+    const escalations = (dob: string) => assess(dob).escalations.map((e) => e.code);
+    expect(rules.FLEET_ESCALATION_DEFAULTS.minAge).toBe(23);
+    expect(rules.FLEET_ESCALATION_DEFAULTS.youngDriverAge).toBe(23);
+    // 21 and 22 were allowed before; now a hard blocker.
+    expect(blockers("2005-06-01")).toContain("under_min_age");
+    expect(blockers("2004-06-01")).toContain("under_min_age");
+    expect(assess("2004-06-01").hard_blockers.find((b) => b.code === "under_min_age")?.message).toBe("Driver is 22 (minimum 23).");
+    // One day short of 23 is still blocked; the 23rd birthday passes.
+    expect(blockers("2003-11-17")).toContain("under_min_age");
+    expect(blockers("2003-11-16")).not.toContain("under_min_age");
+    // 23 and 24 used to go to staff as young drivers (under 25); now a clean approve.
+    for (const dob of ["2003-11-16", "2002-06-01"]) {
+      expect(blockers(dob)).toEqual([]);
+      expect(escalations(dob)).not.toContain("young_driver");
+      expect(assess(dob).recommendation).toBe("approve");
+    }
+    // No date of birth still goes to staff.
+    expect(rules.assessForFleet({ ...base, app: goodApp(A, { dob: null }), docs: docsFor(A) }).escalations.map((e) => e.code)).toContain("no_dob");
   });
   test("applied before: only an earlier declined or closed application escalates (t298s1611)", () => {
     const resub = rules.assessForFleet({ ...base, app: goodApp(A, { resubmission_count: 2 }), docs: docsFor(A) });
@@ -144,7 +167,9 @@ describe("rules", () => {
   test("income is advisory; escalations are FLEET's call", () => {
     const a = rules.assessForFleet({ ...base, app: goodApp(A, { dob: "2003-01-01", rating: 3.9, trips_completed: 20, ai_flags: ["name mismatch"] }), docs: docsFor(A, ["license_front", "license_back", "gig_profile"]), priorDeclined: 1 });
     expect(a.hard_blockers).toEqual([]);
-    expect(a.escalations.map((e) => e.code)).toEqual(expect.arrayContaining(["young_driver", "low_rating", "few_trips", "ai_flags", "prior_declined"]));
+    expect(a.escalations.map((e) => e.code)).toEqual(expect.arrayContaining(["low_rating", "few_trips", "ai_flags", "prior_declined"]));
+    // 23 is old enough to rent and to approve (Dolmar, Nov 21 2026): no young-driver look.
+    expect(a.escalations.map((e) => e.code)).not.toContain("young_driver");
     // Missing income proof is requested, not sent to staff (t298s1611).
     expect(a.escalations.map((e) => e.code)).not.toContain("missing_income");
     expect(a.notes.map((e) => e.code)).toContain("requested_income");
@@ -295,7 +320,7 @@ describe("decision endpoint", () => {
     const approve = async (a: any) => { seen.push(a); return { ok: true, agreementSent: false, portalAccount: "deferred" as const, approvalEmail: "sent" as const }; };
     const blocked = await call(db, { lead_id: C, decision: "approve", reason: "Looks good to FLEET" }, { approve });
     expect(blocked.status).toBe(409);
-    expect(blocked.body.hard_blockers.map((b: any) => b.code)).toContain("under_21");
+    expect(blocked.body.hard_blockers.map((b: any) => b.code)).toContain("under_min_age");
     expect(seen).toHaveLength(0);
     const ok = await call(db, { lead_id: A, decision: "approve", reason: "All checks clean", idempotency_key: "rev-A-1" }, { approve });
     expect(ok.status).toBe(201);

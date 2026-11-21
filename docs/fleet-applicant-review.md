@@ -107,10 +107,11 @@ Not submitted (Partial), a stage other than New/Reviewing/Complete, already
 approved, deleted, legal hold, a duplicate, no email, a missing required
 document (license front, plus the gig-profile screenshot for gig drivers or
 proof of income for applicants not driving yet), a document staff rejected and nobody
-replaced, any readiness disqualifier (under 21, license not active, DUI, gig
+replaced, any readiness disqualifier (under 23, license not active, DUI, gig
 account deactivated, card not in the driver's name, insurance name mismatch,
 license reported invalid), screening marked disqualified, a background or MVR
-result recorded as failed/flagged/consider, under 21 by date of birth, expired
+result recorded as failed/flagged/consider, under 23 by date of birth
+(`under_min_age`; minimum renter age 23, Dolmar Nov 21 2026, was 21), expired
 license, and an open Needs Staff flag. With the RentID switch on
 (`docs/fleet-rentid.md`), both checks must also be recorded as passed.
 
@@ -123,7 +124,7 @@ license, and an open Needs Staff flag. With the RentID switch on
 - proof of income is a required document (hard blocker `missing_income`);
 - approve is strict: the server refuses it (409, with the escalations) while
   ANY escalation exists. So FLEET can approve only when the date of birth is on
-  file and the driver is 25+, the license expiry is on file and more than 30
+  file and the driver is 23+ (was 25+ until Nov 21 2026), the license expiry is on file and more than 30
   days out, there are no analysis flags, no earlier declined/closed
   application, readiness is not Needs Attention, and background/MVR are
   pending or passed;
@@ -137,7 +138,9 @@ Send `needs_staff` when any of these is true:
 
 1. Income proof missing (gig drivers: requested from the applicant, a note;
    not driving yet: a hard blocker).
-2. Driver under 25, or no date of birth.
+2. No date of birth. ("Driver under 25" was dropped Nov 21 2026: the
+   minimum renter age is 23, matching Uber's Florida minimum, and anyone
+   under 23 is a hard blocker, so there is no separate young-driver look.)
 3. License expires within 30 days, or no expiration date.
 4. Gig rating under 4.0, or fewer than 100 trips (Dolmar, Nov 16 2026; was 200).
    Unknown trips or rating: FLEET confirms 100+ and 4.0+ on the gig
