@@ -157,7 +157,7 @@ const InsuranceDocInput = z
   })
   .strict();
 
-/** New Vehicle Insurance Uploaded: documents tied to a swap, and whether the item is met. Staff read. */
+/** New Vehicle Insurance (Optional): documents tied to a swap. Staff read. */
 export const getSwapInsurance = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ swapId: z.string().uuid() }).strict().parse(d))
@@ -176,16 +176,4 @@ export const addSwapInsuranceDocument = createServerFn({ method: "POST" })
     const { addSwapInsuranceDoc } = await import("@/lib/vehicle-swap.server");
     const { logAudit } = await import("@/lib/audit.server");
     return unwrap(await addSwapInsuranceDoc(await admin(), { ...data, actorUserId: context.userId }, { audit: (e) => logAudit(actor, e) })) as Record<string, any>;
-  });
-
-/** Owner only: handover may proceed with no insurance document, with a reason on record. */
-export const overrideSwapInsuranceCheck = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ swapId: z.string().uuid(), reason: z.string().trim().min(10).max(500) }).strict().parse(d))
-  .handler(async ({ data, context }) => {
-    const { requireOwner } = await import("@/lib/roles.server");
-    const actor = await requireOwner(context.userId);
-    const { overrideSwapInsurance } = await import("@/lib/vehicle-swap.server");
-    const { logAudit } = await import("@/lib/audit.server");
-    return unwrap(await overrideSwapInsurance(await admin(), { swapId: data.swapId, reason: data.reason, actorUserId: context.userId, actorLabel: `${actor.email || "Owner"} (owner)` }, { audit: (e) => logAudit(actor, e) })) as Record<string, any>;
   });

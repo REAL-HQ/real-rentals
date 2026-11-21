@@ -24,7 +24,6 @@ import {
   SWAP_FUEL_LEVELS,
   SWAP_INSURANCE_DOC_KINDS,
   SWAP_INSURANCE_DOC_LABELS,
-  SWAP_INSURANCE_MIN_OVERRIDE,
   SWAP_OFF_MESSAGE,
   SWAP_REASON_CODES,
   VEHICLE_SWAPS_TABLE,
@@ -505,17 +504,17 @@ export async function cancelSwap(admin: Admin, input: { swapId: string; reason: 
   return { status: 200, body: { ok: true, swap_id: s.id, status: "voided", signed_agreement_kept: s.status === "signed" } };
 }
 
-// ---------------------------------------------- New Vehicle Insurance Uploaded
+// ---------------------------------------------- New Vehicle Insurance (Optional)
 
 export type SwapInsuranceDocRow = { id: string; documentId: string; kind: string; kindLabel: string; fileName: string | null; createdAt: string };
-export type SwapInsuranceStatus = { docs: SwapInsuranceDocRow[]; overrideReason: string | null; overrideAt: string | null; satisfied: boolean };
+export type SwapInsuranceStatus = { docs: SwapInsuranceDocRow[]; uploaded: boolean };
 
-/** Read-only: documents tied to a swap and whether the checklist item is met (a document, or an Owner override). */
+/**
+ * Read-only: documents tied to a swap. Optional since Nov 21 2026 (Dolmar
+ * t549u/t550u): "uploaded" only drives a neutral reminder; nothing is blocked.
+ */
 export async function swapInsuranceStatus(admin: Admin, swapId: string): Promise<SwapInsuranceStatus> {
-  const [d, s] = await Promise.all([
-    admin.from(SWAP_DOCS_TABLE).select("id,document_id,doc_kind,created_at").eq("swap_id", swapId).order("created_at", { ascending: true }),
-    admin.from(VEHICLE_SWAPS_TABLE).select("insurance_override_reason,insurance_override_by,insurance_override_at").eq("id", swapId).maybeSingle(),
-  ]);
+  const d = await admin.from(SWAP_DOCS_TABLE).select("id,document_id,doc_kind,created_at").eq("swap_id", swapId).order("created_at", { ascending: true });
   const rows = (d.error ? [] : (d.data ?? [])) as any[];
   const ids = rows.map((r) => r.document_id);
   const names = new Map<string, string | null>();
@@ -523,8 +522,6 @@ export async function swapInsuranceStatus(admin: Admin, swapId: string): Promise
     const f = await admin.from("documents").select("id,file_name").in("id", ids);
     for (const x of (f.data ?? []) as any[]) names.set(x.id, x.file_name ?? null);
   }
-  const ov = s.error ? null : s.data;
-  const overrideReason = ov?.insurance_override_reason && ov?.insurance_override_by ? String(ov.insurance_override_reason) : null;
   return {
     docs: rows.map((r) => ({
       id: r.id,
@@ -534,9 +531,7 @@ export async function swapInsuranceStatus(admin: Admin, swapId: string): Promise
       fileName: names.get(r.document_id) ?? null,
       createdAt: r.created_at,
     })),
-    overrideReason,
-    overrideAt: overrideReason ? (ov?.insurance_override_at ?? null) : null,
-    satisfied: rows.length > 0 || Boolean(overrideReason),
+    uploaded: rows.length > 0,
   };
 }
 
@@ -620,38 +615,6 @@ export async function addSwapInsuranceDoc(
     metadata: { swap_id: s.id, document_id: documentId, kind, duplicate, vehicle_id: s.to_vehicle_id },
   });
   return { status: 200, body: { ok: true, document_id: documentId, duplicate } };
-}
-
-/** Owner only (checked by the caller): lets the handover proceed without a document, with a reason on record. */
-export async function overrideSwapInsurance(
-  admin: Admin,
-  input: { swapId: string; reason: unknown; actorUserId: string; actorLabel: string },
-  deps: SwapDeps = {},
-): Promise<Result> {
-  const audit = deps.audit ?? defaultAudit;
-  const now = deps.now ?? new Date();
-  const off = await gateOrFail(admin, deps);
-  if (off) return off;
-  if (!UUID_RE.test(input.swapId)) return fail(400, "swap_id must be a UUID.");
-  const reason = cleanText(input.reason, 500);
-  if (reason.length < SWAP_INSURANCE_MIN_OVERRIDE) return fail(400, `Say why no insurance document is needed (at least ${SWAP_INSURANCE_MIN_OVERRIDE} characters).`);
-  const sw = await admin.from(VEHICLE_SWAPS_TABLE).select("id,status,rental_id,swap_number").eq("id", input.swapId).maybeSingle();
-  if (sw.error || !sw.data) return fail(404, "Swap not found.");
-  if (!(OPEN_SWAP_STATUSES as readonly string[]).includes(sw.data.status)) return fail(409, "Only an open swap can be overridden.");
-  const upd = await admin
-    .from(VEHICLE_SWAPS_TABLE)
-    .update({ insurance_override_reason: reason, insurance_override_by: input.actorUserId, insurance_override_at: now.toISOString(), updated_at: now.toISOString() })
-    .eq("id", sw.data.id)
-    .in("status", OPEN_SWAP_STATUSES as string[]);
-  if (upd.error) return fail(503, "Could not save the override.");
-  await audit({
-    action: "rental.vehicle_swap_insurance_override",
-    summary: `Owner overrode New Vehicle Insurance Uploaded on swap S-${sw.data.swap_number}`,
-    entityType: "rental",
-    entityId: sw.data.rental_id,
-    metadata: { swap_id: sw.data.id, reason, by: input.actorLabel },
-  });
-  return { status: 200, body: { ok: true } };
 }
 
 export type SwapHistoryEntry = {

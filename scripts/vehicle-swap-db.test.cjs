@@ -15,6 +15,8 @@ const { execFileSync, spawn, spawnSync } = require("child_process");
 
 const root = path.resolve(__dirname, "..");
 const MIGRATION = path.join(root, "supabase/migrations/20261120171500_rental_vehicle_swaps.sql");
+// Insurance card optional (Dolmar t549u/t550u, Nov 21 2026): replaces the function without the insurance check.
+const OPTIONAL_INSURANCE = path.join(root, "supabase/migrations/20261121070000_swap_insurance_optional.sql");
 
 function findBin() {
   const cands = [process.env.PG_BIN, "/workspace/pg17/node_modules/@embedded-postgres/linux-x64/native/bin"];
@@ -255,6 +257,9 @@ const call = (swap, status = "maintenance", ret = 50250, pick = 30010) =>
     test("migration applies twice and keeps one copy", () => {
       psqlFile(MIGRATION);
       psqlFile(MIGRATION);
+      psqlFile(OPTIONAL_INSURANCE);
+      psqlFile(OPTIONAL_INSURANCE);
+      assert.doesNotMatch(psql(`SELECT prosrc FROM pg_proc WHERE proname = 'complete_rental_vehicle_swap_tx'`), /swap_insurance_missing/);
       assert.equal(psql(`SELECT count(*) FROM pg_proc WHERE proname = 'complete_rental_vehicle_swap_tx'`), "1");
       assert.equal(psql(`SELECT count(*) FROM pg_class WHERE relname = 'rental_vehicle_swaps'`), "1");
       assert.equal(psql(`SELECT count(*) FROM pg_policy WHERE polrelid = 'public.rental_vehicle_swaps'::regclass`), "1");
@@ -310,23 +315,15 @@ const call = (swap, status = "maintenance", ret = 50250, pick = 30010) =>
       assert.equal(psql(`SELECT status FROM public.vehicles WHERE id = '${R.newCar}'`), "available");
     });
 
-    test("no insurance document: handover is refused and writes nothing (New Vehicle Insurance Uploaded)", () => {
-      assert.match(psql(call(R.swap), { expectFail: true }), /swap_insurance_missing/);
+    test("no insurance document and no override: the handover is NOT refused for insurance (optional since Nov 21)", () => {
+      // Past where the insurance check used to be, the next refusal is the odometer one.
+      const err = psql(call(R.swap, "maintenance", 49000), { expectFail: true });
+      assert.doesNotMatch(err, /swap_insurance_missing/);
+      assert.match(err, /return_below_pickup:50000/);
       assert.equal(psql(`SELECT vehicle_id FROM public.rentals WHERE id = '${R.rental}'`), R.oldCar);
-      assert.equal(psql(`SELECT count(*) FROM public.odometer_readings WHERE evidence_key LIKE 'swap_%'`), "0");
     });
 
-    test("an override needs both a reason and the Owner who set it; with both the check passes", () => {
-      psql(`UPDATE public.rental_vehicle_swaps SET insurance_override_reason = 'Insurer confirmed by phone' WHERE id = '${R.swap}'`);
-      assert.match(psql(call(R.swap), { expectFail: true }), /swap_insurance_missing/);
-      psql(`UPDATE public.rental_vehicle_swaps SET insurance_override_by = '${R.staff}', insurance_override_at = now() WHERE id = '${R.swap}'`);
-      // Past the insurance check the next refusal is the odometer one.
-      assert.match(psql(call(R.swap, "maintenance", 49000), { expectFail: true }), /return_below_pickup:50000/);
-      psql(`UPDATE public.rental_vehicle_swaps SET insurance_override_reason = NULL, insurance_override_by = NULL, insurance_override_at = NULL WHERE id = '${R.swap}'`);
-      assert.match(psql(call(R.swap), { expectFail: true }), /swap_insurance_missing/);
-    });
-
-    test("a document tied to the swap and the new car satisfies the check; it never marks anything insured", () => {
+    test("an optional insurance document can be tied to the swap and the new car; it never marks anything insured", () => {
       const doc = "99999999-9999-4999-8999-999999999999";
       psql(`INSERT INTO public.documents VALUES ('${doc}','Insurance ID Card')`);
       psql(`INSERT INTO public.rental_vehicle_swap_documents(swap_id, document_id, vehicle_id, doc_kind) VALUES ('${R.swap}','${doc}','${R.newCar}','insurance_card')`);
@@ -357,7 +354,10 @@ const call = (swap, status = "maintenance", ret = 50250, pick = 30010) =>
       assert.equal(psql(`SELECT vehicle_id FROM public.rentals WHERE id = '${R.rental}'`), R.oldCar);
     });
 
-    test("completing moves the rental, keeps billing, records readings and one audit row", () => {
+    test("completing with no insurance document moves the rental, keeps billing, records readings and one audit row", () => {
+      psql(`DELETE FROM public.rental_vehicle_swap_documents WHERE swap_id = '${R.swap}'`);
+      assert.equal(psql(`SELECT count(*) FROM public.rental_vehicle_swap_documents WHERE swap_id = '${R.swap}'`), "0");
+      assert.equal(psql(`SELECT coalesce(insurance_override_reason, '') FROM public.rental_vehicle_swaps WHERE id = '${R.swap}'`), "");
       const out = JSON.parse(psql(call(R.swap)));
       assert.equal(out.result, "completed");
       assert.equal(out.swap_number, 1000);
@@ -372,6 +372,7 @@ const call = (swap, status = "maintenance", ret = 50250, pick = 30010) =>
       assert.equal(s, "completed|maintenance|1/2|F|true");
       assert.equal(psql(`SELECT count(*) FROM public.audit_log WHERE action = 'rental.vehicle_swapped' AND entity_id = '${R.rental}'`), "1");
       assert.equal(psql(`SELECT metadata->>'billing' FROM public.audit_log WHERE action = 'rental.vehicle_swapped'`), "unchanged");
+      assert.equal(psql(`SELECT metadata->>'insurance_docs' FROM public.audit_log WHERE action = 'rental.vehicle_swapped'`), "0");
     });
 
     test("a repeat call replays the result and writes nothing more", () => {
