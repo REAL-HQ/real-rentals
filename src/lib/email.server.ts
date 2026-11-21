@@ -757,6 +757,30 @@ export async function sendApprovalConfirmationEmail(args: {
   });
 }
 
+/** Short decision notice. The internal decline reason is never included. */
+export async function sendApplicationDeclinedEmail(args: {
+  to: string;
+  firstName: string | null;
+  applicationId: string;
+  companyPhone: string;
+}): Promise<SendResult> {
+  const { declineApplicantEmailText } = await import("@/lib/fleet-profile-note");
+  const copy = declineApplicantEmailText(args.firstName, args.companyPhone);
+  const p = (t: string, last = false) => `<p style="color:#444;font-size:15px;line-height:1.55;margin:0${last ? "" : " 0 16px"}">${t}</p>`;
+  const html = shell(`
+      <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">Application Update</h1>
+      ${p(escapeHtml(copy.greeting))}
+      ${p(escapeHtml(copy.body), true)}`);
+  return sendEmail({
+    to: args.to,
+    subject: copy.subject,
+    html,
+    replyTo: EMAIL_REPLY_TO,
+    track: { workflow: "application_declined" },
+    idempotencyKey: `application-declined-${args.applicationId}`,
+  });
+}
+
 // -----------------------------------------------------------------------------
 // Driver transactional payment emails
 // -----------------------------------------------------------------------------

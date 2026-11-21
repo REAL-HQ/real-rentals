@@ -219,6 +219,24 @@ try {
     assert.equal(r.phone, "8135550100");
     assert.ok(!("license_number" in r));
   });
+  await test("decline reason is appended to notes and audited, status only otherwise", async () => {
+    reset("team");
+    fixture.row.notes = "Staff wrote this.";
+    const r = await invoke({ status: "declined", decline_reason: "Income could not be confirmed" });
+    assert.equal(r.status, "declined");
+    assert.equal(r.contacted_at, null);
+    assert.match(fixture.row.notes, /Staff wrote this\./);
+    assert.match(fixture.row.notes, /Declined by synthetic@example\.invalid on .+?: Income could not be confirmed/);
+    assert.equal(fixture.audit[0].entry.metadata.decline_reason, "Income could not be confirmed");
+    assert.equal(fixture.audit[0].entry.metadata.status, "declined");
+    assert.ok(!fixture.audit[0].entry.metadata.fields.includes("decline_reason"));
+    assert.ok(!fixture.audit[0].entry.metadata.fields.includes("contacted_at"));
+  });
+  await test("decline reason without declined status is refused", async () => {
+    reset("admin");
+    await assert.rejects(invoke({ decline_reason: "Not a fit here" }), /Declined/);
+    assert.equal(fixture.attempts, 0);
+  });
   await test("active application cannot be rewritten by Manager", async () => {
     reset("team");
     fixture.row.status = "active";
