@@ -16,6 +16,7 @@
  * background-check values are reported exactly as recorded.
  */
 import { REQUIRED_VAULT_CATEGORIES, requirementCategory } from "@/lib/required-docs";
+import { MIN_RENTER_AGE } from "@/lib/renter-age";
 import {
   addressFromApplication,
   addressFromReading,
@@ -76,9 +77,17 @@ const GOOD_CHECK = /^(pass|passed|clear|cleared|approved|ok)$/i;
 
 /** Default thresholds for the escalation checklist (proposed; Dolmar can change). */
 export const FLEET_ESCALATION_DEFAULTS = {
-  /** Under this age (from date of birth) -> staff look. 21+ is the hard floor. */
-  youngDriverAge: 25,
-  minAge: 21,
+  /**
+   * Minimum renter age (from date of birth): under it is a hard blocker.
+   * Dolmar, Nov 21 2026: 23, matching Uber's Florida minimum (was 21).
+   */
+  minAge: MIN_RENTER_AGE,
+  /**
+   * Under this age -> staff look. Same as minAge since Nov 21 2026 (was 25), so
+   * every renter old enough to rent is old enough for FLEET to approve, and the
+   * not-driving-yet clean-file rule reads "23+" (was "25+").
+   */
+  youngDriverAge: MIN_RENTER_AGE,
   /** Gig rating below this -> staff look (Dolmar, Nov 16 2026: 100+ trips and a 4.0+ rating). */
   minRating: 4.0,
   /** Fewer completed trips than this -> staff look (Dolmar, Nov 16 2026: 100+ trips and a 4.0+ rating; was 200). */
@@ -279,7 +288,7 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
     }
   }
   const age = ageOn(app.dob, now);
-  if (age !== null && age < T.minAge) block("under_21", `Driver is ${age} (minimum ${T.minAge}).`);
+  if (age !== null && age < T.minAge) block("under_min_age", `Driver is ${age} (minimum ${T.minAge}).`);
   const licDays = daysUntil(app.license_expiration, now);
   if (licDays !== null && licDays < 0) block("license_expired", "Driver's license is expired.");
   if (app.license_valid === false) block("license_invalid", "Applicant reported the license is not valid.");
@@ -320,7 +329,7 @@ export function assessForFleet(input: FleetReviewInput): FleetReviewAssessment {
     // with no trips, so they are replaced, not waived: proof of income is a
     // required document (a hard blocker above) and approve is strict, meaning
     // the server refuses it while ANY escalation exists (date of birth with
-    // age 25+, license expiry known and more than 30 days out, no analysis
+    // age 23+ (MIN_RENTER_AGE), license expiry known and more than 30 days out, no analysis
     // flags, no earlier declined application, checks pending or passed).
     note("no_track_record", `Not driving for a gig app yet (${app.gig_status}). Trip and rating minimums do not apply; FLEET may approve only a clean file: proof of income on file, date of birth on file and ${T.youngDriverAge}+, license expiry on file and more than ${T.licenseExpiryDays} days out, no flags, no earlier declined application, background and driving record pending or passed.`);
   } else {

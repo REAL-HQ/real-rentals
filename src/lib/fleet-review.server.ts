@@ -374,7 +374,7 @@ const FLEET_NO_SESSION_RPC = async () => ({
 /**
  * POST /api/public/fleet/applicant-decision
  *   { "lead_id": "…", "decision": "approve" | "needs_staff", "reason": "…",
- *     "escalation_codes": ["young_driver"], "idempotency_key": "…" }
+ *     "escalation_codes": ["low_rating"], "idempotency_key": "…" }
  */
 export async function handleFleetApplicantDecision(request: Request, deps: DecisionDeps = {}): Promise<Response> {
   const parsed = await fleetRequestBody(request, deps);

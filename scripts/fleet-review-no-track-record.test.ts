@@ -171,9 +171,8 @@ describe("not driving yet: rule change (no automatic needs_staff by itself)", ()
     expect(codesOf(zero.escalations)).not.toContain("few_trips");
     expect(zero.recommendation).toBe("approve");
   });
-  test("each unclean fact still escalates: under 25, no DOB, expiry unknown or within 30 days, flags, prior decline, open check, low reported rating", () => {
+  test("each unclean fact still escalates: no DOB, expiry unknown or within 30 days, flags, prior decline, open check, low reported rating", () => {
     const cases: [Row, number, string][] = [
-      [{ dob: "2003-01-01" }, 0, "young_driver"],
       [{ dob: null }, 0, "no_dob"],
       [{ license_expiration: null }, 0, "no_license_expiry"],
       [{ license_expiration: "2026-12-10" }, 0, "license_expiring"],
@@ -190,6 +189,21 @@ describe("not driving yet: rule change (no automatic needs_staff by itself)", ()
     // A license expiring in 31+ days is clean.
     const ok31 = rules.assessForFleet({ ...base, app: notYet(A, { license_expiration: "2026-12-17" }), docs: docsFor(A, ["license_front", "income"]) });
     expect(codesOf(ok31.escalations)).toEqual([]);
+  });
+  test("income exception age is 23+ (Dolmar, Nov 21 2026; was 25+): 23 and 24 are clean, under 23 is a hard blocker", () => {
+    // NOW is 2026-11-16. 2003-11-16 turns 23 today; 2002-06-01 is 24.
+    for (const dob of ["2003-11-16", "2002-06-01"]) {
+      const a = rules.assessForFleet({ ...base, app: notYet(A, { dob }), docs: docsFor(A, ["license_front", "income"]) });
+      expect(a.hard_blockers).toEqual([]);
+      expect(codesOf(a.escalations)).toEqual([]);
+      expect(a.recommendation).toBe("approve");
+    }
+    const young = rules.assessForFleet({ ...base, app: notYet(A, { dob: "2003-11-17" }), docs: docsFor(A, ["license_front", "income"]) });
+    expect(codesOf(young.hard_blockers)).toContain("under_min_age");
+    expect(young.recommendation).not.toBe("approve");
+    const note = rules.assessForFleet({ ...base, app: notYet(A), docs: docsFor(A, ["license_front", "income"]) }).notes.find((n) => n.code === "no_track_record");
+    expect(note?.message).toContain("date of birth on file and 23+");
+    expect(note?.message).not.toContain("25+");
   });
   test("background/MVR passed is clean; failed is a hard blocker sent to staff", () => {
     const passed = rules.assessForFleet({ ...base, app: notYet(A, { background_check_status: "passed", mvr_status: "passed" }), docs: docsFor(A, ["license_front", "income"]) });
@@ -222,10 +236,10 @@ describe("decision endpoint: strict approve for no track record", () => {
   test("not-yet applicant with any escalation: approve refused (409), nothing approved", async () => {
     const seen: any[] = [];
     const approve = async (a: any) => { seen.push(a); return { ok: true } as any; };
-    const db = mk([notYet(A, { dob: "2003-01-01" })], docsFor(A, ["license_front", "income"]));
+    const db = mk([notYet(A, { dob: null })], docsFor(A, ["license_front", "income"]));
     const r = await call(db, { lead_id: A, decision: "approve", reason: "FLEET thinks it is fine" }, approve);
     expect(r.status).toBe(409);
-    expect(codesOf(r.body.escalations)).toContain("young_driver");
+    expect(codesOf(r.body.escalations)).toContain("no_dob");
     expect(seen).toHaveLength(0);
     expect(db.state.applications[0].status).toBe("new");
   });
