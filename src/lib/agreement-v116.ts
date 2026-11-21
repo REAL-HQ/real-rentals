@@ -10,7 +10,8 @@
 //
 // Section 13 values set Nov 21 2026: 2 days to provide a working payment
 // method after a failed toll or citation charge, a $25 toll-transponder
-// replacement charge, and 30 days to ask in writing for a review. The
+// replacement charge, and 3 days to ask in writing for a review. A review
+// request does not delay an agency deadline, including a transfer affidavit. The
 // citation administrative fee stays fee_citation_admin ($25), the same amount
 // Section 4 prints. Ordinary tolls stay at the amount the agency charges.
 
@@ -21,7 +22,7 @@ export const TOLL_PAYMENT_CURE = "2 days";
 /** 13.5: replacement charge if the toll transponder is missing, damaged, or tampered with. */
 export const TRANSPONDER_REPLACEMENT_CHARGE = "$25";
 /** 13.7: days to ask in writing for a review of a toll or citation charge. */
-export const TOLL_REVIEW_WINDOW = "30 days";
+export const TOLL_REVIEW_WINDOW = "3 days";
 
 const CITATION_ADMIN_FEE = "$25";
 if (V115_TERM_DEFAULTS.fee_citation_admin !== CITATION_ADMIN_FEE) {
@@ -45,7 +46,7 @@ export const SECTION_13 = `## 13. Tolls & Tickets
 **13.4 Items That Arrive Late; Declined Charges.** A toll or citation may reach us after the Rental Period ends. You remain responsible for it, and under Section 3.3 we may charge your card on file for it as it comes in, until everything you owe is paid. If a charge for a toll, citation, or fee is declined, you must give us a working payment method within ${TOLL_PAYMENT_CURE} of our notice.
 **13.5 Toll Transponder.** Keep any toll transponder installed and mounted in the Vehicle. Do not remove, cover, shield, disable, swap, or tamper with it, and do not use it in another vehicle. If it is missing, damaged, or tampered with, you pay a replacement charge of ${TRANSPONDER_REPLACEMENT_CHARGE}, plus any tolls and fees that result.
 **13.6 Third-Party Toll Billing.** If we use a third-party toll billing service, that service's fee may be billed to you instead of, and not in addition to, any fee of ours on ordinary tolls. Our fee on ordinary tolls remains $0. You authorize us to share the information in Section 13.3 with that service.
-**13.7 Questions About a Charge.** If you believe a toll or citation charge is wrong, tell us in writing within ${TOLL_REVIEW_WINDOW} of the charge. A review does not pause any deadline we must meet with an agency.`;
+**13.7 Questions About a Charge.** If you believe a toll or citation charge is wrong, tell us in writing within ${TOLL_REVIEW_WINDOW} of the charge. A review does not pause any deadline we must meet with an agency, including the deadline to file a transfer affidavit.`;
 
 for (const re of [/\[__\]/, /\[\$__\]/, /attorney/i, /DRAFT/i, /\(optional\)/i, /suggested 14/i]) {
   if (re.test(SECTION_13)) throw new Error(`agreement-v116: Section 13 still has review or blank markup (${re})`);

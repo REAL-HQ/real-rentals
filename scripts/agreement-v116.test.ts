@@ -117,12 +117,13 @@ describe("v1.16 is the single default agreement", () => {
   it("prints the three filled amounts and the $25 citation fee, with no blanks", () => {
     expect(TOLL_PAYMENT_CURE).toBe("2 days");
     expect(TRANSPONDER_REPLACEMENT_CHARGE).toBe("$25");
-    expect(TOLL_REVIEW_WINDOW).toBe("30 days");
+    expect(TOLL_REVIEW_WINDOW).toBe("3 days");
     expect(V116_TERM_DEFAULTS.fee_citation_admin).toBe("$25");
     expect(V115_TERM_DEFAULTS.fee_citation_admin).toBe("$25");
     expect(section).toContain("within 2 days of our notice.");
     expect(section).toContain("you pay a replacement charge of $25, plus any tolls and fees that result.");
-    expect(section).toContain("tell us in writing within 30 days of the charge.");
+    expect(section).toContain("tell us in writing within 3 days of the charge.");
+    expect(section).toContain("A review does not pause any deadline we must meet with an agency, including the deadline to file a transfer affidavit.");
     expect(section).toContain("you also pay the $25 administrative fee shown in Section 4");
     expect(section).toContain("A transfer does not waive the $25 administrative fee");
     expect(section).toContain("Our fee on ordinary tolls remains $0.");
@@ -163,7 +164,8 @@ describe("v1.16 is the single default agreement", () => {
     expect(row.body).toContain("(v1.16)");
     expect(row.body).toContain("within 2 days of our notice.");
     expect(row.body).toContain("replacement charge of $25");
-    expect(row.body).toContain("within 30 days of the charge.");
+    expect(row.body).toContain("within 3 days of the charge.");
+    expect(row.body).toContain("including the deadline to file a transfer affidavit.");
     expect(row.body).not.toMatch(/\{\{|\[\[|__________|\[__\]/);
     const older = fakeDb(seed());
     const sent115 = await issueAgreement(older as any, APP.id, { createdBy: null, prep: fleetAgreementPrep({ enabled: true, amount: 50 }, null), templateKey: "insurance_included_v115" });
@@ -177,7 +179,7 @@ describe("v1.16 is the single default agreement", () => {
     const p = await prepare(fakeDb(seed()) as any, APP.id);
     expect(p.blockers).toEqual([]);
     expect(p.tpl.meta.key).toBe("insurance_included_v116");
-    expect(plain(p.body)).toContain("within 30 days of the charge.");
+    expect(plain(p.body)).toContain("within 3 days of the charge.");
     expect(parseLayout(p.body).filter((b) => b.k === "sig")).toHaveLength(1);
   });
 });
