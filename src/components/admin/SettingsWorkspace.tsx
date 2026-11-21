@@ -56,7 +56,6 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
     () => new Set(groups.slice(1)),
   );
   if (!current) return <p className="text-[13px] text-[#55555E]">No settings are available for your role.</p>;
-  const wide = ["automations", "team", "website", "activity", "media"].includes(current.id);
   const toggleGroup = (g: string) =>
     setClosedGroups((prev) => {
       const next = new Set(prev);
@@ -107,7 +106,7 @@ export function SettingsWorkspace({ tier, section }: { tier: StaffTier | null; s
           })}
         </div>
       </nav>
-      <section className={`flex-1 min-w-0 ${wide ? "" : "max-w-3xl"}`}>
+      <section className="flex-1 min-w-0">
         <div className="mb-4">
           <h2 className="text-[17px] font-semibold text-[#111114]">{current.label}</h2>
           <p className="text-[13px] text-[#55555E] mt-0.5">{DESCRIPTIONS[current.id]}</p>

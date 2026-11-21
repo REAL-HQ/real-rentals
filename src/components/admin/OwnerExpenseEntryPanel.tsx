@@ -101,7 +101,7 @@ export function OwnerExpenseEntryPanel() {
   const vehicleLabel = (() => { const v = vehicles.find((vehicle) => vehicle.id === vehicleId); return v ? (v.label || formatVehicleLabel(v)) : "Expense"; })();
 
   return (
-    <form onSubmit={submit} className="max-w-xl space-y-4">
+    <form onSubmit={submit} className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold">Expense Entry</h2>
         <p className="text-sm text-muted-foreground mt-0.5">

@@ -2933,7 +2933,7 @@ function DriverDetail({
           </div>
         </div>
 
-        <div className="px-4 sm:px-8 py-6 max-w-[1400px]">
+        <div className="px-4 sm:px-8 py-6">
               <TabsContent value="overview" className="mt-0 space-y-5">
                 <BlacklistCard
                   applicationId={driver.id}
