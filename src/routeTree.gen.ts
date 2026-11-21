@@ -54,6 +54,7 @@ import { Route as ApiPublicFleetAmendAgreementRouteImport } from './routes/api/p
 import { Route as ApiPublicFleetApplicantDecisionRouteImport } from './routes/api/public/fleet/applicant-decision'
 import { Route as ApiPublicFleetApplicantsRouteImport } from './routes/api/public/fleet/applicants'
 import { Route as ApiPublicFleetAssignVehicleRouteImport } from './routes/api/public/fleet/assign-vehicle'
+import { Route as ApiPublicFleetBackgroundReportRouteImport } from './routes/api/public/fleet/background-report'
 import { Route as ApiPublicFleetDriverDocumentRouteImport } from './routes/api/public/fleet/driver-document'
 import { Route as ApiPublicFleetGpsReadingsRouteImport } from './routes/api/public/fleet/gps-readings'
 import { Route as ApiPublicFleetHandoffRouteImport } from './routes/api/public/fleet/handoff'
@@ -64,7 +65,6 @@ import { Route as ApiPublicFleetMissingItemsRouteImport } from './routes/api/pub
 import { Route as ApiPublicFleetPaymentTextPauseRouteImport } from './routes/api/public/fleet/payment-text-pause'
 import { Route as ApiPublicFleetPickupSlotsRouteImport } from './routes/api/public/fleet/pickup-slots'
 import { Route as ApiPublicFleetRefundReservationRouteImport } from './routes/api/public/fleet/refund-reservation'
-import { Route as ApiPublicFleetRentidReportRouteImport } from './routes/api/public/fleet/rentid-report'
 import { Route as ApiPublicFleetResendLinkRouteImport } from './routes/api/public/fleet/resend-link'
 import { Route as ApiPublicFleetReservationFeeLinkRouteImport } from './routes/api/public/fleet/reservation-fee-link'
 import { Route as ApiPublicFleetScreeningResultRouteImport } from './routes/api/public/fleet/screening-result'
@@ -316,6 +316,12 @@ const ApiPublicFleetAssignVehicleRoute =
     path: '/api/public/fleet/assign-vehicle',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicFleetBackgroundReportRoute =
+  ApiPublicFleetBackgroundReportRouteImport.update({
+    id: '/api/public/fleet/background-report',
+    path: '/api/public/fleet/background-report',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicFleetDriverDocumentRoute =
   ApiPublicFleetDriverDocumentRouteImport.update({
     id: '/api/public/fleet/driver-document',
@@ -373,12 +379,6 @@ const ApiPublicFleetRefundReservationRoute =
   ApiPublicFleetRefundReservationRouteImport.update({
     id: '/api/public/fleet/refund-reservation',
     path: '/api/public/fleet/refund-reservation',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicFleetRentidReportRoute =
-  ApiPublicFleetRentidReportRouteImport.update({
-    id: '/api/public/fleet/rentid-report',
-    path: '/api/public/fleet/rentid-report',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiPublicFleetResendLinkRoute =
@@ -506,6 +506,7 @@ export interface FileRoutesByFullPath {
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/background-report': typeof ApiPublicFleetBackgroundReportRoute
   '/api/public/fleet/driver-document': typeof ApiPublicFleetDriverDocumentRoute
   '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
@@ -516,7 +517,6 @@ export interface FileRoutesByFullPath {
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/refund-reservation': typeof ApiPublicFleetRefundReservationRoute
-  '/api/public/fleet/rentid-report': typeof ApiPublicFleetRentidReportRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
   '/api/public/fleet/reservation-fee-link': typeof ApiPublicFleetReservationFeeLinkRoute
   '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
@@ -578,6 +578,7 @@ export interface FileRoutesByTo {
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/background-report': typeof ApiPublicFleetBackgroundReportRoute
   '/api/public/fleet/driver-document': typeof ApiPublicFleetDriverDocumentRoute
   '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
@@ -588,7 +589,6 @@ export interface FileRoutesByTo {
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/refund-reservation': typeof ApiPublicFleetRefundReservationRoute
-  '/api/public/fleet/rentid-report': typeof ApiPublicFleetRentidReportRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
   '/api/public/fleet/reservation-fee-link': typeof ApiPublicFleetReservationFeeLinkRoute
   '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
@@ -651,6 +651,7 @@ export interface FileRoutesById {
   '/api/public/fleet/applicant-decision': typeof ApiPublicFleetApplicantDecisionRoute
   '/api/public/fleet/applicants': typeof ApiPublicFleetApplicantsRoute
   '/api/public/fleet/assign-vehicle': typeof ApiPublicFleetAssignVehicleRoute
+  '/api/public/fleet/background-report': typeof ApiPublicFleetBackgroundReportRoute
   '/api/public/fleet/driver-document': typeof ApiPublicFleetDriverDocumentRoute
   '/api/public/fleet/gps-readings': typeof ApiPublicFleetGpsReadingsRoute
   '/api/public/fleet/handoff': typeof ApiPublicFleetHandoffRoute
@@ -661,7 +662,6 @@ export interface FileRoutesById {
   '/api/public/fleet/payment-text-pause': typeof ApiPublicFleetPaymentTextPauseRoute
   '/api/public/fleet/pickup-slots': typeof ApiPublicFleetPickupSlotsRoute
   '/api/public/fleet/refund-reservation': typeof ApiPublicFleetRefundReservationRoute
-  '/api/public/fleet/rentid-report': typeof ApiPublicFleetRentidReportRoute
   '/api/public/fleet/resend-link': typeof ApiPublicFleetResendLinkRoute
   '/api/public/fleet/reservation-fee-link': typeof ApiPublicFleetReservationFeeLinkRoute
   '/api/public/fleet/screening-result': typeof ApiPublicFleetScreeningResultRoute
@@ -725,6 +725,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/background-report'
     | '/api/public/fleet/driver-document'
     | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/handoff'
@@ -735,7 +736,6 @@ export interface FileRouteTypes {
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/refund-reservation'
-    | '/api/public/fleet/rentid-report'
     | '/api/public/fleet/resend-link'
     | '/api/public/fleet/reservation-fee-link'
     | '/api/public/fleet/screening-result'
@@ -797,6 +797,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/background-report'
     | '/api/public/fleet/driver-document'
     | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/handoff'
@@ -807,7 +808,6 @@ export interface FileRouteTypes {
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/refund-reservation'
-    | '/api/public/fleet/rentid-report'
     | '/api/public/fleet/resend-link'
     | '/api/public/fleet/reservation-fee-link'
     | '/api/public/fleet/screening-result'
@@ -869,6 +869,7 @@ export interface FileRouteTypes {
     | '/api/public/fleet/applicant-decision'
     | '/api/public/fleet/applicants'
     | '/api/public/fleet/assign-vehicle'
+    | '/api/public/fleet/background-report'
     | '/api/public/fleet/driver-document'
     | '/api/public/fleet/gps-readings'
     | '/api/public/fleet/handoff'
@@ -879,7 +880,6 @@ export interface FileRouteTypes {
     | '/api/public/fleet/payment-text-pause'
     | '/api/public/fleet/pickup-slots'
     | '/api/public/fleet/refund-reservation'
-    | '/api/public/fleet/rentid-report'
     | '/api/public/fleet/resend-link'
     | '/api/public/fleet/reservation-fee-link'
     | '/api/public/fleet/screening-result'
@@ -942,6 +942,7 @@ export interface RootRouteChildren {
   ApiPublicFleetApplicantDecisionRoute: typeof ApiPublicFleetApplicantDecisionRoute
   ApiPublicFleetApplicantsRoute: typeof ApiPublicFleetApplicantsRoute
   ApiPublicFleetAssignVehicleRoute: typeof ApiPublicFleetAssignVehicleRoute
+  ApiPublicFleetBackgroundReportRoute: typeof ApiPublicFleetBackgroundReportRoute
   ApiPublicFleetDriverDocumentRoute: typeof ApiPublicFleetDriverDocumentRoute
   ApiPublicFleetGpsReadingsRoute: typeof ApiPublicFleetGpsReadingsRoute
   ApiPublicFleetHandoffRoute: typeof ApiPublicFleetHandoffRoute
@@ -952,7 +953,6 @@ export interface RootRouteChildren {
   ApiPublicFleetPaymentTextPauseRoute: typeof ApiPublicFleetPaymentTextPauseRoute
   ApiPublicFleetPickupSlotsRoute: typeof ApiPublicFleetPickupSlotsRoute
   ApiPublicFleetRefundReservationRoute: typeof ApiPublicFleetRefundReservationRoute
-  ApiPublicFleetRentidReportRoute: typeof ApiPublicFleetRentidReportRoute
   ApiPublicFleetResendLinkRoute: typeof ApiPublicFleetResendLinkRoute
   ApiPublicFleetReservationFeeLinkRoute: typeof ApiPublicFleetReservationFeeLinkRoute
   ApiPublicFleetScreeningResultRoute: typeof ApiPublicFleetScreeningResultRoute
@@ -1286,6 +1286,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicFleetAssignVehicleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/fleet/background-report': {
+      id: '/api/public/fleet/background-report'
+      path: '/api/public/fleet/background-report'
+      fullPath: '/api/public/fleet/background-report'
+      preLoaderRoute: typeof ApiPublicFleetBackgroundReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/fleet/driver-document': {
       id: '/api/public/fleet/driver-document'
       path: '/api/public/fleet/driver-document'
@@ -1354,13 +1361,6 @@ declare module '@tanstack/react-router' {
       path: '/api/public/fleet/refund-reservation'
       fullPath: '/api/public/fleet/refund-reservation'
       preLoaderRoute: typeof ApiPublicFleetRefundReservationRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/fleet/rentid-report': {
-      id: '/api/public/fleet/rentid-report'
-      path: '/api/public/fleet/rentid-report'
-      fullPath: '/api/public/fleet/rentid-report'
-      preLoaderRoute: typeof ApiPublicFleetRentidReportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/fleet/resend-link': {
@@ -1510,6 +1510,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicFleetApplicantDecisionRoute: ApiPublicFleetApplicantDecisionRoute,
   ApiPublicFleetApplicantsRoute: ApiPublicFleetApplicantsRoute,
   ApiPublicFleetAssignVehicleRoute: ApiPublicFleetAssignVehicleRoute,
+  ApiPublicFleetBackgroundReportRoute: ApiPublicFleetBackgroundReportRoute,
   ApiPublicFleetDriverDocumentRoute: ApiPublicFleetDriverDocumentRoute,
   ApiPublicFleetGpsReadingsRoute: ApiPublicFleetGpsReadingsRoute,
   ApiPublicFleetHandoffRoute: ApiPublicFleetHandoffRoute,
@@ -1520,7 +1521,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicFleetPaymentTextPauseRoute: ApiPublicFleetPaymentTextPauseRoute,
   ApiPublicFleetPickupSlotsRoute: ApiPublicFleetPickupSlotsRoute,
   ApiPublicFleetRefundReservationRoute: ApiPublicFleetRefundReservationRoute,
-  ApiPublicFleetRentidReportRoute: ApiPublicFleetRentidReportRoute,
   ApiPublicFleetResendLinkRoute: ApiPublicFleetResendLinkRoute,
   ApiPublicFleetReservationFeeLinkRoute: ApiPublicFleetReservationFeeLinkRoute,
   ApiPublicFleetScreeningResultRoute: ApiPublicFleetScreeningResultRoute,

@@ -1,37 +1,54 @@
 /**
- * RentID screening reports on the driver profile (Dolmar, t582u: "start to
- * pull RentID reports into the system"). Pure and browser-safe: shared by the
- * staff Attach RentID Report form, the FLEET endpoint and the tests.
+ * Background reports on the driver profile (Dolmar, t582u: "call it
+ * 'Background' in case we use other services in the future ... we should also
+ * upload the DMV reports here too. should be able to upload multiple files").
+ * Pure and browser-safe: shared by the staff Add Background Report form, the
+ * FLEET endpoint and the tests.
  *
- * What RentID gives us today (checked Nov 21, 2026):
- *   - No public API docs, no self-serve key and no webhooks. The advertised
- *     Enterprise "Driver Verifications API" is sales-only.
- *   - A receipt email to team@ from noreply@verify.rentid.io per order:
- *     "Your receipt from Rentid, Inc. Order #INV-XXXXXXXX", with the renter's
- *     name, the products bought and the invoice PDF. NO result.
- *   - The result (license status, criminal record check and its cases) lives
- *     only in the RentID portal at rent-id.io/rentid (team@ login, emailed
- *     code), one page per order: rent-id.io/rentid/req_<id>_j<order lowercase>.
- *     Each criminal case shows case number, internal id, charges, degree,
- *     offense/file dates, disposition and court/county (no name or DOB), and
- *     the same case often appears twice from two sources (dedupeCases).
- *     A PDF certificate can be downloaded there. app.rentid.io is a separate,
- *     empty business account.
+ * Provider-neutral. Every label on the site says "Background"; the provider
+ * (RentID, FL DMV / FLHSMV license check, Other) is only a field on the entry.
+ * One entry can hold several files (documents, category "screening", team only).
  *
- * So a report reaches the profile two ways:
- *   1. Staff: Screening tab → Attach RentID Report (screenshot or PDF of the
- *      portal result, the order number, the summary; paste the portal text to
- *      fill it in).
- *   2. FLEET: POST /api/public/fleet/rentid-report (receipt as soon as it
- *      arrives = "Ordered"; result + file later = "Reported"). Off until the
- *      Owner turns on "RentID Reports (FLEET)" in Automations.
+ * RentID specifics (checked Nov 21, 2026), kept in the provider helpers below:
+ *   - No usable API or webhooks (the Enterprise API is sales-only).
+ *   - Receipts to team@ from noreply@verify.rentid.io, "Your receipt from
+ *     Rentid, Inc. Order #INV-XXXXXXXX": order, renter name, products. NO result.
+ *   - Results live in the portal at rent-id.io/rentid (team@ login, emailed
+ *     code), one page per order: rent-id.io/rentid/req_<id>_j<order lowercase>,
+ *     plus a PDF certificate. Criminal cases list case number, internal id,
+ *     charges, degree, offense/file dates, disposition, court/county (no name
+ *     or DOB); the same case often appears twice from two sources (dedupeCases).
+ *     app.rentid.io is a separate, empty business account.
  *
- * A report is a record, never a decision: nothing here writes
- * background_check_status, mvr_status, insurance or any verified/approved
- * field. Staff still decide.
+ * An entry is a record, never a decision: nothing here writes
+ * background_check_status, mvr_status, license or insurance verification, or
+ * any approved/verified field. Staff still decide.
  */
 
-export const RENTID_LICENSE_STATUSES = [
+export const BACKGROUND_PROVIDERS = ["rentid", "fl_dmv", "other"] as const;
+export type BackgroundProvider = (typeof BACKGROUND_PROVIDERS)[number];
+export const PROVIDER_LABELS: Record<BackgroundProvider, string> = {
+  rentid: "RentID",
+  fl_dmv: "FL DMV (FLHSMV License Check)",
+  other: "Other",
+};
+
+export const BACKGROUND_REPORT_TYPES = ["background_screening", "dmv_license_check", "other"] as const;
+export type BackgroundReportType = (typeof BACKGROUND_REPORT_TYPES)[number];
+export const REPORT_TYPE_LABELS: Record<BackgroundReportType, string> = {
+  background_screening: "Background Screening",
+  dmv_license_check: "DMV License Check",
+  other: "Other",
+};
+export const DEFAULT_REPORT_TYPE: Record<BackgroundProvider, BackgroundReportType> = {
+  rentid: "background_screening",
+  fl_dmv: "dmv_license_check",
+  other: "other",
+};
+
+export const MAX_FILES_PER_REPORT = 10;
+
+export const LICENSE_STATUSES = [
   "active",
   "suspended",
   "revoked",
@@ -42,20 +59,20 @@ export const RENTID_LICENSE_STATUSES = [
   "restricted",
   "unavailable",
 ] as const;
-export type RentidLicenseStatus = (typeof RENTID_LICENSE_STATUSES)[number];
+export type LicenseStatus = (typeof LICENSE_STATUSES)[number];
 
-export const RENTID_CRIMINAL_RESULTS = ["not_detected", "detected", "unavailable"] as const;
-export type RentidCriminalResult = (typeof RENTID_CRIMINAL_RESULTS)[number];
+export const CRIMINAL_RESULTS = ["not_detected", "detected", "unavailable"] as const;
+export type CriminalResult = (typeof CRIMINAL_RESULTS)[number];
 
-export const RENTID_IDENTITY_RESULTS = ["approved", "failed", "pending", "unavailable"] as const;
-export type RentidIdentityResult = (typeof RENTID_IDENTITY_RESULTS)[number];
+export const IDENTITY_RESULTS = ["approved", "failed", "pending", "unavailable"] as const;
+export type IdentityResult = (typeof IDENTITY_RESULTS)[number];
 
-export const RENTID_REPORT_STATUSES = ["ordered", "reported"] as const;
-export type RentidReportStatus = (typeof RENTID_REPORT_STATUSES)[number];
+export const BACKGROUND_REPORT_STATUSES = ["ordered", "reported"] as const;
+export type BackgroundReportStatus = (typeof BACKGROUND_REPORT_STATUSES)[number];
 
-export const RENTID_MAX_CASES = 200;
+export const MAX_CASES = 200;
 
-export type RentidCase = {
+export type CriminalCase = {
   case_number: string | null;
   /** Other numbers for the same case from another source (AOC vs Clerk format). */
   alt_case_numbers?: string[];
@@ -69,24 +86,31 @@ export type RentidCase = {
   jurisdiction: string | null;
 };
 
-export type RentidReport = {
+export type BackgroundReportFile = { document_id: string; name: string | null; url: string | null; mime: string | null };
+
+export type BackgroundReport = {
   id: string;
   application_id: string;
-  order_id: string;
+  provider: BackgroundProvider;
+  /** Free-text provider name when provider is "other". */
+  provider_name: string | null;
+  report_type: BackgroundReportType;
+  /** Order / reference number. RentID: INV-… or the portal order. Optional for other providers. */
+  reference: string | null;
   /** The portal report page id, e.g. req_1793719376790_jn4khlc48 (rent-id.io/rentid/<ref>). */
   report_ref: string | null;
-  status: RentidReportStatus;
+  status: BackgroundReportStatus;
   renter_name: string | null;
   products: string[];
   ordered_at: string | null;
   checked_at: string | null;
-  license_status: RentidLicenseStatus | null;
+  license_status: LicenseStatus | null;
   license_state: string | null;
-  criminal_record: RentidCriminalResult | null;
+  criminal_record: CriminalResult | null;
   criminal_case_count: number | null;
-  criminal_cases: RentidCase[];
-  identity_result: RentidIdentityResult | null;
-  document_id: string | null;
+  criminal_cases: CriminalCase[];
+  identity_result: IdentityResult | null;
+  document_ids: string[];
   source: "staff" | "fleet";
   recorded_by_label: string | null;
   note: string | null;
@@ -110,7 +134,7 @@ export function orderKey(orderId: string): string {
   return orderId.toUpperCase().replace(/^INV-/, "");
 }
 
-const LICENSE_ALIASES: Record<string, RentidLicenseStatus> = {
+const LICENSE_ALIASES: Record<string, LicenseStatus> = {
   active: "active", valid: "active",
   suspended: "suspended", suspension: "suspended",
   revoked: "revoked",
@@ -121,28 +145,28 @@ const LICENSE_ALIASES: Record<string, RentidLicenseStatus> = {
   restricted: "restricted",
   unavailable: "unavailable", not_available: "unavailable", unsupported_state: "unavailable", not_supported: "unavailable",
 };
-export function normalizeLicenseStatus(v: unknown): RentidLicenseStatus | null | undefined {
+export function normalizeLicenseStatus(v: unknown): LicenseStatus | null | undefined {
   if (v == null || v === "") return null;
   return LICENSE_ALIASES[key(v)];
 }
 
-const CRIMINAL_ALIASES: Record<string, RentidCriminalResult> = {
+const CRIMINAL_ALIASES: Record<string, CriminalResult> = {
   not_detected: "not_detected", none: "not_detected", clear: "not_detected", no_records: "not_detected", passed: "not_detected",
   detected: "detected", flagged: "detected", caution: "detected", criminal_activity_detected: "detected", caution_criminal_activity_detected: "detected",
   unavailable: "unavailable", not_available: "unavailable",
 };
-export function normalizeCriminalResult(v: unknown): RentidCriminalResult | null | undefined {
+export function normalizeCriminalResult(v: unknown): CriminalResult | null | undefined {
   if (v == null || v === "") return null;
   return CRIMINAL_ALIASES[key(v)];
 }
 
-const IDENTITY_ALIASES: Record<string, RentidIdentityResult> = {
+const IDENTITY_ALIASES: Record<string, IdentityResult> = {
   approved: "approved", passed: "approved", verified: "approved",
   failed: "failed", rejected: "failed", action_required: "failed",
   pending: "pending", in_progress: "pending",
   unavailable: "unavailable",
 };
-export function normalizeIdentityResult(v: unknown): RentidIdentityResult | null | undefined {
+export function normalizeIdentityResult(v: unknown): IdentityResult | null | undefined {
   if (v == null || v === "") return null;
   return IDENTITY_ALIASES[key(v)];
 }
@@ -159,15 +183,15 @@ const clip = (v: unknown, max: number): string | null => {
 };
 
 /** Validate/clean a case list from FLEET or the form. Returns null when it is not a list. */
-export function cleanCases(v: unknown): RentidCase[] | null {
+export function cleanCases(v: unknown): CriminalCase[] | null {
   if (v == null) return [];
   if (!Array.isArray(v)) return null;
-  const out: RentidCase[] = [];
-  for (const raw of v.slice(0, RENTID_MAX_CASES)) {
+  const out: CriminalCase[] = [];
+  for (const raw of v.slice(0, MAX_CASES)) {
     if (!raw || typeof raw !== "object") continue;
     const r = raw as Record<string, unknown>;
     const alt = Array.isArray(r.alt_case_numbers) ? (r.alt_case_numbers as unknown[]).map((x) => clip(x, 80)).filter((x): x is string => Boolean(x)).slice(0, 5) : [];
-    const c: RentidCase = {
+    const c: CriminalCase = {
       case_number: clip(r.case_number ?? r.caseNumber, 80),
       ...(alt.length ? { alt_case_numbers: alt } : {}),
       internal_id: clip(r.internal_id ?? r.internalId, 80),
@@ -212,15 +236,15 @@ const norm = (v: string | null | undefined) => String(v ?? "").toLowerCase().rep
  * kept, empty fields are filled from the second, and the second number is
  * kept under alt_case_numbers. Order is preserved.
  */
-export function dedupeCases(cases: RentidCase[]): RentidCase[] {
-  const out: RentidCase[] = [];
-  const byKey = new Map<string, RentidCase>();
+export function dedupeCases(cases: CriminalCase[]): CriminalCase[] {
+  const out: CriminalCase[] = [];
+  const byKey = new Map<string, CriminalCase>();
   for (const c of cases) {
     const numKey = caseNumberKey(c.case_number);
     const k = numKey ? `n:${numKey}` : c.date && c.offense ? `d:${norm(c.date)}|${norm(c.offense)}` : null;
     const hit = k ? byKey.get(k) : undefined;
     if (!hit) {
-      const copy: RentidCase = { ...c, ...(c.alt_case_numbers ? { alt_case_numbers: [...c.alt_case_numbers] } : {}) };
+      const copy: CriminalCase = { ...c, ...(c.alt_case_numbers ? { alt_case_numbers: [...c.alt_case_numbers] } : {}) };
       out.push(copy);
       if (k) byKey.set(k, copy);
       continue;
@@ -240,8 +264,8 @@ export function dedupeCases(cases: RentidCase[]): RentidCase[] {
  * Staff's "Cases (One Per Line)" box: `Date | Offense | Level | Disposition | County | Case #`.
  * Missing trailing fields are fine; a line with no pipes is the offense.
  */
-export function parseCaseLines(text: string): RentidCase[] {
-  const out: RentidCase[] = [];
+export function parseCaseLines(text: string): CriminalCase[] {
+  const out: CriminalCase[] = [];
   for (const line of String(text ?? "").split(/\r?\n/)) {
     const t = line.trim();
     if (!t) continue;
@@ -249,12 +273,12 @@ export function parseCaseLines(text: string): RentidCase[] {
     const [date, offense, level, disposition, jurisdiction, case_number] = parts;
     const c = cleanCases([{ date, offense, level, disposition, jurisdiction, case_number }]);
     if (c && c[0]) out.push(c[0]);
-    if (out.length >= RENTID_MAX_CASES) break;
+    if (out.length >= MAX_CASES) break;
   }
   return dedupeCases(out);
 }
 
-export function formatCaseLines(cases: RentidCase[]): string {
+export function formatCaseLines(cases: CriminalCase[]): string {
   return cases
     .map((c) => [c.date, c.offense, c.level, c.disposition, c.jurisdiction, c.case_number].map((x) => x ?? "").join(" | ").replace(/(\s\|\s)+$/, ""))
     .join("\n");
@@ -262,11 +286,11 @@ export function formatCaseLines(cases: RentidCase[]): string {
 
 export type ParsedReportText = {
   order_id: string | null;
-  license_status: RentidLicenseStatus | null;
+  license_status: LicenseStatus | null;
   license_state: string | null;
-  criminal_record: RentidCriminalResult | null;
+  criminal_record: CriminalResult | null;
   criminal_case_count: number | null;
-  identity_result: RentidIdentityResult | null;
+  identity_result: IdentityResult | null;
   renter_name: string | null;
   report_ref: string | null;
 };
@@ -367,24 +391,24 @@ export function matchApplicantByName(name: string, candidates: NameCandidate[]):
   return { kind: "none" };
 }
 
-const LICENSE_LABELS: Record<RentidLicenseStatus, string> = {
+const LICENSE_LABELS: Record<LicenseStatus, string> = {
   active: "Active", suspended: "Suspended", revoked: "Revoked", expired: "Expired", inactive: "Inactive",
   invalid: "Invalid", provisional: "Provisional", restricted: "Restricted", unavailable: "Not Available For This State",
 };
-export const licenseStatusLabel = (s: RentidLicenseStatus | null) => (s ? LICENSE_LABELS[s] : "Not Recorded");
+export const licenseStatusLabel = (s: LicenseStatus | null) => (s ? LICENSE_LABELS[s] : "Not Recorded");
 
-export function criminalRecordLabel(r: RentidCriminalResult | null, count: number | null): string {
+export function criminalRecordLabel(r: CriminalResult | null, count: number | null): string {
   if (r === "detected") return count != null ? `Detected (${count} ${count === 1 ? "Case" : "Cases"})` : "Detected";
   if (r === "not_detected") return "Not Detected";
   if (r === "unavailable") return "Not Available";
   return "Not Recorded";
 }
 
-const IDENTITY_LABELS: Record<RentidIdentityResult, string> = { approved: "Approved", failed: "Failed", pending: "Pending", unavailable: "Not Available" };
-export const identityResultLabel = (r: RentidIdentityResult | null) => (r ? IDENTITY_LABELS[r] : "Not Recorded");
+const IDENTITY_LABELS: Record<IdentityResult, string> = { approved: "Approved", failed: "Failed", pending: "Pending", unavailable: "Not Available" };
+export const identityResultLabel = (r: IdentityResult | null) => (r ? IDENTITY_LABELS[r] : "Not Recorded");
 
 /** Tone for a pill. A report never turns anything green on its own elsewhere; this is display only. */
-export function reportTone(r: Pick<RentidReport, "status" | "license_status" | "criminal_record">): "red" | "yellow" | "green" | "gray" {
+export function reportTone(r: Pick<BackgroundReport, "status" | "license_status" | "criminal_record">): "red" | "yellow" | "green" | "gray" {
   if (r.status === "ordered") return "gray";
   const bad = new Set(["suspended", "revoked", "expired", "inactive", "invalid"]);
   if ((r.license_status && bad.has(r.license_status)) || r.criminal_record === "detected") return "red";
@@ -393,11 +417,26 @@ export function reportTone(r: Pick<RentidReport, "status" | "license_status" | "
 }
 
 /** Has enough to be "Reported" (a result), rather than just "Ordered" (receipt only). */
-export function hasResult(r: { license_status?: unknown; criminal_record?: unknown; identity_result?: unknown; document_id?: unknown }): boolean {
-  return Boolean(r.license_status || r.criminal_record || r.identity_result || r.document_id);
+export function hasResult(r: { license_status?: unknown; criminal_record?: unknown; identity_result?: unknown; document_ids?: unknown[] }): boolean {
+  return Boolean(r.license_status || r.criminal_record || r.identity_result || (r.document_ids && r.document_ids.length));
 }
 
-export type RentidReportWithFile = RentidReport & { file: { name: string | null; url: string | null; mime: string | null } | null };
+/** A free-text reference for non-RentID providers: 1–60 printable characters, or null. */
+export function cleanReference(v: unknown): string | null | undefined {
+  if (v == null || v === "") return null;
+  const s = String(v).replace(/\s+/g, " ").trim();
+  if (!s) return null;
+  if (s.length > 60 || /[\u0000-\u001f]/.test(s)) return undefined;
+  return s;
+}
+
+/** Provider-neutral title for an entry, e.g. "Background Screening · RentID". */
+export function reportTitle(r: Pick<BackgroundReport, "report_type" | "provider" | "provider_name">): string {
+  const who = r.provider === "other" ? (r.provider_name || "Other") : PROVIDER_LABELS[r.provider];
+  return `${REPORT_TYPE_LABELS[r.report_type]} · ${who}`;
+}
+
+export type BackgroundReportWithFiles = BackgroundReport & { files: BackgroundReportFile[] };
 
 /** rent-id.io report pages: https://rent-id.io/rentid/req_<digits>_j<order lowercase>. */
 export const RENTID_REPORT_REF_RE = /^req_\d{6,20}_j[a-z0-9]{6,16}$/;
