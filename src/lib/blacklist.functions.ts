@@ -58,6 +58,16 @@ export const addToBlacklist = createServerFn({ method: "POST" })
     return core.addToBlacklist(admin, actor, data, audit);
   });
 
+export const editBlacklistNote = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid(), note: z.string().max(2000) }).parse(d))
+  .handler(async ({ data, context }): Promise<{ entry: BlacklistEntry; notes: string }> => {
+    const { requireManager } = await import("@/lib/roles.server");
+    const actor = await requireManager(context.userId);
+    const { admin, audit, core } = await deps();
+    return core.editBlacklistNote(admin, actor, data, audit);
+  });
+
 export const removeFromBlacklist = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid(), reason: z.string().max(1000) }).parse(d))
