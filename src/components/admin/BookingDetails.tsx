@@ -142,7 +142,7 @@ export function BookingDetails({
       }}
     >
       <div
-        className="min-w-0 w-full max-w-5xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]"
+        className="min-w-0 w-full max-w-6xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="bg-white border-b border-[#EDEDF0] px-5 sm:px-6 pt-4 pb-0">

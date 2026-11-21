@@ -196,8 +196,8 @@ const pairs = [
     "bookings pager at lg",
   ],
   [
-    "bg-[#FAFAFB] w-full max-w-5xl rounded-none sm:rounded-2xl min-h-full sm:min-h-0 sm:my-2 overflow-hidden shadow-2xl",
-    "min-w-0 w-full max-w-5xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]",
+    "bg-[#FAFAFB] w-full max-w-6xl rounded-none sm:rounded-2xl min-h-full sm:min-h-0 sm:my-2 overflow-hidden shadow-2xl",
+    "min-w-0 w-full max-w-6xl overflow-hidden rounded-none bg-[#FAFAFB] shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-2xl min-h-full lg:min-w-[auto]",
     "booking drawer at lg",
   ],
   [
@@ -253,6 +253,6 @@ check(bookings.includes("listBookings"), "bookings still loads through the list 
 
 const payments = details.slice(details.indexOf('title="Payments"'), details.indexOf("</table>") + 8);
 check(payments.includes("overflow-x-auto") && payments.includes("min-w-[36rem]") && payments.includes('data-testid="booking-payments"'), "the payments table scrolls inside the booking");
-check(details.includes("min-w-0 w-full max-w-5xl"), "the booking drawer cannot grow past the screen");
+check(details.includes("min-w-0 w-full max-w-6xl"), "the booking drawer cannot grow past the screen");
 
 console.log(`${checks} overview and bookings mobile checks passed`);
