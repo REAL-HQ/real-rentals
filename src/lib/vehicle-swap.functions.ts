@@ -1,123 +1,191 @@
-import { createMiddleware, createServerFn } from "@tanstack/react-start";
+// Back office: Swap Vehicle on an active rental (Bookings → the rental →
+// Vehicle → Swap Vehicle). Manager or Owner for every write; staff read the
+// history. Rules: vehicle-swap.ts; server logic: vehicle-swap.server.ts.
+//
+// Off until the migration (supabase/migrations/20261120171500_rental_vehicle_swaps.sql)
+// is installed AND app_settings.vehicle_swap.enabled is true: each handler
+// checks the gate before anything else and refuses with nothing written.
+// This replaces the M2 packet's hard-coded SWAP_ENABLED = false.
+import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { SWAP_ENABLED } from "@/lib/record-numbers";
+import { FUEL_LEVELS } from "@/lib/pickup-handover";
+import { OUTGOING_STATUSES, SWAP_INSURANCE_DOC_KINDS, SWAP_REASON_CODES, type SwapGate } from "@/lib/vehicle-swap";
+import type { SwapHistoryEntry } from "@/lib/vehicle-swap.server";
 
-const swapInput = z.object({
-  operationId: z.string().uuid(),
-  rentalId: z.string().uuid(),
-  expectedAssignmentId: z.string().uuid(),
-  replacementVehicleId: z.string().uuid(),
-  effectiveAt: z.string().datetime({ offset: true }),
-  returnMileage: z.number().int().min(0).max(2_000_000).nullable(),
-  pickupMileage: z.number().int().min(0).max(2_000_000).nullable(),
-  reason: z.string().min(5).max(500),
-  agreementEvidenceId: z.string().uuid(),
-});
+export type { SwapHistoryEntry };
 
-export type SwapResult = {
-  contract: "vehicle-swap-v1";
-  rentalId: string;
-  operationId: string;
-  closedAssignmentId: string;
-  replacementAssignmentId: string;
-  swapNumber: number;
-  outgoingStatus: "maintenance";
-  billing: "unchanged";
-  recovered: boolean;
-};
+const Terms = z
+  .object({
+    damageWaiver: z.enum(["accepted", "declined"]).optional(),
+    paymentSchedule: z.enum(["weekly", "every_4_weeks"]).optional(),
+    paymentMethod: z.string().max(40).optional(),
+    vehicleOwner: z.string().trim().max(160).optional(),
+  })
+  .strict()
+  .optional();
+const termsRaw = (t: z.infer<typeof Terms>) =>
+  t
+    ? { damage_waiver: t.damageWaiver, payment_schedule: t.paymentSchedule, payment_method: t.paymentMethod || undefined, vehicle_owner: t.vehicleOwner || undefined }
+    : null;
 
-const vehicleSwapGate = createMiddleware({ type: "function" }).server(async ({ next }) => {
-  if (!SWAP_ENABLED) throw new Error("Vehicle swap is disabled pending installation and acceptance");
-  return next();
-});
+const PreviewInput = z.object({ rentalId: z.string().uuid(), toVehicleId: z.string().uuid(), terms: Terms }).strict();
+const SendInput = PreviewInput.extend({
+  reasonCode: z.enum(SWAP_REASON_CODES),
+  reason: z.string().trim().min(5).max(1000),
+  fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+  companyAck: z.boolean().optional(),
+  idempotencyKey: z.string().min(8).max(120),
+}).strict();
+const CompleteInput = z
+  .object({
+    swapId: z.string().uuid(),
+    fromVehicleStatus: z.enum(OUTGOING_STATUSES),
+    returnMiles: z.number().int().min(0).max(1_999_999),
+    pickupMiles: z.number().int().min(0).max(1_999_999),
+    returnFuel: z.enum(FUEL_LEVELS),
+    pickupFuel: z.enum(FUEL_LEVELS),
+  })
+  .strict();
+const CancelInput = z.object({ swapId: z.string().uuid(), reason: z.string().trim().min(5).max(500) }).strict();
 
-/** Manager-only. The RPC is not called while SWAP_ENABLED is false. */
-export const swapRentalVehicle = createServerFn({ method: "POST" })
-  .middleware([vehicleSwapGate, requireSupabaseAuth])
-  .inputValidator((d: unknown) => swapInput.parse(d))
+async function manager(userId: string) {
+  const { requireTier } = await import("@/lib/roles.server");
+  return requireTier(userId, "manager");
+}
+async function admin() {
+  return (await import("@/integrations/supabase/client.server")).supabaseAdmin;
+}
+const unwrap = (r: { status: number; body: Record<string, unknown> }) => r.body;
+
+/** Gate + everything the Swap Vehicle dialog needs. Read-only. */
+export const getSwapOptions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ rentalId: z.string().uuid() }).strict().parse(d))
   .handler(async ({ data, context }) => {
-    if (!SWAP_ENABLED) throw new Error("Vehicle swap is disabled pending installation and acceptance");
-    const { requireManager } = await import("@/lib/roles.server");
-    await requireManager(context.userId);
-    const { data: result, error } = await (context.supabase as any).rpc("swap_rental_vehicle_tx", {
-      _operation_id: data.operationId,
-      _rental_id: data.rentalId,
-      _expected_assignment_id: data.expectedAssignmentId,
-      _replacement_vehicle_id: data.replacementVehicleId,
-      _effective_at: data.effectiveAt,
-      _return_mileage: data.returnMileage,
-      _pickup_mileage: data.pickupMileage,
-      _reason: data.reason,
-      _agreement_evidence_id: data.agreementEvidenceId,
-    });
-    if (error) throw new Error(error.message);
-    const parsed = z.object({
-      contract: z.literal("vehicle-swap-v1"),
-      rentalId: z.string().uuid(),
-      operationId: z.string().uuid(),
-      closedAssignmentId: z.string().uuid(),
-      replacementAssignmentId: z.string().uuid(),
-      swapNumber: z.number().int().positive(),
-      outgoingStatus: z.literal("maintenance"),
-      billing: z.literal("unchanged"),
-      recovered: z.boolean(),
-    }).parse(result);
-    if (parsed.rentalId !== data.rentalId || parsed.operationId !== data.operationId) {
-      throw new Error("Swap response binding mismatch; reconcile the original operation");
-    }
-    return parsed;
+    await manager(context.userId);
+    const { swapOptions } = await import("@/lib/vehicle-swap.server");
+    return unwrap(await swapOptions(await admin(), data.rentalId)) as { ok: boolean; enabled?: boolean; gate?: SwapGate; error?: string } & Record<string, any>;
   });
 
-export type AssignmentHistoryEntry = {
-  id: string;
-  vehicleId: string;
-  vehicle: string;
-  start: string | null;
-  end: string | null;
-  mileage: number | null;
-  swapNumber: number | null;
-  reason: string | null;
-  status: string | null;
-};
-
-const historyInput = z.object({
-  rentalId: z.string().uuid().nullable().optional(),
-  vehicleId: z.string().uuid().nullable().optional(),
-}).refine((d) => Boolean(d.rentalId || d.vehicleId), { message: "A rental or a vehicle is required" });
-
-function historyMissing(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false;
-  const text = `${error.code ?? ""} ${error.message ?? ""}`;
-  return /PGRST202|PGRST205|does not exist|schema cache|Could not find the function/i.test(text);
-}
-
-/**
- * Read-only. Today's database has no assignment tables; a missing function
- * returns an empty list instead of an error. No swap RPC is involved.
- */
-export const listAssignmentHistory = createServerFn({ method: "POST" })
+/** Exact swap agreement the renter would get (PDF + fingerprint). Read-only. */
+export const previewSwapVehicle = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => historyInput.parse(d))
-  .handler(async ({ data, context }): Promise<{ ready: boolean; entries: AssignmentHistoryEntry[] }> => {
-    const { requireStaff } = await import("@/lib/roles.server");
-    await requireStaff(context.userId);
-    const { data: rows, error } = await (context.supabase as any).rpc("list_assignment_history_v1", {
-      _rental: data.rentalId ?? null,
-      _vehicle: data.vehicleId ?? null,
-    });
-    if (historyMissing(error)) return { ready: false, entries: [] };
-    if (error) throw new Error(error.message);
-    const entries = z.array(z.object({
-      id: z.string().uuid(),
-      vehicleId: z.string().uuid(),
-      vehicle: z.string(),
-      start: z.string().nullable(),
-      end: z.string().nullable(),
-      mileage: z.number().nullable(),
-      swapNumber: z.number().int().positive().nullable(),
-      reason: z.string().nullable(),
-      status: z.string().nullable(),
-    })).parse(rows ?? []);
-    return { ready: true, entries };
+  .inputValidator((d: unknown) => PreviewInput.parse(d))
+  .handler(async ({ data, context }) => {
+    await manager(context.userId);
+    const { previewSwap } = await import("@/lib/vehicle-swap.server");
+    return unwrap(await previewSwap(await admin(), { rentalId: data.rentalId, toVehicleId: data.toVehicleId, terms: termsRaw(data.terms) })) as Record<string, any>;
+  });
+
+/** Stores the swap and sends the swap agreement for e-signature. */
+export const sendSwapVehicleAgreement = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => SendInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await manager(context.userId);
+    const { sendSwapAgreement } = await import("@/lib/vehicle-swap.server");
+    const { logAudit } = await import("@/lib/audit.server");
+    return unwrap(
+      await sendSwapAgreement(
+        await admin(),
+        {
+          rentalId: data.rentalId,
+          toVehicleId: data.toVehicleId,
+          terms: termsRaw(data.terms),
+          reasonCode: data.reasonCode,
+          reason: data.reason,
+          fingerprint: data.fingerprint,
+          companyAck: data.companyAck,
+          idempotencyKey: data.idempotencyKey,
+          actorUserId: context.userId,
+          actorLabel: `${actor.email || "Staff"} (staff)`,
+        },
+        { audit: (e) => logAudit(actor, e) },
+      ),
+    ) as Record<string, any>;
+  });
+
+/** Handover: the rental moves to the replacement car (complete_rental_vehicle_swap_tx). */
+export const completeSwapVehicle = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => CompleteInput.parse(d))
+  .handler(async ({ data, context }) => {
+    await manager(context.userId);
+    const { completeSwap } = await import("@/lib/vehicle-swap.server");
+    const { swapId, ...handover } = data;
+    return unwrap(await completeSwap(await admin(), { swapId, handover, actorUserId: context.userId })) as Record<string, any>;
+  });
+
+/** Cancels an open swap; an unsigned swap agreement is voided through esign. */
+export const cancelSwapVehicle = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => CancelInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await manager(context.userId);
+    const { cancelSwap } = await import("@/lib/vehicle-swap.server");
+    const { logAudit } = await import("@/lib/audit.server");
+    return unwrap(await cancelSwap(await admin(), { swapId: data.swapId, reason: data.reason, actorUserId: context.userId, actorLabel: `${actor.email || "Staff"} (staff)` }, { audit: (e) => logAudit(actor, e) })) as Record<string, any>;
+  });
+
+/** Swap history for a rental or a vehicle. Staff read; empty until installed. */
+export const listVehicleSwaps = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({ rentalId: z.string().uuid().nullable().optional(), vehicleId: z.string().uuid().nullable().optional() })
+      .strict()
+      .refine((v) => Boolean(v.rentalId || v.vehicleId), "rentalId or vehicleId is required")
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { requireTier } = await import("@/lib/roles.server");
+    await requireTier(context.userId, "coordinator");
+    const { listSwaps } = await import("@/lib/vehicle-swap.server");
+    return listSwaps(await admin(), { rentalId: data.rentalId ?? null, vehicleId: data.vehicleId ?? null });
+  });
+
+const InsuranceDocInput = z
+  .object({
+    swapId: z.string().uuid(),
+    kind: z.enum(SWAP_INSURANCE_DOC_KINDS),
+    path: z.string().trim().min(1).max(400),
+    fileName: z.string().trim().max(200).nullish(),
+    mimeType: z.string().trim().max(120).nullish(),
+    sizeBytes: z.number().int().nonnegative().nullish(),
+    expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  })
+  .strict();
+
+/** New Vehicle Insurance Uploaded: documents tied to a swap, and whether the item is met. Staff read. */
+export const getSwapInsurance = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ swapId: z.string().uuid() }).strict().parse(d))
+  .handler(async ({ data, context }) => {
+    await manager(context.userId);
+    const { swapInsuranceStatus } = await import("@/lib/vehicle-swap.server");
+    return swapInsuranceStatus(await admin(), data.swapId);
+  });
+
+/** Files an uploaded ID card, declarations page or endorsement against the swap's new vehicle. Staff only. */
+export const addSwapInsuranceDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => InsuranceDocInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const actor = await manager(context.userId);
+    const { addSwapInsuranceDoc } = await import("@/lib/vehicle-swap.server");
+    const { logAudit } = await import("@/lib/audit.server");
+    return unwrap(await addSwapInsuranceDoc(await admin(), { ...data, actorUserId: context.userId }, { audit: (e) => logAudit(actor, e) })) as Record<string, any>;
+  });
+
+/** Owner only: handover may proceed with no insurance document, with a reason on record. */
+export const overrideSwapInsuranceCheck = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ swapId: z.string().uuid(), reason: z.string().trim().min(10).max(500) }).strict().parse(d))
+  .handler(async ({ data, context }) => {
+    const { requireOwner } = await import("@/lib/roles.server");
+    const actor = await requireOwner(context.userId);
+    const { overrideSwapInsurance } = await import("@/lib/vehicle-swap.server");
+    const { logAudit } = await import("@/lib/audit.server");
+    return unwrap(await overrideSwapInsurance(await admin(), { swapId: data.swapId, reason: data.reason, actorUserId: context.userId, actorLabel: `${actor.email || "Owner"} (owner)` }, { audit: (e) => logAudit(actor, e) })) as Record<string, any>;
   });

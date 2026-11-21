@@ -1,5 +1,6 @@
--- LOCAL POINTER. Not a migration. Not installed. Do not run this file.
+-- LOCAL POINTER. Not a migration. Do not run this file.
 --
--- The vehicle swap SQL has one source: proposed/m2-packet/20.sql
--- (HOSTED-INSTALL step 26). This file used to carry a stale copy.
--- It is a pointer now, so the two files cannot drift.
+-- The M2 packet swap (proposed/m2-packet/19b.sql, 19c-agreement-contract.sql,
+-- 20.sql) was never installed and is superseded by the e-signed vehicle swap:
+--   supabase/migrations/20261120171500_rental_vehicle_swaps.sql
+-- (src/lib/vehicle-swap.ts, docs/vehicle-swap-esign.md).

@@ -104,6 +104,19 @@ export async function completeSigning(
     console.error("[esign] FLEET notify failed", e);
   }
   if (isAmendment) {
+    const kind = (ag as any)?.metadata?.amendment?.kind;
+    if (kind === "vehicle_swap") {
+      // A vehicle swap agreement: mark the swap signed so staff can complete
+      // the handover. The vehicle change itself is a separate staff step.
+      // Never fails the signature.
+      try {
+        const { onSwapSigned } = await import("@/lib/vehicle-swap.server");
+        await onSwapSigned(admin, args.id);
+      } catch (e) {
+        console.error("[esign] vehicle swap signed hook failed", e);
+      }
+      return { result: "won", archived };
+    }
     // Fix the date the new rate starts (never before this signature), apply
     // it when due, and tell FLEET. Never fails the signature.
     try {
@@ -190,7 +203,7 @@ async function archiveCompletedV1(admin: any, ag: any, actor: Actor | null): Pro
           driver_id: ag.application_id,
           kind: "rental_agreement",
           category: "agreement",
-          label: ag.source === "rental" ? "Signed rental agreement" : ag.title,
+          label: signedDocumentLabel(ag),
           storage_bucket: "rental-agreements",
           storage_path: path,
           visibility: ["driver", "admin"],
@@ -254,6 +267,17 @@ async function archiveCompletedV1(admin: any, ag: any, actor: Actor | null): Pro
   }
 }
 
+/**
+ * Label of the archived signed PDF. A vehicle swap agreement is filed the way
+ * Agreement Filing files a paper swap: "Rental Agreement — Swap (follows …)"
+ * (metadata.amendment.document_label, set at send by vehicle-swap.server.ts).
+ */
+function signedDocumentLabel(ag: any): string {
+  const swapLabel = (ag?.metadata as any)?.amendment?.kind === "vehicle_swap" ? (ag.metadata as any).amendment.document_label : null;
+  if (typeof swapLabel === "string" && /^Rental Agreement — Swap/.test(swapLabel)) return swapLabel;
+  return ag.source === "rental" ? "Signed rental agreement" : ag.title;
+}
+
 export async function archiveDocument(admin: any, ag: any, actor: Actor | null): Promise<boolean> {
   // completed-v1 layout is off until Dolmar turns the flag on. Today's archives
   // stay at {applicationId}/agreement-{id}.pdf on the existing bucket.
@@ -301,7 +325,7 @@ export async function archiveDocument(admin: any, ag: any, actor: Actor | null):
           driver_id: ag.application_id,
           kind: "rental_agreement",
           category: "agreement",
-          label: ag.source === "rental" ? "Signed rental agreement" : ag.title,
+          label: signedDocumentLabel(ag),
           storage_bucket: "rental-agreements",
           storage_path: path,
           visibility: ["driver", "admin"],

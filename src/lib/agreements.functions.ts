@@ -16,7 +16,6 @@ import { applyPrep, PrepSchema, type AgreementDetails, type AgreementPrep } from
 import { recordFillsFromDetails, type AppliedFill } from "@/lib/agreement-fills";
 import { STALE_PREVIEW_REFUSAL } from "@/lib/agreement-send-refusal";
 import { AdoptionSchema, adoptionProblems } from "@/lib/signature-adoption";
-import { SWAP_ENABLED } from "@/lib/record-numbers";
 import { publicAppOrigin } from "@/lib/public-app-url";
 
 const previewInput = (d: unknown): { previewDriverId?: string } => {
@@ -128,6 +127,7 @@ async function buildMergeData(
   vehicleId?: string,
   prep?: AgreementPrep,
   amendmentRate?: number,
+  swap?: AgreementSwapRender,
 ): Promise<{
   data: MergeData;
   app: any;
@@ -296,9 +296,13 @@ async function buildMergeData(
   let vehicle: any = null;
   // No override: the application vehicle, exactly as before. An override is
   // accepted only when the server finds it is the active rental's current
-  // vehicle, and that is the car the agreement names.
+  // vehicle, or, for a vehicle swap agreement, the replacement car that this
+  // active rental's swap names (swapVehicleForAgreement). That is the car the
+  // agreement names.
   const namedVehicleId = vehicleId
-    ? await rentalVehicleForAgreement(admin, applicationId, vehicleId)
+    ? swap
+      ? await swapVehicleForAgreement(admin, applicationId, vehicleId, swap)
+      : await rentalVehicleForAgreement(admin, applicationId, vehicleId)
     : ((app.vehicle_id as string | null) ?? null);
   if (namedVehicleId) {
     const { data: v } = await admin
@@ -436,6 +440,36 @@ async function rentalVehicleForAgreement(admin: any, applicationId: string, vehi
     throw new Error("The agreement vehicle must be the rental's current vehicle.");
   }
   return rental.vehicle_id as string;
+}
+
+/**
+ * The only vehicle a swap agreement may name: a car other than the active
+ * rental's current one that is Available and not archived. At send the swap
+ * row must already exist (pending_signature) for this rental and car.
+ */
+async function swapVehicleForAgreement(admin: any, applicationId: string, vehicleId: string, swap: AgreementSwapRender): Promise<string> {
+  const { data: rental, error } = await admin
+    .from("rentals")
+    .select("id,vehicle_id,status")
+    .eq("application_id", applicationId)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!rental || rental.id !== swap.rentalId) throw new Error("A swap agreement needs this renter's active rental.");
+  if (rental.vehicle_id === vehicleId || rental.vehicle_id !== swap.fromVehicleId) throw new Error("The swap agreement must name a different car than the rental's current one.");
+  const { data: v, error: vErr } = await admin.from("vehicles").select("id,status,archived_at").eq("id", vehicleId).maybeSingle();
+  if (vErr) throw new Error(vErr.message);
+  if (!v || v.archived_at || v.status !== "available") throw new Error("The replacement car must be Available.");
+  if (swap.swapId) {
+    const { VEHICLE_SWAPS_TABLE } = await import("@/lib/vehicle-swap");
+    const { data: row, error: sErr } = await admin.from(VEHICLE_SWAPS_TABLE).select("id,rental_id,to_vehicle_id,from_vehicle_id,status").eq("id", swap.swapId).maybeSingle();
+    if (sErr) throw new Error(sErr.message);
+    if (!row || row.rental_id !== rental.id || row.to_vehicle_id !== vehicleId || row.from_vehicle_id !== rental.vehicle_id || row.status !== "pending_signature")
+      throw new Error("The swap agreement does not match an open swap for this rental.");
+  }
+  return vehicleId;
 }
 
 /** Title every rental agreement row carries (agreements.title column default). */
@@ -698,7 +732,12 @@ export type AgreementAmendmentRender = {
   prep?: AgreementPrep;
   /** Library template family; the amendment flow passes v1.14 (AMENDMENT_TEMPLATE_KEY). */
   templateKey?: string;
+  /** A vehicle swap agreement (vehicle-swap.server.ts): names the replacement car, same rent. */
+  swap?: AgreementSwapRender;
 };
+
+/** What a swap agreement is checked against (swapVehicleForAgreement). swapId is null for a preview. */
+export type AgreementSwapRender = { rentalId: string; swapId: string | null; fromVehicleId: string };
 
 async function prepareAgreement(admin: any, applicationId: string, prep?: AgreementPrep, templateKey?: string, vehicleId?: string, amendment?: AgreementAmendmentRender) {
   // An amendment renders only with its own forced no-fee preparation and template.
@@ -722,7 +761,7 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
   // additional drivers, the deposit on file, no Damage Waiver, weekly card autopay.
   // Never for an amendment: it carries its own no-fee preparation.
   if (!prep && !amendment && lib?.key === DEFAULT_LIBRARY_KEY) prep = await autoSendPrep(admin, applicationId);
-  const built = await buildMergeData(admin, applicationId, vehicleId, prep, amendment?.weeklyRate);
+  const built = await buildMergeData(admin, applicationId, vehicleId, prep, amendment?.weeklyRate, amendment?.swap);
   const tpl = lib ? await libraryWithDraft(admin, lib) : (saved as { body: string; meta: TemplateMeta });
   let tplBody = tpl.body;
   if (prep) {
@@ -924,10 +963,17 @@ export const previewAgreement = createServerFn({ method: "POST" })
     return finishPreview(supabaseAdmin, prep, false);
   });
 
-/** Names the rental's current vehicle. Refuses before any read while swap is off. */
-export async function previewNamedAgreement(admin: any, applicationId: string, vehicleId: string) {
-  if (!SWAP_ENABLED) throw new Error("Vehicle swap is disabled pending installation and acceptance");
-  const prep = await prepareAgreement(admin, applicationId, undefined, undefined, vehicleId);
+/**
+ * Staff preview of a vehicle swap agreement (vehicle-swap.server.ts checks the
+ * swap switch, the rental and the replacement car first). Same generation
+ * step as the send, so the fingerprint it returns is what Send must carry.
+ */
+export async function previewSwapAgreement(
+  admin: any,
+  applicationId: string,
+  render: AgreementAmendmentRender & { vehicleId: string; swap: AgreementSwapRender },
+) {
+  const prep = await prepareAgreement(admin, applicationId, undefined, undefined, render.vehicleId, render);
   return finishPreview(admin, prep, true);
 }
 
@@ -950,21 +996,20 @@ export async function issueAgreement(
     companyAck?: boolean;
     prep?: AgreementPrep;
     templateKey?: string;
-    vehicleId?: string;
     /** Updated agreement for an active rental (rental-amendment.server.ts). */
     amendment?: AgreementAmendmentRender & { vehicleId: string | null; rentalId: string; metadata: Record<string, unknown> };
   } = {},
 ): Promise<{ id: string; url: string; delivery: { email: string; sms: string; delivered: boolean } }> {
   // Same generation step as the preview — the stored text is re-rendered here
   // on the server, never taken from the browser. A vehicle override exists
-  // only while swap is on. With the flag off this is the application vehicle.
-  // An amendment names the active rental's own car (checked server-side by
-  // rentalVehicleForAgreement), whatever the swap flag says.
+  // only for an amendment: it names the active rental's own car (checked
+  // server-side by rentalVehicleForAgreement) or, for a vehicle swap, the
+  // replacement car of that rental's open swap (swapVehicleForAgreement).
   const amendment = opts.amendment;
   // An amendment never takes staff preparation from the caller (Reservation
   // Fee, deposit, edited details): it renders with its own no-fee preparation.
   if (amendment && opts.prep) throw new Error("An updated agreement for an active rental cannot carry a Reservation Fee, deposit or first payment.");
-  const vehicleOverride = amendment ? (amendment.vehicleId ?? undefined) : SWAP_ENABLED ? opts.vehicleId : undefined;
+  const vehicleOverride = amendment ? (amendment.vehicleId ?? undefined) : undefined;
   const prep = await prepareAgreement(admin, applicationId, opts.prep, opts.templateKey, vehicleOverride, amendment);
   const { data: merge, app, blockers, tpl, body } = prep;
   const lib = tpl.meta.key ? libraryTemplate(tpl.meta.key) : null;
@@ -1024,7 +1069,7 @@ export async function issueAgreement(
       metadata: amendment
         ? { ...templateEvidence(tpl.meta, prep.fingerprint, Boolean(lib)), amendment: amendment.metadata }
         : templateEvidence(tpl.meta, prep.fingerprint, Boolean(lib)),
-      ...(amendment ? { title: "Rental Agreement (Amended)", rental_id: amendment.rentalId } : {}),
+      ...(amendment ? { title: amendment.swap ? "Vehicle Swap Addendum To Rental Agreement" : "Rental Agreement (Amended)", rental_id: amendment.rentalId } : {}),
       body: numbered,
       merge_data: numberedMerge,
       status: "sent",
@@ -1055,7 +1100,7 @@ export async function issueAgreement(
   {
     const { logAudit } = await import("@/lib/audit.server");
     const actor = opts.createdBy ? await (await import("@/lib/roles.server")).getActor(opts.createdBy) : null;
-    const what = amendment ? "Updated rental agreement (amendment)" : "Rental agreement";
+    const what = amendment ? (amendment.swap ? "Vehicle swap rental agreement" : "Updated rental agreement (amendment)") : "Rental agreement";
     const meta = amendment ? { metadata: amendment.metadata } : {};
     await logAudit(actor, { action: "document.created", summary: `${what} created`, entityType: "esign_document", entityId: row.id as string, ...meta });
     await logAudit(actor, { action: "document.sent", summary: `${what} sent for signature`, entityType: "esign_document", entityId: row.id as string, ...meta });
@@ -1498,7 +1543,7 @@ async function sendSignedEmails(
   // An updated agreement for an active rental (rental-amendment.server.ts):
   // no Reservation Fee and no first-week payment link. The renter's email
   // says when the new rate starts.
-  const amendment = ((ag.metadata ?? {}) as any).amendment as { new_weekly_rate?: number; effective_date?: string } | undefined;
+  const amendment = ((ag.metadata ?? {}) as any).amendment as { new_weekly_rate?: number; effective_date?: string; kind?: string } | undefined;
   // The signed PDF rides on both emails (t445u). Archived synchronously in
   // completeSigning before this runs; null (still archiving, missing, too big)
   // sends the emails without it.
@@ -1508,10 +1553,16 @@ async function sendSignedEmails(
     const portal = await agreementPortalAccess(admin, ag.application_id as string | null);
     try {
       const { sendAgreementSignedEmail, sendAgreementSignedOpsEmail } = await import("@/lib/email.server");
-      const { data: am } = await admin.from("rental_rate_amendments").select("apply_on,new_weekly_rate").eq("agreement_id", id).maybeSingle();
-      const rate = Number(am?.new_weekly_rate ?? amendment.new_weekly_rate);
-      const on = String(am?.apply_on ?? amendment.effective_date ?? "");
-      const line = rate > 0 && on ? `Your new weekly rate of $${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })} starts ${fmtContractDate(on)}. Rent before then stays the same.` : null;
+      let line: string | null;
+      if (amendment.kind === "vehicle_swap") {
+        // A vehicle swap keeps the rent; the email only confirms the swap.
+        line = (await import("@/lib/vehicle-swap")).SWAP_SIGNED_EMAIL_LINE;
+      } else {
+        const { data: am } = await admin.from("rental_rate_amendments").select("apply_on,new_weekly_rate").eq("agreement_id", id).maybeSingle();
+        const rate = Number(am?.new_weekly_rate ?? amendment.new_weekly_rate);
+        const on = String(am?.apply_on ?? amendment.effective_date ?? "");
+        line = rate > 0 && on ? `Your new weekly rate of $${rate.toLocaleString("en-US", { maximumFractionDigits: 2 })} starts ${fmtContractDate(on)}. Rent before then stays the same.` : null;
+      }
       if (ag.signer_email) await sendAgreementSignedEmail({ to: ag.signer_email as string, firstName: merge.driver_name ?? signerName, vehicle: merge.vehicle || null, portalAccess: portal, amendmentLine: line, attachment });
       await sendAgreementSignedOpsEmail({ driverName: signerName, applicationId: ag.application_id as string, vehicle: merge.vehicle || null, amendment: true, attachment });
     } catch (e) {

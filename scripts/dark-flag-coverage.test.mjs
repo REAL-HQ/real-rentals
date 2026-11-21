@@ -25,8 +25,6 @@ const PROVEN_BEFORE_AUTH = new Set([
   "incident-charge-prep.functions.ts",
   "maintenance-due-schedule.functions.ts",
   "maintenance-due.functions.ts",
-  "replacement-agreement.functions.ts",
-  "vehicle-swap.functions.ts",
   "stalled-applications.functions.ts",
 ]);
 
@@ -67,7 +65,7 @@ const MIXED_LIVE = new Set([
 //    then the flag refuses before any database, Stripe or storage call.
 const FLAG_FIRST_IN_HANDLER = new Set([
   "application-timeline.functions.ts", "next-steps.functions.ts",
-  "accountant-export.functions.ts", "agreements.functions.ts",
+  "accountant-export.functions.ts",
   "application-status.functions.ts", "billing-health.functions.ts",
   "collections-watch.functions.ts", "deposit-ledger.functions.ts",
   "deposits-ledger.functions.ts", "driver-issues.functions.ts",

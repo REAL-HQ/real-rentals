@@ -5,8 +5,8 @@
 // infers or guesses one — not from row order, UUIDs or timestamps. Until a
 // persisted value exists, every caller shows "—".
 
-/** Swap stays off until the reviewed backend is installed and activated. */
-export const SWAP_ENABLED = false;
+// Vehicle swap is gated at runtime, not here: the migration must be installed
+// and the Owner must set app_settings.vehicle_swap.enabled (vehicle-swap.ts swapGate).
 
 export type RecordKind = "customer" | "booking" | "swap";
 const PREFIX: Record<RecordKind, string> = { customer: "C", booking: "B", swap: "S" };
