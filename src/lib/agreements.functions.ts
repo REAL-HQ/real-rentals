@@ -599,7 +599,7 @@ function templateSendRefusal(meta: TemplateMeta): string | null {
 }
 
 /**
- * The agreement new sends use when no saved template is active: v1.15
+ * The agreement new sends use when no saved template is active: v1.16
  * (Insurance Included; agreement-library.ts DEFAULT_LIBRARY_KEY). Signed
  * agreements keep the text they were signed with.
  */
@@ -730,7 +730,7 @@ export type AgreementAmendmentRender = {
   notice: string;
   /** No-fee preparation (rental-amendment.ts amendmentPrep). Forced to no Reservation Fee / no deposit here too. */
   prep?: AgreementPrep;
-  /** Library template family; the amendment flow passes v1.14 (AMENDMENT_TEMPLATE_KEY). */
+  /** Library template family; the amendment flow passes the current default (AMENDMENT_TEMPLATE_KEY). */
   templateKey?: string;
   /** A vehicle swap agreement (vehicle-swap.server.ts): names the replacement car, same rent. */
   swap?: AgreementSwapRender;
@@ -746,7 +746,7 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     prep = amendment.prep ? forceNoFee(amendment.prep) : undefined;
     templateKey = amendment.templateKey ?? templateKey;
   }
-  // No template named: a saved, active template wins; otherwise the default (v1.15).
+  // No template named: a saved, active template wins; otherwise the default (v1.16).
   let key = templateKey;
   let saved: { body: string; meta: TemplateMeta } | null = null;
   if (!key) {

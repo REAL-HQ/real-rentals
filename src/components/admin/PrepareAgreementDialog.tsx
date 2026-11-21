@@ -248,7 +248,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
       <Section title="Agreement Template">
         <label className="flex cursor-pointer items-start gap-2 rounded-md border p-2">
           <input type="radio" className="mt-0.5" checked={templateKey === ""} onChange={() => chooseTemplate("")} />
-          <span><span className="font-medium">Current Agreement In Use</span><br /><span className="text-muted-foreground">{templateKey === "" && res?.template?.label ? res.template.label : "The template Send uses today (Vehicle Rental Agreement v1.15, Insurance Included)."}</span></span>
+          <span><span className="font-medium">Current Agreement In Use</span><br /><span className="text-muted-foreground">{templateKey === "" && res?.template?.label ? res.template.label : "The template Send uses today (Vehicle Rental Agreement v1.16, Insurance Included)."}</span></span>
         </label>
         {LIBRARY.filter((t) => !t.retired).map((t) => (
           <label key={t.key} className="flex cursor-pointer items-start gap-2 rounded-md border p-2">

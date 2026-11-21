@@ -8,7 +8,7 @@ let fails = 0;
 const ok = (c: boolean, m: string) => { console.log(`${c ? "PASS" : "FAIL"} ${m}`); if (!c) fails++; };
 
 const ni = libraryTemplate("no_insurance")!, ir = libraryTemplate("insurance_required")!;
-ok(LIBRARY.length === 4 && new Set(LIBRARY.map((t) => t.key)).size === 4, "four independent template keys (v1.10, v1.10.2, v1.14, v1.15)");
+ok(LIBRARY.length === 5 && new Set(LIBRARY.map((t) => t.key)).size === 5, "five independent template keys (v1.10, v1.10.2, v1.14, v1.15, v1.16)");
 ok(acknowledgmentsOf(ni.body).length === 13, "No Insurance: 13 acknowledgments");
 ok(acknowledgmentsOf(ir.body).length === 15, "Insurance Required: 15 acknowledgments");
 ok(acknowledgmentsOf(V16_BODY).length === 13, "existing v1.6 still 13");

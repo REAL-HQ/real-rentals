@@ -88,8 +88,8 @@ const v115 = libraryTemplate("insurance_included_v115")!;
 const v115Text = plain(v115.body);
 
 describe("v1.15 contains every addition verbatim", () => {
-  it("is the default, Owner-approval recorded, insurance included, v1.15 title", () => {
-    expect(DEFAULT_LIBRARY_KEY).toBe("insurance_included_v115");
+  it("stays Owner-approved and selectable; v1.16 is the default", () => {
+    expect(DEFAULT_LIBRARY_KEY).toBe("insurance_included_v116");
     expect(AMENDMENT_TEMPLATE_KEY).toBe(DEFAULT_LIBRARY_KEY);
     expect(OWNER_APPROVED_LIBRARY.insurance_included_v115).toBeTruthy();
     expect(v115.displayVersion).toBe("1.15");
@@ -173,13 +173,14 @@ describe("v1.15 contains every addition verbatim", () => {
     expect(/[\u2013\u2014]/.test(V115.V115_SOURCE)).toBe(false);
   });
 
-  it("the default send stores v1.15 and keeps the agreement number", async () => {
+  it("an explicit v1.15 send stores v1.15 and keeps the agreement number", async () => {
     const db = fakeDb(seed(true));
-    const sent = await issueAgreement(db as any, APP.id, { createdBy: null, prep: fleetAgreementPrep({ enabled: true, amount: 50 }, null) });
+    const sent = await issueAgreement(db as any, APP.id, { createdBy: null, prep: fleetAgreementPrep({ enabled: true, amount: 50 }, null), templateKey: "insurance_included_v115" });
     const row = db.state.agreements.find((a: any) => a.id === sent.id);
     expect(row.metadata.template_key).toBe("insurance_included_v115");
     expect(row.body).toContain("(v1.15)");
     expect(row.body).toContain(V115.CLAUSE_STARTER_INTERRUPT);
+    expect(row.body).not.toContain("**13.3 Transfer-of-Liability");
   });
 
   it("v1.14 is unchanged and still renderable (signed agreements keep their own text)", async () => {
@@ -224,6 +225,7 @@ describe("older templates (v1.10, v1.10.2) are retired", () => {
     expect(isRetiredLibrary("insurance_required")).toBe(true);
     expect(isRetiredLibrary("insurance_included")).toBe(false);
     expect(isRetiredLibrary("insurance_included_v115")).toBe(false);
+    expect(isRetiredLibrary("insurance_included_v116")).toBe(false);
     for (const k of Object.keys(OWNER_APPROVED_LIBRARY)) expect(isRetiredLibrary(k)).toBe(false);
     expect(LIBRARY.filter((t) => t.retired).map((t) => t.key)).toEqual(["no_insurance", "insurance_required"]);
   });

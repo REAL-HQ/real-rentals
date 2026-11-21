@@ -154,12 +154,12 @@ ok(Object.values(swapPlain.merge).every((x) => !/deposit/i.test(String(x ?? ""))
 ok(!/rental already active\)/.test(swapPlain.body) || !/no new deposit/i.test(swapPlain.body), "a template that prints the field shows no 'no new deposit'");
 ok(/Security deposit: None \(rental already active\)/.test(swapPlain.body), "the field value itself is deposit-free (the label is the saved template's own text)");
 const swap115 = await AG.amendmentSendCheck(fakeAdmin(swapTables()), APP_ID, swapRender({ templateKey: RA.AMENDMENT_TEMPLATE_KEY }));
-ok(swap115.body.includes(swapNotice), "v1.15 swap body carries the swap notice");
+ok(swap115.body.includes(swapNotice), "v1.16 swap body carries the swap notice");
 // The only 'deposit' words left are v1.15's own fixed contract sentences (identical for every renter).
 const FIXED_CONTRACT_TEXT = ["There is no security deposit.", "The Reservation Fee is not a security deposit.", "endorse and deposit any check", "No Security Deposit"];
 let rest = swap115.body; for (const f of FIXED_CONTRACT_TEXT) rest = rest.split(f).join("");
-ok(!/deposit/i.test(rest), `v1.15 swap: no 'deposit' outside the fixed contract text (${(rest.match(/.{0,40}deposit.{0,40}/i) || [""])[0]})`);
-ok(Object.values(swap115.merge).every((x) => !/deposit/i.test(String(x ?? ""))), "v1.15 swap: no filled value says 'deposit'");
+ok(!/deposit/i.test(rest), `v1.16 swap: no 'deposit' outside the fixed contract text (${(rest.match(/.{0,40}deposit.{0,40}/i) || [""])[0]})`);
+ok(Object.values(swap115.merge).every((x) => !/deposit/i.test(String(x ?? ""))), "v1.16 swap: no filled value says 'deposit'");
 const rateAgain = await AG.amendmentSendCheck(fakeAdmin(tables()), APP_ID, { weeklyRate: 375, notice: "Amendment notice.", vehicleId: VEH_ID });
 ok(rateAgain.merge.deposit_amount === RA.AMENDMENT_NO_DEPOSIT_LINE, "rate change keeps its own deposit line unchanged");
 

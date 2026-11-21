@@ -156,12 +156,12 @@ export const AMENDMENT_CARD_NEXT_PAYMENT_LINE = "Saved at next payment";
 
 /**
  * The template an updated agreement is generated from: the agreement new
- * rentals get, v1.15 (library family insurance_included_v115, Nov 19 2026;
- * v1.14 before that). Must equal agreement-library.ts DEFAULT_LIBRARY_KEY
- * (scripts/agreement-v115.test.ts). The Owner's saved/approved version of
+ * rentals get, v1.16 (library family insurance_included_v116, Nov 21 2026;
+ * v1.15 before that). Must equal agreement-library.ts DEFAULT_LIBRARY_KEY
+ * (scripts/agreement-v116.test.ts). The Owner's saved/approved version of
  * that family is used (libraryWithDraft).
  */
-export const AMENDMENT_TEMPLATE_KEY = "insurance_included_v115";
+export const AMENDMENT_TEMPLATE_KEY = "insurance_included_v116";
 
 /** v1.14 staff choices an amendment needs; omitted ones come from the agreement being amended. */
 export type AmendmentTerms = {

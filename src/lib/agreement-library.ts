@@ -6,7 +6,9 @@
 //   insurance_required  "REAL RENTALS - Vehicle Rental Agreement (v1.10.2, Insurance Required)"
 //   insurance_included  "REAL RENTALS - Vehicle Rental Agreement (v1.14)" (agreement-v114.ts)
 //   insurance_included_v115  "REAL RENTALS - Vehicle Rental Agreement (v1.15)" (agreement-v115.ts):
-//                       v1.14 + the Florida additions (Nov 19 2026); the default for new sends.
+//                       v1.14 + the Florida additions (Nov 19 2026).
+//   insurance_included_v116  "REAL RENTALS - Vehicle Rental Agreement (v1.16)" (agreement-v116.ts):
+//                       v1.15 with Section 13 toll and citation terms; the default for new sends.
 // no_insurance and insurance_required are RETIRED (Nov 19 2026): they stay here
 // so they can still be previewed and compared, but nothing can send them. See
 // RETIRED_REASON below for why they were retired rather than patched.
@@ -20,6 +22,7 @@ import { V16_SOURCE, V16_TERM_DEFAULTS, writeTerms } from "@/lib/agreement-build
 import { parseLayout } from "@/lib/agreement-layout";
 import { V114_SOURCE, V114_TERM_DEFAULTS } from "@/lib/agreement-v114";
 import { V115_SOURCE, V115_TERM_DEFAULTS } from "@/lib/agreement-v115";
+import { V116_SOURCE, V116_TERM_DEFAULTS } from "@/lib/agreement-v116";
 
 export type LibraryTemplate = {
   key: string;
@@ -141,6 +144,12 @@ export const LIBRARY: LibraryTemplate[] = [
     source: V115_SOURCE, terms: V115_TERM_DEFAULTS, body: writeTerms(V115_SOURCE, V115_TERM_DEFAULTS), reservationStyle: "amount",
     compareWith: "insurance_included",
   },
+  {
+    key: "insurance_included_v116", name: "Vehicle Rental Agreement — Insurance Included", displayVersion: "1.16",
+    insuranceRequired: false, insuranceIncluded: true, sourceFile: "agreement-v116.ts (v1.15 with Section 13 toll and citation terms, Nov 21 2026)",
+    source: V116_SOURCE, terms: V116_TERM_DEFAULTS, body: writeTerms(V116_SOURCE, V116_TERM_DEFAULTS), reservationStyle: "amount",
+    compareWith: "insurance_included_v115",
+  },
 ];
 
 export const LIBRARY_KEYS = LIBRARY.map((t) => t.key) as [string, ...string[]];
@@ -177,19 +186,21 @@ export function lineDiff(a: string, b: string): { t: "same" | "del" | "add"; lin
 }
 
 /**
- * The agreement new sends use when no saved template is active: v1.15
- * (Insurance Included) = v1.14 + the Florida additions Dolmar approved for
- * building on Nov 19 2026 (relayed by FLEET, 9:04 PM ET). v1.14 (Dolmar,
- * Nov 16 2026, t319u) stays approved and selectable. Signed agreements keep
- * the text they were signed with.
+ * The agreement new sends use when no saved template is active: v1.16
+ * (Insurance Included) = v1.15 with the Section 13 toll and citation terms.
+ * v1.15 and v1.14 stay approved and selectable. Signed agreements keep the
+ * text they were signed with. Sending v1.16 takes effect only when this
+ * change is merged.
  */
-export const DEFAULT_LIBRARY_KEY = "insurance_included_v115";
+export const DEFAULT_LIBRARY_KEY = "insurance_included_v116";
 /** Library families the Owner approved for sending (an Owner approval, not a legal review). */
 export const OWNER_APPROVED_LIBRARY: Record<string, { at: string; by: string }> = {
   insurance_included: { at: "2026-11-16", by: "Dolmar Cross (Owner), t319u" },
   // Takes effect only when Dolmar merges the PR that adds it (his review of the
   // wording); a Florida attorney review of the new wording is still pending.
   insurance_included_v115: { at: "2026-11-19", by: "Dolmar Cross (Owner), on merging the v1.15 PR" },
+  // Takes effect only when Dolmar merges the PR that adds it.
+  insurance_included_v116: { at: "2026-11-21", by: "Dolmar Cross (Owner), on merging the v1.16 PR" },
 };
 
 /** True when a library family is retired (previewable, never sendable). */

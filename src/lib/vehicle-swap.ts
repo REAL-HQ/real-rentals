@@ -10,7 +10,7 @@
  *      Vehicle → Swap Vehicle). Only Available, Rental Ready cars that are on
  *      no other open rental can be picked.
  *   2. A swap agreement is generated from the current default template
- *      (v1.15) through the normal agreement step (prepareAgreement /
+ *      (v1.16) through the normal agreement step (prepareAgreement /
  *      issueAgreement): it names the NEW car (full VIN, plate, colour), keeps
  *      the rental's weekly rate and payment choices, carries no Reservation
  *      Fee, and prints a Vehicle Swap notice at the top.
@@ -36,7 +36,7 @@ export const VEHICLE_SWAP_FN = "complete_rental_vehicle_swap_tx";
 export const VEHICLE_SWAP_MIGRATION = "20261120171500_rental_vehicle_swaps.sql";
 export const VEHICLE_SWAP_TITLE = "Vehicle Swap Addendum To Rental Agreement";
 /** The terms every swap moves the renter onto (Dolmar t542u: "Upgrade to new terms"). Fixed, not a choice. */
-export const SWAP_TERMS_VERSION = "v1.15";
+export const SWAP_TERMS_VERSION = "v1.16";
 
 export const SWAP_REASON_CODES = ["upgrade", "downgrade", "maintenance", "damage", "replacement", "other"] as const;
 export type SwapReasonCode = (typeof SWAP_REASON_CODES)[number];
@@ -140,7 +140,7 @@ export function swapNoticeText(a: {
   const prior = a.previousIsPaper
     ? "your Rental Agreement on file"
     : `the Rental Agreement${when ? ` signed ${when}` : ""}${a.previousNumber ? ` (${a.previousNumber})` : ""}`;
-  return `This Vehicle Swap Addendum changes the Vehicle on ${prior}. You return the ${swapVehicleText(a.outgoing)} and receive the Vehicle described below. By signing, you accept the current Rental Agreement terms (Version 1.15), printed in full below, which replace the terms of your earlier agreement from the date you sign. Your original start date, your weekly rental rate of ${usd(a.weeklyRate)} and your payment schedule stay the same, and rent you already paid is not billed again. There is no Reservation Fee. Until you sign and receive the new Vehicle, your current agreement stays in effect.`;
+  return `This Vehicle Swap Addendum changes the Vehicle on ${prior}. You return the ${swapVehicleText(a.outgoing)} and receive the Vehicle described below. By signing, you accept the current Rental Agreement terms (Version 1.16), printed in full below, which replace the terms of your earlier agreement from the date you sign. Your original start date, your weekly rental rate of ${usd(a.weeklyRate)} and your payment schedule stay the same, and rent you already paid is not billed again. There is no Reservation Fee. Until you sign and receive the new Vehicle, your current agreement stays in effect.`;
 }
 
 /** Label of the signed swap PDF on the renter's Documents (same as Agreement Filing's Swap role). */
