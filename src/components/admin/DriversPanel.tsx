@@ -261,7 +261,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { fmtDate, fmtDateTime } from "@/lib/date-format";
+import { fmtActivityStamp, fmtDate, fmtDateTime } from "@/lib/date-format";
 import { DocumentsExpiringList } from "./DocumentsExpiring";
 import { FleetNeedsStaffBanner } from "./FleetNeedsStaffBanner";
 import { DANGER_BADGE, DANGER_BADGE_BORDERED } from "@/lib/badge-tone";
@@ -2657,7 +2657,7 @@ function DriverDetail({
 
   const factsCard = (
     <SectionCard title="Driver Facts">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-2 2xl:grid-cols-4 gap-3">
         <Fact
           label="Platforms"
           value={
@@ -2730,9 +2730,9 @@ function DriverDetail({
       ) : (
         <ol className="space-y-2.5">
           {activity.map((e, i) => (
-            <li key={`${e.at}-${i}`} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 text-[12px]">
-              <span className="text-[#9A9AA3] tabular-nums">
-                {fmtDate(e.at)}
+            <li key={`${e.at}-${i}`} className="grid grid-cols-[minmax(0,172px)_minmax(0,1fr)] gap-3 text-[12px]" data-testid="driver-activity-row">
+              <span className="text-[#9A9AA3] tabular-nums whitespace-nowrap">
+                {fmtActivityStamp(e.at)}
               </span>
               <span className="min-w-0 text-[#111114]">
                 {e.label}
@@ -2955,14 +2955,6 @@ function DriverDetail({
 
         <div className="px-4 sm:px-8 py-6">
               <TabsContent value="overview" className="mt-0 space-y-5">
-                <BlacklistCard
-                  applicationId={driver.id}
-                  driverName={driver.full_name ?? null}
-                  isOwner={isOwner}
-                  isManager={isManager}
-                  onNotesChanged={(notes) => onSaved({ notes })}
-                  onBlacklistChanged={onBlacklistChanged}
-                />
                 {APPLICATION_QUICK_REVIEW_ENABLED && isManager && isPendingReviewStatus(driver.status) ? (
                   <ApplicationQuickReview
                     applicationId={driver.id}
@@ -2987,13 +2979,21 @@ function DriverDetail({
                   canEditCallNotes={Boolean(screening?.interview_completed_at)}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
                 />
+                <BlacklistCard
+                  applicationId={driver.id}
+                  driverName={driver.full_name ?? null}
+                  isOwner={isOwner}
+                  isManager={isManager}
+                  onNotesChanged={(notes) => onSaved({ notes })}
+                  onBlacklistChanged={onBlacklistChanged}
+                />
                 {summaryRow}
                 <details className="text-xs text-muted-foreground">
                   <summary className="cursor-pointer">Review Notes</summary>
                   <div className="mt-3">{readinessCard}</div>
                 </details>
                 {moreActions}
-                <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+                <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]" data-testid="driver-facts-activity-grid">
                   {factsCard}
                   {activityCard}
                 </div>
