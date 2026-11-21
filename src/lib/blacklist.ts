@@ -174,6 +174,9 @@ export function blacklistNotesLine(entry: { reason: BlacklistReasonKey; note: st
 export function unblacklistNotesLine(entry: { reason: string; date: string; removedBy: string }): string {
   return `Removed From Blacklist ${formatBlacklistDate(entry.date)} by ${entry.removedBy}: ${entry.reason.trim()}`;
 }
+export function blacklistNoteEditedLine(e: { date: string; editedBy: string; note: string }): string {
+  return `Blacklist Note Edited ${formatBlacklistDate(e.date)} by ${e.editedBy}: ${e.note.trim()}`;
+}
 export function strikeNotesLine(s: { kind: StrikeKind; note: string; date: string; addedBy: string }): string {
   return `Warning (${strikeKindLabel(s.kind)}) ${formatBlacklistDate(s.date)} by ${s.addedBy}: ${s.note.trim()}`;
 }
@@ -452,6 +455,18 @@ export type BlacklistMatchRow = {
  * 2026). Coordinators cannot. Database RLS mirrors it with private.is_manager()
  * (true for admin + team). Removing, voiding and clearing stay canManageBlacklist.
  */
+/** Editing the note of an active entry: same tiers as adding (Owner, Admin, Manager). */
+export function canEditBlacklistNote(tier: string | null | undefined): boolean {
+  return canAddToBlacklist(tier);
+}
+
+export function blacklistNoteBlockers(note: unknown): BlacklistBlocker[] {
+  const n = String(note ?? "").trim();
+  if (n.length < NOTE_MIN) return [{ field: "note", why: "A Reason Note Is Required." }];
+  if (n.length > NOTE_MAX) return [{ field: "note", why: `Keep The Note Under ${NOTE_MAX} Characters.` }];
+  return [];
+}
+
 export function canAddToBlacklist(tier: string | null | undefined): boolean {
   return tier === "owner" || tier === "manager";
 }
