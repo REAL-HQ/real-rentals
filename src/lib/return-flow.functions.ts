@@ -9,10 +9,12 @@ import {
   normalizeFinalCharge,
   normalizeSkipReason,
   photosReady,
+  returnVehicleIdentity,
   sumBalanceCents,
   type FinalChargeDraft,
   type ReturnBalanceLine,
   type ReturnBalanceSummary,
+  type ReturnVehicleIdentity,
   type SubscriptionCancelMode,
 } from "@/lib/return-flow";
 import {
@@ -96,14 +98,16 @@ export const getReturnBalance = createServerFn({ method: "POST" })
     }
 
     let vehicleLabel: string | null = null;
+    let vehicleIdentity: ReturnVehicleIdentity | null = null;
     const vehicleId = (rental.vehicle_id as string | null) ?? null;
     if (vehicleId) {
       const { data: v } = await supabaseAdmin
         .from("vehicles")
-        .select("year,make,model,unit_number,license_plate")
+        .select("year,make,model,unit_number,license_plate,vin")
         .eq("id", vehicleId)
         .maybeSingle();
       if (v) {
+        vehicleIdentity = returnVehicleIdentity(v);
         vehicleLabel = [v.year, v.make, v.model].filter(Boolean).join(" ") || null;
         if (v.unit_number) vehicleLabel = `${vehicleLabel ?? "Vehicle"} · ${v.unit_number}`;
         if (v.license_plate) vehicleLabel = `${vehicleLabel ?? "Vehicle"} · ${v.license_plate}`;
@@ -161,6 +165,7 @@ export const getReturnBalance = createServerFn({ method: "POST" })
       applicationId,
       vehicleId,
       vehicleLabel: vehicleLabel ?? "Unknown",
+      vehicleIdentity,
     };
   });
 

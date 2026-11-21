@@ -12,6 +12,7 @@ import {
   pastRentalBadge,
   photosReady,
   previewFinalAmount,
+  returnVehicleIdentity,
   sumBalanceCents,
 } from "../src/lib/return-flow";
 
@@ -70,6 +71,22 @@ ok(fn.includes("requireManager") || fn.includes("requireReturnManager"), "Return
 ok(fn.includes("end_rental_tx"), "completeReturn still uses end_rental_tx");
 ok(fn.includes("cancel_at_period_end") && fn.includes("subscriptionEnded"), "billing can cancel now or at period end");
 ok(fn.includes("hosted_invoice_url") && fn.includes("invoice.stripe.com"), "final invoice must be the customer hosted link");
+
+// Return popup shows which vehicle is being returned.
+const idt = returnVehicleIdentity({ year: 2015, make: "Ford", model: "Fusion", license_plate: " ec20lk ", vin: "3FA6P0HD1FR131701" });
+ok(idt.title === "2015 Ford Fusion" && idt.plate === "EC20LK" && idt.vinLast6 === "131701", "identity has year/make/model, plate, last 6 of VIN");
+ok(!("unit" in idt) && !JSON.stringify(idt).includes("unit"), "identity never carries a unit number");
+ok(returnVehicleIdentity({}).title === "Vehicle" && returnVehicleIdentity({}).plate === "", "identity tolerates missing fields");
+const dlg = readFileSync("src/components/admin/ReturnFlowDialog.tsx", "utf8");
+ok(dlg.includes("return-vehicle-identity") && dlg.includes("VehiclePickerPhoto") && dlg.includes("balance.vehicleIdentity"), "dialog renders vehicle identity row with thumbnail");
+ok(dlg.indexOf("return-vehicle-identity") < dlg.indexOf('step === "details" &&'), "identity row sits above the step content so it shows on every step");
+ok(!dlg.slice(dlg.indexOf("return-vehicle-identity"), dlg.indexOf("return-vehicle-identity") + 1200).includes("unit_number"), "identity row never shows the unit number");
+ok(fn.includes("returnVehicleIdentity(v)") && fn.includes(".eq(\"id\", data.rentalId)") && fn.includes("rental.vehicle_id"), "identity comes from the rental's current vehicle (swaps update rentals.vehicle_id)");
+const swapSql = readFileSync("supabase/migrations/20261121070000_swap_insurance_optional.sql", "utf8");
+ok(/SET vehicle_id = s\.to_vehicle_id/.test(swapSql), "only a completed swap changes the rental vehicle; open swaps keep the current car");
+for (const f of ["DriversPanel", "ActiveRentalsPanel", "BookingActions"]) {
+  ok(readFileSync(`src/components/admin/${f}.tsx`, "utf8").includes("<ReturnFlowDialog"), `${f} opens the shared Return dialog`);
+}
 
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall return-flow checks pass");
 process.exit(fails ? 1 : 0);
