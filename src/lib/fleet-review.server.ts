@@ -492,7 +492,7 @@ const FLEET_NO_SESSION_RPC = async () => ({
 /**
  * POST /api/public/fleet/applicant-decision
  *   { "lead_id": "…", "decision": "approve" | "decline" | "needs_staff", "reason": "…",
- *     "skip_notify": false, "note": "…", "escalation_codes": ["young_driver"], "idempotency_key": "…" }
+ *     "skip_notify": false, "note": "…", "escalation_codes": ["low_rating"], "idempotency_key": "…" }
  *
  * skip_notify applies only to decline. Omitted or false sends the decline
  * email and text. true skips both. The internal reason is never in the notice.

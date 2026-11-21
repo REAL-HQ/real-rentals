@@ -33,6 +33,7 @@
 // No factor may infer a fact from a null. A missing accident count is not a
 // clean record; a missing rating is not a bad rating. This is the single
 // correctness rule of the module and every factor below obeys it.
+import { MIN_RENTER_AGE, UNDER_MIN_AGE_LABEL } from "@/lib/renter-age";
 
 export type Evidence = "self_reported" | "document" | "staff_verified";
 export type FactorState = "positive" | "attention" | "unknown";
@@ -539,7 +540,7 @@ export const TOTAL_WEIGHT = FACTORS.reduce((a, f) => a + f.weight, 0);
 function findDisqualifiers(a: ReadinessInput, s: ReadinessInput): string[] {
   const out: string[] = [];
   const age = num(s.driver_age);
-  if (age !== null && age < 21) out.push("Driver under 21");
+  if (age !== null && age < MIN_RENTER_AGE) out.push(UNDER_MIN_AGE_LABEL);
   if (bool(s.license_active) === false) out.push("Licence not active");
   if (bool(s.has_dui) === true) out.push("DUI on record");
   if (s.gig_account_status === "deactivated") out.push("Gig account deactivated");
