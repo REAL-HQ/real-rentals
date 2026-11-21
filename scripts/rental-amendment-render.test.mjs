@@ -31,8 +31,11 @@ execFileSync("npx", ["esbuild", "src/lib/agreements.functions.ts", "--bundle", "
   { stdio: ["ignore", "ignore", "inherit"] });
 execFileSync("npx", ["esbuild", "src/lib/rental-amendment.ts", "--bundle", "--platform=node",
   "--format=esm", `--outfile=${OUT}/ra.mjs`, "--alias:@=./src"], { stdio: ["ignore", "ignore", "inherit"] });
+execFileSync("npx", ["esbuild", "src/lib/vehicle-swap.ts", "--bundle", "--platform=node",
+  "--format=esm", `--outfile=${OUT}/vs.mjs`, "--alias:@=./src"], { stdio: ["ignore", "ignore", "inherit"] });
 const AG = await import(`../${OUT}/ag.mjs`);
 const RA = await import(`../${OUT}/ra.mjs`);
+const VS = await import(`../${OUT}/vs.mjs`);
 
 const writes = [];
 function fakeAdmin(tables) {
@@ -138,6 +141,27 @@ ok(unknown.blockers.some((b) => b.field === "damage_waiver") && unknown.blockers
 let threw = "";
 try { await AG.amendmentSendCheck(fakeAdmin(tables()), APP_ID, { weeklyRate: 375, notice: "N", vehicleId: "33333333-3333-4333-8333-333333333333" }); } catch (e) { threw = String(e?.message ?? e); }
 ok(threw.length > 0, `a car that is not the active rental's is refused (${threw.slice(0, 80)})`);
+
+console.log("\nvehicle swap: no 'deposit' in the filled values or the notice (Dolmar t548u); rate changes unchanged");
+const NEW_ID = "66666666-6666-4666-8666-666666666666";
+const swapTables = () => { const x = tables(); x.vehicles.push({ ...VEHICLE, id: NEW_ID, color: "Red", vin: "1FA6P0G70F5131701", license_plate: "EC20LK", unit_number: "7", status: "available", archived_at: null }); return x; };
+const swapNotice = VS.swapNoticeText({ weeklyRate: 350, previousSignedAt: "2026-10-01", previousNumber: "RRA-20261001-ABCDEF", previousIsPaper: false, outgoing: { year: 2020, make: "Ford", model: "Fusion", license_plate: "ED40NC" } });
+ok(!/deposit/i.test(swapNotice), "swap notice has no 'deposit'");
+const swapRender = (extra) => ({ weeklyRate: 350, notice: swapNotice, vehicleId: NEW_ID, prep: v114prep, swap: { rentalId: "r1", swapId: null, fromVehicleId: VEH_ID }, ...extra });
+const swapPlain = await AG.amendmentSendCheck(fakeAdmin(swapTables()), APP_ID, swapRender({}));
+ok(swapPlain.merge.deposit_amount === VS.SWAP_DEPOSIT_FIELD_LINE && VS.SWAP_DEPOSIT_FIELD_LINE === "None (rental already active)", `swap deposit field: "None (rental already active)" (got "${swapPlain.merge.deposit_amount}")`);
+ok(Object.values(swapPlain.merge).every((x) => !/deposit/i.test(String(x ?? ""))), `no filled value says 'deposit' (${JSON.stringify(swapPlain.merge)})`);
+ok(!/rental already active\)/.test(swapPlain.body) || !/no new deposit/i.test(swapPlain.body), "a template that prints the field shows no 'no new deposit'");
+ok(/Security deposit: None \(rental already active\)/.test(swapPlain.body), "the field value itself is deposit-free (the label is the saved template's own text)");
+const swap115 = await AG.amendmentSendCheck(fakeAdmin(swapTables()), APP_ID, swapRender({ templateKey: RA.AMENDMENT_TEMPLATE_KEY }));
+ok(swap115.body.includes(swapNotice), "v1.15 swap body carries the swap notice");
+// The only 'deposit' words left are v1.15's own fixed contract sentences (identical for every renter).
+const FIXED_CONTRACT_TEXT = ["There is no security deposit.", "The Reservation Fee is not a security deposit.", "endorse and deposit any check", "No Security Deposit"];
+let rest = swap115.body; for (const f of FIXED_CONTRACT_TEXT) rest = rest.split(f).join("");
+ok(!/deposit/i.test(rest), `v1.15 swap: no 'deposit' outside the fixed contract text (${(rest.match(/.{0,40}deposit.{0,40}/i) || [""])[0]})`);
+ok(Object.values(swap115.merge).every((x) => !/deposit/i.test(String(x ?? ""))), "v1.15 swap: no filled value says 'deposit'");
+const rateAgain = await AG.amendmentSendCheck(fakeAdmin(tables()), APP_ID, { weeklyRate: 375, notice: "Amendment notice.", vehicleId: VEH_ID });
+ok(rateAgain.merge.deposit_amount === RA.AMENDMENT_NO_DEPOSIT_LINE, "rate change keeps its own deposit line unchanged");
 
 rmSync(OUT, { recursive: true, force: true });
 console.log(fail ? `\n${fail} BLOCKER(S)` : "\nall pass");
