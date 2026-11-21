@@ -6,6 +6,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { MIN_RENTER_AGE, MIN_AGE_FAQ, UNDER_MIN_AGE_LABEL } from "../src/lib/renter-age";
 import { V115_TERM_DEFAULTS, V115_SOURCE } from "../src/lib/agreement-v115";
+import { V116_TERM_DEFAULTS, V116_SOURCE } from "../src/lib/agreement-v116";
 import { V114_TERM_DEFAULTS } from "../src/lib/agreement-v114";
 import { resolveTerms, writeTerms } from "../src/lib/agreement-builder";
 import { FLEET_ESCALATION_DEFAULTS } from "../src/lib/fleet-review";
@@ -60,5 +61,7 @@ describe("minimum renter age 23", () => {
     const body = resolveTerms(writeTerms(V115_SOURCE, V115_TERM_DEFAULTS));
     expect(body).toContain("be at least 23 to rent an economy vehicle and at least 25 to rent a luxury or premium vehicle");
     expect(V114_TERM_DEFAULTS.min_age_economy).toBe("21");
+    expect(V116_TERM_DEFAULTS.min_age_economy).toBe(String(MIN_RENTER_AGE));
+    expect(resolveTerms(writeTerms(V116_SOURCE, V116_TERM_DEFAULTS))).toContain("be at least 23 to rent an economy vehicle and at least 25 to rent a luxury or premium vehicle");
   });
 });
