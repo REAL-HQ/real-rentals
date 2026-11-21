@@ -63,10 +63,16 @@ export const SWAP_INSURANCE_DOC_LABELS: Record<SwapInsuranceDocKind, string> = {
   insurance_declarations: "Insurance Declarations Page",
   insurance_endorsement: "Insurance Endorsement",
 };
-export const SWAP_INSURANCE_CHECK_LABEL = "New Vehicle Insurance Uploaded";
+/**
+ * Optional since Nov 21 2026 (Dolmar t549u/t550u: "Dont make it required"): the
+ * new car's insurance card is recommended, never required to send the swap
+ * agreement or to complete the swap. Missing shows a neutral reminder only.
+ */
+export const SWAP_INSURANCE_CHECK_LABEL = "New Vehicle Insurance (Optional)";
+export const SWAP_INSURANCE_MISSING_REMINDER = "No Insurance Card Uploaded For The New Vehicle";
+export const SWAP_INSURANCE_UPLOADED_LABEL = "Uploaded";
 export const SWAP_INSURANCE_NOTE =
-  "Uploading a document does not mark the vehicle insured. Confirm coverage with the insurer before the handover.";
-export const SWAP_INSURANCE_MIN_OVERRIDE = 10;
+  "Optional, but recommended. Uploading a document does not mark the vehicle insured. Confirm coverage with the insurer before the handover.";
 
 export const SWAP_STATUSES = ["pending_signature", "signed", "completed", "voided", "send_failed"] as const;
 export type SwapStatus = (typeof SWAP_STATUSES)[number];
@@ -165,7 +171,6 @@ export function swapErrorText(raw: string): string {
   const m = String(raw ?? "");
   const n = (re: RegExp) => m.match(re)?.[1] ?? "";
   if (/swap_contention/.test(m)) return "Someone else is changing this rental or car right now. Try again in a moment.";
-  if (/swap_insurance_missing/.test(m)) return `${SWAP_INSURANCE_CHECK_LABEL}: upload the new vehicle's insurance document, or have the Owner override with a reason.`;
   if (/swap_not_signed/.test(m)) return "The renter has not signed the swap agreement yet.";
   if (/swap_agreement_not_signed/.test(m)) return "The signed swap agreement could not be confirmed for this rental and car.";
   if (/rental_not_active/.test(m)) return "This rental is no longer active.";

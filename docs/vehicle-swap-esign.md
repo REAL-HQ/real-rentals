@@ -58,23 +58,23 @@ e-signs a swap agreement for the new car, and staff then record the handover.
      unchanged.
    - FLEET gets no first-signing event, and the reservation check is skipped.
    - The car does **not** move yet.
-4. **New Vehicle Insurance Uploaded** (checklist item on the open swap):
-   - Staff upload one or more documents for the new car: Insurance ID Card,
-     Insurance Declarations Page, Insurance Endorsement (PDF or image, 20 MB).
-     They can be added while the swap waits for signature or after it is signed.
+4. **New Vehicle Insurance (Optional)** (on the open swap). Since Nov 21, 2026
+   (Dolmar t549u/t550u: "Dont make it required") the new car's insurance card is
+   **recommended, never required**: not to send the swap agreement and not to
+   complete the swap. Migration `20261121070000_swap_insurance_optional.sql`
+   removed the `swap_insurance_missing` check from the database function.
+   - Staff can still upload Insurance ID Card, Insurance Declarations Page or
+     Insurance Endorsement (PDF or image, 20 MB), before or after signing.
    - Each file goes to the private `vehicle-docs` bucket under the new car's
-     folder and becomes a `documents` row on the **new vehicle** with its own
-     category (`insurance_card`, `insurance_declarations`,
-     `insurance_endorsement`), `visibility = ['admin']` (staff only, never the
-     renter), plus a row in `rental_vehicle_swap_documents` tying it to the swap.
-     An identical file already on file is linked, not stored twice.
-   - **Complete Swap stays disabled, and the database refuses the handover
-     (`swap_insurance_missing`), until at least one document is tied to the swap,
-     or the Owner overrides with a reason (10+ characters, who and when
-     recorded, written to the audit log).** Managers cannot override.
-   - Nothing here marks a vehicle insured or verified. No vehicle or
-     application insurance field is written. Staff still confirm coverage with
-     the insurer before handing over the car.
+     folder and becomes a staff-only `documents` row on the **new vehicle**
+     (`insurance_card`, `insurance_declarations`, `insurance_endorsement`), plus a
+     row in `rental_vehicle_swap_documents`. An identical file is linked, not
+     stored twice.
+   - With no document, the swap shows a neutral (pastel yellow) reminder,
+     **No Insurance Card Uploaded For The New Vehicle**. Nothing is blocked.
+   - The Owner override is gone (the `insurance_override_*` columns stay, unused).
+   - Nothing here marks a vehicle insured or verified. Staff still confirm
+     coverage with the insurer before handing over the car.
 5. **Complete Swap** (handover, Manager or Owner):
    - Staff enter the return odometer and fuel (current car), the pickup
      odometer and fuel (new car), and where the returned car goes
@@ -87,7 +87,6 @@ e-signs a swap agreement for the new car, and staff then record the handover.
      - checks that the swap is signed and that the signed agreement names
        this rental and this car;
      - checks that the new car is still Available, free and Rental Ready;
-     - checks New Vehicle Insurance Uploaded (a document or an Owner override);
      - checks the odometer readings the way End Rental does;
      - writes the swap's own odometer readings (`swap_return:<id>`,
        `swap_checkout:<id>`);
