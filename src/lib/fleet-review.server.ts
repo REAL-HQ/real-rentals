@@ -2,14 +2,16 @@
  * FLEET applicant review API.
  *
  *   POST /api/public/fleet/applicants          list | get (the review packet)
- *   POST /api/public/fleet/applicant-decision  approve | needs_staff
+ *   POST /api/public/fleet/applicant-decision  approve | decline | needs_staff
+ *   POST /api/public/fleet/profile-note        append a staff-visible note
  *
  * Bearer FLEET_API_KEY (src/lib/fleet-api.server.ts). Approve runs the exact
  * staff approval code path (approveApplicationCore in applications.functions)
  * and is refused while any hard blocker exists (src/lib/fleet-review.ts).
- * FLEET can never decline: it sends needs_staff with a reason, which puts the
- * applicant in the staff queue (Drivers → Needs Staff). Nothing here writes
- * insurance, screening, background-check or verification fields.
+ * Decline sets applications.status to declined, the same write staff use,
+ * audited as FLEET (automated). It sends the decline email and text unless
+ * skip_notify is true. Notes are appended to applications.notes. Nothing
+ * here writes insurance, screening, background-check or verification fields.
  *
  * Decisions are stored in public.fleet_review_decisions
  * (proposed/fleet-applicant-review-v1.sql) and every one is audited as
@@ -39,6 +41,13 @@ import { last10Digits, normalizeDriverEmail } from "@/lib/driver-contacts";
 import { listDriverAddresses } from "@/lib/driver-addresses.server";
 import { APPLICATION_ADDRESS_LABEL, addressFromApplication, formatAddress } from "@/lib/driver-addresses";
 import { readRentidSettings } from "@/lib/fleet-rentid.server";
+import { appendNote } from "@/lib/blacklist";
+import {
+  declineApplicantSms,
+  declineProfileLine,
+  FLEET_NOTE_MAX,
+  profileNoteLine,
+} from "@/lib/fleet-profile-note";
 
 type Admin = any;
 const SITE = () => String(process.env.SITE_URL || "https://drivereal.com").replace(/\/$/, "");
@@ -363,7 +372,116 @@ export async function handleFleetApplicants(request: Request, deps: FleetDeps = 
 }
 
 type ApproveCore = (args: Parameters<typeof import("@/lib/applications.functions").approveApplicationCore>[0]) => ReturnType<typeof import("@/lib/applications.functions").approveApplicationCore>;
-export type DecisionDeps = FleetDeps & { approve?: ApproveCore };
+type DeclineEmail = (args: { to: string; firstName: string | null; applicationId: string; companyPhone: string }) => Promise<{ ok: boolean; blocked?: string | null }>;
+type DeclineSms = (args: { to: string; body: string; kind?: string; applicationId?: string | null; requireConsent?: boolean }) => Promise<{ ok: boolean; skipped?: boolean; reason?: string; error?: string }>;
+export type DecisionDeps = FleetDeps & {
+  approve?: ApproveCore;
+  /** Test seam. Production uses sendApplicationDeclinedEmail. */
+  sendDeclineEmail?: DeclineEmail;
+  /** Test seam. Production uses sendSms. */
+  sendDeclineSms?: DeclineSms;
+  companyPhone?: (admin: Admin) => Promise<string>;
+};
+
+export type DeclineNotice = { email: string; sms: string };
+
+function publicDecision(stored: string): "approve" | "needs_staff" | "decline" {
+  if (stored === "approved") return "approve";
+  if (stored === "declined") return "decline";
+  return "needs_staff";
+}
+
+/** Optional profile note. null = omitted. "invalid" = wrong type or over the cap. */
+function parseProfileNote(v: unknown): string | null | "invalid" {
+  if (v == null || v === "") return null;
+  if (typeof v !== "string") return "invalid";
+  const s = v.replace(/\s+/g, " ").trim();
+  if (!s) return null;
+  if (s.length > FLEET_NOTE_MAX) return "invalid";
+  return s;
+}
+
+/** Only a JSON boolean true skips. Omitted and false send the notice. */
+function parseSkipNotify(v: unknown): boolean | "invalid" {
+  if (v == null || v === false) return false;
+  if (v === true) return true;
+  return "invalid";
+}
+
+async function appendProfileLines(admin: Admin, leadId: string, lines: string[]): Promise<{ ok: true; notes: string; added: boolean } | { ok: false; error: string }> {
+  const res = await admin.from("applications").select("id,notes,deleted_at").eq("id", leadId).maybeSingle();
+  if (res.error) return { ok: false, error: "Could not read the profile notes." };
+  if (!res.data || res.data.deleted_at) return { ok: false, error: "Applicant not found." };
+  let notes = String(res.data.notes ?? "");
+  let added = false;
+  for (const line of lines) {
+    const next = appendNote(notes, line);
+    if (next !== notes) added = true;
+    notes = next;
+  }
+  if (!added) return { ok: true, notes, added: false };
+  const upd = await admin.from("applications").update({ notes }).eq("id", leadId).is("deleted_at", null).select("id");
+  if (upd.error || !Array.isArray(upd.data) || upd.data.length !== 1) return { ok: false, error: "Could not save the note." };
+  return { ok: true, notes, added: true };
+}
+
+async function companyPhoneDisplay(admin: Admin, deps: DecisionDeps): Promise<string> {
+  if (deps.companyPhone) return deps.companyPhone(admin);
+  const { getBusinessPhone } = await import("@/lib/company.server");
+  return (await getBusinessPhone(admin)).display;
+}
+
+async function deliverDeclineNotice(
+  admin: Admin,
+  deps: DecisionDeps,
+  app: { id: string; name: string | null; email: string | null; phone: string | null },
+  skip: boolean,
+): Promise<DeclineNotice> {
+  if (skip) return { email: "skipped", sms: "skipped" };
+  const phone = await companyPhoneDisplay(admin, deps);
+  let email: string = "no_email";
+  const to = String(app.email ?? "").trim();
+  if (to) {
+    try {
+      const send: DeclineEmail = deps.sendDeclineEmail ?? (async (args) => {
+        const { sendApplicationDeclinedEmail } = await import("@/lib/email.server");
+        return sendApplicationDeclinedEmail(args);
+      });
+      const result = await send({ to, firstName: app.name, applicationId: app.id, companyPhone: phone });
+      email = result.ok ? "sent" : result.blocked === "blacklisted" ? "blacklisted" : result.blocked === "off" ? "off" : result.blocked === "held" ? "held" : "failed";
+    } catch (e) {
+      console.error("[fleet-review] decline email failed", String((e as Error)?.message ?? e));
+      email = "failed";
+    }
+  }
+  let sms = "no_phone";
+  const rawPhone = String(app.phone ?? "").trim();
+  if (rawPhone) {
+    try {
+      const send: DeclineSms = deps.sendDeclineSms ?? (async (args) => {
+        const { sendSms } = await import("@/lib/sms.server");
+        return sendSms(args);
+      });
+      const result = await send({
+        to: rawPhone,
+        body: declineApplicantSms(app.name, phone),
+        kind: "application_declined",
+        applicationId: app.id,
+        requireConsent: true,
+      });
+      if (result.ok) sms = "sent";
+      else if (result.reason === "opted_out") sms = "opted_out";
+      else if (result.reason === "blacklisted") sms = "blacklisted";
+      else if (result.reason === "invalid_phone") sms = "no_phone";
+      else if (result.skipped) sms = "no_consent";
+      else sms = "failed";
+    } catch (e) {
+      console.error("[fleet-review] decline text failed", String((e as Error)?.message ?? e));
+      sms = "failed";
+    }
+  }
+  return { email, sms };
+}
 
 /** FLEET has no staff session: on a database with the approval packet installed, approval stays with staff. */
 const FLEET_NO_SESSION_RPC = async () => ({
@@ -373,8 +491,11 @@ const FLEET_NO_SESSION_RPC = async () => ({
 
 /**
  * POST /api/public/fleet/applicant-decision
- *   { "lead_id": "…", "decision": "approve" | "needs_staff", "reason": "…",
- *     "escalation_codes": ["low_rating"], "idempotency_key": "…" }
+ *   { "lead_id": "…", "decision": "approve" | "decline" | "needs_staff", "reason": "…",
+ *     "skip_notify": false, "note": "…", "escalation_codes": ["low_rating"], "idempotency_key": "…" }
+ *
+ * skip_notify applies only to decline. Omitted or false sends the decline
+ * email and text. true skips both. The internal reason is never in the notice.
  */
 export async function handleFleetApplicantDecision(request: Request, deps: DecisionDeps = {}): Promise<Response> {
   const parsed = await fleetRequestBody(request, deps);
@@ -386,13 +507,17 @@ export async function handleFleetApplicantDecision(request: Request, deps: Decis
 
   const leadId = String(body.lead_id ?? "");
   if (!UUID_RE.test(leadId)) return fleetJson(400, { ok: false, error: "lead_id must be a UUID." });
-  const raw = String(body.decision ?? "").trim().toLowerCase();
-  if (raw === "decline" || raw === "declined" || raw === "reject") {
-    return fleetJson(400, { ok: false, error: "FLEET cannot decline. Send decision needs_staff with the reason, and staff will decide." });
+  const rawInput = String(body.decision ?? "").trim().toLowerCase();
+  const raw = rawInput === "declined" ? "decline" : rawInput;
+  if (raw !== "approve" && raw !== "decline" && raw !== "needs_staff") {
+    return fleetJson(400, { ok: false, error: "decision must be approve, decline, or needs_staff." });
   }
-  if (raw !== "approve" && raw !== "needs_staff") return fleetJson(400, { ok: false, error: "decision must be approve or needs_staff." });
   const reason = cleanText(body.reason, 1000);
   if (reason.length < 5) return fleetJson(400, { ok: false, error: "reason is required (at least 5 characters)." });
+  const note = parseProfileNote(body.note);
+  if (note === "invalid") return fleetJson(400, { ok: false, error: `note must be ${FLEET_NOTE_MAX} characters or fewer.` });
+  const skipNotify = raw === "decline" ? parseSkipNotify(body.skip_notify) : false;
+  if (skipNotify === "invalid") return fleetJson(400, { ok: false, error: "skip_notify must be true or false." });
   const idem = idempotencyKey(body.idempotency_key);
   if (idem === "invalid") return fleetJson(400, { ok: false, error: "idempotency_key must be 1-120 characters." });
   const codes = Array.isArray(body.escalation_codes) ? body.escalation_codes.map((c: unknown) => cleanText(c, 60)).filter(Boolean).slice(0, 30) : [];
@@ -403,7 +528,7 @@ export async function handleFleetApplicantDecision(request: Request, deps: Decis
     if (prior.error && !tableMissing(prior.error, "fleet_review_decisions")) return fleetJson(503, { ok: false, error: "Could not read decisions." });
     if (prior.data) {
       if (prior.data.application_id !== leadId) return fleetJson(409, { ok: false, error: "idempotency_key was already used for another applicant." });
-      return fleetJson(200, { ok: true, duplicate: true, decision_id: prior.data.id, decision: prior.data.decision === "approved" ? "approve" : "needs_staff", lead_id: leadId });
+      return fleetJson(200, { ok: true, duplicate: true, decision_id: prior.data.id, decision: publicDecision(prior.data.decision), lead_id: leadId });
     }
   }
 
@@ -416,22 +541,100 @@ export async function handleFleetApplicantDecision(request: Request, deps: Decis
   if (!packet) return fleetJson(404, { ok: false, error: "Applicant not found." });
   const a = packet.assessment;
 
-  const record = async (decision: "approved" | "needs_staff") => {
+  const record = async (decision: "approved" | "needs_staff" | "declined", extra: Record<string, unknown> = {}) => {
     const row = {
       application_id: leadId,
       decision,
       reason,
       escalation_codes: codes,
-      assessment: { hard_blockers: a.hard_blockers, escalations: a.escalations, recommendation: a.recommendation },
+      assessment: { hard_blockers: a.hard_blockers, escalations: a.escalations, recommendation: a.recommendation, ...extra },
       decided_by: FLEET_ACTOR_LABEL,
       idempotency_key: idem,
     };
     return admin.from("fleet_review_decisions").insert(row).select("id").single();
   };
 
+  const saveNote = async (lines: string[]) => {
+    if (!lines.length) return { saved: false as const };
+    const wrote = await appendProfileLines(admin, leadId, lines);
+    if (!wrote.ok) console.error("[fleet-review] profile note not saved", wrote.error);
+    return { saved: wrote.ok && wrote.added, error: wrote.ok ? null : wrote.error };
+  };
+
+  if (raw === "decline") {
+    const answers = packet.answers as { email?: string | null; phone?: string | null; deleted_at?: string | null };
+    if (answers.deleted_at) return fleetJson(404, { ok: false, error: "Applicant not found." });
+    if (String(packet.status) === "declined") {
+      return fleetJson(200, {
+        ok: true, duplicate: true, already_declined: true, decision: "decline", lead_id: leadId,
+        skip_notify: skipNotify === true, decline_notice: { email: "skipped", sms: "skipped" }, admin_url: packet.admin_url,
+      });
+    }
+    // Same guards as the staff status change: an active rental, or a status
+    // of active, is ended through the rental workflow. Decline does not void
+    // agreements, refund money, or write the blacklist.
+    if (String(packet.status) === "active") {
+      return fleetJson(409, { ok: false, error: "End the rental through the rental workflow first." });
+    }
+    const rentals = await admin.from("rentals").select("id").eq("application_id", leadId).eq("status", "active").limit(1);
+    if (rentals.error) return fleetJson(503, { ok: false, error: "Could not check rentals." });
+    if ((rentals.data ?? []).length) {
+      return fleetJson(409, { ok: false, error: "Cannot change lifecycle while an active rental exists." });
+    }
+    const previous = packet.status == null ? null : String(packet.status);
+    let updQuery = admin.from("applications").update({ status: "declined" }).eq("id", leadId).is("deleted_at", null);
+    updQuery = previous == null ? updQuery.is("status", null) : updQuery.eq("status", previous);
+    const upd = await updQuery.select("id");
+    if (upd.error) return fleetJson(503, { ok: false, error: "Could not decline the application. Nothing was changed." });
+    if (!Array.isArray(upd.data) || upd.data.length !== 1) {
+      return fleetJson(409, { ok: false, error: "The application changed before it could be declined. Nothing was changed." });
+    }
+    const ins = await record("declined", { skip_notify: skipNotify === true });
+    if (ins.error) console.error("[fleet-review] decline decision not recorded", ins.error?.code ?? "", ins.error?.message ?? "");
+    const lines = [declineProfileLine(FLEET_ACTOR_LABEL, now, reason)];
+    if (note) lines.push(profileNoteLine(FLEET_ACTOR_LABEL, now, note));
+    const noted = await saveNote(lines);
+    const declineNotice = await deliverDeclineNotice(admin, deps, {
+      id: leadId,
+      name: packet.name ?? null,
+      email: answers.email ?? null,
+      phone: answers.phone ?? null,
+    }, skipNotify === true);
+    await audit({
+      action: "application.fleet_declined",
+      summary: `Declined by ${FLEET_ACTOR_LABEL}: ${reason}`.slice(0, 300),
+      entityType: "application",
+      entityId: leadId,
+      metadata: {
+        decided_by: FLEET_ACTOR_LABEL,
+        reason,
+        previous_status: previous,
+        status: "declined",
+        skip_notify: skipNotify === true,
+        decline_notice: declineNotice,
+        decision_id: ins.data?.id ?? null,
+        note: note ?? null,
+      },
+    });
+    return fleetJson(201, {
+      ok: true,
+      decision: "decline",
+      lead_id: leadId,
+      decision_id: ins.data?.id ?? null,
+      previous_status: previous,
+      skip_notify: skipNotify === true,
+      decline_notice: declineNotice,
+      note_saved: noted.saved,
+      admin_url: packet.admin_url,
+    });
+  }
+
   if (raw === "needs_staff") {
     const open = packet.fleet_review.open_needs_staff;
-    if (open) return fleetJson(200, { ok: true, duplicate: true, decision: "needs_staff", decision_id: open.id, lead_id: leadId, reason: open.reason });
+    if (open) {
+      const noted = note ? await saveNote([profileNoteLine(FLEET_ACTOR_LABEL, now, note)]) : { saved: false };
+      return fleetJson(200, { ok: true, duplicate: true, decision: "needs_staff", decision_id: open.id, lead_id: leadId, reason: open.reason, ...(note ? { note_saved: noted.saved } : {}) });
+    }
     if (String(packet.status) === "approved" || String(packet.status) === "active") {
       return fleetJson(409, { ok: false, error: `Already ${packet.status}; nothing for staff to approve.` });
     }
@@ -441,19 +644,21 @@ export async function handleFleetApplicantDecision(request: Request, deps: Decis
       if (String(ins.error?.code) === "23505") return fleetJson(409, { ok: false, error: "A Needs Staff flag is already open, or the idempotency_key was reused. Retry with action get." });
       return fleetJson(503, { ok: false, error: "Could not save the decision. Nothing was changed." });
     }
+    const noted = note ? await saveNote([profileNoteLine(FLEET_ACTOR_LABEL, now, note)]) : { saved: false };
     await audit({
       action: "application.fleet_needs_staff",
       summary: `Sent to staff by ${FLEET_ACTOR_LABEL}: ${reason}`.slice(0, 300),
       entityType: "application",
       entityId: leadId,
-      metadata: { decided_by: FLEET_ACTOR_LABEL, reason, escalation_codes: codes, decision_id: ins.data.id },
+      metadata: { decided_by: FLEET_ACTOR_LABEL, reason, escalation_codes: codes, decision_id: ins.data.id, ...(note ? { note } : {}) },
     });
-    return fleetJson(201, { ok: true, decision: "needs_staff", decision_id: ins.data.id, lead_id: leadId, admin_url: packet.admin_url });
+    return fleetJson(201, { ok: true, decision: "needs_staff", decision_id: ins.data.id, lead_id: leadId, admin_url: packet.admin_url, ...(note ? { note_saved: noted.saved } : {}) });
   }
 
   // ---- approve
   if (String(packet.status) === "approved") {
-    return fleetJson(200, { ok: true, duplicate: true, decision: "approve", lead_id: leadId, already_approved: true });
+    const noted = note ? await saveNote([profileNoteLine(FLEET_ACTOR_LABEL, now, note)]) : { saved: false };
+    return fleetJson(200, { ok: true, duplicate: true, decision: "approve", lead_id: leadId, already_approved: true, ...(note ? { note_saved: noted.saved } : {}) });
   }
   if (a.hard_blockers.length) {
     return fleetJson(409, { ok: false, error: "Approval refused: hard blockers exist. Fix them or send needs_staff.", hard_blockers: a.hard_blockers });
@@ -492,6 +697,7 @@ export async function handleFleetApplicantDecision(request: Request, deps: Decis
   // that says FLEET did it (shown as "By FLEET" on the profile).
   const { recordFleetLifecycleStep } = await import("@/lib/fleet-lifecycle.server");
   await recordFleetLifecycleStep(audit, { applicationId: leadId, step: "approved", evidence: reason, source: "applicant-decision", at: new Date(), extra: { decision_id: ins.data?.id ?? null } });
+  const noted = note ? await saveNote([profileNoteLine(FLEET_ACTOR_LABEL, now, note)]) : { saved: false };
   return fleetJson(201, {
     ok: true,
     decision: "approve",
@@ -500,7 +706,57 @@ export async function handleFleetApplicantDecision(request: Request, deps: Decis
     approval_email: res.approvalEmail ?? null,
     next: "Approved. Agreements are sent separately; the Reserved step sends login details.",
     admin_url: packet.admin_url,
+    ...(note ? { note_saved: noted.saved } : {}),
   });
+}
+
+/**
+ * POST /api/public/fleet/profile-note
+ *   { "lead_id": "…", "note": "…", "idempotency_key": "…" }
+ *
+ * Appends one line to applications.notes, attributed to FLEET (automated).
+ * The same line on the same Eastern day is stored once. An idempotency key
+ * replays the first result and is refused if it was used for someone else.
+ */
+export async function handleFleetProfileNote(request: Request, deps: FleetDeps = {}): Promise<Response> {
+  const parsed = await fleetRequestBody(request, deps);
+  if ("response" in parsed) return parsed.response;
+  const { body } = parsed;
+  const admin = await fleetAdmin(deps);
+  const audit = fleetAudit(deps);
+  const now = (deps.now ?? (() => new Date()))();
+  const leadId = String(body.lead_id ?? "");
+  if (!UUID_RE.test(leadId)) return fleetJson(400, { ok: false, error: "lead_id must be a UUID." });
+  const note = parseProfileNote(body.note);
+  if (note === "invalid" || !note) return fleetJson(400, { ok: false, error: `note is required (1 to ${FLEET_NOTE_MAX} characters).` });
+  const idem = idempotencyKey(body.idempotency_key);
+  if (idem === "invalid") return fleetJson(400, { ok: false, error: "idempotency_key must be 1-120 characters." });
+  if (idem) {
+    const prior = await admin.from("audit_log").select("id,entity_id,action,metadata").eq("action", "application.fleet_note").limit(1000);
+    if (prior.error && !tableMissing(prior.error, "audit_log")) return fleetJson(503, { ok: false, error: "Could not read notes." });
+    const hit = ((prior.data ?? []) as any[]).find((r) => r?.metadata?.idempotency_key === idem);
+    if (hit) {
+      if (hit.entity_id !== leadId) return fleetJson(409, { ok: false, error: "idempotency_key was already used for another applicant." });
+      return fleetJson(200, { ok: true, duplicate: true, lead_id: leadId, note_id: hit.id ?? null });
+    }
+  }
+  const line = profileNoteLine(FLEET_ACTOR_LABEL, now, note);
+  const wrote = await appendProfileLines(admin, leadId, [line]);
+  if (!wrote.ok) {
+    const status = wrote.error === "Applicant not found." ? 404 : 503;
+    return fleetJson(status, { ok: false, error: wrote.error });
+  }
+  if (!wrote.added) {
+    return fleetJson(200, { ok: true, duplicate: true, lead_id: leadId, admin_url: adminUrlFor(leadId) });
+  }
+  await audit({
+    action: "application.fleet_note",
+    summary: `Note by ${FLEET_ACTOR_LABEL}: ${note}`.slice(0, 300),
+    entityType: "application",
+    entityId: leadId,
+    metadata: { decided_by: FLEET_ACTOR_LABEL, note, ...(idem ? { idempotency_key: idem } : {}) },
+  });
+  return fleetJson(201, { ok: true, lead_id: leadId, note_saved: true, admin_url: adminUrlFor(leadId) });
 }
 
 // ---------------------------------------------------------------- ready-for-review sweep

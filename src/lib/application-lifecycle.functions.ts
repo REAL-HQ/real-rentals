@@ -8,6 +8,8 @@ import {
   canReopenClosedApplication,
   closureReasonLabel,
 } from "@/lib/application-status";
+import { appendNote } from "@/lib/blacklist";
+import { declineProfileLine } from "@/lib/fleet-profile-note";
 
 const text = z.string().max(2000).nullable();
 const date = z
@@ -23,6 +25,8 @@ const patchSchema = z
     status: z.enum(["new", "reviewing", "suspended", "declined", "closed"]).optional(),
     closure_reason: z.enum(CLOSURE_REASON_KEYS).optional(),
     closure_notes: z.string().max(2000).nullable().optional(),
+    /** Saved on Internal Notes when status is set to declined. Not a column. */
+    decline_reason: z.string().trim().min(5).max(1000).optional(),
     contacted_at: z.string().datetime().optional(),
     phone: z.string().min(7).max(32).optional(),
     city: text.optional(),
@@ -63,7 +67,7 @@ export const updateApplicationLifecycle = createServerFn({ method: "POST" })
     const actor = await requireStaff(context.userId);
     const keys = Object.keys(data.patch);
     if (actor.tier === "coordinator") {
-      const permitted = ["status", "contacted_at", "phone", "city", "state", "closure_reason", "closure_notes"];
+      const permitted = ["status", "contacted_at", "phone", "city", "state", "closure_reason", "closure_notes", "decline_reason"];
       if (keys.some((k) => !permitted.includes(k)) || data.patch.status === "suspended") {
         throw new Error("Forbidden: this change requires a Manager");
       }
@@ -71,7 +75,7 @@ export const updateApplicationLifecycle = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: before, error: readError } = await supabaseAdmin
       .from("applications")
-      .select("id,status,contacted_at")
+      .select("id,status,contacted_at,notes")
       .eq("id", data.id)
       .is("deleted_at", null)
       .maybeSingle();
@@ -104,8 +108,15 @@ export const updateApplicationLifecycle = createServerFn({ method: "POST" })
         throw new Error("Closure reason is required");
       }
     }
-    const { closure_reason: closureReason, closure_notes: rawNotes, ...patch } = data.patch;
+    const { closure_reason: closureReason, closure_notes: rawNotes, decline_reason: declineReason, ...patch } = data.patch;
     const closureNotes = typeof rawNotes === "string" && rawNotes.trim() ? rawNotes.trim() : null;
+    if (declineReason && patch.status !== "declined") {
+      throw new Error("A decline reason is only saved when the status is set to Declined.");
+    }
+    if (declineReason) {
+      const actorName = actor.email ?? "Staff";
+      patch.notes = appendNote((before as { notes?: string | null }).notes, declineProfileLine(actorName, new Date(), declineReason));
+    }
     if (Object.keys(patch).length === 0) throw new Error("No changes supplied");
     // Contacted means a real text, call or reply (Dolmar, t306s1653). A status
     // change (to Reviewing, Declined, Closed...) is not contact, so it never
@@ -152,6 +163,7 @@ export const updateApplicationLifecycle = createServerFn({ method: "POST" })
         previous_status: before.status,
         status: patch.status ?? before.status,
         ...(closing ? { closure_reason: closureReason, closure_notes: closureNotes } : {}),
+        ...(declineReason ? { decline_reason: declineReason } : {}),
         ...(reopening ? { reopened: true } : {}),
       },
     });

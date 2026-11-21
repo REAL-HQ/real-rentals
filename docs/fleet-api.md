@@ -3,8 +3,10 @@
 All endpoints: `POST`, JSON body, `Authorization: Bearer <FLEET_API_KEY>`
 (compared in constant time; under 24 characters means "not configured", `503`),
 `Cache-Control: no-store` JSON replies. Every write is audited as
-"FLEET (automated)". FLEET never declines anyone (it sends `needs_staff`),
-never marks anyone insured or verified, and never touches billing. Renter
+"FLEET (automated)". FLEET may decline (`applicant-decision`, reason required;
+the decline email and text send unless `skip_notify` is true) and may append
+profile notes (`profile-note`, or `note` on a decision). FLEET never marks
+anyone insured or verified, and never touches billing. Renter
 texts the site sends go from the 888 line, 8 AM to 9 PM ET, with consent and
 STOP checked.
 
@@ -14,7 +16,8 @@ Base: `https://drivereal.com/api/public/fleet/`
 |---|---|---|
 | `status` | read: whole-journey digest, one lead's journey and next step, lookup by any phone/email, a renter's balance | [fleet-status.md](fleet-status.md) |
 | `applicants` | read: review queue and one applicant's review packet | [fleet-applicant-review.md](fleet-applicant-review.md) |
-| `applicant-decision` | approve (no hard blockers) or needs_staff | [fleet-applicant-review.md](fleet-applicant-review.md) |
+| `applicant-decision` | approve (no hard blockers), decline (reason required; `skip_notify` skips the email and text), or needs_staff | [fleet-applicant-review.md](fleet-applicant-review.md) |
+| `profile-note` | append a note on the driver profile, attributed to FLEET | [fleet-applicant-review.md](fleet-applicant-review.md) |
 | `license-facts` | save DOB / expiry / number / state read off the license photo (never "verified") | fleet-license-facts.md (PR 376) |
 | `screening-result` | record a RentID result (license status, criminal record) onto background_check_status / mvr_status; OFF until app_settings.fleet_rentid.record_results | fleet-rentid.md |
 | `background-report` | file a background report entry (RentID order/result with case list, FL DMV license check, or other provider) with any number of files onto the driver's Screening tab (`background_reports`); a record, never a decision; OFF until Automations → Background Reports (FLEET); files also need Document Uploads (FLEET) | background-reports.md |
@@ -36,7 +39,8 @@ Events the site sends FLEET (signed webhooks): [fleet-webhooks.md](fleet-webhook
 
 ## What FLEET still cannot do (staff only, by design)
 
-- Decline, close or reopen an application; clear a Needs Staff flag or a handoff.
+- Close or reopen an application; clear a Needs Staff flag or a handoff.
+  Decline is `applicant-decision` with `decision: "decline"`.
 - Run or record a background check or MVR; verify insurance; verify a license.
 - Charge or waive anything, or refund anything except a paid Reservation Fee
   through `refund-reservation` (six refundable reasons only; one refund per

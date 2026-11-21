@@ -31,8 +31,9 @@ application, so `background_check_status` and `mvr_status` stayed `pending`.
    | detected | `background_check_status` | failed |
    | unavailable | — | not written |
 
-   `failed` is a hard blocker (`screening_flagged`): FLEET sends needs_staff and
-   any decline stays with staff. A `failed` value is never turned back into
+   `failed` is a hard blocker (`screening_flagged`): FLEET cannot approve.
+   Decline with a reason (`applicant-decision`) or send needs_staff. This
+   endpoint never declines by itself. A `failed` value is never turned back into
    `passed` through this endpoint. Every write is audited
    (`application.rentid_result_recorded`, with the RentID order number).
    `mvr_status` holds the license-status result, not a full MVR.
