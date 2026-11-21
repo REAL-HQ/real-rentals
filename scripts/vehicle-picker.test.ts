@@ -53,7 +53,7 @@ describe("shared picker wiring", () => {
     expect(photo).toContain("No Confirmed Car Photo");
   });
   test("photo list matches trigger width (no dialog overhang) with plate and VIN on a second line at every size", () => {
-    expect(combo).toContain("w-[var(--radix-popover-trigger-width)] min-w-0 max-w-[calc(100vw-2rem)]");
+    expect(combo).toContain("w-[var(--radix-popover-trigger-width)] min-w-[min(28rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)]");
     expect(combo).not.toContain("48rem");
     expect(combo).not.toContain("sm:grid-cols-[1rem_3rem_minmax(0,1fr)_5rem_5rem_6rem]");
     expect(combo).toContain('VIN …{vinLast6(v.vin)');

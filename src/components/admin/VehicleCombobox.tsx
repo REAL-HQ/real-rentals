@@ -105,8 +105,8 @@ export function VehicleCombobox({
         className={cn(
           "z-[200] w-[var(--radix-popover-trigger-width)] min-w-[min(100vw-2rem,22rem)] max-w-[36rem] p-0",
           className,
-          // Photo list matches the trigger (so it never overhangs its dialog) and never exceeds the viewport.
-          photoColumns && "w-[var(--radix-popover-trigger-width)] min-w-0 max-w-[calc(100vw-2rem)]",
+          // Photo list is at least as wide as the trigger and never narrower than 28rem (clamped to the viewport), so the full year/make/model, plate and VIN last 6 show without truncation even from a narrow trigger.
+          photoColumns && "w-[var(--radix-popover-trigger-width)] min-w-[min(28rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)]",
         )}
         onOpenAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => { if (enlarged) e.preventDefault(); }}
@@ -159,8 +159,8 @@ export function VehicleCombobox({
                     {photoColumns ? <>
                       <VehiclePickerPhoto vehicleId={v.id} label={label} onEnlarge={setEnlarged} />
                       <span className="min-w-0">
-                        <span className="block truncate text-[12px] font-medium">{[v.year, displayVehicleWord(v.make ?? ""), displayVehicleWord(v.model ?? "")].filter(Boolean).join(" ") || "Vehicle"}</span>
-                        <span className="block truncate text-[11px] tabular-nums text-muted-foreground">{v.license_plate || "—"} · VIN …{vinLast6(v.vin) || "—"}</span>
+                        <span className="block break-words text-[12px] font-medium">{[v.year, displayVehicleWord(v.make ?? ""), displayVehicleWord(v.model ?? "")].filter(Boolean).join(" ") || "Vehicle"}</span>
+                        <span className="block break-words text-[11px] tabular-nums text-muted-foreground">{v.license_plate || "—"} · VIN …{vinLast6(v.vin) || "—"}</span>
                       </span>
                       <VehicleStatusBadge status={v.status} className="max-w-full px-1.5 text-[10px]" />
                     </> : <span className="truncate">{label}</span>}
