@@ -15,14 +15,14 @@ export const LEAD_TONES: Record<LeadBucket, { label: string; badge: string }> = 
   future: { label: "Scheduled", badge: "text-muted-foreground" },
 };
 
-/** One short, actionable next step per bucket. */
+/** One short, actionable next step per bucket. Title Case in the string. */
 export const LEAD_NEXT_STEP: Record<LeadBucket, string> = {
-  overdue: "Follow up and log the outcome",
-  new: "Make first contact",
-  interested: "Confirm next steps",
-  today: "Follow up today",
-  information: "Check what info is missing",
-  future: "Review note before follow-up",
+  overdue: "Follow Up And Log The Outcome",
+  new: "Make First Contact",
+  interested: "Confirm Next Steps",
+  today: "Follow Up Today",
+  information: "Check What Info Is Missing",
+  future: "Review Note Before Follow-Up",
 };
 
 function relDays(iso: string): string | null {

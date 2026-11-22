@@ -116,7 +116,7 @@ export function LeadCardBody({
           </Tooltip>
         </TooltipProvider>
       )}
-      <div className="relative z-10 mt-auto pointer-events-none">{actions}</div>
+      <div className="relative z-10 mt-auto w-full pointer-events-none">{actions}</div>
       {view}
     </div>
   );

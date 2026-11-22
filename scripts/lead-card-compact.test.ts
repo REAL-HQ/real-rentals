@@ -16,9 +16,11 @@ import {
   leadVisibleNextStep,
 } from "../src/lib/lead-card";
 import { LEAD_BUCKETS, projectLead, type LeadBucket } from "../src/lib/lead-priorities";
+import { LeadCardContactActions } from "../src/components/admin/LeadCardActions";
 import { LeadCardBody } from "../src/components/admin/LeadCardBody";
 
 const ui = readFileSync("src/components/admin/LeadPriorities.tsx", "utf8");
+const actionsSrc = readFileSync("src/components/admin/LeadCardActions.tsx", "utf8");
 const body = readFileSync("src/components/admin/LeadCardBody.tsx", "utf8");
 const lib = readFileSync("src/lib/lead-card.ts", "utf8");
 const TODAY = "2026-11-08";
@@ -61,9 +63,9 @@ describe("compact lead cards", () => {
     expect(html).not.toContain("blue");
     expect(html).not.toContain("border-l-");
     expect(html).not.toContain("data-lead-urgency");
-    expect(html).toContain(">Make first contact<");
+    expect(html).toContain(">Make First Contact<");
     expect(html).toContain("Applied Today");
-    expect(html).not.toContain("Follow up and log the outcome");
+    expect(html).not.toContain("Follow Up And Log The Outcome");
     for (const s of [
       "Awaiting first contact",
       "record the outcome",
@@ -90,19 +92,19 @@ describe("compact lead cards", () => {
     expect(html).toContain("text-brand");
     expect(html).toContain("Last contact Today");
     expect(html).not.toContain("Overdue · Urgent");
-    expect(html).not.toContain("Follow up and log the outcome");
+    expect(html).not.toContain("Follow Up And Log The Outcome");
     expect(html).not.toContain("Applied");
   });
   test("interested drops the duplicate stage chip; documents keep the missing-contact line", () => {
     const interested = render(row("interested", { contact_status: "interested" }));
     expect(interested).toContain('data-status="">Interested<');
     expect(interested).not.toContain(">High<");
-    expect(interested).toContain(">Confirm next steps<");
+    expect(interested).toContain(">Confirm Next Steps<");
     const info = render(row("information", { contact_status: "documents" }));
     expect(info).toContain('data-status="">Documents<');
     expect(info).not.toContain("Waiting on Info · Medium");
     expect(info).toContain("No contact logged");
-    expect(info).toContain(">Check what info is missing<");
+    expect(info).toContain(">Check What Info Is Missing<");
   });
   test("note is one line with the full text on hover; missing date is honest", () => {
     const note = "x".repeat(400);
@@ -136,7 +138,25 @@ describe("compact lead cards", () => {
       prominent: true,
     });
     expect(leadVisibleNextStep("overdue")).toBeNull();
-    expect(leadVisibleNextStep("new")).toBe("Make first contact");
+    expect(leadVisibleNextStep("new")).toBe("Make First Contact");
+    expect(html).toContain(">Review Note Before Follow-Up<");
+  });
+  test("every next step is Title Case in the source string", () => {
+    expect(LEAD_NEXT_STEP).toEqual({
+      overdue: "Follow Up And Log The Outcome",
+      new: "Make First Contact",
+      interested: "Confirm Next Steps",
+      today: "Follow Up Today",
+      information: "Check What Info Is Missing",
+      future: "Review Note Before Follow-Up",
+    });
+    for (const step of Object.values(LEAD_NEXT_STEP)) {
+      for (const word of step.split(/[\s-]+/)) {
+        expect(word[0]).toBe(word[0].toUpperCase());
+      }
+      expect(step).toBe(step.replace(/\b\w/g, (c) => c.toUpperCase()));
+    }
+    expect(lib).not.toMatch(/text-transform|uppercase|capitalize/);
   });
   test("every bucket: short step, distinct labeled tone, timing at most two items", () => {
     for (const b of LEAD_BUCKETS) {
@@ -166,17 +186,62 @@ describe("compact lead cards", () => {
   });
   test("list keeps actions, status control and readiness, drops metrics", () => {
     for (const s of [
-      "tel:",
-      "open-messages",
       "View Applicant",
       "<ContactStatusCell",
       "ReadinessStatePill",
       "<LeadFollowUpDraft applicationId={lead.id} bucket={lead.bucket} />",
       "Unnamed Applicant",
       "No leads need attention",
+      "LeadCardContactActions",
+      "grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3",
+      "ArrowUpRight",
     ])
       expect(ui).toContain(s);
-    for (const s of ["ReadinessMetrics", "positives", "{lead.reason}", "{lead.action}"])
+    for (const s of [
+      "tel:",
+      "open-messages",
+      "ReadinessMetrics",
+      "positives",
+      "{lead.reason}",
+      "{lead.action}",
+      'size="icon"',
+    ])
       expect(ui).not.toContain(s);
+    expect(ui.indexOf("ArrowUpRight")).toBeLessThan(ui.indexOf("LeadCardContactActions"));
+    for (const s of [
+      "tel:",
+      "open-messages",
+      "\n              Call\n",
+      "\n          Text\n",
+      "data-lead-call",
+      "data-lead-text",
+      "flex w-full",
+      "flex-1",
+    ])
+      expect(actionsSrc).toContain(s);
+    expect(actionsSrc).not.toMatch(/text-transform|uppercase|capitalize/);
+  });
+  test("Call and Text span the card; Call is disabled without a phone", () => {
+    const withPhone = renderToStaticMarkup(
+      h(LeadCardContactActions, { applicationId: "a1", phone: "+1 (813) 555-0100" }),
+    );
+    expect(withPhone).toContain('href="tel:+18135550100"');
+    expect(withPhone).toContain(">Call<");
+    expect(withPhone).toContain(">Text<");
+    expect(withPhone).toContain("flex w-full");
+    expect(withPhone.match(/flex-1/g)?.length).toBe(2);
+    expect(withPhone).not.toMatch(/\sdisabled=""/);
+
+    const noPhone = renderToStaticMarkup(
+      h(LeadCardContactActions, { applicationId: "a1", phone: null }),
+    );
+    expect(noPhone).not.toContain("tel:");
+    expect(noPhone).toContain(">Call<");
+    expect(noPhone).toContain(">Text<");
+    const callTag = noPhone.match(/<button\b[^>]*data-lead-call[^>]*>/)?.[0] ?? "";
+    expect(callTag).toMatch(/\sdisabled=""/);
+    const textTag = noPhone.match(/<button\b[^>]*data-lead-text[^>]*>/)?.[0] ?? "";
+    expect(textTag).not.toMatch(/\sdisabled=""/);
+    expect(noPhone.match(/flex-1/g)?.length).toBe(2);
   });
 });
