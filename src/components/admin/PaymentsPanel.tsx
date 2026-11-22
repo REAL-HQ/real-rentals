@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check, ListFilter } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
-import { OVERDUE_STATUSES, FAILED_RECENT_FILTER, buildPaymentsSummary, countsAsOwed, isRecentFailure, rowOwed } from "@/lib/payments-summary";
+import { OVERDUE_STATUSES, FAILED_RECENT_FILTER, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isRecentFailure, rowOwed } from "@/lib/payments-summary";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { PaymentSummaryCards } from "./PaymentSummaryCards";
 import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
@@ -318,7 +318,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
     for (const p of payments) {
       if (!p.rental_id) continue;
       (byRental.get(p.rental_id) ?? byRental.set(p.rental_id, []).get(p.rental_id)!).push({
-        id: p.id, type: p.type, reason: (p as any).reason, notes: p.notes, status: p.status, amount: p.amount, dueDate: p.due_date, paidDate: p.paid_date,
+        id: p.id, type: p.type, reason: (p as any).reason, notes: p.notes, status: p.status, amount: p.amount, dueDate: p.due_date, paidDate: p.paid_date, balanceDue: p.balance_due, lateFees: p.late_fees,
       } as StandingPayment & { id: string });
     }
     const out = new Set<string>();
@@ -343,6 +343,8 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
   // waived and void owe nothing. A settled balance of 0 is 0, not the amount.
   // Rows in Collections are tracked on the Collections tab, never in Outstanding (payments-summary.ts,
   // shared with the summary cards so the cards and the rows always agree).
+  // A covered rent row still owes its late fees when only fees are left on it.
+  const feesOnly = (p: Payment) => feesOnlyLeft(p as any);
   const totalDue = filtered
     .filter((p) => countsAsOwed(p as any, coveredIds))
     .reduce((s, p) => s + rowOwed(p as any), 0);
@@ -556,7 +558,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
                     </Select>
                     )}
                     {coveredIds.has(p.id) ? (
-                      <span className="mt-0.5 block text-[11px] font-medium text-[#50C060]" data-testid="payment-covered-note">Paid On Another Row</span>
+                      <span className="mt-0.5 block text-[11px] font-medium text-[#50C060]" data-testid="payment-covered-note">{feesOnly(p) ? "Rent Paid · Late Fees Owed" : "Paid On Another Row"}</span>
                     ) : null}
                   </td>
                   <td className="px-3 text-[13px]">{p.payment_method || "—"}</td>

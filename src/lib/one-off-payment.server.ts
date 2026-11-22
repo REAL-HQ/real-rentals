@@ -7,8 +7,10 @@
 import { easternDateOf } from "@/lib/rent-reminders";
 import { stripeId } from "@/lib/stripe-unmatched";
 import {
+  allocateRentPayment,
   appOwnsPayment,
   exactILike,
+  nextDueAfter,
   oneOffIdentity,
   oneOffRowType,
   pickRental,
@@ -16,6 +18,8 @@ import {
   unmatchedBody,
   UNMATCHED_TITLE,
   type OneOffIdentity,
+  type OpenRentRow,
+  type RentAllocation,
   type RentalCandidate,
 } from "@/lib/one-off-payment";
 
@@ -27,7 +31,10 @@ export type OneOffOutcome =
   | { status: "recorded"; rentalId: string; by: MatchBy; inserted: boolean }
   | { status: "unmatched"; why: "no_match" | "ambiguous"; identity: OneOffIdentity };
 
-const RENTAL_COLS = "id, application_id, vehicle_id, status, stripe_customer_id";
+const RENTAL_COLS = "id, application_id, vehicle_id, status, stripe_customer_id, weekly_rate, next_payment_due, payment_status";
+// Rows in Collections ('collections') are left to the Collections tab: payments_apply_to_collections
+// settles their lines, so a one-off link never voids or re-dates them here.
+const OPEN_RENT = ["failed", "overdue", "past_due", "late", "unpaid", "current"];
 
 type MatchBy = "metadata" | "lead" | "customer" | "email" | "plate";
 
@@ -168,19 +175,27 @@ export async function recordOneOffPayment(
   const rowType = oneOffRowType(id.reason, { activeRental: r.status === "active" });
   // Rent lands on the week it pays for, so Due/Overdue/Late all read it as paid.
   let dueOn = day;
-  let openRows: { id: string; due_date: string | null; amount: unknown; stripe_invoice_id: string | null; status: string | null }[] = [];
+  let openRows: OpenRentRow[] = [];
   let onDailyPlan = false;
+  let allocations: RentAllocation[] = [];
   if (rowType === "rent") {
     const { loadDailyRentPlans } = await import("@/lib/daily-rent-plans.server");
     const { activeDailyPlan } = await import("@/lib/rent-standing");
     onDailyPlan = !!activeDailyPlan((await loadDailyRentPlans(admin)).get(r.id) ?? null, day);
     try {
-      openRows = await rows(admin.from("payments").select("id, due_date, amount, stripe_invoice_id, status").eq("rental_id", r.id).eq("type", "rent")
-        .in("status", ["failed", "overdue", "past_due", "late", "unpaid", "collections", "current"]));
+      openRows = await rows(admin.from("payments").select("id, due_date, amount, balance_due, late_fees, stripe_invoice_id, status").eq("rental_id", r.id).eq("type", "rent")
+        .in("status", OPEN_RENT));
     } catch {
       openRows = [];
     }
     dueOn = rentWeekFor(day, openRows.map((o) => String(o.due_date ?? "").slice(0, 10)).filter(Boolean), { dailyPlan: onDailyPlan, forDate: id.forDate });
+    if (!onDailyPlan) {
+      allocations = allocateRentPayment({
+        amount, paidOn: day, weeklyRate: Number((r as any).weekly_rate ?? 0), openRows,
+        weeks: id.weeks, nextPaymentDue: (r as any).next_payment_due ?? null,
+      });
+      if (allocations.length) dueOn = allocations[0].dueDate;
+    }
   }
   const purpose = id.purpose ?? (rowType === "rent" && id.forDate ? `Rent for ${id.forDate}` : null);
   const via = [id.paymentLinkId && `payment link ${id.paymentLinkId}`, id.sessionId && `checkout ${id.sessionId}`].filter(Boolean).join(", ");
@@ -212,16 +227,93 @@ export async function recordOneOffPayment(
       body: `$${amount.toFixed(2)} — ${(purpose ?? "Stripe payment").slice(0, 120)}${id.renterName ? ` (${id.renterName.slice(0, 60)})` : ""}`,
     }).then(() => {}, () => {});
   }
-  // The week this paid may still have an open Stripe invoice that Stripe will retry.
-  // Nothing here writes Stripe: staff get one notice to void it (or mark it paid out of band).
-  if (inserted && rowType === "rent" && !onDailyPlan) {
-    const week = openRows.find((o) => String(o.due_date ?? "").slice(0, 10) === dueOn && o.stripe_invoice_id);
-    if (week && amount + 0.005 >= Number(week.amount ?? 0)) {
+  if (inserted && rowType === "rent" && !onDailyPlan && allocations.length) {
+    const rowId = ins.data?.[0]?.id ?? null;
+    await settleAllocatedRent(admin, { rental: r, allocations, paymentRowId: rowId, piId: id.paymentIntentId, via, day, amount });
+  }
+  return { status: "recorded", rentalId: r.id, by: match.by, inserted };
+}
+
+const money = (n: number) => `$${n.toFixed(2)}`;
+
+/**
+ * After a rent payment is recorded once (on the charge's own row), settle the
+ * weeks it paid. Open rent rows it paid in full close as void (the money is on
+ * the charge row, so collected and revenue count it once) unless late fees
+ * remain: then the row stays open owing only those fees (balance_due = fees),
+ * where Manage Late Fees can still forgive them. A week paid in part keeps
+ * its row with the rest owed. next_payment_due moves past the last week paid
+ * in full and payment_status reads current once nothing older is owed. Every
+ * write is guarded on the status read, so a sweep or staff edit in between is
+ * never overwritten. Sends nothing to the renter and never writes Stripe.
+ */
+export async function settleAllocatedRent(
+  admin: Admin,
+  input: { rental: any; allocations: RentAllocation[]; paymentRowId: string | null; piId: string; via: string; day: string; amount: number },
+): Promise<{ closed: string[]; feesLeft: string[]; partial: string[]; nextDue: string | null }> {
+  const { rental, allocations, paymentRowId, piId, via, day } = input;
+  const out = { closed: [] as string[], feesLeft: [] as string[], partial: [] as string[], nextDue: null as string | null };
+  const paidBy = `${paymentRowId ? `row ${paymentRowId}, ` : ""}${piId}${via ? `, ${via}` : ""}`;
+  const weeksPaid = allocations.filter((a) => a.paidInFull).map((a) => a.dueDate);
+  // A whole-week staff waiver (waived through: null) means the week carries no late fee.
+  let wholeWeekWaived = new Set<string>();
+  try {
+    const w = await admin.from("rent_late_fee_waivers").select("due_date, waived_through").eq("rental_id", rental.id);
+    if (!w?.error) wholeWeekWaived = new Set(((w?.data ?? []) as any[]).filter((x) => x.waived_through == null).map((x) => String(x.due_date).slice(0, 10)));
+  } catch { /* no waivers read: fees stay as recorded */ }
+  for (const a of allocations) {
+    const row = a.row;
+    if (!row) continue;
+    const fees = wholeWeekWaived.has(a.dueDate) ? 0 : a.lateFees;
+    const note = (what: string) => `${String((row as any).notes ?? "").trim()} ${what}`.trim().slice(0, 1000);
+    try {
+      if (a.paidInFull && fees <= 0) {
+        const u = await admin.from("payments").update({
+          status: "void", balance_due: 0, late_fees: 0,
+          notes: note(`Rent paid ${day} by ${money(input.amount)} Stripe payment (${paidBy}) for weeks ${weeksPaid.join(", ")}; closed as void so the payment is counted once.`),
+        }).eq("id", row.id).eq("status", row.status).select("id");
+        if (!u?.error && u?.data?.length) out.closed.push(row.id);
+      } else if (a.paidInFull) {
+        const u = await admin.from("payments").update({
+          balance_due: fees,
+          notes: note(`Rent paid ${day} by Stripe payment (${paidBy}); ${money(fees)} late fees still owed.`),
+        }).eq("id", row.id).eq("status", row.status).select("id");
+        if (!u?.error && u?.data?.length) out.feesLeft.push(row.id);
+      } else {
+        const left = Math.round((a.rentOwed - a.applied + fees) * 100) / 100;
+        const u = await admin.from("payments").update({
+          balance_due: left,
+          notes: note(`${money(a.applied)} rent paid ${day} by Stripe payment (${paidBy}); ${money(left)} still owed.`),
+        }).eq("id", row.id).eq("status", row.status).select("id");
+        if (!u?.error && u?.data?.length) out.partial.push(row.id);
+      }
+    } catch (err) {
+      console.error("[one-off-payment] settle week failed", a.dueDate, err);
+    }
+    // The paid week may still have an open Stripe invoice that Stripe will retry.
+    if (a.paidInFull && row.stripe_invoice_id) {
       await admin.from("notifications").insert({
         driver_id: null, title: "Open Stripe Invoice After Rent Paid", kind: "payment", read: false,
-        body: `$${amount.toFixed(2)} rent for the week of ${dueOn} was paid by ${via || "Stripe"}, but invoice ${week.stripe_invoice_id} is still open and Stripe may retry it. Void it or mark it paid out of band in Stripe, then mark the week Paid.`,
+        body: `${money(a.applied)} rent for the week of ${a.dueDate} was paid by ${via || "Stripe"}, but invoice ${row.stripe_invoice_id} may still be open and Stripe may retry it. Mark it paid out of band in Stripe (do not void it).`,
       }).then(() => {}, () => {});
     }
   }
-  return { status: "recorded", rentalId: r.id, by: match.by, inserted };
+  try {
+    const next = nextDueAfter(rental.next_payment_due ?? null, allocations);
+    const patch: Record<string, unknown> = {};
+    if (next && next !== (rental.next_payment_due ?? null)) patch.next_payment_due = next;
+    const still = await admin.from("payments").select("id, due_date, balance_due, amount, late_fees, status, type").eq("rental_id", rental.id).in("status", OPEN_RENT);
+    const owing = ((still?.data ?? []) as any[]).some((p) => p.type !== "deposit" && String(p.due_date ?? "") < day
+      && (p.balance_due == null ? Number(p.amount ?? 0) + Number(p.late_fees ?? 0) : Number(p.balance_due)) > 0.004);
+    if (!still?.error && !owing && ["past_due", "overdue", "failed", "late"].includes(String(rental.payment_status ?? ""))) patch.payment_status = "current";
+    if (Object.keys(patch).length) {
+      let q = admin.from("rentals").update(patch).eq("id", rental.id);
+      q = rental.next_payment_due == null ? q.is("next_payment_due", null) : q.eq("next_payment_due", rental.next_payment_due);
+      const u = await q.select("id");
+      if (!u?.error && u?.data?.length && patch.next_payment_due) out.nextDue = String(patch.next_payment_due);
+    }
+  } catch (err) {
+    console.error("[one-off-payment] rental update failed", err);
+  }
+  return out;
 }

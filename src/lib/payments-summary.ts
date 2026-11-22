@@ -4,6 +4,7 @@
 // always agree. Collections rows (status 'collections') are never Overdue.
 import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 import { collectionsTotal, type CollectionItemLike } from "@/lib/collections";
+import { onlyLateFeesLeft, type StandingPayment } from "@/lib/rent-standing";
 
 /** Statuses the Overdue filter and the Overdue Now card count (no 'collections'). */
 export const OVERDUE_STATUSES: ReadonlySet<string> = new Set<string>(COLLECTIONS_WATCH_STATUSES);
@@ -22,6 +23,7 @@ export type SummaryPayment = {
   status?: string | null;
   amount?: number | string | null;
   balance_due?: number | string | null;
+  late_fees?: number | string | null;
   net_collected?: number | string | null;
   refunded_amount?: number | string | null;
   due_date?: string | null;
@@ -71,7 +73,12 @@ export function rowOwed(p: SummaryPayment): number {
 
 /** True when the row counts toward Outstanding (owed status, not paid on another row). */
 export function countsAsOwed(p: SummaryPayment, coveredIds: ReadonlySet<string>): boolean {
-  return OWED_STATUSES.has(String(p.status ?? "")) && !coveredIds.has(p.id);
+  return OWED_STATUSES.has(String(p.status ?? "")) && (!coveredIds.has(p.id) || feesOnlyLeft(p));
+}
+
+/** A covered rent row still owes its late fees when only fees are left on it (Damon, Nov 22 2026). */
+export function feesOnlyLeft(p: SummaryPayment): boolean {
+  return onlyLateFeesLeft({ type: p.type, status: p.status, amount: p.amount, dueDate: p.due_date, balanceDue: p.balance_due, lateFees: p.late_fees } as StandingPayment);
 }
 
 export function isOverdueRow(p: SummaryPayment): boolean {
@@ -107,7 +114,7 @@ export function buildPaymentsSummary(input: {
   const payments = input.payments;
 
   // 1. Overdue Now: the Overdue filter's rows that still owe (same owed rule as Outstanding).
-  const overdueRows = payments.filter((p) => isOverdueRow(p) && !input.coveredIds.has(p.id) && rowOwed(p) > 0);
+  const overdueRows = payments.filter((p) => isOverdueRow(p) && (!input.coveredIds.has(p.id) || feesOnlyLeft(p)) && rowOwed(p) > 0);
   let oldest: number | null = null;
   for (const p of overdueRows) {
     const d = day(p.due_date);
