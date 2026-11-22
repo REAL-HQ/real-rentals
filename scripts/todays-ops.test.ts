@@ -100,12 +100,15 @@ ok(addCalendarDays("2026-10-31", 1) === "2026-11-01", "adding a day crosses the 
 ok(formatOpsDate("2026-10-21") === "Wednesday, October 21, 2026", "the heading uses the Eastern calendar date");
 
 ok(
-  JSON.stringify(COLLECTIONS_WATCH_STATUSES) === JSON.stringify(["late", "past_due", "collections", "overdue", "failed", "unpaid"]),
-  "Collections Watch is the six overdue statuses and does not include current",
+  JSON.stringify(COLLECTIONS_WATCH_STATUSES) === JSON.stringify(["late", "past_due", "overdue", "failed", "unpaid"]),
+  "Collections Watch is the five overdue statuses: not current, and not rows moved to Collections",
 );
 ok(!isCollectionsWatchStatus("current") && !isCollectionsWatchStatus("paid") && isCollectionsWatchStatus("late"), "current and paid are not overdue");
 ok(overview.includes("COLLECTIONS_WATCH_STATUSES") && !overview.includes("const OVERDUE_STATUSES"), "Overview uses the shared Collections Watch list");
-ok(payments.includes("COLLECTIONS_WATCH_STATUSES") && !payments.includes('new Set(["late"'), "Payments uses the shared Collections Watch list");
+ok(
+  payments.includes("OVERDUE_STATUSES") && !payments.includes('new Set(["late"') && readFileSync("src/lib/payments-summary.ts", "utf8").includes("new Set<string>(COLLECTIONS_WATCH_STATUSES)"),
+  "Payments uses the shared Collections Watch list (through payments-summary.ts)",
+);
 
 const today = "2026-10-21";
 const tomorrow = "2026-10-22";

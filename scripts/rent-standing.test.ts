@@ -168,7 +168,9 @@ describe("every display reads the same rule", () => {
     const src = readFileSync("src/components/admin/PaymentsPanel.tsx", "utf8");
     expect(src).toMatch(/paymentCategoryLabel\(p\)/);
     expect(src).toMatch(/payments-type-filter-/);
-    expect(src).toMatch(/OWED\.has\(p\.status as string\) && !coveredIds\.has\(p\.id\)/);
+    // Owed rule lives in payments-summary.ts (shared with the summary cards): owed status and not covered.
+    expect(src).toMatch(/countsAsOwed\(p as any, coveredIds\)/);
+    expect(readFileSync("src/lib/payments-summary.ts", "utf8")).toMatch(/OWED_STATUSES\.has\(String\(p\.status \?\? ""\)\) && !coveredIds\.has\(p\.id\)/);
   });
   test("the rent reminders skip daily-plan renters and quote no late fee for them", () => {
     expect(readFileSync("src/lib/rent-reminders.server.ts", "utf8")).toMatch(/bump\(run, "daily_plan"\)/);

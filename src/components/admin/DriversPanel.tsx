@@ -273,6 +273,7 @@ import { listFleetNeedsStaff, type FleetNeedsStaffFlag } from "@/lib/fleet-revie
 import { listBlacklist } from "@/lib/blacklist.functions";
 import type { BlacklistEntry } from "@/lib/blacklist";
 import { BlacklistCard, BlacklistedBadge } from "@/components/admin/BlacklistCard";
+import { CollectionsCard } from "@/components/admin/CollectionsCard";
 import { BackgroundReportsCard } from "@/components/admin/BackgroundReportsCard";
 import { BlacklistMatchAlert } from "@/components/admin/BlacklistMatchAlert";
 import { listExpiringRenterDocuments, type ExpiringRenterDocuments } from "@/lib/document-expiry.functions";
@@ -3039,6 +3040,7 @@ function DriverDetail({
                   onNotesChanged={(notes) => onSaved({ notes })}
                   onBlacklistChanged={onBlacklistChanged}
                 />
+                <CollectionsCard applicationId={driver.id} canSee={isOwner || isManager} />
                 {summaryRow}
                 <details className="text-xs text-muted-foreground">
                   <summary className="cursor-pointer">Review Notes</summary>
@@ -3254,6 +3256,7 @@ function DriverDetail({
 
               <TabsContent value="payments" className="mt-0 space-y-4">
                 <RenterPayments driverId={driver.id} />
+                <CollectionsCard applicationId={driver.id} canSee={isOwner || isManager} />
                 {(isOwner || isManager) && activeRentalId && rentalStatus === "active" ? (
                   <LateFeesCard rentalId={activeRentalId} driverName={driver.full_name ? displayPersonName(driver.full_name) : "Driver"} />
                 ) : null}

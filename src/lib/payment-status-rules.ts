@@ -32,8 +32,20 @@ export const ACTION_LABEL: Record<PaymentStatusAction, string> = {
 
 const isOpen = (s: string) => (OPEN_STATUSES as readonly string[]).includes(s);
 
+/**
+ * A row in Collections (status 'collections') is managed from Payments > Collections, where each
+ * debt line has its own status and history. Here it can only be marked paid (money received
+ * outside Stripe), which pays its Collections lines automatically. No other status moves into or
+ * out of 'collections' from the ledger, so a debt can't silently drop off Collections or reappear
+ * on Overdue.
+ */
+export const IN_COLLECTIONS = "collections";
+/** Statuses the ledger's Change Status menu offers (Collections is reached only through a move). */
+export const STATUS_MENU_OPTIONS = OPEN_STATUSES.filter((s) => s !== IN_COLLECTIONS);
+
 /** Minimum tier for an action from a given status, or null if the action is never allowed from it. */
 export function requiredTier(action: PaymentStatusAction, from: string): StaffTier | null {
+  if (from === IN_COLLECTIONS && action !== "mark_paid") return null;
   switch (action) {
     case "set_open_status":
     case "void":
@@ -54,6 +66,6 @@ export function canTake(tier: StaffTier | null, action: PaymentStatusAction, fro
 
 /** The status an action produces; set_open_status takes `to`, which must be open and different. */
 export function targetStatus(action: PaymentStatusAction, from: string, to?: string | null): string | null {
-  if (action === "set_open_status") return to && isOpen(to) && to !== from ? to : null;
+  if (action === "set_open_status") return to && isOpen(to) && to !== from && to !== IN_COLLECTIONS ? to : null;
   return { mark_paid: "paid", waive: "waived", void: "void" }[action];
 }
