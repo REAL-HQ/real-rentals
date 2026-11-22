@@ -168,7 +168,9 @@ describe("every display reads the same rule", () => {
     const src = readFileSync("src/components/admin/PaymentsPanel.tsx", "utf8");
     expect(src).toMatch(/paymentCategoryLabel\(p\)/);
     expect(src).toMatch(/payments-type-filter-/);
-    expect(src).toMatch(/OWED\.has\(p\.status as string\) && !coveredIds\.has\(p\.id\)/);
+    expect(src).toMatch(/OWED\.has\(p\.status as string\) && \(?!coveredIds\.has\(p\.id\)/);
+    // A covered row still counts its late fees when only fees are left (Damon, Nov 22 2026).
+    expect(src).toMatch(/OWED\.has\(p\.status as string\) && \(!coveredIds\.has\(p\.id\) \|\| feesOnly\(p\)\)/);
   });
   test("the rent reminders skip daily-plan renters and quote no late fee for them", () => {
     expect(readFileSync("src/lib/rent-reminders.server.ts", "utf8")).toMatch(/bump\(run, "daily_plan"\)/);
