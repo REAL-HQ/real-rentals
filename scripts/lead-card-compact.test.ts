@@ -7,10 +7,14 @@ import { readFileSync } from "node:fs";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  LEAD_AVATAR_CLASS,
   LEAD_TONES,
   LEAD_NEXT_STEP,
+  leadActivity,
+  leadAvatarQuality,
   leadBadgeLabel,
   leadContactMeta,
+  leadEventStamp,
   leadTiming,
   leadUrgency,
   leadVisibleNextStep,
@@ -90,7 +94,7 @@ describe("compact lead cards", () => {
     expect(html).toContain(">3d overdue<");
     expect(html).toContain("Due Nov 5, 2026 (3 days overdue)");
     expect(html).toContain("text-brand");
-    expect(html).toContain("Last contact Today");
+    expect(html).toContain("Last Contact Today");
     expect(html).not.toContain("Overdue · Urgent");
     expect(html).not.toContain("Follow Up And Log The Outcome");
     expect(html).not.toContain("Applied");
@@ -103,7 +107,8 @@ describe("compact lead cards", () => {
     const info = render(row("information", { contact_status: "documents" }));
     expect(info).toContain('data-status="">Documents<');
     expect(info).not.toContain("Waiting on Info · Medium");
-    expect(info).toContain("No contact logged");
+    expect(info).toContain("No Contact Logged");
+    expect(info).not.toContain("No contact logged");
     expect(info).toContain(">Check What Info Is Missing<");
   });
   test("note is one line with the full text on hover; missing date is honest", () => {
@@ -128,7 +133,7 @@ describe("compact lead cards", () => {
       ),
     ).toEqual(["Applied date unknown"]);
     expect(leadContactMeta({ bucket: "new", created_at: null, contact_status_at: null })).toBe(
-      "Applied date unknown",
+      "Applied Date Unknown",
     );
     expect(
       leadUrgency({ bucket: "overdue", contact_follow_up_on: "2026-10-10" }, "2026-11-18"),
@@ -193,6 +198,7 @@ describe("compact lead cards", () => {
       "Unnamed Applicant",
       "No leads need attention",
       "LeadCardContactActions",
+      "leadAvatarQuality",
       "grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3",
       "ArrowUpRight",
     ])
@@ -243,5 +249,76 @@ describe("compact lead cards", () => {
     const textTag = noPhone.match(/<button\b[^>]*data-lead-text[^>]*>/)?.[0] ?? "";
     expect(textTag).not.toMatch(/\sdisabled=""/);
     expect(noPhone.match(/flex-1/g)?.length).toBe(2);
+  });
+  test("activity line is Title Case, stamped in Eastern time, and stays one line", () => {
+    const now = new Date("2026-11-22T18:00:00Z");
+    const applied = leadContactMeta(
+      { bucket: "new", created_at: "2026-11-22T15:42:00Z", contact_status_at: null },
+      now,
+    );
+    expect(applied).toBe("Applied Today · Sun Nov 22, 10:42 AM");
+    const older = leadActivity(
+      {
+        bucket: "interested",
+        created_at: "2026-11-18T15:00:00Z",
+        contact_status_at: "2026-11-20T20:15:00Z",
+      },
+      now,
+    );
+    expect(older).toEqual({
+      label: "Last Contact",
+      when: { long: "Fri Nov 20, 3:15 PM", short: "Fri 11/20, 3:15 PM" },
+    });
+    expect(
+      leadContactMeta(
+        { bucket: "information", created_at: "2026-11-20T20:15:00Z", contact_status_at: null },
+        now,
+      ),
+    ).toBe("No Contact Logged");
+    expect(leadEventStamp("not-a-date")).toBeNull();
+    const html = render(row("new"));
+    expect(html).toContain("whitespace-nowrap");
+    expect(html).toContain("truncate");
+    expect(html).toContain("flex-nowrap");
+    expect(html).toContain("@min-[16rem]:hidden");
+    expect(html).toContain("@min-[16rem]:inline");
+    const timing = html.slice(
+      html.indexOf("data-lead-timing"),
+      html.indexOf("</p>", html.indexOf("data-lead-timing")),
+    );
+    expect(timing).toContain("flex-nowrap");
+    expect(timing).toContain("whitespace-nowrap");
+    expect(timing).toContain("truncate");
+    expect(timing).not.toContain("flex-wrap");
+  });
+  test("avatar color follows the existing readiness states", () => {
+    expect(leadAvatarQuality(null)).toBe("neutral");
+    expect(
+      leadAvatarQuality({ state: "promising_more_info", qualification: 80, coverage: 24 }),
+    ).toBe("promising");
+    expect(leadAvatarQuality({ state: "decision_ready", qualification: 90, coverage: 70 })).toBe(
+      "promising",
+    );
+    expect(leadAvatarQuality({ state: "more_info_needed", qualification: 80, coverage: 10 })).toBe(
+      "close",
+    );
+    expect(leadAvatarQuality({ state: "more_info_needed", qualification: 40, coverage: 10 })).toBe(
+      "needs_info",
+    );
+    expect(leadAvatarQuality({ state: "more_info_needed", qualification: null, coverage: 0 })).toBe(
+      "needs_info",
+    );
+    expect(leadAvatarQuality({ state: "needs_attention", qualification: 90, coverage: 80 })).toBe(
+      "bad",
+    );
+    expect(LEAD_AVATAR_CLASS.promising).toContain("text-white");
+    expect(LEAD_AVATAR_CLASS.bad).toContain("text-white");
+    expect(LEAD_AVATAR_CLASS.close).toContain("text-[#3F2E04]");
+    expect(LEAD_AVATAR_CLASS.needs_info).toContain("bg-white");
+    expect(LEAD_AVATAR_CLASS.needs_info).toContain("border");
+    expect(LEAD_AVATAR_CLASS.neutral).toContain("bg-[#F4F4F6]");
+    const html = render(row("new"));
+    expect(html).toContain('data-lead-avatar="neutral"');
+    expect(html).toContain(LEAD_AVATAR_CLASS.neutral);
   });
 });

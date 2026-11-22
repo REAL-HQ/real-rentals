@@ -19,6 +19,7 @@ import { LeadResponseReport } from "./LeadResponseReport";
 import { ReadinessStatePill } from "./ui";
 import type { ReadinessByApplicant } from "@/lib/admin-overview";
 import { displayPersonName } from "@/lib/display-normalize";
+import { leadAvatarQuality } from "@/lib/lead-card";
 import { LeadCardContactActions } from "./LeadCardActions";
 import { LeadCardBody } from "./LeadCardBody";
 import { LeadCardMenu } from "./LeadCardMenu";
@@ -233,6 +234,7 @@ export default function LeadPriorities({
                         lead={lead}
                         today={result.today}
                         displayName={displayName}
+                        quality={leadAvatarQuality(readinessResult)}
                         menu={
                           <div className="flex items-start">
                             <Link
