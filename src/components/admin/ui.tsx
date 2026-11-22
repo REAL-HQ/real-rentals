@@ -68,8 +68,13 @@ export function EmptyState({
   );
 }
 
+/** Owed-money statuses whose names contain a "green" word ("unpaid" contains "paid",
+ *  "collections" contains "on"): checked first so they always read red, like Overdue. */
+const RED_FIRST = ["unpaid", "not_paid", "not paid", "collections"];
+
 function toneForImpl(status?: string | null): Tone {
   const s = (status ?? "").toLowerCase();
+  if (RED_FIRST.some((k) => s.includes(k))) return "red";
   if (
     [
       "active",

@@ -19,8 +19,9 @@ import { isRentRow, type CategorizableRow } from "@/lib/payment-category";
 export const COVER_EARLY_DAYS = 2; // same as EARLY_PAYMENT_DAYS in stripe-link.ts
 export const COVER_LATE_DAYS = 6;
 
-/** Statuses that mean a row still owes money. */
-export const UNPAID_RENT_STATUSES = new Set(["failed", "overdue", "past_due", "late", "unpaid", "collections", "current"]);
+/** Statuses that mean a row still owes rent. A row in Collections ('collections') is a debt
+ *  tracked on Payments > Collections: no late fees, reminders or Overdue for it. */
+export const UNPAID_RENT_STATUSES = new Set(["failed", "overdue", "past_due", "late", "unpaid", "current"]);
 /** Statuses that mean the row is closed and owes nothing. */
 const EXCLUDED = new Set(["void", "waived", "cancelled", "canceled", "refunded"]);
 
@@ -101,10 +102,23 @@ export function paidTowardWeek(due: string, payments: StandingPayment[]): number
   return r2(total);
 }
 
+/**
+ * The week's rent is paid and only late fees are left on the row: balance_due
+ * is positive and no more than late_fees (a multi-week Payment Link paid the
+ * rent; Damon, Nov 22 2026). balance_due defaults to 0, so a 0 balance alone
+ * never counts. The fees stay owed in the late fee ledger.
+ */
+export function onlyLateFeesLeft(row: StandingPayment): boolean {
+  if (row.balanceDue == null || row.balanceDue === "" || row.lateFees == null || row.lateFees === "") return false;
+  const bal = n(row.balanceDue), fees = n(row.lateFees);
+  return fees > 0 && bal > 0 && bal <= fees + 0.005;
+}
+
 /** An open rent row is settled when paid rent for its week covers its rent amount. */
 export function isRentRowCovered(row: StandingPayment, payments: StandingPayment[]): boolean {
   const due = day(row.dueDate);
   if (!due || !isOpenRent(row)) return false;
+  if (onlyLateFeesLeft(row)) return true;
   const owed = n(row.amount);
   return owed > 0 && paidTowardWeek(due, payments) + 0.005 >= owed;
 }
