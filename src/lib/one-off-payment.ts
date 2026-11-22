@@ -27,6 +27,12 @@ export type OneOffIdentity = {
   plates: string[];
   /** The day a daily-rent link pays for (metadata for_date / date), YYYY-MM-DD. */
   forDate: string | null;
+  /**
+   * Rent weeks a multi-week link pays for (metadata weeks, comma separated
+   * YYYY-MM-DD), oldest first. Damon, Nov 22 2026: one $1,050 link for the
+   * weeks of Nov 5, 12 and 19.
+   */
+  weeks: string[];
   /** Renter name from metadata, for the staff notice only. */
   renterName: string | null;
   /** Distinct Stripe customer ids, most specific first. */
@@ -137,6 +143,20 @@ export function forDateOf(...objs: Obj[]): string | null {
   return null;
 }
 
+/** Rent weeks from metadata weeks / rent_weeks ("2026-11-05,2026-11-12"), sorted, unique. */
+export function weeksOf(...objs: Obj[]): string[] {
+  for (const o of objs) {
+    const m = meta(o);
+    for (const k of ["weeks", "rent_weeks", "for_weeks"]) {
+      const v = text(m[k]);
+      if (!v) continue;
+      const days = uniq(v.split(/[\s,;]+/).map((d) => d.trim()).filter((d) => ISO_DAY.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)))).sort();
+      if (days.length) return days;
+    }
+  }
+  return [];
+}
+
 export function oneOffIdentity(input: { paymentIntent: Obj; session?: Obj; charge?: Obj; paymentLink?: Obj }): OneOffIdentity | null {
   const { paymentIntent: pi, session, charge, paymentLink: link } = input;
   const paymentIntentId = stripeId(pi?.id) ?? stripeId(session?.payment_intent) ?? stripeId(charge?.payment_intent);
@@ -166,6 +186,7 @@ export function oneOffIdentity(input: { paymentIntent: Obj; session?: Obj; charg
     applicationIds: applicationIdsOf(pi, session, charge, link),
     plates: platesOf(pi, session, charge, link),
     forDate: forDateOf(pi, session, charge, link),
+    weeks: weeksOf(pi, session, charge, link),
     renterName: text(pm.renter) ?? text(sm.renter) ?? text(lm.renter) ?? text(cm.renter),
     customerIds,
     emails,
@@ -249,4 +270,109 @@ export function unmatchedBody(id: OneOffIdentity, why: "no_match" | "ambiguous")
   const reason = why === "ambiguous" ? "matches more than one rental" : "matches no rental";
   const hint = [id.renterName && `renter ${id.renterName}`, id.plates[0] && `plate ${id.plates[0]}`].filter(Boolean).join(", ");
   return `${amount} paid via ${via} (${id.paymentIntentId}) ${reason}${hint ? ` (${hint})` : ""}. Record it from Payments or ask the renter.`;
+}
+
+const r2 = (v: number) => Math.round(v * 100) / 100;
+const num = (v: unknown) => (v == null || v === "" ? 0 : Number(v) || 0);
+const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+/** An open rent row as the allocator reads it. */
+export type OpenRentRow = {
+  id: string;
+  due_date: string | null;
+  amount: unknown;
+  balance_due?: unknown;
+  late_fees?: unknown;
+  stripe_invoice_id?: string | null;
+  status?: string | null;
+};
+
+export type RentAllocation = {
+  /** The rent week (due date) this part of the payment pays. */
+  dueDate: string;
+  /** Dollars of the payment applied to this week's rent. */
+  applied: number;
+  /** The open row for this week, if one exists. */
+  row: OpenRentRow | null;
+  /** Rent the week still owed before this payment. */
+  rentOwed: number;
+  /** True when this payment pays the week's rent in full. */
+  paidInFull: boolean;
+  /** Late fees on the open row; they stay owed (waivers lower them first). */
+  lateFees: number;
+};
+
+/** Rent still owed on an open row: its balance less late fees, never more than the rent. */
+export function rentLeftOn(row: OpenRentRow): number {
+  const amount = num(row.amount);
+  const late = num(row.late_fees);
+  const balance = row.balance_due == null || row.balance_due === "" ? amount + late : num(row.balance_due);
+  return r2(Math.max(0, Math.min(amount, balance - late)));
+}
+
+/**
+ * Spread one rent payment over the weeks it pays, oldest first (Damon, Nov 22
+ * 2026: a $1,050 Payment Link for the weeks of Nov 5, 12 and 19 was recorded
+ * on Nov 5 only, so Nov 12 stayed Overdue and Nov 19 was never marked paid).
+ *
+ * Weeks come from the link's metadata weeks when present; otherwise the open
+ * rent rows (oldest first, due within 8 weeks before the payment day and up
+ * to 2 days after it), then weeks from next_payment_due that are already due
+ * (or due within 2 days), while money is left. Each week owes its open row's rent left, else the weekly rate.
+ * Anything left after every week is paid stays on the last week (credit).
+ */
+export function allocateRentPayment(args: {
+  amount: number;
+  paidOn: string;
+  weeklyRate: number;
+  openRows: OpenRentRow[];
+  weeks?: string[];
+  nextPaymentDue?: string | null;
+  /** Most weeks one payment may pay ahead. */
+  maxWeeks?: number;
+}): RentAllocation[] {
+  const weekly = Math.max(0, num(args.weeklyRate));
+  const maxWeeks = args.maxWeeks ?? 12;
+  const byDue = new Map<string, OpenRentRow>();
+  for (const row of [...args.openRows].sort((a, b) => String(a.due_date ?? "").localeCompare(String(b.due_date ?? "")))) {
+    const d = String(row.due_date ?? "").slice(0, 10);
+    if (ISO_DAY.test(d) && !byDue.has(d)) byDue.set(d, row);
+  }
+  const lo = addDays(args.paidOn, -56), hi = addDays(args.paidOn, 2);
+  const weeks: string[] = [];
+  if (args.weeks?.length) {
+    weeks.push(...[...new Set(args.weeks)].sort());
+  } else {
+    weeks.push(...[...byDue.keys()].filter((d) => d >= lo && d <= hi));
+    const next = String(args.nextPaymentDue ?? "").slice(0, 10);
+    let w = ISO_DAY.test(next) ? next : weeks.length ? addDays(weeks[weeks.length - 1], 7) : null;
+    if (w && weeks.length && w <= weeks[weeks.length - 1]) w = addDays(weeks[weeks.length - 1], 7);
+    // Weeks already due (or due within 2 days) with no open row yet: manual payers and
+    // subscriptions whose invoice was never created. Never future weeks without metadata,
+    // so a stray payment does not skip a week an autopay is about to charge.
+    if (weekly > 0 && w) for (let i = 0; i < maxWeeks && weeks.length < maxWeeks && w <= hi; i++, w = addDays(w, 7)) weeks.push(w);
+  }
+  let left = r2(Math.max(0, args.amount));
+  const out: RentAllocation[] = [];
+  for (const due of weeks) {
+    if (left <= 0.004 || out.length >= maxWeeks) break;
+    const row = byDue.get(due) ?? null;
+    const owed = row ? rentLeftOn(row) : weekly;
+    if (owed <= 0) continue;
+    const applied = r2(Math.min(left, owed));
+    left = r2(left - applied);
+    out.push({ dueDate: due, applied, row, rentOwed: owed, paidInFull: applied + 0.005 >= owed, lateFees: row ? r2(num(row.late_fees)) : 0 });
+  }
+  if (left > 0.004 && out.length) out[out.length - 1].applied = r2(out[out.length - 1].applied + left);
+  return out;
+}
+
+/** next_payment_due after a payment: the week after the last week paid in full, never earlier than before. */
+export function nextDueAfter(current: string | null | undefined, allocations: RentAllocation[]): string | null {
+  const cur = String(current ?? "").slice(0, 10) || null;
+  let through: string | null = null;
+  for (const a of allocations) { if (!a.paidInFull) break; through = a.dueDate; }
+  if (!through) return cur;
+  const next = addDays(through, 7);
+  return cur && cur > next ? cur : next;
 }

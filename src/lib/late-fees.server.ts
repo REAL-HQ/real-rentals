@@ -277,7 +277,7 @@ export async function applyLateFees(today?: string, opts: { admin?: any; now?: D
         continue;
       }
       if (p.rental_id) {
-        const asRow: StandingPayment = { type: p.type, status: p.status, amount: p.amount, dueDate: p.due_date };
+        const asRow: StandingPayment = { type: p.type, status: p.status, amount: p.amount, dueDate: p.due_date, balanceDue: p.balance_due, lateFees: p.late_fees };
         if (isRentRowCovered(asRow, paidRentBy.get(p.rental_id) ?? [])) {
           run.skipped++;
           run.details!.push({ payment_id: p.id, rental_id: p.rental_id, due_date: p.due_date, addition: 0, reason: "rent paid on another row" });
