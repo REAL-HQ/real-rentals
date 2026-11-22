@@ -42,25 +42,7 @@ function fmtDateNumeric(v) {
   if (!d) return "";
   return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
 }
-var ET_PARTS = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-  hour12: true
-});
-function fmtActivityStamp(v) {
-  if (typeof v === "string" && DATE_ONLY.test(v.trim())) return fmtDate(v);
-  const d = toDate(v);
-  if (!d) return "";
-  const p = {};
-  for (const part of ET_PARTS.formatToParts(d)) p[part.type] = part.value;
-  return `${p.month} ${p.day}, ${p.year} \xB7 ${p.hour}:${p.minute} ${p.dayPeriod.toUpperCase()} ET`;
-}
 export {
-  fmtActivityStamp,
   fmtDate,
   fmtDateNumeric,
   fmtDateTime,
