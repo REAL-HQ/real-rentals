@@ -17,6 +17,7 @@ import {
   type VehicleListResult,
 } from "@/lib/vehicles-list";
 import { activeRentalVehicleIds } from "@/lib/fleet-summary";
+import { OPEN_SWAP_STATUSES, VEHICLE_SWAPS_TABLE, vehicleSwapNotices, type OpenSwapRow, type VehicleSwapNotice } from "@/lib/vehicle-swap";
 import { chooseVehicleThumbnailPaths, vehicleListThumbnailKey, type VehicleThumbnailMedia } from "@/lib/vehicle-thumbnail";
 
 // Vehicles List 1: one page of list columns, server-searched/filtered/sorted.
@@ -188,8 +189,9 @@ export const listVehicles = createServerFn({ method: "POST" })
     const ids = (rows ?? []).map((r: any) => r.id);
     const onRent = new Set<string>();
     let thumbnailFor = new Map<string, string>();
+    let swapNotices = new Map<string, VehicleSwapNotice>();
     if (ids.length) {
-      const [{ data: running }, { data: media }, { data: thumbnailSettings }] = await Promise.all([
+      const [{ data: running }, { data: media }, { data: thumbnailSettings }, openSwaps] = await Promise.all([
         // On Rent = an actual running rental, never inferred from vehicle status.
         supabaseAdmin
           .from("rentals")
@@ -210,7 +212,17 @@ export const listVehicles = createServerFn({ method: "POST" })
           .from("app_settings")
           .select("key,value")
           .in("key", ids.map((id: string) => vehicleListThumbnailKey(id))),
+        // Open swaps touching this page's cars. A missing table (swap not
+        // installed) or a read error just means no notice; the list still loads.
+        Promise.resolve(
+          (supabaseAdmin as unknown as FleetClient)
+            .from(VEHICLE_SWAPS_TABLE)
+            .select("id,swap_number,status,rental_id,from_vehicle_id,to_vehicle_id")
+            .in("status", [...OPEN_SWAP_STATUSES])
+            .or(`from_vehicle_id.in.(${ids.join(",")}),to_vehicle_id.in.(${ids.join(",")})`),
+        ).catch(() => ({ data: null })),
       ]);
+      swapNotices = vehicleSwapNotices(((openSwaps as { data: unknown } | null)?.data ?? []) as OpenSwapRow[]);
       for (const r of running ?? []) if ((r as any).vehicle_id) onRent.add((r as any).vehicle_id);
       thumbnailFor = chooseVehicleThumbnailPaths(
         (media ?? []) as VehicleThumbnailMedia[],
@@ -238,6 +250,7 @@ export const listVehicles = createServerFn({ method: "POST" })
         on_rent: onRent.has(r.id),
         readiness: bandOf.get(r.id) ?? readinessBand(r, publishedFor.has(r.id)),
         readinessGaps: readinessGaps(r, publishedFor.has(r.id)),
+        swap_notice: swapNotices.get(r.id) ?? null,
       })),
       total: count ?? 0,
       page: data.page,
