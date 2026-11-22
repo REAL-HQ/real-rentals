@@ -11,7 +11,8 @@ process.env.SUPABASE_PUBLISHABLE_KEY ??= "dummy";
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= "dummy";
 
 import { postVerifiedPaymentWebhook } from "../src/routes/api/public/payments/webhook.ts";
-import { appOwnsPayment, oneOffIdentity, oneOffRowType, pickRental, exactILike, rentWeekFor, UNMATCHED_TITLE } from "../src/lib/one-off-payment.ts";
+import { allocateRentPayment, appOwnsPayment, nextDueAfter, oneOffIdentity, oneOffRowType, pickRental, exactILike, rentWeekFor, UNMATCHED_TITLE, weeksOf } from "../src/lib/one-off-payment.ts";
+import { isRentRowCovered, onlyLateFeesLeft, rentStanding } from "../src/lib/rent-standing.ts";
 import { consolidatedRevenue, verifyCollectedCharges } from "../src/lib/stripe-collections.ts";
 import { loadAppLinkedPayments } from "../src/lib/stripe-collections.server.ts";
 
@@ -226,7 +227,11 @@ describe("payments webhook — one-off payments", () => {
     const notes = db._state.notifications.filter((n: Row) => n.title === "Open Stripe Invoice After Rent Paid");
     assert.equal(notes.length, 1);
     assert.match(notes[0].body, /in_TESTopen/);
-    assert.equal(db._state.payments.find((r: Row) => r.id === "rent-1116").status, "overdue", "the open row is not rewritten by the webhook");
+    const week = db._state.payments.find((r: Row) => r.id === "rent-1116");
+    assert.equal(week.status, "overdue", "late fees are left, so the row stays open");
+    assert.equal(week.balance_due, 50, "the rent is paid; only the $50 late fee is still owed");
+    assert.match(notes[0].body, /paid out of band/);
+    assert.doesNotMatch(notes[0].body, /Void it/);
   });
 
   it("a daily-plan renter's $50 stays on the paid day and raises no invoice notice", async () => {
@@ -443,5 +448,98 @@ describe("collections — one-off charges owned by an app row", () => {
     const out = await loadAppLinkedPayments([PI, "pi_inv", "pi_failed"], db);
     assert.deepEqual(out, [{ intentId: PI, chargeId: CH, rentalId: RENTAL, customerId: CUS }]);
     assert.deepEqual(await quiet(() => loadAppLinkedPayments([PI], { from() { throw new Error("db down"); } })), []);
+  });
+});
+
+// Damon, Nov 22 2026: one $1,050 Payment Link for the weeks of Nov 5, 12 and 19 was
+// recorded on Nov 5 only; Nov 12 stayed Overdue and Nov 19 was never paid.
+describe("multi-week rent Payment Link", () => {
+  const NOV22_0835 = 1795354502;
+  const damonRental = (over: Row = {}) => rental({ weekly_rate: 350, next_payment_due: "2026-11-12", payment_status: "past_due", ...over });
+  const nov5 = () => ({ id: "rent-1105", rental_id: RENTAL, type: "rent", status: "failed", amount: 350, balance_due: 350, late_fees: 0, due_date: "2026-11-05", stripe_invoice_id: "in_TEST1105" });
+  const nov12 = () => ({ id: "rent-1112", rental_id: RENTAL, type: "rent", status: "overdue", amount: 350, balance_due: 500, late_fees: 150, due_date: "2026-11-12", stripe_invoice_id: "in_TEST1112" });
+  const big = (meta: Row) => {
+    const s = session({ amount_total: 105000, created: NOV22_0835 - 60, metadata: { rental_id: RENTAL, reason: "rent", plate: "CZ06DA", ...meta } });
+    const stripe = stripeStub({ session: s, pi: intent({ amount: 105000, amount_received: 105000, created: NOV22_0835 - 2 }), charge: charge({ amount: 105000, amount_captured: 105000, created: NOV22_0835 }) });
+    return { s, stripe };
+  };
+  const row = (db: any, id: string) => db._state.payments.find((r: Row) => r.id === id);
+
+  it("records the charge once, closes the paid weeks, keeps unwaived late fees and moves next due past the last week", async () => {
+    const db = fakeDb({ rentals: [damonRental()], applications: [app()], payments: [nov5(), nov12()], notifications: [], app_settings: [], rent_late_fee_waivers: [] });
+    const { s, stripe } = big({ weeks: "2026-11-05,2026-11-12,2026-11-19" });
+    assert.equal((await send("checkout.session.completed", s, db, stripe)).status, 200);
+    await send("charge.succeeded", charge({ amount: 105000, amount_captured: 105000, created: NOV22_0835 }), db, stripe);
+    const rows = paymentsFor(db);
+    assert.equal(rows.length, 1, "one row per charge, so collected and revenue count it once");
+    assert.equal(rows[0].amount, 1050);
+    assert.equal(rows[0].due_date, "2026-11-05");
+    assert.equal(rows[0].notified_status, "paid", "no receipt from the app");
+    assert.equal(row(db, "rent-1105").status, "void", "Nov 5 rent paid, no late fee: closed, not left Failed");
+    assert.equal(row(db, "rent-1105").balance_due, 0);
+    assert.equal(row(db, "rent-1112").status, "overdue", "Nov 12 keeps its unwaived late fee");
+    assert.equal(row(db, "rent-1112").balance_due, 150, "only the $150 late fee is still owed");
+    assert.equal(row(db, "rent-1112").late_fees, 150, "late fees are never dropped without a waiver");
+    const r = db._state.rentals[0];
+    assert.equal(r.next_payment_due, "2026-11-26", "Nov 5, 12 and 19 paid: next due Nov 26");
+    assert.equal(r.payment_status, "past_due", "a late fee is still owed");
+    const notices = db._state.notifications.filter((n: Row) => n.title === "Open Stripe Invoice After Rent Paid");
+    assert.equal(notices.length, 2);
+    assert.ok(notices.every((n: Row) => /paid out of band/.test(n.body)));
+  });
+
+  it("a whole-week waiver closes the week too, and the rental reads current", async () => {
+    const db = fakeDb({ rentals: [damonRental()], applications: [app()], payments: [nov5(), nov12()], notifications: [], app_settings: [],
+      rent_late_fee_waivers: [{ rental_id: RENTAL, due_date: "2026-11-12", waived_through: null }] });
+    const { s, stripe } = big({ weeks: "2026-11-05,2026-11-12,2026-11-19" });
+    await send("checkout.session.completed", s, db, stripe);
+    assert.equal(row(db, "rent-1112").status, "void");
+    assert.equal(row(db, "rent-1112").late_fees, 0);
+    assert.equal(db._state.rentals[0].payment_status, "current");
+    assert.equal(db._state.rentals[0].next_payment_due, "2026-11-26");
+  });
+
+  it("without weeks metadata it pays the oldest open weeks, then the week already due with no row", async () => {
+    const db = fakeDb({ rentals: [damonRental()], applications: [app()], payments: [nov5(), nov12()], notifications: [], app_settings: [], rent_late_fee_waivers: [] });
+    const { s, stripe } = big({});
+    await send("checkout.session.completed", s, db, stripe);
+    assert.equal(row(db, "rent-1105").status, "void");
+    assert.equal(row(db, "rent-1112").balance_due, 150);
+    assert.equal(db._state.rentals[0].next_payment_due, "2026-11-26");
+  });
+
+  it("a payment with nothing owed keeps the old behavior and never prepays a future autopay week", async () => {
+    const db = fakeDb({ rentals: [damonRental({ next_payment_due: "2026-11-26", payment_status: "current" })], applications: [app()], payments: [], notifications: [], app_settings: [], rent_late_fee_waivers: [] });
+    const s = session({ amount_total: 35000, created: NOV22_0835 - 60, metadata: { rental_id: RENTAL, reason: "rent" } });
+    const stripe = stripeStub({ session: s, pi: intent({ amount: 35000, amount_received: 35000 }), charge: charge({ amount: 35000, amount_captured: 35000, created: NOV22_0835 }) });
+    await send("checkout.session.completed", s, db, stripe);
+    assert.equal(paymentsFor(db)[0].due_date, "2026-11-22");
+    assert.equal(db._state.rentals[0].next_payment_due, "2026-11-26");
+  });
+
+  it("allocator: oldest first, partial last week, weeks metadata parsed", () => {
+    const open = [nov12(), nov5()];
+    const a = allocateRentPayment({ amount: 500, paidOn: "2026-11-22", weeklyRate: 350, openRows: open, nextPaymentDue: "2026-11-12" });
+    assert.deepEqual(a.map((x) => [x.dueDate, x.applied, x.paidInFull]), [["2026-11-05", 350, true], ["2026-11-12", 150, false]]);
+    assert.equal(nextDueAfter("2026-11-12", a), "2026-11-12", "a part-paid week stays due");
+    const b = allocateRentPayment({ amount: 1050, paidOn: "2026-11-22", weeklyRate: 350, openRows: open, weeks: ["2026-11-19", "2026-11-05", "2026-11-12"] });
+    assert.deepEqual(b.map((x) => x.dueDate), ["2026-11-05", "2026-11-12", "2026-11-19"]);
+    assert.equal(nextDueAfter("2026-11-12", b), "2026-11-26");
+    assert.deepEqual(weeksOf({ metadata: { weeks: "2026-11-12, 2026-11-05,bad" } }), ["2026-11-05", "2026-11-12"]);
+    const over = allocateRentPayment({ amount: 400, paidOn: "2026-11-06", weeklyRate: 350, openRows: [nov5()], nextPaymentDue: "2026-11-05" });
+    assert.deepEqual(over.map((x) => [x.dueDate, x.applied]), [["2026-11-05", 400]], "credit beyond the weeks due stays on the last week");
+  });
+
+  it("rent standing: a row owing only its late fees is rent-paid; a default 0 balance is not", () => {
+    const feesOnly = { type: "rent", status: "overdue", amount: 350, dueDate: "2026-11-12", balanceDue: 150, lateFees: 150 };
+    assert.equal(onlyLateFeesLeft(feesOnly), true);
+    assert.equal(isRentRowCovered(feesOnly, []), true);
+    assert.equal(onlyLateFeesLeft({ ...feesOnly, balanceDue: 0, lateFees: 0 }), false);
+    assert.equal(isRentRowCovered({ ...feesOnly, balanceDue: 500 }, []), false);
+    const st = rentStanding({ today: "2026-11-22", nextPaymentDue: "2026-11-26", weeklyRate: 350, payments: [
+      { type: "rent", status: "paid", amount: 1050, dueDate: "2026-11-05" }, feesOnly,
+    ] });
+    assert.equal(st.rentOwed, 0);
+    assert.equal(st.nextDue, "2026-11-26");
   });
 });
