@@ -197,7 +197,8 @@ try {
     const panel = readFileSync("src/components/admin/PaymentsPanel.tsx", "utf8");
     assert.doesNotMatch(panel, /from\("payments"\)\s*\.update\(/, "PaymentsPanel updates payments directly");
     const add = panel.slice(panel.indexOf("function AddPayment"));
-    assert.match(add, /\{OPEN_STATUSES\.map\(\(s\) => \(/);
+    // Owed statuses only, without 'collections' (a row reaches Collections only through a move).
+    assert.match(add, /\{STATUS_MENU_OPTIONS\.map\(\(s\) => \(/);
     assert.doesNotMatch(add, /\{STATUSES\.map/, "Add Payment offers paid, refunded or waived");
     assert.match(readFileSync("src/routes/admin.tsx", "utf8"), /<PaymentsPanel [^>]*tier=\{tier\}/);
   });

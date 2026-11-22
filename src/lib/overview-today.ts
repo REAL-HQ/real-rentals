@@ -109,7 +109,10 @@ export function isOverduePayment(
   if (String(row.type ?? "").trim().toLowerCase() === "deposit") return false;
   const due = dateOnly(row.due_date);
   if (!due || due >= today) return false;
-  return (OUTSTANDING_STATUSES as readonly string[]).includes(String(row.status ?? "").trim().toLowerCase());
+  const status = String(row.status ?? "").trim().toLowerCase();
+  // Collections debts are tracked on Payments > Collections, never as overdue rent.
+  if (status === "collections") return false;
+  return (OUTSTANDING_STATUSES as readonly string[]).includes(status);
 }
 
 export function isNewLead(

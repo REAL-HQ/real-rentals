@@ -168,9 +168,12 @@ describe("every display reads the same rule", () => {
     const src = readFileSync("src/components/admin/PaymentsPanel.tsx", "utf8");
     expect(src).toMatch(/paymentCategoryLabel\(p\)/);
     expect(src).toMatch(/payments-type-filter-/);
-    expect(src).toMatch(/OWED\.has\(p\.status as string\) && \(?!coveredIds\.has\(p\.id\)/);
-    // A covered row still counts its late fees when only fees are left (Damon, Nov 22 2026).
-    expect(src).toMatch(/OWED\.has\(p\.status as string\) && \(!coveredIds\.has\(p\.id\) \|\| feesOnly\(p\)\)/);
+    // Owed rule lives in payments-summary.ts (shared with the summary cards): owed status and not covered,
+    // unless only late fees are left on a covered row (Damon, Nov 22 2026).
+    expect(src).toMatch(/countsAsOwed\(p as any, coveredIds\)/);
+    const summarySrc = readFileSync("src/lib/payments-summary.ts", "utf8");
+    expect(summarySrc).toMatch(/OWED_STATUSES\.has\(String\(p\.status \?\? ""\)\) && \(!coveredIds\.has\(p\.id\) \|\| feesOnlyLeft\(p\)\)/);
+    expect(summarySrc).toMatch(/onlyLateFeesLeft\(/);
   });
   test("the rent reminders skip daily-plan renters and quote no late fee for them", () => {
     expect(readFileSync("src/lib/rent-reminders.server.ts", "utf8")).toMatch(/bump\(run, "daily_plan"\)/);

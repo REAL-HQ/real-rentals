@@ -587,7 +587,9 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
     .neq('status', 'paid').neq('status', 'refunded');
   // A failed retry never reopens a charge staff voided or waived, and never fails a row that
   // our own collection has claimed (pending with an attempt time): that attempt is still unsettled.
-  if (status !== 'paid') q = q.neq('status', 'void').neq('status', 'waived').or('status.neq.pending,last_attempt_at.is.null');
+  // A row moved to Collections stays there: a failed retry never makes it 'failed' again, so no
+  // payment-failed email, text or team alert goes out for a Collections debt. (Paid still applies.)
+  if (status !== 'paid') q = q.neq('status', 'void').neq('status', 'waived').neq('status', 'collections').or('status.neq.pending,last_attempt_at.is.null');
   const r = must(await q.select('id'));
   if (!(r.data?.length)) {
     // The row was already paid, usually because staff marked a failed invoice

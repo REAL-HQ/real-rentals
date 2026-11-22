@@ -2369,7 +2369,7 @@ function PaymentsView({ data }: { data: DriverDashboard }) {
                       className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
                         p.status === "paid"
                           ? "bg-emerald-100 text-emerald-800"
-                          : p.status === "failed"
+                          : ["failed", "unpaid", "overdue", "past_due", "late", "collections"].includes(String(p.status))
                             ? DANGER_BADGE
                             : p.status === "pending"
                               ? "bg-amber-100 text-amber-800"

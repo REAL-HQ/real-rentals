@@ -32,7 +32,9 @@ export type OneOffOutcome =
   | { status: "unmatched"; why: "no_match" | "ambiguous"; identity: OneOffIdentity };
 
 const RENTAL_COLS = "id, application_id, vehicle_id, status, stripe_customer_id, weekly_rate, next_payment_due, payment_status";
-const OPEN_RENT = ["failed", "overdue", "past_due", "late", "unpaid", "collections", "current"];
+// Rows in Collections ('collections') are left to the Collections tab: payments_apply_to_collections
+// settles their lines, so a one-off link never voids or re-dates them here.
+const OPEN_RENT = ["failed", "overdue", "past_due", "late", "unpaid", "current"];
 
 type MatchBy = "metadata" | "lead" | "customer" | "email" | "plate";
 

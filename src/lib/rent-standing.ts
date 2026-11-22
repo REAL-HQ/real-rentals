@@ -19,8 +19,9 @@ import { isRentRow, type CategorizableRow } from "@/lib/payment-category";
 export const COVER_EARLY_DAYS = 2; // same as EARLY_PAYMENT_DAYS in stripe-link.ts
 export const COVER_LATE_DAYS = 6;
 
-/** Statuses that mean a row still owes money. */
-export const UNPAID_RENT_STATUSES = new Set(["failed", "overdue", "past_due", "late", "unpaid", "collections", "current"]);
+/** Statuses that mean a row still owes rent. A row in Collections ('collections') is a debt
+ *  tracked on Payments > Collections: no late fees, reminders or Overdue for it. */
+export const UNPAID_RENT_STATUSES = new Set(["failed", "overdue", "past_due", "late", "unpaid", "current"]);
 /** Statuses that mean the row is closed and owes nothing. */
 const EXCLUDED = new Set(["void", "waived", "cancelled", "canceled", "refunded"]);
 
