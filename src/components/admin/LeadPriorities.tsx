@@ -264,7 +264,7 @@ export default function LeadPriorities({
                               appearance="neutral"
                             />
                             {readinessResult ? (
-                              <ReadinessStatePill state={readinessResult.state} short />
+                              <ReadinessStatePill state={readinessResult.state} short soft />
                             ) : null}
                           </>
                         }

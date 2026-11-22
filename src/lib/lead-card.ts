@@ -84,25 +84,27 @@ export function leadBadgeLabel(bucket: LeadBucket, contactLabel: string, priorit
 /**
  * Avatar color follows the existing readiness headline. No new score.
  *
- * - decision_ready and promising_more_info → Promising (green). Decision Ready
+ * - decision_ready and promising_more_info → Promising (pastel green). Decision Ready
  *   already cleared the promising qualification bar and the higher decision
  *   coverage bar, so it uses the same green.
  * - more_info_needed, qualification at least PROMISING_QUALIFICATION (75), and
- *   coverage under PROMISING_COVERAGE (20) → Close To Promising (yellow).
+ *   coverage under PROMISING_COVERAGE (20) → Close To Promising (pastel yellow).
  *   classify leaves this as More Info Needed because the sample is too thin
  *   to call Promising. Those two thresholds already exist.
- * - needs_attention → Bad Lead (red).
- * - other more_info_needed → Needs Info (white, bordered).
- * - no readiness result (a Coordinator is not sent one) → neutral gray.
+ * - needs_attention → Bad Lead (pastel red).
+ * - other more_info_needed → Needs Info (white, light gray border).
+ * - no readiness result (a Coordinator is not sent one) → pastel gray.
+ * Initials stay dark on every pastel so they remain readable.
  */
 export type LeadAvatarQuality = "promising" | "close" | "bad" | "needs_info" | "neutral";
 
+const LEAD_AVATAR_INK = "text-[#111114]";
 export const LEAD_AVATAR_CLASS: Record<LeadAvatarQuality, string> = {
-  promising: "bg-[#166534] text-white",
-  close: "bg-[#F5C518] text-[#3F2E04]",
-  bad: "bg-[#D03020] text-white",
-  needs_info: "border border-[#6E6E76] bg-white text-[#111114]",
-  neutral: "bg-[#F4F4F6] text-[#3F3F46]",
+  promising: `bg-[#CDEFD6] ${LEAD_AVATAR_INK}`,
+  close: `bg-[#FFF1B8] ${LEAD_AVATAR_INK}`,
+  bad: `bg-[#F9D0CC] ${LEAD_AVATAR_INK}`,
+  needs_info: `border border-[#D0D1D7] bg-white ${LEAD_AVATAR_INK}`,
+  neutral: `bg-[#ECEDF1] ${LEAD_AVATAR_INK}`,
 };
 
 export function leadAvatarQuality(

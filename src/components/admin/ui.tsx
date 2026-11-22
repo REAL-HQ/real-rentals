@@ -1,6 +1,14 @@
 import { formatStatusLabel } from "@/lib/ui-display-labels";
 import type { ReactNode } from "react";
-import { Check, ArrowRight, ArrowUp, ArrowDown, AlertTriangle, HelpCircle, ChevronDown } from "lucide-react";
+import {
+  Check,
+  ArrowRight,
+  ArrowUp,
+  ArrowDown,
+  AlertTriangle,
+  HelpCircle,
+  ChevronDown,
+} from "lucide-react";
 import {
   nextActions,
   STATE_SHORT,
@@ -123,7 +131,9 @@ export function StatusPill({
   caret?: boolean;
 }) {
   const t = TONE[tone ?? toneFor(status)];
-  const label = children ?? (status === "onboarding" ? "Needs Setup" : status ? formatStatusLabel(String(status)) : "—");
+  const label =
+    children ??
+    (status === "onboarding" ? "Needs Setup" : status ? formatStatusLabel(String(status)) : "—");
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-[11px] font-medium ${className}`}
@@ -143,9 +153,7 @@ export function MicroLabel({
   className?: string;
 }) {
   return (
-    <div
-      className={`text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3] ${className}`}
-    >
+    <div className={`text-[10px] font-semibold tracking-[0.12em] text-[#9A9AA3] ${className}`}>
       {children}
     </div>
   );
@@ -293,7 +301,12 @@ export function LifecycleRail({
   /** Optional operational evidence color; never changes lifecycle completion or status. */
   evidenceTones?: Partial<Record<string, EvidenceTone>>;
   /** In-place receipt controls are separate from stage navigation. */
-  stageCheckoffs?: Partial<Record<string, { onToggle: () => void; disabled: boolean; checked: boolean; label: string; title: string }>>;
+  stageCheckoffs?: Partial<
+    Record<
+      string,
+      { onToggle: () => void; disabled: boolean; checked: boolean; label: string; title: string }
+    >
+  >;
   /** Who completed a stage when it was not staff, e.g. "By FLEET" (from the audit log). */
   stageNotes?: Partial<Record<string, { caption: string; title: string }>>;
 }) {
@@ -316,7 +329,10 @@ export function LifecycleRail({
             )}
           </div>
           {openStages.length > 0 && (
-            <div className="text-[12px] text-warning-foreground mt-0.5 truncate" title="These steps are not done yet. They do not hold up the next step.">
+            <div
+              className="text-[12px] text-warning-foreground mt-0.5 truncate"
+              title="These steps are not done yet. They do not hold up the next step."
+            >
               Still Open: {openStages.map((s) => s.label).join(", ")}
             </div>
           )}
@@ -355,24 +371,44 @@ export function LifecycleRail({
                         : "bg-card border-border text-muted-foreground"
               }`}
             >
-              {(checkoff ? checkoff.checked && evidenceTone !== "red" : done && (!evidenceTone || evidenceTone === "green")) ? <Check className="w-3 h-3" strokeWidth={2.5} /> : i + 1}
+              {(
+                checkoff
+                  ? checkoff.checked && evidenceTone !== "red"
+                  : done && (!evidenceTone || evidenceTone === "green")
+              ) ? (
+                <Check className="w-3 h-3" strokeWidth={2.5} />
+              ) : (
+                i + 1
+              )}
             </span>
           );
           return (
             <li key={s.key} className="relative flex min-w-16 flex-1 basis-0 flex-col items-center">
               {i < stages.length - 1 && (
-                <span aria-hidden="true"
+                <span
+                  aria-hidden="true"
                   className={`pointer-events-none absolute left-[calc(50%+18px)] right-[calc(-50%+18px)] top-[11px] h-0.5 rounded ${done ? "bg-success" : "bg-border"}`}
                 />
               )}
               <StageWrap onClick={checkoff ? undefined : onStageClick?.[s.key]} label={s.label}>
                 {checkoff ? (
-                  <Button type="button" variant="ghost" size="icon" role="checkbox"
-                    aria-label={checkoff.label} aria-checked={checkoff.checked} title={checkoff.title}
-                    disabled={checkoff.disabled} onClick={checkoff.onToggle}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    role="checkbox"
+                    aria-label={checkoff.label}
+                    aria-checked={checkoff.checked}
+                    title={checkoff.title}
+                    disabled={checkoff.disabled}
+                    onClick={checkoff.onToggle}
                     className="h-6 w-6 rounded-full p-0 hover:bg-transparent disabled:opacity-100"
-                  >{marker}</Button>
-                ) : marker}
+                  >
+                    {marker}
+                  </Button>
+                ) : (
+                  marker
+                )}
                 <span
                   className={`text-[10px] font-medium whitespace-nowrap ${
                     cur ? "text-foreground" : "text-muted-foreground"
@@ -381,7 +417,10 @@ export function LifecycleRail({
                   {s.label}
                 </span>
                 {note && (
-                  <span className="text-[9px] font-medium text-muted-foreground whitespace-nowrap" title={note.title}>
+                  <span
+                    className="text-[9px] font-medium text-muted-foreground whitespace-nowrap"
+                    title={note.title}
+                  >
                     {note.caption}
                   </span>
                 )}
@@ -394,10 +433,19 @@ export function LifecycleRail({
   );
 }
 
-function StageWrap({ onClick, label, children }: { onClick?: () => void; label: string; children: ReactNode }) {
+function StageWrap({
+  onClick,
+  label,
+  children,
+}: {
+  onClick?: () => void;
+  label: string;
+  children: ReactNode;
+}) {
   if (!onClick) return <div className="flex flex-col items-center gap-1.5">{children}</div>;
   return (
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       onClick={onClick}
       title={`Open ${label}`}
@@ -480,29 +528,44 @@ export function readinessTone(state: ReadinessState): Tone {
   return READINESS_TONE[state];
 }
 
+/** Pastel fills for a lead card. Dark ink, matching the avatar pastels. */
+const READINESS_SOFT: Record<ReadinessState, string> = {
+  needs_attention: "bg-[#F9D0CC] text-[#111114]",
+  decision_ready: "bg-[#CDEFD6] text-[#111114]",
+  promising_more_info: "bg-[#FFF1B8] text-[#111114]",
+  more_info_needed: "bg-secondary text-muted-foreground",
+};
+
 /** The state, as a pill. The only readiness headline there is. */
 export function ReadinessStatePill({
   state,
   short = false,
   label,
   appearance = "semantic",
+  soft = false,
 }: {
   state: ReadinessState;
   short?: boolean;
   label?: string;
   appearance?: "semantic" | "neutral";
+  /** Lead cards only: pastel fill and dark text instead of the saturated tone. */
+  soft?: boolean;
 }) {
   const t = TONE[READINESS_TONE[state]];
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap ${
-        appearance === "neutral"
-          ? READINESS_TONE[state] === "red"
-            ? "bg-brand/10 text-brand"
-            : "bg-secondary text-muted-foreground"
-          : ""
+        soft
+          ? READINESS_SOFT[state]
+          : appearance === "neutral"
+            ? READINESS_TONE[state] === "red"
+              ? "bg-brand/10 text-brand"
+              : "bg-secondary text-muted-foreground"
+            : ""
       }`}
-      style={appearance === "semantic" ? { backgroundColor: t.bg, color: t.fg } : undefined}
+      style={
+        !soft && appearance === "semantic" ? { backgroundColor: t.bg, color: t.fg } : undefined
+      }
     >
       {STATE_TONE[state] === "critical" && (
         <AlertTriangle className="w-3 h-3 shrink-0" strokeWidth={2.5} />
@@ -528,22 +591,38 @@ export function ReadinessMetrics({
   appearance?: "semantic" | "neutral";
 }) {
   if (result.qualification === null) {
-    return <span className={`text-[11px] ${appearance === "neutral" ? "text-muted-foreground" : "text-[#9A9AA3]"}`}>Nothing recorded yet</span>;
+    return (
+      <span
+        className={`text-[11px] ${appearance === "neutral" ? "text-muted-foreground" : "text-[#9A9AA3]"}`}
+      >
+        Nothing recorded yet
+      </span>
+    );
   }
   if (compact) {
     return (
-      <span className={`text-[11px] tabular-nums whitespace-nowrap ${appearance === "neutral" ? "text-muted-foreground" : "text-[#55555E]"}`}>
+      <span
+        className={`text-[11px] tabular-nums whitespace-nowrap ${appearance === "neutral" ? "text-muted-foreground" : "text-[#55555E]"}`}
+      >
         Qual {result.qualification} · {result.coverage}% known
       </span>
     );
   }
   return (
     <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-      <span className={`text-[13px] font-semibold tabular-nums ${appearance === "neutral" ? "text-foreground" : "text-[#111114]"}`}>
+      <span
+        className={`text-[13px] font-semibold tabular-nums ${appearance === "neutral" ? "text-foreground" : "text-[#111114]"}`}
+      >
         Qualification {result.qualification}
       </span>
-      <span className={`text-[12px] tabular-nums ${appearance === "neutral" ? "text-muted-foreground" : "text-[#55555E]"}`}>{result.coverage}% Known</span>
-      <span className={`text-[12px] tabular-nums ${appearance === "neutral" ? "text-muted-foreground" : "text-[#55555E]"}`}>
+      <span
+        className={`text-[12px] tabular-nums ${appearance === "neutral" ? "text-muted-foreground" : "text-[#55555E]"}`}
+      >
+        {result.coverage}% Known
+      </span>
+      <span
+        className={`text-[12px] tabular-nums ${appearance === "neutral" ? "text-muted-foreground" : "text-[#55555E]"}`}
+      >
         {result.verifiedCoverage}% Verified
       </span>
     </div>
@@ -604,7 +683,9 @@ export function ReadinessSummary({
         )}
       </header>
 
-      <div className={`grid grid-cols-1 ${showNextSteps ? "md:grid-cols-3" : "md:grid-cols-2"} divide-y md:divide-y-0 md:divide-x divide-[#EDEDF0]`}>
+      <div
+        className={`grid grid-cols-1 ${showNextSteps ? "md:grid-cols-3" : "md:grid-cols-2"} divide-y md:divide-y-0 md:divide-x divide-[#EDEDF0]`}
+      >
         <div className="p-5">
           <MicroLabel className="mb-2">Positive Signals</MicroLabel>
           {result.positives.length === 0 ? (
@@ -651,30 +732,34 @@ export function ReadinessSummary({
           )}
         </div>
 
-        {showNextSteps ? <div className="p-5">
-          <MicroLabel className="mb-2">Next Steps</MicroLabel>
-          {gaps.length === 0 ? (
-            <div className="text-[12px] text-[#9A9AA3]">Nothing outstanding.</div>
-          ) : (
-            <ul className="space-y-2.5">
-              {gaps.map((g) => (
-                <li key={g.remedy}>
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-[11px] font-semibold text-[#55555E]">{g.label}</span>
-                    <span className="text-[10px] text-[#9A9AA3] tabular-nums whitespace-nowrap">
-                      +{g.coverageGain}% known
-                    </span>
-                  </div>
-                  <div className="mt-0.5 flex items-start gap-2 text-[12px] text-[#55555E]">
-                    <HelpCircle className="w-3.5 h-3.5 mt-0.5 text-[#C4C4CB] shrink-0" />
-                    <span className="min-w-0">{g.factors.map((f) => f.label).join(", ")}</span>
-                  </div>
-                  {remedyActions?.[g.remedy] && <div className="mt-1.5">{remedyActions[g.remedy]}</div>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div> : null}
+        {showNextSteps ? (
+          <div className="p-5">
+            <MicroLabel className="mb-2">Next Steps</MicroLabel>
+            {gaps.length === 0 ? (
+              <div className="text-[12px] text-[#9A9AA3]">Nothing outstanding.</div>
+            ) : (
+              <ul className="space-y-2.5">
+                {gaps.map((g) => (
+                  <li key={g.remedy}>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[11px] font-semibold text-[#55555E]">{g.label}</span>
+                      <span className="text-[10px] text-[#9A9AA3] tabular-nums whitespace-nowrap">
+                        +{g.coverageGain}% known
+                      </span>
+                    </div>
+                    <div className="mt-0.5 flex items-start gap-2 text-[12px] text-[#55555E]">
+                      <HelpCircle className="w-3.5 h-3.5 mt-0.5 text-[#C4C4CB] shrink-0" />
+                      <span className="min-w-0">{g.factors.map((f) => f.label).join(", ")}</span>
+                    </div>
+                    {remedyActions?.[g.remedy] && (
+                      <div className="mt-1.5">{remedyActions[g.remedy]}</div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {(actions || primary) && (

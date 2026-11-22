@@ -53,18 +53,12 @@ export function LeadCardBody({
   const urgency = leadUrgency(lead, today);
   const next = leadVisibleNextStep(lead.bucket);
   const note = lead.contact_status_note?.trim() || "";
-  const overdue = lead.bucket === "overdue";
   const activity = leadActivity(lead);
   const activityTitle = activity.when
     ? `${activity.label} · ${activity.when.long}`
     : activity.label;
   return (
-    <div
-      className={cn(
-        "@container relative flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4 text-card-foreground",
-        overdue && "shadow-[inset_3px_0_0_0_var(--real-red)]",
-      )}
-    >
+    <div className="@container relative flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4 text-card-foreground">
       <div className="relative z-10 flex min-w-0 items-start gap-3 pointer-events-none">
         <div
           aria-hidden="true"
@@ -87,7 +81,7 @@ export function LeadCardBody({
                   className={cn(
                     "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
                     urgency.prominent
-                      ? "bg-brand/10 text-brand"
+                      ? "bg-[#F9D0CC] text-[#111114]"
                       : "bg-secondary text-muted-foreground",
                   )}
                 >

@@ -22,6 +22,7 @@ import {
 import { LEAD_BUCKETS, projectLead, type LeadBucket } from "../src/lib/lead-priorities";
 import { LeadCardContactActions } from "../src/components/admin/LeadCardActions";
 import { LeadCardBody } from "../src/components/admin/LeadCardBody";
+import { ReadinessStatePill } from "../src/components/admin/ui";
 
 const ui = readFileSync("src/components/admin/LeadPriorities.tsx", "utf8");
 const actionsSrc = readFileSync("src/components/admin/LeadCardActions.tsx", "utf8");
@@ -93,7 +94,14 @@ describe("compact lead cards", () => {
     expect(html).toContain('data-status="">Contacted<');
     expect(html).toContain(">3d overdue<");
     expect(html).toContain("Due Nov 5, 2026 (3 days overdue)");
-    expect(html).toContain("text-brand");
+    expect(html).toContain("bg-[#F9D0CC]");
+    expect(html).toContain("text-[#111114]");
+    expect(html).not.toContain("text-brand");
+    expect(html).not.toContain("inset");
+    expect(html).not.toContain("real-red");
+    expect(html).not.toContain("border-l-");
+    expect(body).not.toContain("inset_3px");
+    expect(body).not.toContain("real-red");
     expect(html).toContain("Last Contact Today");
     expect(html).not.toContain("Overdue · Urgent");
     expect(html).not.toContain("Follow Up And Log The Outcome");
@@ -311,14 +319,38 @@ describe("compact lead cards", () => {
     expect(leadAvatarQuality({ state: "needs_attention", qualification: 90, coverage: 80 })).toBe(
       "bad",
     );
-    expect(LEAD_AVATAR_CLASS.promising).toContain("text-white");
-    expect(LEAD_AVATAR_CLASS.bad).toContain("text-white");
-    expect(LEAD_AVATAR_CLASS.close).toContain("text-[#3F2E04]");
+    expect(LEAD_AVATAR_CLASS.promising).toContain("bg-[#CDEFD6]");
+    expect(LEAD_AVATAR_CLASS.close).toContain("bg-[#FFF1B8]");
+    expect(LEAD_AVATAR_CLASS.bad).toContain("bg-[#F9D0CC]");
     expect(LEAD_AVATAR_CLASS.needs_info).toContain("bg-white");
-    expect(LEAD_AVATAR_CLASS.needs_info).toContain("border");
-    expect(LEAD_AVATAR_CLASS.neutral).toContain("bg-[#F4F4F6]");
+    expect(LEAD_AVATAR_CLASS.needs_info).toContain("border-[#D0D1D7]");
+    expect(LEAD_AVATAR_CLASS.neutral).toContain("bg-[#ECEDF1]");
+    for (const tone of Object.values(LEAD_AVATAR_CLASS)) {
+      expect(tone).toContain("text-[#111114]");
+      expect(tone).not.toContain("text-white");
+    }
     const html = render(row("new"));
     expect(html).toContain('data-lead-avatar="neutral"');
     expect(html).toContain(LEAD_AVATAR_CLASS.neutral);
+    const attention = renderToStaticMarkup(
+      h(ReadinessStatePill, { state: "needs_attention", short: true, soft: true }),
+    );
+    expect(attention).toContain("bg-[#F9D0CC]");
+    expect(attention).toContain("text-[#111114]");
+    expect(attention).not.toContain("#D03020");
+    expect(
+      renderToStaticMarkup(
+        h(ReadinessStatePill, { state: "promising_more_info", short: true, soft: true }),
+      ),
+    ).toContain("#FFF1B8");
+    expect(
+      renderToStaticMarkup(
+        h(ReadinessStatePill, { state: "decision_ready", short: true, soft: true }),
+      ),
+    ).toContain("#CDEFD6");
+    expect(
+      renderToStaticMarkup(h(ReadinessStatePill, { state: "needs_attention", short: true })),
+    ).not.toContain("bg-[#F9D0CC]");
+    expect(ui).toContain("<ReadinessStatePill state={readinessResult.state} short soft />");
   });
 });
