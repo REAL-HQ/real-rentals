@@ -2,7 +2,13 @@ import type { ReactNode } from "react";
 import { Clock } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { personInitials } from "@/lib/display-normalize";
-import { leadAvatarTone, leadContactMeta, leadUrgency, leadVisibleNextStep } from "@/lib/lead-card";
+import {
+  LEAD_AVATAR_CLASS,
+  leadActivity,
+  leadUrgency,
+  leadVisibleNextStep,
+  type LeadAvatarQuality,
+} from "@/lib/lead-card";
 import type { PriorityLead } from "@/lib/lead-priorities";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +23,7 @@ export function LeadCardBody({
   actions,
   menu,
   view,
+  quality = "neutral",
 }: {
   lead: Pick<
     PriorityLead,
@@ -40,25 +47,26 @@ export function LeadCardBody({
   menu?: ReactNode;
   /** Stretched link. Sits under the text so a click on the card opens the applicant. */
   view?: ReactNode;
+  /** Readiness bucket for the avatar. Neutral when readiness was not provided. */
+  quality?: LeadAvatarQuality;
 }) {
   const urgency = leadUrgency(lead, today);
   const next = leadVisibleNextStep(lead.bucket);
   const note = lead.contact_status_note?.trim() || "";
-  const overdue = lead.bucket === "overdue";
+  const activity = leadActivity(lead);
+  const activityTitle = activity.when
+    ? `${activity.label} · ${activity.when.long}`
+    : activity.label;
   return (
-    <div
-      className={cn(
-        "relative flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4 text-card-foreground",
-        overdue && "shadow-[inset_3px_0_0_0_var(--real-red)]",
-      )}
-    >
+    <div className="@container relative flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4 text-card-foreground">
       <div className="relative z-10 flex min-w-0 items-start gap-3 pointer-events-none">
         <div
           aria-hidden="true"
           className={cn(
             "grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold",
-            leadAvatarTone(lead.contact_status),
+            LEAD_AVATAR_CLASS[quality],
           )}
+          data-lead-avatar={quality}
         >
           {personInitials(displayName)}
         </div>
@@ -73,7 +81,7 @@ export function LeadCardBody({
                   className={cn(
                     "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
                     urgency.prominent
-                      ? "bg-brand/10 text-brand"
+                      ? "bg-[#F9D0CC] text-[#111114]"
                       : "bg-secondary text-muted-foreground",
                   )}
                 >
@@ -96,10 +104,19 @@ export function LeadCardBody({
       {draft && <div className="relative z-10 pointer-events-auto">{draft}</div>}
       <p
         data-lead-timing
-        className="relative z-10 flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground pointer-events-none"
+        title={activityTitle}
+        className="relative z-10 flex min-w-0 flex-nowrap items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs leading-4 text-muted-foreground pointer-events-none"
       >
         <Clock aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-        <span>{leadContactMeta(lead)}</span>
+        <span className="min-w-0 truncate">
+          {activity.label}
+          {activity.when && (
+            <>
+              <span className="@min-[16rem]:hidden"> · {activity.when.short}</span>
+              <span className="hidden @min-[16rem]:inline"> · {activity.when.long}</span>
+            </>
+          )}
+        </span>
       </p>
       {note && (
         <TooltipProvider delayDuration={300}>
@@ -116,7 +133,7 @@ export function LeadCardBody({
           </Tooltip>
         </TooltipProvider>
       )}
-      <div className="relative z-10 mt-auto pointer-events-none">{actions}</div>
+      <div className="relative z-10 mt-auto w-full pointer-events-none">{actions}</div>
       {view}
     </div>
   );

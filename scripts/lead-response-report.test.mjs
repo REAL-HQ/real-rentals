@@ -160,7 +160,9 @@ check(!ui.includes("uppercase") && !ui.includes("text-transform"), "the report d
 
 const list = readFileSync("src/components/admin/LeadPriorities.tsx", "utf8");
 check(list.includes("<LeadResponseReport isManager={isManager} />"), "Lead Priorities hosts the report for a manager");
-check(list.includes("open-messages") && list.includes("Lead Priorities"), "the existing lead list stays in place");
+// The Messages hand-off moved into the card's Call/Text actions (LeadCardActions.tsx, PR 497).
+const cardActions = readFileSync("src/components/admin/LeadCardActions.tsx", "utf8");
+check((list.includes("open-messages") || (list.includes("LeadCardActions") && cardActions.includes("open-messages"))) && list.includes("Lead Priorities"), "the existing lead list stays in place");
 const overview = readFileSync("src/components/admin/OverviewPanel.tsx", "utf8");
 check(overview.includes("LeadPriorities") && overview.includes("isManager={canSeeCollections}") && overview.includes("refreshKey={opsRefreshKey}") && !overview.includes("LeadResponseReport"), "Overview passes the manager bit, shared refresh, and does not gain a second lead screen");
 const admin = readFileSync("src/routes/admin.tsx", "utf8");

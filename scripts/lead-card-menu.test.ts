@@ -130,7 +130,7 @@ describe("card wiring", () => {
     );
     // Name, then the ⋮ control, still above the next-step line.
     expect(html.indexOf(">Test Lead<")).toBeLessThan(html.indexOf("data-kebab"));
-    expect(html.indexOf("data-kebab")).toBeLessThan(html.indexOf("Make first contact"));
+    expect(html.indexOf("data-kebab")).toBeLessThan(html.indexOf("Make First Contact"));
     expect(html).toMatch(/flex items-start gap-2[\s\S]*Test Lead[\s\S]*data-kebab/);
   });
   test("lead rows carry email for Copy Email", () => {
@@ -157,7 +157,9 @@ describe("card wiring", () => {
   test("tier flows from the admin shell to every lead card", () => {
     expect(adminSrc).toContain('<OverviewPanel canSeeCollections={tierAllows(tier, "manager")} tier={tier} />');
     expect(overviewSrc).toContain("tier={tier}");
-    expect(listSrc).toContain("<LeadCardMenu lead={lead} today={result.today} tier={tier} onChanged={refresh} />");
+    expect(listSrc).toMatch(
+      /<LeadCardMenu[\s\S]*?lead=\{lead\}[\s\S]*?today=\{result\.today\}[\s\S]*?tier=\{tier\}[\s\S]*?onChanged=\{refresh\}/,
+    );
   });
   test("no real phone numbers in the menu code or this test", () => {
     const self = readFileSync("scripts/lead-card-menu.test.ts", "utf8");
