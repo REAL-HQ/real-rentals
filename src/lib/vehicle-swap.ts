@@ -204,3 +204,64 @@ export function swapSendBlockers(i: {
   if (i.companyPending) out.push("Confirm The Company Details Box");
   return out;
 }
+
+// ------------------------------------------- Open Swap Notices (Vehicles List)
+
+/**
+ * A signed swap only moves the cars when staff press Complete Swap at the
+ * handover. Until then the old car still reads Rented and the new one
+ * Available. James's S-1000 sat signed for a day because nothing outside the
+ * booking's Vehicle History said so (Dolmar t614u, Nov 22 2026). These notices
+ * put the open swap on both cars in the Vehicles list, with a link straight to
+ * the booking where Complete Swap lives.
+ */
+export type OpenSwapRow = {
+  id: string;
+  swap_number: number | null;
+  status: string | null;
+  rental_id: string | null;
+  from_vehicle_id: string | null;
+  to_vehicle_id: string | null;
+};
+
+export type VehicleSwapNotice = {
+  swapId: string;
+  swapNumber: number | null;
+  status: "pending_signature" | "signed";
+  /** outgoing = the car the renter is giving back; incoming = the replacement. */
+  role: "outgoing" | "incoming";
+  label: string;
+  href: string | null;
+};
+
+export function swapBookingHref(rentalId: string | null | undefined): string | null {
+  return rentalId ? `/admin?tab=bookings&view=past&id=${encodeURIComponent(rentalId)}` : null;
+}
+
+export function vehicleSwapNoticeLabel(status: "pending_signature" | "signed", swapNumber: number | null): string {
+  const s = swapNumber != null ? `Swap S-${swapNumber}` : "Swap";
+  return status === "signed" ? `${s} Signed · Complete Swap` : `${s} Waiting For Signature`;
+}
+
+/** Map each car on an open swap to its notice. A signed swap wins over a pending one. */
+export function vehicleSwapNotices(rows: readonly OpenSwapRow[]): Map<string, VehicleSwapNotice> {
+  const out = new Map<string, VehicleSwapNotice>();
+  for (const r of rows) {
+    if (r.status !== "signed" && r.status !== "pending_signature") continue;
+    const status = r.status;
+    for (const [vehicleId, role] of [[r.from_vehicle_id, "outgoing"], [r.to_vehicle_id, "incoming"]] as const) {
+      if (!vehicleId) continue;
+      const prev = out.get(vehicleId);
+      if (prev && (prev.status === "signed" || status !== "signed")) continue;
+      out.set(vehicleId, {
+        swapId: r.id,
+        swapNumber: r.swap_number ?? null,
+        status,
+        role,
+        label: vehicleSwapNoticeLabel(status, r.swap_number ?? null),
+        href: swapBookingHref(r.rental_id),
+      });
+    }
+  }
+  return out;
+}

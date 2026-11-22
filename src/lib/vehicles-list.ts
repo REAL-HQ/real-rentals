@@ -40,6 +40,8 @@ export type VehicleListRow = {
   readiness: ReadinessBand;
   /** What is missing, named — so the list can say WHY, not just "not ready". */
   readinessGaps: string[];
+  /** An open swap on this car (waiting for signature, or signed and not yet completed). */
+  swap_notice?: import("@/lib/vehicle-swap").VehicleSwapNotice | null;
 };
 
 /**

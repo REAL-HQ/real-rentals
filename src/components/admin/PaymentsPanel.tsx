@@ -39,7 +39,7 @@ import { BillingControls } from "./BillingControls";
 import type { StaffTier } from "@/lib/roles";
 import { tierAllows } from "@/lib/roles";
 import { PAYMENT_CATEGORIES, PAYMENT_CATEGORY_LABEL, paymentCategory, paymentCategoryLabel, type PaymentCategory } from "@/lib/payment-category";
-import { isRentRowCovered, type StandingPayment } from "@/lib/rent-standing";
+import { isRentRowCovered, onlyLateFeesLeft, type StandingPayment } from "@/lib/rent-standing";
 import { OPEN_STATUSES, canTake, type PaymentStatusAction } from "@/lib/payment-status-rules";
 import { changePaymentStatus } from "@/lib/payment-status.functions";
 import { releaseUnconfirmedPayment } from "@/lib/payment-unconfirmed.functions";
@@ -293,7 +293,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
     for (const p of payments) {
       if (!p.rental_id) continue;
       (byRental.get(p.rental_id) ?? byRental.set(p.rental_id, []).get(p.rental_id)!).push({
-        id: p.id, type: p.type, reason: (p as any).reason, notes: p.notes, status: p.status, amount: p.amount, dueDate: p.due_date, paidDate: p.paid_date,
+        id: p.id, type: p.type, reason: (p as any).reason, notes: p.notes, status: p.status, amount: p.amount, dueDate: p.due_date, paidDate: p.paid_date, balanceDue: p.balance_due, lateFees: p.late_fees,
       } as StandingPayment & { id: string });
     }
     const out = new Set<string>();
@@ -317,8 +317,10 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
   // Owed now: due/unpaid states only. Upcoming isn't due yet; paid, refunded,
   // waived and void owe nothing. A settled balance of 0 is 0, not the amount.
   const OWED = new Set(["pending", "current", "late", "overdue", "past_due", "failed", "unpaid", "collections"]);
+  // A covered rent row still owes its late fees when only fees are left on it.
+  const feesOnly = (p: Payment) => onlyLateFeesLeft({ type: p.type, status: p.status, amount: p.amount, dueDate: p.due_date, balanceDue: p.balance_due, lateFees: p.late_fees } as StandingPayment);
   const totalDue = filtered
-    .filter((p) => OWED.has(p.status as string) && !coveredIds.has(p.id))
+    .filter((p) => OWED.has(p.status as string) && (!coveredIds.has(p.id) || feesOnly(p)))
     .reduce((s, p) => s + (p.balance_due == null ? Number(p.amount || 0) : Number(p.balance_due)), 0);
 
   const statusCount = (status: string) => {
@@ -513,7 +515,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null }: { ini
                     </Select>
                     )}
                     {coveredIds.has(p.id) ? (
-                      <span className="mt-0.5 block text-[11px] font-medium text-[#50C060]" data-testid="payment-covered-note">Paid On Another Row</span>
+                      <span className="mt-0.5 block text-[11px] font-medium text-[#50C060]" data-testid="payment-covered-note">{feesOnly(p) ? "Rent Paid · Late Fees Owed" : "Paid On Another Row"}</span>
                     ) : null}
                   </td>
                   <td className="px-3 text-[13px]">{p.payment_method || "—"}</td>
