@@ -42,6 +42,7 @@ import {
   summarizeFleet,
   summarizeFleetOccupancy,
   activeRentalVehicleIds,
+  fleetSnapshotSlices,
   type FleetSummary,
   type FleetStatusMismatch,
 } from "@/lib/fleet-summary";
@@ -342,11 +343,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opsRefreshKey]);
 
-  const { total, rentable, rented, reserved, needsSetup } = fleet;
+  const { total, rentable, rented } = fleet;
   const vehiclesAvail = fleet.available;
-  const maintOpen = fleet.maintenance;
-  const vehiclesTotal = fleet.total;
   const utilPct = fleet.utilizationPct;
+  const fleetSlices = fleetSnapshotSlices(fleet);
   const pctOf = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
   // ---- revenue for the selected range -------------------------------------
   // Its own effect, so changing the range refetches two small queries rather
@@ -633,25 +633,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
           }
         >
           <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-6 lg:grid-cols-[auto_1fr]">
-            <SegmentedDonut
-              total={total}
-              segments={[
-                { key: "rented", label: "Rented", value: rented, color: "#4CD964" },
-                { key: "reserved", label: "Reserved", value: reserved, color: "#FFCC33" },
-                { key: "available", label: "Available", value: vehiclesAvail, color: "#C7C7CC" },
-                { key: "maintenance", label: "Maintenance", value: maintOpen, color: "#FF3B30" },
-                { key: "setup", label: "Needs Setup", value: needsSetup, color: "#8E8E93" },
-              ]}
-            />
+            <SegmentedDonut total={total} segments={fleetSlices} />
             <div>
               <ul className="space-y-1.5">
-                {[
-                  { key: "rented", label: "Rented", value: rented, color: "#4CD964" },
-                  { key: "reserved", label: "Reserved", value: reserved, color: "#FFCC33" },
-                  { key: "available", label: "Available", value: vehiclesAvail, color: "#C7C7CC" },
-                  { key: "maintenance", label: "Maintenance", value: maintOpen, color: "#FF3B30" },
-                  { key: "setup", label: "Needs Setup", value: needsSetup, color: "#8E8E93" },
-                ].map((s) => (
+                {fleetSlices.map((s) => (
                   <li key={s.key} className="flex items-center gap-2 text-[13px]">
                     <span
                       className="h-2 w-2 rounded-full shrink-0"
@@ -1335,7 +1320,9 @@ function SegmentedDonut({
     c = 2 * Math.PI * r;
   const gap = 2; // px gap between segments
   let offset = 0;
-  const sum = segments.reduce((a, s) => a + s.value, 0) || 1;
+  // Scale to the center total so a missing slice leaves a gap instead of
+  // stretching the categories that happened to be drawn.
+  const denom = total > 0 ? total : 1;
   return (
     <div className="relative mx-auto shrink-0 sm:mx-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
@@ -1349,7 +1336,7 @@ function SegmentedDonut({
         />
         {segments.map((s) => {
           if (s.value <= 0) return null;
-          const len = (s.value / sum) * c;
+          const len = (s.value / denom) * c;
           const dash = Math.max(0, len - gap);
           const el = (
             <circle
