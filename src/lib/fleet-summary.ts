@@ -3,9 +3,18 @@
  * from this so "In Fleet" and "Total Vehicles" can never disagree again.
  * Status vocabulary mirrors VEHICLE_STATUSES in vehicles.functions.ts.
  *
+ * Total is the working fleet. Archived, sold, and retired rows, and any row
+ * with archived_at set, stay out of it. The Vehicles page total is a different
+ * number: the whole table, labeled "Including Archived". Those totals match
+ * when no car has left the fleet. Every car inside this total is in exactly
+ * one slice: Rented, Reserved, Available, Maintenance, Needs Setup,
+ * Unavailable, or Other.
+ *
  * Occupancy (Rented) prefers live active rentals over vehicle.status, because
  * a vehicle can stay "available" after activation or stay "rented" after
  * return. Status mismatches are reported so staff can fix the row.
+ * Utilization stays rented ÷ (available + reserved + rented). Unavailable,
+ * maintenance, and needs-setup cars are in the total and out of that denominator.
  */
 export const INACTIVE_VEHICLE_STATUSES = ["archived", "sold", "retired"] as const;
 /** Statuses that take part in rental utilization. */
@@ -18,6 +27,7 @@ export type FleetSummary = {
   reserved: number;
   rented: number;
   maintenance: number;
+  unavailable: number;
   other: number;
   rentable: number;
   /** null when nothing is rentable — never report a misleading 0%. */
@@ -36,27 +46,94 @@ export type FleetStatusMismatch = {
   kind: "status_rented_without_active" | "active_without_rented_status";
 };
 
+/**
+ * Donut and legend colors. Maintenance is orange so it stays distinct from
+ * Reserved yellow and Unavailable red. Other is indigo, the leftover bucket.
+ */
+export const FLEET_SNAPSHOT_COLORS = {
+  rented: "#4CD964",
+  reserved: "#FFCC33",
+  available: "#C7C7CC",
+  maintenance: "#F97316",
+  setup: "#8E8E93",
+  unavailable: "#FF3B30",
+  other: "#5856D6",
+} as const;
+
+const FLEET_SNAPSHOT_SLICE_DEFS = [
+  { key: "rented", label: "Rented", field: "rented", color: FLEET_SNAPSHOT_COLORS.rented },
+  { key: "reserved", label: "Reserved", field: "reserved", color: FLEET_SNAPSHOT_COLORS.reserved },
+  { key: "available", label: "Available", field: "available", color: FLEET_SNAPSHOT_COLORS.available },
+  { key: "maintenance", label: "Maintenance", field: "maintenance", color: FLEET_SNAPSHOT_COLORS.maintenance },
+  { key: "setup", label: "Needs Setup", field: "needsSetup", color: FLEET_SNAPSHOT_COLORS.setup },
+  { key: "unavailable", label: "Unavailable", field: "unavailable", color: FLEET_SNAPSHOT_COLORS.unavailable },
+  { key: "other", label: "Other", field: "other", color: FLEET_SNAPSHOT_COLORS.other },
+] as const;
+
+export type FleetSnapshotSlice = {
+  key: (typeof FLEET_SNAPSHOT_SLICE_DEFS)[number]["key"];
+  label: string;
+  value: number;
+  color: string;
+};
+
+/** Legend and donut rows, in display order. Their values sum to `total`. */
+export function fleetSnapshotSlices(summary: FleetSummary): FleetSnapshotSlice[] {
+  return FLEET_SNAPSHOT_SLICE_DEFS.map((def) => ({
+    key: def.key,
+    label: def.label,
+    value: summary[def.field],
+    color: def.color,
+  }));
+}
+
+function blankSummary(): FleetSummary {
+  return {
+    total: 0,
+    needsSetup: 0,
+    available: 0,
+    reserved: 0,
+    rented: 0,
+    maintenance: 0,
+    unavailable: 0,
+    other: 0,
+    rentable: 0,
+    utilizationPct: null,
+  };
+}
+
+function isOutOfFleet(row: { archived_at?: string | null }, status: string): boolean {
+  return Boolean(row.archived_at) || (INACTIVE_VEHICLE_STATUSES as readonly string[]).includes(status);
+}
+
+/** One working-fleet car, one counter. Unknown statuses land in Other. */
+function countWorkingStatus(summary: FleetSummary, status: string): void {
+  if (status === "onboarding") summary.needsSetup++;
+  else if (status === "available") summary.available++;
+  else if (status === "reserved") summary.reserved++;
+  else if (status === "rented") summary.rented++;
+  else if (status === "maintenance") summary.maintenance++;
+  else if (status === "unavailable") summary.unavailable++;
+  else summary.other++;
+}
+
+function finishSummary(summary: FleetSummary): FleetSummary {
+  summary.rentable = summary.available + summary.reserved + summary.rented;
+  summary.utilizationPct = summary.rentable > 0 ? Math.round((summary.rented / summary.rentable) * 100) : null;
+  return summary;
+}
+
 export function summarizeFleet(
   rows: { status: string | null; archived_at?: string | null }[],
 ): FleetSummary {
-  const s: FleetSummary = {
-    total: 0, needsSetup: 0, available: 0, reserved: 0, rented: 0,
-    maintenance: 0, other: 0, rentable: 0, utilizationPct: null,
-  };
-  for (const r of rows) {
-    const st = (r.status ?? "").toLowerCase();
-    if (r.archived_at || (INACTIVE_VEHICLE_STATUSES as readonly string[]).includes(st)) continue;
-    s.total++;
-    if (st === "onboarding") s.needsSetup++;
-    else if (st === "available") s.available++;
-    else if (st === "reserved") s.reserved++;
-    else if (st === "rented") s.rented++;
-    else if (st === "maintenance") s.maintenance++;
-    else s.other++;
+  const summary = blankSummary();
+  for (const row of rows) {
+    const status = (row.status ?? "").toLowerCase();
+    if (isOutOfFleet(row, status)) continue;
+    summary.total++;
+    countWorkingStatus(summary, status);
   }
-  s.rentable = s.available + s.reserved + s.rented;
-  s.utilizationPct = s.rentable > 0 ? Math.round((s.rented / s.rentable) * 100) : null;
-  return s;
+  return finishSummary(summary);
 }
 
 /**
@@ -67,8 +144,8 @@ export function activeRentalVehicleIds(
   rentals: { vehicle_id?: string | null }[],
 ): Set<string> {
   const ids = new Set<string>();
-  for (const r of rentals) {
-    if (typeof r.vehicle_id === "string" && r.vehicle_id.length > 0) ids.add(r.vehicle_id);
+  for (const rental of rentals) {
+    if (typeof rental.vehicle_id === "string" && rental.vehicle_id.length > 0) ids.add(rental.vehicle_id);
   }
   return ids;
 }
@@ -85,36 +162,27 @@ export function summarizeFleetOccupancy(
 ): FleetSummary & { mismatches: FleetStatusMismatch[] } {
   const active = activeVehicleIds instanceof Set ? activeVehicleIds : new Set(activeVehicleIds);
   const mismatches: FleetStatusMismatch[] = [];
-  const s: FleetSummary = {
-    total: 0, needsSetup: 0, available: 0, reserved: 0, rented: 0,
-    maintenance: 0, other: 0, rentable: 0, utilizationPct: null,
-  };
-  for (const r of vehicles) {
-    const st = (r.status ?? "").toLowerCase();
-    if (r.archived_at || (INACTIVE_VEHICLE_STATUSES as readonly string[]).includes(st)) continue;
-    s.total++;
-    const id = typeof r.id === "string" && r.id.length > 0 ? r.id : null;
+  const summary = blankSummary();
+  for (const row of vehicles) {
+    const status = (row.status ?? "").toLowerCase();
+    if (isOutOfFleet(row, status)) continue;
+    summary.total++;
+    const id = typeof row.id === "string" && row.id.length > 0 ? row.id : null;
     const onRent = id != null && active.has(id);
     if (onRent && id) {
-      s.rented++;
-      if (st !== "rented") {
-        mismatches.push({ vehicleId: id, status: r.status, kind: "active_without_rented_status" });
+      summary.rented++;
+      if (status !== "rented") {
+        mismatches.push({ vehicleId: id, status: row.status, kind: "active_without_rented_status" });
       }
       continue;
     }
-    if (st === "rented") {
-      if (id) mismatches.push({ vehicleId: id, status: r.status, kind: "status_rented_without_active" });
+    if (status === "rented") {
+      if (id) mismatches.push({ vehicleId: id, status: row.status, kind: "status_rented_without_active" });
       // Status lagged behind return — treat as available inventory, not rented.
-      s.available++;
+      summary.available++;
       continue;
     }
-    if (st === "onboarding") s.needsSetup++;
-    else if (st === "available") s.available++;
-    else if (st === "reserved") s.reserved++;
-    else if (st === "maintenance") s.maintenance++;
-    else s.other++;
+    countWorkingStatus(summary, status);
   }
-  s.rentable = s.available + s.reserved + s.rented;
-  s.utilizationPct = s.rentable > 0 ? Math.round((s.rented / s.rentable) * 100) : null;
-  return { ...s, mismatches };
+  return { ...finishSummary(summary), mismatches };
 }
