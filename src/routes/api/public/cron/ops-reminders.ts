@@ -461,6 +461,27 @@ async function handle(request: Request): Promise<Response> {
     }
   }
 
+  // ---- Stripe Charge Reconciliation (default OFF): succeeded charges with no
+  // payments row. Read-only against Stripe. One team alert per charge id.
+  // The team-alert kind is also default off, so both switches must be on.
+  let stripeChargeCheck = "off";
+  if (on("stripe_charge_reconciliation")) {
+    try {
+      const { loadTeamAlertSettings } = await import("@/lib/team-alerts.server");
+      const { runStripeChargeReconciliation } = await import("@/lib/stripe-charge-reconcile.server");
+      const settings = await loadTeamAlertSettings(supabaseAdmin);
+      if (!settings.stripe_payment_gap) stripeChargeCheck = "team_alert_off";
+      else {
+        const { createReadOnlyStripe } = await import("@/lib/stripe-reader.server");
+        const result = await runStripeChargeReconciliation(supabaseAdmin, { stripe: createReadOnlyStripe("live"), settings });
+        stripeChargeCheck = result.status === "gaps" ? `gaps:${result.gaps}` : result.status;
+      }
+    } catch (err) {
+      stripeChargeCheck = "error";
+      console.error("[ops-reminders] stripe charge reconciliation failed", err);
+    }
+  }
+
   // ---- Stripe Link Check (default OFF): paid Stripe money not recorded or not
   // tied to a rental. Read-only; emails team@ at most once per ET day.
   let stripeLinkCheck = "off";
@@ -481,6 +502,7 @@ async function handle(request: Request): Promise<Response> {
 
   return Response.json({
     ok: true,
+    stripe_charge_check: stripeChargeCheck,
     stripe_link_check: stripeLinkCheck,
     past_due_sent: pastDue,
     team_past_due_alerts: teamPastDue,

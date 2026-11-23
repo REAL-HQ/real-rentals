@@ -128,7 +128,32 @@ export type BookingRow = {
   paymentStatus?: string | null;
   depositStatus?: string | null;
   balanceDue?: number | null;
+  /** Manager+ only. From rentals.autopay_active. */
+  autopayActive?: boolean | null;
+  /** Manager+ only. From rentals.next_payment_due. */
+  nextPaymentDue?: string | null;
 };
+
+/** Bookings detail: "Autopay On · Next Charge Nov 30, 2026 · $350.00" or "Autopay Off". */
+export function autopayBadge(input: {
+  autopayActive?: boolean | null;
+  nextPaymentDue?: string | null;
+  weeklyRate?: number | null;
+}): string {
+  if (!input.autopayActive) return "Autopay Off";
+  const date = input.nextPaymentDue ? formatAutopayDate(input.nextPaymentDue) : "Not Set";
+  const rate = input.weeklyRate == null || !Number.isFinite(Number(input.weeklyRate))
+    ? ""
+    : ` · ${Number(input.weeklyRate).toLocaleString("en-US", { style: "currency", currency: "USD" })}`;
+  return `Autopay On · Next Charge ${date}${rate}`;
+}
+
+function formatAutopayDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
+  if (!match) return value;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${months[Number(match[2]) - 1]} ${Number(match[3])}, ${match[1]}`;
+}
 
 export type BookingCounts = Record<Exclude<BookingPhaseFilter, "all">, number>;
 

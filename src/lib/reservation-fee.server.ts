@@ -87,7 +87,7 @@ export async function holdReservationForFee(admin: Admin, applicationId: string,
 async function reservationFeeCheckout(
   admin: Admin,
   stripe: StripeLike,
-  x: { app: { id: string; full_name?: string | null; email?: string | null; phone?: string | null; stripe_customer_id?: string | null }; agreementId: string; row: { id: string; attempt_count?: number | null }; amount: number; signerEmail: string | null; deps: ReservationFeeDeps },
+  x: { app: { id: string; full_name?: string | null; email?: string | null; phone?: string | null; stripe_customer_id?: string | null }; agreementId: string; vehicleId?: string | null; row: { id: string; attempt_count?: number | null }; amount: number; signerEmail: string | null; deps: ReservationFeeDeps },
 ): Promise<ReservationFeeOutcome> {
   const { agreementId, row, amount } = x;
   try {
@@ -99,8 +99,26 @@ async function reservationFeeCheckout(
     const attempt = Number(row.attempt_count ?? 0) + 1;
     const { publicAppOrigin } = await import("@/lib/public-app-url");
     const site = publicAppOrigin();
-    const meta = { applicationId: x.app.id, agreementId, paymentIds: row.id, reason: RESERVATION_FEE_REASON };
-    const session = await stripe.checkout.sessions.create({
+    // Pre-rental: rental_id is included when a reserved rental already exists and
+    // omitted when it does not. plate is omitted only when no plate is on file.
+    const { buildChargeMetadata, easternDay, withCheckoutChargeMetadata } = await import("@/lib/stripe-charge-metadata");
+    const { preRentalChargeContext } = await import("@/lib/stripe-charge-metadata.server");
+    const ctx = await preRentalChargeContext(admin, x.app.id, x.vehicleId ?? null);
+    const allowance = { kind: "pre_rental" as const, allowBlankPlate: !ctx.plate };
+    const meta = {
+      applicationId: x.app.id,
+      agreementId,
+      paymentIds: row.id,
+      ...buildChargeMetadata({
+        rentalId: ctx.rentalId,
+        leadId: x.app.id,
+        reason: RESERVATION_FEE_REASON,
+        forDate: easternDay(new Date(x.deps.now?.() ?? Date.now())),
+        renter: x.app.full_name,
+        plate: ctx.plate,
+      }, allowance),
+    };
+    const session = await stripe.checkout.sessions.create(withCheckoutChargeMetadata({
       mode: "payment",
       customer,
       line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: Math.round(amount * 100), product_data: { name: "Reservation Fee (applied to your first week)", description: RESERVATION_FEE_CHECKOUT_DESCRIPTION } } }],
@@ -112,7 +130,7 @@ async function reservationFeeCheckout(
       success_url: reservationFeeReturnUrls(site).success,
       cancel_url: reservationFeeReturnUrls(site).cancel,
       expires_at: Math.floor(Date.now() / 1000) + 23 * 3600,
-    }, { idempotencyKey: `reservation-fee-checkout:${row.id}:attempt:${attempt}` });
+    }, meta, allowance), { idempotencyKey: `reservation-fee-checkout:${row.id}:attempt:${attempt}` });
     if (!session?.url) throw new Error("Checkout session has no url");
     // The row waits for the renter: still owed, not failed, no blind retry.
     await admin.from("payments").update({ status: "unpaid", attempt_count: attempt, failure_reason: null, balance_due: amount }).eq("id", row.id).in("status", ["current", "failed", "unpaid"]);
@@ -184,7 +202,7 @@ export async function chargeReservationFeeAfterSigning(admin: Admin, agreementId
       await admin.from("payments").update({ status: "unpaid", failure_reason: "Card payments are not configured" }).eq("id", row.id).in("status", ["current", "failed", "unpaid"]);
       return { status: "no_card", amount, paymentId: row.id };
     }
-    return await reservationFeeCheckout(admin, stripe, { app: app ?? { id: appId }, agreementId, row, amount, signerEmail: null, deps });
+    return await reservationFeeCheckout(admin, stripe, { app: app ?? { id: appId }, agreementId, vehicleId: ag.vehicle_id ?? null, row, amount, signerEmail: null, deps });
   } catch (e) {
     console.error("[reservation-fee] charge failed", e);
     return { status: "failed", amount: 0, paymentId: null, error: "Unexpected error" };

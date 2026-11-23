@@ -16,7 +16,7 @@ const R3 = "44444444-4444-4444-8444-444444444444";
 const V1 = "55555555-5555-4555-8555-555555555555";
 const env = { FLEET_API_KEY: KEY };
 
-const complete = { vehicle_size: "sedan", pickup_date: "2026-11-18", expected_duration: "1-3 months", gig_status: "active", drive_type: "uber" };
+const complete = { vehicle_size: "sedan", pickup_date: "2026-11-18", expected_duration: "1-3 months", gig_status: "yes", drive_type: "uber" };
 const baseApp = (id: string, extra: Record<string, any> = {}) => ({ id, full_name: `Test ${id.slice(0, 4)}`, email: `${id.slice(0, 4)}@example.com`, phone: null, status: "new", created_at: "2026-11-10T12:00:00Z", deleted_at: null, primary_application_id: null, ...extra });
 const docs = (id: string, cats: string[]) => cats.map((c, i) => ({ id: `${id}-d${i}`, driver_id: id, category: c, review_status: "pending", is_current: true, created_at: "2026-11-11T12:00:00Z" }));
 
@@ -118,6 +118,32 @@ function seed() {
     app_settings: [], // the review list reads the RentID switch (fleet-rentid.server.ts)
   });
 }
+
+describe("shared owes", () => {
+  test("a daily plan with no open rows owes the same $100 and 1 day the Bookings board owes", async () => {
+    const db = fakeDb({
+      applications: [baseApp(L3, { ...complete, status: "active", vehicle_id: V1 })],
+      documents: [],
+      agreements: [],
+      rentals: [{ id: R3, application_id: L3, status: "active", start_date: "2026-11-16", weekly_rate: 350, next_payment_due: "2026-11-16", autopay_active: false, created_at: "2026-11-16T00:00:00Z" }],
+      payments: ["2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19"].map((due, i) => ({
+        id: `paid-${i}`, driver_id: L3, rental_id: R3, type: "rent", status: "paid", amount: 50, due_date: due, paid_date: due,
+      })),
+      app_settings: [{ key: "daily_rent_plans", value: { [R3]: { dailyRate: 50, startsOn: "2026-11-16" } } }],
+      fleet_review_decisions: [],
+      quo_events: [],
+      outbound_messages: [],
+    });
+    const now = new Date("2026-11-21T16:00:00Z"); // 11 AM ET
+    const res = await s.handleFleetStatus(req({ action: "balance", rental_id: R3 }), { admin: db, env, now: () => now });
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.balance.rent_owed).toBe(100);
+    expect(body.balance.overdue_days).toBe(1);
+    expect(body.balance.total_owed).toBe(100);
+    expect(body.balance.cadence).toBe("daily");
+  });
+});
 
 describe("endpoint", () => {
   test("auth: no key 401, unconfigured 503, GET 405", async () => {

@@ -2,13 +2,16 @@ import { reconciliationClient } from './stripe-reconciliation.server';
 import type { StripeEnv } from './stripe.server';
 async function rpc(db:any,name:string,args:any){const r=await db.rpc(name,args);if(r.error)throw new Error('Billing operation requires staff reconciliation');return r.data;}
 export async function createReservedSubscription(db:any,rentalId:string,env:StripeEnv,actor:string){
+ const { chargeMetadataForRental } = await import('./stripe-charge-metadata.server');
+ const { subscriptionChargeMetadata } = await import('./stripe-charge-metadata');
+ const chargeMetadata = subscriptionChargeMetadata(await chargeMetadataForRental(db, rentalId, 'rent')).metadata;
  const stripe=await reconciliationClient(env);
  const op=await rpc(db,'stripe_claim_creation',{_rental:rentalId,_env:env,_actor:actor});
  try{
  const p=op.parameters;
  const price=await stripe.prices.create({currency:'usd',unit_amount:p.cents,recurring:{interval:'week'},product_data:{name:`Weekly Rent — Rental ${rentalId.slice(0,8)}`}},{idempotencyKey:`rental-price:${op.operation_id}`});
  const sub=await stripe.subscriptions.create({customer:p.customer,default_payment_method:p.payment_method,items:[{price:price.id}],collection_method:'charge_automatically',proration_behavior:'none',
- billing_cycle_anchor:Math.floor(new Date(op.created_at).getTime()/1000)+60,metadata:{rentalId,operationId:op.operation_id}},{idempotencyKey:`rental-subscription:${op.operation_id}`});
+ billing_cycle_anchor:Math.floor(new Date(op.created_at).getTime()/1000)+60,metadata:{...chargeMetadata,operationId:op.operation_id}},{idempotencyKey:`rental-subscription:${op.operation_id}`});
  await rpc(db,'stripe_finish_creation',{_rental:rentalId,_op:op.operation_id,_sub:sub.id,_actor:actor});
  return {ok:true as const,subscriptionId:sub.id};
  }catch{

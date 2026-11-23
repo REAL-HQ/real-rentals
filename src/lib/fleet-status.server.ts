@@ -14,6 +14,8 @@
  * See docs/fleet-status.md.
  */
 import { cleanText, fleetAdmin, fleetJson, fleetRequestBody, tableMissing, UUID_RE, type FleetDeps } from "@/lib/fleet-api.server";
+import { paymentOwed, reportedOwes, standingFromPaymentRow } from "@/lib/rental-owes";
+import { activeDailyPlan, type DailyRentPlan } from "@/lib/rent-standing";
 import { fleetContactsFor, lookupLeadByContact } from "@/lib/driver-contacts.server";
 import { missingItems, type MissingItemKey } from "@/lib/missing-items";
 import { readReservationDetails } from "@/lib/reservations";
@@ -50,9 +52,43 @@ const arr = <T = any>(r: { data?: unknown } | null | undefined): T[] => (Array.i
 
 /** What a payment row still owes: balance_due when set, else amount + late fees. */
 export function owed(p: Record<string, any>): number {
-  if (SETTLED_PAYMENT.includes(String(p.status ?? "").toLowerCase())) return 0;
-  if (p.balance_due != null && p.balance_due !== "") return Math.max(0, num(p.balance_due));
-  return Math.max(0, num(p.amount) + num(p.late_fees));
+  return paymentOwed(p);
+}
+
+/**
+ * Bookings > Active and this API share reportedOwes (rentStanding plus late
+ * fees, non-rent charges and any return balance). A daily plan with no open
+ * row still owes the unpaid days.
+ */
+function withReportedOwes(summary: ReturnType<typeof summarizeBalance>, payments: readonly Record<string, any>[], rental: Record<string, any> | null, now: Date, plan: DailyRentPlan | null) {
+  const reported = reportedOwes({
+    today: easternDate(now),
+    payments: payments.map(standingFromPaymentRow),
+    rental,
+    dailyPlan: plan,
+  });
+  return {
+    ...summary,
+    total_owed: reported.total_owed,
+    overdue_owed: reported.overdue_owed,
+    late_fees_owed: reported.late_fees_owed,
+    return_balance: reported.return_balance,
+    rent_owed: reported.rent_owed,
+    overdue_days: reported.overdue_days,
+    next_due: reported.next_due,
+    cadence: reported.cadence,
+  };
+}
+
+async function planFor(admin: Admin, rentalId: string | null | undefined, now: Date): Promise<DailyRentPlan | null> {
+  if (!rentalId) return null;
+  try {
+    const { loadDailyRentPlans } = await import("@/lib/daily-rent-plans.server");
+    const plans = await loadDailyRentPlans(admin);
+    return activeDailyPlan(plans.get(rentalId) ?? null, easternDate(now));
+  } catch {
+    return null;
+  }
 }
 
 export function summarizeBalance(payments: readonly Record<string, any>[], rental: Record<string, any> | null, now: Date) {
@@ -219,7 +255,7 @@ export async function leadStatus(admin: Admin, leadId: string, now: Date) {
     rental: j.rental
       ? { rental_id: j.rental.id, status: j.rental.status, vehicle_id: j.rental.vehicle_id ?? null, start_date: j.rental.start_date ?? null, end_date: j.rental.end_date ?? null, weekly_rate: j.rental.weekly_rate ?? null, autopay: j.rental.autopay_active === true, payment_status: j.rental.payment_status ?? null, next_payment_due: j.rental.next_payment_due ?? null }
       : null,
-    balance: j.rental || rentalPayments.length ? summarizeBalance(rentalPayments, j.rental, now) : null,
+    balance: j.rental || rentalPayments.length ? withReportedOwes(summarizeBalance(rentalPayments, j.rental, now), rentalPayments, j.rental, now, await planFor(admin, j.rental?.id, now)) : null,
     last_inbound: lastIn ? { type: lastIn.event_type, at: lastIn.occurred_at ?? null, body: lastIn.body ? cleanText(lastIn.body, 300) : null } : null,
     last_outbound: lastOut ? { channel: lastOut.channel, kind: lastOut.kind ?? null, status: lastOut.status, at: lastOut.sent_at ?? lastOut.created_at ?? null } : null,
     admin_url: adminUrl(app.id),
@@ -254,7 +290,7 @@ export async function rentalBalance(admin: Admin, by: { rental_id?: unknown; lea
       card_last4: rental.card_last4 ?? null,
       payment_status: rental.payment_status ?? null,
       next_payment_due: rental.next_payment_due ?? null,
-      ...summarizeBalance(arr(p), rental, now),
+      ...withReportedOwes(summarizeBalance(arr(p), rental, now), arr(p), rental, now, await planFor(admin, rental.id, now)),
       note: "Read-only. Charging, waiving and payment deals stay with staff; a deal pause is /api/public/fleet/payment-text-pause.",
     },
   } as const;
@@ -304,8 +340,13 @@ export async function fleetDigest(admin: Admin, now: Date) {
   const active = rentals.filter((r) => r.status === "active");
   const payByRental = new Map<string, any[]>();
   for (const p of payments) if (p.rental_id) (payByRental.get(p.rental_id) ?? payByRental.set(p.rental_id, []).get(p.rental_id)!).push(p);
+  let dailyPlans = new Map<string, DailyRentPlan>();
+  try {
+    const { loadDailyRentPlans } = await import("@/lib/daily-rent-plans.server");
+    dailyPlans = await loadDailyRentPlans(admin);
+  } catch { /* a missing setting reads as weekly */ }
   const pastDue = active
-    .map((r) => ({ r, b: summarizeBalance(payByRental.get(r.id) ?? [], null, now) }))
+    .map((r) => ({ r, b: withReportedOwes(summarizeBalance(payByRental.get(r.id) ?? [], r, now), payByRental.get(r.id) ?? [], r, now, activeDailyPlan(dailyPlans.get(r.id) ?? null, today)) }))
     .filter((x) => x.b.overdue_owed > 0 || String(x.r.payment_status) === "past_due")
     .map((x) => ({ rental_id: x.r.id, lead_id: x.r.application_id, name: name(x.r.application_id), overdue_owed: x.b.overdue_owed, late_fees_owed: x.b.late_fees_owed, oldest_due: x.b.oldest_overdue_due_date, autopay: x.r.autopay_active === true }));
   const failedRecent = payments.filter((p) => String(p.status).toLowerCase() === "failed" && String(p.last_attempt_at ?? p.created_at ?? "") >= since7d);
