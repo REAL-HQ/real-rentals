@@ -312,6 +312,8 @@ export const confirmConditionUpload = createServerFn({ method: "POST" })
     if (!data.path.startsWith(`${data.vehicleId}/`)) throw new Error("Invalid upload path");
     // Staff trip uploads have their own confirm, which checks the applicant.
     if (data.path.startsWith(`${data.vehicleId}/trip/`)) throw new Error("Invalid upload path");
+    // Swap pickup photos live in rental_vehicle_swap_photos, not condition_media.
+    if (data.path.includes("/swap/")) throw new Error("Invalid upload path");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { storeConditionMedia } = await import("@/lib/trip-media.server");
