@@ -57,6 +57,64 @@ export function swapPickupPhotoPathOk(path: string, vehicleId: string, swapId: s
   return REST_RE.test(rest);
 }
 
+export type ShownPickupPhoto = {
+  id: string;
+  fileName: string | null;
+  mimeType: string;
+  createdAt: string;
+  url: string | null;
+};
+
+/**
+ * One photo just saved, added to the list already on screen.
+ * The same id twice does not change the count.
+ */
+export function withSavedPickupPhoto<T extends { id: string }>(photos: T[], saved: T): T[] {
+  if (!saved.id || photos.some((photo) => photo.id === saved.id)) return photos;
+  return [...photos, saved];
+}
+
+/**
+ * A fetched list replaces matching rows (so a signed URL replaces the local
+ * preview) and keeps any photo the fetch does not know about yet. An empty
+ * fetch must not put the count back to 0.
+ */
+export function applyFetchedPickupPhotos<T extends { id: string; url?: string | null }>(
+  current: T[],
+  fetched: T[],
+): T[] {
+  const previous = new Map(current.map((photo) => [photo.id, photo]));
+  const merged = fetched.map((photo) => {
+    if (photo.url) return photo;
+    const prior = previous.get(photo.id);
+    return prior?.url ? { ...photo, url: prior.url } : photo;
+  });
+  const ids = new Set(merged.map((photo) => photo.id));
+  return [...merged, ...current.filter((photo) => !ids.has(photo.id))];
+}
+
+/**
+ * List fetches and saves can overlap. A fetch that started before a save
+ * must not paint an empty list over photos that are already on screen.
+ * begin() starts a fetch, noteSaved() invalidates every fetch already in
+ * flight, and accept() is true only for the latest one.
+ */
+export function createPickupListGate() {
+  let current = 0;
+  return {
+    begin(): number {
+      current += 1;
+      return current;
+    },
+    noteSaved(): void {
+      current += 1;
+    },
+    accept(ticket: number): boolean {
+      return ticket === current;
+    },
+  };
+}
+
 export function swapPickupFileName(name: string): string {
   let clean = "";
   for (const ch of name) {

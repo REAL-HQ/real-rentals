@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { FileUploader } from "@/components/FileUploader";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -7,7 +7,11 @@ import {
   SWAP_PICKUP_PHOTO_ACCEPT,
   SWAP_PICKUP_PHOTO_MAX_BYTES,
   SWAP_PICKUP_PHOTO_MAX_COUNT,
+  applyFetchedPickupPhotos,
+  createPickupListGate,
   swapPickupVehicleLine,
+  withSavedPickupPhoto,
+  type ShownPickupPhoto,
 } from "@/lib/swap-pickup-photos";
 import {
   listSwapPickupPhotos,
@@ -17,13 +21,7 @@ import {
 import type { VehicleLabelSource } from "@/lib/vehicle-label";
 import { VehiclePickerPhoto, type EnlargedPhoto } from "./VehiclePickerPhoto";
 
-type Photo = {
-  id: string;
-  fileName: string | null;
-  mimeType: string;
-  createdAt: string;
-  url: string | null;
-};
+type Photo = ShownPickupPhoto;
 
 /**
  * Pickup Photos on one swap entry. Works for every status, including Completed.
@@ -46,29 +44,53 @@ export function SwapPickupPhotos({
   const [error, setError] = useState<string | null>(null);
   const [batch, setBatch] = useState(0);
   const [enlarged, setEnlarged] = useState<EnlargedPhoto | null>(null);
+  const gate = useRef(createPickupListGate()).current;
 
-  const refresh = useCallback(async () => {
-    const r = await load({ data: { swapId } });
-    setInstalled(r.installed);
-    setPhotos(r.photos);
-    setError(null);
-  }, [load, swapId]);
+  const refresh = useCallback(
+    async (reportError: boolean) => {
+      const ticket = gate.begin();
+      try {
+        const r = await load({ data: { swapId } });
+        if (!gate.accept(ticket)) return;
+        setInstalled(r.installed);
+        setPhotos((prev) => {
+          const next = applyFetchedPickupPhotos(prev, r.photos);
+          for (const photo of prev) {
+            const kept = next.find((item) => item.id === photo.id);
+            if (photo.url?.startsWith("blob:") && kept?.url && kept.url !== photo.url) {
+              URL.revokeObjectURL(photo.url);
+            }
+          }
+          return next;
+        });
+        setError(null);
+      } catch {
+        if (reportError && gate.accept(ticket)) setError("Pickup Photos Could Not Be Loaded.");
+      }
+    },
+    [gate, load, swapId],
+  );
 
   useEffect(() => {
-    let live = true;
-    void load({ data: { swapId } })
-      .then((r) => {
-        if (!live) return;
-        setInstalled(r.installed);
-        setPhotos(r.photos);
-      })
-      .catch(() => {
-        if (live) setError("Pickup Photos Could Not Be Loaded.");
-      });
-    return () => {
-      live = false;
-    };
-  }, [load, swapId]);
+    void refresh(true);
+  }, [refresh]);
+
+  function noteSaved(file: File, id: string, mimeType: string) {
+    // Invalidate any list fetch that started before this save, then show the
+    // photo immediately. Waiting for the uploader's batch callback left the
+    // count at 0 until a full page reload.
+    gate.noteSaved();
+    const url = URL.createObjectURL(file);
+    setPhotos((prev) =>
+      withSavedPickupPhoto(prev, {
+        id,
+        fileName: file.name,
+        mimeType,
+        createdAt: new Date().toISOString(),
+        url,
+      }),
+    );
+  }
 
   const identity = vehicle ? swapPickupVehicleLine(vehicle) : "";
   const label = identity || "New Vehicle";
@@ -97,7 +119,9 @@ export function SwapPickupPhotos({
         sizeBytes: file.size,
       },
     });
-    if (!saved.ok) throw new Error(String(saved.error ?? "Could not save the photo."));
+    if (!saved.ok || !saved.id) throw new Error(String(saved.error ?? "Could not save the photo."));
+    noteSaved(file, saved.id, String(reserved.mimeType || file.type || "image/jpeg"));
+    await refresh(false);
     onProgress(100);
   }
 
@@ -197,7 +221,7 @@ export function SwapPickupPhotos({
               hint="JPEG, PNG, WebP or HEIC · Up To 50 MB Each · Up To 80 Photos"
               upload={(file, ctx) => uploadOne(file, ctx.onProgress)}
               onSettled={() => {
-                void refresh().catch(() => setError("Pickup Photos Could Not Be Loaded."));
+                void refresh(false);
               }}
               onAllDone={() => setBatch((n) => n + 1)}
             />

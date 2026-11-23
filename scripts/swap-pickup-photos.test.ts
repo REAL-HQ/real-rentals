@@ -5,11 +5,14 @@ import { readFileSync } from "node:fs";
 import {
   SWAP_PICKUP_PHOTO_MAX_BYTES,
   SWAP_PICKUP_PHOTO_MAX_COUNT,
+  applyFetchedPickupPhotos,
+  createPickupListGate,
   swapPickupAdditionError,
   swapPickupBatchError,
   swapPickupPhotoMime,
   swapPickupPhotoPathOk,
   swapPickupVehicleLine,
+  withSavedPickupPhoto,
 } from "@/lib/swap-pickup-photos";
 import {
   listSwapPickupPhotos,
@@ -41,7 +44,10 @@ function png(size: number) {
   return { bytes, size };
 }
 
-function harness(status = "completed", head: { bytes: Uint8Array; size: number | null } | null = jpeg(4 * MB)) {
+function harness(
+  status = "completed",
+  head: { bytes: Uint8Array; size: number | null } | null = jpeg(4 * MB),
+) {
   const swap = Object.freeze({
     id: SWAP_ID,
     to_vehicle_id: VEHICLE_ID,
@@ -133,14 +139,62 @@ describe("file rules", () => {
   });
 
   test("a first batch of 42 photos at 4 MB fits, and 50 MB is the per-file cap", () => {
-    const files = Array.from({ length: 42 }, () => ({ sizeBytes: 4 * MB, fileName: "pickup.jpg", mimeType: "image/jpeg" }));
+    const files = Array.from({ length: 42 }, () => ({
+      sizeBytes: 4 * MB,
+      fileName: "pickup.jpg",
+      mimeType: "image/jpeg",
+    }));
     expect(swapPickupBatchError(0, files)).toBeNull();
-    expect(swapPickupAdditionError({ existingCount: 0, sizeBytes: 4 * MB, fileName: "pickup.jpg", mimeType: "image/jpeg" })).toBeNull();
-    expect(swapPickupAdditionError({ existingCount: 0, sizeBytes: SWAP_PICKUP_PHOTO_MAX_BYTES, fileName: "pickup.jpg", mimeType: "image/jpeg" })).toBeNull();
-    expect(swapPickupAdditionError({ existingCount: 0, sizeBytes: SWAP_PICKUP_PHOTO_MAX_BYTES + 1, fileName: "pickup.jpg", mimeType: "image/jpeg" })).toBe("Larger than 50 MB.");
-    expect(swapPickupAdditionError({ existingCount: 0, sizeBytes: 4 * MB, fileName: "clip.mp4", mimeType: "video/mp4" })).toBe("Use a JPEG, PNG, WebP or HEIC photo.");
-    expect(swapPickupBatchError(0, Array.from({ length: SWAP_PICKUP_PHOTO_MAX_COUNT + 1 }, () => ({ sizeBytes: 2 * MB, fileName: "pickup.jpg", mimeType: "image/jpeg" })))).toMatch(/No files were saved/);
-    expect(swapPickupAdditionError({ existingCount: SWAP_PICKUP_PHOTO_MAX_COUNT, sizeBytes: 2 * MB, fileName: "pickup.jpg", mimeType: "image/jpeg" })).toMatch(/80 pickup photos/);
+    expect(
+      swapPickupAdditionError({
+        existingCount: 0,
+        sizeBytes: 4 * MB,
+        fileName: "pickup.jpg",
+        mimeType: "image/jpeg",
+      }),
+    ).toBeNull();
+    expect(
+      swapPickupAdditionError({
+        existingCount: 0,
+        sizeBytes: SWAP_PICKUP_PHOTO_MAX_BYTES,
+        fileName: "pickup.jpg",
+        mimeType: "image/jpeg",
+      }),
+    ).toBeNull();
+    expect(
+      swapPickupAdditionError({
+        existingCount: 0,
+        sizeBytes: SWAP_PICKUP_PHOTO_MAX_BYTES + 1,
+        fileName: "pickup.jpg",
+        mimeType: "image/jpeg",
+      }),
+    ).toBe("Larger than 50 MB.");
+    expect(
+      swapPickupAdditionError({
+        existingCount: 0,
+        sizeBytes: 4 * MB,
+        fileName: "clip.mp4",
+        mimeType: "video/mp4",
+      }),
+    ).toBe("Use a JPEG, PNG, WebP or HEIC photo.");
+    expect(
+      swapPickupBatchError(
+        0,
+        Array.from({ length: SWAP_PICKUP_PHOTO_MAX_COUNT + 1 }, () => ({
+          sizeBytes: 2 * MB,
+          fileName: "pickup.jpg",
+          mimeType: "image/jpeg",
+        })),
+      ),
+    ).toMatch(/No files were saved/);
+    expect(
+      swapPickupAdditionError({
+        existingCount: SWAP_PICKUP_PHOTO_MAX_COUNT,
+        sizeBytes: 2 * MB,
+        fileName: "pickup.jpg",
+        mimeType: "image/jpeg",
+      }),
+    ).toMatch(/80 pickup photos/);
   });
 
   test("the vehicle line is plate and VIN last 6, never the unit number", () => {
@@ -155,6 +209,55 @@ describe("file rules", () => {
   });
 });
 
+describe("the list updates when the batch finishes", () => {
+  test("each saved photo shows immediately, and a late empty fetch cannot put the count back to 0", () => {
+    const gate = createPickupListGate();
+    const opened = gate.begin();
+    let shown: Array<{ id: string; url: string }> = [];
+    for (let i = 0; i < 42; i++) {
+      gate.noteSaved();
+      shown = withSavedPickupPhoto(shown, { id: `p${i}`, url: `blob:${i}` });
+    }
+    expect(shown).toHaveLength(42);
+    expect(gate.accept(opened)).toBe(false);
+    if (gate.accept(opened)) shown = applyFetchedPickupPhotos(shown, []);
+    expect(shown).toHaveLength(42);
+    shown = applyFetchedPickupPhotos(shown, []);
+    expect(shown).toHaveLength(42);
+    const signed = Array.from({ length: 42 }, (_, i) => ({
+      id: `p${i}`,
+      url: `https://signed.example/${i}`,
+    }));
+    const settled = gate.begin();
+    expect(gate.accept(settled)).toBe(true);
+    shown = applyFetchedPickupPhotos(shown, signed);
+    expect(shown).toHaveLength(42);
+    expect(shown.every((photo) => photo.url.startsWith("https://signed.example/"))).toBe(true);
+  });
+
+  test("saving the same photo twice does not double the count", () => {
+    const once = withSavedPickupPhoto([], { id: "p1" });
+    expect(withSavedPickupPhoto(once, { id: "p1" })).toHaveLength(1);
+  });
+
+  test("the button and a drop share uploadOne, which records the photo before the file is done", () => {
+    const ui = read("src/components/admin/SwapPickupPhotos.tsx");
+    expect(ui.match(/<FileUploader/g)).toHaveLength(1);
+    expect(ui).toMatch(/upload=\{\s*\(file, ctx\) => uploadOne\(file, ctx\.onProgress\)\s*\}/);
+    const upload = ui.slice(ui.indexOf("async function uploadOne"), ui.indexOf("return ("));
+    const noted = ui.slice(
+      ui.indexOf("function noteSaved"),
+      ui.indexOf("async function uploadOne"),
+    );
+    expect(upload).toContain("noteSaved(");
+    expect(upload.indexOf("noteSaved(")).toBeLessThan(upload.lastIndexOf("onProgress(100)"));
+    expect(upload).toContain("await refresh(false)");
+    expect(noted).toContain("withSavedPickupPhoto");
+    expect(ui).toContain("applyFetchedPickupPhotos");
+    expect(ui).toContain("gate.accept(ticket)");
+  });
+});
+
 describe("saving never changes the swap", () => {
   test("42 photos land on a Completed swap and the swap is untouched", async () => {
     const h = harness("completed");
@@ -164,7 +267,9 @@ describe("saving never changes the swap", () => {
     }
     expect(h.photos).toHaveLength(42);
     expect(h.photos.every((p) => p.swap_id === SWAP_ID && p.vehicle_id === VEHICLE_ID)).toBe(true);
-    expect(h.photos.every((p) => p.size_bytes === 4 * MB && p.mime_type === "image/jpeg")).toBe(true);
+    expect(h.photos.every((p) => p.size_bytes === 4 * MB && p.mime_type === "image/jpeg")).toBe(
+      true,
+    );
     expect(JSON.stringify(h.swap)).toBe(h.before);
     expect(h.swap.status).toBe("completed");
     const listed = await listSwapPickupPhotos(h.db, h.swap.id);
@@ -328,9 +433,15 @@ describe("where it shows up", () => {
 
   test("the control is on the swap entry in the Vehicles card, for every status", () => {
     expect(history.indexOf('data-testid="swap-entry"')).toBeGreaterThan(-1);
-    expect(history.indexOf("<SwapPickupPhotos")).toBeGreaterThan(history.indexOf('data-testid="swap-entry"'));
-    expect(history.indexOf("<SwapPickupPhotos")).toBeLessThan(history.indexOf("function OpenSwapCard"));
-    expect(history).not.toMatch(/status === ["']completed["'].*SwapPickupPhotos|SwapPickupPhotos[\s\S]{0,80}completed/);
+    expect(history.indexOf("<SwapPickupPhotos")).toBeGreaterThan(
+      history.indexOf('data-testid="swap-entry"'),
+    );
+    expect(history.indexOf("<SwapPickupPhotos")).toBeLessThan(
+      history.indexOf("function OpenSwapCard"),
+    );
+    expect(history).not.toMatch(
+      /status === ["']completed["'].*SwapPickupPhotos|SwapPickupPhotos[\s\S]{0,80}completed/,
+    );
     expect(ui).toContain("Pickup Photos");
     expect(ui).toContain("Saving Photos Does Not Change The Swap.");
     expect(ui).toContain("multiple");
@@ -346,7 +457,9 @@ describe("where it shows up", () => {
   test("staff only, and renters are not given a new path", () => {
     expect(fns).toContain("requireStaff");
     expect(fns).not.toMatch(/^import\s.*swap-pickup-photos\.server/m);
-    expect(fns.match(/await import\("@\/lib\/swap-pickup-photos\.server"\)/g)?.length).toBeGreaterThan(0);
+    expect(
+      fns.match(/await import\("@\/lib\/swap-pickup-photos\.server"\)/g)?.length,
+    ).toBeGreaterThan(0);
     expect(portal).not.toContain("swap-pickup-photos");
     expect(portal).not.toContain("Pickup Photos");
     expect(read("src/lib/inspections.functions.ts")).toContain('data.path.includes("/swap/")');
@@ -359,7 +472,9 @@ describe("where it shows up", () => {
     expect(sql).toContain("condition-media");
     expect(sql).toContain("52428800");
     expect(sql).toContain("private.is_staff()");
-    expect(sql).toContain("REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.rental_vehicle_swap_photos FROM authenticated");
+    expect(sql).toContain(
+      "REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.rental_vehicle_swap_photos FROM authenticated",
+    );
     expect(sql).not.toMatch(/UPDATE\s+public\.rental_vehicle_swaps/i);
     expect(sql).not.toContain("9108ea8c-528f-4a81-9237-af505a1b208a");
     expect(server).not.toContain("9108ea8c-528f-4a81-9237-af505a1b208a");
