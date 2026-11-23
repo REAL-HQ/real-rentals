@@ -17,6 +17,7 @@ describe("Past tab status filter", () => {
     assert.equal(bookingPhase("reserved"), "reserved");
     assert.equal(isPastPhase("completed"), true);
     assert.equal(isPastPhase("cancelled"), true);
+    assert.equal(isPastPhase("swap"), true);
     assert.equal(isPastPhase("active"), false);
     assert.equal(isPastPhase("reserved"), false);
   });
@@ -35,6 +36,9 @@ describe("Past tab status filter", () => {
 
     const cancelled = statusesForBookingList({ scope: "past", phase: "cancelled" });
     assert.deepEqual(cancelled, PHASE_STATUSES.cancelled);
+
+    const swap = statusesForBookingList({ scope: "past", phase: "swap" });
+    assert.deepEqual(swap, PHASE_STATUSES.cancelled);
 
     // A leftover ?phase=active under Past still stays ended/cancelled only.
     const mistyped = statusesForBookingList({ scope: "past", phase: "active" });
@@ -56,6 +60,10 @@ describe("Past tab status filter", () => {
     assert.match(panel, /scope === "past"/);
     assert.match(panel, /No Past Rentals/);
     assert.match(panel, /scope,/);
+    assert.match(panel, /"completed", "cancelled", "swap"/);
+    assert.match(panel, /data-testid="rental-length"/);
+    assert.match(panel, /VehicleCell/);
+    assert.doesNotMatch(panel, /text-transform/);
 
     const fn = readFileSync("src/lib/bookings.functions.ts", "utf8");
     assert.match(fn, /statusesForBookingList/);

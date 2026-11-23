@@ -156,7 +156,13 @@ export function BookingDetails({
                   <StatusPill
                     status={b.phase}
                     tone={
-                      b.phase === "active" ? "green" : b.phase === "cancelled" ? "red" : "neutral"
+                      b.phase === "active"
+                        ? "green"
+                        : b.phase === "cancelled"
+                          ? "red"
+                          : b.phase === "swap" || b.phase === "reserved"
+                            ? "amber"
+                            : "neutral"
                     }
                   >
                     {BOOKING_PHASE_LABEL[b.phase]}
@@ -170,6 +176,12 @@ export function BookingDetails({
                     {bookingVehicleName(b)}
                     <span className="mx-1.5 text-[#C4C4CB]">|</span>
                     {bookingDates(b.startDate, b.endDate, b.phase)}
+                    {b.lengthLabel ? (
+                      <>
+                        <span className="mx-1.5 text-[#C4C4CB]">|</span>
+                        <span data-testid="rental-length">{b.lengthLabel}</span>
+                      </>
+                    ) : null}
                   </>
                 ) : (
                   " "

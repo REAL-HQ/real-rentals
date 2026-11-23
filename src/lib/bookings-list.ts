@@ -26,7 +26,7 @@ export { pastRentalBadge } from "@/lib/return-flow";
 /** Where a row came from. Phase A only ever reads rentals. */
 export type BookingSource = "rental";
 
-export const BOOKING_PHASES = ["active", "completed", "cancelled", "reserved"] as const;
+export const BOOKING_PHASES = ["active", "completed", "cancelled", "reserved", "swap"] as const;
 export type BookingPhase = (typeof BOOKING_PHASES)[number];
 
 export const BOOKING_PHASE_LABEL: Record<BookingPhase, string> = {
@@ -34,10 +34,11 @@ export const BOOKING_PHASE_LABEL: Record<BookingPhase, string> = {
   completed: "Completed",
   cancelled: "Cancelled",
   reserved: "Reserved",
+  swap: "Swap",
 };
 
-/** Phase A shows three; Reserved waits for the reservation engine. */
-export const BOOKING_PHASE_FILTERS = ["all", "active", "completed", "cancelled"] as const;
+/** Past adds Swap. Reserved still waits for the reservation engine. */
+export const BOOKING_PHASE_FILTERS = ["all", "active", "completed", "cancelled", "swap"] as const;
 export type BookingPhaseFilter = (typeof BOOKING_PHASE_FILTERS)[number];
 
 export function isBookingPhaseFilter(v: unknown): v is BookingPhaseFilter {
@@ -67,6 +68,9 @@ export const PHASE_STATUSES: Record<Exclude<BookingPhaseFilter, "all">, readonly
   active: ["active"],
   cancelled: ["cancelled", "canceled", "void", "voided"],
   completed: ["ended", "completed", "closed", "returned", "finished"],
+  // Swap is not a stored status. The rows are cancelled rentals a completed
+  // swap ended; the list reads rental_vehicle_swaps and relabels them.
+  swap: ["cancelled", "canceled", "void", "voided"],
 };
 
 /** Statuses that belong on the Past tab (ended or cancelled — never active/reserved). */
@@ -87,7 +91,7 @@ export function statusesForBookingList(input: {
   const scope = input.scope === "past" ? "past" : "all";
   if (scope === "past") {
     if (input.phase === "completed") return PHASE_STATUSES.completed;
-    if (input.phase === "cancelled") return PHASE_STATUSES.cancelled;
+    if (input.phase === "cancelled" || input.phase === "swap") return PHASE_STATUSES.cancelled;
     // "all" or a mistaken "active" under Past → completed + cancelled only.
     return PAST_STATUS_VALUES;
   }
@@ -96,7 +100,7 @@ export function statusesForBookingList(input: {
 }
 
 export function isPastPhase(phase: BookingPhase): boolean {
-  return phase === "completed" || phase === "cancelled";
+  return phase === "completed" || phase === "cancelled" || phase === "swap";
 }
 
 export type BookingRow = {
@@ -121,6 +125,12 @@ export type BookingRow = {
   plate: string | null;
   /** Last 6 of the VIN, for the shared vehicle cell. */
   vinLast6?: string | null;
+  /**
+   * Past tab only. Title Case length from the start to the actual end
+   * (recorded end date, or the swap completion date). Absent when there is
+   * no end — a length is never guessed.
+   */
+  lengthLabel?: string | null;
   /** Staff-confirmed car photo path, for the shared vehicle cell. */
   thumbnailPath?: string | null;
   /** Manager+ only. Undefined for a Coordinator — the server does not send it. */

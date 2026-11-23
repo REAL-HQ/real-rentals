@@ -51,6 +51,7 @@ const PHASE_TONE: Record<BookingPhase, "green" | "neutral" | "red" | "amber"> = 
   completed: "neutral",
   cancelled: "red",
   reserved: "amber",
+  swap: "amber",
 };
 
 const usd = (n: number | null | undefined) => (n == null ? "—" : `$${Number(n).toLocaleString()}`);
@@ -70,6 +71,15 @@ function DriverCell({ b }: { b: BookingRow }) {
 function BookingVehicleCell({ b }: { b: BookingRow }) {
   if (!b.vehicleId) return <span className="text-muted-foreground">Unknown</span>;
   return <VehicleCell vehicle={b} thumbnailPath={b.thumbnailPath ?? null} />;
+}
+
+function RentalLength({ label }: { label: string | null | undefined }) {
+  if (!label) return null;
+  return (
+    <span className="block text-xs text-foreground" data-testid="rental-length">
+      {label}
+    </span>
+  );
 }
 
 export function BookingsPanel({
@@ -187,7 +197,7 @@ export function BookingsPanel({
           {result && (
             <span className="inline-flex max-lg:shrink-0 items-center gap-2" data-testid="booking-phases">
               {(scope === "past"
-                ? (["completed", "cancelled"] as const)
+                ? (["completed", "cancelled", "swap"] as const)
                 : (["active", "completed", "cancelled"] as const)
               ).map((p) => {
                 const n = result.counts?.[p] ?? 0;
@@ -275,6 +285,7 @@ export function BookingsPanel({
                     <span className="block text-xs">
                       → {b.endDate ? fmtDate(b.endDate) : b.openEnded ? "Open-ended" : "Not recorded"}
                     </span>
+                    <RentalLength label={b.lengthLabel} />
                   </td>
                   <td className="px-2 py-2 align-top whitespace-nowrap">
                     <StatusPill status={b.phase} tone={PHASE_TONE[b.phase]}>
@@ -331,6 +342,7 @@ export function BookingsPanel({
               </div>
               <div className="mt-1 text-[13px] text-muted-foreground">
                 {bookingDates(b.startDate, b.endDate, b.phase)}
+                <RentalLength label={b.lengthLabel} />
               </div>
               {money && (
                 <div className="mt-2 text-[13px]">
