@@ -177,7 +177,7 @@ export function ActiveRentalsPanel() {
                 <th className="w-[14%] px-2 py-2.5 font-semibold">Started</th>
                 <th className="w-[10%] px-2 py-2.5 font-semibold">Rate</th>
                 <th className="w-[16%] px-2 py-2.5 font-semibold">Due</th>
-                <th className="w-[12%] px-2 py-2.5 font-semibold">Overdue</th>
+                <th className="w-[12%] px-2 py-2.5 font-semibold">Status</th>
                 <th className="w-[10%] px-2 py-2.5 font-semibold text-right sticky right-0 bg-white">Open</th>
               </tr>
             </thead>
