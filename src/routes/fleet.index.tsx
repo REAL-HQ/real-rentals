@@ -9,6 +9,7 @@ import { PublicAvailabilityBadge, ShowAvailableOnly } from "@/components/site/Pu
 import { inventoryCardModel } from "@/lib/public-vehicle-card";
 import { PUBLIC_AVAILABILITY_ENABLED, isAvailableNow, publicAvailability } from "@/lib/public-availability";
 import { FLEET_FILTERS_ENABLED } from "@/lib/fleet-filters";
+import { isPublicHiddenVehicleStatus } from "@/lib/fleet-summary";
 import { FadeUp } from "@/components/site/FadeUp";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -202,6 +203,7 @@ function FleetPage() {
           .from("vehicles_public")
           .select("*")
           .neq("status", "retired")
+          .neq("status", "for_sale")
           .order("weekly_rate", { ascending: true });
         if (!cancelled) setVehicles(data || []);
       } catch {
@@ -234,6 +236,7 @@ function FleetPage() {
           .from("vehicles_public")
           .select(mod.FLEET_LISTING_COLUMNS)
           .neq("status", "retired")
+          .neq("status", "for_sale")
           .order("weekly_rate", { ascending: true });
         if (!cancelled) setVehicles((data || []) as Tables<"vehicles_public">[]);
       } catch {
@@ -264,6 +267,7 @@ function FleetPage() {
   const rows = FLEET_FILTERS_ENABLED === true
     ? (filterRows ? filterRows(vehicles, fleetFilters) : []).filter((v) => categories[v.body_type ?? "sedan"])
     : vehicles.filter((v) => {
+        if (isPublicHiddenVehicleStatus(v.status)) return false;
         const cat = v.body_type ?? "sedan";
         return (
           (make === "all" || v.make === make) &&

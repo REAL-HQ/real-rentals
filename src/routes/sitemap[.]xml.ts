@@ -44,7 +44,10 @@ export const Route = createFileRoute("/sitemap.xml")({
           const { data: vehicles } = await supabase
             .from("vehicles_public")
             .select("id")
-            .neq("status", "retired");
+            .neq("status", "retired")
+            .neq("status", "sold")
+            .neq("status", "archived")
+            .neq("status", "for_sale");
           for (const v of vehicles ?? []) {
             entries.push({ path: `/fleet/${v.id}`, changefreq: "weekly", priority: "0.6" });
           }

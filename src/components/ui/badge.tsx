@@ -21,6 +21,7 @@ const badgeVariants = cva(
         attention: "border-destructive/20 bg-danger-soft text-destructive",
         white: "border-border bg-white text-muted-foreground",
         neutral: "border-border bg-secondary text-muted-foreground",
+        sale: "border-[#007AFF]/30 bg-[#E8F3FF] text-[#007AFF]",
       },
     },
     defaultVariants: {

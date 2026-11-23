@@ -5,7 +5,7 @@ export const UI_ENUM_LABELS: Readonly<Record<string, string>> = {
   all: "All", active: "Active", inactive: "Inactive", archived: "Archived", available: "Available",
   onboarding: "Needs Setup", pending: "Pending", approved: "Approved", rejected: "Rejected",
   new: "New", draft: "Draft", open: "Open", closed: "Closed", cancelled: "Cancelled", canceled: "Canceled",
-  prospect: "Prospect", paused: "Paused", completed: "Completed", retired: "Retired", sold: "Sold",
+  prospect: "Prospect", paused: "Paused", completed: "Completed", retired: "Retired", sold: "Sold", for_sale: "For Sale",
   in_claim: "In Claim", repairing: "Repairing", written_off: "Written Off", in_progress: "In Progress",
   accident: "Accident", damage: "Damage", theft: "Theft", vandalism: "Vandalism", breakdown: "Breakdown", tow: "Tow",
   minor: "Minor", moderate: "Moderate", major: "Major", total_loss: "Total Loss",

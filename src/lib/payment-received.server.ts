@@ -21,6 +21,7 @@
  *     sends anything itself. The booking is marked booked_by "renter" in the
  *     reservation record and audited as reservation.renter_booked.
  */
+import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import {
   isCheckoutSessionId,
   safeReceiptUrl,
@@ -193,7 +194,7 @@ async function bookingState(
   if (!x.vehicleId || !x.vehicle) return { state: "no_vehicle" };
   if (!["approved", "active"].includes(String(x.appStatus ?? "").toLowerCase())) return { state: "unavailable" };
   const vs = String(x.vehicle.status ?? "").toLowerCase();
-  if (x.vehicle.archived_at || ["sold", "retired", "archived", "rented", "unavailable"].includes(vs)) return { state: "unavailable" };
+  if (x.vehicle.archived_at || ["sold", "retired", "archived", "rented", "unavailable"].includes(vs) || isForSaleVehicleStatus(vs)) return { state: "unavailable" };
   const { data: busy } = await admin.from("rentals").select("id,application_id").eq("vehicle_id", x.vehicleId).in("status", ["active", "reserved", "on_hold"]).limit(5);
   if (((busy ?? []) as any[]).some((r) => r.application_id !== x.applicationId)) return { state: "unavailable" };
   if (!x.location || x.location.trim().length < 3) return { state: "no_slots" };

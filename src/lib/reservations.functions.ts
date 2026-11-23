@@ -12,6 +12,7 @@ import {
   type ReservationRow,
 } from "@/lib/reservations";
 import { tierAllows } from "@/lib/roles";
+import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import { SwitchReservationVehicleInput, type SwitchResult } from "@/lib/reservation-switch";
 import { chooseVehicleThumbnailPaths, vehicleListThumbnailKey, type VehicleThumbnailMedia } from "@/lib/vehicle-thumbnail";
 import {
@@ -312,7 +313,7 @@ export async function createReservationCore(
   if (!vehicle) throw new Error("Vehicle Not Found.");
   if (vehicle.archived_at) throw new Error("That Vehicle Is Archived.");
   const vStatus = String(vehicle.status ?? "").toLowerCase();
-  if (["sold", "retired", "archived", "rented", "unavailable"].includes(vStatus)) {
+  if (["sold", "retired", "archived", "rented", "unavailable"].includes(vStatus) || isForSaleVehicleStatus(vStatus)) {
     throw new Error("That Vehicle Is Not Free To Reserve.");
   }
 
@@ -644,7 +645,7 @@ export const listVehiclesForReservation = createServerFn({ method: "GET" })
     if (busy.error) throw new Error(busy.error.message);
     const taken = new Set((busy.data ?? []).map((r) => r.vehicle_id));
     return (data ?? [])
-      .filter((v) => !taken.has(v.id))
+      .filter((v) => !taken.has(v.id) && !isForSaleVehicleStatus(v.status))
       .map((v) => ({
         id: v.id,
         unit_number: v.unit_number ?? null,
