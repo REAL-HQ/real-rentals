@@ -47,17 +47,23 @@ export type FleetStatusMismatch = {
 };
 
 /**
- * Donut and legend colors. Maintenance is orange so it stays distinct from
- * Reserved yellow and Unavailable red. Other is indigo, the leftover bucket.
+ * Donut and legend colors. Four colors only: green, yellow, gray, and red.
+ * Maintenance, Needs Setup, and Unavailable share Unavailable's red.
+ * Other uses the same gray as Available.
  */
+const FLEET_SNAPSHOT_GREEN = "#4CD964";
+const FLEET_SNAPSHOT_YELLOW = "#FFCC33";
+const FLEET_SNAPSHOT_GRAY = "#C7C7CC";
+const FLEET_SNAPSHOT_RED = "#FF3B30";
+
 export const FLEET_SNAPSHOT_COLORS = {
-  rented: "#4CD964",
-  reserved: "#FFCC33",
-  available: "#C7C7CC",
-  maintenance: "#F97316",
-  setup: "#8E8E93",
-  unavailable: "#FF3B30",
-  other: "#5856D6",
+  rented: FLEET_SNAPSHOT_GREEN,
+  reserved: FLEET_SNAPSHOT_YELLOW,
+  available: FLEET_SNAPSHOT_GRAY,
+  maintenance: FLEET_SNAPSHOT_RED,
+  setup: FLEET_SNAPSHOT_RED,
+  unavailable: FLEET_SNAPSHOT_RED,
+  other: FLEET_SNAPSHOT_GRAY,
 } as const;
 
 const FLEET_SNAPSHOT_SLICE_DEFS = [
