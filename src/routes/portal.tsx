@@ -48,6 +48,8 @@ import { PaymentHistoryCard } from "@/components/portal/PaymentHistoryCard";
 import { PORTAL_PAYMENT_HISTORY_ENABLED } from "@/lib/portal-payment-history";
 import { DRIVER_DOC_EXPIRY_CARD_ENABLED } from "@/lib/driver-doc-expiry";
 import { DRIVER_AGREEMENT_VIEW_ENABLED } from "@/lib/driver-agreement-view";
+import { DriverStaffPhotos } from "@/components/portal/DriverStaffPhotos";
+import { getDriverStaffPhotos, openDriverStaffPhoto } from "@/lib/driver-staff-photos.functions";
 import { ConditionUploader } from "@/components/admin/InspectionsPanel";
 import { CONDITION_SECTIONS, ROLE_SUBSECTION, groupConditionPhotos } from "@/lib/condition-photos";
 import {
@@ -181,13 +183,15 @@ function DriverAgreementGate() {
  * Maintenance tab listing nothing is worse than not showing it: it reads like
  * something is broken.
  *
- * What is left — Dashboard, Documents, Payments, Report Issue, Referrals,
- * Settings — all render truthfully with no rental: Payments shows outstanding
- * tolls and citations from any earlier rental and nothing at all otherwise,
- * Report Issue files against a null rental by design, and Referrals needs no
- * vehicle. The four below are the ones that cannot mean anything yet.
+ * What is left — Dashboard, Documents, Payments, Pictures, Report Issue,
+ * Referrals, Settings — all render truthfully with no active rental.
+ * Pictures stays because the condition photos from a returned rental are
+ * still the driver's to look at. Payments shows outstanding tolls and
+ * citations from any earlier rental and nothing at all otherwise, Report
+ * Issue files against a null rental by design, and Referrals needs no
+ * vehicle. The three below are the ones that cannot mean anything yet.
  */
-const RENTAL_TABS = new Set<Tab>(["vehicle", "deposit", "maintenance", "pictures"]);
+const RENTAL_TABS = new Set<Tab>(["vehicle", "deposit", "maintenance"]);
 
 
 /** Staff read-only "Viewing as" preview: the selected driver's account id, or null. */
@@ -206,6 +210,13 @@ function usePortalWrite<F extends (...a: any[]) => Promise<any>>(fn: F): F {
   const id = usePreviewDriver();
   const f = useServerFn(fn) as any;
   return (id ? async () => { throw new Error("Driver Preview is read-only."); } : f) as F;
+}
+/** Portal read that also sends the caller's payload. Preview id is added here, never trusted alone. */
+function usePortalCall<F extends (opts: { data: any }) => Promise<any>>(fn: F) {
+  const id = usePreviewDriver();
+  const f = useServerFn(fn) as any;
+  return (data: Record<string, unknown>) =>
+    f({ data: { ...data, ...(id ? { previewDriverId: id } : {}) } });
 }
 function usePreviewNull<F extends (...a: any[]) => Promise<any>>(fn: F, empty: Awaited<ReturnType<F>>): F {
   const id = usePreviewDriver();
@@ -1182,6 +1193,8 @@ function Fact({ label, value }: { label: string; value: string }) {
 function PicturesView() {
   const picsPreviewId = usePreviewDriver();
   const fetchPics = usePortalRead(getDriverPictures);
+  const loadStaffPhotos = usePortalRead(getDriverStaffPhotos);
+  const openStaffPhoto = usePortalCall(openDriverStaffPhoto);
   const fetchCondition = usePreviewNull(listConditionMedia, [] as any);
   const fetchDashboard = usePortalRead(getDriverDashboard);
 
@@ -1214,6 +1227,11 @@ function PicturesView() {
 
   return (
     <div className="w-full space-y-5">
+      <DriverStaffPhotos
+        cacheKey={picsPreviewId ?? "self"}
+        load={() => loadStaffPhotos()}
+        open={(photo) => openStaffPhoto({ id: photo.id, kind: photo.kind })}
+      />
       <CheckoutSignOffCard />
 
       {vehicleId ? (

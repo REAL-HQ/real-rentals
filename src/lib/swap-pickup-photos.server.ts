@@ -7,7 +7,9 @@
  * insert-only. This module has no update of rental_vehicle_swaps, rentals,
  * vehicles, agreements or payments — a Completed swap stays Completed.
  *
- * Renters never receive these URLs. condition_media is a different table;
+ * This module signs originals for staff. The driver portal does not use it.
+ * Drivers read the same rows through driver-staff-photos and only receive a
+ * metadata-free copy. condition_media is a different table;
  * confirmConditionUpload refuses a /swap/ path so these objects cannot be
  * filed as renter-visible trip photos.
  */
