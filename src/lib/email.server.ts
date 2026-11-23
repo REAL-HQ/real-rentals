@@ -413,7 +413,7 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
   const marketLabel = market || city || "—";
   const subject =
     event === "complete"
-      ? `Wizard Completed: ${name}`
+      ? `New Applicant: ${name}`
       : `New Driver Lead: ${name} — ${marketLabel}`;
 
   const base = args.adminBaseUrl || "https://drivereal.com";
@@ -443,7 +443,7 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
     )
     .join("");
 
-  const heading = event === "complete" ? "Wizard Completed" : "New Driver Lead";
+  const heading = event === "complete" ? "New Applicant" : "New Driver Lead";
 
   const html = `<!doctype html>
 <html><body style="margin:0;background:#f5f5f5;font-family:-apple-system,Segoe UI,Roboto,sans-serif">
