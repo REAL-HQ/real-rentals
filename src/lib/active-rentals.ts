@@ -189,13 +189,25 @@ function paymentRank(payment: PaymentFact): string {
   return payment.createdAt || payment.paidDate || payment.dueDate || "";
 }
 
-function latestPayment(rentalId: string, payments: PaymentFact[]): PaymentFact | null {
-  // The Due cell describes rent: a toll, fee or Reservation Fee row never stands in for it.
-  const all = payments.filter((p) => p.rentalId === rentalId);
-  const rent = all.filter((p) => p.type === undefined || isRentRow(p));
-  const mine = rent.length ? rent : all;
-  if (!mine.length) return null;
-  return mine.reduce((best, row) => (paymentRank(row) > paymentRank(best) ? row : best));
+function isZeroAmount(payment: PaymentFact): boolean {
+  if (payment.amount == null || payment.amount === "") return false;
+  const amount = Number(payment.amount);
+  return Number.isFinite(amount) && amount <= 0.004;
+}
+
+/**
+ * The Due cell describes the period that is due, not the newest rent row.
+ * A later $0 trial invoice must not make that period read Paid.
+ * No positive-amount row on the due date reads Unpaid.
+ */
+export function duePeriodPayment(rentalId: string, payments: PaymentFact[], dueDate: string | null): PaymentFact | null {
+  if (!dueDate) return null;
+  const rent = payments.filter((p) => p.rentalId === rentalId && (p.type === undefined || isRentRow(p)) && !isZeroAmount(p));
+  const onPeriod = rent.filter((p) => dateOnly(p.dueDate) === dueDate);
+  if (!onPeriod.length) return null;
+  const paid = onPeriod.filter((p) => String(p.status ?? "").trim().toLowerCase() === "paid");
+  const pool = paid.length ? paid : onPeriod;
+  return pool.reduce((best, row) => (paymentRank(row) > paymentRank(best) ? row : best));
 }
 
 function countsForRental(
@@ -239,7 +251,6 @@ export function buildActiveRentalRows(args: {
   }
   return sortActiveRentals(
     args.rentals.map((rental) => {
-      const payment = args.payments.ok ? latestPayment(rental.id, args.payments.rows) : null;
       const issueCount = args.issues.ok ? countsForRental(rental, args.issues.rows, []).openIssues : null;
       const incidentCount = args.incidents.ok ? countsForRental(rental, [], args.incidents.rows).openIncidents : null;
       const plan = args.dailyPlans?.get(rental.id) ?? null;
@@ -271,10 +282,7 @@ export function buildActiveRentalRows(args: {
         cadence: standing?.cadence ?? "weekly",
         dailyRate: standing?.daily?.rate ?? null,
         rentOwed: standing ? standing.rentOwed : null,
-        lastPaymentStatus: !args.payments.ok ? null : payment?.status?.trim() || null,
-        lastPaymentViaStripe: !args.payments.ok || !payment
-          ? null
-          : Boolean(payment.stripeInvoiceId || payment.stripePaymentIntentId),
+        ...duePeriodLabel(args.payments.ok, rental.id, args.payments.ok ? args.payments.rows : [], standing ? standing.nextDue : dateOnly(rental.nextPaymentDue)),
         paymentsLoaded: args.payments.ok,
         openIssues: issueCount,
         openIncidents: incidentCount,
@@ -284,6 +292,22 @@ export function buildActiveRentalRows(args: {
       };
     }),
   );
+}
+
+function duePeriodLabel(
+  loaded: boolean,
+  rentalId: string,
+  payments: PaymentFact[],
+  dueDate: string | null,
+): { lastPaymentStatus: string | null; lastPaymentViaStripe: boolean | null } {
+  if (!loaded) return { lastPaymentStatus: null, lastPaymentViaStripe: null };
+  if (!dueDate) return { lastPaymentStatus: null, lastPaymentViaStripe: null };
+  const payment = duePeriodPayment(rentalId, payments, dueDate);
+  if (!payment) return { lastPaymentStatus: "unpaid", lastPaymentViaStripe: false };
+  return {
+    lastPaymentStatus: payment.status?.trim() || "unpaid",
+    lastPaymentViaStripe: Boolean(payment.stripeInvoiceId || payment.stripePaymentIntentId),
+  };
 }
 
 function toStanding(p: PaymentFact): StandingPayment {

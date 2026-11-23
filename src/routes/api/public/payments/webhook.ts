@@ -484,6 +484,10 @@ function subscriptionIdOfInvoice(invoice: any): string | null {
 }
 
 async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed') {
+  const { ignoredZeroOrTrialInvoice } = await import('@/lib/zero-rent-invoice');
+  // A $0 trial or subscription anchor collected nothing. Log only: no rent row,
+  // no next_payment_due, no payment_status, no receipt, no staff notice.
+  if (status === 'paid' && ignoredZeroOrTrialInvoice(invoice)) return;
   const admin: any = getSupabase();
   const subscriptionId = subscriptionIdOfInvoice(invoice);
   const receipts = extractPaymentReceiptFields(invoice);
@@ -918,10 +922,16 @@ async function handleVerifiedPaymentEvent(event: { type: string; data: { object:
       await upsertPaymentFromPaymentIntent(event.data.object, 'failed');
       break;
     case 'invoice.paid':
-    case 'invoice.payment_succeeded':
+    case 'invoice.payment_succeeded': {
+      const { ignoredZeroOrTrialInvoice } = await import('@/lib/zero-rent-invoice');
+      if (ignoredZeroOrTrialInvoice(event.data.object)) {
+        console.info('[payments] ignored zero or trial invoice', event.data.object?.id ?? null);
+        break;
+      }
       await upsertPaymentFromInvoice(event.data.object, 'paid');
       await welcomeAfterPaid({ invoiceId: stripeId(event.data.object?.id) });
       break;
+    }
     case 'invoice.payment_failed':
       await upsertPaymentFromInvoice(event.data.object, 'failed');
       break;

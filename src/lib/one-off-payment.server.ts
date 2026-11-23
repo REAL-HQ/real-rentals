@@ -231,6 +231,7 @@ export async function insertMatchedOneOff(
   rental: RentalCandidate,
   by: MatchBy,
 ): Promise<{ paymentId: string | null; inserted: boolean }> {
+  if (id.amountCents <= 0) return { paymentId: null, inserted: false };
   const r = rental;
   const amount = id.amountCents / 100;
   const day = id.paidAt ? easternDateOf(id.paidAt) : easternDateOf(Math.floor(Date.now() / 1000));
@@ -300,6 +301,8 @@ export async function insertMatchedOneOff(
  * customer, email, phone or billing name, or queue it. Does not email the renter.
  */
 export async function recordInvoiceWithoutRental(admin: Admin, invoice: any): Promise<{ recorded: boolean }> {
+  const { ignoredZeroOrTrialInvoice } = await import("@/lib/zero-rent-invoice");
+  if (ignoredZeroOrTrialInvoice(invoice)) return { recorded: false };
   const invoiceId = stripeId(invoice?.id);
   if (!invoiceId || String(invoice?.status) === "void") return { recorded: false };
   const existing = await rows(admin.from("payments").select("id").eq("stripe_invoice_id", invoiceId).limit(1));

@@ -29,7 +29,7 @@ import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { Row, TwoCol } from "./VehicleProfileFields";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
-import { BOOKING_PHASE_LABEL, bookingDates, bookingVehicleName } from "@/lib/bookings-list";
+import { BOOKING_PHASE_LABEL, autopayBadge, bookingDates, bookingVehicleName } from "@/lib/bookings-list";
 import { persistedNumber } from "@/lib/record-numbers";
 import { RecordNumber } from "@/components/admin/RecordNumber";
 import { BookingVehicleHistory } from "@/components/admin/BookingVehicleHistory";
@@ -302,6 +302,12 @@ function Overview({
                 <Row
                   label="Weekly Rate"
                   value={b.weeklyRate == null ? "Not Set" : usd(b.weeklyRate)}
+                />
+              )}
+              {d.canSeeMoney && (
+                <Row
+                  label="Autopay"
+                  value={<span data-testid="autopay-badge">{autopayBadge(b)}</span>}
                 />
               )}
             </div>

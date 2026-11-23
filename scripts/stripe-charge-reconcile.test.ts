@@ -46,7 +46,9 @@ describe("charge gaps", () => {
     const open = succeededChargeRef(charge("ch_open"))!;
     const recorded = succeededChargeRef(charge("ch_done", { payment_intent: "pi_done" }))!;
     const refunded = succeededChargeRef(charge("ch_back", { amount_refunded: 5000 }));
+    const zero = succeededChargeRef(charge("ch_zero", { amount: 0, amount_captured: 0 }));
     expect(refunded).toBeNull();
+    expect(zero).toBeNull();
     const gaps = chargeGaps([open, recorded], [{ stripeChargeId: null, stripePaymentIntentId: "pi_done", stripeInvoiceId: null }]);
     expect(gaps.map((g) => g.chargeId)).toEqual(["ch_open"]);
     const copy = chargeGapAlert(open);

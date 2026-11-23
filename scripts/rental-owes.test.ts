@@ -1,11 +1,20 @@
 // Bookings owes and the FLEET balance share reportedOwes.
 import { describe, expect, test } from "bun:test";
 import { reportedOwes } from "../src/lib/rental-owes";
+import { autopayBadge } from "../src/lib/bookings-list";
 import { rentStanding } from "../src/lib/rent-standing";
 import { buildActiveRentalRows, type PaymentFact } from "../src/lib/active-rentals";
 
 const PLAN = { dailyRate: 50, startsOn: "2026-11-16" };
 const paid = (due: string) => ({ type: "rent", status: "paid", amount: 50, dueDate: due, paidDate: due });
+
+describe("autopay badge", () => {
+  test("on shows the next charge date and weekly rate; off stays off", () => {
+    expect(autopayBadge({ autopayActive: true, nextPaymentDue: "2026-11-30", weeklyRate: 350 })).toBe("Autopay On · Next Charge Nov 30, 2026 · $350.00");
+    expect(autopayBadge({ autopayActive: false, nextPaymentDue: "2026-11-30", weeklyRate: 350 })).toBe("Autopay Off");
+    expect(autopayBadge({ autopayActive: null })).toBe("Autopay Off");
+  });
+});
 
 describe("reported owes", () => {
   test("a daily plan with two unpaid days is $100 and 1 day, on the board and on FLEET", () => {
