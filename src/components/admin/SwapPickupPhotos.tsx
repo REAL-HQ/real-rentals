@@ -19,6 +19,7 @@ import {
   saveSwapPickupPhoto,
 } from "@/lib/swap-pickup-photos.functions";
 import type { VehicleLabelSource } from "@/lib/vehicle-label";
+import { PHOTO_THUMBNAIL_GRID_CLASS } from "@/components/photo-thumbnail-grid";
 import { VehiclePickerPhoto, type EnlargedPhoto } from "./VehiclePickerPhoto";
 
 type Photo = ShownPickupPhoto;
@@ -164,7 +165,7 @@ export function SwapPickupPhotos({
             <p className="mt-2 text-[12px] text-[#9A9AA3]">No Pickup Photos Yet.</p>
           ) : null}
           {photos.length > 0 ? (
-            <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+            <ul data-testid="swap-pickup-photo-grid" className={`mt-2 ${PHOTO_THUMBNAIL_GRID_CLASS}`}>
               {photos.map((photo, index) => {
                 const name = photo.fileName || `Pickup Photo ${index + 1}`;
                 const heic = photo.mimeType === "image/heic";

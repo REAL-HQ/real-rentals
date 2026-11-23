@@ -403,10 +403,6 @@ function Overview({
           )}
         </SectionCard>
 
-        <SectionCard title="Vehicles" icon={<Car className="w-4 h-4" strokeWidth={1.75} />}>
-          <BookingVehicleHistory rentalId={b.id} showSwap={b.phase === "active"} />
-        </SectionCard>
-
         <SectionCard
           title="On This Booking"
           icon={<FileText className="w-4 h-4" strokeWidth={1.75} />}
@@ -520,6 +516,13 @@ function Overview({
             </ul>
           </SectionCard>
         )}
+      </div>
+
+      {/* Swap history and Pickup Photos span the booking page. */}
+      <div className="min-w-0 lg:col-span-3" data-testid="booking-vehicle-swaps">
+        <SectionCard title="Vehicles" icon={<Car className="w-4 h-4" strokeWidth={1.75} />}>
+          <BookingVehicleHistory rentalId={b.id} showSwap={b.phase === "active"} />
+        </SectionCard>
       </div>
     </div>
   );
