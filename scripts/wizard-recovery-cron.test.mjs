@@ -407,8 +407,9 @@ const ok = (name) => {
   };
   try {
     const before = Date.now();
-    const r1 = await email.sendWizardRecoveryEmail({ to: "a@example.invalid", firstName: "A", applicationId: "app-1", variant: "24h" });
-    const r2 = await email.sendAbandonedRecoveryEmail({ to: "b@example.invalid", firstName: "B", applicationId: "app-2", market: null, pickupDate: null });
+    // example.com, not .invalid: a .invalid address is now suppressed before Resend (email-suppression.ts).
+    const r1 = await email.sendWizardRecoveryEmail({ to: "a@example.com", firstName: "A", applicationId: "app-1", variant: "24h" });
+    const r2 = await email.sendAbandonedRecoveryEmail({ to: "b@example.com", firstName: "B", applicationId: "app-2", market: null, pickupDate: null });
     assert.equal(r1.ok, true, "sendWizardRecoveryEmail returns the send result");
     assert.equal(r2.ok, true, "sendAbandonedRecoveryEmail returns the send result");
     const tokenRows = inserts.filter((i) => i.table === "application_resume_tokens");
