@@ -95,8 +95,9 @@ e-signs a swap agreement for the new car, and staff then record the handover.
      - sets the new car to Rented and the old car to Maintenance or Available;
      - writes one `audit_log` row (`rental.vehicle_swapped`).
    - It never touches payments, Stripe, autopay, deposits or the weekly rate.
-   - Photos: run a Vehicle Inspection on each car. The return checklist is
-     still off, so the swap does not store photos itself.
+   - Photos of the replacement car are **Pickup Photos** on the swap entry
+     (see below). A Vehicle Inspection is still separate. Uploading pickup
+     photos does not change the swap.
 6. **Cancel Swap** works while a swap is open. An unsigned agreement is voided
    through `esign_void`. A signed but not-yet-completed swap is marked voided,
    and its signed agreement stays on file.
@@ -109,6 +110,50 @@ exists, the send is refused.
 
 James (rental `9108ea8c`) follows `RRA-20261116-2A4BBF` (e-signed v1.14). His
 Damage Waiver (Declined) and payment choices (Weekly, Card Autopay) carry over.
+
+## Pickup Photos
+
+Staff attach still photos of the **new** car on the swap row itself. This works
+for every swap status, including **Completed**. Saving a photo inserts a row
+in `rental_vehicle_swap_photos` and an object in the private `condition-media`
+bucket. It does not update the swap, the rental, the vehicles, the agreement
+or any payment.
+
+**Where:** Admin → Bookings → open the rental → the **Vehicles** card → the
+swap entry (record number, status, reason) → **Pickup Photos**. The same entry
+is on a vehicle's Vehicles card. For the first batch, that is swap **S-1000**
+on rental RR-007 (booking `9108ea8c-528f-4a81-9237-af505a1b208a`, 2015 Ford
+Fusion, plate EC20LK, status Completed). Open that booking, scroll to the
+Vehicles card, and use Add Pickup Photos on the S-1000 row. Drop or choose all
+of the files in one selection.
+
+The new car is shown as a thumbnail, plate, and the last 6 of the VIN. The
+unit number is not shown. Thumbnails open larger on click (HEIC opens in a
+new tab, same as other HEIC previews). Renters do not see these photos.
+
+**Limits:** JPEG, PNG, WebP or HEIC. **50 MB** per file (the existing
+condition-media bucket cap, which already covers a 2–4 MB photo). **80 photos**
+per swap, so a first batch of 42 fits in one selection, with room for retakes.
+The bytes go straight to storage with a signed upload URL. The server only
+reads the first 256 KB to check the file is really a photo.
+
+**Apply the migration before go-live.** Do not apply it to production until
+this change is reviewed. It only creates the new table:
+
+```bash
+psql "$DATABASE_URL" -f supabase/migrations/20261123120000_swap_pickup_photos.sql
+```
+
+Until that table exists, the card says Pickup Photos need the database update
+and nothing is saved. Rollback (does not touch swaps, rentals or vehicles):
+
+```sql
+DROP TABLE IF EXISTS public.rental_vehicle_swap_photos;
+```
+
+Objects already stored at `{vehicleId}/swap/{swapId}/` stay in
+`condition-media` until someone removes them. This migration does not delete
+or rewrite them.
 
 ## The Gate (Replaces `SWAP_ENABLED = false`)
 
@@ -147,6 +192,9 @@ gate counts as off.
 
 ## Tests
 
+- `bun test scripts/swap-pickup-photos.test.ts`: file rules (42 photos at 4 MB,
+  80 cap, 50 MB cap), Completed swap stays Completed, bad files are not kept,
+  and the Vehicles-card control is staff-only.
 - `bun test scripts/vehicle-swap-esign.test.ts`: gate, wording, store-then-send,
   refusals, paper originals, signing hook, handover validation, wiring.
 - `node scripts/vehicle-swap-db.test.cjs`: applies the migration twice to a

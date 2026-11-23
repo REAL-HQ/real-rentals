@@ -28,6 +28,7 @@ import {
   type SwapStatus,
 } from "@/lib/vehicle-swap";
 import { FileUploader } from "@/components/FileUploader";
+import { SwapPickupPhotos } from "./SwapPickupPhotos";
 import {
   addSwapInsuranceDocument,
   getSwapInsurance,
@@ -136,6 +137,7 @@ export function BookingVehicleHistory({
                   {e.reason ? ` — ${e.reason}` : ""}
                 </span>
               </div>
+              <SwapPickupPhotos swapId={e.id} vehicleId={e.toVehicleId} vehicle={names[e.toVehicleId]} />
             </li>
           ))}
         </ol>
