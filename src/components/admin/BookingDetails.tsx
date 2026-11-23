@@ -29,7 +29,7 @@ import { SectionCard, MicroLabel, StatusPill, EmptyState } from "./ui";
 import { Row, TwoCol } from "./VehicleProfileFields";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
-import { BOOKING_PHASE_LABEL, bookingDates, bookingVehicleName } from "@/lib/bookings-list";
+import { BOOKING_PHASE_LABEL, autopayBadge, bookingDates, bookingVehicleName } from "@/lib/bookings-list";
 import { persistedNumber } from "@/lib/record-numbers";
 import { RecordNumber } from "@/components/admin/RecordNumber";
 import { BookingVehicleHistory } from "@/components/admin/BookingVehicleHistory";
@@ -304,6 +304,12 @@ function Overview({
                   value={b.weeklyRate == null ? "Not Set" : usd(b.weeklyRate)}
                 />
               )}
+              {d.canSeeMoney && (
+                <Row
+                  label="Autopay"
+                  value={<span data-testid="autopay-badge">{autopayBadge(b)}</span>}
+                />
+              )}
             </div>
           </TwoCol>
           {d.unavailable.length > 0 && (
@@ -395,10 +401,6 @@ function Overview({
           ) : (
             <p className="text-[13px] text-[#55555E]">Unknown</p>
           )}
-        </SectionCard>
-
-        <SectionCard title="Vehicles" icon={<Car className="w-4 h-4" strokeWidth={1.75} />}>
-          <BookingVehicleHistory rentalId={b.id} showSwap={b.phase === "active"} />
         </SectionCard>
 
         <SectionCard
@@ -514,6 +516,13 @@ function Overview({
             </ul>
           </SectionCard>
         )}
+      </div>
+
+      {/* Swap history and Pickup Photos span the booking page. */}
+      <div className="min-w-0 lg:col-span-3" data-testid="booking-vehicle-swaps">
+        <SectionCard title="Vehicles" icon={<Car className="w-4 h-4" strokeWidth={1.75} />}>
+          <BookingVehicleHistory rentalId={b.id} showSwap={b.phase === "active"} />
+        </SectionCard>
       </div>
     </div>
   );

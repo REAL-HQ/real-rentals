@@ -22,6 +22,12 @@ import {
   type SwapPhotoDb,
   type SwapPhotoRow,
 } from "@/lib/swap-pickup-photos.server";
+import {
+  PHOTO_THUMBNAIL_GAP_PX,
+  PHOTO_THUMBNAIL_GRID_CLASS,
+  PHOTO_THUMBNAIL_MIN_PX,
+  photoThumbnailColumns,
+} from "@/components/photo-thumbnail-grid";
 
 const read = (f: string) => readFileSync(f, "utf8");
 const MB = 1024 * 1024;
@@ -478,5 +484,52 @@ describe("where it shows up", () => {
     expect(sql).not.toMatch(/UPDATE\s+public\.rental_vehicle_swaps/i);
     expect(sql).not.toContain("9108ea8c-528f-4a81-9237-af505a1b208a");
     expect(server).not.toContain("9108ea8c-528f-4a81-9237-af505a1b208a");
+  });
+});
+
+describe("pickup photos layout", () => {
+  const details = read("src/components/admin/BookingDetails.tsx");
+  const ui = read("src/components/admin/SwapPickupPhotos.tsx");
+  const overview = details.slice(details.indexOf("function Overview"), details.indexOf("function Inspections"));
+
+  test("the Vehicles card spans the booking page instead of the right-hand column", () => {
+    const swaps = overview.indexOf('data-testid="booking-vehicle-swaps"');
+    const right = overview.indexOf('<div className="space-y-5">');
+    expect(swaps).toBeGreaterThan(right);
+    const rightColumn = overview.slice(right, swaps);
+    expect(rightColumn).toContain('title="Vehicle"');
+    expect(rightColumn).toContain('title="On This Booking"');
+    expect(rightColumn).not.toContain("BookingVehicleHistory");
+    const rightClosed = rightColumn.lastIndexOf("</div>");
+    expect(rightClosed).toBeGreaterThan(rightColumn.indexOf('title="On This Booking"'));
+    expect(rightColumn.slice(rightClosed)).not.toContain("<SectionCard");
+    const section = overview.slice(Math.max(0, swaps - 80), swaps + 500);
+    expect(section).toContain("lg:col-span-3");
+    expect(section).toContain("<BookingVehicleHistory");
+    expect(overview).toContain("grid-cols-1 lg:grid-cols-3");
+    expect(details).toContain("max-w-6xl");
+  });
+
+  test("the thumbnail grid fills the section width and stays usable on a phone", () => {
+    expect(PHOTO_THUMBNAIL_MIN_PX).toBe(7 * 16);
+    expect(PHOTO_THUMBNAIL_GAP_PX).toBe(8);
+    expect(PHOTO_THUMBNAIL_GRID_CLASS).toContain("w-full");
+    expect(PHOTO_THUMBNAIL_GRID_CLASS).toContain("auto-fill");
+    expect(PHOTO_THUMBNAIL_GRID_CLASS).toContain("minmax(7rem,1fr)");
+    expect(PHOTO_THUMBNAIL_GRID_CLASS).toContain("gap-2");
+    expect(ui).toContain("PHOTO_THUMBNAIL_GRID_CLASS");
+    expect(ui).toContain('data-testid="swap-pickup-photo-grid"');
+    expect(ui).not.toContain("lg:grid-cols-6");
+    expect(ui).not.toContain("grid-cols-3");
+    expect(ui).toContain("Pickup Photos");
+    expect(ui).not.toMatch(/text-transform|uppercase/);
+
+    // 360px phone, after the booking page and card padding: two thumbnails.
+    expect(photoThumbnailColumns(232)).toBe(2);
+    // The old right-hand column was about this wide and held six tiny thumbs.
+    expect(photoThumbnailColumns(266)).toBe(2);
+    // Full width of the booking record shows more than six.
+    expect(photoThumbnailColumns(1016)).toBe(8);
+    expect(photoThumbnailColumns(1016)).toBeGreaterThan(6);
   });
 });

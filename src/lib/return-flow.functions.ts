@@ -217,6 +217,9 @@ export const createFinalInvoice = createServerFn({ method: "POST" })
       throw new Error("This renter has no Stripe customer. Record the amount owed and send payment options manually.");
     }
 
+    const { chargeMetadataForRental } = await import("@/lib/stripe-charge-metadata.server");
+    const { easternDay, invoiceChargeMetadata, stampInvoicePaymentIntent } = await import("@/lib/stripe-charge-metadata");
+    const chargeMetadata = await chargeMetadataForRental(supabaseAdmin, data.rentalId, "final_return", easternDay());
     const { createStripeClient } = await import("@/lib/stripe.server");
     const stripe = createStripeClient("live");
     const extras = (data.extraCharges ?? [])
@@ -248,10 +251,11 @@ export const createFinalInvoice = createServerFn({ method: "POST" })
       customer: customerId,
       collection_method: "send_invoice",
       days_until_due: 7,
-      metadata: { rentalId: data.rentalId, ...(rental.application_id ? { applicationId: String(rental.application_id) } : {}), purpose: "final_return" },
+      ...invoiceChargeMetadata({ ...chargeMetadata, purpose: "final_return" }),
       auto_advance: false,
     });
     const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
+    await stampInvoicePaymentIntent(stripe, finalized as { payment_intent?: unknown }, chargeMetadata);
     const url =
       typeof finalized.hosted_invoice_url === "string" && finalized.hosted_invoice_url.startsWith("https://invoice.stripe.com/")
         ? finalized.hosted_invoice_url

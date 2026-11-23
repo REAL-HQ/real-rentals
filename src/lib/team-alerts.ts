@@ -11,7 +11,7 @@
 export const TEAM_ALERT_EMAIL = "team@drivereal.com";
 export const TEAM_ALERTS_SETTINGS_KEY = "team_alerts";
 
-export const TEAM_ALERT_KINDS = ["gps", "roadside_overnight", "late_pickup", "bot_handoff", "applicant_approved"] as const;
+export const TEAM_ALERT_KINDS = ["gps", "roadside_overnight", "late_pickup", "bot_handoff", "applicant_approved", "stripe_payment_gap"] as const;
 export type TeamAlertKind = (typeof TEAM_ALERT_KINDS)[number];
 
 export const TEAM_ALERT_LABELS: Record<TeamAlertKind, string> = {
@@ -20,6 +20,7 @@ export const TEAM_ALERT_LABELS: Record<TeamAlertKind, string> = {
   late_pickup: "Late Pickup Release Alerts",
   bot_handoff: "Bot Hand-Off Alerts (complaints, injuries, payment disputes)",
   applicant_approved: "Approved Applicant Call Alerts (staff call to go over terms, then Move Forward)",
+  stripe_payment_gap: "Stripe Payment Gap Alerts (a succeeded charge is not on a payments row)",
 };
 
 /**

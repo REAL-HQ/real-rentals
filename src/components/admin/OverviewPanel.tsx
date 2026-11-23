@@ -8,7 +8,7 @@ import LeadPriorities from "./LeadPriorities";
 import OverviewToday from "./OverviewToday";
 import { BookingFollowupSlot } from "./BookingFollowupSlot";
 import { BookingConversion } from "./BookingConversion";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
 import {
@@ -94,6 +94,9 @@ import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 import { Button } from "@/components/ui/button";
 import { Tooltip as ControlTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { serviceSummaryPreview, type ServiceSummaryRow } from "./overview-summary-details";
+import { ActiveRentersDetails } from "./ActiveRentersDetails";
+import { getOverviewActiveRenters } from "@/lib/overview-active-renters.functions";
+import { ACTIVE_RENTER_COPY, type ActiveRentersSummary } from "@/lib/overview-active-renters";
 
 type WeekPoint = import("@/lib/overview-weekly-revenue").WeekPoint;
 
@@ -182,6 +185,9 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   const [overdueRenters, setOverdueRenters] = useState(0);
   const [overdueAmt, setOverdueAmt] = useState(0);
   const [activeRentalCount, setActiveRentalCount] = useState<number | null>(null);
+  const loadActiveRenters = useServerFn(getOverviewActiveRenters);
+  const [renterSummary, setRenterSummary] = useState<ActiveRentersSummary | null>(null);
+  const [renterSummaryFailed, setRenterSummaryFailed] = useState(false);
   const [opsRefreshKey, setOpsRefreshKey] = useState(0);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
@@ -224,6 +230,25 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    loadActiveRenters({ data: {} })
+      .then((summary) => {
+        if (!live) return;
+        setRenterSummary(summary);
+        setRenterSummaryFailed(false);
+      })
+      .catch(() => {
+        if (!live) return;
+        setRenterSummary(null);
+        setRenterSummaryFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opsRefreshKey]);
 
   useEffect(() => {
     (async () => {
@@ -404,8 +429,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   }, [revenue, priorRevenue]);
 
   // Projected vs collected rent for the current ET week and month. Separate
-  // from the range picker total above — this is the active-renter schedule
-  // against rent already recorded, deposits excluded from both.
+  // from the range picker total above, which counts every revenue type in the
+  // selected range. These rows are rent only. Projected is the full weekly
+  // schedule for the period, including weeks already due. Collected is rent
+  // recorded in that same period.
   const loadProjected = useServerFn(getProjectedRevenueSummary);
   const [projected, setProjected] = useState<ProjectedRevenueSummary | null>(null);
   const [projectedLoading, setProjectedLoading] = useState(false);
@@ -573,15 +600,19 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
           icon={Users}
           eyebrow="Active Renters"
           title={activeRentalCount === null ? "—" : String(activeRentalCount)}
-          hint={activeRentalCount === 0 ? "No active rentals" : "With an active rental"}
+          hint={activeRentalCount === 0 ? ACTIVE_RENTER_COPY.emptyHint : ACTIVE_RENTER_COPY.hint}
           href="/admin"
           search={{ tab: "drivers", filter: "active" }}
           control="view"
           expanded={summaryExpanded}
           onExpand={() => setSummaryExpanded((value) => !value)}
-          details={<>
-            <SummaryDetailRow label="Active Rentals" value={activeRentalCount === null ? "—" : activeRentalCount} />
-          </>}
+          details={
+            <ActiveRentersDetails
+              summary={renterSummary}
+              failed={renterSummaryFailed}
+              canOpenBoard={canSeeCollections}
+            />
+          }
         />
         {MAINTENANCE_LOG_ENABLED ? <MaintenanceDueTile /> : null}
       </div>
@@ -940,7 +971,7 @@ function SummaryExpandControl({ expanded, onExpand }: { expanded: boolean; onExp
             className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
             aria-label={label}
             aria-expanded={expanded}
-            aria-controls="fleet-summary-details revenue-summary-details collections-summary-details service-summary-details"
+            aria-controls="fleet-summary-details revenue-summary-details collections-summary-details service-summary-details active-summary-details"
             onClick={(event) => { event.stopPropagation(); onExpand(); }}
             onKeyDown={(event) => event.stopPropagation()}
           >
@@ -1213,23 +1244,46 @@ function RevenueCard({
       </div>
 
       <SummaryDetails expanded={expanded} label="Revenue Details">
-          <div className="text-[10px] font-semibold text-muted-foreground">
-            Revenue: Projected / Collected
+          <div
+            className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-1 gap-y-1"
+            aria-label="Revenue, Projected then Collected"
+          >
+            <div
+              className="text-[10px] font-semibold text-muted-foreground"
+              title="Rent for the calendar week and month. Separate from the range total above."
+            >
+              Revenue
+            </div>
+            <div
+              className="text-right text-[10px] font-semibold text-muted-foreground"
+              title="Weekly rent expected for the whole period, including weeks already due."
+            >
+              Projected
+            </div>
+            <div className="text-center text-[10px] font-normal text-[#C7C7CC]" aria-hidden="true">/</div>
+            <div
+              className="text-right text-[10px] font-semibold text-muted-foreground"
+              title="Rent recorded in the period. Deposits, late fees, and the Reservation Fee are not included."
+            >
+              Collected
+            </div>
+            {(["week", "month"] as const).map((key) => {
+              const row = projected?.[key];
+              const label = key === "week" ? "This Week" : "This Month";
+              const projectedText = projectedLoading || !row ? "—" : usd(centsToDollars(row.projectedCents));
+              const collectedText = projectedLoading || !row ? "—" : usd(centsToDollars(row.collectedCents));
+              return (
+                <Fragment key={key}>
+                  <div className="whitespace-nowrap text-[11px] text-muted-foreground" aria-label={`${label}: Projected ${projectedText}, Collected ${collectedText}`}>
+                    {label}
+                  </div>
+                  <div className="whitespace-nowrap text-right text-[11px] tabular-nums text-foreground" aria-hidden="true">{projectedText}</div>
+                  <div className="text-center text-[11px] text-[#C7C7CC]" aria-hidden="true">/</div>
+                  <div className="whitespace-nowrap text-right text-[11px] tabular-nums text-foreground" aria-hidden="true">{collectedText}</div>
+                </Fragment>
+              );
+            })}
           </div>
-          {(["week", "month"] as const).map((key) => {
-            const row = projected?.[key];
-            const label = key === "week" ? "This Week" : "This Month";
-            return (
-              <div key={key} className="flex flex-wrap items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
-                <span>{label}</span>
-                <span className="tabular-nums text-foreground">
-                  {projectedLoading || !row
-                    ? "—"
-                    : `${usd(centsToDollars(row.projectedCents))} / ${usd(centsToDollars(row.collectedCents))}`}
-                </span>
-              </div>
-            );
-          })}
       </SummaryDetails>
 
       {open && (

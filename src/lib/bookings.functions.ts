@@ -709,6 +709,8 @@ export const getBooking = createServerFn({ method: "POST" })
       booking.weeklyRate = rental.weekly_rate == null ? null : Number(rental.weekly_rate);
       booking.paymentStatus = (rental.payment_status as string | null) ?? null;
       booking.depositStatus = (rental.deposit_status as string | null) ?? null;
+      booking.autopayActive = rental.autopay_active === true;
+      booking.nextPaymentDue = (rental.next_payment_due as string | null) ?? null;
       booking.balanceDue = (money?.payments ?? [])
         .filter((p) => p.status !== "paid")
         .reduce((n, p) => n + (p.balanceDue ?? p.amount ?? 0), 0);

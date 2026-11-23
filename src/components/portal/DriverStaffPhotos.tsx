@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Car } from "lucide-react";
+import { PHOTO_THUMBNAIL_GRID_CLASS } from "@/components/photo-thumbnail-grid";
 import { fmtDate, fmtDateTime } from "@/lib/date-format";
 import type {
   DriverStaffAlbum,
@@ -105,7 +106,7 @@ function PhotoGrid({
     return <p className="text-sm text-muted-foreground">No Photos Yet.</p>;
   }
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div className={PHOTO_THUMBNAIL_GRID_CLASS}>
       {photos.map((photo) => {
         const key = photoKey(photo);
         const known = Object.prototype.hasOwnProperty.call(urls, key);

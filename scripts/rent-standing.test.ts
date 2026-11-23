@@ -86,6 +86,24 @@ describe("daily rent plan", () => {
     expect(s.rentOwed).toBe(200);
     expect(s.overdueDays).toBe(3);
   });
+  test("daily-plan payments do not reduce the first weekly period after the plan ends", () => {
+    const ended = { dailyRate: 50, startsOn: "2026-11-16", endsOn: "2026-11-22" };
+    const payments = [
+      p({ amount: 50, dueDate: "2026-11-21", paidDate: "2026-11-21" }),
+      p({ amount: 50, dueDate: "2026-11-22", paidDate: "2026-11-22" }),
+      p({ amount: 0, dueDate: "2026-11-23", paidDate: "2026-11-23" }),
+    ];
+    const s = rentStanding({ today: "2026-11-23", nextPaymentDue: "2026-11-23", weeklyRate: 350, payments, dailyPlan: ended });
+    expect(s.cadence).toBe("weekly");
+    expect(s.nextDue).toBe("2026-11-23");
+    expect(s.rentOwed).toBe(350);
+    const covered = rentStanding({
+      today: "2026-11-23", nextPaymentDue: "2026-11-23", weeklyRate: 350, dailyPlan: ended,
+      payments: [...payments, p({ amount: 350, dueDate: "2026-11-23", paidDate: "2026-11-23" })],
+    });
+    expect(covered.rentOwed).toBe(0);
+    expect(covered.nextDue).toBe("2026-11-30");
+  });
   test("a plan that has not started or has ended is ignored", () => {
     expect(activeDailyPlan({ ...PLAN, startsOn: "2026-11-20" }, "2026-11-19")).toBe(null);
     expect(activeDailyPlan({ ...PLAN, endsOn: "2026-11-18" }, "2026-11-19")).toBe(null);
@@ -135,8 +153,25 @@ describe("every display reads the same rule", () => {
     ]);
     expect(row.overdueDays).toBe(0);
     expect(row.nextPaymentDue).toBe("2026-11-23");
-    expect(row.lastPaymentStatus).toBe("paid");
+    expect(row.lastPaymentStatus).toBe("unpaid");
     expect(row.rentOwed).toBe(0);
+  });
+  test("the Due cell reads the period that is due, not a later $0 trial row", () => {
+    const row = buildActiveRentalRows({
+      today: "2026-11-23",
+      rentals: [{ id: "r1", driverId: "d1", driverName: "Regina Littles", applicationId: "a1", vehicleId: null, vehicleLabel: "Car", startDate: "2026-11-02", weeklyRate: 350, nextPaymentDue: "2026-11-23" }],
+      payments: { ok: true, rows: [
+        fact({ amount: 50, dueDate: "2026-11-21", createdAt: "2026-11-21T12:00" }),
+        fact({ amount: 50, dueDate: "2026-11-22", createdAt: "2026-11-22T12:00" }),
+        fact({ amount: 0, status: "paid", dueDate: "2026-11-23", createdAt: "2026-11-23T11:17", stripeInvoiceId: "in_1UevF3" }),
+      ] },
+      issues: { ok: true, rows: [] }, incidents: { ok: true, rows: [] }, documentDates: { ok: true, rows: [] },
+      dailyPlans: new Map([["r1", { dailyRate: 50, startsOn: "2026-11-16", endsOn: "2026-11-22" }]]),
+    })[0];
+    expect(row.nextPaymentDue).toBe("2026-11-23");
+    expect(row.rentOwed).toBe(350);
+    expect(row.lastPaymentStatus).toBe("unpaid");
+    expect(row.lastPaymentViaStripe).toBe(false);
   });
   test("Bookings > Active: the Due cell describes rent, not the latest toll", () => {
     const row = board([fact({ status: "overdue", dueDate: "2026-11-16", createdAt: "2026-11-16" }), fact({ type: "toll", status: "paid", createdAt: "2026-11-18", amount: 5 })]);

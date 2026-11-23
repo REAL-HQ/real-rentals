@@ -103,12 +103,12 @@ function build(over: Partial<Parameters<typeof buildDriverStaffAlbum>[0]> = {}) 
 describe("who can see a rental's photos", () => {
   test("active and a recent return are visible; assigned, cancelled, and an old return are not", () => {
     expect(rentalPhotosVisible(rental(), TODAY)).toBe(true);
-    expect(
-      rentalPhotosVisible(rental({ status: "returned", endDate: "2026-06-01" }), TODAY),
-    ).toBe(true);
-    expect(
-      rentalPhotosVisible(rental({ status: "completed", endDate: "2024-01-01" }), TODAY),
-    ).toBe(false);
+    expect(rentalPhotosVisible(rental({ status: "returned", endDate: "2026-06-01" }), TODAY)).toBe(
+      true,
+    );
+    expect(rentalPhotosVisible(rental({ status: "completed", endDate: "2024-01-01" }), TODAY)).toBe(
+      false,
+    );
     expect(rentalPhotosVisible(rental({ status: "pending", endDate: null }), TODAY)).toBe(false);
     expect(rentalPhotosVisible(rental({ status: "cancelled" }), TODAY)).toBe(false);
     expect(rentalPortalStage("active", "2020-01-01", TODAY)).toBe("active");
@@ -187,14 +187,23 @@ describe("grouping", () => {
           phase: "checkout",
         }),
       ],
-      swaps: [swap, { ...swap, id: "99999999-9999-4999-8999-999999999999", rentalId: OTHER_RENTAL }],
+      swaps: [
+        swap,
+        { ...swap, id: "99999999-9999-4999-8999-999999999999", rentalId: OTHER_RENTAL },
+      ],
       swapPhotos: [
         swapPhoto,
-        { ...swapPhoto, id: "aaaaaaaa-1111-4111-8111-111111111111", swapId: "99999999-9999-4999-8999-999999999999" },
+        {
+          ...swapPhoto,
+          id: "aaaaaaaa-1111-4111-8111-111111111111",
+          swapId: "99999999-9999-4999-8999-999999999999",
+        },
       ],
     });
     const card = album.rentals[0];
-    expect(card.pickup[0].photos.map((photo) => photo.id)).toEqual(["33333333-3333-4333-8333-333333333333"]);
+    expect(card.pickup[0].photos.map((photo) => photo.id)).toEqual([
+      "33333333-3333-4333-8333-333333333333",
+    ]);
     expect(card.pickup[0].photos[0].timeLabel).toBe("Taken");
     expect(card.pickup[0].photos[0].at).toBe("2026-11-01T15:40:00Z");
     expect(card.pickup[0].photos[0].preview).toBe("ready");
@@ -237,7 +246,10 @@ describe("grouping", () => {
 
   test("a signed URL is attached only for the share copy", () => {
     const { album } = build({ condition: [condition()] });
-    const signed = applySignedUrls(album, new Map([["condition:33333333-3333-4333-8333-333333333333", "https://files/share"]]));
+    const signed = applySignedUrls(
+      album,
+      new Map([["condition:33333333-3333-4333-8333-333333333333", "https://files/share"]]),
+    );
     expect(signed.rentals[0].pickup[0].photos[0].url).toBe("https://files/share");
     const missing = applySignedUrls(album, new Map());
     expect(missing.rentals[0].pickup[0].photos[0].preview).toBe("unavailable");
@@ -264,7 +276,11 @@ describe("opening one photo", () => {
     };
   }
 
-  function deps(photoRow: OpenPhoto | null, rentalRow: RentalRow | null, sharePath: string | null = share): OpenDeps & {
+  function deps(
+    photoRow: OpenPhoto | null,
+    rentalRow: RentalRow | null,
+    sharePath: string | null = share,
+  ): OpenDeps & {
     ensured: OpenPhoto[];
     signed: string[];
   } {
@@ -336,7 +352,13 @@ describe("opening one photo", () => {
 
   test("a driver's own upload and a damage photo are refused", async () => {
     for (const row of [
-      photo({ kind: "condition", phase: "checkout", capturedByRole: "driver", storagePath: "a.jpg", sharePath: "a.jpg.share" }),
+      photo({
+        kind: "condition",
+        phase: "checkout",
+        capturedByRole: "driver",
+        storagePath: "a.jpg",
+        sharePath: "a.jpg.share",
+      }),
       photo({ kind: "condition", phase: "damage", storagePath: "b.jpg", sharePath: "b.jpg.share" }),
     ]) {
       const harness = deps(row, rental());
@@ -381,6 +403,8 @@ describe("the portal stays read-only", () => {
     expect(view).not.toMatch(/<input[^>]*type=["']file["']/);
     expect(view).not.toContain("FileUploader");
     expect(view).not.toMatch(/delete|upload|edit/i);
+    expect(view).toContain("PHOTO_THUMBNAIL_GRID_CLASS");
+    expect(view).not.toContain("sm:grid-cols-4");
     expect(view).toContain("Pickup");
     expect(view).toContain("Swap");
     expect(view).toContain("Return");
@@ -399,7 +423,9 @@ describe("the portal stays read-only", () => {
     expect(server).not.toMatch(/select\([^)]*unit_number/);
     expect(server).toContain('select("id,year,make,model,license_plate,vin,photos")');
     expect(server).toContain("choosePortalVehiclePhoto");
-    expect(portal).toContain('const RENTAL_TABS = new Set<Tab>(["vehicle", "deposit", "maintenance"])');
+    expect(portal).toContain(
+      'const RENTAL_TABS = new Set<Tab>(["vehicle", "deposit", "maintenance"])',
+    );
   });
 
   test("the migration lets a renter read only their own swap photos, and not write them", () => {
@@ -408,7 +434,9 @@ describe("the portal stays read-only", () => {
     expect(sql).toContain("private.renter_visible_rental_ids()");
     expect(sql).toContain("SECURITY DEFINER");
     expect(sql).toContain("FOR SELECT TO authenticated");
-    expect(sql).toContain("REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.rental_vehicle_swap_photos FROM authenticated");
+    expect(sql).toContain(
+      "REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.rental_vehicle_swap_photos FROM authenticated",
+    );
     expect(sql).not.toMatch(/CREATE POLICY[^;]*FOR INSERT/i);
     expect(sql).not.toMatch(/UPDATE\s+public\.rental_vehicle_swaps/i);
     expect(sql).not.toMatch(/sendEmail|sendSms|notify/i);

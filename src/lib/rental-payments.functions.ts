@@ -171,12 +171,21 @@ export const chargeCardOnRental = createServerFn({ method: 'POST' })
 
       // 3. Collect.
       const stripe = createStripeClient(data.environment);
+      const { chargeMetadataForRental } = await import('@/lib/stripe-charge-metadata.server');
+      const { easternDay } = await import('@/lib/stripe-charge-metadata');
+      let chargeMetadata: Record<string, string>;
+      try {
+        chargeMetadata = await chargeMetadataForRental(supabaseAdmin, data.rentalId, data.reason, easternDay());
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : 'Stripe payment metadata is incomplete.', paymentId };
+      }
       const res = await collectRows(supabaseAdmin, stripe, [row], {
         rentalId: data.rentalId,
         customerId,
         paymentMethodId,
         description: `${data.reason.replace('_', ' ')}${data.note ? ` — ${data.note}` : ''}`,
         metadata: {
+          ...chargeMetadata,
           rentalId: data.rentalId,
           reason: data.reason,
           ...(data.note && { note: data.note.slice(0, 450) }),
@@ -217,6 +226,8 @@ async function coordinatedAutopay(context: any, data: { rentalId: string; enviro
   if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) throw new Error('Verified session required');
   const { supabaseAdmin } = await import('@/integrations/supabase/client.server');
   const { coordinateRentalSubscription } = await import('@/lib/rental-subscription-coordination.server');
+  const { chargeMetadataForRental } = await import('@/lib/stripe-charge-metadata.server');
+  const chargeMetadata = action === 'start' ? await chargeMetadataForRental(supabaseAdmin, data.rentalId, 'rent') : undefined;
   return coordinateRentalSubscription({
     authorize: async () => {
       const { data: user, error } = await context.supabase.auth.getUser();
@@ -229,7 +240,7 @@ async function coordinatedAutopay(context: any, data: { rentalId: string; enviro
       return data;
     },
     stripe: createStripeClient(data.environment),
-  }, { ...data, actorId: context.userId, sessionId, action });
+  }, { ...data, actorId: context.userId, sessionId, action, chargeMetadata });
 }
 
 export const startRentalAutopay = createServerFn({ method: 'POST' })
@@ -277,6 +288,14 @@ export const startRentalAutopay = createServerFn({ method: 'POST' })
         ? Math.max(Math.floor(new Date(rental.start_date as string).getTime() / 1000), Math.floor(Date.now() / 1000) + 60)
         : Math.floor(Date.now() / 1000) + 60;
 
+      const { chargeMetadataForRental } = await import('@/lib/stripe-charge-metadata.server');
+      const { subscriptionChargeMetadata } = await import('@/lib/stripe-charge-metadata');
+      const chargeMetadata = await chargeMetadataForRental(
+        supabaseAdmin,
+        data.rentalId,
+        'rent',
+        typeof rental.start_date === 'string' ? String(rental.start_date).slice(0, 10) : null,
+      );
       const sub = await stripe.subscriptions.create({
         customer: customerId,
         default_payment_method: paymentMethodId,
@@ -291,7 +310,7 @@ export const startRentalAutopay = createServerFn({ method: 'POST' })
         billing_cycle_anchor: startTs,
         proration_behavior: 'none',
         collection_method: 'charge_automatically',
-        metadata: { rentalId: data.rentalId, ...(rental.application_id ? { applicationId: rental.application_id as string } : {}) },
+        ...subscriptionChargeMetadata(chargeMetadata),
       });
 
       await supabaseAdmin.from('rentals').update({
@@ -396,6 +415,7 @@ export const createRentalSetupSession = createServerFn({ method: 'POST' })
         customer: customerId,
         return_url: data.returnUrl,
         payment_method_types: ['card'],
+        // CARD_SETUP_NOT_A_CHARGE: mode setup saves a card. It is not a payment.
         metadata: { applicationId: app.id as string, rentalId: data.rentalId, purpose: 'card_on_file' },
       });
       return { clientSecret: session.client_secret ?? '' };

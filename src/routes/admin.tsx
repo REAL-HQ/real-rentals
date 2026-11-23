@@ -121,7 +121,17 @@ import { FleetInboxPanel } from "@/components/admin/FleetInboxPanel";
 import { BookingsWorkspace } from "@/components/admin/BookingsWorkspace";
 import { ExperienceSwitcher } from "@/components/ExperienceSwitcher";
 import { availableExperiences, navTierFor, resolveExperience, storeExperience, type Experience } from "@/lib/experience";
-import { tierAllows, tierFromRoles, TIER_LABELS, type StaffTier } from "@/lib/roles";
+import { tierAllows, TIER_LABELS, type StaffTier } from "@/lib/roles";
+import {
+  adminAccessScreen,
+  applyRoleQuery,
+  authEventRechecksRoles,
+  loadStaffRoles,
+  refreshAuthSession,
+  roleCheckMode,
+  rolesFromPayload,
+  type RoleCheckStatus,
+} from "@/lib/admin-access";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -283,7 +293,11 @@ type Tab = string;
 function Admin() {
   const [session, setSession] = useState<any>(null);
   const [checking, setChecking] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [roleStatus, setRoleStatus] = useState<RoleCheckStatus>("loading");
+  const [roleAttempt, setRoleAttempt] = useState(0);
+  const roleStatusRef = useRef<RoleCheckStatus>("loading");
+  const settledUserRef = useRef<string | null>(null);
+  const checkedAccessTokenRef = useRef<string | null>(null);
   // Read the tab from the router rather than from window.location once at
   // mount. The Overview cards and the "View All" links navigate to
   // /admin?tab=..., which changes the URL without remounting this component —
@@ -633,34 +647,112 @@ function Admin() {
 
 
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setChecking(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
-    return () => sub.subscription.unsubscribe();
-  }, []);
+  function retryAccessCheck() {
+    roleStatusRef.current = "loading";
+    setRoleStatus("loading");
+    setRoleAttempt((n) => n + 1);
+  }
 
   useEffect(() => {
-    if (!session) {
-      setIsAdmin(false);
-      setTier(null);
-      return;
+    let cancelled = false;
+    let generation = 0;
+    // refreshSession emits TOKEN_REFRESHED. Hold those events until the retry
+    // query finishes, and ignore a late event for the token we just checked,
+    // or a failed read refreshes itself forever.
+    let blockRefreshEvents = 0;
+
+    async function runCheck(userId: string, mode: "blocking" | "quiet") {
+      const my = ++generation;
+      if (mode === "blocking") {
+        roleStatusRef.current = "loading";
+        setRoleStatus("loading");
+        setTier(null);
+      }
+      let held = 0;
+      try {
+        // Read every grant this account holds and take the strongest. The old
+        // check asked only for a literal 'admin' row, which is why granting
+        // somebody 'team' let them in nowhere at all. A failed read is not an
+        // empty grant — that flash and a stale token both landed on No Access.
+        const result = await loadStaffRoles({
+          userId,
+          queryRoles: async (id) => {
+            const { data, error } = await supabase.from("user_roles").select("role").eq("user_id", id);
+            return rolesFromPayload(data, error);
+          },
+          refreshSession: async () => {
+            held += 1;
+            blockRefreshEvents += 1;
+            const token = await refreshAuthSession(supabase.auth);
+            if (token) checkedAccessTokenRef.current = token;
+          },
+        });
+        if (cancelled || my !== generation) return;
+        try {
+          const { data } = await supabase.auth.getSession();
+          if (data.session?.access_token) checkedAccessTokenRef.current = data.session.access_token;
+        } catch {
+          /* the role result still stands */
+        }
+        const applied = applyRoleQuery(result);
+        roleStatusRef.current = applied.status;
+        setRoleStatus(applied.status);
+        setTier(applied.tier);
+        settledUserRef.current = userId;
+      } catch {
+        if (cancelled || my !== generation) return;
+        roleStatusRef.current = "error";
+        setRoleStatus("error");
+        setTier(null);
+      } finally {
+        blockRefreshEvents -= held;
+      }
     }
-    // Read every grant this account holds and take the strongest. The old
-    // check asked only for a literal 'admin' row, which is why granting
-    // somebody 'team' let them in nowhere at all.
-    supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", session.user.id)
-      .then(({ data }) => {
-        const t = tierFromRoles(((data ?? []) as any[]).map((r) => String(r.role)));
-        setTier(t);
-        setIsAdmin(!!t);
-      });
-  }, [session]);
+
+    void supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+      setSession(data.session);
+      setChecking(false);
+      if (data.session) void runCheck(data.session.user.id, "blocking");
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
+      if (cancelled) return;
+      setSession(next);
+      setChecking(false);
+      if (!next) {
+        generation += 1;
+        settledUserRef.current = null;
+        checkedAccessTokenRef.current = null;
+        setTier(null);
+        roleStatusRef.current = "loading";
+        setRoleStatus("loading");
+        return;
+      }
+      if (event === "TOKEN_REFRESHED" && blockRefreshEvents > 0) {
+        if (next.access_token) checkedAccessTokenRef.current = next.access_token;
+        return;
+      }
+      if (event === "TOKEN_REFRESHED" && next.access_token && next.access_token === checkedAccessTokenRef.current) return;
+      if (!authEventRechecksRoles(event)) return;
+      const quiet = roleCheckMode(event, settledUserRef.current === next.user.id && roleStatusRef.current === "resolved");
+      void runCheck(next.user.id, quiet);
+    });
+
+    return () => {
+      cancelled = true;
+      generation += 1;
+      sub.subscription.unsubscribe();
+    };
+  }, [roleAttempt]);
+
+  const accessScreen = adminAccessScreen({
+    sessionChecking: checking,
+    hasSession: !!session,
+    roleStatus,
+    tier,
+  });
+  const isAdmin = accessScreen === "admin";
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -711,14 +803,10 @@ function Admin() {
     toast.success("Signed out");
   }
 
-  if (checking)
-    return (
-      <AdminShell>
-        <div className="container-real py-32 text-center text-muted-foreground">Loading…</div>
-      </AdminShell>
-    );
-  if (!session) return <SignIn />;
-  if (!isAdmin) return <NoAccess userId={session.user.id} onSignOut={signOut} />;
+  if (accessScreen === "loading") return <AccessLoading />;
+  if (accessScreen === "sign-in") return <SignIn />;
+  if (accessScreen === "check-failed") return <AccessCheckFailed onRetry={retryAccessCheck} onSignOut={signOut} />;
+  if (accessScreen === "no-access") return <NoAccess userId={session.user.id} onSignOut={signOut} />;
 
   const current = navTabs.find((t) => t.id === tab) ?? navTabs[0] ?? TABS[0];
   const emailName = session?.user?.email ?? "";
@@ -1108,6 +1196,31 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       <Nav />
       <main className="flex-1">{children}</main>
     </div>
+  );
+}
+
+function AccessLoading() {
+  return (
+    <AdminShell>
+      <div className="container-real py-32 text-center text-muted-foreground">Loading…</div>
+    </AdminShell>
+  );
+}
+
+function AccessCheckFailed({ onRetry, onSignOut }: { onRetry: () => void; onSignOut: () => void }) {
+  return (
+    <AdminShell>
+      <div className="container-real py-32 text-center max-w-lg">
+        <h1 className="text-2xl font-semibold">Couldn't Check Access</h1>
+        <p className="mt-3 text-muted-foreground text-sm">
+          The access check didn't finish, so this isn't a permissions decision.
+        </p>
+        <div className="mt-6 flex justify-center gap-3">
+          <button type="button" onClick={onRetry} className="rounded-lg bg-real-red px-6 py-2 text-sm font-medium text-primary-foreground">Retry</button>
+          <button type="button" onClick={onSignOut} className="rounded-lg border border-border px-6 py-2 text-sm">Sign Out</button>
+        </div>
+      </div>
+    </AdminShell>
   );
 }
 

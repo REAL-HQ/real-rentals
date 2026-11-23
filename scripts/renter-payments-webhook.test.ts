@@ -48,6 +48,11 @@ function fakeDb(seed: Record<string, Row[]> = {}) {
       insert(r: Row) { op = "insert"; inserted = r; return b; },
       update(p: Row) { op = "update"; patch = p; return b; },
       eq(c: string, v: any) { filters.push((r) => r[c] === v); return b; },
+      ilike(c: string, p: string) {
+        const re = new RegExp("^" + String(p).replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$", "i");
+        filters.push((r) => typeof r[c] === "string" && re.test(r[c]));
+        return b;
+      },
       neq(c: string, v: any) { filters.push((r) => r[c] !== v); return b; },
       in(c: string, vs: any[]) { filters.push((r) => vs.includes(r[c])); return b; },
       is(c: string, v: any) { filters.push((r) => (v === null ? r[c] == null : r[c] === v)); return b; },
