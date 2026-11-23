@@ -100,5 +100,15 @@ async function handle(request: Request): Promise<Response> {
   } catch (err) {
     console.error("[license-auto-read] failed", err);
   }
-  return Response.json({ ok: true, ...result, heldNotices, missingItems, missingItemsAutoClose, rateAmendments, creditRetry, licenseAutoRead });
+  // Lead alerts stuck at "sending" over 10 minutes: link to Resend's webhook
+  // if the alert went out, otherwise resend it exactly once. Inert until
+  // migration 20261122200000 is applied.
+  let leadAlertSweep: unknown = null;
+  try {
+    const { sweepStuckLeadAlerts } = await import("@/lib/lead-alert-sweep.server");
+    leadAlertSweep = await sweepStuckLeadAlerts(supabaseAdmin);
+  } catch (err) {
+    console.error("[lead-alert-sweep] failed", err);
+  }
+  return Response.json({ ok: true, ...result, heldNotices, missingItems, missingItemsAutoClose, rateAmendments, creditRetry, licenseAutoRead, leadAlertSweep });
 }

@@ -8,6 +8,8 @@ import { fmtDate, formatReservationTime } from "@/lib/date-format";
 import { PORTAL_PAY_URL } from "@/lib/portal-pay-link";
 import { driverRecordPath } from "@/lib/admin-record-links";
 import { findDisallowedOutboundUrls, outboundRefusalMessage, publicAppUrl } from "@/lib/public-app-url";
+import { isMissingColumnError } from "@/lib/db-errors";
+export { isMissingColumnError };
 
 export const EMAIL_FROM = "REAL RENTALS <team@drivereal.com>";
 /** Canonical Reply-To for every renter/customer email. Never hello@ or go@. */
@@ -36,8 +38,8 @@ type SendArgs = {
    * Resend webhook can later mark it delivered/bounced/complained. Without
    * it the send is untracked and "accepted" is all anyone will ever know.
    */
-  track?: { workflow: string };
-  /** Stable key for a reserved recovery attempt. Omitted by every other sender. */
+  track?: { workflow: string; meta?: Record<string, unknown> };
+  /** Stable key for a reserved recovery attempt or a lead alert. Omitted by every other sender. */
   idempotencyKey?: string;
   /**
    * Driver notices set this. Live sends omit it, so the Resend fetch is the
@@ -92,14 +94,31 @@ async function recordHeldDelivery(workflow: string, recipient: string): Promise<
  */
 // Create the tracking row BEFORE calling Resend, so a webhook can never race
 // ahead of persistence. The row starts as "sending" with no provider id.
-async function beginEmailDelivery(track: { workflow: string }, recipient: string): Promise<string | undefined> {
+async function beginEmailDelivery(
+  track: { workflow: string; meta?: Record<string, unknown> },
+  recipient: string,
+  subject?: string,
+): Promise<string | undefined> {
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data, error } = await supabaseAdmin
-      .from("email_deliveries")
-      .insert({ workflow: track.workflow, recipient, state: "sending" })
-      .select("id")
-      .single();
+    const base = { workflow: track.workflow, recipient, state: "sending" };
+    // subject/meta let the Resend webhook and the lead-alert sweep match a row
+    // whose request was cut off (migration 20261122200000). Until that
+    // migration is applied the columns do not exist: fall back to the base row.
+    if (deliveryExtrasSupported !== false) {
+      const { data, error } = await (supabaseAdmin as any)
+        .from("email_deliveries")
+        .insert({ ...base, subject: subject ? subject.slice(0, 300) : null, meta: track.meta ?? null })
+        .select("id")
+        .single();
+      if (!error) {
+        deliveryExtrasSupported = true;
+        return data?.id;
+      }
+      if (!isMissingColumnError(error)) throw error;
+      deliveryExtrasSupported = false;
+    }
+    const { data, error } = await supabaseAdmin.from("email_deliveries").insert(base as any).select("id").single();
     if (error) throw error;
     return data?.id;
   } catch (err) {
@@ -107,6 +126,9 @@ async function beginEmailDelivery(track: { workflow: string }, recipient: string
     return undefined;
   }
 }
+
+/** null = not probed yet in this isolate. */
+let deliveryExtrasSupported: boolean | null = null;
 
 // Finish the row: attach the exact Resend email id (atomically folding in any
 // placeholder an early webhook created), or mark it failed.
@@ -205,7 +227,7 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
     return { ok: false, error: "RESEND_API_KEY is not set in this environment." };
   }
   const recipient = Array.isArray(to) ? (to[0] ?? "") : to;
-  const deliveryId = track ? await beginEmailDelivery(track, recipient) : undefined;
+  const deliveryId = track ? await beginEmailDelivery(track, recipient, subject) : undefined;
   const done = async (result: SendResult): Promise<SendResult> => {
     if (deliveryId) {
       await finishEmailDelivery(deliveryId, result);
@@ -319,7 +341,18 @@ type LeadEmailArgs = {
   sms_consent: boolean | null;
   source: string | null;
   adminBaseUrl?: string;
+  /** The stuck lead_alert row this send replaces (lead-alert-sweep.server.ts). Sent at most once. */
+  retryOf?: string;
 };
+
+/**
+ * One alert per applicant per event. Resend keeps an idempotency key for 24
+ * hours, so a sweep resend of an alert that did reach Resend is not delivered
+ * twice. Previews never reach Resend (capturePreviewEmail).
+ */
+export function leadAlertIdempotencyKey(applicationId: string, event: "new" | "complete"): string {
+  return `lead-alert/${applicationId}/${event}`;
+}
 
 // -----------------------------------------------------------------------------
 // Where applicant alerts go
@@ -476,7 +509,16 @@ export async function sendLeadAlertEmail(args: LeadEmailArgs): Promise<void> {
     console.error("[email] lead alert has no recipient; check Settings -> Notifications");
     return;
   }
-  await sendEmail({ to: prefs.recipients, subject, html, track: { workflow: "lead_alert" } });
+  await sendEmail({
+    to: prefs.recipients,
+    subject,
+    html,
+    idempotencyKey: leadAlertIdempotencyKey(applicationId, event),
+    track: {
+      workflow: "lead_alert",
+      meta: { applicationId, event, ...(args.retryOf ? { retry_of: args.retryOf } : {}) },
+    },
+  });
 }
 
 /**

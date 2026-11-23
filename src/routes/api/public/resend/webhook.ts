@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { claimPendingDelivery } from "@/lib/email-delivery-match.server";
 
 // Resend delivery webhook.
 //
@@ -68,7 +69,14 @@ export const Route = createFileRoute("/api/public/resend/webhook")({
 
         let event: {
           type?: string;
-          data?: { email_id?: string; to?: string[] | string; bounce?: { message?: string }; reason?: string };
+          data?: {
+            email_id?: string;
+            to?: string[] | string;
+            subject?: string;
+            created_at?: string;
+            bounce?: { message?: string };
+            reason?: string;
+          };
         };
         try {
           event = JSON.parse(body);
@@ -100,7 +108,20 @@ export const Route = createFileRoute("/api/public/resend/webhook")({
           console.error("[resend-webhook] failed to record event", event.type, error.message);
           return Response.json({ error: "Could not record event." }, { status: 500 });
         }
-        return Response.json({ ok: true, correlation: data });
+        let correlation: unknown = data;
+        if (data === "unmatched" && recipient) {
+          // The send's request may have been cut off before it attached the id.
+          // Fold this event into that one pending row (same recipient, and same
+          // subject when known, created just before the send). Ambiguous or
+          // missing (migration not applied yet) leaves the placeholder as is.
+          correlation = await claimPendingDelivery(supabaseAdmin, {
+            resendId: messageId,
+            recipient,
+            subject: event.data?.subject ?? null,
+            sentAt: event.data?.created_at ?? null,
+          });
+        }
+        return Response.json({ ok: true, correlation });
       },
     },
   },

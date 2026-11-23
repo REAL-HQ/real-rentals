@@ -17,6 +17,9 @@ import { z } from "zod";
 import { SAVE_BUSY_CODE, SAVE_BUSY_MESSAGE } from "@/lib/wizard-save";
 import type { ApprovalEmailStatus } from "@/lib/approval-email";
 
+/** Longest the applicant's submit waits on the alert when the runtime has no waitUntil. */
+const LEAD_ALERT_WAIT_MS = 6000;
+
 const nullableString = z.string().trim().max(255).nullable().optional();
 
 /**
@@ -698,21 +701,27 @@ export const savePartialApplication = createServerFn({ method: "POST" })
           .maybeSingle();
         marketName = m?.name ?? null;
       }
-      void sendLeadAlertEmail({
-        event: "new",
-        applicationId: row.id,
-        full_name: data.full_name,
-        phone: data.phone,
-        email: data.email,
-        city: data.city ?? null,
-        state: data.state ?? null,
-        market: marketName,
-        pickup_date: data.pickup_date ?? null,
-        return_date: null,
-        platforms: null,
-        sms_consent: data.sms_consent,
-        source: data.source,
-      }).catch((e) => console.error("[lead-email] new failed", e));
+      const { keepAlive } = await import("@/lib/after-response.server");
+      // Awaited (bounded), never fire-and-forget: a bare `void` was cut off when
+      // the response went out, so alerts stuck at "sending" or never sent.
+      await keepAlive(
+        sendLeadAlertEmail({
+          event: "new",
+          applicationId: row.id,
+          full_name: data.full_name,
+          phone: data.phone,
+          email: data.email,
+          city: data.city ?? null,
+          state: data.state ?? null,
+          market: marketName,
+          pickup_date: data.pickup_date ?? null,
+          return_date: null,
+          platforms: null,
+          sms_consent: data.sms_consent,
+          source: data.source,
+        }).catch((e) => console.error("[lead-email] new failed", e)),
+        { maxWaitMs: LEAD_ALERT_WAIT_MS },
+      );
     } catch (e) {
       console.error("[lead-email] new setup failed", e);
     }
@@ -990,21 +999,27 @@ export const updateApplicationStep = createServerFn({ method: "POST" })
             .maybeSingle();
           marketName = m?.name ?? null;
         }
-        void sendLeadAlertEmail({
-          event: "complete",
-          applicationId: row.id,
-          full_name: row.full_name ?? null,
-          phone: row.phone ?? null,
-          email: row.email ?? null,
-          city: row.city ?? null,
-          state: row.state ?? null,
-          market: marketName,
-          pickup_date: row.pickup_date ?? null,
-          return_date: null,
-          platforms: Array.isArray(row.platforms) ? row.platforms : null,
-          sms_consent: row.sms_consent ?? null,
-          source: row.source ?? null,
-        }).catch((e) => console.error("[lead-email] complete failed", e));
+        const { keepAlive } = await import("@/lib/after-response.server");
+        // Awaited (bounded), never fire-and-forget: a bare `void` was cut off when
+        // the response went out, so alerts stuck at "sending" or never sent.
+        await keepAlive(
+          sendLeadAlertEmail({
+            event: "complete",
+            applicationId: row.id,
+            full_name: row.full_name ?? null,
+            phone: row.phone ?? null,
+            email: row.email ?? null,
+            city: row.city ?? null,
+            state: row.state ?? null,
+            market: marketName,
+            pickup_date: row.pickup_date ?? null,
+            return_date: null,
+            platforms: Array.isArray(row.platforms) ? row.platforms : null,
+            sms_consent: row.sms_consent ?? null,
+            source: row.source ?? null,
+          }).catch((e) => console.error("[lead-email] complete failed", e)),
+          { maxWaitMs: LEAD_ALERT_WAIT_MS },
+        );
       } catch (e) {
         console.error("[lead-email] complete setup failed", e);
       }
