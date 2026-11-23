@@ -265,7 +265,7 @@ set a different interval (1 through 200,000).
 - At least one of `next_due_miles` and `next_due_on`. Omit a field to leave
   it unchanged. Send `null` to clear it. `next_due_on` is `YYYY-MM-DD` and
   may be in the future. `notes` optional, up to 2,000 characters.
-- Until migration `20261123120000_maintenance_schedule_explicit_next_due.sql`
+- Until migration `20261123120100_maintenance_schedule_explicit_next_due.sql`
   is applied, a later update that also has a last service date or mileage
   recomputes the next due as last service plus the interval. With no last
   service on the row, the miles and date are stored as sent either way.

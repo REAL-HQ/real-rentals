@@ -560,9 +560,9 @@ describe("maintenance files stay on the existing stack", () => {
     expect(docs).toContain("last_done_on");
     expect(docs).toContain("fleet_vehicle_maintenance");
     expect(docs).toContain("20 MB");
-    expect(docs).toContain("20261123120000_maintenance_schedule_explicit_next_due.sql");
+    expect(docs).toContain("20261123120100_maintenance_schedule_explicit_next_due.sql");
     const sql = readFileSync(
-      "supabase/migrations/20261123120000_maintenance_schedule_explicit_next_due.sql",
+      "supabase/migrations/20261123120100_maintenance_schedule_explicit_next_due.sql",
       "utf8",
     );
     expect(sql).toContain("IF NEW.next_due_on IS NULL THEN");

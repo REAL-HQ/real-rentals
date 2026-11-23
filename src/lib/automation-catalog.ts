@@ -545,7 +545,7 @@ export const AUTOMATIONS: AutomationDef[] = [
     control: { kind: "setting" },
     previews: [],
     defaultOn: false,
-    note: "Off until turned on. Writes the mileage log (odometer_readings), the oil next due miles and date (maintenance_schedules), and the monthly inspection with history (maintenance_schedules and maintenance_records). Sends nothing to renters — no oil-change text, email, or reminder. Staff can always record the same facts on the vehicle Service tab. Reads stay available while this switch is Off. Current mileage still comes from the odometer trigger, not from a direct edit. Needs migration 20261123120000_maintenance_schedule_explicit_next_due.sql before a next due that differs from last service plus the interval is kept.",
+    note: "Off until turned on. Writes the mileage log (odometer_readings), the oil next due miles and date (maintenance_schedules), and the monthly inspection with history (maintenance_schedules and maintenance_records). Sends nothing to renters — no oil-change text, email, or reminder. Staff can always record the same facts on the vehicle Service tab. Reads stay available while this switch is Off. Current mileage still comes from the odometer trigger, not from a direct edit. Needs migration 20261123120100_maintenance_schedule_explicit_next_due.sql before a next due that differs from last service plus the interval is kept.",
   },
   {
     key: "background_report_imports",
