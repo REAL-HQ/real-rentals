@@ -159,6 +159,8 @@ export function projectLead(raw: LeadRow, bucket: LeadBucket) {
     reason,
     action,
     contactLabel: contactStatusLabel(raw.contact_status),
+    /** Past bounce/complaint, typo or test domain (email-suppression.ts). Set by the server function. */
+    email_bad: false as boolean,
   };
 }
 export type PriorityLead = ReturnType<typeof projectLead>;

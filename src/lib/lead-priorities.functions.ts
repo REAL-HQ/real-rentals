@@ -152,6 +152,14 @@ export const getLeadPriorities = createServerFn({ method: "POST" })
       }
     }
 
+    // "Bad Email" on the card: the same rule that stops automated email to it.
+    if (rows.length) {
+      const { badEmailsFor } = await import("@/lib/email-suppression.server");
+      const { normEmail } = await import("@/lib/email-suppression");
+      const bad = await badEmailsFor(supabaseAdmin, rows.map((r) => r.email));
+      rows = rows.map((r) => (r.email && bad.has(normEmail(r.email)) ? { ...r, email_bad: true } : r));
+    }
+
     return {
       rows,
       total,

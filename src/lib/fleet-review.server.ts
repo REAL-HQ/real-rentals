@@ -448,7 +448,7 @@ async function deliverDeclineNotice(
         return sendApplicationDeclinedEmail(args);
       });
       const result = await send({ to, firstName: app.name, applicationId: app.id, companyPhone: phone });
-      email = result.ok ? "sent" : result.blocked === "blacklisted" ? "blacklisted" : result.blocked === "off" ? "off" : result.blocked === "held" ? "held" : "failed";
+      email = result.ok ? "sent" : result.blocked === "blacklisted" ? "blacklisted" : result.blocked === "bounced" ? "bad_email" : result.blocked === "off" ? "off" : result.blocked === "held" ? "held" : "failed";
     } catch (e) {
       console.error("[fleet-review] decline email failed", String((e as Error)?.message ?? e));
       email = "failed";

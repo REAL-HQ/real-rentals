@@ -24,6 +24,7 @@ export function LeadCardBody({
   menu,
   view,
   quality = "neutral",
+  emailBad = false,
 }: {
   lead: Pick<
     PriorityLead,
@@ -49,6 +50,8 @@ export function LeadCardBody({
   view?: ReactNode;
   /** Readiness bucket for the avatar. Neutral when readiness was not provided. */
   quality?: LeadAvatarQuality;
+  /** Email to this lead bounced (or is a typo/test domain). Automated email to it is off. */
+  emailBad?: boolean;
 }) {
   const urgency = leadUrgency(lead, today);
   const next = leadVisibleNextStep(lead.bucket);
@@ -86,6 +89,15 @@ export function LeadCardBody({
                   )}
                 >
                   {urgency.label}
+                </span>
+              )}
+              {emailBad && (
+                <span
+                  data-lead-bad-email
+                  title="Email to this address bounced. Automated emails to it are off. Text them for a correct email."
+                  className="inline-flex shrink-0 items-center rounded-full bg-[#FBE3C2] px-2 py-0.5 text-[11px] font-semibold text-[#111114]"
+                >
+                  Bad Email
                 </span>
               )}
             </div>

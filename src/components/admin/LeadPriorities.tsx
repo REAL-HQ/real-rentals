@@ -235,6 +235,7 @@ export default function LeadPriorities({
                         today={result.today}
                         displayName={displayName}
                         quality={leadAvatarQuality(readinessResult)}
+                        emailBad={lead.email_bad === true}
                         menu={
                           <div className="flex items-start">
                             <Link
