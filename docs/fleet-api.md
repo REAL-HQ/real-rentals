@@ -34,6 +34,10 @@ Base: `https://drivereal.com/api/public/fleet/`
 | `payment-text-pause` | pause rent texts for an approved payment deal; status; cancel | [fleet-payment-text-pause.md](fleet-payment-text-pause.md) |
 | `refund-reservation` | refund a paid Reservation Fee for one of the six refundable reasons (idempotent; one per fee) | [reservation-fee-refunds.md](reservation-fee-refunds.md) |
 | `reservation-fee-link` | get the $50 Reservation Fee Checkout link for a signed applicant (reuses the open one; sends nothing) | [fleet-reservation-fee-link.md](fleet-reservation-fee-link.md) |
+| `vehicle-maintenance` | read: mileage log, oil next service due, monthly inspection and its history | [below](#vehicle-maintenance) |
+| `mileage-reading` | append one mileage log entry, optional photo (switch, Off) | [below](#mileage-reading) |
+| `service-due` | set the next oil service due miles and date (switch, Off) | [below](#service-due) |
+| `monthly-inspection` | set monthly inspection last done, next due, notes, and one photo (switch, Off) | [below](#monthly-inspection) |
 
 Events the site sends FLEET (signed webhooks): [fleet-webhooks.md](fleet-webhooks.md).
 
@@ -102,3 +106,252 @@ Reply `201`:
   "size_bytes": 123456, "sha256": "…", "visibility": ["admin"],
   "review_status": "uploaded", "verified": false, "next": "…" }
 ```
+
+## vehicle-maintenance
+
+`POST https://drivereal.com/api/public/fleet/vehicle-maintenance`. Read only.
+The Vehicle Maintenance (FLEET) switch does not gate this read.
+
+`POST /api/public/fleet/gps-readings` is the GPS alert feed. It does not
+read or write this mileage log.
+
+```json
+{ "vehicle_id": "ca3d2cc6-0144-4efa-b0d6-5091b27db254" }
+```
+
+`license_plate` may be sent instead of `vehicle_id` (letters and numbers,
+matched ignoring case). Send both only when they name the same car.
+
+Reply `200` (the unit number and the full VIN are not included):
+
+```json
+{
+  "ok": true,
+  "vehicle": {
+    "id": "ca3d2cc6-0144-4efa-b0d6-5091b27db254",
+    "license_plate": "EC20LK",
+    "vin_last6": "……",
+    "year": null,
+    "make": null,
+    "model": null,
+    "current_odometer": null,
+    "odometer_updated_at": null
+  },
+  "mileage_log": [
+    {
+      "id": "…",
+      "observed_on": "2026-11-23",
+      "mileage": 163977,
+      "source_type": "manual",
+      "source_label": "FLEET · Manual",
+      "note": null,
+      "status": "valid",
+      "document_id": null,
+      "has_photo": false
+    }
+  ],
+  "mileage_log_truncated": false,
+  "next_service_due": {
+    "item": "Oil Change",
+    "schedule_id": "…",
+    "next_due_miles": 166869,
+    "next_due_on": null,
+    "interval_miles": 5000,
+    "last_done_on": null,
+    "last_done_miles": null,
+    "notes": null
+  },
+  "monthly_inspection": {
+    "item": "Monthly Inspection",
+    "schedule_id": null,
+    "interval_days": 30,
+    "last_done_on": null,
+    "next_due_on": null,
+    "notes": null,
+    "history": [],
+    "history_truncated": false
+  }
+}
+```
+
+`mileage_log` is the newest 100 `odometer_readings` (`mileage_log_truncated`
+when more exist). `status` is `valid`, `conflict`, or `superseded`. Current
+mileage on the vehicle is the newest valid reading; this call does not
+change it. `history` is the newest 50 Monthly Inspection rows.
+
+## mileage-reading
+
+`POST https://drivereal.com/api/public/fleet/mileage-reading`. Off until
+Automations → **Vehicle Maintenance (FLEET)** (`fleet_vehicle_maintenance`);
+while Off: `409 {"reason":"switched_off"}`, nothing saved. Appends one
+`odometer_readings` row through the same writer staff use. It does not set
+`vehicles.current_odometer` itself; the database trigger does, from the
+newest valid reading.
+
+```json
+{
+  "vehicle_id": "ca3d2cc6-0144-4efa-b0d6-5091b27db254",
+  "license_plate": "EC20LK",
+  "observed_on": "2026-11-23",
+  "mileage": 163977,
+  "note": "Shop reading",
+  "source_type": "manual",
+  "file_name": "odometer.jpg",
+  "content_base64": "<optional photo, base64; a data: prefix is accepted>",
+  "idempotency_key": "ec20lk-2026-11-23-odometer"
+}
+```
+
+- `observed_on`: `YYYY-MM-DD`, not in the future (Eastern Time). `mileage`:
+  whole miles, 0 through 1,999,999.
+- `source_type`: `manual` (default), `odometer_photo`, `inspection`, or
+  `other`. A photo forces `odometer_photo` unless `source_type` is
+  `inspection` or `other`. `odometer_photo` without a photo is `400`.
+  Rental pickup and return readings are not accepted here.
+- Photo, when sent: type is read from the bytes (JPEG, PNG, WebP, or HEIC),
+  up to 20 MB decoded (`415` / `413` otherwise). One photo per call. Stored
+  in the private `vehicle-docs` bucket, team only (`visibility` `["admin"]`),
+  `document_id` on the reading. The same bytes for the same vehicle are not
+  stored twice.
+- `note` optional, up to 500 characters.
+- Idempotent on `idempotency_key`: the same key and the same vehicle, date,
+  and mileage return `200 {"duplicate":true}` and do not append again. A key
+  reused for a different reading is `409`.
+- A reading that drops more than 500 miles below an earlier valid reading is
+  stored with `status` `conflict` for staff review. It does not become the
+  current mileage until staff mark it valid.
+- Audited as `fleet.mileage_reading`.
+
+Reply `201`:
+
+```json
+{
+  "ok": true,
+  "duplicate": false,
+  "vehicle_id": "…",
+  "license_plate": "EC20LK",
+  "vin_last6": "…",
+  "reading_id": "…",
+  "observed_on": "2026-11-23",
+  "mileage": 163977,
+  "source_type": "manual",
+  "note": "Shop reading",
+  "status": "valid",
+  "document_id": null,
+  "has_photo": false
+}
+```
+
+## service-due
+
+`POST https://drivereal.com/api/public/fleet/service-due`. Same switch as
+`mileage-reading` (Off until On). Sets the Oil Change row on
+`maintenance_schedules`: `next_due_miles` and `next_due_on`. It does not
+invent `last_oil_change_miles`. A new row uses the vehicle's
+`oil_interval_miles`, or 5000 when that is empty. Send `interval_miles` to
+set a different interval (1 through 200,000).
+
+```json
+{
+  "license_plate": "EC20LK",
+  "next_due_miles": 166869,
+  "next_due_on": "2026-12-15",
+  "notes": null,
+  "interval_miles": 5000,
+  "idempotency_key": "ec20lk-next-oil"
+}
+```
+
+- At least one of `next_due_miles` and `next_due_on`. Omit a field to leave
+  it unchanged. Send `null` to clear it. `next_due_on` is `YYYY-MM-DD` and
+  may be in the future. `notes` optional, up to 2,000 characters.
+- Until migration `20261123120100_maintenance_schedule_explicit_next_due.sql`
+  is applied, a later update that also has a last service date or mileage
+  recomputes the next due as last service plus the interval. With no last
+  service on the row, the miles and date are stored as sent either way.
+  Apply that file with `supabase db push` or the Supabase SQL editor after
+  review. Do not seed rows.
+- Idempotent on `idempotency_key` for the same vehicle and the same requested
+  miles and date. A key reused for a different due is `409`.
+- Audited as `fleet.service_due`. Sends nothing to the renter.
+
+Reply `201` when the oil row is created, `200` when it is updated:
+
+```json
+{
+  "ok": true,
+  "duplicate": false,
+  "vehicle_id": "…",
+  "license_plate": "EC20LK",
+  "vin_last6": "…",
+  "schedule_id": "…",
+  "item": "Oil Change",
+  "next_due_miles": 166869,
+  "next_due_on": "2026-12-15",
+  "interval_miles": 5000,
+  "notes": null
+}
+```
+
+## monthly-inspection
+
+`POST https://drivereal.com/api/public/fleet/monthly-inspection`. Same switch
+(Off until On). One Monthly Inspection schedule per vehicle, interval 30
+days, plus a history row on `maintenance_records` when `last_done_on` is
+sent. A check with no cost does not create an expense. An `odometer` on that
+check is one `odometer_readings` row (`source_type` `inspection`), not a
+direct edit of current mileage.
+
+```json
+{
+  "vehicle_id": "ca3d2cc6-0144-4efa-b0d6-5091b27db254",
+  "last_done_on": "2026-11-23",
+  "next_due_on": "2026-12-23",
+  "notes": "All clear",
+  "odometer": 163977,
+  "file_name": "inspection.jpg",
+  "content_base64": "<optional photo>",
+  "idempotency_key": "ec20lk-monthly-2026-11-23"
+}
+```
+
+- `last_done_on` cannot be in the future. A photo or `odometer` requires
+  `last_done_on` (`400` otherwise). Omit a field to leave the schedule
+  unchanged. `notes` up to 2,000 characters. Photo rules match
+  `mileage-reading` (JPEG, PNG, WebP, or HEIC, 20 MB, one per call, private
+  `vehicle-docs`, `document_id` on the history row).
+- `interval_days` on a new row is 30. The reply's `next_due_on` is what the
+  database stored. Before the migration in [service-due](#service-due),
+  setting `last_done_on` rolls `next_due_on` to that date plus 30 days. After
+  the migration, a `next_due_on` sent in the same call is kept.
+- Notes or next due alone do not add a history row. `last_done_on` does.
+- Idempotent on `idempotency_key` for the same vehicle, last done, next due,
+  notes, and whether a photo was sent. A different payload with the same key
+  is `409`.
+- Audited as `fleet.monthly_inspection`. Sends nothing to the renter.
+
+Reply `201` when a history row is written, `200` when only the schedule changes:
+
+```json
+{
+  "ok": true,
+  "duplicate": false,
+  "vehicle_id": "…",
+  "license_plate": "EC20LK",
+  "vin_last6": "…",
+  "schedule_id": "…",
+  "record_id": "…",
+  "item": "Monthly Inspection",
+  "interval_days": 30,
+  "last_done_on": "2026-11-23",
+  "next_due_on": "2026-12-23",
+  "notes": "All clear",
+  "document_id": "…",
+  "has_photo": true
+}
+```
+
+Staff edit the same facts on the vehicle record, Service tab: Mileage Log
+(Add Reading, with an optional photo), Next Service Due, and Monthly
+Inspection. The read-only Maintenance Log flag stays off, and renter
+oil-change or maintenance texts stay off.
