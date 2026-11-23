@@ -35,6 +35,7 @@ import { CollectionsPanel } from "./CollectionsPanel";
 import { PaymentSummaryCards } from "./PaymentSummaryCards";
 import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
 import { UnmatchedStripePayments } from "./UnmatchedStripePayments";
+import { UnmatchedPaymentsQueue } from "./UnmatchedPaymentsQueue";
 import { UnmatchedRenterPayments } from "./RenterPayments";
 import { BILLING_DAY_CHANGE_ENABLED, BILLING_ONE_TIME_EXTENSION_ENABLED, BILLING_PM_UPDATE_LINK_ENABLED } from "@/lib/billing-controls-flag";
 import { BillingControls } from "./BillingControls";
@@ -474,6 +475,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
         </div>
       ) : (
       <>
+      <UnmatchedPaymentsQueue />
       {STRIPE_UNMATCHED_PAYMENTS_ENABLED ? <UnmatchedStripePayments /> : null}
       <UnmatchedRenterPayments />
       {(BILLING_PM_UPDATE_LINK_ENABLED || BILLING_DAY_CHANGE_ENABLED || BILLING_ONE_TIME_EXTENSION_ENABLED) ? <BillingControls /> : null}

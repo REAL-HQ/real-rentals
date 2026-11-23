@@ -4,7 +4,12 @@ export async function coordinateRentalSubscription(deps: {
   authorize: () => Promise<void>;
   rpc: (name: string, args: Record<string, unknown>) => Promise<any>;
   stripe: any;
-}, input: { rentalId: string; actorId: string; sessionId: string; environment: 'live' | 'sandbox'; action: 'start' | 'stop' }) {
+}, input: { rentalId: string; actorId: string; sessionId: string; environment: 'live' | 'sandbox'; action: 'start' | 'stop'; chargeMetadata?: Record<string, string> }) {
+  if (input.action === 'start') {
+    const { subscriptionChargeMetadata } = await import('@/lib/stripe-charge-metadata');
+    if (!input.chargeMetadata) throw new Error('Stripe payment is missing required metadata: rental_id, lead_id, reason, for_date, renter, plate.');
+    subscriptionChargeMetadata(input.chargeMetadata);
+  }
   await deps.authorize();
   const account = await deps.stripe.accounts.retrieve();
   if (!account?.id) throw new Error('Provider account unavailable');
@@ -22,7 +27,7 @@ export async function coordinateRentalSubscription(deps: {
     sub = await deps.stripe.subscriptions.create({
       customer: s.customer, default_payment_method: s.paymentMethod,
       items: [{ price_data: { currency: 'usd', product_data: { name: `Weekly Rent — Rental ${input.rentalId.slice(0, 8)}` }, unit_amount: s.amount, recurring: { interval: 'week' } } }],
-      billing_cycle_anchor: s.start, proration_behavior: 'none', collection_method: 'charge_automatically', metadata: { rentalId: input.rentalId },
+      billing_cycle_anchor: s.start, proration_behavior: 'none', collection_method: 'charge_automatically', metadata: input.chargeMetadata,
     }, { idempotencyKey: `rr:${op.id}:subscription` });
   } else {
     sub = await deps.stripe.subscriptions.retrieve(s.subscription);

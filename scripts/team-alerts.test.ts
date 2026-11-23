@@ -53,7 +53,7 @@ const req = (path: string, body: unknown) => new Request(`https://drivereal.com/
 
 describe("team alert switch and sending", () => {
   test("every kind is OFF with no row, a malformed row or a non-true value", () => {
-    expect(ta.readTeamAlertSettings(null)).toEqual({ gps: false, roadside_overnight: false, late_pickup: false, bot_handoff: false, applicant_approved: false });
+    expect(ta.readTeamAlertSettings(null)).toEqual({ gps: false, roadside_overnight: false, late_pickup: false, bot_handoff: false, applicant_approved: false, stripe_payment_gap: false });
     expect(ta.readTeamAlertSettings({ gps: true, roadside_overnight: { enabled: "true" } }).gps).toBe(false);
     expect(ta.readTeamAlertSettings({ gps: { enabled: true } }).gps).toBe(true);
   });
@@ -198,7 +198,7 @@ describe("proposed SQL (PGlite)", () => {
     const SQL = readFileSync("proposed/team-alerts-v1.sql", "utf8");
     await pg.exec(SQL); await pg.exec(SQL);
     const v = (await pg.query(`SELECT value FROM app_settings WHERE key='team_alerts'`)).rows[0] as any;
-    expect(ta.readTeamAlertSettings(v.value)).toEqual({ gps: false, roadside_overnight: false, late_pickup: false, bot_handoff: false, applicant_approved: false });
+    expect(ta.readTeamAlertSettings(v.value)).toEqual({ gps: false, roadside_overnight: false, late_pickup: false, bot_handoff: false, applicant_approved: false, stripe_payment_gap: false });
     await pg.query(`INSERT INTO team_alert_sends (key, kind) VALUES ('a','gps')`);
     await expect(pg.query(`INSERT INTO team_alert_sends (key, kind) VALUES ('a','gps')`)).rejects.toThrow();
     expect(SQL).toMatch(/PROPOSED, NOT APPLIED/);

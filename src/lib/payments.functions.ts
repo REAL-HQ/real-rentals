@@ -251,6 +251,7 @@ export const createCardOnFileSession = createServerFn({ method: 'POST' })
         customer: customerId,
         return_url: returnUrl,
         payment_method_types: ['card'],
+        // CARD_SETUP_NOT_A_CHARGE: mode setup saves a card. It is not a payment.
         metadata: { applicationId: app.id as string, purpose: 'card_on_file' },
       });
       if (!session.client_secret) return { error: SETUP_ERROR };

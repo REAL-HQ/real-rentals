@@ -505,9 +505,15 @@ async function upsertPaymentFromInvoice(invoice: any, status: 'paid' | 'failed')
         }
       : undefined,
   });
-  // An invoice we cannot tie to any rental or application is not written:
-  // staff get the unmatched warning (and the daily Stripe Link Check) instead.
+  // An invoice we cannot tie to any rental or application is not written as a
+  // payments row until a single active rental matches by customer, email,
+  // phone or billing name. Otherwise it is queued for staff and warned.
   if (!match.rentalId && !match.driverId) {
+    if (status === "paid") {
+      const { recordInvoiceWithoutRental } = await import("@/lib/one-off-payment.server");
+      const saved = await recordInvoiceWithoutRental(admin, invoice);
+      if (saved.recorded) return;
+    }
     await warnUnmatchedInvoice(admin, invoice, status, subscriptionId);
     return;
   }

@@ -11,6 +11,7 @@ import {
   appOwnsPayment,
   exactILike,
   nextDueAfter,
+  normalizePersonName,
   oneOffIdentity,
   oneOffRowType,
   pickRental,
@@ -22,6 +23,7 @@ import {
   type RentAllocation,
   type RentalCandidate,
 } from "@/lib/one-off-payment";
+import { toE164 } from "@/lib/sms.server";
 
 type Admin = any;
 type StripeLike = any;
@@ -36,7 +38,7 @@ const RENTAL_COLS = "id, application_id, vehicle_id, status, stripe_customer_id,
 // settles their lines, so a one-off link never voids or re-dates them here.
 const OPEN_RENT = ["failed", "overdue", "past_due", "late", "unpaid", "current"];
 
-type MatchBy = "metadata" | "lead" | "customer" | "email" | "plate";
+type MatchBy = "metadata" | "lead" | "customer" | "email" | "phone" | "name" | "plate" | "staff";
 
 function must<T extends { error: any }>(res: T): T {
   if (res?.error && res.error.code !== "23505") throw new Error(res.error.message);
@@ -69,6 +71,15 @@ async function loadStripeObjects(stripe: StripeLike, piId: string, given: { sess
   // The Payment Link itself: its metadata (renter, plate, date, lead_id,
   // rental_id) never reaches the charge, and staff may add to it after the
   // session was created. A failed read only loses this extra source.
+  let customer: any = null;
+  const customerId = stripeId(paymentIntent?.customer) ?? stripeId(session?.customer) ?? stripeId(charge?.customer);
+  if (customerId && stripe.customers?.retrieve) {
+    try {
+      customer = await stripe.customers.retrieve(customerId);
+    } catch {
+      customer = null;
+    }
+  }
   let paymentLink: any = null;
   const plinkId = stripeId(session?.payment_link);
   if (plinkId && stripe.paymentLinks?.retrieve) {
@@ -78,7 +89,7 @@ async function loadStripeObjects(stripe: StripeLike, piId: string, given: { sess
       paymentLink = null;
     }
   }
-  return { paymentIntent, session, charge, invoiceLinked, paymentLink };
+  return { paymentIntent, session, charge, invoiceLinked, paymentLink, customer };
 }
 
 async function matchRental(admin: Admin, id: OneOffIdentity): Promise<{ rental: RentalCandidate | null; by: MatchBy | null; ambiguous: boolean }> {
@@ -111,6 +122,38 @@ async function matchRental(admin: Admin, id: OneOffIdentity): Promise<{ rental: 
     if (pick.rental) return { rental: pick.rental, by: "email", ambiguous: false };
     if (pick.ambiguous) return { rental: null, by: null, ambiguous: true };
   }
+  // Phone, then billing name. A tier with more than one renter stops: it does
+  // not fall through, so two people who share a name never get the plate guess.
+  for (const raw of id.phones) {
+    const phone = toE164(raw);
+    if (!phone) continue;
+    const last10 = phone.replace(/\D/g, "").slice(-10);
+    if (last10.length !== 10) continue;
+    // The last four digits find "(813) 555-0199" as well as +18135550199.
+    // toE164 then keeps only the exact number. A full table scan is not used.
+    const apps = await rows<{ id: string; phone: string | null; deleted_at?: string | null; status?: string | null }>(
+      admin.from("applications").select("id, phone, deleted_at, status").ilike("phone", `%${last10.slice(-4)}`).limit(50),
+    );
+    const hits = apps.filter((a) => !a.deleted_at && a.status !== "duplicate" && toE164(a.phone) === phone);
+    if (hits.length > 1) return { rental: null, by: null, ambiguous: true };
+    if (!hits.length) continue;
+    const candidates = await rows<RentalCandidate>(admin.from("rentals").select(RENTAL_COLS).in("application_id", hits.map((a) => a.id)));
+    const pick = pickRental(candidates, { explicit: false });
+    if (pick.rental) return { rental: pick.rental, by: "phone", ambiguous: false };
+    if (pick.ambiguous) return { rental: null, by: null, ambiguous: true };
+  }
+  for (const name of id.billingNames) {
+    const apps = await rows<{ id: string; full_name: string | null; deleted_at?: string | null; status?: string | null }>(
+      admin.from("applications").select("id, full_name, deleted_at, status").ilike("full_name", exactILike(name)),
+    );
+    const hits = apps.filter((a) => !a.deleted_at && a.status !== "duplicate" && normalizePersonName(a.full_name) === name);
+    if (hits.length > 1) return { rental: null, by: null, ambiguous: true };
+    if (!hits.length) continue;
+    const candidates = await rows<RentalCandidate>(admin.from("rentals").select(RENTAL_COLS).in("application_id", hits.map((a) => a.id)));
+    const pick = pickRental(candidates, { explicit: false });
+    if (pick.rental) return { rental: pick.rental, by: "name", ambiguous: false };
+    if (pick.ambiguous) return { rental: null, by: null, ambiguous: true };
+  }
   // Last: the plate on the link (FLEET's daily links carry plate). Only the one
   // active rental on that car counts.
   for (const plate of id.plates) {
@@ -129,6 +172,10 @@ async function flagUnmatched(admin: Admin, id: OneOffIdentity, why: "no_match" |
   try {
     if (warn) await warn({ id: id.paymentIntentId, customer: id.customerIds[0] ?? null, amount: id.amountCents });
   } catch { /* a log line never fails the event */ }
+  try {
+    const { storeUnmatchedPayment } = await import("@/lib/unmatched-payments.server");
+    await storeUnmatchedPayment(admin, id, why);
+  } catch { /* the queue is extra; the notice below still runs */ }
   try {
     const prior = await admin.from("notifications").select("id").eq("title", UNMATCHED_TITLE).ilike("body", `%${exactILike(id.paymentIntentId)}%`).limit(1);
     if (prior?.data?.length) return;
@@ -161,7 +208,7 @@ export async function recordOneOffPayment(
   const piRental = objs.paymentIntent?.metadata?.rentalId;
   if (piRental) return { status: "skipped", why: "app_owned" };
 
-  const id = oneOffIdentity(objs);
+  const id = oneOffIdentity({ ...objs, customer: objs.customer });
   if (!id || id.amountCents <= 0) return { status: "skipped", why: "not_paid" };
   const match = await matchRental(admin, id);
   if (!match.rental || !match.by) {
@@ -169,11 +216,25 @@ export async function recordOneOffPayment(
     await flagUnmatched(admin, id, why, opts.warn);
     return { status: "unmatched", why, identity: id };
   }
-  const r = match.rental;
+  const written = await insertMatchedOneOff(admin, id, match.rental, match.by);
+  return { status: "recorded", rentalId: match.rental.id, by: match.by, inserted: written.inserted };
+}
+
+/**
+ * Write one paid row for a charge that belongs to this rental, applied to the
+ * oldest unpaid rent period. A second insert of the same payment intent is a
+ * no-op (unique index). The renter is not emailed; Stripe already sent a receipt.
+ */
+export async function insertMatchedOneOff(
+  admin: Admin,
+  id: OneOffIdentity,
+  rental: RentalCandidate,
+  by: MatchBy,
+): Promise<{ paymentId: string | null; inserted: boolean }> {
+  const r = rental;
   const amount = id.amountCents / 100;
   const day = id.paidAt ? easternDateOf(id.paidAt) : easternDateOf(Math.floor(Date.now() / 1000));
   const rowType = oneOffRowType(id.reason, { activeRental: r.status === "active" });
-  // Rent lands on the week it pays for, so Due/Overdue/Late all read it as paid.
   let dueOn = day;
   let openRows: OpenRentRow[] = [];
   let onDailyPlan = false;
@@ -198,7 +259,7 @@ export async function recordOneOffPayment(
     }
   }
   const purpose = id.purpose ?? (rowType === "rent" && id.forDate ? `Rent for ${id.forDate}` : null);
-  const via = [id.paymentLinkId && `payment link ${id.paymentLinkId}`, id.sessionId && `checkout ${id.sessionId}`].filter(Boolean).join(", ");
+  const via = [id.paymentLinkId && `payment link ${id.paymentLinkId}`, id.sessionId && `checkout ${id.sessionId}`, id.invoiceId && `invoice ${id.invoiceId}`].filter(Boolean).join(", ");
   const ins = must(await admin.from("payments").insert({
     rental_id: r.id,
     driver_id: r.application_id ?? null,
@@ -211,16 +272,17 @@ export async function recordOneOffPayment(
     due_date: dueOn,
     paid_date: day,
     payment_method: id.cardPayment ? "card" : null,
-    stripe_payment_intent_id: id.paymentIntentId,
+    stripe_payment_intent_id: id.paymentIntentId || null,
+    stripe_invoice_id: id.invoiceId ?? null,
     stripe_charge_id: id.chargeId,
     stripe_customer_id: id.customerIds[0] ?? r.stripe_customer_id ?? null,
     stripe_paid_at: id.paidAt ? new Date(id.paidAt * 1000).toISOString() : null,
     stripe_receipt_url: id.receiptUrl,
-    // Stripe already emailed its own receipt; the app sends none for these.
     notified_status: "paid",
-    notes: `Recorded from Stripe${via ? ` (${via})` : ""}; matched by ${match.by}.`,
+    notes: `Recorded from Stripe${via ? ` (${via})` : ""}; matched by ${by}.`,
   }).select("id"));
-  const inserted = (ins.data?.length ?? 0) > 0; // 0 when another event won the unique index
+  const paymentId = ins.data?.[0]?.id ?? null;
+  const inserted = !!paymentId;
   if (inserted) {
     await admin.from("notifications").insert({
       driver_id: null, title: "Payment Received", kind: "payment", read: false,
@@ -228,10 +290,54 @@ export async function recordOneOffPayment(
     }).then(() => {}, () => {});
   }
   if (inserted && rowType === "rent" && !onDailyPlan && allocations.length) {
-    const rowId = ins.data?.[0]?.id ?? null;
-    await settleAllocatedRent(admin, { rental: r, allocations, paymentRowId: rowId, piId: id.paymentIntentId, via, day, amount });
+    await settleAllocatedRent(admin, { rental: r, allocations, paymentRowId: paymentId, piId: id.paymentIntentId || id.invoiceId || "stripe", via, day, amount });
   }
-  return { status: "recorded", rentalId: r.id, by: match.by, inserted };
+  return { paymentId, inserted };
+}
+
+/**
+ * invoice.paid with no rental and no application: match one active rental by
+ * customer, email, phone or billing name, or queue it. Does not email the renter.
+ */
+export async function recordInvoiceWithoutRental(admin: Admin, invoice: any): Promise<{ recorded: boolean }> {
+  const invoiceId = stripeId(invoice?.id);
+  if (!invoiceId || String(invoice?.status) === "void") return { recorded: false };
+  const existing = await rows(admin.from("payments").select("id").eq("stripe_invoice_id", invoiceId).limit(1));
+  if (existing.length) return { recorded: true };
+  const pi = stripeId(invoice.payment_intent);
+  const chargeId = stripeId(invoice.charge);
+  const customerId = stripeId(invoice.customer);
+  const built = oneOffIdentity({
+    paymentIntent: pi ? {
+      id: pi, status: "succeeded", amount_received: invoice.amount_paid ?? invoice.amount_due, currency: invoice.currency,
+      customer: customerId, created: invoice.status_transitions?.paid_at ?? invoice.created, metadata: invoice.metadata ?? {},
+    } : null,
+    charge: {
+      id: chargeId, amount_captured: invoice.amount_paid ?? invoice.amount_due, currency: invoice.currency, created: invoice.created,
+      billing_details: { email: invoice.customer_email, name: invoice.customer_name, phone: invoice.customer_phone },
+      customer: customerId, payment_intent: pi,
+    },
+    customer: { id: customerId, email: invoice.customer_email, name: invoice.customer_name, phone: invoice.customer_phone },
+  });
+  const amount = Number(invoice.amount_paid ?? invoice.amount_due ?? 0);
+  const id: OneOffIdentity = built ?? {
+    paymentIntentId: pi ?? "",
+    chargeId, sessionId: null, paymentLinkId: null, rentalId: null, applicationIds: [], plates: [], forDate: null, weeks: [],
+    renterName: null, customerIds: customerId ? [customerId] : [], emails: [], phones: [], billingNames: [],
+    amountCents: Number.isFinite(amount) ? Math.round(amount) : 0, currency: invoice.currency ?? "usd",
+    paidAt: Number(invoice.status_transitions?.paid_at ?? invoice.created) || null, purpose: null, reason: null, receiptUrl: null, cardPayment: true,
+  };
+  id.invoiceId = invoiceId;
+  if (!id.renterName && typeof invoice.customer_name === "string") id.renterName = invoice.customer_name.trim() || null;
+  if (id.amountCents <= 0) return { recorded: false };
+  const match = await matchRental(admin, id);
+  if (!match.rental || !match.by) {
+    const { storeUnmatchedPayment } = await import("@/lib/unmatched-payments.server");
+    await storeUnmatchedPayment(admin, id, match.ambiguous ? "ambiguous" : "no_match");
+    return { recorded: false };
+  }
+  const written = await insertMatchedOneOff(admin, id, match.rental, match.by);
+  return { recorded: written.inserted || true };
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`;

@@ -39,6 +39,16 @@ export type OneOffIdentity = {
   customerIds: string[];
   /** Distinct lower-cased emails, most specific first. */
   emails: string[];
+  /** Raw phone strings from the Stripe customer or billing details. Not logged. */
+  phones: string[];
+  /**
+   * Billing or customer names, normalized (lower case, single spaces).
+   * A name match requires two words and exactly one renter. Metadata `renter`
+   * is not used here: that string is typed by staff and is only for the notice.
+   */
+  billingNames: string[];
+  /** Set when the source is an invoice with no separate payment-intent id yet. */
+  invoiceId?: string | null;
   amountCents: number;
   currency: string;
   /** Unix seconds the charge was created (falls back to the intent). */
@@ -157,8 +167,37 @@ export function weeksOf(...objs: Obj[]): string[] {
   return [];
 }
 
-export function oneOffIdentity(input: { paymentIntent: Obj; session?: Obj; charge?: Obj; paymentLink?: Obj }): OneOffIdentity | null {
-  const { paymentIntent: pi, session, charge, paymentLink: link } = input;
+/** Two-word billing name, lower case, or null when it is too short to match safely. */
+export function normalizePersonName(value: unknown): string | null {
+  const t = text(value);
+  if (!t) return null;
+  const n = t.toLowerCase().replace(/[^a-z\s'-]/g, " ").replace(/\s+/g, " ").trim();
+  const parts = n.split(" ").filter((p) => p.length >= 2);
+  return parts.length >= 2 ? parts.join(" ") : null;
+}
+
+export function phonesOf(...objs: Obj[]): string[] {
+  const out: (string | null)[] = [];
+  for (const o of objs) {
+    out.push(text(o?.phone));
+    out.push(text(o?.customer_details?.phone));
+    out.push(text(o?.billing_details?.phone));
+  }
+  return uniq(out);
+}
+
+export function billingNamesOf(...objs: Obj[]): string[] {
+  const out: (string | null)[] = [];
+  for (const o of objs) {
+    out.push(normalizePersonName(o?.name));
+    out.push(normalizePersonName(o?.customer_details?.name));
+    out.push(normalizePersonName(o?.billing_details?.name));
+  }
+  return uniq(out);
+}
+
+export function oneOffIdentity(input: { paymentIntent: Obj; session?: Obj; charge?: Obj; paymentLink?: Obj; customer?: Obj }): OneOffIdentity | null {
+  const { paymentIntent: pi, session, charge, paymentLink: link, customer } = input;
   const paymentIntentId = stripeId(pi?.id) ?? stripeId(session?.payment_intent) ?? stripeId(charge?.payment_intent);
   if (!paymentIntentId) return null;
   const sm = meta(session), pm = meta(pi), cm = meta(charge), lm = meta(link);
@@ -168,10 +207,10 @@ export function oneOffIdentity(input: { paymentIntent: Obj; session?: Obj; charg
   };
   const customerIds = uniq([
     metaCustomer(pm), metaCustomer(sm), metaCustomer(cm), metaCustomer(lm),
-    stripeId(session?.customer), stripeId(pi?.customer), stripeId(charge?.customer),
+    stripeId(session?.customer), stripeId(pi?.customer), stripeId(charge?.customer), stripeId(customer?.id),
   ]);
   const emails = uniq([
-    text(sm.email), text(pm.email), text(lm.email),
+    text(sm.email), text(pm.email), text(lm.email), text(customer?.email),
     text(session?.customer_details?.email), text(session?.customer_email),
     text(charge?.billing_details?.email), text(pi?.receipt_email), text(charge?.receipt_email),
   ].map((e) => (e ? e.toLowerCase() : null)).filter((e) => !!e && EMAIL.test(e)));
@@ -190,6 +229,8 @@ export function oneOffIdentity(input: { paymentIntent: Obj; session?: Obj; charg
     renterName: text(pm.renter) ?? text(sm.renter) ?? text(lm.renter) ?? text(cm.renter),
     customerIds,
     emails,
+    phones: phonesOf(customer, session, charge, pi),
+    billingNames: billingNamesOf(customer, session, charge),
     amountCents: Number.isFinite(amount) ? Math.round(amount) : 0,
     currency: text(charge?.currency) ?? text(pi?.currency) ?? text(session?.currency) ?? "usd",
     paidAt: Number.isFinite(paidAt) && paidAt > 0 ? paidAt : null,
