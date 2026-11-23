@@ -8,7 +8,7 @@ import LeadPriorities from "./LeadPriorities";
 import OverviewToday from "./OverviewToday";
 import { BookingFollowupSlot } from "./BookingFollowupSlot";
 import { BookingConversion } from "./BookingConversion";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { displayPersonName } from "@/lib/display-normalize";
 import {
@@ -404,8 +404,10 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   }, [revenue, priorRevenue]);
 
   // Projected vs collected rent for the current ET week and month. Separate
-  // from the range picker total above — this is the active-renter schedule
-  // against rent already recorded, deposits excluded from both.
+  // from the range picker total above, which counts every revenue type in the
+  // selected range. These rows are rent only. Projected is the full weekly
+  // schedule for the period, including weeks already due. Collected is rent
+  // recorded in that same period.
   const loadProjected = useServerFn(getProjectedRevenueSummary);
   const [projected, setProjected] = useState<ProjectedRevenueSummary | null>(null);
   const [projectedLoading, setProjectedLoading] = useState(false);
@@ -1213,23 +1215,46 @@ function RevenueCard({
       </div>
 
       <SummaryDetails expanded={expanded} label="Revenue Details">
-          <div className="text-[10px] font-semibold text-muted-foreground">
-            Revenue: Projected / Collected
+          <div
+            className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-1 gap-y-1"
+            aria-label="Revenue, Projected then Collected"
+          >
+            <div
+              className="text-[10px] font-semibold text-muted-foreground"
+              title="Rent for the calendar week and month. Separate from the range total above."
+            >
+              Revenue
+            </div>
+            <div
+              className="text-right text-[10px] font-semibold text-muted-foreground"
+              title="Weekly rent expected for the whole period, including weeks already due."
+            >
+              Projected
+            </div>
+            <div className="text-center text-[10px] font-normal text-[#C7C7CC]" aria-hidden="true">/</div>
+            <div
+              className="text-right text-[10px] font-semibold text-muted-foreground"
+              title="Rent recorded in the period. Deposits, late fees, and the Reservation Fee are not included."
+            >
+              Collected
+            </div>
+            {(["week", "month"] as const).map((key) => {
+              const row = projected?.[key];
+              const label = key === "week" ? "This Week" : "This Month";
+              const projectedText = projectedLoading || !row ? "—" : usd(centsToDollars(row.projectedCents));
+              const collectedText = projectedLoading || !row ? "—" : usd(centsToDollars(row.collectedCents));
+              return (
+                <Fragment key={key}>
+                  <div className="whitespace-nowrap text-[11px] text-muted-foreground" aria-label={`${label}: Projected ${projectedText}, Collected ${collectedText}`}>
+                    {label}
+                  </div>
+                  <div className="whitespace-nowrap text-right text-[11px] tabular-nums text-foreground" aria-hidden="true">{projectedText}</div>
+                  <div className="text-center text-[11px] text-[#C7C7CC]" aria-hidden="true">/</div>
+                  <div className="whitespace-nowrap text-right text-[11px] tabular-nums text-foreground" aria-hidden="true">{collectedText}</div>
+                </Fragment>
+              );
+            })}
           </div>
-          {(["week", "month"] as const).map((key) => {
-            const row = projected?.[key];
-            const label = key === "week" ? "This Week" : "This Month";
-            return (
-              <div key={key} className="flex flex-wrap items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
-                <span>{label}</span>
-                <span className="tabular-nums text-foreground">
-                  {projectedLoading || !row
-                    ? "—"
-                    : `${usd(centsToDollars(row.projectedCents))} / ${usd(centsToDollars(row.collectedCents))}`}
-                </span>
-              </div>
-            );
-          })}
       </SummaryDetails>
 
       {open && (
