@@ -19,12 +19,14 @@ function counted(summary: FleetSummary): number {
   return COUNTED.reduce((sum, key) => sum + summary[key], 0);
 }
 
+const SNAPSHOT_PALETTE = ["#4CD964", "#FFCC33", "#C7C7CC", "#FF3B30"] as const;
+
 function expectPartition(summary: FleetSummary) {
   const slices = fleetSnapshotSlices(summary);
   expect(counted(summary)).toBe(summary.total);
   expect(slices.reduce((sum, slice) => sum + slice.value, 0)).toBe(summary.total);
   expect(new Set(slices.map((slice) => slice.key)).size).toBe(slices.length);
-  expect(new Set(slices.map((slice) => slice.color)).size).toBe(slices.length);
+  for (const slice of slices) expect(SNAPSHOT_PALETTE).toContain(slice.color);
 }
 
 function car(id: string, status: string, archived_at: string | null = null) {
@@ -65,13 +67,27 @@ describe("fleet snapshot categories", () => {
     expect(snapshot.total).toBe(beforeUnavailable.total + 2);
 
     const slices = Object.fromEntries(fleetSnapshotSlices(snapshot).map((slice) => [slice.key, slice]));
+    expect(slices.rented).toMatchObject({ label: "Rented", color: "#4CD964" });
+    expect(slices.reserved).toMatchObject({ label: "Reserved", color: "#FFCC33" });
+    expect(slices.available).toMatchObject({ label: "Available", color: "#C7C7CC" });
+    expect(slices.maintenance).toMatchObject({ label: "Maintenance", value: 1, color: "#FF3B30" });
+    expect(slices.setup).toMatchObject({ label: "Needs Setup", color: "#FF3B30" });
     expect(slices.unavailable).toMatchObject({ label: "Unavailable", value: 2, color: "#FF3B30" });
-    expect(slices.maintenance).toMatchObject({ label: "Maintenance", value: 1, color: "#F97316" });
-    expect(slices.reserved.color).toBe("#FFCC33");
+    expect(slices.other).toMatchObject({ label: "Other", color: "#C7C7CC" });
+    expect(slices.maintenance.color).toBe(slices.unavailable.color);
+    expect(slices.setup.color).toBe(slices.unavailable.color);
+    expect(slices.other.color).toBe(slices.available.color);
     expect(slices.maintenance.color).not.toBe(slices.reserved.color);
-    expect(slices.maintenance.color).not.toBe(slices.unavailable.color);
-    expect(FLEET_SNAPSHOT_COLORS.unavailable).toBe("#FF3B30");
-    expect(FLEET_SNAPSHOT_COLORS.maintenance).toBe("#F97316");
+    expect(FLEET_SNAPSHOT_COLORS).toEqual({
+      rented: "#4CD964",
+      reserved: "#FFCC33",
+      available: "#C7C7CC",
+      maintenance: "#FF3B30",
+      setup: "#FF3B30",
+      unavailable: "#FF3B30",
+      other: "#C7C7CC",
+    });
+    expect(new Set(Object.values(FLEET_SNAPSHOT_COLORS)).size).toBe(4);
   });
 
   it("keeps archived, sold, and retired cars out of the snapshot total", () => {
