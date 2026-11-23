@@ -2,10 +2,11 @@
  * Owners and managers (collections viewers). Read-only projected vs collected
  * rent for the current ET week and month.
  */
-import { etToday, type ForecastRental } from "./revenue-forecast";
+import { etToday } from "./revenue-forecast";
 import {
   buildProjectedRevenueSummary,
   type CollectedRentRow,
+  type PeriodRental,
   type ProjectedRevenueSummary,
 } from "./projected-revenue";
 import { tierAllows, type StaffTier } from "./roles";
@@ -29,7 +30,7 @@ export type ProjectedRevenueClient = {
   from: (table: string) => { select: (columns: string) => Query };
 };
 
-const RENTAL_COLUMNS = "id,vehicle_id,status,weekly_rate,next_payment_due,end_date";
+const RENTAL_COLUMNS = "id,vehicle_id,status,weekly_rate,next_payment_due,end_date,start_date";
 const PAYMENT_COLUMNS = "id,type,status,net_collected,paid_date";
 
 export async function runProjectedRevenueSummary(input: {
@@ -37,7 +38,7 @@ export async function runProjectedRevenueSummary(input: {
   tier: StaffTier | null;
   today?: string;
   load: () => Promise<
-    | { ok: true; rentals: ForecastRental[]; collected: CollectedRentRow[] }
+    | { ok: true; rentals: PeriodRental[]; collected: CollectedRentRow[] }
     | { ok: false; reason: string }
   >;
 }): Promise<ProjectedRevenueResponse> {
@@ -58,13 +59,13 @@ export async function runProjectedRevenueSummary(input: {
 export async function loadProjectedRevenue(
   supabase: ProjectedRevenueClient,
   today: string,
-): Promise<{ ok: true; rentals: ForecastRental[]; collected: CollectedRentRow[] } | { ok: false; reason: string }> {
+): Promise<{ ok: true; rentals: PeriodRental[]; collected: CollectedRentRow[] } | { ok: false; reason: string }> {
   const { weekRange, monthRange } = await import("./projected-revenue");
   const week = weekRange(today);
   const month = monthRange(today);
   if (!week || !month) return { ok: false, reason: "Invalid today date" };
 
-  const rentals: ForecastRental[] = [];
+  const rentals: PeriodRental[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < 50; page++) {
     let query = supabase
@@ -112,7 +113,7 @@ export async function loadProjectedRevenue(
   return { ok: true, rentals, collected };
 }
 
-function mapRental(row: Record<string, unknown>): ForecastRental | null {
+function mapRental(row: Record<string, unknown>): PeriodRental | null {
   if (typeof row.id !== "string" || typeof row.vehicle_id !== "string" || typeof row.status !== "string") return null;
   return {
     id: row.id,
@@ -121,6 +122,7 @@ function mapRental(row: Record<string, unknown>): ForecastRental | null {
     weeklyRate: money(row.weekly_rate),
     nextPaymentDue: text(row.next_payment_due),
     endDate: text(row.end_date),
+    startDate: text(row.start_date),
   };
 }
 

@@ -1,8 +1,15 @@
 /**
  * Overview projected vs collected rent for the current ET week and month.
- * Projection reuses the revenue-forecast charge schedule: weekly_rate on
- * next_payment_due and every 7 days after, while on or before end_date.
- * Collected is rent only (never deposits or late fees). No database access.
+ *
+ * Projected is the full expected rent for that period: the current weekly_rate
+ * on every charge date inside the window. Charge dates sit on the rental's
+ * 7-day cadence, anchored to next_payment_due, and they run back through the
+ * period as well as forward. Paying a week moves next_payment_due ahead; those
+ * weeks already due still count. Nothing is counted before start_date or after
+ * end_date.
+ *
+ * Collected is rent only (type rent, net_collected, paid_date in the window).
+ * Deposits, late fees, and reservation fees are not included. No database access.
  */
 import {
   addCalendarDays,
@@ -10,6 +17,11 @@ import {
   etToday,
   type ForecastRental,
 } from "./revenue-forecast";
+
+/** Active rental plus the date its weekly schedule began. */
+export type PeriodRental = ForecastRental & {
+  startDate?: string | null;
+};
 
 export type PeriodSummary = {
   from: string;
@@ -54,10 +66,11 @@ export function monthRange(today: string): { from: string; through: string } | n
 
 /**
  * Expected rent charges falling in [from, through], from active rentals'
- * weekly_rate schedule. A missing next_payment_due is counted and skipped.
+ * weekly schedule. Includes weeks already due in the window, not only dates
+ * from next_payment_due forward. A missing next_payment_due is counted and skipped.
  */
 export function projectedRentCents(
-  rentals: ForecastRental[],
+  rentals: PeriodRental[],
   from: string,
   through: string,
 ): { cents: number; excludedMissingDue: number } {
@@ -74,7 +87,8 @@ export function projectedRentCents(
     if (amount === null) continue;
     const end = dateOnly(rental.endDate);
     if (rental.endDate && !end) continue;
-    for (const date of chargeDates(due, from, through, end)) {
+    const start = dateOnly(rental.startDate ?? null);
+    for (const date of chargeDates(due, from, through, end, start)) {
       cents += amount;
     }
   }
@@ -98,7 +112,7 @@ export function collectedRentCents(rows: CollectedRentRow[], from: string, throu
 
 export function buildProjectedRevenueSummary(input: {
   today?: string;
-  rentals: ForecastRental[];
+  rentals: PeriodRental[];
   collected: CollectedRentRow[];
 }): ProjectedRevenueSummary | null {
   const today = input.today ?? etToday();
@@ -130,21 +144,37 @@ export function centsToDollars(cents: number): number {
   return cents / 100;
 }
 
-function chargeDates(due: string, windowStart: string, windowEnd: string, end: string | null): string[] {
-  let cursor = due < windowStart ? firstOnOrAfter(due, windowStart) : due;
+function chargeDates(
+  due: string,
+  windowStart: string,
+  windowEnd: string,
+  end: string | null,
+  start: string | null,
+): string[] {
+  // A start date lets the cadence run back to the later of the window start
+  // and the rental start, so a paid week still counts. Without a start date
+  // the next due date is the earliest known point — do not invent earlier weeks.
+  const floor = start && start > windowStart ? start : windowStart;
+  const notBefore = start ? floor : (due > windowStart ? due : windowStart);
+  let cursor = firstCadenceOnOrAfter(due, notBefore);
   const dates: string[] = [];
+  // A calendar month holds at most five weekly dates. The cap sits above that.
   for (let step = 0; cursor && step < 10 && cursor <= windowEnd; step++) {
     if (end && cursor > end) break;
-    if (cursor >= windowStart) dates.push(cursor);
+    if (cursor >= windowStart && (!start || cursor >= start)) dates.push(cursor);
     cursor = addCalendarDays(cursor, 7);
   }
   return dates;
 }
 
-function firstOnOrAfter(due: string, start: string): string | null {
-  const delta = calendarDays(due, start);
+/** Earliest date on `due`'s 7-day cadence that is on or after `notBefore`. */
+function firstCadenceOnOrAfter(due: string, notBefore: string): string | null {
+  const delta = calendarDays(due, notBefore);
   if (delta === null) return null;
-  if (delta <= 0) return due;
+  if (delta <= 0) {
+    const stepsBack = Math.floor(-delta / 7);
+    return addCalendarDays(due, -stepsBack * 7);
+  }
   return addCalendarDays(due, Math.ceil(delta / 7) * 7);
 }
 
