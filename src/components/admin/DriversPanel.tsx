@@ -51,6 +51,8 @@ import type { StaffTier } from "@/lib/roles";
 import { getApplicationStatusHistory, listDriverActiveSets } from "@/lib/application-status.functions";
 import { CloseApplicationDialog } from "./CloseApplicationDialog";
 import { DeclineApplicationDialog } from "./DeclineApplicationDialog";
+import { EditDriverProfileDialog } from "./EditDriverProfileDialog";
+import { listDriverProfileUpdates } from "@/lib/driver-profile-edit.functions";
 import { ConfirmDialog } from "./modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -173,6 +175,7 @@ import {
   ListFilter,
   Loader2,
   Repeat,
+  Pencil,
 } from "lucide-react";
 import { issueCardOnFileLink, removeCardOnFile } from "@/lib/payments.functions";
 import { publicAppUrl } from "@/lib/public-app-url";
@@ -1971,6 +1974,10 @@ function DriverDetail({
   const { screening, setScreening } = useDriverScreening(driver.id);
 
   const [interviewOpen, setInterviewOpen] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [profileAudits, setProfileAudits] = useState<{ at: string; summary: string }[]>([]);
+  const [profileAuditNonce, setProfileAuditNonce] = useState(0);
+  const loadProfileUpdates = useServerFn(listDriverProfileUpdates);
   const [recordCallOpen, setRecordCallOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [closeBusy, setCloseBusy] = useState(false);
@@ -1989,6 +1996,19 @@ function DriverDetail({
       cancelled = true;
     };
   }, [driver.id, driver.status, loadStatusHistory]);
+  useEffect(() => {
+    let cancelled = false;
+    void loadProfileUpdates({ data: { applicationId: driver.id } })
+      .then((rows) => {
+        if (!cancelled) setProfileAudits(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setProfileAudits([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [driver.id, profileAuditNonce, loadProfileUpdates]);
   // Controlled so the Documents strip and the readiness remedies can send the
   // operator straight to the tab that answers them.
   const [tab, setTab] = useState("overview");
@@ -2598,6 +2618,7 @@ function DriverDetail({
     push((driver as any).agreement_signed_at, "Agreement Signed");
     push((driver as any).pickup_at, "Vehicle Picked Up");
     push((driver as any).return_at, "Vehicle Returned");
+    for (const row of profileAudits) push(row.at, row.summary);
     for (const event of statusEvents) {
       if (!event.at) continue;
       const detail = [
@@ -2614,7 +2635,7 @@ function DriverDetail({
       });
     }
     return visibleDriverActivity(ev);
-  }, [driver, screening, vaultDocs, statusEvents]);
+  }, [driver, screening, vaultDocs, statusEvents, profileAudits]);
 
   const summaryRow = (
     <div className="grid gap-4 md:grid-cols-2">
@@ -2808,6 +2829,17 @@ function DriverDetail({
                   <h2 className="text-[18px] font-semibold text-[#111114] truncate">
                     {driver.full_name ? displayPersonName(driver.full_name) : "Unnamed"}
                   </h2>
+                  {isManager ? (
+                    <button
+                      type="button"
+                      aria-label="Edit Profile"
+                      data-testid="edit-driver-profile"
+                      onClick={() => setEditProfileOpen(true)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#55555E] hover:bg-[#F4F4F6] hover:text-[#111114]"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  ) : null}
                   {blacklistEntry ? <BlacklistedBadge title={blacklistEntry.reasonLabel} /> : null}
                   <StatusPill status={driver.status} />
                   {driver.gclid && (
@@ -2927,6 +2959,11 @@ function DriverDetail({
                       <Mail className="w-4 h-4 mr-2" /> Email
                     </DropdownMenuItem>
                   )}
+                  {isManager ? (
+                    <DropdownMenuItem data-testid="edit-driver-profile-menu" onClick={() => setEditProfileOpen(true)}>
+                      <Pencil className="w-4 h-4 mr-2" /> Edit Profile
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuItem title="Open In Messages" aria-label="Open In Messages" onClick={() => window.dispatchEvent(new CustomEvent("open-messages", { detail: { applicationId: driver.id } }))}>
                     <MessageSquare className="w-4 h-4 mr-2" /> Messages
                   </DropdownMenuItem>
@@ -3380,6 +3417,16 @@ function DriverDetail({
             This runs the approval checks. If they pass, the application is marked Approved and the Approval Confirmation email is sent. Login details are sent at Reserved.
           </p>
         </ConfirmDialog>
+      ) : null}
+      {editProfileOpen && isManager ? (
+        <EditDriverProfileDialog
+          driver={driver}
+          onClose={() => setEditProfileOpen(false)}
+          onSaved={(patch) => {
+            onSaved(patch);
+            setProfileAuditNonce((n) => n + 1);
+          }}
+        />
       ) : null}
       {declineOpen ? (
         <DeclineApplicationDialog
