@@ -94,6 +94,9 @@ import { COLLECTIONS_WATCH_STATUSES } from "@/lib/collections-watch";
 import { Button } from "@/components/ui/button";
 import { Tooltip as ControlTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { serviceSummaryPreview, type ServiceSummaryRow } from "./overview-summary-details";
+import { ActiveRentersDetails } from "./ActiveRentersDetails";
+import { getOverviewActiveRenters } from "@/lib/overview-active-renters.functions";
+import { ACTIVE_RENTER_COPY, type ActiveRentersSummary } from "@/lib/overview-active-renters";
 
 type WeekPoint = import("@/lib/overview-weekly-revenue").WeekPoint;
 
@@ -182,6 +185,9 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
   const [overdueRenters, setOverdueRenters] = useState(0);
   const [overdueAmt, setOverdueAmt] = useState(0);
   const [activeRentalCount, setActiveRentalCount] = useState<number | null>(null);
+  const loadActiveRenters = useServerFn(getOverviewActiveRenters);
+  const [renterSummary, setRenterSummary] = useState<ActiveRentersSummary | null>(null);
+  const [renterSummaryFailed, setRenterSummaryFailed] = useState(false);
   const [opsRefreshKey, setOpsRefreshKey] = useState(0);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [weekly, setWeekly] = useState<WeekPoint[]>([]);
@@ -224,6 +230,25 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    loadActiveRenters({ data: {} })
+      .then((summary) => {
+        if (!live) return;
+        setRenterSummary(summary);
+        setRenterSummaryFailed(false);
+      })
+      .catch(() => {
+        if (!live) return;
+        setRenterSummary(null);
+        setRenterSummaryFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opsRefreshKey]);
 
   useEffect(() => {
     (async () => {
@@ -575,15 +600,19 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
           icon={Users}
           eyebrow="Active Renters"
           title={activeRentalCount === null ? "—" : String(activeRentalCount)}
-          hint={activeRentalCount === 0 ? "No active rentals" : "With an active rental"}
+          hint={activeRentalCount === 0 ? ACTIVE_RENTER_COPY.emptyHint : ACTIVE_RENTER_COPY.hint}
           href="/admin"
           search={{ tab: "drivers", filter: "active" }}
           control="view"
           expanded={summaryExpanded}
           onExpand={() => setSummaryExpanded((value) => !value)}
-          details={<>
-            <SummaryDetailRow label="Active Rentals" value={activeRentalCount === null ? "—" : activeRentalCount} />
-          </>}
+          details={
+            <ActiveRentersDetails
+              summary={renterSummary}
+              failed={renterSummaryFailed}
+              canOpenBoard={canSeeCollections}
+            />
+          }
         />
         {MAINTENANCE_LOG_ENABLED ? <MaintenanceDueTile /> : null}
       </div>
@@ -942,7 +971,7 @@ function SummaryExpandControl({ expanded, onExpand }: { expanded: boolean; onExp
             className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
             aria-label={label}
             aria-expanded={expanded}
-            aria-controls="fleet-summary-details revenue-summary-details collections-summary-details service-summary-details"
+            aria-controls="fleet-summary-details revenue-summary-details collections-summary-details service-summary-details active-summary-details"
             onClick={(event) => { event.stopPropagation(); onExpand(); }}
             onKeyDown={(event) => event.stopPropagation()}
           >
