@@ -504,7 +504,7 @@ function ManualForm({
         <div className="grid grid-cols-2 gap-3">
           <Field label="Status">
             <AppSelect aria-label="Status" value={f.status} onChange={(e) => set("status", e.target.value)} className={inputCls()}>
-              {VEHICLE_STATUSES.filter((s) => !["archived", "sold", "retired"].includes(s.value)).map((s) => (
+              {VEHICLE_STATUSES.filter((s) => !["archived", "sold", "retired", "for_sale"].includes(s.value)).map((s) => (
                 <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </AppSelect>

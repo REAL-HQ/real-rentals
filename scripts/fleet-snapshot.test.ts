@@ -13,13 +13,13 @@ import {
   type FleetSummary,
 } from "../src/lib/fleet-summary";
 
-const COUNTED = ["needsSetup", "available", "reserved", "rented", "maintenance", "unavailable", "other"] as const;
+const COUNTED = ["needsSetup", "available", "reserved", "rented", "maintenance", "unavailable", "forSale", "other"] as const;
 
 function counted(summary: FleetSummary): number {
   return COUNTED.reduce((sum, key) => sum + summary[key], 0);
 }
 
-const SNAPSHOT_PALETTE = ["#4CD964", "#FFCC33", "#C7C7CC", "#FF3B30"] as const;
+const SNAPSHOT_PALETTE = ["#4CD964", "#FFCC33", "#C7C7CC", "#FF3B30", "#007AFF"] as const;
 
 function expectPartition(summary: FleetSummary) {
   const slices = fleetSnapshotSlices(summary);
@@ -56,6 +56,7 @@ describe("fleet snapshot categories", () => {
     expect(snapshot.maintenance).toBe(1);
     expect(snapshot.needsSetup).toBe(0);
     expect(snapshot.unavailable).toBe(2);
+    expect(snapshot.forSale).toBe(0);
     expect(snapshot.other).toBe(0);
     expectPartition(snapshot);
 
@@ -73,6 +74,7 @@ describe("fleet snapshot categories", () => {
     expect(slices.maintenance).toMatchObject({ label: "Maintenance", value: 1, color: "#FF3B30" });
     expect(slices.setup).toMatchObject({ label: "Needs Setup", color: "#FF3B30" });
     expect(slices.unavailable).toMatchObject({ label: "Unavailable", value: 2, color: "#FF3B30" });
+    expect(slices.for_sale).toMatchObject({ label: "For Sale", value: 0, color: "#007AFF" });
     expect(slices.other).toMatchObject({ label: "Other", color: "#C7C7CC" });
     expect(slices.maintenance.color).toBe(slices.unavailable.color);
     expect(slices.setup.color).toBe(slices.unavailable.color);
@@ -85,9 +87,10 @@ describe("fleet snapshot categories", () => {
       maintenance: "#FF3B30",
       setup: "#FF3B30",
       unavailable: "#FF3B30",
+      forSale: "#007AFF",
       other: "#C7C7CC",
     });
-    expect(new Set(Object.values(FLEET_SNAPSHOT_COLORS)).size).toBe(4);
+    expect(new Set(Object.values(FLEET_SNAPSHOT_COLORS)).size).toBe(5);
   });
 
   it("keeps archived, sold, and retired cars out of the snapshot total", () => {

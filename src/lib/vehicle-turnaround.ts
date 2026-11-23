@@ -13,7 +13,7 @@ export const PICKUP_STATUSES = ["new", "reviewing", "approved"] as const;
 export const OPEN_SERVICE_STATUSES = ["scheduled", "in_progress"] as const;
 /** Spellings end_rental and the bookings list already treat as a finished rental. */
 export const ENDED_RENTAL_STATUSES = PHASE_STATUSES.completed;
-const RETIRED_STATUSES = new Set(["retired", "sold", "archived"]);
+const RETIRED_STATUSES = new Set(["retired", "sold", "archived", "for_sale"]);
 
 export const VEHICLE_TURNAROUND_OMITTED = [
   "There is no turnaround queue. A vehicle is listed only when it has no active rental and at least one of these is true: it was returned or ended on or before today, its status is maintenance, or its status is available.",
@@ -24,7 +24,7 @@ export const VEHICLE_TURNAROUND_OMITTED = [
   "Open service is maintenance_records with status scheduled or in_progress. Completed records are omitted. The table default status upcoming is omitted. vehicles.maintenance_status is a free-text note and is not an open service item.",
   "The Service screen has no record deep link, so each service link opens the Service list.",
   "Registration and insurance are the registration and insurance checks from vehicleReadinessChecks, using registration_expires_on and insurance_expires_on, with today set to the Eastern calendar date. Document slots, inspections, service schedules, issues, and incidents are not loaded, so those checks are not shown. A missing date reads as Not Verified.",
-  "Archived vehicles are omitted. Retired, sold, and archived statuses are omitted. Reserved, onboarding, and rented vehicles are omitted unless they were returned or ended and have no active rental.",
+  "Archived vehicles are omitted. Retired, sold, archived, and For Sale statuses are omitted. Reserved, onboarding, and rented vehicles are omitted unless they were returned or ended and have no active rental.",
   "There is no cleaning, detailing, or promised-ready column.",
   "Stripe is not read. This board does not write.",
   "Each read is capped at 1000 rows. Ended rentals keep the newest end dates. An older end past that cap is not used, so that vehicle's idle days stay unknown.",

@@ -1,5 +1,6 @@
 import { LinkedVehicleCell } from "./VehicleCell";
 import { enumDisplayLabel, formatStatusLabel } from "@/lib/ui-display-labels";
+import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import { LeadActivity } from "./LeadActivity";
 import { AppSelect } from "@/components/ui/app-select";
 import { OnboardingChecklist } from "./OnboardingChecklist";
@@ -2344,7 +2345,7 @@ function DriverDetail({
   // before approval, Move Forward (Manager/Owner) once approved, then who/when.
   const termsAgreementSigned = agreementSignedForTerms || rentalActive;
   const termsConfirmedRow = termsConfirmedRequirement(staffTerms, { approved, agreementSigned: termsAgreementSigned });
-  const termsVehicles = useMemo(() => vehicles.map((v: any) => ({ id: String(v.id), unit_number: v.unit_number ?? null, year: v.year ?? null, make: v.make ?? null, model: v.model ?? null, license_plate: v.license_plate ?? v.plate ?? null, vin: v.vin ?? null, status: v.status ?? null })), [vehicles]);
+  const termsVehicles = useMemo(() => vehicles.filter((v: any) => !isForSaleVehicleStatus(v.status)).map((v: any) => ({ id: String(v.id), unit_number: v.unit_number ?? null, year: v.year ?? null, make: v.make ?? null, model: v.model ?? null, license_plate: v.license_plate ?? v.plate ?? null, vin: v.vin ?? null, status: v.status ?? null })), [vehicles]);
   function renderChecklistEvidence(key: ActivationRequirementKey) {
     if (key === "terms_confirmed") {
       if (!isManager) return null;
@@ -3240,7 +3241,7 @@ function DriverDetail({
                     )}
                   </div>
                   <VehiclePicker
-                    vehicles={vehicles}
+                    vehicles={vehicles.filter((v) => !isForSaleVehicleStatus(v.status))}
                     value={driver.vehicle_id}
                     onChange={(id) => onUpdate({ vehicle_id: id })}
                   />

@@ -17,6 +17,7 @@
  * No text or email goes to the applicant from here.
  */
 import { tableMissing } from "@/lib/fleet-api.server";
+import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import {
   deliveryState,
   parseLicenseNumber,
@@ -71,9 +72,10 @@ export async function saveConfirmedTerms(
     .select("id,vehicle_id,weekly_rent,deposit_amount,contract_start_date,contract_end_date,license_number")
     .eq("id", input.applicationId).maybeSingle();
   if (app.error || !app.data) return { ok: false, status: 503, error: "Could Not Read The Applicant." };
-  const v = await admin.from("vehicles").select("id,archived_at").eq("id", terms.vehicle_id).maybeSingle();
+  const v = await admin.from("vehicles").select("id,archived_at,status").eq("id", terms.vehicle_id).maybeSingle();
   if (v.error) return { ok: false, status: 503, error: "Could Not Read The Vehicle." };
   if (!v.data || v.data.archived_at) return { ok: false, status: 409, error: "That Vehicle Is Not In The Fleet. Choose Another." };
+  if (isForSaleVehicleStatus(v.data.status)) return { ok: false, status: 409, error: "That Vehicle Is For Sale. Choose Another." };
   const busy = await admin.from("rentals").select("id,application_id").eq("vehicle_id", terms.vehicle_id).eq("status", "active").limit(5);
   if (busy.error) return { ok: false, status: 503, error: "Could Not Check The Vehicle's Rentals." };
   if ((busy.data ?? []).some((r: any) => r.application_id !== input.applicationId))

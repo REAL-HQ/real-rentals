@@ -11,6 +11,7 @@ import { representativePhoto } from "@/lib/marketing-fleet";
 import { PublicAvailabilityBadge } from "@/components/site/PublicAvailability";
 import { VehicleStatusBadge } from "@/components/VehicleStatusBadge";
 import { PUBLIC_AVAILABILITY_ENABLED, publicAvailability } from "@/lib/public-availability";
+import { isPublicHiddenVehicleStatus } from "@/lib/fleet-summary";
 
 export const Route = createFileRoute("/fleet/$id")({
   loader: async ({ params }) => {
@@ -19,7 +20,7 @@ export const Route = createFileRoute("/fleet/$id")({
       .select("id, make, model, weekly_rate, status")
       .eq("id", params.id)
       .maybeSingle();
-    if (!data || data.status === "retired") throw notFound();
+    if (!data || isPublicHiddenVehicleStatus(data.status)) throw notFound();
     return { vehicle: data };
   },
   head: ({ params, loaderData }) => {
@@ -134,7 +135,7 @@ function VehicleDetail() {
       .maybeSingle()
       .then(({ data, error }) => {
         if (!active) return;
-        if (error || !data) {
+        if (error || !data || isPublicHiddenVehicleStatus(data.status)) {
           setStatus("missing");
           return;
         }
