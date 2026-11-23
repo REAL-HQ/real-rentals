@@ -146,7 +146,7 @@ for (const role of ["admin", "team", "coordinator"]) {
     role + " recommendation does not invent a note interpretation",
   );
   check(
-    state.reads.every((t) => ["user_roles", "applications"].includes(t)),
+    state.reads.every((t) => ["user_roles", "applications", "email_deliveries"].includes(t)),
     role + " no document/history reads",
   );
   const next = await getLeadPriorities({

@@ -12,6 +12,7 @@
     "format": "prettier --write .",
     "test:amend-agreement": "bun test scripts/rental-amendment.test.ts && node scripts/rental-amendment-render.test.mjs",
     "test:quo": "bun test scripts/quo-sms.test.ts",
+    "test:bad-email": "bun test scripts/bad-email-suppression.test.ts && node scripts/lead-priorities.test.mjs",
     "test:readiness": "node scripts/vehicle-readiness-phase1.test.mjs",
     "test:lead-alert-reliability": "bun test scripts/lead-alert-reliability.test.ts && node scripts/email-delivery-pending-match-db.test.cjs",
     "test:public-copy": "node scripts/public-copy.test.mjs",

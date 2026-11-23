@@ -1,4 +1,4 @@
-export type ApprovalEmailStatus = "sent" | "off" | "held" | "failed" | "no_email" | "not_sent" | "bot_text";
+export type ApprovalEmailStatus = "sent" | "off" | "held" | "failed" | "no_email" | "not_sent" | "bot_text" | "bad_email";
 
 /** Staff-facing delivery outcome; approval itself has already succeeded. */
 export function approvalEmailMessage(status: ApprovalEmailStatus | undefined): string {
@@ -9,6 +9,7 @@ export function approvalEmailMessage(status: ApprovalEmailStatus | undefined): s
     case "failed": return "Approval Confirmation Could Not Be Sent.";
     case "no_email": return "No Approval Email: No Email On File.";
     case "bot_text": return "No Approval Email: FLEET Sent Its Approval Text.";
+    case "bad_email": return "No Approval Email: This Address Bounced Before.";
     default: return "";
   }
 }

@@ -70,7 +70,7 @@ export type SendResult = {
    * "off": the Owner switched it off. "held": the switches could not be read,
    * so it was held (recorded as failed "Held: ...") and may be retried.
    */
-  blocked?: "off" | "held" | "blacklisted";
+  blocked?: "off" | "held" | "blacklisted" | "bounced";
   retriable?: boolean;
 };
 
@@ -210,6 +210,26 @@ export async function sendEmail({ to, subject, html: rawHtml, from, replyTo, tra
         if (await isBlacklistSuppressed(supabaseAdmin, { email: r })) {
           console.info("[email] recipient is blacklisted; automated email suppressed", { workflow: wf || null });
           return { ok: false, blocked: "blacklisted", error: BLACKLIST_SUPPRESSED_ERROR };
+        }
+      }
+    }
+  }
+  // Bad addresses get no automated email: a past bounce or complaint, a typo
+  // domain (gmail.vom) or a test domain (.invalid). Staff writing by hand,
+  // sign-in emails a person asks for, and internal team notifications are not
+  // affected. Same rule as Missing-Items Outreach (email-suppression.ts).
+  {
+    const wf = track?.workflow ?? "";
+    const { BAD_EMAIL_EXEMPT_WORKFLOWS, BAD_EMAIL_SUPPRESSED_ERROR } = await import("@/lib/email-suppression");
+    if (!STAFF_WORKFLOWS.has(wf) && !BAD_EMAIL_EXEMPT_WORKFLOWS.has(wf)) {
+      const recipients = Array.isArray(to) ? to : [to];
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { badEmailForAddress } = await import("@/lib/email-suppression.server");
+      for (const r of recipients) {
+        const reason = await badEmailForAddress(supabaseAdmin, r);
+        if (reason) {
+          console.info("[email] bad recipient address; automated email suppressed", { workflow: wf || null, reason });
+          return { ok: false, blocked: "bounced", error: BAD_EMAIL_SUPPRESSED_ERROR };
         }
       }
     }
