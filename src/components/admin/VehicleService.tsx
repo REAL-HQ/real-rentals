@@ -11,9 +11,11 @@ import { getFleetDocumentFile } from "@/lib/fleet-inbox.functions";
 import {
   getVehicleService, addServiceEvent, addManualReading, setVehicleInterval, resolveOdometerConflict,
 } from "@/lib/maintenance.functions";
+import { VehicleMaintenanceCards } from "./VehicleMaintenanceCards";
+import { mileageSourceLabel } from "@/lib/vehicle-maintenance";
 import { MAINTENANCE_DUE_ENABLED } from "@/lib/maintenance-due";
 import { listMaintenanceDueSchedule } from "@/lib/maintenance-due-schedule.functions";
-import { SOURCE_LABELS, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, SERVICE_CATEGORIES, categoryLabel, dueLabel } from "@/lib/maintenance-rules";
+import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, SERVICE_CATEGORIES, categoryLabel, dueLabel } from "@/lib/maintenance-rules";
 import { SectionCard, EmptyState } from "./ui";
 import { ModalShell, ModalHeader, ModalBody, ModalFooter, ModalSection, ModalButton, Field, FormGrid, inputCls, UploadDropzone } from "./modal";
 import { fmtDate } from "@/lib/date-format";
@@ -147,13 +149,15 @@ export function VehicleService({ vehicleId, openAdd = false }: { vehicleId: stri
         }}
       </ServiceDueSource>
 
+      <VehicleMaintenanceCards vehicleId={vehicleId} onChanged={refresh} />
+
       <SectionCard title="Service History" icon={<Wrench className="h-4 w-4" />}>
         {completed.length === 0
           ? <EmptyState title="No Service History Yet" hint="Add a service, or drop a receipt into Fleet Inbox." />
           : <div className="divide-y divide-border">{completed.map((r: any) => <ServiceRow key={r.id} r={r} canCost={data.canCost} onOpen={() => setDetail(r)} onEvidence={openEvidence} />)}</div>}
       </SectionCard>
 
-      <SectionCard title="Mileage History" icon={<Gauge className="h-4 w-4" />} subtitle="Every reading keeps its source. Current mileage is the newest valid reading.">
+      <SectionCard title="Mileage Log" icon={<Gauge className="h-4 w-4" />} subtitle="Every reading keeps its source. Current mileage is the newest valid reading.">
         {chart.length >= 2 && (
           <div className="mb-4 h-40">
             <ResponsiveContainer width="100%" height="100%">
@@ -162,15 +166,15 @@ export function VehicleService({ vehicleId, openAdd = false }: { vehicleId: stri
           </div>
         )}
         {data.readings.length === 0
-          ? <div className="text-[13px] text-muted-foreground">No mileage readings yet.</div>
-          : <div className="divide-y divide-border text-[13px]">{data.readings.map((r: any) => (
+          ? <div className="text-[13px] text-muted-foreground">No Mileage Readings Yet.</div>
+          : <div className="divide-y divide-border text-[13px]" data-testid="mileage-log">{data.readings.map((r: any) => (
               <div key={r.id} className={`flex flex-wrap items-center gap-3 py-2 ${r.status === "superseded" ? "opacity-50" : ""}`}>
                 <div className="w-28 text-muted-foreground">{d(r.observed_on)}</div>
                 <div className="w-28 font-medium tabular-nums">{mi(r.mileage)}</div>
-                <div className="flex-1">{SOURCE_LABELS[r.source_type] ?? r.source_type}{r.note ? <span className="text-muted-foreground"> · {r.note}</span> : null}</div>
+                <div className="flex-1">{mileageSourceLabel(r.source_type, r.evidence_key)}{r.note ? <span className="text-muted-foreground"> · {r.note}</span> : null}</div>
                 {r.status === "conflict" && <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand"><AlertTriangle className="h-3 w-3" /> Needs Review — Odometer Conflict</span>}
                 {r.status === "superseded" && <span className="text-[11px] text-muted-foreground">Corrected</span>}
-                {r.document_id && <button className="text-[12px] underline-offset-2 hover:underline" onClick={() => openEvidence(r.document_id)}>View Evidence</button>}
+                {r.document_id && <button className="text-[12px] underline-offset-2 hover:underline" onClick={() => openEvidence(r.document_id)}>{r.source_type === "odometer_photo" ? "View Photo" : "View Evidence"}</button>}
                 {r.status === "conflict" && data.canManage && <ConflictActions id={r.id} onDone={refresh} />}
                 {r.status === "valid" && r.source_type === "manual" && <button className="text-[12px] text-muted-foreground hover:underline" onClick={() => setReading({ supersedes: r })}>Correct</button>}
               </div>
@@ -349,14 +353,29 @@ function AddReadingDialog({ vehicleId, supersedes, onClose, onSaved }: { vehicle
   const [date, setDate] = useState(supersedes?.observed_on ?? todayIso());
   const [note, setNote] = useState("");
   const [reason, setReason] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     setBusy(true);
-    const r = await save({ data: { vehicleId, mileage: Number(mileage.replace(/\D/g, "")), observedOn: date, note: note || null, supersedesId: supersedes?.id ?? null, reason: reason || null } }).catch(() => ({ ok: false as const, error: "Could not save." }));
-    setBusy(false);
-    if (!r.ok) { toast.error((r as any).error); return; }
-    toast.success((r as any).status === "conflict" ? "Saved — flagged as a possible odometer conflict." : "Reading saved.");
-    onSaved();
+    try {
+      let photoPath: string | null = null;
+      let photoName: string | null = null;
+      if (file) {
+        const ext = (file.name.split(".").pop() || "jpg").replace(/[^A-Za-z0-9]/g, "").slice(0, 8) || "jpg";
+        photoPath = `inbox/odometer-${crypto.randomUUID()}.${ext}`;
+        const { error } = await supabase.storage.from("vehicle-docs").upload(photoPath, file, { contentType: file.type || undefined });
+        if (error) throw new Error("Photo upload failed.");
+        photoName = file.name;
+      }
+      const r = await save({ data: { vehicleId, mileage: Number(mileage.replace(/\D/g, "")), observedOn: date, note: note || null, supersedesId: supersedes?.id ?? null, reason: reason || null, photoPath, photoName } });
+      if (!r.ok) { toast.error(r.error); return; }
+      toast.success(r.status === "conflict" ? "Saved — flagged as a possible odometer conflict." : "Reading saved.");
+      onSaved();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save.");
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <ModalShell onClose={onClose} label={supersedes ? "Correct Reading" : "Add Reading"} size="sm">
@@ -368,6 +387,9 @@ function AddReadingDialog({ vehicleId, supersedes, onClose, onSaved }: { vehicle
         </FormGrid>
         {supersedes && <Field label="Reason For Correction" required><input className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>}
         <Field label="Note"><input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+        <Field label="Photo">
+          <UploadDropzone disabled={busy} file={file} onFile={setFile} accept="image/*" title="Add Photo" hint="Optional odometer photo — JPEG, PNG, WebP, or HEIC, up to 20 MB" />
+        </Field>
       </ModalBody>
       <ModalFooter>
         <ModalButton onClick={onClose}>Cancel</ModalButton>

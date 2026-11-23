@@ -55,6 +55,7 @@ export const STANDARD_SCHEDULE: Array<{
     interval_miles: null,
     interval_days: 365,
   },
+  { item: "Monthly Inspection", category: "inspection", interval_miles: null, interval_days: 30 },
 ];
 
 export type DueState = { due: boolean; soon: boolean; reasons: string[] };
@@ -235,8 +236,7 @@ export function MaintenanceSchedules() {
 
                 {items.length === 0 ? (
                   <div className="px-5 py-4 text-[12px] text-[#9A9AA3]">
-                    No service items yet. Use the standard schedule to add oil, tires, brakes and
-                    registration.
+                    No service items yet. Use Standard Schedule to add Oil, Tires, Brakes, Registration, and Monthly Inspection.
                   </div>
                 ) : (
                   <ul className="divide-y divide-[#F4F4F6]">
@@ -429,9 +429,9 @@ function ScheduleForm({
           onChange={(e) => setCategory(e.target.value)}
           className="mt-1.5 w-full rounded-lg border border-[#EDEDF0] px-3 py-2 text-sm bg-white"
         >
-          {["routine", "safety", "compliance", "repair"].map((c) => (
+          {["routine", "safety", "compliance", "repair", "inspection"].map((c) => (
             <option key={c} value={c}>
-              {({ routine: "Routine", safety: "Safety", compliance: "Compliance", repair: "Repair" } as Record<string, string>)[c]}
+              {({ routine: "Routine", safety: "Safety", compliance: "Compliance", repair: "Repair", inspection: "Inspection" } as Record<string, string>)[c]}
             </option>
           ))}
         </AppSelect>
