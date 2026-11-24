@@ -47,6 +47,7 @@ import {
   type FleetStatusMismatch,
 } from "@/lib/fleet-summary";
 import { buildWeeklyBilledCollected, OVERVIEW_REVENUE_TYPES } from "@/lib/overview-weekly-revenue";
+import { isUnpaidReservationFee } from "@/lib/payments-summary";
 import { getOverviewApplicants } from "@/lib/admin-overview.functions";
 import { MaintenanceDueTile } from "./MaintenanceLog";
 import { MAINTENANCE_LOG_ENABLED } from "@/lib/maintenance-log-flag";
@@ -276,7 +277,7 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
         // and is deliberately absent.
         supabase
           .from("payments")
-          .select("amount, balance_due, driver_id")
+          .select("amount, balance_due, driver_id, type, reason, notes, status")
           .in("status", [...COLLECTIONS_WATCH_STATUSES]),
         supabase
           .from("payments")
@@ -286,7 +287,7 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
           .gte("paid_date", d84),
         supabase
           .from("payments")
-          .select("amount, due_date, type")
+          .select("amount, due_date, type, status, reason, notes")
           .in("type", REVENUE_TYPES as unknown as string[])
           .gte("due_date", d84),
         supabase
@@ -346,7 +347,8 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
       // collections query has no net_collected, so summing it was always $0.
       const sumOutstanding = (rows?: any[] | null) =>
         (rows ?? []).reduce((a, r) => a + (Number(r.balance_due ?? 0) || Number(r.amount ?? 0)), 0);
-      const overdueRows = (overdueQ.data ?? []) as any[];
+      // An unpaid Reservation Fee is a pending hold, not Past Due and not Billed.
+      const overdueRows = ((overdueQ.data ?? []) as any[]).filter((row) => !isUnpaidReservationFee(row));
       setOverdueAmt(sumOutstanding(overdueRows));
       setOverdueCount(overdueRows.length);
       setOverdueRenters(new Set(overdueRows.map((r) => r.driver_id).filter(Boolean)).size);
@@ -354,11 +356,13 @@ function OverviewContent({ canSeeCollections = false, tier = null }: { canSeeCol
 
       // 12-week weekly buckets — same revenue types as the Revenue card
       // (multi-method collected; deposits excluded from billed and collected).
+      const billedRows = ((billed12wQ.data ?? []) as { due_date: string | null; amount: number | null; type: string | null; status?: string | null; reason?: string | null; notes?: string | null }[])
+        .filter((row) => !isUnpaidReservationFee(row));
       setWeekly(
         buildWeeklyBilledCollected({
           now,
           collected: (pay12wQ.data ?? []) as { paid_date: string | null; net_collected: number | null; type: string | null }[],
-          billed: (billed12wQ.data ?? []) as { due_date: string | null; amount: number | null; type: string | null }[],
+          billed: billedRows,
           label: (d) => fmtDate(d),
         }),
       );

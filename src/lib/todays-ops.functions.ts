@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { COLLECTIONS_WATCH_STATUSES } from "./collections-watch";
+import { isUnpaidReservationFee } from "./payments-summary";
 import { TODAYS_OPS_ENABLED } from "./todays-ops-flag";
 import {
   OPS_ROW_LIMIT,
@@ -75,7 +76,7 @@ export const getTodaysOps = createServerFn({ method: "POST" })
         .limit(OPS_ROW_LIMIT),
       supabaseAdmin
         .from("payments")
-        .select("id,status,amount,driver_id", { count: "exact" })
+        .select("id,status,amount,driver_id,type,reason,notes", { count: "exact" })
         .in("status", [...COLLECTIONS_WATCH_STATUSES])
         .order("due_date", { ascending: true })
         .limit(OPS_ROW_LIMIT),
@@ -107,9 +108,11 @@ export const getTodaysOps = createServerFn({ method: "POST" })
     }
 
     const rentalRows = [...(returnsQ.data ?? []), ...(dueQ.data ?? [])];
+    // Unpaid Reservation Fees are a pending hold. They are not Overdue Payments.
+    const overdueRows = (overdueQ.data ?? []).filter((row) => !isUnpaidReservationFee(row));
     const driverIds = [
       ...new Set(
-        [...rentalRows.map((row) => row.driver_id), ...(overdueQ.data ?? []).map((row) => row.driver_id)].filter(
+        [...rentalRows.map((row) => row.driver_id), ...overdueRows.map((row) => row.driver_id)].filter(
           (id): id is string => Boolean(id),
         ),
       ),
@@ -160,7 +163,7 @@ export const getTodaysOps = createServerFn({ method: "POST" })
       driver_name: driverNames.get(row.driver_id) ?? null,
       vehicle_label: row.vehicle_id ? vehicleLabels.get(row.vehicle_id) ?? null : "Unknown",
     }));
-    const payments: OpsPayment[] = (overdueQ.data ?? []).map((row) => ({
+    const payments: OpsPayment[] = overdueRows.map((row) => ({
       id: row.id,
       status: row.status,
       amount: row.amount,
@@ -198,7 +201,10 @@ export const getTodaysOps = createServerFn({ method: "POST" })
         approved_ready: over(approvedQ.count, approvedQ.data?.length ?? 0),
         returns: over(returnsQ.count, returnsQ.data?.length ?? 0),
         payments_due: over(dueQ.count, dueQ.data?.length ?? 0),
-        overdue: over(overdueQ.count, overdueQ.data?.length ?? 0),
+        overdue: over(
+          overdueQ.count == null ? null : Math.max(0, overdueQ.count - ((overdueQ.data?.length ?? 0) - overdueRows.length)),
+          overdueRows.length,
+        ),
         documents: expiring.length > OPS_ROW_LIMIT,
         incidents: over(incidentsQ.count, incidentsQ.data?.length ?? 0),
         roadside: over(roadsideQ.count, roadsideQ.data?.length ?? 0),

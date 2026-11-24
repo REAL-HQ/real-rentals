@@ -21,6 +21,7 @@ import {
   type CollectionsPlanPayment,
   type CollectionsPlanRental,
 } from "@/lib/collections-plan";
+import { isUnpaidReservationFee } from "@/lib/payments-summary";
 
 export const Route = createFileRoute("/api/public/cron/ops-reminders")({
   server: {
@@ -75,7 +76,7 @@ async function handle(request: Request): Promise<Response> {
   // on the same day-1 / 3 / 7 / weekly schedule. Rent Reminders own renter mail.
   const { data: duePayments } = await supabaseAdmin
     .from("payments")
-    .select("id,driver_id,amount,balance_due,due_date,status")
+    .select("id,driver_id,amount,balance_due,due_date,status,type,reason,notes")
     .lt("due_date", todayStr)
     .not("driver_id", "is", null)
     .in("status", [...UNPAID_STATUSES])
@@ -83,6 +84,7 @@ async function handle(request: Request): Promise<Response> {
 
   const byDriver = new Map<string, { amount: number; dueDate: string | null }>();
   for (const p of duePayments ?? []) {
+    if (isUnpaidReservationFee(p)) continue;
     const owed = Number(p.balance_due ?? 0) || Number(p.amount ?? 0);
     if (owed <= 0) continue;
     const prev = byDriver.get(p.driver_id as string);
@@ -192,12 +194,13 @@ async function handle(request: Request): Promise<Response> {
 
       const { data: duePayRows } = await supabaseAdmin
         .from("payments")
-        .select("id,rental_id,driver_id,due_date,amount,balance_due,status,payment_method,type")
+        .select("id,rental_id,driver_id,due_date,amount,balance_due,status,payment_method,type,reason,notes")
         .in("due_date", [todayStr, tomorrowStr])
         .in("status", [...UNPAID_STATUSES, ...UPCOMING_STATUSES])
         .limit(400);
 
-      const payAppIds = [...new Set((duePayRows ?? []).map((p) => p.driver_id).filter(Boolean))] as string[];
+      const planSource = (duePayRows ?? []).filter((p) => !isUnpaidReservationFee(p));
+      const payAppIds = [...new Set(planSource.map((p) => p.driver_id).filter(Boolean))] as string[];
       const missingApps = payAppIds.filter((id) => !appById.has(id));
       if (missingApps.length) {
         const { data: moreApps } = await supabaseAdmin
@@ -208,7 +211,7 @@ async function handle(request: Request): Promise<Response> {
         for (const a of moreApps ?? []) appById.set(a.id as string, (a.full_name as string | null) ?? null);
       }
 
-      const planPayments: CollectionsPlanPayment[] = (duePayRows ?? []).map((p) => ({
+      const planPayments: CollectionsPlanPayment[] = planSource.map((p) => ({
         id: p.id as string,
         rentalId: (p.rental_id as string | null) ?? null,
         driverId: (p.driver_id as string | null) ?? null,

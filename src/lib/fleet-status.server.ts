@@ -15,6 +15,7 @@
  */
 import { cleanText, fleetAdmin, fleetJson, fleetRequestBody, tableMissing, UUID_RE, type FleetDeps } from "@/lib/fleet-api.server";
 import { paymentOwed, reportedOwes, standingFromPaymentRow } from "@/lib/rental-owes";
+import { isUnpaidReservationFee } from "@/lib/payments-summary";
 import { activeDailyPlan, type DailyRentPlan } from "@/lib/rent-standing";
 import { fleetContactsFor, lookupLeadByContact } from "@/lib/driver-contacts.server";
 import { missingItems, type MissingItemKey } from "@/lib/missing-items";
@@ -42,7 +43,7 @@ const AGR_COLS = "id,application_id,rental_id,status,sent_at,viewed_at,signed_at
 const RENTAL_COLS =
   "id,application_id,vehicle_id,status,start_date,end_date,weekly_rate,autopay_active,payment_status,card_last4,card_on_file_at,next_payment_due," +
   "reservation_deposit_required,reservation_deposit_amount,reservation_deposit_status,balance_due_cents,reservation_note,created_at";
-const PAY_COLS = "id,driver_id,rental_id,type,amount,late_fees,balance_due,due_date,paid_date,status,failure_reason,attempt_count,last_attempt_at,stripe_hosted_invoice_url,created_at";
+const PAY_COLS = "id,driver_id,rental_id,type,reason,notes,amount,late_fees,balance_due,due_date,paid_date,status,failure_reason,attempt_count,last_attempt_at,stripe_hosted_invoice_url,created_at";
 
 const easternDate = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(d);
 const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -61,16 +62,23 @@ export function owed(p: Record<string, any>): number {
  * row still owes the unpaid days.
  */
 function withReportedOwes(summary: ReturnType<typeof summarizeBalance>, payments: readonly Record<string, any>[], rental: Record<string, any> | null, now: Date, plan: DailyRentPlan | null) {
+  const today = easternDate(now);
   const reported = reportedOwes({
-    today: easternDate(now),
+    today,
     payments: payments.map(standingFromPaymentRow),
     rental,
     dailyPlan: plan,
   });
+  // The reservation-fee step already shows an unpaid Reservation Fee. It is not overdue money.
+  const hold = money(payments.reduce((sum, p) => {
+    if (!isUnpaidReservationFee(p)) return sum;
+    const due = /^(\d{4}-\d{2}-\d{2})/.exec(String(p.due_date ?? "").trim())?.[1];
+    return due && due < today ? sum + owed(p) : sum;
+  }, 0));
   return {
     ...summary,
     total_owed: reported.total_owed,
-    overdue_owed: reported.overdue_owed,
+    overdue_owed: money(Math.max(0, reported.overdue_owed - hold)),
     late_fees_owed: reported.late_fees_owed,
     return_balance: reported.return_balance,
     rent_owed: reported.rent_owed,
@@ -94,7 +102,7 @@ async function planFor(admin: Admin, rentalId: string | null | undefined, now: D
 export function summarizeBalance(payments: readonly Record<string, any>[], rental: Record<string, any> | null, now: Date) {
   const today = easternDate(now);
   const open = payments.filter((p) => owed(p) > 0).sort((a, b) => String(a.due_date ?? "").localeCompare(String(b.due_date ?? "")));
-  const overdue = open.filter((p) => p.due_date && String(p.due_date) < today);
+  const overdue = open.filter((p) => p.due_date && String(p.due_date) < today && !isUnpaidReservationFee(p));
   const returnBalance = rental ? Math.max(0, num(rental.balance_due_cents) / 100) : 0;
   return {
     total_owed: money(open.reduce((s, p) => s + owed(p), 0) + returnBalance),

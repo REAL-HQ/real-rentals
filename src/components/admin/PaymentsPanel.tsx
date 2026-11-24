@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check, ListFilter } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
-import { OVERDUE_STATUSES, FAILED_RECENT_FILTER, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isRecentFailure, rowOwed } from "@/lib/payments-summary";
+import { FAILED_RECENT_FILTER, awaitingReservationFee, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isOverdueRow, isRecentFailure, isUnpaidReservationFee, rowOwed } from "@/lib/payments-summary";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { PaymentSummaryCards } from "./PaymentSummaryCards";
 import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
@@ -66,8 +66,6 @@ const STATUSES = [
   "refunded",
   "waived",
 ] as const;
-/** Everything the Overdue filter counts: due and not received. Rows in Collections are not Overdue. */
-const OVERDUE_SET = OVERDUE_STATUSES;
 /** ?filter=collections-tab opens Payments > Collections (the renter profile's Collections card links here). */
 export const COLLECTIONS_TAB_FILTER = "collections-tab";
 const STATUS_LABEL: Record<string, string> = {
@@ -131,7 +129,8 @@ function fmtDate(iso?: string | null) {
 function isReservationFeePayment(p: { reason?: string | null; notes?: string | null }) {
   return p.reason === RESERVATION_FEE_REASON || /reservation_fee:/.test(String(p.notes ?? ""));
 }
-function paymentStatusLabel(p: { status?: string | null; reason?: string | null; notes?: string | null }) {
+function paymentStatusLabel(p: { status?: string | null; type?: string | null; reason?: string | null; notes?: string | null }) {
+  if (isUnpaidReservationFee(p)) return "Awaiting Reservation Fee";
   if (isReservationFeePayment(p) && (p.status === "refunded" || refundReasonFromNotes(p.notes))) {
     return reservationFeeRefundedDetail(refundReasonFromNotes(p.notes));
   }
@@ -303,7 +302,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
     statusFilter === "all"
       ? payments
       : statusFilter === "overdue"
-        ? payments.filter((p) => OVERDUE_SET.has(p.status as string))
+        ? payments.filter((p) => isOverdueRow(p))
         : statusFilter === FAILED_RECENT_FILTER
           ? payments.filter((p) => isRecentFailure(p as any))
           : payments.filter((p) => p.status === statusFilter)
@@ -349,6 +348,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
   const totalDue = filtered
     .filter((p) => countsAsOwed(p as any, coveredIds))
     .reduce((s, p) => s + rowOwed(p as any), 0);
+  const awaiting = awaitingReservationFee(filtered);
   const summary = useMemo(
     () => buildPaymentsSummary({ payments: payments as any, coveredIds, rentals, collectionItems }),
     [payments, coveredIds, rentals, collectionItems],
@@ -356,7 +356,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
 
   const statusCount = (status: string) => {
     if (status === "all") return payments.length;
-    if (status === "overdue") return payments.filter((payment) => OVERDUE_SET.has(payment.status as string)).length;
+    if (status === "overdue") return payments.filter((payment) => isOverdueRow(payment)).length;
     if (status === FAILED_RECENT_FILTER) return payments.filter((payment) => isRecentFailure(payment as any)).length;
     return payments.filter((payment) => payment.status === status).length;
   };
@@ -443,8 +443,15 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <div className="hidden whitespace-nowrap text-sm text-muted-foreground md:block">
-                Outstanding: <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
+              <div className="hidden min-w-0 items-baseline gap-3 whitespace-nowrap text-sm text-muted-foreground md:flex">
+                <span>
+                  Outstanding: <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
+                </span>
+                {awaiting.count > 0 ? (
+                  <span className="text-xs" data-testid="awaiting-reservation-fee">
+                    {`Awaiting Reservation Fee: $${awaiting.total.toLocaleString()} (${awaiting.count})`}
+                  </span>
+                ) : null}
               </div>
             </>
           ) : null}
