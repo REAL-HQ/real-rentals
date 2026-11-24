@@ -94,6 +94,19 @@ describe("balance", () => {
     expect(b.oldest_overdue_due_date).toBe("2026-11-12");
     expect(b.open_rows.map((r) => r.payment_id)).toEqual(["p1", "p2"]);
   });
+  test("an unpaid Reservation Fee is not overdue money", () => {
+    const b = s.summarizeBalance(
+      [
+        { id: "p1", status: "failed", type: "rent", amount: 300, late_fees: 100, due_date: "2026-11-12" },
+        { id: "hold", status: "unpaid", type: "fee", reason: "reservation_fee", notes: "reservation_fee:ag", amount: 50, balance_due: 50, due_date: "2026-11-01" },
+      ],
+      null,
+      NOW,
+    );
+    expect(b.total_owed).toBe(450);
+    expect(b.overdue_owed).toBe(400);
+    expect(b.oldest_overdue_due_date).toBe("2026-11-12");
+  });
 });
 
 function seed() {
@@ -193,6 +206,18 @@ describe("endpoint", () => {
     const b = (await (await s.handleFleetStatus(req({ action: "balance", rental_id: R3 }), { admin: db, env, now: () => NOW })).json()) as any;
     expect(b.balance.total_owed).toBe(450);
     expect((await s.handleFleetStatus(req({ action: "balance" }), { admin: db, env, now: () => NOW })).status).toBe(400);
+  });
+  test("balance and digest leave an unpaid Reservation Fee out of overdue", async () => {
+    const db = seed();
+    db.state.payments.push({
+      id: "p-fee", driver_id: L3, rental_id: R3, type: "fee", reason: "reservation_fee", notes: "reservation_fee:ag",
+      status: "unpaid", amount: 50, balance_due: 50, due_date: "2026-11-01",
+    });
+    const balance = (await (await s.handleFleetStatus(req({ action: "balance", rental_id: R3 }), { admin: db, env, now: () => NOW })).json()) as any;
+    expect(balance.balance.overdue_owed).toBe(450);
+    expect(balance.balance.total_owed).toBe(500);
+    const digest = (await (await s.handleFleetStatus(req({ action: "digest" }), { admin: db, env, now: () => NOW })).json()) as any;
+    expect(digest.digest.rentals.past_due.rentals[0]).toMatchObject({ rental_id: R3, overdue_owed: 450 });
   });
   test("unknown action 400", async () => {
     expect((await s.handleFleetStatus(req({ action: "write" }), { admin: seed(), env, now: () => NOW })).status).toBe(400);

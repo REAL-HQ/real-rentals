@@ -106,7 +106,7 @@ ok(
 ok(!isCollectionsWatchStatus("current") && !isCollectionsWatchStatus("paid") && isCollectionsWatchStatus("late"), "current and paid are not overdue");
 ok(overview.includes("COLLECTIONS_WATCH_STATUSES") && !overview.includes("const OVERDUE_STATUSES"), "Overview uses the shared Collections Watch list");
 ok(
-  payments.includes("OVERDUE_STATUSES") && !payments.includes('new Set(["late"') && readFileSync("src/lib/payments-summary.ts", "utf8").includes("new Set<string>(COLLECTIONS_WATCH_STATUSES)"),
+  payments.includes("isOverdueRow(") && !payments.includes('new Set(["late"') && readFileSync("src/lib/payments-summary.ts", "utf8").includes("export const OVERDUE_STATUSES: ReadonlySet<string> = new Set<string>(COLLECTIONS_WATCH_STATUSES)"),
   "Payments uses the shared Collections Watch list (through payments-summary.ts)",
 );
 
