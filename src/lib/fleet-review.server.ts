@@ -33,6 +33,7 @@ import {
   FLEET_ACTOR_LABEL,
   FLEET_REVIEW_STAGES,
   readyForReview,
+  withCategoryFiles,
   type FleetDoc,
 } from "@/lib/fleet-review";
 import { computeReadiness } from "@/lib/readiness";
@@ -180,6 +181,8 @@ export async function buildReviewPacket(admin: Admin, leadId: string, opts: { in
     const byId = new Map(signed.map((s: any) => [s.id, s.url]));
     documents = documents.map((d) => ({ ...d, url: byId.get(d.id) ?? null, url_expires_in_seconds: byId.get(d.id) ? 900 : null }));
   }
+  documents.sort((a, b) => String(b.uploaded_at ?? "").localeCompare(String(a.uploaded_at ?? "")) || String(a.id).localeCompare(String(b.id)));
+  const documentsByCategory = withCategoryFiles(assessment.docs.files, documents);
 
   const { license_number, insurance_carrier, insurance_doc_url, profile_screenshot_url, trip_screenshots, ...answers } = app;
   const tripShots = Array.isArray(trip_screenshots) ? trip_screenshots.length : 0;
@@ -223,9 +226,11 @@ export async function buildReviewPacket(admin: Admin, leadId: string, opts: { in
     })),
     answers: { ...answers, license_number_masked: maskLicense(license_number) },
     documents,
-    // Every active file, counted per section, so a section with two files is
-    // never read as one. Review each file in `documents`, not the newest only.
-    documents_by_category: assessment.docs.files,
+    // Counts stay (`active`, `verified`, `rejected`, `unreviewed`). Each
+    // section also has `files` (every active file, newest first, each with
+    // its own signed url when include_urls is set) and `latest` (files[0]).
+    // Review `files`, not only `latest`.
+    documents_by_category: documentsByCategory,
     // What FLEET read off the license photo (label "Read by FLEET from license
     // photo"). Never a verification: the field rep confirms at pickup.
     license_reading: licenseReading,

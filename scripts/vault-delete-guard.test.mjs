@@ -90,12 +90,13 @@ const userClient = {
 
 const stubs = {
   "@tanstack/react-start/server": "export const getRequest=()=>({headers:new Map()});",
-  "@tanstack/react-start": `export const createServerFn=()=>{let validate=x=>x,auth=false;const api={middleware:()=>{auth=true;return api},inputValidator:v=>{validate=v;return api},handler:fn=>async args=>{if(auth&&!args.context?.userId)throw Error('Unauthorized');return fn({...args,data:validate(args.data)})}};return api};`,
+  "@tanstack/react-start": `export const createServerFn=()=>{let validate=x=>x,auth=false;const api={middleware:()=>{auth=true;return api},inputValidator:v=>{validate=v;return api},handler:fn=>async args=>{if(auth&&!args.context?.userId)throw Error('Unauthorized');return fn({...args,data:validate(args.data)})}};return api}; export const createServerOnlyFn=(fn)=>fn;`,
   "@/integrations/supabase/auth-middleware": "export const requireSupabaseAuth={};",
   "@/integrations/supabase/client.server":
     "export const supabaseAdmin=new Proxy({}, {get:(_,p)=>globalThis.__vault.admin[p]});",
   "@/lib/roles.server":
     "export const requireManager=async()=>{}; export const requireOwner=async()=>{}; export const requireStaff=async()=>{};",
+  "@/lib/audit.server": "export const logAudit=async()=>{};",
 };
 
 globalThis.fetch = () => {
@@ -304,7 +305,7 @@ try {
     const vault = readFileSync("src/components/admin/DocumentVault.tsx", "utf8");
     assert.match(
       vault,
-      /mode === "admin" && !readOnly && doc && cat\.key !== "agreement" && !doc\.signed_agreement && doc\.uploaded_by_role !== "driver" \?/,
+      /mode === "admin" && !readOnly && doc && !STAFF_FILED_CATEGORIES\.includes\(cat\.key\) && !doc\.signed_agreement && doc\.uploaded_by_role !== "driver" \?/,
     );
     const applicant = readFileSync("src/components/admin/ApplicantDocuments.tsx", "utf8");
     assert.match(applicant, /\{d && key !== "agreement" && !d\.signed_agreement && d\.uploaded_by_role !== "driver" && \(/);

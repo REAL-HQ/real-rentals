@@ -1054,6 +1054,69 @@ export const archiveDocument = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/**
+ * Move one file into another multi-file section.
+ *
+ * The row stays current. Nothing else in the old section or the new one is
+ * archived, superseded, or replaced. Agreements and rental applications stay
+ * in their own single-file sections.
+ */
+export async function moveDocumentCore(
+  admin: any,
+  args: { documentId: string; category: string },
+): Promise<{ id: string; driver_id: string | null; from: string; to: string; changed: boolean }> {
+  if (!isMultiFileCategory(args.category)) {
+    throw new Error("Rental agreements and applications stay in their own section.");
+  }
+  const { data: doc, error } = await admin
+    .from("documents")
+    .select("id,driver_id,kind,category,storage_bucket,storage_path,is_current")
+    .eq("id", args.documentId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!doc) throw new Error("Document not found");
+  if (!isMultiFileCategory(String(doc.category))) {
+    throw new Error("Rental agreements and applications stay in their own section.");
+  }
+  if (isSignedAgreementEvidence(doc)) throw new Error(SIGNED_AGREEMENT_REPLACE_REFUSED);
+  if (await namedByAgreement(admin, [doc.id as string], REPLACE_CHECK_FAILED)) {
+    throw new Error(SIGNED_AGREEMENT_REPLACE_REFUSED);
+  }
+  const from = String(doc.category);
+  if (from === args.category) {
+    return { id: doc.id as string, driver_id: (doc.driver_id as string | null) ?? null, from, to: args.category, changed: false };
+  }
+  const { error: upErr } = await admin.from("documents").update({ category: args.category, kind: args.category }).eq("id", doc.id);
+  if (upErr) throw new Error(upErr.message);
+  return { id: doc.id as string, driver_id: (doc.driver_id as string | null) ?? null, from, to: args.category, changed: true };
+}
+
+/** Staff: file one document under a different section without touching the others. */
+export const moveDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ documentId: z.string().uuid(), category: CategoryEnum }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { requireManager, requireOwner } = await import("@/lib/roles.server");
+    const actor = await requireManager(context.userId);
+    await assertMayTouch(context.userId, data.documentId);
+    if (RESTRICTED_CATEGORIES.includes(data.category)) await requireOwner(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const done = await moveDocumentCore(supabaseAdmin, data);
+    if (done.changed) {
+      const { logAudit } = await import("@/lib/audit.server");
+      await logAudit(actor, {
+        action: "document.moved",
+        summary: `Moved a file from ${done.from.replace(/_/g, " ")} to ${done.to.replace(/_/g, " ")}. Both files stay on the active list.`,
+        entityType: "document",
+        entityId: done.id,
+        metadata: { driver_id: done.driver_id, from: done.from, to: done.to },
+      });
+    }
+    return { ok: true as const, from: done.from, to: done.to, changed: done.changed };
+  });
+
 /** Staff: put an archived or replaced file back on the active list. */
 export const restoreDocument = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
