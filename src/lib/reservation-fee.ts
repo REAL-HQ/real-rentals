@@ -31,6 +31,14 @@ export const RESERVATION_FEE_DEFAULT_AMOUNT = 50;
 export const RESERVATION_FEE_REASON = "reservation_fee";
 export const reservationFeeNote = (agreementId: string) => `reservation_fee:${agreementId}`;
 
+const FEE_NOTE_AGREEMENT = /^reservation_fee:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
+
+/** The agreement id a Reservation Fee payment's notes name, or null. */
+export function agreementIdFromReservationFeeNotes(notes: unknown): string | null {
+  const match = FEE_NOTE_AGREEMENT.exec(String(notes ?? "").trim());
+  return match ? match[1].toLowerCase() : null;
+}
+
 export type ReservationFeeSettings = { enabled: boolean; amount: number };
 
 export function readReservationFeeSettings(value: unknown): ReservationFeeSettings {

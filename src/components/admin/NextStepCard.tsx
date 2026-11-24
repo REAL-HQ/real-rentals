@@ -20,6 +20,8 @@ export function NextStepCard({
   onRun,
   onActivate,
   onReserve,
+  onBookPickup,
+  onSendPickupLink,
   onReturn,
   onSwap,
   canReserve = false,
@@ -35,6 +37,8 @@ export function NextStepCard({
   onRun: (b: NextStep["blockers"][number]["target"]) => void;
   onActivate: () => void;
   onReserve?: () => void;
+  onBookPickup?: () => void;
+  onSendPickupLink?: () => void;
   onReturn?: () => void;
   /** Opens Swap Vehicle for the active rental; omitted when the viewer cannot swap. */
   onSwap?: () => void;
@@ -115,7 +119,7 @@ export function NextStepCard({
               <Car className="h-3.5 w-3.5" /> Activate Rental
             </button>
           ) : null}
-          {canReserve && model.target.kind !== "reserve" && onReserve ? (
+          {canReserve && !model.pickupNotBooked && model.target.kind !== "reserve" && onReserve ? (
             <button type="button" onClick={onReserve} className={secondary} data-testid="next-step-reserve">
               <Car className="h-3.5 w-3.5" /> Reserved
             </button>
@@ -123,7 +127,7 @@ export function NextStepCard({
           <Button type="button" variant="outline" title="Optional Interview Script" className="h-9 shrink-0 gap-1.5 px-3 text-[12px]" onClick={() => onRun({ kind: "interview" })}>
             <ClipboardList className="h-3.5 w-3.5" /> Interview Script
           </Button>
-          {model.target.kind !== "none" ? (
+          {model.target.kind !== "none" && model.target.kind !== "book_pickup" ? (
             <button
               type="button"
               data-testid="next-step-primary"
@@ -137,6 +141,24 @@ export function NextStepCard({
           ) : null}
         </div>
       </div>
+      {model.pickupNotBooked ? (
+        <div data-testid="pickup-not-booked" className="mt-3 rounded-lg border border-[#F3D19C] bg-[#FFF8EB] px-3 py-2.5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-[#111114]">Pickup Not Booked</p>
+              <p className="mt-0.5 text-[12px] text-[#55555E]">The agreement is signed and the Reservation Fee is paid. No pickup time is booked.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={onBookPickup} className={primary} data-testid="book-pickup">
+                <Car className="h-3.5 w-3.5" /> Book Pickup
+              </button>
+              <button type="button" onClick={onSendPickupLink} className={secondary} data-testid="send-pickup-link">
+                Send Pickup Link
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {!readiness && model.blockers.length ? (
         <ul className="mt-3 divide-y divide-[#F1F1F4] rounded-lg border border-[#F1F1F4]" aria-label="Blocking">
           {model.blockers.map((b, i) => { const fileControls = b.key !== "local" ? renderEvidence?.(b.key) : null; return (

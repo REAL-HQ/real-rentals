@@ -12,6 +12,7 @@ import {
 import { listPickupSlots } from "@/lib/pickup-schedule.functions";
 import type { PickupSlot } from "@/lib/pickup-schedule";
 import { easternParts } from "@/lib/rent-reminders";
+import { reservationPickupDate } from "@/lib/reservations";
 
 const input = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm";
 const primary =
@@ -39,6 +40,9 @@ export function ReserveCarDialog({
   applicationId,
   driverName,
   onSaved,
+  intent = "reserve",
+  defaultVehicleId = null,
+  defaultPickupDate = null,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -46,6 +50,12 @@ export function ReserveCarDialog({
   applicationId?: string | null;
   driverName?: string | null;
   onSaved: () => void;
+  /** book_pickup: profile recovery after a paid Reservation Fee with no slot. */
+  intent?: "reserve" | "book_pickup";
+  /** Application vehicle. Used when it is free to reserve. */
+  defaultVehicleId?: string | null;
+  /** Application start date (YYYY-MM-DD). */
+  defaultPickupDate?: string | null;
 }) {
   const create = useServerFn(createReservation);
   const loadVehicles = useServerFn(listVehiclesForReservation);
@@ -62,36 +72,46 @@ export function ReserveCarDialog({
   const [pickupLocation, setPickupLocation] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const bookingPickup = intent === "book_pickup";
+  const lockedDate = reservationPickupDate(defaultPickupDate);
 
   useEffect(() => {
     if (!open) return;
     setPersonId(applicationId ?? "");
-    setVehicleId(null);
-    setPickupDate(easternParts(new Date()).date);
+    setVehicleId(defaultVehicleId ?? null);
+    setPickupDate(lockedDate ?? easternParts(new Date()).date);
     setPickupTime("09:30");
     setPickupLocation("");
     setNote("");
-    // Pickup Schedule: prefill the earliest open slot and the default location.
+    // Pickup Schedule: prefill an open slot and the default location.
+    // Book Pickup keeps the application start date when one is on file.
     loadSlots()
-      .then(({ slots: open, settings: schedule }) => {
-        setSlots(open);
+      .then(({ slots: openSlots, settings: schedule }) => {
+        setSlots(openSlots);
         setFieldRep(schedule.fieldRep.name);
-        if (open[0]) {
-          setPickupDate(open[0].date);
-          setPickupTime(open[0].time);
+        if (lockedDate) {
+          setPickupDate(lockedDate);
+          const onDay = openSlots.find((s) => s.date === lockedDate);
+          if (onDay) setPickupTime(onDay.time);
+        } else if (openSlots[0]) {
+          setPickupDate(openSlots[0].date);
+          setPickupTime(openSlots[0].time);
         }
         if (schedule.defaultLocation) setPickupLocation((cur) => cur || schedule.defaultLocation || "");
       })
       .catch(() => setSlots([]));
     loadVehicles()
-      .then(setVehicles)
+      .then((rows) => {
+        setVehicles(rows);
+        if (defaultVehicleId && !rows.some((v) => v.id === defaultVehicleId)) setVehicleId(null);
+      })
       .catch(() => setVehicles([]));
     if (!applicationId) {
       loadPeople()
         .then(setPeople)
         .catch(() => setPeople([]));
     }
-  }, [open, applicationId, loadVehicles, loadPeople, loadSlots]);
+  }, [open, applicationId, defaultVehicleId, lockedDate, loadVehicles, loadPeople, loadSlots]);
 
   const submit = async () => {
     const appId = applicationId || personId;
@@ -131,7 +151,7 @@ export function ReserveCarDialog({
                 : res.loginEmail === "failed"
                   ? " Pickup Booked Email Could Not Be Sent."
                   : "";
-      toast.success(`Reserved.${emailNote}`);
+      toast.success(`${bookingPickup ? "Pickup Booked" : "Reserved"}.${emailNote}`);
       onOpenChange(false);
       onSaved();
     } catch (e) {
@@ -145,9 +165,13 @@ export function ReserveCarDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-white sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Reserved{driverName ? `: ${driverName}` : ""}</DialogTitle>
+          <DialogTitle>{bookingPickup ? "Book Pickup" : "Reserved"}{driverName ? `: ${driverName}` : ""}</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">Confirm the pickup appointment. Account login details are emailed when Reserved is saved.</p>
+        <p className="text-sm text-muted-foreground">
+          {bookingPickup
+            ? "Choose the vehicle, date, time, and location. Saving uses the same checks as Reserve A Car. The signed agreement and the paid Reservation Fee are linked to the rental. The Reservation Fee is applied to week 1. The renter gets the Pickup Booked email when this is saved."
+            : "Confirm the pickup appointment. Account login details are emailed when Reserved is saved."}
+        </p>
         <div className="grid gap-3">
           {!applicationId ? (
             <Field label="Approved Driver">
@@ -207,7 +231,7 @@ export function ReserveCarDialog({
             Cancel
           </button>
           <button type="button" className={primary} disabled={busy} onClick={() => void submit()}>
-            {busy ? "Saving…" : "Reserved"}
+            {busy ? "Saving…" : bookingPickup ? "Book Pickup" : "Reserved"}
           </button>
         </DialogFooter>
       </DialogContent>
