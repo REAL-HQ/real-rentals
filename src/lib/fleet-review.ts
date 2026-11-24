@@ -233,6 +233,40 @@ export function docPicture(docs: readonly FleetDoc[], app?: Record<string, any> 
   return { have: [...have].sort(), missing_required: [...missing_required], missing_advisory: [...missing_advisory], unreviewed, rejected: [...rejected].sort(), files, unreviewed_files };
 }
 
+export type CategoryFileCounts = { active: number; verified: number; rejected: number; unreviewed: number };
+
+/**
+ * Per-section packet for FLEET. The count fields stay (`active`, `verified`,
+ * `rejected`, `unreviewed`). `files` is every active file, newest first, and
+ * `latest` is `files[0]` so a reader that still looks at one file keeps
+ * working. Review `files`, not only `latest`.
+ */
+export function withCategoryFiles<T extends { id?: string | null; category?: string | null; uploaded_at?: string | null; created_at?: string | null }>(
+  counts: Record<string, CategoryFileCounts>,
+  documents: readonly T[],
+): Record<string, CategoryFileCounts & { latest: T | null; files: T[] }> {
+  const grouped = new Map<string, T[]>();
+  const sorted = [...documents].sort((a, b) => {
+    const byTime = String(b.uploaded_at ?? b.created_at ?? "").localeCompare(String(a.uploaded_at ?? a.created_at ?? ""));
+    if (byTime) return byTime;
+    return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+  });
+  for (const file of sorted) {
+    const category = String(file.category ?? "").trim() || "other";
+    const list = grouped.get(category) ?? [];
+    list.push(file);
+    grouped.set(category, list);
+  }
+  const keys = new Set([...Object.keys(counts), ...grouped.keys()]);
+  const out: Record<string, CategoryFileCounts & { latest: T | null; files: T[] }> = {};
+  for (const key of [...keys].sort()) {
+    const files = grouped.get(key) ?? [];
+    const count = counts[key] ?? { active: files.length, verified: 0, rejected: 0, unreviewed: files.length };
+    out[key] = { ...count, latest: files[0] ?? null, files };
+  }
+  return out;
+}
+
 /**
  * The submitted application with the hard documents on file: what review
  * needs. The hard documents depend on gig status (hardDocCategoriesFor), so

@@ -15,7 +15,9 @@ import {
   retireDocument,
 } from "../src/lib/documents.functions";
 import { computeReadiness } from "../src/lib/readiness";
-import { docPicture, assessForFleet } from "../src/lib/fleet-review";
+import { docPicture, assessForFleet, withCategoryFiles } from "../src/lib/fleet-review";
+import { activeFilesNewestFirst, stepCategoryPage } from "../src/lib/document-category-files";
+import { moveDocumentCore } from "../src/lib/documents.functions";
 import { classifyActiveRenter } from "../src/lib/document-expiry";
 import { addApplicantDocumentCore } from "../src/lib/applicant-document-replace.server";
 
@@ -180,7 +182,8 @@ describe("readiness: any one good file satisfies a section", () => {
   });
   test("the FLEET packet lists every active document and the per-section counts", () => {
     const src = readFileSync("src/lib/fleet-review.server.ts", "utf8");
-    expect(src).toMatch(/documents_by_category: assessment\.docs\.files/);
+    expect(src).toMatch(/documents_by_category: documentsByCategory/);
+    expect(src).toMatch(/withCategoryFiles/);
     expect(src).toMatch(/is_current !== false/);
   });
 });
@@ -240,11 +243,70 @@ describe("renter secure link: add keeps every file", () => {
   });
 });
 
+describe("listing and paging", () => {
+  test("every current file is listed, newest first", () => {
+    const rows = [
+      doc({ id: "old", file_name: "ssa.pdf", created_at: "2026-11-01T15:00:00Z" }),
+      doc({ id: "new", file_name: "uber.pdf", created_at: "2026-11-20T15:00:00Z" }),
+      doc({ id: "gone", is_current: false, created_at: "2026-11-21T15:00:00Z" }),
+      doc({ id: "other", category: "other", created_at: "2026-11-22T15:00:00Z" }),
+    ];
+    expect(activeFilesNewestFirst(rows, "income").map((r) => r.id)).toEqual(["new", "old"]);
+  });
+  test("the preview steps to the next and previous file and stops at the ends", () => {
+    expect(stepCategoryPage(0, 2, "next")).toBe(1);
+    expect(stepCategoryPage(1, 2, "next")).toBe(1);
+    expect(stepCategoryPage(1, 2, "previous")).toBe(0);
+    expect(stepCategoryPage(0, 2, "previous")).toBe(0);
+  });
+});
+
+describe("moving a file keeps both", () => {
+  test("the file changes section and the one left behind stays active", async () => {
+    const db = fakeAdmin({
+      documents: [
+        doc({ id: "ssa", file_name: "ssa.pdf", created_at: "2026-11-01T15:00:00Z" }),
+        doc({ id: "uber", file_name: "uber.pdf", created_at: "2026-11-20T15:00:00Z" }),
+        doc({ id: "note", category: "other", created_at: "2026-11-02T15:00:00Z" }),
+      ],
+      agreements: [],
+    });
+    const moved = await moveDocumentCore(db, { documentId: "uber", category: "other" });
+    expect(moved).toMatchObject({ from: "income", to: "other", changed: true });
+    expect(db.state.documents.find((r) => r.id === "ssa")).toMatchObject({ category: "income", is_current: true, superseded_by: null });
+    expect(db.state.documents.find((r) => r.id === "uber")).toMatchObject({ category: "other", kind: "other", is_current: true, superseded_by: null });
+    expect(db.state.documents.find((r) => r.id === "note")).toMatchObject({ category: "other", is_current: true, superseded_by: null });
+    expect(db.state.documents.filter((r) => r.is_current).length).toBe(3);
+  });
+  test("an agreement cannot be moved into a section that already has a file", async () => {
+    const db = fakeAdmin({ documents: [doc({ id: "ag", category: "agreement", kind: "agreement" })], agreements: [] });
+    await expect(moveDocumentCore(db, { documentId: "ag", category: "income" })).rejects.toThrow(/own section/);
+    expect(db.state.documents[0].category).toBe("agreement");
+  });
+});
+
+describe("FLEET category packet", () => {
+  test("keeps the counts and adds every file plus latest", () => {
+    const counts = { income: { active: 2, verified: 1, rejected: 0, unreviewed: 1 } };
+    const files = [
+      { id: "old", category: "income", uploaded_at: "2026-11-01T15:00:00Z", file_name: "ssa.pdf", url: "https://signed.example/ssa" },
+      { id: "new", category: "income", uploaded_at: "2026-11-20T15:00:00Z", file_name: "uber.pdf", url: "https://signed.example/uber" },
+    ];
+    const packet = withCategoryFiles(counts, files).income;
+    expect(packet.active).toBe(2);
+    expect(packet.verified).toBe(1);
+    expect(packet.latest).toMatchObject({ id: "new", url: "https://signed.example/uber" });
+    expect(packet.files.map((f) => f.id)).toEqual(["new", "old"]);
+  });
+});
+
 describe("UI wiring", () => {
   test("staff section card lists every file with its own actions, no Additional Files grid", () => {
     const src = readFileSync("src/components/admin/ApplicantDocuments.tsx", "utf8");
-    expect(src).toMatch(/moreFiles/);
+    expect(src).toMatch(/category-files-/);
+    expect(src).toMatch(/open-files-/);
     expect(src).toMatch(/archiveDocument/);
+    expect(src).toMatch(/moveDocument/);
     expect(src).toMatch(/replacesDocumentId|setReplacing/);
     expect(src).toMatch(/multiple=\{isMultiFileCategory\(uploadingCategory\)\}/);
     expect(src).not.toMatch(/Additional Files/);

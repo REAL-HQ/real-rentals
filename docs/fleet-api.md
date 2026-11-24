@@ -90,9 +90,10 @@ while Off: `409 {"reason":"switched_off"}`, nothing saved.
   `<lead_id>/internal/<category>-<uuid>.<ext>`, documents row with
   visibility team only (`["admin"]`), `review_status` "uploaded". Nothing is
   verified or approved, nothing on the application changes and the driver is
-  not told. A new file in a single-file category (e.g. `license_front`)
-  replaces the current one like a staff upload, except a file staff already
-  verified is never replaced (`409 {"reason":"verified_on_file"}`).
+  not told. Every category FLEET may file keeps every file. A new upload
+  adds a file. It does not replace the one already there. `agreement` and
+  `rental_application` are refused, so this call never supersedes a signed
+  agreement.
 - Idempotent: the same `idempotency_key`, or the same bytes for the same driver
   and category, returns `200 {"duplicate":true,"document_id":…}` without saving
   again. A key reused for a different file is `409`.
