@@ -1,8 +1,9 @@
 /**
  * Pickup Not Booked: the lead is approved, a current agreement is signed, and
- * the Reservation Fee is paid, but no reserved, on-hold, or active rental
- * exists yet. The car is held only once a pickup slot is booked
- * (createReservationCore). Client-safe. No phone numbers.
+ * the Reservation Fee is paid, but no pickup is booked. A Pending Reservation
+ * (fee paid, insurance card not issued, no pickup time) is not a booked
+ * pickup, so Book Pickup still shows and createReservationCore reuses that
+ * row. reserved, on_hold, and active hide it. Client-safe. No phone numbers.
  */
 
 export type PickupNotBookedState = {
