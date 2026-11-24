@@ -65,6 +65,7 @@ const STATUS_LABEL: Record<string, string> = {
   maintenance: "In Maintenance",
   unavailable: "Unavailable",
   reserved: "Reserved",
+  pending_reservation: "Pending Reservation",
   archived: "Archived",
   sold: "Sold",
   for_sale: "For Sale",

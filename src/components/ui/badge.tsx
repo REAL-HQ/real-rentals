@@ -22,6 +22,7 @@ const badgeVariants = cva(
         white: "border-border bg-white text-muted-foreground",
         neutral: "border-border bg-secondary text-muted-foreground",
         sale: "border-[#007AFF]/30 bg-[#E8F3FF] text-[#007AFF]",
+        pending: "border-[#E6B325]/50 bg-[#FFF4CC] text-[#7A5B00]",
       },
     },
     defaultVariants: {

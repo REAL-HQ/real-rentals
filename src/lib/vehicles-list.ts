@@ -154,6 +154,7 @@ export function availabilityLabel(row: Pick<VehicleListRow, "on_rent" | "status"
   if (row.on_rent) return "Rented";
   if (row.status === "onboarding") return "Needs Setup";
   if (row.status === "for_sale") return "For Sale";
+  if (row.status === "pending_reservation") return "Pending Reservation";
   return (row.status ?? "—").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 

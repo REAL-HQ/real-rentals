@@ -594,6 +594,12 @@ export async function handleFleetApplicantDecision(request: Request, deps: Decis
     if (!Array.isArray(upd.data) || upd.data.length !== 1) {
       return fleetJson(409, { ok: false, error: "The application changed before it could be declined. Nothing was changed." });
     }
+    try {
+      const { releasePendingReservation } = await import("@/lib/pending-reservation.server");
+      await releasePendingReservation(admin, { applicationId: leadId, reason: "application_declined" });
+    } catch (err) {
+      console.error("[fleet-review] pending reservation release failed", err);
+    }
     const ins = await record("declined", { skip_notify: skipNotify === true });
     if (ins.error) console.error("[fleet-review] decline decision not recorded", ins.error?.code ?? "", ins.error?.message ?? "");
     const lines = [declineProfileLine(FLEET_ACTOR_LABEL, now, reason)];

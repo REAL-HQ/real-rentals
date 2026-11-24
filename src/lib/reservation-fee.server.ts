@@ -57,25 +57,14 @@ const stripeClient = (deps: ReservationFeeDeps) => coreStripeClient(deps);
 const audit = (deps: ReservationFeeDeps) => deps.audit ?? (async (e: any) => (await import("@/lib/audit.server")).logAudit(null, e));
 
 
-/** Mark an open reservation for this application as fee paid (applied to week 1). */
+/**
+ * The Reservation Fee is paid. An existing reserved row is marked applied.
+ * When no pickup row exists, the assigned car gets a Pending Reservation
+ * (pending-reservation.server.ts) so it is no longer Available.
+ */
 export async function holdReservationForFee(admin: Admin, applicationId: string, fee: { id: string; amount: number }): Promise<string | null> {
-  const r = await admin.from("rentals").select("id,status").eq("application_id", applicationId).eq("status", "reserved").limit(1);
-  const res = ((r?.data ?? []) as any[])[0];
-  if (!res) return null;
-  await admin.from("rentals").update({
-    reservation_deposit_required: true,
-    reservation_deposit_amount: fee.amount,
-    // "applied": a Reservation Fee is credited to week 1, never carried as a security deposit.
-    reservation_deposit_status: "applied",
-    reservation_deposit_payment_id: fee.id,
-  }).eq("id", res.id).eq("status", "reserved");
-  await admin.from("payments").update({ rental_id: res.id }).eq("id", fee.id).is("rental_id", null);
-  await (await import("@/lib/booking-links.server")).linkOrphansToRental(admin, res.id as string);
-  try {
-    const { maybeConfirmReservation } = await import("@/lib/reservation-confirmation.server");
-    await maybeConfirmReservation(admin, { rentalId: res.id });
-  } catch { /* never fails the charge */ }
-  return res.id as string;
+  const { holdVehicleForPaidReservationFee } = await import("@/lib/pending-reservation.server");
+  return holdVehicleForPaidReservationFee(admin, applicationId, fee);
 }
 
 /**

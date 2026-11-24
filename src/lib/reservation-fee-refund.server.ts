@@ -223,7 +223,7 @@ async function markRentalRefunded(admin: Admin, rentalId: string | null, applica
   };
   if (rentalId) return mark(rentalId);
   if (!applicationId) return null;
-  const r = await admin.from("rentals").select("id,status").eq("application_id", applicationId).eq("status", "reserved").limit(1);
+  const r = await admin.from("rentals").select("id,status").eq("application_id", applicationId).in("status", ["reserved", "pending_reservation"]).limit(1);
   const res = ((r?.data ?? []) as any[])[0];
   return res?.id ? mark(res.id) : null;
 }
@@ -387,6 +387,12 @@ export async function refundReservationFee(
   });
   const markedRental = await markRentalRefunded(admin, rentalId, applicationId);
   rentalId = markedRental ?? rentalId;
+  try {
+    const { releasePendingReservation } = await import("@/lib/pending-reservation.server");
+    await releasePendingReservation(admin, { applicationId, reason: "fee_refunded" });
+  } catch (err) {
+    console.error("[reservation-fee-refund] pending reservation release failed", err);
+  }
 
   const refundRowId = await recordRefundRow(admin, {
     payment_id: payment.id,

@@ -539,6 +539,15 @@ export async function voidDocument(admin: any, id: string, actor: Actor | null):
   if (error) throw new Error(error.message);
   if (data === "voided") {
     await logAudit(actor, { action: "document.voided", summary: "eSign document voided", entityType: "esign_document", entityId: id });
+    try {
+      const { data: ag } = await admin.from("agreements").select("application_id").eq("id", id).maybeSingle();
+      if (ag?.application_id) {
+        const { releasePendingReservation } = await import("@/lib/pending-reservation.server");
+        await releasePendingReservation(admin, { applicationId: ag.application_id, reason: "agreement_voided" });
+      }
+    } catch (err) {
+      console.error("[esign] pending reservation release failed", err);
+    }
   }
   return data as string;
 }

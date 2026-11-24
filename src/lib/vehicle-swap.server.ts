@@ -193,7 +193,7 @@ async function candidateVehicles(admin: Admin, excludeId: string): Promise<any[]
   if (!rows.length) return [];
   const ids = rows.map((v) => v.id);
   const busy = new Set<string>();
-  const rs = await admin.from("rentals").select("vehicle_id,status").in("vehicle_id", ids).in("status", ["reserved", "on_hold", "active"]);
+  const rs = await admin.from("rentals").select("vehicle_id,status").in("vehicle_id", ids).in("status", ["reserved", "on_hold", "pending_reservation", "active"]);
   for (const r of (rs.data ?? []) as any[]) busy.add(r.vehicle_id);
   const sw = await admin.from(VEHICLE_SWAPS_TABLE).select("to_vehicle_id,status").in("to_vehicle_id", ids).in("status", OPEN_SWAP_STATUSES as string[]);
   for (const s of (sw.data ?? []) as any[]) busy.add(s.to_vehicle_id);
@@ -207,7 +207,7 @@ async function checkReplacement(admin: Admin, ctx: Context, toVehicleId: string,
   if (v.error) return fail(503, "Could not read the replacement car.");
   if (!v.data || v.data.archived_at) return fail(404, "Replacement car not found.");
   if (v.data.status !== "available") return fail(409, "The replacement car must be Available.");
-  const busy = await admin.from("rentals").select("id,status").eq("vehicle_id", toVehicleId).in("status", ["reserved", "on_hold", "active"]).limit(1);
+  const busy = await admin.from("rentals").select("id,status").eq("vehicle_id", toVehicleId).in("status", ["reserved", "on_hold", "pending_reservation", "active"]).limit(1);
   if (busy.error) return fail(503, "Could not check the replacement car's bookings.");
   if ((busy.data ?? []).length) return fail(409, "The replacement car is on another booking.");
   const open = await admin.from(VEHICLE_SWAPS_TABLE).select("id").eq("to_vehicle_id", toVehicleId).in("status", OPEN_SWAP_STATUSES as string[]).limit(2);

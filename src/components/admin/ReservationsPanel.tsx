@@ -29,6 +29,8 @@ import { OnHoldBadge, PutOnHoldDialog, ResumeHoldDialog } from "./OnHoldDialogs"
 import { RenterCreditsCard } from "./RenterCreditsCard";
 import { convertReservationFeeToCredit } from "@/lib/rental-hold.functions";
 import { isOnHoldStatus } from "@/lib/rental-hold";
+import { isPendingReservationStatus, PENDING_RESERVATION_LABEL, WAITING_ON_INSURANCE_CARD } from "@/lib/pending-reservation";
+import { releaseReservationHold } from "@/lib/reservations.functions";
 
 const input = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm";
 const primary = "inline-flex h-9 items-center justify-center rounded-md bg-[#D03020] px-4 text-sm font-semibold text-white hover:bg-[#B52818] disabled:opacity-50";
@@ -144,6 +146,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
   const navigate = useNavigate();
   const load = useServerFn(listReservations);
   const cancel = useServerFn(cancelReservation);
+  const releaseHold = useServerFn(releaseReservationHold);
   const toCredit = useServerFn(convertReservationFeeToCredit);
   const [holdRow, setHoldRow] = useState<ReservationRow | null>(null);
   const [resumeRow, setResumeRow] = useState<ReservationRow | null>(null);
@@ -174,6 +177,20 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  const onReleaseHold = async (row: ReservationRow) => {
+    if (!window.confirm(`Release The Pending Reservation For ${row.driverName ?? "This Driver"}? The Car Returns To Available.`)) return;
+    setBusyId(row.id);
+    try {
+      await releaseHold({ data: { rentalId: row.id } });
+      toast.success("Hold Released");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could Not Release The Hold");
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const onCancel = async (row: ReservationRow) => {
     if (!window.confirm(`Cancel The Reservation For ${row.driverName ?? "This Driver"}?`)) return;
@@ -212,7 +229,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
         </p>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground" data-testid="reserved-count">
-            {rows.length} Reserved Vehicle{rows.length === 1 ? "" : "s"}{rows.some((r) => isOnHoldStatus(r.status)) ? ` (${rows.filter((r) => isOnHoldStatus(r.status)).length} On Hold)` : ""}
+            {rows.length} Reserved Vehicle{rows.length === 1 ? "" : "s"}{rows.some((r) => isOnHoldStatus(r.status)) ? ` (${rows.filter((r) => isOnHoldStatus(r.status)).length} On Hold)` : ""}{rows.some((r) => isPendingReservationStatus(r.status)) ? ` (${rows.filter((r) => isPendingReservationStatus(r.status)).length} Pending Reservation)` : ""}
           </span>
           {canManage ? (
             <button type="button" className={primary} onClick={() => setReserveOpen(true)}>
@@ -262,6 +279,12 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                     <td className="px-2 py-2 align-middle font-medium text-[#111114]">
                       <span className="block truncate">{row.driverName ?? "—"}</span>
                       {isOnHoldStatus(row.status) ? <OnHoldBadge reason={row.holdReason} /> : null}
+                      {isPendingReservationStatus(row.status) ? (
+                        <span className="mt-0.5 flex flex-col items-start gap-0.5" data-reservation-status="pending_reservation">
+                          <span className="inline-flex rounded-full bg-[#FFF4CC] px-2 py-0.5 text-[11px] font-medium text-[#7A5B00]">{PENDING_RESERVATION_LABEL}</span>
+                          <span className="text-[11px] text-[#7A5B00]">{WAITING_ON_INSURANCE_CARD}</span>
+                        </span>
+                      ) : null}
                       {row.bookedBy === "renter" ? (
                         <span
                           data-booked-by="renter"
@@ -280,10 +303,16 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                     </td>
                     <td className="px-2 py-2 align-middle whitespace-nowrap">{fmtDate(row.createdAt)}</td>
                     <td className="px-2 py-2 align-middle">
-                      <span className="block whitespace-nowrap">{fmtDate(row.pickupDate)}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {row.pickupTime ? formatReservationTime(row.pickupTime) : "No Time Set"}
-                      </span>
+                      {isPendingReservationStatus(row.status) && !row.pickupTime ? (
+                        <span className="text-[#7A5B00]">Not Booked</span>
+                      ) : (
+                        <>
+                          <span className="block whitespace-nowrap">{fmtDate(row.pickupDate)}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {row.pickupTime ? formatReservationTime(row.pickupTime) : "No Time Set"}
+                          </span>
+                        </>
+                      )}
                     </td>
                     <td className="px-2 py-2 align-middle">
                       <span
@@ -328,7 +357,9 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                               {feeOn && (row.depositStatus === "pending" || row.depositStatus === "not_required") && (
                                 <DropdownMenuItem onSelect={() => setDepositRow(row)}>Record {chargeLabel}</DropdownMenuItem>
                               )}
-                              {isOnHoldStatus(row.status) ? (
+                              {isPendingReservationStatus(row.status) ? (
+                                <DropdownMenuItem onSelect={() => void onReleaseHold(row)}>Release Hold</DropdownMenuItem>
+                              ) : isOnHoldStatus(row.status) ? (
                                 <DropdownMenuItem onSelect={() => setResumeRow(row)}>Resume Reservation</DropdownMenuItem>
                               ) : (
                                 <DropdownMenuItem onSelect={() => setHoldRow(row)}>Put On Hold</DropdownMenuItem>
@@ -336,7 +367,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                               {isOnHoldStatus(row.status) && row.depositPaymentId ? (
                                 <DropdownMenuItem onSelect={() => void onKeepAsCredit(row)}>Keep {chargeLabel} As Credit</DropdownMenuItem>
                               ) : null}
-                              {!isOnHoldStatus(row.status) && <DropdownMenuItem onSelect={() => setSwitchRow(row)}>Switch Vehicle</DropdownMenuItem>}
+                              {!isOnHoldStatus(row.status) && !isPendingReservationStatus(row.status) && <DropdownMenuItem onSelect={() => setSwitchRow(row)}>Switch Vehicle</DropdownMenuItem>}
                               <DropdownMenuItem onSelect={() => void onCancel(row)}>Cancel Reservation</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>

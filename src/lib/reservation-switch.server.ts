@@ -64,7 +64,7 @@ export async function switchReservationVehicleCore(
     .from("rentals")
     .select("id")
     .eq("vehicle_id", data.newVehicleId)
-    .in("status", ["active", RESERVATION_STATUS, "on_hold"])
+    .in("status", ["active", RESERVATION_STATUS, "on_hold", "pending_reservation"])
     .limit(1);
   if (bErr) throw new Error(bErr.message);
   if (busy?.length) throw new Error("That Vehicle Already Has A Rental Or Reservation.");
@@ -119,7 +119,7 @@ export async function switchReservationVehicleCore(
     .from("rentals")
     .select("id")
     .eq("vehicle_id", oldVehicleId)
-    .in("status", ["active", RESERVATION_STATUS, "on_hold"])
+    .in("status", ["active", RESERVATION_STATUS, "on_hold", "pending_reservation"])
     .limit(1);
   if (!still?.length) {
     const target = oldVehicleReleaseStatus(data.oldCarHasIssue);

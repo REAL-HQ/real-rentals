@@ -455,6 +455,14 @@ async function closeOne(admin: any, p: { app: OutreachApp; email: boolean; sms: 
   const claimId = claim.data?.id;
   // Only if nobody changed the status meanwhile.
   const upd = await admin.from("applications").update({ status: "closed" }).eq("id", p.app.id).eq("status", p.app.status).select("id").maybeSingle();
+  if (!upd.error && upd.data) {
+    try {
+      const { releasePendingReservation } = await import("@/lib/pending-reservation.server");
+      await releasePendingReservation(admin, { applicationId: p.app.id, reason: "application_closed" });
+    } catch (err) {
+      console.error("[missing-items] pending reservation release failed", err);
+    }
+  }
   if (upd.error || !upd.data) {
     if (claimId) await admin.from(AUTOCLOSE_TABLE).delete().eq("id", claimId);
     if (upd.error) throw new Error(upd.error.message);

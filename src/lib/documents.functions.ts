@@ -871,6 +871,17 @@ export async function persistConfirmedDocument(
       throw new Error(stamped.error.message || "Could not record the content hash");
     }
   }
+  if (fields.category === "insurance") {
+    try {
+      const { isIssuedRenterInsuranceCard } = await import("@/lib/pending-reservation");
+      if (isIssuedRenterInsuranceCard({ category: fields.category, label: fields.label, is_current: true })) {
+        const { promotePendingReservationOnInsuranceCard } = await import("@/lib/pending-reservation.server");
+        await promotePendingReservationOnInsuranceCard(admin, fields.driver_id);
+      }
+    } catch (err) {
+      console.error("[documents] pending reservation promote failed", err);
+    }
+  }
   // Multi-file categories keep every file current; see MULTI_FILE_CATEGORIES.
   if (isMultiFileCategory(fields.category)) return { id: row.id as string };
   // Renter insurance: a verified card stays current until this upload is reviewed.

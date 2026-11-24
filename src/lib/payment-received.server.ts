@@ -214,8 +214,11 @@ async function bookingState(
   x: { applicationId: string; appStatus: unknown; vehicleId: string | null; vehicle: any; settings: PickupScheduleSettings; location: string | null },
   deps: PaymentReceivedDeps,
 ): Promise<PickupBookingState> {
-  const { data: mine } = await admin.from("rentals").select("id,start_date,reservation_note,vehicle_id").eq("application_id", x.applicationId).eq("status", "reserved").limit(1);
-  const existing = ((mine ?? []) as any[])[0];
+  const { data: mine } = await admin.from("rentals").select("id,start_date,reservation_note,vehicle_id,status").eq("application_id", x.applicationId).in("status", ["reserved", "on_hold", "pending_reservation"]).limit(5);
+  const rows = (mine ?? []) as any[];
+  // A Pending Reservation with no pickup time is not booked yet: the renter
+  // can still pick a slot, and createReservationCore reuses that row.
+  const existing = rows.find((r) => r.status === "reserved" || r.status === "on_hold" || (r.status === "pending_reservation" && readReservationDetails(r.reservation_note).pickupTime));
   if (existing) {
     const b = bookedFrom(existing);
     // A reservation without a pickup time (an old staff record) still means "we'll call".
@@ -225,7 +228,7 @@ async function bookingState(
   if (!["approved", "active"].includes(String(x.appStatus ?? "").toLowerCase())) return { state: "unavailable" };
   const vs = String(x.vehicle.status ?? "").toLowerCase();
   if (x.vehicle.archived_at || ["sold", "retired", "archived", "rented", "unavailable"].includes(vs) || isForSaleVehicleStatus(vs)) return { state: "unavailable" };
-  const { data: busy } = await admin.from("rentals").select("id,application_id").eq("vehicle_id", x.vehicleId).in("status", ["active", "reserved", "on_hold"]).limit(5);
+  const { data: busy } = await admin.from("rentals").select("id,application_id").eq("vehicle_id", x.vehicleId).in("status", ["active", "reserved", "on_hold", "pending_reservation"]).limit(5);
   if (((busy ?? []) as any[]).some((r) => r.application_id !== x.applicationId)) return { state: "unavailable" };
   if (!x.location || x.location.trim().length < 3) return { state: "no_slots" };
   const now = (deps.now ?? (() => new Date()))();

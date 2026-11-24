@@ -10,6 +10,7 @@ export function VehicleStatusBadge({ status, label, className, ...props }: {
 }) {
   const key = (status ?? "").trim().toLowerCase().replace(/ /g, "_");
   const variant = key === "available" ? "white"
+    : key === "pending_reservation" ? "pending"
     : key === "reserved" ? "warning"
     : ["rented", "on_rent"].includes(key) ? "success"
     : key === "assigned" ? "occupied"
