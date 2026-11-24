@@ -13,6 +13,7 @@ import {
 import { DOCUMENT_CONTENT_SHA256_ENABLED } from "@/lib/document-content-sha";
 import { IDENTITY_VERIFICATION_ENABLED } from "@/lib/identity-verification";
 import { applicationResumeAtomicEnabled, deliverApplicationRecovery } from "@/lib/application-recovery.server";
+import { maskEmailOnFile } from "@/lib/email-on-file-mask";
 import { z } from "zod";
 import { SAVE_BUSY_CODE, SAVE_BUSY_MESSAGE } from "@/lib/wizard-save";
 import type { ApprovalEmailStatus } from "@/lib/approval-email";
@@ -529,9 +530,27 @@ export const savePartialApplication = createServerFn({ method: "POST" })
           resubmission_count: (existing.resubmission_count ?? 0) + 1,
           updated_at: new Date().toISOString(),
         } as any).eq("id", primaryId);
+        // The address on file is masked here and nowhere else in this response.
+        const maskedEmailOnFile = maskEmailOnFile(existing.email);
+        try {
+          const { sendPhoneMatchEmailDiffersAlert } = await import("@/lib/phone-match-alert.server");
+          const { keepAlive } = await import("@/lib/after-response.server");
+          await keepAlive(
+            sendPhoneMatchEmailDiffersAlert(supabaseAdmin, {
+              leadId: primaryId,
+              applicantName: data.full_name,
+              newEmail: emailLower,
+              phoneLast4: String(data.phone ?? "").replace(/\D/g, "").slice(-4),
+            }),
+            { maxWaitMs: LEAD_ALERT_WAIT_MS },
+          );
+        } catch (e) {
+          console.error("[phone-match] team alert failed", e);
+        }
         return {
           id: null as string | null, token: null as string | null, existing: true as const,
           linkStatus: "review" as const, linkOk: true, retryAfterSeconds: 0,
+          maskedEmailOnFile,
         };
       }
       // Same email. Resume it only if there is something to resume: a closed,

@@ -47,7 +47,7 @@ export function CityHeroLeadForm({
 
   const navigate = useNavigate();
   const saveApplication = useServerFn(savePartialApplication);
-  const [returning, setReturning] = useState<{ email: string; status: LinkStatus; retryAfterSeconds: number; fresh?: boolean } | null>(null);
+  const [returning, setReturning] = useState<{ email: string; status: LinkStatus; retryAfterSeconds: number; fresh?: boolean; maskedEmailOnFile?: string } | null>(null);
   const getAvail = useServerFn(getAvailability);
   const join = useServerFn(joinWaitlist);
   // How many cars the team says are open right now, set in the back office.
@@ -157,7 +157,14 @@ export function CityHeroLeadForm({
       if (!data.token) {
         // We matched an application that already exists. The link goes to the
         // address on that record, not to whoever filled this form in.
-        setReturning({ email: form.email, status: data.linkStatus ?? "sent", retryAfterSeconds: data.retryAfterSeconds ?? 120, fresh: "fresh" in data && data.fresh === true });
+        const review = data.linkStatus === "review";
+        setReturning({
+          email: review ? "" : form.email,
+          status: data.linkStatus ?? "sent",
+          retryAfterSeconds: data.retryAfterSeconds ?? 120,
+          fresh: "fresh" in data && data.fresh === true,
+          maskedEmailOnFile: "maskedEmailOnFile" in data && typeof data.maskedEmailOnFile === "string" ? data.maskedEmailOnFile : undefined,
+        });
         return;
       }
       markStepOneJustSubmitted();
@@ -198,7 +205,7 @@ export function CityHeroLeadForm({
         <FadeUp delay={80} className="w-full">
           <div ref={cardRef} className="bg-white rounded-2xl shadow-2xl shadow-black/40 p-5 md:p-6 text-left text-foreground">
             {returning !== null ? (
-              <WelcomeBack email={returning.email} initial={returning} fresh={returning.fresh} onBack={() => setReturning(null)} />
+              <WelcomeBack email={returning.status === "review" ? undefined : returning.email} maskedEmailOnFile={returning.maskedEmailOnFile} initial={returning} fresh={returning.fresh} onBack={() => setReturning(null)} />
             ) : joined ? (
               <div className="py-8 text-center">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-real-red/10">
