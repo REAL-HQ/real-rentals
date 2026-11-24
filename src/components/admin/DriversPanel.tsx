@@ -76,6 +76,7 @@ import { createDriverReadVersions } from "@/lib/latest-driver-reads";
 import { DriverDocumentUploadDialog } from "./DriverDocumentUploadDialog";
 import { useDriverDocumentUpload } from "./use-driver-document-upload";
 import { ReserveCarDialog } from "./ReserveCarDialog";
+import { PickupLinkDialog } from "./PickupLinkDialog";
 import { NextStepCard } from "./NextStepCard";
 import { ReturnFlowDialog } from "./ReturnFlowDialog";
 import { DriverSwapDialog } from "./DriverSwapDialog";
@@ -91,6 +92,8 @@ import { NO_PAY_CELLS, type PayCells } from "@/lib/driver-payment-status";
 import { getDriverPayStatuses } from "@/lib/driver-payment-status.functions";
 import { endRental, getActivationReadiness, type ActivationReadiness } from "@/lib/rentals.functions";
 import { clearReservationAfterActivate, getOpenReservationForApplication, getReservationDepositSettings } from "@/lib/reservations.functions";
+import { getPickupNotBooked } from "@/lib/pickup-not-booked.functions";
+import type { PickupNotBookedState } from "@/lib/pickup-not-booked";
 import { reservationBlocksStart } from "@/lib/reservations";
 import { approvalEmailMessage } from "@/lib/approval-email";
 import {
@@ -2104,6 +2107,9 @@ function DriverDetail({
   const [swapOpen, setSwapOpen] = useState(false);
   const [activateOpen, setActivateOpen] = useState(false);
   const [reserveOpen, setReserveOpen] = useState(false);
+  const [bookPickupOpen, setBookPickupOpen] = useState(false);
+  const [pickupLinkOpen, setPickupLinkOpen] = useState(false);
+  const [pickupGap, setPickupGap] = useState<PickupNotBookedState | null>(null);
   const [hasReservation, setHasReservation] = useState(false);
   const [reservationDepositStatus, setReservationDepositStatus] = useState<string | null>(null);
   const [reservationFeeRequired, setReservationFeeRequired] = useState(false);
@@ -2129,6 +2135,7 @@ function DriverDetail({
   const [evidenceSaving, setEvidenceSaving] = useState(false);
   const [pickupPaymentOpen, setPickupPaymentOpen] = useState(false);
   const loadOpenReservation = useServerFn(getOpenReservationForApplication);
+  const loadPickupGap = useServerFn(getPickupNotBooked);
   const loadReservationDepositSettings = useServerFn(getReservationDepositSettings);
   const clearReservation = useServerFn(clearReservationAfterActivate);
   useEffect(() => {
@@ -2161,6 +2168,17 @@ function DriverDetail({
       cancelled = true;
     };
   }, [driver.id, isManager, rentalActive, approved, loadOpenReservation, loadReservationDepositSettings, readinessNonce]);
+  useEffect(() => {
+    if (!isManager || !approved || rentalActive) {
+      setPickupGap(null);
+      return;
+    }
+    let cancelled = false;
+    void loadPickupGap({ data: { applicationId: driver.id } })
+      .then((row) => { if (!cancelled) setPickupGap(row); })
+      .catch(() => { if (!cancelled) setPickupGap(null); });
+    return () => { cancelled = true; };
+  }, [driver.id, isManager, approved, rentalActive, loadPickupGap, readinessNonce]);
   // Pickup is never completed by the account's payment standing: a paid $50
   // Reservation Fee made it "Current" and showed Pickup Complete green before
   // the car was picked up (t493u). Only a running rental completes it.
@@ -2498,7 +2516,8 @@ function DriverDetail({
   const step = primaryStep({ screeningDone, docsComplete, insuranceOk, approved, rentalActive, isManager });
   // One next step for the header and the Overview card, from the server's
   // readiness when it is loaded (see src/lib/next-step.ts).
-  const canReserve = isManager && approved && !rentalActive;
+  const canReserve = isManager && approved && !rentalActive && pickupGap?.openRental !== true;
+  const pickupNotBooked = isManager && pickupGap?.show === true && !hasReservation && !rentalActive;
   // Swap Vehicle from the profile: same Manager/Owner gate as the booking page; the vehicle_swap flag is checked inside the popup.
   const canSwap = (isManager || isOwner) && rentalActive && Boolean(activeRentalId);
   const next = nextStep({
@@ -2508,7 +2527,8 @@ function DriverDetail({
     loading: rentalTabReadinessLoading,
     failed: rentalTabReadinessFailed,
     canReserve,
-    hasReservation,
+    hasReservation: hasReservation || pickupGap?.openRental === true,
+    pickupNotBooked,
   });
   function openSection(tabValue: string, anchor: string) {
     setTab(tabValue);
@@ -2521,6 +2541,7 @@ function DriverDetail({
     else if (t.kind === "record_call") setRecordCallOpen(true);
     else if (t.kind === "approve") requestApprove();
     else if (t.kind === "reserve") { if (!reserveOpen) setReserveOpen(true); }
+    else if (t.kind === "book_pickup") { if (!bookPickupOpen) setBookPickupOpen(true); }
     else if (t.kind === "activate") {
       if (reservationBlocksStart({ depositStatus: reservationDepositStatus, blockStartWhenPending })) {
         toast.error("The Reservation Payment Is Still Pending. Record It Or Turn Off Block Start When Pending In Settings → Deposits.");
@@ -3029,6 +3050,8 @@ function DriverDetail({
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onReserve={() => runTarget({ kind: "reserve" })}
+                  onBookPickup={() => setBookPickupOpen(true)}
+                  onSendPickupLink={() => setPickupLinkOpen(true)}
                   canReserve={canReserve && !hasReservation}
                   canEditCallNotes={Boolean(screening?.interview_completed_at)}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
@@ -3217,6 +3240,8 @@ function DriverDetail({
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
                   onReserve={() => runTarget({ kind: "reserve" })}
+                  onBookPickup={() => setBookPickupOpen(true)}
+                  onSendPickupLink={() => setPickupLinkOpen(true)}
                   canReserve={canReserve && !hasReservation}
                   canEditCallNotes={Boolean(screening?.interview_completed_at)}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
@@ -3437,6 +3462,31 @@ function DriverDetail({
             setReadinessNonce((n) => n + 1);
             onReserved?.();
           }}
+        />
+      ) : null}
+      {bookPickupOpen ? (
+        <ReserveCarDialog
+          open={bookPickupOpen}
+          onOpenChange={setBookPickupOpen}
+          applicationId={driver.id}
+          driverName={driver.full_name}
+          intent="book_pickup"
+          defaultVehicleId={pickupGap?.vehicleId ?? driver.vehicle_id ?? null}
+          defaultPickupDate={pickupGap?.startDate ?? (driver as { contract_start_date?: string | null }).contract_start_date ?? null}
+          onSaved={() => {
+            setHasReservation(true);
+            setPickupGap((g) => (g ? { ...g, show: false, openRental: true } : g));
+            setReadinessNonce((n) => n + 1);
+            onReserved?.();
+          }}
+        />
+      ) : null}
+      {pickupLinkOpen ? (
+        <PickupLinkDialog
+          open={pickupLinkOpen}
+          onOpenChange={setPickupLinkOpen}
+          applicationId={driver.id}
+          driverName={driver.full_name}
         />
       ) : null}
     </div>

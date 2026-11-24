@@ -1592,6 +1592,7 @@ async function sendSignedEmails(
   // (Jonathon Boykins). Now the renter is told the link follows and staff get
   // an ACTION NEEDED email.
   let feeProblem: { amount: number; reason: string } | null = null;
+  let reservationFeeAlreadyPaid = false;
   try {
     const { chargeReservationFeeAfterSigning } = await import("@/lib/reservation-fee.server");
     const { reservationFeeEmailLine, reservationFeePayLink, reservationFeeSigningStep, reservationFeeLinkProblem } = await import("@/lib/reservation-fee");
@@ -1601,6 +1602,7 @@ async function sendSignedEmails(
     if (out) out.reservationFee = reservationFeeSigningStep(fee);
     feeHandled = reservationFeeLine !== null;
     feeProblem = reservationFeeLinkProblem(fee);
+    if (fee.status === "already_paid") reservationFeeAlreadyPaid = true;
     if (feeProblem) {
       // The usual pay-link fallback below still runs (docs/reservation-fee.md).
       const { logAudit } = await import("@/lib/audit.server");
@@ -1608,6 +1610,14 @@ async function sendSignedEmails(
     }
   } catch (e) {
     console.error("[agreement] reservation fee failed", e);
+  }
+  if (reservationFeeAlreadyPaid && ag.application_id) {
+    try {
+      const { alertFeePaidNoPickup } = await import("@/lib/pickup-not-booked.server");
+      await alertFeePaidNoPickup(admin, String(ag.application_id));
+    } catch (e) {
+      console.error("[agreement] fee paid no pickup alert failed", e);
+    }
   }
   if (!feeHandled) try {
     const { createInitialPaymentLink } = await import("@/lib/initial-payment.server");
