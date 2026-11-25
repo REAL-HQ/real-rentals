@@ -31,8 +31,56 @@ export function checkHoldReason(raw: string | null | undefined): { ok: true; rea
   return { ok: true, reason };
 }
 
-export type CreditStatus = "available" | "applied" | "void";
-export const CREDIT_STATUSES: readonly CreditStatus[] = ["available", "applied", "void"];
+export type CreditStatus = "available" | "applied" | "void" | "expired";
+export const CREDIT_STATUSES: readonly CreditStatus[] = ["available", "applied", "void", "expired"];
+
+/** How long an offered Reservation Fee credit lasts. Read from app_settings; never inserted here. */
+export const RESERVATION_FEE_CREDIT_DAYS_KEY = "reservation_fee_credit_days";
+export const DEFAULT_RESERVATION_FEE_CREDIT_DAYS = 90;
+/** A rental that is still moving forward. An offered credit is for a fee that is not on one of these. */
+export const OPEN_RENTAL_STATUSES = ["active", "reserved", "on_hold", "pending_reservation"] as const;
+
+/** A positive whole number of days, otherwise 90. */
+export function reservationFeeCreditDays(value: unknown): number {
+  const raw = typeof value === "number" || typeof value === "string"
+    ? value
+    : value && typeof value === "object" && "days" in value
+      ? (value as { days?: unknown }).days
+      : null;
+  const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : NaN;
+  if (!Number.isFinite(n) || n <= 0 || n > 365) return DEFAULT_RESERVATION_FEE_CREDIT_DAYS;
+  return Math.round(n);
+}
+
+/** expires_at from the fee's payment date (paid_date, else created_at), plus the day count. */
+export function creditExpiresAt(paidAt: string | null | undefined, days: number, now = new Date()): string {
+  const raw = String(paidAt ?? "").trim();
+  const base = raw ? new Date(raw.length === 10 ? `${raw}T12:00:00.000Z` : raw) : now;
+  const start = Number.isNaN(base.getTime()) ? now : base;
+  return new Date(start.getTime() + reservationFeeCreditDays(days) * 86_400_000).toISOString();
+}
+
+/** Available, and not past expires_at. A null expiry (a kept missed-pickup credit) stays open. */
+export function creditStillOpen(credit: { status: string | null; expires_at?: string | null }, now = new Date()): boolean {
+  if (String(credit.status ?? "") !== "available") return false;
+  if (!credit.expires_at) return true;
+  const t = Date.parse(String(credit.expires_at));
+  return Number.isFinite(t) && t > now.getTime();
+}
+
+/** Staff note on an offered credit. Same length as a hold reason, with its own wording. */
+export function checkCreditNote(raw: string | null | undefined): { ok: true; reason: string } | { ok: false; error: string } {
+  const reason = String(raw ?? "").trim().replace(/\s+/g, " ");
+  if (reason.length < HOLD_REASON_MIN) return { ok: false, error: "Enter A Note (At Least 5 Characters)." };
+  if (reason.length > HOLD_REASON_MAX) return { ok: false, error: "Keep The Note Under 300 Characters." };
+  return { ok: true, reason };
+}
+
+/** Marker on a fee a staff member offered as a credit. Distinct from a kept missed-pickup fee. */
+export const OFFERED_CREDIT_NOTE = "offered_credit";
+export function isOfferedCreditNote(notes: string | null | undefined): boolean {
+  return new RegExp(`\\b${OFFERED_CREDIT_NOTE}\\b`).test(String(notes ?? ""));
+}
 
 /** A fee kept for a missed pickup carries `kept:late_pickup:<rental>` in its notes. */
 export function isKeptFeeNote(notes: string | null | undefined): boolean {

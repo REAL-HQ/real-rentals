@@ -75,6 +75,7 @@ export type ReservationFeeOutcome =
   | { status: "no_card"; amount: number; paymentId: string | null }
   | { status: "checkout"; amount: number; paymentId: string; url: string }
   | { status: "paid" | "pending"; amount: number; paymentId: string; last4: string | null }
+  | { status: "covered"; amount: number; paymentId: string }
   | { status: "failed"; amount: number; paymentId: string | null; error: string };
 
 /** Renter-facing line in the Agreement Signed email. */
@@ -102,7 +103,7 @@ export function reservationFeeLinkProblem(o: ReservationFeeOutcome): { amount: n
 /** What the staff "Copy Reservation Fee Link" action returns for an outcome. Client-safe. */
 export function staffReservationFeeLinkResult(o: ReservationFeeOutcome): { ok: true; url: string; amount: number } | { ok: false; message: string } {
   if (o.status === "checkout") return { ok: true, url: o.url, amount: o.amount };
-  if (o.status === "already_paid" || o.status === "paid") return { ok: false, message: "The Reservation Fee Is Already Paid." };
+  if (o.status === "already_paid" || o.status === "paid" || o.status === "covered") return { ok: false, message: "The Reservation Fee Is Already Paid." };
   if (o.status === "pending") return { ok: false, message: "The Reservation Fee Payment Is Still Processing." };
   if (o.status === "off") return { ok: false, message: "The Reservation Fee Is Turned Off." };
   if (o.status === "no_fee_on_agreement" || o.status === "not_found") return { ok: false, message: "No Signed Agreement With A Reservation Fee." };
@@ -150,7 +151,7 @@ export function reservationFeeSigningStep(o: ReservationFeeOutcome | null | unde
     const url = safeCheckoutUrl(o.url);
     return url ? { state: "pay", amount: o.amount, url } : null;
   }
-  if (o.status === "paid" || o.status === "already_paid") return { state: "paid", amount: o.amount };
+  if (o.status === "paid" || o.status === "already_paid" || o.status === "covered") return { state: "paid", amount: o.amount };
   if (o.status === "pending") return { state: "processing", amount: o.amount };
   return null;
 }

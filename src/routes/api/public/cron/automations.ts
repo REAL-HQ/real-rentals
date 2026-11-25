@@ -119,5 +119,14 @@ async function handle(request: Request): Promise<Response> {
   } catch (err) {
     console.error("[reservation-fee-hold] sweep failed", err);
   }
-  return Response.json({ ok: true, ...result, heldNotices, missingItems, missingItemsAutoClose, rateAmendments, creditRetry, licenseAutoRead, leadAlertSweep, reservationFeeHolds });
+  // Offered Reservation Fee credits past their expiry. Null expiry (a kept
+  // missed-pickup credit) is left alone. Nothing is deleted.
+  let reservationFeeCredits: unknown = null;
+  try {
+    const { expireDueReservationFeeCredits } = await import("@/lib/rental-hold.server");
+    reservationFeeCredits = await expireDueReservationFeeCredits(supabaseAdmin);
+  } catch (err) {
+    console.error("[reservation-fee-credit] sweep failed", err);
+  }
+  return Response.json({ ok: true, ...result, heldNotices, missingItems, missingItemsAutoClose, rateAmendments, creditRetry, licenseAutoRead, leadAlertSweep, reservationFeeHolds, reservationFeeCredits });
 }

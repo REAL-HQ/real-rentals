@@ -1674,7 +1674,7 @@ async function sendSignedEmails(
     reservationFeeLine = reservationFeeEmailLine(fee);
     reservationFeePay = reservationFeePayLink(fee);
     if (out) out.reservationFee = reservationFeeSigningStep(fee);
-    feeHandled = reservationFeeLine !== null;
+    feeHandled = reservationFeeLine !== null || fee.status === "covered";
     feeProblem = reservationFeeLinkProblem(fee);
     if (fee.status === "already_paid") reservationFeeAlreadyPaid = true;
     if (feeProblem) {

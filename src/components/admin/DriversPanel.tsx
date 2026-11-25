@@ -78,6 +78,7 @@ import { useDriverDocumentUpload } from "./use-driver-document-upload";
 import { ReserveCarDialog } from "./ReserveCarDialog";
 import { PickupLinkDialog } from "./PickupLinkDialog";
 import { NextStepCard } from "./NextStepCard";
+import { RenterCreditsCard } from "./RenterCreditsCard";
 import { ReturnFlowDialog } from "./ReturnFlowDialog";
 import { DriverSwapDialog } from "./DriverSwapDialog";
 import { RETURN_FLOW_ENABLED } from "@/lib/return-flow";
@@ -3073,6 +3074,13 @@ function DriverDetail({
                   canReserve={canReserve && !hasReservation}
                   canEditCallNotes={Boolean(screening?.interview_completed_at)}
                   onRetry={() => setReadinessNonce((n) => n + 1)}
+                />
+                <RenterCreditsCard
+                  canManage={isManager}
+                  applicationId={driver.id}
+                  driverName={driver.full_name ?? null}
+                  rentals={[]}
+                  showOffer
                 />
                 <BlacklistCard
                   applicationId={driver.id}

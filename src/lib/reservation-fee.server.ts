@@ -157,18 +157,7 @@ export async function chargeReservationFeeAfterSigning(admin: Admin, agreementId
       return { status: "already_paid", amount: Number(row.amount), paymentId: row.id };
     }
     if (row && row.status === "pending") return { status: "pending", amount: Number(row.amount), paymentId: row.id, last4: null };
-    // Signing runs once, but never send a second checkout for the same fee in a re-run
-    // while the stored Checkout is still within 23 hours. An expired link is not reused;
-    // a new session is created on the same unpaid row below.
     const now = deps.now?.() ?? Date.now();
-    if (row && row.status === "unpaid" && deps.reuseCheckout !== false) {
-      const co = (ag as any)?.metadata?.reservation_fee_checkout;
-      const url = co?.payment_id === row.id ? String(co.url ?? "") : "";
-      const created = Date.parse(String(co?.created_at ?? ""));
-      if (/^https:\/\//.test(url) && Number.isFinite(created) && now - created < RESERVATION_FEE_CHECKOUT_TTL_MS) {
-        return { status: "checkout", amount: Number(row.amount), paymentId: row.id, url };
-      }
-    }
     if (!row) {
       const ins = await admin.from("payments").insert({
         driver_id: appId, vehicle_id: ag.vehicle_id ?? null, type: RESERVATION_ROW_TYPE, reason: RESERVATION_FEE_REASON,
@@ -177,7 +166,28 @@ export async function chargeReservationFeeAfterSigning(admin: Admin, agreementId
       if (ins.error || !ins.data) return { status: "failed", amount, paymentId: null, error: "Could not record the Reservation Fee." };
       row = ins.data;
     }
-
+    // An offered credit covers this fee in full. No Checkout, no second collection.
+    try {
+      const { coverReservationFeeWithCredit } = await import("@/lib/rental-hold.server");
+      const covered = await coverReservationFeeWithCredit(admin, { applicationId: appId, paymentId: row.id, amount: Number(row.amount ?? amount) }, { now: () => new Date(now) });
+      if (covered.ok) {
+        try { await holdReservationForFee(admin, appId, { id: row.id, amount: Number(row.amount ?? amount) }); } catch { /* the fee is covered either way */ }
+        return { status: "covered", amount: Number(row.amount ?? amount), paymentId: row.id };
+      }
+    } catch (e) {
+      console.error("[reservation-fee] credit cover failed", e);
+    }
+    // Signing runs once, but never send a second checkout for the same fee in a re-run
+    // while the stored Checkout is still within 23 hours. An expired link is not reused;
+    // a new session is created on the same unpaid row below.
+    if (row && row.status === "unpaid" && deps.reuseCheckout !== false) {
+      const co = (ag as any)?.metadata?.reservation_fee_checkout;
+      const url = co?.payment_id === row.id ? String(co.url ?? "") : "";
+      const created = Date.parse(String(co?.created_at ?? ""));
+      if (/^https:\/\//.test(url) && Number.isFinite(created) && now - created < RESERVATION_FEE_CHECKOUT_TTL_MS) {
+        return { status: "checkout", amount: Number(row.amount), paymentId: row.id, url };
+      }
+    }
     const { data: app } = await admin.from("applications").select("id,full_name,email,phone,stripe_customer_id,stripe_payment_method_id,card_last4").eq("id", appId).maybeSingle();
     const stripe = await stripeClient(deps);
     // Always the Stripe link (Dolmar, t309u and card t315s1710): the card is

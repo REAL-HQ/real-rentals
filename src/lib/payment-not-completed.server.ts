@@ -220,7 +220,7 @@ export async function restartReservationFeeCheckout(admin: Admin, sessionId: unk
       now: () => (deps.now ?? (() => new Date()))().getTime(),
       audit: deps.audit ?? (async () => {}),
     });
-    if (outcome.status === "already_paid" || outcome.status === "paid") return { ok: true, alreadyPaid: true, sessionId: typeof sessionId === "string" ? sessionId : null };
+    if (outcome.status === "already_paid" || outcome.status === "paid" || outcome.status === "covered") return { ok: true, alreadyPaid: true, sessionId: typeof sessionId === "string" ? sessionId : null };
     if (outcome.status === "pending") return { ok: false, message: "Your Reservation Fee is still processing. Please wait a moment, then refresh this page." };
     if (outcome.status === "checkout") {
       const url = safeCheckoutUrl(outcome.url);

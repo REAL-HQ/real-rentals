@@ -37,7 +37,7 @@ export async function handleFleetReservationFeeLink(request: Request, deps: Flee
     metadata: { by: "FLEET", lead_id: lead, status: link.status, reused: link.ok ? link.reused : null, session_id: link.ok ? link.sessionId : null, reason: reason || null },
   }).catch(() => {});
   if (!link.ok) {
-    const code = link.status === "no_signed_agreement" || link.status === "no_fee_on_agreement" || link.status === "not_found" || link.status === "off" ? 409 : link.status === "already_paid" || link.status === "paid" || link.status === "pending" ? 409 : 502;
+    const code = link.status === "no_signed_agreement" || link.status === "no_fee_on_agreement" || link.status === "not_found" || link.status === "off" ? 409 : link.status === "already_paid" || link.status === "paid" || link.status === "pending" || link.status === "covered" ? 409 : 502;
     return fleetJson(code, { ok: false, error: link.message, status: link.status, agreement_id: link.agreementId, sent: false });
   }
   return fleetJson(200, { ok: true, url: link.url, session_id: link.sessionId, expires_at: link.expiresAt, amount: link.amount, reused: link.reused, agreement_id: link.agreementId, lead_id: lead, sent: false });
