@@ -1,5 +1,7 @@
 import { ADDITIONAL_DRIVER_WEEKLY_CENTS } from "@/lib/additional-driver-copy";
 import { ADDITIONAL_DRIVER_PRICE_SETTING, additionalDriverPriceProblem, type AdditionalDriverInput, type AdditionalDriverRow } from "@/lib/additional-drivers";
+import { includedDriverCount, moneyNumber } from "@/lib/agreement-prep";
+import { currentAgreementMerge } from "@/lib/agreement-weekly.server";
 import { logAudit } from "@/lib/audit.server";
 import type { Actor } from "@/lib/roles.server";
 
@@ -49,6 +51,69 @@ export async function listAdditionalDrivers(admin: any, filter: { applicationId?
     throw new Error(known ?? error.message);
   }
   return (data ?? []).map(mapRow);
+}
+
+/**
+ * Approved drivers whose fee is already inside the agreement or rental weekly
+ * amount. A separate Stripe line is refused for those drivers.
+ * Order matches listAdditionalDrivers (created_at ascending).
+ */
+export async function includedAdditionalDriverCount(
+  admin: any,
+  filter: { applicationId?: string | null; rentalId?: string | null },
+): Promise<number> {
+  let applicationId = filter.applicationId ?? null;
+  let rentalWeekly: number | null = null;
+  let vehicleId: string | null = null;
+  if (filter.rentalId) {
+    const { data: rental } = await admin.from("rentals").select("application_id,weekly_rate,vehicle_id").eq("id", filter.rentalId).maybeSingle();
+    applicationId = applicationId ?? (rental?.application_id as string | null) ?? null;
+    rentalWeekly = moneyNumber(rental?.weekly_rate);
+    vehicleId = (rental?.vehicle_id as string | null) ?? null;
+  }
+  if (!vehicleId && applicationId) {
+    const { data: app } = await admin.from("applications").select("vehicle_id").eq("id", applicationId).maybeSingle();
+    vehicleId = (app?.vehicle_id as string | null) ?? null;
+  }
+  let vehicleWeekly: number | null = null;
+  if (vehicleId) {
+    const { data: vehicle } = await admin.from("vehicles").select("weekly_rate").eq("id", vehicleId).maybeSingle();
+    vehicleWeekly = moneyNumber(vehicle?.weekly_rate);
+  }
+  const rows = await listAdditionalDrivers(admin, { applicationId, rentalId: filter.rentalId });
+  const approvedCount = rows.filter((r) => r.status === "approved" && !r.removedAt).length;
+  const merge = await currentAgreementMerge(admin, applicationId);
+  return includedDriverCount({
+    merge,
+    rentalWeekly,
+    vehicleWeekly,
+    approvedCount,
+    feeEach: ADDITIONAL_DRIVER_WEEKLY_CENTS / 100,
+  });
+}
+
+async function driverFeeIncludedFor(
+  admin: any,
+  input: { applicationId: string | null; rentalId: string; rentalWeekly: unknown; vehicleId: string | null; driverId: string },
+): Promise<boolean> {
+  const rows = await listAdditionalDrivers(admin, { rentalId: input.rentalId });
+  const approved = rows.filter((r) => r.status === "approved" && !r.removedAt);
+  const index = approved.findIndex((r) => r.id === input.driverId);
+  if (index < 0) return false;
+  let vehicleWeekly: number | null = null;
+  if (input.vehicleId) {
+    const { data: vehicle } = await admin.from("vehicles").select("weekly_rate").eq("id", input.vehicleId).maybeSingle();
+    vehicleWeekly = moneyNumber(vehicle?.weekly_rate);
+  }
+  const merge = await currentAgreementMerge(admin, input.applicationId);
+  const included = includedDriverCount({
+    merge,
+    rentalWeekly: moneyNumber(input.rentalWeekly),
+    vehicleWeekly,
+    approvedCount: approved.length,
+    feeEach: ADDITIONAL_DRIVER_WEEKLY_CENTS / 100,
+  });
+  return index < included;
 }
 
 export async function reservationFeeSettled(admin: any, applicationId: string | null): Promise<boolean> {
@@ -125,9 +190,19 @@ export async function billAdditionalDriver(admin: any, actor: Actor, id: string,
   const priceId = String((setting.value as { price_id: string }).price_id);
   const rentalId = row.rental_id as string | null;
   if (!rentalId) throw new Error("This driver is not on a rental yet. Nothing was charged.");
-  const { data: rental } = await admin.from("rentals").select("id,stripe_subscription_id").eq("id", rentalId).maybeSingle();
+  const { data: rental } = await admin.from("rentals").select("id,stripe_subscription_id,weekly_rate,vehicle_id,application_id").eq("id", rentalId).maybeSingle();
   const subId = rental?.stripe_subscription_id as string | null;
   if (!subId) throw new Error("This rental has no weekly subscription yet. Nothing was charged.");
+  // The weekly subscription charges rentals.weekly_rate once. When that amount
+  // already includes this driver's fee, a second subscription item would bill it again.
+  const included = await driverFeeIncludedFor(admin, {
+    applicationId: (row.application_id as string | null) ?? (rental?.application_id as string | null) ?? null,
+    rentalId,
+    rentalWeekly: rental?.weekly_rate,
+    vehicleId: (rental?.vehicle_id as string | null) ?? null,
+    driverId: id,
+  });
+  if (included) throw new Error("Included In Weekly Rate. Nothing was charged.");
   const updated = await stripe.subscriptions.update(subId, {
     items: [{ price: priceId, quantity: 1 }],
     proration_behavior: "none",

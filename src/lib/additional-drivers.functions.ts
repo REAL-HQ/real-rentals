@@ -51,14 +51,20 @@ export const saveApplicantAdditionalDrivers = createServerFn({ method: "POST" })
 export const listStaffAdditionalDrivers = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: z.string().uuid().optional(), rentalId: z.string().uuid().optional() }).parse(d))
-  .handler(async ({ data, context }): Promise<{ rows: AdditionalDriverRow[]; reservationFeeSettled: boolean }> => {
+  .handler(async ({ data, context }): Promise<{ rows: AdditionalDriverRow[]; reservationFeeSettled: boolean; includedDriverCount: number }> => {
     const { requireManager } = await import("@/lib/roles.server");
     await requireManager(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { listAdditionalDrivers, reservationFeeSettled } = await import("@/lib/additional-drivers.server");
+    const { includedAdditionalDriverCount, listAdditionalDrivers, reservationFeeSettled } = await import("@/lib/additional-drivers.server");
     const rows = await listAdditionalDrivers(supabaseAdmin, data);
     const applicationId = data.applicationId ?? rows.find((r) => r.applicationId)?.applicationId ?? null;
-    return { rows, reservationFeeSettled: await reservationFeeSettled(supabaseAdmin, applicationId) };
+    let included = 0;
+    try {
+      included = await includedAdditionalDriverCount(supabaseAdmin, { applicationId, rentalId: data.rentalId ?? rows.find((r) => r.rentalId)?.rentalId ?? null });
+    } catch {
+      included = 0;
+    }
+    return { rows, reservationFeeSettled: await reservationFeeSettled(supabaseAdmin, applicationId), includedDriverCount: included };
   });
 
 export const addStaffAdditionalDriver = createServerFn({ method: "POST" })

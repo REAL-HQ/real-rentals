@@ -416,7 +416,8 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
             {row("Amount Due Each Payment", m.payment_amount)}
             {row("Balance Due At Pickup", m.balance_due)}
           </dl>
-          <p className="text-[11px] text-muted-foreground">Balance Due is the first payment less the Reservation Fee. Change the Reservation Fee above and the weekly rate under Rental Details.</p>
+          {m._driver_fee_note ? <p className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-950" role="status">{m._driver_fee_note}</p> : null}
+          <p className="text-[11px] text-muted-foreground">Balance Due At Pickup is the first payment less the Reservation Fee. Amount Due Each Payment includes the Weekly Rate, each approved Additional Driver, and the Damage Waiver when it is accepted.</p>
         </Section>
       )}
 

@@ -144,6 +144,8 @@ describe("staff can add a driver before a rental exists", () => {
   test("the admin section submits through the server function and the vehicle page uses that section", () => {
     const ui = readFileSync("src/components/admin/AdditionalDriversSection.tsx", "utf8");
     expect(ui).toContain("Add Additional Driver");
+    expect(ui).toContain("Included In Weekly Rate");
+    expect(ui).toContain("disabled");
     expect(ui).toContain("useServerFn(addStaffAdditionalDriver)");
     expect(ui).toContain("licensePhotoPath: null");
     expect(ui).toContain("setNonce((n) => n + 1)");
