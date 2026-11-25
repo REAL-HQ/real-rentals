@@ -11,6 +11,7 @@ import {
   isBlankSortValue,
   sortRows,
 } from "../src/lib/admin-table-sort";
+import { countsAsOwed, isZeroMoneyRow, rowOwed } from "../src/lib/payments-summary";
 
 describe("column sort helpers", () => {
   test("first click uses firstDir, second flips, third clears", () => {
@@ -86,6 +87,8 @@ describe("Payments / Charges / Bookings wiring", () => {
     expect(payments).toContain('due: "desc"');
     expect(payments).toContain('sortRows(filtered, (p) => p.due_date || "", "date", "asc")');
     expect(payments).toContain("const totalDue = filtered");
+    expect(payments).toContain("isZeroMoneyRow");
+    expect(payments).toContain("ledgerPayments");
     expect(payments).toContain("sorted.map((p)");
     expect(payments.includes("data-admin-flow")).toBe(false);
   });
@@ -122,5 +125,21 @@ describe("Payments / Charges / Bookings wiring", () => {
     expect(overdue).toContain("rounded-full");
     expect(overdue).toContain("px-2 py-0.5 text-[11px] font-semibold");
     expect(overdue).toContain("DANGER_BADGE");
+  });
+
+  test("a $0 invoice is hidden and does not change Outstanding", () => {
+    const rent = { id: "rent", type: "rent", status: "current", amount: 350, balance_due: 350 };
+    const paused = { id: "zero", type: "rent", status: "paid", amount: 0, balance_due: 0 };
+    const paidDown = { id: "paid", type: "rent", status: "paid", amount: 350, balance_due: 0 };
+    expect(isZeroMoneyRow(paused)).toBe(true);
+    expect(isZeroMoneyRow(paidDown)).toBe(false);
+    expect(isZeroMoneyRow(rent)).toBe(false);
+    const covered = new Set<string>();
+    const all = [rent, paused, paidDown];
+    const visible = all.filter((p) => !isZeroMoneyRow(p));
+    const outstanding = (rows: typeof all) => rows.filter((p) => countsAsOwed(p, covered)).reduce((s, p) => s + rowOwed(p), 0);
+    expect(outstanding(all)).toBe(350);
+    expect(outstanding(visible)).toBe(350);
+    expect(visible.map((p) => p.id)).toEqual(["rent", "paid"]);
   });
 });

@@ -244,18 +244,39 @@ export function oneOffIdentity(input: { paymentIntent: Obj; session?: Obj; charg
 const ROW_TYPES = new Set(["rent", "deposit", "late_fee", "toll", "damage", "fee"]);
 
 /**
- * payments.type for a one-off payment: a known reason keeps its type. With no
- * reason, a payment from a renter on an active rental is rent (Dolmar, Nov 19
- * 2026: Payment Links FLEET sends for rent, including $50/day, were landing as
- * Fee, so Schrita's $350 never settled her week). Anything else is a fee.
+ * Rent Payment Link tags that are not the literal reason "rent". FLEET tags
+ * Regina's $50/day links `daily_50`. `daily_rent` and `weekly_rent` are the
+ * same kind of tag. No other rent-style reason is written where this app
+ * creates a link (`reason: "rent"` only).
+ */
+export const RENT_LINK_REASONS = ["daily_50", "daily_rent", "weekly_rent"] as const;
+
+export function isRentLinkReason(reason: string | null | undefined): boolean {
+  const key = String(reason ?? "").trim().toLowerCase();
+  return key === "rent" || (RENT_LINK_REASONS as readonly string[]).includes(key);
+}
+
+/**
+ * payments.type for a one-off payment: a known reason keeps its type. A
+ * rent-style tag (daily_50, daily_rent, weekly_rent) is rent even though it
+ * is not the stored type name. With no reason, a payment from a renter on an
+ * active rental is rent (Dolmar, Nov 19 2026: Payment Links FLEET sends for
+ * rent, including $50/day, were landing as Fee). Anything else is a fee.
  */
 export function oneOffRowType(
   reason: string | null,
   ctx: { activeRental?: boolean } = {},
 ): "rent" | "deposit" | "late_fee" | "toll" | "damage" | "fee" {
-  if (reason && ROW_TYPES.has(reason)) return reason as any;
-  if (!reason && ctx.activeRental) return "rent";
+  const key = String(reason ?? "").trim().toLowerCase();
+  if (key && ROW_TYPES.has(key)) return key as any;
+  if (isRentLinkReason(key)) return "rent";
+  if (!key && ctx.activeRental) return "rent";
   return "fee";
+}
+
+/** The rent period a link names: the first week, else for_date / date. */
+export function rentPeriodOf(...objs: Obj[]): string | null {
+  return weeksOf(...objs)[0] ?? forDateOf(...objs);
 }
 
 /**

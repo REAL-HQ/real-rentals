@@ -74,6 +74,14 @@ export function rowOwed(p: SummaryPayment): number {
 }
 
 /**
+ * A $0.00 row, such as the invoice Stripe writes when a subscription is paused.
+ * Hidden from the Payments list. It owes nothing, so Outstanding is unchanged.
+ */
+export function isZeroMoneyRow(p: { amount?: unknown; balance_due?: unknown }): boolean {
+  return num(p.amount) === 0 && rowOwed(p as SummaryPayment) === 0;
+}
+
+/**
  * A Reservation Fee that is not paid, refunded, void or waived. Checkout leaves
  * the row unpaid while the renter still holds the car; that is a pending hold,
  * not money owed. isReservationRow reads type, reason and notes.
