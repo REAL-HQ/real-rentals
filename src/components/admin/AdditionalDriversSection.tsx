@@ -25,13 +25,21 @@ export function AdditionalDriverBadge({ count }: { count: number }) {
   );
 }
 
+function feeIncluded(row: AdditionalDriverRow, rows: AdditionalDriverRow[], includedDriverCount: number): boolean {
+  if (row.stripeSubscriptionItemId || row.status !== "approved" || row.removedAt) return false;
+  const index = rows.filter((r) => r.status === "approved" && !r.removedAt).findIndex((r) => r.id === row.id);
+  return index >= 0 && index < includedDriverCount;
+}
+
 export function AdditionalDriversPanel({
   rows,
   reservationFeeSettled,
+  includedDriverCount = 0,
   onChanged,
 }: {
   rows: AdditionalDriverRow[];
   reservationFeeSettled: boolean;
+  includedDriverCount?: number;
   onChanged: () => void;
 }) {
   const approve = useServerFn(approveAdditionalDriver);
@@ -60,6 +68,7 @@ export function AdditionalDriversPanel({
     <ul className="divide-y divide-border rounded-xl border border-border bg-white">
       {rows.map((row) => {
         const mayDrive = additionalDriverMayDrive({ ...row, reservationFeeSettled });
+        const included = feeIncluded(row, rows, includedDriverCount);
         return (
           <li key={row.id} className="space-y-2 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -76,7 +85,7 @@ export function AdditionalDriversPanel({
               <div>Expires {row.licenseExpiration || "—"}</div>
               <div>Signed {row.signedAt ? "Yes" : "Not Yet"}</div>
               <div>Insurance {row.insuranceAddedAt ? row.insuranceAddedAt.slice(0, 10) : "Not Added"}</div>
-              <div>Weekly bill {row.stripeSubscriptionItemId ? "$100" : "Not Added"}</div>
+              <div>Weekly Bill {row.stripeSubscriptionItemId ? "$100" : included ? "Included In Weekly Rate" : "Not Added"}</div>
               <div>{mayDrive ? "May Drive" : "May Not Drive Yet"}</div>
             </dl>
             {row.status !== "removed" ? (
@@ -84,7 +93,8 @@ export function AdditionalDriversPanel({
                 {row.status === "pending" ? <button type="button" className={btn} disabled={busy === row.id} onClick={() => run(row.id, () => approve({ data: { id: row.id } }))}>Approve</button> : null}
                 {row.status === "pending" ? <button type="button" className={btn} disabled={busy === row.id} onClick={() => run(row.id, () => decline({ data: { id: row.id } }))}>Decline</button> : null}
                 {row.status === "approved" && !row.insuranceAddedAt ? <button type="button" className={btn} disabled={busy === row.id} onClick={() => run(row.id, () => insure({ data: { id: row.id } }))}>Mark Insurance Added</button> : null}
-                {row.status === "approved" && !row.stripeSubscriptionItemId ? <button type="button" className={btn} disabled={busy === row.id} onClick={() => run(row.id, () => bill({ data: { id: row.id } }))}>Add $100/Week</button> : null}
+                {row.status === "approved" && !row.stripeSubscriptionItemId && included ? <button type="button" className={btn} disabled>Included In Weekly Rate</button> : null}
+                {row.status === "approved" && !row.stripeSubscriptionItemId && !included ? <button type="button" className={btn} disabled={busy === row.id} onClick={() => run(row.id, () => bill({ data: { id: row.id } }))}>Add $100/Week</button> : null}
                 <button type="button" className={btn} disabled={busy === row.id} onClick={() => run(row.id, () => remove({ data: { id: row.id } }))}>Remove</button>
               </div>
             ) : null}
@@ -185,6 +195,7 @@ export function AdditionalDriversSection({ applicationId, rentalId }: { applicat
   const add = useServerFn(addStaffAdditionalDriver);
   const [rows, setRows] = useState<AdditionalDriverRow[]>([]);
   const [fee, setFee] = useState(false);
+  const [includedDriverCount, setIncludedDriverCount] = useState(0);
   const [hidden, setHidden] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [adding, setAdding] = useState(false);
@@ -194,7 +205,7 @@ export function AdditionalDriversSection({ applicationId, rentalId }: { applicat
     if (!applicationId && !rentalId) return;
     let live = true;
     void load({ data: { applicationId: applicationId ?? undefined, rentalId: rentalId ?? undefined } })
-      .then((res) => { if (live) { setHidden(false); setRows(res.rows); setFee(res.reservationFeeSettled); } })
+      .then((res) => { if (live) { setHidden(false); setRows(res.rows); setFee(res.reservationFeeSettled); setIncludedDriverCount(res.includedDriverCount ?? 0); } })
       .catch(() => { if (live) setHidden(true); });
     return () => { live = false; };
   }, [applicationId, rentalId, nonce, load]);
@@ -229,7 +240,7 @@ export function AdditionalDriversSection({ applicationId, rentalId }: { applicat
           }}
         />
       ) : null}
-      <AdditionalDriversPanel rows={rows} reservationFeeSettled={fee} onChanged={() => setNonce((n) => n + 1)} />
+      <AdditionalDriversPanel rows={rows} reservationFeeSettled={fee} includedDriverCount={includedDriverCount} onChanged={() => setNonce((n) => n + 1)} />
     </section>
   );
 }

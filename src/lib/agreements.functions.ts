@@ -702,8 +702,8 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
     min_term_end: { label: "Minimum-term end date", why: "Needs the contract start date and the template's minimum term (weeks).", fix: pay },
     damage_waiver: { label: "Damage Waiver: Accepted or Declined", why: "This agreement prints the renter's Damage Waiver choice, and the renter initials it. Ask the renter and record the answer under Payment & Damage Waiver." },
     payment_method: { label: "Payment method", why: "This agreement prints how the renter will pay rent. Choose it under Payment & Damage Waiver." },
-    payment_amount: { label: "Payment schedule (Weekly or Every 4 Weeks)", why: "The amount due each payment is calculated from the weekly rate, the Damage Waiver choice and the payment schedule. Choose all three." },
-    balance_due: { label: "Balance due at pickup", why: "Calculated as the first payment less the Reservation Fee. It needs the weekly rate, the Damage Waiver choice and the payment schedule." },
+    payment_amount: { label: "Payment Schedule (Weekly or Every 4 Weeks)", why: "The amount due each payment is calculated from the weekly rate, each approved Additional Driver, the Damage Waiver choice and the payment schedule. Choose all three." },
+    balance_due: { label: "Balance Due At Pickup", why: "Calculated as the first payment less the Reservation Fee. The first payment includes each approved Additional Driver and the Damage Waiver when it is accepted." },
     vehicle_owner: { label: "Vehicle owner as shown on the registration", why: "This agreement names the registered owner of the vehicle. Enter the name exactly as printed on the registration." },
     additional_drivers: { label: "Approved additional drivers (or None)", why: "Staff must state the approved additional drivers. This entry arrives with Driver Agreement Preparation; nothing is assumed until then." },
   };
@@ -779,10 +779,17 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     const amountStyle = lib?.reservationStyle === "amount" || usesField(tpl.body, "balance_due");
     // v1.14 money rows: amount due each payment and the balance due at pickup.
     if (usesField(tpl.body, "balance_due") || usesField(tpl.body, "payment_amount")) {
-      const { paymentRows, parseUsd } = await import("@/lib/agreement-prep");
-      const rows = paymentRows(prep, { weeklyRate: parseUsd(built.data.weekly_rate), waiverFee: parseUsd(terms?.damage_waiver_fee) });
+      const { paymentRows, parseUsd, moneyNumber, BILLING_MERGE_KEY } = await import("@/lib/agreement-prep");
+      const rows = paymentRows(prep, {
+        weeklyRate: parseUsd(built.data.weekly_rate),
+        waiverFee: parseUsd(terms?.damage_waiver_fee),
+        additionalDriverWeeklyFee: parseUsd(terms?.fee_additional_driver),
+        catalogWeeklyRate: moneyNumber(built.vehicle?.weekly_rate),
+      });
       built.data.payment_amount = rows.payment_amount;
       built.data.balance_due = rows.balance_due;
+      if (rows.billing) (built.data as Record<string, string>)[BILLING_MERGE_KEY] = JSON.stringify(rows.billing);
+      if (rows.driverFeeNote) (built.data as Record<string, string>)._driver_fee_note = rows.driverFeeNote;
       built.blockers.push(...rows.blockers);
     }
     const line = amountStyle
@@ -1084,6 +1091,13 @@ export async function issueAgreement(
     .select("id")
     .single();
   if (error) throw new Error(error.message);
+  // The weekly amount billing charges (rent + Additional Driver fees + Damage
+  // Waiver) is written here, on a new send only. The agreement row itself is
+  // not updated again, and a resend does not come through here.
+  if (!amendment) {
+    const { recordAgreementWeeklyRate } = await import("@/lib/agreement-weekly.server");
+    await recordAgreementWeeklyRate(admin, applicationId, numberedMerge as Record<string, unknown>, { amendment: false });
+  }
   // Agreements are prepared before the rental exists; if the renter already has
   // a live reservation/rental, tie this one to it now so the booking shows it.
   if (!amendment) await (await import("@/lib/booking-links.server")).linkAgreementToLiveRental(admin, row.id as string);

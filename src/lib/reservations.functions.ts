@@ -367,7 +367,8 @@ export async function createReservationCore(
     throw new Error("That Pickup Slot Is Already Booked.");
   }
 
-  const weekly = typeof vehicle.weekly_rate === "number" ? vehicle.weekly_rate : 0;
+  const { weeklyRateForApplication } = await import("@/lib/agreement-weekly.server");
+  const weekly = (await weeklyRateForApplication(admin, data.applicationId, vehicle.weekly_rate)) ?? 0;
   const insertRow: Record<string, unknown> = {
     driver_id: app.user_id,
     vehicle_id: data.vehicleId,
