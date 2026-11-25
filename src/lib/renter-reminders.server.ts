@@ -40,7 +40,7 @@ export type AgreementStep = "four_hour" | "morning";
 
 export type ReminderDeps = {
   now?: () => Date;
-  sendSms?: (a: { to: string; body: string; kind: string; applicationId: string; rentalId?: string | null }) => Promise<any>;
+  sendSms?: (a: { to: string; body: string; kind: string; applicationId: string; rentalId?: string | null; requireConsent?: boolean }) => Promise<any>;
   sendEmail?: (a: { to: string; subject: string; html: string; track: { workflow: string }; idempotencyKey: string }) => Promise<any>;
   gates?: { pickup: "send" | "off" | "held"; agreement: "send" | "off" | "held" };
   dryRun?: boolean;
@@ -227,6 +227,58 @@ async function deliver(
   return { key, kind, channel: "email", status };
 }
 
+/** Pickup texts also go to approved additional drivers who consented. Rent and payment texts do not. */
+async function copyVehicleNotice(
+  admin: Admin,
+  send: { sendSms: ReminderDeps["sendSms"] },
+  args: { key: string; kind: string; sms: string; applicationId: string; rentalId: string },
+): Promise<ReminderOutcome[]> {
+  if (!send.sendSms) return [];
+  const { consentedAdditionalDriverPhones } = await import("@/lib/additional-drivers.server");
+  const drivers = await consentedAdditionalDriverPhones(admin, { rentalId: args.rentalId, applicationId: args.applicationId });
+  const outcomes: ReminderOutcome[] = [];
+  for (const driver of drivers) {
+    const key = `${args.key}:driver:${driver.id}`;
+    const claimed = await claim(admin, { key, kind: args.kind, application_id: args.applicationId, rental_id: args.rentalId, status: "claimed" });
+    if (claimed === null) return outcomes;
+    if (!claimed) continue;
+    const result = await send.sendSms({ to: driver.phone, body: args.sms, kind: args.kind, applicationId: args.applicationId, rentalId: args.rentalId, requireConsent: false });
+    const status = result.ok ? "sent" : result.skipped ? `skipped:${result.reason}` : "failed";
+    await finish(admin, key, "sms", status, result.ok ? null : String(("error" in result ? result.error : result.reason) ?? "").slice(0, 300));
+    outcomes.push({ key, kind: args.kind, channel: "sms", status, body: args.sms });
+  }
+  return outcomes;
+}
+
+/** Each unsigned additional driver gets their own signing reminder. It does not include a new link. */
+async function remindUnsignedAdditionalDrivers(
+  admin: Admin,
+  send: { sendSms: ReminderDeps["sendSms"] },
+  args: { agreementId: string; applicationId: string; rentalId: string | null; step: string; sms: string },
+): Promise<ReminderOutcome[]> {
+  if (!send.sendSms) return [];
+  const { data: recipients } = await admin.from("esign_recipients").select("id,email,status,role").eq("document_id", args.agreementId).eq("role", "signer");
+  const openEmails = new Set((recipients ?? []).filter((r: { status?: string; email?: string }) => r.status !== "signed" && r.email).map((r: { email: string }) => r.email.trim().toLowerCase()));
+  const { consentedAdditionalDriverPhones } = await import("@/lib/additional-drivers.server");
+  const drivers = await consentedAdditionalDriverPhones(admin, { applicationId: args.applicationId, rentalId: args.rentalId });
+  const outcomes: ReminderOutcome[] = [];
+  for (const driver of drivers) {
+    const { data: row } = await admin.from("rental_additional_drivers").select("email").eq("id", driver.id).maybeSingle();
+    const email = String(row?.email ?? "").trim().toLowerCase();
+    if (!email || !openEmails.has(email)) continue;
+    const key = `agreement:${args.agreementId}:${args.step}:driver:${driver.id}`;
+    const kind = `agreement_sign_${args.step}`;
+    const claimed = await claim(admin, { key, kind, application_id: args.applicationId, rental_id: args.rentalId, agreement_id: args.agreementId, status: "claimed" });
+    if (claimed === null) return outcomes;
+    if (!claimed) continue;
+    const result = await send.sendSms({ to: driver.phone, body: args.sms, kind, applicationId: args.applicationId, rentalId: args.rentalId, requireConsent: false });
+    const status = result.ok ? "sent" : result.skipped ? `skipped:${result.reason}` : "failed";
+    await finish(admin, key, "sms", status, result.ok ? null : String(("error" in result ? result.error : result.reason) ?? "").slice(0, 300));
+    outcomes.push({ key, kind, channel: "sms", status, body: args.sms });
+  }
+  return outcomes;
+}
+
 export async function runRenterReminders(admin: Admin, deps: ReminderDeps = {}): Promise<{ ok: boolean; reason?: string; outcomes: ReminderOutcome[] }> {
   const now = deps.now ? deps.now() : new Date();
   let gates = deps.gates;
@@ -277,6 +329,7 @@ export async function runRenterReminders(admin: Admin, deps: ReminderDeps = {}):
         if (!c) continue;
         const email = step === "booked" ? null : { ...pickupEmail(step, facts), workflow: "pickup_reminder" };
         outcomes.push(await deliver(admin, send, key, kind, app, sms, email, r.id));
+        outcomes.push(...await copyVehicleNotice(admin, send, { key, kind, sms, applicationId: app.id, rentalId: r.id }));
       }
     }
   }
@@ -306,6 +359,7 @@ export async function runRenterReminders(admin: Admin, deps: ReminderDeps = {}):
         if (!c) continue;
         const email = { ...agreementEmail(step, firstNameOf(app.full_name)), workflow: "agreement_sign_reminder" };
         outcomes.push(await deliver(admin, send, key, kind, { ...app, email: a.signer_email || app.email }, sms, email, a.rental_id ?? null));
+        outcomes.push(...await remindUnsignedAdditionalDrivers(admin, send, { agreementId: a.id, applicationId: app.id, rentalId: a.rental_id ?? null, step, sms }));
       }
     }
   }

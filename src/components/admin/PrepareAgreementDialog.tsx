@@ -14,6 +14,8 @@ import { readAgreementLicense, readWrittenAgreement } from "@/lib/agreement-lice
 import { LIBRARY, DRAFT_STATUS_LABEL, OWNER_APPROVED_LIBRARY, acknowledgmentsOf } from "@/lib/agreement-library";
 import { HOME_ADDRESS_LABEL, missingHomeAddressParts } from "@/lib/agreement-home-address";
 import { DANGER_BADGE } from "@/lib/badge-tone";
+import { listStaffAdditionalDrivers } from "@/lib/additional-drivers.functions";
+import { prepDriversFromApproved } from "@/lib/additional-drivers";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
 type Res = {
@@ -60,6 +62,7 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const doSend = useServerFn(sendAgreement);
   const doReadLicense = useServerFn(readAgreementLicense);
   const doReadAgreement = useServerFn(readWrittenAgreement);
+  const loadExtraDrivers = useServerFn(listStaffAdditionalDrivers);
   // Weekly by card autopay is how every rental is paid today (and what Move
   // Forward / FLEET sends); staff can change either. The Damage Waiver stays
   // unanswered until staff record the renter's choice.
@@ -80,11 +83,27 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
   const [regen, setRegen] = useState(0);
   // The Reservation Fee switch preselects Required (once); staff can still change it.
   const [feeDefaulted, setFeeDefaulted] = useState(false);
+  const [driversPrefilled, setDriversPrefilled] = useState(false);
   const key = useMemo(() => JSON.stringify({ prep, templateKey }), [prep, templateKey]);
   function chooseTemplate(k: string) {
     // Switching templates invalidates the previous preview and its fingerprint.
     setRes(null); setReviewedKey(""); setCompanyAck(false); setTemplateKey(k);
   }
+
+  useEffect(() => {
+    if (driversPrefilled) return;
+    let live = true;
+    void loadExtraDrivers({ data: { applicationId } }).then((res) => {
+      if (!live) return;
+      setDriversPrefilled(true);
+      const listed = prepDriversFromApproved(res.rows);
+      if (!listed.length) return;
+      setPrep((current) => current.drivers.mode !== "none" || current.drivers.list.length
+        ? current
+        : { ...current, drivers: { mode: "listed", list: listed } });
+    }).catch(() => { if (live) setDriversPrefilled(true); });
+    return () => { live = false; };
+  }, [applicationId, driversPrefilled, loadExtraDrivers]);
 
   useEffect(() => {
     let stale = false;

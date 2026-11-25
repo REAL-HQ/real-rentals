@@ -1,4 +1,5 @@
 import { VehicleBodyTypeSelect } from "./VehicleBodyTypeSelect";
+import { AdditionalDriverBadgeSlot, AdditionalDriversSection } from "./AdditionalDriversSection";
 import { useUnsavedGuard, confirmLeaveIfUnsaved } from "@/lib/unsaved-changes";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -563,7 +564,17 @@ function Overview({
 
         <SectionCard title="Right Now" icon={<Wrench className="w-4 h-4" strokeWidth={1.75} />}>
           {quiet && <div className="text-[13px] text-[#9A9AA3] pb-1">Not on rental. Nothing open.</div>}
-          {p.currentRental && <Row label="Rental" value={`${p.currentRental.driver_name ?? "Driver"} · since ${date(p.currentRental.start_date)}`} />}
+          {p.currentRental && (
+            <Row
+              label="Rental"
+              value={
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  <span>{`${p.currentRental.driver_name ?? "Driver"} · since ${date(p.currentRental.start_date)}`}</span>
+                  <AdditionalDriverBadgeSlot applicationId={p.currentRental.application_id} rentalId={p.currentRental.id} />
+                </span>
+              }
+            />
+          )}
           {p.nextService && (
             <Row label="Next Service" value={`${p.nextService.item}${p.nextService.due_date ? ` · ${date(p.nextService.due_date)}` : ""}${p.nextService.due_mileage ? ` · ${miles(p.nextService.due_mileage)}` : ""}`} />
           )}
@@ -572,6 +583,8 @@ function Overview({
           <Row label="Inspections" value={<Elsewhere tab="inspections" count={p.counts.inspections} label="View Inspections" />} />
           <Row label="Rentals To Date" value={<Elsewhere tab="drivers" count={p.counts.rentals} label="View Rental History" />} />
         </SectionCard>
+
+        {p.currentRental ? <AdditionalDriversSection applicationId={p.currentRental.application_id} rentalId={p.currentRental.id} /> : null}
 
         <SectionCard title="Vehicles" subtitle="Booking History" icon={<Wrench className="w-4 h-4" strokeWidth={1.75} />}>
           <BookingVehicleHistory vehicleId={v.id} />

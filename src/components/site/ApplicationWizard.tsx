@@ -26,6 +26,9 @@ import { toast } from "sonner";
 import { DocumentCapture } from "./DocumentCapture";
 import { Logo } from "./Logo";
 import { getApplicationForWizard, updateApplicationStep } from "@/lib/applications.functions";
+import { saveApplicantAdditionalDrivers } from "@/lib/additional-drivers.functions";
+import { AdditionalDriversQuestion } from "@/components/site/AdditionalDriversQuestion";
+import type { AdditionalDriverInput } from "@/lib/additional-drivers";
 import { INSURANCE_CONSENT_ITEMS, INSURANCE_CONSENT_LABEL } from "@/lib/insurance-consent";
 import { uploadApplicantFile, UploadTooLarge } from "@/lib/applicant-upload";
 import { clearResumeToken } from "@/lib/resume-token";
@@ -698,6 +701,7 @@ function WizardSteps({
       )}
       {phase === "driving" && (
         <DrivingStep
+          token={token}
           state={state}
           update={update}
           saving={saving}
@@ -1204,12 +1208,13 @@ function RentalStep({ state, update, saving, onNext }: StepProps & { onNext: () 
 // ------------------------------------------------------- Part 1, step two
 
 function DrivingStep({
+  token,
   state,
   update,
   saving,
   onBack,
   onSubmit,
-}: StepProps & { onBack: () => void; onSubmit: () => void }) {
+}: StepProps & { token: string; onBack: () => void; onSubmit: () => void }) {
   // Everything that establishes eligibility is answered here; trips, rating
   // and platforms are genuinely optional. A blank trip count means we do not
   // know it, and a driver who has not counted their trips is not turned away
@@ -1217,6 +1222,8 @@ function DrivingStep({
   // Unchecked by default, and never restored from a previous visit: the
   // authorization is an act the applicant performs when they submit.
   const [insuranceConsent, setInsuranceConsent] = useState(false);
+  const [extraDrivers, setExtraDrivers] = useState<AdditionalDriverInput[]>([]);
+  const saveDrivers = useServerFn(saveApplicantAdditionalDrivers);
   const canSubmit = !!state.gig_status && !!state.drive_type && insuranceConsent;
   const toggle = (p: string) => {
     update(
@@ -1319,6 +1326,8 @@ function DrivingStep({
           onChange={(v) => update("drive_type", v)}
         />
 
+        <AdditionalDriversQuestion token={token} onDrivers={setExtraDrivers} />
+
         <div className="rounded-xl border border-border bg-soft p-4">
           <div className="flex items-start gap-3">
             <ShieldCheck className="h-5 w-5 text-real-red shrink-0 mt-0.5" />
@@ -1354,7 +1363,18 @@ function DrivingStep({
       </div>
       <NavRow
         onBack={onBack}
-        onNext={onSubmit}
+        onNext={() => {
+          void (async () => {
+            if (extraDrivers.length) {
+              const saved = await saveDrivers({ data: { token, drivers: extraDrivers } });
+              if (!saved.ok) {
+                toast.error(saved.error);
+                return;
+              }
+            }
+            onSubmit();
+          })();
+        }}
         saving={saving}
         canNext={canSubmit}
         nextLabel="Submit Application"
