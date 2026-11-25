@@ -44,6 +44,20 @@ export function additionalDriverAgeBlock(dob: string, today: string): string | n
   return null;
 }
 
+/** Same fields the application question collects, checked before a staff save. */
+export function additionalDriverFieldError(input: AdditionalDriverInput, today: string): string | null {
+  if (input.name.trim().length < 3) return "Enter the full name.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim())) return "Enter an email.";
+  if (input.phone.trim().length < 10) return "Enter a phone number.";
+  const age = additionalDriverAgeBlock(input.dob, today);
+  if (age) return age;
+  if (input.licenseNumber.trim().length < 4) return "Enter the license number.";
+  if (!/^[A-Za-z]{2}$/.test(input.licenseState.trim())) return "Enter the license state.";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.licenseExpiration)) return "Enter the license expiration.";
+  if (input.relationship.trim().length < 2) return "Enter the relationship.";
+  return null;
+}
+
 /**
  * An additional driver may drive only after the same gates as the renter:
  * approved, signed, reservation fee settled, and the policy endorsement recorded.
