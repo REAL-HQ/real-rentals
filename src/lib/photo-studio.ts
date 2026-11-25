@@ -34,6 +34,65 @@ export type PhotoClass =
   | "interior_dash" | "interior_front" | "interior_rear" | "interior_other"
   | "damage" | "document" | "odometer" | "vin_plate" | "unknown";
 
+/** Labels staff pick on an original. The values are the photo_class set. */
+export const PHOTO_CLASS_OPTIONS: { value: PhotoClass; label: string }[] = [
+  { value: "exterior_front", label: "Front 3/4" },
+  { value: "exterior_driver", label: "Driver Side" },
+  { value: "exterior_passenger", label: "Passenger Side" },
+  { value: "exterior_rear", label: "Rear 3/4" },
+  { value: "interior_dash", label: "Dashboard" },
+  { value: "interior_front", label: "Front Seats" },
+  { value: "interior_rear", label: "Rear Seats" },
+  { value: "exterior_other", label: "Other Exterior" },
+  { value: "interior_other", label: "Other Interior" },
+  { value: "damage", label: "Damage" },
+  { value: "document", label: "Document" },
+  { value: "odometer", label: "Odometer" },
+  { value: "vin_plate", label: "VIN" },
+  { value: "unknown", label: "Unknown" },
+];
+
+export function photoClassLabel(value: string | null | undefined): string {
+  return PHOTO_CLASS_OPTIONS.find((o) => o.value === value)?.label ?? "Unknown";
+}
+
+/** Postgres / PostgREST when photo_class has not been migrated yet. */
+export function isMissingPhotoClassColumn(message: string | null | undefined): boolean {
+  const m = String(message ?? "");
+  return /photo_class/i.test(m) && /column|schema cache|does not exist/i.test(m);
+}
+
+/**
+ * Replacing a live marketing shot. Rejecting it while it is still published
+ * trips vehicle_media_enhanced_unpublished; the unique slot index then
+ * refuses the new row. Unpublish and reject in the same write.
+ */
+export const RETIRE_LIVE_SHOT = {
+  published: false as const,
+  studio_review_status: "rejected" as const,
+  approved_by: null,
+  approved_at: null,
+};
+
+/** Same rule as the vehicle_media marketing publish trigger. */
+export function marketingPublishBlock(row: {
+  kind?: string | null;
+  published?: boolean | null;
+  studio_review_status?: string | null;
+  approved_by?: string | null;
+}): string | null {
+  if (row.kind && row.kind !== "marketing") return null;
+  if (row.published && !(row.studio_review_status === "approved" && row.approved_by)) {
+    return "marketing shot cannot be published before a person approves it";
+  }
+  return null;
+}
+
+/** The approved Front 3/4 shot, if the set has one. */
+export function leadMarketingShotId(shots: { id: string; slot: string | null; status: string | null }[]): string | null {
+  return shots.find((s) => s.slot === "front" && s.status === "approved")?.id ?? null;
+}
+
 /** Which original classes may inspire a slot, best first. */
 export const SLOT_SOURCES: Record<ShotSlot, PhotoClass[]> = {
   front: ["exterior_front", "exterior_driver", "exterior_passenger", "exterior_other"],

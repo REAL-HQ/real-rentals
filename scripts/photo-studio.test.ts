@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   planShots, spendRefusal, identityCheck, carSetStatus, readStudioSettings, effectiveModel,
-  buildPrompt, PHOTO_STUDIO_DEFAULTS, NEVER_GENERATE, vinLast6,
+  buildPrompt, PHOTO_STUDIO_DEFAULTS, NEVER_GENERATE, vinLast6, PHOTO_CLASS_OPTIONS, photoClassLabel,
+  isMissingPhotoClassColumn, marketingPublishBlock, RETIRE_LIVE_SHOT, leadMarketingShotId,
 } from "../src/lib/photo-studio";
 
 const on = { ...PHOTO_STUDIO_DEFAULTS, enabled: true };
@@ -74,6 +75,32 @@ describe("approval", () => {
     const ok = ["front", "driver_side", "passenger_side", "rear"].map((s, i) => ({ id: String(i), slot: s as any, status: "approved" as const }));
     expect(carSetStatus(ok)).toBe("approved");
     expect(carSetStatus(ok.slice(0, 3))).toBe("incomplete");
+  });
+});
+
+describe("photo class labels", () => {
+  test("every class staff can pick has a label, and a missing column is recognized", () => {
+    for (const value of ["exterior_front", "exterior_driver", "exterior_passenger", "exterior_rear", "interior_dash", "interior_front", "interior_rear", "damage", "document", "odometer", "vin_plate"] as const) {
+      expect(PHOTO_CLASS_OPTIONS.some((o) => o.value === value)).toBe(true);
+      expect(photoClassLabel(value).length).toBeGreaterThan(0);
+    }
+    expect(photoClassLabel(null)).toBe("Unknown");
+    expect(photoClassLabel("exterior_front")).toBe("Front 3/4");
+    expect(isMissingPhotoClassColumn("column vehicle_media.photo_class does not exist")).toBe(true);
+    expect(isMissingPhotoClassColumn("Could not find the 'photo_class' column of 'vehicle_media' in the schema cache")).toBe(true);
+    expect(isMissingPhotoClassColumn("Could not update.")).toBe(false);
+  });
+  test("rejecting a published shot without unpublishing is blocked; retiring it is not", () => {
+    const live = { kind: "marketing", published: true, studio_review_status: "approved", approved_by: "owner" };
+    expect(marketingPublishBlock({ ...live, studio_review_status: "rejected" })).toMatch(/cannot be published/);
+    expect(marketingPublishBlock({ ...live, ...RETIRE_LIVE_SHOT })).toBeNull();
+  });
+  test("the approved Front 3/4 shot is the lead", () => {
+    expect(leadMarketingShotId([
+      { id: "side", slot: "driver_side", status: "approved" },
+      { id: "front", slot: "front", status: "approved" },
+    ])).toBe("front");
+    expect(leadMarketingShotId([{ id: "front", slot: "front", status: "pending" }])).toBeNull();
   });
 });
 

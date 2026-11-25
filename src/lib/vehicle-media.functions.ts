@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireStaff, requireManager } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
 import { readConfirmedCarMediaIds, readVehicleListThumbnailMediaId, vehicleListThumbnailKey } from "@/lib/vehicle-thumbnail";
+import { isMissingPhotoClassColumn } from "@/lib/photo-studio";
 
 // Vehicle photography.
 //
@@ -42,6 +43,7 @@ export type VehicleMedia = {
   review_status?: "pending" | "approved" | "rejected" | null;
   quality_flags?: string[] | null;
   processing_ms?: number | null;
+  photo_class?: string | null;
 };
 
 export type VehicleMediaList = {
@@ -52,6 +54,8 @@ export type VehicleMediaList = {
   listThumbnailId: string | null;
   /** Originals staff explicitly confirmed show the car, not a document. */
   confirmedCarPhotoIds: string[];
+  /** False when photo_class has not been migrated. The angle picker stays hidden. */
+  photoClassAvailable: boolean;
 };
 
 export const listVehicleMedia = createServerFn({ method: "POST" })
@@ -76,6 +80,8 @@ export const listVehicleMedia = createServerFn({ method: "POST" })
         .eq("key", vehicleListThumbnailKey(data.vehicleId))
         .maybeSingle(),
     ]);
+    const probe = await (supabaseAdmin.from("vehicle_media") as any).select("photo_class").limit(1);
+    const photoClassAvailable = !probe.error || !isMissingPhotoClassColumn(probe.error.message);
     const items = (rows as VehicleMedia[] | null) ?? [];
     const selectedId = readVehicleListThumbnailMediaId(thumbnailSetting?.value);
     const originalIds = new Set(items.filter((item) => item.kind === "original").map((item) => item.id));
@@ -89,6 +95,7 @@ export const listVehicleMedia = createServerFn({ method: "POST" })
       enhancement: enhancementAvailability(),
       listThumbnailId: selectedId && confirmedCarPhotoIds.includes(selectedId) ? selectedId : null,
       confirmedCarPhotoIds,
+      photoClassAvailable,
     };
   });
 
