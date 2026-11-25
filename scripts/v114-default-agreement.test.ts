@@ -76,12 +76,12 @@ const seed = (feeOn: boolean, extra: Rows = {}): Rows => ({
 });
 
 describe("v1.14 is the agreement new sends use", () => {
-  it("default family is v1.16 (insurance_included_v116); v1.14 stays Owner-approved and selectable", async () => {
-    expect(DEFAULT_LIBRARY_KEY).toBe("insurance_included_v116");
+  it("default family is v1.17 (insurance_included_v117); v1.14 stays Owner-approved and selectable", async () => {
+    expect(DEFAULT_LIBRARY_KEY).toBe("insurance_included_v117");
     const p = await prepare(fakeDb(seed(true)) as any, APP.id);
-    expect(p.tpl.meta.key).toBe("insurance_included_v116");
+    expect(p.tpl.meta.key).toBe("insurance_included_v117");
     expect(p.tpl.meta.approvalStatus).toBe("approved");
-    expect(p.tpl.meta.label).toMatch(/v1\.16 — Owner Approved 2026-11-21/);
+    expect(p.tpl.meta.label).toMatch(/v1\.17 — Owner Approved 2026-11-25/);
     const v114 = await prepare(fakeDb(seed(true)) as any, APP.id, undefined, "insurance_included");
     expect(v114.tpl.meta.label).toMatch(/v1\.14 — Owner Approved 2026-11-16/);
   });
@@ -157,7 +157,7 @@ describe("v1.14 is the agreement new sends use", () => {
     expect(row.body).not.toContain("Assigned When Sent");
     expect(row.merge_data.agreement_number).toMatch(/^RRA-\d{8}-[0-9A-F]{6}$/);
     expect(row.body).toContain(row.merge_data.agreement_number);
-    expect(row.metadata.template_key).toBe("insurance_included_v116");
+    expect(row.metadata.template_key).toBe("insurance_included_v117");
     expect(signedReservationFee(row)).toBe(50);
     if (process.env.V114_SAMPLE_DIR) writeFileSync(`${process.env.V114_SAMPLE_DIR}/v114-sample-sent.txt`, row.body);
   });
@@ -188,7 +188,7 @@ describe("v1.14 is the agreement new sends use", () => {
     expect(src).toContain("OWNER_APPROVED_LIBRARY[t.key]");
     expect(src).toMatch(/fee\?\.enabled && fee\.amount > 0/);
     const lib = await import("../src/lib/agreement-library");
-    expect(lib.DEFAULT_LIBRARY_KEY).toBe("insurance_included_v116");
-    expect(Object.keys(lib.OWNER_APPROVED_LIBRARY)).toEqual(["insurance_included", "insurance_included_v115", "insurance_included_v116"]);
+    expect(lib.DEFAULT_LIBRARY_KEY).toBe("insurance_included_v117");
+    expect(Object.keys(lib.OWNER_APPROVED_LIBRARY)).toEqual(["insurance_included", "insurance_included_v115", "insurance_included_v116", "insurance_included_v117"]);
   });
 });

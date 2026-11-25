@@ -84,11 +84,11 @@ const v116 = libraryTemplate("insurance_included_v116")!;
 const resolved = resolveTerms(writeTerms(V116_SOURCE, V116_TERM_DEFAULTS));
 const section = resolved.slice(resolved.indexOf("## 13. Tolls"), resolved.indexOf("## 14. GPS"));
 
-describe("v1.16 is the single default agreement", () => {
-  it("library key, amendment key, and swap version all name v1.16", () => {
-    expect(DEFAULT_LIBRARY_KEY).toBe("insurance_included_v116");
+describe("v1.16 stays the Section 13 agreement; v1.17 is the default", () => {
+  it("v1.16 stays approved; new sends, amendments, and swaps use v1.17", () => {
+    expect(DEFAULT_LIBRARY_KEY).toBe("insurance_included_v117");
     expect(AMENDMENT_TEMPLATE_KEY).toBe(DEFAULT_LIBRARY_KEY);
-    expect(SWAP_TERMS_VERSION).toBe("v1.16");
+    expect(SWAP_TERMS_VERSION).toBe("v1.17");
     expect(OWNER_APPROVED_LIBRARY.insurance_included_v116).toEqual({ at: "2026-11-21", by: "Dolmar Cross (Owner), on merging the v1.16 PR" });
     expect(v116.displayVersion).toBe("1.16");
     expect(v116.insuranceIncluded).toBe(true);
@@ -157,12 +157,13 @@ describe("v1.16 is the single default agreement", () => {
     }
   });
 
-  it("the default send stores v1.16 and leaves an explicit v1.15 send on v1.15", async () => {
+  it("the default send stores v1.17 and leaves an explicit v1.16 send on v1.16", async () => {
     const db = fakeDb(seed());
     const sent = await issueAgreement(db as any, APP.id, { createdBy: null, prep: fleetAgreementPrep({ enabled: true, amount: 50 }, null) });
     const row = db.state.agreements.find((a: any) => a.id === sent.id);
-    expect(row.metadata.template_key).toBe("insurance_included_v116");
-    expect(row.body).toContain("(v1.16)");
+    expect(row.metadata.template_key).toBe("insurance_included_v117");
+    expect(row.body).toContain("(v1.17)");
+    expect(row.body).toContain("at least 23 to rent a luxury or premium vehicle");
     expect(row.body).toContain("you must give us a working payment method within 1 day of our notice.");
     expect(row.body).not.toContain("1 days");
     expect(row.body).toContain("replacement charge of $25");
@@ -170,17 +171,17 @@ describe("v1.16 is the single default agreement", () => {
     expect(row.body).toContain("including the deadline to file a transfer affidavit.");
     expect(row.body).not.toMatch(/\{\{|\[\[|__________|\[__\]/);
     const older = fakeDb(seed());
-    const sent115 = await issueAgreement(older as any, APP.id, { createdBy: null, prep: fleetAgreementPrep({ enabled: true, amount: 50 }, null), templateKey: "insurance_included_v115" });
-    const row115 = older.state.agreements.find((a: any) => a.id === sent115.id);
-    expect(row115.metadata.template_key).toBe("insurance_included_v115");
-    expect(row115.body).toContain("(v1.15)");
-    expect(row115.body).not.toContain("within 1 day of our notice.");
+    const sent116 = await issueAgreement(older as any, APP.id, { createdBy: null, prep: fleetAgreementPrep({ enabled: true, amount: 50 }, null), templateKey: "insurance_included_v116" });
+    const row116 = older.state.agreements.find((a: any) => a.id === sent116.id);
+    expect(row116.metadata.template_key).toBe("insurance_included_v116");
+    expect(row116.body).toContain("(v1.16)");
+    expect(row116.body).toContain("at least 25 to rent a luxury or premium vehicle");
   });
 
   it("a preview of the default has no blockers and one agreement", async () => {
     const p = await prepare(fakeDb(seed()) as any, APP.id);
     expect(p.blockers).toEqual([]);
-    expect(p.tpl.meta.key).toBe("insurance_included_v116");
+    expect(p.tpl.meta.key).toBe("insurance_included_v117");
     expect(plain(p.body)).toContain("within 3 days of the charge.");
     expect(parseLayout(p.body).filter((b) => b.k === "sig")).toHaveLength(1);
   });
