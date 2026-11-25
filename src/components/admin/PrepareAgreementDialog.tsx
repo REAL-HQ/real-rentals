@@ -18,6 +18,7 @@ import { listStaffAdditionalDrivers } from "@/lib/additional-drivers.functions";
 import { prepDriversFromApproved } from "@/lib/additional-drivers";
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
+type Note = { field: string; label: string; why: string };
 type Res = {
   body: string | null;
   pdfBase64: string | null;
@@ -25,6 +26,7 @@ type Res = {
   canSend: boolean;
   sendRefusal: string | null;
   blockers: Blocker[];
+  notes?: Note[];
   companyMissing?: string[];
   merge: Record<string, string>;
   values: AgreementDetails;
@@ -260,6 +262,11 @@ export function PrepareAgreementDialog({ applicationId, onClose, onSent, onOpenT
         <div className="space-y-1 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive" data-testid="prep-blockers">
           <p className="font-semibold">This agreement cannot be sent yet:</p>
           {res.blockers.map((b, i) => <p key={i}>- {b.label}: {b.why}{fix(b)}</p>)}
+        </div>
+      )}
+      {res && (res.notes?.length ?? 0) > 0 && (
+        <div className="space-y-1 rounded-md border px-3 py-2 text-[12px] text-muted-foreground" data-testid="prep-notes">
+          {res.notes!.map((n, i) => <p key={i}>{n.label}: {n.why}</p>)}
         </div>
       )}
       {res?.sendRefusal && <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12px]">{res.sendRefusal}</p>}

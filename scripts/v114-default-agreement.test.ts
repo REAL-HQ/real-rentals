@@ -117,15 +117,61 @@ describe("v1.14 is the agreement new sends use", () => {
     expect(p.body).toContain("| Reservation Fee (Applied To First Payment) | $50.00");
   });
 
-  it("fee off: prints None, nothing charged, card row then needs a card on file", async () => {
-    const p = await prepare(fakeDb(seed(false)) as any, APP.id);
+  it("fee off: prints None, nothing charged, and a missing card does not block send", async () => {
+    const db = fakeDb(seed(false));
+    const p = await prepare(db as any, APP.id);
     expect(p.body).toContain("| Reservation Fee (Applied To First Payment) | None");
     expect(p.body).toContain("| Balance Due | $375.00");
     expect(signedReservationFee({ body: p.body, merge_data: p.data as any })).toBeNull();
-    expect(p.blockers.map((b) => b.field)).toEqual(["card_on_file"]);
+    expect(p.blockers.map((b) => b.field)).not.toContain("card_on_file");
+    expect(p.blockers).toEqual([]);
+    expect(p.body).toContain("| Payment Card on File (last 4) | Not saved yet");
+    expect(p.body).toContain("**3.4 Autopay.**");
+    expect(p.body).toContain("If you choose Autopay, you authorize REAL RENTALS to charge your card on file");
+    expect(p.notes).toEqual([{ field: "card_on_file", label: "Payment Card On File", why: "No card is saved yet. A card is not required to send this agreement." }]);
+    const sent = await issueAgreement(db as any, APP.id, { createdBy: null });
+    const row = db.state.agreements.find((a: any) => a.id === sent.id);
+    expect(row.status).toBe("sent");
+    expect(row.body).toContain("Not saved yet");
+    expect(row.body).toContain("**3.4 Autopay.**");
     const withCard = await prepare(fakeDb({ ...seed(false), applications: [{ ...APP, card_brand: "visa", card_last4: "4242" }] }) as any, APP.id);
     expect(withCard.blockers).toEqual([]);
+    expect(withCard.notes).toEqual([]);
     expect(withCard.body).toContain("VISA ending 4242");
+  });
+
+  it("no saved card can be prepared and sent, including when rent is not Card Autopay", async () => {
+    const prep = {
+      drivers: { mode: "none" as const, list: [] },
+      reservation: { mode: "required" as const, amount: 50 },
+      deposit: { mode: "none" as const, amount: null, reason: "" },
+      damageWaiver: "declined" as const,
+      payment: { schedule: "weekly" as const, method: "Zelle" as const },
+      details: {
+        driverName: APP.full_name, driverEmail: APP.email, driverPhone: APP.phone,
+        address: APP.address, city: APP.city, state: APP.state, zip: APP.zip, dob: APP.dob,
+        licenseNumber: APP.license_number, licenseState: APP.license_state, licenseExpiration: APP.license_expiration,
+        vehicleDescription: "2021 Toyota Camry LE", vehicleColor: "Silver", vehicleVin: CAR.vin, licensePlate: "SMP123",
+        startDate: APP.contract_start_date, endDate: APP.contract_end_date, weeklyRate: "375",
+        cardOnFile: "", insuranceCarrier: "", insurancePolicy: "",
+      },
+    };
+    const db = fakeDb(seed(true));
+    const p = await prepare(db as any, APP.id, prep);
+    expect(p.blockers.find((b) => b.field === "card_on_file")).toBeUndefined();
+    expect(p.blockers).toEqual([]);
+    expect(p.body).toContain("| Payment Method (Card Autopay, Zelle, Cash App, Venmo, Other) | Zelle");
+    expect(p.body).toContain("| Payment Card on File (last 4) | Saved when you pay the Reservation Fee right after signing");
+    expect(p.body).toContain("**3.4 Autopay.**");
+    expect(p.body).not.toContain("__________");
+    expect(p.notes.map((n) => n.why)).toEqual(["Card will be saved when the renter pays the $50 Reservation Fee."]);
+    const sent = await issueAgreement(db as any, APP.id, { createdBy: null, prep, fingerprint: p.fingerprint, companyAck: true });
+    const row = db.state.agreements.find((a: any) => a.id === sent.id);
+    expect(row.status).toBe("sent");
+    expect(row.body).toContain("Saved when you pay the Reservation Fee right after signing");
+    expect(row.body).toContain("**3.4 Autopay.**");
+    expect(row.merge_data.payment_amount).toBe("$375.00 weekly");
+    expect(row.merge_data.balance_due).toBe("$325.00");
   });
 
   it("updated agreement for an active rental: Not Applicable, no fee, no deposit", async () => {

@@ -34,6 +34,7 @@ function toneFor(status: string) {
 }
 
 type Blocker = { field: string; label: string; why: string; fix?: { tab: "payments" | "rental" } | { vehicleId: string } };
+type Note = { field: string; label: string; why: string };
 type PreviewRes = {
   pdfBase64: string | null;
   fingerprint: string | null;
@@ -44,6 +45,7 @@ type PreviewRes = {
   sendRefusal: string | null;
   missing: string[];
   blockers: Blocker[];
+  notes?: Note[];
   generatedAt: string;
 };
 
@@ -218,6 +220,17 @@ export function AgreementsCard({ applicationId, onOpenTab, applicationStatus }: 
                   ))}
                 </ul>
                 <p className="mt-2.5 text-[11.5px] text-[#8A6A00]">Correct the details, then press Regenerate.</p>
+              </div>
+            ) : null}
+            {(preview.notes?.length ?? 0) > 0 ? (
+              <div className="m-4 rounded-lg border border-[#E6E6EA] bg-[#FAFAFB] p-4" data-testid="agreement-notes">
+                <ul className="space-y-1">
+                  {preview.notes!.map((n, i) => (
+                    <li key={n.field + i} className="text-[12px] text-[#55555E]">
+                      <span className="font-semibold">{n.label}.</span> {n.why}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             {preview.sendRefusal ? (
