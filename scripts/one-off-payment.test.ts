@@ -165,6 +165,10 @@ describe("one-off payment helpers", () => {
     assert.equal(rentWeekFor("2026-11-18", ["2026-11-16"], { dailyPlan: true }), "2026-11-18", "daily rent keeps the paid day");
     assert.equal(oneOffRowType("late_fee"), "late_fee");
     assert.equal(oneOffRowType("anything"), "fee");
+    assert.equal(oneOffRowType("daily_50", { activeRental: true }), "rent");
+    assert.equal(oneOffRowType("daily_rent"), "rent");
+    assert.equal(oneOffRowType("weekly_rent", { activeRental: false }), "rent");
+    assert.equal(oneOffRowType("cleaning", { activeRental: true }), "fee");
     assert.equal(pickRental([rental(), rental({ id: RENTAL2 })], { explicit: false }).ambiguous, true);
     assert.equal(pickRental([rental({ status: "closed" })], { explicit: false }).rental, null);
     assert.equal(pickRental([rental({ status: "closed" })], { explicit: true }).rental?.id, RENTAL);
@@ -276,6 +280,40 @@ describe("payments webhook — one-off payments", () => {
     assert.equal(rows[0].reason, "Rent for 2026-11-20");
     assert.match(rows[0].notes, /matched by plate/);
     assert.equal(unmatched(db).length, 0);
+  });
+
+  it("a daily_50 link is rent for the date the link covers", async () => {
+    const db = fakeDb({ rentals: [rental({ stripe_customer_id: null })], applications: [app({ stripe_customer_id: null })], vehicles: [PLATE_VEH], payments: [], notifications: [], app_settings: [DAILY] });
+    const s = session({
+      customer_details: { email: OTHER_EMAIL },
+      created: NOV21_0031 - 30,
+      metadata: { date: "2026-11-20", plate: "SIVZ88", reason: "daily_50", rental_id: RENTAL },
+    });
+    const ch = charge({ created: NOV21_0031, billing_details: { email: OTHER_EMAIL } });
+    const stripe = stripeStub({ session: s, charge: ch, pi: intent({ created: NOV21_0031 - 2 }) });
+    assert.equal((await send("checkout.session.completed", s, db, stripe)).status, 200);
+    const rows = paymentsFor(db);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].type, "rent");
+    assert.equal(rows[0].due_date, "2026-11-20");
+    assert.equal(rows[0].amount, 50);
+  });
+
+  it("weekly_rent with weeks metadata is rent dated to the first week", async () => {
+    const db = fakeDb({ rentals: [rental({ weekly_rate: 350, next_payment_due: "2026-11-12" })], applications: [app()], payments: [], notifications: [], app_settings: [] });
+    const s = session({
+      amount_total: 35000,
+      metadata: { rental_id: RENTAL, reason: "weekly_rent", weeks: "2026-11-12,2026-11-19" },
+    });
+    const stripe = stripeStub({
+      session: s,
+      pi: intent({ amount: 35000, amount_received: 35000 }),
+      charge: charge({ amount: 35000, amount_captured: 35000 }),
+    });
+    assert.equal((await send("checkout.session.completed", s, db, stripe)).status, 200);
+    const rows = paymentsFor(db);
+    assert.equal(rows[0].type, "rent");
+    assert.equal(rows[0].due_date, "2026-11-12");
   });
 
   it("matches by lead_id on the link (no customer, unknown email)", async () => {

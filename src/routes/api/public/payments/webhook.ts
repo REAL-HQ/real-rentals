@@ -7,6 +7,7 @@ import { customerIdOf, formatUnmatchedWarn, stripeId } from '@/lib/stripe-unmatc
 import { holdIfHeld, type HeldNoticeInput } from '@/lib/held-payment-notices.server';
 import { failedInvoiceLink } from '@/lib/failed-payment-link';
 import { easternDateOf } from '@/lib/rent-reminders';
+import { isRentLinkReason, rentPeriodOf } from '@/lib/one-off-payment';
 import { dueDateOf, extractPaymentReceiptFields, paidDateOf, shouldNotifyRenter } from '@/lib/renter-payments';
 import { resolveStripePaymentMatch } from '@/lib/renter-payments-match.server';
 import { safeReceiptUrl } from '@/lib/payment-received';
@@ -366,8 +367,10 @@ async function upsertPaymentFromPaymentIntent(pi: any, status: 'paid' | 'failed'
         vehicle_id: r?.vehicle_id ?? null,
         amount,
         balance_due: status === 'paid' ? 0 : amount,
-        type: reason === 'rent' ? 'rent' : reason === 'late_fee' ? 'late_fee' : 'other',
+        type: isRentLinkReason(reason) ? 'rent' : reason === 'late_fee' ? 'late_fee' : 'other',
         reason,
+        // The day or first week the link names. Absent when the link doesn't say.
+        ...(isRentLinkReason(reason) && rentPeriodOf(pi) ? { due_date: rentPeriodOf(pi) } : {}),
         status,
         failure_reason: status === 'failed' ? failure : null,
         stripe_payment_intent_id: pi.id,
