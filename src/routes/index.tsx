@@ -16,12 +16,14 @@ import { DEFAULT_BUSINESS_PHONE } from "@/lib/company";
 import fleetPartnerBg from "@/assets/fleet-partner.jpg";
 import { APPLICATION_RESUME_ENABLED } from "@/lib/application-resume-flag";
 import { MIN_AGE_FAQ, MIN_RENTER_AGE } from "@/lib/renter-age";
+import { ADDITIONAL_DRIVER_FAQ_ANSWER, ADDITIONAL_DRIVER_FAQ_QUESTION, ADDITIONAL_DRIVER_INSURANCE_LINE, ADDITIONAL_DRIVER_SHARE_LINE } from "@/lib/additional-driver-copy";
 
 const FAQS = [
   { q: "What is required to get approved?", a: `You must be ${MIN_RENTER_AGE}+, hold a valid US driver's license for at least one year, and have a reasonably clean driving record. No credit check required.` },
   MIN_AGE_FAQ,
   { q: "Is a security deposit required?", a: "No. We do not collect a security deposit. We do keep a payment card on file for tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
   { q: "Is insurance included?", a: "Yes. Insurance is included, with the policy in your name. One less bill to worry about." },
+  { q: ADDITIONAL_DRIVER_FAQ_QUESTION, a: ADDITIONAL_DRIVER_FAQ_ANSWER },
   { q: "What is included in the weekly payment?", a: "Routine maintenance, a high-mileage allowance, and 24/7 driver support. Insurance is included, with the policy in your name. One less bill to worry about. Gas and tolls are on you." },
   { q: "Can I drive for Uber, Lyft, and delivery apps?", a: "Most vehicles qualify for Uber and Lyft on the same car. DoorDash, Instacart, Uber Eats, and Amazon Flex are permitted. Some vehicles are delivery-focused, so each listing shows what it's approved for." },
   { q: "How quickly can I get approved?", a: "Most applications are reviewed the same day, with same-day pickup available." },
@@ -255,11 +257,12 @@ function Index() {
         <div className="container-real">
           <FadeUp className="text-center mb-8">
             <h2 className="text-3xl md:text-5xl">Everything You Need. Nothing You Don't.</h2>
+            <p className="mt-3 text-sm text-muted-foreground">{ADDITIONAL_DRIVER_SHARE_LINE}</p>
           </FadeUp>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
               { I: Wallet, t: "No Deposit", d: "$0 security deposit. We keep a payment card on file for tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
-              { I: Shield, t: "Insurance Included", d: "Insurance is included, with the policy in your name. One less bill to worry about." },
+              { I: Shield, t: "Insurance Included", d: ADDITIONAL_DRIVER_INSURANCE_LINE },
               { I: InfinityIcon, t: "Unlimited Miles", d: "Drive as much as gig work demands — your unlimited mileage terms are spelled out in your rental agreement." },
               { I: Wrench, t: "Maintenance Handled", d: "Routine maintenance is on us. You drive, we keep it running." },
               { I: Briefcase, t: "Built For Gig Work", d: "Uber, Lyft, DoorDash, Instacart, Amazon Flex and more." },

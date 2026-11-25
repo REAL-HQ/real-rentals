@@ -30,6 +30,7 @@ import { TrustedByDrivers } from "@/components/site/TrustedByDrivers";
 import { StickyCallBar } from "@/components/site/StickyCallBar";
 import { CityHeroLeadForm } from "@/components/site/CityHeroLeadForm";
 import { MIN_AGE_FAQ, MIN_RENTER_AGE } from "@/lib/renter-age";
+import { ADDITIONAL_DRIVER_FAQ_ANSWER, ADDITIONAL_DRIVER_FAQ_QUESTION, ADDITIONAL_DRIVER_INSURANCE_LINE, ADDITIONAL_DRIVER_SHARE_LINE } from "@/lib/additional-driver-copy";
 import sedanImage from "@/assets/cars/sedan.jpg";
 const sedanImg = { url: sedanImage };
 import suvImage from "@/assets/cars/suv.jpg";
@@ -358,7 +359,7 @@ function WhatYouNeedSection() {
     { Icon: IdCard, title: "Valid Driver's License", body: `Active U.S. driver's license, ${MIN_RENTER_AGE} or older. Out-of-state licenses welcome.` },
     { Icon: CreditCard, title: "No Deposit", body: "$0 security deposit. A payment card on file covers tolls, citations, damage, cleaning, and unpaid rent per your rental agreement." },
     { Icon: Smartphone, title: "Smartphone & Gig Account", body: "Active or pending account with Uber, Lyft, DoorDash, Instacart, or similar." },
-    { Icon: ShieldCheck, title: "Insurance Included", body: "Insurance is included, with the policy in your name. One less bill to worry about." },
+    { Icon: ShieldCheck, title: "Insurance Included", body: ADDITIONAL_DRIVER_INSURANCE_LINE },
     { Icon: ShieldCheck, title: "Clean Recent Record", body: "Reasonable driving history. No major violations in the last 3 years." },
   ];
   return (
@@ -419,6 +420,7 @@ function CityFAQSection({ cityLabel, content }: { cityLabel: string; content: Co
     MIN_AGE_FAQ,
     { q: "How fast can I be on the road?", a: "Most drivers are approved the same day and picking up a vehicle within 24 to 48 hours." },
     { q: "Is insurance included?", a: "Yes. Insurance is included, with the policy in your name. One less bill to worry about." },
+    { q: ADDITIONAL_DRIVER_FAQ_QUESTION, a: ADDITIONAL_DRIVER_FAQ_ANSWER },
     { q: "Are miles unlimited?", a: "Yes. Drive as many miles as you need — there are no per-mile fees." },
     { q: "What if the car needs maintenance?", a: "Routine maintenance is included. If something comes up, we handle it so you can keep earning." },
     { q: "Who pays for tolls and tickets?", a: "You do. Any tolls, tickets, or citations during your rental are your responsibility. Unpaid items are transferred to the driver on record per your rental agreement, and an admin fee may apply per notice." },
@@ -431,6 +433,7 @@ function CityFAQSection({ cityLabel, content }: { cityLabel: string; content: Co
         <FadeUp className="text-center">
           <div className="text-[11px] font-semibold tracking-[0.25em] text-real-red">Common Questions</div>
           <h2 className="mt-3 text-3xl md:text-5xl">Common Questions From {cityLabel} Drivers.</h2>
+          <p className="mt-3 text-sm text-muted-foreground">{ADDITIONAL_DRIVER_SHARE_LINE}</p>
         </FadeUp>
         <div className="mt-10 divide-y divide-border rounded-2xl border border-border bg-white">
           {items.map((item, i) => (

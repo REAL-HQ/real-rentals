@@ -1094,11 +1094,13 @@ export async function issueAgreement(
     email: app.email,
     phone: (app.phone as string | null) ?? null,
     role: "signer",
+    signing_order: 1,
     status: "sent",
     sent_at: new Date().toISOString(),
     token_hash: tokenHash,
     token_expires_at: expires,
   });
+  if (!amendment) await attachAdditionalDriverSigners(admin, { agreementId: row.id as string, applicationId, primaryEmail: String(app.email), vehicle: merge.vehicle || null, expires });
   {
     const { logAudit } = await import("@/lib/audit.server");
     const actor = opts.createdBy ? await (await import("@/lib/roles.server")).getActor(opts.createdBy) : null;
@@ -1122,6 +1124,54 @@ export async function issueAgreement(
   });
 
   return { id: row.id as string, url, delivery };
+}
+
+/** Each approved additional driver gets their own signing link. The agreement stays open until all of them sign. */
+async function attachAdditionalDriverSigners(
+  admin: any,
+  args: { agreementId: string; applicationId: string; primaryEmail: string; vehicle: string | null; expires: string },
+) {
+  const { listAdditionalDrivers, additionalDriverDbMessage } = await import("@/lib/additional-drivers.server");
+  let drivers: Awaited<ReturnType<typeof listAdditionalDrivers>> = [];
+  try {
+    drivers = await listAdditionalDrivers(admin, { applicationId: args.applicationId });
+  } catch (e) {
+    const known = additionalDriverDbMessage(e instanceof Error ? e.message : e);
+    if (known) return;
+    throw e;
+  }
+  const primary = args.primaryEmail.trim().toLowerCase();
+  const extras = drivers.filter((d) => d.status === "approved" && !d.removedAt && d.email.trim() && d.email.trim().toLowerCase() !== primary);
+  let order = 2;
+  for (const driver of extras) {
+    const token = randomToken();
+    const tokenHash = await hashToken(token);
+    const { error } = await admin.from("esign_recipients").insert({
+      document_id: args.agreementId,
+      name: driver.name,
+      email: driver.email.trim().toLowerCase(),
+      phone: driver.phone || null,
+      role: "signer",
+      signing_order: order,
+      status: "sent",
+      sent_at: new Date().toISOString(),
+      token_hash: tokenHash,
+      token_expires_at: args.expires,
+    });
+    if (error) throw new Error(error.message);
+    order += 1;
+    const url = `${SITE_URL()}/sign/${token}`;
+    try {
+      const { sendAgreementEmail } = await import("@/lib/email.server");
+      await sendAgreementEmail({ to: driver.email.trim().toLowerCase(), firstName: driver.name, url, vehicle: args.vehicle });
+      if (driver.smsConsent && driver.phone) {
+        const { sendSms } = await import("@/lib/sms.server");
+        await sendSms({ to: driver.phone, body: `REAL RENTALS: Your rental agreement is ready to sign: ${url} Reply STOP to opt out.`, kind: "agreement_sent", applicationId: args.applicationId, requireConsent: false });
+      }
+    } catch (e) {
+      console.error("[agreement] additional driver signing link failed", e);
+    }
+  }
 }
 
 const APPLICATION_FILL_COLUMNS = new Set([
@@ -1473,13 +1523,37 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<SigningView> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const hash = await hashToken(data.token);
-    const { data: ag } = await supabaseAdmin
+    let recipientName: string | null = null;
+    const { data: direct } = await supabaseAdmin
       .from("agreements")
       .select(
         "id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at",
       )
       .eq("token_hash", hash)
       .maybeSingle();
+    let ag = direct;
+    if (!ag) {
+      const { data: recipient } = await supabaseAdmin
+        .from("esign_recipients")
+        .select("document_id,name,status,token_revoked_at,token_expires_at")
+        .eq("token_hash", hash)
+        .eq("role", "signer")
+        .maybeSingle();
+      if (!recipient || recipient.token_revoked_at || recipient.status === "signed") return null;
+      if (recipient.token_expires_at && new Date(recipient.token_expires_at as string).getTime() < Date.now()) {
+        const { data: expiredDoc } = await supabaseAdmin.from("agreements").select("id,title,status,signer_name,signed_at,merge_data,company_signer_name").eq("id", recipient.document_id).maybeSingle();
+        if (!expiredDoc) return null;
+        const merge = (expiredDoc.merge_data ?? {}) as MergeData;
+        return { id: expiredDoc.id as string, title: expiredDoc.title as string, body: "", status: expiredDoc.status as string, signer_name: expiredDoc.signer_name as string | null, signed_at: expiredDoc.signed_at as string | null, driver_name: recipient.name ?? merge.driver_name ?? null, company_signer_name: expiredDoc.company_signer_name as string, expired: true };
+      }
+      const { data: doc } = await supabaseAdmin
+        .from("agreements")
+        .select("id,title,body,status,signer_name,signed_at,merge_data,company_signer_name,token_expires_at,viewed_at")
+        .eq("id", recipient.document_id)
+        .maybeSingle();
+      ag = doc;
+      recipientName = (recipient.name as string | null) ?? null;
+    }
     if (!ag) return null;
     const merge = (ag.merge_data ?? {}) as MergeData;
     const base = {
@@ -1489,7 +1563,7 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
       status: ag.status as string,
       signer_name: ag.signer_name as string | null,
       signed_at: ag.signed_at as string | null,
-      driver_name: merge.driver_name ?? null,
+      driver_name: recipientName ?? merge.driver_name ?? null,
       company_signer_name: ag.company_signer_name as string,
     };
     if (ag.status === "voided") return null;
@@ -1505,7 +1579,7 @@ export const getAgreementByToken = createServerFn({ method: "POST" })
         .eq("status", "sent")
         .select("id");
       if (upd?.length) {
-        await supabaseAdmin.from("esign_recipients").update({ status: "viewed", viewed_at: now }).eq("document_id", ag.id).eq("role", "signer");
+        await supabaseAdmin.from("esign_recipients").update({ status: "viewed", viewed_at: now }).eq("document_id", ag.id).eq("token_hash", hash).eq("role", "signer");
         const { logAudit } = await import("@/lib/audit.server");
         await logAudit(null, { action: "document.viewed", summary: "Signer opened the document", entityType: "esign_document", entityId: ag.id as string });
       }
@@ -1675,11 +1749,30 @@ export const signAgreement = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { completeSigning, requestMeta } = await import("@/lib/esign.server");
     const hash = await hashToken(data.token);
-    const { data: ag } = await supabaseAdmin
+    const { data: byAgreement } = await supabaseAdmin
       .from("agreements")
       .select("id,application_id,body")
       .eq("token_hash", hash)
       .maybeSingle();
+    let ag = byAgreement;
+    let recipientId: string | null = null;
+    if (!ag) {
+      const { data: recipient } = await supabaseAdmin
+        .from("esign_recipients")
+        .select("id,document_id,status,token_revoked_at,token_expires_at")
+        .eq("token_hash", hash)
+        .eq("role", "signer")
+        .maybeSingle();
+      if (!recipient || recipient.token_revoked_at || recipient.status === "signed") throw new Error("This signing link is no longer valid");
+      if (recipient.token_expires_at && new Date(recipient.token_expires_at as string).getTime() < Date.now()) throw new Error("This signing link has expired — please ask us to resend it");
+      const { data: doc } = await supabaseAdmin.from("agreements").select("id,application_id,body,status").eq("id", recipient.document_id).maybeSingle();
+      if (!doc || doc.status === "voided" || doc.status === "signed") throw new Error("This signing link is no longer valid");
+      ag = doc;
+      recipientId = recipient.id as string;
+    } else {
+      const { data: recipient } = await supabaseAdmin.from("esign_recipients").select("id").eq("document_id", ag.id).eq("token_hash", hash).eq("role", "signer").maybeSingle();
+      recipientId = (recipient?.id as string | undefined) ?? null;
+    }
     if (!ag) throw new Error("This signing link is no longer valid");
     const problems = adoptionProblems(ag.body as string, data.adoption, data.signerName);
     if (problems.length) throw new Error(problems[0]);
@@ -1692,7 +1785,11 @@ export const signAgreement = createServerFn({ method: "POST" })
       userAgent: meta.userAgent,
       authMethod: "email_link",
       adoption: data.adoption ?? null,
+      recipientId,
     });
+    if (result === "partial") {
+      return { ok: true, alreadySigned: false, awaitingOthers: true, portalAccess: false, reservationFee: null };
+    }
     if (result === "already_signed") {
       // Read-only: the open Checkout from the first signing, never a new one.
       const { existingReservationFeeStep } = await import("@/lib/reservation-fee.server");
@@ -1773,6 +1870,13 @@ export const signMyAgreement = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { completeSigning, requestMeta } = await import("@/lib/esign.server");
     const meta = requestMeta(getRequest());
+    const { data: primaryRecipient } = await supabaseAdmin
+      .from("esign_recipients")
+      .select("id")
+      .eq("document_id", data.agreementId)
+      .eq("role", "signer")
+      .eq("signing_order", 1)
+      .maybeSingle();
     const { result } = await completeSigning(supabaseAdmin, {
       id: data.agreementId,
       tokenHash: null,
@@ -1781,7 +1885,11 @@ export const signMyAgreement = createServerFn({ method: "POST" })
       userAgent: meta.userAgent,
       authMethod: "portal",
       adoption: data.adoption ?? null,
+      recipientId: (primaryRecipient?.id as string | undefined) ?? null,
     });
+    if (result === "partial") {
+      return { ok: true, alreadySigned: false, awaitingOthers: true, reservationFee: null };
+    }
     if (result === "already_signed") {
       const { existingReservationFeeStep } = await import("@/lib/reservation-fee.server");
       return { ok: true, alreadySigned: true, reservationFee: await existingReservationFeeStep(supabaseAdmin, data.agreementId) };

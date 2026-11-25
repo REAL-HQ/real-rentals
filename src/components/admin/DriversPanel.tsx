@@ -277,6 +277,7 @@ import { listFleetNeedsStaff, type FleetNeedsStaffFlag } from "@/lib/fleet-revie
 import { listBlacklist } from "@/lib/blacklist.functions";
 import type { BlacklistEntry } from "@/lib/blacklist";
 import { BlacklistCard, BlacklistedBadge } from "@/components/admin/BlacklistCard";
+import { AdditionalDriversSection } from "@/components/admin/AdditionalDriversSection";
 import { CollectionsCard } from "@/components/admin/CollectionsCard";
 import { BackgroundReportsCard } from "@/components/admin/BackgroundReportsCard";
 import { BlacklistMatchAlert } from "@/components/admin/BlacklistMatchAlert";
@@ -3064,6 +3065,7 @@ function DriverDetail({
                   onNotesChanged={(notes) => onSaved({ notes })}
                   onBlacklistChanged={onBlacklistChanged}
                 />
+                {isManager ? <AdditionalDriversSection applicationId={driver.id} /> : null}
                 <CollectionsCard applicationId={driver.id} canSee={isOwner || isManager} />
                 {summaryRow}
                 <details className="text-xs text-muted-foreground">

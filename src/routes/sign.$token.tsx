@@ -35,6 +35,7 @@ function SignPage() {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [awaitingOthers, setAwaitingOthers] = useState(false);
   // Set only from the server's answer after signing; never from the URL.
   const [portalAccess, setPortalAccess] = useState(false);
   // The $50 Reservation Fee step, from the server's answer after signing only.
@@ -63,6 +64,7 @@ function SignPage() {
     setBusy(true);
     try {
       const res = await submitSign({ data: { token, signerName: v.signerName, agree: true, adoption: v.adoption } });
+      setAwaitingOthers((res as { awaitingOthers?: boolean })?.awaitingOthers === true);
       setPortalAccess(res?.portalAccess === true);
       setFeeStep((res as any)?.reservationFee ?? null);
       setDone(true);
@@ -127,9 +129,12 @@ function SignPage() {
         ) : done ? (
           <div className="rounded-xl border border-[#EDEDF0] bg-white p-8 text-center">
             <CheckCircle2 className="w-10 h-10 text-[#4CD964] mx-auto" />
-            <h1 className="mt-3 text-xl font-semibold text-[#111114]">Agreement Signed</h1>
-            {feeStep ? <ReservationFeeNextStep step={feeStep} /> : null}
-            {portalAccess ? (
+            <h1 className="mt-3 text-xl font-semibold text-[#111114]">{awaitingOthers ? "Your Signature Is Saved" : "Agreement Signed"}</h1>
+            {awaitingOthers ? (
+              <p className="mt-2 text-sm text-[#55555E]">The agreement is signed once every driver has signed. The reservation fee comes after that, and insurance is added after the fee is paid.</p>
+            ) : null}
+            {feeStep && !awaitingOthers ? <ReservationFeeNextStep step={feeStep} /> : null}
+            {awaitingOthers ? null : portalAccess ? (
               <>
                 <p className="mt-2 text-sm text-[#55555E]">
                   Thank you. Your signed copy is saved to your driver file and available in your portal.

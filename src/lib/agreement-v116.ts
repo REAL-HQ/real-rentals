@@ -68,5 +68,12 @@ if (s.includes("name, address, and license information")) throw new Error("agree
 
 export const V116_SOURCE = s;
 
-/** v1.16 prints the same contract values as v1.15. Section 13's three amounts are wording, not open terms. */
-export const V116_TERM_DEFAULTS: Record<string, string> = { ...V115_TERM_DEFAULTS };
+/**
+ * v1.16 prints the same contract values as v1.15, except the additional-driver
+ * fee. That fee is a fill-in term, so signed agreements keep the amount that
+ * was printed when they were signed. Older families stay on their own amounts.
+ */
+export const V116_TERM_DEFAULTS: Record<string, string> = {
+  ...V115_TERM_DEFAULTS,
+  fee_additional_driver: "$100 per week, per driver",
+};

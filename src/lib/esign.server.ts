@@ -6,8 +6,9 @@ import { assertSignedArchiveBytes } from "@/lib/signed-archive-protection.server
 import { logAudit } from "@/lib/audit.server";
 import type { Actor } from "@/lib/roles.server";
 import { renderCompletedPdf, sha256Hex } from "@/lib/esign-pdf.server";
+import { signingClosesDocument } from "@/lib/additional-drivers";
 
-export type ClaimResult = "won" | "already_signed" | "in_progress" | "voided" | "expired" | "invalid";
+export type ClaimResult = "won" | "partial" | "already_signed" | "in_progress" | "voided" | "expired" | "invalid";
 
 export function randomToken(): string {
   const b = new Uint8Array(32);
@@ -19,35 +20,116 @@ export const hashToken = (t: string) => sha256Hex(t);
 const DOC_COLS =
   "id,application_id,vehicle_id,source,title,body,status,company_signer_name,company_signer_title,signer_email,signer_name,signed_at,sent_at,viewed_at,created_at,signer_ip,signer_user_agent,auth_method,merge_data,metadata,archive_attempts,document_id";
 
-/** Atomic claim + signature commit. Exactly one concurrent caller wins. */
+type SigningArgs = {
+  id: string;
+  tokenHash: string | null; // null = portal (ownership already verified) or the last additional driver after their own token was checked
+  signerName: string;
+  ip: string | null;
+  userAgent: string | null;
+  authMethod: "email_link" | "portal";
+  adoption?: import("@/lib/signature-adoption").Adoption | null;
+  recipientId?: string | null;
+};
+
+type SignerRow = { id: string; status: string; email: string | null; name: string | null; signing_order: number; token_hash: string | null };
+
+async function signatureEvidence(args: SigningArgs, signedAt: string) {
+  if (!args.adoption) return null;
+  const evidence = JSON.stringify(args.adoption);
+  return { adoption: args.adoption, sha256: await sha256Hex(evidence), adopted_at: signedAt, name: args.signerName };
+}
+
+async function metadataWithSigner(admin: any, id: string, acting: SignerRow, evidence: Record<string, unknown> | null, writeSignature: boolean) {
+  const { data: cur } = await admin.from("agreements").select("metadata").eq("id", id).maybeSingle();
+  const prev = ((cur?.metadata as Record<string, unknown> | null) ?? {});
+  const prior = Array.isArray(prev.signers) ? prev.signers : [];
+  return {
+    ...prev,
+    signers: [...prior.filter((s) => (s as { recipient_id?: string })?.recipient_id !== acting.id), { recipient_id: acting.id, email: acting.email, ...(evidence ?? {}) }],
+    ...(writeSignature && evidence ? { signature: evidence } : {}),
+  };
+}
+
+async function stampRecipient(admin: any, args: SigningArgs, recipientId: string, signedAt: string) {
+  await admin.from("esign_recipients").update({
+    status: "signed", signed_at: signedAt, ip: args.ip, user_agent: args.userAgent, auth_method: args.authMethod, token_revoked_at: signedAt,
+  }).eq("id", recipientId);
+}
+
+async function stampAdditionalDriverSigned(admin: any, applicationId: string | null, email: string | null, signedAt: string) {
+  if (!applicationId || !email) return;
+  await admin.from("rental_additional_drivers").update({ signed_at: signedAt })
+    .eq("application_id", applicationId).eq("email", email.trim().toLowerCase()).is("signed_at", null);
+}
+
+/** Atomic claim + signature commit. Exactly one concurrent caller wins the final signature. */
 export async function completeSigning(
   admin: any,
-  args: {
-    id: string;
-    tokenHash: string | null; // null = portal (ownership already verified)
-    signerName: string;
-    ip: string | null;
-    userAgent: string | null;
-    authMethod: "email_link" | "portal";
-    /** Validated by the caller against the stored body (adoptionProblems). */
-    adoption?: import("@/lib/signature-adoption").Adoption | null;
-  },
+  args: SigningArgs,
 ): Promise<{ result: ClaimResult; archived?: boolean }> {
-  const { data: claim, error } = await admin.rpc("esign_claim", {
-    _id: args.id,
-    _token_hash: args.tokenHash,
-  });
+  const { data: signerRows } = await admin
+    .from("esign_recipients")
+    .select("id,status,email,name,signing_order,token_hash,role")
+    .eq("document_id", args.id)
+    .eq("role", "signer");
+  const signers = (signerRows ?? []) as SignerRow[];
+  const acting = args.recipientId
+    ? signers.find((s) => s.id === args.recipientId) ?? null
+    : args.tokenHash
+      ? signers.find((s) => s.token_hash === args.tokenHash) ?? null
+      : signers.find((s) => s.signing_order === 1) ?? signers[0] ?? null;
+  if (signers.length > 1 && !acting) throw new Error("This signing link is no longer valid");
+  if (acting && args.tokenHash && acting.token_hash !== args.tokenHash) throw new Error("This signing link is no longer valid");
+  const closes = signingClosesDocument(signers, acting?.id ?? null);
+  const { data: agToken } = await admin.from("agreements").select("token_hash,application_id").eq("id", args.id).maybeSingle();
+  const tokenIsAgreement = args.tokenHash != null && agToken?.token_hash === args.tokenHash;
+  // An additional driver's link is not agreements.token_hash. Recording it
+  // before they are the last signer must not claim the document.
+  if (!closes && acting && args.tokenHash && !tokenIsAgreement) {
+    const signedAt = new Date().toISOString();
+    const evidence = await signatureEvidence(args, signedAt);
+    const metadata = await metadataWithSigner(admin, args.id, acting, evidence, false);
+    await admin.from("agreements").update({ metadata }).eq("id", args.id);
+    await stampRecipient(admin, args, acting.id, signedAt);
+    await stampAdditionalDriverSigned(admin, agToken?.application_id ?? null, acting.email, signedAt);
+    await logAudit(null, { action: "document.signer_signed", summary: "Additional driver signed; other signatures are still open", entityType: "esign_document", entityId: args.id });
+    return { result: "partial" };
+  }
+
+  // The last additional driver has already matched their recipient token.
+  // esign_claim only knows the agreement token, so this verified recipient
+  // uses the same null token the portal uses after its ownership check.
+  const claimToken = !closes || tokenIsAgreement || args.tokenHash == null ? args.tokenHash : null;
+  const { data: claim, error } = await admin.rpc("esign_claim", { _id: args.id, _token_hash: claimToken });
   if (error) throw new Error("Could not record your signature. Please try again.");
   const result = claim as ClaimResult;
   if (result !== "won") return { result };
 
   const signedAt = new Date().toISOString();
-  let metadata: any = undefined;
-  if (args.adoption) {
+  const evidence = await signatureEvidence(args, signedAt);
+  const primary = signers.find((s) => s.signing_order === 1) ?? null;
+  const actingIsPrimary = !acting || acting.signing_order === 1 || signers.length <= 1;
+  let metadata: any = acting ? await metadataWithSigner(admin, args.id, acting, evidence, actingIsPrimary) : undefined;
+  if (!metadata && evidence) {
     const { data: cur } = await admin.from("agreements").select("metadata").eq("id", args.id).maybeSingle();
-    const evidence = JSON.stringify(args.adoption);
-    metadata = { ...((cur?.metadata as any) ?? {}), signature: { adoption: args.adoption, sha256: await sha256Hex(evidence), adopted_at: signedAt } };
+    metadata = { ...((cur?.metadata as Record<string, unknown> | null) ?? {}), signature: evidence };
   }
+  if (!closes && acting) {
+    const { error: upErr } = await admin.from("agreements").update({
+      ...(metadata ? { metadata } : {}),
+      status: "viewed",
+      token_hash: null,
+    }).eq("id", args.id).eq("status", "signing");
+    if (upErr) {
+      await admin.from("agreements").update({ status: "viewed" }).eq("id", args.id).eq("status", "signing");
+      throw new Error("Could not record your signature. Please try again.");
+    }
+    await stampRecipient(admin, args, acting.id, signedAt);
+    await stampAdditionalDriverSigned(admin, agToken?.application_id ?? null, acting.email, signedAt);
+    await logAudit(null, { action: "document.signer_signed", summary: "Primary signer signed; other signatures are still open", entityType: "esign_document", entityId: args.id });
+    return { result: "partial" };
+  }
+  const signerName = actingIsPrimary ? args.signerName : (primary?.name || args.signerName);
   const { data: ag, error: upErr } = await admin
     .from("agreements")
     .update({
@@ -55,7 +137,7 @@ export async function completeSigning(
       status: "signed",
       signed_at: signedAt,
       completed_at: signedAt,
-      signer_name: args.signerName,
+      signer_name: signerName,
       signer_ip: args.ip,
       signer_user_agent: args.userAgent,
       auth_method: args.authMethod,
@@ -72,11 +154,15 @@ export async function completeSigning(
     await admin.from("agreements").update({ status: "viewed" }).eq("id", args.id).eq("status", "signing");
     throw new Error("Could not record your signature. Please try again.");
   }
-  await admin
-    .from("esign_recipients")
-    .update({ status: "signed", signed_at: signedAt, ip: args.ip, user_agent: args.userAgent, auth_method: args.authMethod, token_revoked_at: signedAt })
-    .eq("document_id", args.id)
-    .eq("role", "signer");
+  if (acting) await stampRecipient(admin, args, acting.id, signedAt);
+  else {
+    await admin
+      .from("esign_recipients")
+      .update({ status: "signed", signed_at: signedAt, ip: args.ip, user_agent: args.userAgent, auth_method: args.authMethod, token_revoked_at: signedAt })
+      .eq("document_id", args.id)
+      .eq("role", "signer");
+  }
+  if (acting) await stampAdditionalDriverSigned(admin, ag.application_id ?? null, acting.email, signedAt);
 
   await logAudit(null, {
     action: "document.signed",
@@ -87,7 +173,7 @@ export async function completeSigning(
       signature: args.adoption.signature.method === "typed" ? `typed:${args.adoption.signature.style}` : "drawn",
       initials: args.adoption.initials.method === "typed" ? `typed:${args.adoption.initials.style}` : "drawn",
       acknowledgments: `${args.adoption.acks.filter(Boolean).length}/${args.adoption.acks.length}`,
-      evidence_sha256: metadata.signature.sha256,
+      evidence_sha256: evidence?.sha256 ?? (metadata as { signature?: { sha256?: string } } | undefined)?.signature?.sha256,
     } } : {}),
   });
 

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { FadeUp } from "@/components/site/FadeUp";
 import { MIN_AGE_FAQ, MIN_RENTER_AGE } from "@/lib/renter-age";
+import { ADDITIONAL_DRIVER_FAQ_ANSWER, ADDITIONAL_DRIVER_FAQ_QUESTION } from "@/lib/additional-driver-copy";
 
 const faqs = [
   MIN_AGE_FAQ,
@@ -12,6 +13,7 @@ const faqs = [
   { q: "Are maintenance and repairs included?", a: "Yes. Routine maintenance and most mechanical repairs are on us — oil changes, brakes, tires, and scheduled service." },
   { q: "How quickly can I get approved?", a: "Most applications are reviewed the same day, and many drivers pick up the same day or within 24 to 48 hours of applying." },
   { q: "Is insurance included?", a: "Yes. Insurance is included, with the policy in your name. One less bill to worry about." },
+  { q: ADDITIONAL_DRIVER_FAQ_QUESTION, a: ADDITIONAL_DRIVER_FAQ_ANSWER },
   { q: "Who pays for tolls and tickets?", a: "You do. Any tolls, tickets, or citations during your rental are your responsibility. Unpaid items are transferred to the driver on record per your rental agreement, and an admin fee may apply per notice." },
   { q: "What happens if my vehicle needs repairs?", a: "Contact support, schedule a swap or service appointment, and we'll get you back on the road quickly. Most routine work is covered." },
   { q: "How do fleet partners earn money?", a: "Partners place vehicles into the Real Rentals fleet and earn passive monthly income on a 50/50 split of rent collected. We handle driver acquisition, screening, collections, GPS tracking, and maintenance." },
