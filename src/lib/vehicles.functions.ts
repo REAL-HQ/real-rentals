@@ -49,6 +49,7 @@ export const VEHICLE_STATUSES = [
   { value: "maintenance", label: "Maintenance" },
   { value: "unavailable", label: "Unavailable" },
   { value: "reserved", label: "Reserved" },
+  { value: "pending_reservation", label: "Pending Reservation" },
   { value: "archived", label: "Archived" },
   { value: "sold", label: "Sold" },
   { value: "for_sale", label: "For Sale" },

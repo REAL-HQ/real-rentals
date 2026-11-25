@@ -8,15 +8,23 @@
  * own slice, and out of Available. The Vehicles page total is a different
  * number: the whole table, labeled "Including Archived". Those totals match
  * when no car has left the fleet. Every car inside this total is in exactly
- * one slice: Rented, Reserved, Available, Maintenance, Needs Setup,
- * Unavailable, For Sale, or Other.
+ * one slice: Rented, Reserved, Pending Reservation, Available, Maintenance,
+ * Needs Setup, Unavailable, For Sale, or Other.
+ *
+ * Pending Reservation is the soft hold after the Reservation Fee is paid and
+ * before the insurance card is issued. It is not Available (the car cannot
+ * be offered or booked for anyone else) and it is not Rented. It stays in
+ * the rentable denominator with Available, Reserved, and Rented:
+ * utilization = rented ÷ (available + reserved + pending reservation + rented).
+ * Leaving it out of that denominator would raise utilization just because a
+ * car was held. Counting it as rented would overstate occupancy.
  *
  * Occupancy (Rented) prefers live active rentals over vehicle.status, because
  * a vehicle can stay "available" after activation or stay "rented" after
  * return. Status mismatches are reported so staff can fix the row.
- * Utilization stays rented ÷ (available + reserved + rented). Unavailable,
- * maintenance, needs-setup, and For Sale cars are in the total and out of
- * that denominator.
+ * Utilization is rented ÷ (available + reserved + pending reservation + rented).
+ * Unavailable, maintenance, needs-setup, and For Sale cars are in the total
+ * and out of that denominator. Pending Reservation stays in the denominator.
  */
 export const INACTIVE_VEHICLE_STATUSES = ["archived", "sold", "retired"] as const;
 /** Stored value for the For Sale status. The label is "For Sale". */
@@ -36,14 +44,19 @@ export function isPublicHiddenVehicleStatus(status: string | null | undefined): 
   const key = String(status ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
   return (PUBLIC_HIDDEN_VEHICLE_STATUSES as readonly string[]).includes(key);
 }
-/** Statuses that take part in rental utilization. */
-export const RENTABLE_VEHICLE_STATUSES = ["available", "reserved", "rented"] as const;
+/**
+ * Statuses that take part in rental utilization. Pending Reservation is held
+ * inventory: not Available, not earning, and still in the denominator.
+ */
+export const RENTABLE_VEHICLE_STATUSES = ["available", "reserved", "pending_reservation", "rented"] as const;
 
 export type FleetSummary = {
   total: number;
   needsSetup: number;
   available: number;
   reserved: number;
+  /** Fee paid, insurance card not issued. Not Available and not Rented. */
+  pendingReservation: number;
   rented: number;
   maintenance: number;
   unavailable: number;
@@ -68,13 +81,15 @@ export type FleetStatusMismatch = {
 };
 
 /**
- * Donut and legend colors. Green, yellow, gray, red, and blue.
+ * Donut and legend colors. Green, yellow, gray, red, and blue, plus a
+ * second yellow for Pending Reservation so Reserved keeps #FFCC33.
  * Maintenance, Needs Setup, and Unavailable share Unavailable's red.
  * Other uses the same gray as Available. For Sale is blue, and it is not
  * counted as Available.
  */
 const FLEET_SNAPSHOT_GREEN = "#4CD964";
 const FLEET_SNAPSHOT_YELLOW = "#FFCC33";
+const FLEET_SNAPSHOT_PENDING_YELLOW = "#FFE566";
 const FLEET_SNAPSHOT_GRAY = "#C7C7CC";
 const FLEET_SNAPSHOT_RED = "#FF3B30";
 const FLEET_SNAPSHOT_BLUE = "#007AFF";
@@ -82,6 +97,7 @@ const FLEET_SNAPSHOT_BLUE = "#007AFF";
 export const FLEET_SNAPSHOT_COLORS = {
   rented: FLEET_SNAPSHOT_GREEN,
   reserved: FLEET_SNAPSHOT_YELLOW,
+  pendingReservation: FLEET_SNAPSHOT_PENDING_YELLOW,
   available: FLEET_SNAPSHOT_GRAY,
   maintenance: FLEET_SNAPSHOT_RED,
   setup: FLEET_SNAPSHOT_RED,
@@ -93,6 +109,7 @@ export const FLEET_SNAPSHOT_COLORS = {
 const FLEET_SNAPSHOT_SLICE_DEFS = [
   { key: "rented", label: "Rented", field: "rented", color: FLEET_SNAPSHOT_COLORS.rented },
   { key: "reserved", label: "Reserved", field: "reserved", color: FLEET_SNAPSHOT_COLORS.reserved },
+  { key: "pending_reservation", label: "Pending Reservation", field: "pendingReservation", color: FLEET_SNAPSHOT_COLORS.pendingReservation },
   { key: "available", label: "Available", field: "available", color: FLEET_SNAPSHOT_COLORS.available },
   { key: "maintenance", label: "Maintenance", field: "maintenance", color: FLEET_SNAPSHOT_COLORS.maintenance },
   { key: "setup", label: "Needs Setup", field: "needsSetup", color: FLEET_SNAPSHOT_COLORS.setup },
@@ -124,6 +141,7 @@ function blankSummary(): FleetSummary {
     needsSetup: 0,
     available: 0,
     reserved: 0,
+    pendingReservation: 0,
     rented: 0,
     maintenance: 0,
     unavailable: 0,
@@ -147,6 +165,7 @@ function countWorkingStatus(summary: FleetSummary, status: string): void {
   if (status === "onboarding") summary.needsSetup++;
   else if (status === "available") summary.available++;
   else if (status === "reserved") summary.reserved++;
+  else if (status === "pending_reservation") summary.pendingReservation++;
   else if (status === "rented") summary.rented++;
   else if (status === "maintenance") summary.maintenance++;
   else if (status === "unavailable") summary.unavailable++;
@@ -155,7 +174,7 @@ function countWorkingStatus(summary: FleetSummary, status: string): void {
 }
 
 function finishSummary(summary: FleetSummary): FleetSummary {
-  summary.rentable = summary.available + summary.reserved + summary.rented;
+  summary.rentable = summary.available + summary.reserved + summary.pendingReservation + summary.rented;
   summary.utilizationPct = summary.rentable > 0 ? Math.round((summary.rented / summary.rentable) * 100) : null;
   return summary;
 }

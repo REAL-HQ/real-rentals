@@ -13,13 +13,13 @@ import {
   type FleetSummary,
 } from "../src/lib/fleet-summary";
 
-const COUNTED = ["needsSetup", "available", "reserved", "rented", "maintenance", "unavailable", "forSale", "other"] as const;
+const COUNTED = ["needsSetup", "available", "reserved", "pendingReservation", "rented", "maintenance", "unavailable", "forSale", "other"] as const;
 
 function counted(summary: FleetSummary): number {
   return COUNTED.reduce((sum, key) => sum + summary[key], 0);
 }
 
-const SNAPSHOT_PALETTE = ["#4CD964", "#FFCC33", "#C7C7CC", "#FF3B30", "#007AFF"] as const;
+const SNAPSHOT_PALETTE = ["#4CD964", "#FFCC33", "#FFE566", "#C7C7CC", "#FF3B30", "#007AFF"] as const;
 
 function expectPartition(summary: FleetSummary) {
   const slices = fleetSnapshotSlices(summary);
@@ -70,6 +70,7 @@ describe("fleet snapshot categories", () => {
     const slices = Object.fromEntries(fleetSnapshotSlices(snapshot).map((slice) => [slice.key, slice]));
     expect(slices.rented).toMatchObject({ label: "Rented", color: "#4CD964" });
     expect(slices.reserved).toMatchObject({ label: "Reserved", color: "#FFCC33" });
+    expect(slices.pending_reservation).toMatchObject({ label: "Pending Reservation", color: "#FFE566", value: 0 });
     expect(slices.available).toMatchObject({ label: "Available", color: "#C7C7CC" });
     expect(slices.maintenance).toMatchObject({ label: "Maintenance", value: 1, color: "#FF3B30" });
     expect(slices.setup).toMatchObject({ label: "Needs Setup", color: "#FF3B30" });
@@ -83,6 +84,7 @@ describe("fleet snapshot categories", () => {
     expect(FLEET_SNAPSHOT_COLORS).toEqual({
       rented: "#4CD964",
       reserved: "#FFCC33",
+      pendingReservation: "#FFE566",
       available: "#C7C7CC",
       maintenance: "#FF3B30",
       setup: "#FF3B30",
@@ -90,7 +92,8 @@ describe("fleet snapshot categories", () => {
       forSale: "#007AFF",
       other: "#C7C7CC",
     });
-    expect(new Set(Object.values(FLEET_SNAPSHOT_COLORS)).size).toBe(5);
+    expect(new Set(Object.values(FLEET_SNAPSHOT_COLORS)).size).toBe(6);
+    expect(slices.reserved.color).not.toBe(slices.pending_reservation.color);
   });
 
   it("keeps archived, sold, and retired cars out of the snapshot total", () => {

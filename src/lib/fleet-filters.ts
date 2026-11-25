@@ -80,7 +80,7 @@ export type FleetListingRow = {
 /** Client-side only. A missing weekly rate sorts last, and a missing year is not newest. */
 export function applyFleetFilters<T extends FleetListingRow>(rows: T[], state: FleetFilterState): T[] {
   const next = rows.filter((row) => {
-    if (isPublicHiddenVehicleStatus(row.status)) return false;
+    if (isPublicHiddenVehicleStatus(row.status) || row.status === "pending_reservation") return false;
     if (state.make !== "all" && row.make !== state.make) return false;
     if (state.availableOnly && row.status !== "available") return false;
     if (state.uberOnly && !(row.uber_eligibility && row.uber_eligibility.length > 0)) return false;

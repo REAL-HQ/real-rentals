@@ -785,6 +785,17 @@ async function handleChargeRefunded(charge: any) {
     _charge_id: charge.id ?? null,
     _pi: piId,
   }));
+  try {
+    const { data: fees } = await admin.from('payments').select('id,driver_id,reason,status,refunded_amount').in('id', ids);
+    const { releasePendingReservation } = await import('@/lib/pending-reservation.server');
+    for (const fee of (fees ?? []) as any[]) {
+      if (String(fee.reason ?? '') !== 'reservation_fee') continue;
+      if (fee.status !== 'refunded' && !(Number(fee.refunded_amount ?? 0) > 0)) continue;
+      if (fee.driver_id) await releasePendingReservation(admin, { applicationId: fee.driver_id, reason: 'fee_refunded' });
+    }
+  } catch (err) {
+    console.error('[webhook] pending reservation release failed', err);
+  }
 }
 
 /** customer.subscription.created: link a new subscription to its rental by metadata or customer. */

@@ -136,6 +136,10 @@ describe("profile state", () => {
     expect((await loadPickupNotBooked(fakeDb(world({ rentalStatus: "on_hold" })), APP)).openRental).toBe(true);
     expect((await loadPickupNotBooked(fakeDb(world({ rentalStatus: "active" })), APP)).show).toBe(false);
     expect((await loadPickupNotBooked(fakeDb(world({ feeStatus: "refunded" })), APP)).show).toBe(false);
+    expect((await loadPickupNotBooked(fakeDb(world({ rentalStatus: "pending_reservation" })), APP)).show).toBe(true);
+    const bookedPending = world({ rentalStatus: "pending_reservation" });
+    bookedPending.rentals[0].reservation_note = JSON.stringify({ reservation_details: 1, pickup_time: "10:30", pickup_location: "3500 E Hillsborough Ave, Tampa, FL" });
+    expect((await loadPickupNotBooked(fakeDb(bookedPending), APP)).show).toBe(false);
     const gap = await loadPickupNotBooked(fakeDb(world()), APP);
     expect(gap).toMatchObject({ vehicleId: CAR, startDate: "2026-11-21", agreementId: NEW, paymentId: PAY, feeNotesMatch: true });
   });

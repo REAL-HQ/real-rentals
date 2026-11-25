@@ -267,7 +267,7 @@ function FleetPage() {
   const rows = FLEET_FILTERS_ENABLED === true
     ? (filterRows ? filterRows(vehicles, fleetFilters) : []).filter((v) => categories[v.body_type ?? "sedan"])
     : vehicles.filter((v) => {
-        if (isPublicHiddenVehicleStatus(v.status)) return false;
+        if (isPublicHiddenVehicleStatus(v.status) || v.status === "pending_reservation") return false;
         const cat = v.body_type ?? "sedan";
         return (
           (make === "all" || v.make === make) &&

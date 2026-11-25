@@ -15,7 +15,6 @@ import {
   FEE_PAID_NO_PICKUP_TITLE,
   feePaidNoPickupBody,
   feePaidNoPickupEmail,
-  isOpenRentalStatus,
   isPickupNotBooked,
   pickupLinkEmail,
   pickupLinkPath,
@@ -23,6 +22,7 @@ import {
 } from "@/lib/pickup-not-booked";
 import { publicAppUrl } from "@/lib/public-app-url";
 import { agreementIdFromReservationFeeNotes, RESERVATION_FEE_REASON } from "@/lib/reservation-fee";
+import { pendingHoldHidesBookPickup } from "@/lib/pending-reservation";
 import { reservationPickupDate } from "@/lib/reservations";
 
 type Admin = any;
@@ -37,7 +37,7 @@ export type PickupLinkSendResult = { ok: true; to: string } | { ok: false; messa
 
 export type FeePaidNoPickupResult = { status: "notified" | "duplicate" | "pickup_booked" | "skipped" | "failed"; email?: "sent" | "failed" | "skipped" };
 
-const OPEN = ["reserved", "on_hold", "active"];
+const OPEN = ["reserved", "on_hold", "active", "pending_reservation"];
 
 function keptOrCredited(notes: unknown): boolean {
   const text = String(notes ?? "");
@@ -71,13 +71,15 @@ async function loadContext(admin: Admin, applicationId: string): Promise<Context
     admin.from("applications").select("id,status,vehicle_id,contract_start_date,full_name,email,deleted_at").eq("id", applicationId).maybeSingle(),
     admin.from("agreements").select("id,status,signed_at,voided_at,metadata,application_id").eq("application_id", applicationId).limit(20),
     admin.from("payments").select("id,status,notes,reason,amount").eq("driver_id", applicationId).eq("reason", RESERVATION_FEE_REASON).eq("status", "paid").limit(5),
-    admin.from("rentals").select("id,status").eq("application_id", applicationId).in("status", OPEN).limit(5),
+    admin.from("rentals").select("id,status,reservation_note").eq("application_id", applicationId).in("status", OPEN).limit(5),
   ]);
   const app = appRes?.data ?? null;
   const agreements = ((agRes?.data ?? []) as any[]);
   const signed = currentSigned(agreements);
   const payment = ((payRes?.data ?? []) as any[]).find((p) => !keptOrCredited(p.notes)) ?? null;
-  const openRental = ((rentRes?.data ?? []) as any[]).some((r) => isOpenRentalStatus(r.status));
+  // A Pending Reservation with no pickup time is not a booked pickup, so
+  // Book Pickup still shows. reserved, on_hold, and active hide it.
+  const openRental = ((rentRes?.data ?? []) as any[]).some((r) => pendingHoldHidesBookPickup(r.status, r.reservation_note));
   const noted = agreementIdFromReservationFeeNotes(payment?.notes);
   const feeNotesMatch = !!signed && !!payment && noted === String(signed.id).toLowerCase();
   const startDate = reservationPickupDate(typeof app?.contract_start_date === "string" ? app.contract_start_date.slice(0, 10) : null);
