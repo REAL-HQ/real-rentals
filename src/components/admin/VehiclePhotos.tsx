@@ -40,6 +40,9 @@ import {
 import { ENHANCE_MODES, localProcessingBlocker, runEnhance, type EnhanceMode } from "@/lib/photo-enhance.browser";
 import { SectionCard, MicroLabel } from "./ui";
 import { PhotoStudioPanel } from "./PhotoStudioPanel";
+import { PhotoClassLabel, PhotoClassSelect } from "./PhotoClassSelect";
+import { setOriginalPhotoClass } from "@/lib/photo-studio-media.functions";
+import type { PhotoClass } from "@/lib/photo-studio";
 
 // The gallery.
 //
@@ -66,6 +69,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   const completeFn = useServerFn(completePhotoEnhance);
   const failFn = useServerFn(failPhotoEnhance);
   const reviewFn = useServerFn(reviewPhotoEnhance);
+  const setClassFn = useServerFn(setOriginalPhotoClass);
   const [enh, setEnh] = useState<{ available: boolean; reason: string }>({ available: false, reason: "Checking…" });
   const [progress, setProgress] = useState<Record<string, string>>({});
   const [failures, setFailures] = useState<Record<string, { mode: EnhanceMode; error: string }>>({});
@@ -89,6 +93,7 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   useEffect(() => { void refreshEnh(); }, [refreshEnh]);
 
   const [data, setData] = useState<VehicleMediaList | null>(null);
+  const [classAvailable, setClassAvailable] = useState(true);
   const [uploadRevision, setUploadRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -96,7 +101,9 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await load({ data: { vehicleId } }));
+      const next = await load({ data: { vehicleId } });
+      setData(next);
+      setClassAvailable(next.photoClassAvailable);
     } catch {
       setData(null);
     } finally {
@@ -361,6 +368,23 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
     }
   }
 
+  async function setPhotoClass(m: VehicleMedia, photoClass: PhotoClass) {
+    setBusyId(m.id);
+    try {
+      const r = await setClassFn({ data: { mediaId: m.id, photoClass } });
+      if (!r.ok) {
+        if ("unavailable" in r && r.unavailable) setClassAvailable(false);
+        toast.error(r.error);
+        return;
+      }
+      await refresh();
+    } catch (e: any) {
+      toast.error(e?.message === "Forbidden" ? "Setting the angle is Manager-only." : "Could not update.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function review(m: VehicleMedia, decision: "approve" | "reject") {
     setBusyId(m.id);
     try {
@@ -579,6 +603,8 @@ export function VehiclePhotos({ vehicleId, canEdit }: { vehicleId: string; canEd
                 onCaption={(c) => patch(m, { id: m.id, caption: c })}
                 onDelete={() => destroy(m)}
                 onEnhance={(mode) => enhance(m, mode as EnhanceMode)}
+                photoClassAvailable={classAvailable}
+                onPhotoClass={(photoClass) => setPhotoClass(m, photoClass)}
               />
               </div>
             ))}
@@ -707,6 +733,8 @@ function PhotoTile({
   failure,
   onCompare,
   onReview,
+  photoClassAvailable,
+  onPhotoClass,
 }: {
   progress?: string;
   failure?: { mode: EnhanceMode; error: string };
@@ -727,6 +755,8 @@ function PhotoTile({
   onDelete: () => void;
   onEnhance: (mode: string) => void;
   onView: () => void;
+  photoClassAvailable: boolean;
+  onPhotoClass: (photoClass: PhotoClass) => void;
 }) {
   const [caption, setCaption] = useState(m.caption ?? "");
   const [url, setUrl] = useState<string | null>(null);
@@ -796,6 +826,13 @@ function PhotoTile({
       </div>
 
       <div className="p-2.5 space-y-2">
+        {!isEnhanced && photoClassAvailable && (
+          canEdit ? (
+            <PhotoClassSelect value={m.photo_class} disabled={busy} onChange={onPhotoClass} />
+          ) : (
+            <PhotoClassLabel value={m.photo_class} />
+          )
+        )}
         {isEnhanced && (
           <div className="text-[10px] text-[#9A9AA3] flex items-center gap-1 truncate">
             <Link2 className="w-2.5 h-2.5 shrink-0" />

@@ -7,9 +7,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { requireStaff } from "@/lib/roles.server";
+import { requireManager, requireStaff } from "@/lib/roles.server";
 import { logAudit } from "@/lib/audit";
-import { ORIGINALS_BUCKET, type PhotoClass } from "@/lib/photo-studio";
+import { ORIGINALS_BUCKET, isMissingPhotoClassColumn, type PhotoClass } from "@/lib/photo-studio";
 
 const SIGNED_URL_SECONDS = 300;
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
@@ -72,15 +72,17 @@ export const attachInboxPhotoAsOriginal = createServerFn({ method: "POST" })
     return { ok: true as const, mediaId: row.id as string, duplicate: false };
   });
 
-/** Re-label an original's angle (the AI guess can be wrong). */
+/** Re-label an original's angle (the AI guess can be wrong). Manager+. */
 export const setOriginalPhotoClass = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ mediaId: z.string().uuid(), photoClass: PHOTO_CLASS }).parse(d))
   .handler(async ({ data, context }) => {
-    await requireStaff(context.userId);
+    await requireManager(context.userId);
     const sb = await admin();
     const { error } = await sb.from("vehicle_media").update({ photo_class: data.photoClass } as any).eq("id", data.mediaId).eq("kind", "original");
-    return error ? { ok: false as const, error: "Could not update." } : { ok: true as const };
+    if (!error) return { ok: true as const };
+    if (isMissingPhotoClassColumn(error.message)) return { ok: false as const, error: "Photo classes are not on this database yet.", unavailable: true as const };
+    return { ok: false as const, error: "Could not update." };
   });
 
 /** Staff-only list of a car's originals and marketing shots, as signed URLs. */
@@ -90,13 +92,24 @@ export const listStudioMedia = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await requireStaff(context.userId);
     const sb = await admin();
-    const { data: rows } = await (sb.from("vehicle_media") as any)
-      .select("id,kind,storage_bucket,storage_path,photo_class,shot_slot,studio_review_status,studio_check,generation_model,source_media_ids,published,approved_at,created_at")
+    const withClass = "id,kind,storage_bucket,storage_path,photo_class,shot_slot,studio_review_status,studio_check,generation_model,source_media_ids,published,approved_at,created_at";
+    let photoClassAvailable = true;
+    let { data: rows, error } = await (sb.from("vehicle_media") as any)
+      .select(withClass)
       .eq("vehicle_id", data.vehicleId).in("kind", ["original", "marketing"]).order("created_at");
+    if (error && isMissingPhotoClassColumn(error.message)) {
+      photoClassAvailable = false;
+      const again = await (sb.from("vehicle_media") as any)
+        .select(withClass.replace("photo_class,", ""))
+        .eq("vehicle_id", data.vehicleId).in("kind", ["original", "marketing"]).order("created_at");
+      rows = again.data;
+      error = again.error;
+    }
+    if (error) return { items: [] as any[], photoClassAvailable: false };
     const out = [];
     for (const r of (rows ?? []) as any[]) {
       const { data: s } = await sb.storage.from(r.storage_bucket).createSignedUrl(r.storage_path, SIGNED_URL_SECONDS);
       out.push({ ...r, url: s?.signedUrl ?? null });
     }
-    return { items: out };
+    return { items: out, photoClassAvailable };
   });

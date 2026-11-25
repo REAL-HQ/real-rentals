@@ -4,9 +4,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SectionCard, MicroLabel, EmptyState } from "./ui";
-import { listStudioMedia } from "@/lib/photo-studio-media.functions";
+import { listStudioMedia, setOriginalPhotoClass } from "@/lib/photo-studio-media.functions";
 import { generateMarketingShots, getPhotoStudioStatus, reviewMarketingShot, setCarMarketingPublished } from "@/lib/photo-studio.functions";
-import { SHOT_SLOTS, SLOT_LABELS, carSetStatus, type ShotSlot } from "@/lib/photo-studio";
+import { SHOT_SLOTS, SLOT_LABELS, carSetStatus, type PhotoClass, type ShotSlot } from "@/lib/photo-studio";
+import { PhotoClassLabel, PhotoClassSelect } from "./PhotoClassSelect";
 import { formatStatusLabel } from "@/lib/ui-display-labels";
 
 type Media = Awaited<ReturnType<typeof listStudioMedia>>["items"][number];
@@ -19,13 +20,21 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
   const gen = useServerFn(generateMarketingShots);
   const review = useServerFn(reviewMarketingShot);
   const publish = useServerFn(setCarMarketingPublished);
+  const setClass = useServerFn(setOriginalPhotoClass);
   const [items, setItems] = useState<Media[]>([]);
+  const [classAvailable, setClassAvailable] = useState(true);
   const [st, setSt] = useState<Awaited<ReturnType<typeof getPhotoStudioStatus>> | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [l, s] = await Promise.all([list({ data: { vehicleId } }), status()]);
-    setItems(l.items as Media[]); setSt(s);
+    try {
+      const [l, s] = await Promise.all([list({ data: { vehicleId } }), status()]);
+      setItems(l.items as Media[]);
+      setClassAvailable(l.photoClassAvailable !== false);
+      setSt(s);
+    } catch {
+      setItems([]);
+    }
   }, [vehicleId, list, status]);
   useEffect(() => { void load(); }, [load]);
 
@@ -46,7 +55,22 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
         toast.success(`${saved} shot(s) ready for review${rejected.length ? `, ${rejected.length} rejected by the plate/VIN check` : ""}.`);
       }
       await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not generate.");
     } finally { setBusy(false); }
+  };
+  const labelOriginal = async (id: string, photoClass: PhotoClass) => {
+    try {
+      const r = await setClass({ data: { mediaId: id, photoClass } });
+      if (!r.ok) {
+        if ("unavailable" in r && r.unavailable) setClassAvailable(false);
+        toast.error(r.error);
+        return;
+      }
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error && e.message === "Forbidden" ? "Setting the angle is Manager-only." : "Could not update.");
+    }
   };
   const decide = async (id: string, decision: "approved" | "rejected") => {
     const r = await review({ data: { mediaId: id, decision } });
@@ -98,10 +122,16 @@ export function PhotoStudioPanel({ vehicleId, canEdit }: { vehicleId: string; ca
         {originals.length === 0 ? <EmptyState title="No Originals Yet" hint="Car photos linked in Fleet Inbox appear here." /> : (
           <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mt-1">
             {originals.map((o: any) => (
-              <a key={o.id} href={o.url ?? "#"} target="_blank" rel="noreferrer" className="block">
-                <img src={o.url ?? ""} alt={o.photo_class ?? "original"} className="w-full aspect-square object-cover rounded" />
-                <span className="text-[10px] text-muted-foreground">{o.photo_class ?? "unknown"}</span>
-              </a>
+              <div key={o.id} className="block">
+                <a href={o.url ?? "#"} target="_blank" rel="noreferrer">
+                  <img src={o.url ?? ""} alt={o.photo_class ?? "original"} className="w-full aspect-square object-cover rounded" />
+                </a>
+                {classAvailable ? (
+                  canEdit
+                    ? <PhotoClassSelect value={o.photo_class} disabled={busy} onChange={(photoClass) => void labelOriginal(o.id, photoClass)} />
+                    : <PhotoClassLabel value={o.photo_class} />
+                ) : null}
+              </div>
             ))}
           </div>
         )}
