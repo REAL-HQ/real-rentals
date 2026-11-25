@@ -1,5 +1,6 @@
 /** Pure helpers for soft vehicle reservations (rentals.status = reserved). */
 
+import { fmtDate } from "@/lib/date-format";
 import type { ReservationDepositStatus } from "@/lib/reservation-deposit-settings";
 
 export const RESERVATION_STATUS = "reserved" as const;
@@ -110,6 +111,34 @@ export type ReservationRow = {
   thumbnailPath?: string | null;
   /** Manager+ only; the server leaves it out for a Coordinator. */
   weeklyRate?: number | null;
+  /**
+   * Unpaid Reservation Fee on the payments row for this hold, when one exists.
+   * The car can already be reserved while the fee is still pending.
+   */
+  feeAmount?: number | null;
+  feeDueDate?: string | null;
+};
+
+/**
+ * Someone who signed and has an unpaid Reservation Fee, but no reserved,
+ * on-hold, or pending-reservation rental yet. The car is not held until the
+ * fee is paid (holdVehicleForPaidReservationFee), so this is not a booking.
+ */
+export type AwaitingReservationFee = {
+  paymentId: string;
+  applicationId: string;
+  driverName: string | null;
+  amount: number;
+  dueDate: string | null;
+};
+
+/** A payments row already classified as an unpaid Reservation Fee. */
+export type FeeHoldPayment = {
+  id: string;
+  applicationId: string | null;
+  rentalId: string | null;
+  amount: number;
+  dueDate: string | null;
 };
 
 export type ReservationFeeLabel = "Paid" | "Unpaid" | "Waived" | "Refunded" | "Not Required";
@@ -127,6 +156,65 @@ export function reservationFeeLabel(status: string | null | undefined, feeOn: bo
   if (s === "refunded") return "Refunded";
   if (s === "pending") return "Unpaid";
   return feeOn ? "Unpaid" : "Not Required";
+}
+
+/** "$50" or "$50.50". Empty when there is no positive amount. */
+export function reservationFeeMoney(amount: number | null | undefined): string | null {
+  const n = amount == null ? NaN : Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const rounded = Math.round(n * 100) / 100;
+  const text = Number.isInteger(rounded)
+    ? rounded.toLocaleString("en-US")
+    : rounded.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `$${text}`;
+}
+
+/** "$50 · Due Nov 24, 2026", or "" when neither fact is on the row. */
+export function unpaidReservationFeeLine(amount: number | null | undefined, dueDate: string | null | undefined): string {
+  const money = reservationFeeMoney(amount);
+  const due = dueDate ? fmtDate(String(dueDate).slice(0, 10)) : "";
+  return [money, due ? `Due ${due}` : null].filter(Boolean).join(" · ");
+}
+
+/** Checklist detail: "Unpaid · $50 · Due Nov 24, 2026". "Unpaid" when the row has no amount or date. */
+export function unpaidReservationFeeDetail(amount: number | null | undefined, dueDate: string | null | undefined): string {
+  const line = unpaidReservationFeeLine(amount, dueDate);
+  return line ? `Unpaid · ${line}` : "Unpaid";
+}
+
+/**
+ * Stamp fee amount and due date onto holds that already exist, and return the
+ * fees whose application has no open reservation. One fee per application.
+ */
+export function attachUnpaidReservationFees<T extends { id: string; applicationId: string | null }>(
+  reservations: readonly T[],
+  fees: readonly FeeHoldPayment[],
+): {
+  reservations: Array<T & { feeAmount: number | null; feeDueDate: string | null }>;
+  awaiting: FeeHoldPayment[];
+} {
+  const byRental = new Map<string, FeeHoldPayment>();
+  const byApp = new Map<string, FeeHoldPayment>();
+  for (const fee of fees) {
+    if (fee.rentalId && !byRental.has(fee.rentalId)) byRental.set(fee.rentalId, fee);
+    if (fee.applicationId && !byApp.has(fee.applicationId)) byApp.set(fee.applicationId, fee);
+  }
+  const heldApps = new Set(reservations.map((row) => row.applicationId).filter((id): id is string => Boolean(id)));
+  const heldRentals = new Set(reservations.map((row) => row.id));
+  const next = reservations.map((row) => {
+    const fee = byRental.get(row.id) ?? (row.applicationId ? byApp.get(row.applicationId) : undefined);
+    return { ...row, feeAmount: fee?.amount ?? null, feeDueDate: fee?.dueDate ?? null };
+  });
+  const seen = new Set<string>();
+  const awaiting: FeeHoldPayment[] = [];
+  for (const fee of fees) {
+    if (!fee.applicationId || seen.has(fee.applicationId)) continue;
+    if (fee.rentalId && heldRentals.has(fee.rentalId)) continue;
+    if (heldApps.has(fee.applicationId)) continue;
+    seen.add(fee.applicationId);
+    awaiting.push(fee);
+  }
+  return { reservations: next, awaiting };
 }
 
 export function vinLast6(vin: string | null | undefined): string | null {

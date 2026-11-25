@@ -114,8 +114,9 @@ export function isOverdueRow(p: SummaryPayment): boolean {
   return OVERDUE_STATUSES.has(String(p.status ?? ""));
 }
 
-/** A charge that failed or a card declined in the last FAILED_RECENT_DAYS days and is still unpaid. */
+/** A charge that failed or a card declined in the last FAILED_RECENT_DAYS days and is still unpaid. An unpaid Reservation Fee is not on the Payments list, so it is not a Failed Payment either. */
 export function isRecentFailure(p: SummaryPayment, now: Date = new Date()): boolean {
+  if (isUnpaidReservationFee(p)) return false;
   const s = String(p.status ?? "");
   if (s !== "failed" && !(s === "unpaid" && p.failure_reason)) return false;
   const at = Date.parse(String(p.last_attempt_at ?? p.updated_at ?? ""));

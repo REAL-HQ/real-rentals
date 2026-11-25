@@ -3,14 +3,18 @@ import { RESERVATION_ROW_TYPE } from "@/lib/payment-category";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
+  attachUnpaidReservationFees,
   isReservationStatus,
   readReservationDetails,
   reservationPickupDate,
   writeReservationDetails,
   RESERVATION_STATUS,
   vinLast6,
+  type AwaitingReservationFee,
+  type FeeHoldPayment,
   type ReservationRow,
 } from "@/lib/reservations";
+import { isUnpaidReservationFee } from "@/lib/payments-summary";
 import { tierAllows } from "@/lib/roles";
 import { isForSaleVehicleStatus } from "@/lib/fleet-summary";
 import { SwitchReservationVehicleInput, type SwitchResult } from "@/lib/reservation-switch";
@@ -140,9 +144,56 @@ export const getReservationDepositSettings = createServerFn({ method: "GET" })
     return loadDepositSettings(supabaseAdmin);
   });
 
+function feeHoldFromPayment(row: any): FeeHoldPayment {
+  const owed = row.balance_due == null || row.balance_due === "" ? Number(row.amount) : Number(row.balance_due);
+  const due = typeof row.due_date === "string" && row.due_date ? String(row.due_date).slice(0, 10) : null;
+  return {
+    id: String(row.id),
+    applicationId: row.driver_id ? String(row.driver_id) : null,
+    rentalId: row.rental_id ? String(row.rental_id) : null,
+    amount: Number.isFinite(owed) ? owed : 0,
+    dueDate: due,
+  };
+}
+
+/** Unpaid Reservation Fee rows. A read failure leaves the Reserved list up. */
+async function loadUnpaidReservationFeePayments(admin: any): Promise<FeeHoldPayment[]> {
+  const { data, error } = await admin
+    .from("payments")
+    .select("id,driver_id,rental_id,amount,balance_due,due_date,status,type,reason,notes")
+    .or("reason.eq.reservation_fee,type.eq.reservation")
+    .limit(500);
+  if (error || !data) return [];
+  return (data as any[]).filter((row) => isUnpaidReservationFee(row)).map(feeHoldFromPayment);
+}
+
+async function nameAwaitingFees(
+  admin: any,
+  fees: readonly FeeHoldPayment[],
+  known: Map<string, any>,
+): Promise<AwaitingReservationFee[]> {
+  const missing = [...new Set(fees.map((fee) => fee.applicationId).filter((id): id is string => Boolean(id) && !known.has(id!)))];
+  const extra = new Map<string, any>();
+  if (missing.length) {
+    const { data } = await admin.from("applications").select("id,full_name,email").in("id", missing);
+    for (const row of data ?? []) extra.set(row.id, row);
+  }
+  return fees.flatMap((fee) => {
+    if (!fee.applicationId) return [];
+    const app = known.get(fee.applicationId) ?? extra.get(fee.applicationId);
+    return [{
+      paymentId: fee.id,
+      applicationId: fee.applicationId,
+      driverName: app?.full_name ?? app?.email ?? null,
+      amount: fee.amount,
+      dueDate: fee.dueDate,
+    }];
+  });
+}
+
 export const listReservations = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ rows: ReservationRow[]; settings: ReservationDepositSettings; reservationFeeOn: boolean }> => {
+  .handler(async ({ context }): Promise<{ rows: ReservationRow[]; awaitingFees: AwaitingReservationFee[]; settings: ReservationDepositSettings; reservationFeeOn: boolean }> => {
     const actor = await requireStaff(context.userId);
     const canSeeMoney = tierAllows(actor.tier, "manager");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -162,11 +213,14 @@ export const listReservations = createServerFn({ method: "GET" })
     // Before the On Hold migration is applied the hold columns are missing: read without them.
     if (error && /hold_/i.test(error.message)) ({ data, error } = await run(baseCols));
     if (error) {
-      if (/reservation_/i.test(error.message)) return { rows: [], settings, reservationFeeOn };
+      if (/reservation_/i.test(error.message)) return { rows: [], awaitingFees: [], settings, reservationFeeOn };
       throw new Error(error.message);
     }
     const list = (data ?? []) as any[];
-    if (!list.length) return { rows: [], settings, reservationFeeOn };
+    const feePayments = await loadUnpaidReservationFeePayments(supabaseAdmin);
+    if (!list.length) {
+      return { rows: [], awaitingFees: await nameAwaitingFees(supabaseAdmin, attachUnpaidReservationFees([], feePayments).awaiting, new Map()), settings, reservationFeeOn };
+    }
     const appIds = [...new Set(list.map((r) => r.application_id).filter(Boolean))] as string[];
     const vehicleIds = [...new Set(list.map((r) => r.vehicle_id))];
     const [apps, vehicles, media, thumbSettings] = await Promise.all([
@@ -193,15 +247,18 @@ export const listReservations = createServerFn({ method: "GET" })
     if (vehicles.error) throw new Error(vehicles.error.message);
     const appBy = new Map((apps.data ?? []).map((a: any) => [a.id, a]));
     const vehBy = new Map((vehicles.data ?? []).map((v: any) => [v.id, v]));
+    const mapped = list.map((r) =>
+      mapRow(r, r.application_id ? appBy.get(r.application_id) : null, vehBy.get(r.vehicle_id), {
+        thumbnailPath: thumbnailFor.get(r.vehicle_id) ?? null,
+        ...(canSeeMoney ? { weeklyRate: r.weekly_rate == null ? null : Number(r.weekly_rate) } : {}),
+      }),
+    );
+    const attached = attachUnpaidReservationFees(mapped, feePayments);
     return {
       settings,
       reservationFeeOn,
-      rows: list.map((r) =>
-        mapRow(r, r.application_id ? appBy.get(r.application_id) : null, vehBy.get(r.vehicle_id), {
-          thumbnailPath: thumbnailFor.get(r.vehicle_id) ?? null,
-          ...(canSeeMoney ? { weeklyRate: r.weekly_rate == null ? null : Number(r.weekly_rate) } : {}),
-        }),
-      ),
+      rows: attached.reservations,
+      awaitingFees: await nameAwaitingFees(supabaseAdmin, attached.awaiting, appBy),
     };
   });
 
@@ -644,12 +701,12 @@ export const recordReservationFee = createServerFn({ method: "POST" })
 export const getOpenReservationForApplication = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ applicationId: UUID }).parse(d))
-  .handler(async ({ context, data }): Promise<{ reservation: ReservationRow | null; settings: ReservationDepositSettings; feeDisplayStatus: string | null }> => {
+  .handler(async ({ context, data }): Promise<{ reservation: ReservationRow | null; settings: ReservationDepositSettings; feeDisplayStatus: string | null; feeAmount: number | null; feeDueDate: string | null }> => {
     await requireStaff(context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const settings = await loadDepositSettings(supabaseAdmin);
     const { reservationFeeStatusForApplication } = await import("@/lib/reservation-fee-refund.server");
-    const fee = await reservationFeeStatusForApplication(supabaseAdmin as any, data.applicationId).catch(() => ({ status: null as string | null }));
+    const fee = await reservationFeeStatusForApplication(supabaseAdmin as any, data.applicationId).catch(() => ({ status: null as string | null, amount: null as number | null, dueDate: null as string | null }));
     const { data: row, error } = await supabaseAdmin
       .from("rentals")
       .select(
@@ -661,16 +718,22 @@ export const getOpenReservationForApplication = createServerFn({ method: "POST" 
     // A Pending Reservation is not returned here. The profile still shows
     // Book Pickup (PR 517 hides that button when this reservation exists).
     if (error) {
-      if (/reservation_/i.test(error.message)) return { reservation: null, settings, feeDisplayStatus: fee.status };
+      if (/reservation_/i.test(error.message)) return { reservation: null, settings, feeDisplayStatus: fee.status, feeAmount: fee.amount ?? null, feeDueDate: fee.dueDate ?? null };
       throw new Error(error.message);
     }
-    if (!row) return { reservation: null, settings, feeDisplayStatus: fee.status };
+    if (!row) return { reservation: null, settings, feeDisplayStatus: fee.status, feeAmount: fee.amount ?? null, feeDueDate: fee.dueDate ?? null };
     const resRow = row as any;
     const [app, veh] = await Promise.all([
       supabaseAdmin.from("applications").select("id,full_name,email").eq("id", data.applicationId).maybeSingle(),
       supabaseAdmin.from("vehicles").select("id,unit_number,year,make,model").eq("id", resRow.vehicle_id).maybeSingle(),
     ]);
-    return { reservation: mapRow(resRow, app.data, veh.data), settings, feeDisplayStatus: fee.status ?? resRow.reservation_deposit_status ?? null };
+    return {
+      reservation: mapRow(resRow, app.data, veh.data),
+      settings,
+      feeDisplayStatus: fee.status ?? resRow.reservation_deposit_status ?? null,
+      feeAmount: fee.amount ?? (resRow.reservation_deposit_amount == null ? null : Number(resRow.reservation_deposit_amount)),
+      feeDueDate: fee.dueDate ?? null,
+    };
   });
 
 

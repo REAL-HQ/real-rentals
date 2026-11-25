@@ -510,14 +510,21 @@ export async function loadRenterPolicyStatus(admin: Admin, applicationId: string
   return s === "pending" || s === "issued" || s === "declined" ? s : null;
 }
 
-/** Lookup used by the Next Step row: paid / pending / refunded:<reason>. */
+function feeFacts(row: any): { amount: number | null; dueDate: string | null } {
+  const raw = row?.balance_due == null || row?.balance_due === "" ? Number(row?.amount) : Number(row?.balance_due);
+  const amount = Number.isFinite(raw) && raw > 0 ? raw : null;
+  const due = typeof row?.due_date === "string" && row.due_date ? String(row.due_date).slice(0, 10) : null;
+  return { amount, dueDate: due };
+}
+
+/** Lookup used by the Next Step row: paid / pending / refunded:<reason>, plus amount and due date. */
 export async function reservationFeeStatusForApplication(
   admin: Admin,
   applicationId: string,
-): Promise<{ status: string | null; reason: ReservationFeeRefundReason | null; paymentId: string | null }> {
+): Promise<{ status: string | null; reason: ReservationFeeRefundReason | null; paymentId: string | null; amount: number | null; dueDate: string | null }> {
   const r = await admin
     .from("payments")
-    .select("id,status,reason,notes,refunded_amount")
+    .select("id,status,reason,notes,refunded_amount,amount,balance_due,due_date")
     .eq("driver_id", applicationId)
     .eq("reason", RESERVATION_FEE_REASON)
     .limit(10);
@@ -531,7 +538,7 @@ export async function reservationFeeStatusForApplication(
     const rentalIds = rentalRows.map((x) => x.id).filter(Boolean);
     const ors = [...payIds.map((id) => `id.eq.${id}`), ...rentalIds.map((id) => `rental_id.eq.${id}`), ...rentalIds.map((id) => `notes.like.reservation_fee:${id}%`)];
     if (ors.length) {
-      const more = await admin.from("payments").select("id,status,reason,notes,refunded_amount").eq("reason", RESERVATION_FEE_REASON).or(ors.join(",")).limit(10);
+      const more = await admin.from("payments").select("id,status,reason,notes,refunded_amount,amount,balance_due,due_date").eq("reason", RESERVATION_FEE_REASON).or(ors.join(",")).limit(10);
       rows = (((more as any)?.data ?? []) as any[]).filter((p) => p.status !== "void");
     }
   }
@@ -540,14 +547,15 @@ export async function reservationFeeStatusForApplication(
     rows.find((p) => p.status === "paid" && !isKept(p.notes)) ??
     rows.find((p) => p.status === "pending" || p.status === "unpaid" || p.status === "current") ??
     null;
-  if (!row) return { status: null, reason: null, paymentId: null };
+  if (!row) return { status: null, reason: null, paymentId: null, amount: null, dueDate: null };
+  const facts = feeFacts(row);
   if (row.status === "refunded" || Number(row.refunded_amount ?? 0) > 0) {
     const reason = refundReasonFromNotes(row.notes);
-    return { status: reason ? `refunded:${reason}` : "refunded", reason, paymentId: row.id };
+    return { status: reason ? `refunded:${reason}` : "refunded", reason, paymentId: row.id, ...facts };
   }
-  if (row.status === "paid") return { status: "paid", reason: null, paymentId: row.id };
-  if (row.status === "waived") return { status: "waived", reason: null, paymentId: row.id };
-  return { status: "pending", reason: null, paymentId: row.id };
+  if (row.status === "paid") return { status: "paid", reason: null, paymentId: row.id, ...facts };
+  if (row.status === "waived") return { status: "waived", reason: null, paymentId: row.id, ...facts };
+  return { status: "pending", reason: null, paymentId: row.id, ...facts };
 }
 
 export async function handleFleetRefundReservation(request: Request, deps: FleetDeps & RefundReservationDeps = {}): Promise<Response> {

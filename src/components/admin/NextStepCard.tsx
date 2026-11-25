@@ -30,6 +30,8 @@ export function NextStepCard({
   renderEvidence,
   evidence,
   reservationPaymentStatus,
+  reservationFeeAmount,
+  reservationFeeDue,
   termsConfirmed,
 }: {
   model: NextStep;
@@ -50,6 +52,9 @@ export function NextStepCard({
   renderEvidence?: (key: ActivationRequirementKey) => ReactNode;
   evidence?: EvidencePresentationMap;
   reservationPaymentStatus?: string | null;
+  /** Unpaid Reservation Fee amount and due date, from the same payments row as Bookings. */
+  reservationFeeAmount?: number | null;
+  reservationFeeDue?: string | null;
   /** Terms Confirmed row (Move Forward), after Application Approved. */
   termsConfirmed?: ActivationRequirement | null;
 }) {
@@ -181,7 +186,7 @@ export function NextStepCard({
         </ul>
       ) : null}
       {readiness ? (
-        <ActivationRequirementList embedded blockers={model.blockers} requirements={driverNextStepRequirements(readiness.requirements, reservationPaymentStatus, termsConfirmed)} evidence={evidence} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} renderEvidence={renderEvidence} />
+        <ActivationRequirementList embedded blockers={model.blockers} requirements={driverNextStepRequirements(readiness.requirements, reservationPaymentStatus, termsConfirmed, { amount: reservationFeeAmount, dueDate: reservationFeeDue })} evidence={evidence} onRun={model.activation === "manager_only" || model.busy ? undefined : onRun} renderEvidence={renderEvidence} />
       ) : null}
     </section>
   );

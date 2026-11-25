@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check, ListFilter } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
-import { FAILED_RECENT_FILTER, awaitingReservationFee, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isOverdueRow, isRecentFailure, isUnpaidReservationFee, isZeroMoneyRow, rowOwed } from "@/lib/payments-summary";
+import { FAILED_RECENT_FILTER, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isOverdueRow, isRecentFailure, isUnpaidReservationFee, isZeroMoneyRow, rowOwed } from "@/lib/payments-summary";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { PaymentSummaryCards } from "./PaymentSummaryCards";
 import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
@@ -296,9 +296,13 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
     }
   }
 
-  // $0 invoices (a paused subscription) are not ledger rows. They owe nothing,
-  // so Outstanding, which still sums countsAsOwed on this list, does not change.
-  const ledgerPayments = useMemo(() => payments.filter((p) => !isZeroMoneyRow(p)), [payments]);
+  // $0 invoices owe nothing. Unpaid Reservation Fees are holds, shown on
+  // Reserved. Paid, refunded, void and waived fees stay on this list.
+  // Outstanding already skips unpaid fees via countsAsOwed.
+  const ledgerPayments = useMemo(
+    () => payments.filter((p) => !isZeroMoneyRow(p) && !isUnpaidReservationFee(p)),
+    [payments],
+  );
 
   // Filter first, then sort a copy. Outstanding is computed from the filtered
   // set so clicking a header never changes the total.
@@ -352,7 +356,6 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
   const totalDue = filtered
     .filter((p) => countsAsOwed(p as any, coveredIds))
     .reduce((s, p) => s + rowOwed(p as any), 0);
-  const awaiting = awaitingReservationFee(filtered);
   const summary = useMemo(
     () => buildPaymentsSummary({ payments: payments as any, coveredIds, rentals, collectionItems }),
     [payments, coveredIds, rentals, collectionItems],
@@ -451,11 +454,6 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
                 <span>
                   Outstanding: <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
                 </span>
-                {awaiting.count > 0 ? (
-                  <span className="text-xs" data-testid="awaiting-reservation-fee">
-                    {`Awaiting Reservation Fee: $${awaiting.total.toLocaleString()} (${awaiting.count})`}
-                  </span>
-                ) : null}
               </div>
             </>
           ) : null}

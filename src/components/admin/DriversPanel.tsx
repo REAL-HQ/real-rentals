@@ -2113,6 +2113,8 @@ function DriverDetail({
   const [pickupGap, setPickupGap] = useState<PickupNotBookedState | null>(null);
   const [hasReservation, setHasReservation] = useState(false);
   const [reservationDepositStatus, setReservationDepositStatus] = useState<string | null>(null);
+  const [reservationFeeAmount, setReservationFeeAmount] = useState<number | null>(null);
+  const [reservationFeeDue, setReservationFeeDue] = useState<string | null>(null);
   const [reservationFeeRequired, setReservationFeeRequired] = useState(false);
   const [blockStartWhenPending, setBlockStartWhenPending] = useState(false);
   // Rental tab: Activate Rental entry and the server's readiness checklist.
@@ -2144,10 +2146,14 @@ function DriverDetail({
       setHasReservation(false);
       setReservationFeeRequired(false);
       setReservationDepositStatus(null);
+      setReservationFeeAmount(null);
+      setReservationFeeDue(null);
       return;
     }
     let cancelled = false;
     setReservationDepositStatus(null);
+    setReservationFeeAmount(null);
+    setReservationFeeDue(null);
     void Promise.all([
       loadOpenReservation({ data: { applicationId: driver.id } }),
       // A settings failure must not blank the reservation and fee facts.
@@ -2158,12 +2164,16 @@ function DriverDetail({
         setHasReservation(!!open.reservation);
         setReservationFeeRequired(open.reservation?.depositRequired === true);
         setReservationDepositStatus(open.feeDisplayStatus ?? open.reservation?.depositStatus ?? null);
+        setReservationFeeAmount(typeof open.feeAmount === "number" ? open.feeAmount : null);
+        setReservationFeeDue(open.feeDueDate ?? null);
         setBlockStartWhenPending(settings.blockStartWhenPending === true);
       })
       .catch(() => {
         if (cancelled) return;
         setHasReservation(false);
         setReservationDepositStatus(null);
+        setReservationFeeAmount(null);
+        setReservationFeeDue(null);
       });
     return () => {
       cancelled = true;
@@ -3047,6 +3057,8 @@ function DriverDetail({
                   renderEvidence={renderChecklistEvidence}
                   evidence={evidencePresentation}
                   reservationPaymentStatus={reservationDepositStatus}
+                  reservationFeeAmount={reservationFeeAmount}
+                  reservationFeeDue={reservationFeeDue}
                   termsConfirmed={termsConfirmedRow}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
@@ -3238,6 +3250,9 @@ function DriverDetail({
                   readiness={rentalTabReadiness}
                   renderEvidence={renderChecklistEvidence}
                   evidence={evidencePresentation}
+                  reservationPaymentStatus={reservationDepositStatus}
+                  reservationFeeAmount={reservationFeeAmount}
+                  reservationFeeDue={reservationFeeDue}
                   termsConfirmed={termsConfirmedRow}
                   onRun={runTarget}
                   onActivate={() => runTarget({ kind: "activate" })}
