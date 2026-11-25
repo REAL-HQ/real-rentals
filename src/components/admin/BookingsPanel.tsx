@@ -70,7 +70,7 @@ function DriverCell({ b }: { b: BookingRow }) {
 
 function BookingVehicleCell({ b }: { b: BookingRow }) {
   if (!b.vehicleId) return <span className="text-muted-foreground">Unknown</span>;
-  return <VehicleCell vehicle={b} thumbnailPath={b.thumbnailPath ?? null} />;
+  return <VehicleCell vehicleId={b.vehicleId} vehicle={b} thumbnailPath={b.thumbnailPath ?? null} />;
 }
 
 function RentalLength({ label }: { label: string | null | undefined }) {
