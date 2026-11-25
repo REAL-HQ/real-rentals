@@ -88,6 +88,14 @@ async function hashToken(token: string): Promise<string> {
 
 /** What renderTemplate substitutes for a merge field it has no value for. */
 const BLANK = "__________";
+/**
+ * Printed in {{card_on_file}} when nothing is saved yet.
+ * A Reservation Fee collected after signing saves the card. Any other send
+ * (fee not required, or rent paid by Zelle, Cash App, Venmo, or another
+ * method) prints that no card is saved. Neither line is a send requirement.
+ */
+const CARD_SAVED_WITH_RESERVATION_FEE = "Saved when you pay the Reservation Fee right after signing";
+const CARD_NOT_SAVED_YET = "Not saved yet";
 const AGREEMENT_NUMBER_PLACEHOLDER = "Assigned When Sent";
 const NUMBERING_PENDING =
   "Agreement numbers (RRA-000001) are assigned when the agreement record is created, which needs the pending agreement-number database change. This v1.6 agreement can be prepared and reviewed but not sent until that change is approved and applied.";
@@ -106,6 +114,17 @@ function money(v: unknown): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
+/** "$50" for a whole dollar amount, "$50.50" otherwise. */
+function feeDollars(amount: number): string {
+  const whole = Math.round(amount * 100) % 100 === 0;
+  return amount.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 /**
  * What an agreement cannot be signed without.
  *
@@ -120,6 +139,9 @@ export type AgreementBlocker = {
   /** Where staff fix it: a driver-profile tab, or the vehicle's own page. */
   fix?: { tab: "payments" | "rental" } | { vehicleId: string };
 };
+
+/** Staff-only. Never disables prepare or send, and never printed on the agreement. */
+export type AgreementNote = { field: string; label: string; why: string };
 
 async function buildMergeData(
   admin: any,
@@ -698,7 +720,12 @@ export function templateFieldBlockers(tplBody: string, data: MergeData, blockers
   const need: Record<string, Omit<AgreementBlocker, "field">> = {
     driver_dob: { label: "Driver date of birth", why: "The v1.6 agreement prints the renter's date of birth.", fix: pay },
     license_plate: { label: "Vehicle license plate", why: "The v1.6 agreement identifies the vehicle by plate.", fix: vfix },
-    card_on_file: { label: "Payment card on file", why: "The v1.6 agreement authorizes weekly charges to a card on file, and no other payment wording is legally approved yet. Ask the driver to save a card in Payments; preparing or sending the agreement never charges it.", fix: pay },
+    // card_on_file is intentionally not here. A saved card is never required
+    // to prepare or send (84b133ae added that block; 8fddb5db only filled the
+    // row when a Reservation Fee was already required). Applicants sign first
+    // and pay the Reservation Fee, which saves the card. Other renters pay by
+    // another method and may have no card at all. The row is filled below so
+    // the autopay clause still prints, and staff only see a note.
     min_term_end: { label: "Minimum-term end date", why: "Needs the contract start date and the template's minimum term (weeks).", fix: pay },
     damage_waiver: { label: "Damage Waiver: Accepted or Declined", why: "This agreement prints the renter's Damage Waiver choice, and the renter initials it. Ask the renter and record the answer under Payment & Damage Waiver." },
     payment_method: { label: "Payment method", why: "This agreement prints how the renter will pay rent. Choose it under Payment & Damage Waiver." },
@@ -800,8 +827,6 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
     // v1.14 values with no record behind them yet.
     if (usesField(tpl.body, "vehicle_owner") && !String(built.data.vehicle_owner ?? "").trim())
       built.data.vehicle_owner = await registeredOwnerFallback(admin, built.namedVehicleId ?? (built.app?.vehicle_id as string | null) ?? null, String(built.data.company_name ?? ""));
-    if (usesField(tpl.body, "card_on_file") && !String(built.data.card_on_file ?? "").trim() && prep.reservation.mode === "required" && (prep.reservation.amount ?? 0) > 0)
-      built.data.card_on_file = "Saved when you pay the Reservation Fee right after signing";
     if (terms) tplBody = writeTerms(stripTerms(tpl.body), { ...terms, reservation_line: line });
   }
   // An updated agreement for an already-active rental: no Reservation Fee, no
@@ -823,6 +848,28 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
       const { AMENDMENT_CARD_NEXT_PAYMENT_LINE } = await import("@/lib/rental-amendment");
       built.data.card_on_file = AMENDMENT_CARD_NEXT_PAYMENT_LINE;
       for (let i = built.blockers.length - 1; i >= 0; i--) if (built.blockers[i].field === "card_on_file") built.blockers.splice(i, 1);
+    }
+  }
+  // No saved card is normal. Fill the row so the autopay clause prints, and
+  // tell staff with a note. This never joins blockers, so preview and send
+  // both proceed (issueAgreement refuses only on blockers and blank fields).
+  const notes: AgreementNote[] = [];
+  if (!amendment && usesField(tplBody, "card_on_file") && !String(built.data.card_on_file ?? "").trim()) {
+    const feeAmount = prep?.reservation.mode === "required" ? (prep.reservation.amount ?? 0) : 0;
+    if (feeAmount > 0) {
+      built.data.card_on_file = CARD_SAVED_WITH_RESERVATION_FEE;
+      notes.push({
+        field: "card_on_file",
+        label: "Payment Card On File",
+        why: `Card will be saved when the renter pays the ${feeDollars(feeAmount)} Reservation Fee.`,
+      });
+    } else {
+      built.data.card_on_file = CARD_NOT_SAVED_YET;
+      notes.push({
+        field: "card_on_file",
+        label: "Payment Card On File",
+        why: "No card is saved yet. A card is not required to send this agreement.",
+      });
     }
   }
   templateFieldBlockers(
@@ -853,7 +900,7 @@ async function prepareAgreement(admin: any, applicationId: string, prep?: Agreem
   const { getCompanyIdentity } = await import("@/lib/company-identity.server");
   const ci = await getCompanyIdentity(admin);
   const companyFallback = Object.entries(ci.fromSettings).filter(([, v]) => !v).map(([k]) => ({ field: k, value: String((built.data as any)[k] ?? "") }));
-  return { ...built, tpl, body, fingerprint, companyMissing: ci.missing, companyFallback, numberingPending };
+  return { ...built, tpl, body, fingerprint, companyMissing: ci.missing, companyFallback, numberingPending, notes };
 }
 
 // ---------------------------------------------------------------- admin reads
@@ -947,6 +994,7 @@ async function finishPreview(admin: any, prep: Awaited<ReturnType<typeof prepare
       templateFields: [...new Set([...tpl.body.matchAll(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi)].map((x) => x[1].toLowerCase()))],
       missing,
       blockers,
+      notes: prep.notes ?? [],
       vehicleId: namedVehicle ? prep.namedVehicleId : ((app.vehicle_id as string | null) ?? null),
       email: (app.email as string | null) ?? null,
       name: (app.full_name as string | null) ?? null,
