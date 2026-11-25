@@ -71,6 +71,8 @@ export const addStaffAdditionalDriver = createServerFn({ method: "POST" })
     if (!actor) throw new Error("Forbidden");
     const age = additionalDriverAgeBlock(data.dob, todayEt());
     if (age) throw new Error(age);
+    // A new application has no rental yet. Either id is enough. Status is not a gate.
+    if (!data.applicationId && !data.rentalId) throw new Error("Choose an application or a rental.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { insertAdditionalDriver } = await import("@/lib/additional-drivers.server");
     return insertAdditionalDriver(supabaseAdmin, actor, data);
