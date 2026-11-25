@@ -56,6 +56,8 @@ export function checklistAction(requirement: ActivationRequirement): ChecklistAc
       // Its own Move Forward control (TermsConfirmedControl); never a navigation shortcut.
       return null;
     case "reservation_paid":
+      // Unpaid: staff can release the car at any time inside the 24-hour window.
+      if (requirement.met === false) return { label: "Release", target: { kind: "release_reservation_fee" } };
       return { label: "View", target: { kind: "section", tab: "payments", anchor: "" } };
     case "pickup":
       return { label: "Activate Rental", target: { kind: "activate" } };

@@ -19,7 +19,7 @@ describe("isUnpaidReservationFee", () => {
     expect(isUnpaidReservationFee({ type: "reservation", status: "unpaid" })).toBe(true);
     expect(isUnpaidReservationFee({ type: "fee", reason: "reservation_fee", status: "current" })).toBe(true);
     expect(isUnpaidReservationFee({ type: "fee", notes: "reservation_fee:ag-1", status: "pending" })).toBe(true);
-    for (const status of ["paid", "refunded", "void", "waived"]) {
+    for (const status of ["paid", "refunded", "void", "waived", "expired"]) {
       expect(isUnpaidReservationFee({ type: "reservation", reason: "reservation_fee", status })).toBe(false);
     }
     expect(isUnpaidReservationFee({ type: "fee", reason: "cleaning", status: "unpaid" })).toBe(false);

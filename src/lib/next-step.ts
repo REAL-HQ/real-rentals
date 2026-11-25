@@ -18,6 +18,7 @@ export type FixTarget =
   | { kind: "activate" }
   | { kind: "reserve" }
   | { kind: "book_pickup" }
+  | { kind: "release_reservation_fee" }
   | { kind: "return" };
 
 export type Blocker = { key: ActivationRequirementKey | "local"; label: string; detail?: string; fix: string; target: FixTarget };

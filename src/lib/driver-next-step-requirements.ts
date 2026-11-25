@@ -8,6 +8,8 @@ function reservationPaymentDetail(
 ): string {
   const raw = String(status ?? "");
   if (raw === "paid") return "Paid";
+  if (raw === "paid_no_hold") return "Paid · No Car Held";
+  if (raw === "expired") return "Released";
   // Paid and credited to the first week's rent (rentals.reservation_deposit_status).
   if (raw === "applied") return "Paid · Applied To First Week";
   if (raw === "pending") return unpaidReservationFeeDetail(fee?.amount, fee?.dueDate);
@@ -31,7 +33,7 @@ export function driverNextStepRequirements(
   const reservationPayment: ActivationRequirement = {
     key: "reservation_paid",
     label: "Reservation Paid",
-    met: reservationPaymentStatus === "paid" || reservationPaymentStatus === "applied" ? true : reservationPaymentStatus === "pending" ? false : null,
+    met: reservationPaymentStatus === "paid" || reservationPaymentStatus === "applied" || reservationPaymentStatus === "paid_no_hold" ? true : reservationPaymentStatus === "pending" ? false : null,
     enforcement: "advisory",
     detail: reservationPaymentDetail(reservationPaymentStatus, reservationFee),
   };

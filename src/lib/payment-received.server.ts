@@ -267,9 +267,27 @@ export async function bookRenterPickup(admin: Admin, input: { sessionId: unknown
   const b = v.view.booking;
   // Already booked (a double tap, a second tab, a refresh): show it, never book twice.
   if (b.state === "reserved") return { ok: true, already: true, pickup: b.pickup };
-  if (b.state === "no_vehicle") return { ok: false, code: "no_vehicle", message: "Your car isn't assigned yet. We'll call you to schedule your pickup." };
+  if (b.state === "no_vehicle") {
+    try {
+      const { paidReservationFee } = await import("@/lib/reservation-fee-core.server");
+      const { flagReservationFeePaidWithoutHold } = await import("@/lib/reservation-fee-hold.server");
+      const fee = await paidReservationFee(admin, v.applicationId);
+      if (fee) await flagReservationFeePaidWithoutHold(admin, v.applicationId, fee);
+    } catch { /* the page still tells them to call; no refund */ }
+    return { ok: false, code: "no_vehicle", message: "Your car isn't assigned yet. We'll call you to schedule your pickup." };
+  }
   if (b.state === "no_slots") return { ok: false, code: "no_slots", message: "No pickup times are open right now. We'll call you to schedule." };
-  if (b.state !== "pick" || !v.vehicleId || !v.location) return { ok: false, code: "unavailable", message: CALL_US };
+  if (b.state !== "pick" || !v.vehicleId || !v.location) {
+    if (b.state === "unavailable") {
+      try {
+        const { paidReservationFee } = await import("@/lib/reservation-fee-core.server");
+        const { flagReservationFeePaidWithoutHold } = await import("@/lib/reservation-fee-hold.server");
+        const fee = await paidReservationFee(admin, v.applicationId);
+        if (fee) await flagReservationFeePaidWithoutHold(admin, v.applicationId, fee);
+      } catch { /* no refund; staff still see the in-app notice when the flag lands */ }
+    }
+    return { ok: false, code: "unavailable", message: CALL_US };
+  }
 
   const s = v.settings;
   const slot = parseSlotStart(input.startAt, s.timezone);

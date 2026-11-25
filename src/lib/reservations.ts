@@ -121,8 +121,8 @@ export type ReservationRow = {
 
 /**
  * Someone who signed and has an unpaid Reservation Fee, but no reserved,
- * on-hold, or pending-reservation rental yet. The car is not held until the
- * fee is paid (holdVehicleForPaidReservationFee), so this is not a booking.
+ * on-hold, or pending-reservation rental yet. The assigned car is held until
+ * the fee is paid or staff (or the 24-hour job) release it.
  */
 export type AwaitingReservationFee = {
   paymentId: string;
@@ -130,6 +130,8 @@ export type AwaitingReservationFee = {
   driverName: string | null;
   amount: number;
   dueDate: string | null;
+  vehicleId: string | null;
+  vehicleLabel: string | null;
 };
 
 /** A payments row already classified as an unpaid Reservation Fee. */

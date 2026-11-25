@@ -107,7 +107,25 @@ export async function assignableVehicles(admin: Admin, opts: { exceptApplication
     const end = String(r.end_date ?? r.start_date ?? "");
     if (end && end > (lastEnd.get(r.vehicle_id) ?? "")) lastEnd.set(r.vehicle_id, end);
   }
-  for (const a of (assigned.data ?? []) as any[]) if (!a.deleted_at && a.id !== opts.exceptApplicationId) busy.add(a.vehicle_id);
+  const assignedRows = ((assigned.data ?? []) as any[]).filter((a) => !a.deleted_at && a.id !== opts.exceptApplicationId);
+  const released = new Set<string>();
+  if (assignedRows.length) {
+    const feeRead = await admin.from("payments").select("driver_id,status,type,reason,notes").in("driver_id", assignedRows.map((a) => a.id)).limit(500);
+    if (!feeRead.error && feeRead.data) {
+      const { assignmentStillBlocks } = await import("@/lib/reservation-fee-hold");
+      const byApp = new Map<string, any[]>();
+      for (const row of feeRead.data as any[]) {
+        const id = String(row.driver_id);
+        const list = byApp.get(id) ?? [];
+        list.push(row);
+        byApp.set(id, list);
+      }
+      for (const a of assignedRows) {
+        if (!assignmentStillBlocks(byApp.get(String(a.id)) ?? [])) released.add(String(a.id));
+      }
+    }
+  }
+  for (const a of assignedRows) if (!released.has(String(a.id))) busy.add(a.vehicle_id);
   return cars
     .filter((c) => !busy.has(c.id))
     .sort((a, b) => (lastEnd.get(a.id) ?? "").localeCompare(lastEnd.get(b.id) ?? "") || String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")) || String(a.id).localeCompare(String(b.id)))
@@ -253,11 +271,15 @@ export async function handleFleetAssignVehicle(request: Request, deps: AssignDep
 
   const car = wanted ? cars.find((c) => c.vehicle_id === wanted) : cars[0];
   if (!car) {
-    return fleetJson(409, {
-      ok: false,
-      error: wanted ? "That car is not free to assign (reserved, rented, assigned to someone else, not Available, or no listed rate)." : "No car is free to assign right now.",
-      vehicles: cars.slice(0, 5),
-    });
+    let error = wanted ? "That car is not free to assign (reserved, rented, assigned to someone else, not Available, or no listed rate)." : "No car is free to assign right now.";
+    if (wanted) {
+      try {
+        const { reservationFeeHoldConflict } = await import("@/lib/reservation-fee-hold.server");
+        const held = await reservationFeeHoldConflict(admin, { vehicleId: wanted, requesterApplicationId: leadId });
+        if (held) error = held;
+      } catch { /* keep the generic message */ }
+    }
+    return fleetJson(409, { ok: false, error, vehicles: cars.slice(0, 5) });
   }
 
   const price = priced(car.weekly_rate);
@@ -277,8 +299,14 @@ export async function handleFleetAssignVehicle(request: Request, deps: AssignDep
   // Re-check: if another Approved applicant holds the same car, the earlier one keeps it.
   const holders = await admin.from("applications").select("id,vehicle_id,status,deleted_at").eq("vehicle_id", car.vehicle_id).eq("status", "approved");
   const others = ((holders.data ?? []) as any[]).filter((r) => r.id !== leadId && !r.deleted_at);
+  const { assignmentStillBlocks } = await import("@/lib/reservation-fee-hold");
+  const blockingOthers = [];
+  for (const other of others) {
+    const fees = await admin.from("payments").select("status,type,reason,notes").eq("driver_id", other.id).limit(20);
+    if (fees.error || assignmentStillBlocks((fees.data ?? []) as any[])) blockingOthers.push(other);
+  }
   const rentals = await admin.from("rentals").select("id,status").eq("vehicle_id", car.vehicle_id).in("status", ["reserved", "on_hold", "pending_reservation", "active"]);
-  if (others.length || (rentals.data ?? []).length) {
+  if (blockingOthers.length || (rentals.data ?? []).length) {
     await admin.from("applications").update({ vehicle_id: null, weekly_rent: app.weekly_rent ?? null, deposit_amount: app.deposit_amount ?? null, contract_start_date: app.contract_start_date ?? null }).eq("id", leadId).eq("vehicle_id", car.vehicle_id);
     return fleetJson(409, { ok: false, error: "That car was just taken. Nothing was changed. List again and retry." });
   }

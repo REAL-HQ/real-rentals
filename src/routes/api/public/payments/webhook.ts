@@ -159,7 +159,12 @@ async function holdReservationAfterFee(pi: any) {
   try {
     const { paidReservationFee, holdReservationForFee } = await import('@/lib/reservation-fee.server');
     const fee = await paidReservationFee(getSupabase(), applicationId);
-    if (fee) await holdReservationForFee(getSupabase(), applicationId, fee);
+    if (fee) {
+      const rentalId = await holdReservationForFee(getSupabase(), applicationId, fee);
+      const { flagReservationFeePaidWithoutHold, clearReservationFeeNoHoldFlag } = await import("@/lib/reservation-fee-hold.server");
+      if (rentalId) await clearReservationFeeNoHoldFlag(getSupabase(), fee.id);
+      else await flagReservationFeePaidWithoutHold(getSupabase(), applicationId, fee);
+    }
   } catch (e) {
     console.error('[webhook] reservation fee hold failed', e);
   }
