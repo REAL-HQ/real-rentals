@@ -120,6 +120,7 @@ describe("signed emails", () => {
     const b = sent[0].body;
     expect(b.subject).toBe("Your REAL RENTALS Agreement Is Signed: One Last Step");
     expect(b.html).toContain("One Last Step: Reserve Your Car");
+    expect(b.html).toContain("If the Reservation Fee is not paid within 24 hours, the car is released.");
     expect(b.html).not.toContain("You're All Set");
     expect(b.html).toContain("100% applied to your first week&#39;s rent".replace("&#39;", b.html.includes("&#39;") ? "&#39;" : "'"));
     expect(b.html).not.toMatch(/deposit/i);

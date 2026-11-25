@@ -175,18 +175,27 @@ async function nameAwaitingFees(
   const missing = [...new Set(fees.map((fee) => fee.applicationId).filter((id): id is string => Boolean(id) && !known.has(id!)))];
   const extra = new Map<string, any>();
   if (missing.length) {
-    const { data } = await admin.from("applications").select("id,full_name,email").in("id", missing);
+    const { data } = await admin.from("applications").select("id,full_name,email,vehicle_id").in("id", missing);
     for (const row of data ?? []) extra.set(row.id, row);
   }
+  const vehicleIds = [...new Set([...extra.values()].map((row) => row.vehicle_id).filter(Boolean))] as string[];
+  const vehicles = vehicleIds.length
+    ? await admin.from("vehicles").select("id,year,make,model,unit_number").in("id", vehicleIds)
+    : { data: [] as any[] };
+  const vehBy = new Map(((vehicles.data ?? []) as any[]).map((v) => [v.id, v]));
   return fees.flatMap((fee) => {
     if (!fee.applicationId) return [];
     const app = known.get(fee.applicationId) ?? extra.get(fee.applicationId);
+    const veh = app?.vehicle_id ? vehBy.get(app.vehicle_id) : null;
+    const vehicleLabel = veh ? [veh.year, veh.make, veh.model].filter(Boolean).join(" ").trim() || veh.unit_number || null : null;
     return [{
       paymentId: fee.id,
       applicationId: fee.applicationId,
       driverName: app?.full_name ?? app?.email ?? null,
       amount: fee.amount,
       dueDate: fee.dueDate,
+      vehicleId: app?.vehicle_id ? String(app.vehicle_id) : null,
+      vehicleLabel,
     }];
   });
 }
@@ -373,6 +382,9 @@ export async function createReservationCore(
   if (["sold", "retired", "archived", "rented", "unavailable"].includes(vStatus) || isForSaleVehicleStatus(vStatus)) {
     throw new Error("That Vehicle Is Not Free To Reserve.");
   }
+  const { reservationFeeHoldConflict } = await import("@/lib/reservation-fee-hold.server");
+  const heldByFee = await reservationFeeHoldConflict(admin, { vehicleId: data.vehicleId, requesterApplicationId: data.applicationId });
+  if (heldByFee) throw new Error(heldByFee);
 
   // A Pending Reservation or an On Hold row for this lead is reused. A
   // reserved row that already has a pickup time still refuses, so a second
@@ -518,6 +530,22 @@ export const releaseReservationHold = createServerFn({ method: "POST" })
     const result = await releasePendingReservation(supabaseAdmin, { rentalId: data.rentalId, reason: "staff_release" });
     if (!result.released) throw new Error("That Car Is Not On A Pending Reservation.");
     return result;
+  });
+
+/** Staff release of an unpaid Reservation Fee. Works at any time inside the window. */
+export const releaseUnpaidReservationFee = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ applicationId: UUID }).parse(d))
+  .handler(async ({ context, data }): Promise<{ released: true }> => {
+    await requireManager(context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { releaseUnpaidReservationHold } = await import("@/lib/reservation-fee-hold.server");
+    const result = await releaseUnpaidReservationHold(supabaseAdmin, { applicationId: data.applicationId, by: "staff" });
+    if (!result.released) {
+      if (result.reason === "already_paid") throw new Error("The Reservation Fee was already paid. The car was not released.");
+      throw new Error("There is no open Reservation Fee to release.");
+    }
+    return { released: true };
   });
 
 /**

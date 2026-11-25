@@ -12,6 +12,7 @@ import {
   cancelReservation,
   listReservations,
   recordReservationFee,
+  releaseUnpaidReservationFee,
 } from "@/lib/reservations.functions";
 import { reservationFeeLabel, unpaidReservationFeeLine, type AwaitingReservationFee, type ReservationRow } from "@/lib/reservations";
 import { MANUAL_METHODS, easternParts } from "@/lib/rent-reminders";
@@ -31,6 +32,7 @@ import { convertReservationFeeToCredit } from "@/lib/rental-hold.functions";
 import { isOnHoldStatus } from "@/lib/rental-hold";
 import { isPendingReservationStatus, PENDING_RESERVATION_LABEL, WAITING_ON_INSURANCE_CARD } from "@/lib/pending-reservation";
 import { releaseReservationHold } from "@/lib/reservations.functions";
+import { ReleaseReservationFeeDialog } from "./ReleaseReservationFeeDialog";
 
 const input = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm";
 const primary = "inline-flex h-9 items-center justify-center rounded-md bg-[#D03020] px-4 text-sm font-semibold text-white hover:bg-[#B52818] disabled:opacity-50";
@@ -147,6 +149,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
   const load = useServerFn(listReservations);
   const cancel = useServerFn(cancelReservation);
   const releaseHold = useServerFn(releaseReservationHold);
+  const releaseFee = useServerFn(releaseUnpaidReservationFee);
   const toCredit = useServerFn(convertReservationFeeToCredit);
   const [holdRow, setHoldRow] = useState<ReservationRow | null>(null);
   const [resumeRow, setResumeRow] = useState<ReservationRow | null>(null);
@@ -163,6 +166,8 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
   const [depositRow, setDepositRow] = useState<ReservationRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [switchRow, setSwitchRow] = useState<ReservationRow | null>(null);
+  const [releaseFeeTarget, setReleaseFeeTarget] = useState<{ applicationId: string; driverName: string | null } | null>(null);
+  const [releasingFee, setReleasingFee] = useState(false);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -407,6 +412,9 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                                 <DropdownMenuItem onSelect={() => void onKeepAsCredit(row)}>Keep {chargeLabel} As Credit</DropdownMenuItem>
                               ) : null}
                               {!isOnHoldStatus(row.status) && !isPendingReservationStatus(row.status) && <DropdownMenuItem onSelect={() => setSwitchRow(row)}>Switch Vehicle</DropdownMenuItem>}
+                              {row.feeAmount != null && row.applicationId ? (
+                                <DropdownMenuItem onSelect={() => setReleaseFeeTarget({ applicationId: row.applicationId!, driverName: row.driverName })}>Release</DropdownMenuItem>
+                              ) : null}
                               <DropdownMenuItem onSelect={() => void onCancel(row)}>Cancel Reservation</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -429,7 +437,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                     <td className="px-2 py-2 align-middle font-medium text-[#111114]">
                       <span className="block truncate">{fee.driverName ?? "—"}</span>
                     </td>
-                    <td className="px-2 py-2 align-middle text-[#55555E]">Not Held</td>
+                    <td className="px-2 py-2 align-middle text-[#55555E]">{fee.vehicleLabel ?? "Not Held"}</td>
                     <td className="px-2 py-2 align-middle text-[#55555E]">—</td>
                     <td className="px-2 py-2 align-middle text-[#55555E]">—</td>
                     <td className="px-2 py-2 align-middle">
@@ -446,6 +454,16 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                         >
                           Open
                         </Link>
+                        {canManage ? (
+                          <button
+                            type="button"
+                            data-testid="release-reservation-fee"
+                            className="ml-1 inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-2.5 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB]"
+                            onClick={() => setReleaseFeeTarget({ applicationId: fee.applicationId, driverName: fee.driverName })}
+                          >
+                            Release
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -474,6 +492,25 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
           onSwitched={refresh}
         />
       ) : null}
+      <ReleaseReservationFeeDialog
+        open={!!releaseFeeTarget}
+        driverName={releaseFeeTarget?.driverName ?? null}
+        busy={releasingFee}
+        onOpenChange={(open) => { if (!open && !releasingFee) setReleaseFeeTarget(null); }}
+        onConfirm={() => {
+          if (!releaseFeeTarget || releasingFee) return;
+          const target = releaseFeeTarget;
+          setReleasingFee(true);
+          void releaseFee({ data: { applicationId: target.applicationId } })
+            .then(() => {
+              toast.success("Hold Released");
+              setReleaseFeeTarget(null);
+              refresh();
+            })
+            .catch((e) => toast.error(e instanceof Error ? e.message : "Could Not Release The Hold"))
+            .finally(() => setReleasingFee(false));
+        }}
+      />
       <RenterCreditsCard
         canManage={canManage}
         rentals={rows.map((r) => ({ id: r.id, applicationId: r.applicationId, label: r.vehicleLabel ?? "Reservation" }))}

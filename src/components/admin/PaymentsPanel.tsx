@@ -130,6 +130,8 @@ function isReservationFeePayment(p: { reason?: string | null; notes?: string | n
   return p.reason === RESERVATION_FEE_REASON || /reservation_fee:/.test(String(p.notes ?? ""));
 }
 function paymentStatusLabel(p: { status?: string | null; type?: string | null; reason?: string | null; notes?: string | null }) {
+  if (String(p.notes ?? "").includes("reservation_fee_no_hold") && String(p.status ?? "") === "paid") return "Paid · No Car Held";
+  if (String(p.status ?? "").toLowerCase() === "expired") return "Expired";
   if (isUnpaidReservationFee(p)) return "Awaiting Reservation Fee";
   if (isReservationFeePayment(p) && (p.status === "refunded" || refundReasonFromNotes(p.notes))) {
     return reservationFeeRefundedDetail(refundReasonFromNotes(p.notes));

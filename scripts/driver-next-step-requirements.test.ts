@@ -32,11 +32,23 @@ describe("Next Step reservation payment facts", () => {
     expect(projected.find((item) => item.key === "rental_active")?.met).toBe(false);
   });
 
-  it("opens the existing payments section instead of offering a manual payment check-off", () => {
+  it("offers Release while the fee is unpaid, and View once it is paid", () => {
     const payment = driverNextStepRequirements([], "pending").find((item) => item.key === "reservation_paid");
     if (!payment) throw new Error("Missing reservation payment requirement");
-    expect(checklistAction(payment)?.target).toEqual({ kind: "section", tab: "payments", anchor: "" });
+    expect(checklistAction(payment)).toEqual({ label: "Release", target: { kind: "release_reservation_fee" } });
     expect(payment.enforcement).toBe("advisory");
+    const paid = driverNextStepRequirements([], "paid").find((item) => item.key === "reservation_paid");
+    expect(checklistAction(paid!)?.target).toEqual({ kind: "section", tab: "payments", anchor: "" });
+  });
+
+  it("shows a paid fee that did not hold a car, and a released fee", () => {
+    const noCar = driverNextStepRequirements([], "paid_no_hold").find((item) => item.key === "reservation_paid");
+    expect(noCar?.met).toBe(true);
+    expect(noCar?.detail).toBe("Paid · No Car Held");
+    const released = driverNextStepRequirements([], "expired").find((item) => item.key === "reservation_paid");
+    expect(released?.met).toBeNull();
+    expect(released?.detail).toBe("Released");
+    expect(checklistAction(released!)?.label).toBe("View");
   });
 
   it("shows unpaid amount and due date from the reservation fee row", () => {

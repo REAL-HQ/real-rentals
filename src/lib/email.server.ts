@@ -779,6 +779,18 @@ function money(n: number): string {
 
 /** One short vetting confirmation. Account access and pickup details still wait for Reserved. */
 /** The Reservation Fee switch, read directly (keeps the payment code out of this module). */
+async function reservationHoldHoursForEmail(): Promise<number> {
+  try {
+    const { reservationFeeHoldHours, RESERVATION_FEE_HOLD_HOURS_KEY, DEFAULT_RESERVATION_FEE_HOLD_HOURS } = await import("@/lib/reservation-fee-hold");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const r = await supabaseAdmin.from("app_settings").select("value").eq("key", RESERVATION_FEE_HOLD_HOURS_KEY).maybeSingle();
+    return reservationFeeHoldHours(r.error ? null : (r.data as { value?: unknown } | null)?.value);
+  } catch {
+    const { DEFAULT_RESERVATION_FEE_HOLD_HOURS } = await import("@/lib/reservation-fee-hold");
+    return DEFAULT_RESERVATION_FEE_HOLD_HOURS;
+  }
+}
+
 async function reservationFeeForEmail(): Promise<{ enabled: boolean; amount: number }> {
   const { readReservationFeeSettings, RESERVATION_FEE_SETTINGS_KEY } = await import("@/lib/reservation-fee");
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -1418,9 +1430,13 @@ export async function sendAgreementSignedEmail(args: {
   // says so (card t315s1710) instead of "You're All Set".
   const feeUnpaid = !!(args.reservationFeePay && /^https:\/\//i.test(args.reservationFeePay.url)) || !!pendingFee;
   const heading = feeUnpaid ? "One Last Step: Reserve Your Car" : "Agreement Signed — You're All Set";
+  const holdLine = feeUnpaid
+    ? `<p style="color:#444;font-size:15px;line-height:1.55;margin:0 0 12px">${escapeHtml((await import("@/lib/reservation-fee-hold")).reservationFeeHoldSentence(await reservationHoldHoursForEmail()))}</p>`
+    : "";
   const html = shell(`
       <h1 style="margin:12px 0 8px;font-size:22px;color:#111;line-height:1.3">${heading}</h1>
       ${pay}
+      ${holdLine}
       <p style="color:#444;font-size:15px;line-height:1.55;margin:16px 0 12px">Thanks ${escapeHtml(name)}. Your rental agreement${args.vehicle ? ` for the <strong>${escapeHtml(args.vehicle)}</strong>` : ""} ${tail}${args.attachment ? `
       <p style="color:#666;font-size:13px;line-height:1.5;margin:14px 0 0">A copy of your signed agreement is attached as a PDF.</p>` : ""}`);
   await sendEmail({ to: args.to, subject: feeUnpaid ? "Your REAL RENTALS Agreement Is Signed: One Last Step" : "Your REAL RENTALS Agreement Is Signed", html, replyTo: EMAIL_REPLY_TO, track: { workflow: "esign_signed_confirmation" }, ...(args.attachment ? { attachments: [args.attachment] } : {}) });

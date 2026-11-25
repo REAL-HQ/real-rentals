@@ -91,7 +91,8 @@ import { DriverStatement } from "./DriverStatement";
 import { NO_PAY_CELLS, type PayCells } from "@/lib/driver-payment-status";
 import { getDriverPayStatuses } from "@/lib/driver-payment-status.functions";
 import { endRental, getActivationReadiness, type ActivationReadiness } from "@/lib/rentals.functions";
-import { clearReservationAfterActivate, getOpenReservationForApplication, getReservationDepositSettings } from "@/lib/reservations.functions";
+import { clearReservationAfterActivate, getOpenReservationForApplication, getReservationDepositSettings, releaseUnpaidReservationFee } from "@/lib/reservations.functions";
+import { ReleaseReservationFeeDialog } from "./ReleaseReservationFeeDialog";
 import { getPickupNotBooked } from "@/lib/pickup-not-booked.functions";
 import type { PickupNotBookedState } from "@/lib/pickup-not-booked";
 import { reservationBlocksStart } from "@/lib/reservations";
@@ -2109,6 +2110,9 @@ function DriverDetail({
   const [activateOpen, setActivateOpen] = useState(false);
   const [reserveOpen, setReserveOpen] = useState(false);
   const [bookPickupOpen, setBookPickupOpen] = useState(false);
+  const [releaseFeeOpen, setReleaseFeeOpen] = useState(false);
+  const [releasingFee, setReleasingFee] = useState(false);
+  const releaseFee = useServerFn(releaseUnpaidReservationFee);
   const [pickupLinkOpen, setPickupLinkOpen] = useState(false);
   const [pickupGap, setPickupGap] = useState<PickupNotBookedState | null>(null);
   const [hasReservation, setHasReservation] = useState(false);
@@ -2553,6 +2557,7 @@ function DriverDetail({
     else if (t.kind === "approve") requestApprove();
     else if (t.kind === "reserve") { if (!reserveOpen) setReserveOpen(true); }
     else if (t.kind === "book_pickup") { if (!bookPickupOpen) setBookPickupOpen(true); }
+    else if (t.kind === "release_reservation_fee") setReleaseFeeOpen(true);
     else if (t.kind === "activate") {
       if (reservationBlocksStart({ depositStatus: reservationDepositStatus, blockStartWhenPending })) {
         toast.error("The Reservation Payment Is Still Pending. Record It Or Turn Off Block Start When Pending In Settings → Deposits.");
@@ -3481,6 +3486,24 @@ function DriverDetail({
           }}
         />
       ) : null}
+      <ReleaseReservationFeeDialog
+        open={releaseFeeOpen}
+        driverName={driver.full_name ?? null}
+        busy={releasingFee}
+        onOpenChange={(open) => { if (!releasingFee) setReleaseFeeOpen(open); }}
+        onConfirm={() => {
+          if (releasingFee) return;
+          setReleasingFee(true);
+          void releaseFee({ data: { applicationId: driver.id } })
+            .then(() => {
+              toast.success("Hold Released");
+              setReleaseFeeOpen(false);
+              setReadinessNonce((n) => n + 1);
+            })
+            .catch((e) => toast.error(e instanceof Error ? e.message : "Could Not Release The Hold"))
+            .finally(() => setReleasingFee(false));
+        }}
+      />
       {bookPickupOpen ? (
         <ReserveCarDialog
           open={bookPickupOpen}

@@ -546,6 +546,7 @@ export async function reservationFeeStatusForApplication(
     rows.find((p) => p.status === "refunded" || Number(p.refunded_amount ?? 0) > 0) ??
     rows.find((p) => p.status === "paid" && !isKept(p.notes)) ??
     rows.find((p) => p.status === "pending" || p.status === "unpaid" || p.status === "current") ??
+    rows.find((p) => p.status === "expired") ??
     null;
   if (!row) return { status: null, reason: null, paymentId: null, amount: null, dueDate: null };
   const facts = feeFacts(row);
@@ -553,8 +554,13 @@ export async function reservationFeeStatusForApplication(
     const reason = refundReasonFromNotes(row.notes);
     return { status: reason ? `refunded:${reason}` : "refunded", reason, paymentId: row.id, ...facts };
   }
-  if (row.status === "paid") return { status: "paid", reason: null, paymentId: row.id, ...facts };
+  if (row.status === "paid") {
+    const { NO_HOLD_NOTE } = await import("@/lib/reservation-fee-hold");
+    const status = String(row.notes ?? "").includes(NO_HOLD_NOTE) ? "paid_no_hold" : "paid";
+    return { status, reason: null, paymentId: row.id, ...facts };
+  }
   if (row.status === "waived") return { status: "waived", reason: null, paymentId: row.id, ...facts };
+  if (row.status === "expired") return { status: "expired", reason: null, paymentId: row.id, ...facts };
   return { status: "pending", reason: null, paymentId: row.id, ...facts };
 }
 
