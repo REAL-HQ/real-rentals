@@ -39,6 +39,18 @@ describe("Next Step reservation payment facts", () => {
     expect(payment.enforcement).toBe("advisory");
   });
 
+  it("shows unpaid amount and due date from the reservation fee row", () => {
+    const payment = driverNextStepRequirements([], "pending", null, { amount: 50, dueDate: "2026-11-24" }).find((item) => item.key === "reservation_paid");
+    expect(payment?.met).toBe(false);
+    expect(payment?.detail).toBe("Unpaid · $50 · Due Nov 24, 2026");
+  });
+
+  it("keeps Not Recorded when no reservation fee row exists", () => {
+    const payment = driverNextStepRequirements([], null, null, { amount: 50, dueDate: "2026-11-24" }).find((item) => item.key === "reservation_paid");
+    expect(payment?.met).toBeNull();
+    expect(payment?.detail).toBe("Not Recorded");
+  });
+
   it("shows Refunded - reason when the reservation fee was refunded", () => {
     const payment = driverNextStepRequirements([], "refunded:insurance_declined").find((item) => item.key === "reservation_paid");
     expect(payment?.met).not.toBe(true);

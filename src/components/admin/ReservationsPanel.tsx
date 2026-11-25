@@ -13,7 +13,7 @@ import {
   listReservations,
   recordReservationFee,
 } from "@/lib/reservations.functions";
-import { reservationFeeLabel, type ReservationRow } from "@/lib/reservations";
+import { reservationFeeLabel, unpaidReservationFeeLine, type AwaitingReservationFee, type ReservationRow } from "@/lib/reservations";
 import { MANUAL_METHODS, easternParts } from "@/lib/rent-reminders";
 import { fmtDate, formatReservationTime } from "@/lib/date-format";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -151,6 +151,8 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
   const [holdRow, setHoldRow] = useState<ReservationRow | null>(null);
   const [resumeRow, setResumeRow] = useState<ReservationRow | null>(null);
   const [rows, setRows] = useState<ReservationRow[]>([]);
+  const [awaitingFees, setAwaitingFees] = useState<AwaitingReservationFee[]>([]);
+  const [feeFilter, setFeeFilter] = useState<"all" | "unpaid">("all");
   // The $50 Reservation Fee lives in the reservation_deposit_* columns when its
   // switch is on; it is never called a deposit (Dolmar, t309u).
   const [feeOn, setFeeOn] = useState(false);
@@ -168,6 +170,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
     load()
       .then((r) => {
         setRows(r.rows);
+        setAwaitingFees(r.awaitingFees ?? []);
         setFeeOn((r as { reservationFeeOn?: boolean }).reservationFeeOn === true);
       })
       .catch(() => setFailed(true))
@@ -220,13 +223,41 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
     }
   };
 
+  const feeUnpaidRows = rows.filter((row) => reservationFeeLabel(row.depositStatus, feeOn) === "Unpaid");
+  const feeUnpaidCount = feeUnpaidRows.length + awaitingFees.length;
+  const visibleRows = feeFilter === "unpaid" ? feeUnpaidRows : rows;
+  const listEmpty = rows.length === 0 && awaitingFees.length === 0;
+  const filterEmpty = visibleRows.length === 0 && awaitingFees.length === 0;
+
   return (
     <div className="space-y-4" data-testid="reservations-panel">
       <div className="admin-sticky-bar flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-[#55555E]">
-          Cars held for a renter before pickup.
-          {feeOn ? " Reservation Fee (applied to week 1)." : " Reservation Fee Off."}
-        </p>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Reservation Fee">
+            {([
+              { id: "all" as const, label: "All" },
+              { id: "unpaid" as const, label: `Fee Unpaid (${feeUnpaidCount})` },
+            ]).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setFeeFilter(item.id)}
+                data-testid={item.id === "unpaid" ? "fee-unpaid-filter" : "fee-all-filter"}
+                className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                  feeFilter === item.id
+                    ? "border-[#D03020] bg-[#D03020] text-white"
+                    : "border-[#EDEDF0] bg-white text-[#55555E] hover:border-[#D6D6DB]"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-[#55555E]">
+            Cars held for a renter before pickup.
+            {feeOn ? " Reservation Fee (applied to week 1)." : " Reservation Fee Off."}
+          </p>
+        </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground" data-testid="reserved-count">
             {rows.length} Reserved Vehicle{rows.length === 1 ? "" : "s"}{rows.some((r) => isOnHoldStatus(r.status)) ? ` (${rows.filter((r) => isOnHoldStatus(r.status)).length} On Hold)` : ""}{rows.some((r) => isPendingReservationStatus(r.status)) ? ` (${rows.filter((r) => isPendingReservationStatus(r.status)).length} Pending Reservation)` : ""}
@@ -245,12 +276,14 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
         </p>
       ) : failed ? (
         <p className="text-sm text-[#8A1C10]">Could Not Load Reservations. Apply The Rental Reservations Migration If It Is Missing.</p>
-      ) : rows.length === 0 ? (
+      ) : listEmpty ? (
         <EmptyState
           icon={<CalendarCheck className="w-6 h-6" strokeWidth={1.75} />}
           title="No Reserved Vehicles"
           hint="Rentals with status Reserved show up here."
         />
+      ) : filterEmpty ? (
+        <p className="text-sm text-[#55555E]">No Unpaid Reservation Fees</p>
       ) : (
         <AdminTableScroll className="rounded-2xl border border-[#EDEDF0] bg-white">
           <table className="w-full table-fixed text-left text-sm" data-testid="reserved-table">
@@ -266,8 +299,9 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {visibleRows.map((row) => {
                 const fee = reservationFeeLabel(row.depositStatus, feeOn);
+                const feeLine = fee === "Unpaid" ? unpaidReservationFeeLine(row.feeAmount ?? row.depositAmount, row.feeDueDate) : "";
                 return (
                   <tr
                     key={row.id}
@@ -328,6 +362,11 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                       >
                         {fee}
                       </span>
+                      {feeLine ? (
+                        <span className="mt-1 block text-[11px] text-[#55555E]" data-testid="reservation-fee-unpaid">
+                          {feeLine}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-2 py-2 align-middle whitespace-nowrap">
                       {typeof row.weeklyRate === "number" ? `$${row.weeklyRate.toLocaleString()}/wk` : "—"}
@@ -372,6 +411,41 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                             </DropdownMenuContent>
                           </DropdownMenu>
                         ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {awaitingFees.map((fee) => {
+                const line = unpaidReservationFeeLine(fee.amount, fee.dueDate);
+                return (
+                  <tr
+                    key={fee.paymentId}
+                    className={`border-b border-[#EDEDF0] last:border-0 ${ROW_OPEN_CLASS}`}
+                    data-testid="awaiting-fee-row"
+                    data-payment-id={fee.paymentId}
+                    {...rowOpenProps(() => void navigate({ to: "/admin", search: { tab: "drivers", id: fee.applicationId } as never }))}
+                  >
+                    <td className="px-2 py-2 align-middle font-medium text-[#111114]">
+                      <span className="block truncate">{fee.driverName ?? "—"}</span>
+                    </td>
+                    <td className="px-2 py-2 align-middle text-[#55555E]">Not Held</td>
+                    <td className="px-2 py-2 align-middle text-[#55555E]">—</td>
+                    <td className="px-2 py-2 align-middle text-[#55555E]">—</td>
+                    <td className="px-2 py-2 align-middle">
+                      <span className="inline-flex rounded-full bg-[#FFF4D6] px-2 py-0.5 text-xs font-medium text-[#8A6A00]">Unpaid</span>
+                      {line ? <span className="mt-1 block text-[11px] text-[#55555E]" data-testid="reservation-fee-unpaid">{line}</span> : null}
+                    </td>
+                    <td className="px-2 py-2 align-middle text-[#55555E]">—</td>
+                    <td className="px-2 py-2 align-middle sticky right-0 bg-white">
+                      <div className="flex items-center justify-end">
+                        <Link
+                          to="/admin"
+                          search={{ tab: "drivers", id: fee.applicationId } as never}
+                          className="inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-2.5 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB]"
+                        >
+                          Open
+                        </Link>
                       </div>
                     </td>
                   </tr>

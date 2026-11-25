@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical, ChevronDown, Check, ListFilter } from "lucide-react";
 import { fmtDate as formatDate } from "@/lib/date-format";
-import { FAILED_RECENT_FILTER, awaitingReservationFee, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isOverdueRow, isRecentFailure, isUnpaidReservationFee, rowOwed } from "@/lib/payments-summary";
+import { FAILED_RECENT_FILTER, buildPaymentsSummary, countsAsOwed, feesOnlyLeft, isOverdueRow, isRecentFailure, isUnpaidReservationFee, rowOwed } from "@/lib/payments-summary";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { PaymentSummaryCards } from "./PaymentSummaryCards";
 import { STRIPE_UNMATCHED_PAYMENTS_ENABLED } from "@/lib/stripe-unmatched-flag";
@@ -296,16 +296,23 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
     }
   }
 
+  // Unpaid Reservation Fees are not ledger rows. Paid, refunded, void and
+  // waived fees stay. Outstanding already skips them via countsAsOwed.
+  const ledgerPayments = useMemo(
+    () => payments.filter((p) => !isUnpaidReservationFee(p)),
+    [payments],
+  );
+
   // Filter first, then sort a copy. Outstanding is computed from the filtered
   // set so clicking a header never changes the total.
   const byStatus = (
     statusFilter === "all"
-      ? payments
+      ? ledgerPayments
       : statusFilter === "overdue"
-        ? payments.filter((p) => isOverdueRow(p))
+        ? ledgerPayments.filter((p) => isOverdueRow(p))
         : statusFilter === FAILED_RECENT_FILTER
-          ? payments.filter((p) => isRecentFailure(p as any))
-          : payments.filter((p) => p.status === statusFilter)
+          ? ledgerPayments.filter((p) => isRecentFailure(p as any))
+          : ledgerPayments.filter((p) => p.status === statusFilter)
   );
   // Type filter reads the shared category (payment-category.ts): a Reservation Fee is
   // Reservation even while it is stored as type 'fee'.
@@ -348,17 +355,16 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
   const totalDue = filtered
     .filter((p) => countsAsOwed(p as any, coveredIds))
     .reduce((s, p) => s + rowOwed(p as any), 0);
-  const awaiting = awaitingReservationFee(filtered);
   const summary = useMemo(
     () => buildPaymentsSummary({ payments: payments as any, coveredIds, rentals, collectionItems }),
     [payments, coveredIds, rentals, collectionItems],
   );
 
   const statusCount = (status: string) => {
-    if (status === "all") return payments.length;
-    if (status === "overdue") return payments.filter((payment) => isOverdueRow(payment)).length;
-    if (status === FAILED_RECENT_FILTER) return payments.filter((payment) => isRecentFailure(payment as any)).length;
-    return payments.filter((payment) => payment.status === status).length;
+    if (status === "all") return ledgerPayments.length;
+    if (status === "overdue") return ledgerPayments.filter((payment) => isOverdueRow(payment)).length;
+    if (status === FAILED_RECENT_FILTER) return ledgerPayments.filter((payment) => isRecentFailure(payment as any)).length;
+    return ledgerPayments.filter((payment) => payment.status === status).length;
   };
   const statusLabel = (status: string) => status === "all" ? "All" : status === FAILED_RECENT_FILTER ? "Failed (Last 3 Days)" : STATUS_LABEL[status] ?? formatStatusLabel(status);
 
@@ -447,11 +453,6 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
                 <span>
                   Outstanding: <span className="font-semibold text-foreground">${totalDue.toLocaleString()}</span>
                 </span>
-                {awaiting.count > 0 ? (
-                  <span className="text-xs" data-testid="awaiting-reservation-fee">
-                    {`Awaiting Reservation Fee: $${awaiting.total.toLocaleString()} (${awaiting.count})`}
-                  </span>
-                ) : null}
               </div>
             </>
           ) : null}
