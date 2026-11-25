@@ -297,6 +297,7 @@ export function ReservationsPanel({ canManage = false }: { canManage?: boolean }
                     </td>
                     <td className="px-2 py-2 align-middle text-[#111114]">
                       <VehicleCell
+                        vehicleId={row.vehicleId}
                         vehicle={{ label: row.vehicleLabel, plate: row.plate, vinLast6: row.vinLast6, unitNumber: row.unitNumber }}
                         thumbnailPath={row.thumbnailPath ?? null}
                       />

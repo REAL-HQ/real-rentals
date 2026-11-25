@@ -200,6 +200,7 @@ export function ActiveRentalsPanel() {
                     </td>
                     <td className="px-2 py-2 align-middle text-[#111114]">
                       <VehicleCell
+                        vehicleId={row.vehicleId}
                         vehicle={{ label: row.vehicleLabel, plate: vehiclePlate, vinLast6: row.vehicleVinLast6, unitNumber: row.vehicleUnit }}
                         thumbnailPath={row.thumbnailPath ?? null}
                       />
