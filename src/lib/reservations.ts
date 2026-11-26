@@ -117,6 +117,8 @@ export type ReservationRow = {
    */
   feeAmount?: number | null;
   feeDueDate?: string | null;
+  /** Payment created_at for the unpaid fee, used as the 24-hour hold clock. */
+  feeHoldStartedAt?: string | null;
 };
 
 /**
@@ -132,6 +134,8 @@ export type AwaitingReservationFee = {
   dueDate: string | null;
   vehicleId: string | null;
   vehicleLabel: string | null;
+  /** Payment created_at. The hold clock falls back to this when signing time is not on the row. */
+  holdStartedAt?: string | null;
 };
 
 /** A payments row already classified as an unpaid Reservation Fee. */
@@ -141,6 +145,7 @@ export type FeeHoldPayment = {
   rentalId: string | null;
   amount: number;
   dueDate: string | null;
+  createdAt?: string | null;
 };
 
 export type ReservationFeeLabel = "Paid" | "Unpaid" | "Waived" | "Refunded" | "Not Required";
@@ -210,7 +215,7 @@ export function attachUnpaidReservationFees<T extends { id: string; applicationI
   const heldRentals = new Set(reservations.map((row) => row.id));
   const next = reservations.map((row) => {
     const fee = byRental.get(row.id) ?? (row.applicationId ? byApp.get(row.applicationId) : undefined);
-    return { ...row, feeAmount: fee?.amount ?? null, feeDueDate: fee?.dueDate ?? null };
+    return { ...row, feeAmount: fee?.amount ?? null, feeDueDate: fee?.dueDate ?? null, feeHoldStartedAt: fee?.createdAt ?? null };
   });
   const seen = new Set<string>();
   const awaiting: FeeHoldPayment[] = [];

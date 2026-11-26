@@ -143,9 +143,10 @@ function paymentStatusLabel(p: { status?: string | null; type?: string | null; r
   return STATUS_LABEL[String(p.status ?? "")] ?? enumDisplayLabel(String(p.status ?? ""));
 }
 
-export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initialRecordId }: { initialFilter?: string; autoOpenAdd?: boolean; tier?: StaffTier | null; initialRecordId?: string } = {}) {
+export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initialRecordId, previewPayments }: { initialFilter?: string; autoOpenAdd?: boolean; tier?: StaffTier | null; initialRecordId?: string; /** Skip the payments read. Screenshots and tests pass the rows. */ previewPayments?: Payment[] } = {}) {
   const navigate = useNavigate();
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const preview = previewPayments != null;
+  const [payments, setPayments] = useState<Payment[]>(previewPayments ?? []);
   const [drivers, setDrivers] = useState<Application[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   // Arriving from the dashboard's Collections card asks for everything
@@ -168,6 +169,7 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
   const [lateFeeRow, setLateFeeRow] = useState<{ rentalId: string; name: string } | null>(null);
 
   useEffect(() => {
+    if (preview) return;
     supabase
       .from("payments")
       .select("*")
@@ -185,16 +187,16 @@ export function PaymentsPanel({ initialFilter, autoOpenAdd, tier = null, initial
       .select("id,status,next_payment_due,weekly_rate,autopay_active,stripe_subscription_id")
       .eq("status", "active")
       .then(({ data }) => setRentals((data as any) || []));
-  }, []);
+  }, [preview]);
   useEffect(() => {
-    if (!canSeeCollections) return setCollectionItems(null);
+    if (preview || !canSeeCollections) return setCollectionItems(null);
     (supabase as any)
       .from("collection_items")
       .select("amount,amount_paid,status,application_id")
       .then(({ data, error }: { data: any[] | null; error: unknown }) =>
         setCollectionItems(error ? null : (data ?? []).map((i) => ({ ...i, amount: Number(i.amount), amount_paid: Number(i.amount_paid) }))),
       );
-  }, [canSeeCollections, collectionsNonce]);
+  }, [preview, canSeeCollections, collectionsNonce]);
 
   const driverMap = useMemo(() => Object.fromEntries(drivers.map((d) => [d.id, d])), [drivers]);
   const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v])), [vehicles]);

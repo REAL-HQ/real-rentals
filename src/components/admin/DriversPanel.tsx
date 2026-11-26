@@ -2189,7 +2189,9 @@ function DriverDetail({
   const releaseFee = useServerFn(releaseUnpaidReservationFee);
   const [pickupLinkOpen, setPickupLinkOpen] = useState(false);
   const [pickupGap, setPickupGap] = useState<PickupNotBookedState | null>(null);
+  const navigate = useNavigate();
   const [hasReservation, setHasReservation] = useState(false);
+  const [reservationId, setReservationId] = useState<string | null>(null);
   const [reservationDepositStatus, setReservationDepositStatus] = useState<string | null>(null);
   const [reservationFeeAmount, setReservationFeeAmount] = useState<number | null>(null);
   const [reservationFeeDue, setReservationFeeDue] = useState<string | null>(null);
@@ -2222,6 +2224,7 @@ function DriverDetail({
   useEffect(() => {
     if (rentalActive || !approved) {
       setHasReservation(false);
+      setReservationId(null);
       setReservationFeeRequired(false);
       setReservationDepositStatus(null);
       setReservationFeeAmount(null);
@@ -2240,6 +2243,7 @@ function DriverDetail({
       .then(([open, settings]) => {
         if (cancelled) return;
         setHasReservation(!!open.reservation);
+        setReservationId(open.reservation?.id ?? null);
         setReservationFeeRequired(open.reservation?.depositRequired === true);
         setReservationDepositStatus(open.feeDisplayStatus ?? open.reservation?.depositStatus ?? null);
         setReservationFeeAmount(typeof open.feeAmount === "number" ? open.feeAmount : null);
@@ -2249,6 +2253,7 @@ function DriverDetail({
       .catch(() => {
         if (cancelled) return;
         setHasReservation(false);
+        setReservationId(null);
         setReservationDepositStatus(null);
         setReservationFeeAmount(null);
         setReservationFeeDue(null);
@@ -2632,6 +2637,16 @@ function DriverDetail({
     else if (t.kind === "reserve") { if (!reserveOpen) setReserveOpen(true); }
     else if (t.kind === "book_pickup") { if (!bookPickupOpen) setBookPickupOpen(true); }
     else if (t.kind === "release_reservation_fee") setReleaseFeeOpen(true);
+    else if (t.kind === "bookings_reserved") {
+      void navigate({
+        to: "/admin",
+        search: {
+          tab: "bookings",
+          view: "reserved",
+          ...(reservationId ? { id: reservationId } : {}),
+        } as never,
+      });
+    }
     else if (t.kind === "activate") {
       if (reservationBlocksStart({ depositStatus: reservationDepositStatus, blockStartWhenPending })) {
         toast.error("The Reservation Payment Is Still Pending. Record It Or Turn Off Block Start When Pending In Settings → Deposits.");
