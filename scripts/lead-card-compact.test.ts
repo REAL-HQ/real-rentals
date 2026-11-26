@@ -162,6 +162,7 @@ describe("compact lead cards", () => {
       today: "Follow Up Today",
       information: "Check What Info Is Missing",
       future: "Review Note Before Follow-Up",
+      incomplete: "Ask Them To Finish",
     });
     for (const step of Object.values(LEAD_NEXT_STEP)) {
       for (const word of step.split(/[\s-]+/)) {

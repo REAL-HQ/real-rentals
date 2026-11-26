@@ -83,14 +83,14 @@ describe("Contact Status drafts pass the same rules the server re-runs", () => {
   test("follow-up on a New lead becomes Follow-Up with the date, note kept", () => {
     const d = followUpDraft(lead({ contact_status_note: "asked about a Camry" }), TODAY, 3);
     expect(d).toEqual({ status: "follow_up", note: "asked about a Camry", followUpOn: "2026-11-20" });
-    expect(leadDraftProblems(d)).toEqual([]);
+    expect(leadDraftProblems(d, TODAY)).toEqual([]);
   });
   test("follow-up keeps a status that already carries a date", () => {
     for (const s of ["contacted", "interested", "documents", "attempted", "voicemail", "unresponsive", "follow_up"]) {
       const d = followUpDraft(lead({ contact_status: s }), TODAY, 7);
       expect(d.status).toBe(s as never);
       expect(d.followUpOn).toBe("2026-11-24");
-      expect(leadDraftProblems(d)).toEqual([]);
+      expect(leadDraftProblems(d, TODAY)).toEqual([]);
     }
   });
   test("date math crosses months and years without time zone drift", () => {
@@ -101,20 +101,20 @@ describe("Contact Status drafts pass the same rules the server re-runs", () => {
   test("Not Interested = Declined, keeps the note, clears the date", () => {
     const d = notInterestedDraft(lead({ contact_status: "contacted", contact_status_note: "has a car", contact_follow_up_on: "2026-11-20" }));
     expect(d).toEqual({ status: "declined", note: "has a car", followUpOn: "" });
-    expect(leadDraftProblems(d)).toEqual([]);
+    expect(leadDraftProblems(d, TODAY)).toEqual([]);
     expect(contactStatusPatch(d).contact_follow_up_on).toBeNull();
   });
   test("Not A Fit = Unqualified and needs a reason", () => {
     expect(leadDraftProblems(notAFitDraft("   ")).length).toBeGreaterThan(0);
     const d = notAFitDraft("  Out of state license ");
     expect(d).toEqual({ status: "unqualified", note: "Out of state license", followUpOn: "" });
-    expect(leadDraftProblems(d)).toEqual([]);
+    expect(leadDraftProblems(d, TODAY)).toEqual([]);
   });
   test("Undo puts back exactly what the card showed", () => {
     const before = lead({ contact_status: "follow_up", contact_status_note: "call after 5", contact_follow_up_on: "2026-11-19" });
     const d = undoDraft(before);
     expect(d).toEqual({ status: "follow_up", note: "call after 5", followUpOn: "2026-11-19" });
-    expect(leadDraftProblems(d)).toEqual([]);
+    expect(leadDraftProblems(d, TODAY)).toEqual([]);
     expect(undoDraft(lead({ contact_status: "bogus" })).status).toBe("new");
   });
 });
