@@ -53,6 +53,48 @@ export function creditExpired(expiresAt: string | null | undefined, now = new Da
   return Number.isFinite(t) && t <= now.getTime();
 }
 
+const ET = "America/New_York";
+
+function etYmd(value: Date): string | null {
+  if (Number.isNaN(value.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: ET,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value;
+  const year = get("year");
+  const month = get("month");
+  const day = get("day");
+  if (!year || !month || !day) return null;
+  return `${year}-${month}-${day}`;
+}
+
+/** Calendar days from today in America/New_York until expires_at. Null when there is no expiry. */
+export function creditDaysLeft(expiresAt: string | null | undefined, now = new Date()): number | null {
+  if (expiresAt == null || String(expiresAt).trim() === "") return null;
+  const endMs = Date.parse(expiresAt);
+  if (!Number.isFinite(endMs)) return null;
+  const start = etYmd(now);
+  const end = etYmd(new Date(endMs));
+  if (!start || !end) return null;
+  const a = /^(\d{4})-(\d{2})-(\d{2})$/.exec(start);
+  const b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(end);
+  if (!a || !b) return null;
+  const ms = Date.UTC(Number(b[1]), Number(b[2]) - 1, Number(b[3])) - Date.UTC(Number(a[1]), Number(a[2]) - 1, Number(a[3]));
+  return Math.round(ms / DAY_MS);
+}
+
+/** Staff label for an Available credit. A past timestamp stays Expired on the card. */
+export function creditCountdownLabel(expiresAt: string | null | undefined, now = new Date()): string {
+  const days = creditDaysLeft(expiresAt, now);
+  if (days == null) return "No expiry";
+  if (days <= 0) return "Expires today";
+  if (days === 1) return "1 day left";
+  return `${days} days left`;
+}
+
 /** The rental a kept-fee note names, or the payment's rental when the note only says kept. */
 export function keptFeeRentalId(notes: string | null | undefined, paymentRentalId: string | null | undefined): string | null {
   if (!isKeptFeeNote(notes)) return null;

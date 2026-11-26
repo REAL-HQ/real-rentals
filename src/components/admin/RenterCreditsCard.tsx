@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { applyRenterCredit, listRenterCredits, type RenterCreditRow } from "@/lib/rental-hold.functions";
-import { creditExpired } from "@/lib/forfeited-fee-credit";
+import { creditCountdownLabel, creditDaysLeft, creditExpired } from "@/lib/forfeited-fee-credit";
 import { fmtDate } from "@/lib/date-format";
 
 const secondary = "inline-flex h-8 items-center justify-center rounded-md border border-[#D6D6DB] bg-white px-2.5 text-xs font-medium text-[#111114] hover:bg-[#FAFAFB] disabled:opacity-50";
@@ -53,11 +53,21 @@ export function RenterCreditsCard({
       <ul className="space-y-2">
         {shown.map((c) => {
           const state = creditState(c, clock);
+          const daysLeft = state === "Available" ? creditDaysLeft(c.expiresAt, clock) : null;
+          const urgent = daysLeft != null && daysLeft <= 7;
           const targets = state === "Available" ? rentals.filter((r) => r.applicationId === c.applicationId) : [];
           return (
             <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm" data-credit-status={c.status} data-credit-state={state.toLowerCase()}>
               <span>
                 {c.driverName ?? "Renter"} · ${c.amount.toFixed(2)} · {state}
+                {state === "Available" ? (
+                  <span
+                    className={`ml-2 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${urgent ? "bg-[#FFF4D6] text-[#8A6A00]" : "bg-[#F4F4F6] text-[#55555E]"}`}
+                    data-testid="credit-countdown"
+                  >
+                    {creditCountdownLabel(c.expiresAt, clock)}
+                  </span>
+                ) : null}
                 {state === "Expired" ? (
                   <span className="ml-2 inline-flex rounded-full bg-[#F4F4F6] px-2 py-0.5 text-xs font-medium text-[#55555E]">Expired</span>
                 ) : null}

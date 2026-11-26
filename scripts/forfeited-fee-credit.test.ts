@@ -5,6 +5,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
+  creditCountdownLabel,
+  creditDaysLeft,
   creditExpired,
   creditExpiresAt,
   keptFeeOffers,
@@ -29,6 +31,27 @@ describe("forfeited fee credit policy", () => {
     expect(creditExpired("2026-02-01T00:00:00Z", new Date("2026-06-01T00:00:00Z"))).toBe(true);
     expect(creditExpired("2027-02-24T15:00:00Z", new Date("2026-11-26T15:00:00Z"))).toBe(false);
     expect(creditExpired(null, new Date("2026-11-26T15:00:00Z"))).toBe(false);
+  });
+
+  test("days left are America/New_York calendar days", () => {
+    const now = new Date("2026-11-26T16:00:00Z");
+    expect(creditDaysLeft(null, now)).toBeNull();
+    expect(creditDaysLeft("", now)).toBeNull();
+    expect(creditDaysLeft("not-a-date", now)).toBeNull();
+    expect(creditDaysLeft("2027-02-21T16:00:00Z", now)).toBe(87);
+    expect(creditDaysLeft("2026-12-03T16:00:00Z", now)).toBe(7);
+    expect(creditDaysLeft("2026-11-27T16:00:00Z", now)).toBe(1);
+    expect(creditDaysLeft("2026-11-26T22:00:00Z", now)).toBe(0);
+    expect(creditDaysLeft("2026-01-01T15:00:00Z", now)).toBeLessThan(0);
+    // 11:30 PM ET is still the previous calendar day.
+    expect(creditDaysLeft("2026-11-26T16:00:00Z", new Date("2026-11-26T04:30:00Z"))).toBe(1);
+    // Spring-forward Sunday still counts as one calendar day.
+    expect(creditDaysLeft("2026-03-09T04:00:00Z", new Date("2026-03-08T06:30:00Z"))).toBe(1);
+    expect(creditCountdownLabel(null, now)).toBe("No expiry");
+    expect(creditCountdownLabel("2027-02-21T16:00:00Z", now)).toBe("87 days left");
+    expect(creditCountdownLabel("2026-12-03T16:00:00Z", now)).toBe("7 days left");
+    expect(creditCountdownLabel("2026-11-27T16:00:00Z", now)).toBe("1 day left");
+    expect(creditCountdownLabel("2026-11-26T22:00:00Z", now)).toBe("Expires today");
   });
 
   test("a kept fee with no live credit is an offer, including when the policy is off", () => {
